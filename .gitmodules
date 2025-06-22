@@ -2,3 +2,6 @@
 	path = signal-android/codebase
 	url = https://github.com/cy-suite/Signal-Android.git
 
+[submodule "element-android/codebase"]
+	path = element-android/codebase
+	url = https://github.com/cy-suite/Element-Android.git
