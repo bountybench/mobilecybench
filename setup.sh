@@ -1,0 +1,359 @@
+#!/bin/bash
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG_FILE="${SCRIPT_DIR}/setup.log"
+ANDROID_HOME="${HOME}/.android-sdk"
+EMULATOR_NAME="MobileBenchmark_API28"
+
+# Logging function
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+# Error handling
+error_exit() {
+    log "ERROR: $1"
+    exit 1
+}
+
+# Check if command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Detect OS and architecture
+detect_os() {
+    case "$(uname -s)" in
+        Linux*)     echo "linux";;
+        Darwin*)    echo "macos";;
+        CYGWIN*|MINGW*|MSYS*) echo "windows";;
+        *)          error_exit "Unsupported operating system";;
+    esac
+}
+
+detect_arch() {
+    case "$(uname -m)" in
+        x86_64|amd64)   echo "x86_64";;
+        arm64|aarch64)  echo "arm64";;
+        *)              echo "x86_64";;  # Default fallback
+    esac
+}
+
+# Download file with progress
+download_file() {
+    local url="$1"
+    local output="$2"
+    
+    if command_exists curl; then
+        curl -L --progress-bar "$url" -o "$output"
+    elif command_exists wget; then
+        wget --progress=bar:force "$url" -O "$output"
+    else
+        error_exit "Neither curl nor wget found. Please install one of them."
+    fi
+}
+
+# Install Android SDK Command Line Tools
+install_android_sdk() {
+    local os="$1"
+    log "Installing Android SDK Command Line Tools..."
+    
+    # Create Android SDK directory
+    mkdir -p "$ANDROID_HOME"
+    cd "$ANDROID_HOME"
+    
+    # Download SDK command line tools
+    case "$os" in
+        linux)
+            local sdk_url="https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+            ;;
+        macos)
+            local sdk_url="https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip"
+            ;;
+        windows)
+            local sdk_url="https://dl.google.com/android/repository/commandlinetools-win-11076708_latest.zip"
+            ;;
+    esac
+    
+    log "Downloading Android SDK from $sdk_url"
+    download_file "$sdk_url" "commandlinetools.zip"
+    
+    # Extract SDK tools
+    if command_exists unzip; then
+        unzip -q commandlinetools.zip
+    else
+        error_exit "unzip command not found. Please install unzip."
+    fi
+    
+    # Organize SDK structure
+    mkdir -p cmdline-tools/latest
+    mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || true
+    rm commandlinetools.zip
+    
+    log "Android SDK Command Line Tools installed successfully"
+}
+
+# Setup environment variables
+setup_environment() {
+    log "Setting up environment variables..."
+    
+    # Add to current session
+    export ANDROID_HOME="$ANDROID_HOME"
+    export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+    
+    # Add to shell profile
+    local shell_profile=""
+    if [[ -n "$ZSH_VERSION" ]]; then
+        shell_profile="$HOME/.zshrc"
+    elif [[ -n "$BASH_VERSION" ]]; then
+        shell_profile="$HOME/.bashrc"
+    fi
+    
+    if [[ -n "$shell_profile" ]]; then
+        log "Adding environment variables to $shell_profile"
+        {
+            echo ""
+            echo "# Android SDK (added by mobile benchmark setup)"
+            echo "export ANDROID_HOME=\"$ANDROID_HOME\""
+            echo "export PATH=\"\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools:\$ANDROID_HOME/emulator:\$PATH\""
+        } >> "$shell_profile"
+    fi
+}
+
+# Install required Android packages
+install_android_packages() {
+    local arch="$1"
+    log "Installing required Android packages for $arch architecture..."
+    
+    local sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+    
+    # Accept licenses
+    yes | "$sdkmanager" --licenses >/dev/null 2>&1 || true
+    
+    # Determine system image based on architecture
+    local system_image
+    if [[ "$arch" == "arm64" ]]; then
+        system_image="system-images;android-28;google_apis;arm64-v8a"
+    else
+        system_image="system-images;android-28;google_apis;x86_64"
+    fi
+    
+    # Install essential packages
+    "$sdkmanager" \
+        "platform-tools" \
+        "emulator" \
+        "platforms;android-28" \
+        "$system_image" \
+        >/dev/null
+    
+    log "Android packages installed successfully"
+}
+
+# Create Android Virtual Device
+create_avd() {
+    local arch="$1"
+    log "Creating Android Virtual Device: $EMULATOR_NAME for $arch"
+    
+    local avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
+    
+    # Determine system image based on architecture
+    local system_image
+    if [[ "$arch" == "arm64" ]]; then
+        system_image="system-images;android-28;google_apis;arm64-v8a"
+    else
+        system_image="system-images;android-28;google_apis;x86_64"
+    fi
+    
+    # Create AVD
+    echo "no" | "$avdmanager" create avd \
+        -n "$EMULATOR_NAME" \
+        -k "$system_image" \
+        -d "pixel_2" \
+        --force >/dev/null
+    
+    # Configure AVD
+    local avd_config="$HOME/.android/avd/${EMULATOR_NAME}.avd/config.ini"
+    if [[ -f "$avd_config" ]]; then
+        # Optimize for development
+        {
+            echo "hw.ramSize=2048"
+            echo "hw.gpu.enabled=yes"
+            echo "hw.gpu.mode=host"
+            echo "hw.keyboard=yes"
+            echo "showDeviceFrame=no"
+            echo "skin.dynamic=yes"
+        } >> "$avd_config"
+    fi
+    
+    log "Android Virtual Device created successfully"
+}
+
+# Create helper scripts
+create_helper_scripts() {
+    log "Creating helper scripts..."
+    
+    # Start emulator script
+    cat > "${SCRIPT_DIR}/start_emulator.sh" << 'EOF'
+#!/bin/bash
+# Start Android emulator
+
+ANDROID_HOME="${HOME}/.android-sdk"
+EMULATOR_NAME="MobileBenchmark_API28"
+
+echo "Starting Android emulator: $EMULATOR_NAME"
+echo "This may take a few minutes on first boot..."
+
+"$ANDROID_HOME/emulator/emulator" \
+    -avd "$EMULATOR_NAME" \
+    -no-snapshot-save \
+    -wipe-data \
+    -gpu host \
+    -skin 1080x1920 \
+    -memory 2048 \
+    &
+
+echo "Emulator started in background"
+echo "Waiting for device to be ready..."
+
+# Wait for device
+"$ANDROID_HOME/platform-tools/adb" wait-for-device
+
+echo "Device ready!"
+echo "To check device status: adb devices"
+EOF
+
+    # Stop emulator script
+    cat > "${SCRIPT_DIR}/stop_emulator.sh" << 'EOF'
+#!/bin/bash
+# Stop Android emulator
+
+echo "Stopping Android emulator..."
+adb emu kill
+echo "Emulator stopped"
+EOF
+
+    # Device check script
+    cat > "${SCRIPT_DIR}/check_device.sh" << 'EOF'
+#!/bin/bash
+# Check if Android device is ready
+
+ANDROID_HOME="${HOME}/.android-sdk"
+
+echo "Checking Android device status..."
+
+# Check if ADB is available
+if ! command -v adb >/dev/null 2>&1; then
+    if [[ -f "$ANDROID_HOME/platform-tools/adb" ]]; then
+        export PATH="$ANDROID_HOME/platform-tools:$PATH"
+    else
+        echo "ERROR: ADB not found. Please run setup.sh first."
+        exit 1
+    fi
+fi
+
+# Check for connected devices
+devices=$(adb devices | grep -v "List of devices" | grep -E "device$|emulator")
+
+if [[ -z "$devices" ]]; then
+    echo "No Android devices found."
+    echo "Run ./start_emulator.sh to start the emulator."
+    exit 1
+fi
+
+echo "Connected devices:"
+echo "$devices"
+
+# Test device connectivity
+device_id=$(echo "$devices" | head -n1 | awk '{print $1}')
+echo "Testing device connectivity..."
+
+if adb -s "$device_id" shell echo "test" >/dev/null 2>&1; then
+    echo "Device is ready!"
+    
+    # Check Android version
+    android_version=$(adb -s "$device_id" shell getprop ro.build.version.release)
+    echo "Android version: $android_version"
+    
+    # Check architecture
+    arch=$(adb -s "$device_id" shell getprop ro.product.cpu.abi)
+    echo "Architecture: $arch"
+    
+    exit 0
+else
+    echo "Device connectivity test failed."
+    exit 1
+fi
+EOF
+
+    # Make scripts executable
+    chmod +x "${SCRIPT_DIR}"/{start_emulator,stop_emulator,check_device}.sh
+    
+    log "Helper scripts created successfully"
+}
+
+# Main setup function
+main() {
+    log "Starting Android Emulator Setup"
+    log "This script will install Android SDK and create an emulator"
+    
+    # Detect operating system and architecture
+    local os=$(detect_os)
+    local arch=$(detect_arch)
+    log "Detected OS: $os"
+    log "Detected architecture: $arch"
+    
+    # Check prerequisites
+    log "Checking prerequisites..."
+    
+    if [[ "$os" == "linux" ]] && ! command_exists unzip; then
+        error_exit "unzip is required. Install with: sudo apt-get install unzip"
+    fi
+    
+    # Install Android SDK if not present
+    if [[ ! -d "$ANDROID_HOME/cmdline-tools" ]]; then
+        install_android_sdk "$os"
+    else
+        log "Android SDK already installed"
+    fi
+    
+    # Setup environment
+    setup_environment
+    
+    # Install Android packages
+    install_android_packages "$arch"
+    
+    # Create AVD
+    create_avd "$arch"
+    
+    # Create helper scripts
+    create_helper_scripts
+    
+    log "Setup completed successfully!"
+    echo ""
+    echo "Android Emulator is ready!"
+    echo ""
+    echo "Architecture: $arch"
+    if [[ "$arch" == "arm64" ]]; then
+        echo "Note: Using ARM64 system image for Apple Silicon compatibility"
+    fi
+    echo ""
+    echo "Next steps:"
+    echo "1. Start emulator: ./start_emulator.sh"
+    echo "2. Check device:   ./check_device.sh"
+    echo "3. Install APKs:   adb install app.apk"
+    echo ""
+    echo "Useful commands:"
+    echo "  ./start_emulator.sh   - Start the Android emulator"
+    echo "  ./stop_emulator.sh    - Stop the Android emulator"
+    echo "  ./check_device.sh     - Check device status"
+    echo "  adb devices           - List connected devices"
+    echo "  adb shell             - Open device shell"
+    echo ""
+    echo "Note: You may need to restart your terminal or run:"
+    echo "  source ~/.bashrc  (or ~/.zshrc)"
+}
+
+# Run main function
+main "$@"
