@@ -1,1 +1,169 @@
 # mobilecybench
+
+## Local Development Setup
+
+### Quick Start
+
+1. **Run the setup script:**
+   ```bash
+   bash setup.sh
+   ```
+
+2. **Start the emulator:**
+   ```bash
+   ./start_emulator.sh
+   ```
+
+3. **Verify setup:**
+   ```bash
+   ./check_device.sh
+   ```
+
+That's it! The emulator is ready for testing.
+
+### What the Setup Script Does
+
+- Downloads and installs Android SDK Command Line Tools
+- Creates an Android 9.0 (API 28) emulator
+- Sets up environment variables automatically
+- Creates helper scripts for common tasks
+
+### Helper Scripts
+
+| Script | Description |
+|--------|-------------|
+| `start_emulator.sh` | Start the Android emulator |
+| `stop_emulator.sh` | Stop the Android emulator |
+| `check_device.sh` | Check if device is ready for testing |
+
+### Requirements
+
+- **Linux/macOS/Windows** (script auto-detects)
+- **8GB+ RAM** (4GB for emulator + 4GB for host)
+- **10GB+ free disk space**
+- **Hardware virtualization enabled** (Intel VT-x/AMD-V)
+
+### Troubleshooting
+
+#### Emulator won't start
+- Ensure hardware virtualization is enabled in BIOS
+- Check available RAM: `free -h` (Linux) or Activity Monitor (macOS)
+
+#### ADB not found
+- Restart terminal after setup
+- Manually source profile: `source ~/.bashrc`
+
+#### Permission denied
+- Make scripts executable: `chmod +x *.sh`
+
+### Directory Structure
+
+```
+├── setup.sh              # Main setup script
+├── start_emulator.sh      # Start emulator
+├── stop_emulator.sh       # Stop emulator
+├── check_device.sh        # Device status check
+└── setup.log             # Setup log file
+```
+
+### Advanced Configuration
+
+The emulator is configured with:
+- **Device:** Pixel 2 profile
+- **Android:** 9.0 (API 28) with Google APIs
+- **RAM:** 2GB
+- **Architecture:** x86_64
+- **GPU:** Hardware acceleration enabled
+
+To modify settings, edit the AVD configuration in:
+`~/.android/avd/MobileBenchmark_API28.avd/config.ini`
+
+### Support
+
+If you encounter issues:
+1. Check `setup.log` for error details
+2. Ensure system requirements are met
+3. Try running setup script again# MobileCyBench - Local Development Setup
+
+## Quick Start
+
+1. **Run the setup script:**
+   ```bash
+   bash setup.sh
+   ```
+
+2. **Start the emulator:**
+   ```bash
+   ./start_emulator.sh
+   ```
+
+3. **Verify setup:**
+   ```bash
+   ./check_device.sh
+   ```
+
+That's it! The emulator is ready for testing.
+
+## What the Setup Script Does
+
+- Downloads and installs Android SDK Command Line Tools
+- Creates an Android 9.0 (API 28) emulator
+- Sets up environment variables automatically
+- Creates helper scripts for common tasks
+
+## Helper Scripts
+
+| Script | Description |
+|--------|-------------|
+| `start_emulator.sh` | Start the Android emulator |
+| `stop_emulator.sh` | Stop the Android emulator |
+| `check_device.sh` | Check if device is ready for testing |
+
+## Requirements
+
+- **Linux/macOS/Windows** (script auto-detects)
+- **8GB+ RAM** (4GB for emulator + 4GB for host)
+- **10GB+ free disk space**
+- **Hardware virtualization enabled** (Intel VT-x/AMD-V)
+
+## Troubleshooting
+
+### Emulator won't start
+- Ensure hardware virtualization is enabled in BIOS
+- Check available RAM: `free -h` (Linux) or Activity Monitor (macOS)
+
+### ADB not found
+- Restart terminal after setup
+- Manually source profile: `source ~/.bashrc`
+
+### Permission denied
+- Make scripts executable: `chmod +x *.sh`
+
+## Directory Structure
+
+```
+├── setup.sh              # Main setup script
+├── start_emulator.sh      # Start emulator
+├── stop_emulator.sh       # Stop emulator
+├── check_device.sh        # Device status check
+└── setup.log             # Setup log file
+```
+
+## Advanced Configuration
+
+The emulator is configured with:
+- **Device:** Pixel 2 profile
+- **Android:** 9.0 (API 28) with Google APIs
+- **RAM:** 2GB
+- **Architecture:** x86_64
+- **GPU:** Hardware acceleration enabled
+
+To modify settings, edit the AVD configuration in:
+`~/.android/avd/MobileBenchmark_API28.avd/config.ini`
+
+## Support
+
+If you encounter issues:
+1. Check `setup.log` for error details
+2. Ensure system requirements are met
+3. Try running setup script again
