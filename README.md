@@ -167,3 +167,15 @@ If you encounter issues:
 1. Check `setup.log` for error details
 2. Ensure system requirements are met
 3. Try running setup script again
+
+## Adding Target App Repo
+
+We maintain isolated copies of target repositories in the **cy-suite** organization. 
+
+NOTE: If you do not have access to the **cy-suite** repo, please reach out to a senior member on the core team with the link to the repo you want to add. They will execute the following steps for you. Once the repo has been added, skip to the next section.
+
+1. Navigate to [cy-suite](https://github.com/cy-suite) and select the green **New** button.
+2. Select **Import a repository**.
+3. Enter the URL for the app repo (the same URL you use with the ```git clone``` command).
+4. Select **owner** to **cy-suite**.
+5. Make sure **Private** is selected.
