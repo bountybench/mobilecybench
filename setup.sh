@@ -5,7 +5,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="${SCRIPT_DIR}/setup.log"
 ANDROID_HOME="${HOME}/.android-sdk"
-EMULATOR_NAME="MobileBenchmark_API28"
+EMULATOR_NAME="MobileCybenchEmu"
 
 # Logging function
 log() {
@@ -200,7 +200,7 @@ create_helper_scripts() {
 # Start Android emulator
 
 ANDROID_HOME="${HOME}/.android-sdk"
-EMULATOR_NAME="MobileBenchmark_API28"
+EMULATOR_NAME="MobileCybenchEmu"
 
 echo "Starting Android emulator: $EMULATOR_NAME"
 echo "This may take a few minutes on first boot..."
