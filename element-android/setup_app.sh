@@ -81,36 +81,34 @@ install_element() {
     echo "Element installed successfully."
 }
 
-# Open app drawer and find Element
-open_app_drawer() {
-    echo "Opening app drawer to find Element..."
+# Launch Element directly
+launch_element() {
+    echo "Launching Element..."
     
-    # Open the app drawer/launcher
-    adb shell am start -a android.intent.action.MAIN -c android.intent.category.HOME
-    sleep 1
+    # Launch Element using component name
+    adb shell am start -n im.vector.app.debug/im.vector.application.features.Alias
     
-    # Open app drawer (this works on most Android versions)
-    adb shell input swipe 500 1500 500 500 200  # Swipe up from bottom
+    # Verify launch
     sleep 2
-    
-    echo "App drawer should now be open. Searching for Element..."
-    
-    # Search for Element
-    adb shell input text "element"
-    sleep 2
-    
-    echo "Tapping Element at coordinates (139, 323)..."
-    adb shell input tap 139 323
-    sleep 2
-    
-    # Check if Element launched successfully
     if adb shell dumpsys window | grep -q "mCurrentFocus.*im.vector.app"; then
         echo "Successfully launched Element!"
         return 0
     else
         echo "Element may not have launched properly."
-        echo "Please check your emulator - Element should be starting."
-        return 1
+        echo "Trying alternative launch method..."
+        
+        # Try launching MainActivity directly as fallback
+        adb shell am start -n im.vector.app.debug/im.vector.app.features.MainActivity
+        sleep 2
+        
+        if adb shell dumpsys window | grep -q "mCurrentFocus.*im.vector.app"; then
+            echo "Successfully launched Element with alternative method!"
+            return 0
+        else
+            echo "Element may not have launched properly."
+            echo "Please check your emulator - Element should be installed."
+            return 1
+        fi
     fi
 }
 
@@ -143,16 +141,17 @@ main() {
     echo "Setup complete! Element has been installed."
     echo "=========================================="
     echo ""
-    echo "Attempting to open app drawer and launch Element..."
+    echo "Launching Element..."
     
-    if open_app_drawer; then
-        echo "Element should now be launching!"
+    if launch_element; then
+        echo "Element is now running and ready for mobile security testing!"
     else
-        echo "Please manually find and tap Element in the app drawer."
+        echo "Please manually launch Element from your emulator."
+        echo "You can also try running: adb shell am start -n im.vector.app.debug/im.vector.application.features.Alias"
     fi
     
     echo ""
-    echo "Element is now ready for mobile security testing!"
+    echo "Element setup completed successfully!"
 }
 
 # Run main function
