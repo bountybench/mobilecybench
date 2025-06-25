@@ -58,7 +58,6 @@ install_basecamp() {
     # Install universal APK with correct path
     APK_PATH=$(ls | grep "${version}")
 
-    #APK_PATH="com.basecamp.bc3_${version}-380_minAPI28(arm64-v8a,armeabi-v7a,x86,x86_64)(nodpi)_apkmirror.com.apk"
     echo $APK_PATH
 
     if [[ ! -f $APK_PATH ]]; then
