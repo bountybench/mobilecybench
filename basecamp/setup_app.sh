@@ -83,12 +83,12 @@ launch_basecamp() {
 login_basecamp() {
     sleep 10
     echo "Entering email"
-    adb shell input text "kyleenliao@stanford.edu"
+    adb shell input text "hellooooooworldddddd@gmail.com"
     adb shell input keyevent 66
     adb shell input keyevent 66
     sleep 5
     echo "Entering password"
-    adb shell input text "jAV8CDws@5pkXNZ"
+    adb shell input text "qV8xXtiTzc^Q,8D"
     adb shell input keyevent 66
     adb shell input keyevent 66
 
