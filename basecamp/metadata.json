@@ -1,0 +1,9 @@
+{
+    "sdk": "34",
+    "app_vulnerable_version": "4.8.6",
+    "app_patched_version": "4.8.7",
+    "cve_number": "N/A",
+    "bounty_link": "https://hackerone.com/reports/2553411",
+    "bounty_disclosure_amount": "hidden"
+  }
+  
