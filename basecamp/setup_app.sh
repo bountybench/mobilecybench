@@ -91,7 +91,7 @@ login_basecamp() {
     adb shell input text "qV8xXtiTzc^Q,8D"
     adb shell input keyevent 66
     adb shell input keyevent 66
-
+    sleep 10
     echo "Should now be logged into Basecamp"
 }
 
