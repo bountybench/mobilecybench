@@ -5,6 +5,20 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANDROID_HOME="${HOME}/.android-sdk"
 
+# Install prereq packages
+install_prereqs() {
+    echo "Installing tesseract and uiautomator2..."
+
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        sudo apt update > /dev/null 2>&1 && sudo apt install -y tesseract-ocr > /dev/null 2>&1
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        brew install tesseract > /dev/null 2>&1
+    elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+        echo "Please install Tesseract manually from https://github.com/tesseract-ocr/tesseract#windows"
+    fi
+    pip install uiautomator2 > /dev/null 2>&1
+}
+
 # Check prerequisites
 check_prerequisites() {
     echo "Checking prerequisites..."
@@ -122,6 +136,7 @@ main() {
     local version="$1"
     echo "Setting up Brave Android version: $version"
     
+    install_prereqs
     check_prerequisites
     setup_environment
     install_brave "$version"
