@@ -1,0 +1,136 @@
+#!/bin/bash
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ANDROID_HOME="${HOME}/.android-sdk"
+
+# Install prereq packages
+install_prereqs() {
+    echo "Installing tesseract and uiautomator2..."
+
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        sudo apt update > /dev/null 2>&1 && sudo apt install -y tesseract-ocr > /dev/null 2>&1
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        brew install tesseract > /dev/null 2>&1
+    elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+        echo "Please install Tesseract manually from https://github.com/tesseract-ocr/tesseract#windows"
+    fi
+    pip install uiautomator2 > /dev/null 2>&1
+}
+
+# Check prerequisites
+check_prerequisites() {
+    echo "Checking prerequisites..."
+    
+    # Check Java 17
+    if ! command -v java >/dev/null 2>&1; then
+        echo "ERROR: Java not found. Please install Java 17."
+        exit 1
+    fi
+    
+    # Check Android SDK
+    if [[ ! -d "$ANDROID_HOME" ]]; then
+        echo "ERROR: Android SDK not found at $ANDROID_HOME"
+        echo "Please run the Android emulator setup first."
+        exit 1
+    fi
+    
+    echo "Prerequisites verified."
+}
+
+# Setup environment
+setup_environment() {
+    echo "Setting up build environment..."
+    
+    # Set Java 17
+    export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+    export PATH="$JAVA_HOME/bin:$PATH"
+    
+    # Set Android SDK
+    export ANDROID_HOME="$ANDROID_HOME"
+    export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+    
+    # Create local.properties for MetaMask build
+    echo "sdk.dir=$ANDROID_HOME" > local.properties
+    
+    echo "Environment configured."
+}
+
+# Install on emulator
+install_metamask() {
+    local version="$1"
+    echo "Installing MetaMask on Android emulator..."
+    
+    # Check if emulator is running
+    if ! adb devices | grep -q "device\|emulator"; then
+        echo "ERROR: No Android emulator found."
+        echo "Please start the emulator first."
+        exit 1
+    fi
+
+    metadata="metadata.json"
+    download_link=$(jq -r '.download_links[]' "$metadata" | grep "$version")
+    APK_PATH="metamask_v${version}.apk"
+
+    if [[ ! -f "$APK_PATH" ]]; then
+        echo "Downloading using download link for version $version: $download_link"
+        curl -L -o "$APK_PATH" "$download_link"
+    fi
+
+    echo $APK_PATH
+
+    if [[ ! -f $APK_PATH ]]; then
+        echo "ERROR: APK not found at $APK_PATH"
+        echo "Available APKs:"
+        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
+        exit 1
+    fi
+    
+    adb install "$APK_PATH"
+    echo "MetaMask installed successfully."
+}
+
+# Launch MetaMask
+launch_metamask() {
+    echo "Launching MetaMask..."
+    adb shell am start -n io.metamask/.MainActivity
+
+    echo "MetaMask should now be running on your emulator."
+}
+
+# Navigates past pop ups
+navigate() {
+    sleep 5
+    echo "Navigating into the app..."
+    python navigate.py
+}
+
+
+# Main function
+main() {
+    echo "MetaMask Android Setup"
+    echo "==================="
+    
+    # Check for version argument
+    if [[ $# -ne 1 ]]; then
+        echo "Usage: $0 <version>"
+        echo "Example: $0 7.23.0"
+        exit 1
+    fi
+    
+    local version="$1"
+    echo "Setting up MetaMask Android version: $version"
+    
+    install_prereqs
+    check_prerequisites
+    setup_environment
+    install_metamask "$version"
+    launch_metamask
+    navigate
+    
+    echo "Setup complete! MetaMask version $version is ready for testing."
+}
+
+# Run main function
+main "$@"
