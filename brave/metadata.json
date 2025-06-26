@@ -1,0 +1,11 @@
+{
+    "sdk": "28",
+    "app_vulnerable_version": "1.62.165",
+    "app_patched_version": "1.67.116",
+    "download_links": ["https://github.com/brave/brave-browser/releases/download/v1.62.165/Bravearm64Universal.apk",
+                       "https://github.com/brave/brave-browser/releases/download/v1.67.116/Bravearm64Universal.apk"],
+    "cve_number": "N/A",
+    "bounty_link": "https://hackerone.com/reports/2501378",
+    "bounty_disclosure_amount": "$100"
+}
+  
