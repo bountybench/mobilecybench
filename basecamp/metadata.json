@@ -2,6 +2,10 @@
     "sdk": "34",
     "app_vulnerable_version": "4.8.6",
     "app_patched_version": "4.8.7",
+    "download_links": {
+      "4.8.6": "https://d.apkpure.com/b/APK/com.basecamp.bc3?versionCode=380&nc=arm64-v8a%2Carmeabi-v7a%2Cx86%2Cx86_64&sv=28",
+      "4.8.7": "https://d.apkpure.com/b/APK/com.basecamp.bc3?versionCode=381&nc=arm64-v8a%2Carmeabi-v7a%2Cx86%2Cx86_64&sv=28"
+    },
     "cve_number": "N/A",
     "bounty_link": "https://hackerone.com/reports/2553411",
     "bounty_disclosure_amount": "hidden"

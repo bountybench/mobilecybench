@@ -55,8 +55,16 @@ install_basecamp() {
         exit 1
     fi
 
-    # Install universal APK with correct path
-    APK_PATH=$(ls | grep "${version}")
+    metadata="metadata.json"
+    download_link=$(jq -r --arg ver "$version" '.download_links[$ver]' "$metadata")
+    APK_PATH="basecamp_v${version}.apk"
+
+    echo $download_link
+
+    if [[ ! -f "$APK_PATH" ]]; then
+        echo "Downloading using download link for version $version: $download_link"
+        wget -O "$APK_PATH" --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36" "$download_link"
+    fi
 
     echo $APK_PATH
 
