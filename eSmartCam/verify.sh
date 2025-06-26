@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 KEY="7b7079bb69001dce"
 
 if [[ -n keys.txt ]]; then

@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# Minimal setup script for eSmartCam (versionCode 72)
-# 1. Downloads the APK if missing
-# 2. Installs (or updates) it on the connected emulator/device
-# 3. Launches the main launcher activity via monkey
 
 set -euo pipefail
 
