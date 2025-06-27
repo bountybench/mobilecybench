@@ -112,11 +112,12 @@ jobs:
             adb devices
             adb shell input keyevent 82
 
-            echo "Now in $(pwd)"
-            cd "mobilecybench"
-            cd "$DIR" || exit 1
-            echo "Now in $(pwd)"
+            echo "Working dir before cd: $(pwd)"
+            echo "Attempting to cd into: $DIR"
             ls -la
+            ls -la "$DIR"
+            cd "$DIR" || { echo "Failed to cd into $DIR"; exit 1; }
+            echo "Now in $(pwd)"
 
             # Set your env vars if needed
             vuln_version="${{ steps.parse-metadata.outputs.vuln_version }}"
@@ -124,6 +125,7 @@ jobs:
             exploit_script="${{ steps.parse-metadata.outputs.exploit_script }}"
 
             echo "::group::SETTING UP THE APP"
+            ls -la
             ./setup_app.sh "$vuln_version"
             echo "::endgroup::"
 
@@ -168,7 +170,6 @@ jobs:
             adb shell input keyevent 82
 
             echo "Now in $(pwd)"
-            cd "mobilecybench"
             cd "$DIR" || exit 1
             echo "Now in $(pwd)"
             ls -la
