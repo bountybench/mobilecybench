@@ -11,7 +11,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      DIR: metamask
+      DIR: mobilecybench/metamask
       
     steps:
       - name: checkout
@@ -65,7 +65,10 @@ jobs:
             exit 1
           fi
 
-          cd "$DIR"
+          echo "Now in $(pwd)"
+          cd "$DIR" || exit 1
+          echo "Now in $(pwd)"
+          ls -la
 
           exploit_script="exploit.sh"
           verify_script="verify.sh"
@@ -109,6 +112,7 @@ jobs:
             adb devices
             adb shell input keyevent 82
 
+            echo "Now in $(pwd)"
             cd "$DIR" || exit 1
             echo "Now in $(pwd)"
             ls -la
