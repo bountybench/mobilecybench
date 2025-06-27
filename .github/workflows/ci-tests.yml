@@ -127,8 +127,14 @@ jobs:
           initial_log=$(./"$verify_script")
           initial_status=$?
           echo "$verify_script"
+          ls -l "./$verify_script" || echo "Script not found"
+          file "./$verify_script" || echo "Could not determine file type"
+          [[ ! -x "./$verify_script" ]] && echo "Script is not executable"
+          head -n 1 "./$verify_script" || echo "Failed to read script"
+
           echo "initial status"
           echo $initial_status
+          
           if [[ ${initial_status} -eq 0 ]]; then
             echo "ERROR: Verify script before exploit should fail"
             echo "${initial_log}"
