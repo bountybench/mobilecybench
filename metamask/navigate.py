@@ -9,7 +9,7 @@ time.sleep(5)
 d(text="Create a new wallet").click_exists(timeout=3)
 time.sleep(5)
 d(text="I agree").click_exists(timeout=3)
-time.sleep(5)
+time.sleep(10)
 
 d(resourceId="terms-of-use-scroll-end-arrow-button-id").click_exists(timeout=3)
 time.sleep(5)
@@ -17,10 +17,10 @@ d(text="I agree to the Terms of Use, which apply to my use of MetaMask and all o
 time.sleep(5)
 d(resourceId="terms-of-use-accept-button-id").click_exists(timeout=3)
 time.sleep(5)
+print(d.dump_hierarchy())
+
 d(text="Accept").click_exists(timeout=3)
 time.sleep(10)
-
-print(d.dump_hierarchy())
 
 # Password page
 d(resourceId="create-password-first-input-field").click()
