@@ -3,7 +3,12 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ANDROID_HOME="${HOME}/.android-sdk"
+# Detect CI environment and set ANDROID_HOME accordingly
+if [[ "$CI" == "true" ]]; then
+  ANDROID_HOME="/usr/local/lib/android/sdk"
+else
+  ANDROID_HOME="${HOME}/.android-sdk"
+fi
 
 # Install prereq packages
 install_prereqs() {
