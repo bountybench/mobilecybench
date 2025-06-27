@@ -153,8 +153,9 @@ jobs:
         with:
           api-level: 28
           arch: x86_64
+          target: google_apis
           force-avd-creation: false
-          emulator-options: -no-snapshot-save -wipe-data -gpu swiftshader_indirect -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
           script: ./test_exploit.sh
 
@@ -225,7 +226,8 @@ jobs:
         with:
           api-level: 28
           arch: x86_64
+          target: google_apis
           force-avd-creation: false
-          emulator-options: -no-snapshot-save -wipe-data -gpu swiftshader_indirect -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
           script: ./test_patch.sh
