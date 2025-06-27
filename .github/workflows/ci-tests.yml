@@ -109,7 +109,9 @@ jobs:
             adb devices
             adb shell input keyevent 82
 
-            cd "$DIR"
+            cd "$DIR" || exit 1
+            echo "Now in $(pwd)"
+            ls -la
 
             # Set your env vars if needed
             vuln_version="${{ steps.parse-metadata.outputs.vuln_version }}"
