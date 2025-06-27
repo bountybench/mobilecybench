@@ -40,7 +40,7 @@ d.click(x, y)
 d(resourceId="password-understand-box").click()
 time.sleep(5)
 d(description="submit-button").click()
-time.sleep(4)
+time.sleep(10)
 
 # Skip past unecessary safety
 d(text="Remind me later").click_exists(timeout=3)
