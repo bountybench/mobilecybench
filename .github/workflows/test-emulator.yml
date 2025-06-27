@@ -1,3 +1,12 @@
+name: Test emulator
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -9,15 +18,11 @@ jobs:
         run: git fetch origin main:refs/remotes/origin/main
 
       - name: Set up JDK
+        id: setup-java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: 17
-      
-      - name: Export JAVA_HOME
-        run: |
-          echo "JAVA_HOME=${{ steps.setup-java.outputs.path }}" >> $GITHUB_ENV
-          echo "PATH=${{ steps.setup-java.outputs.path }}/bin:$PATH" >> $GITHUB_ENV
 
       - name: Enable KVM
         run: |
@@ -28,7 +33,7 @@ jobs:
       - name: Run tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29
+          api-level: 28
           emulator-options: -no-snapshot-save -wipe-data -gpu swiftshader_indirect -skin 1080x1920 -memory 2048 none
           script: |
             adb wait-for-device
