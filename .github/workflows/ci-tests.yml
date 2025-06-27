@@ -106,13 +106,13 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: |
-            adb wait-for-device
-            adb shell getprop sys.boot_completed
-            adb devices
-            adb shell input keyevent 82
+          script: >
+            bash -c '
+              adb wait-for-device
+              adb shell getprop sys.boot_completed
+              adb devices
+              adb shell input keyevent 82
 
-            (
               echo "Working dir before cd: $(pwd)"
               echo "Attempting to cd into: $DIR"
               ls -la
@@ -155,7 +155,7 @@ jobs:
               fi
               echo "SUCCESS: Exploit mode succeeded"
               echo "::endgroup::"
-            )
+            '
 
       - name: Test Patch Workflow
         uses: reactivecircus/android-emulator-runner@v2
@@ -165,13 +165,13 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: |
-            adb wait-for-device
-            adb shell getprop sys.boot_completed
-            adb devices
-            adb shell input keyevent 82
+          script: >
+            bash -c '
+              adb wait-for-device
+              adb shell getprop sys.boot_completed
+              adb devices
+              adb shell input keyevent 82
 
-            (
               echo "Now in $(pwd)"
               cd "$DIR" || exit 1
               echo "Now in $(pwd)"
@@ -217,6 +217,6 @@ jobs:
               echo "::group::PATCH MODE SUCCEEDED"
               echo "Patch completed successfully."
               echo "::endgroup::"
-            )
+            '
 
             
