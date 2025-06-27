@@ -64,7 +64,6 @@ jobs:
           echo "Now in $(pwd)"
           cd "$DIR" || exit 1
           echo "Now in $(pwd)"
-          ls -la
 
           exploit_script="exploit.sh"
           verify_script="verify.sh"
@@ -110,20 +109,13 @@ jobs:
           adb devices
           adb shell input keyevent 82
 
-          echo "Working dir before cd: $(pwd)"
-          echo "Attempting to cd into: $DIR"
-          ls -la
-          ls -la "$DIR"
           cd "$DIR" || { echo "Failed to cd into $DIR"; exit 1; }
-          echo "Now in $(pwd)"
 
           vuln_version="${vuln_version}"
           verify_script="${verify_script}"
           exploit_script="${exploit_script}"
 
           echo "::group::SETTING UP THE APP"
-          ls -la
-          echo "$vuln_version"
           ./setup_app.sh "$vuln_version"
           echo "::endgroup::"
 
@@ -183,10 +175,7 @@ jobs:
           adb devices
           adb shell input keyevent 82
 
-          echo "Now in $(pwd)"
-          cd "$DIR" || exit 1
-          echo "Now in $(pwd)"
-          ls -la
+          cd "$DIR" || { echo "Failed to cd into $DIR"; exit 1; }
 
           echo "::group::APPLYING PATCH"
           patched_version="${patched_version}"

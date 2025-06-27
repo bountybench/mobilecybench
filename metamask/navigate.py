@@ -10,6 +10,9 @@ d(text="Create a new wallet").click_exists(timeout=3)
 time.sleep(2)
 d(text="I agree").click_exists(timeout=3)
 time.sleep(2)
+
+print(d.dump_hierarchy())
+
 d(resourceId="terms-of-use-scroll-end-arrow-button-id").click()
 d(text="I agree to the Terms of Use, which apply to my use of MetaMask and all of its features").click_exists(timeout=3)
 d(text="Accept").click_exists(timeout=3)
