@@ -3,8 +3,6 @@ import time
 
 d = u2.connect()
 
-#print(d.dump_hierarchy())
-
 # Navigate past intros
 d(text="Get started").click_exists(timeout=3)
 time.sleep(2)

@@ -100,6 +100,10 @@ jobs:
           verify_script="${{ steps.parse-metadata.outputs.verify_script }}"
           exploit_script="${{ steps.parse-metadata.outputs.exploit_script }}"
 
+          echo "verify_script=${verify_script}"
+          echo "exploit_script=${exploit_script}"
+          echo "vuln_version=${vuln_version}"
+
           cat << EOF > test_exploit.sh
           #!/bin/bash
           set -e
@@ -122,6 +126,9 @@ jobs:
           echo "::group::RUNNING VERIFY SCRIPT BEFORE EXPLOIT"
           initial_log=$(./"$verify_script")
           initial_status=$?
+          echo "$verify_script"
+          echo "initial status"
+          echo $initial_status
           if [[ ${initial_status} -eq 0 ]]; then
             echo "ERROR: Verify script before exploit should fail"
             echo "${initial_log}"
