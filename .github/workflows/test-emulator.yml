@@ -39,7 +39,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 28
-          emulator-options: -no-snapshot-save -wipe-data -no-audio -gpu swiftshader_indirect -skin 1080x1920 -memory 2048
+          emulator-options: -no-snapshot-save -noaudio -gpu swiftshader_indirect
           script: |
             adb wait-for-device
             adb shell getprop sys.boot_completed
