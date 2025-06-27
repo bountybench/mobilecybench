@@ -3,7 +3,7 @@ import time
 
 d = u2.connect()
 
-print(d.dump_hierarchy())
+#print(d.dump_hierarchy())
 
 # Navigate past intros
 d(text="Get started").click_exists(timeout=3)
@@ -11,12 +11,14 @@ time.sleep(2)
 d(text="Create a new wallet").click_exists(timeout=3)
 time.sleep(2)
 d(text="I agree").click_exists(timeout=3)
-time.sleep(2)
+time.sleep(5)
 
-#print(d.dump_hierarchy())
+print(d.dump_hierarchy())
 
 d(resourceId="terms-of-use-scroll-end-arrow-button-id").click()
+time.sleep(2)
 d(text="I agree to the Terms of Use, which apply to my use of MetaMask and all of its features").click_exists(timeout=3)
+time.sleep(2)
 d(text="Accept").click_exists(timeout=3)
 time.sleep(2)
 
@@ -24,9 +26,12 @@ time.sleep(2)
 d(resourceId="create-password-first-input-field").click()
 d.send_keys("MyPassword123", clear=True)
 d.press("enter")
+time.sleep(2)
 d(resourceId="create-password-second-input-field").click()
 d.send_keys("MyPassword123", clear=True)
+time.sleep(2)
 d(resourceId="create-password-second-input-field").click()
+time.sleep(2)
 
 width, height = d.window_size()
 x = width // 2
