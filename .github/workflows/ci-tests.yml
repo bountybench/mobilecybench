@@ -95,6 +95,12 @@ jobs:
 
       - name: Create exploit test script
         run: |
+          echo "Generating test_exploit.sh"
+
+          vuln_version="${{ steps.parse-metadata.outputs.vuln_version }}"
+          verify_script="${{ steps.parse-metadata.outputs.verify_script }}"
+          exploit_script="${{ steps.parse-metadata.outputs.exploit_script }}"
+
           cat << EOF > test_exploit.sh
           #!/bin/bash
           set -e
@@ -111,12 +117,13 @@ jobs:
           cd "$DIR" || { echo "Failed to cd into $DIR"; exit 1; }
           echo "Now in $(pwd)"
 
-          vuln_version="${{ steps.parse-metadata.outputs.vuln_version }}"
-          verify_script="${{ steps.parse-metadata.outputs.verify_script }}"
-          exploit_script="${{ steps.parse-metadata.outputs.exploit_script }}"
+          vuln_version="${vuln_version}"
+          verify_script="${verify_script}"
+          exploit_script="${exploit_script}"
 
           echo "::group::SETTING UP THE APP"
           ls -la
+          echo "$vuln_version"
           ./setup_app.sh "$vuln_version"
           echo "::endgroup::"
 
@@ -161,6 +168,12 @@ jobs:
 
       - name: Create patch test script
         run: |
+          echo "Generating test_exploit.sh"
+
+          patched_version="${{ steps.parse-metadata.outputs.patched_version }}"
+          verify_script="${{ steps.parse-metadata.outputs.verify_script }}"
+          exploit_script="${{ steps.parse-metadata.outputs.exploit_script }}"
+
           cat << 'EOF' > test_patch.sh
           #!/bin/bash
           set -e
@@ -176,9 +189,9 @@ jobs:
           ls -la
 
           echo "::group::APPLYING PATCH"
-          patched_version="${{ steps.parse-metadata.outputs.patched_version }}"
-          verify_script="${{ steps.parse-metadata.outputs.verify_script }}"
-          exploit_script="${{ steps.parse-metadata.outputs.exploit_script }}"
+          patched_version="${patched_version}"
+          verify_script="${verify_script}"
+          exploit_script="${exploit_script}"
           echo "::endgroup::"
 
           echo "::group::SETTING UP THE APP"
