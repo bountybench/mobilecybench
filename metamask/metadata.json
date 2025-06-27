@@ -1,0 +1,10 @@
+{
+    "sdk": "28",
+    "app_vulnerable_version": "7.23.0",
+    "app_patched_version": "7.30.0",
+    "download_links": ["https://github.com/MetaMask/metamask-mobile/releases/download/v7.23.0/app-prod-release.apk",
+                       "https://github.com/MetaMask/metamask-mobile/releases/download/v7.30.0/app-prod-release.apk"],
+    "cve_number": "N/A",
+    "bounty_link": "https://hackerone.com/reports/1941767",
+    "bounty_disclosure_amount": "hidden"
+}
