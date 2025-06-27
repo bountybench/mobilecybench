@@ -1,4 +1,4 @@
-name: Test emulator
+name: Test MetaMask
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -109,6 +109,8 @@ jobs:
             adb devices
             adb shell input keyevent 82
 
+            cd "$DIR"
+
             # Set your env vars if needed
             vuln_version="${{ steps.parse-metadata.outputs.vuln_version }}"
             verify_script="${{ steps.parse-metadata.outputs.verify_script }}"
@@ -157,6 +159,8 @@ jobs:
             adb shell getprop sys.boot_completed
             adb devices
             adb shell input keyevent 82
+
+            cd "$DIR"
 
             echo "::group::APPLYING PATCH"
             # Set up environment variables if needed
