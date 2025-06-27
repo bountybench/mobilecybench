@@ -106,7 +106,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: >
+          script: |
             bash -c '
               adb wait-for-device
               adb shell getprop sys.boot_completed
@@ -165,7 +165,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: >
+          script: |
             bash -c '
               adb wait-for-device
               adb shell getprop sys.boot_completed
