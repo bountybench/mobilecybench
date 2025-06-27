@@ -24,6 +24,11 @@ jobs:
           distribution: 'temurin'
           java-version: 17
 
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpulse0
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -34,7 +39,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 28
-          emulator-options: -no-snapshot-save -wipe-data -no-audio -gpu swiftshader_indirect -skin 1080x1920 -memory 2048 none
+          emulator-options: -no-snapshot-save -wipe-data -no-audio -gpu swiftshader_indirect -skin 1080x1920 -memory 2048
           script: |
             adb wait-for-device
             adb shell getprop sys.boot_completed
