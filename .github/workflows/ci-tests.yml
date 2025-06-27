@@ -168,7 +168,7 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_2
-          ram_size: 2048    
+          ram-size: 2048    
           force-avd-creation: true
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
@@ -243,7 +243,7 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_2    
-          ram_size: 2048    
+          ram-size: 2048    
           force-avd-creation: true
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
