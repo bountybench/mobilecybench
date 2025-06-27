@@ -1,0 +1,557 @@
+[2025-06-23 14:48:16] Starting Android Emulator Setup
+[2025-06-23 14:48:16] This script will install Android SDK and create an emulator
+[2025-06-23 14:48:16] Detected OS: macos
+[2025-06-23 14:48:16] Detected architecture: arm64
+[2025-06-23 14:48:16] Checking prerequisites...
+[2025-06-23 14:48:16] Installing Android SDK Command Line Tools...
+[2025-06-23 14:48:16] Downloading Android SDK from https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip
+[2025-06-23 14:48:22] Android SDK Command Line Tools installed successfully
+[2025-06-23 14:48:22] Setting up environment variables...
+[2025-06-23 14:48:22] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-23 14:48:22] Installing required Android packages for arm64 architecture...
+[2025-06-23 15:00:46] Starting Android Emulator Setup
+[2025-06-23 15:00:46] This script will install Android SDK and create an emulator
+[2025-06-23 15:00:46] Detected OS: macos
+[2025-06-23 15:00:46] Detected architecture: arm64
+[2025-06-23 15:00:46] Checking prerequisites...
+[2025-06-23 15:00:46] Android SDK already installed
+[2025-06-23 15:00:46] Setting up environment variables...
+[2025-06-23 15:00:46] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-23 15:00:46] Installing required Android packages for arm64 architecture...
+[2025-06-23 15:01:48] Android packages installed successfully
+[2025-06-23 15:01:48] Creating Android Virtual Device: MobileBenchmark_API28 for arm64
+[2025-06-23 15:01:48] Android Virtual Device created successfully
+[2025-06-23 15:01:48] Creating helper scripts...
+[2025-06-23 15:01:48] Helper scripts created successfully
+[2025-06-23 15:01:48] Setup completed successfully!
+[2025-06-23 16:10:15] Starting Android Emulator Setup
+[2025-06-23 16:10:15] This script will install Android SDK and create an emulator
+[2025-06-23 16:10:15] Detected OS: macos
+[2025-06-23 16:10:15] Detected architecture: arm64
+[2025-06-23 16:10:15] Checking prerequisites...
+[2025-06-23 16:10:15] Android SDK already installed
+[2025-06-23 16:10:15] Setting up environment variables...
+[2025-06-23 16:10:15] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-23 16:10:15] Installing required Android packages for arm64 architecture...
+[2025-06-23 16:10:18] Android packages installed successfully
+[2025-06-23 16:10:18] Creating Android Virtual Device: MobileBenchmark_API28 for arm64
+[2025-06-23 16:10:18] Android Virtual Device created successfully
+[2025-06-23 16:10:18] Creating helper scripts...
+[2025-06-23 16:10:18] Helper scripts created successfully
+[2025-06-23 16:10:18] Setup completed successfully!
+[2025-06-24 10:38:56] Starting Android Emulator Setup
+[2025-06-24 10:38:56] This script will install Android SDK and create an emulator
+[2025-06-24 10:38:56] Detected OS: macos
+[2025-06-24 10:38:56] Detected architecture: arm64
+[2025-06-24 10:38:56] Checking prerequisites...
+[2025-06-24 10:38:56] Android SDK already installed
+[2025-06-24 10:38:56] Setting up environment variables...
+[2025-06-24 10:38:56] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 10:38:56] Installing required Android packages for arm64 architecture...
+[2025-06-24 10:39:10] Android packages installed successfully
+[2025-06-24 10:39:10] Creating Android Virtual Device: MobileBenchmark_API28 for arm64
+[2025-06-24 10:39:11] Android Virtual Device created successfully
+[2025-06-24 10:39:11] Creating helper scripts...
+[2025-06-24 10:39:11] Helper scripts created successfully
+[2025-06-24 10:39:11] Setup completed successfully!
+[2025-06-24 11:32:21] Starting Android Emulator Setup
+[2025-06-24 11:32:21] This script will install Android SDK and create an emulator
+[2025-06-24 11:32:21] Detected OS: macos
+[2025-06-24 11:32:21] Detected architecture: arm64
+[2025-06-24 11:32:21] Checking prerequisites...
+[2025-06-24 11:32:21] Android SDK already installed
+[2025-06-24 11:32:21] Setting up environment variables...
+[2025-06-24 11:32:21] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 11:32:21] Installing required Android packages for arm64 architecture...
+[2025-06-24 11:32:23] Android packages installed successfully
+[2025-06-24 11:32:23] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 11:32:24] Android Virtual Device created successfully
+[2025-06-24 11:32:24] Creating helper scripts...
+[2025-06-24 11:32:24] Helper scripts created successfully
+[2025-06-24 11:32:24] Setup completed successfully!
+[2025-06-24 14:03:15] Starting Android Emulator Setup
+[2025-06-24 14:03:15] This script will install Android SDK and create an emulator
+[2025-06-24 14:03:15] Detected OS: macos
+[2025-06-24 14:03:15] Detected architecture: arm64
+[2025-06-24 14:03:15] Checking prerequisites...
+[2025-06-24 14:03:15] Android SDK already installed
+[2025-06-24 14:03:15] Setting up environment variables...
+[2025-06-24 14:03:15] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 14:03:15] Installing required Android packages for arm64 architecture...
+[2025-06-24 14:03:17] Android packages installed successfully
+[2025-06-24 14:03:17] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 14:03:18] Android Virtual Device created successfully
+[2025-06-24 14:03:18] Creating helper scripts...
+[2025-06-24 14:03:18] Helper scripts created successfully
+[2025-06-24 14:03:18] Setup completed successfully!
+[2025-06-24 14:20:23] Starting Android Emulator Setup
+[2025-06-24 14:20:23] This script will install Android SDK and create an emulator
+[2025-06-24 14:20:23] Detected OS: macos
+[2025-06-24 14:20:23] Detected architecture: arm64
+[2025-06-24 14:20:23] Checking prerequisites...
+[2025-06-24 14:20:23] Android SDK already installed
+[2025-06-24 14:20:23] Setting up environment variables...
+[2025-06-24 14:20:23] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 14:20:23] Installing required Android packages for arm64 architecture...
+[2025-06-24 14:20:25] Android packages installed successfully
+[2025-06-24 14:20:26] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 14:20:26] Android Virtual Device created successfully
+[2025-06-24 14:20:26] Creating helper scripts...
+[2025-06-24 14:20:26] Helper scripts created successfully
+[2025-06-24 14:20:26] Setup completed successfully!
+[2025-06-24 14:52:11] Starting Android Emulator Setup
+[2025-06-24 14:52:11] This script will install Android SDK and create an emulator
+[2025-06-24 14:52:11] Detected OS: macos
+[2025-06-24 14:52:11] Detected architecture: arm64
+[2025-06-24 14:52:11] Checking prerequisites...
+[2025-06-24 14:52:11] Android SDK already installed
+[2025-06-24 14:52:11] Setting up environment variables...
+[2025-06-24 14:52:11] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 14:52:11] Installing required Android packages for arm64 architecture...
+[2025-06-24 14:52:13] Android packages installed successfully
+[2025-06-24 14:52:13] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 14:52:14] Android Virtual Device created successfully
+[2025-06-24 14:52:14] Creating helper scripts...
+[2025-06-24 14:52:14] Helper scripts created successfully
+[2025-06-24 14:52:14] Setup completed successfully!
+[2025-06-24 14:53:29] Starting Android Emulator Setup
+[2025-06-24 14:53:29] This script will install Android SDK and create an emulator
+[2025-06-24 14:53:29] Detected OS: macos
+[2025-06-24 14:53:29] Detected architecture: arm64
+[2025-06-24 14:53:29] Checking prerequisites...
+[2025-06-24 14:53:29] Android SDK already installed
+[2025-06-24 14:53:29] Setting up environment variables...
+[2025-06-24 14:53:29] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 14:53:29] Installing required Android packages for arm64 architecture...
+[2025-06-24 14:53:31] Android packages installed successfully
+[2025-06-24 14:53:31] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 14:53:31] Android Virtual Device created successfully
+[2025-06-24 14:53:31] Creating helper scripts...
+[2025-06-24 14:53:31] Helper scripts created successfully
+[2025-06-24 14:53:31] Setup completed successfully!
+[2025-06-24 14:54:20] Starting Android Emulator Setup
+[2025-06-24 14:54:20] This script will install Android SDK and create an emulator
+[2025-06-24 14:54:20] Detected OS: macos
+[2025-06-24 14:54:20] Detected architecture: arm64
+[2025-06-24 14:54:20] Checking prerequisites...
+[2025-06-24 14:54:20] Android SDK already installed
+[2025-06-24 14:54:20] Setting up environment variables...
+[2025-06-24 14:54:20] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 14:54:20] Installing required Android packages for arm64 architecture...
+[2025-06-24 14:54:21] Android packages installed successfully
+[2025-06-24 14:54:21] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 14:54:22] Android Virtual Device created successfully
+[2025-06-24 14:54:22] Creating helper scripts...
+[2025-06-24 14:54:22] Helper scripts created successfully
+[2025-06-24 14:54:22] Setup completed successfully!
+[2025-06-24 14:57:02] Starting Android Emulator Setup
+[2025-06-24 14:57:02] This script will install Android SDK and create an emulator
+[2025-06-24 14:57:02] Detected OS: macos
+[2025-06-24 14:57:02] Detected architecture: arm64
+[2025-06-24 14:57:02] Checking prerequisites...
+[2025-06-24 14:57:02] Android SDK already installed
+[2025-06-24 14:57:02] Setting up environment variables...
+[2025-06-24 14:57:02] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 14:57:02] Installing required Android packages for arm64 architecture...
+[2025-06-24 14:57:04] Android packages installed successfully
+[2025-06-24 14:57:04] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 14:57:04] Android Virtual Device created successfully
+[2025-06-24 14:57:04] Creating helper scripts...
+[2025-06-24 14:57:04] Helper scripts created successfully
+[2025-06-24 14:57:04] Setup completed successfully!
+[2025-06-24 14:58:51] Starting Android Emulator Setup
+[2025-06-24 14:58:51] This script will install Android SDK and create an emulator
+[2025-06-24 14:58:51] Detected OS: macos
+[2025-06-24 14:58:51] Detected architecture: arm64
+[2025-06-24 14:58:51] Checking prerequisites...
+[2025-06-24 14:58:51] Android SDK already installed
+[2025-06-24 14:58:51] Setting up environment variables...
+[2025-06-24 14:58:51] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 14:58:51] Installing required Android packages for arm64 architecture...
+[2025-06-24 14:58:53] Android packages installed successfully
+[2025-06-24 14:58:53] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 14:58:54] Android Virtual Device created successfully
+[2025-06-24 14:58:54] Creating helper scripts...
+[2025-06-24 14:58:54] Helper scripts created successfully
+[2025-06-24 14:58:54] Setup completed successfully!
+[2025-06-24 14:59:43] Starting Android Emulator Setup
+[2025-06-24 14:59:43] This script will install Android SDK and create an emulator
+[2025-06-24 14:59:43] Detected OS: macos
+[2025-06-24 14:59:43] Detected architecture: arm64
+[2025-06-24 14:59:43] Checking prerequisites...
+[2025-06-24 14:59:43] Android SDK already installed
+[2025-06-24 14:59:43] Setting up environment variables...
+[2025-06-24 14:59:43] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 14:59:43] Installing required Android packages for arm64 architecture...
+[2025-06-24 14:59:45] Android packages installed successfully
+[2025-06-24 14:59:45] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 14:59:46] Android Virtual Device created successfully
+[2025-06-24 14:59:46] Creating helper scripts...
+[2025-06-24 14:59:46] Helper scripts created successfully
+[2025-06-24 14:59:46] Setup completed successfully!
+[2025-06-24 15:15:19] Starting Android Emulator Setup
+[2025-06-24 15:15:19] This script will install Android SDK and create an emulator
+[2025-06-24 15:15:19] Detected OS: macos
+[2025-06-24 15:15:19] Detected architecture: arm64
+[2025-06-24 15:15:19] Checking prerequisites...
+[2025-06-24 15:15:19] Android SDK already installed
+[2025-06-24 15:15:19] Setting up environment variables...
+[2025-06-24 15:15:19] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 15:15:19] Installing required Android packages for arm64 architecture...
+[2025-06-24 15:15:21] Android packages installed successfully
+[2025-06-24 15:15:21] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 15:15:22] Android Virtual Device created successfully
+[2025-06-24 15:15:22] Creating helper scripts...
+[2025-06-24 15:15:22] Helper scripts created successfully
+[2025-06-24 15:15:22] Setup completed successfully!
+[2025-06-24 15:16:31] Starting Android Emulator Setup
+[2025-06-24 15:16:31] This script will install Android SDK and create an emulator
+[2025-06-24 15:16:31] Detected OS: macos
+[2025-06-24 15:16:31] Detected architecture: arm64
+[2025-06-24 15:16:31] Checking prerequisites...
+[2025-06-24 15:16:31] Android SDK already installed
+[2025-06-24 15:16:31] Setting up environment variables...
+[2025-06-24 15:16:31] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 15:16:31] Installing required Android packages for arm64 architecture...
+[2025-06-24 15:16:33] Android packages installed successfully
+[2025-06-24 15:16:33] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 15:16:34] Android Virtual Device created successfully
+[2025-06-24 15:16:34] Creating helper scripts...
+[2025-06-24 15:16:34] Helper scripts created successfully
+[2025-06-24 15:16:34] Setup completed successfully!
+[2025-06-24 15:17:06] Starting Android Emulator Setup
+[2025-06-24 15:17:06] This script will install Android SDK and create an emulator
+[2025-06-24 15:17:06] Detected OS: macos
+[2025-06-24 15:17:06] Detected architecture: arm64
+[2025-06-24 15:17:06] Checking prerequisites...
+[2025-06-24 15:17:06] Android SDK already installed
+[2025-06-24 15:17:06] Setting up environment variables...
+[2025-06-24 15:17:06] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 15:17:06] Installing required Android packages for arm64 architecture...
+[2025-06-24 15:17:07] Android packages installed successfully
+[2025-06-24 15:17:07] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 15:17:08] Android Virtual Device created successfully
+[2025-06-24 15:17:08] Creating helper scripts...
+[2025-06-24 15:17:08] Helper scripts created successfully
+[2025-06-24 15:17:08] Setup completed successfully!
+[2025-06-24 15:17:18] Starting Android Emulator Setup
+[2025-06-24 15:17:18] This script will install Android SDK and create an emulator
+[2025-06-24 15:17:18] Detected OS: macos
+[2025-06-24 15:17:18] Detected architecture: arm64
+[2025-06-24 15:17:18] Checking prerequisites...
+[2025-06-24 15:17:18] Android SDK already installed
+[2025-06-24 15:17:18] Setting up environment variables...
+[2025-06-24 15:17:18] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 15:17:18] Installing required Android packages for arm64 architecture...
+[2025-06-24 15:17:20] Android packages installed successfully
+[2025-06-24 15:17:20] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 15:17:20] Android Virtual Device created successfully
+[2025-06-24 15:17:20] Creating helper scripts...
+[2025-06-24 15:17:20] Helper scripts created successfully
+[2025-06-24 15:17:20] Setup completed successfully!
+[2025-06-24 15:18:56] Starting Android Emulator Setup
+[2025-06-24 15:18:56] This script will install Android SDK and create an emulator
+[2025-06-24 15:18:56] Detected OS: macos
+[2025-06-24 15:18:56] Detected architecture: arm64
+[2025-06-24 15:18:56] Checking prerequisites...
+[2025-06-24 15:18:56] Android SDK already installed
+[2025-06-24 15:18:56] Setting up environment variables...
+[2025-06-24 15:18:56] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 15:18:56] Installing required Android packages for arm64 architecture...
+[2025-06-24 15:18:57] Android packages installed successfully
+[2025-06-24 15:18:57] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 15:18:58] Android Virtual Device created successfully
+[2025-06-24 15:18:58] Creating helper scripts...
+[2025-06-24 15:18:58] Helper scripts created successfully
+[2025-06-24 15:18:58] Setup completed successfully!
+[2025-06-24 15:20:38] Starting Android Emulator Setup
+[2025-06-24 15:20:38] This script will install Android SDK and create an emulator
+[2025-06-24 15:20:38] Detected OS: macos
+[2025-06-24 15:20:38] Detected architecture: arm64
+[2025-06-24 15:20:38] Checking prerequisites...
+[2025-06-24 15:20:38] Android SDK already installed
+[2025-06-24 15:20:38] Setting up environment variables...
+[2025-06-24 15:20:38] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 15:20:38] Installing required Android packages for arm64 architecture...
+[2025-06-24 15:20:40] Android packages installed successfully
+[2025-06-24 15:20:40] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 15:20:41] Android Virtual Device created successfully
+[2025-06-24 15:20:41] Creating helper scripts...
+[2025-06-24 15:20:41] Helper scripts created successfully
+[2025-06-24 15:20:41] Setup completed successfully!
+[2025-06-24 15:21:24] Starting Android Emulator Setup
+[2025-06-24 15:21:24] This script will install Android SDK and create an emulator
+[2025-06-24 15:21:24] Detected OS: macos
+[2025-06-24 15:21:24] Detected architecture: arm64
+[2025-06-24 15:21:24] Checking prerequisites...
+[2025-06-24 15:21:24] Android SDK already installed
+[2025-06-24 15:21:24] Setting up environment variables...
+[2025-06-24 15:21:24] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 15:21:24] Installing required Android packages for arm64 architecture...
+[2025-06-24 15:21:25] Android packages installed successfully
+[2025-06-24 15:21:25] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 15:21:26] Android Virtual Device created successfully
+[2025-06-24 15:21:26] Creating helper scripts...
+[2025-06-24 15:21:26] Helper scripts created successfully
+[2025-06-24 15:21:26] Setup completed successfully!
+[2025-06-24 15:22:04] Starting Android Emulator Setup
+[2025-06-24 15:22:04] This script will install Android SDK and create an emulator
+[2025-06-24 15:22:04] Detected OS: macos
+[2025-06-24 15:22:04] Detected architecture: arm64
+[2025-06-24 15:22:04] Checking prerequisites...
+[2025-06-24 15:22:04] Android SDK already installed
+[2025-06-24 15:22:04] Setting up environment variables...
+[2025-06-24 15:22:04] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 15:22:04] Installing required Android packages for arm64 architecture...
+[2025-06-24 15:22:05] Android packages installed successfully
+[2025-06-24 15:22:05] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 15:22:06] Android Virtual Device created successfully
+[2025-06-24 15:22:06] Creating helper scripts...
+[2025-06-24 15:22:06] Helper scripts created successfully
+[2025-06-24 15:22:06] Setup completed successfully!
+[2025-06-24 15:22:35] Starting Android Emulator Setup
+[2025-06-24 15:22:35] This script will install Android SDK and create an emulator
+[2025-06-24 15:22:35] Detected OS: macos
+[2025-06-24 15:22:35] Detected architecture: arm64
+[2025-06-24 15:22:35] Checking prerequisites...
+[2025-06-24 15:22:35] Android SDK already installed
+[2025-06-24 15:22:35] Setting up environment variables...
+[2025-06-24 15:22:35] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 15:22:35] Installing required Android packages for arm64 architecture...
+[2025-06-24 15:22:36] Android packages installed successfully
+[2025-06-24 15:22:36] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 15:22:37] Android Virtual Device created successfully
+[2025-06-24 15:22:37] Creating helper scripts...
+[2025-06-24 15:22:37] Helper scripts created successfully
+[2025-06-24 15:22:37] Setup completed successfully!
+[2025-06-24 15:24:57] Starting Android Emulator Setup
+[2025-06-24 15:24:57] This script will install Android SDK and create an emulator
+[2025-06-24 15:24:57] Detected OS: macos
+[2025-06-24 15:24:57] Detected architecture: arm64
+[2025-06-24 15:24:57] Checking prerequisites...
+[2025-06-24 15:24:57] Android SDK already installed
+[2025-06-24 15:24:57] Setting up environment variables...
+[2025-06-24 15:24:57] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 15:24:57] Installing required Android packages for arm64 architecture...
+[2025-06-24 15:24:59] Android packages installed successfully
+[2025-06-24 15:24:59] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 15:25:00] Android Virtual Device created successfully
+[2025-06-24 15:25:00] Creating helper scripts...
+[2025-06-24 15:25:00] Helper scripts created successfully
+[2025-06-24 15:25:00] Setup completed successfully!
+[2025-06-24 15:25:44] Starting Android Emulator Setup
+[2025-06-24 15:25:44] This script will install Android SDK and create an emulator
+[2025-06-24 15:25:44] Detected OS: macos
+[2025-06-24 15:25:44] Detected architecture: arm64
+[2025-06-24 15:25:44] Checking prerequisites...
+[2025-06-24 15:25:44] Android SDK already installed
+[2025-06-24 15:25:44] Setting up environment variables...
+[2025-06-24 15:25:44] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 15:25:44] Installing required Android packages for arm64 architecture...
+[2025-06-24 15:25:46] Android packages installed successfully
+[2025-06-24 15:25:46] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 15:25:47] Android Virtual Device created successfully
+[2025-06-24 15:25:47] Creating helper scripts...
+[2025-06-24 15:25:47] Helper scripts created successfully
+[2025-06-24 15:25:47] Setup completed successfully!
+[2025-06-24 15:27:31] Starting Android Emulator Setup
+[2025-06-24 15:27:31] This script will install Android SDK and create an emulator
+[2025-06-24 15:27:31] Detected OS: macos
+[2025-06-24 15:27:31] Detected architecture: arm64
+[2025-06-24 15:27:31] Checking prerequisites...
+[2025-06-24 15:27:31] Android SDK already installed
+[2025-06-24 15:27:31] Setting up environment variables...
+[2025-06-24 15:27:31] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 15:27:31] Installing required Android packages for arm64 architecture...
+[2025-06-24 15:27:33] Android packages installed successfully
+[2025-06-24 15:27:33] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 15:27:34] Android Virtual Device created successfully
+[2025-06-24 15:27:34] Creating helper scripts...
+[2025-06-24 15:27:34] Helper scripts created successfully
+[2025-06-24 15:27:34] Setup completed successfully!
+[2025-06-24 15:36:27] Starting Android Emulator Setup
+[2025-06-24 15:36:27] This script will install Android SDK and create an emulator
+[2025-06-24 15:36:27] Detected OS: macos
+[2025-06-24 15:36:27] Detected architecture: arm64
+[2025-06-24 15:36:27] Checking prerequisites...
+[2025-06-24 15:36:27] Android SDK already installed
+[2025-06-24 15:36:27] Setting up environment variables...
+[2025-06-24 15:36:27] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 15:36:27] Installing required Android packages for arm64 architecture...
+[2025-06-24 15:36:29] Android packages installed successfully
+[2025-06-24 15:36:29] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 15:36:30] Android Virtual Device created successfully
+[2025-06-24 15:36:30] Creating helper scripts...
+[2025-06-24 15:36:30] Helper scripts created successfully
+[2025-06-24 15:36:30] Setup completed successfully!
+[2025-06-24 15:36:49] Starting Android Emulator Setup
+[2025-06-24 15:36:49] This script will install Android SDK and create an emulator
+[2025-06-24 15:36:49] Detected OS: macos
+[2025-06-24 15:36:49] Detected architecture: arm64
+[2025-06-24 15:36:49] Checking prerequisites...
+[2025-06-24 15:36:49] Android SDK already installed
+[2025-06-24 15:36:49] Setting up environment variables...
+[2025-06-24 15:36:49] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 15:36:49] Installing required Android packages for arm64 architecture...
+[2025-06-24 15:36:50] Android packages installed successfully
+[2025-06-24 15:36:50] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 15:36:51] Android Virtual Device created successfully
+[2025-06-24 15:36:51] Creating helper scripts...
+[2025-06-24 15:36:51] Helper scripts created successfully
+[2025-06-24 15:36:51] Setup completed successfully!
+[2025-06-24 15:37:28] Starting Android Emulator Setup
+[2025-06-24 15:37:28] This script will install Android SDK and create an emulator
+[2025-06-24 15:37:28] Detected OS: macos
+[2025-06-24 15:37:28] Detected architecture: arm64
+[2025-06-24 15:37:28] Checking prerequisites...
+[2025-06-24 15:37:28] Android SDK already installed
+[2025-06-24 15:37:28] Setting up environment variables...
+[2025-06-24 15:37:28] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 15:37:28] Installing required Android packages for arm64 architecture...
+[2025-06-24 15:37:29] Android packages installed successfully
+[2025-06-24 15:37:29] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 15:37:30] Android Virtual Device created successfully
+[2025-06-24 15:37:30] Creating helper scripts...
+[2025-06-24 15:37:30] Helper scripts created successfully
+[2025-06-24 15:37:30] Setup completed successfully!
+[2025-06-24 16:00:48] Starting Android Emulator Setup
+[2025-06-24 16:00:48] This script will install Android SDK and create an emulator
+[2025-06-24 16:00:48] Detected OS: macos
+[2025-06-24 16:00:48] Detected architecture: arm64
+[2025-06-24 16:00:48] Checking prerequisites...
+[2025-06-24 16:00:48] Android SDK already installed
+[2025-06-24 16:00:48] Setting up environment variables...
+[2025-06-24 16:00:48] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 16:00:48] Installing required Android packages for arm64 architecture...
+[2025-06-24 16:00:50] Android packages installed successfully
+[2025-06-24 16:00:50] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 16:00:51] Android Virtual Device created successfully
+[2025-06-24 16:00:51] Creating helper scripts...
+[2025-06-24 16:00:51] Helper scripts created successfully
+[2025-06-24 16:00:51] Setup completed successfully!
+[2025-06-24 16:04:18] Starting Android Emulator Setup
+[2025-06-24 16:04:18] This script will install Android SDK and create an emulator
+[2025-06-24 16:04:18] Detected OS: macos
+[2025-06-24 16:04:18] Detected architecture: arm64
+[2025-06-24 16:04:18] Checking prerequisites...
+[2025-06-24 16:04:18] Android SDK already installed
+[2025-06-24 16:04:18] Setting up environment variables...
+[2025-06-24 16:04:18] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 16:04:18] Installing required Android packages for arm64 architecture...
+[2025-06-24 16:04:19] Android packages installed successfully
+[2025-06-24 16:04:19] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 16:04:20] Android Virtual Device created successfully
+[2025-06-24 16:04:20] Creating helper scripts...
+[2025-06-24 16:04:20] Helper scripts created successfully
+[2025-06-24 16:04:20] Setup completed successfully!
+[2025-06-24 16:07:26] Starting Android Emulator Setup
+[2025-06-24 16:07:26] This script will install Android SDK and create an emulator
+[2025-06-24 16:07:26] Detected OS: macos
+[2025-06-24 16:07:26] Detected architecture: arm64
+[2025-06-24 16:07:26] Checking prerequisites...
+[2025-06-24 16:07:26] Android SDK already installed
+[2025-06-24 16:07:26] Setting up environment variables...
+[2025-06-24 16:07:26] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 16:07:26] Installing required Android packages for arm64 architecture...
+[2025-06-24 16:07:28] Android packages installed successfully
+[2025-06-24 16:07:28] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 16:07:28] Android Virtual Device created successfully
+[2025-06-24 16:07:28] Creating helper scripts...
+[2025-06-24 16:07:28] Helper scripts created successfully
+[2025-06-24 16:07:28] Setup completed successfully!
+[2025-06-24 16:08:43] Starting Android Emulator Setup
+[2025-06-24 16:08:43] This script will install Android SDK and create an emulator
+[2025-06-24 16:08:43] Detected OS: macos
+[2025-06-24 16:08:43] Detected architecture: arm64
+[2025-06-24 16:08:43] Checking prerequisites...
+[2025-06-24 16:08:43] Android SDK already installed
+[2025-06-24 16:08:43] Setting up environment variables...
+[2025-06-24 16:08:43] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 16:08:43] Installing required Android packages for arm64 architecture...
+[2025-06-24 16:08:45] Android packages installed successfully
+[2025-06-24 16:08:45] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-24 16:08:46] Android Virtual Device created successfully
+[2025-06-24 16:08:46] Creating helper scripts...
+[2025-06-24 16:08:46] Helper scripts created successfully
+[2025-06-24 16:08:46] Setup completed successfully!
+[2025-06-24 16:51:59] Starting Android Emulator Setup
+[2025-06-24 16:51:59] This script will install Android SDK and create an emulator
+[2025-06-24 16:51:59] Detected OS: macos
+[2025-06-24 16:51:59] Detected architecture: arm64
+[2025-06-24 16:51:59] Checking prerequisites...
+[2025-06-24 16:51:59] Android SDK already installed
+[2025-06-24 16:51:59] Setting up environment variables...
+[2025-06-24 16:51:59] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 16:51:59] Installing required Android packages for arm64 architecture...
+[2025-06-24 16:54:24] Starting Android Emulator Setup
+[2025-06-24 16:54:24] This script will install Android SDK and create an emulator
+[2025-06-24 16:54:24] Detected OS: macos
+[2025-06-24 16:54:24] Detected architecture: arm64
+[2025-06-24 16:54:24] Checking prerequisites...
+[2025-06-24 16:54:24] Android SDK already installed
+[2025-06-24 16:54:24] Setting up environment variables...
+[2025-06-24 16:54:24] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-24 16:54:24] Installing required Android packages for arm64 architecture...
+[2025-06-25 10:42:52] Starting Android Emulator Setup
+[2025-06-25 10:42:52] This script will install Android SDK and create an emulator
+[2025-06-25 10:42:52] Detected OS: macos
+[2025-06-25 10:42:52] Detected architecture: arm64
+[2025-06-25 10:42:52] Checking prerequisites...
+[2025-06-25 10:42:52] Android SDK already installed
+[2025-06-25 10:42:52] Setting up environment variables...
+[2025-06-25 10:42:52] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-25 10:42:52] Installing required Android packages for arm64 architecture...
+[2025-06-25 10:51:24] Starting Android Emulator Setup
+[2025-06-25 10:51:24] This script will install Android SDK and create an emulator
+[2025-06-25 10:51:24] Detected OS: macos
+[2025-06-25 10:51:24] Detected architecture: arm64
+[2025-06-25 10:51:24] Checking prerequisites...
+[2025-06-25 10:51:24] Android SDK already installed
+[2025-06-25 10:51:24] Setting up environment variables...
+[2025-06-25 10:51:24] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-25 10:51:24] Installing required Android packages for arm64 architecture...
+[2025-06-25 10:51:27] Android packages installed successfully
+[2025-06-25 10:51:27] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-25 10:51:28] Android Virtual Device created successfully
+[2025-06-25 10:51:28] Creating helper scripts...
+[2025-06-25 10:51:28] Helper scripts created successfully
+[2025-06-25 10:51:28] Setup completed successfully!
+[2025-06-25 14:17:24] Starting Android Emulator Setup
+[2025-06-25 14:17:24] This script will install Android SDK and create an emulator
+[2025-06-25 14:17:24] Detected OS: macos
+[2025-06-25 14:17:24] Detected architecture: arm64
+[2025-06-25 14:17:24] Checking prerequisites...
+[2025-06-25 14:17:24] Android SDK already installed
+[2025-06-25 14:17:24] Setting up environment variables...
+[2025-06-25 14:17:24] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-25 14:17:24] Installing required Android packages for arm64 architecture...
+[2025-06-25 14:17:27] Android packages installed successfully
+[2025-06-25 14:17:27] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-25 14:17:27] Android Virtual Device created successfully
+[2025-06-25 14:17:27] Creating helper scripts...
+[2025-06-25 14:17:27] Helper scripts created successfully
+[2025-06-25 14:17:27] Setup completed successfully!
+[2025-06-26 11:02:58] Starting Android Emulator Setup
+[2025-06-26 11:02:58] This script will install Android SDK and create an emulator
+[2025-06-26 11:02:58] Detected OS: macos
+[2025-06-26 11:02:58] Detected architecture: arm64
+[2025-06-26 11:02:58] Checking prerequisites...
+[2025-06-26 11:02:58] Android SDK already installed
+[2025-06-26 11:02:58] Setting up environment variables...
+[2025-06-26 11:02:58] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-26 11:02:58] Installing required Android packages for arm64 architecture...
+[2025-06-26 13:24:06] Starting Android Emulator Setup
+[2025-06-26 13:24:06] This script will install Android SDK and create an emulator
+[2025-06-26 13:24:06] Detected OS: macos
+[2025-06-26 13:24:06] Detected architecture: arm64
+[2025-06-26 13:24:06] Checking prerequisites...
+[2025-06-26 13:24:06] Android SDK already installed
+[2025-06-26 13:24:06] Setting up environment variables...
+[2025-06-26 13:24:06] Adding environment variables to /Users/nishka/.bashrc
+[2025-06-26 13:24:06] Installing required Android packages for arm64 architecture...
+[2025-06-26 13:24:09] Android packages installed successfully
+[2025-06-26 13:24:09] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-06-26 13:24:09] Android Virtual Device created successfully
+[2025-06-26 13:24:09] Creating helper scripts...
+[2025-06-26 13:24:09] Helper scripts created successfully
+[2025-06-26 13:24:09] Setup completed successfully!

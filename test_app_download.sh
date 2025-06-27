@@ -25,10 +25,10 @@ fi
 
 mkdir -p testing_app
 cd testing_app
-git clone $github_file_path
+git clone --recurse-submodules $github_file_path
 
 #The following file paths should be filled in with the specific directory to your app!
-# cd thunderbird-android
+cd haven
 
 ./gradlew clean
 ./gradlew installDebug
@@ -36,7 +36,7 @@ git clone $github_file_path
 
 # cd app-thunderbird
 
-package_name=$(adb shell pm list packages | grep $app_name | sed 's/package://')
+package_name=$(adb shell pm list packages -3 | grep $app_name | sed 's/package://')
 package_path=$(adb shell cmd package resolve-activity --brief $package_name | tail -n 1)
 
 echo "package path"

@@ -6,6 +6,6 @@
 	path = element-android/codebase
 	url = https://github.com/cy-suite/Element-Android.git
 
-[submodule "joplin/codebase"]
-	path = joplin/codebase
-	url = https://github.com/cy-suite/joplin.git
+# [submodule "joplin/codebase"]
+# 	path = joplin/codebase
+# 	url = https://github.com/cy-suite/joplin.git
