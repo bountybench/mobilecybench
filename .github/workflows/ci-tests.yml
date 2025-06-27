@@ -107,55 +107,55 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
-            bash -c '
-              adb wait-for-device
-              adb shell getprop sys.boot_completed
-              adb devices
-              adb shell input keyevent 82
+            bash << EOF
+            adb wait-for-device
+            adb shell getprop sys.boot_completed
+            adb devices
+            adb shell input keyevent 82
 
-              echo "Working dir before cd: $(pwd)"
-              echo "Attempting to cd into: $DIR"
-              ls -la
-              ls -la "$DIR"
-              cd "$DIR" || { echo "Failed to cd into $DIR"; exit 1; }
-              echo "Now in $(pwd)"
+            echo "Working dir before cd: $(pwd)"
+            echo "Attempting to cd into: $DIR"
+            ls -la
+            ls -la "$DIR"
+            cd "$DIR" || { echo "Failed to cd into $DIR"; exit 1; }
+            echo "Now in $(pwd)"
 
-              # Set your env vars if needed
-              vuln_version="${{ steps.parse-metadata.outputs.vuln_version }}"
-              verify_script="${{ steps.parse-metadata.outputs.verify_script }}"
-              exploit_script="${{ steps.parse-metadata.outputs.exploit_script }}"
+            # Set your env vars if needed
+            vuln_version="${{ steps.parse-metadata.outputs.vuln_version }}"
+            verify_script="${{ steps.parse-metadata.outputs.verify_script }}"
+            exploit_script="${{ steps.parse-metadata.outputs.exploit_script }}"
 
-              echo "::group::SETTING UP THE APP"
-              ls -la
-              ./setup_app.sh "$vuln_version"
-              echo "::endgroup::"
+            echo "::group::SETTING UP THE APP"
+            ls -la
+            ./setup_app.sh "$vuln_version"
+            echo "::endgroup::"
 
-              echo "::group::RUNNING VERIFY SCRIPT BEFORE EXPLOIT"
-              initial_log=$(./$verify_script)
-              initial_status=$?
-              if [[ ${initial_status} -eq 0 ]]; then
-                echo "ERROR: Verify script before exploit should fail"
-                echo "${initial_log}"
-                exit 1
-              fi
-              echo "::endgroup::"
+            echo "::group::RUNNING VERIFY SCRIPT BEFORE EXPLOIT"
+            initial_log=$(./$verify_script)
+            initial_status=$?
+            if [[ ${initial_status} -eq 0 ]]; then
+              echo "ERROR: Verify script before exploit should fail"
+              echo "${initial_log}"
+              exit 1
+            fi
+            echo "::endgroup::"
 
-              echo "::group::EXPLOIT"
-              ./$exploit_script
-              sleep 5
-              echo "::endgroup::"
+            echo "::group::EXPLOIT"
+            ./$exploit_script
+            sleep 5
+            echo "::endgroup::"
 
-              echo "::group::VERIFY AFTER EXPLOIT"
-              final_log=$(./$verify_script)
-              final_status=$?
-              if [[ ${final_status} -ne 0 ]]; then
-                echo "ERROR: Verify script after exploit should succeed but returned ${final_status}"
-                echo "${final_log}"
-                exit 1
-              fi
-              echo "SUCCESS: Exploit mode succeeded"
-              echo "::endgroup::"
-            '
+            echo "::group::VERIFY AFTER EXPLOIT"
+            final_log=$(./$verify_script)
+            final_status=$?
+            if [[ ${final_status} -ne 0 ]]; then
+              echo "ERROR: Verify script after exploit should succeed but returned ${final_status}"
+              echo "${final_log}"
+              exit 1
+            fi
+            echo "SUCCESS: Exploit mode succeeded"
+            echo "::endgroup::"
+            EOF
 
       - name: Test Patch Workflow
         uses: reactivecircus/android-emulator-runner@v2
@@ -166,57 +166,57 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
-            bash -c '
-              adb wait-for-device
-              adb shell getprop sys.boot_completed
-              adb devices
-              adb shell input keyevent 82
+            bash << EOF
+            adb wait-for-device
+            adb shell getprop sys.boot_completed
+            adb devices
+            adb shell input keyevent 82
 
-              echo "Now in $(pwd)"
-              cd "$DIR" || exit 1
-              echo "Now in $(pwd)"
-              ls -la
+            echo "Now in $(pwd)"
+            cd "$DIR" || exit 1
+            echo "Now in $(pwd)"
+            ls -la
 
-              echo "::group::APPLYING PATCH"
-              # Set up environment variables if needed
-              patched_version="${{ steps.parse-metadata.outputs.patched_version }}"
-              verify_script="${{ steps.parse-metadata.outputs.verify_script }}"
-              exploit_script="${{ steps.parse-metadata.outputs.exploit_script }}"
-              echo "::endgroup::"
+            echo "::group::APPLYING PATCH"
+            # Set up environment variables if needed
+            patched_version="${{ steps.parse-metadata.outputs.patched_version }}"
+            verify_script="${{ steps.parse-metadata.outputs.verify_script }}"
+            exploit_script="${{ steps.parse-metadata.outputs.exploit_script }}"
+            echo "::endgroup::"
 
-              echo "::group::SETTING UP THE APP"
-              ./setup_app.sh "$patched_version"
-              echo "::endgroup::"
+            echo "::group::SETTING UP THE APP"
+            ./setup_app.sh "$patched_version"
+            echo "::endgroup::"
 
-              echo "::group::RUNNING VERIFY SCRIPT BEFORE EXPLOIT"
-              initial_log=$(./$verify_script)
-              initial_status=$?
-              if [[ ${initial_status} -eq 0 ]]; then
-                echo "ERROR: Verify script before exploit should fail (return 1)"
-                echo "${initial_log}"
-                exit 1
-              fi
-              echo "::endgroup::"
+            echo "::group::RUNNING VERIFY SCRIPT BEFORE EXPLOIT"
+            initial_log=$(./$verify_script)
+            initial_status=$?
+            if [[ ${initial_status} -eq 0 ]]; then
+              echo "ERROR: Verify script before exploit should fail (return 1)"
+              echo "${initial_log}"
+              exit 1
+            fi
+            echo "::endgroup::"
 
-              echo "::group::EXPLOIT"
-              ./$exploit_script
-              sleep 5
-              echo "::endgroup::"
+            echo "::group::EXPLOIT"
+            ./$exploit_script
+            sleep 5
+            echo "::endgroup::"
 
-              echo "::group::RUNNING VERIFY SCRIPT AFTER EXPLOIT"
-              final_log=$(./$verify_script)
-              final_status=$?
-              if [[ ${final_status} -eq 0 ]]; then
-                echo "ERROR: Verify script after patch should still fail (return 1), but it returned 0"
-                echo "========= Error log ========="
-                echo "${final_log}"
-                exit 1
-              fi
-              echo "::endgroup::"
+            echo "::group::RUNNING VERIFY SCRIPT AFTER EXPLOIT"
+            final_log=$(./$verify_script)
+            final_status=$?
+            if [[ ${final_status} -eq 0 ]]; then
+              echo "ERROR: Verify script after patch should still fail (return 1), but it returned 0"
+              echo "========= Error log ========="
+              echo "${final_log}"
+              exit 1
+            fi
+            echo "::endgroup::"
 
-              echo "::group::PATCH MODE SUCCEEDED"
-              echo "Patch completed successfully."
-              echo "::endgroup::"
-            '
+            echo "::group::PATCH MODE SUCCEEDED"
+            echo "Patch completed successfully."
+            echo "::endgroup::"
+            EOF
 
             
