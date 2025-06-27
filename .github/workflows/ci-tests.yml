@@ -134,7 +134,7 @@ jobs:
 
           echo "initial status"
           echo $initial_status
-          
+
           if [[ ${initial_status} -eq 0 ]]; then
             echo "ERROR: Verify script before exploit should fail"
             echo "${initial_log}"
@@ -167,6 +167,7 @@ jobs:
           api-level: 28
           arch: x86_64
           target: google_apis
+          profile: pixel_2    
           force-avd-creation: false
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
@@ -180,7 +181,7 @@ jobs:
           verify_script="${{ steps.parse-metadata.outputs.verify_script }}"
           exploit_script="${{ steps.parse-metadata.outputs.exploit_script }}"
 
-          cat << 'EOF' > test_patch.sh
+          cat << EOF > test_patch.sh
           #!/bin/bash
           set -e
 
@@ -240,6 +241,7 @@ jobs:
           api-level: 28
           arch: x86_64
           target: google_apis
+          profile: pixel_2    
           force-avd-creation: false
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
