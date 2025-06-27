@@ -20,6 +20,8 @@ time.sleep(5)
 d(text="Accept").click_exists(timeout=3)
 time.sleep(10)
 
+print(d.dump_hierarchy())
+
 # Password page
 d(resourceId="create-password-first-input-field").click()
 d.send_keys("MyPassword123", clear=True)
