@@ -16,7 +16,7 @@ time.sleep(5)
 d(text="I agree to the Terms of Use, which apply to my use of MetaMask and all of its features").click_exists(timeout=3)
 time.sleep(5)
 d(text="Accept").click_exists(timeout=3)
-time.sleep(5)
+time.sleep(10)
 
 # Password page
 d(resourceId="create-password-first-input-field").click()
