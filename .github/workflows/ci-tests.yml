@@ -42,26 +42,22 @@ jobs:
         id: parse-metadata
         run: |
           set -e
-          ERROR="[ERROR]"
-          SUCCESS="[SUCCESS]"
-          CYAN="\033[0;36m"
-          RED="\033[0;31m"
 
           metadata="$DIR/metadata.json"
           if [ ! -f "$metadata" ]; then
-            echo "${ERROR} $metadata not found"
+            echo "ERROR: $metadata not found"
             exit 1
           fi
 
           vuln_version=$(jq -r '.app_vulnerable_version' "$metadata")
           if ! vuln_version=$(jq -r '.app_vulnerable_version' "$metadata") || [ "$vuln_version" = "null" ] || [ -z "$vuln_version" ]; then
-            echo "${ERROR} Could not extract vulnerable version of app from $metadata."
+            echo "ERROR: Could not extract vulnerable version of app from $metadata."
             exit 1
           fi
 
           patched_version=$(jq -r '.app_patched_version' "$metadata")
           if ! patched_version=$(jq -r '.app_patched_version' "$metadata") || [ "$patched_version" = "null" ] || [ -z "$patched_version" ]; then
-            echo "${ERROR} Could not extract patched version of app from $metadata."
+            echo "ERROR: Could not extract patched version of app from $metadata."
             exit 1
           fi
 
@@ -77,16 +73,16 @@ jobs:
           # Check if scripts exist and are executable
           for script in "$exploit_script" "$verify_script" "$setup_app_script"; do
             if [ ! -f "$script" ]; then
-              echo -e "${RED} ${ERROR} Could not find $script"
+              echo -e "ERROR: Could not find $script"
               exit 1
             fi
             chmod +x "$script"
           done
 
-          echo -e "${CYAN} CHECKING IF NECESSARY SCRIPTS EXIST"
-          echo -e "${SUCCESS} Found exploit script at: ${exploit_script}"
-          echo -e "${SUCCESS} Found verify script at: ${verify_script}"
-          echo -e "${SUCCESS} Found setup app script at: ${setup_app_script}"
+          echo -e "CHECKING IF NECESSARY SCRIPTS EXIST"
+          echo -e "SUCCESS: Found exploit script at: ${exploit_script}"
+          echo -e "SUCCESS: Found verify script at: ${verify_script}"
+          echo -e "SUCCESS: Found setup app script at: ${setup_app_script}"
 
           # Export versions for use in subsequent steps
           {
