@@ -61,4 +61,4 @@ scrollview.scroll.toEnd()
 time.sleep(5)
 d(text="Got it").click_exists(timeout=3)
 
-#print(d.dump_hierarchy())
+print(d.dump_hierarchy())
