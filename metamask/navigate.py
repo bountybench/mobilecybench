@@ -3,33 +3,35 @@ import time
 
 d = u2.connect()
 
-# Navigate past intros
-d(text="Get started").click_exists(timeout=3)
-time.sleep(5)
-d(text="Create a new wallet").click_exists(timeout=3)
-time.sleep(5)
-d(text="I agree").click_exists(timeout=3)
-time.sleep(10)
+def wait_and_click_text(text, timeout=30):
+    if d(text=text).wait(timeout=timeout):
+        d(text=text).click_exists(timeout=3)
 
-d(resourceId="terms-of-use-scroll-end-arrow-button-id").click_exists(timeout=3)
-time.sleep(5)
-d(text="I agree to the Terms of Use, which apply to my use of MetaMask and all of its features").click_exists(timeout=3)
-time.sleep(5)
-d(resourceId="terms-of-use-accept-button-id").click_exists(timeout=3)
-time.sleep(5)
-d(text="Accept").click_exists(timeout=3)
-time.sleep(10)
+def wait_and_click_id(res_id, timeout=30):
+    if d(resourceId=res_id).wait(timeout=timeout):
+        d(resourceId=res_id).click_exists(timeout=3)
+
+def wait_and_click_desc(desc, timeout=30):
+    if d(description=desc).wait(timeout=timeout):
+        d(description=desc).click_exists(timeout=3)
+
+# Navigate past intros
+wait_and_click_text("Get started")
+wait_and_click_text("Create a new wallet")
+wait_and_click_text("I agree")
+
+wait_and_click_id("terms-of-use-scroll-end-arrow-button-id")
+wait_and_click_text("I agree to the Terms of Use, which apply to my use of MetaMask and all of its features")
+wait_and_click_id("terms-of-use-accept-button-id")
+wait_and_click_text("Accept")
 
 # Password page
-d(resourceId="create-password-first-input-field").wait(timeout=10)
-d(resourceId="create-password-first-input-field").click()
+wait_and_click_id("create-password-first-input-field")
 d.send_keys("MyPassword123", clear=True)
 d.press("enter")
-time.sleep(5)
-d(resourceId="create-password-second-input-field").click()
+wait_and_click_id("create-password-second-input-field")
 d.send_keys("MyPassword123", clear=True)
 d.press("enter")
-time.sleep(5)
 
 width, height = d.window_size()
 x = width // 2
@@ -37,26 +39,18 @@ y = height // 4
 d.click(x, y)
 d.click(x, y)
 
-d(resourceId="password-understand-box").click()
-time.sleep(5)
-d(description="submit-button").click()
-time.sleep(10)
+wait_and_click_id("password-understand-box")
+wait_and_click_desc("submit-button")
 
 # Skip past unecessary safety
-d(text="Remind me later").click_exists(timeout=3)
-time.sleep(5)
-d(resourceId="skip-backup-check").click_exists(timeout=3)
-time.sleep(5)
-d(text="Skip").click_exists(timeout=3)
-time.sleep(5)
-d(text="Done").click_exists(timeout=3)
-time.sleep(5)
-d(text="No thanks").click_exists(timeout=3)
-time.sleep(5)
+wait_and_click_text("Remind me later")
+wait_and_click_id("skip-backup-check")
+wait_and_click_text("Skip")
+wait_and_click_text("Done")
+wait_and_click_text("No thanks")
 
-d(text="No thanks").click_exists(timeout=3)
-time.sleep(10)
-scrollview = d(className="android.widget.ScrollView")
-scrollview.scroll.toEnd()
-time.sleep(5)
-d(text="Got it").click_exists(timeout=3)
+wait_and_click_text("No thanks")
+if d(className="android.widget.ScrollView").wait(timeout=30):
+    scrollview = d(className="android.widget.ScrollView")
+    scrollview.scroll.toEnd()
+wait_and_click_text("Got it")
