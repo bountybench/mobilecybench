@@ -56,7 +56,7 @@ d(text="No thanks").click_exists(timeout=3)
 time.sleep(5)
 
 d(text="No thanks").click_exists(timeout=3)
-time.sleep(5)
+time.sleep(10)
 scrollview = d(className="android.widget.ScrollView")
 scrollview.scroll.toEnd()
 time.sleep(5)
