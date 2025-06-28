@@ -21,6 +21,7 @@ d(text="Accept").click_exists(timeout=3)
 time.sleep(10)
 
 # Password page
+d(resourceId="create-password-first-input-field").wait(timeout=10)
 d(resourceId="create-password-first-input-field").click()
 d.send_keys("MyPassword123", clear=True)
 d.press("enter")
