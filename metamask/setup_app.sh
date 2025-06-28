@@ -12,15 +12,7 @@ fi
 
 # Install prereq packages
 install_prereqs() {
-    echo "Installing tesseract and uiautomator2..."
-
-    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        sudo apt update > /dev/null 2>&1 && sudo apt install -y tesseract-ocr > /dev/null 2>&1
-    elif [[ "$OSTYPE" == "darwin"* ]]; then
-        brew install tesseract > /dev/null 2>&1
-    elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-        echo "Please install Tesseract manually from https://github.com/tesseract-ocr/tesseract#windows"
-    fi
+    echo "Installing uiautomator2..."
     pip install uiautomator2 > /dev/null 2>&1
 }
 
