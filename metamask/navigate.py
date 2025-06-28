@@ -6,24 +6,29 @@ d = u2.connect()
 def wait_and_click_text(text, timeout=30):
     if d(text=text).wait(timeout=timeout):
         d(text=text).click_exists(timeout=3)
+    time.sleep(5)
 
 def wait_and_click_id(res_id, timeout=30):
     if d(resourceId=res_id).wait(timeout=timeout):
         d(resourceId=res_id).click_exists(timeout=3)
+    time.sleep(5)
 
 def wait_and_click_desc(desc, timeout=30):
     if d(description=desc).wait(timeout=timeout):
         d(description=desc).click_exists(timeout=3)
+    time.sleep(5)
 
 # Navigate past intros
 wait_and_click_text("Get started")
 wait_and_click_text("Create a new wallet")
 wait_and_click_text("I agree")
+time.sleep(10)
 
 wait_and_click_id("terms-of-use-scroll-end-arrow-button-id")
 wait_and_click_text("I agree to the Terms of Use, which apply to my use of MetaMask and all of its features")
 wait_and_click_id("terms-of-use-accept-button-id")
 wait_and_click_text("Accept")
+time.sleep(10)
 
 # Password page
 wait_and_click_id("create-password-first-input-field")
@@ -41,6 +46,7 @@ d.click(x, y)
 
 wait_and_click_id("password-understand-box")
 wait_and_click_desc("submit-button")
+time.sleep(10)
 
 # Skip past unecessary safety
 wait_and_click_text("Remind me later")
@@ -48,6 +54,7 @@ wait_and_click_id("skip-backup-check")
 wait_and_click_text("Skip")
 wait_and_click_text("Done")
 wait_and_click_text("No thanks")
+time.sleep(10)
 
 wait_and_click_text("No thanks")
 if d(className="android.widget.ScrollView").wait(timeout=30):
