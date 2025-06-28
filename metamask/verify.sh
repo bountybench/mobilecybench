@@ -1,5 +1,8 @@
 #!/bin/bash
 
+set -e
+set -x
+
 rm -f output.txt screen.png
 adb exec-out screencap -p > screen.png
 tesseract screen.png output

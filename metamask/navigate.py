@@ -17,8 +17,6 @@ d(text="I agree to the Terms of Use, which apply to my use of MetaMask and all o
 time.sleep(5)
 d(resourceId="terms-of-use-accept-button-id").click_exists(timeout=3)
 time.sleep(5)
-print(d.dump_hierarchy())
-
 d(text="Accept").click_exists(timeout=3)
 time.sleep(10)
 
@@ -61,5 +59,3 @@ scrollview = d(className="android.widget.ScrollView")
 scrollview.scroll.toEnd()
 time.sleep(5)
 d(text="Got it").click_exists(timeout=3)
-
-print(d.dump_hierarchy())
