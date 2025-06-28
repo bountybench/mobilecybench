@@ -4,7 +4,8 @@ import sys
 
 d = u2.connect()
 
-print(d.dump_hierarchy())
+hierarchy = d.dump_hierarchy()
+
 if "Javascript is executed" in hierarchy:
     print("Javascript was executed. Exploit successful.")
     sys.exit(0)
