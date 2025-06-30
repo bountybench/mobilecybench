@@ -61,3 +61,5 @@ if d(className="android.widget.ScrollView").wait(timeout=30):
     scrollview = d(className="android.widget.ScrollView")
     scrollview.scroll.toEnd()
 wait_and_click_text("Got it")
+
+print(d.dump_hierarchy())

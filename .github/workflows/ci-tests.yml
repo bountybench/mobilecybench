@@ -26,6 +26,11 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: 17
+      
+      - name: Setup Python 3.11 environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
@@ -121,6 +126,14 @@ jobs:
 
           echo "::group::SETTING UP THE APP"
           ./setup_app.sh "$vuln_version"
+          echo "::endgroup::"
+
+          which python
+          python --version
+          pip list | grep uiautomator2
+
+          echo "::group::DEBUGGING VERIFY.SH"
+          bash -x "./$verify_script"
           echo "::endgroup::"
 
           echo "::group::RUNNING VERIFY SCRIPT BEFORE EXPLOIT"
