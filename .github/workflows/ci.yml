@@ -126,7 +126,7 @@ jobs:
 
           vuln_version="${vuln_version}"
           echo "dir"
-          echo "dir"
+          echo "$dir"
           setup_app_path="${dir}/setup_app.sh"
           echo "PATH"
           echo "$setup_app_path"
