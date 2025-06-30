@@ -6,16 +6,22 @@ d = u2.connect()
 def wait_and_click_text(text, timeout=30):
     if d(text=text).wait(timeout=timeout):
         d(text=text).click_exists(timeout=3)
+    else:
+        print(f"[ERROR] Could not find text: '{text}' within {timeout}s")
     time.sleep(5)
 
 def wait_and_click_id(res_id, timeout=30):
     if d(resourceId=res_id).wait(timeout=timeout):
         d(resourceId=res_id).click_exists(timeout=3)
+    else:
+        print(f"[ERROR] Could not find resourceId: '{res_id}' within {timeout}s")
     time.sleep(5)
 
 def wait_and_click_desc(desc, timeout=30):
     if d(description=desc).wait(timeout=timeout):
         d(description=desc).click_exists(timeout=3)
+    else:
+        print(f"[ERROR] Could not find description: '{desc}' within {timeout}s")
     time.sleep(5)
 
 # Navigate past intros

@@ -129,7 +129,7 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::RUNNING VERIFY SCRIPT BEFORE EXPLOIT"
-          initial_log=$(./"$verify_script")
+          initial_log=$(bash ./"$verify_script" 2>&1)
           initial_status=$?
 
           echo "initial_log: $initial_log"
