@@ -135,7 +135,7 @@ jobs:
 
           # Run the exploit and verification for this task
           echo "Running exploit and verification test for $dir"
-          pytest --log-cli-level=INFO --log-cli-format='%(message)s' --tb=no tests/test_exploit.py::test_exploit_workflow --dirs metamask/vulnerabilities/vulnerability_0
+          pytest -v --log-cli-level=INFO --log-cli-format='%(message)s' --tb=no tests/test_exploit.py::test_exploit_workflow --dirs metamask/vulnerabilities/vulnerability_0
           EOF
 
           chmod +x test_exploit.sh
