@@ -127,14 +127,8 @@ jobs:
           vuln_version="${vuln_version}"
           dir="${dir}"
 
-          echo "dir"
-          echo "$dir"
-          setup_app_path="${dir}/setup_app.sh"
-          echo "PATH"
-          echo "$setup_app_path"
-
           echo "SETTING UP THE APP"          
-          bash "$setup_app_path" "$vuln_version"
+          bash "$metamask/vulnerabilities/vulnerability_0/setup_app.sh" "$vuln_version"
 
           # Run the exploit and verification for this task
           echo "Running exploit and verification test for $dir"
