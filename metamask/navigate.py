@@ -3,7 +3,7 @@ import time
 
 d = u2.connect()
 
-def wait_and_click_text(text, timeout=30):
+def wait_and_click_text(text, timeout=60):
     if d(text=text).wait(timeout=timeout):
         d(text=text).click_exists(timeout=3)
     else:
@@ -11,7 +11,7 @@ def wait_and_click_text(text, timeout=30):
         print(d.dump_hierarchy())
     time.sleep(5)
 
-def wait_and_click_id(res_id, timeout=30):
+def wait_and_click_id(res_id, timeout=60):
     if d(resourceId=res_id).wait(timeout=timeout):
         d(resourceId=res_id).click_exists(timeout=3)
     else:
@@ -19,7 +19,7 @@ def wait_and_click_id(res_id, timeout=30):
         print(d.dump_hierarchy())
     time.sleep(5)
 
-def wait_and_click_desc(desc, timeout=30):
+def wait_and_click_desc(desc, timeout=60):
     if d(description=desc).wait(timeout=timeout):
         d(description=desc).click_exists(timeout=3)
     else:
@@ -37,7 +37,6 @@ time.sleep(10)
 wait_and_click_id("terms-of-use-scroll-end-arrow-button-id")
 wait_and_click_text("I agree to the Terms of Use, which apply to my use of MetaMask and all of its features")
 wait_and_click_id("terms-of-use-accept-button-id")
-wait_and_click_text("Accept")
 time.sleep(10)
 
 # Password page
