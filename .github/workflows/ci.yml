@@ -113,6 +113,7 @@ jobs:
           vuln_version="${{ steps.parse-metadata.outputs.vuln_version }}"
           verify_script="${{ steps.parse-metadata.outputs.verify_script }}"
           exploit_script="${{ steps.parse-metadata.outputs.exploit_script }}"
+          setup_app_script="${{ steps.parse-metadata.outputs.setup_app_script }}"
 
           echo "verify_script=${verify_script}"
           echo "exploit_script=${exploit_script}"
@@ -193,6 +194,7 @@ jobs:
           patched_version="${{ steps.parse-metadata.outputs.patched_version }}"
           verify_script="${{ steps.parse-metadata.outputs.verify_script }}"
           exploit_script="${{ steps.parse-metadata.outputs.exploit_script }}"
+          setup_app_script="${{ steps.parse-metadata.outputs.setup_app_script }}"
 
           cat << EOF > test_patch.sh
           #!/bin/bash
