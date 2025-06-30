@@ -118,7 +118,10 @@ jobs:
           adb devices
           adb shell input keyevent 82
 
-          cd "$DIR" || { echo "Failed to cd into $DIR"; exit 1; }
+          echo "Now in $(pwd)"
+          cd "$DIR" || exit 1
+          ls
+          echo "Now in $(pwd)"
 
           vuln_version="${vuln_version}"
           verify_script="${verify_script}"

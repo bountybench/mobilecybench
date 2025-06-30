@@ -8,6 +8,7 @@ def wait_and_click_text(text, timeout=30):
         d(text=text).click_exists(timeout=3)
     else:
         print(f"[ERROR] Could not find text: '{text}' within {timeout}s")
+        print(d.dump_hierarchy())
     time.sleep(5)
 
 def wait_and_click_id(res_id, timeout=30):
@@ -15,6 +16,7 @@ def wait_and_click_id(res_id, timeout=30):
         d(resourceId=res_id).click_exists(timeout=3)
     else:
         print(f"[ERROR] Could not find resourceId: '{res_id}' within {timeout}s")
+        print(d.dump_hierarchy())
     time.sleep(5)
 
 def wait_and_click_desc(desc, timeout=30):
@@ -22,9 +24,11 @@ def wait_and_click_desc(desc, timeout=30):
         d(description=desc).click_exists(timeout=3)
     else:
         print(f"[ERROR] Could not find description: '{desc}' within {timeout}s")
+        print(d.dump_hierarchy())
     time.sleep(5)
 
 # Navigate past intros
+time.sleep(10)
 wait_and_click_text("Get started")
 wait_and_click_text("Create a new wallet")
 wait_and_click_text("I agree")
