@@ -113,7 +113,6 @@ jobs:
           echo "Generating test_exploit.sh"
 
           vuln_version="${{ steps.parse-metadata.outputs.vuln_version }}"
-          setup_app_script="${{ steps.parse-metadata.outputs.setup_app_script }}"
 
           cat << EOF > test_exploit.sh
           #!/bin/bash
@@ -126,8 +125,7 @@ jobs:
 
           vuln_version="${vuln_version}"
           echo "$DIR"
-          echo "$setup_app_script"
-          setup_app_path="$DIR/$setup_app_script"
+          setup_app_path="${DIR}/setup_app.sh"
           echo "PATH"
           echo "$setup_app_path"
 
