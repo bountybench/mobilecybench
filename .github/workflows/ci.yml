@@ -115,10 +115,6 @@ jobs:
           exploit_script="${{ steps.parse-metadata.outputs.exploit_script }}"
           setup_app_script="${{ steps.parse-metadata.outputs.setup_app_script }}"
 
-          echo "verify_script=${verify_script}"
-          echo "exploit_script=${exploit_script}"
-          echo "vuln_version=${vuln_version}"
-
           cat << EOF > test_exploit.sh
           #!/bin/bash
           set -e
@@ -145,7 +141,11 @@ jobs:
           ./"$setup_app_script" "$vuln_version"
 
           echo "RUNNING VERIFY SCRIPT BEFORE EXPLOIT"
-          initial_log=$(bash ./"$verify_script" 2>&1)
+          echo "$verify_script"
+          initial_log=$(./verify.sh 2>&1)
+          echo "initial_log: $initial_log"
+
+          initial_log=$(./"$verify_script" 2>&1)
           initial_status=$?
 
           echo "initial_log: $initial_log"
