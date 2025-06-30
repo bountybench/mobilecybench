@@ -113,7 +113,7 @@ jobs:
           echo "Generating test_exploit.sh"
 
           vuln_version="${{ steps.parse-metadata.outputs.vuln_version }}"
-          dir="${{ env.DIR }}"
+          dir=metamask/vulnerabilities/vulnerability_0
 
           cat << EOF > test_exploit.sh
           #!/bin/bash
@@ -130,9 +130,12 @@ jobs:
           echo "SETTING UP THE APP"          
           bash "metamask/vulnerabilities/vulnerability_0/setup_app.sh" "$vuln_version"
 
+          pwd
+          ls
+
           # Run the exploit and verification for this task
           echo "Running exploit and verification test for $dir"
-          pytest --log-cli-level=INFO --log-cli-format='%(message)s' --tb=no tests/test_exploit.py::test_exploit_workflow --dirs "$dir"
+          pytest --log-cli-level=INFO --log-cli-format='%(message)s' --tb=no tests/test_exploit.py::test_exploit_workflow --dirs metamask/vulnerabilities/vulnerability_0
           EOF
 
           chmod +x test_exploit.sh
