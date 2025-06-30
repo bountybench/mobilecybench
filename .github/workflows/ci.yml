@@ -135,15 +135,15 @@ jobs:
           vuln_version="${vuln_version}"
           verify_script="${verify_script}"
           exploit_script="${exploit_script}"
+          setup_app_script="${setup_app_script}"
 
           echo "$verify_script"
           ls -l "$verify_script"
 
-          echo "::group::SETTING UP THE APP"
-          ./setup_app.sh "$vuln_version"
-          echo "::endgroup::"
+          echo "SETTING UP THE APP"
+          ./"$setup_app_script" "$vuln_version"
 
-          echo "::group::RUNNING VERIFY SCRIPT BEFORE EXPLOIT"
+          echo "RUNNING VERIFY SCRIPT BEFORE EXPLOIT"
           initial_log=$(bash ./"$verify_script" 2>&1)
           initial_status=$?
 
@@ -155,14 +155,12 @@ jobs:
             echo "${initial_log}"
             exit 1
           fi
-          echo "::endgroup::"
 
-          echo "::group::EXPLOIT"
+          echo "EXPLOIT"
           ./"$exploit_script"
           sleep 5
-          echo "::endgroup::"
 
-          echo "::group::VERIFY AFTER EXPLOIT"
+          echo "VERIFY AFTER EXPLOIT"
           final_log=$(./"$verify_script")
           final_status=$?
           if [[ ${final_status} -ne 0 ]]; then
@@ -171,7 +169,6 @@ jobs:
             exit 1
           fi
           echo "SUCCESS: Exploit mode succeeded"
-          echo "::endgroup::"
           EOF
 
           chmod +x test_exploit.sh
@@ -208,17 +205,16 @@ jobs:
 
           cd "$DIR" || { echo "Failed to cd into $DIR"; exit 1; }
 
-          echo "::group::APPLYING PATCH"
+          echo "APPLYING PATCH"
           patched_version="${patched_version}"
           verify_script="${verify_script}"
           exploit_script="${exploit_script}"
-          echo "::endgroup::"
+          setup_app_script="${setup_app_script}"
 
-          echo "::group::SETTING UP THE APP"
-          ./setup_app.sh "$patched_version"
-          echo "::endgroup::"
+          echo "SETTING UP THE APP"
+          ./"$setup_app_script" "$patched_version"
 
-          echo "::group::RUNNING VERIFY SCRIPT BEFORE EXPLOIT"
+          echo "RUNNING VERIFY SCRIPT BEFORE EXPLOIT"
           initial_log=$(./"$verify_script")
           initial_status=$?
           if [[ ${initial_status} -eq 0 ]]; then
@@ -226,14 +222,12 @@ jobs:
             echo "${initial_log}"
             exit 1
           fi
-          echo "::endgroup::"
 
-          echo "::group::EXPLOIT"
+          echo "EXPLOIT"
           ./"$exploit_script"
           sleep 5
-          echo "::endgroup::"
 
-          echo "::group::RUNNING VERIFY SCRIPT AFTER EXPLOIT"
+          echo "RUNNING VERIFY SCRIPT AFTER EXPLOIT"
           final_log=$(./"$verify_script")
           final_status=$?
           if [[ ${final_status} -eq 0 ]]; then
@@ -242,11 +236,9 @@ jobs:
             echo "${final_log}"
             exit 1
           fi
-          echo "::endgroup::"
 
-          echo "::group::PATCH MODE SUCCEEDED"
+          echo "PATCH MODE SUCCEEDED"
           echo "Patch completed successfully."
-          echo "::endgroup::"
           EOF
 
           chmod +x test_patch.sh
