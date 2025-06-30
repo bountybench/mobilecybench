@@ -128,7 +128,7 @@ jobs:
           dir="${dir}"
 
           echo "SETTING UP THE APP"          
-          bash "$metamask/vulnerabilities/vulnerability_0/setup_app.sh" "$vuln_version"
+          bash "metamask/vulnerabilities/vulnerability_0/setup_app.sh" "$vuln_version"
 
           # Run the exploit and verification for this task
           echo "Running exploit and verification test for $dir"
