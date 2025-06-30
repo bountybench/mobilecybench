@@ -125,6 +125,7 @@ jobs:
           adb shell input keyevent 82
 
           vuln_version="${vuln_version}"
+          dir="${dir}"
           echo "dir"
           echo "$dir"
           setup_app_path="${dir}/setup_app.sh"
