@@ -115,7 +115,7 @@ jobs:
           vuln_version="${{ steps.parse-metadata.outputs.vuln_version }}"
           dir="${{ env.DIR }}"
 
-          cat << 'EOF' > test_exploit.sh
+          cat << EOF > test_exploit.sh
           #!/bin/bash
           set -e
 
