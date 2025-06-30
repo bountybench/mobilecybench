@@ -121,6 +121,8 @@ jobs:
           echo "Now in $(pwd)"
           cd "$DIR" || exit 1
           ls
+          echo "verify_script='$verify_script'"
+          ls -l "$verify_script"
           echo "Now in $(pwd)"
 
           vuln_version="${vuln_version}"
