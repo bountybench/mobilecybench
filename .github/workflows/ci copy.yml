@@ -37,7 +37,74 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libpulse0
           python -m pip install --upgrade pip -q
-          pip install -r .github/requirements.txt -q
+          pip install pytest
+
+      - name: Find modified metadata/vuln directories
+        id: modified-dirs
+        run: |
+          cat << 'EOF' > /tmp/shared_functions.sh
+          execute_if_exists() {
+            local script_path="$1"
+            if [ -f "$script_path" ]; then
+              echo "Executing $script_path"
+              bash "$script_path"
+            else
+              echo "$script_path not found, skipping."
+            fi
+          }
+
+
+          get_modified_dirs() {
+            git diff --diff-filter=ACMDR --name-only origin/main...HEAD | while read -r file; do
+              ##################################
+              # First part
+              ##################################
+              # If the file path includes "vulnerabilities/vulnerability_{digits}", extract and echo it.
+              if [[ "$file" =~ (.*vulnerabilities/vulnerability_[0-9]+) ]]; then
+                dir="${BASH_REMATCH[1]}"
+                if [[ -d "$dir" ]]; then
+                  echo "$dir"
+                fi
+              fi
+
+
+              ##################################
+              # Second part
+              ##################################
+              # Skip if it already matches "vulnerabilities/vulnerability_{digits}" or contains metadata.json
+              if [[ "$file" =~ .*/vulnerabilities/vulnerability_[0-9]+ ]] || [[ "$file" =~ metadata.json ]]; then
+                continue
+              else
+                # Get the base directory
+                baseDir="$(dirname "$file")"
+                # Check if baseDir contains "vulnerabilities" somewhere
+                if [[ -d "$baseDir/vulnerabilities" ]]; then
+                  rootOfVulnerabilities="$baseDir/vulnerabilities"
+                  # For each vulnerability subfolder under rootOfVulnerabilities, echo if non-essentials check passes
+                  for subDir in "$rootOfVulnerabilities"/vulnerability_[0-9]*; do
+                    if [[ -d "$subDir" && "$subDir" =~ /vulnerability_[0-9]+$ ]]; then
+                      echo "$subDir"
+                    fi
+                  done
+                fi
+              fi
+            done | sort -u
+          }
+          EOF
+          chmod +x /tmp/shared_functions.sh
+          source /tmp/shared_functions.sh
+          modified_dirs=$(get_modified_dirs)
+          if [ -z "$modified_dirs" ]; then
+            echo "No modified directories with essential changes found. Skipping further steps."
+            echo "should_exit=true" >> $GITHUB_OUTPUT
+          else
+            echo "Modified directories:"
+            echo "$modified_dirs"
+
+            echo "modified_dirs<<EOF" >> $GITHUB_OUTPUT
+            echo "$modified_dirs" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
 
       - name: Enable KVM
         run: |
@@ -110,35 +177,37 @@ jobs:
 
       - name: Create exploit test script
         run: |
-          echo "Generating test_exploit.sh"
+          source /tmp/shared_functions.sh
+          echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | while read -r dir; do
+            echo "Processing vulnerability: $dir"
 
-          vuln_version="${{ steps.parse-metadata.outputs.vuln_version }}"
-          dir=metamask/vulnerabilities/vulnerability_0
+            vuln_version="${{ steps.parse-metadata.outputs.vuln_version }}"
+            dir=metamask/vulnerabilities/vulnerability_0
 
-          cat << EOF > test_exploit.sh
-          #!/bin/bash
-          set -e
+            cat << EOF > test_exploit.sh
+            #!/bin/bash
+            set -e
 
-          adb wait-for-device
-          adb shell getprop sys.boot_completed
-          adb devices
-          adb shell input keyevent 82
+            adb wait-for-device
+            adb shell getprop sys.boot_completed
+            adb devices
+            adb shell input keyevent 82
 
-          vuln_version="${vuln_version}"
-          dir="${dir}"
+            vuln_version="${vuln_version}"
+            dir="${dir}"
 
-          echo "SETTING UP THE APP"          
-          bash "metamask/vulnerabilities/vulnerability_0/setup_app.sh" "$vuln_version"
+            echo "SETTING UP THE APP"          
+            bash "metamask/vulnerabilities/vulnerability_0/setup_app.sh" "$vuln_version"
 
-          pwd
-          ls
+            pwd
+            ls
 
-          # Run the exploit and verification for this task
-          echo "Running exploit and verification test for $dir"
-          pytest --log-cli-level=INFO --log-cli-format='%(message)s' --tb=no tests/test_exploit.py::test_exploit_workflow --dirs metamask/vulnerabilities/vulnerability_0
-          EOF
+            # Run the exploit and verification for this task
+            echo "Running exploit and verification test for $dir"
+            pytest --log-cli-level=INFO --log-cli-format='%(message)s' --tb=no tests/test_exploit.py::test_exploit_workflow --dirs metamask/vulnerabilities/vulnerability_0
+            EOF
 
-          chmod +x test_exploit.sh
+            chmod +x test_exploit.sh
 
       - name: Test exploit workflow
         uses: reactivecircus/android-emulator-runner@v2
