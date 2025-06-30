@@ -132,6 +132,9 @@ jobs:
           initial_log=$(./"$verify_script")
           initial_status=$?
 
+          echo "initial_log: $initial_log"
+          echo "initial_status: $initial_status"
+
           if [[ ${initial_status} -eq 0 ]]; then
             echo "ERROR: Verify script before exploit should fail"
             echo "${initial_log}"
