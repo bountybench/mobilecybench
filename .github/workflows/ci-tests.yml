@@ -128,25 +128,9 @@ jobs:
           ./setup_app.sh "$vuln_version"
           echo "::endgroup::"
 
-          which python
-          python --version
-          pip list | grep uiautomator2
-
-          echo "::group::DEBUGGING VERIFY.SH"
-          bash -x "./$verify_script"
-          echo "::endgroup::"
-
           echo "::group::RUNNING VERIFY SCRIPT BEFORE EXPLOIT"
           initial_log=$(./"$verify_script")
           initial_status=$?
-          echo "$verify_script"
-          ls -l "./$verify_script" || echo "Script not found"
-          file "./$verify_script" || echo "Could not determine file type"
-          [[ ! -x "./$verify_script" ]] && echo "Script is not executable"
-          head -n 10 "./$verify_script" || echo "Failed to read script"
-
-          echo "initial status"
-          echo $initial_status
 
           if [[ ${initial_status} -eq 0 ]]; then
             echo "ERROR: Verify script before exploit should fail"
