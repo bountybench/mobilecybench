@@ -132,7 +132,7 @@ jobs:
           ls
           echo "$setup_app_path"
           echo "$DIR"
-          echo "setup_script"
+          echo "$setup_script"
           bash "$setup_app_path" "$vuln_version"
 
           # Run the exploit and verification for this task
