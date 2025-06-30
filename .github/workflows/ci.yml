@@ -141,6 +141,7 @@ jobs:
           ./"$setup_app_script" "$vuln_version"
 
           echo "RUNNING VERIFY SCRIPT BEFORE EXPLOIT"
+          ./verify.sh
           echo "$verify_script"
           initial_log=$(./verify.sh 2>&1)
           echo "initial_log: $initial_log"
