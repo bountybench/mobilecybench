@@ -11,7 +11,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      DIR: metamask
+      DIR: metamask/vulnerabilities/vulnerability_0
       
     steps:
       - name: checkout
@@ -140,37 +140,9 @@ jobs:
           echo "SETTING UP THE APP"
           ./"$setup_app_script" "$vuln_version"
 
-          echo "RUNNING VERIFY SCRIPT BEFORE EXPLOIT"
-          ./verify.sh
-          echo "$verify_script"
-          initial_log=$(./verify.sh 2>&1)
-          echo "initial_log: $initial_log"
-
-          initial_log=$(./"$verify_script" 2>&1)
-          initial_status=$?
-
-          echo "initial_log: $initial_log"
-          echo "initial_status: $initial_status"
-
-          if [[ ${initial_status} -eq 0 ]]; then
-            echo "ERROR: Verify script before exploit should fail"
-            echo "${initial_log}"
-            exit 1
-          fi
-
-          echo "EXPLOIT"
-          ./"$exploit_script"
-          sleep 5
-
-          echo "VERIFY AFTER EXPLOIT"
-          final_log=$(./"$verify_script")
-          final_status=$?
-          if [[ ${final_status} -ne 0 ]]; then
-            echo "ERROR: Verify script after exploit should succeed but returned ${final_status}"
-            echo "${final_log}"
-            exit 1
-          fi
-          echo "SUCCESS: Exploit mode succeeded"
+          # Run the exploit and verification for this task
+          echo "Running exploit and verification test for $DIR"
+          pytest --log-cli-level=INFO --log-cli-format='%(message)s' --tb=no tests/test_exploit.py::test_exploit_workflow --dirs "$DIR"
           EOF
 
           chmod +x test_exploit.sh
