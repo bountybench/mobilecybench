@@ -113,8 +113,6 @@ jobs:
           echo "Generating test_exploit.sh"
 
           vuln_version="${{ steps.parse-metadata.outputs.vuln_version }}"
-          verify_script="${{ steps.parse-metadata.outputs.verify_script }}"
-          exploit_script="${{ steps.parse-metadata.outputs.exploit_script }}"
           setup_app_script="${{ steps.parse-metadata.outputs.setup_app_script }}"
 
           cat << EOF > test_exploit.sh
@@ -126,18 +124,8 @@ jobs:
           adb devices
           adb shell input keyevent 82
 
-          echo "Now in $(pwd)"
-          cd "$DIR" || exit 1
-          ls
-          echo "Now in $(pwd)"
-
           vuln_version="${vuln_version}"
-          verify_script="${verify_script}"
-          exploit_script="${exploit_script}"
-          setup_app_script="${setup_app_script}"
-
-          echo "$verify_script"
-          ls -l "$verify_script"
+          setup_app_script="$DIR/${setup_app_script}"
 
           echo "SETTING UP THE APP"
           ./"$setup_app_script" "$vuln_version"
