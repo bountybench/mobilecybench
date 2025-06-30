@@ -113,6 +113,7 @@ jobs:
           echo "Generating test_exploit.sh"
 
           vuln_version="${{ steps.parse-metadata.outputs.vuln_version }}"
+          dir="${{ env.DIR }}"
 
           cat << EOF > test_exploit.sh
           #!/bin/bash
@@ -124,8 +125,9 @@ jobs:
           adb shell input keyevent 82
 
           vuln_version="${vuln_version}"
-          echo "$DIR"
-          setup_app_path="${{ env.DIR }}/setup_app.sh"
+          echo "dir"
+          echo "dir"
+          setup_app_path="${dir}/setup_app.sh"
           echo "PATH"
           echo "$setup_app_path"
 
@@ -133,8 +135,8 @@ jobs:
           bash "$setup_app_path" "$vuln_version"
 
           # Run the exploit and verification for this task
-          echo "Running exploit and verification test for $DIR"
-          pytest --log-cli-level=INFO --log-cli-format='%(message)s' --tb=no tests/test_exploit.py::test_exploit_workflow --dirs "$DIR"
+          echo "Running exploit and verification test for $dir"
+          pytest --log-cli-level=INFO --log-cli-format='%(message)s' --tb=no tests/test_exploit.py::test_exploit_workflow --dirs "$dir"
           EOF
 
           chmod +x test_exploit.sh
