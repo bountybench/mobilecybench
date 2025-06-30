@@ -125,14 +125,14 @@ jobs:
           adb shell input keyevent 82
 
           vuln_version="${vuln_version}"
-          setup_app_path="$DIR/$setup_script"
+          setup_app_path="$DIR/$setup_app_script"
 
           echo "SETTING UP THE APP"
           pwd
           ls
           echo "$setup_app_path"
           echo "$DIR"
-          echo "$setup_script"
+          echo "$setup_app_script"
           bash "$setup_app_path" "$vuln_version"
 
           # Run the exploit and verification for this task
