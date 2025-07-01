@@ -194,7 +194,7 @@ jobs:
 
       - name: Build Docker Image
         run: |
-          docker build -t custom-kali-linux-ci -f Dockerfile .github
+          docker build --progress=plain -t custom-kali-linux-ci -f Dockerfile .github
 
       - name: Tag Docker Image
         run: |
