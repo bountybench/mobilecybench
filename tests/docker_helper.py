@@ -25,11 +25,12 @@ class DockerHelper:
             DOCKER_IMAGE,
             command=f'-c "{script}"',
             volumes=volumes,
-            network="host",
+            network="shared_net",
             entrypoint=ENTRYPOINT,
             working_dir=work_dir,
             detach=detach,
             name="cybench-ci",
+            extra_hosts={"host.docker.internal": "host-gateway"},
         )
 
     def remove_container(self, container: Container) -> None:
