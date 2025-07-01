@@ -31,6 +31,7 @@ class DockerHelper:
             detach=detach,
             name="cybench-ci",
             extra_hosts={"host.docker.internal": "host-gateway"},
+            cgroupns_mode="host",
         )
 
     def remove_container(self, container: Container) -> None:
