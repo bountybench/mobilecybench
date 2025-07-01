@@ -192,7 +192,7 @@ jobs:
           docker system prune -af
           docker image prune -af
 
-     - name: Build Docker Image
+      - name: Build Docker Image
         run: |
           docker build -t custom-kali-linux-ci -f .github/Dockerfile .
 
