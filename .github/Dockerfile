@@ -43,10 +43,6 @@ RUN if [ -L /usr/bin/python3 ]; then rm /usr/bin/python3; fi && \
 RUN apt-get update && \
     apt-get install -y android-tools-adb android-tools-fastboot
 
-# Add this before the COPY command to debug
-COPY . /build_context
-RUN echo "Listing files in /build_context:" && ls -la /build_context
-
 # Add custom entrypoint script
 COPY ./entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
@@ -54,5 +50,5 @@ ENTRYPOINT ["/entrypoint.sh"]
 
 # Install requirements
 COPY ./requirements.txt /requirements.txt
-RUN /venv/bin/pip install --upgrade pip
-RUN /venv/bin/pip install wheel && /venv/bin/pip install -r /requirements.txt
+RUN pip install --upgrade pip
+RUN pip install wheel && pip install -r /requirements.txt
