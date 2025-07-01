@@ -44,3 +44,8 @@ RUN if [ -L /usr/bin/python3 ]; then rm /usr/bin/python3; fi && \
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
+
+# Install requirements
+COPY requirements.txt /requirements.txt
+RUN /venv/bin/pip install --upgrade pip
+RUN /venv/bin/pip install wheel && /venv/bin/pip install -r /requirements.txt
