@@ -1,0 +1,17 @@
+[2025-07-01 14:57:11] Starting Android Emulator Setup (SDK version: 28)
+[2025-07-01 14:57:11] This script will install Android SDK and create an emulator
+[2025-07-01 14:57:11] Detected OS: macos
+[2025-07-01 14:57:11] Detected architecture: arm64
+[2025-07-01 14:57:11] Checking prerequisites...
+[2025-07-01 14:57:11] Installing Android SDK Command Line Tools...
+[2025-07-01 14:57:11] Downloading Android SDK from https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip
+[2025-07-01 14:57:18] Android SDK Command Line Tools installed successfully
+[2025-07-01 14:57:18] Setting up environment variables...
+[2025-07-01 14:57:18] Adding environment variables to /Users/emersonhsieh/.bashrc
+[2025-07-01 14:57:18] Installing required Android packages for arm64 architecture (SDK version: 28)...
+[2025-07-01 14:58:34] Android packages installed successfully
+[2025-07-01 14:58:34] Creating Android Virtual Device: MobileCybenchEmu for arm64 (SDK version: 28)
+[2025-07-01 14:58:35] Android Virtual Device created successfully
+[2025-07-01 14:58:35] Creating helper scripts...
+[2025-07-01 14:58:35] Helper scripts created successfully
+[2025-07-01 14:58:35] Setup completed successfully!
