@@ -54,7 +54,7 @@ def run_exploit_script(vuln_dir, docker_helper):
 def run_verify_script(path):
     verify_result = subprocess.run(
         ["bash", "./verify.sh"],
-        cwd=verify_files_path,
+        cwd=path,
         capture_output=True,
         text=True
     )
