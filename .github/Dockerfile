@@ -44,7 +44,8 @@ RUN apt-get update && \
     apt-get install -y android-tools-adb android-tools-fastboot
 
 # Add this before the COPY command to debug
-RUN echo "Contents of build context:" && ls -la /
+COPY . /build_context
+RUN echo "Listing files in /build_context:" && ls -la /build_context
 
 # Add custom entrypoint script
 COPY ./entrypoint.sh /entrypoint.sh
