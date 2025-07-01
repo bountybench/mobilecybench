@@ -26,6 +26,7 @@ class DockerHelper:
             command=f'-c "{script}"',
             volumes=volumes,
             network="shared_net",
+            extra_hosts={"host.docker.internal": "172.17.0.1"},
             entrypoint=ENTRYPOINT,
             working_dir=work_dir,
             detach=detach,
