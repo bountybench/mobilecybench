@@ -40,6 +40,9 @@ RUN if [ -L /usr/bin/python3 ]; then rm /usr/bin/python3; fi && \
     if [ -L /usr/bin/python ]; then rm /usr/bin/python; fi && \
     ln -s /usr/local/bin/python3.9 /usr/bin/python
 
+RUN apt-get update && \
+    apt-get install -y android-tools-adb android-tools-fastboot
+
 # Add custom entrypoint script
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

@@ -6,7 +6,7 @@ from docker.models.containers import Container
 
 # Constants
 DOCKER_IMAGE = "cybench"
-ENTRYPOINT = "/bin/bash"
+ENTRYPOINT = "/entrypoint.sh"
 DOCKER_SOCKET = "/var/run/docker.sock"
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
 
