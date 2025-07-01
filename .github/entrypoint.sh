@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e
 
-echo "[Entrypoint] Connecting to Android emulator..."
+echo "[Entrypoint] Accessing Android emulator..."
 
-adb connect localhost:5554
+export ADB_SERVER_SOCKET=tcp:host.docker.internal:5037
 adb devices
 
 echo "[Entrypoint] Running passed command: $@"
