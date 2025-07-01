@@ -43,6 +43,9 @@ RUN if [ -L /usr/bin/python3 ]; then rm /usr/bin/python3; fi && \
 RUN apt-get update && \
     apt-get install -y android-tools-adb android-tools-fastboot
 
+# Add this before the COPY command to debug
+RUN echo "Contents of build context:" && ls -la /
+
 # Add custom entrypoint script
 COPY .github/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
