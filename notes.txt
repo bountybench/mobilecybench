@@ -1,0 +1,16 @@
+docker build --platform linux/arm64 -t android-agent .
+
+
+
+ docker run -it \       
+  --platform linux/arm64 \
+  --network host \
+  -v $(pwd):/app \
+  --name android-agent-container \
+  android-agent
+
+
+
+adb -H host.docker.internal devices
+
+adb -H host.docker.internal shell input swipe 500 1000 500 500
