@@ -44,11 +44,11 @@ RUN apt-get update && \
     apt-get install -y android-tools-adb android-tools-fastboot
 
 # Add custom entrypoint script
-COPY entrypoint.sh /entrypoint.sh
+COPY .github/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 
 # Install requirements
-COPY requirements.txt /requirements.txt
+COPY .github/requirements.txt /requirements.txt
 RUN /venv/bin/pip install --upgrade pip
 RUN /venv/bin/pip install wheel && /venv/bin/pip install -r /requirements.txt
