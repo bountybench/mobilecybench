@@ -135,6 +135,10 @@ jobs:
 
           # Run the exploit and verification for this task
           echo "Running exploit and verification test for $dir"
+
+          # Check what pytest sees
+          pytest --collect-only tests/ | grep -A5 -B5 "test_exploit"
+
           pytest -v --log-cli-level=INFO --log-cli-format='%(message)s' --tb=no tests/test_exploit.py::test_exploit_workflow --dirs metamask/vulnerabilities/vulnerability_0
           EOF
 
