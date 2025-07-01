@@ -47,11 +47,11 @@ RUN apt-get update && \
 RUN echo "Contents of build context:" && ls -la /
 
 # Add custom entrypoint script
-COPY .github/entrypoint.sh /entrypoint.sh
+COPY ./entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 
 # Install requirements
-COPY .github/requirements.txt /requirements.txt
+COPY ./requirements.txt /requirements.txt
 RUN /venv/bin/pip install --upgrade pip
 RUN /venv/bin/pip install wheel && /venv/bin/pip install -r /requirements.txt
