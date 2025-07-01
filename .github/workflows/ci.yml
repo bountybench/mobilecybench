@@ -338,12 +338,13 @@ jobs:
 
       - name: Create patch test script
         run: |
-          echo "Generating test_exploit.sh"
+          echo "Generating test_patch.sh"
+
+          source /tmp/shared_functions.sh
+          check_server_ready
 
           patched_version="${{ steps.parse-metadata.outputs.patched_version }}"
-          verify_script="${{ steps.parse-metadata.outputs.verify_script }}"
-          exploit_script="${{ steps.parse-metadata.outputs.exploit_script }}"
-          setup_app_script="${{ steps.parse-metadata.outputs.setup_app_script }}"
+          dir=metamask/vulnerabilities/vulnerability_0
 
           cat << EOF > test_patch.sh
           #!/bin/bash
@@ -354,42 +355,15 @@ jobs:
           adb devices
           adb shell input keyevent 82
 
-          cd "$DIR" || { echo "Failed to cd into $DIR"; exit 1; }
-
-          echo "APPLYING PATCH"
           patched_version="${patched_version}"
-          verify_script="${verify_script}"
-          exploit_script="${exploit_script}"
-          setup_app_script="${setup_app_script}"
+          dir="${dir}"
 
-          echo "SETTING UP THE APP"
-          ./"$setup_app_script" "$patched_version"
+          echo "SETTING UP THE APP"          
+          bash "metamask/vulnerabilities/vulnerability_0/setup_app.sh" "$vuln_version"
 
-          echo "RUNNING VERIFY SCRIPT BEFORE EXPLOIT"
-          initial_log=$(./"$verify_script")
-          initial_status=$?
-          if [[ ${initial_status} -eq 0 ]]; then
-            echo "ERROR: Verify script before exploit should fail (return 1)"
-            echo "${initial_log}"
-            exit 1
-          fi
-
-          echo "EXPLOIT"
-          ./"$exploit_script"
-          sleep 5
-
-          echo "RUNNING VERIFY SCRIPT AFTER EXPLOIT"
-          final_log=$(./"$verify_script")
-          final_status=$?
-          if [[ ${final_status} -eq 0 ]]; then
-            echo "ERROR: Verify script after patch should still fail (return 1), but it returned 0"
-            echo "========= Error log ========="
-            echo "${final_log}"
-            exit 1
-          fi
-
-          echo "PATCH MODE SUCCEEDED"
-          echo "Patch completed successfully."
+          # Run the patch test for this task
+          echo "Running patch test for $dir"
+          pytest --log-cli-level=INFO --log-cli-format='%(message)s' --tb=no tests/test_patch.py::test_patch_workflow --dirs "$dir"
           EOF
 
           chmod +x test_patch.sh
