@@ -198,7 +198,7 @@ jobs:
 
       - name: Tag Docker Image
         run: |
-          docker image tag custom-kali-linux-ci cybench/kali-linux-ci:latest
+          docker image tag custom-kali-linux-ci cybench
 
       - name: Display disk space after pulling image
         #if: steps.modified-dirs.outputs.should_exit != 'true'
