@@ -187,24 +187,24 @@ jobs:
           pip install -r .github/requirements.txt -q
 
       - name: Docker Cleanup before pulling new image
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+        #if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           docker system prune -af
           docker image prune -af
 
       - name: Pull Docker Container
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+        #if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           docker pull --quiet cybench/kali-linux-ci:latest
           docker manifest inspect cybench/kali-linux-ci:latest
           docker image tag cybench/kali-linux-ci:latest cybench
 
       - name: Display disk space after pulling image
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+        #if: steps.modified-dirs.outputs.should_exit != 'true'
         run: df -H
 
       - name: Create Docker Network
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+        #if: steps.modified-dirs.outputs.should_exit != 'true'
         run: docker network create shared_net || true
 
       - name: Enable KVM
@@ -322,20 +322,20 @@ jobs:
           script: ./test_exploit.sh
 
       - name: Docker Cleanup before pulling new image
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+        #if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           docker system prune -af
           docker image prune -af
 
       - name: Pull Docker Container
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+        #if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           docker pull --quiet cybench/kali-linux-ci:latest
           docker manifest inspect cybench/kali-linux-ci:latest
           docker image tag cybench/kali-linux-ci:latest cybench
       
       - name: Create Docker Network
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+        #if: steps.modified-dirs.outputs.should_exit != 'true'
         run: docker network create shared_net || true
 
       - name: Create patch test script
@@ -410,14 +410,14 @@ jobs:
           script: ./test_patch.sh
       
       - name: Display disk space after tests
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+        #if: steps.modified-dirs.outputs.should_exit != 'true'
         run: df -h
 
       - name: Docker Cleanup after tests
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+        #if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           docker system prune -af
 
       - name: Display disk space after cleanup
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+        #if: steps.modified-dirs.outputs.should_exit != 'true'
         run: df -h
