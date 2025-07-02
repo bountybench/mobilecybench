@@ -1,4 +1,4 @@
-name: Test MetaMask
+name: Check pytest tests
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -10,9 +10,9 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       DIR: metamask/vulnerabilities/vulnerability_0
-      
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -308,8 +308,6 @@ jobs:
 
           echo "SETTING UP THE APP"          
           bash "metamask/vulnerabilities/vulnerability_0/setup_app.sh" "$vuln_version"
-          adb start-server
-          adb tcpip 5554
 
           # Run the exploit and verification for this task
           echo "Running exploit and verification test for $dir"
@@ -369,7 +367,6 @@ jobs:
 
           echo "SETTING UP THE APP"          
           bash "metamask/vulnerabilities/vulnerability_0/setup_app.sh" "$vuln_version"
-          adb tcpip 5554
 
           # Run the patch test for this task
           echo "Running patch test for $dir"
