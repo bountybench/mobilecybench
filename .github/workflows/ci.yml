@@ -366,7 +366,7 @@ jobs:
           dir="${dir}"
 
           echo "SETTING UP THE APP"          
-          bash "metamask/vulnerabilities/vulnerability_0/setup_app.sh" "$vuln_version"
+          bash "metamask/vulnerabilities/vulnerability_0/setup_app.sh" "$patched_version"
 
           adb shell svc wifi enable
           adb shell settings get global wifi_on
