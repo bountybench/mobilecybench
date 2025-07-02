@@ -39,8 +39,17 @@ def run_exploit_script(vuln_dir, docker_helper):
     exploit_path = find_path(vuln_dir, 'exploit.sh')
 
     logger.info(f"Running exploit script at {vuln_dir + '/' + exploit_path}")
+    #container = docker_helper.run_container(
+    #    f"cd {vuln_dir + '/' + exploit_path} && bash exploit.sh true", f"/app", volumes)
+
     container = docker_helper.run_container(
-        f"cd {vuln_dir + '/' + exploit_path} && bash exploit.sh true", f"/app", volumes)
+        f"echo 'About to cd to: {vuln_dir + '/' + exploit_path}' && "
+        f"cd '{vuln_dir + '/' + exploit_path}' && "
+        f"echo 'Successfully changed directory' && "
+        f"ls -la && "
+        f"echo 'About to run exploit.sh' && "
+        f"bash exploit.sh true", 
+        f"/app", volumes)
 
     try:
         logger.info(LOG.format("Exploit", docker_helper.stream_logs(container)))
