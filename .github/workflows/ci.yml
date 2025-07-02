@@ -311,6 +311,9 @@ jobs:
 
           adb shell dumpsys wifi | grep "Wi-Fi is"
 
+          adb shell svc wifi enable
+          adb shell settings get global wifi_on
+
           # Run the exploit and verification for this task
           echo "Running exploit and verification test for $dir"
           pytest -v --log-cli-level=INFO --log-cli-format='%(message)s' --tb=no tests/test_exploit.py::test_exploit_workflow --dirs metamask/vulnerabilities/vulnerability_0
