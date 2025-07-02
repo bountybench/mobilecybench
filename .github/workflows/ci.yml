@@ -302,6 +302,7 @@ jobs:
 
           echo "SETTING UP THE APP"          
           bash "metamask/vulnerabilities/vulnerability_0/setup_app.sh" "$vuln_version"
+          adb start-server
           adb tcpip 5554
 
           # Run the exploit and verification for this task
