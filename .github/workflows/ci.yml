@@ -283,7 +283,8 @@ jobs:
           adb shell input keyevent 82
 
           dir="${dir}"
-          metadata="$dir/metadata.json"
+          echo ${dir}
+          metadata="${dir}/metadata.json"
           if [ ! -f "$metadata" ]; then
             echo "ERROR: $metadata not found"
             exit 1
