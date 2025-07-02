@@ -274,7 +274,7 @@ jobs:
           vuln_version="${{ steps.parse-metadata.outputs.vuln_version }}"
           dir=metamask/vulnerabilities/vulnerability_0
 
-          cat << EOF > test_exploit.sh
+          cat << "EOF" > test_exploit.sh
           #!/bin/bash
           set -e
 
@@ -286,6 +286,7 @@ jobs:
           dir="${dir}"
           echo ${dir}
           metadata="${dir}/metadata.json"
+          echo metadata
           if [ ! -f "$metadata" ]; then
             echo "ERROR: $metadata not found"
             exit 1
