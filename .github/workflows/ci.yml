@@ -202,7 +202,6 @@ jobs:
       - name: Build Docker Image
         run: |
           docker build -t custom-kali-linux-ci -f .github/Dockerfile .github
-          docker manifest inspect custom-kali-linux-ci
 
       - name: Tag Docker Image
         run: |
@@ -283,6 +282,12 @@ jobs:
           adb devices
           adb shell input keyevent 82
 
+          EOF
+
+          echo "dir=\"${dir}\"" >> test_exploit.sh
+
+          cat << "EOF" >> test_exploit.sh
+
           dir="${dir}"
           echo ${dir}
           metadata="${dir}/metadata.json"
@@ -310,7 +315,8 @@ jobs:
           echo "Running exploit and verification test for $dir"
           pytest -v --log-cli-level=INFO --log-cli-format='%(message)s' --tb=no tests/test_exploit.py::test_exploit_workflow --dirs "$dir"
           EOF
-
+          
+          cat test_exploit.sh
           chmod +x test_exploit.sh
 
       - name: Test exploit workflow
@@ -335,7 +341,6 @@ jobs:
       - name: Build Docker Image
         run: |
           docker build -t custom-kali-linux-ci -f .github/Dockerfile .github
-          docker manifest inspect custom-kali-linux-ci
 
       - name: Tag Docker Image
         run: |
