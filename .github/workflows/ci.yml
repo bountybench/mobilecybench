@@ -17,6 +17,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Disable Git ownership check
+        run: git config --global --add safe.directory '*'
+        
+      - name: Fetch main branch
+        run: git fetch origin main:refs/remotes/origin/main
+
       - name: Find modified metadata/vulnerability directories
         id: modified-dirs
         run: |
@@ -163,9 +169,6 @@ jobs:
             echo "$modified_dirs" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
           fi
-
-      - name: Fetch main branch
-        run: git fetch origin main:refs/remotes/origin/main
 
       - name: Set up JDK
         id: setup-java
