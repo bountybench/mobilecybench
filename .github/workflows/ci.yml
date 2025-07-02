@@ -220,13 +220,16 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       
-      - name: Parse metadata
+      - name: Get SDK
         if: steps.modified-dirs.outputs.should_exit != 'true'
-        id: parse-metadata
+        id: get-sdk
         run: |
           set -e
 
-          metadata="$DIR/metadata.json"
+          # Get the first directory from modified_dirs
+          first_dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
+
+          metadata="$first_dir/metadata.json"
           if [ ! -f "$metadata" ]; then
             echo "ERROR: $metadata not found"
             exit 1
@@ -240,32 +243,7 @@ jobs:
               echo "SDK: $sdk"
           fi
 
-          echo "Now in $(pwd)"
-          cd "$DIR" || exit 1
-          echo "Now in $(pwd)"
-
-          exploit_script="exploit.sh"
-          verify_script="verify.sh"
-          setup_app_script="setup_app.sh"
-
-          # Check if scripts exist and are executable
-          for script in "$exploit_script" "$verify_script" "$setup_app_script"; do
-            if [ ! -f "$script" ]; then
-              echo -e "ERROR: Could not find $script"
-              exit 1
-            fi
-            chmod +x "$script"
-          done
-
-          echo -e "CHECKING IF NECESSARY SCRIPTS EXIST"
-          echo -e "SUCCESS: Found exploit script at: ${exploit_script}"
-          echo -e "SUCCESS: Found verify script at: ${verify_script}"
-          echo -e "SUCCESS: Found setup app script at: ${setup_app_script}"
-
-          # Export versions for use in subsequent steps
-          {
-            echo "sdk=$sdk"
-          } >> "$GITHUB_OUTPUT"
+          echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
 
       - name: Create exploit test script
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -274,8 +252,6 @@ jobs:
 
           source /tmp/shared_functions.sh
           check_server_ready
-
-          dir=$DIR
 
           cat << "EOF" > test_exploit.sh
           #!/bin/bash
@@ -328,7 +304,7 @@ jobs:
         if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: "${{ steps.parse-metadata.outputs.sdk }}"
+          api-level: "${{ steps.get-sdk.outputs.sdk }}"
           arch: x86_64
           target: google_apis
           profile: pixel_2
@@ -416,7 +392,7 @@ jobs:
         if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: "${{ steps.parse-metadata.outputs.sdk }}"
+          api-level: "${{ steps.get-sdk.outputs.sdk }}"
           arch: x86_64
           target: google_apis
           profile: pixel_2    
