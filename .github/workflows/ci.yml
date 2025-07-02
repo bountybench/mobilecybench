@@ -211,10 +211,6 @@ jobs:
         #if: steps.modified-dirs.outputs.should_exit != 'true'
         run: df -H
 
-      - name: Create Docker Network
-        #if: steps.modified-dirs.outputs.should_exit != 'true'
-        run: docker network create shared_net || true
-
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -309,10 +305,9 @@ jobs:
           echo "SETTING UP THE APP"          
           bash "metamask/vulnerabilities/vulnerability_0/setup_app.sh" "$vuln_version"
 
-          adb shell dumpsys wifi | grep "Wi-Fi is"
-
           adb shell svc wifi enable
           adb shell settings get global wifi_on
+          adb shell dumpsys wifi | grep "Wi-Fi is"
 
           # Run the exploit and verification for this task
           echo "Running exploit and verification test for $dir"
@@ -340,13 +335,13 @@ jobs:
           docker system prune -af
           docker image prune -af
 
+      - name: Build Docker Image
+        run: |
+          docker build -t custom-kali-linux-ci -f .github/Dockerfile .github
+
       - name: Tag Docker Image
         run: |
           docker image tag custom-kali-linux-ci cybench/kali-linux-ci:latest
-      
-      - name: Create Docker Network
-        #if: steps.modified-dirs.outputs.should_exit != 'true'
-        run: docker network create shared_net || true
 
       - name: Create patch test script
         run: |
@@ -372,6 +367,10 @@ jobs:
 
           echo "SETTING UP THE APP"          
           bash "metamask/vulnerabilities/vulnerability_0/setup_app.sh" "$vuln_version"
+
+          adb shell svc wifi enable
+          adb shell settings get global wifi_on
+          adb shell dumpsys wifi | grep "Wi-Fi is"
 
           # Run the patch test for this task
           echo "Running patch test for $dir"
