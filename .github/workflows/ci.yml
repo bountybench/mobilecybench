@@ -1,0 +1,416 @@
+name: Check pytest tests
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DIR: metamask/vulnerabilities/vulnerability_0
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Disable Git ownership check
+        run: git config --global --add safe.directory '*'
+        
+      - name: Fetch main branch
+        run: git fetch origin main:refs/remotes/origin/main
+
+      - name: Find modified metadata/vulnerability directories
+        id: modified-dirs
+        run: |
+          cat << 'EOF' > /tmp/shared_functions.sh
+          execute_if_exists() {
+            local script_path="$1"
+            if [ -f "$script_path" ]; then
+              echo "Executing $script_path"
+              bash "$script_path"
+            else
+              echo "$script_path not found, skipping."
+            fi
+          }
+
+          get_modified_dirs() {
+            git diff --diff-filter=ACMDR --name-only origin/main...HEAD | while read -r file; do
+              ##################################
+              # First part
+              ##################################
+              # If the file path includes "vulnerabilities/vulnerability_{digits}", extract and echo it.
+              if [[ "$file" =~ (.*vulnerabilities/vulnerability_[0-9]+) ]]; then
+                dir="${BASH_REMATCH[1]}"
+                if [[ -d "$dir" ]]; then
+                  echo "$dir"
+                fi
+              fi
+
+              ##################################
+              # Second part
+              ##################################
+              # Skip if it already matches "vulnerabilities/vulnerability_{digits}" or contains metadata.json
+              if [[ "$file" =~ .*/vulnerabilities/vulnerability_[0-9]+ ]] || [[ "$file" =~ metadata.json ]]; then
+                continue
+              else
+                # Get the base directory
+                baseDir="$(dirname "$file")"
+                # Check if baseDir contains "vulnerabilities" somewhere
+                if [[ -d "$baseDir/vulnerabilities" ]]; then
+                  rootOfVulnerabilities="$baseDir/vulnerabilities"
+                  # For each bounty subfolder under rootOfVulnerabilities, echo if non-essentials check passes
+                  for subDir in "$rootOfVulnerabilities"/vulnerability_[0-9]*; do
+                    if [[ -d "$subDir" && "$subDir" =~ /vulnerability_[0-9]+$ ]]; then
+                      echo "$subDir"
+                    fi
+                  done
+                fi
+              fi
+            done | sort -u
+          }
+
+          check_server_ready() {
+            # Timeout per container in seconds
+            TIMEOUT=${TIMEOUT:-180}
+            # Interval between checks in seconds
+            INTERVAL=${INTERVAL:-1}
+
+            # Get all running containers
+            containers=$(docker ps --format '{{.Names}}')
+
+            for container in $containers; do
+              echo "Checking readiness for $container..."
+
+              # Check if container has a health check
+              has_health=$(docker inspect --format '{{if .Config.Healthcheck}}true{{else}}false{{end}}' "$container")
+              if [ "$has_health" = "true" ]; then
+                echo "Container has a health check. Waiting to become healthy..."
+                elapsed=0
+                success=0
+                while [ $elapsed -lt $TIMEOUT ]; do
+                  status=$(docker inspect --format '{{.State.Health.Status}}' "$container" 2>/dev/null)
+                  if [ "$status" == "healthy" ]; then
+                    success=1
+                    break
+                  fi
+                  sleep "$INTERVAL"
+                  elapsed=$((elapsed + INTERVAL))
+                done
+                if [ $success -eq 1 ]; then
+                  echo "$container is healthy."
+                  continue
+                else
+                  echo "Timeout: $container did not become healthy within $TIMEOUT seconds." >&2
+                  exit 1
+                fi
+              else
+                # Get exposed TCP ports
+                ports=$(docker inspect --format '{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{.HostPort}} {{end}}{{end}}' "$container")
+                if [ -z "$ports" ]; then
+                  echo "No exposed ports for $container. Skipping readiness check." >&2
+                  continue
+                fi
+
+                elapsed=0
+                all_success=0
+                while [ $elapsed -lt $TIMEOUT ]; do
+                  success=1
+                  for port_spec in $ports; do
+                    port=$(echo "$port_spec" | cut -d'/' -f1)
+                    proto=$(echo "$port_spec" | cut -d'/' -f2)
+                    if [ "$proto" != "tcp" ]; then
+                      continue  # Skip non-TCP ports
+                    fi
+
+                    # Perform TCP check
+                    if ! nc -z -w 1 localhost "$port" &>/dev/null; then
+                      success=0
+                      break
+                    fi
+                  done
+
+                  if [ $success -eq 1 ]; then
+                    all_success=1
+                    break
+                  fi
+
+                  sleep "$INTERVAL"
+                  elapsed=$((elapsed + INTERVAL))
+                done
+
+                if [ $all_success -eq 1 ]; then
+                  echo "$container is ready via port check on all ports."
+                else
+                  echo "Timeout: $container not ready after $TIMEOUT seconds." >&2
+                  exit 1
+                fi
+              fi
+            done
+
+            echo "All containers are ready!"
+          }
+
+          EOF
+          chmod +x /tmp/shared_functions.sh
+          source /tmp/shared_functions.sh
+          modified_dirs=$(get_modified_dirs)
+          if [ -z "$modified_dirs" ]; then
+            echo "No modified directories with essential changes found. Skipping further steps."
+            echo "should_exit=true" >> $GITHUB_OUTPUT
+          else
+            echo "Modified directories:"
+            echo "$modified_dirs"
+
+            echo "modified_dirs<<EOF" >> $GITHUB_OUTPUT
+            echo "$modified_dirs" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up JDK
+        id: setup-java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+      
+      - name: Setup Python 3.9 environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpulse0
+          python -m pip install --upgrade pip -q
+          pip install -r .github/requirements.txt -q
+          export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
+
+      - name: Docker Cleanup before pulling new image
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          docker system prune -af
+          docker image prune -af
+
+      - name: Build Docker Image
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          docker build -t custom-kali-linux-ci -f .github/Dockerfile .github
+
+      - name: Tag Docker Image
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          docker image tag custom-kali-linux-ci cybench
+
+      - name: Display disk space after pulling image
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: df -H
+
+      - name: Enable KVM
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      
+      - name: Get SDK
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        id: get-sdk
+        run: |
+          set -e
+
+          # Get the first directory from modified_dirs
+          first_dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
+
+          metadata="$first_dir/metadata.json"
+          if [ ! -f "$metadata" ]; then
+            echo "ERROR: $metadata not found"
+            exit 1
+          fi
+
+          sdk=$(jq -r '.sdk' $metadata)
+          if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
+              echo "${ERROR} Could not extract SDK from $metadata. Use default (28)."
+              sdk=28
+          else 
+              echo "SDK: $sdk"
+          fi
+
+          echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
+
+      - name: Create exploit test script
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          echo "Generating test_exploit.sh"
+
+          source /tmp/shared_functions.sh
+          check_server_ready
+
+          cat << "EOF" > test_exploit.sh
+          #!/bin/bash
+          set -e
+
+          adb wait-for-device
+          adb shell getprop sys.boot_completed
+          adb devices
+          adb shell input keyevent 82
+
+          EOF
+
+          echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | while read -r dir; do
+            echo "Processing directory: $dir"
+            
+            echo "dir=\"${dir}\"" >> test_exploit.sh
+
+            cat << "EOF" >> test_exploit.sh
+
+            dir="${dir}"
+            metadata="${dir}/metadata.json"
+            echo metadata
+            if [ ! -f "$metadata" ]; then
+              echo "ERROR: $metadata not found"
+              exit 1
+            fi
+
+            vuln_version=$(jq -r '.app_vulnerable_version' "$metadata")
+            if ! vuln_version=$(jq -r '.app_vulnerable_version' "$metadata") || [ "$vuln_version" = "null" ] || [ -z "$vuln_version" ]; then
+              echo "ERROR: Could not extract vulnerable version of app from $metadata."
+              exit 1
+            fi
+
+            echo "SETTING UP THE APP"
+            setup_script="$dir/setup_app.sh"          
+            bash $setup_script "$vuln_version"
+
+            adb shell svc wifi enable
+            adb shell settings get global wifi_on
+            adb shell dumpsys wifi | grep "Wi-Fi is"
+
+            # Run the exploit and verification for this task
+            echo "Running exploit and verification test for $dir"
+            pytest -v --log-cli-level=INFO --log-cli-format='%(message)s' --tb=no tests/test_exploit.py::test_exploit_workflow --dirs "$dir"
+          EOF
+          done
+          chmod +x test_exploit.sh
+
+      - name: Test exploit workflow
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: "${{ steps.get-sdk.outputs.sdk }}"
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          ram-size: 2048    
+          force-avd-creation: true
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
+          disable-animations: true
+          script: ./test_exploit.sh
+
+      - name: Docker Cleanup before pulling new image
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          docker system prune -af
+          docker image prune -af
+
+      - name: Build Docker Image
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          docker build -t custom-kali-linux-ci -f .github/Dockerfile .github
+
+      - name: Tag Docker Image
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          docker image tag custom-kali-linux-ci cybench
+
+      - name: Display disk space after pulling image
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: df -H
+
+      - name: Create patch test script
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          echo "Generating test_patch.sh"
+
+          source /tmp/shared_functions.sh
+          check_server_ready
+
+          cat << "EOF" > test_patch.sh
+          #!/bin/bash
+          set -e
+
+          adb wait-for-device
+          adb shell getprop sys.boot_completed
+          adb devices
+          adb shell input keyevent 82
+
+          EOF
+
+          echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | while read -r dir; do
+            echo "Processing directory: $dir"
+            
+            echo "dir=\"${dir}\"" >> test_patch.sh
+
+            cat << "EOF" >> test_patch.sh
+
+            dir="${dir}"
+            metadata="$dir/metadata.json"
+            if [ ! -f "$metadata" ]; then
+              echo "ERROR: $metadata not found"
+              exit 1
+            fi
+
+            patched_version=$(jq -r '.app_patched_version' "$metadata")
+            if ! patched_version=$(jq -r '.app_patched_version' "$metadata") || [ "$patched_version" = "null" ] || [ -z "$patched_version" ]; then
+              echo "ERROR: Could not extract patched version of app from $metadata."
+              exit 1
+            fi
+
+            echo "SETTING UP THE APP"          
+            setup_script="$dir/setup_app.sh"          
+            bash $setup_script "$patched_version"
+
+            adb shell svc wifi enable
+            adb shell settings get global wifi_on
+            adb shell dumpsys wifi | grep "Wi-Fi is"
+
+            # Run the patch test for this task
+            echo "Running patch test for $dir"
+            pytest --log-cli-level=INFO --log-cli-format='%(message)s' --tb=no tests/test_patch.py::test_patch_workflow --dirs "$dir"
+          EOF
+          done
+          chmod +x test_patch.sh
+
+      - name: Test patch workflow
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: "${{ steps.get-sdk.outputs.sdk }}"
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2    
+          ram-size: 2048    
+          force-avd-creation: true
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
+          disable-animations: true
+          script: ./test_patch.sh
+      
+      - name: Display disk space after tests
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: df -h
+
+      - name: Docker Cleanup after tests
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          docker system prune -af
+
+      - name: Display disk space after cleanup
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: df -h
