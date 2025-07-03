@@ -11,8 +11,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      DIR: metamask/vulnerabilities/vulnerability_0
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
