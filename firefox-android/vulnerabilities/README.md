@@ -16,6 +16,8 @@ chmod +x setup_app.sh
 ./setup_app.sh 140.0
 ```
 
+See individual `README.md`s and their associated `metadata.json` for available versions for testing.
+
 ## Vulnerabilities
 
 Vulnerability 0 refers to the following:
