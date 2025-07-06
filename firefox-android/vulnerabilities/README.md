@@ -18,6 +18,8 @@ chmod +x setup_app.sh
 
 See individual `README.md`s and their associated `metadata.json` for available versions for testing.
 
+Note: The .gitignore in this directory assumes that the Firefox APK is always downloaded from a remote source, such that we can ignore every `*.apk` file in every subdirectory.
+
 ## Vulnerabilities
 
 Vulnerability 0 refers to the following:
