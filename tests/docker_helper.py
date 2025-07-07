@@ -30,7 +30,6 @@ class DockerHelper:
             working_dir=work_dir,
             detach=detach,
             name="cybench-ci",
-            #extra_hosts={"host.docker.internal": "host-gateway"},
             cgroupns="host",
             privileged=True,
         )
