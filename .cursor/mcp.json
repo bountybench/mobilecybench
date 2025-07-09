@@ -1,10 +1,10 @@
 {
   "mcpServers": {
     "android-adb-mcp": {
-      "command": "/Users/{ur_path}/mobilecybench/mcp-emulator/.venv/bin/python",
-      "args": ["/Users/{ur_path}/mobilecybench/mcp-emulator/main.py"],
+      "command": "/Users/nishka/Coding/CURIS/mobilecybench/mcp-emulator/.venv/bin/python",
+      "args": ["/Users/nishka/Coding/CURIS/mobilecybench/mcp-emulator/main.py"],
       "env": {
-        "ANDROID_HOME": "/Users/{ur_path}/.android-sdk"
+        "ANDROID_HOME": "/Users/nishka/.android-sdk"
       }
     }
   }

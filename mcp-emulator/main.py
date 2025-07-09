@@ -82,7 +82,7 @@ def run_command(cmd: str):
 
 def obtain_UI_elements() -> List[UIElement]:
     remote_path = "/sdcard/window_dump.xml"
-    local_path = "./Users/{ur_path}/mobilecybench/mcp-emulator/window_dump.xml"
+    local_path = "./Users/nishka/Coding/CURIS/mobilecybench/mcp-emulator/window_dump.xml"
     run_command(f'adb shell uiautomator dump {remote_path}')
     run_command(f'adb pull {remote_path} {local_path}')
     tree = ET.parse(local_path)
@@ -119,7 +119,7 @@ def obtain_UI_elements() -> List[UIElement]:
 
 def obtain_b64_screenshot():
     remote_path = "/sdcard/screenshot.png"
-    local_path = "./Users/{ur_path}/mcp-emulator/screenshot.png"
+    local_path = "./Users/nishka/Coding/CURIS/mobilecybench/mcp-emulator/screenshot.png"
     run_command(f'adb shell screencap -p {remote_path}')
     run_command(f'adb pull {remote_path} {local_path}')
 
