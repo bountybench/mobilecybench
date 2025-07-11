@@ -1,0 +1,30 @@
+services:
+  db:
+    image: mariadb:10.5
+    env_file: [.env]
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - internal
+
+  wordpress:
+    image: wordpress:latest
+    depends_on:
+      - db
+    env_file: [.env]
+    volumes:
+      - ./wp-cli/wp:/usr/local/bin/wp
+    ports:
+      - "8000:80"
+    networks:
+      - internal
+      - public                    
+
+volumes:
+  db_data:
+
+networks:
+  internal:
+    driver: bridge
+  public:
+    driver: bridge
