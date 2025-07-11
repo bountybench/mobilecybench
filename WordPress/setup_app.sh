@@ -1,67 +1,135 @@
 #!/usr/bin/env bash
+set -e
 
-# variables
+# Variables
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ANDROID_HOME="${HOME}/.android-sdk"
 REPO_DIR="WordPress-Android"
-APK_REL="WordPress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk"
-APK_PATH="$REPO_DIR/$APK_REL"
 AVD_NAME="Pixel_2_API_28"
 WP_SITE_URL="10.0.2.2:8000"
 WP_USER="user_a"
 WP_PASS="user_a_pass"
-export PATH="$HOME/.android-sdk/platform-tools:$PATH"
+APK_REL="WordPress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk"
+APK_PATH="${REPO_DIR}/${APK_REL}"
+
+check_prerequisites() {
+    if ! command -v java >/dev/null 2>&1; then
+        echo "ERROR: Java not found. Please install Java 17."
+        exit 1
+    fi
+    if [[ ! -d "${ANDROID_HOME}" ]]; then
+        echo "ERROR: Android SDK not found at ${ANDROID_HOME}"
+        exit 1
+    fi
+    if ! command -v git >/dev/null 2>&1; then
+        echo "ERROR: Git is required but not installed."
+        exit 1
+    fi
+}
+
+setup_environment() {
+    export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+    export PATH="${JAVA_HOME}/bin:${PATH}"
+    export ANDROID_HOME="${ANDROID_HOME}"
+    export PATH="${ANDROID_HOME}/platform-tools:${PATH}"
+    echo "sdk.dir=${ANDROID_HOME}" > "${REPO_DIR}/local.properties"
+}
+
+initialize_repository() {
+    if [[ ! -d "${REPO_DIR}" ]]; then
+        echo "Initializing WordPress-Android submodule..."
+        git submodule update --init --recursive "${REPO_DIR}"
+    elif [[ ! -f "${REPO_DIR}/gradlew" ]]; then
+        echo "Repository exists but gradlew missing. Updating submodule..."
+        git submodule update --init --recursive "${REPO_DIR}"
+    fi
+}
+
+build_wordpress() {
+    echo "Building WordPress APK..."
+    pushd "${REPO_DIR}" >/dev/null
+    chmod +x gradlew
+    
+    ./gradlew assembleWordpressVanillaDebug
+    popd >/dev/null
+}
+
+start_emulator() {
+    echo "Starting emulator..."
+    "${SCRIPT_DIR}/../start_emulator.sh" "${AVD_NAME}" &
+    adb wait-for-device
+}
 
 wait_for_boot() {
-  echo -n "   ⏳ waiting for sys.boot_completed…"
-  until adb shell getprop sys.boot_completed 2>/dev/null | grep -q "^1$"; do
-    printf "."
-    sleep 0.5
-  done
+    echo -n "Waiting for system boot completion..."
+    until adb shell getprop sys.boot_completed 2>/dev/null | grep -q "^1$"; do
+        sleep 0.5
+        echo -n "."
+    done
+    echo
 }
 
 wait_for_activity() {
-  local ACT="$1"
-  echo -n "   ⏳ waiting for activity ${ACT}…"
-  until adb shell dumpsys activity activities \
-      | grep -q "mResumedActivity.*${ACT}"; do
-    printf "."
-    sleep 0.3
-  done
+    local target_activity="$1"
+    echo -n "Waiting for activity ${target_activity}..."
+    until adb shell dumpsys activity activities 2>/dev/null | grep -q "mResumedActivity.*${target_activity}"; do
+        sleep 0.3
+        echo -n "."
+    done
+    echo
 }
 
-echo "1/6 building WordPress APK"
-cd "$REPO_DIR"
-#./gradlew clean assembleVanillaDebug -x lint
-cd ..
+install_and_launch() {
+    echo "Installing and launching APK..."
+    if [[ ! -f "${APK_PATH}" ]]; then
+        echo "ERROR: APK not found at ${APK_PATH}"
+        exit 1
+    fi
+    
+    adb install -r "${APK_PATH}"
+    adb shell am start \
+        -n org.wordpress.android/.ui.WPLaunchActivity \
+        -a android.intent.action.MAIN \
+        --ez android.intent.extra.ALLOW_MULTIPLE false \
+        --es wp_site_url "${WP_SITE_URL}"
+}
 
-echo "1/6 starting emulator"
-../start_emulator.sh "$AVD_NAME" &
-adb wait-for-device
-wait_for_boot
+perform_login() {
+    wait_for_activity "WPLaunchActivity"
 
-echo "2/6 installing and launching APK"
-adb install -r "$APK_PATH"
-adb shell am start \
-  -n org.wordpress.android/.ui.WPLaunchActivity \
-  -a android.intent.action.MAIN \
-  --ez android.intent.extra.ALLOW_MULTIPLE false \
-  --es wp_site_url "$WP_SITE_URL"
-wait_for_activity "WPLaunchActivity"
+    echo "Navigating to login screen..."
+    for _ in {1..3}; do
+        adb shell input keyevent 61
+        sleep 0.2
+    done
+    adb shell input keyevent 66
+    sleep 1
 
-echo "3/6 click login button"
-adb shell input keyevent 61
-adb shell input keyevent 61
-adb shell input keyevent 61
-adb shell input keyevent 66
+    echo "Entering site URL..."
+    adb shell input text "${WP_SITE_URL}"
+    adb shell input keyevent 66
+    sleep 3
 
-echo "4/6 entering site URL"
-adb shell input text "$WP_SITE_URL"
-adb shell input keyevent 66
-sleep 3
+    echo "Entering credentials..."
+    adb shell input text "${WP_USER}"
+    adb shell input keyevent 61
+    adb shell input text "${WP_PASS}"
+    adb shell input keyevent 66
+}
 
-echo "5/6 entering username"
-adb shell input text "$WP_USER"
-adb shell input keyevent 61
+main() {
+    echo "WordPress Android Setup"
+    echo "======================="
+    cd "${SCRIPT_DIR}"
+    check_prerequisites
+    initialize_repository
+    setup_environment
+    build_wordpress
+    start_emulator
+    wait_for_boot
+    install_and_launch
+    perform_login
+    echo "Setup complete! WordPress is ready for testing."
+}
 
-echo "6/6 entering password"
-adb shell input text "$WP_PASS"
-adb shell input keyevent 66
+main "$@"
