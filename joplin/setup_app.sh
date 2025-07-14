@@ -110,6 +110,8 @@ main() {
     local version="$1"
     echo "Setting up joplin Android version: $version"
 
+    root_dir="$(pwd)"
+
     if [[ -d "codebase/packages/app-mobile" ]]; then
         echo "Navigating to codebase/packages/app-mobile directory..."
         cd codebase/packages/app-mobile
@@ -134,6 +136,7 @@ main() {
     build_joplin
     install_joplin "$version"
     launch_joplin
+    cd "$root_dir"
     synch_with_server
     
     echo ""

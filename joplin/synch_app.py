@@ -30,20 +30,23 @@ if label.exists:
     edit = label.sibling(className="android.widget.EditText")
     edit.click()
     d.send_keys("http://10.0.2.2:22300")
+time.sleep(5)
 
 # Fill Joplin Server email
 label = d(text="Joplin Server email")
 if label.exists:
     edit = label.sibling(className="android.widget.EditText")
     edit.click()
-    d.send_keys("admin@localhost")
+    d.send_keys("usera@localhost")
+time.sleep(5)
 
 # Fill Joplin Server password
 label = d(text="Joplin Server password")
 if label.exists:
     edit = label.sibling(className="android.widget.EditText")
     edit.click()
-    d.send_keys("AdminPW123")
+    d.send_keys("userAPW123")
+time.sleep(5)
 
 d.press("enter")
 wait_and_click_text("CHECK SYNCHRONIZATION CONFIGURATION")

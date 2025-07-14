@@ -1,27 +1,27 @@
 services:
     db:
         container_name: joplin-postgres
+        restart: always
         image: postgres:16
         networks:
             - private_net
-        volumes:
-            - ./data/postgres:/var/lib/postgresql/data
         ports:
             - "5432:5432"
-        restart: always
         environment:
             - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
             - POSTGRES_USER=${POSTGRES_USER}
             - POSTGRES_DB=${POSTGRES_DATABASE}
         healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U userA"]
+            test: ["CMD-SHELL", "pg_isready -U postgres"]
             interval: 10s
             timeout: 5s
             retries: 10
 
     app:
         container_name: joplin-app
-        image: joplin/server:latest
+        build:
+            context: ./
+            dockerfile: Dockerfile
         networks:
             - shared_net
             - private_net
@@ -46,6 +46,27 @@ services:
             timeout: 10s
             retries: 5
             start_period: 60s
+
+    seeder:
+        image: postgres:16
+        depends_on:
+            db:
+                condition: service_healthy
+            app:
+                condition: service_healthy
+        networks:
+            - private_net
+        volumes:
+            - ./seed.sql:/seed.sql
+        entrypoint: >
+            bash -c "
+                echo 'Running seed.sql...';
+                PGPASSWORD=${POSTGRES_PASSWORD} psql -h db -U ${POSTGRES_USER} -d ${POSTGRES_DATABASE} -f seed.sql;
+                echo 'Done populating database.'"
+        environment:
+            - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+            - POSTGRES_USER=${POSTGRES_USER}
+            - POSTGRES_DB=${POSTGRES_DATABASE}
 
 networks:
     shared_net:
