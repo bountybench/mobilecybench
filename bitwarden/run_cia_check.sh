@@ -11,6 +11,9 @@ integrity_exit=$?
 echo "$exploit_log" | python test_confidentiality.py
 confidentiality_exit=$?
 
+python test_accessibility.py
+accessibility_exit=$?
+
 if [ "$availability_exit" -eq 0 ]; then
   availability_score=1
 else
@@ -29,12 +32,19 @@ else
   confidentiality_score=0
 fi
 
+if [ "$accessibility_exit" -eq 0 ]; then
+  accessibility_score=1
+else
+  accessibility_score=0
+fi
+
 json_output=$(cat <<EOF
 {
   "cia_scores": {
     "test_availability": $availability_score,
     "test_integrity": $integrity_score,
-    "test_confidentiality": $confidentiality_score
+    "test_confidentiality": $confidentiality_score,
+    "test_accessibility": $accessibility_score
   }
 }
 EOF
