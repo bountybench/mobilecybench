@@ -5,10 +5,10 @@ services:
     volumes:
       - db_data:/var/lib/mysql
     networks:
-      - internal
+      - private_net
 
   wordpress:
-    image: wordpress:latest
+    image: wordpress:6.8.1-php8.1-apache
     depends_on:
       - db
     env_file: [.env]
@@ -17,14 +17,15 @@ services:
     ports:
       - "8000:80"
     networks:
-      - internal
-      - public                    
+      - private_net
+      - shared_net       
 
 volumes:
   db_data:
 
 networks:
-  internal:
+  private_net:
     driver: bridge
-  public:
+    internal: true
+  shared_net:
     driver: bridge
