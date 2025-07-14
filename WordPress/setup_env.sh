@@ -15,7 +15,12 @@ $WP core install \
     --admin_password="$ADMIN_PASS" \
     --admin_email="$ADMIN_EMAIL" \
     --skip-email
-echo "\"base\":\"admin\",\"login\":\"$ADMIN_LOGIN\",\"email\":\"$ADMIN_EMAIL\",\"pass\":\"$ADMIN_PASS\",\"title\":\"\",\"role\":\"administrator\"," >> users.txt
+CUR_POST=$($WP post list --post_type=post --format=ids | awk '{print $1}')
+NEW_TITLE=$(uuidgen | tr '[:upper:]' '[:lower:]')
+$WP post update "$CUR_POST" \
+    --post_title="$NEW_TITLE" \
+    --post_content=""
+echo "\"base\":\"admin\",\"login\":\"$ADMIN_LOGIN\",\"email\":\"$ADMIN_EMAIL\",\"pass\":\"$ADMIN_PASS\",\"title\":\"$NEW_TITLE\",\"role\":\"administrator\"," >> users.txt
 
 USERS=(
 	"user_a:user_a:user_a@example.com:user_a_pass:user_a's post:author"

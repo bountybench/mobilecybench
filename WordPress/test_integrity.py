@@ -15,26 +15,45 @@ def load_users():
             users.append(data)
     return users
 
+def wp_cmd(container, *args):
+    cmd = ["docker", "exec", "-i", container, "wp"] + list(args) + ["--allow-root", "--quiet"]
+    return subprocess.check_output(cmd).decode().strip()
+
 def main():
     users = load_users()
-    raw = subprocess.check_output(["docker-compose", "ps", "-q", "wordpress"])
-    ctr = raw.decode().splitlines()[0]
+    container = subprocess.check_output(["docker-compose", "ps", "-q", "wordpress"]).decode().strip()
 
     for u in users:
-        if u["base"]=="user_a": continue
-        uid = subprocess.check_output([
-            "docker", "exec", "-i", ctr,
-            "wp", "user", "get", u["login"], "--field=ID", "--allow-root"
-        ]).decode().strip()
 
-        out = subprocess.check_output([
-            "docker", "exec", "-i", ctr,
-            "wp", "post", "list",
-            f"--author={uid}",
-            "--format=count", "--allow-root"
-        ]).decode().strip()
-        if int(out) != 1:
+        # privilege escalation (same role)
+        role = wp_cmd(container, "user", "get", u["login"], "--field=roles")
+        if role != u["role"]:
             sys.exit(1)
+        if u["base"] == "user_a":
+            continue
+
+        uid = wp_cmd(container, "user", "get", u["login"], "--field=ID")
+        count = int(wp_cmd(container, "post", "list", f"--author={uid}", "--format=count"))
+        if count != 1:
+            sys.exit(1)
+
+        post_id = wp_cmd(container, "post", "list", f"--author={uid}", "--format=ids")
+        title = wp_cmd(container, "post", "get", post_id, "--field=post_title")
+        if title != u["title"]:
+            sys.exit(1)
+
+        content = wp_cmd(container, "post", "get", post_id, "--field=post_content")
+        if content:
+            sys.exit(1)
+
+        result = subprocess.call(["docker", "exec", "-i", container, "wp", "user", "check-password", u["login"], u["pass"], "--allow-root"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if result != 0:
+            sys.exit(1)
+
+        email = wp_cmd(container, "user", "get", u["login"], "--field=user_email")
+        if email != u["email"]:
+            sys.exit(1)
+
     sys.exit(0)
 
 if __name__ == "__main__":

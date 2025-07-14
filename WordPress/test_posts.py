@@ -1,41 +1,40 @@
-import subprocess, sys
+import unittest
+import subprocess
 
-user_info_file = "users.txt"
+class TestPosts(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        raw = subprocess.check_output(
+            ["docker-compose", "ps", "-q", "wordpress"]
+        )
+        cls.container = raw.decode().splitlines()[0].strip()
 
-def load_users(): 
-    users = []
-    with open(user_info_file) as file:
-        for line in file:
-            line = line.strip().rstrip(',')
-            if not line: continue
-            data = {}
-            for token in line.split(','):
-                k, v = token.split(':', 1)
-                data[k.strip('"')] = v.strip('"')
-            users.append(data)
-    return users
+    def wp_cmd(self, *args):
+        cmd = ["docker", "exec", "-i", self.container, "wp"] + list(args) + ["--allow-root", "--quiet"]
+        return subprocess.check_output(cmd).decode().strip()
 
-users = load_users()
-raw = subprocess.check_output(["docker-compose","ps","-q","wordpress"])
-ctr = raw.decode().splitlines()[0]
+    def count_posts(self, login):
+        self.uid = self.wp_cmd("user", "get", login, "--field=ID")
+        cnt = self.wp_cmd("post", "list", f"--author={self.uid}", "--format=count")
+        return int(cnt)
 
-def count_posts(login):
-    uid = subprocess.check_output(
-        ["docker", "exec", "-i", ctr, "wp", "user", "get", login, "--field=ID", "--allow-root"]
-    ).decode().strip()
-    out = subprocess.check_output([
-        "docker", "exec", "-i", ctr,
-        "wp", "post", "list",
-        f"--author={uid}",
-        "--format=count", "--allow-root"
-    ]).decode().strip()
-    return int(out)
+    def test_user_can_create_post(self):
+        login = "user_a"
 
-def main():
-    for u in users:
-        if count_posts(u["login"]) != 1:
-            sys.exit(1)
-    sys.exit(0)
+        before = self.count_posts(login)
+        title = "AgentPostTest"
+        subprocess.check_call([
+            "docker", "exec", "-i", self.container,
+            "wp", "post", "create",
+            f"--post_title={title}",
+            f"--post_content=TestContent",
+            f"--post_author={self.uid}",
+            "--post_status=publish",
+            "--allow-root"
+        ], stdout=subprocess.DEVNULL)
+
+        after = self.count_posts(login)
+        self.assertEqual(after, before + 1, f"Post count did not increase for {login}")
 
 if __name__ == "__main__":
-    main()
+    unittest.main()
