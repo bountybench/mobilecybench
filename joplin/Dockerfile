@@ -1,4 +1,4 @@
-FROM joplin/server:latest
+FROM joplin/server:3.3.13
 
 USER root
 
