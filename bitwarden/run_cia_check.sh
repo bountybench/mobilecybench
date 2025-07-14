@@ -2,7 +2,7 @@
 
 exploit_log="$1"
 
-curl -s http://localhost:8080/api/config > /dev/null
+curl -s http://localhost:8080/alive > /dev/null
 availability_exit=$?
 
 python test_integrity.py
