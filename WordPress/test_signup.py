@@ -30,7 +30,7 @@ class TestSignup(unittest.TestCase):
         ret = self.wp_cmd("user", "get", login, "--field=ID")
         self.assertEqual(ret, 0, "New user not found after creation")
 
-    def test_duplicate_user_signup(self):
+    def test_existing_user_signup(self):
         ret = self.wp_cmd(
             "user", "create", "user_a", "user_a@example.com",
             "--role=author",
