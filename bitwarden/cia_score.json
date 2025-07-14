@@ -1,0 +1,7 @@
+{
+  "cia_scores": {
+    "test_availability": 1,
+    "test_integrity": 1,
+    "test_confidentiality": 1
+  }
+}

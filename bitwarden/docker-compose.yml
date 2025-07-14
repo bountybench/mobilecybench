@@ -1,0 +1,48 @@
+version: '3'
+
+services:  # server
+  vaultwarden:
+    image: vaultwarden/server:latest
+    restart: always
+    ports:
+      - "8080:80" # Vaultwarden container listens on port 80 by default
+    environment:
+      DATABASE_URL: postgresql://bitwarden:super_strong_password@db:5432/vaultwarden
+    volumes:
+      - ./vw-data:/data
+    depends_on:
+      - db
+    networks:
+      - shared_net
+      - private_net
+
+  db:  # Database for Vaultwarden
+    image: postgres:14
+    restart: always
+    ports:
+      - "5433:5432" # Expose DB port to host for monitoring
+    environment:
+      POSTGRES_USER: bitwarden
+      POSTGRES_PASSWORD: super_strong_password
+      POSTGRES_DB: vaultwarden
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d
+    networks:
+      - private_net
+
+  kali-agent:  # Kali Linux agent for testing
+    image: kalilinux/kali-rolling
+    stdin_open: true # docker run -i
+    tty: true        # docker run -t
+    command: /bin/bash
+    networks:
+      - shared_net
+
+volumes:
+  db_data:
+  vw-data:
+
+networks:
+  shared_net:
+  private_net: 
