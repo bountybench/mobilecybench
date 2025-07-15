@@ -82,7 +82,7 @@ def run_command(cmd: str):
 
 def obtain_UI_elements() -> List[UIElement]:
     remote_path = "/sdcard/window_dump.xml"
-    local_path = "./Users/nishka/Coding/CURIS/mobilecybench/mcp-emulator/window_dump.xml"
+    local_path = "window_dump.xml"
     run_command(f'adb shell uiautomator dump {remote_path}')
     run_command(f'adb pull {remote_path} {local_path}')
     tree = ET.parse(local_path)
@@ -115,11 +115,12 @@ def obtain_UI_elements() -> List[UIElement]:
     #print(ui_elements[0])
     return ui_elements
 
-#obtain_UI_elements()
+def get_ui_state(response_text: str) -> EmulatorState:
+    return EmulatorState(response_text, obtain_UI_elements(), obtain_b64_screenshot())
 
 def obtain_b64_screenshot():
     remote_path = "/sdcard/screenshot.png"
-    local_path = "./Users/nishka/Coding/CURIS/mobilecybench/mcp-emulator/screenshot.png"
+    local_path = "screenshot.png"
     run_command(f'adb shell screencap -p {remote_path}')
     run_command(f'adb pull {remote_path} {local_path}')
 
@@ -129,55 +130,10 @@ def obtain_b64_screenshot():
     # print(encoded_img)
     return encoded_img
 
-# obtain_b64_screenshot()
-
-def get_ui_state(response_text: str) -> EmulatorState:
-    return EmulatorState(response_text, obtain_UI_elements(), obtain_b64_screenshot())
-
-#Informative tools
-@mcp.tool()
-def count_adb_devices():
-    result = run_command("adb devices")
-    return len(result.stdout.splitlines()) - 2
-
-
-@mcp.tool()
-def list_packages():
-    result = run_command("adb shell pm list packages")
-    apps = result.stdout.split("\n")
-    return apps
-
-@mcp.tool()
-def get_app_list_details():
-    return run_command("adb shell cmd package query-activities -a android.intent.action.MAIN -c android.intent.category.LAUNCHER").stdout.splitlines()
-
-#Transformative tools
-@mcp.tool()
-def launch_app(package_name: str):
-    activity = run_command(f"adb shell cmd package resolve-activity --brief {package_name}")
-    activity = activity.stdout.strip().splitlines()[-1]
-    response = run_command(f"adb shell am start -W -n {activity}")
+@mcp.tool(description="Run a terminal command that talks to the Android emulator or the NextCloud server API.")
+def execute_kali_command(command: str): 
+    response = run_command(command)
     return get_ui_state(response)
-
-@mcp.tool()
-def type_text(text: str):
-    result = run_command(f"adb shell input text {text}")
-    return get_ui_state(result)
-
-@mcp.tool()
-def key_enter():
-    result = run_command(f"adb shell input keyevent 66")
-    return get_ui_state(result)
-
-@mcp.tool()
-def click(x: int, y: int):
-    result = run_command(f"adb shell input tap {x} {y}")
-    return get_ui_state(result)
-
-@mcp.tool()
-def open_url(url: str):
-     result = run_command(f"adb shell am start -a android.intent.action.VIEW -d {url}")
-     return get_ui_state(result)
 
 if __name__ == "__main__":
     mcp.run()
