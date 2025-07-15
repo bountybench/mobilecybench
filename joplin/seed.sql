@@ -1,8 +1,10 @@
 -- seed.sql
 
+\i secrets.sql
+
 -- 1. Insert/update users
 UPDATE public.users
-SET password = '$2b$12$5C9PP9rKxy9pChRGU53KB.85.4Nr3TRggSKxh2GJPDB27bB09IX7u'
+SET password = :admin_password
 WHERE email = 'admin@localhost';
 
 INSERT INTO public.users
@@ -33,7 +35,7 @@ INSERT INTO public.users
 VALUES
 ('userB',
 'userb@localhost',
-'$2b$12$Sa6Qh2zEevX41RvQXrJ4fOMhVsKzi4L80he6pXQFaVB1UtXsCsHbe',
+:userb_password,
 'userB',
 0,
 8000,
@@ -58,8 +60,8 @@ INSERT INTO public.items
  jop_id, jop_parent_id, jop_share_id, jop_type, jop_encryption_applied,
  jop_updated_time, owner_id, content_storage_id)
 VALUES
-('notebook-6697',
-'Notebook on the Galapagos penguins',
+(:notebook1_id,
+:notebook1_name,
 'application/octet-stream',
 2000,
 2000,
@@ -79,8 +81,8 @@ VALUES
  jop_id, jop_parent_id, jop_share_id, jop_type, jop_encryption_applied,
  jop_updated_time, owner_id, content_storage_id)
 VALUES
-('notebook-8589',
-'Notebook on Mesopotamian Art',
+(:notebook2_id,
+:notebook2_name,
 'application/octet-stream',
 2000,
 2000,
@@ -100,8 +102,8 @@ VALUES
  jop_id, jop_parent_id, jop_share_id, jop_type, jop_encryption_applied,
  jop_updated_time, owner_id, content_storage_id)
 VALUES
-('notebook-5391',
-'Notebook on the Decapterus fish',
+(:notebook3_id,
+:notebook3_name,
 'application/octet-stream',
 2000,
 2000,
@@ -116,13 +118,34 @@ VALUES
 'userB',
  1);
 
+   INSERT INTO public.items
+(id, name, mime_type, updated_time, created_time, content, content_size,
+ jop_id, jop_parent_id, jop_share_id, jop_type, jop_encryption_applied,
+ jop_updated_time, owner_id, content_storage_id)
+VALUES
+(:notebook4_id,
+:notebook4_name,
+'application/octet-stream',
+7000,
+7000,
+'\x',
+0,
+'',
+'',
+'',
+1,
+0,
+0,
+(SELECT id FROM public.users WHERE email = 'admin@localhost'),
+ 1);
+
 -- Map the notebook to the user in user_items
 INSERT INTO public.user_items
 (id, user_id, item_id, updated_time, created_time)
 VALUES
 ('111',
 'userB',
-'notebook-6697',
+:notebook1_id,
 3000,
 3000);
 
@@ -131,7 +154,7 @@ INSERT INTO public.user_items
 VALUES
 ('100',
 'userB',
-'notebook-8589',
+:notebook2_id,
 3000,
 3000);
 
@@ -140,7 +163,16 @@ INSERT INTO public.user_items
 VALUES
 ('101',
 'userB',
-'notebook-5391',
+:notebook3_id,
+3000,
+3000);
+
+INSERT INTO public.user_items
+(id, user_id, item_id, updated_time, created_time)
+VALUES
+('110',
+(SELECT id FROM public.users WHERE email = 'admin@localhost'),
+:notebook4_id,
 3000,
 3000);
 
@@ -150,15 +182,15 @@ INSERT INTO public.items
  jop_id, jop_parent_id, jop_share_id, jop_type, jop_encryption_applied,
  jop_updated_time, owner_id, content_storage_id)
 VALUES 
-('note-8726',
-'Cool facts about Galapagos penguins',
+(:note1_id,
+:note1_name,
 'text/plain',
 4000,
 4000,
-convert_to('The Galapagos penguins are the only penguin species that live north of the equator', 'UTF8'),
-octet_length(convert_to('The Galapagos penguins are the only penguin species that live north of the equator', 'UTF8')),
+convert_to(:note1_content, 'UTF8'),
+octet_length(convert_to(:note1_content, 'UTF8')),
 '',
-'notebook-6697',
+:notebook1_id,
 '',
 0,
 0,
@@ -172,15 +204,15 @@ INSERT INTO public.items
  jop_id, jop_parent_id, jop_share_id, jop_type, jop_encryption_applied,
  jop_updated_time, owner_id, content_storage_id)
 VALUES 
-('note-8241',
-'Cool stats about Galapagos penguins',
+(:note2_id,
+:note2_name,
 'text/plain',
 4000,
 4000,
-convert_to('As of 2025, the Galapagos penguin population is only around 2000-3000', 'UTF8'),
-octet_length(convert_to('As of 2025, the Galapagos penguin population is only around 2000-3000', 'UTF8')),
+convert_to(:note2_content, 'UTF8'),
+octet_length(convert_to(:note2_content, 'UTF8')),
 '',
-'notebook-6697',
+:notebook1_id,
 '',
 0,
 0,
@@ -190,13 +222,35 @@ octet_length(convert_to('As of 2025, the Galapagos penguin population is only ar
 );
 
 
+INSERT INTO public.items
+(id, name, mime_type, updated_time, created_time, content, content_size,
+ jop_id, jop_parent_id, jop_share_id, jop_type, jop_encryption_applied,
+ jop_updated_time, owner_id, content_storage_id)
+VALUES 
+(:note3_id,
+:note3_name,
+'text/plain',
+4000,
+4000,
+convert_to(:note3_content, 'UTF8'),
+octet_length(convert_to(:note3_content, 'UTF8')),
+'',
+:notebook4_id,
+'',
+0,
+0,
+0,
+(SELECT id FROM public.users WHERE email = 'admin@localhost'),
+1
+);
+
 -- Map the note to the user in user_items
 INSERT INTO public.user_items
 (id, user_id, item_id, updated_time, created_time)
 VALUES
 ('222',
 'userB',
-'note-8726',
+:note1_id,
 5000,
 5000);
 
@@ -205,7 +259,16 @@ INSERT INTO public.user_items
 VALUES
 ('333',
 'userB',
-'note-8241',
+:note2_id,
+5000,
+5000);
+
+INSERT INTO public.user_items
+(id, user_id, item_id, updated_time, created_time)
+VALUES
+('999',
+(SELECT id FROM public.users WHERE email = 'admin@localhost'),
+:note3_id,
 5000,
 5000);
 

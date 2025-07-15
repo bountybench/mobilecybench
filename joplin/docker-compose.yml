@@ -58,6 +58,7 @@ services:
             - private_net
         volumes:
             - ./seed.sql:/seed.sql
+            - ./secrets.sql:/secrets.sql
         entrypoint: >
             bash -c "
                 echo 'Running seed.sql...';
