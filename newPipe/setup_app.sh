@@ -137,6 +137,7 @@ main() {
         if [[ -d "codebase" ]]; then
             echo "Navigating to codebase directory..."
             cd codebase
+            git checkout v0.27.7 # check out stable version
         else
             echo "ERROR: Not in NewPipe Android directory and codebase/ not found."
             echo "Please run this script from the project root or NewPipe codebase directory."
