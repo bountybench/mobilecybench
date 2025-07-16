@@ -1,0 +1,270 @@
+#!/usr/bin/env bash
+set -e  # Stop script on error
+
+# General variables
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="seadroid"
+
+# Android SDK variables
+ANDROID_HOME="${HOME}/.android-sdk"
+AVD_NAME="Pixel_2_API_28"   # TODO: Set this to desired AVD
+APK_REL="app/build/outputs/apk/debug/seafile-debug-3.0.16.apk"
+APK_PATH="${REPO_DIR}/${APK_REL}"
+
+# Seafile variables
+SEAFILE_SITE_URL="10.0.2.2:8000"
+SEAFILE_USER="me@example.com"   # TODO: Admin login creds. Change to normal user if desired.
+SEAFILE_PASS="asecret"
+# SEAFILE_ACCOUNT_ACTIVITY="com.seafile.seadroid2.debug/com.seafile.seadroid2.ui.account.AccountsActivity"    # Not exported, for some reason
+BASIC_ACTIVITY="com.android.launcher3/com.android.launcher3.Launcher"
+
+
+# Checks to make sure Java, Android SDK, and Git are installed
+check_prerequisites() {
+    if ! java -version 2>&1 | grep "openjdk version \"17"; then
+        echo "⚠️ WARNING: Java 17 is not installed." # TODO: Why is Java 17 targetted here? Make more general.
+        read -p "Would you like to attempt to install OpenJDK 17? (y/N) " -n 1 -r REPLY
+        echo
+
+        if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+            echo "Attempting to install Java..."
+            if command -v brew >/dev/null 2>&1; then
+                brew install openjdk@17
+            elif command -v apt-get >/dev/null 2>&1; then
+                sudo apt-get update && sudo apt-get install -y openjdk-17-jdk
+            else
+                echo "❌ ERROR: Could not determine package manager. Please install Java 17 manually."
+                exit 1
+            fi
+            # Verify after attempting installation
+            if ! command -v java >/dev/null 2>&1; then
+                 echo "❌ ERROR: Java installation failed. Please install it manually."
+                 exit 1
+            fi
+            echo "✅ Java installed successfully."
+        else
+            echo "❌ ERROR: Java 17 is a required dependency. Exiting."
+            exit 1
+        fi
+    else
+        echo "✅ Java 17 is installed."
+    fi
+    if [[ ! -d "${ANDROID_HOME}" ]]; then
+        echo "❌ ERROR: Android SDK not found at ${ANDROID_HOME}. Please make sure to run setup.sh first."
+        echo "For reference, here are the steps to install the Android SDK manually:"
+        echo "  1. Download the command-line tools. E.g. curl -L \"https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip\" -o cmdline-tools.zip"
+        echo "  2. Create the directory: mkdir -p ${ANDROID_HOME}"
+        echo "  3. Extract the downloaded zip file into that directory. E.g. unzip cmdline-tools.zip | mv cmdline-tools/* ${ANDROID_HOME}/cmdline-tools/latest/"
+        echo "  Recommended: Add sdkmanager tool to your PATH. E.g. export PATH=\"${ANDROID_HOME}/cmdline-tools/latest/bin:${PATH}\""
+        echo "  4. Accept licenses: sdkmanager --licenses"
+        exit 1
+    else
+        echo "✅ Android SDK is installed."
+    fi
+    if ! command -v git >/dev/null 2>&1; then
+        echo "⚠️ WARNING: Git is not installed."
+        read -p "Would you like to attempt to install Git? (y/N) " -n 1 -r REPLY
+        echo 
+
+        if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+            echo "Attempting to install Git..."
+            if command -v brew >/dev/null 2>&1; then
+                brew install git
+            elif command -v apt-get >/dev/null 2>&1; then
+                sudo apt-get update && sudo apt-get install -y git
+            else
+                echo "❌ ERROR: Could not determine package manager. Please install Git manually."
+                exit 1
+            fi
+            # Verify after attempting installation
+            if ! command -v git >/dev/null 2>&1; then
+                 echo "❌ ERROR: Git installation failed. Please install it manually."
+                 exit 1
+            fi
+            echo "✅ Git installed successfully."
+        else
+            echo "❌ ERROR: Git is a required dependency. Exiting."
+            exit 1
+        fi
+    else
+        echo "✅ Git is installed."
+    fi  
+}
+
+# Sets up the environment for the script to run
+setup_environment() {
+    export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+    export PATH="${JAVA_HOME}/bin:${PATH}"
+    export ANDROID_HOME="${ANDROID_HOME}"
+    export PATH="${ANDROID_HOME}/platform-tools:${PATH}"
+    echo "sdk.dir=${ANDROID_HOME}" > "${REPO_DIR}/local.properties"
+}
+
+# Makes sure client app code is properly set up
+initialize_repository() {
+    if [[ ! -d "${REPO_DIR}" ]]; then
+        echo "Adding Seadroid submodule..."
+        git submodule update --init --recursive "${REPO_DIR}"
+    elif [[ ! -f "${REPO_DIR}/gradlew" ]]; then
+        echo "Repository exists but gradlew missing. Updating submodule..." 
+        git submodule update --init --recursive "${REPO_DIR}"
+    fi
+}
+
+# Builds the Seadroid APK according to instructions: https://github.com/haiwen/seadroid/tree/master#README.md
+build_seadroid() {
+
+    pushd "${REPO_DIR}" >/dev/null
+
+    # TODO: Alter key properties to desired setup
+    if [[ ! -f "./app/key.properties" ]]; then
+        mv ./app/key.properties.example ./app/key.properties
+    fi
+    
+    # Create keystore
+    if [[ ! -f "./app/debug.keystore" ]]; then
+        keytool -genkey -v -keystore app/debug.keystore -alias AndroidDebugKey -keyalg RSA -keysize 2048 -validity 1 -storepass android -keypass android -dname "cn=TEST, ou=TEST, o=TEST, c=TE"
+    fi
+
+    # Make sure gradlew is executable
+    chmod +x gradlew
+
+    ./gradlew assembleDebug
+    popd >/dev/null
+}
+
+# Starts emulator
+start_emulator() {
+    "${SCRIPT_DIR}/../start_emulator.sh" &
+    adb wait-for-device
+    "${SCRIPT_DIR}/../check_device.sh"
+}
+
+# Waits for emulator to boot
+wait_for_boot() {
+    echo -n "Waiting for system boot completion..."
+    until adb shell getprop sys.boot_completed 2>/dev/null | grep -q "^1$"; do
+        sleep 0.5
+        echo -n "."
+    done
+    echo
+}
+
+# Waits for desired activity to resume
+wait_for_activity() {
+    local target_activity="$1"
+    echo -n "Waiting for activity ${target_activity}..."
+    until adb shell dumpsys activity activities 2>/dev/null | grep -q "mResumedActivity.*${target_activity}"; do
+        sleep 0.3
+        echo -n "."
+    done
+    echo
+}
+
+# Installs and launches the APK
+install_and_launch() {
+    if [[ ! -f "${APK_PATH}" ]]; then
+        echo "ERROR: APK not found at ${APK_PATH}"
+        exit 1
+    fi
+
+    adb install -r "${APK_PATH}"
+
+    # adb shell am start \
+    # -n ${SEAFILE_ACCOUNT_ACTIVITY}
+
+    adb shell am start \
+    -n ${BASIC_ACTIVITY}
+}
+
+# Performs login and server connection on app
+connect_to_server() {
+    # wait_for_activity "AccountsActivity"
+    wait_for_activity "Launcher"
+
+    # Get to login screen
+    adb shell input swipe 500 1600 500 500
+    sleep 1
+
+    adb shell input tap 750 900
+    sleep 4
+
+    adb shell input tap 540 580
+    sleep 2
+
+    adb shell input tap 550 420
+    sleep 2
+
+    # Fill in login details (server, user, pass)
+    adb shell input keyevent KEYCODE_TAB
+    sleep 1
+
+    adb shell input keyevent KEYCODE_TAB
+    sleep 1
+
+    adb shell input text "${SEAFILE_SITE_URL}"
+    sleep 1
+
+    adb shell input keyevent KEYCODE_TAB
+    sleep 1
+
+    adb shell input text "${SEAFILE_USER}"
+    sleep 1
+
+    adb shell input keyevent KEYCODE_TAB
+    sleep 1
+
+    adb shell input keyevent KEYCODE_TAB
+    sleep 1
+
+    adb shell input text "${SEAFILE_PASS}"
+    sleep 1
+
+    adb shell input keyevent KEYCODE_TAB
+    sleep 1
+
+    adb shell input keyevent KEYCODE_TAB
+    sleep 1
+
+    adb shell input keyevent KEYCODE_ENTER
+    sleep 1
+}
+
+main() {
+    echo "SEADROID SETUP"
+    echo "======================="
+    cd "${SCRIPT_DIR}"
+    echo "Checking prerequisites..."
+    check_prerequisites
+    echo "✅ Prerequisites checked."
+    echo "======================="
+    echo "Initializing repository..."
+    initialize_repository
+    echo "✅ Repository initialized."
+    echo "======================="
+    echo "Setting up environment..."
+    setup_environment
+    echo "✅ Environment set up."
+    echo "======================="
+    echo "Building Seadroid APK..."
+    build_seadroid
+    echo "✅ Seadroid APK built."
+    echo "======================="
+    echo "Starting emulator..."
+    start_emulator
+    echo "Waiting for emulator to boot..."
+    wait_for_boot
+    echo "✅ Emulator booted."
+    echo "======================="
+    echo "Installing and launching APK..."
+    install_and_launch
+    echo "✅ APK installed and launched."
+    echo "======================="
+    echo "Performing login..."
+    connect_to_server
+    echo "✅ Login complete and connected to server."
+    echo "======================="
+    echo "Setup complete! Seadroid is ready for testing."
+}
+
+main "$@"
