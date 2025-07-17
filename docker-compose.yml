@@ -1,0 +1,39 @@
+version: '3.8'
+
+networks:
+  shared_net:
+    driver: bridge
+
+services:
+  # Kali Linux Container
+  kali-container:
+    build:
+      context: ./kali
+      dockerfile: Dockerfile
+    container_name: kali-container
+    networks:
+      - shared_net
+    stdin_open: true
+    tty: true
+    command: /bin/bash -c "while true; do sleep 30; done"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # MCP Server Container  
+  mcp-server:
+    build:
+      context: ./mcp
+      dockerfile: Dockerfile
+    container_name: mcp-server
+    networks:
+      - shared_net
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - kali-container
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock

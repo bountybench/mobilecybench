@@ -1,0 +1,14 @@
+{
+    "mcpServers": {
+      "mobile-cyber-mcp": {
+        "command": "docker",
+        "args": [
+          "exec", 
+          "-i", 
+          "mcp-server", 
+          "python", 
+          "/app/mcp_server.py"
+        ]
+      }
+    }
+  }
