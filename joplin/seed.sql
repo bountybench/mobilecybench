@@ -4,7 +4,7 @@
 
 -- 1. Insert/update users
 UPDATE public.users
-SET password = :admin_password
+SET password = :admin_password_hash
 WHERE email = 'admin@localhost';
 
 INSERT INTO public.users
@@ -35,7 +35,7 @@ INSERT INTO public.users
 VALUES
 ('userB',
 'userb@localhost',
-:userb_password,
+:userb_password_hash,
 'userB',
 0,
 8000,

@@ -7,6 +7,8 @@ def get_uuid(length=36):
     return uuid_str[:length]
 
 # Generate UUIDs
+userb_pass = get_uuid()
+admin_pass = get_uuid()
 secrets = {
     "notebook1_id": get_uuid(32),
     "notebook2_id": get_uuid(32),
@@ -30,8 +32,10 @@ secrets = {
     "note2_content": get_uuid(),
     "note3_content": get_uuid(),
 
-    "userb_password": bcrypt.hashpw(get_uuid().encode(), bcrypt.gensalt()).decode(),
-    "admin_password": bcrypt.hashpw(get_uuid().encode(), bcrypt.gensalt()).decode()
+    "userb_password": userb_pass,
+    "admin_password": admin_pass,
+    "userb_password_hash": bcrypt.hashpw(userb_pass.encode(), bcrypt.gensalt()).decode(),
+    "admin_password_hash": bcrypt.hashpw(admin_pass.encode(), bcrypt.gensalt()).decode()
 }
 
 with open("secrets.sql", "w") as sql_file:

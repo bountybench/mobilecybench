@@ -38,10 +38,6 @@ setup_environment() {
     
     # Create local.properties for joplin build
     echo "sdk.dir=$ANDROID_HOME" > local.properties
-
-    #cd codebase
-    #yarn install
-    #cd -
     
     echo "Environment configured."
 }
@@ -89,10 +85,25 @@ launch_joplin() {
     echo "joplin should now be running on your emulator."
 }
 
+# Synching with server
 synch_with_server() {
     echo "Synching app with server..."
-    python synch_app.py
+    python synch_app.py --username usera@localhost --password userAPW123
     echo "Should now be synched with server."
+}
+
+# Get process ID
+get_pid() {
+    json_file="secrets.json"
+    new_key="pid"
+    new_value=$(adb shell pidof net.cozic.joplin | tr -d '\r')
+
+    if [ -z "$new_value" ]; then
+        echo "Error: Could not get PID for $package_name"
+        return 1
+    fi
+
+    jq --arg key "$new_key" --arg value "$new_value" '. + {($key): $value}' "$json_file" > tmp.json && mv tmp.json "$json_file"
 }
 
 # Main function
@@ -138,6 +149,7 @@ main() {
     launch_joplin
     cd "$root_dir"
     synch_with_server
+    get_pid
     
     echo ""
     echo "Setup complete! joplin version $version is ready for testing."

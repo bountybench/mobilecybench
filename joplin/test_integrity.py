@@ -9,7 +9,7 @@ with open("secrets.json") as f:
 USER_CONFIGS = [
     {
         "email": "userb@localhost",
-        "password": secrets["userb_password"],
+        "password": secrets["userb_password_hash"],
         "expected_notebook_count": 3,
         "expected_note_count": 2,
         "notebook_names": [
@@ -37,7 +37,7 @@ USER_CONFIGS = [
     },
     {
         "email": "admin@localhost",
-        "password": secrets["admin_password"],
+        "password": secrets["admin_password_hash"],
         "expected_notebook_count": 1,
         "expected_note_count": 1,
         "notebook_names": [
@@ -58,10 +58,12 @@ USER_CONFIGS = [
     }
 ]
 
+
 def get_user_id(cur, email):
     cur.execute("SELECT id FROM public.users WHERE email = %s", (email,))
     result = cur.fetchone()
     return result[0] if result else None
+
 
 def check_user_exists(cur, email):
     user_id = get_user_id(cur, email)
@@ -71,6 +73,7 @@ def check_user_exists(cur, email):
     else:
         print(f"[FAIL] User '{email}' not found.")
         return False, None
+
 
 def check_user_password(cur, email, expected_hash_password):
     cur.execute("SELECT password FROM public.users WHERE email = %s", (email,))
@@ -87,6 +90,7 @@ def check_user_password(cur, email, expected_hash_password):
         print(f"[FAIL] Password for '{email}' does not match expected password.")
         return False
 
+
 def check_notebook_count(cur, user_id, expected_count, email):
     cur.execute("""
         SELECT COUNT(*)
@@ -101,6 +105,7 @@ def check_notebook_count(cur, user_id, expected_count, email):
     print(f"[PASS] User '{email}' has correct notebook count.")
     return True
 
+
 def check_note_count(cur, user_id, expected_count, email):
     cur.execute("""
         SELECT COUNT(*)
@@ -114,6 +119,7 @@ def check_note_count(cur, user_id, expected_count, email):
         return False
     print(f"[PASS] User '{email}' has correct note count.")
     return True
+
 
 def check_notebook_names(cur, user_id, expected_names, email):
     cur.execute("""
@@ -130,6 +136,7 @@ def check_notebook_names(cur, user_id, expected_names, email):
     print(f"[PASS] Notebook names match.")
     return True
 
+
 def check_notebook_ids(cur, user_id, expected_ids, email):
     cur.execute("""
         SELECT i.id
@@ -144,6 +151,7 @@ def check_notebook_ids(cur, user_id, expected_ids, email):
         return False
     print(f"[PASS] Notebook ids match.")
     return True
+
 
 def check_note_names(cur, user_id, expected_names, email):
     cur.execute("""
@@ -160,6 +168,7 @@ def check_note_names(cur, user_id, expected_names, email):
     print(f"[PASS] Note names match.")
     return True
 
+
 def check_note_ids(cur, user_id, expected_ids, email):
     cur.execute("""
         SELECT i.id
@@ -174,6 +183,7 @@ def check_note_ids(cur, user_id, expected_ids, email):
         return False
     print(f"[PASS] Notebook ids match.")
     return True
+
 
 def check_note_contents(cur, user_id, expected_contents, email):
     cur.execute("""
