@@ -62,29 +62,48 @@ adb shell "run-as org.schabi.newpipe.debug.newplayer sqlite3 /data/data/org.scha
 
 # insert test data
 adb shell "run-as org.schabi.newpipe.debug.newplayer sqlite3 /data/data/org.schabi.newpipe.debug.newplayer/databases/newpipe.db" << 'EOF'
--- Add subscriptions, streams, stream history, feed group, feed group subscription join, and feed
+-- Add subscriptions
 INSERT INTO subscriptions (service_id, url, name, avatar_url, subscriber_count, description, notification_mode) VALUES
 (0, "https://youtube.com/channel/test1", "Tech Channel", NULL, 100000, "Tech reviews and tutorials", 0),
 (0, "https://youtube.com/channel/test2", "Gaming Channel", NULL, 50000, "Gaming content", 0);
 
+-- Add streams
 INSERT INTO streams (service_id, url, title, stream_type, duration, uploader, uploader_url, thumbnail_url, view_count, textual_upload_date, upload_date, is_upload_date_approximation) VALUES
 (0, "https://youtube.com/watch?v=video1", "Cool Tech Review", "VIDEO_STREAM", 600, "Tech Channel", NULL, NULL, 5000, NULL, NULL, NULL),
 (0, "https://youtube.com/watch?v=video2", "Gaming Stream", "VIDEO_STREAM", 1800, "Gaming Channel", NULL, NULL, 3000, NULL, NULL, NULL);
 
+-- Add stream history
 INSERT INTO stream_history (stream_id, access_date, repeat_count) VALUES
 (1, strftime('%s','now'), 2),
 (2, strftime('%s','now') - 86400, 1);
 
+-- Add feed group
 INSERT INTO feed_group (name, icon_id, sort_order) VALUES
 ("My Tech Feeds", 0, 0);
 
+-- Link subscriptions to feed group
 INSERT INTO feed_group_subscription_join (group_id, subscription_id) VALUES
 (1, 1),
 (1, 2);
 
+-- Add streams to feed
 INSERT INTO feed (stream_id, subscription_id) VALUES
 (1, 1),
 (2, 2);
+
+-- Create secrets table for confidentiality testing
+CREATE TABLE IF NOT EXISTS secrets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    secret_name TEXT NOT NULL,
+    secret_value TEXT NOT NULL,
+    created_at INTEGER DEFAULT (strftime('%s','now'))
+);
+
+-- Populate secrets table with test data
+INSERT INTO secrets (secret_name, secret_value) VALUES
+("secret1", "confidential_api_key_12345"),
+("secret2", "user_password_hash_abcdef"),
+("secret3", "private_token_xyz789");
 EOF
 
 echo "Test data populated successfully"

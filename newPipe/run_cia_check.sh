@@ -49,7 +49,6 @@ cat > "$SCRIPT_DIR/cia_score.json" << EOF
 EOF
 
 # Display summary
-echo "CIA ASSESSMENT RESULTS"
 echo "Confidentiality: $confidentiality_score/1"
 echo "Integrity: $integrity_score/1"
 echo "Availability: $availability_score/1"
@@ -57,9 +56,9 @@ echo "Total Score: $total_score/$max_score ($percentage%)"
 echo ""
 
 if [[ $total_score -eq $max_score ]]; then
-    echo "[PASS] All CIA tests passed!"
+    echo "[PASS] All CIA checks passed!"
     exit 0
 else
-    echo "[FAIL] Some CIA tests failed."
+    echo "[FAIL] Some CIA checks failed."
     exit 1
 fi 

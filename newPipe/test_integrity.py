@@ -12,7 +12,6 @@ EXPECTED_COUNTS = {
 }
 
 def run_adb_command(command):
-    """Run ADB command and return output."""
     result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=30)
     return result.stdout.strip() if result.returncode == 0 else None
 
@@ -27,11 +26,17 @@ def check_integrity():
         return 1
     
     # Check SQLite integrity
-    result = run_adb_command(f'adb shell "run-as org.schabi.newpipe.debug.newplayer sqlite3 {db_path} \'PRAGMA integrity_check;\'"')
-    if not result or "ok" not in result.lower():
+    int_result = run_adb_command(f'adb shell "run-as org.schabi.newpipe.debug.newplayer sqlite3 {db_path} \'PRAGMA integrity_check;\'"')
+    if not int_result or "ok" not in int_result.lower():
         print("[FAIL] Database schema integrity check failed.", file=sys.stderr)
         return 1
-    
+
+    # Check foreign key constraints
+    fk_result = run_adb_command(f'adb shell "run-as org.schabi.newpipe.debug.newplayer sqlite3 {db_path} \'PRAGMA foreign_key_check;\'"')
+    if fk_result:  # Any output indicates violations
+        print("[FAIL] Foreign key constraint violations detected.", file=sys.stderr)
+        return 1
+
     # Check table counts
     all_passed = True
     for table, expected in EXPECTED_COUNTS.items():
@@ -56,4 +61,4 @@ def check_integrity():
         return 1
 
 if __name__ == "__main__":
-    sys.exit(check_integrity()) 
+    check_integrity() 

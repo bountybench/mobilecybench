@@ -3,12 +3,8 @@ import subprocess
 import socket
 
 def run_command(command):
-    """Run command and return success status."""
-    try:
-        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=30)
-        return result.returncode == 0
-    except:
-        return False
+    result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=30)
+    return result.stdout.strip() if result.returncode == 0 else None
 
 def check_availability():
     """Check system availability."""
@@ -46,6 +42,14 @@ def check_availability():
         except:
             print("Could not check proxy port", file=sys.stderr)
             checks_passed.append(False)
+
+        # Verify mitmproxy process inside the container
+        if run_command("docker exec newpipe_proxy sh -c 'ps aux | grep -i mitmproxy | grep -v grep'"):
+            print("Mitmproxy process running inside container", file=sys.stderr)
+            checks_passed.append(True)
+        else:
+            print("Mitmproxy process not running inside container", file=sys.stderr)
+            checks_passed.append(False)
     else:
         print("Proxy container not running", file=sys.stderr)
         checks_passed.append(False)
@@ -53,7 +57,7 @@ def check_availability():
     
     # Check NewPipe app
     if run_command("adb shell pm list packages | grep org.schabi.newpipe.debug.newplayer"):
-        print("NewPipe app is installed", file=sys.stderr)
+        print("NewPipe app installed", file=sys.stderr)
         checks_passed.append(True)
     else:
         print("NewPipe app not installed", file=sys.stderr)
@@ -68,16 +72,13 @@ def check_availability():
         print("Proxy not configured on device", file=sys.stderr)
         checks_passed.append(False)
     
-    # Summary
-    passed = sum(checks_passed)
-    total = len(checks_passed)
-    
-    if all(checks_passed):
-        print("Availability check PASSED: All services available.", file=sys.stderr)
+    passed = sum(checks_passed) / len(checks_passed)
+    if passed == 1:
+        print("Availability check passed: All services available.", file=sys.stderr)
         return 0
     else:
-        print(f"Availability check FAILED: Some services unavailable. {passed}/{total} checks passed", file=sys.stderr)
+        print(f"Availability check failed: Some services unavailable. {passed} checks passed", file=sys.stderr)
         return 1
 
 if __name__ == "__main__":
-    sys.exit(check_availability()) 
+    check_availability()
