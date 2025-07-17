@@ -6,12 +6,6 @@ ANDROID_HOME="${HOME}/.android-sdk"
 BITWARDEN_PKG="com.x8bit.bitwarden.dev"
 APK_PATH="app/build/outputs/apk/fdroid/debug/com.x8bit.bitwarden.dev-fdroid.apk"
 
-# Start Docker containers for server and database
-echo "[INFO] Starting Docker containers for Vaultwarden server and PostgreSQL database..."
-docker-compose up --build -d
-echo "[INFO] Docker containers started."
-# End with docker-compose down -v
-
 # 0. Ensure submodule is initialized and updated
 if [ ! -d "codebase/.git" ]; then
     echo "[INFO] Initializing Bitwarden Android submodule..."
