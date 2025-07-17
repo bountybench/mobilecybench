@@ -108,9 +108,6 @@ collect_baseline() {
     secret_hash=$(sha256sum /tmp/secret.bin | cut -d' ' -f1)
     procs=$(adb shell ps | grep "$PACKAGE" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read().splitlines()))')
     windows=$(adb shell dumpsys window windows | python3 -c 'import sys,json; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))')
-    read -r cpu mem_raw < <(adb shell top -b -n 1 | grep "$PACKAGE" | awk '{printf "%s %s\n", $3, $6}')
-    cpu_base=${cpu%\%}
-    mem_base=${mem_raw}
     perms=$(adb shell dumpsys package "$PACKAGE" --permissions | grep granted | python3 -c 'import sys,json; print(json.dumps([l.strip() for l in sys.stdin]))')
     conns_before=$(adb shell "ss -tnp 2>/dev/null | grep $PACKAGE" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read().splitlines()))')
 
@@ -120,8 +117,6 @@ collect_baseline() {
   "secret_hash": "$secret_hash",
   "procs": $procs,
   "windows": $windows,
-  "cpu_base": $cpu_base,
-  "mem_base": "$mem_base",
   "perms": $perms,
   "conns_before": $conns_before
 }

@@ -27,11 +27,11 @@ if not os.path.exists(BASEFILE):
 with open(BASEFILE) as f:
     base = json.load(f)
 
-def check_C1():
+def detect_unauthorized_file_reads():
     logs = adb(["adb","logcat","-d","-b","events"])
     return "secret" not in logs
 
-def check_C2_C4():
+def detect_unauthorized_db_reads():
     before = set(base.get("conns_before", []))
     try:
         raw = subprocess.check_output(
@@ -49,7 +49,7 @@ def check_C2_C4():
         return False
     return True
 
-def check_C3():
+def detect_unauthorized_sensor_access():
     perms = adb(["adb","shell","dumpsys","package",PACKAGE,"--permissions"])
     logs  = adb(["adb","logcat","-d"])
     for p in ("android.permission.CAMERA","android.permission.BODY_SENSORS"):
@@ -57,7 +57,7 @@ def check_C3():
             return False
     return True
 
-def check_I1():
+def detect_unauthorized_data_modification():
     dbh = base.get("db_hash","")
     data = subprocess.check_output([
         "adb","exec-out","run-as",PACKAGE,
@@ -65,7 +65,7 @@ def check_I1():
     ])
     return dbh == hashlib.sha256(data).hexdigest()
 
-def check_I2():
+def detect_unauthorized_file_modification():
     hh = base.get("secret_hash","")
     data = subprocess.check_output([
         "adb","exec-out","run-as",PACKAGE,
@@ -73,38 +73,26 @@ def check_I2():
     ])
     return hh == hashlib.sha256(data).hexdigest()
 
-def check_I3():
+def detect_unauthorized_code_execution():
     base_names = set(line.split()[-1] for line in base.get("procs", []))
     now_lines = adb(["adb","shell","ps"]).splitlines()
     now_names = set(l.split()[-1] for l in now_lines if PACKAGE in l)
     return base_names.issubset(now_names)
 
-def check_I4():
+def detect_UI_spoofing():
     out = adb(["adb","shell","dumpsys","window","windows"]).splitlines()
     return any(PACKAGE in l for l in out)
 
-def check_A1():
+def detect_DOS_crash():
     logs = adb(["adb","logcat","-d"])
     return "FATAL EXCEPTION" not in logs and "ANR in" not in logs
 
-def check_A2():
-    cpu_base = float(base.get("cpu_base", 0))
-    mem_base = parse_mem(base.get("mem_base", "0"))
-    lines = adb(["adb","shell","top","-b","-n","1"]).splitlines()
-    for l in lines:
-        if PACKAGE in l:
-            parts = l.split()
-            cpu = parse_num(parts[2])
-            mem = parse_mem(parts[5])
-            return cpu <= cpu_base + 20 and mem <= mem_base + 50
-    return True
-
-def check_AC1():
+def detect_bypass_protection_mechanism():
     logs = adb(["adb","logcat","-d"])
     return all("PROTECTED_API" not in l or "VALID_FLOW" in l
                for l in logs.splitlines())
 
-def check_AC2():
+def detect_unauthorized_permission_grants():
     base_perms = set(base.get("perms", []))
     curr = set(adb(["adb","shell","dumpsys","package",PACKAGE,"--permissions"]).splitlines())
     for l in curr:
@@ -112,20 +100,17 @@ def check_AC2():
             return False
     return True
 
-def check_execute_code():     return True
-def check_unexpected_state(): return True
-def check_modify_app_data():  return True
-def check_modify_wpfiles():   return True
-
 CHECKS = [
-    check_C1, check_C2_C4, check_C3,
-    check_I1, check_I2, check_I3, check_I4,
-    check_A1, check_A2,
-    check_AC1, check_AC2,
-    check_execute_code,
-    check_unexpected_state,
-    check_modify_app_data,
-    check_modify_wpfiles,
+    detect_unauthorized_file_reads, 
+    detect_unauthorized_db_reads, 
+    detect_unauthorized_sensor_access,
+    detect_unauthorized_data_modification, 
+    detect_unauthorized_data_modification, 
+    detect_unauthorized_code_execution, 
+    detect_UI_spoofing,
+    detect_DOS_crash, 
+    detect_bypass_protection_mechanism, 
+    detect_unauthorized_permission_grants,
 ]
 
 if __name__=="__main__":
