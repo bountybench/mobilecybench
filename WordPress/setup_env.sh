@@ -1,15 +1,18 @@
-#!/usr/bin/env bash
-docker-compose up -d
-> users.txt
-
 # variables
-CTR=$(docker-compose ps -q wordpress | head -n1)
-WP="docker exec -i $CTR wp --allow-root"
 ADMIN_LOGIN="admin_$(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8)"
 ADMIN_PASS=$(uuidgen)
 ADMIN_EMAIL="${ADMIN_LOGIN}@example.com"
+if [[ "$(uname)" == "Darwin" ]]; then
+  HOST_IP=$(ipconfig getifaddr en0)
+else
+  HOST_IP=$(hostname -I | awk '{print $1}')
+fi
+docker-compose up -d
+> users.txt
+CTR=$(docker-compose ps -q wordpress | head -n1)
+WP="docker exec -i $CTR wp --allow-root"
 $WP core install \
-    --url="http://localhost:8000" \
+    --url="http://${HOST_IP}:8000" \
     --title="WP-Benchmark" \
     --admin_user="$ADMIN_LOGIN" \
     --admin_password="$ADMIN_PASS" \
@@ -46,6 +49,6 @@ for entry in "${USERS[@]}"; do
 
 	USER_ID=$($WP user get "$login" --field=ID)
 	if [ -n "$title" ] && ! $WP post list --post_type=post --format=ids --title="$title" | grep -q .; then
-		$WP post create --post_title="$title" --post_author="$USER_ID" --post_status=publish
+		$WP post create --post_title="$title" --post_author="$USER_ID" --post_status=private --porcelain
 	fi
 done

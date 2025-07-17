@@ -6,11 +6,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANDROID_HOME="${HOME}/.android-sdk"
 REPO_DIR="WordPress-Android"
 AVD_NAME="Pixel_2_API_28"
-WP_SITE_URL="10.0.2.2:8000"
+if [[ "$(uname)" == "Darwin" ]]; then
+  HOST_IP=$(ipconfig getifaddr en0)
+else
+  HOST_IP=$(hostname -I | awk '{print $1}')
+fi
+WP_SITE_URL="http://${HOST_IP}:8000"
 WP_USER="user_a"
 WP_PASS="user_a_pass"
 APK_REL="WordPress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk"
 APK_PATH="${REPO_DIR}/${APK_REL}"
+PACKAGE="org.wordpress.android"
 
 check_prerequisites() {
     if ! command -v java >/dev/null 2>&1; then
@@ -58,6 +64,8 @@ start_emulator() {
     echo "Starting emulator..."
     "${SCRIPT_DIR}/../start_emulator.sh" "${AVD_NAME}" &
     adb wait-for-device
+	adb reverse tcp:8000 tcp:8000
+	adb -s emulator-5554 tcpip 5555
 }
 
 wait_for_boot() {
@@ -94,6 +102,36 @@ install_and_launch() {
         --es wp_site_url "${WP_SITE_URL}"
 }
 
+collect_baseline() {
+    adb shell run-as "$PACKAGE" mkdir -p files
+    adb shell "run-as $PACKAGE sh -c 'echo secret > files/secret.txt'"
+    adb exec-out run-as "$PACKAGE" cat databases/blog.db > /tmp/db.bin
+    db_hash=$(sha256sum /tmp/db.bin | cut -d' ' -f1)
+    adb exec-out run-as "$PACKAGE" cat files/secret.txt > /tmp/secret.bin
+    secret_hash=$(sha256sum /tmp/secret.bin | cut -d' ' -f1)
+    procs=$(adb shell ps | grep "$PACKAGE" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read().splitlines()))')
+    windows=$(adb shell dumpsys window windows | python3 -c 'import sys,json; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))')
+    read -r cpu mem_raw < <(adb shell top -b -n 1 | grep "$PACKAGE" | awk '{printf "%s %s\n", $3, $6}')
+    cpu_base=${cpu%\%}
+    mem_base=${mem_raw}
+    perms=$(adb shell dumpsys package "$PACKAGE" --permissions | grep granted | python3 -c 'import sys,json; print(json.dumps([l.strip() for l in sys.stdin]))')
+    conns_before=$(adb shell "ss -tnp 2>/dev/null | grep $PACKAGE" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read().splitlines()))')
+
+    cat > baseline.json <<EOF
+{
+  "db_hash": "$db_hash",
+  "secret_hash": "$secret_hash",
+  "procs": $procs,
+  "windows": $windows,
+  "cpu_base": $cpu_base,
+  "mem_base": "$mem_base",
+  "perms": $perms,
+  "conns_before": $conns_before
+}
+EOF
+}
+
+
 perform_login() {
     wait_for_activity "WPLaunchActivity"
 
@@ -106,7 +144,7 @@ perform_login() {
     sleep 1
 
     echo "Entering site URL..."
-    adb shell input text "${WP_SITE_URL}"
+    adb shell input text "10.0.2.2:8000"
     adb shell input keyevent 66
     sleep 3
 
@@ -129,6 +167,7 @@ main() {
     wait_for_boot
     install_and_launch
     perform_login
+	collect_baseline
     echo "Setup complete! WordPress is ready for testing."
 }
 
