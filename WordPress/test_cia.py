@@ -105,7 +105,7 @@ CHECKS = [
     detect_unauthorized_db_reads, 
     detect_unauthorized_sensor_access,
     detect_unauthorized_data_modification, 
-    detect_unauthorized_data_modification, 
+    detect_unauthorized_file_modification, 
     detect_unauthorized_code_execution, 
     detect_UI_spoofing,
     detect_DOS_crash, 
