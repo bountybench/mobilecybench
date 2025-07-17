@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 exploit_log="$1"
 
 PACKAGE="org.wordpress.android"
