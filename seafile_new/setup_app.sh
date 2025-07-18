@@ -19,36 +19,54 @@ SEAFILE_PASS="asecret"
 BASIC_ACTIVITY="com.android.launcher3/com.android.launcher3.Launcher"
 
 
-# Checks to make sure Java, Android SDK, and Git are installed
-check_prerequisites() {
-    if ! java -version 2>&1 | grep "openjdk version \"17"; then
-        echo "⚠️ WARNING: Java 17 is not installed." # TODO: Why is Java 17 targetted here? Make more general.
-        read -p "Would you like to attempt to install OpenJDK 17? (y/N) " -n 1 -r REPLY
+# Ensures a dependency is installed, prompting the user to install it if missing.
+# Arguments:
+#   $1: Dependency name for display (e.g., "Java 17").
+#   $2: Command to check if the dependency is installed (e.g., "command -v git").
+#   $3: Package name for Homebrew.
+#   $4: Package name for apt-get.
+ensure_dependency() {
+    local name="$1"
+    local check_command="$2"
+    local brew_package="$3"
+    local apt_package="$4"
+
+    # Use eval to handle complex check commands with pipes and quotes.
+    if ! eval "$check_command" >/dev/null 2>&1; then
+        echo "⚠️ WARNING: ${name} is not installed."
+        read -p "Would you like to attempt to install ${name}? (y/N) " -n 1 -r REPLY
         echo
 
         if [[ "$REPLY" =~ ^[Yy]$ ]]; then
-            echo "Attempting to install Java..."
+            echo "Attempting to install ${name}..."
             if command -v brew >/dev/null 2>&1; then
-                brew install openjdk@17
+                brew install "$brew_package"
             elif command -v apt-get >/dev/null 2>&1; then
-                sudo apt-get update && sudo apt-get install -y openjdk-17-jdk
+                sudo apt-get update && sudo apt-get install -y "$apt_package"
             else
-                echo "❌ ERROR: Could not determine package manager. Please install Java 17 manually."
+                echo "❌ ERROR: Could not determine package manager. Please install ${name} manually."
                 exit 1
             fi
-            # Verify after attempting installation
-            if ! command -v java >/dev/null 2>&1; then
-                 echo "❌ ERROR: Java installation failed. Please install it manually."
+            # Verify after attempting installation.
+            if ! eval "$check_command" >/dev/null 2>&1; then
+                 echo "❌ ERROR: ${name} installation failed. Please install it manually."
                  exit 1
             fi
-            echo "✅ Java installed successfully."
+            echo "✅ ${name} installed successfully."
         else
-            echo "❌ ERROR: Java 17 is a required dependency. Exiting."
+            echo "❌ ERROR: ${name} is a required dependency. Exiting."
             exit 1
         fi
     else
-        echo "✅ Java 17 is installed."
+        echo "✅ ${name} is installed."
     fi
+}
+
+
+# Checks to make sure Java, Android SDK, and Git are installed
+check_prerequisites() {
+    ensure_dependency "Java 17" "java -version 2>&1 | grep 'openjdk version \"17'" "openjdk@17" "openjdk-17-jdk"
+
     if [[ ! -d "${ANDROID_HOME}" ]]; then
         echo "❌ ERROR: Android SDK not found at ${ANDROID_HOME}. Please make sure to run setup.sh first."
         echo "For reference, here are the steps to install the Android SDK manually:"
@@ -61,35 +79,10 @@ check_prerequisites() {
     else
         echo "✅ Android SDK is installed."
     fi
-    if ! command -v git >/dev/null 2>&1; then
-        echo "⚠️ WARNING: Git is not installed."
-        read -p "Would you like to attempt to install Git? (y/N) " -n 1 -r REPLY
-        echo 
 
-        if [[ "$REPLY" =~ ^[Yy]$ ]]; then
-            echo "Attempting to install Git..."
-            if command -v brew >/dev/null 2>&1; then
-                brew install git
-            elif command -v apt-get >/dev/null 2>&1; then
-                sudo apt-get update && sudo apt-get install -y git
-            else
-                echo "❌ ERROR: Could not determine package manager. Please install Git manually."
-                exit 1
-            fi
-            # Verify after attempting installation
-            if ! command -v git >/dev/null 2>&1; then
-                 echo "❌ ERROR: Git installation failed. Please install it manually."
-                 exit 1
-            fi
-            echo "✅ Git installed successfully."
-        else
-            echo "❌ ERROR: Git is a required dependency. Exiting."
-            exit 1
-        fi
-    else
-        echo "✅ Git is installed."
-    fi  
+    ensure_dependency "Git" "command -v git" "git" "git"
 }
+
 
 # Sets up the environment for the script to run
 setup_environment() {
@@ -104,7 +97,7 @@ setup_environment() {
 initialize_repository() {
     if [[ ! -d "${REPO_DIR}" ]]; then
         echo "Adding Seadroid submodule..."
-        git submodule update --init --recursive "${REPO_DIR}"
+        git submodule add https://github.com/haiwen/seadroid.git "${REPO_DIR}"
     elif [[ ! -f "${REPO_DIR}/gradlew" ]]; then
         echo "Repository exists but gradlew missing. Updating submodule..." 
         git submodule update --init --recursive "${REPO_DIR}"
@@ -183,13 +176,14 @@ connect_to_server() {
     wait_for_activity "Launcher"
 
     # Get to login screen
+    sleep 3
     adb shell input swipe 500 1600 500 500
     sleep 1
 
     adb shell input tap 750 900
-    sleep 4
+    sleep 10
 
-    adb shell input tap 540 580
+    adb shell input tap 540 650
     sleep 2
 
     adb shell input tap 550 420

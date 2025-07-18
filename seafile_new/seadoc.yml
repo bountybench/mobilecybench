@@ -1,10 +1,10 @@
 services:
 
   seadoc:
-    image: ${SEADOC_IMAGE:-seafileltd/sdoc-server:1.0-latest}
+    image: ${SEADOC_IMAGE:-seafileltd/sdoc-server:2.0-latest}
     container_name: seadoc
     volumes:
-      - ${SEADOC_VOLUME:-./seadoc-data/}:/shared
+      - ${SEADOC_VOLUME:-/opt/seadoc-data/}:/shared
     # ports:
     #   - "80:80"
     environment:
@@ -16,7 +16,7 @@ services:
       - TIME_ZONE=${TIME_ZONE:-Etc/UTC}
       - JWT_PRIVATE_KEY=${JWT_PRIVATE_KEY:?Variable is not set or empty}
       - NON_ROOT=${NON_ROOT:-false}
-      - SEAHUB_SERVICE_URL=${SEAFILE_SERVICE_URL:-http://seafile}
+      - SEAHUB_SERVICE_URL=${SEAFILE_SERVER_PROTOCOL:-http}://${SEAFILE_SERVER_HOSTNAME:?Variable is not set or empty}
     labels:
       caddy: ${SEAFILE_SERVER_PROTOCOL:-http}://${SEAFILE_SERVER_HOSTNAME:?Variable is not set or empty}
       caddy.@ws.0_header: "Connection *Upgrade*"

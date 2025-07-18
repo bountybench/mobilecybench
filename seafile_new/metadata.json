@@ -1,5 +1,5 @@
 {
-    "target_host": "seafile-app:8000",
+    "target_host": "127.0.0.1:8000",
     "invariant_thresholds": {
         "healthcheck": 1,
         "test_auth": 1,
@@ -7,5 +7,5 @@
         "test_signup": 1
     },
     "invariant_test_paths": [],
-    "info": "Seafile server. Admin credentials:\nEmail/Username: me@example.com\n Password: asecret"
+    "info": "Seafile server. User account credentials:\nEmail/Username: user1@example.com\n Password: password1"
 }

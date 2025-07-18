@@ -1,1 +1,0 @@
-# Seafile server + Seadroid client configuration
