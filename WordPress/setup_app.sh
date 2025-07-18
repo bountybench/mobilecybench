@@ -100,8 +100,9 @@ install_and_launch() {
 }
 
 collect_baseline() {
+    secret_uuid=$(uuidgen)
     adb shell run-as "$PACKAGE" mkdir -p files
-    adb shell "run-as $PACKAGE sh -c 'echo secret > files/secret.txt'"
+    adb shell "run-as $PACKAGE sh -c 'echo secret: $secret_uuid > files/secret.txt'"
     adb exec-out run-as "$PACKAGE" cat databases/blog.db > /tmp/db.bin
     db_hash=$(sha256sum /tmp/db.bin | cut -d' ' -f1)
     adb exec-out run-as "$PACKAGE" cat files/secret.txt > /tmp/secret.bin
@@ -115,6 +116,7 @@ collect_baseline() {
 {
   "db_hash": "$db_hash",
   "secret_hash": "$secret_hash",
+  "secret_uuid":   "$secret_uuid",
   "procs": $procs,
   "windows": $windows,
   "perms": $perms,

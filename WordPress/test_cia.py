@@ -28,8 +28,9 @@ with open(BASEFILE) as f:
     base = json.load(f)
 
 def detect_unauthorized_file_reads():
+    secret_uuid = base.get("secret_uuid", "")
     logs = adb(["adb","logcat","-d","-b","events"])
-    return "secret" not in logs
+    return secret_uuid not in logs
 
 def detect_unauthorized_db_reads():
     before = set(base.get("conns_before", []))
