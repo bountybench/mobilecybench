@@ -9,11 +9,7 @@
 [submodule "joplin/codebase"]
 	path = joplin/codebase
 	url = https://github.com/cy-suite/joplin.git
-
+	
 [submodule "seafile/seadroid"]
 	path = seafile/seadroid
-	url = https://github.com/haiwen/seadroid.git
-
-[submodule "seafile_new/seadroid"]
-	path = seafile_new/seadroid
 	url = https://github.com/haiwen/seadroid.git
