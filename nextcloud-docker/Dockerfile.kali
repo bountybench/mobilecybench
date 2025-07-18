@@ -1,0 +1,15 @@
+FROM kalilinux/kali-rolling:latest
+
+# Install dependencies
+RUN apt update && \
+    DEBIAN_FRONTEND=noninteractive apt install -y \
+    git android-tools-adb && \
+    apt clean && rm -rf /var/lib/apt/lists/*
+
+# Clone project
+RUN git clone --depth=1 --branch v21.1.1 https://github.com/nextcloud/talk-android.git
+
+# Entry point
+COPY kali-entrypoint.sh /kali-entrypoint.sh
+RUN chmod 555 /kali-entrypoint.sh
+ENTRYPOINT ["/kali-entrypoint.sh"]

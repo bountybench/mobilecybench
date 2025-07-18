@@ -1,0 +1,11 @@
+{
+    "mcpServers": {
+      "mcp_emulator": {
+        "command": "/Users/nishka/Coding/CURIS/mobilecybench/nextcloud-docker/venv/bin/python",
+        "args": ["/Users/nishka/Coding/CURIS/mobilecybench/nextcloud-docker/mcp_emulator/main.py"],
+        "env": {
+          "ANDROID_HOME": "/Users/nishka/.android-sdk"
+        }
+      }
+    }
+}
