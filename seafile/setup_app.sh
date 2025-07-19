@@ -7,14 +7,14 @@ REPO_DIR="seadroid"
 
 # Android SDK variables
 ANDROID_HOME="${HOME}/.android-sdk"
-AVD_NAME="Pixel_2_API_28"   # TODO: Set this to desired AVD
+AVD_NAME="Pixel_2_API_28"   
 APK_REL="app/build/outputs/apk/debug/seafile-debug-3.0.16.apk"
 APK_PATH="${REPO_DIR}/${APK_REL}"
 
 # Seafile variables
 SEAFILE_SITE_URL="10.0.2.2:8000"
-SEAFILE_USER="me@example.com"   # TODO: Admin login creds. Change to normal user if desired.
-SEAFILE_PASS="asecret"
+SEAFILE_USER="user1@example.com"   # Logging in as normal user
+SEAFILE_PASS="password1"
 # SEAFILE_ACCOUNT_ACTIVITY="com.seafile.seadroid2.debug/com.seafile.seadroid2.ui.account.AccountsActivity"    # Not exported, for some reason
 BASIC_ACTIVITY="com.android.launcher3/com.android.launcher3.Launcher"
 
@@ -109,7 +109,7 @@ build_seadroid() {
 
     pushd "${REPO_DIR}" >/dev/null
 
-    # TODO: Alter key properties to desired setup
+    # Alter key properties to desired setup
     if [[ ! -f "./app/key.properties" ]]; then
         mv ./app/key.properties.example ./app/key.properties
     fi
@@ -183,7 +183,7 @@ connect_to_server() {
     adb shell input tap 750 900
     sleep 10
 
-    adb shell input tap 540 650
+    adb shell input tap 540 615
     sleep 2
 
     adb shell input tap 550 420

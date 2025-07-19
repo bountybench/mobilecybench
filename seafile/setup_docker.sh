@@ -18,10 +18,8 @@ for i in {1..20}; do
     sleep 1
 done
 
-exit 0  # For testing
-
 # Seed the server with data
-python seafile_new/seed_data.py
+python seed_data.py
 echo "Seeded the server with data..."
 
 # Stop the server
