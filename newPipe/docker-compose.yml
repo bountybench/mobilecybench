@@ -9,6 +9,14 @@ services:
       - ./flows:/flows
     ports:
       - "${PROXY_PORT}:8082"
+  db:
+    image: alpine:3.20
+    container_name: newpipe_db
+    platform: linux/arm64/v8
+    command: ["/bin/sh", "-c", "apk add --no-cache sqlite && tail -f /dev/null"]
+    volumes:
+      - db_data:/data
 
 volumes:
-  proxy_data: 
+  proxy_data:
+  db_data: 
