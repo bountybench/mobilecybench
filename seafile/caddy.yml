@@ -24,3 +24,5 @@ services:
 networks:
   seafile-net:
     name: seafile-net
+  shared-net:
+    name: shared-net
