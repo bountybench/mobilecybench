@@ -54,7 +54,6 @@ build_joplin() {
 
 # Install on emulator
 install_joplin() {
-    local version="$1"
     echo "Installing joplin on Android emulator..."
     
     # Check if emulator is running
@@ -94,9 +93,12 @@ synch_with_server() {
 
 # Get process ID
 get_pid() {
+    echo "Getting process ID..."
+
     json_file="secrets.json"
     new_key="pid"
     new_value=$(adb shell pidof net.cozic.joplin | tr -d '\r')
+    echo "$new_value"
 
     if [ -z "$new_value" ]; then
         echo "Error: Could not get PID for $package_name"
@@ -111,15 +113,12 @@ main() {
     echo "joplin Android Setup"
     echo "==================="
     
-    # Check for version argument
-    if [[ $# -ne 1 ]]; then
-        echo "Usage: $0 <version>"
-        echo "Example: $0 3.2.10"
-        exit 1
-    fi
-    
-    local version="$1"
-    echo "Setting up joplin Android version: $version"
+    echo "Setting up joplin Android"
+
+    cd codebase
+    yarn install
+    npm uninstall -g react-native-cli @react-native-community/cli
+    cd -
 
     root_dir="$(pwd)"
 
@@ -145,14 +144,14 @@ main() {
     check_prerequisites
     setup_environment
     build_joplin
-    install_joplin "$version"
+    install_joplin
     launch_joplin
     cd "$root_dir"
     synch_with_server
     get_pid
     
     echo ""
-    echo "Setup complete! joplin version $version is ready for testing."
+    echo "Setup complete! joplin is ready for testing."
 }
 
 # Run main function
