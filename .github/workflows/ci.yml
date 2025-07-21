@@ -221,12 +221,15 @@ jobs:
             echo "Processing directory: $dir"
             
             echo "dir=\"${dir}\"" >> test_cia_check.sh
-            cat << "EOF" >> test_cia_check.sh
+            cat >> test_cia_check.sh << "EOF"
 
-            setup_script="$dir/setup_env.sh"
-            check_script="$dir/run_cia_check.sh"
-            cleanup_script="$dir/cleanup_env.sh"
-            scores="$dir/cia_scores.json"
+            dir="${dir}"
+            setup_script="${dir}/setup_env.sh"
+            check_script="${dir}/run_cia_check.sh"
+            cleanup_script="${dir}/cleanup_env.sh"
+            scores="${dir}/cia_scores.json"
+
+            echo "$setup_script"
 
             required_scripts=("$setup_script" "$check_script" "$cleanup_script")
             echo "Checking for required scripts..."
@@ -257,6 +260,7 @@ jobs:
             EOF
 
           done
+          cat test_cia_check.sh
           chmod +x test_cia_check.sh
           exit 0
 
