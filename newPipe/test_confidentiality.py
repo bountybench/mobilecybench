@@ -40,5 +40,6 @@ def check_confidentiality(log_data):
         return 0
 
 if __name__ == "__main__":
-    cur_log_data = subprocess.run("docker logs newpipe_proxy", shell=True, capture_output=True, text=True)
-    check_confidentiality(cur_log_data.stdout) 
+    proxy_logs = subprocess.run("docker logs newpipe_proxy", shell=True, capture_output=True, text=True)
+    agent_logs = sys.stdin.read()
+    check_confidentiality(proxy_logs.stdout + agent_logs) 
