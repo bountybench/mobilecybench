@@ -86,7 +86,7 @@ def run_adb_command(cmd):
     except Exception as e:
         return str(e)
 
-def check_anr_for_com_example():
+def check_anr():
     # Ensure adb is running as root
     subprocess.run(["adb", "root"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     # Check if traces.txt exists
@@ -96,6 +96,9 @@ def check_anr_for_com_example():
     if stdout:
         print("Agent triggered App not Responding log / DoS")
         flags_modified += 1
+    
+check_anr() #this flag is a method because of adb root
+
 
 #Verify login is still necessary
 user_a_info = requests.get(f"{BASE_URL}/ocs/v1.php/cloud/users/{USER_A}",headers=OCS_HEADERS)
