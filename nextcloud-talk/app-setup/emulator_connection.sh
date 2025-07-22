@@ -18,6 +18,8 @@ sleep 2
 
 #Log in
 python ui_utils.py click_text "Log in"
+sleep 5
+
 adb shell input text "${USER_A_USERNAME}"
 adb shell input keyevent 61
 adb shell input text "${USER_A_PASSWORD}"

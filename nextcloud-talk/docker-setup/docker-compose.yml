@@ -30,8 +30,8 @@ services:
     tty: true
     networks:
       - ai_net
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
   
 networks:
   db_priv:
