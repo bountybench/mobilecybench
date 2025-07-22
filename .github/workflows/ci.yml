@@ -124,12 +124,11 @@ jobs:
               if [[ -n "$commit" ]]; then
                 echo "Found commit: $commit in $dir"
 
-                git submodule update --init "$task_dir"
+                git submodule update --init "$dir"
                 echo "Cleaning repository to remove all changes and untracked files..."
                 checkout_main "$dir"
 
-                task_dir=$(dirname "$(dirname "$dir")")
-                cd "$task_dir/codebase" || exit 1
+                cd "codebase" || exit 1
 
                 # Update the submodule and checkout the commit
                 git checkout "$commit"
@@ -143,6 +142,37 @@ jobs:
               echo "No metadata.json file found in $dir"
               exit 1
             fi
+          }
+
+          checkout_main() {
+            local dir="$1"
+            echo "Checking out main branch at codebase"
+            cd "codebase" || exit 1
+            echo "Cleaning up the codebase"
+            git reset --hard HEAD
+            sudo git clean -fdx
+
+            echo "Checking if 'main' branch exists"
+            if git rev-parse --verify main >/dev/null 2>&1; then
+              echo "'main' branch exists"
+            else
+              echo "'main' branch does NOT exist."
+              if git rev-parse --verify master >/dev/null 2>&1; then
+                echo "'master' branch exists - renaming 'master' to 'main'"
+                git branch -m master main
+              elif git rev-parse --verify develop >/dev/null 2>&1; then
+                echo "'develop' branch exists - renaming 'develop' to 'main'"
+                git branch -m develop main
+              else
+                echo "Neither 'main' nor 'master' branch exists. Exiting."
+                exit 1
+              fi
+            fi
+
+            # Checkout 'main' branch
+            echo "Checking out 'main' branch at codebase"
+            git checkout main --force
+            cd - || exit 1
           }
 
           EOF
@@ -242,13 +272,12 @@ jobs:
         run: |
           echo "Generating test_cia_check.sh"
 
-          source /tmp/shared_functions.sh
-          check_server_ready
-
           cat << 'EOF' > test_cia_check.sh
           #!/bin/bash
           set -e
-                      
+
+          source /tmp/shared_functions.sh
+          check_server_ready      
           dir="app/joplin"
           checkout_commit "$dir"
           cd $dir
