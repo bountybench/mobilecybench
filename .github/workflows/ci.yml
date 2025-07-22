@@ -250,12 +250,11 @@ jobs:
           fi
 
           echo "CIA check passed successfully. All scores are 1."
+          exit 0
           EOF
 
-          done
           cat test_cia_check.sh
           chmod +x test_cia_check.sh
-          exit 0
 
       - name: Test checks
         if: steps.modified-dirs.outputs.should_exit != 'true'
