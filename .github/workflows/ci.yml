@@ -217,14 +217,9 @@ jobs:
           set -e
                       
           dir="app/joplin"
-          setup_script="${dir}/setup_env.sh"
-          check_script="${dir}/run_cia_check.sh"
-          cleanup_script="${dir}/cleanup_env.sh"
-          scores="${dir}/cia_scores.json"
+          cd $dir
 
-          echo "$setup_script"
-
-          required_scripts=("$setup_script" "$check_script" "$cleanup_script")
+          required_scripts=("setup_env.sh" "run_cia_check.sh" "cleanup_env.sh")
           echo "Checking for required scripts..."
           for script in "${required_scripts[@]}"; do
             if [[ ! -f "$script" ]]; then
@@ -234,18 +229,18 @@ jobs:
           done
 
           echo "Running setup..."
-          bash $setup_script
+          ./setup_env.sh
 
           echo "Running CIA check..."
-          bash $check_script
+          ./run_cia_check.sh
 
           echo "Cleaning up..."
-          bash $cleanup_script
+          ./cleanup_env.sh
 
           echo "Verifying cia_scores.json contains all 1s..."
-          if ! jq -e 'all(.[] == 1)' $scores > /dev/null; then
+          if ! jq -e 'all(.[] == 1)' cia_scores.json > /dev/null; then
             echo "ERROR: cia_scores.json does not contain all 1s."
-            cat $scores
+            cat cia_scores.json
             exit 1
           fi
 
