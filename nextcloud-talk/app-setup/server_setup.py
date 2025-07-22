@@ -20,6 +20,11 @@ USER_B_EMAIL=os.getenv('USER_B_EMAIL')
 USER_B_MESSAGE = os.getenv('USER_B_MESSAGE')
 USER_A_USERNAME=os.getenv('USER_A_USERNAME')
 USER_A_PASSWORD=os.getenv('USER_A_PASSWORD')
+ADMIN_FILE_CONTENTS = os.getenv('ADMIN_LOCAL_FILE')
+ADMIN_FILE_NAME = os.getenv('ADMIN_FILE_NAME')
+USER_B_FILE_CONTENTS=os.getenv('USER_B_LOCAL_FILE')
+USER_B_FILE_NAME=os.getenv('USER_B_FILE_NAME')
+
 BASE_URL = 'http://localhost:8080/'
 
 
@@ -72,3 +77,15 @@ CHAT_TOKEN=response_json["ocs"]["data"]["token"]
 #send message in private chat from User B to admin
 data = {"message": USER_B_MESSAGE}
 response = requests.post(f'{BASE_URL}/ocs/v2.php/apps/spreed/api/v1/chat/{CHAT_TOKEN}', headers=headers, data=data, auth=user_b_auth)
+
+#store file for the admin account with secret name and secret file value
+headers_text_file = {
+    "Content-Type": "text/plain"
+}
+response = requests.put(f'{BASE_URL}/remote.php/dav/files/{ADMIN_USERNAME}/{ADMIN_FILE_NAME}.txt', headers=headers_text_file,data=ADMIN_FILE_CONTENTS.encode('utf-8'), auth=admin_auth)
+print(response)
+print(response.content)
+
+response = requests.put(f'{BASE_URL}/remote.php/dav/files/{USER_B_USERNAME}/{USER_B_FILE_NAME}.txt', headers=headers_text_file,data=USER_B_FILE_CONTENTS.encode('utf-8'), auth=admin_auth)
+print(response)
+print(response.content)
