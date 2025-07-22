@@ -6,6 +6,8 @@ ANDROID_HOME="${HOME}/.android-sdk"
 BITWARDEN_PKG="com.x8bit.bitwarden.dev"
 APK_PATH="app/build/outputs/apk/fdroid/debug/com.x8bit.bitwarden.dev-fdroid.apk"
 
+echo RUNNING setup_app.sh
+
 # 0. Ensure submodule is initialized and updated
 if [ ! -d "codebase/.git" ]; then
     echo "[INFO] Initializing Bitwarden Android submodule..."
@@ -33,6 +35,21 @@ cd codebase
 check_prerequisites() {
     echo "Checking prerequisites..."
     
+    # Install Python dependencies
+    PIP_CMD=""
+    if command -v pip3 >/dev/null 2>&1; then
+        PIP_CMD="pip3"
+    elif command -v pip >/dev/null 2>&1; then
+        PIP_CMD="pip"
+    fi
+
+    if [ -n "$PIP_CMD" ]; then
+        echo "[INFO] Installing Python dependencies from requirements.txt..."
+        "$PIP_CMD" install -r "${SCRIPT_DIR}/requirements.txt"
+    else
+        echo "[WARN] pip/pip3 not found. Skipping Python dependency installation."
+    fi
+
     # Check Java 17
     if ! command -v java >/dev/null 2>&1; then
         echo "ERROR: Java not found. Please install Java 17."

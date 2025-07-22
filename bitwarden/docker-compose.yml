@@ -1,4 +1,4 @@
-version: '3'
+# version: '3'
 
 services:
   vaultwarden:
@@ -25,9 +25,8 @@ services:
       POSTGRES_USER: bitwarden
       POSTGRES_PASSWORD: super_strong_password
       POSTGRES_DB: vaultwarden
-    volumes:
-      - db_data:/var/lib/postgresql/data
-      - ./initdb:/docker-entrypoint-initdb.d
+    volumes: 
+      - ./initdb:/seed 
     networks:
       - private_net
 
