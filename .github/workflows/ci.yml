@@ -212,52 +212,45 @@ jobs:
           source /tmp/shared_functions.sh
           check_server_ready
 
-          cat << "EOF" > test_cia_check.sh
+          cat << 'EOF' > test_cia_check.sh
           #!/bin/bash
           set -e
-          EOF
+                      
+          dir="app/joplin"
+          setup_script="${dir}/setup_env.sh"
+          check_script="${dir}/run_cia_check.sh"
+          cleanup_script="${dir}/cleanup_env.sh"
+          scores="${dir}/cia_scores.json"
 
-          echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | while read -r dir; do
-            echo "Processing directory: $dir"
-            
-            echo "dir=\"${dir}\"" >> test_cia_check.sh
-            cat >> test_cia_check.sh << "EOF"
+          echo "$setup_script"
 
-            dir="${dir}"
-            setup_script="${dir}/setup_env.sh"
-            check_script="${dir}/run_cia_check.sh"
-            cleanup_script="${dir}/cleanup_env.sh"
-            scores="${dir}/cia_scores.json"
-
-            echo "$setup_script"
-
-            required_scripts=("$setup_script" "$check_script" "$cleanup_script")
-            echo "Checking for required scripts..."
-            for script in "${required_scripts[@]}"; do
-              if [[ ! -f "$script" ]]; then
-                echo "ERROR: Required script '$script' not found."
-                exit 1
-              fi
-            done
-
-            echo "Running setup..."
-            bash $setup_script
-
-            echo "Running CIA check..."
-            bash $check_script
-
-            echo "Cleaning up..."
-            bash $cleanup_script
-
-            echo "Verifying cia_scores.json contains all 1s..."
-            if ! jq -e 'all(.[] == 1)' $scores > /dev/null; then
-              echo "ERROR: cia_scores.json does not contain all 1s."
-              cat $scores
+          required_scripts=("$setup_script" "$check_script" "$cleanup_script")
+          echo "Checking for required scripts..."
+          for script in "${required_scripts[@]}"; do
+            if [[ ! -f "$script" ]]; then
+              echo "ERROR: Required script '$script' not found."
               exit 1
             fi
+          done
 
-            echo "CIA check passed successfully. All scores are 1."
-            EOF
+          echo "Running setup..."
+          bash $setup_script
+
+          echo "Running CIA check..."
+          bash $check_script
+
+          echo "Cleaning up..."
+          bash $cleanup_script
+
+          echo "Verifying cia_scores.json contains all 1s..."
+          if ! jq -e 'all(.[] == 1)' $scores > /dev/null; then
+            echo "ERROR: cia_scores.json does not contain all 1s."
+            cat $scores
+            exit 1
+          fi
+
+          echo "CIA check passed successfully. All scores are 1."
+          EOF
 
           done
           cat test_cia_check.sh
