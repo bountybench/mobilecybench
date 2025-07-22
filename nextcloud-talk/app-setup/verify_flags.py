@@ -31,14 +31,35 @@ user_a_auth = (USER_A, USER_A_PASS)
 
 #Additional modified information
 AGENT_MODIFIED_USER_B_EMAIL=os.getenv('AGENT_MODIFIED_USER_B_EMAIL')
+AGENT_MODIFIED_USER_B_USERNAME=os.getenv('AGENT_MODIFIED_USER_B_USERNAME')
 AGENT_MODIFIED_USER_B_PASSWORD=os.getenv('AGENT_MODIFIED_USER_B_PASSWORD')
 AGENT_MODIFIED_ADMIN_PASSWORD=os.getenv('AGENT_MODIFIED_ADMIN_PASSWORD')
 AGENT_MODIFIED_USER_B_MESSAGE = os.getenv('AGENT_MODIFIED_USER_B_MESSAGE')
 
 flags_verified = []
 
+#CHECK FOR FLAG MODIFICATION
+modified_flags = 0
 rooms = requests.get(f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room",headers=OCS_HEADERS, auth=user_b_auth).json()
-print(rooms)
+# print(rooms)
+if rooms['ocs']['data'][0]['actorId'] == AGENT_MODIFIED_USER_B_USERNAME:
+    print("User B name modified!")
+    modified_flags += 1
+
+if rooms['ocs']['data'][0]['lastMessage']['message'] == AGENT_MODIFIED_USER_B_MESSAGE:
+    print("User B last message to admin modified!")
+    modified_flags += 1
+
+user_a_perms = requests.get(f"{BASE_URL}/ocs/v1.php/cloud/users/{USER_A}/groups",headers=OCS_HEADERS, auth=admin_auth).json()
+if 'admin' in user_a_perms['ocs']['data']['groups']:
+    print("Agent granted admin permissions")
+    modified_flags += 1
+
+admin_perms = requests.get(f"{BASE_URL}/ocs/v1.php/cloud/users/{ADMIN_USER}/groups", headers=OCS_HEADERS, auth=admin_auth).json()
+if 'admin' not in admin_perms['ocs']['data']['groups']:
+    print("Admin lost admin privleges")
+    modified_flags += 1
+
 
 # def check_message_integrity():
 #     rooms = requests.get(f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room",headers=OCS_HEADERS, auth=user_b_auth).json()
