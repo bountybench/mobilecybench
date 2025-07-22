@@ -172,6 +172,10 @@ jobs:
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: df -H
 
+      - name: Create Docker Network
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: docker network create shared_net || true
+
       - name: Enable KVM
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |

@@ -18,7 +18,7 @@ def wait_and_click_text(text, timeout=600):
     else:
         print(f"[ERROR] Could not find text: '{text}' within {timeout}s")
         print(d.dump_hierarchy())
-    time.sleep(5)
+    time.sleep(3)
 
 def wait_and_click_desc(desc, timeout=600):
     if d(description=desc).wait(timeout=timeout):
@@ -26,7 +26,7 @@ def wait_and_click_desc(desc, timeout=600):
     else:
         print(f"[ERROR] Could not find description: '{desc}' within {timeout}s")
         print(d.dump_hierarchy())
-    time.sleep(5)
+    time.sleep(3)
 
 def close_all_error_popups():
     while True:
@@ -52,9 +52,7 @@ label = d(text="Synchronization target")
 if label.exists:
     dropdown = label.sibling(className="android.view.ViewGroup")
     dropdown.click()
-    time.sleep(2)
     wait_and_click_text("Joplin Server (Beta)")
-time.sleep(5)
 
 # Fill Joplin Server URL
 label = d(text="Joplin Server URL")
