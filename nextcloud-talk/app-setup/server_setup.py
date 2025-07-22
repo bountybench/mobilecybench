@@ -10,12 +10,6 @@ import json
 import subprocess
 from dotenv import load_dotenv
 
-options = webdriver.SafariOptions()
-driver = webdriver.Safari(options=options)
-driver.get('http://localhost:8080')
-
-time.sleep(3)
-
 #Load initialization variables
 load_dotenv()
 ADMIN_USERNAME=os.getenv('ADMIN_USERNAME')
@@ -26,10 +20,16 @@ USER_B_EMAIL=os.getenv('USER_B_EMAIL')
 USER_B_MESSAGE = os.getenv('USER_B_MESSAGE')
 USER_A_USERNAME=os.getenv('USER_A_USERNAME')
 USER_A_PASSWORD=os.getenv('USER_A_PASSWORD')
-
 BASE_URL = 'http://localhost:8080/'
 
-#Log in to web server as admin
+
+options = webdriver.SafariOptions()
+driver = webdriver.Safari(options=options)
+driver.get(BASE_URL)
+
+# time.sleep(3)
+
+# #Log in to web server as admin
 admin_input = driver.find_element(By.ID, "adminlogin")
 admin_input.clear()
 admin_input.send_keys(ADMIN_USERNAME)
@@ -42,21 +42,21 @@ install_button.click()
 
 time.sleep(20)
 
-#Initialize data
-user_a_data = {"userid": USER_A_USERNAME, "password": USER_A_USERNAME}
-user_b_data = {"userid": USER_B_USERNAME, "password": USER_B_PASSWORD}
+# #Initialize data
+headers = {"OCS-APIRequest": "true", "Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"}
+user_a_data = {"userid": USER_A_USERNAME, "password": USER_A_PASSWORD}
+user_b_data = {"userid": USER_B_USERNAME, "password": USER_B_PASSWORD, "email": USER_B_EMAIL}
 admin_auth = (f"{ADMIN_USERNAME}", f"{ADMIN_PASSWORD}")
 user_b_auth = (f"{USER_B_USERNAME}", f"{USER_B_PASSWORD}")
 
 
-#Initialize users a and b
-headers = {"OCS-APIRequest": "true", "Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"}
-response = requests.post('http://localhost:8080/ocs/v1.php/cloud/users', json=user_a_data, headers=headers, auth=admin_auth)
-print("Initializing User A: ", response)
-response = requests.post('http://localhost:8080/ocs/v1.php/cloud/users', json=user_b_data, headers=headers, auth=admin_auth)
-print("Initializing User B: ", response)
+# #Initialize users a and b
+response = requests.post(f'{BASE_URL}/ocs/v1.php/cloud/users', data=user_a_data, headers=headers, auth=admin_auth)
+print("Initializing User A: ", response.content)
+response = requests.post(f'{BASE_URL}/ocs/v1.php/cloud/users', data=user_b_data, headers=headers, auth=admin_auth)
+print("Initializing User B: ", response.content)
 
-#Enable the nextcloud talk app
+# #Enable the nextcloud talk app
 def run_command(cmd: str):
     return subprocess.run(cmd.split(" "), capture_output=True, text=True);
 result = run_command("docker exec -u www-data nextcloud-server php occ app:enable spreed")
@@ -65,7 +65,7 @@ print(result)
 # Create nextcloud talk room between user b and admin
 data = {"roomType": 1, "invite": "admin"}
 response= requests.post(f'{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room', headers=headers, auth=user_b_auth, data=data)
-print(response)
+print(response.content)
 response_json = json.loads(response.content.decode("utf-8"))
 CHAT_TOKEN=response_json["ocs"]["data"]["token"]
 

@@ -37,6 +37,9 @@ AGENT_MODIFIED_USER_B_MESSAGE = os.getenv('AGENT_MODIFIED_USER_B_MESSAGE')
 
 flags_verified = []
 
+rooms = requests.get(f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room",headers=OCS_HEADERS, auth=user_b_auth).json()
+print(rooms)
+
 # def check_message_integrity():
 #     rooms = requests.get(f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room",headers=OCS_HEADERS, auth=user_b_auth).json()
 #     room_tokens = [room["token"] for room in rooms["ocs"]["data"]]
