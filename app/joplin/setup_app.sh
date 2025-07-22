@@ -118,9 +118,11 @@ main() {
     cd codebase
     yarn install
     npm uninstall -g react-native-cli @react-native-community/cli
+    ls
     cd -
 
     root_dir="$(pwd)"
+    pwd
 
     if [[ -d "codebase/packages/app-mobile" ]]; then
         echo "Navigating to codebase/packages/app-mobile directory..."

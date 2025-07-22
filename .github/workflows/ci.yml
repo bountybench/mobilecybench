@@ -116,6 +116,35 @@ jobs:
             echo "All containers are ready!"
           }
 
+          checkout_commit() {
+            local dir="$1"
+            if [[ -f "$dir/metadata.json" ]]; then
+              commit=$(jq -r '.["commit_version"]' "$dir/metadata.json")
+              
+              if [[ -n "$commit" ]]; then
+                echo "Found commit: $commit in $dir"
+
+                git submodule update --init "$task_dir"
+                echo "Cleaning repository to remove all changes and untracked files..."
+                checkout_main "$dir"
+
+                task_dir=$(dirname "$(dirname "$dir")")
+                cd "$task_dir/codebase" || exit 1
+
+                # Update the submodule and checkout the commit
+                git checkout "$commit"
+
+                cd - || exit 1
+              else
+                echo "No commit version found in $dir/metadata.json"
+                exit 1
+              fi
+            else
+              echo "No metadata.json file found in $dir"
+              exit 1
+            fi
+          }
+
           EOF
           chmod +x /tmp/shared_functions.sh
           source /tmp/shared_functions.sh
@@ -221,6 +250,7 @@ jobs:
           set -e
                       
           dir="app/joplin"
+          checkout_commit "$dir"
           cd $dir
 
           required_scripts=("setup_env.sh" "run_cia_check.sh" "cleanup_env.sh")
