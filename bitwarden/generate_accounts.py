@@ -4,171 +4,284 @@ import json
 import hashlib
 import hmac
 from base64 import b64encode
+import unicodedata
 
 # pycryptodome is required: pip install pycryptodome
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 from Crypto.Random import get_random_bytes
+from Crypto.PublicKey import RSA
 
 # --- Configuration ---
-# These parameters are based on the dump.sql and Bitwarden's standard practices.
-# Client-side iterations to create the master key
+SERVER_ITERATIONS = int(os.environ.get('PASSWORD_ITERATIONS', 600000))
 PASSWORD_ITERATIONS = 600000
-# Server-side iterations to store the password hash
-SERVER_ITERATIONS = 100000
+print(f"Using SERVER_ITERATIONS: {SERVER_ITERATIONS}")
 
-# --- Helper Functions ---
+# --- Cryptographic Helper Functions ---
 
 def get_uuid():
-    """Generates a 36-character UUID string with hyphens, matching the database schema."""
-    generated_uuid = str(uuid.uuid4())
-    print(f"Generated UUID: {generated_uuid}")
-    return generated_uuid
+    """Generates a standard UUID string."""
+    return str(uuid.uuid4())
+
+def pem_to_base64(pem):
+    """
+    Extracts the raw Base64 content from a PEM block,
+    removing header/footer and newlines.
+    """
+    lines = pem.strip().splitlines()
+    base64_lines = [line for line in lines if not line.startswith('-----')]
+    return ''.join(base64_lines)
 
 def make_stretched_key(password, email, iterations):
-    """Derives the master key using PBKDF2-SHA256, as Bitwarden does."""
-    salt = email.lower().encode('utf-8')
-    return hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, iterations, dklen=32)
+    """Derives the master key using PBKDF2-SHA256, with robust email normalization."""
+    normalized_email = unicodedata.normalize('NFC', email.lower().strip())
+    return hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), normalized_email.encode('utf-8'), iterations, dklen=32)
 
-def make_client_hash(stretched_key, password):
+def hash_password_direct(master_key, salt, iterations):
     """
-    Creates the hash that the client would send to the server for authentication.
-    The master key is hashed with the master password as the salt.
+    Directly hash master_key using PBKDF2-SHA256, matching Vaultwarden's implementation.
+    This is what Vaultwarden uses for password verification.
     """
-    salt = password.encode('utf-8')
-    return hashlib.pbkdf2_hmac('sha256', stretched_key, salt, 1, dklen=32)
-
-def make_server_hash(client_hash, iterations):
-    """
-    Creates the final hash and salt that are stored in the database.
-    The server re-hashes the client hash with a new random salt.
-    """
-    salt = get_random_bytes(64)
-    db_hash = hashlib.pbkdf2_hmac('sha256', client_hash, salt, iterations, dklen=32)
-    # Return the raw hex string, so it can be used with decode() in SQL.
-    return db_hash.hex(), salt.hex()
+    return hashlib.pbkdf2_hmac('sha256', master_key, salt, iterations, dklen=32)
 
 def encrypt_data(plaintext, stretched_key):
     """
-    Encrypts data using AES-256-CBC with HMAC-SHA256, mirroring Bitwarden's format.
-    Format: 2.IV|Ciphertext|MAC
+    Encrypts data using AES-256-CBC with HMAC-SHA256, matching Vaultwarden's implementation.
     """
     if not isinstance(plaintext, bytes):
         plaintext = plaintext.encode('utf-8')
 
-    # Derive encryption and MAC keys from the master key
-    enc_key = hmac.new(stretched_key, b'\x01', hashlib.sha256).digest()
-    mac_key = hmac.new(stretched_key, b'\x02', hashlib.sha256).digest()
+    # Derive encryption and MAC keys from the master key using PBKDF2
+    enc_key = hashlib.pbkdf2_hmac('sha256', stretched_key, b'\x01', 1, dklen=32)
+    mac_key = hashlib.pbkdf2_hmac('sha256', stretched_key, b'\x02', 1, dklen=32)
 
-    # Encrypt
     iv = get_random_bytes(16)
     cipher = AES.new(enc_key, AES.MODE_CBC, iv)
     padded_data = pad(plaintext, AES.block_size)
     ciphertext = cipher.encrypt(padded_data)
 
-    # Create MAC
-    mac_data = iv + ciphertext
-    mac = hmac.new(mac_key, mac_data, hashlib.sha256).digest()
-
-    # Format output string
+    # The MAC must use HMAC-SHA256
+    mac = hmac.new(mac_key, iv + ciphertext, hashlib.sha256)
+    
     b64_iv = b64encode(iv).decode('utf-8')
     b64_ciphertext = b64encode(ciphertext).decode('utf-8')
-    b64_mac = b64encode(mac).decode('utf-8')
+    b64_mac = b64encode(mac.digest()).decode('utf-8')
 
     return f"2.{b64_iv}|{b64_ciphertext}|{b64_mac}"
+
+def generate_user_symmetric_key():
+    """
+    Generates a user symmetric key that matches what the client would generate.
+    This is a 32-byte random key encoded in base64.
+    """
+    return b64encode(get_random_bytes(32)).decode('ascii')
+
+def encrypt_user_symmetric_key(akey, stretched_key):
+    """
+    Encrypts the user symmetric key using the same format as Vaultwarden.
+    This matches the format seen in the UI-generated user.
+    """
+    return encrypt_data(akey, stretched_key)
+
+def verify_hash(password, salt, expected_hash_hex, iterations):
+    """
+    Verifies that the hash generated by Python matches the expected hash from Vaultwarden.
+    """
+    import binascii
+    actual_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, iterations, dklen=32)
+    actual_hash_hex = actual_hash.hex()
+    print(f"[VERIFY] Password: {password}")
+    print(f"[VERIFY] Salt (hex): {binascii.hexlify(salt).decode()}")
+    print(f"[VERIFY] Hash (hex): {actual_hash_hex}")
+    print(f"[VERIFY] Expected Hash (hex): {expected_hash_hex}")
+    if actual_hash_hex == expected_hash_hex:
+        print("[VERIFY] ✅ Hash matches expected value!")
+    else:
+        print("[VERIFY] ❌ Hash does NOT match expected value!")
 
 # --- Main Generation Logic ---
 
 def main():
-    """Generates secrets and writes them to sql and json files."""
+    """Generates user data and creates a complete, ready-to-run seed.sql file."""
+    print(f"Generating secrets for 4 users...")
 
-    secrets_dict = {}
-    print("Generating secrets for 3 users with 5 ciphers each...")
-
+    all_users_data = []
+    # Create user1, user2, user3, and test@test.com
     for user_idx in range(1, 4):
-        # 1. Generate basic user info
-        user_uuid = get_uuid()
+        user_data = {}
         email = f'user{user_idx}@example.com'
+        # Use simpler passwords without special characters to avoid web client issues
+        password = f'MasterPassword{user_idx}'
         name = f'User {user_idx}'
-        password = f'MasterPassword{user_idx}!' # Use a known password for predictability if needed
+
+        # --- Correct Vaultwarden Flow ---
+        # 1. Create user with random salt (like User::new())
+        salt = get_random_bytes(64)
         
-        # 2. Perform Bitwarden's key derivation and hashing process
+        # 2. Generate the master key for encryption (this is what the client uses)
         stretched_key = make_stretched_key(password, email, PASSWORD_ITERATIONS)
-        client_hash = make_client_hash(stretched_key, password)
-        password_hash, salt = make_server_hash(client_hash, SERVER_ITERATIONS)
+        
+        # 3. Generate password hash using the two-step KDF (Bitwarden/Vaultwarden flow)
+        # Step 1: Client-side KDF (master key)
+        master_key = make_stretched_key(password, email, PASSWORD_ITERATIONS)
+        # Step 2: Server-side KDF (password hash)
+        password_hash = hash_password_direct(master_key, salt, SERVER_ITERATIONS)
 
-        # 3. Store user secrets for SQL and JSON files
-        secrets_dict[f'user{user_idx}_uuid'] = user_uuid
-        secrets_dict[f'user{user_idx}_email'] = email
-        secrets_dict[f'user{user_idx}_name'] = name
-        secrets_dict[f'user{user_idx}_password'] = password # For reference in secrets.json
-        secrets_dict[f'user{user_idx}_password_hash'] = password_hash
-        secrets_dict[f'user{user_idx}_salt'] = salt
-        secrets_dict[f'user{user_idx}_password_iterations'] = PASSWORD_ITERATIONS
-        secrets_dict[f'user{user_idx}_client_kdf_iter'] = SERVER_ITERATIONS
-        secrets_dict[f'user{user_idx}_password_hint'] = f'Hint for {name}' # Plain text hint
-        secrets_dict[f'user{user_idx}_equivalent_domains'] = '[]' # Default empty JSON array
-        secrets_dict[f'user{user_idx}_excluded_globals'] = '[]' # Default empty JSON array
-        # These fields are often present in the DB but may not be critical for basic seeding
-        secrets_dict[f'user{user_idx}_akey'] = encrypt_data(get_uuid(), stretched_key)
-        secrets_dict[f'user{user_idx}_private_key'] = encrypt_data(get_uuid(), stretched_key)
-        secrets_dict[f'user{user_idx}_public_key'] = get_uuid() # Public keys are not usually encrypted this way
-        secrets_dict[f'user{user_idx}_security_stamp'] = get_uuid()
+        # --- Verification Step ---
+        print(f"\n[DEBUG] User: {email}")
+        print(f"[DEBUG] Password: {password}")
+        print(f"[DEBUG] Salt (hex): {salt.hex()}")
+        print(f"[DEBUG] Master Key (hex): {master_key.hex()}")
+        print(f"[DEBUG] Hash (hex): {password_hash.hex()}")
+        # Optionally, call verify_hash here with known values for manual testing
 
-        print(f"  - Generated user: {email} with uuid: {user_uuid}")
+        # --- Correct Key Generation & Formatting ---
+        key = RSA.generate(2048)
+        private_key_pem = key.export_key('PEM').decode('utf-8')
+        public_key_pem = key.publickey().export_key('PEM').decode('utf-8')
 
-        # 5. Generate and encrypt 5 ciphers for this user
+        # Generate the raw akey first
+        raw_akey = generate_user_symmetric_key()
+        
+        # Encrypt the akey using the stretched key (matching UI-generated format)
+        encrypted_akey = encrypt_user_symmetric_key(raw_akey, stretched_key)
+
+        user_data['uuid'] = get_uuid()
+        user_data['email'] = email
+        user_data['name'] = name
+        user_data['password'] = password
+        user_data['password_hash'] = password_hash.hex()
+        user_data['salt'] = salt.hex()
+        user_data['password_iterations'] = SERVER_ITERATIONS
+        user_data['client_kdf_iter'] = PASSWORD_ITERATIONS
+        user_data['password_hint'] = None  # Match UI-created user format
+        user_data['akey'] = encrypted_akey
+        user_data['private_key'] = encrypt_data(private_key_pem, stretched_key)
+        user_data['public_key'] = pem_to_base64(public_key_pem)
+        user_data['security_stamp'] = get_uuid()
+        
+        # Additional fields to match UI-created users exactly
+        user_data['totp_secret'] = None
+        user_data['totp_recover'] = None
+        user_data['equivalent_domains'] = '[]'
+        user_data['excluded_globals'] = '[]'
+        user_data['client_kdf_type'] = 0
+        user_data['verified_at'] = None
+        user_data['last_verifying_at'] = None
+        user_data['login_verify_count'] = 0
+        user_data['email_new'] = None
+        user_data['email_new_token'] = None
+        user_data['enabled'] = True
+        user_data['stamp_exception'] = None
+        user_data['api_key'] = None
+        user_data['avatar_color'] = None
+        user_data['client_kdf_memory'] = None
+        user_data['client_kdf_parallelism'] = None
+        user_data['external_id'] = None
+        
+        user_data['ciphers'] = []
         for cipher_idx in range(1, 6):
-            cipher_uuid = get_uuid()
-            
-            # Encrypt cipher components using the user's stretched_key
-            cipher_name = encrypt_data(f"Website Login {cipher_idx}", stretched_key)
+            cipher_data = {}
+            cipher_data['uuid'] = get_uuid()
+            cipher_data['name'] = encrypt_data(f"Website Login {cipher_idx}", stretched_key)
             login_username = encrypt_data(f"login_user_{user_idx}_{cipher_idx}", stretched_key)
-            login_password = encrypt_data(f"S3cureP@ssw0rd_{user_idx}_{cipher_idx}!", stretched_key)
-            
-            # The 'data' column is a JSON blob with encrypted values
-            cipher_data = json.dumps({
-                "username": login_username,
-                "password": login_password,
-                "totp": None,
+            login_password = encrypt_data(f"password_{user_idx}_{cipher_idx}", stretched_key)
+            cipher_data['data'] = json.dumps({
+                "username": login_username, "password": login_password, "totp": None,
                 "uri": encrypt_data(f"https://website-{cipher_idx}.com", stretched_key)
             })
+            user_data['ciphers'].append(cipher_data)
+        
+        all_users_data.append(user_data)
+    
+    print("Secrets and RSA keys generated. Building final seed.sql file...")
+    
+    try:
+        with open("seed_template.sql", "r") as template_file:
+            sql_template = template_file.read()
+    except FileNotFoundError:
+        print("\n❌ ERROR: `seed_template.sql` not found.")
+        return
 
-            # Store cipher secrets
-            secrets_dict[f'c{user_idx}_{cipher_idx}_uuid'] = cipher_uuid
-            secrets_dict[f'c{user_idx}_{cipher_idx}_name'] = cipher_name
-            secrets_dict[f'c{user_idx}_{cipher_idx}_data'] = cipher_data
+    sql_parts = [sql_template]
 
-    # 6. Write secrets to accounts.sql for psql to import
+    user_values = []
+    for u in all_users_data:
+        name_sql = u['name'].replace("'", "''")
+        akey_sql = u['akey'].replace("'", "''")
+        private_key_sql = u['private_key'].replace("'", "''")
+        public_key_sql = u['public_key']
+        
+        # Build the complete INSERT statement with all fields
+        user_values.append(
+            f"('{u['uuid']}', NOW(), NOW(), '{u['email']}', '{name_sql}', decode('{u['password_hash']}', 'hex'), decode('{u['salt']}', 'hex'), "
+            f"{u['password_iterations']}, {'NULL' if u['password_hint'] is None else f"'{u['password_hint']}'"}, '{akey_sql}', '{private_key_sql}', '{public_key_sql}', "
+            f"{'NULL' if u['totp_secret'] is None else f"'{u['totp_secret']}'"}, "
+            f"{'NULL' if u['totp_recover'] is None else f"'{u['totp_recover']}'"}, "
+            f"'{u['security_stamp']}', '{u['equivalent_domains']}', '{u['excluded_globals']}', "
+            f"{u['client_kdf_type']}, {u['client_kdf_iter']}, "
+            f"{'NULL' if u['verified_at'] is None else f"'{u['verified_at']}'"}, "
+            f"{'NULL' if u['last_verifying_at'] is None else f"'{u['last_verifying_at']}'"}, "
+            f"{u['login_verify_count']}, "
+            f"{'NULL' if u['email_new'] is None else f"'{u['email_new']}'"}, "
+            f"{'NULL' if u['email_new_token'] is None else f"'{u['email_new_token']}'"}, "
+            f"{'TRUE' if u['enabled'] else 'FALSE'}, "
+            f"{'NULL' if u['stamp_exception'] is None else f"'{u['stamp_exception']}'"}, "
+            f"{'NULL' if u['api_key'] is None else f"'{u['api_key']}'"}, "
+            f"{'NULL' if u['avatar_color'] is None else f"'{u['avatar_color']}'"}, "
+            f"{'NULL' if u['client_kdf_memory'] is None else u['client_kdf_memory']}, "
+            f"{'NULL' if u['client_kdf_parallelism'] is None else u['client_kdf_parallelism']}, "
+            f"{'NULL' if u['external_id'] is None else f"'{u['external_id']}'"})"
+        )
+    
+    users_insert_statement = (
+        "INSERT INTO public.users (uuid, created_at, updated_at, email, name, password_hash, salt, password_iterations, "
+        "password_hint, akey, private_key, public_key, totp_secret, totp_recover, security_stamp, equivalent_domains, "
+        "excluded_globals, client_kdf_type, client_kdf_iter, verified_at, last_verifying_at, login_verify_count, "
+        "email_new, email_new_token, enabled, stamp_exception, api_key, avatar_color, client_kdf_memory, "
+        "client_kdf_parallelism, external_id) VALUES\n" + ",\n".join(user_values) + ";"
+    )
+    sql_parts.append(users_insert_statement)
+
+    for u in all_users_data:
+        cipher_values = []
+        for c in u['ciphers']:
+            data_sql = c['data'].replace("'", "''")
+            cipher_values.append(
+                f"('{c['uuid']}', NOW(), NOW(), '{u['uuid']}', 1, '{c['name']}', '{data_sql}')"
+            )
+        ciphers_insert_statement = (
+            "INSERT INTO public.ciphers (uuid, created_at, updated_at, user_uuid, atype, name, data) VALUES\n"
+            + ",\n".join(cipher_values) + ";"
+        )
+        sql_parts.append(ciphers_insert_statement)
+
     os.makedirs('initdb', exist_ok=True)
-    with open("initdb/accounts.sql", "w") as sql_file:
-        for key, value in secrets_dict.items():
-            # For integer values or hex strings for bytea, write them without quotes.
-            if isinstance(value, int) or '_hash' in key or '_salt' in key:
-                sql_file.write(f"\\set {key} {value}\n")
-            else:
-                # For all other types (strings), use single quotes for safety.
-                sql_file.write(f"\\set {key} '{value}'\n")
-
-    print("\n✅ Secrets written to initdb/accounts.sql")
-
-    # 7. Write secrets to secrets.json for easy reference
+    with open("initdb/seed.sql", "w") as final_sql_file:
+        final_sql_file.write("\n\n".join(sql_parts))
+    print("\n✅ Complete `seed.sql` written to `initdb/seed.sql`.")
+    
+    json_output = {}
+    flat_data = {}
+    for i, u in enumerate(all_users_data):
+        user_key = f"user{i+1}" if u['email'] != 'test@test.com' else "user_test"
+        for k, v in u.items():
+            if k != 'ciphers': flat_data[f"{user_key}_{k}"] = v
+        for j, c in enumerate(u['ciphers']):
+            cipher_key = f"c{i+1}_{j+1}"
+            for ck, cv in c.items(): flat_data[f"{cipher_key}_{ck}"] = cv
+            
     with open("accounts.json", "w") as json_file:
-        json.dump(secrets_dict, json_file, indent=2)
+        json.dump(flat_data, json_file, indent=2)
     print("✅ Secrets written to accounts.json for reference.")
 
-    # 8. Write user credentials to logins.txt
     with open("logins.txt", "w") as login_file:
-        login_file.write("User Credentials for Testing\n")
-        login_file.write("============================\n")
-        for i in range(1, 4):
-            email = secrets_dict[f'user{i}_email']
-            password = secrets_dict[f'user{i}_password']
-            login_file.write(f"Email: {email}\nPassword: {password}\n\n")
+        login_file.write("User Credentials for Testing\n============================\n")
+        for u in all_users_data:
+            login_file.write(f"Email: {u['email']}\nPassword: {u['password']}\n\n")
     print("✅ User credentials written to logins.txt.")
-
-    print("\nGeneration complete. You can now use bitwarden-seed.sql with psql.")
+    print("\nGeneration complete.")
 
 
 if __name__ == "__main__":
-    main() 
+    main()

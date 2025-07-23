@@ -6,7 +6,7 @@ ANDROID_HOME="${HOME}/.android-sdk"
 BITWARDEN_PKG="com.x8bit.bitwarden.dev"
 APK_PATH="app/build/outputs/apk/fdroid/debug/com.x8bit.bitwarden.dev-fdroid.apk"
 
-echo RUNNING setup_app.sh
+echo === RUNNING setup_app.sh ===
 
 # 0. Ensure submodule is initialized and updated
 if [ ! -d "codebase/.git" ]; then
@@ -92,7 +92,7 @@ setup_environment() {
 # Build Bitwarden APK
 build_bitwarden() {
     echo "Building Bitwarden Android from source..."
-    echo "This will take several minutes..."
+    echo "This MAY take several minutes..."
     
     # Stop daemon and set memory options
     ./gradlew --stop
@@ -101,13 +101,6 @@ build_bitwarden() {
     ./gradlew assembleFdroidDebug
     
     echo "Build completed successfully."
-}
-
-# Set up ADB reverse port forwarding for emulator connectivity
-setup_adb_reverse() {
-    echo "[INFO] Setting up ADB reverse for port 8080 (host <-> emulator)..."
-    adb reverse tcp:8080 tcp:8080 || true
-    echo "[INFO] ADB reverse for port 8080 set."
 }
 
 # Install on emulator
@@ -180,6 +173,7 @@ main() {
     
     echo ""
     echo "Bitwarden setup completed successfully!"
+    echo === FINISHED setup_app.sh ===
 }
 
 # Run main function

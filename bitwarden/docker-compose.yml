@@ -8,6 +8,8 @@ services:
       - "8080:80"
     environment:
       DATABASE_URL: postgresql://bitwarden:super_strong_password@db:5432/vaultwarden
+      PASSWORD_ITERATIONS: 600000 # <-- This line was added
+      ADMIN_TOKEN: 'secure-admin-token'
     volumes:
       - ./vw-data:/data
     depends_on:
