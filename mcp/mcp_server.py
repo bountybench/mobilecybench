@@ -1,17 +1,18 @@
+#!/usr/bin/env python3
+
 import asyncio
-import subprocess
+import json
+import sys
 import docker
 from mcp.server import Server
 from mcp.types import Tool, TextContent
-import json
 
 class MobileCyberMCPServer:
     def __init__(self):
         self.server = Server("mobile-cyber-mcp")
         self.docker_client = docker.from_env()
         self.kali_container_name = "kali-container"
-        self.emulator_host = "host.docker.internal"
-        self.emulator_port = "5554"  # Default Android emulator port
+        self.host_adb_server = "host.docker.internal:5037"
         
         # Register tools
         self.register_tools()
@@ -38,7 +39,7 @@ class MobileCyberMCPServer:
                 ),
                 Tool(
                     name="adb_command",
-                    description="Execute ADB command to interact with emulator",
+                    description="Execute ADB command to interact with host emulator",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -51,8 +52,17 @@ class MobileCyberMCPServer:
                     }
                 ),
                 Tool(
+                    name="connect_to_host_adb",
+                    description="Connect to the ADB server running on the host machine",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                ),
+                Tool(
                     name="check_emulator_status",
-                    description="Check if the Android emulator is running and accessible",
+                    description="Check if the Android emulator is running and accessible from host",
                     inputSchema={
                         "type": "object",
                         "properties": {},
@@ -71,6 +81,9 @@ class MobileCyberMCPServer:
             elif name == "adb_command":
                 return await self.execute_adb_command(arguments["command"])
             
+            elif name == "connect_to_host_adb":
+                return await self.connect_to_host_adb()
+            
             elif name == "check_emulator_status":
                 return await self.check_emulator_status()
             
@@ -80,10 +93,8 @@ class MobileCyberMCPServer:
     async def execute_kali_command(self, command: str):
         """Execute command in Kali Linux container"""
         try:
-            # Get the Kali container
             kali_container = self.docker_client.containers.get(self.kali_container_name)
             
-            # Execute command
             result = kali_container.exec_run(
                 cmd=f"bash -c '{command}'",
                 stdout=True,
@@ -95,7 +106,7 @@ class MobileCyberMCPServer:
             
             return [TextContent(
                 type="text",
-                text=f"Exit Code: {exit_code}\nOutput:\n{output}"
+                text=f"Command: {command}\nExit Code: {exit_code}\nOutput:\n{output}"
             )]
             
         except Exception as e:
@@ -104,14 +115,45 @@ class MobileCyberMCPServer:
                 text=f"Error executing command in Kali: {str(e)}"
             )]
 
-    async def execute_adb_command(self, command: str):
-        """Execute ADB command to interact with emulator"""
+    async def connect_to_host_adb(self):
+        """Connect ADB in Kali container to host ADB server"""
         try:
             kali_container = self.docker_client.containers.get(self.kali_container_name)
             
-            # For emulator started with your script, we typically don't need explicit connect
-            # The emulator should be auto-detected by adb
-            full_command = f"adb {command}"
+            # Kill any existing ADB server in container
+            result1 = kali_container.exec_run(
+                cmd="bash -c 'adb kill-server'",
+                stdout=True,
+                stderr=True
+            )
+            
+            # Connect to host ADB server
+            result2 = kali_container.exec_run(
+                cmd=f"bash -c 'export ADB_SERVER_SOCKET=tcp:{self.host_adb_server} && adb devices'",
+                stdout=True,
+                stderr=True
+            )
+            
+            output = result2.output.decode('utf-8')
+            
+            return [TextContent(
+                type="text",
+                text=f"Host ADB Connection:\nKilled local ADB server\nConnected to host ADB at {self.host_adb_server}\nDevices found:\n{output}"
+            )]
+            
+        except Exception as e:
+            return [TextContent(
+                type="text",
+                text=f"Error connecting to host ADB: {str(e)}"
+            )]
+
+    async def execute_adb_command(self, command: str):
+        """Execute ADB command via host ADB server"""
+        try:
+            kali_container = self.docker_client.containers.get(self.kali_container_name)
+            
+            # Set environment to use host ADB server
+            full_command = f"export ADB_SERVER_SOCKET=tcp:{self.host_adb_server} && adb {command}"
             result = kali_container.exec_run(
                 cmd=f"bash -c '{full_command}'",
                 stdout=True,
@@ -123,23 +165,23 @@ class MobileCyberMCPServer:
             
             return [TextContent(
                 type="text",
-                text=f"ADB Command: {full_command}\nExit Code: {exit_code}\nOutput:\n{output}"
+                text=f"ADB Command (via host): adb {command}\nExit Code: {exit_code}\nOutput:\n{output}"
             )]
             
         except Exception as e:
             return [TextContent(
                 type="text",
-                text=f"Error executing ADB command: {str(e)}"
+                text=f"Error executing ADB command via host: {str(e)}"
             )]
 
     async def check_emulator_status(self):
-        """Check emulator connectivity"""
+        """Check emulator status via host ADB"""
         try:
             kali_container = self.docker_client.containers.get(self.kali_container_name)
             
-            # Check devices and emulator status
+            # Check devices via host ADB
             result = kali_container.exec_run(
-                cmd=f"bash -c 'adb devices -l && echo \"--- Emulator Info ---\" && adb shell getprop ro.build.version.release 2>/dev/null || echo \"Emulator not responding\"'",
+                cmd=f"bash -c 'export ADB_SERVER_SOCKET=tcp:{self.host_adb_server} && adb devices -l && echo \"--- Checking Emulator ---\" && adb shell getprop ro.build.version.release 2>/dev/null || echo \"No emulator responding\"'",
                 stdout=True,
                 stderr=True
             )
@@ -148,21 +190,22 @@ class MobileCyberMCPServer:
             
             return [TextContent(
                 type="text",
-                text=f"Emulator Status:\n{output}"
+                text=f"Emulator Status (via host ADB):\n{output}"
             )]
             
         except Exception as e:
             return [TextContent(
                 type="text",
-                text=f"Error checking emulator status: {str(e)}"
+                text=f"Error checking emulator status via host: {str(e)}"
             )]
 
 async def main():
     """Start the MCP server"""
     server_instance = MobileCyberMCPServer()
     
-    # Run the server
+    # Run the server with stdio
     from mcp.server.stdio import stdio_server
+    
     async with stdio_server() as streams:
         await server_instance.server.run(
             streams[0], streams[1],

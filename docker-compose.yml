@@ -1,5 +1,3 @@
-version: '3.8'
-
 networks:
   shared_net:
     driver: bridge
@@ -18,6 +16,8 @@ services:
     command: /bin/bash -c "while true; do sleep 30; done"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    environment:
+      - ANDROID_ADB_SERVER_PORT=5037
 
   # MCP Server Container  
   mcp-server:
