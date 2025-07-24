@@ -57,9 +57,11 @@ def run_command(cmd):
 
 def check_wrong_credentials():
     commands = [
-        "python synch_app.py --username usera@localhost --password userAPW",
-        "python synch_app.py --username userb@localhost --password userBPW123",
-        "python synch_app.py --username userb@localhost --password adminPW123"
+        "python synch_app.py --username usera@localhost --password userAPW", # wrong password
+        "python synch_app.py --username usera@local --password userAPW123", # wrong username
+        "python synch_app.py --username bob@localhost --password password!", # nonexistent user
+        "python synch_app.py --username userb@localhost --password userBPW123", # wrong password
+        "python synch_app.py --username userb@localhost --password adminPW123" # wrong password
     ]
     results = [run_command(cmd) for cmd in commands]
     return_val = all(code != 0 for code in results)

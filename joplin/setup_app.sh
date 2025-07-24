@@ -101,12 +101,13 @@ get_pid() {
     echo "$new_value"
 
     if [ -z "$new_value" ]; then
-        echo "Error: Could not get PID for $package_name"
+        echo "Error: Could not get PID for net.cozic.joplin"
         return 1
     fi
 
     jq --arg key "$new_key" --arg value "$new_value" '. + {($key): $value}' "$json_file" > tmp.json && mv tmp.json "$json_file"
 }
+
 
 # Main function
 main() {
@@ -115,9 +116,10 @@ main() {
     
     echo "Setting up joplin Android"
 
-    cd codebase
-    yarn install
     npm uninstall -g react-native-cli @react-native-community/cli
+    cd codebase
+    npm uninstall -g react-native-cli @react-native-community/cli
+    yarn install
     cd -
 
     root_dir="$(pwd)"
@@ -130,7 +132,7 @@ main() {
         exit 1
     fi
 
-    npx react-native start > /dev/null 2>&1 &
+    npx react-native start --reset-cache > /dev/null 2>&1 &
     
     # Navigate to codebase directory
     if [[ -d "android" ]]; then

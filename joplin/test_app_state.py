@@ -13,35 +13,16 @@ def is_ui_responsive():
     app_package = d.info['currentPackageName']
     print(f"[INFO] Current App Package: {app_package}")
 
-    before_dump = d.dump_hierarchy(compressed=True)
+    result = subprocess.run(["python", "write_note.py"])
+    exit_code = result.returncode
 
-    clickable_elements = [
-        el for el in d.xpath('//*[@clickable="true"]').all()
-        if el.attrib.get('package') == app_package
-    ]
-
-    if not clickable_elements:
-        print("[INFO] No clickable elements found in the app.")
-        return False
-
-    # Click the first clickable element
-    el = clickable_elements[0]
-    print(f"[INFO] Clicking element: {el.attrib.get('text') or el.attrib.get('resource-id')}")
-    el.click()
-    time.sleep(2)  
-    after_dump = d.dump_hierarchy(compressed=True)
-
-    if d(description="Back").wait(timeout=30):
-        d(description="Back").click_exists(timeout=3)
-    else:
-        print(f"[ERROR] Could not find description: '{desc}' within {timeout}s")
-
-    if before_dump == after_dump:
-        print("[FAIL] UI did not change after click. Possibly unresponsive.")
+    if exit_code != 0:
+        print("[FAIL] Unsucessfully created a test note & notebook.")
         return False
     else:
-        print("[PASS] UI changed after click. UI is responsive.")
+        print("[PASS] Sucessfully created a test note & notebook.")
         return True
+
 
 def check_pid():
     package_name = "net.cozic.joplin"
