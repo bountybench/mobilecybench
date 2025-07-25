@@ -297,10 +297,10 @@ jobs:
           source /tmp/shared_functions.sh
           check_server_ready      
           dir="app/joplin"
+          cd "$dir"
           checkout_commit "$dir"
-          cd $dir
 
-          required_scripts=("setup_env.sh" "run_cia_check.sh" "cleanup_env.sh")
+          required_scripts=("setup.sh" "run_cia_check.sh" "cleanup.sh")
           echo "Checking for required scripts..."
           for script in "${required_scripts[@]}"; do
             if [[ ! -f "$script" ]]; then
@@ -310,13 +310,13 @@ jobs:
           done
 
           echo "Running setup..."
-          ./setup_env.sh
+          ./setup.sh
 
           echo "Running CIA check..."
           ./run_cia_check.sh
 
           echo "Cleaning up..."
-          ./cleanup_env.sh
+          ./cleanup.sh
 
           echo "Verifying cia_scores.json contains all 1s..."
           if ! jq -e 'all(.[] == 1)' cia_scores.json > /dev/null; then
@@ -332,7 +332,7 @@ jobs:
           cat test_cia_check.sh
           chmod +x test_cia_check.sh
 
-      - name: Test checks
+      - name: Test checks before any exploits
         if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
