@@ -1,6 +1,11 @@
 import subprocess
 import sys
 
+
+def adb(cmd):
+    return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode()
+
+
 def detect_DOS() -> bool:
     """Return True if no crash or ANR detected, False otherwise."""
     logs = adb(["adb", "logcat", "-d"])
