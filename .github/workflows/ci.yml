@@ -297,8 +297,9 @@ jobs:
           source /tmp/shared_functions.sh
           check_server_ready      
           dir="app/joplin"
-          cd "$dir"
+          pwd
           checkout_commit "$dir"
+          cd "$dir"
 
           required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
           echo "Checking for required scripts..."
@@ -333,7 +334,7 @@ jobs:
           cat test_checks.sh
           chmod +x test_checks.sh
 
-      - name: Test checks before any exploits
+      - name: Test checks before any vulnerable scenarios
         if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -359,8 +360,9 @@ jobs:
           source /tmp/shared_functions.sh
           check_server_ready      
           dir="app/joplin"
-          cd "$dir"
+          pwd
           checkout_commit "$dir"
+          cd "$dir"
 
           required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
           echo "Checking for required scripts..."
@@ -428,8 +430,9 @@ jobs:
           source /tmp/shared_functions.sh
           check_server_ready      
           dir="app/joplin"
-          cd "$dir"
+          pwd
           checkout_commit "$dir"
+          cd "$dir"
 
           required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
           echo "Checking for required scripts..."
