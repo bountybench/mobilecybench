@@ -1,29 +1,31 @@
-# Dockerfile for MCP Server
 FROM python:3.11-slim
 
-# Install system dependencies
-RUN apt-get update && \
-    apt-get install -y \
-        curl \
-        docker.io \
-        android-tools-adb \
-        gcc \
-        g++ && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# System packages
+RUN apt-get update && apt-get install -y \
+    curl \
+    docker.io \
+    android-tools-adb \
+    gcc \
+    g++ && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install MCP dependencies
+# Python packages
 RUN pip install --no-cache-dir \
-    mcp \
+    fastmcp \
     docker
 
+# Add ngrok
+RUN curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null \
+ && echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | tee /etc/apt/sources.list.d/ngrok.list \
+ && apt-get update && apt-get install -y ngrok
+
+# Copy code and ngrok config
 WORKDIR /app
-
-# Copy MCP server code
+COPY ui_connection.py .
 COPY mcp_server.py .
+COPY ngrok.yml /app/ngrok.yml
 
-# Make the script executable
-RUN chmod +x mcp_server.py
+EXPOSE 8000
 
-# Keep container running for stdio communication
-CMD ["tail", "-f", "/dev/null"]
+# Start FastMCP + ngrok
+CMD bash -c "python3 mcp_server.py & ngrok start --config /app/ngrok.yml --all"
