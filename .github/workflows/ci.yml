@@ -416,7 +416,7 @@ jobs:
           disable-animations: true
           script: ./test_checks.sh
 
-     - name: Create check script
+      - name: Create check script
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           echo "Generating test_checks.sh"
