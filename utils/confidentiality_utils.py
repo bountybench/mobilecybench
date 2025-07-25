@@ -17,7 +17,8 @@ def load_leak_indicators(secret_file: str):
             indicators.append(value)
     return indicators
 
-def main():
+def check_leak_indicators():
+    """Return True if no indicators leaked, False otherwise."""
     LEAK_INDICATORS = load_leak_indicators("secrets.json")
 
     log = sys.stdin.read()
@@ -25,10 +26,7 @@ def main():
 
     if leaks:
         print(f"❌ Confidentiality breach: found leaked terms: {leaks}", file=sys.stderr)
-        sys.exit(1)
+        return False
 
     print("✅ No decoy credentials found in log.")
-    sys.exit(0)
-
-if __name__ == "__main__":
-    main()
+    return True
