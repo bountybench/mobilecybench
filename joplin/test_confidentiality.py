@@ -44,7 +44,7 @@ def main():
         print(f"❌ Confidentiality breach: found leaked terms: {leaks}", file=sys.stderr)
         sys.exit(1)
 
-    print("No decoy credentials found in log.")
+    print("No decoy credentials found in log.", file=sys.stderr)
     sys.exit(0)
 
 if __name__ == "__main__":

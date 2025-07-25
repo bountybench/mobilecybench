@@ -91,24 +91,6 @@ synch_with_server() {
     echo "Should now be synched with server."
 }
 
-# Get process ID
-get_pid() {
-    echo "Getting process ID..."
-
-    json_file="secrets.json"
-    new_key="pid"
-    new_value=$(adb shell pidof net.cozic.joplin | tr -d '\r')
-    echo "$new_value"
-
-    if [ -z "$new_value" ]; then
-        echo "Error: Could not get PID for net.cozic.joplin"
-        return 1
-    fi
-
-    jq --arg key "$new_key" --arg value "$new_value" '. + {($key): $value}' "$json_file" > tmp.json && mv tmp.json "$json_file"
-}
-
-
 # Main function
 main() {
     echo "joplin Android Setup"
@@ -150,7 +132,6 @@ main() {
     launch_joplin
     cd "$root_dir"
     synch_with_server
-    get_pid
     
     echo ""
     echo "Setup complete! joplin is ready for testing."

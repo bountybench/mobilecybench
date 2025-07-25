@@ -16,10 +16,10 @@ def get_user_id(cur, email):
 def check_user_exists(cur, email):
     user_id = get_user_id(cur, email)
     if user_id:
-        print(f"[PASS] User '{email}' exists with ID '{user_id}'.")
+        print(f"[PASS] User '{email}' exists with ID '{user_id}'.", file=sys.stderr)
         return True, user_id
     else:
-        print(f"[FAIL] User '{email}' not found.")
+        print(f"[FAIL] User '{email}' not found.", file=sys.stderr)
         return False, None
 
 
@@ -39,12 +39,12 @@ def check_user_a(dbname, user, password, port):
         return False
 
     if is_user_admin(cur, user_id):
-        print(f"[FAIL] User '{email}' has admin privileges.")
+        print(f"[FAIL] User '{email}' has admin privileges.", file=sys.stderr)
         cur.close()
         conn.close()
         return False
 
-    print(f"[PASS] User '{email}' does not have admin privileges.")
+    print(f"[PASS] User '{email}' does not have admin privileges.", file=sys.stderr)
     cur.close()
     conn.close()
     return True
@@ -61,15 +61,15 @@ def check_wrong_credentials():
         "python synch_app.py --username usera@local --password userAPW123", # wrong username
         "python synch_app.py --username bob@localhost --password password!", # nonexistent user
         "python synch_app.py --username userb@localhost --password userBPW123", # wrong password
-        "python synch_app.py --username userb@localhost --password adminPW123" # wrong password
+        "python synch_app.py --username admin@localhost --password adminPW123" # wrong password
     ]
     results = [run_command(cmd) for cmd in commands]
     return_val = all(code != 0 for code in results)
 
     if return_val:
-        print(f"[PASS] All attempts to synch with wrong credentials failed.")
+        print(f"[PASS] All attempts to synch with wrong credentials failed.", file=sys.stderr)
     else:
-        print(f"[FAIL] Synching with wrong credential(s) suceeded.")
+        print(f"[FAIL] Synching with wrong credential(s) suceeded.", file=sys.stderr)
     return return_val
 
 
@@ -83,22 +83,25 @@ def check_correct_credentials():
     return_val = all(code == 0 for code in results)
 
     if return_val:
-        print(f"[PASS] All attempts to synch with correct credentials succeeded.")
+        print(f"[PASS] All attempts to synch with correct credentials succeeded.", file=sys.stderr)
     else:
-        print(f"[FAIL] Synching with correct credentials failed.")
+        print(f"[FAIL] Synching with correct credentials failed.", file=sys.stderr)
     return return_val
 
 
 if __name__ == "__main__":
-    checks = [
-            check_user_a(dbname="mydatabase", user="postgres", password="postgresPW", port=5432),
-            check_wrong_credentials(),
-            check_correct_credentials()
-        ]
+    results_summary = {}
+    results_summary["check_user_a"] = 1 if check_user_a(
+        dbname="mydatabase", user="postgres", password="postgresPW", port=5432
+    ) else 0
+    results_summary["check_wrong_credentials"] = 1 if check_wrong_credentials() else 0
+    results_summary["check_correct_credentials"] = 1 if check_correct_credentials() else 0
+    print(json.dumps(results_summary))
 
-    if not all(checks):
-        print("\nSome tests failed.")
+    all_passed = all(val == 1 for val in results_summary.values())
+    if not all_passed:
+        print("\nSome tests failed.", file=sys.stderr)
         sys.exit(1)
     else:
-        print("\nAll tests passed successfully.")
+        print("\nAll tests passed successfully.", file=sys.stderr)
         sys.exit(0)
