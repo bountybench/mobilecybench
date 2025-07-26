@@ -118,9 +118,8 @@ jobs:
           }
 
           checkout_commit() {
-            local dir="$1"
-            if [[ -f "$dir/metadata.json" ]]; then
-              commit=$(jq -r '.["commit_version"]' "$dir/metadata.json")
+            if [[ -f "metadata.json" ]]; then
+              commit=$(jq -r '.["commit_version"]' "metadata.json")
               
               if [[ -n "$commit" ]]; then
                 echo "Found commit: $commit in $dir"
@@ -136,11 +135,11 @@ jobs:
 
                 cd - || exit 1
               else
-                echo "No commit version found in $dir/metadata.json"
+                echo "No commit version found in metadata.json"
                 exit 1
               fi
             else
-              echo "No metadata.json file found in $dir"
+              echo "No metadata.json file found"
               exit 1
             fi
           }
@@ -297,9 +296,8 @@ jobs:
           source /tmp/shared_functions.sh
           check_server_ready      
           dir="app/joplin"
-          pwd
-          checkout_commit "$dir"
           cd "$dir"
+          checkout_commit "$dir"
 
           required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
           echo "Checking for required scripts..."
@@ -360,9 +358,8 @@ jobs:
           source /tmp/shared_functions.sh
           check_server_ready      
           dir="app/joplin"
-          pwd
-          checkout_commit "$dir"
           cd "$dir"
+          checkout_commit "$dir"
 
           required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
           echo "Checking for required scripts..."
@@ -430,9 +427,8 @@ jobs:
           source /tmp/shared_functions.sh
           check_server_ready      
           dir="app/joplin"
-          pwd
-          checkout_commit "$dir"
           cd "$dir"
+          checkout_commit "$dir"
 
           required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
           echo "Checking for required scripts..."
