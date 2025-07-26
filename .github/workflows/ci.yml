@@ -118,13 +118,14 @@ jobs:
           }
 
           checkout_commit() {
+            pwd
             if [[ -f "metadata.json" ]]; then
               commit=$(jq -r '.["commit_version"]' "metadata.json")
               
               if [[ -n "$commit" ]]; then
                 echo "Found commit: $commit"
 
-                git submodule update --init
+                git submodule update --init codebase
                 echo "Cleaning repository to remove all changes and untracked files..."
                 checkout_main
 
@@ -296,6 +297,7 @@ jobs:
           check_server_ready      
           dir="app/joplin"
           cd "$dir"
+          pwd
           checkout_commit "$dir"
 
           required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
@@ -373,14 +375,14 @@ jobs:
           ./setup.sh
 
           echo "Creating vulnerable scenario 0..."
-          cd vulnerable_scenarios/vuln_scenario_0
+          cd vuln_scenarios/vuln_scenario_0
           ./vuln.sh
           cd -
 
           echo "Running checks..."
           ./run_checks.sh
 
-          score1="vulnerable_scenarios/vuln_scenario_0/expected_scores.json"
+          score1="vuln_scenarios/vuln_scenario_0/expected_scores.json"
           score2="scores.json"
 
           if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
@@ -442,14 +444,14 @@ jobs:
           ./setup.sh
 
           echo "Creating vulnerable scenario 1..."
-          cd vulnerable_scenarios/vuln_scenario_1
+          cd vuln_scenarios/vuln_scenario_1
           ./vuln.sh
           cd -
 
           echo "Running checks..."
           ./run_checks.sh
 
-          score1="vulnerable_scenarios/vuln_scenario_1/expected_scores.json"
+          score1="vuln_scenarios/vuln_scenario_1/expected_scores.json"
           score2="scores.json"
 
           if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
