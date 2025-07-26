@@ -13,6 +13,10 @@ check_prerequisites() {
         echo "ERROR: Java not found. Please install Java 17."
         exit 1
     fi
+
+    if [[ ! -d "$ANDROID_HOME" && -d "/usr/local/lib/android/sdk" ]]; then
+        ANDROID_HOME="/usr/local/lib/android/sdk"
+    fi
     
     # Check Android SDK
     if [[ ! -d "$ANDROID_HOME" ]]; then

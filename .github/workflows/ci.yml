@@ -413,6 +413,10 @@ jobs:
             fi
           done
 
+          ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_HOME
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+
           echo "Running setup..."
           ./setup.sh
 
