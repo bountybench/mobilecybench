@@ -127,9 +127,12 @@ jobs:
 
                 git submodule update --init codebase
                 echo "Cleaning repository to remove all changes and untracked files..."
-                checkout_main
 
                 cd "codebase" || exit 1
+
+                echo "Cleaning up the codebase"
+                git reset --hard HEAD
+                sudo git clean -fdx
 
                 # Update the submodule and checkout the commit
                 git checkout "$commit"
@@ -143,36 +146,6 @@ jobs:
               echo "No metadata.json file found"
               exit 1
             fi
-          }
-
-          checkout_main() {
-            echo "Checking out main branch at codebase"
-            cd "codebase" || exit 1
-            echo "Cleaning up the codebase"
-            git reset --hard HEAD
-            sudo git clean -fdx
-
-            echo "Checking if 'main' branch exists"
-            if git rev-parse --verify main >/dev/null 2>&1; then
-              echo "'main' branch exists"
-            else
-              echo "'main' branch does NOT exist."
-              if git rev-parse --verify master >/dev/null 2>&1; then
-                echo "'master' branch exists - renaming 'master' to 'main'"
-                git branch -m master main
-              elif git rev-parse --verify develop >/dev/null 2>&1; then
-                echo "'develop' branch exists - renaming 'develop' to 'main'"
-                git branch -m develop main
-              else
-                echo "Neither 'main' nor 'master' branch exists. Exiting."
-                exit 1
-              fi
-            fi
-
-            # Checkout 'main' branch
-            echo "Checking out 'main' branch at codebase"
-            git checkout main --force
-            cd - || exit 1
           }
 
           EOF
