@@ -3,44 +3,6 @@
 # * Mysql database
 # * Tinode server
 
-# Base Tinode template.
-x-tinode:
-  &tinode-base
-  depends_on:
-    - db
-  image: tinode/tinode:latest
-  restart: always
-
-x-tinode-env-vars: &tinode-env-vars
-  "STORE_USE_ADAPTER": "mysql"
-  "PPROF_URL": "/pprof"
-  # You can provide your own tinode config by setting EXT_CONFIG env var and binding your configuration file to
-  # "EXT_CONFIG": "/etc/tinode/tinode.conf"
-  "WAIT_FOR": "mysql:3306"
-  # Push notifications.
-  # Modify as appropriate.
-  # Tinode Push Gateway configuration.
-  "TNPG_PUSH_ENABLED": "false"
-  # "TNPG_USER": "<user name>"
-  # "TNPG_AUTH_TOKEN": "<token>"
-  # FCM specific server configuration.
-  "FCM_PUSH_ENABLED": "false"
-  # "FCM_CRED_FILE": "<path to FCM credentials file>"
-  # "FCM_INCLUDE_ANDROID_NOTIFICATION": false
-  #
-  # FCM Web client configuration.
-  "FCM_API_KEY": "AIzaSyD6X4ULR-RUsobvs1zZ2bHdJuPz39q2tbQ"
-  "FCM_APP_ID": "1:114126160546:web:aca6ea2981feb81fb44dfb"
-  "FCM_PROJECT_ID": "tinode-1000"
-  "FCM_SENDER_ID": 114126160546
-  "FCM_VAPID_KEY": "BOgQVPOMzIMXUpsYGpbVkZoEBc0ifKY_f2kSU5DNDGYI6i6CoKqqxDd7w7PJ3FaGRBgVGJffldETumOx831jl58"
-  "FCM_MEASUREMENT_ID": "G-WNJDQR34L3"
-  # iOS app universal links configuration.
-  # "IOS_UNIV_LINKS_APP_ID": "<ios universal links app id>"
-  # Video calls
-  "WEBRTC_ENABLED": "false"
-  # "ICE_SERVERS_FILE": "<path to ICE servers config>"
-
 services:
   db:
     image: mysql:8.0
@@ -49,38 +11,56 @@ services:
     # Use your own volume.
     # volumes:
     #   - <mysql directory in your file system>:/var/lib/mysql
+    command: >
+      bash -c "
+      docker-entrypoint.sh mysqld &
+      sleep 5 &&
+      mysql -u root -p${MYSQL_ROOT_PASSWORD} -e \"DROP DATABASE IF EXISTS ${MYSQL_DATABASE}; GRANT CREATE ON *.* TO '${MYSQL_USER}'@'%'; FLUSH PRIVILEGES;\" &&
+      wait
+      "
     environment:
-      - MYSQL_ALLOW_EMPTY_PASSWORD=yes
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
     healthcheck:
-      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost", "-u${MYSQL_USER}", "-p${MYSQL_PASSWORD}"]
       timeout: 5s
       retries: 10
     networks:
       - private_net
-
-  # Tinode.
+  
   tinode-server:
-    << : *tinode-base
+    image: tinode/tinode-mysql:0.23
+    platform: linux/amd64
     container_name: tinode-server
     hostname: tinode-server
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
     # You can mount your volumes as necessary:
-    # volumes:
-    #   # E.g. external config (assuming EXT_CONFIG is set).
-    #   - <path to your tinode.conf>:/etc/tinode/tinode.conf
-    #   # Logs directory.
-    #   - <path to your tinode-0 logs directory>:/var/log
+    volumes:
+      # Mount the data.json file so Tinode can load sample data
+      - ./data.json:/opt/tinode/data.json
+      # E.g. external config (assuming EXT_CONFIG is set).
+      # - <path to your tinode.conf>:/etc/tinode/tinode.conf
+      # Logs directory.
+      # - <path to your tinode-0 logs directory>:/var/log
     ports:
       - "6060:6060"
     environment:
-      << : *tinode-env-vars
-      "RESET_DB": ${RESET_DB:-false}
-      "UPGRADE_DB": ${UPGRADE_DB:-false}
+      MYSQL_DSN: ${TINODE_MYSQL_DSN}
+      RESET_DB: true
+      WAIT_FOR: db:3306
+      SAMPLE_DATA: ""
     networks:
       - private_net
       - shared_net
 
 networks:
   private_net:
+    driver: bridge
     internal: true
   shared_net:
   
