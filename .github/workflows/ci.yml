@@ -397,7 +397,7 @@ jobs:
           cd -
 
           echo "Running checks..."
-          ./run_checks.sh
+          ./run_checks.sh "vuln_scenarios/vuln_scenario_0/fake_agent_log.log"
 
           score1="vuln_scenarios/vuln_scenario_0/expected_scores.json"
           score2="scores.json"
