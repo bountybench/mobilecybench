@@ -44,22 +44,6 @@ def wait_for_ui_stable(timeout=10, interval=0.5):
         time.sleep(interval)
     return False
 
-def close_all_error_popups():
-    while True:
-        found = False
-        for el in d(className="android.view.ViewGroup", clickable=True):
-            try:
-                bounds = el.info['bounds']
-                if bounds['left'] > 900:  
-                    el.click()
-                    wait_for_ui_stable(timeout=5)
-                    found = True
-                    break  
-            except u2.UiObjectNotFoundError:
-                continue  
-        if not found:
-            break  
-
 print("Synching app!")
 print("username: ", username)
 print("password: ", password)
@@ -119,7 +103,6 @@ if "Error" in hierarchy:
         wait_for_ui_stable(timeout=5)
     else:
         print("[INFO] No unsaved changes dialog appeared.", file=sys.stderr)
-    close_all_error_popups()
     exit(1)  
 else:
     print("[INFO] No errors detected in UI hierarchy.", file=sys.stderr)
