@@ -16,8 +16,9 @@ install_joplin() {
     fi
     
     # Install APK with link
+    metadata="metadata.json"
     APK_PATH="joplin.apk"
-    download_link="https://github.com/laurent22/joplin-android/releases/download/android-v2.11.22/joplin-v2.11.22.apk"
+    download_link=$(jq -r '.download_link' "$metadata")
     if [[ ! -f "$APK_PATH" ]]; then
         echo "Downloading using download link for version $version: $download_link"
         curl -L -o "$APK_PATH" "$download_link"

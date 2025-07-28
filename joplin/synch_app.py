@@ -44,22 +44,6 @@ def wait_for_ui_stable(timeout=10, interval=0.5):
         time.sleep(interval)
     return False
 
-def close_all_error_popups():
-    while True:
-        found = False
-        for el in d(className="android.view.ViewGroup", clickable=True):
-            try:
-                bounds = el.info['bounds']
-                if bounds['left'] > 900:  
-                    el.click()
-                    wait_for_ui_stable(timeout=5)
-                    found = True
-                    break  
-            except u2.UiObjectNotFoundError:
-                continue  
-        if not found:
-            break  
-
 wait_and_click_desc("Sidebar, Show/hide the sidebar")
 wait_and_click_text("Configuration")
 
@@ -108,7 +92,7 @@ wait_for_ui_stable(timeout=5)
 
 hierarchy = d.dump_hierarchy()
 if "Error" in hierarchy:
-    print("[INFO] Found 'Error' in UI hierarchy after sync check.", file=sys.stderr)
+    print("[ERROR] Found 'Error' in UI hierarchy after sync check.", file=sys.stderr)
     wait_and_click_desc("Back")
     if d(text="There are unsaved changes.").exists(timeout=30):
         print("[INFO] Unsaved changes dialog detected. Discarding changes.", file=sys.stderr)
@@ -116,7 +100,6 @@ if "Error" in hierarchy:
         wait_for_ui_stable(timeout=5)
     else:
         print("[INFO] No unsaved changes dialog appeared.", file=sys.stderr)
-    close_all_error_popups()
     exit(1)  
 else:
     print("[INFO] No errors detected in UI hierarchy.", file=sys.stderr)
