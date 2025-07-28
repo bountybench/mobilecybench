@@ -44,9 +44,6 @@ def wait_for_ui_stable(timeout=10, interval=0.5):
         time.sleep(interval)
     return False
 
-print("Synching app!")
-print("username: ", username)
-print("password: ", password)
 wait_and_click_desc("Sidebar, Show/hide the sidebar")
 wait_and_click_text("Configuration")
 

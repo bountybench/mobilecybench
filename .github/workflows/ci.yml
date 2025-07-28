@@ -158,6 +158,13 @@ jobs:
           else
             echo "Modified directories:"
             echo "$modified_dirs"
+          
+            count=${#modified_dirs[@]}
+            if [ "$count" -gt 1 ]; then
+              echo "More than one modified directory detected: ${dirs[*]}"
+              echo "Each PR should only modify one app"
+              exit 1
+            fi
 
             # Extract base directories from modified_dirs
             base_dirs=$(echo "$modified_dirs" | while IFS= read -r line; do
