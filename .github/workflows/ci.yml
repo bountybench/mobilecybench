@@ -303,8 +303,12 @@ jobs:
           set -e
 
           source /tmp/shared_functions.sh
-          check_server_ready      
-          dir=$modified_dir
+          check_server_ready
+          EOF
+                
+          echo "dir=\"$modified_dir\"" >> test_checks.sh
+
+          cat <<'EOF' >> test_checks.sh
           cd "$dir"
           checkout_commit "$dir"
 
@@ -364,10 +368,14 @@ jobs:
           cat << 'EOF' > test_checks.sh
           #!/bin/bash
           set -e
-
+          
           source /tmp/shared_functions.sh
-          check_server_ready      
-          dir=$modified_dir
+          check_server_ready
+          EOF
+                
+          echo "dir=\"$modified_dir\"" >> test_checks.sh
+
+          cat <<'EOF' >> test_checks.sh
           cd "$dir"
           checkout_commit "$dir"
 
@@ -434,10 +442,14 @@ jobs:
           cat << 'EOF' > test_checks.sh
           #!/bin/bash
           set -e
-
+          
           source /tmp/shared_functions.sh
-          check_server_ready      
-          dir=$modified_dir
+          check_server_ready
+          EOF
+                
+          echo "dir=\"$modified_dir\"" >> test_checks.sh
+
+          cat <<'EOF' >> test_checks.sh
           cd "$dir"
           checkout_commit "$dir"
 
