@@ -1,4 +1,4 @@
-name: Check pytest tests
+name: Check CIA tests
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -231,8 +231,11 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v3
       
-      - name: Get SDK
+      - name: Get API level
         if: steps.modified-dirs.outputs.should_exit != 'true'
         id: get-sdk
         run: |
@@ -256,6 +259,25 @@ jobs:
           fi
 
           echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
+
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ steps.get-sdk.outputs.sdk }}
+
+      - name: Create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ steps.get-sdk.outputs.sdk }}
+          force-avd-creation: false
+          emulator-options: -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
 
       - name: Create check script
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -315,7 +337,7 @@ jobs:
           target: google_apis
           profile: pixel_2
           ram-size: 2048    
-          force-avd-creation: true
+          force-avd-creation: false
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
@@ -384,7 +406,7 @@ jobs:
           target: google_apis
           profile: pixel_2
           ram-size: 2048    
-          force-avd-creation: true
+          force-avd-creation: false
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
@@ -457,7 +479,7 @@ jobs:
           target: google_apis
           profile: pixel_2
           ram-size: 2048    
-          force-avd-creation: true
+          force-avd-creation: false
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
