@@ -240,9 +240,11 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Gradle cache
+        if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: gradle/actions/setup-gradle@v4
       
       - name: Cache Gradle distributions
+        if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: actions/cache@v4
         with:
           path: ~/.gradle/wrapper/dists
@@ -274,6 +276,7 @@ jobs:
           echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
 
       - name: AVD cache
+        if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: actions/cache@v4
         id: avd-cache
         with:
@@ -283,7 +286,7 @@ jobs:
           key: avd-${{ steps.get-sdk.outputs.sdk }}
 
       - name: Create AVD and generate snapshot for caching
-        if: steps.avd-cache.outputs.cache-hit != 'true'
+        if: steps.avd-cache.outputs.cache-hit != 'true' && steps.modified-dirs.outputs.should_exit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ steps.get-sdk.outputs.sdk }}
