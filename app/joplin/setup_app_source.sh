@@ -47,7 +47,7 @@ setup_environment() {
 }
 
 # Build joplin APK
-build_joplin() {
+build_joplin() {    
     echo "Building joplin Android from source..."
     echo "This will take several minutes..."
     
