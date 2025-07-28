@@ -92,7 +92,7 @@ wait_for_ui_stable(timeout=5)
 
 hierarchy = d.dump_hierarchy()
 if "Error" in hierarchy:
-    print("[INFO] Found 'Error' in UI hierarchy after sync check.", file=sys.stderr)
+    print("[ERROR] Found 'Error' in UI hierarchy after sync check.", file=sys.stderr)
     wait_and_click_desc("Back")
     if d(text="There are unsaved changes.").exists(timeout=30):
         print("[INFO] Unsaved changes dialog detected. Discarding changes.", file=sys.stderr)

@@ -255,9 +255,9 @@ jobs:
           set -e
 
           # Get the first directory from modified_dirs
-          first_dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
+          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
 
-          metadata="$first_dir/metadata.json"
+          metadata="$dir/metadata.json"
           if [ ! -f "$metadata" ]; then
             echo "ERROR: $metadata not found"
             exit 1
@@ -296,6 +296,7 @@ jobs:
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           echo "Generating test_checks.sh"
+          modified_dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
 
           cat << 'EOF' > test_checks.sh
           #!/bin/bash
@@ -303,9 +304,8 @@ jobs:
 
           source /tmp/shared_functions.sh
           check_server_ready      
-          dir="app/joplin"
+          dir=$modified_dir
           cd "$dir"
-          pwd
           checkout_commit "$dir"
 
           required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
@@ -324,7 +324,7 @@ jobs:
           ./run_checks.sh
 
           echo "Verifying scores.json contains all 1s..."
-          if ! jq -e 'all(.[] == 1)' scores.json > /dev/null; then
+          if ! jq -e '[.. | select(type == "number")] | all(. == 1)' scores.json > /dev/null; then
             echo "ERROR: scores.json does not contain all 1s."
             cat scores.json
             echo "Cleaning up..."
@@ -359,6 +359,7 @@ jobs:
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           echo "Generating test_checks.sh"
+          modified_dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
 
           cat << 'EOF' > test_checks.sh
           #!/bin/bash
@@ -366,7 +367,7 @@ jobs:
 
           source /tmp/shared_functions.sh
           check_server_ready      
-          dir="app/joplin"
+          dir=$modified_dir
           cd "$dir"
           checkout_commit "$dir"
 
@@ -428,6 +429,7 @@ jobs:
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           echo "Generating test_checks.sh"
+          modified_dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
 
           cat << 'EOF' > test_checks.sh
           #!/bin/bash
@@ -435,7 +437,7 @@ jobs:
 
           source /tmp/shared_functions.sh
           check_server_ready      
-          dir="app/joplin"
+          dir=$modified_dir
           cd "$dir"
           checkout_commit "$dir"
 
