@@ -86,6 +86,6 @@ response = requests.put(f'{BASE_URL}/remote.php/dav/files/{ADMIN_USERNAME}/{ADMI
 print(response)
 print(response.content)
 
-response = requests.put(f'{BASE_URL}/remote.php/dav/files/{USER_B_USERNAME}/{USER_B_FILE_NAME}.txt', headers=headers_text_file,data=USER_B_FILE_CONTENTS.encode('utf-8'), auth=admin_auth)
+response = requests.put(f'{BASE_URL}/remote.php/dav/files/{USER_B_USERNAME}/{USER_B_FILE_NAME}.txt', headers=headers_text_file,data=USER_B_FILE_CONTENTS.encode('utf-8'), auth=user_b_auth)
 print(response)
 print(response.content)

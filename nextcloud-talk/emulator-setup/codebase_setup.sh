@@ -3,7 +3,7 @@ if [ ! -d "codebase" ]; then
 fi 
 
 cd ../codebase
-git submodule update --init --recursive
+# git submodule update --init --recursive
 
 if [ ! -d "talk-android" ]; then
     git submodule add https://github.com/nextcloud/talk-android talk-android
