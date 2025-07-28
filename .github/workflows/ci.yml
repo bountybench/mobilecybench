@@ -233,8 +233,14 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Gradle cache
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
       
+      - name: Cache Gradle distributions
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/wrapper/dists
+          key: gradle-wrapper-${{ hashFiles('**/gradle-wrapper.properties') }}
+
       - name: Get API level
         if: steps.modified-dirs.outputs.should_exit != 'true'
         id: get-sdk
