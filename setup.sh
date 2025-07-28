@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="${SCRIPT_DIR}/setup.log"
 ANDROID_HOME="${HOME}/.android-sdk"
 EMULATOR_NAME="MobileCybenchEmu"
+SNAPSHOT_NAME="golden"
 
 # Default SDK version
 DEFAULT_SDK_VERSION=28
@@ -205,7 +206,7 @@ create_avd() {
     # Configure AVD
     local avd_config="$HOME/.android/avd/${EMULATOR_NAME}.avd/config.ini"
     if [[ -f "$avd_config" ]]; then
-        # Optimize for development
+        # Optimize for development and enable snapshots
         {
             echo "hw.ramSize=2048"
             echo "hw.gpu.enabled=yes"
@@ -213,41 +214,186 @@ create_avd() {
             echo "hw.keyboard=yes"
             echo "showDeviceFrame=no"
             echo "skin.dynamic=yes"
+            echo "disk.dataPartition.size=2G"
+            echo "fastboot.forceColdBoot=no"
+            echo "snapshot.present=true"
         } >> "$avd_config"
     fi
     
     log "Android Virtual Device created successfully"
 }
 
+# Install Frida-server
+install_frida_server() {
+    local arch="$1"
+    log "Installing Frida-server..."
+    
+    # Determine Frida-server binary based on architecture
+    local frida_version="16.5.5"  # Use a stable version
+    local frida_url
+    if [[ "$arch" == "arm64" ]]; then
+        frida_url="https://github.com/frida/frida/releases/download/${frida_version}/frida-server-${frida_version}-android-arm64.xz"
+    else
+        frida_url="https://github.com/frida/frida/releases/download/${frida_version}/frida-server-${frida_version}-android-x86_64.xz"
+    fi
+    
+    # Download Frida-server
+    local frida_binary="frida-server.xz"
+    log "Downloading Frida-server from $frida_url"
+    download_file "$frida_url" "$frida_binary"
+    
+    # Extract and prepare Frida-server
+    if command_exists xz; then
+        xz -d "$frida_binary"
+    else
+        error_exit "xz command not found. Please install xz-utils."
+    fi
+    
+    local frida_server_binary="${frida_binary%.xz}"
+    chmod +x "$frida_server_binary"
+    
+    # Start emulator with writable system
+    log "Starting emulator to install Frida-server..."
+    "$ANDROID_HOME/emulator/emulator" \
+        -avd "$EMULATOR_NAME" \
+        -writable-system \
+        -no-snapshot \
+        -wipe-data \
+        -gpu host \
+        -skin 1080x1920 \
+        -memory 2048 \
+        &> "${SCRIPT_DIR}/emulator.log" &
+    local emulator_pid=$!
+    
+    # Wait for emulator to boot
+    log "Waiting for emulator to boot..."
+    "$ANDROID_HOME/platform-tools/adb" wait-for-device
+    sleep 10  # Additional wait for system stability
+    
+    # Remount system as writable
+    log "Remounting system as writable..."
+    "$ANDROID_HOME/platform-tools/adb" root
+    "$ANDROID_HOME/platform-tools/adb" remount
+    
+    # Push Frida-server to emulator
+    log "Pushing Frida-server to emulator..."
+    "$ANDROID_HOME/platform-tools/adb" push "$frida_server_binary" /data/local/tmp/frida-server
+    
+    # Set permissions and start Frida-server
+    "$ANDROID_HOME/platform-tools/adb" shell "chmod 755 /data/local/tmp/frida-server"
+    "$ANDROID_HOME/platform-tools/adb" shell "/data/local/tmp/frida-server &"
+    
+    # Verify Frida-server is running
+    sleep 5
+    if "$ANDROID_HOME/platform-tools/adb" shell "ps | grep frida-server" >/dev/null; then
+        log "Frida-server installed and running"
+    else
+        error_exit "Failed to start Frida-server"
+    fi
+    
+    # Clean up
+    rm "$frida_server_binary"
+}
+
+# Install mitmproxy CA certificate
+install_mitmproxy_ca() {
+    log "Installing mitmproxy CA certificate..."
+    
+    # Generate mitmproxy CA certificate if not present
+    local mitmproxy_dir="$HOME/.mitmproxy"
+    local mitm_ca_file="$mitmproxy_dir/mitmproxy-ca-cert.pem"
+    
+    if [[ ! -f "$mitm_ca_file" ]]; then
+        if command_exists mitmproxy; then
+            log "Generating mitmproxy CA certificate..."
+            mitmproxy --set confdir="$mitmproxy_dir" >/dev/null 2>&1
+        else
+            error_exit "mitmproxy not found. Please install mitmproxy (e.g., pip install mitmproxy)."
+        fi
+    fi
+    
+    # Convert certificate to Android-compatible format
+    local cert_hash=$(openssl x509 -inform PEM -subject_hash_old -in "$mitm_ca_file" 2>/dev/null | head -1)
+    local cert_file="${cert_hash}.0"
+    
+    log "Converting mitmproxy CA certificate for Android..."
+    openssl x509 -inform PEM -text -in "$mitm_ca_file" -out "$cert_file" >/dev/null
+    
+    # Push certificate to emulator (emulator already running from Frida installation)
+    log "Pushing mitmproxy CA certificate to emulator..."
+    "$ANDROID_HOME/platform-tools/adb" push "$cert_file" /system/etc/security/cacerts/"$cert_file"
+    
+    # Set permissions
+    "$ANDROID_HOME/platform-tools/adb" shell "chmod 644 /system/etc/security/cacerts/$cert_file"
+    
+    # Verify certificate installation
+    if "$ANDROID_HOME/platform-tools/adb" shell "ls /system/etc/security/cacerts/$cert_file" >/dev/null; then
+        log "mitmproxy CA certificate installed successfully"
+    else
+        error_exit "Failed to install mitmproxy CA certificate"
+    fi
+    
+    # Clean up
+    rm "$cert_file"
+}
+
+# Save golden snapshot
+save_golden_snapshot() {
+    log "Saving golden snapshot..."
+    
+    # Save snapshot
+    "$ANDROID_HOME/platform-tools/adb" emu avd snapshot save "$SNAPSHOT_NAME"
+    
+    # Verify snapshot
+    if "$ANDROID_HOME/emulator/emulator" -avd "$EMULATOR_NAME" -list-snapshots | grep -q "$SNAPSHOT_NAME"; then
+        log "Golden snapshot saved successfully"
+    else
+        error_exit "Failed to save golden snapshot"
+    fi
+    
+    # Stop emulator
+    log "Stopping emulator..."
+    "$ANDROID_HOME/platform-tools/adb" emu kill
+    wait
+}
+
 # Create helper scripts
 create_helper_scripts() {
     log "Creating helper scripts..."
     
-    # Start emulator script
-    cat > "${SCRIPT_DIR}/start_emulator.sh" << 'EOF'
+    # Start emulator script with snapshot
+    cat > "${SCRIPT_DIR}/start_emulator.sh" << EOF
 #!/bin/bash
-# Start Android emulator
+# Start Android emulator with golden snapshot
 
-ANDROID_HOME="${HOME}/.android-sdk"
+ANDROID_HOME="\${HOME}/.android-sdk"
 EMULATOR_NAME="MobileCybenchEmu"
+SNAPSHOT_NAME="$SNAPSHOT_NAME"
 
-echo "Starting Android emulator: $EMULATOR_NAME"
-echo "This may take a few minutes on first boot..."
+echo "Starting Android emulator: \$EMULATOR_NAME with snapshot: \$SNAPSHOT_NAME"
+echo "This may take a few minutes..."
 
-"$ANDROID_HOME/emulator/emulator" \
-    -avd "$EMULATOR_NAME" \
-    -no-snapshot-save \
-    -wipe-data \
-    -gpu host \
-    -skin 1080x1920 \
-    -memory 2048 \
+"\$ANDROID_HOME/emulator/emulator" \\
+    -avd "\$EMULATOR_NAME" \\
+    -snapshot "\$SNAPSHOT_NAME" \\
+    -no-snapshot-save \\
+    -gpu host \\
+    -skin 1080x1920 \\
+    -memory 2048 \\
     &
 
 echo "Emulator started in background"
 echo "Waiting for device to be ready..."
 
 # Wait for device
-"$ANDROID_HOME/platform-tools/adb" wait-for-device
+"\$ANDROID_HOME/platform-tools/adb" wait-for-device
+
+# Verify Frida-server is running
+if "\$ANDROID_HOME/platform-tools/adb" shell "ps | grep frida-server" >/dev/null; then
+    echo "Frida-server is running"
+else
+    echo "WARNING: Frida-server is not running"
+fi
 
 echo "Device ready!"
 echo "To check device status: adb devices"
@@ -309,6 +455,20 @@ if adb -s "$device_id" shell echo "test" >/dev/null 2>&1; then
     arch=$(adb -s "$device_id" shell getprop ro.product.cpu.abi)
     echo "Architecture: $arch"
     
+    # Check Frida-server
+    if adb -s "$device_id" shell "ps | grep frida-server" >/dev/null; then
+        echo "Frida-server: Running"
+    else
+        echo "Frida-server: Not running"
+    fi
+    
+    # Check mitmproxy CA certificate
+    if adb -s "$device_id" shell "ls /system/etc/security/cacerts" | grep -E '[0-9a-f]{8}\.0' >/dev/null; then
+        echo "mitmproxy CA certificate: Installed"
+    else
+        echo "mitmproxy CA certificate: Not installed"
+    fi
+    
     exit 0
 else
     echo "Device connectivity test failed."
@@ -325,7 +485,7 @@ EOF
 # Main setup function
 main() {
     log "Starting Android Emulator Setup (SDK version: $SDK_VERSION)"
-    log "This script will install Android SDK and create an emulator"
+    log "This script will install Android SDK, create an emulator, and configure Frida and mitmproxy"
     
     # Detect operating system and architecture
     local os=$(detect_os)
@@ -338,6 +498,12 @@ main() {
     
     if [[ "$os" == "linux" ]] && ! command_exists unzip; then
         error_exit "unzip is required. Install with: sudo apt-get install unzip"
+    fi
+    if ! command_exists xz; then
+        error_exit "xz is required. Install with: sudo apt-get install xz-utils"
+    fi
+    if ! command_exists openssl; then
+        error_exit "openssl is required. Install with: sudo apt-get install openssl"
     fi
     
     # Install Android SDK if not present
@@ -356,12 +522,19 @@ main() {
     # Create AVD
     create_avd "$arch"
     
+    # Install Frida-server and mitmproxy CA certificate
+    install_frida_server "$arch"
+    install_mitmproxy_ca
+    
+    # Save golden snapshot
+    save_golden_snapshot
+    
     # Create helper scripts
     create_helper_scripts
     
     log "Setup completed successfully!"
     echo ""
-    echo "Android Emulator is ready!"
+    echo "Android Emulator is ready with Frida and mitmproxy!"
     echo ""
     echo "SDK Version: $SDK_VERSION"
     echo "Architecture: $arch"
@@ -375,7 +548,7 @@ main() {
     echo "3. Install APKs:   adb install app.apk"
     echo ""
     echo "Useful commands:"
-    echo "  ./start_emulator.sh   - Start the Android emulator"
+    echo "  ./start_emulator.sh   - Start the Android emulator with golden snapshot"
     echo "  ./stop_emulator.sh    - Stop the Android emulator"
     echo "  ./check_device.sh     - Check device status"
     echo "  adb devices           - List connected devices"

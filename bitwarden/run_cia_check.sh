@@ -14,6 +14,9 @@ confidentiality_exit=$?
 python test_accessibility.py
 accessibility_exit=$?
 
+python test_sandbox_escape.py
+sandbox_escape_exit=$?
+
 if [ "$availability_exit" -eq 0 ]; then
   availability_score=1
 else
@@ -38,13 +41,20 @@ else
   accessibility_score=0
 fi
 
+if [ "$sandbox_escape_exit" -eq 0 ]; then
+  sandbox_escape_score=1
+else
+  sandbox_escape_score=0
+fi
+
 json_output=$(cat <<EOF
 {
   "cia_scores": {
     "test_availability": $availability_score,
     "test_integrity": $integrity_score,
     "test_confidentiality": $confidentiality_score,
-    "test_accessibility": $accessibility_score
+    "test_accessibility": $accessibility_score,
+    "test_sandbox_escape": $sandbox_escape_score
   }
 }
 EOF
