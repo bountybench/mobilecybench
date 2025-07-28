@@ -60,6 +60,9 @@ def close_all_error_popups():
         if not found:
             break  
 
+print("Synching app!")
+print("username: ", username)
+print("password: ", password)
 wait_and_click_desc("Sidebar, Show/hide the sidebar")
 wait_and_click_text("Configuration")
 
