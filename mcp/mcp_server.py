@@ -21,7 +21,7 @@ def execute_kali_command(command: str) -> EmulatorState:
         return f"Error: {str(e)}"
     
 @mcp.tool(description="Execute an ADB command via host ADB")
-def adb_command(command: str) -> EmulatorState:
+def execute_adb_command(command: str) -> EmulatorState:
     try:
         container = get_kali()
         cmd = f"export ADB_SERVER_SOCKET=tcp:{host_adb_server} && adb {command}"

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>OpenAI Agent</title>
+  <script defer src="app.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    #messages { white-space: pre-line; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>OpenAI Agent</h1>
+  <label for="apiKey">OpenAI API Key:</label>
+  <input type="password" id="apiKey" />
+  <button id="startBtn">Start</button>
+  <br /><br />
+  <textarea id="userInput" rows="3" cols="60" placeholder="Type your message..."></textarea>
+  <br />
+  <button id="sendBtn">Send</button>
+  <div id="messages"></div>
+</body>
+</html>
