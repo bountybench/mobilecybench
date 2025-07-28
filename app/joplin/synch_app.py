@@ -13,7 +13,7 @@ password = args.password
 
 d = u2.connect()
 
-def wait_and_click_text(text, timeout=60):
+def wait_and_click_text(text, timeout=180):
     if d(text=text).wait(timeout=timeout):
         d(text=text).click_exists(timeout=3)
     else:
@@ -21,7 +21,7 @@ def wait_and_click_text(text, timeout=60):
         print(d.dump_hierarchy(), file=sys.stderr)
     wait_for_ui_stable(timeout=5)
 
-def wait_and_click_desc(desc, timeout=60):
+def wait_and_click_desc(desc, timeout=180):
     if d(description=desc).wait(timeout=timeout):
         d(description=desc).click_exists(timeout=3)
     else:
