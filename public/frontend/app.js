@@ -37,6 +37,12 @@ document.getElementById("sendBtn").onclick = async () => {
   const data = await res.json();
 
   if (data.reply) {
+    if (data.toolResults && data.toolResults.length > 0) {
+      for (let i = 0; i < data.toolResults.length; i++) {
+        appendMsg("\t 🔨: " + data.toolResults[i])
+      }
+    }
+    
     appendMsg("🤖 " + data.reply);
   } else {
     appendMsg("❌ Error: " + data.error);

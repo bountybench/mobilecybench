@@ -10,51 +10,71 @@ host_adb_server = "host.docker.internal:5037"
 def get_kali():
     return docker_client.containers.get(kali_container_name)
 
-@mcp.tool(description="Execute a command in the Kali Linux container")
-def execute_kali_command(command: str) -> EmulatorState:
+@mcp.tool(description="Terminal. Start android emulator commands with 'adb shell...'.")
+def execute_command(command: str) -> EmulatorState:
     try:
         container = get_kali()
-        result = container.exec_run(f"bash -c '{command}'", stdout=True, stderr=True)
-        output = result.output.decode("utf-8")
-        return get_ui_state(f"Command: {command}\nExit Code: {result.exit_code}\nOutput:\n{output}")
+
+        if (command.split(" ")[0] == 'adb'):
+            #emulator command
+            cmd = f"export ADB_SERVER_SOCKET=tcp:{host_adb_server} && adb {command}"
+            result = container.exec_run(f"bash -c '{cmd}'", stdout=True, stderr=True)
+            output = result.output.decode("utf-8")
+            return get_ui_state(f"ADB Command: adb {command}\nExit Code: {result.exit_code}\nOutput:\n{output}")
+        else:
+            #arbitrary terminal command
+            result = container.exec_run(f"bash -c '{command}'", stdout=True, stderr=True)
+            output = result.output.decode("utf-8")
+            return f"Command: {command}\nExit Code: {result.exit_code}\nOutput:\n{output}"
+        
     except Exception as e:
         return f"Error: {str(e)}"
+
+# @mcp.tool(description="Execute a command in the Kali Linux container")
+# def execute_kali_command(command: str) -> EmulatorState:
+#     try:
+#         container = get_kali()
+#         result = container.exec_run(f"bash -c '{command}'", stdout=True, stderr=True)
+#         output = result.output.decode("utf-8")
+#         return get_ui_state(f"Command: {command}\nExit Code: {result.exit_code}\nOutput:\n{output}")
+#     except Exception as e:
+#         return f"Error: {str(e)}"
     
-@mcp.tool(description="Execute an ADB command via host ADB")
-def execute_adb_command(command: str) -> EmulatorState:
-    try:
-        container = get_kali()
-        cmd = f"export ADB_SERVER_SOCKET=tcp:{host_adb_server} && adb {command}"
-        result = container.exec_run(f"bash -c '{cmd}'", stdout=True, stderr=True)
-        output = result.output.decode("utf-8")
-        return get_ui_state(f"ADB Command: adb {command}\nExit Code: {result.exit_code}\nOutput:\n{output}")
-    except Exception as e:
-        return f"Error: {str(e)}"
+# @mcp.tool(description="Execute an ADB command via host ADB")
+# def execute_adb_command(command: str) -> EmulatorState:
+#     try:
+#         container = get_kali()
+#         cmd = f"export ADB_SERVER_SOCKET=tcp:{host_adb_server} && adb {command}"
+#         result = container.exec_run(f"bash -c '{cmd}'", stdout=True, stderr=True)
+#         output = result.output.decode("utf-8")
+#         return get_ui_state(f"ADB Command: adb {command}\nExit Code: {result.exit_code}\nOutput:\n{output}")
+#     except Exception as e:
+#         return f"Error: {str(e)}"
 
-@mcp.tool(description="Connect Kali ADB client to host ADB server")
-def connect_to_host_adb() -> str:
-    try:
-        container = get_kali()
-        container.exec_run("bash -c 'adb kill-server'", stdout=True, stderr=True)
-        result = container.exec_run(
-            f"bash -c 'export ADB_SERVER_SOCKET=tcp:{host_adb_server} && adb devices'",
-            stdout=True, stderr=True
-        )
-        return f"ADB Connection:\n{result.output.decode('utf-8')}"
-    except Exception as e:
-        return f"Error: {str(e)}"
+# @mcp.tool(description="Connect Kali ADB client to host ADB server")
+# def connect_to_host_adb() -> str:
+#     try:
+#         container = get_kali()
+#         container.exec_run("bash -c 'adb kill-server'", stdout=True, stderr=True)
+#         result = container.exec_run(
+#             f"bash -c 'export ADB_SERVER_SOCKET=tcp:{host_adb_server} && adb devices'",
+#             stdout=True, stderr=True
+#         )
+#         return f"ADB Connection:\n{result.output.decode('utf-8')}"
+#     except Exception as e:
+#         return f"Error: {str(e)}"
 
-@mcp.tool(description="Check if the Android emulator is running")
-def check_emulator_status() -> str:
-    try:
-        container = get_kali()
-        result = container.exec_run(
-            f"bash -c 'export ADB_SERVER_SOCKET=tcp:{host_adb_server} && adb devices -l && adb shell getprop ro.build.version.release || echo \"No emulator\"'",
-            stdout=True, stderr=True
-        )
-        return f"Emulator Status:\n{result.output.decode('utf-8')}"
-    except Exception as e:
-        return f"Error: {str(e)}"
+# @mcp.tool(description="Check if the Android emulator is running")
+# def check_emulator_status() -> str:
+#     try:
+#         container = get_kali()
+#         result = container.exec_run(
+#             f"bash -c 'export ADB_SERVER_SOCKET=tcp:{host_adb_server} && adb devices -l && adb shell getprop ro.build.version.release || echo \"No emulator\"'",
+#             stdout=True, stderr=True
+#         )
+#         return f"Emulator Status:\n{result.output.decode('utf-8')}"
+#     except Exception as e:
+#         return f"Error: {str(e)}"
 
 if __name__ == "__main__":
     mcp.run(transport="http", port=8000)

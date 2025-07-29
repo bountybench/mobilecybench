@@ -59,10 +59,34 @@ app.post("/message", async (req, res) => {
       ],
       input: conversation.join("\n")
     });
-
+    console.log(response)
     const reply = response.output_text;
     conversation.push(reply);
-    res.json({ reply });
+
+    const functionCalls = [];
+
+    // Iterate through the output and extract required details
+    response.output.forEach(item => {
+      if (item.type === 'mcp_call' || item.server_label == 'mobile_server_mcp') {
+        // If it's a function call (mcp_call), add relevant details
+        functionCalls.push({
+          server_label: item.server_label,
+          type: item.type,
+          name: item.name || 'N/A', // Default to 'N/A' if 'name' is not present
+          arguments: item.arguments || 'N/A', // Default to 'N/A' if 'arguments' is not present
+        });
+      }
+    });
+
+    const toolResults = functionCalls.map(call => {
+      return `Server: ${call.server_label}, Type: ${call.type}, Name: ${call.name}, Arguments: ${call.arguments}`;
+    });
+
+    res.json({ 
+      reply,
+      toolResults 
+    });
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
