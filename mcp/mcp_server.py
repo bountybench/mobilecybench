@@ -11,7 +11,7 @@ host_adb_server = "host.docker.internal:5037"
 def get_kali():
     return docker_client.containers.get(kali_container_name)
 
-@mcp.tool(description="Execute a terminal command inside the Kali container.")
+@mcp.tool(description="Execute a terminal command. For adb commands, write 'adb shell ...'. ")
 def execute_command(command: str) -> EmulatorState:
     try:
         container = get_kali()

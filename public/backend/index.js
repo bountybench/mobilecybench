@@ -12,10 +12,15 @@ const BOUNTIES_PATH = path.join(__dirname, '..', '..', 'bounties');
 
 app.use(cors());
 app.use(express.json());
+app.use(express.static(path.join(__dirname, '..', 'frontend')));
 
 let client;
 let conversation = [];
 let tunnelUrl = null;
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'frontend', 'index.html'));
+});
 
 function getNgrokTunnelUrl() {
   const command = "docker exec -i mcp-server curl http://localhost:4040/api/tunnels";
@@ -24,6 +29,32 @@ function getNgrokTunnelUrl() {
   return json.tunnels[0].public_url;
 }
 
+app.post('/end', async (req, res) => {
+  const { bounty } = req.body;
+
+  if (bounty == "none") {
+    console.log("Nothing to decompose; no bounty selected.")
+    return 
+  }
+
+  const bountyPath = path.join(BOUNTIES_PATH, bounty);
+
+  try {
+    await new Promise((resolve, reject) => {
+      exec(`docker-compose down -v`, { cwd: bountyPath, shell: true }, (err, stdout, stderr) => {
+        if (err) reject(err);
+        else resolve(stdout);
+      });
+    });
+  } catch (err) {
+    console.error(err)
+    return res.status(500).json({success: false, error: err.message || err})
+  }
+  
+  console.log(`Decomposed the containers from ${bounty}`)
+  
+})
+
 app.post("/init", async (req, res) => {
   const { apiKey, bounty } = req.body;
 
@@ -31,35 +62,42 @@ app.post("/init", async (req, res) => {
     return res.status(400).json({ error: "API key required" });
   }
 
-  // Find bounty metadata
-  const bountyPath = path.join(BOUNTIES_PATH, bounty);
-  const metadataPath = path.join(bountyPath, 'metadata.json');
+  if (bounty != "None") {
+    // Find bounty metadata
+    const bountyPath = path.join(BOUNTIES_PATH, bounty);
+    const metadataPath = path.join(bountyPath, 'metadata.json');
 
-  if (!fs.existsSync(metadataPath)) {
-    return res.json({ success: false, error: "metadata.json not found" });
+    if (!fs.existsSync(metadataPath)) {
+      return res.json({ success: false, error: "metadata.json not found" });
+    }
+
+    const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+
+    try {
+      await new Promise((resolve, reject) => {
+        exec(`docker-compose up -d`, { cwd: bountyPath }, (err, stdout, stderr) => {
+          if (err) reject(err);
+          else resolve(stdout);
+        });
+      });
+
+      // Clone repo inside the running container into a path you specify (e.g., /opt/repo)
+      const cloneCmd = `git clone --depth=1 --branch ${metadata.commit_version} ${metadata.gh_link} /opt/repo`;
+
+      await new Promise((resolve, reject) => {
+        exec(`docker exec kali-container ${cloneCmd}`, (err, stdout, stderr) => {
+          if (err) reject(stderr || err);
+          else resolve(stdout);
+        });
+      });
+    } catch (err) {
+      console.error(err)
+      return res.status(500).json({success: false, error: err.message || err})
+    }
+  
   }
 
-  const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
-
   try {
-    // Start Docker container first
-    await new Promise((resolve, reject) => {
-      exec(`docker-compose up -d`, { cwd: bountyPath }, (err, stdout, stderr) => {
-        if (err) reject(err);
-        else resolve(stdout);
-      });
-    });
-
-    // Clone repo inside the running container into a path you specify (e.g., /opt/repo)
-    const cloneCmd = `git clone --depth=1 --branch ${metadata.commit_version} ${metadata.gh_link} /opt/repo`;
-
-    await new Promise((resolve, reject) => {
-      exec(`docker exec kali-container ${cloneCmd}`, (err, stdout, stderr) => {
-        if (err) reject(stderr || err);
-        else resolve(stdout);
-      });
-    });
-
     // Setup OpenAI client
     tunnelUrl = getNgrokTunnelUrl();
     client = new OpenAI({ apiKey });

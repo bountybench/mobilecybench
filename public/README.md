@@ -2,6 +2,10 @@
 
 1. Setup
 
+Obtain an ngrok token by going to https://ngrok.com, signing up, and then copying the ngrok token to mcp/ngrok.yml next to the authtoken: field.   
+
+Run the following commands separately:
+
     ```bash
     ./setup.sh
     ./start_emulator.sh
@@ -10,7 +14,8 @@
     npm install
     npm run dev
     ```
-Then, on mac, go to the index.html file and open it in your web browser. This should launch something like file:///Users/{your file path}/mobilecybench/public/frontend/index.html
+
+Then go to http://localhost:3000.
 
 2. Prompting: It might be helpful to remind the agent that it needs to run adb shell instead of just adb input (as it sometimes does) or tell it that it should use the accessible tools (execute_adb_command, execute_kali_command)
 
