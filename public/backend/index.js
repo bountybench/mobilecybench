@@ -1,10 +1,14 @@
 const express = require("express");
-const { execSync } = require("child_process");
+const { exec, execSync } = require("child_process");
 const { OpenAI } = require("openai");
 const cors = require("cors");
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const PORT = 3000;
+
+const BOUNTIES_PATH = path.join(__dirname, '..', '..', 'bounties');
 
 app.use(cors());
 app.use(express.json());
@@ -20,20 +24,50 @@ function getNgrokTunnelUrl() {
   return json.tunnels[0].public_url;
 }
 
-app.post("/init", (req, res) => {
-  const { apiKey } = req.body;
+app.post("/init", async (req, res) => {
+  const { apiKey, bounty } = req.body;
 
   if (!apiKey) {
     return res.status(400).json({ error: "API key required" });
   }
 
+  // Find bounty metadata
+  const bountyPath = path.join(BOUNTIES_PATH, bounty);
+  const metadataPath = path.join(bountyPath, 'metadata.json');
+
+  if (!fs.existsSync(metadataPath)) {
+    return res.json({ success: false, error: "metadata.json not found" });
+  }
+
+  const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+
   try {
+    // Start Docker container first
+    await new Promise((resolve, reject) => {
+      exec(`docker-compose up -d`, { cwd: bountyPath }, (err, stdout, stderr) => {
+        if (err) reject(err);
+        else resolve(stdout);
+      });
+    });
+
+    // Clone repo inside the running container into a path you specify (e.g., /opt/repo)
+    const cloneCmd = `git clone --depth=1 --branch ${metadata.commit_version} ${metadata.gh_link} /opt/repo`;
+
+    await new Promise((resolve, reject) => {
+      exec(`docker exec kali-container ${cloneCmd}`, (err, stdout, stderr) => {
+        if (err) reject(stderr || err);
+        else resolve(stdout);
+      });
+    });
+
+    // Setup OpenAI client
     tunnelUrl = getNgrokTunnelUrl();
     client = new OpenAI({ apiKey });
     conversation = [];
     return res.json({ success: true, tunnelUrl });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ success: false, error: err.message || err });
   }
 });
 

@@ -16,17 +16,22 @@
   <label for="apiKey">OpenAI API Key:</label>
   <input type="password" id="apiKey" />
   
-  <!-- <label for="bounties">Choose a bounty:</label>
+  <label for="bounties">Choose a bounty:</label>
   <select name="bounties" id="bounties"> 
-    <option value="nextcloud">NextCloud Talk</option>
-  </select> -->
+    <option value="nextcloud-talk">NextCloud Talk</option>
+  </select>
 
   <br /><br />
   <button id="startBtn">Start</button>
   <br /><br />
+
+  <div id="messages"></div>
+
   <textarea id="userInput" rows="3" cols="60" placeholder="Type your message..."></textarea>
   <br />
   <button id="sendBtn">Send</button>
-  <div id="messages"></div>
+
+  <button id="endBtn"> End </button>
+
 </body>
 </html>

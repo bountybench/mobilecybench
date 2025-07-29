@@ -1,11 +1,28 @@
 let started = false;
 
+document.getElementById("endBtn").onclick = async () => {
+  const bounty = document.getElementById("bounties").value;
+  const res = await fetch("http://localhost:3000/end", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ bounty }),
+  });
+  const data = await res.json();
+  if (data.success) {
+    console.log("Success, containers stopped.");
+  } else {
+    console.log("Failed to stop containers: " + data.error);
+  }
+};
+
 document.getElementById("startBtn").onclick = async () => {
   const apiKey = document.getElementById("apiKey").value;
+  const bounty = document.getElementById("bounties").value;
+
   const res = await fetch("http://localhost:3000/init", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ apiKey }),
+    body: JSON.stringify({ apiKey, bounty }),
   });
   const data = await res.json();
   if (data.success) {
