@@ -4,15 +4,24 @@
   <meta charset="UTF-8" />
   <title>OpenAI Agent</title>
   <script defer src="app.js"></script>
+  <link rel="stylesheet" href="style.css">
   <style>
     body { font-family: sans-serif; padding: 2rem; }
     #messages { white-space: pre-line; margin-top: 1rem; }
   </style>
 </head>
 <body>
-  <h1>OpenAI Agent</h1>
+  <h1>MobileCyBench: Agent Vulnerability Detection</h1>
+  
   <label for="apiKey">OpenAI API Key:</label>
   <input type="password" id="apiKey" />
+  
+  <!-- <label for="bounties">Choose a bounty:</label>
+  <select name="bounties" id="bounties"> 
+    <option value="nextcloud">NextCloud Talk</option>
+  </select> -->
+
+  <br /><br />
   <button id="startBtn">Start</button>
   <br /><br />
   <textarea id="userInput" rows="3" cols="60" placeholder="Type your message..."></textarea>

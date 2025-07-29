@@ -8,7 +8,7 @@
     docker-compose up --build
     cd public
     npm install
-    npm start
+    npm run dev
     ```
 Then, on mac, go to the index.html file and open it in your web browser. This should launch something like file:///Users/{your file path}/mobilecybench/public/frontend/index.html
 

@@ -1,10 +1,3 @@
-networks:
-  mcp_net:
-    driver: bridge
-  shared_net:
-    external: true
-  
-
 services:
   # Kali Linux Container
   kali-container:
@@ -41,3 +34,10 @@ services:
       - kali-container
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
+    
+networks:
+  mcp_net:
+    driver: bridge
+  shared_net:
+    external: true
+  

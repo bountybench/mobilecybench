@@ -1,5 +1,6 @@
 import docker
 from fastmcp import FastMCP
+import shlex
 from ui_connection import EmulatorState, get_ui_state
 
 mcp = FastMCP(name="Mobile Cyber MCP", stateless_http=True)
@@ -10,23 +11,28 @@ host_adb_server = "host.docker.internal:5037"
 def get_kali():
     return docker_client.containers.get(kali_container_name)
 
-@mcp.tool(description="Terminal. Start android emulator commands with 'adb shell...'.")
+@mcp.tool(description="Execute a terminal command inside the Kali container.")
 def execute_command(command: str) -> EmulatorState:
     try:
         container = get_kali()
 
-        if (command.split(" ")[0] == 'adb'):
-            #emulator command
-            cmd = f"export ADB_SERVER_SOCKET=tcp:{host_adb_server} && adb {command}"
-            result = container.exec_run(f"bash -c '{cmd}'", stdout=True, stderr=True)
-            output = result.output.decode("utf-8")
-            return get_ui_state(f"ADB Command: adb {command}\nExit Code: {result.exit_code}\nOutput:\n{output}")
+        # Determine if the command is an ADB command
+        if command.strip().startswith("adb"):
+            # Prefix ADB server socket export
+            full_cmd = f"export ADB_SERVER_SOCKET=tcp:{host_adb_server} && {command}"
+            label = "ADB Command"
         else:
-            #arbitrary terminal command
-            result = container.exec_run(f"bash -c '{command}'", stdout=True, stderr=True)
-            output = result.output.decode("utf-8")
-            return f"Command: {command}\nExit Code: {result.exit_code}\nOutput:\n{output}"
+            full_cmd = command
+            label = "Command"
+
+        # Safely quote the entire command for bash -c execution inside Docker
+        result = container.exec_run(f"bash -c {shlex.quote(full_cmd)}", stdout=True, stderr=True)
+        output = result.output.decode("utf-8")
         
+        return get_ui_state(
+            f"{label}: {command}\nExit Code: {result.exit_code}\nOutput:\n{output}"
+        )
+
     except Exception as e:
         return f"Error: {str(e)}"
 
