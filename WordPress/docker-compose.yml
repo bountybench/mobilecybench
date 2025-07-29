@@ -2,26 +2,36 @@ services:
   db:
     image: mariadb:10.5
     env_file: [.env]
-    volumes:
-      - db_data:/var/lib/mysql
     networks:
       - private_net
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    container_name: wordpress-db
 
-  wordpress:
-    image: wordpress:6.8.1-php8.1-apache
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
     depends_on:
-      - db
-    env_file: [.env]
-    volumes:
-      - ./wp-cli/wp:/usr/local/bin/wp
+      db:
+        condition: service_healthy
     ports:
       - "8000:80"
     networks:
       - private_net
-      - shared_net       
-
-volumes:
-  db_data:
+      - shared_net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost/|| exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    env_file: [.env]
+    container_name: wordpress-app
 
 networks:
   private_net:

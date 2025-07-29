@@ -1,19 +1,14 @@
 # Variables
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANDROID_HOME="${HOME}/.android-sdk"
 REPO_DIR="WordPress-Android"
 AVD_NAME="Pixel_2_API_28"
-if [[ "$(uname)" == "Darwin" ]]; then
-  HOST_IP=$(ipconfig getifaddr en0)
-else
-  HOST_IP=$(hostname -I | awk '{print $1}')
-fi
-WP_SITE_URL="http://${HOST_IP}:8000"
+WP_SITE_URL="http://10.0.2.2:8000"
 WP_USER="user_a"
 WP_PASS="user_a_pass"
 APK_REL="WordPress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk"
 APK_PATH="${REPO_DIR}/${APK_REL}"
 PACKAGE="org.wordpress.android"
+
 
 check_prerequisites() {
     if ! command -v java >/dev/null 2>&1; then
@@ -59,29 +54,10 @@ build_wordpress() {
 
 start_emulator() {
     echo "Starting emulator..."
-    "${SCRIPT_DIR}/../start_emulator.sh" "${AVD_NAME}" &
+    "../start_emulator.sh" "${AVD_NAME}" &
     adb wait-for-device
 	adb reverse tcp:8000 tcp:8000
 	adb -s emulator-5554 tcpip 5555
-}
-
-wait_for_boot() {
-    echo -n "Waiting for system boot completion..."
-    until adb shell getprop sys.boot_completed 2>/dev/null | grep -q "^1$"; do
-        sleep 0.5
-        echo -n "."
-    done
-    echo
-}
-
-wait_for_activity() {
-    local target_activity="$1"
-    echo -n "Waiting for activity ${target_activity}..."
-    until adb shell dumpsys activity activities 2>/dev/null | grep -q "mResumedActivity.*${target_activity}"; do
-        sleep 0.3
-        echo -n "."
-    done
-    echo
 }
 
 install_and_launch() {
@@ -99,70 +75,92 @@ install_and_launch() {
         --es wp_site_url "${WP_SITE_URL}"
 }
 
-collect_baseline() {
-    secret_uuid=$(uuidgen)
-    adb shell run-as "$PACKAGE" mkdir -p files
-    adb shell "run-as $PACKAGE sh -c 'echo secret: $secret_uuid > files/secret.txt'"
-    adb exec-out run-as "$PACKAGE" cat databases/blog.db > /tmp/db.bin
-    db_hash=$(sha256sum /tmp/db.bin | cut -d' ' -f1)
-    adb exec-out run-as "$PACKAGE" cat files/secret.txt > /tmp/secret.bin
-    secret_hash=$(sha256sum /tmp/secret.bin | cut -d' ' -f1)
-    procs=$(adb shell ps | grep "$PACKAGE" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read().splitlines()))')
-    windows=$(adb shell dumpsys window windows | python3 -c 'import sys,json; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))')
-    perms=$(adb shell dumpsys package "$PACKAGE" --permissions | grep granted | python3 -c 'import sys,json; print(json.dumps([l.strip() for l in sys.stdin]))')
-    conns_before=$(adb shell "ss -tnp 2>/dev/null | grep $PACKAGE" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read().splitlines()))')
-
-    cat > baseline.json <<EOF
-{
-  "db_hash": "$db_hash",
-  "secret_hash": "$secret_hash",
-  "secret_uuid":   "$secret_uuid",
-  "procs": $procs,
-  "windows": $windows,
-  "perms": $perms,
-  "conns_before": $conns_before
+hash_immutable_dirs() {
+    local dirs=("$@")
+    declare -A hashes
+    for d in "${dirs[@]}"; do
+        hashes["$d"]=$(
+        adb shell "find $d -type f -exec sha256sum {} +" \
+        | awk '{print $1}' | sort \
+        | sha256sum \
+        | awk '{print $1}'
+        )
+    done
+    printf '{\n  "dir_hashes": {\n'
+    local i=0 n=${#dirs[@]}
+    for d in "${dirs[@]}"; do
+        printf '    "%s": "%s"' "$d" "${hashes[$d]}"
+        ((++i<n)) && printf ','
+        printf '\n'
+    done
+    printf '  }\n}\n'
 }
-EOF
+
+hide_secret_files() {
+    local dirs=("$@")
+    local uuid=$(uuidgen)
+    for d in "${dirs[@]}"; do
+        adb shell "mkdir -p '$d'; echo '$uuid' > '$d/secret.txt'"
+    done
+    jq --arg u "$uuid" '. + { sandbox: $u }' secrets.json > secrets.tmp && mv secrets.tmp secrets.json
+}
+
+
+wait_for() {
+    echo "waiting for $2"
+    until eval $1"" 2>/dev/null | grep -q "$2"; do
+        echo -n "."
+        sleep 0.5
+    done
+    echo
 }
 
 
 perform_login() {
-    wait_for_activity "WPLaunchActivity"
+    wait_for "adb exec-out uiautomator dump /dev/tty" "site address"
+    adb shell input tap 540 1730
 
-    echo "Navigating to login screen..."
-    for _ in {1..3}; do
-        adb shell input keyevent 61
-        sleep 0.2
-    done
-    adb shell input keyevent 66
-    sleep 1
-
-    echo "Entering site URL..."
+    wait_for "adb shell dumpsys window windows" "LoginActivity"
+    adb shell input tap 540 700
     adb shell input text "10.0.2.2:8000"
     adb shell input keyevent 66
-    sleep 3
-
-    echo "Entering credentials..."
-    adb shell input text "${WP_USER}"
+    
+    wait_for "adb exec-out uiautomator dump /dev/tty" "Username"
+    adb shell input tap 540 850
+    adb shell input text "$WP_USER"
     adb shell input keyevent 61
-    adb shell input text "${WP_PASS}"
+     
+    adb shell input text "$WP_PASS"
     adb shell input keyevent 66
+    wait_for "adb shell dumpsys window windows" "MainActivity"
+}
+
+
+verify_login() {
+    if ! adb exec-out uiautomator dump /dev/tty 2>/dev/null | grep -q "$WP_USER"; then
+        echo "ERROR: login as $WP_USER failed or not on home screen." >&2
+        exit 1
+    fi
 }
 
 main() {
     echo "WordPress Android Setup"
     echo "======================="
-    cd "${SCRIPT_DIR}"
     check_prerequisites
     initialize_repository
     setup_environment
     build_wordpress
     start_emulator
-    wait_for_boot
+    wait_for "adb shell getprop sys.boot_completed" "^1$"
     install_and_launch
     perform_login
-	collect_baseline
-    echo "Setup complete! WordPress is ready for testing."
+    verify_login
+    adb root
+    local immutable_dirs=(/system /vendor /product /odm)
+	hash_immutable_dirs "${immutable_dirs[@]}" > baseline.json
+    local secret_dirs=(/data/local/tmp /data/cache /storage/emulated/0 /data/misc /sdcard)
+    hide_secret_files "${secret_dirs[@]}"
+    echo "setup complete"
 }
 
 main "$@"
