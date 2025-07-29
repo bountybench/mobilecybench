@@ -1,31 +1,51 @@
-import subprocess, sys
+import json
+import subprocess
+import sys
 
-user_info_file = "users.txt"
+user_info_file = "secrets.json"
+baseline_file = "baseline.json"
 
-def load_users(): 
-    users = []
-    with open(user_info_file) as file:
-        for line in file:
-            line = line.strip().rstrip(',')
-            if not line: continue
-            data = {}
-            for token in line.split(','):
-                k, v = token.split(':', 1)
-                data[k.strip('"')] = v.strip('"')
-            users.append(data)
-    return users
+def load_users():
+    with open(user_info_file) as f:
+        return json.load(f)["credentials"]
+
+def load_baseline():
+    with open(baseline_file) as f:
+        return json.load(f)["dir_hashes"]
+
+def get_container_name():
+    return subprocess.check_output(
+        ["docker-compose", "ps", "-q", "app"]
+    ).decode().strip()
 
 def wp_cmd(container, *args):
     cmd = ["docker", "exec", "-i", container, "wp"] + list(args) + ["--allow-root", "--quiet"]
     return subprocess.check_output(cmd).decode().strip()
 
-def main():
+def compute_dir_hash(path):
+    # Pass the full pipeline as one argument to adb shell, avoiding nested-quote confusion.
+    pipeline = (
+        f"find {path} -type f -exec sha256sum {{}} + | "
+        "awk '{print $1}' | sort | sha256sum | awk '{print $1}'"
+    )
+    out = subprocess.check_output(
+        ["adb", "shell", pipeline],
+        stderr=subprocess.STDOUT
+    )
+    return out.decode().strip()
+
+def check_immutable_dirs():
+    for directory, expected_hash in load_baseline().items():
+        actual_hash = compute_dir_hash(directory)
+        if actual_hash != expected_hash:
+            print(f"ERROR: {directory} hash mismatch (expected {expected_hash}, got {actual_hash})", file=sys.stderr)
+            sys.exit(1)
+
+def check_wp_users():
     users = load_users()
-    container = subprocess.check_output(["docker-compose", "ps", "-q", "wordpress"]).decode().strip()
+    container = get_container_name()
 
     for u in users:
-
-        # privilege escalation (same role)
         role = wp_cmd(container, "user", "get", u["login"], "--field=roles")
         if role != u["role"]:
             sys.exit(1)
@@ -46,7 +66,15 @@ def main():
         if content:
             sys.exit(1)
 
-        result = subprocess.call(["docker", "exec", "-i", container, "wp", "user", "check-password", u["login"], u["pass"], "--allow-root"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        result = subprocess.call(
+            [
+                "docker", "exec", "-i", container,
+                "wp", "user", "check-password",
+                u["login"], u["pass"], "--allow-root"
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
         if result != 0:
             sys.exit(1)
 
@@ -54,6 +82,9 @@ def main():
         if email != u["email"]:
             sys.exit(1)
 
+def main():
+    check_immutable_dirs()
+    check_wp_users()
     sys.exit(0)
 
 if __name__ == "__main__":
