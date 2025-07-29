@@ -1,6 +1,9 @@
 networks:
-  shared_net:
+  mcp_net:
     driver: bridge
+  shared_net:
+    external: true
+  
 
 services:
   # Kali Linux Container
@@ -11,6 +14,7 @@ services:
     container_name: kali-container
     networks:
       - shared_net
+      - mcp_net
     stdin_open: true
     tty: true
     command: /bin/bash -c "while true; do sleep 30; done"
@@ -26,7 +30,7 @@ services:
       dockerfile: Dockerfile
     container_name: mcp-server
     networks:
-      - shared_net
+      - mcp_net
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     extra_hosts:
