@@ -1,6 +1,6 @@
 let started = false;
-
 let lastAgentBox = null;
+let supervisorAgent = false
 
 const SENDER = {
   SYSTEM: 'SYSTEM',
@@ -31,6 +31,8 @@ document.getElementById('startChatForm').addEventListener('submit', async functi
   const apiKey = document.getElementById("apiKey").value;
   const app = document.getElementById("apps").value;
   const clone = document.getElementById('cloneCheckbox').checked;
+  supervisorAgent = document.getElementById('criticCheckbox').checked;
+  console.log(supervisorAgent)
 
   const res = await fetch("http://localhost:3000/init", {
     method: "POST",
@@ -67,6 +69,7 @@ document.getElementById("sendBtn").onclick = async () => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message }),
   });
+
   const data = await res.json();
 
   appendMsg(SENDER.AGENT, "Agent Tool Calls:");
@@ -77,11 +80,25 @@ document.getElementById("sendBtn").onclick = async () => {
       }
     }
     appendMsg(SENDER.AGENT, "Agent (🤖): " + data.reply);
-    
   } else {
     appendMsg(SENDER.SYSTEM, "Error: " + data.error);
   }
+
+  if (supervisorAgent) {
+    await runAutonomousChat();
+  }
+
 };
+
+async function runAutonomousChat() {
+  let userInputBox = document.getElementById("userInput")
+  const res = await fetch("http://localhost:3000/criticmessage", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" }
+  });
+  const data = await res.json();
+  userInputBox.value = data.reply;
+}
 
 function appendMsg(sender, text) {
   const msgDiv = document.getElementById("messages");

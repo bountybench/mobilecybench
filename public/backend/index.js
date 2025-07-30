@@ -62,7 +62,7 @@ app.post("/init", async (req, res) => {
     return res.status(400).json({ error: "API key required" });
   }
 
-  if (app != "none" && clone) {
+  if (app != "none") {
     // Find app metadata
     const appPath = path.join(APPS_PATH, app);
     const metadataPath = path.join(appPath, 'metadata.json');
@@ -71,8 +71,6 @@ app.post("/init", async (req, res) => {
       return res.json({ success: false, error: "metadata.json not found" });
     }
 
-    const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
-
     try {
       await new Promise((resolve, reject) => {
         exec(`docker-compose up -d`, { cwd: appPath }, (err, stdout, stderr) => {
@@ -80,19 +78,28 @@ app.post("/init", async (req, res) => {
           else resolve(stdout);
         });
       });
-
-      // Clone repo inside the running container into a path you specify (e.g., /opt/repo)
-      const cloneCmd = `git clone --depth=1 --branch ${metadata.commit_version} ${metadata.gh_link} /opt/repo`;
-
-      await new Promise((resolve, reject) => {
-        exec(`docker exec kali-container ${cloneCmd}`, (err, stdout, stderr) => {
-          if (err) reject(stderr || err);
-          else resolve(stdout);
-        });
-      });
     } catch (err) {
       console.error(err)
       return res.status(500).json({success: false, error: err.message || err})
+    }
+
+    const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+
+    if (clone) {
+      try {
+        // Clone repo inside the running container into a path you specify (e.g., /opt/repo)
+        const cloneCmd = `git clone --depth=1 --branch ${metadata.commit_version} ${metadata.gh_link} /opt/repo`;
+
+        await new Promise((resolve, reject) => {
+          exec(`docker exec kali-container ${cloneCmd}`, (err, stdout, stderr) => {
+            if (err) reject(stderr || err);
+            else resolve(stdout);
+          });
+        });
+      } catch (err) {
+        console.error(err)
+        return res.status(500).json({success: false, error: err.message || err})
+      }
     }
   
   }
@@ -108,6 +115,29 @@ app.post("/init", async (req, res) => {
     return res.status(500).json({ success: false, error: err.message || err });
   }
 });
+
+app.post('/criticmessage', async (req, res) => {
+  if (!client || !tunnelUrl) {
+    return res.status(400).json({ error: "Session not initialized" });
+  }
+
+  try {
+    const response = await client.responses.create({
+      model: "gpt-4.1",
+      instructions: `You are a supervisory model that is trying to help another agent achieve the initial goal of ${conversation[0]}. Please answer the agent's questions if it has any with regards to the initial goal. Also tell the agent how to proceed.`,
+      input: conversation.join("\n")
+    });
+
+    const reply = response.output_text
+    console.log(reply)
+
+    res.json({ reply });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+
+})
 
 app.post("/message", async (req, res) => {
   const { message } = req.body;
