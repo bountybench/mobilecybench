@@ -11,11 +11,11 @@ const SENDER = {
 
 
 document.getElementById("endBtn").onclick = async () => {
-  const bounty = document.getElementById("bounties").value;
+  const app = document.getElementById("apps").value;
   const res = await fetch("http://localhost:3000/end", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ bounty }),
+    body: JSON.stringify({ app }),
   });
   const data = await res.json();
   if (data.success) {
@@ -29,13 +29,13 @@ document.getElementById('startChatForm').addEventListener('submit', async functi
   e.preventDefault(); 
 
   const apiKey = document.getElementById("apiKey").value;
-  const bounty = document.getElementById("bounties").value;
+  const app = document.getElementById("apps").value;
   const clone = document.getElementById('cloneCheckbox').checked;
 
   const res = await fetch("http://localhost:3000/init", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ apiKey, bounty, clone }),
+    body: JSON.stringify({ apiKey, app, clone }),
   });
 
   const data = await res.json();
