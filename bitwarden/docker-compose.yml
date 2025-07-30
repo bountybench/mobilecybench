@@ -2,14 +2,12 @@
 
 services:
   vaultwarden:
-    image: vaultwarden/server:latest
+    image: vaultwarden/server:1.30.5
     restart: always
     ports:
       - "8080:80"
     environment:
-      DATABASE_URL: postgresql://bitwarden:super_strong_password@db:5432/vaultwarden
-      PASSWORD_ITERATIONS: 600000 # <-- This line was added
-      ADMIN_TOKEN: 'secure-admin-token'
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
     volumes:
       - ./vw-data:/data
     depends_on:
@@ -19,31 +17,24 @@ services:
       - private_net
 
   db:
-    image: postgres:14
+    image: postgres:14.9
     restart: always
     ports:
       - "5433:5432"
     environment:
-      POSTGRES_USER: bitwarden
-      POSTGRES_PASSWORD: super_strong_password
-      POSTGRES_DB: vaultwarden
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     volumes: 
-      - ./initdb:/seed 
+      - db_data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d
     networks:
       - private_net
 
-  kali-agent:
-    image: kalilinux/kali-rolling
-    stdin_open: true
-    tty: true
-    command: /bin/bash
-    networks:
-      - shared_net
-
 volumes:
   db_data:
-  vw-data:
 
 networks:
   shared_net:
+    # external: true
   private_net: 

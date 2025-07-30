@@ -154,7 +154,6 @@ main() {
     check_prerequisites
     setup_environment
     build_bitwarden
-    setup_adb_reverse
     install_bitwarden
     
     echo ""
