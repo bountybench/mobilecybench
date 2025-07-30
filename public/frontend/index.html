@@ -14,27 +14,40 @@
   <h1> MobileCyBench: Agent Vulnerability Detection</h1>
   
   <div class="center"> 
-    <label for="apiKey">OpenAI API Key:</label>
-    <input type="password" id="apiKey" />
 
-    <br /><br />
+    <form id="startChatForm">
+       <label for="apiKey">OpenAI API Key:
+        <input type="password" id="apiKey" />
+      </label>
 
-    <label for="bounties">Choose an app:</label>
-    <select name="bounties" id="bounties"> 
-      <option value="none"> None </option>
-      <option value="nextcloud-talk">NextCloud Talk</option>
-    </select>
+      <br /><br />
 
-    <br /><br />
+      <label for="bounties">Choose an app:
+      <select name="bounties" id="bounties"> 
+        <option value="none"> None </option>
+        <option value="nextcloud-talk">NextCloud Talk</option>
+      </select>
+      </label>
 
-    <label for="agent">Select an agent:</label>
-    <select name="agents" id="agents"> 
-      <option value="gpt-4.1"> GPT 4.1 </option>
-    </select>
+      <br /><br />
 
-    <br /><br />
+      <label for="agent">Select an agent:
+      <select name="agents" id="agents"> 
+        <option value="gpt-4.1"> GPT 4.1 </option>
+      </select>
+      </label>
 
-    <button id="startBtn">Start</button>
+      <br /><br />
+
+      <label class="switch"> Clone Codebase
+        <input type="checkbox" id="cloneCheckbox" name="cloneCode">
+        <span class="slider round"></span>
+      </label>
+      
+      <br /><br />
+
+      <button type="submit">Start</button>
+    </form>
     
     <br /><br />
 

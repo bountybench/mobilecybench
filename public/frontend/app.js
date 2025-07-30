@@ -25,14 +25,17 @@ document.getElementById("endBtn").onclick = async () => {
   }
 };
 
-document.getElementById("startBtn").onclick = async () => {
+document.getElementById('startChatForm').addEventListener('submit', async function(e) {
+  e.preventDefault(); 
+
   const apiKey = document.getElementById("apiKey").value;
   const bounty = document.getElementById("bounties").value;
+  const clone = document.getElementById('cloneCheckbox').checked;
 
   const res = await fetch("http://localhost:3000/init", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ apiKey, bounty }),
+    body: JSON.stringify({ apiKey, bounty, clone }),
   });
 
   const data = await res.json();
@@ -43,7 +46,8 @@ document.getElementById("startBtn").onclick = async () => {
   } else {
     appendMsg(SENDER.SYSTEM, "Failed to start: " + data.error);
   }
-};
+
+});
 
 document.getElementById("sendBtn").onclick = async () => {
   if (!started) {

@@ -56,13 +56,13 @@ app.post('/end', async (req, res) => {
 })
 
 app.post("/init", async (req, res) => {
-  const { apiKey, bounty } = req.body;
+  const { apiKey, bounty, clone } = req.body;
 
   if (!apiKey) {
     return res.status(400).json({ error: "API key required" });
   }
 
-  if (bounty != "none") {
+  if (bounty != "none" && clone) {
     // Find bounty metadata
     const bountyPath = path.join(BOUNTIES_PATH, bounty);
     const metadataPath = path.join(bountyPath, 'metadata.json');
