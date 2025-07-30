@@ -5,6 +5,7 @@ echo "[INFO] Removing secret files..."
 rm flags.json || true
 rm secrets.json || true
 rm dump.sql || true
+rm codebase/user.properties || true
 
 echo "[INFO] Removing evaluating files..."
 rm scores.json || true
