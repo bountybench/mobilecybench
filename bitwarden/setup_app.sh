@@ -161,7 +161,6 @@ main() {
     echo "Setup complete! Bitwarden has been installed."
     echo "=========================================="
     echo ""
-    echo "Launching Bitwarden..."
     
     if launch_bitwarden; then
         echo "Bitwarden is now running and ready for mobile security testing!"

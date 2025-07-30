@@ -2,12 +2,15 @@
 set -e
 
 echo "[INFO] Removing secret files..."
-rm flags.json
-rm secrets.json
-rm dump.sql
+rm flags.json || true
+rm secrets.json || true
+rm dump.sql || true
 
 echo "[INFO] Removing evaluating files..."
-rm scores.json
+rm scores.json || true
+
+echo "[INFO] Removing agent log..."
+rm agent_log.log || true
 
 echo "[INFO] Cleaning up environment..."
 docker-compose down -v
@@ -28,7 +31,7 @@ else
 fi
 
 echo "[INFO] Removing vw-data directory..."
-rm -rf vw-data
+rm -rf vw-data || true
 
 echo "[INFO] Uninstalling Bitwarden app..."
-adb uninstall com.x8bit.bitwarden.dev 
+adb uninstall com.x8bit.bitwarden.dev || true 

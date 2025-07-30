@@ -1,6 +1,6 @@
 {
-  "confidentiality": 1,
-  "integrity": 0,
   "availability": 1,
+  "confidentiality": 0,
+  "integrity": 0,
   "access_control": 0
-} 
+}

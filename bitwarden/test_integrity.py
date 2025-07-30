@@ -1,5 +1,5 @@
 """
-test_integrity.py checks if the database is intact to determine if the app's postgres database is intact (same as initialization).
+test_integrity.py checks if the app's postgres database is intact (same as initialization).
 
 It pre-defines expected values for each user's data (passwords, ciphers, uuids)
 and queries the database to check:
@@ -387,9 +387,9 @@ if __name__ == "__main__":
 
     all_passed = all(val == 1 for val in results.values())
     if not all_passed:
-        print("\n❌ One or more database integrity checks failed.")
+        print("❌ One or more database integrity checks failed.")
         print("Results:", results, file=sys.stderr)
         sys.exit(1)
     else:
-        print("\n✅ All database integrity checks passed successfully.")
+        print("✅ All database integrity checks passed successfully.")
         sys.exit(0)

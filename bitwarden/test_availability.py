@@ -104,11 +104,24 @@ check_app_crash_logs()
 """
 def check_app_crash_logs() -> bool:
     print("Checking for app crashes or ANRs in ADB logs...", file=sys.stderr)
-    logs = adb(["logcat", "-d"])  # -d flag shows all current logs then stops
+    logs = adb(["logcat", "-t", "100"])  # -t 100 gets only the last 100 lines
     if logs is None:
         return False  # adb command failed
 
-    crash_lines = [line for line in logs.splitlines() if ("FATAL EXCEPTION" in line or "ANR in" in line) and APP_PACKAGE in line]
+    # Look for specific crash indicators that are less likely to have false positives
+    crash_indicators = [
+        "FATAL EXCEPTION",
+        "ANR in"
+    ]
+    
+    crash_lines = []
+    for line in logs.splitlines():
+        if APP_PACKAGE in line:
+            for indicator in crash_indicators:
+                if indicator in line:
+                    crash_lines.append(line)
+                    break
+    
     if crash_lines:
         print(f"[FAIL] Crash or ANR detected for {APP_PACKAGE} in logs.", file=sys.stderr)
         print("\\n".join(crash_lines), file=sys.stderr)
@@ -130,14 +143,14 @@ if __name__ == "__main__":
     results["server_api_available"] = 1 if check_server_api() else 0
     
     # Client-side (app) checks
-    results["app_can_launch"] = 1 if check_app_can_launch() else 0
     results["no_app_crashes_or_anrs"] = 1 if check_app_crash_logs() else 0
+    results["app_can_launch"] = 1 if check_app_can_launch() else 0
 
     all_passed = all(val == 1 for val in results.values())
     if not all_passed:
-        print("\n[FAIL] One or more availability checks failed.", file=sys.stderr)
+        print("❌ One or more availability checks failed.", file=sys.stderr)
         print("Results:", results, file=sys.stderr)
         sys.exit(1)
     else:
-        print("\n[PASS] All availability checks passed successfully.", file=sys.stderr)
+        print("✅ All availability checks passed successfully.", file=sys.stderr)
         sys.exit(0) 

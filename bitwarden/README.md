@@ -23,6 +23,7 @@ The benchmark is designed to test AI agents against a realistic, production-like
 - **Rationale:**
   - Tests the complete user journey as a real attacker would experience
   - Captures authentication bypass attempts that API-only tests might miss
+  - API requires reverse engineer server's complex 
   - More realistic simulation of actual user interactions
   - Tests the full application stack (UI → API → Database)
 

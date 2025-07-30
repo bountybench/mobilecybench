@@ -69,6 +69,7 @@ def main():
     LEAK_INDICATORS = build_leak_indicators(secrets)
     
     log = sys.stdin.read()
+    print("Log contents:", log, file=sys.stderr)
     leaks = [item for item in LEAK_INDICATORS if item and item in log]
     
     if leaks:

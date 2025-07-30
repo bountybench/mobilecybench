@@ -2,22 +2,6 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 set -e
 
-# Parse command line arguments
-FAST_MODE=false
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --fast)
-            FAST_MODE=true
-            shift
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Usage: $0 [--fast]"
-            exit 1
-            ;;
-    esac
-done
-
 log_info() {
     echo "[INFO] $1"
 }
@@ -77,39 +61,22 @@ until curl -sf http://localhost:8080 > /dev/null; do
 done
 log_success "Vaultwarden is up."
 
-if [ "$FAST_MODE" = true ]; then
-    # Fast mode: populate database using existing dump.sql
-    log_info "Fast mode enabled. Populating database using dump.sql..."
-    
-    if [ ! -f "${SCRIPT_DIR}/dump.sql" ]; then
-        log_error "dump.sql not found. Cannot run in fast mode."
-    fi
-    
-    log_info "Restoring database from dump.sql..."
-    docker exec -i bitwarden-db-1 psql -U bitwarden -d vaultwarden < "${SCRIPT_DIR}/dump.sql"
-    if [ $? -eq 0 ]; then
-        log_success "Database restored from dump.sql successfully."
-    else
-        log_error "Failed to restore database from dump.sql."
-    fi
+# Run full account creation process
+log_info "Running account creation script..."
+python3 "${SCRIPT_DIR}/create_accounts.py"
+if [ $? -eq 0 ]; then
+    log_success "=== Account creation completed successfully. ==="
 else
-    # Normal mode: run full account creation process
-    log_info "Running account creation script..."
-    python3 "${SCRIPT_DIR}/create_accounts_ui.py"
-    if [ $? -eq 0 ]; then
-        log_success "Account creation completed successfully."
-    else
-        log_error "Account creation failed."
-    fi
+    log_error "=== Account creation failed. ==="
 fi
 
 # Run the secrets extraction script
 log_info "Running secrets extraction script..."
-python3 "${SCRIPT_DIR}/create_secrets_from_dump.py"
+python3 "${SCRIPT_DIR}/create_secrets.py"
 if [ $? -eq 0 ]; then
-    log_success "Secrets extraction completed successfully."
+    log_success "=== Secrets extraction completed successfully. ==="
 else
-    log_error "Secrets extraction failed."
+    log_error "=== Secrets extraction failed. ==="
 fi
 
 echo === FINISHED setup_env.sh ===

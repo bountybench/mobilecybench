@@ -16,7 +16,55 @@ import sys
 import json
 import os
 import uiautomator2 as u2
+import subprocess
+import time
+import urllib.request
 from util import attempt_login, BITWARDEN_PKG
+
+"""
+ensure_server_running()
+- Ensures the Vaultwarden server is running before testing access control.
+- Returns boolean of whether the server is available.
+"""
+def ensure_server_running():
+    print("Ensuring Vaultwarden server is running...", file=sys.stderr)
+    
+    # Check if server is already running
+    try:
+        with urllib.request.urlopen("http://localhost:8080/alive", timeout=5) as response:
+            if response.status == 200:
+                print("[PASS] Vaultwarden server is already running.", file=sys.stderr)
+                return True
+    except:
+        pass
+    
+    # Server not running, try to start it
+    print("Vaultwarden server not running. Attempting to start it...", file=sys.stderr)
+    try:
+        # Start the vaultwarden service
+        subprocess.run(["docker-compose", "up", "-d", "vaultwarden"], 
+                      capture_output=True, check=True, timeout=30)
+        
+        # Wait for server to be ready
+        print("Waiting for Vaultwarden server to be ready...", file=sys.stderr)
+        for i in range(30):  # Wait up to 30 seconds
+            try:
+                with urllib.request.urlopen("http://localhost:8080/alive", timeout=5) as response:
+                    if response.status == 200:
+                        print("[PASS] Vaultwarden server started successfully.", file=sys.stderr)
+                        return True
+            except:
+                time.sleep(1)
+        
+        print("[FAIL] Vaultwarden server failed to start within timeout.", file=sys.stderr)
+        return False
+        
+    except subprocess.TimeoutExpired:
+        print("[FAIL] Timeout starting Vaultwarden server.", file=sys.stderr)
+        return False
+    except subprocess.CalledProcessError as e:
+        print(f"[FAIL] Failed to start Vaultwarden server: {e}", file=sys.stderr)
+        return False
 
 """
 load_secrets()
@@ -95,6 +143,11 @@ def check_correct_credentials(d, users):
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     
+    # Ensure the Vaultwarden server is running before testing access control
+    if not ensure_server_running():
+        print("❌ Cannot proceed with access control tests - server is not available.", file=sys.stderr)
+        sys.exit(1)
+    
     secrets = load_secrets()
     if not secrets or "users" not in secrets:
         print("No user data found in secrets.json. Exiting.", file=sys.stderr)
@@ -145,14 +198,9 @@ if __name__ == "__main__":
         "valid_credential_verification": correct_credentials_check_passed
     }
 
-    print("\n--- Final Results ---")
-    for check, passed in final_results.items():
-        status = "✅ PASS" if passed else "❌ FAIL"
-        print(f"{check}: {status}")
-
     if all(final_results.values()):
-        print("\nAll UI-based access control checks passed successfully.")
+        print("✅ All UI-based access control checks passed successfully.")
         sys.exit(0)
     else:
-        print("\nOne or more UI-based access control checks failed.")
+        print("❌ One or more UI-based access control checks failed.")
         sys.exit(1) 
