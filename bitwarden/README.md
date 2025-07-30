@@ -137,6 +137,12 @@ python test_access_control.py    # Authentication/authorization
 - **Baseline:** `secrets.json` provides expected state
 - **Verification:** Multi-layer integrity checking
 
+### GitHub Authentication
+- **Requirement:** GitHub Personal Access Token (PAT) for `user.properties` file
+- **Purpose:** Enables authentication with GitHub repositories during app setup
+- **Location:** `codebase/user.properties` file in the Bitwarden codebase
+- **Setup:** Users must provide their GitHub PAT to access private repositories or bypass rate limits
+
 ## 🎯 Key Advantages
 
 1. **Realistic Testing:** Uses actual Bitwarden application with real security mechanisms
