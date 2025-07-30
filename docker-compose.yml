@@ -35,6 +35,22 @@ services:
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
     
+  ghidra-container:
+    build:
+      context: ./ghidra
+      dockerfile: Dockerfile
+    container_name: ghidra-container
+    networks:
+      - mcp_net
+    ports:
+      - "9000:9000"
+    expose:
+      - "9000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - kali-container
+
 networks:
   mcp_net:
     driver: bridge

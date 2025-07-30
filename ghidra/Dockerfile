@@ -33,7 +33,6 @@ RUN pip3 install --no-cache-dir -r /opt/ghidra/Ghidra/Extensions/GhidraMCP/requi
 
 EXPOSE 9000
 
-# Copy over startup script to handle the MCP bridge
 COPY start_ghidra_mcp.sh /usr/local/bin/start-ghidra-mcp.sh
 RUN chmod +x /usr/local/bin/start-ghidra-mcp.sh
 
