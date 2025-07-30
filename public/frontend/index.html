@@ -13,26 +13,43 @@
 <body>
   <h1> MobileCyBench: Agent Vulnerability Detection</h1>
   
-  <label for="apiKey">OpenAI API Key:</label>
-  <input type="password" id="apiKey" />
-  
-  <label for="bounties">Choose a bounty:</label>
-  <select name="bounties" id="bounties"> 
-    <option value="none"> None </option>
-    <option value="nextcloud-talk">NextCloud Talk</option>
-  </select>
+  <div class="center"> 
+    <label for="apiKey">OpenAI API Key:</label>
+    <input type="password" id="apiKey" />
 
-  <br /><br />
-  <button id="startBtn">Start</button>
-  <br /><br />
+    <br /><br />
 
-  <div id="messages"></div>
+    <label for="bounties">Choose a bounty:</label>
+    <select name="bounties" id="bounties"> 
+      <option value="none"> None </option>
+      <option value="nextcloud-talk">NextCloud Talk</option>
+    </select>
 
-  <textarea id="userInput" rows="3" cols="60" placeholder="Type your message..."></textarea>
-  <br />
-  <button id="sendBtn">Send</button>
+    <br /><br />
 
-  <button id="endBtn"> End </button>
+    <label for="agent">Select an agent:</label>
+    <select name="agents" id="agents"> 
+      <option value="gpt-4.1"> GPT 4.1 </option>
+    </select>
+
+    <br /><br />
+
+    <button id="startBtn">Start</button>
+    
+    <br /><br />
+
+    <div class="scrollbox"> 
+      <div id="messages"></div>
+
+      <br /><br />
+      <textarea id="userInput" rows="3" cols="60" placeholder="Type your message..."></textarea>
+      <br />
+      <button id="sendBtn">Send</button>
+    </div>
+    
+    <button id="endBtn"> End </button>
+
+  </div>
 
 </body>
 </html>

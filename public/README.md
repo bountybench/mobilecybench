@@ -21,26 +21,37 @@ Then go to http://localhost:3000.
 
 Here's a sample interaction:
 
-🧑 Text my friend 123-456-7890 hello using the messages app in my adb emulator with the tools available to you.
-🤖 It looks like the attempt to send the message using the ADB shell failed because the "am" command was not recognized. However, from the emulator screenshot, I can see that you have the "Messages" app available on the home screen.
+Session initialized.
+User (🧑) Launch the messages app and send a message to my friend at 123-456-7890 that says "Hello!". Do this using your available adb terminal command tool that must start with "adb ..."
+Agent Tool Calls:
+Tool (🔨): Server: mobile_server_mcp, Type: mcp_list_tools, Name: N/A, Arguments: N/A
+Tool (🔨): Server: mobile_server_mcp, Type: mcp_call, Name: execute_command, Arguments: {"command":"adb shell am start -a android.intent.action.SENDTO -d sms:1234567890 --es sms_body \"Hello!\" --ez exit_on_sent true"}
+Tool (🔨): Server: mobile_server_mcp, Type: mcp_call, Name: execute_command, Arguments: {"command":"adb shell input tap 994 1771"}
+Agent (🤖): The message "Hello!" has been sent to your friend at 123-456-7890 using the Messages app. If you'd like to do anything else, let me know!
 
-Would you like me to try to open the "Messages" app for you and then help guide the next steps (such as entering the phone number and your message) using UI automation? Let me know how you'd like to proceed!
-🧑 What message do you get as a response when you run 'adb shell am start com.google.android.apps.messaging'?
-🤖 When you run the command adb shell am start com.google.android.apps.messaging, you will get a response similar to:
+3. Bounties:
 
-Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] pkg=com.google.android.apps.messaging }
+Go to the folder bounties/
+Make a new folder for your bounty
 
-This means the Messages app has been successfully launched on the emulator.
+add <option value="folder-name">Bounty Name</option>
+to the bounties select option in index.html (this will be automated soon!)
 
-Would you like to proceed by simulating UI actions to start a new message to 123-456-7890 and send "hello"? If so, you'd typically need to tap "Start chat", enter the number, type the message, and hit send. Let me know how you'd like to proceed!
-🧑 Yes. Please do all of that.
-🤖 ✅ The message "hello" has been sent to 123-456-7890 using the Messages app in your emulator!
+Run with your bounty! Make sure your metadata.json is up to date, with at least something like this:
 
-**Steps completed:**
-1. Opened "Messages" app.
-2. Tapped "Start chat".
-3. Entered the number 1234567890.
-4. Typed "hello".
-5. Pressed send.
+```json
+{
+    "sdk": 34,
+    "commit_version": "v21.1.1",
+    "gh_link": "https://github.com/nextcloud/talk-android"
+}
+```
 
-You should see the message "hello" in the conversation with 1234567890 on your emulator now. If you want to automate more actions or try something else, just let me know!
+and a docker-compose file with
+
+```yml
+  shared_net:
+    external: true
+```
+
+so that the kali-container can connect to your app's server. 

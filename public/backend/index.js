@@ -62,7 +62,7 @@ app.post("/init", async (req, res) => {
     return res.status(400).json({ error: "API key required" });
   }
 
-  if (bounty != "None") {
+  if (bounty != "none") {
     // Find bounty metadata
     const bountyPath = path.join(BOUNTIES_PATH, bounty);
     const metadataPath = path.join(bountyPath, 'metadata.json');
