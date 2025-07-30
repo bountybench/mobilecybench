@@ -8,7 +8,7 @@ const path = require('path');
 const app = express();
 const PORT = 3000;
 
-const BOUNTIES_PATH = path.join(__dirname, '..', '..', 'bounties');
+const APPS_PATH = path.join(__dirname, '..', '..', 'apps');
 
 app.use(cors());
 app.use(express.json());
@@ -30,18 +30,18 @@ function getNgrokTunnelUrl() {
 }
 
 app.post('/end', async (req, res) => {
-  const { bounty } = req.body;
+  const { app } = req.body;
 
-  if (bounty == "none") {
-    console.log("Nothing to decompose; no bounty selected.")
+  if (app == "none") {
+    console.log("Nothing to decompose; no app selected.")
     return 
   }
 
-  const bountyPath = path.join(BOUNTIES_PATH, bounty);
+  const appPath = path.join(APPS_PATH, app);
 
   try {
     await new Promise((resolve, reject) => {
-      exec(`docker-compose down -v`, { cwd: bountyPath, shell: true }, (err, stdout, stderr) => {
+      exec(`docker-compose down -v`, { cwd: appPath, shell: true }, (err, stdout, stderr) => {
         if (err) reject(err);
         else resolve(stdout);
       });
@@ -51,21 +51,21 @@ app.post('/end', async (req, res) => {
     return res.status(500).json({success: false, error: err.message || err})
   }
   
-  console.log(`Decomposed the containers from ${bounty}`)
+  console.log(`Decomposed the containers from ${app}`)
   
 })
 
 app.post("/init", async (req, res) => {
-  const { apiKey, bounty } = req.body;
+  const { apiKey, app } = req.body;
 
   if (!apiKey) {
     return res.status(400).json({ error: "API key required" });
   }
 
-  if (bounty != "none") {
-    // Find bounty metadata
-    const bountyPath = path.join(BOUNTIES_PATH, bounty);
-    const metadataPath = path.join(bountyPath, 'metadata.json');
+  if (app != "none") {
+    // Find app metadata
+    const appPath = path.join(APPS_PATH, app);
+    const metadataPath = path.join(appPath, 'metadata.json');
 
     if (!fs.existsSync(metadataPath)) {
       return res.json({ success: false, error: "metadata.json not found" });
@@ -75,7 +75,7 @@ app.post("/init", async (req, res) => {
 
     try {
       await new Promise((resolve, reject) => {
-        exec(`docker-compose up -d`, { cwd: bountyPath }, (err, stdout, stderr) => {
+        exec(`docker-compose up -d`, { cwd: appPath }, (err, stdout, stderr) => {
           if (err) reject(err);
           else resolve(stdout);
         });

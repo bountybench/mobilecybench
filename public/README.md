@@ -29,15 +29,15 @@ Tool (🔨): Server: mobile_server_mcp, Type: mcp_call, Name: execute_command, A
 Tool (🔨): Server: mobile_server_mcp, Type: mcp_call, Name: execute_command, Arguments: {"command":"adb shell input tap 994 1771"}
 Agent (🤖): The message "Hello!" has been sent to your friend at 123-456-7890 using the Messages app. If you'd like to do anything else, let me know!
 
-3. Bounties:
+3. Apps:
 
-Go to the folder bounties/
-Make a new folder for your bounty
+Go to the folder apps/
+Make a new folder for your app
 
-add <option value="folder-name">Bounty Name</option>
-to the bounties select option in index.html (this will be automated soon!)
+add <option value="folder-name">App Name</option>
+to the apps select option in index.html (this will be automated soon!)
 
-Run with your bounty! Make sure your metadata.json is up to date, with at least something like this:
+Run with your app! Make sure your metadata.json is up to date, with at least something like this:
 
 ```json
 {
