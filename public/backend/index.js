@@ -4,6 +4,11 @@ const { OpenAI } = require("openai");
 const cors = require("cors");
 const fs = require('fs');
 const path = require('path');
+const LOGS_PATH = path.join(__dirname,'..', '..', 'logs');
+
+if (!fs.existsSync(LOGS_PATH)) {
+  fs.mkdirSync(LOGS_PATH);
+}
 
 const app = express();
 const PORT = 3000;
@@ -221,6 +226,26 @@ app.post("/message", async (req, res) => {
   }
 });
 
+app.post('/save', (req, res) => {
+  const { content } = req.body;
+
+  if (!content) {
+    return res.status(400).json({ error: "Missing content to save" });
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `log-${timestamp}.txt`;
+  const filepath = path.join(LOGS_PATH, filename);
+
+  fs.writeFile(filepath, content, 'utf8', (err) => {
+    if (err) {
+      console.error("Failed to write file:", err);
+      return res.status(500).json({ error: "Failed to write log file" });
+    }
+    console.log(`Saved log to ${filepath}`);
+    return res.json({ success: true, path: filepath });
+  });
+});
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

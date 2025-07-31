@@ -211,7 +211,7 @@ function appendMsg(sender, text) {
   }
 }
 
-function downloadChatAsText() {
+async function downloadChatAsText() {
   const messagesContainer = document.getElementById('messages');
   let chatTextContent = "";
 
@@ -219,40 +219,44 @@ function downloadChatAsText() {
   const messageBoxes = messagesContainer.querySelectorAll('.message-box');
 
   messageBoxes.forEach(box => {
-      if (box.classList.contains('agent')) {
-        const header = box.querySelector('div:first-child'); 
-        if (header) {
-            chatTextContent += header.textContent.trim() + " ";
-        }
-        const agentChunks = box.querySelectorAll('.agent-chunk');
-        agentChunks.forEach(chunk => {
-            chatTextContent += chunk.textContent;
-        });
-        const toolBoxes = box.querySelectorAll('.tool-box');
-        toolBoxes.forEach(tool => {
-            chatTextContent += "\n" + tool.textContent.trim();
-        });
-        chatTextContent += "\n\n"; // Add extra newlines for separation
-      } else {
-          // For SYSTEM and USER messages, innerText should be sufficient
-          chatTextContent += box.innerText.trim() + "\n\n";
+    if (box.classList.contains('agent')) {
+      const header = box.querySelector('div:first-child'); 
+      if (header) {
+        chatTextContent += header.textContent.trim() + " ";
       }
+      const agentChunks = box.querySelectorAll('.agent-chunk');
+      agentChunks.forEach(chunk => {
+        chatTextContent += chunk.textContent;
+      });
+      const toolBoxes = box.querySelectorAll('.tool-box');
+      toolBoxes.forEach(tool => {
+        chatTextContent += "\n" + tool.textContent.trim();
+      });
+      chatTextContent += "\n\n"; // Extra space between messages
+    } else {
+      // For SYSTEM and USER messages
+      chatTextContent += box.innerText.trim() + "\n\n";
+    }
   });
 
-  // Create a Blob from the text content
-  const blob = new Blob([chatTextContent], { type: 'text/plain;charset=utf-8' });
+  try {
+    const res = await fetch("http://localhost:3000/save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ content: chatTextContent })
+    });
 
-  // Create a temporary URL for the blob
-  const url = URL.createObjectURL(blob);
-
-  // Create a temporary anchor element and click it to trigger download
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'chat_transcript.txt';
-  document.body.appendChild(a); // Append to body is good practice
-  a.click(); // Programmatically click the link
-
-  // Clean up by revoking the object URL and removing the anchor
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+    if (res.ok) {
+      const data = await res.json();
+      appendMsg(SENDER.SYSTEM, `✅ Chat saved to server path: ${data.path}`);
+    } else {
+      appendMsg(SENDER.SYSTEM, "❌ Failed to save chat log to server.");
+    }
+  } catch (err) {
+    console.error("Save failed:", err);
+    appendMsg(SENDER.SYSTEM, "❌ Save request failed.");
+  }
 }
+
