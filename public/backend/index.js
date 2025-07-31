@@ -72,13 +72,23 @@ app.post("/init", async (req, res) => {
     }
 
     try {
-      const dockerPath = path.join(APPS_PATH, 'docker-setup');
-      const { stdout, stderr } = await exec("docker-compose up -d ", { cwd: dockerPath });
-      console.log('STDOUT:', stdout);
-      console.error('STDERR:', stderr);
+      // const dockerPath = path.join(APPS_PATH, 'docker-setup');
+      // const { stdout, stderr } = await exec("docker-compose up -d ", { cwd: dockerPath });
+      // console.log(stdout);
+      // console.log(stderr);
+
+      await new Promise((resolve, reject) => {
+        exec(`docker-compose up -d`, { cwd: APPS_PATH }, (err, stdout, stderr) => {
+            if (err) reject(stderr || err);
+            else resolve(stdout);
+        });
+      });
+
     } catch (err) {
+
       console.error("Docker Compose Error:", err);
       return res.status(500).json({ success: false, error: "Failed to start Docker container" });
+
     }
 
     const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
@@ -103,7 +113,6 @@ app.post("/init", async (req, res) => {
   }
 
   try {
-    // Setup OpenAI client
     tunnelUrl = getNgrokTunnelUrl();
     client = new OpenAI({ apiKey });
     conversation = [];

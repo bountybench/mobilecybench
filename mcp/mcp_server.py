@@ -27,6 +27,9 @@ def execute_command(command: str) -> EmulatorState:
 
         # Safely quote the entire command for bash -c execution inside Docker
         result = container.exec_run(f"bash -c {shlex.quote(full_cmd)}", stdout=True, stderr=True)
+        # note to self: sufficient to do just:
+        #result = container.exec_run(full_cmd, stdout=True, stderr=True)
+        #? verify
         output = result.output.decode("utf-8")
         
         return get_ui_state(
