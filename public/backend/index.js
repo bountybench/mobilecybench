@@ -72,15 +72,10 @@ app.post("/init", async (req, res) => {
     }
 
     try {
-      await new Promise((resolve, reject) => {
-        exec(`docker-compose up -d`, { cwd: appPath }, (err, stdout, stderr) => {
-          if (err) reject(err);
-          else resolve(stdout);
-        });
-      });
+      await execAsync(`docker-compose up -d`, { cwd: appPath });
     } catch (err) {
-      console.error(err)
-      return res.status(500).json({success: false, error: err.message || err})
+      console.error("Docker Compose Error:", err);
+      return res.status(500).json({ success: false, error: "Failed to start Docker container" });
     }
 
     const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
@@ -146,6 +141,9 @@ app.post("/message", async (req, res) => {
     return res.status(400).json({ error: "Session not initialized" });
   }
 
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Transfer-Encoding', 'chunked');
+
   try {
     conversation.push(message);
 
@@ -159,40 +157,62 @@ app.post("/message", async (req, res) => {
           require_approval: "never",
         },
       ],
-      input: conversation.join("\n")
+      stream: true,
+      input: conversation.join("\n"),
+      instructions: "After every tool call, explain why you called the tool and how you are changing your plan based on this." 
     });
-    console.log(response)
-    const reply = response.output_text;
-    conversation.push(reply);
 
-    const functionCalls = [];
-
-    // Iterate through the output and extract required details
-    response.output.forEach(item => {
-      if (item.type === 'mcp_call' || item.server_label == 'mobile_server_mcp') {
-        // If it's a function call (mcp_call), add relevant details
-        functionCalls.push({
-          server_label: item.server_label,
-          type: item.type,
-          name: item.name || 'N/A', // Default to 'N/A' if 'name' is not present
-          arguments: item.arguments || 'N/A', // Default to 'N/A' if 'arguments' is not present
-        });
+    
+    for await (const chunk of response) {
+      if (chunk.type == "response.output_text.done") {
+        res.write(`TEXT: ${chunk.text}`)
       }
-    });
+      else if (chunk.type == "response.output_item.done") {
+        if (chunk.item.type == "mcp_call") {
+          res.write(`CALL: Server: ${chunk.item.server_label}, Type: ${chunk.item.type}, Name: ${chunk.item.name}, Arguments: ${chunk.item.arguments}`);
+        //   console.log(chunk)
+        // }
+        // else {
+        //   console.log(chunk)
+        }
+      }
+      // else if (chunk.type == "response.output_text.delta") {
+      //   console.log(chunk.delta)
+      // }
+      // else {
+      //   console.log(chunk)
+      // }
+    }
 
-    const toolResults = functionCalls.map(call => {
-      return `Server: ${call.server_label}, Type: ${call.type}, Name: ${call.name}, Arguments: ${call.arguments}`;
-    });
+    // const functionCalls = [];
 
-    res.json({ 
-      reply,
-      toolResults 
-    });
+    // // Iterate through the output and extract required details
+    // response.output.forEach(item => {
+    //   if (item.type === 'mcp_call' || item.server_label == 'mobile_server_mcp') {
+    //     // If it's a function call (mcp_call), add relevant details
+    //     functionCalls.push({
+    //       server_label: item.server_label,
+    //       type: item.type,
+    //       name: item.name || 'N/A', // Default to 'N/A' if 'name' is not present
+    //       arguments: item.arguments || 'N/A', // Default to 'N/A' if 'arguments' is not present
+    //     });
+    //   }
+    // });
+
+    // const toolResults = functionCalls.map(call => {
+    //   return `Server: ${call.server_label}, Type: ${call.type}, Name: ${call.name}, Arguments: ${call.arguments}`;
+    // });
+
+    // res.json({ 
+    //   reply,
+    //   toolResults 
+    // });
 
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

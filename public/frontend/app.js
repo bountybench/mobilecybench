@@ -6,6 +6,7 @@ const SENDER = {
   SYSTEM: 'SYSTEM',
   USER: 'USER',
   AGENT: 'AGENT',
+  AGENT_WORD: 'AGENT_WORD',
   TOOL: 'TOOL'
 };
 
@@ -70,19 +71,30 @@ document.getElementById("sendBtn").onclick = async () => {
     body: JSON.stringify({ message }),
   });
 
-  const data = await res.json();
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder('utf-8');
 
-  appendMsg(SENDER.AGENT, "Agent Tool Calls:");
-  if (data.reply) {
-    if (data.toolResults && data.toolResults.length > 0) {
-      for (let i = 0; i < data.toolResults.length; i++) {
-        appendMsg(SENDER.TOOL, "Tool (🔨): " + data.toolResults[i])
-      }
+  createAgentBox("Agent (🤖): ");
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) { break; }
+    const chunkStr = decoder.decode(value, { stream: true });
+
+    if (chunkStr.startsWith("TEXT: ")) {
+      const textContent = chunkStr.slice("TEXT: ".length).trim();
+      appendMsg(SENDER.AGENT_WORD, textContent);
+      console.log(textContent)
     }
-    appendMsg(SENDER.AGENT, "Agent (🤖): " + data.reply);
-  } else {
-    appendMsg(SENDER.SYSTEM, "Error: " + data.error);
+    else if (chunkStr.startsWith("CALL: ")) {
+      const textContent = chunkStr.slice("CALL:".length).trim();
+      appendMsg(SENDER.TOOL, "Tool (🔨): " + textContent);
+      appendMsg(SENDER.AGENT_WORD, "\n");
+      console.log(textContent)
+    }
   }
+
+  appendMsg(SENDER.AGENT_WORD, "Send a message letting me know how I should proceed!");
 
   if (supervisorAgent) {
     await runAutonomousChat();
@@ -99,6 +111,27 @@ async function runAutonomousChat() {
   const data = await res.json();
   userInputBox.value = data.reply;
 }
+
+function createAgentBox(initialText = "") {
+  const msgDiv = document.getElementById("messages");
+  const msgBox = document.createElement("div");
+  msgBox.classList.add("message-box");
+  msgBox.style.backgroundColor = '#e0f0ffff';
+  msgBox.style.border = '1px solid #a0d3ffff';
+  msgBox.style.padding = '10px';
+  msgBox.style.marginBottom = '10px';
+
+  const header = document.createElement("div");
+  header.textContent = initialText;
+  header.style.fontWeight = "bold";
+  header.style.marginBottom = "6px";
+
+  msgBox.appendChild(header);
+  msgDiv.appendChild(msgBox);
+
+  lastAgentBox = msgBox;
+}
+
 
 function appendMsg(sender, text) {
   const msgDiv = document.getElementById("messages");
@@ -134,6 +167,16 @@ function appendMsg(sender, text) {
       lastAgentBox = msgBox;
       msgDiv.appendChild(msgBox);
       break;
+    
+    case SENDER.AGENT_WORD:
+      if (lastAgentBox) {
+        const textChunk = document.createElement("div"); // or <p>
+        textChunk.classList.add("agent-chunk");
+        textChunk.textContent = text;
+        textChunk.style.marginTop = "4px"; // Optional spacing
+        lastAgentBox.appendChild(textChunk);
+      }
+      break;
 
     case SENDER.TOOL:
       if (lastAgentBox) {
@@ -147,7 +190,7 @@ function appendMsg(sender, text) {
 
         lastAgentBox.appendChild(toolBox);
       } else {
-        // Fallback if no agent message exists yet
+        //jic
         msgBox.style.backgroundColor = '#eed9fbff';
         msgBox.style.border = '1px solid #dfcef9ff';
         msgBox.style.padding = '10px';
