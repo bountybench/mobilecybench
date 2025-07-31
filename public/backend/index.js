@@ -72,7 +72,10 @@ app.post("/init", async (req, res) => {
     }
 
     try {
-      await execAsync(`docker-compose up -d`, { cwd: appPath });
+      const dockerPath = path.join(APPS_PATH, 'docker-setup');
+      const { stdout, stderr } = await exec("docker-compose up -d ", { cwd: dockerPath });
+      console.log('STDOUT:', stdout);
+      console.error('STDERR:', stderr);
     } catch (err) {
       console.error("Docker Compose Error:", err);
       return res.status(500).json({ success: false, error: "Failed to start Docker container" });
@@ -183,6 +186,8 @@ app.post("/message", async (req, res) => {
       //   console.log(chunk)
       // }
     }
+  
+    res.end();
 
     // const functionCalls = [];
 

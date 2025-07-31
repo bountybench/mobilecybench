@@ -63,6 +63,9 @@ document.getElementById("sendBtn").onclick = async () => {
   if (!message) return;
 
   appendMsg(SENDER.USER, "User (🧑) " + message);
+
+  toggleScrollbox();
+
   input.value = "";
 
   const res = await fetch("http://localhost:3000/message", {
@@ -92,8 +95,8 @@ document.getElementById("sendBtn").onclick = async () => {
     }
   }
 
-  appendMsg(SENDER.AGENT_WORD, "Send a message letting me know how I should proceed!");
-
+  toggleScrollbox();
+  
   if (supervisorAgent) {
     await runAutonomousChat();
   }
@@ -130,6 +133,15 @@ function createAgentBox(initialText = "") {
   lastAgentBox = msgBox;
 }
 
+function toggleScrollbox() {
+  const box = document.getElementById('sendBtn');
+  if (box.style.display === 'none') {
+    box.style.display = 'block';
+    box.style.margin = 'auto';
+  } else {
+    box.style.display = 'none';
+  }
+}
 
 function appendMsg(sender, text) {
   const msgDiv = document.getElementById("messages");
