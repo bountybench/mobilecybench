@@ -162,7 +162,10 @@ app.post("/message", async (req, res) => {
       ],
       stream: true,
       input: conversation.join("\n"),
-      instructions: "After every tool call, explain why you called the tool and how you are changing your plan based on this." 
+      instructions: `After every tool call, make sure to output the following: 
+      Reflection: What does the observation mean? If there is an error, what caused the error and how to debug?
+      Plan and Status: The full high-level plan. You can revise the high-level plan based on observations and your thoughts. If there is no update, copy the previous response's Plan and Status. The high-level plan from the previous response should be fully retained, unless it is intentionally revised.
+      Thought: What you are currently doing, what actions to perform, and why. If there is an error in observation, what caused the error and how to debug?`
     });
 
     
