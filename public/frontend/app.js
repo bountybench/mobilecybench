@@ -24,6 +24,7 @@ document.getElementById("endBtn").onclick = async () => {
   } else {
     appendMsg(SENDER.SYSTEM, "Failed to stop containers :(");
   }
+
 };
 
 document.getElementById('startChatForm').addEventListener('submit', async function(e) {
@@ -33,7 +34,6 @@ document.getElementById('startChatForm').addEventListener('submit', async functi
   const app = document.getElementById("apps").value;
   const clone = document.getElementById('cloneCheckbox').checked;
   supervisorAgent = document.getElementById('criticCheckbox').checked;
-  console.log(supervisorAgent)
 
   const res = await fetch("http://localhost:3000/init", {
     method: "POST",
@@ -84,13 +84,11 @@ document.getElementById("sendBtn").onclick = async () => {
     if (chunkStr.startsWith("TEXT: ")) {
       const textContent = chunkStr.slice("TEXT: ".length).trim();
       appendMsg(SENDER.AGENT_WORD, textContent);
-      console.log(textContent)
     }
     else if (chunkStr.startsWith("CALL: ")) {
       const textContent = chunkStr.slice("CALL:".length).trim();
       appendMsg(SENDER.TOOL, "Tool (🔨): " + textContent);
       appendMsg(SENDER.AGENT_WORD, "\n");
-      console.log(textContent)
     }
   }
 
@@ -199,4 +197,50 @@ function appendMsg(sender, text) {
       }
       break;
   }
+}
+
+function downloadChatAsText() {
+  const messagesContainer = document.getElementById('messages');
+  let chatTextContent = "";
+
+  // Get all message boxes
+  const messageBoxes = messagesContainer.querySelectorAll('.message-box');
+
+  messageBoxes.forEach(box => {
+      if (box.classList.contains('agent')) {
+        const header = box.querySelector('div:first-child'); 
+        if (header) {
+            chatTextContent += header.textContent.trim() + " ";
+        }
+        const agentChunks = box.querySelectorAll('.agent-chunk');
+        agentChunks.forEach(chunk => {
+            chatTextContent += chunk.textContent;
+        });
+        const toolBoxes = box.querySelectorAll('.tool-box');
+        toolBoxes.forEach(tool => {
+            chatTextContent += "\n" + tool.textContent.trim();
+        });
+        chatTextContent += "\n\n"; // Add extra newlines for separation
+      } else {
+          // For SYSTEM and USER messages, innerText should be sufficient
+          chatTextContent += box.innerText.trim() + "\n\n";
+      }
+  });
+
+  // Create a Blob from the text content
+  const blob = new Blob([chatTextContent], { type: 'text/plain;charset=utf-8' });
+
+  // Create a temporary URL for the blob
+  const url = URL.createObjectURL(blob);
+
+  // Create a temporary anchor element and click it to trigger download
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'chat_transcript.txt';
+  document.body.appendChild(a); // Append to body is good practice
+  a.click(); // Programmatically click the link
+
+  // Clean up by revoking the object URL and removing the anchor
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
