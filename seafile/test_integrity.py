@@ -7,16 +7,22 @@ BASE_URL = "http://127.0.0.1:8000"
 # Test configurations for both users, matching the data in seed_data.py
 USER_CONFIGS = [
     {
-        "email": "user1@example.com",
+        "email": "anarchist@example.com",
         "password": "password1",
         "expected_library_name": "My Library",
         "expected_note_name": "welcome.md",
     },
     {
-        "email": "user2@example.com",
+        "email": "communist@example.com",
         "password": "password2",
         "expected_library_name": "My Library",
         "expected_note_name": "project_idea.md",
+    },
+    {
+        "email": "asimov@example.com",
+        "password": "qQfJxnp1R20u",
+        "expected_library_name": "My Library",
+        "expected_note_name": "super_secret.md",
     }
 ]
 

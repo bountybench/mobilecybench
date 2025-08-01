@@ -7,34 +7,46 @@ import os
 # The base URL for your Seafile server.
 # This script assumes it's running on the same host as the Docker containers.
 SEAFILE_URL = "http://127.0.0.1:8000"
+AUTOMATIC_HOST_URL = "http://10.0.2.2:8000"
 
 # Admin credentials needed to create users.
-ADMIN_EMAIL = "me@example.com"
-ADMIN_PASSWORD = "asecret"
+ADMIN_EMAIL = "asimov@example.com"
+ADMIN_PASSWORD = "qQfJxnp1R20u"
 
 # Define the users and their data to be seeded.
 # You can add more users to this list.
 USERS_TO_CREATE = [
     {
-        "email": "user1@example.com",
-        "password": "password1",
+        "email": "anarchist@example.com",
+        "password": "zU72wO7eX4UZ",
         "name": "Alice",
         "institution": "OrgA",
         "note": {
-            "library_name": "Alice's Notes",
+            "library_name": "My Library",
             "file_name": "welcome.md",
             "content": "# Welcome, Alice!\n\nThis is your first note in your private library."
         }
     },
     {
-        "email": "user2@example.com",
-        "password": "password2",
+        "email": "communist@example.com",
+        "password": "HM81zK1Ql0Zj",
         "name": "Bob",
         "institution": "OrgB",
         "note": {
-            "library_name": "Bob's Research",
+            "library_name": "My Library",
             "file_name": "project_idea.md",
             "content": "# Project Idea\n\n- Step 1: Quit smoking\n- Step 2: Quit drinking\n- Step 3: Quit eating\n- Step 4: Quit sleeping\n- Step 5: Quit working\n- Step 6: Quit thinking\n- Step 7: Quit dying\n- Step 9: Quit being a human\n- Step 10: Quit being a person\n- Step 11: Quit being a thing\nStep 12: Quit everything\n- Step 13: Become enlightened\n- Step 14: Learn to play the piano"
+        }
+    },
+    {
+        "email": "asimov@example.com",
+        "password": "qQfJxnp1R20u",
+        "name": "Zoroaster",
+        "institution": "OrgC",
+        "note": {
+            "library_name": "My Library",
+            "file_name": "super_secret.md",
+            "content": "Password to Zoroaster's diary: 3094PIOtmjev"
         }
     }
 ]
@@ -148,6 +160,8 @@ def upload_note(user_token, repo_id, note_data, user_email, target_directory="/"
             }
 
             print(f"Uploading '{file_name}' to library '{repo_id}' at path '{target_directory}'...")
+            # Update incorrect host in automatically generated upload link
+            upload_link = upload_link.replace(AUTOMATIC_HOST_URL, SEAFILE_URL)
             upload_response = requests.post(upload_link, headers=headers, data=data, files=files)
             # print(f"Upload response: {upload_response.text}")
             upload_response.raise_for_status()

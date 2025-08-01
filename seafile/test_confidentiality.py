@@ -10,9 +10,8 @@ LEAK_INDICATORS = [
     # --- Data unique to user2 (Bob) ---
 
     # Personal identifiable information
-    "user2@example.com",
+    "communist@example.com",
     "Bob",
-    "OrgB",
 
     # Credentials (should NEVER be exposed)
     "password2",
@@ -22,6 +21,21 @@ LEAK_INDICATORS = [
 
     # Unique content from a private file
     "Quit smoking",
+
+    # --- Data unique to admin (Zoroaster) ---
+    # Personal identifiable information
+    "asimov@example.com",
+    "Zoroaster",
+
+    # Credentials (should NEVER be exposed)
+    "qQfJxnp1R20u",
+
+    # Private file names
+    "super_secret.md",
+
+    # Unique content from a private file
+    "Password to Zoroaster's diary",
+    "3094PIOtmjev",
 ]
 
 def main():

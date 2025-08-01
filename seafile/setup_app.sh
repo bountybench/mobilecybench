@@ -8,13 +8,41 @@ REPO_DIR="seadroid"
 # Android SDK variables
 ANDROID_HOME="${HOME}/.android-sdk"
 AVD_NAME="Pixel_2_API_28"   
-APK_REL="app/build/outputs/apk/debug/seafile-debug-3.0.16.apk"
+
+# Function to dynamically find the most recent APK file
+get_apk_path() {
+    local apk_dir="${REPO_DIR}/app/build/outputs/apk/release"
+    
+    # Check if the directory exists
+    if [[ ! -d "${apk_dir}" ]]; then
+        echo "❌ ERROR: APK output directory not found at ${apk_dir}"
+        echo "Make sure the app has been built first."
+        return 1
+    fi
+    
+    # Find all APK files matching the pattern and get the one with the highest patch number
+    local latest_apk
+    latest_apk=$(find "${apk_dir}" -name "seafile_3.0.16_patch*.apk" -type f | \
+                 sort -V | tail -n1)
+    
+    if [[ -z "${latest_apk}" ]]; then
+        echo "❌ ERROR: No APK files matching pattern 'seafile_3.0.16_patch*.apk' found in ${apk_dir}"
+        return 1
+    fi
+    
+    # Return relative path from the repo directory
+    echo "${latest_apk#${REPO_DIR}/}"
+}
+
+# Set APK path dynamically
+APK_REL="app/build/outputs/apk/debug/seafile-debug-3.0.16.apk"  # Set to debug by default
 APK_PATH="${REPO_DIR}/${APK_REL}"
+USE_RELEASE_APK=false
 
 # Seafile variables
 SEAFILE_SITE_URL="10.0.2.2:8000"
-SEAFILE_USER="user1@example.com"   # Logging in as normal user
-SEAFILE_PASS="password1"
+SEAFILE_USER="anarchist@example.com"   # Logging in as normal user
+SEAFILE_PASS="zU72wO7eX4UZ"
 # SEAFILE_ACCOUNT_ACTIVITY="com.seafile.seadroid2.debug/com.seafile.seadroid2.ui.account.AccountsActivity"    # Not exported, for some reason
 BASIC_ACTIVITY="com.android.launcher3/com.android.launcher3.Launcher"
 
@@ -122,7 +150,13 @@ build_seadroid() {
     # Make sure gradlew is executable
     chmod +x gradlew
 
-    ./gradlew assembleDebug
+    # Build the APK
+    if [[ "${USE_RELEASE_APK}" == true ]]; then
+        ./gradlew assembleRelease
+    else
+        ./gradlew assembleDebug
+    fi
+
     popd >/dev/null
 }
 
@@ -156,11 +190,23 @@ wait_for_activity() {
 
 # Installs and launches the APK
 install_and_launch() {
+    # Re-determine APK path if it wasn't set initially (e.g., after building)
+    if [[ -z "${APK_REL}" && "${USE_RELEASE_APK}" == true ]]; then
+        APK_REL=$(get_apk_path)
+        if [[ $? -ne 0 ]]; then
+            echo "❌ ERROR: Still cannot determine APK path after build."
+            exit 1
+        fi
+        APK_PATH="${REPO_DIR}/${APK_REL}"
+        echo "Found APK: ${APK_PATH}"
+    fi
+
     if [[ ! -f "${APK_PATH}" ]]; then
-        echo "ERROR: APK not found at ${APK_PATH}"
+        echo "❌ ERROR: APK not found at ${APK_PATH}"
         exit 1
     fi
 
+    echo "Installing APK: ${APK_PATH}"
     adb install -r "${APK_PATH}"
 
     # adb shell am start \
