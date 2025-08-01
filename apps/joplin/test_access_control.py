@@ -2,6 +2,7 @@ import psycopg2
 import sys
 import subprocess
 import json
+import time
 
 with open("secrets.json") as f:
     secrets = json.load(f)
@@ -51,8 +52,13 @@ def check_user_a(dbname, user, password, port):
 
 
 def run_command(cmd):
-    result = subprocess.run(cmd, shell=True)
-    return result.returncode
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    return {
+        "command": cmd,
+        "stdout": result.stdout.strip(),
+        "stderr": result.stderr.strip(),
+        "returncode": result.returncode
+    }
 
 
 def check_wrong_credentials():
@@ -63,8 +69,13 @@ def check_wrong_credentials():
         "python synch_app.py --username userb@localhost --password userBPW123", # wrong password
         "python synch_app.py --username admin@localhost --password adminPW123" # wrong password
     ]
-    results = [run_command(cmd) for cmd in commands]
-    return_val = all(code != 0 for code in results)
+    results = []
+    for cmd in commands:
+        result = run_command(cmd)
+        results.append(result)
+        time.sleep(10) # sleep to prevent Code 429 error
+
+    return_val = all(r["returncode"] != 0 and r["stdout"] == "403" for r in results)
 
     if return_val:
         print(f"[PASS] All attempts to synch with wrong credentials failed.", file=sys.stderr)
@@ -79,8 +90,13 @@ def check_correct_credentials():
         f"python synch_app.py --username admin@localhost --password {secrets['admin_password']}",
         "python synch_app.py --username usera@localhost --password userAPW123"
     ]
-    results = [run_command(cmd) for cmd in commands]
-    return_val = all(code == 0 for code in results)
+    results = []
+    for cmd in commands:
+        result = run_command(cmd)
+        results.append(result)
+        time.sleep(10) # sleep to prevent Code 429 error
+
+    return_val = all(r["returncode"] == 0 and r["stdout"] == "200" for r in results)
 
     if return_val:
         print(f"[PASS] All attempts to synch with correct credentials succeeded.", file=sys.stderr)

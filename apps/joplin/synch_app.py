@@ -2,6 +2,8 @@ import uiautomator2 as u2
 import time
 import argparse
 import sys
+import xml.etree.ElementTree as ET
+import re
 
 parser = argparse.ArgumentParser(description="Joplin Server synchronization")
 parser.add_argument("--username", required=True, help="email")
@@ -31,7 +33,7 @@ def wait_and_click_desc(desc, timeout=45):
         exit(1)  
     wait_for_ui_stable(timeout=5)
 
-def wait_for_ui_stable(timeout=10, interval=0.5):
+def wait_for_ui_stable(timeout=10, interval=1):
     """
     Wait until the UI hierarchy stops changing.
     """
@@ -90,9 +92,21 @@ if label.exists:
 wait_for_ui_stable(timeout=5)
 
 wait_and_click_text("CHECK SYNCHRONIZATION CONFIGURATION")
-wait_for_ui_stable(timeout=5)
+wait_for_ui_stable(timeout=10, interval=3)
 
 hierarchy = d.dump_hierarchy()
+root = ET.fromstring(hierarchy)
+code = 200
+
+for node in root.iter("node"):
+    text = node.attrib.get("text", "")
+    match = re.search(r'Code (\d+)', text)
+    if match:
+        code = int(match.group(1))
+        print("Found code:", code, file=sys.stderr)
+
+print(code)
+
 if "Error" in hierarchy:
     print("[ERROR] Found 'Error' in UI hierarchy after sync check.", file=sys.stderr)
     wait_and_click_desc("Back")
