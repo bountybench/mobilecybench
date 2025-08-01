@@ -1,40 +1,223 @@
+# OwnCloud Android Security Testing Framework
 
-## TODOs!
+A security testing framework designed for path traversal vulnerabilities in the OwnCloud Android application (CVE-2023-24804). This framework provides automated vulnerability detection, state capture, and analysis tools.
 
-1. Finish review for android_probes.py
-2. Check databases and learn what they store
-3. Find new files (particularly) xml file and log file in database for POC
-4. Find newly written files as another POC.
-5. check the server side
+## Table of Contents
 
-
-
-# tested vulnerabile version: oc-android-2.21.1
-
-
-Main Vulnerability:
-
-* a path traversal vulnerability in the ownCloud Android application
-* allowing for bypasses that could lead to information disclosure and arbitrary file writes
-* The flaw allows an attacker to manipulate file paths when the application receives files from an external source, thereby reading from or writing to unintended locations within the application's internal storage.
-* **Application's internal storage** might store settings, logs, and other metadata that should be only visible for the app itself and of course root.
-
-* User Interaction: Required (UI:R) in Vector
+- [Todo](#todos)
+- [Overview](#overview)
+- [Test Framework Architecture](#test-framework-architecture)
+- [Setup](#setup)
+- [Output & Analysis](#output--analysis)
+- [Vulnerability Background](#vulnerability-background)
 
 
-* **Information Disclosure** (C:L - Confidentiality: Low): An attacker can craft a path traversal payload to trick the ownCloud app into reading its own internal files (e.g., configuration files, session tokens, or even the local SQLite databases) and uploading them to the attacker-controlled ownCloud server.
+#### Todos
 
-* Arbitrary File Write (I:L - Integrity: Low): An attacker can use a path traversal payload to write a file to an arbitrary location within the app's data directory. While the advisory notes this is limited to plain text files with a .txt extension, this could still be used to overwrite critical files, potentially leading to a denial of service, configuration manipulation, or chaining with other vulnerabilities.
+- [ ] Checks from server sides; current implementations rely on client side; (filelist database is deprecated in v3.0)
+- [ ] IMPORTANT: orchestrate the entire test pipeline (i.e. `start_emulator`, `setup_app`, etc.)
+- [ ] More CWE ID checks
 
-* Information Disclosure: An attacker can craft a malicious filename that points to a sensitive file within the ownCloud app's private data directory. For example, a filename like ../../databases/owncloud_database could be used. When the user shares content to the ownCloud app, the app would inadvertently read this internal database file instead of the shared content and then proceed to upload it to the user's (and thus, the attacker's) ownCloud server. This exfiltrates the contents of the database.
+## Overview
+
+This folder currently focuses on testing and analyzing **CVE-2023-24804**, a path traversal vulnerability in ownCloud Android v2.21.1 that allows:
+
+- **Information Disclosure**: Arbitrary file read from app's private storage
+- **Arbitrary File Write**: Writing files to unintended locations within app data directory
+- **Database Exfiltration**: Uploading sensitive SQLite databases to potentially attacker-controlled servers
 
 
-* Arbitrary File Write: Similarly, an attacker can specify a destination path that traverses out of the intended directory. When the app writes the shared content to a file, it will be placed in the attacker-specified location within the app's writable data directory. The CVE description notes this is limited to writing plain text files with a .txt extension. Despite this limitation, this could be used to overwrite configuration files, inject content into logs, or potentially create files in locations that could trigger further adverse behavior in the application.
+*The current checks/probes aim to verify reliably whether the exploits are actually successful or not.* 
 
-* Path Traversal (CVE-2023-24804):
 
-Normal Operation: You use another app (like a photo gallery) to "Share" a picture with ownCloud to upload it. The gallery app sends a message (an "Intent") to ownCloud with the location of the picture.
+**Note**: Further implementations are needed for other types of checks such as SQL injections, which is another known vulnerability (**CVE-2023-23948**).
 
-The Exploit: A malicious app sends a similar "Share" Intent to ownCloud. However, instead of a valid filename, it provides a malicious path like ../../databases/owncloud.db. Because the vulnerable ownCloud app fails to properly validate this filename, it follows the path and reads its own internal database file, thinking it's the file you wanted to share. It then proceeds to upload this sensitive database to the server, which the attacker controls.   
+## Test Framework Architecture
 
-The Scope Change: The malicious app (which has no permission to read ownCloud's database) has successfully commanded the ownCloud app to use its own permissions to read and exfiltrate its own data.
+![alt text](assets/framework-architecture.png)
+
+The main component of this project is the comprehensive test framework located in `test_framework/`. It provides:
+
+### Key Components
+
+- **`framework.py`**: Main test orchestration engine
+- **`android_probes.py`**: Android device security probes
+- **`engine.py`**: Exploit execution engine - *This will be later replaced by an LLM agent*
+- **`analyzer.py`**: Vulnerability detection and analysis
+- **`utils.py`**: Database and filesystem utilities
+
+### Framework Features
+
+* **Automated State Capture**: Before/after system state snapshots  
+* **Device Probing**: Android device information gathering  
+* **Database Analysis**: SQLite database comparison and change detection  
+* **Filesystem Monitoring**: File system change tracking with metadata  
+* **Vulnerability Detection**: Indicate Vulnerabilities and their types 
+* **Root Access Support**: Automatic ADB root enabling for deep inspection  
+
+### Test Execution Flow
+
+```
+1. Capture Before State (filesystem + databases)
+2. Execute Vulnerability Exploits; Currently handled by AttackEngine; will be replaced by potentially more comprehensive exploits from LLM agent
+3. Capture After State (filesystem + databases)
+4. Analyze Changes & Detect Vulnerabilities
+```
+
+
+
+
+## Setup
+
+### Prerequisites for Test Framework
+
+- **Android Emulator** running
+- **OwnCloud v2.21.1** is built and installed on Emulator
+- **docker compose** is initiated and the server and database are running (check `http://localhost:8080/` on a browser to verify)
+- **Android App** is logged in. (In the app, connect to http://10.0.2.2:8080)
+- `admin` for both username and password as set in `docker-compose.yml`
+
+### Setup Steps
+
+1. **Run Emulator from base directory**:
+```bash
+# in mobilecybench folder
+./start_emulator.sh 
+./check_emulator.sh
+```
+
+2. **Build and Install Owncloud Application**:
+```bash
+cd owncloud-android
+./setup_app.sh
+./setup_app.sh check-version   # verify the correct version
+# 2.21.1 for vulnerable version
+# 3.0 for patched version
+```
+
+3. **Start Docker**
+```bash
+docker compose up -d
+# or 
+# if the containers are already running
+./reset-environment.sh
+```
+
+4. **Initiate Connection**
+``` bash
+# in Android app
+http://10.0.2.2:8080
+username: admin
+password: admin
+```
+
+5. **Start Tests**
+```bash
+cd test_framework
+python -m core.framework --config config/test_config.json
+# check `config/test_config.json` to edit / add more tests 
+```
+
+6. **To Test with the Patched Version**
+* Repeat the above sets with **OwnCloud v3.0** where the vulnerability is patched.
+
+---
+
+<!-- ### Test Executions
+```bash
+# Run all configured tests
+python3 -m test_framework.core.framework
+
+# Run specific test by name
+python3 -m test_framework.core.framework --test "upload database filelist"
+
+# Use custom device
+python3 -m test_framework.core.framework --device "emulator-5554"
+
+# Use custom config
+python3 -m test_framework.core.framework --config config/custom_tests.json
+``` -->
+
+<!-- ### Framework API Usage
+
+```python
+from test_framework.core.framework import TestRunner, TestCase, TestSeverity
+
+# Initialize test runner
+runner = TestRunner(device_id="your-device-id")
+
+# Add custom test case
+test = TestCase(
+    name="custom_db_exfiltration",
+    description="Test database exfiltration",
+    payload="databases/sensitive.db",
+    severity=TestSeverity.CRITICAL,
+    exploit_type="arbitrary_upload"
+)
+runner.add_test_case(test)
+
+# Execute tests
+results = runner.run_all_tests()
+runner.save_results()
+``` -->
+
+
+#### Current Exploit Types
+- **`arbitrary_upload`**: Tests file exfiltration vulnerabilities
+- **`path_traversal_write`**: Tests arbitrary file write capabilities
+
+## Output & Analysis
+
+### Test Results Structure
+
+Results are saved to timestamped directories in `output/`:
+
+```
+output/20250801_143052-data/
+├── test_results.json        # Comprehensive test results
+├── before_local_dir.json    # Pre-exploit filesystem state
+├── after_local_dir.json     # Post-exploit filesystem state  
+├── fs_changes.json          # Filesystem change analysis
+├── db_changes.json          # Database change analysis
+├── before_databases/        # Pre-exploit database dumps
+└── after_databases/         # Post-exploit database dumps
+```
+
+### Vulnerability Indicators
+
+The analyzer currently detects:
+
+- **Database Exposure**: Sensitive SQLite files uploaded
+- **Log File Exposure**: Application logs exfiltrated  
+- **Config File Exposure**: Configuration files accessed
+- **Path Traversal Activity**: Suspicious file write patterns
+- **Integrity Violations**: Unauthorized file modifications
+---
+
+## Vulnerability Background
+#### CVE-2023-24804: Path Traversal in ownCloud Android
+> The vulnerability occurs when the ownCloud app processes file paths from external intents without proper validation, allowing directory traversal attacks that can:
+
+**Affected Version**: ownCloud Android v2.21.1  
+**Vulnerability Type**: Path Traversal  
+**CVSS Impact**: Information Disclosure (C:L) + Arbitrary File Write (I:L)  
+
+#### Attack Scenarios
+
+**Information Disclosure**:
+```
+Malicious payload: "../databases/owncloud_database"
+Result: App reads its own database and uploads to the server.
+More severe if there are server-side vulnerabilities
+```
+
+**Arbitrary File Write**:
+```
+Malicious payload: "../shared_prefs/malware.config"  
+Result: Attempts to overwrites app configuration files; but limited to .txt file extensions
+Other apps shold not be able to access OwnCloud's internal directory.
+```
+
+**Patched**
+<img src="assets/patched-upload.png" alt="patched-upload.png" width="300"/>
+
