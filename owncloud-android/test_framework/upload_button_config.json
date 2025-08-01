@@ -1,0 +1,19 @@
+{
+    "upload_button_config": {
+        "text": "UPLOAD",
+        "resource_id": "com.owncloud.android.debug:id/uploader_choose_folder",
+        "method": "XML Analysis",
+        "center_coordinates": {
+            "x": 789,
+            "y": 1689
+        },
+        "bounds": {
+            "x1": 540,
+            "y1": 1626,
+            "x2": 1038,
+            "y2": 1752
+        },
+        "details": "Found via XML dump analysis - UPLOAD button",
+        "discovered_at": "2025-07-28 from window_dump.xml"
+    }
+}

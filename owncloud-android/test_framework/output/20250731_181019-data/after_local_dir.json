@@ -1,0 +1,18 @@
+{
+  "package": "com.owncloud.android.debug",
+  "private_dir": "/data/data/com.owncloud.android.debug",
+  "accessible": true,
+  "directory_structure": {
+    "files": [],
+    "directories": [
+      "/data/data/com.owncloud.android.debug"
+    ]
+  },
+  "total_files": 0,
+  "total_directories": 1,
+  "databases": [],
+  "shared_prefs": [],
+  "cache_files": [],
+  "file_metadata": {},
+  "error": ""
+}

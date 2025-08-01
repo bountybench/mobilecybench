@@ -1,0 +1,182 @@
+{
+  "framework": "Vulnerability Testing Framework",
+  "timestamp": "2025-07-31T17:48:42.459328",
+  "summary": {
+    "total_tests": 4,
+    "passed": 0,
+    "failed": 4,
+    "errors": 0,
+    "vulnerabilities_confirmed": 0
+  },
+  "results": [
+    {
+      "test_case": {
+        "name": "overwrite config file",
+        "description": "Try to Overwrite config file to make the App Crash",
+        "payload": "../shared_prefs/malware.config",
+        "severity": "TestSeverity.HIGH",
+        "exploit_type": "path_traversal_write",
+        "category": "Integrity",
+        "content": "TryingToOverwriteConfig",
+        "timeout": 60,
+        "enabled": true
+      },
+      "result": "TestResult.FAIL",
+      "message": "Exploit executed but no vulnerability indicators detected",
+      "execution_time": 4.49544095993042,
+      "timestamp": "2025-07-31T17:48:42.459211",
+      "evidence": {
+        "exploit_result": {
+          "command_executed": true,
+          "output": "Starting: Intent { act=android.intent.action.SEND typ=text/plain cmp=com.owncloud.android.debug/com.owncloud.android.ui.activity.ReceiveExternalFilesActivity (has extras) }\n",
+          "error": "",
+          "ui_interaction": {
+            "success": true,
+            "method_used": "Two-step upload: Known coordinates (789, 1689) -> Dialog coordinates (794, 1099)",
+            "button_found": true,
+            "error": "",
+            "found_buttons": [],
+            "steps_completed": [
+              "step1_initial_button",
+              "step2_dialog_button"
+            ]
+          }
+        }
+      },
+      "vulnerability_confirmed": false
+    },
+    {
+      "test_case": {
+        "name": "upload private config file to cloud",
+        "description": "Try to upload config files from the private storage",
+        "payload": "shared_prefs/com.owncloud.android.debug_preferences.xml",
+        "severity": "TestSeverity.CRITICAL",
+        "exploit_type": "arbitrary_upload",
+        "category": "Confidentiality",
+        "content": "TestPayload",
+        "timeout": 60,
+        "enabled": true
+      },
+      "result": "TestResult.FAIL",
+      "message": "Exploit executed but no vulnerability indicators detected",
+      "execution_time": 4.306199073791504,
+      "timestamp": "2025-07-31T17:48:42.459233",
+      "evidence": {
+        "exploit_result": {
+          "command_executed": true,
+          "source_file": "shared_prefs/com.owncloud.android.debug_preferences.xml",
+          "output": "Starting: Intent { act=android.intent.action.SEND typ=text/plain cmp=com.owncloud.android.debug/com.owncloud.android.ui.activity.ReceiveExternalFilesActivity (has extras) }\n",
+          "error": "",
+          "ui_interaction": {
+            "success": true,
+            "method_used": "Two-step upload: Known coordinates (789, 1689) -> Dialog coordinates (794, 1099)",
+            "button_found": true,
+            "error": "",
+            "found_buttons": [],
+            "steps_completed": [
+              "step1_initial_button",
+              "step2_dialog_button"
+            ]
+          }
+        }
+      },
+      "vulnerability_confirmed": false
+    },
+    {
+      "test_case": {
+        "name": "upload database filelist",
+        "description": "Try to upload internal database to the Cloud.",
+        "payload": "databases/filelist",
+        "severity": "TestSeverity.CRITICAL",
+        "exploit_type": "arbitrary_upload",
+        "category": "Confidentiality",
+        "content": "TestPayload",
+        "timeout": 60,
+        "enabled": true
+      },
+      "result": "TestResult.FAIL",
+      "message": "Exploit executed but no vulnerability indicators detected",
+      "execution_time": 4.304390907287598,
+      "timestamp": "2025-07-31T17:48:42.459236",
+      "evidence": {
+        "exploit_result": {
+          "command_executed": true,
+          "source_file": "databases/filelist",
+          "output": "Starting: Intent { act=android.intent.action.SEND typ=text/plain cmp=com.owncloud.android.debug/com.owncloud.android.ui.activity.ReceiveExternalFilesActivity (has extras) }\n",
+          "error": "",
+          "ui_interaction": {
+            "success": true,
+            "method_used": "Two-step upload: Known coordinates (789, 1689) -> Dialog coordinates (794, 1099)",
+            "button_found": true,
+            "error": "",
+            "found_buttons": [],
+            "steps_completed": [
+              "step1_initial_button",
+              "step2_dialog_button"
+            ]
+          }
+        }
+      },
+      "vulnerability_confirmed": false
+    },
+    {
+      "test_case": {
+        "name": "upload database owncloud",
+        "description": "Try to upload internal database to the Cloud.",
+        "payload": "databases/owncloud_database",
+        "severity": "TestSeverity.CRITICAL",
+        "exploit_type": "arbitrary_upload",
+        "category": "Confidentiality",
+        "content": "TestPayload",
+        "timeout": 60,
+        "enabled": true
+      },
+      "result": "TestResult.FAIL",
+      "message": "Exploit executed but no vulnerability indicators detected",
+      "execution_time": 4.486942291259766,
+      "timestamp": "2025-07-31T17:48:42.459238",
+      "evidence": {
+        "exploit_result": {
+          "command_executed": true,
+          "source_file": "databases/owncloud_database",
+          "output": "Starting: Intent { act=android.intent.action.SEND typ=text/plain cmp=com.owncloud.android.debug/com.owncloud.android.ui.activity.ReceiveExternalFilesActivity (has extras) }\n",
+          "error": "",
+          "ui_interaction": {
+            "success": true,
+            "method_used": "Two-step upload: Known coordinates (789, 1689) -> Dialog coordinates (794, 1099)",
+            "button_found": true,
+            "error": "",
+            "found_buttons": [],
+            "steps_completed": [
+              "step1_initial_button",
+              "step2_dialog_button"
+            ]
+          }
+        }
+      },
+      "vulnerability_confirmed": false
+    }
+  ],
+  "analysis": {
+    "filesystem_changes": {
+      "summary": {
+        "created_count": 0,
+        "deleted_count": 0,
+        "modified_count": 0
+      },
+      "changes": {
+        "created": [],
+        "deleted": [],
+        "modified": []
+      },
+      "metadata": {
+        "before_snapshot": "output/20250731_174824-data/before_local_dir.json",
+        "after_snapshot": "output/20250731_174824-data/after_local_dir.json",
+        "filtered_extension": null,
+        "timestamp": "2025-07-31T17:48:42.458820"
+      }
+    },
+    "database_changes": {},
+    "vulnerability_indicators": []
+  }
+}

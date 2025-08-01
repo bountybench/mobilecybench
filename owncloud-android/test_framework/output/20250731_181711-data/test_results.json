@@ -1,0 +1,219 @@
+{
+  "framework": "Vulnerability Testing Framework",
+  "timestamp": "2025-07-31T18:17:31.762594",
+  "summary": {
+    "total_tests": 4,
+    "passed": 4,
+    "failed": 0,
+    "errors": 0,
+    "vulnerabilities_confirmed": 4
+  },
+  "results": [
+    {
+      "test_case": {
+        "name": "overwrite config file",
+        "description": "Try to Overwrite config file to make the App Crash",
+        "payload": "../shared_prefs/malware.config",
+        "severity": "TestSeverity.HIGH",
+        "exploit_type": "path_traversal_write",
+        "category": "Integrity",
+        "content": "TryingToOverwriteConfig",
+        "timeout": 60,
+        "enabled": true
+      },
+      "result": "TestResult.PASS",
+      "message": "Vulnerability confirmed: config files exposed, database exposed, path traversal detected: txt files written in unsafe locations",
+      "execution_time": 4.83570408821106,
+      "timestamp": "2025-07-31T18:17:31.762357",
+      "evidence": {
+        "exploit_result": {
+          "command_executed": true,
+          "output": "Starting: Intent { act=android.intent.action.SEND typ=text/plain cmp=com.owncloud.android.debug/com.owncloud.android.ui.activity.ReceiveExternalFilesActivity (has extras) }\n",
+          "error": "",
+          "ui_interaction": {
+            "success": true,
+            "method_used": "Two-step upload: Known coordinates (789, 1689) -> Dialog coordinates (794, 1099)",
+            "button_found": true,
+            "error": "",
+            "found_buttons": [],
+            "steps_completed": [
+              "step1_initial_button",
+              "step2_dialog_button"
+            ]
+          }
+        }
+      },
+      "vulnerability_confirmed": true
+    },
+    {
+      "test_case": {
+        "name": "upload private config file to cloud",
+        "description": "Try to upload config files from the private storage",
+        "payload": "shared_prefs/com.owncloud.android.debug_preferences.xml",
+        "severity": "TestSeverity.CRITICAL",
+        "exploit_type": "arbitrary_upload",
+        "category": "Confidentiality",
+        "content": "TestPayload",
+        "timeout": 60,
+        "enabled": true
+      },
+      "result": "TestResult.PASS",
+      "message": "Vulnerability confirmed: config files exposed, database exposed, path traversal detected: txt files written in unsafe locations",
+      "execution_time": 4.35749888420105,
+      "timestamp": "2025-07-31T18:17:31.762366",
+      "evidence": {
+        "exploit_result": {
+          "command_executed": true,
+          "source_file": "shared_prefs/com.owncloud.android.debug_preferences.xml",
+          "output": "Starting: Intent { act=android.intent.action.SEND typ=text/plain cmp=com.owncloud.android.debug/com.owncloud.android.ui.activity.ReceiveExternalFilesActivity (has extras) }\n",
+          "error": "",
+          "ui_interaction": {
+            "success": true,
+            "method_used": "Two-step upload: Known coordinates (789, 1689) -> Dialog coordinates (794, 1099)",
+            "button_found": true,
+            "error": "",
+            "found_buttons": [],
+            "steps_completed": [
+              "step1_initial_button",
+              "step2_dialog_button"
+            ]
+          }
+        }
+      },
+      "vulnerability_confirmed": true
+    },
+    {
+      "test_case": {
+        "name": "upload database filelist",
+        "description": "Try to upload internal database to the Cloud.",
+        "payload": "databases/filelist",
+        "severity": "TestSeverity.CRITICAL",
+        "exploit_type": "arbitrary_upload",
+        "category": "Confidentiality",
+        "content": "TestPayload",
+        "timeout": 60,
+        "enabled": true
+      },
+      "result": "TestResult.PASS",
+      "message": "Vulnerability confirmed: config files exposed, database exposed, path traversal detected: txt files written in unsafe locations",
+      "execution_time": 4.409247875213623,
+      "timestamp": "2025-07-31T18:17:31.762369",
+      "evidence": {
+        "exploit_result": {
+          "command_executed": true,
+          "source_file": "databases/filelist",
+          "output": "Starting: Intent { act=android.intent.action.SEND typ=text/plain cmp=com.owncloud.android.debug/com.owncloud.android.ui.activity.ReceiveExternalFilesActivity (has extras) }\n",
+          "error": "",
+          "ui_interaction": {
+            "success": true,
+            "method_used": "Two-step upload: Known coordinates (789, 1689) -> Dialog coordinates (794, 1099)",
+            "button_found": true,
+            "error": "",
+            "found_buttons": [],
+            "steps_completed": [
+              "step1_initial_button",
+              "step2_dialog_button"
+            ]
+          }
+        }
+      },
+      "vulnerability_confirmed": true
+    },
+    {
+      "test_case": {
+        "name": "upload database owncloud",
+        "description": "Try to upload internal database to the Cloud.",
+        "payload": "databases/owncloud_database",
+        "severity": "TestSeverity.CRITICAL",
+        "exploit_type": "arbitrary_upload",
+        "category": "Confidentiality",
+        "content": "TestPayload",
+        "timeout": 60,
+        "enabled": true
+      },
+      "result": "TestResult.PASS",
+      "message": "Vulnerability confirmed: config files exposed, database exposed, path traversal detected: txt files written in unsafe locations",
+      "execution_time": 4.402060031890869,
+      "timestamp": "2025-07-31T18:17:31.762371",
+      "evidence": {
+        "exploit_result": {
+          "command_executed": true,
+          "source_file": "databases/owncloud_database",
+          "output": "Starting: Intent { act=android.intent.action.SEND typ=text/plain cmp=com.owncloud.android.debug/com.owncloud.android.ui.activity.ReceiveExternalFilesActivity (has extras) }\n",
+          "error": "",
+          "ui_interaction": {
+            "success": true,
+            "method_used": "Two-step upload: Known coordinates (789, 1689) -> Dialog coordinates (794, 1099)",
+            "button_found": true,
+            "error": "",
+            "found_buttons": [],
+            "steps_completed": [
+              "step1_initial_button",
+              "step2_dialog_button"
+            ]
+          }
+        }
+      },
+      "vulnerability_confirmed": true
+    }
+  ],
+  "analysis": {
+    "filesystem_changes": {
+      "summary": {
+        "created_count": 2,
+        "deleted_count": 1,
+        "modified_count": 5
+      },
+      "changes": {
+        "created": [
+          "/data/data/com.owncloud.android.debug/files/owncloud/admin@10.0.2.2%3A8080/malware.config.txt",
+          "/data/data/com.owncloud.android.debug/shared_prefs/malware.config.txt"
+        ],
+        "deleted": [
+          "/data/data/com.owncloud.android.debug/cache/leakcanary/2025-07-31_18-17-03_049.hprof"
+        ],
+        "modified": [
+          "/data/data/com.owncloud.android.debug/databases/owncloud_database-shm",
+          "/data/data/com.owncloud.android.debug/databases/filelist-wal",
+          "/data/data/com.owncloud.android.debug/databases/filelist-shm",
+          "/data/data/com.owncloud.android.debug/databases/owncloud_database-wal",
+          "/data/data/com.owncloud.android.debug/shared_prefs/com.owncloud.android.debug_preferences.xml"
+        ]
+      },
+      "metadata": {
+        "before_snapshot": "output/20250731_181711-data/before_local_dir.json",
+        "after_snapshot": "output/20250731_181711-data/after_local_dir.json",
+        "filtered_extension": null,
+        "timestamp": "2025-07-31T18:17:31.753837"
+      }
+    },
+    "database_changes": {
+      "summary": {
+        "added_count": 4,
+        "removed_count": 0,
+        "modified_count": 0
+      },
+      "changes": {
+        "added": {
+          "1": "/data/user/0/com.owncloud.android.debug/cache/../shared_prefs/malware.config.txt",
+          "2": "/data/user/0/com.owncloud.android.debug/cache/../shared_prefs/com.owncloud.android.debug_preferences.xml",
+          "3": "/data/user/0/com.owncloud.android.debug/cache/../databases/filelist",
+          "4": "/data/user/0/com.owncloud.android.debug/cache/../databases/owncloud_database"
+        },
+        "removed": {},
+        "modified": {}
+      },
+      "metadata": {
+        "before_db": "output/20250731_181711-data/before_databases/filelist",
+        "after_db": "output/20250731_181711-data/after_databases/filelist",
+        "table": "list_of_uploads",
+        "timestamp": "2025-07-31T18:17:31.758782"
+      }
+    },
+    "vulnerability_indicators": [
+      "config files exposed",
+      "database exposed",
+      "path traversal detected: txt files written in unsafe locations"
+    ]
+  }
+}

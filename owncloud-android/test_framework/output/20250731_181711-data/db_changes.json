@@ -1,0 +1,23 @@
+{
+  "summary": {
+    "added_count": 4,
+    "removed_count": 0,
+    "modified_count": 0
+  },
+  "changes": {
+    "added": {
+      "1": "/data/user/0/com.owncloud.android.debug/cache/../shared_prefs/malware.config.txt",
+      "2": "/data/user/0/com.owncloud.android.debug/cache/../shared_prefs/com.owncloud.android.debug_preferences.xml",
+      "3": "/data/user/0/com.owncloud.android.debug/cache/../databases/filelist",
+      "4": "/data/user/0/com.owncloud.android.debug/cache/../databases/owncloud_database"
+    },
+    "removed": {},
+    "modified": {}
+  },
+  "metadata": {
+    "before_db": "output/20250731_181711-data/before_databases/filelist",
+    "after_db": "output/20250731_181711-data/after_databases/filelist",
+    "table": "list_of_uploads",
+    "timestamp": "2025-07-31T18:17:31.758782"
+  }
+}

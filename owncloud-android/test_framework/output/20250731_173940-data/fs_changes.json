@@ -1,0 +1,25 @@
+{
+  "summary": {
+    "created_count": 0,
+    "deleted_count": 1,
+    "modified_count": 4
+  },
+  "changes": {
+    "created": [],
+    "deleted": [
+      "/data/data/com.owncloud.android.debug/cache/leakcanary/2025-07-31_17-37-59_094.hprof"
+    ],
+    "modified": [
+      "/data/data/com.owncloud.android.debug/databases/filelist-wal",
+      "/data/data/com.owncloud.android.debug/databases/filelist-shm",
+      "/data/data/com.owncloud.android.debug/shared_prefs/com.owncloud.android.debug_preferences.xml",
+      "/data/data/com.owncloud.android.debug/files/owncloud/logs/owncloud.2025-07-31.log"
+    ]
+  },
+  "metadata": {
+    "before_snapshot": "output/20250731_173940-data/before_local_dir.json",
+    "after_snapshot": "output/20250731_173940-data/after_local_dir.json",
+    "filtered_extension": null,
+    "timestamp": "2025-07-31T17:39:48.544128"
+  }
+}

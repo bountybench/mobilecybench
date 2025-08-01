@@ -1,0 +1,131 @@
+{
+  "package": "com.owncloud.android.debug",
+  "private_dir": "/data/data/com.owncloud.android.debug",
+  "accessible": true,
+  "directory_structure": {
+    "files": [
+      "/data/data/com.owncloud.android.debug/databases/filelist",
+      "/data/data/com.owncloud.android.debug/databases/filelist-wal",
+      "/data/data/com.owncloud.android.debug/databases/filelist-shm",
+      "/data/data/com.owncloud.android.debug/databases/owncloud_database",
+      "/data/data/com.owncloud.android.debug/databases/owncloud_database-wal",
+      "/data/data/com.owncloud.android.debug/databases/owncloud_database-shm",
+      "/data/data/com.owncloud.android.debug/databases/leaks.db",
+      "/data/data/com.owncloud.android.debug/no_backup/androidx.work.workdb",
+      "/data/data/com.owncloud.android.debug/no_backup/androidx.work.workdb-wal",
+      "/data/data/com.owncloud.android.debug/no_backup/androidx.work.workdb-shm",
+      "/data/data/com.owncloud.android.debug/files/owncloud/admin@10.0.2.2%3A8080/malware.config.txt",
+      "/data/data/com.owncloud.android.debug/shared_prefs/com.owncloud.android.debug_preferences.xml",
+      "/data/data/com.owncloud.android.debug/shared_prefs/malware.config.txt"
+    ],
+    "directories": [
+      "/data/data/com.owncloud.android.debug",
+      "/data/data/com.owncloud.android.debug/code_cache",
+      "/data/data/com.owncloud.android.debug/databases",
+      "/data/data/com.owncloud.android.debug/no_backup",
+      "/data/data/com.owncloud.android.debug/files",
+      "/data/data/com.owncloud.android.debug/files/owncloud",
+      "/data/data/com.owncloud.android.debug/files/owncloud/tmp",
+      "/data/data/com.owncloud.android.debug/files/owncloud/tmp/admin@10.0.2.2%3A8080",
+      "/data/data/com.owncloud.android.debug/files/owncloud/admin@10.0.2.2%3A8080",
+      "/data/data/com.owncloud.android.debug/shared_prefs"
+    ]
+  },
+  "total_files": 13,
+  "total_directories": 10,
+  "databases": [
+    "/data/data/com.owncloud.android.debug/databases/filelist",
+    "/data/data/com.owncloud.android.debug/databases/filelist-wal",
+    "/data/data/com.owncloud.android.debug/databases/filelist-shm",
+    "/data/data/com.owncloud.android.debug/databases/owncloud_database",
+    "/data/data/com.owncloud.android.debug/databases/owncloud_database-wal",
+    "/data/data/com.owncloud.android.debug/databases/owncloud_database-shm",
+    "/data/data/com.owncloud.android.debug/databases/leaks.db"
+  ],
+  "shared_prefs": [
+    "/data/data/com.owncloud.android.debug/shared_prefs/com.owncloud.android.debug_preferences.xml",
+    "/data/data/com.owncloud.android.debug/shared_prefs/malware.config.txt"
+  ],
+  "cache_files": [],
+  "file_metadata": {
+    "/data/data/com.owncloud.android.debug/databases/filelist": {
+      "size": 4096,
+      "mtime": 1754074122.0,
+      "sha256": "0a8ffb6b327963558716e87db8946016d143e39f895fa1b43e95ba7032ce2514",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/databases/filelist-wal": {
+      "size": 238992,
+      "mtime": 1754074320.0,
+      "sha256": "83bce5cb38f36925563b1710f0a8e120af3ecaa8912327f7654edbc83388f7a4",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/databases/filelist-shm": {
+      "size": 32768,
+      "mtime": 1754074320.0,
+      "sha256": "cedd173e3a7ab72571b0995b05e16ae18d33c5e58adb65c387171e01a56f9687",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/databases/owncloud_database": {
+      "size": 4096,
+      "mtime": 1754074267.0,
+      "sha256": "0a8ffb6b327963558716e87db8946016d143e39f895fa1b43e95ba7032ce2514",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/databases/owncloud_database-wal": {
+      "size": 78312,
+      "mtime": 1754074316.0,
+      "sha256": "aacf804e9233bb384288c21356f84b191de8d7b9919361475f0374a13c5f7fc9",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/databases/owncloud_database-shm": {
+      "size": 32768,
+      "mtime": 1754074316.0,
+      "sha256": "b58bed8198eb1bf47e7e32d9372204b916b970d0c74f1dab6bdb40ff1c2808ef",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/databases/leaks.db": {
+      "size": 40960,
+      "mtime": 1754074276.0,
+      "sha256": "156f5f52a90e5c049f658463ada4ce675aee6c551d453f9540f08a17151464a9",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/no_backup/androidx.work.workdb": {
+      "size": 4096,
+      "mtime": 1754074121.0,
+      "sha256": "0a8ffb6b327963558716e87db8946016d143e39f895fa1b43e95ba7032ce2514",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/no_backup/androidx.work.workdb-wal": {
+      "size": 173072,
+      "mtime": 1754074276.0,
+      "sha256": "1e3232c2d2e5e27893b0c93a0e3627303e7b43cf0b3018d7ab54b3e6a3415bea",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/no_backup/androidx.work.workdb-shm": {
+      "size": 32768,
+      "mtime": 1754074274.0,
+      "sha256": "43216f969a79f880d75f83a8eedf24c29724ceef3e853367e9a79c6cb806b222",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/files/owncloud/admin@10.0.2.2%3A8080/malware.config.txt": {
+      "size": 23,
+      "mtime": 1754074317.0,
+      "sha256": "039c522770b55070d2a18a4cca81344e012d60d70da5f6d8a3ea54adf40336c5",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/shared_prefs/com.owncloud.android.debug_preferences.xml": {
+      "size": 291,
+      "mtime": 1754074320.0,
+      "sha256": "9bef1e20a18d30ae7e6b95dcf257dc0775db3e114aadb05addd46df3c545cf92",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/shared_prefs/malware.config.txt": {
+      "size": 23,
+      "mtime": 1754074309.0,
+      "sha256": "039c522770b55070d2a18a4cca81344e012d60d70da5f6d8a3ea54adf40336c5",
+      "hash_error": null
+    }
+  },
+  "error": ""
+}

@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "created_count": 0,
+    "deleted_count": 0,
+    "modified_count": 2
+  },
+  "changes": {
+    "created": [],
+    "deleted": [],
+    "modified": [
+      "/data/data/com.owncloud.android.debug/files/owncloud/logs/owncloud.2025-08-01.log",
+      "/data/data/com.owncloud.android.debug/shared_prefs/com.owncloud.android.debug_preferences.xml"
+    ]
+  },
+  "metadata": {
+    "before_snapshot": "output/20250801_115726-data/before_local_dir.json",
+    "after_snapshot": "output/20250801_115726-data/after_local_dir.json",
+    "filtered_extension": null,
+    "timestamp": "2025-08-01T11:57:45.897110"
+  }
+}

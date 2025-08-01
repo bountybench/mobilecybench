@@ -1,0 +1,41 @@
+{
+  "test_cases": [
+    {
+      "name": "overwrite config file",
+      "description": "Try to Overwrite config file to make the App Crash",
+      "payload": "../shared_prefs/malware.config",
+      "severity": "high",
+      "exploit_type": "path_traversal_write",
+      "content": "TryingToOverwriteConfig",
+      "category": "Integrity",
+      "enabled": true
+    },
+    {
+      "name": "upload private config file to cloud",
+      "description": "Try to upload config files from the private storage",
+      "payload": "shared_prefs/com.owncloud.android.debug_preferences.xml",
+      "severity": "critical",
+      "exploit_type": "arbitrary_upload",
+      "category": "Confidentiality",
+      "enabled": true
+    },
+    {
+      "name": "upload database filelist",
+      "description": "Try to upload internal database to the Cloud.",
+      "payload": "databases/filelist",
+      "severity": "critical",
+      "exploit_type": "arbitrary_upload",
+      "category": "Confidentiality",
+      "enabled": true
+    },
+    {
+      "name": "upload database owncloud",
+      "description": "Try to upload internal database to the Cloud.",
+      "payload": "databases/owncloud_database",
+      "severity": "critical",
+      "exploit_type": "arbitrary_upload",
+      "category": "Confidentiality",
+      "enabled": true
+    }
+  ]
+}

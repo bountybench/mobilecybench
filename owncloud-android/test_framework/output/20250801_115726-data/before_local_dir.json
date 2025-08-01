@@ -1,0 +1,117 @@
+{
+  "package": "com.owncloud.android.debug",
+  "private_dir": "/data/data/com.owncloud.android.debug",
+  "accessible": true,
+  "directory_structure": {
+    "files": [
+      "/data/data/com.owncloud.android.debug/databases/filelist",
+      "/data/data/com.owncloud.android.debug/databases/filelist-wal",
+      "/data/data/com.owncloud.android.debug/databases/filelist-shm",
+      "/data/data/com.owncloud.android.debug/databases/owncloud_database",
+      "/data/data/com.owncloud.android.debug/databases/owncloud_database-wal",
+      "/data/data/com.owncloud.android.debug/databases/owncloud_database-shm",
+      "/data/data/com.owncloud.android.debug/no_backup/androidx.work.workdb",
+      "/data/data/com.owncloud.android.debug/no_backup/androidx.work.workdb-wal",
+      "/data/data/com.owncloud.android.debug/no_backup/androidx.work.workdb-shm",
+      "/data/data/com.owncloud.android.debug/files/owncloud/logs/owncloud.2025-08-01.log",
+      "/data/data/com.owncloud.android.debug/shared_prefs/com.owncloud.android.debug_preferences.xml"
+    ],
+    "directories": [
+      "/data/data/com.owncloud.android.debug",
+      "/data/data/com.owncloud.android.debug/cache",
+      "/data/data/com.owncloud.android.debug/code_cache",
+      "/data/data/com.owncloud.android.debug/databases",
+      "/data/data/com.owncloud.android.debug/no_backup",
+      "/data/data/com.owncloud.android.debug/files",
+      "/data/data/com.owncloud.android.debug/files/owncloud",
+      "/data/data/com.owncloud.android.debug/files/owncloud/logs",
+      "/data/data/com.owncloud.android.debug/files/owncloud/tmp",
+      "/data/data/com.owncloud.android.debug/files/owncloud/tmp/admin@10.0.2.2%3A8080",
+      "/data/data/com.owncloud.android.debug/files/owncloud/admin@10.0.2.2%3A8080",
+      "/data/data/com.owncloud.android.debug/shared_prefs"
+    ]
+  },
+  "total_files": 11,
+  "total_directories": 12,
+  "databases": [
+    "/data/data/com.owncloud.android.debug/databases/filelist",
+    "/data/data/com.owncloud.android.debug/databases/filelist-wal",
+    "/data/data/com.owncloud.android.debug/databases/filelist-shm",
+    "/data/data/com.owncloud.android.debug/databases/owncloud_database",
+    "/data/data/com.owncloud.android.debug/databases/owncloud_database-wal",
+    "/data/data/com.owncloud.android.debug/databases/owncloud_database-shm"
+  ],
+  "shared_prefs": [
+    "/data/data/com.owncloud.android.debug/shared_prefs/com.owncloud.android.debug_preferences.xml"
+  ],
+  "cache_files": [],
+  "file_metadata": {
+    "/data/data/com.owncloud.android.debug/databases/filelist": {
+      "size": 4096,
+      "mtime": 1754074419.0,
+      "sha256": "0a8ffb6b327963558716e87db8946016d143e39f895fa1b43e95ba7032ce2514",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/databases/filelist-wal": {
+      "size": 49472,
+      "mtime": 1754074419.0,
+      "sha256": "88455f179633ea89ffe18ac0386ade99e3232648835fa055ddeda73b2a25c4e8",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/databases/filelist-shm": {
+      "size": 32768,
+      "mtime": 1754074419.0,
+      "sha256": "5723e2e9eca62c685da2078b848e3cae4eb41fa9ab72734f6b0f26e599c64c78",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/databases/owncloud_database": {
+      "size": 4096,
+      "mtime": 1754074443.0,
+      "sha256": "0a8ffb6b327963558716e87db8946016d143e39f895fa1b43e95ba7032ce2514",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/databases/owncloud_database-wal": {
+      "size": 391432,
+      "mtime": 1754074629.0,
+      "sha256": "2b93441fdc21277696d7d9ab030b84748d65f443f91d7b4cf49adae0d3040354",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/databases/owncloud_database-shm": {
+      "size": 32768,
+      "mtime": 1754074628.0,
+      "sha256": "cd809aabce057884863fde4dacdf592f1fd084087905c02650d8893dc43022b1",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/no_backup/androidx.work.workdb": {
+      "size": 4096,
+      "mtime": 1754074419.0,
+      "sha256": "0a8ffb6b327963558716e87db8946016d143e39f895fa1b43e95ba7032ce2514",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/no_backup/androidx.work.workdb-wal": {
+      "size": 321392,
+      "mtime": 1754074444.0,
+      "sha256": "20756653afabee9b08acd07008eb6868845fe7f323060846ac581f608282d740",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/no_backup/androidx.work.workdb-shm": {
+      "size": 32768,
+      "mtime": 1754074443.0,
+      "sha256": "1cca5d56368456f87b25e9b51a7c7dc326bd3aefe2b0b2b7ec327071790cc724",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/files/owncloud/logs/owncloud.2025-08-01.log": {
+      "size": 211892,
+      "mtime": 1754074629.0,
+      "sha256": "e32e536fa0640c359a3f3db3fd200029d8b823e014de14eb625c1d3b714b6fd0",
+      "hash_error": null
+    },
+    "/data/data/com.owncloud.android.debug/shared_prefs/com.owncloud.android.debug_preferences.xml": {
+      "size": 244,
+      "mtime": 1754074492.0,
+      "sha256": "d0905ab07cf8fb1f83cc70bdf6864993e96dea816c6fbe3d81c58710334148ce",
+      "hash_error": null
+    }
+  },
+  "error": ""
+}

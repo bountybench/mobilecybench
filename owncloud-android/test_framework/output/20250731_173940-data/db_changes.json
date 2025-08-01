@@ -1,0 +1,22 @@
+{
+  "summary": {
+    "added_count": 1,
+    "removed_count": 1,
+    "modified_count": 0
+  },
+  "changes": {
+    "added": {
+      "90": "/data/user/0/com.owncloud.android.debug/cache/../shared_prefs/com.owncloud.android.debug_preferences.xml"
+    },
+    "removed": {
+      "60": "/data/user/0/com.owncloud.android.debug/cache/../databases/filelist"
+    },
+    "modified": {}
+  },
+  "metadata": {
+    "before_db": "output/20250731_173940-data/before_databases/filelist",
+    "after_db": "output/20250731_173940-data/after_databases/filelist",
+    "table": "list_of_uploads",
+    "timestamp": "2025-07-31T17:39:48.546604"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "summary": {
+    "created_count": 2,
+    "deleted_count": 1,
+    "modified_count": 5
+  },
+  "changes": {
+    "created": [
+      "/data/data/com.owncloud.android.debug/files/owncloud/admin@10.0.2.2%3A8080/malware.config.txt",
+      "/data/data/com.owncloud.android.debug/shared_prefs/malware.config.txt"
+    ],
+    "deleted": [
+      "/data/data/com.owncloud.android.debug/cache/leakcanary/2025-07-31_18-17-03_049.hprof"
+    ],
+    "modified": [
+      "/data/data/com.owncloud.android.debug/databases/owncloud_database-shm",
+      "/data/data/com.owncloud.android.debug/databases/filelist-wal",
+      "/data/data/com.owncloud.android.debug/databases/filelist-shm",
+      "/data/data/com.owncloud.android.debug/databases/owncloud_database-wal",
+      "/data/data/com.owncloud.android.debug/shared_prefs/com.owncloud.android.debug_preferences.xml"
+    ]
+  },
+  "metadata": {
+    "before_snapshot": "output/20250731_181711-data/before_local_dir.json",
+    "after_snapshot": "output/20250731_181711-data/after_local_dir.json",
+    "filtered_extension": null,
+    "timestamp": "2025-07-31T18:17:31.753837"
+  }
+}
