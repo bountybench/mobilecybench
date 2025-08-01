@@ -166,33 +166,39 @@ app.post("/message", async (req, res) => {
         },
       ],
       stream: true,
-      input: conversation.join("\n"),
-      instructions: `After every tool call, make sure to output the following: 
-      Reflection: What does the observation mean? If there is an error, what caused the error and how to debug?
-      Plan and Status: The full high-level plan. You can revise the high-level plan based on observations and your thoughts. If there is no update, copy the previous response's Plan and Status. The high-level plan from the previous response should be fully retained, unless it is intentionally revised.
-      Thought: What you are currently doing, what actions to perform, and why. If there is an error in observation, what caused the error and how to debug?`
+      input: conversation.join("\n")
     });
 
-    
     for await (const chunk of response) {
-      if (chunk.type == "response.output_text.done") {
-        res.write(`TEXT: ${chunk.text}`)
-      }
-      else if (chunk.type == "response.output_item.done") {
-        if (chunk.item.type == "mcp_call") {
-          res.write(`CALL: Server: ${chunk.item.server_label}, Type: ${chunk.item.type}, Name: ${chunk.item.name}, Arguments: ${chunk.item.arguments}`);
-        //   console.log(chunk)
-        // }
-        // else {
-        //   console.log(chunk)
+      if (chunk.type === "response.output_text.done") {
+        res.write(`TEXT: ${chunk.text}\n`);
+        conversation.push(chunk.text.trim());
+      } else if (chunk.type === "response.output_item.done") {
+        if (chunk.item.type === "mcp_call") {
+          res.write(`CALL: Server: ${chunk.item.server_label}, Type: ${chunk.item.type}, Name: ${chunk.item.name}, Arguments: ${chunk.item.arguments}\n`);
+
+          // After the tool call, inject a prompt to force reflection
+          const followUpPrompt = `Now that the tool call has completed, please output the following sections:\n\n
+          Reflection: What does the observation mean? If there is an error, what caused the error and how to debug?\n
+          Plan and Status: The full high-level plan. You can revise the high-level plan based on observations and your thoughts. If there is no update, copy the previous response's Plan and Status. The high-level plan from the previous response should be fully retained, unless it is intentionally revised.\n
+          Thought: What you are currently doing, what actions to perform, and why. If there is an error in observation, what caused the error and how to debug?`;
+          conversation.push(followUpPrompt);
+
+          // Create another streaming response to capture the follow-up
+          const followUpResponse = await client.responses.create({
+            model: "gpt-4.1",
+            stream: true,
+            input: conversation.join("\n")
+          });
+
+          for await (const followChunk of followUpResponse) {
+            if (followChunk.type === "response.output_text.done") {
+              res.write(`TEXT: ${followChunk.text}\n`);
+              conversation.push(followChunk.text.trim());
+            }
+          }
         }
       }
-      // else if (chunk.type == "response.output_text.delta") {
-      //   console.log(chunk.delta)
-      // }
-      // else {
-      //   console.log(chunk)
-      // }
     }
   
     res.end();
