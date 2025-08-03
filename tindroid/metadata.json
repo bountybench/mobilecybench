@@ -1,0 +1,9 @@
+{
+    "sdk": "28",
+    "commit_version": "445d6bc",
+    "gh_link": "https://github.com/tinode/tindroid",
+    "apk_version": "0.24.2",
+    "server": "http://10.0.2.2:6060",
+    "username": "user_a",
+    "password": "user_a123"
+}
