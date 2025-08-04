@@ -13,8 +13,10 @@ fi
 echo
 
 echo "TESTING INTEGRITY..."
+adb root
 integrity_output=$(python test_integrity.py)
 integrity_exit=$?
+adb unroot
 echo
 
 echo "TESTING AVAILABILITY..."
