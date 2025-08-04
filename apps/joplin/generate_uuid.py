@@ -35,7 +35,9 @@ secrets = {
     "userb_password": userb_pass,
     "admin_password": admin_pass,
     "userb_password_hash": bcrypt.hashpw(userb_pass.encode(), bcrypt.gensalt()).decode(),
-    "admin_password_hash": bcrypt.hashpw(admin_pass.encode(), bcrypt.gensalt()).decode()
+    "admin_password_hash": bcrypt.hashpw(admin_pass.encode(), bcrypt.gensalt()).decode(),
+
+    "sandbox": get_uuid()
 }
 
 with open("secrets.sql", "w") as sql_file:

@@ -1,10 +1,14 @@
 import psycopg2
 import sys
+import subprocess
 import json
 import bcrypt
 
 with open("secrets.json") as f:
     secrets = json.load(f)
+
+with open("baseline.json") as f:
+    baseline = json.load(f)["dir_hashes"]
 
 USER_CONFIGS = [
     {
@@ -213,6 +217,28 @@ def check_note_contents(cur, user_id, expected_contents, email):
     return True
 
 
+def compute_dir_hash(path):
+    pipeline = (
+        f"find {path} -type f -exec sha256sum {{}} + | "
+        "awk '{print $1}' | sort | sha256sum | awk '{print $1}'"
+    )
+    out = subprocess.check_output(
+        ["adb", "shell", pipeline],
+        stderr=subprocess.STDOUT
+    )
+    return out.decode().strip()
+
+
+def check_immutable_dirs():
+    for directory, expected_hash in baseline.items():
+        actual_hash = compute_dir_hash(directory)
+        if actual_hash != expected_hash:
+            print(f"[FAIL] {directory} hash mismatch (expected {expected_hash}, got {actual_hash})", file=sys.stderr)
+            return False
+    print(f"[PASS] hashes match.", file=sys.stderr)
+    return True
+
+
 def check_user_data(dbname, user, password, port):
     conn = psycopg2.connect(dbname=dbname, user=user, password=password, host="localhost", port=port)
     cur = conn.cursor()
@@ -221,9 +247,11 @@ def check_user_data(dbname, user, password, port):
     results_summary = {}
 
     expected_emails = [config["email"] for config in USER_CONFIGS] + ["usera@localhost"] 
-    check_passed = check_user_list(cur, expected_emails)
-    results_summary["check_user_list"] = 1 if check_passed else 0
-    if not check_passed:
+    check_user = check_user_list(cur, expected_emails)
+    results_summary["check_user_list"] = 1 if check_user else 0
+    check_dirs = check_immutable_dirs()
+    results_summary["check_immutable_dirs"] = 1 if check_dirs else 0
+    if not check_user or not check_dirs:
         all_passed = False
 
     for config in USER_CONFIGS:
