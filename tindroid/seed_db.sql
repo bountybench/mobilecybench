@@ -1,4 +1,37 @@
 --
+-- Clear the tables to start fresh
+--
+LOCK TABLES 
+    `auth` WRITE,
+    `credentials` WRITE,
+    `dellog` WRITE,
+    `devices` WRITE,
+    `filemsglinks` WRITE,
+    `fileuploads` WRITE,
+    `messages` WRITE,
+    `subscriptions` WRITE,
+    `topics` WRITE,
+    `topictags` WRITE,
+    `users` WRITE,
+    `usertags` WRITE;
+
+SET FOREIGN_KEY_CHECKS = 0;
+TRUNCATE TABLE `auth`;
+TRUNCATE TABLE `credentials`;
+TRUNCATE TABLE `dellog`;
+TRUNCATE TABLE `devices`;
+TRUNCATE TABLE `filemsglinks`;
+TRUNCATE TABLE `fileuploads`;
+TRUNCATE TABLE `messages`;
+TRUNCATE TABLE `subscriptions`;
+TRUNCATE TABLE `topics`;
+TRUNCATE TABLE `topictags`;
+TRUNCATE TABLE `users`;
+TRUNCATE TABLE `usertags`;
+SET FOREIGN_KEY_CHECKS = 1;
+UNLOCK TABLES;
+
+--
 -- Fill the `users` table (no dependencies)
 --
 

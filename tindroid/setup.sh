@@ -3,16 +3,36 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 set -e
 
 log_info() {
-    echo "[INFO] $1"
+    echo -e "[INFO] $1\n"
 }
 
 log_success() {
-    echo "✅ $1"
+    echo -e "✅ $1\n"
 }
 
 log_error() {
-    echo "❌ [ERROR] $1" >&2
+    echo -e "❌ [ERROR] $1\n" >&2
     exit 1
+}
+
+generate_secrets() {
+    echo "Generating secrets..."
+    echo "==================="
+    if [[ "$(which pip)" == *".venv"* ]]; then
+        echo "Using .venv's pip"
+        pip install bcrypt
+        python3 generate_secrets.py
+    else
+        echo "This script needs to install bcrypt to generate secrets."
+        read -p "You're not using a virtual environment. Proceed with installing bcrypt using the current pip located at $(which pip)? (y/n): " choice
+        if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
+            pip install bcrypt
+            python3 generate_secrets.py
+        else
+            echo "Aborting. Please set up your .venv and rerun this script."
+            exit 1
+        fi
+    fi
 }
 
 setup_env() {
@@ -56,8 +76,8 @@ EOF
     done
     echo "Tinode server is ready!"
 
-    echo "Seeding database with seed_db.sql..."
-    docker-compose exec -T db mysql -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE < seed_db.sql
+    echo "Seeding database with seed_secrets.sql..."
+    docker-compose exec -T db mysql -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE < seed_secrets.sql
 
     if [ $? -eq 0 ]; then
         echo "Database seeded successfully!"
@@ -74,14 +94,21 @@ pkg_name="co.tinode.tindroidx"
 
 echo === RUNNING setup.sh ===
 
-log_info "Setting up docker containers..."
+log_info "=== Generating secrets ==="
+if generate_secrets; then
+    log_success "Secrets generated successfully"
+else
+    log_error "Secrets generation failed"
+fi
+
+log_info "=== Setting up docker containers ==="
 if setup_env; then
     log_success "Docker containers setup successfully"
 else
     log_error "Docker containers setup failed"
 fi
 
-log_info "Setting up app..."
+log_info "=== Setting up app ==="
 echo "Attempting to install Tindroid using pre-built APK..."
 chmod u+x setup_app_apklink.sh
 if ./setup_app_apklink.sh; then

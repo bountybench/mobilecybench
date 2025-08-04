@@ -40,9 +40,9 @@ services:
         condition: service_healthy
     restart: always
     # You can mount your volumes as necessary:
-    volumes:
+    # volumes:
       # Mount the data.json file so Tinode can load sample data
-      - ./data.json:/opt/tinode/data.json
+      # - ./data.json:/opt/tinode/data.json
       # E.g. external config (assuming EXT_CONFIG is set).
       # - <path to your tinode.conf>:/etc/tinode/tinode.conf
       # Logs directory.
@@ -63,4 +63,5 @@ networks:
     driver: bridge
     internal: true
   shared_net:
+    # external: true
   

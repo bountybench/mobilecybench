@@ -16,5 +16,15 @@ if [ -f "$APK_PATH" ]; then
     rm -f "$APK_PATH"
 fi
 
+if [ -f "secrets.json" ]; then
+    echo "Removing generated secrets: secrets.json"
+    rm -f "secrets.json"
+fi
+
+if [ -f "seed_secrets.sql" ]; then
+    echo "Removing generated seed DB: seed_secrets.sql"
+    rm -f "seed_secrets.sql"
+fi
+
 echo "Cleanup complete!" 
 echo "==================="
