@@ -1,0 +1,42 @@
+name: Lint
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  lint:
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository for linting
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Fetch base branch for pull requests
+        if: github.event_name == 'pull_request'
+        run: git fetch origin ${{ github.base_ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Lint modified Python files
+        run: |
+          python -m pip install --upgrade pip
+          pip install "black==24.10.0" "isort==5.13.2"
+          MODIFIED_PY_FILES=$(git diff --name-only --diff-filter=d origin/main HEAD | grep ".py$" | grep -v "^bountytasks/" || echo "")
+          if [ -n "$MODIFIED_PY_FILES" ]; then
+            echo "Running black on modified files..."
+            echo "$MODIFIED_PY_FILES" | xargs black --check
+            echo "Running isort on modified files..."
+            echo "$MODIFIED_PY_FILES" | xargs isort --check --profile black
+          else
+            echo "No modified Python files to lint"
+          fi

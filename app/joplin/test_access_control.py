@@ -1,7 +1,8 @@
-import psycopg2
-import sys
-import subprocess
 import json
+import subprocess
+import sys
+
+import psycopg2
 
 with open("secrets.json") as f:
     secrets = json.load(f)
@@ -30,7 +31,9 @@ def is_user_admin(cur, user_id):
 
 
 def check_user_a(dbname, user, password, port):
-    conn = psycopg2.connect(dbname=dbname, user=user, password=password, host="localhost", port=port)
+    conn = psycopg2.connect(
+        dbname=dbname, user=user, password=password, host="localhost", port=port
+    )
     cur = conn.cursor()
 
     email = "usera@localhost"
@@ -57,17 +60,20 @@ def run_command(cmd):
 
 def check_wrong_credentials():
     commands = [
-        "python synch_app.py --username usera@localhost --password userAPW", # wrong password
-        "python synch_app.py --username usera@local --password userAPW123", # wrong username
-        "python synch_app.py --username bob@localhost --password password!", # nonexistent user
-        "python synch_app.py --username userb@localhost --password userBPW123", # wrong password
-        "python synch_app.py --username admin@localhost --password adminPW123" # wrong password
+        "python synch_app.py --username usera@localhost --password userAPW",  # wrong password
+        "python synch_app.py --username usera@local --password userAPW123",  # wrong username
+        "python synch_app.py --username bob@localhost --password password!",  # nonexistent user
+        "python synch_app.py --username userb@localhost --password userBPW123",  # wrong password
+        "python synch_app.py --username admin@localhost --password adminPW123",  # wrong password
     ]
     results = [run_command(cmd) for cmd in commands]
     return_val = all(code != 0 for code in results)
 
     if return_val:
-        print(f"[PASS] All attempts to synch with wrong credentials failed.", file=sys.stderr)
+        print(
+            f"[PASS] All attempts to synch with wrong credentials failed.",
+            file=sys.stderr,
+        )
     else:
         print(f"[FAIL] Synching with wrong credential(s) suceeded.", file=sys.stderr)
     return return_val
@@ -77,13 +83,16 @@ def check_correct_credentials():
     commands = [
         f"python synch_app.py --username userb@localhost --password {secrets['userb_password']}",
         f"python synch_app.py --username admin@localhost --password {secrets['admin_password']}",
-        "python synch_app.py --username usera@localhost --password userAPW123"
+        "python synch_app.py --username usera@localhost --password userAPW123",
     ]
     results = [run_command(cmd) for cmd in commands]
     return_val = all(code == 0 for code in results)
 
     if return_val:
-        print(f"[PASS] All attempts to synch with correct credentials succeeded.", file=sys.stderr)
+        print(
+            f"[PASS] All attempts to synch with correct credentials succeeded.",
+            file=sys.stderr,
+        )
     else:
         print(f"[FAIL] Synching with correct credentials failed.", file=sys.stderr)
     return return_val
@@ -91,11 +100,17 @@ def check_correct_credentials():
 
 if __name__ == "__main__":
     results_summary = {}
-    results_summary["check_user_a"] = 1 if check_user_a(
-        dbname="mydatabase", user="postgres", password="postgresPW", port=5432
-    ) else 0
+    results_summary["check_user_a"] = (
+        1
+        if check_user_a(
+            dbname="mydatabase", user="postgres", password="postgresPW", port=5432
+        )
+        else 0
+    )
     results_summary["check_wrong_credentials"] = 1 if check_wrong_credentials() else 0
-    results_summary["check_correct_credentials"] = 1 if check_correct_credentials() else 0
+    results_summary["check_correct_credentials"] = (
+        1 if check_correct_credentials() else 0
+    )
     print(json.dumps(results_summary))
 
     all_passed = all(val == 1 for val in results_summary.values())
