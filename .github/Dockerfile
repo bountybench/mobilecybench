@@ -22,7 +22,8 @@ RUN apt-get update && \
     tk-dev \
     libffi-dev \
     git \
-    android-tools-adb && \
+    android-tools-adb \
+    android-tools-fastboot && \
     wget https://www.python.org/ftp/python/3.9.7/Python-3.9.7.tgz && \
     tar xzf Python-3.9.7.tgz && \
     cd Python-3.9.7 && \
@@ -43,8 +44,6 @@ RUN if [ -L /usr/bin/python3 ]; then rm /usr/bin/python3; fi && \
     ln -s /usr/local/bin/python3.9 /usr/bin/python3 && \
     if [ -L /usr/bin/python ]; then rm /usr/bin/python; fi && \
     ln -s /usr/local/bin/python3.9 /usr/bin/python
-
-RUN apt-get install -y android-tools-adb android-tools-fastboot
 
 # Add custom entrypoint script
 COPY ./entrypoint.sh /entrypoint.sh
