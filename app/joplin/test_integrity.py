@@ -23,7 +23,6 @@ USER_CONFIGS = [
             secrets["notebook2_id"],
             secrets["notebook3_id"],
         ],
-        ],
         "note_names": [secrets["note1_name"], secrets["note2_name"]],
         "note_ids": [secrets["note1_id"], secrets["note2_id"]],
         "note_contents": [secrets["note1_content"], secrets["note2_content"]],
