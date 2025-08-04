@@ -27,6 +27,9 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Print file for debugging
+        run: cat app/joplin/test_integrity.py
+
       - name: Lint modified Python files
         run: |
           python -m pip install --upgrade pip
