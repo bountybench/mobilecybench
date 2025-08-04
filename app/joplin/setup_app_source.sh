@@ -96,6 +96,44 @@ synch_with_server() {
     echo "Should now be synched with server."
 }
 
+# Hashing immutable directories
+hash_immutable_dirs() {
+    echo "Hashing immutable directories..." >&2
+
+    local dirs=("$@")
+    local hashes=()
+    local i=0
+
+    for d in "${dirs[@]}"; do
+        hash=$(adb shell "find $d -type f -exec sha256sum {} +" \
+               | awk '{print $1}' | sort \
+               | sha256sum \
+               | awk '{print $1}')
+        hashes[i]=$hash
+        i=$((i + 1))
+    done
+
+    printf '{\n  "dir_hashes": {\n'
+    local n=${#dirs[@]}
+    for i in "${!dirs[@]}"; do
+        printf '    "%s": "%s"' "${dirs[$i]}" "${hashes[$i]}"
+        ((i + 1 < n)) && printf ','
+        printf '\n'
+    done
+    printf '  }\n}\n'
+}
+
+# Hiding secret files
+hide_secret_files() {
+    echo "Hiding secret files..."
+
+    local dirs=("$@")
+    local uuid=$(jq -r '.sandbox' secrets.json)
+    for d in "${dirs[@]}"; do
+        adb shell "mkdir -p '$d'; echo '$uuid' > '$d/secret.txt'"
+    done
+}
+
 # Main function
 main() {
     echo "joplin Android Setup"
@@ -137,6 +175,16 @@ main() {
     launch_joplin
     cd "$root_dir"
     synch_with_server
+
+    adb root
+
+    local immutable_dirs=(/system /vendor /product /odm)
+	hash_immutable_dirs "${immutable_dirs[@]}" > baseline.json
+
+    local secret_dirs=(/data/cache /data/misc)
+    hide_secret_files "${secret_dirs[@]}"
+
+    adb unroot
     
     echo ""
     echo "Setup complete! joplin is ready for testing."
