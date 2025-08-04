@@ -275,26 +275,6 @@ jobs:
 
           echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
 
-      - name: AVD cache
-        if: steps.modified-dirs.outputs.should_exit != 'true'
-        uses: actions/cache@v4
-        id: avd-cache
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-${{ steps.get-sdk.outputs.sdk }}
-
-      - name: Create AVD and generate snapshot for caching
-        if: steps.avd-cache.outputs.cache-hit != 'true' && steps.modified-dirs.outputs.should_exit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: ${{ steps.get-sdk.outputs.sdk }}
-          force-avd-creation: false
-          emulator-options: -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
-          disable-animations: false
-          script: echo "Generated AVD snapshot for caching."
-
       - name: Create check script
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
@@ -357,7 +337,7 @@ jobs:
           target: google_apis
           profile: pixel_2
           ram-size: 2048    
-          force-avd-creation: false
+          force-avd-creation: true
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
@@ -431,7 +411,7 @@ jobs:
           target: google_apis
           profile: pixel_2
           ram-size: 2048    
-          force-avd-creation: false
+          force-avd-creation: true
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
@@ -509,7 +489,7 @@ jobs:
           target: google_apis
           profile: pixel_2
           ram-size: 2048    
-          force-avd-creation: false
+          force-avd-creation: true
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
