@@ -1,5 +1,6 @@
 {
     "sdk": "28",
+    "java": 17,
     "commit_version": "9160f0e",
     "download_link": "https://github.com/laurent22/joplin-android/releases/download/android-v2.11.22/joplin-v2.11.22.apk",
     "server": "http://10.0.2.2:22300",

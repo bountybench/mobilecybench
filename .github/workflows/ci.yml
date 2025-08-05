@@ -187,13 +187,47 @@ jobs:
             echo "$modified_dirs" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
           fi
+          
+      - name: Get API level & Java versions
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        id: get-sdk-java
+        run: |
+          set -e
+
+          # Get the first directory from modified_dirs
+          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
+
+          metadata="$dir/metadata.json"
+          if [ ! -f "$metadata" ]; then
+            echo "ERROR: $metadata not found"
+            exit 1
+          fi
+
+          sdk=$(jq -r '.sdk' $metadata)
+          if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
+              echo "${ERROR} Could not extract SDK from $metadata. Use default (28)."
+              sdk=28
+          else 
+              echo "SDK: $sdk"
+          fi
+
+          java=$(jq -r '.java' $metadata)
+          if [ "$?" -ne 0 ] || [ "$java" = "null" ] || [ -z "$java" ]; then
+              echo "${ERROR} Could not extract Java version from $metadata. Use default (17)."
+              java=17
+          else 
+              echo "Java version: $java"
+          fi
+
+          echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
+          echo "java=$java" >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK
         id: setup-java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: 17
+          java-version: "${{ steps.get-sdk-java.outputs.java }}"
       
       - name: Setup Python 3.9 environment
         uses: actions/setup-python@v5
@@ -247,31 +281,6 @@ jobs:
         with:
           path: ~/.gradle/wrapper/dists
           key: gradle-wrapper-${{ hashFiles('**/gradle-wrapper.properties') }}
-
-      - name: Get API level
-        if: steps.modified-dirs.outputs.should_exit != 'true'
-        id: get-sdk
-        run: |
-          set -e
-
-          # Get the first directory from modified_dirs
-          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
-
-          metadata="$dir/metadata.json"
-          if [ ! -f "$metadata" ]; then
-            echo "ERROR: $metadata not found"
-            exit 1
-          fi
-
-          sdk=$(jq -r '.sdk' $metadata)
-          if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
-              echo "${ERROR} Could not extract SDK from $metadata. Use default (28)."
-              sdk=28
-          else 
-              echo "SDK: $sdk"
-          fi
-
-          echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
 
       # - name: Create check script
       #   if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -330,7 +339,7 @@ jobs:
       #   if: steps.modified-dirs.outputs.should_exit != 'true'
       #   uses: reactivecircus/android-emulator-runner@v2
       #   with:
-      #     api-level: "${{ steps.get-sdk.outputs.sdk }}"
+      #     api-level: "${{ steps.get-sdk-java.outputs.sdk }}"
       #     arch: x86_64
       #     target: google_apis
       #     profile: pixel_2
@@ -401,6 +410,7 @@ jobs:
           chmod +x test_checks.sh
 
       - name: Install Android SDK
+        if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 28
@@ -410,11 +420,13 @@ jobs:
           script: echo "Temporary run to preinstall SDK"
 
       - name: Create AVD
+        if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           echo "no" | avdmanager create avd -n test_avd \
             -k "system-images;android-28;google_apis;x86_64" --device "pixel"
 
       - name: Launch Emulator
+        if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           echo "ANDROID_HOME: $ANDROID_HOME"
           echo "PATH: $PATH"
@@ -437,24 +449,11 @@ jobs:
 
           echo "✅ Emulator booted successfully."
 
-      - name: Execute tests
+      - name: Test checks after non-DOS vulnerable scenario
+        if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           echo "Executing tests..."
           bash -x ./test_checks.sh
-
-      # - name: Test checks after non-DOS vulnerable scenario
-      #   if: steps.modified-dirs.outputs.should_exit != 'true'
-      #   uses: reactivecircus/android-emulator-runner@v2
-      #   with:
-      #     api-level: "${{ steps.get-sdk.outputs.sdk }}"
-      #     arch: x86_64
-      #     target: google_apis
-      #     profile: pixel_2
-      #     ram-size: 2048    
-      #     force-avd-creation: false
-      #     emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
-      #     disable-animations: true
-      #     script: ./test_checks.sh
 
       - name: Create check script
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -524,7 +523,7 @@ jobs:
         if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: "${{ steps.get-sdk.outputs.sdk }}"
+          api-level: "${{ steps.get-sdk-java.outputs.sdk }}"
           arch: x86_64
           target: google_apis
           profile: pixel_2
