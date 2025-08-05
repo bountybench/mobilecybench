@@ -4,4 +4,3 @@ start_emulator.sh
 setup.log
 public/node_modules
 mcp/ngrok.yml
-apps/
