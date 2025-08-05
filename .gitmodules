@@ -10,6 +10,3 @@
 	path = joplin/codebase
 	url = https://github.com/cy-suite/joplin.git
 	
-[submodule "nextcloud-talk/codebase"]
-	path = nextcloud-talk/codebase
-	url = https://github.com/nextcloud/talk-android
