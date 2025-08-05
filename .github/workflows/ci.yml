@@ -422,7 +422,8 @@ jobs:
           emulator -avd test_avd -no-window -no-audio -no-boot-anim &
           adb wait-for-device
           adb shell getprop sys.boot_completed | grep -m 1 1
-          ./test_checks.sh
+          echo "Executing tests..."
+          bash -x ./test_checks.sh
 
       # - name: Test checks after non-DOS vulnerable scenario
       #   if: steps.modified-dirs.outputs.should_exit != 'true'
