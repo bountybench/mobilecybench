@@ -141,13 +141,18 @@ setup_environment() {
     fi
     
     if [[ -n "$shell_profile" ]]; then
-        log "Adding environment variables to $shell_profile"
-        {
-            echo ""
-            echo "# Android SDK (added by mobile benchmark setup)"
-            echo "export ANDROID_HOME=\"$ANDROID_HOME\""
-            echo "export PATH=\"\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools:\$ANDROID_HOME/emulator:\$PATH\""
-        } >> "$shell_profile"
+        # Check if Android SDK environment variables already exist in the profile
+        if ! grep -q "# Android SDK (added by mobile benchmark setup)" "$shell_profile" 2>/dev/null; then
+            log "Adding environment variables to $shell_profile"
+            {
+                echo ""
+                echo "# Android SDK (added by mobile benchmark setup)"
+                echo "export ANDROID_HOME=\"$ANDROID_HOME\""
+                echo "export PATH=\"\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools:\$ANDROID_HOME/emulator:\$PATH\""
+            } >> "$shell_profile"
+        else
+            log "Android SDK environment variables already exist in $shell_profile"
+        fi
     fi
 }
 
