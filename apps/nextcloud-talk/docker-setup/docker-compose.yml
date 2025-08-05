@@ -1,0 +1,33 @@
+services:
+  db: 
+    image: mariadb:10.6
+    container_name: nextcloud-database
+    restart: always
+    env_file: [.env]
+    volumes:
+      - db:/var/lib/mysql
+    networks:
+      - db_priv
+
+  app:
+    image: nextcloud:latest
+    container_name: nextcloud-server
+    restart: always
+    env_file: [.env]
+    depends_on:
+      - db
+    networks:
+      - db_priv
+      - shared_net
+    ports:
+      - "8080:80"
+
+networks:
+  shared_net:
+    external: true
+  db_priv:
+    driver: bridge
+
+volumes:
+  db:
+  
