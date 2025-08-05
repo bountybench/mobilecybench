@@ -380,6 +380,7 @@ jobs:
 
           echo "Running setup..."
           ./setup.sh
+          adb logcat -c
 
           echo "Creating vulnerable scenario 0..."
           cd vuln_scenarios/vuln_scenario_0
@@ -449,14 +450,13 @@ jobs:
 
           echo "Emulator booted successfully."
 
-          sleep 15
+          sleep 30
           adb root
           sleep 5  
           adb remount
           sleep 5  
           adb wait-for-device
           adb devices
-          adb logcat -c
           echo "Emulator rooted and remounted successfully."
 
       - name: Test checks after non-DOS vulnerable scenario
