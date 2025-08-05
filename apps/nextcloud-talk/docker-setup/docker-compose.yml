@@ -7,7 +7,7 @@ services:
     volumes:
       - db:/var/lib/mysql
     networks:
-      - db_priv
+      - private_net
 
   app:
     image: nextcloud:latest
@@ -17,7 +17,7 @@ services:
     depends_on:
       - db
     networks:
-      - db_priv
+      - private_net
       - shared_net
     ports:
       - "8080:80"
@@ -25,7 +25,7 @@ services:
 networks:
   shared_net:
     external: true
-  db_priv:
+  private_net:
     driver: bridge
 
 volumes:
