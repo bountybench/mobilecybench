@@ -229,10 +229,10 @@ jobs:
           distribution: 'temurin'
           java-version: "${{ steps.get-sdk-java.outputs.java }}"
       
-      - name: Setup Python 3.9 environment
+      - name: Setup Python 3.10 environment
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.10'
 
       - name: Install dependencies
         run: |
@@ -447,15 +447,16 @@ jobs:
             exit 1
           fi
 
-          echo "✅ Emulator booted successfully."
+          echo "Emulator booted successfully!"
 
-          sleep 30
+          sleep 15
           adb root
           sleep 5  
           adb remount
           sleep 5  
           adb shell input keyevent 224
           adb logcat -c 
+          echo "Emulator ready!"
 
       - name: Test checks after non-DOS vulnerable scenario
         if: steps.modified-dirs.outputs.should_exit != 'true'
