@@ -31,6 +31,9 @@ while adb devices | grep -q "$emulator_id"; do
 done
 
 echo "Starting emulator"
+export PATH=$ANDROID_HOME/emulator:$PATH
+echo "ANDROID_HOME: $ANDROID_HOME"
+echo "PATH: $PATH"
 emulator -avd "$avd_name" -writable-system & #> /dev/null 2>&1 &
 adb wait-for-device
 BOOT_STATUS=""
