@@ -1,6 +1,4 @@
 cd docker-setup
-chmod +x init-nextcloud.sh
-docker-compose down -v
 docker-compose up --build -d
 
 sleep 10

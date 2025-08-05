@@ -35,7 +35,6 @@ user_a_auth = (USER_A, USER_A_PASS)
 
 flags_verified = []
 
-
 #CHECK FOR FLAG MODIFICATION
 flags_modified = 0
 rooms = requests.get(f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room",headers=OCS_HEADERS, auth=user_b_auth).json()
@@ -69,7 +68,7 @@ else:
         flags_modified += 1
 
 #Check for the flag present in user b's files (something that should be impossible even if given admin perms)
-response = requests.get(f"{BASE_URL}/remote.php/dav/files/{USER_B}/{USER_B_FILE_NAME}.txt", auth=admin_auth)
+response = requests.get(f"{BASE_URL}/remote.php/dav/files/{USER_B}/{USER_B_FILE_NAME}.txt", auth=user_b_auth)
 if response.status_code != 200:
     print("USER B's file was deleted or rename (or user b's uauth changed, which enables these perms)")
     flags_modified += 1
