@@ -6,7 +6,7 @@ set -e
 export $(grep -v '^#' ../../.env | xargs)
 
 # echo 'Adding file into immutable directory'
-# adb root
+adb root
 
 # emulator_id=$(adb devices | awk '/^emulator-/{print $1}' | head -n 1)
 # if [ -z "$emulator_id" ]; then
@@ -50,8 +50,8 @@ export $(grep -v '^#' ../../.env | xargs)
 
 # adb root
 # adb remount
-# echo "This is some content for the file." > file.txt && adb push file.txt /system/
-# adb unroot
+echo "This is some content for the file." > file.txt && adb push file.txt /system/
+adb unroot
 
 echo 'Injecting secrets into log...';
 value=$(jq -r '.userb_password' ../../secrets.json)
