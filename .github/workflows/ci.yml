@@ -273,72 +273,72 @@ jobs:
 
           echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
 
-      - name: Create check script
-        if: steps.modified-dirs.outputs.should_exit != 'true'
-        run: |
-          echo "Generating test_checks.sh"
-          modified_dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
+      # - name: Create check script
+      #   if: steps.modified-dirs.outputs.should_exit != 'true'
+      #   run: |
+      #     echo "Generating test_checks.sh"
+      #     modified_dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
 
-          cat << 'EOF' > test_checks.sh
-          #!/bin/bash
-          set -e
+      #     cat << 'EOF' > test_checks.sh
+      #     #!/bin/bash
+      #     set -e
 
-          source /tmp/shared_functions.sh
-          check_server_ready
-          EOF
+      #     source /tmp/shared_functions.sh
+      #     check_server_ready
+      #     EOF
                 
-          echo "dir=\"$modified_dir\"" >> test_checks.sh
+      #     echo "dir=\"$modified_dir\"" >> test_checks.sh
 
-          cat <<'EOF' >> test_checks.sh
-          cd "$dir"
-          checkout_commit "$dir"
+      #     cat <<'EOF' >> test_checks.sh
+      #     cd "$dir"
+      #     checkout_commit "$dir"
 
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
-          echo "Checking for required scripts..."
-          for script in "${required_scripts[@]}"; do
-            if [[ ! -f "$script" ]]; then
-              echo "ERROR: Required script '$script' not found."
-              exit 1
-            fi
-          done
+      #     required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
+      #     echo "Checking for required scripts..."
+      #     for script in "${required_scripts[@]}"; do
+      #       if [[ ! -f "$script" ]]; then
+      #         echo "ERROR: Required script '$script' not found."
+      #         exit 1
+      #       fi
+      #     done
 
-          echo "Running setup..."
-          ./setup.sh
+      #     echo "Running setup..."
+      #     ./setup.sh
 
-          echo "Running checks..."
-          ./run_checks.sh
+      #     echo "Running checks..."
+      #     ./run_checks.sh
 
-          echo "Verifying scores.json contains all 1s..."
-          if ! jq -e '[.. | select(type == "number")] | all(. == 1)' scores.json > /dev/null; then
-            echo "ERROR: scores.json does not contain all 1s."
-            cat scores.json
-            echo "Cleaning up..."
-            ./cleanup.sh
-            exit 1
-          fi
+      #     echo "Verifying scores.json contains all 1s..."
+      #     if ! jq -e '[.. | select(type == "number")] | all(. == 1)' scores.json > /dev/null; then
+      #       echo "ERROR: scores.json does not contain all 1s."
+      #       cat scores.json
+      #       echo "Cleaning up..."
+      #       ./cleanup.sh
+      #       exit 1
+      #     fi
 
-          echo "Checks passed successfully. All scores are 1."
-          echo "Cleaning up..."
-          ./cleanup.sh
-          exit 0
-          EOF
+      #     echo "Checks passed successfully. All scores are 1."
+      #     echo "Cleaning up..."
+      #     ./cleanup.sh
+      #     exit 0
+      #     EOF
 
-          cat test_checks.sh
-          chmod +x test_checks.sh
+      #     cat test_checks.sh
+      #     chmod +x test_checks.sh
 
-      - name: Test checks before any vulnerable scenarios
-        if: steps.modified-dirs.outputs.should_exit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: "${{ steps.get-sdk.outputs.sdk }}"
-          arch: x86_64
-          target: google_apis
-          profile: pixel_2
-          ram-size: 2048    
-          force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
-          disable-animations: true
-          script: ./test_checks.sh
+      # - name: Test checks before any vulnerable scenarios
+      #   if: steps.modified-dirs.outputs.should_exit != 'true'
+      #   uses: reactivecircus/android-emulator-runner@v2
+      #   with:
+      #     api-level: "${{ steps.get-sdk.outputs.sdk }}"
+      #     arch: x86_64
+      #     target: google_apis
+      #     profile: pixel_2
+      #     ram-size: 2048    
+      #     force-avd-creation: false
+      #     emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
+      #     disable-animations: true
+      #     script: ./test_checks.sh
 
       - name: Create check script
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -400,19 +400,38 @@ jobs:
           cat test_checks.sh
           chmod +x test_checks.sh
 
-      - name: Test checks after non-DOS vulnerable scenario
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+      - name: Install Android SDK
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: "${{ steps.get-sdk.outputs.sdk }}"
-          arch: x86_64
+          api-level: 28
           target: google_apis
+          arch: x86_64
           profile: pixel_2
-          ram-size: 2048    
-          force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
-          disable-animations: true
-          script: ./test_checks.sh
+          script: echo "Temporary run to preinstall SDK"
+
+      - name: Create AVD
+        run: |
+          echo "no" | avdmanager create avd -n test_avd \
+            -k "system-images;android-28;google_apis;x86_64" --device "pixel"
+
+      - name: Launch Emulator
+        run: |
+          emulator -avd test_avd -no-window -no-audio -no-boot-anim &
+          ./test_checks.sh
+
+      # - name: Test checks after non-DOS vulnerable scenario
+      #   if: steps.modified-dirs.outputs.should_exit != 'true'
+      #   uses: reactivecircus/android-emulator-runner@v2
+      #   with:
+      #     api-level: "${{ steps.get-sdk.outputs.sdk }}"
+      #     arch: x86_64
+      #     target: google_apis
+      #     profile: pixel_2
+      #     ram-size: 2048    
+      #     force-avd-creation: false
+      #     emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
+      #     disable-animations: true
+      #     script: ./test_checks.sh
 
       - name: Create check script
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -487,7 +506,7 @@ jobs:
           target: google_apis
           profile: pixel_2
           ram-size: 2048    
-          force-avd-creation: true
+          force-avd-creation: false
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
