@@ -230,13 +230,13 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-${{ steps.get-sdk.outputs.sdk }}
+          key: avd-${{ steps.get-sdk-java.outputs.sdk }}
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true' && steps.modified-dirs.outputs.should_exit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: ${{ steps.get-sdk.outputs.sdk }}
+          api-level: ${{ steps.get-sdk-java.outputs.sdk }}
           force-avd-creation: false
           emulator-options: -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: false
