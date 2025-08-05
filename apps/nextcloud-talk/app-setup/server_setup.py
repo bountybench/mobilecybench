@@ -30,6 +30,7 @@ BASE_URL = 'http://localhost:8080/'
 
 options = webdriver.SafariOptions()
 driver = webdriver.Safari(options=options)
+options.add_argument("--start-maximized")
 driver.get(BASE_URL)
 
 # time.sleep(3)
@@ -42,8 +43,13 @@ admin_pwd = driver.find_element(By.ID, "adminpass")
 admin_pwd.clear()
 admin_pwd.send_keys(ADMIN_PASSWORD)
 
-install_button = driver.find_element(By.XPATH, '//input[@type="submit" and @value="Install"]')
+time.sleep(3)
+
+install_button = driver.find_element(By.XPATH, '//input[@value="Install"]')
+print(install_button, "Found install button")
 install_button.click()
+print("Clicked install button")
+
 
 time.sleep(20)
 

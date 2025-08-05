@@ -1,5 +1,3 @@
-# ui_utils.py
-
 import uiautomator2 as u2
 import sys
 import time
@@ -22,6 +20,7 @@ def click_by_desc(device, content_desc):
 
 def click_by_text(device, text):
     el = device(text=text)
+    # time.sleep(2)
     if el.exists():
         el.click()
         print(f"Clicked element with text: {text}")

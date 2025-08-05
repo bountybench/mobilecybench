@@ -1,5 +1,8 @@
 {
     "sdk": 34,
+    "username": "user_a",
+    "password": "1234_user_a",
+    "server": "http://10.0.2.2:8080",
     "has_codebase": false,
     "commit_version": "v21.1.1",
     "gh_link": "https://github.com/nextcloud/talk-android",
