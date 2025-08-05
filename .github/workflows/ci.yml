@@ -381,6 +381,8 @@ jobs:
           echo "Running setup..."
           ./setup.sh
 
+          ./test_availability.py
+
           echo "Creating vulnerable scenario 0..."
           cd vuln_scenarios/vuln_scenario_0
           ./vuln.sh
@@ -447,38 +449,35 @@ jobs:
             exit 1
           fi
 
-          echo "✅ Emulator booted successfully."
-
-          echo "Dumping UI for debugging..."
-          adb shell uiautomator dump /sdcard/uidump.xml || echo "UI dump failed"
-          if adb shell ls /sdcard/uidump.xml; then
-            adb pull /sdcard/uidump.xml uidump.xml
-            cat uidump.xml
-          else
-            echo "❌ UI dump file not found. System UI may not be initialized properly."
-          fi
+          echo "Emulator booted successfully."
 
           sleep 10
           adb root
           sleep 5  
           adb remount
           sleep 5  
-          
-          echo "Dumping UI for debugging..."
-          adb shell input keyevent 224
-          adb shell uiautomator dump /sdcard/uidump.xml || echo "UI dump failed"
-          if adb shell ls /sdcard/uidump.xml; then
-            adb pull /sdcard/uidump.xml uidump.xml
-            cat uidump.xml
-          else
-            echo "❌ UI dump file not found. System UI may not be initialized properly."
-          fi
+          adb wait-for-device
+          adb devices
+          echo "Emulator rooted and remounted successfully."
 
       - name: Test checks after non-DOS vulnerable scenario
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           echo "Executing tests..."
           bash -x ./test_checks.sh
+
+      - name: Stop emulator
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          echo "Shutting down emulator..."
+          adb devices
+          EMU_ID=$(adb devices | awk '/emulator-/{print $1}')
+          if [ -n "$EMU_ID" ]; then
+            adb -s "$EMU_ID" emu kill
+            echo "Emulator stopped."
+          else
+            echo "No emulator instance found to stop."
+          fi
 
       - name: Create check script
         if: steps.modified-dirs.outputs.should_exit != 'true'
