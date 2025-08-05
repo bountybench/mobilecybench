@@ -419,9 +419,12 @@ jobs:
           echo "ANDROID_HOME: $ANDROID_HOME"
           echo "PATH: $PATH"
           export PATH=$ANDROID_HOME/emulator:$PATH
-          emulator -avd test_avd -no-window -no-audio -no-boot-anim > /dev/null 2>&1 &
+          emulator -avd test_avd -no-window -no-audio -no-boot-anim &
           adb wait-for-device
           adb shell getprop sys.boot_completed | grep -m 1 1
+
+      - name: Execute tests
+        run: |
           echo "Executing tests..."
           bash -x ./test_checks.sh
 
