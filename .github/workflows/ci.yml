@@ -450,8 +450,11 @@ jobs:
           echo "✅ Emulator booted successfully."
 
           adb root
-          sleep 2
+          sleep 5  
           adb remount
+          sleep 3  
+          adb shell "pkill -f com.android.systemui"
+          sleep 2
 
       - name: Test checks after non-DOS vulnerable scenario
         if: steps.modified-dirs.outputs.should_exit != 'true'
