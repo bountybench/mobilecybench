@@ -449,6 +449,15 @@ jobs:
 
           echo "✅ Emulator booted successfully."
 
+          echo "Dumping UI for debugging..."
+          adb shell uiautomator dump /sdcard/uidump.xml || echo "UI dump failed"
+          if adb shell ls /sdcard/uidump.xml; then
+            adb pull /sdcard/uidump.xml uidump.xml
+            cat uidump.xml
+          else
+            echo "❌ UI dump file not found. System UI may not be initialized properly."
+          fi
+
           sleep 10
           adb root
           sleep 5  
