@@ -419,9 +419,9 @@ jobs:
           echo "ANDROID_HOME: $ANDROID_HOME"
           echo "PATH: $PATH"
           export PATH=$ANDROID_HOME/emulator:$PATH
-          emulator -avd test_avd -no-window -no-audio -no-boot-anim &
+          emulator -avd test_avd -writable-system -no-window -no-audio -no-boot-anim &
           adb wait-for-device
-          
+
           BOOT_STATUS=""
           timeout=300
           while [[ "$BOOT_STATUS" != "1" && $timeout -gt 0 ]]; do
