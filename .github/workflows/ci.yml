@@ -222,6 +222,26 @@ jobs:
           echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
           echo "java=$java" >> "$GITHUB_OUTPUT"
 
+      - name: AVD cache
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ steps.get-sdk.outputs.sdk }}
+
+      - name: Create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true' && steps.modified-dirs.outputs.should_exit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ steps.get-sdk.outputs.sdk }}
+          force-avd-creation: false
+          emulator-options: -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+
       - name: Set up JDK
         id: setup-java
         uses: actions/setup-java@v4
@@ -425,7 +445,7 @@ jobs:
           echo "no" | avdmanager create avd -n test_avd \
             -k "system-images;android-28;google_apis;x86_64" --device "pixel"
 
-      - name: Launch Emulator
+      - name: Launch emulator
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           echo "ANDROID_HOME: $ANDROID_HOME"
@@ -464,7 +484,7 @@ jobs:
           echo "Executing tests..."
           bash -x ./test_checks.sh
 
-      - name: Stop Emulator
+      - name: Stop emulator
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           echo "Shutting down emulator..."
