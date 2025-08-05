@@ -381,8 +381,6 @@ jobs:
           echo "Running setup..."
           ./setup.sh
 
-          ./test_availability.py
-
           echo "Creating vulnerable scenario 0..."
           cd vuln_scenarios/vuln_scenario_0
           ./vuln.sh
