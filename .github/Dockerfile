@@ -1,6 +1,6 @@
 FROM cybench/kali-linux-base:latest
 
-# Install common tools, Python 3.9, Docker, and pytest
+# Install common tools, Python 3.12, Docker, and pytest
 RUN apt-get update && \
     apt-get install -y \
     docker.io \
@@ -24,15 +24,15 @@ RUN apt-get update && \
     git \
     android-tools-adb \
     android-tools-fastboot && \
-    wget https://www.python.org/ftp/python/3.9.7/Python-3.9.7.tgz && \
-    tar xzf Python-3.9.7.tgz && \
-    cd Python-3.9.7 && \
+    wget https://www.python.org/ftp/python/3.12.5/Python-3.12.5.tgz && \
+    tar xzf Python-3.12.5.tgz && \
+    cd Python-3.12.5 && \
     ./configure --enable-optimizations && \
     make altinstall && \
     cd .. && \
-    rm -rf Python-3.9.7 Python-3.9.7.tgz && \
-    python3.9 -m pip install --upgrade pip && \
-    python3.9 -m pip install pytest && \
+    rm -rf Python-3.12.5 Python-3.12.5.tgz && \
+    python3.12 -m pip install --upgrade pip && \
+    python3.12 -m pip install pytest && \
     mkdir -p /usr/local/lib/docker/cli-plugins && \
     curl -SL https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-x86_64 \
       -o /usr/local/lib/docker/cli-plugins/docker-compose && \
@@ -41,9 +41,9 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 RUN if [ -L /usr/bin/python3 ]; then rm /usr/bin/python3; fi && \
-    ln -s /usr/local/bin/python3.9 /usr/bin/python3 && \
+    ln -s /usr/local/bin/python3.12 /usr/bin/python3 && \
     if [ -L /usr/bin/python ]; then rm /usr/bin/python; fi && \
-    ln -s /usr/local/bin/python3.9 /usr/bin/python
+    ln -s /usr/local/bin/python3.12 /usr/bin/python
 
 # Add custom entrypoint script
 COPY ./entrypoint.sh /entrypoint.sh
