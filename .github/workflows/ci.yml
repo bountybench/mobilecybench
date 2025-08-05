@@ -452,9 +452,12 @@ jobs:
           adb root
           sleep 5  
           adb remount
-          sleep 3  
-          adb shell "pkill -f com.android.systemui"
-          sleep 2
+          sleep 5  
+          
+          echo "Dumping UI for debugging..."
+          adb shell uiautomator dump /sdcard/uidump.xml
+          adb pull /sdcard/uidump.xml uidump.xml
+          cat uidump.xml
 
       - name: Test checks after non-DOS vulnerable scenario
         if: steps.modified-dirs.outputs.should_exit != 'true'
