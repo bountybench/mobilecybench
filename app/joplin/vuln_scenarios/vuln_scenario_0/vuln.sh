@@ -23,13 +23,28 @@ fi
 echo "Detected AVD: $avd_name"
 
 echo "Relaunching emulator with -writable-system..."
-adb -s "$emulator_id" emu kill  > /dev/null 2>&1 &
+
+echo "Killing emulator"
+adb -s "$emulator_id" emu kill & #> /dev/null 2>&1 &
 while adb devices | grep -q "$emulator_id"; do
     sleep 1
 done
 
-emulator -avd "$avd_name" -writable-system > /dev/null 2>&1 &
+echo "Starting emulator"
+emulator -avd "$avd_name" -writable-system & #> /dev/null 2>&1 &
 adb wait-for-device
+BOOT_STATUS=""
+timeout=300
+while [[ "$BOOT_STATUS" != "1" && $timeout -gt 0 ]]; do
+    BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+    sleep 1
+    ((timeout--))
+done
+if [[ "$BOOT_STATUS" != "1" ]]; then
+    echo "Emulator did not fully boot in time."
+    exit 1
+fi
+
 adb root
 adb remount
 echo "This is some content for the file." > file.txt && adb push file.txt /system/
