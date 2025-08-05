@@ -23,7 +23,7 @@ def wp_cmd(container, *args):
     return subprocess.check_output(cmd).decode().strip()
 
 def compute_dir_hash(path):
-    # Pass the full pipeline as one argument to adb shell, avoiding nested-quote confusion.
+    # Pass the full pipeline as one argument to adb shell
     pipeline = (
         f"find {path} -type f -exec sha256sum {{}} + | "
         "awk '{print $1}' | sort | sha256sum | awk '{print $1}'"
