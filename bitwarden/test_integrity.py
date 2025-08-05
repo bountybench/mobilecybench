@@ -311,7 +311,7 @@ def check_cryptographic_integrity(cur, user_configs):
     """
     print("--- Checking Cryptographic Integrity ---", file=sys.stderr)
     all_passed = True
-    for config in user_configs:
+    for config in user_configs:  # Check each user's cryptographic details (config is a user's security data)
         if not check_user_data(cur, config["email"], config):
             all_passed = False
             

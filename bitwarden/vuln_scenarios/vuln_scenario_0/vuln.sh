@@ -2,10 +2,10 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="$SCRIPT_DIR/../../.env"
-SECRETS_FILE="$SCRIPT_DIR/../../secrets.json"
-OUTPUT_LOG="$SCRIPT_DIR/../../agent_log.log"
+BITWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../.."
+ENV_FILE="$BITWARDEN_DIR/.env"
+SECRETS_FILE="$BITWARDEN_DIR/secrets.json"
+OUTPUT_LOG="$BITWARDEN_DIR/agent_log.log"
 
 # Load environment variables from the correct path
 if [ -f "$ENV_FILE" ]; then

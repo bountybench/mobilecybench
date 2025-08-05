@@ -16,15 +16,18 @@ from util import (
     wait_for_ui_stable, 
     wait_and_click, 
     wait_and_set_text,
-    initialize_device_and_app,
+    initialize_local_host,
     make_account,
     create_new_cipher,
     lock_and_logout,
     BITWARDEN_PKG
 )
 
+"""
+generate_random_flags()
+- Generate random flags for the benchmark and save them to flags.json.
+"""
 def generate_random_flags(count=15):
-    """Generate random flags for the benchmark and save them to flags.json."""
     flags = []
     for i in range(count):
         # Generate random alphanumeric characters (9 chars for 16-char total with FLAG{} wrapper)
@@ -40,8 +43,11 @@ def generate_random_flags(count=15):
     print(f"Generated {len(flags)} random flags in flags.json")
     return flags
 
+"""
+get_ciphers_for_user()
+- Populate a user's cipher templates with dynamic usernames and passwords.
+"""
 def get_ciphers_for_user(user_data, flags_for_user, user_index):
-    """Populate a user's cipher templates with dynamic usernames and passwords."""
     base_ciphers = user_data['ciphers']
     
     # Add the user-specific flags and dynamic usernames to the ciphers
@@ -57,6 +63,84 @@ def get_ciphers_for_user(user_data, flags_for_user, user_index):
     
     return base_ciphers
 
+"""
+extract_secrets_from_db()
+- Extract sensitive data from the database and create secrets.json.
+"""
+def extract_secrets_from_db():
+    print("Extracting secrets from the database...")
+
+    secrets = {
+        "users": [],
+        "ciphers": [],
+        "flags": []
+    }
+
+    try:
+        # 0. Load flags and accounts from json files
+        with open('flags.json', 'r') as f:
+            flags_data = json.load(f)
+            secrets["flags"] = flags_data["flags"]
+
+        with open('accounts.json', 'r') as f:
+            original_users = json.load(f)['users']
+        email_to_original_user = {user['email']: user for user in original_users}
+
+        # 1. Extract user data from the database
+        user_query = [
+            "docker", "exec", "vaultwarden-db", "psql", "-U", "bitwarden", "-d", "vaultwarden",
+            "-t", "-A", "-F", "\t",
+            "-c", "SELECT uuid, email, akey, private_key, public_key, security_stamp FROM users;"
+        ]
+        user_result = subprocess.run(user_query, capture_output=True, text=True, check=True)
+        for line in user_result.stdout.strip().split('\n'):
+            if not line:
+                continue
+            values = line.split('\t')
+            email = values[1]
+            original_user = email_to_original_user.get(email)
+            if original_user:
+                secrets["users"].append({
+                    "uuid": values[0],
+                    "email": email,
+                    "master_password": original_user['password'],
+                    "akey": values[2],
+                    "private_key": values[3],
+                    "public_key": values[4],
+                    "security_stamp": values[5],
+                })
+
+        # 2. Extract cipher data from the database
+        cipher_query = [
+            "docker", "exec", "vaultwarden-db", "psql", "-U", "bitwarden", "-d", "vaultwarden",
+            "-t", "-A", "-F", "\t",
+            "-c", "SELECT uuid, user_uuid, data FROM ciphers;"
+        ]
+        cipher_result = subprocess.run(cipher_query, capture_output=True, text=True, check=True)
+        for line in cipher_result.stdout.strip().split('\n'):
+            if not line:
+                continue
+            values = line.split('\t')
+            secrets["ciphers"].append({
+                "uuid": values[0],
+                "user_uuid": values[1],
+                "data": values[2],
+            })
+
+        # 3. Save the secrets to secrets.json
+        with open('secrets.json', 'w') as f:
+            json.dump(secrets, f, indent=2)
+
+        print(f"Created secrets.json with {len(secrets['users'])} users and {len(secrets['ciphers'])} ciphers.")
+        return True
+
+    except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"[ERROR] Failed to extract secrets: {e}", file=sys.stderr)
+        if isinstance(e, subprocess.CalledProcessError):
+            print(f"[ERROR] psql command stderr:\n{e.stderr}", file=sys.stderr)
+        return False
+
+
 def main(d, num_ciphers_per_user=5):
     # Load user accounts and their cipher templates from the unified JSON file
     with open('accounts.json', 'r') as f:
@@ -67,7 +151,7 @@ def main(d, num_ciphers_per_user=5):
     all_flags = generate_random_flags(count = len(users) * num_ciphers_per_user)
 
     # Initialize device and launch app
-    initialize_device_and_app(d)
+    initialize_local_host(d)
 
     for user_idx, user in enumerate(users):
         # Create the account with provided credentials
@@ -89,7 +173,7 @@ def main(d, num_ciphers_per_user=5):
 
         lock_and_logout(d)
 
-    print("Automation script finished.")
+    print("Accounts creation completed.")
 
 if __name__ == "__main__":
     start_time = time.time()
@@ -100,6 +184,8 @@ if __name__ == "__main__":
         print("Connection successful.")
 
         main(d)
+
+        extract_secrets_from_db()
 
     except Exception as e:
         print(f"[FATAL] An unexpected error occurred: {e}", file=sys.stderr)

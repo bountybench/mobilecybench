@@ -74,11 +74,11 @@ def wait_and_set_text(d, element, text, timeout=180):
 
 
 """
-initialize_device_and_app()
+initialize_local_host()
 - Takes in the device
 - Initializes the device connection and launches the Bitwarden app
 """
-def initialize_device_and_app(d):
+def initialize_local_host(d):
     # --- Step 1: App Initialization and Server Configuration ---
     # The following steps launch the application and point it to the
     # self-hosted Vaultwarden server instance.
@@ -113,8 +113,8 @@ def initialize_device_and_app(d):
     wait_and_click(d, d(resourceId="ServerUrlEntry"))
 
     # Step 1.2.5: Enter the self-hosted server URL
-    print("Step 1.2.5: Entering server URL: http://localhost:8080...")
-    wait_and_set_text(d, d(resourceId="ServerUrlEntry"), "http://localhost:8080")
+    print("Step 1.2.5: Entering server URL: http://10.0.2.2:8000...")
+    wait_and_set_text(d, d(resourceId="ServerUrlEntry"), "http://10.0.2.2:8000")
 
     # Step 1.2.6: Click the Save button to save the server configuration
     print("Step 1.2.6: Saving server configuration...")

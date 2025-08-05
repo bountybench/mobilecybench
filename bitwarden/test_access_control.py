@@ -31,7 +31,7 @@ def ensure_server_running():
     
     # Check if server is already running
     try:
-        with urllib.request.urlopen("http://localhost:8080/alive", timeout=5) as response:
+        with urllib.request.urlopen("http://localhost:8000/alive", timeout=5) as response:
             if response.status == 200:
                 print("[PASS] Vaultwarden server is already running.", file=sys.stderr)
                 return True
