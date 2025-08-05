@@ -9,4 +9,5 @@
    ```bash
    ./setup_env.sh
    ```
- 
+
+Proxy port: 8082
