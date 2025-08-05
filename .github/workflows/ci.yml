@@ -458,6 +458,7 @@ jobs:
           sleep 5  
           adb wait-for-device
           adb devices
+          adb logcat -c
           echo "Emulator rooted and remounted successfully."
 
       - name: Test checks after non-DOS vulnerable scenario
