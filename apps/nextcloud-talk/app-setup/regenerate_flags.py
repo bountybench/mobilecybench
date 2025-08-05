@@ -25,7 +25,7 @@ def regenerate_flags():
         # 'AGENT_MODIFIED_USER_B_MESSAGE': 'hacked_evil_message_to_admin',
         # 'AGENT_MODIFIED_ADMIN_PASSWORD': 'hacked_admin_pwd'
     }
-    with open('.env', 'w') as f:
+    with open('../.env', 'w') as f:
         for key, val in flags.items():
             f.write(f"{key}='{val}'\n")
 

@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #Export the user a info
-export USER_A_USERNAME=$(grep '^USER_A_USERNAME=' .env | cut -d '=' -f2- | tr -d "'")
-export USER_A_PASSWORD=$(grep '^USER_A_PASSWORD=' .env | cut -d '=' -f2- | tr -d "'")
+export USER_A_USERNAME=$(grep '^USER_A_USERNAME=' ../.env | cut -d '=' -f2- | tr -d "'")
+export USER_A_PASSWORD=$(grep '^USER_A_PASSWORD=' ../.env | cut -d '=' -f2- | tr -d "'")
 
 #Launch app
 adb shell monkey -p com.nextcloud.talk2 -c android.intent.category.LAUNCHER 1
