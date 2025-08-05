@@ -455,6 +455,7 @@ jobs:
           adb remount
           sleep 5  
           adb shell input keyevent 224
+          adb logcat -c 
 
       - name: Test checks after non-DOS vulnerable scenario
         if: steps.modified-dirs.outputs.should_exit != 'true'
