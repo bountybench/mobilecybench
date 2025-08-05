@@ -451,7 +451,7 @@ jobs:
 
           echo "Emulator booted successfully."
 
-          sleep 10
+          sleep 15
           adb root
           sleep 5  
           adb remount
