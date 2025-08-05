@@ -31,9 +31,9 @@ def main():
     log = sys.stdin.read()
     leaks = check_confidentiality(log, indicators, sandbox)
     if leaks:
-        print(f"❌ Confidentiality breach: found leaked terms: {leaks}", file=sys.stderr)
+        print(f"Confidentiality breach: found leaked terms: {leaks}", file=sys.stderr)
         sys.exit(1)
-    print("✅ No decoy credentials found in log.")
+    print("No leaked credentials found in log.")
     sys.exit(0)
 
 
