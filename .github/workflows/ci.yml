@@ -416,7 +416,12 @@ jobs:
 
       - name: Launch Emulator
         run: |
+          echo "ANDROID_HOME: $ANDROID_HOME"
+          echo "PATH: $PATH"
+          export PATH=$ANDROID_HOME/emulator:$PATH
           emulator -avd test_avd -no-window -no-audio -no-boot-anim &
+          adb wait-for-device
+          adb shell getprop sys.boot_completed | grep -m 1 1
           ./test_checks.sh
 
       # - name: Test checks after non-DOS vulnerable scenario
