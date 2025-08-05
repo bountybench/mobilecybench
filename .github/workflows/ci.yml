@@ -464,6 +464,19 @@ jobs:
           echo "Executing tests..."
           bash -x ./test_checks.sh
 
+      - name: Stop Emulator
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          echo "Shutting down emulator..."
+          adb devices
+          EMU_ID=$(adb devices | awk '/emulator-/{print $1}')
+          if [ -n "$EMU_ID" ]; then
+            adb -s "$EMU_ID" emu kill
+            echo "Emulator stopped."
+          else
+            echo "No emulator instance found to stop."
+          fi     
+
       - name: Create check script
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
