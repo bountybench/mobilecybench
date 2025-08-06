@@ -11,7 +11,7 @@ echo === RUNNING setup_app.sh ===
 # 0. Ensure submodule is initialized and updated
 if [ ! -d "codebase/.git" ]; then
     echo "[INFO] Initializing Bitwarden Android submodule..."
-    git submodule update --init --recursive
+    git submodule update --init ../../apps/bitwarden/codebase
 else
     echo "[INFO] Bitwarden Android submodule already initialized."
 fi
