@@ -26,7 +26,7 @@ def check_joplin_fatal_exception(logs: str) -> bool:
 
     for i, line in enumerate(lines):
         if "FATAL EXCEPTION" in line:
-            nearby_lines = lines[i+1:i+3] 
+            nearby_lines = lines[i + 1 : i + 3]
             for nearby_line in nearby_lines:
                 if "Process: net.cozic.joplin" in nearby_line:
                     return True
