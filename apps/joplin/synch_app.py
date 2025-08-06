@@ -99,7 +99,7 @@ if label.exists:
     edit.set_text("")
     d.send_keys(password)
     d.press("enter")
-wait_for_ui_stable(timeout=5)
+wait_for_ui_stable(timeout=5, interval=1)
 
 wait_and_click_text("CHECK SYNCHRONIZATION CONFIGURATION")
 wait_for_ui_stable(timeout=10, interval=3)
