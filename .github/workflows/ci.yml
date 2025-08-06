@@ -245,6 +245,17 @@ jobs:
           pip install -r .github/requirements.txt -q
           export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
 
+      - name: Check metadata.json
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
+          pytest \
+          --log-cli-level=INFO \
+          --log-cli-format='%(message)s' \
+          --tb=no \
+          tests/test_metadata_json.py::test_app_metadata \
+          --dirs "$dir"
+
       - name: Docker Cleanup before pulling new image
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
