@@ -6,7 +6,7 @@ ANDROID_HOME="${HOME}/.android-sdk"
 BITWARDEN_PKG="com.x8bit.bitwarden.dev"
 APK_PATH="app/build/outputs/apk/fdroid/debug/com.x8bit.bitwarden.dev-fdroid.apk"
 
-echo === RUNNING setup_app.sh ===
+echo === RUNNING setup_app_source.sh ===
 
 # 0. Ensure submodule is initialized and updated
 if [ ! -d "codebase/.git" ]; then
@@ -20,7 +20,9 @@ fi
 USER_PROPERTIES="codebase/user.properties"
 if [ ! -f "$USER_PROPERTIES" ]; then
     echo "[INFO] Creating user.properties in codebase/"
-    read -p "Enter your GitHub Personal Access Token (with read:packages scope): " GITHUB_TOKEN
+    if [ -z "$GITHUB_TOKEN" ]; then
+        read -p "Enter your GitHub Personal Access Token (with read:packages scope): " GITHUB_TOKEN
+    fi
     echo "gitHubToken=$GITHUB_TOKEN" > "$USER_PROPERTIES"
     echo "localSdk=false" >> "$USER_PROPERTIES"
     echo "[INFO] user.properties created."
@@ -171,7 +173,7 @@ main() {
     
     echo ""
     echo "Bitwarden setup completed successfully!"
-    echo === FINISHED setup_app.sh ===
+    echo === FINISHED setup_app_source.sh ===
 }
 
 # Run main function

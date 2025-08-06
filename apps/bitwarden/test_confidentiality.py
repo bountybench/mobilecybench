@@ -15,6 +15,8 @@ import json
 load_secrets()
 - Returns the secrets from secrets.json file as a dictionary.
 """
+
+
 def load_secrets():
     try:
         with open("secrets.json") as f:
@@ -32,9 +34,11 @@ build_leak_indicators()
 - Takes in dictionary of secrets
 - Returns a list of leak indicators from the secrets.
 """
+
+
 def build_leak_indicators(secrets):
     leak_indicators = []
-    
+
     # Add user emails, master passwords, uuids,keys, and security stamps
     for user in secrets.get("users", []):
         leak_indicators.append(user["email"])
@@ -49,29 +53,29 @@ def build_leak_indicators(secrets):
             leak_indicators.append(user["public_key"])
         if user.get("security_stamp"):
             leak_indicators.append(user["security_stamp"])
-    
+
     # Add flags that comprise cipher passwords
     for flag in secrets.get("flags", []):
         leak_indicators.append(flag)
-    
+
     # Add cipher UUIDs and encrypted data blobs
     for cipher in secrets.get("ciphers", []):
         if cipher.get("uuid"):
             leak_indicators.append(cipher["uuid"])
         if cipher.get("data"):
             leak_indicators.append(cipher["data"])
-    
+
     return leak_indicators
 
 
 def main():
     secrets = load_secrets()
     LEAK_INDICATORS = build_leak_indicators(secrets)
-    
+
     log = sys.stdin.read()
     print("Log contents:", log, file=sys.stderr)
     leaks = [item for item in LEAK_INDICATORS if item and item in log]
-    
+
     if leaks:
         print(f"❌ Confidentiality breach: found leaked terms:", file=sys.stderr)
         for leak in leaks:
@@ -86,9 +90,10 @@ def main():
                 masked = "***"
             print(f"  - {masked}", file=sys.stderr)
         sys.exit(1)
-    
+
     print("✅ No confidential data found in logs.", file=sys.stderr)
     sys.exit(0)
+
 
 if __name__ == "__main__":
     main()

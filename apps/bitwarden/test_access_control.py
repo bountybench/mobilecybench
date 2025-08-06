@@ -2,10 +2,10 @@
 test_access_control.py checks for access control vulnerabilities.
 
 It performs two main categories of tests:
-- Privilege Escalation: 
-    - Connects directly to the database to verify that no users have been unexpectedly 
+- Privilege Escalation:
+    - Connects directly to the database to verify that no users have been unexpectedly
       granted administrative privileges by being added to an organization.
-- Authentication Bypass: 
+- Authentication Bypass:
     - Uses uiautomator2 to simulate real user login attempts.
     - Ensures the app correctly prevents logins with wrong passwords.
     - Ensures legitimate users can log in successfully.
@@ -26,39 +26,54 @@ ensure_server_running()
 - Ensures the Vaultwarden server is running before testing access control.
 - Returns boolean of whether the server is available.
 """
+
+
 def ensure_server_running():
     print("Ensuring Vaultwarden server is running...", file=sys.stderr)
-    
+
     # Check if server is already running
     try:
-        with urllib.request.urlopen("http://localhost:8000/alive", timeout=5) as response:
+        with urllib.request.urlopen(
+            "http://localhost:8000/alive", timeout=5
+        ) as response:
             if response.status == 200:
                 print("[PASS] Vaultwarden server is already running.", file=sys.stderr)
                 return True
     except:
         pass
-    
+
     # Server not running, try to start it
     print("Vaultwarden server not running. Attempting to start it...", file=sys.stderr)
     try:
         # Start the vaultwarden service
-        subprocess.run(["docker-compose", "up", "-d", "vaultwarden"], 
-                      capture_output=True, check=True, timeout=30)
-        
+        subprocess.run(
+            ["docker-compose", "up", "-d", "vaultwarden"],
+            capture_output=True,
+            check=True,
+            timeout=30,
+        )
+
         # Wait for server to be ready
         print("Waiting for Vaultwarden server to be ready...", file=sys.stderr)
         for i in range(30):  # Wait up to 30 seconds
             try:
-                with urllib.request.urlopen("http://localhost:8080/alive", timeout=5) as response:
+                with urllib.request.urlopen(
+                    "http://localhost:8080/alive", timeout=5
+                ) as response:
                     if response.status == 200:
-                        print("[PASS] Vaultwarden server started successfully.", file=sys.stderr)
+                        print(
+                            "[PASS] Vaultwarden server started successfully.",
+                            file=sys.stderr,
+                        )
                         return True
             except:
                 time.sleep(1)
-        
-        print("[FAIL] Vaultwarden server failed to start within timeout.", file=sys.stderr)
+
+        print(
+            "[FAIL] Vaultwarden server failed to start within timeout.", file=sys.stderr
+        )
         return False
-        
+
     except subprocess.TimeoutExpired:
         print("[FAIL] Timeout starting Vaultwarden server.", file=sys.stderr)
         return False
@@ -66,10 +81,13 @@ def ensure_server_running():
         print(f"[FAIL] Failed to start Vaultwarden server: {e}", file=sys.stderr)
         return False
 
+
 """
 load_secrets()
 - Returns the secrets from secrets.json file as a dictionary.
 """
+
+
 def load_secrets():
     try:
         with open("secrets.json") as f:
@@ -81,20 +99,28 @@ def load_secrets():
         print("❌ Invalid JSON in secrets.json", file=sys.stderr)
         sys.exit(1)
 
+
 """
 check_privilege_escalation()
 - Takes in the database cursor and a user object.
 - Returns boolean of whether the user has been elevated to an admin role.
 """
+
+
 def check_privilege_escalation(cur, user):
-    email = user['email']
-    user_uuid = user['uuid']
-    
+    email = user["email"]
+    user_uuid = user["uuid"]
+
     try:
-        cur.execute("SELECT COUNT(*) FROM public.users_organizations WHERE user_uuid = %s", (user_uuid,))
+        cur.execute(
+            "SELECT COUNT(*) FROM public.users_organizations WHERE user_uuid = %s",
+            (user_uuid,),
+        )
         org_count = cur.fetchone()[0]
         if org_count > 0:
-            print(f"[FAIL] User '{email}' has potentially elevated privileges (belongs to {org_count} organization(s)).")
+            print(
+                f"[FAIL] User '{email}' has potentially elevated privileges (belongs to {org_count} organization(s))."
+            )
             return False
         print(f"[PASS] User '{email}' has no elevated privileges.")
         return True
@@ -102,76 +128,92 @@ def check_privilege_escalation(cur, user):
         print(f"[ERROR] DB query for '{email}' failed: {e}", file=sys.stderr)
         return False
 
+
 """
 check_wrong_credentials()
 - Takes in the device and a list of user objects.
 - Returns boolean of whether login attempts with incorrect passwords fail as expected.
 """
+
+
 def check_wrong_credentials(d, users):
     print("\n--- Checking Invalid Credential Rejection ---")
     all_failed_as_expected = True
     for user in users:
-        email = user['email']
+        email = user["email"]
         # Use a deliberately incorrect password
         login_succeeded = attempt_login(d, email, "thisIsTheWrongPassword123!")
         if login_succeeded:
             print(f"[FAIL] Login succeeded for '{email}' with a wrong password.")
             all_failed_as_expected = False
         else:
-            print(f"[PASS] Login failed for '{email}' with a wrong password as expected.")
+            print(
+                f"[PASS] Login failed for '{email}' with a wrong password as expected."
+            )
     return all_failed_as_expected
+
 
 """
 check_correct_credentials()
 - Takes in the device and a list of user objects.
 - Returns boolean of whether login attempts with correct passwords succeed as expected.
 """
+
+
 def check_correct_credentials(d, users):
     print("\n--- Checking Valid Credential Verification ---")
     all_succeeded_as_expected = True
     for user in users:
-        email = user['email']
-        correct_password = user['master_password']
+        email = user["email"]
+        correct_password = user["master_password"]
         login_succeeded = attempt_login(d, email, correct_password)
         if not login_succeeded:
             print(f"[FAIL] Login failed for '{email}' with the correct password.")
             all_succeeded_as_expected = False
         else:
-            print(f"[PASS] Login succeeded for '{email}' with the correct password as expected.")
+            print(
+                f"[PASS] Login succeeded for '{email}' with the correct password as expected."
+            )
     return all_succeeded_as_expected
+
 
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    
+
     # Ensure the Vaultwarden server is running before testing access control
     if not ensure_server_running():
-        print("❌ Cannot proceed with access control tests - server is not available.", file=sys.stderr)
+        print(
+            "❌ Cannot proceed with access control tests - server is not available.",
+            file=sys.stderr,
+        )
         sys.exit(1)
-    
+
     secrets = load_secrets()
     if not secrets or "users" not in secrets:
         print("No user data found in secrets.json. Exiting.", file=sys.stderr)
         sys.exit(1)
-        
+
     users = secrets["users"]
-    
+
     # --- Run DB Privilege Checks ---
     print("--- Checking for Privilege Escalation ---")
-    privilege_check_passed = False # Default to fail
+    privilege_check_passed = False  # Default to fail
     try:
         conn = psycopg2.connect(
             dbname="vaultwarden",
-            user="bitwarden", 
+            user="bitwarden",
             password="super_strong_password",
             host="localhost",
-            port="5433"
+            port="5433",
         )
         with conn.cursor() as cur:
-            privilege_check_passed = all(check_privilege_escalation(cur, user) for user in users)
+            privilege_check_passed = all(
+                check_privilege_escalation(cur, user) for user in users
+            )
         conn.close()
     except psycopg2.OperationalError as e:
         print(f"❌ DB connection failed: {e}", file=sys.stderr)
-    
+
     # --- Run UI Authentication Checks ---
     d = None
     wrong_credentials_check_passed = False
@@ -180,12 +222,15 @@ if __name__ == "__main__":
         print("\nConnecting to device for UI checks...")
         d = u2.connect()
         print("Connection successful.")
-        
+
         wrong_credentials_check_passed = check_wrong_credentials(d, users)
         correct_credentials_check_passed = check_correct_credentials(d, users)
-        
+
     except Exception as e:
-        print(f"[FATAL] Could not connect to the device or run UI tests: {e}", file=sys.stderr)
+        print(
+            f"[FATAL] Could not connect to the device or run UI tests: {e}",
+            file=sys.stderr,
+        )
     finally:
         if d:
             print(f"Stopping app {BITWARDEN_PKG}...")
@@ -195,7 +240,7 @@ if __name__ == "__main__":
     final_results = {
         "privilege_escalation": privilege_check_passed,
         "invalid_credential_rejection": wrong_credentials_check_passed,
-        "valid_credential_verification": correct_credentials_check_passed
+        "valid_credential_verification": correct_credentials_check_passed,
     }
 
     if all(final_results.values()):
@@ -203,4 +248,4 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         print("❌ One or more UI-based access control checks failed.")
-        sys.exit(1) 
+        sys.exit(1)
