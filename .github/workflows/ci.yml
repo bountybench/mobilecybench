@@ -10,7 +10,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -187,20 +187,77 @@ jobs:
             echo "$modified_dirs" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
           fi
+          
+      - name: Get API level & Java versions
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        id: get-sdk-java
+        run: |
+          set -e
+
+          # Get the first directory from modified_dirs
+          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
+
+          metadata="$dir/metadata.json"
+          if [ ! -f "$metadata" ]; then
+            echo "ERROR: $metadata not found"
+            exit 1
+          fi
+
+          sdk=$(jq -r '.sdk' $metadata)
+          if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
+              echo "${ERROR} Could not extract SDK from $metadata. Use default (28)."
+              sdk=28
+          else 
+              echo "SDK: $sdk"
+          fi
+
+          java=$(jq -r '.java' $metadata)
+          if [ "$?" -ne 0 ] || [ "$java" = "null" ] || [ -z "$java" ]; then
+              echo "${ERROR} Could not extract Java version from $metadata. Use default (17)."
+              java=17
+          else 
+              echo "Java version: $java"
+          fi
+
+          echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
+          echo "java=$java" >> "$GITHUB_OUTPUT"
+
+      - name: AVD cache
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ steps.get-sdk-java.outputs.sdk }}
+
+      - name: Create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true' && steps.modified-dirs.outputs.should_exit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ steps.get-sdk-java.outputs.sdk }}
+          force-avd-creation: false
+          emulator-options: -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
 
       - name: Set up JDK
+        if: steps.modified-dirs.outputs.should_exit != 'true'
         id: setup-java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: 17
+          java-version: "${{ steps.get-sdk-java.outputs.java }}"
       
-      - name: Setup Python 3.9 environment
+      - name: Setup Python 3.12 environment
+        if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.12'
 
       - name: Install dependencies
+        if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y libpulse0
@@ -214,15 +271,12 @@ jobs:
           docker system prune -af
           docker image prune -af
 
-      - name: Build Docker Image
+      - name: Pull Docker container
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
-          docker build -t custom-kali-linux-ci -f .github/Dockerfile .github
-
-      - name: Tag Docker Image
-        if: steps.modified-dirs.outputs.should_exit != 'true'
-        run: |
-          docker image tag custom-kali-linux-ci cybench
+          docker pull --quiet cybench/mobilecybench:latest
+          docker manifest inspect cybench/mobilecybench:latest
+          docker image tag cybench/mobilecybench:latest mobilecybench
 
       - name: Display disk space after pulling image
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -249,31 +303,6 @@ jobs:
         with:
           path: ~/.gradle/wrapper/dists
           key: gradle-wrapper-${{ hashFiles('**/gradle-wrapper.properties') }}
-
-      - name: Get API level
-        if: steps.modified-dirs.outputs.should_exit != 'true'
-        id: get-sdk
-        run: |
-          set -e
-
-          # Get the first directory from modified_dirs
-          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
-
-          metadata="$dir/metadata.json"
-          if [ ! -f "$metadata" ]; then
-            echo "ERROR: $metadata not found"
-            exit 1
-          fi
-
-          sdk=$(jq -r '.sdk' $metadata)
-          if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
-              echo "${ERROR} Could not extract SDK from $metadata. Use default (28)."
-              sdk=28
-          else 
-              echo "SDK: $sdk"
-          fi
-
-          echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
 
       - name: Create check script
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -332,12 +361,12 @@ jobs:
         if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: "${{ steps.get-sdk.outputs.sdk }}"
+          api-level: "${{ steps.get-sdk-java.outputs.sdk }}"
           arch: x86_64
           target: google_apis
           profile: pixel_2
           ram-size: 2048    
-          force-avd-creation: true
+          force-avd-creation: false
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
@@ -402,19 +431,73 @@ jobs:
           cat test_checks.sh
           chmod +x test_checks.sh
 
-      - name: Test checks after non-DOS vulnerable scenario
+      - name: Install Android SDK
         if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: "${{ steps.get-sdk.outputs.sdk }}"
-          arch: x86_64
+          api-level: 28
           target: google_apis
+          arch: x86_64
           profile: pixel_2
-          ram-size: 2048    
-          force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
-          disable-animations: true
-          script: ./test_checks.sh
+          script: echo "Temporary run to preinstall SDK"
+
+      - name: Create AVD
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          echo "no" | avdmanager create avd -n test_avd \
+            -k "system-images;android-28;google_apis;x86_64" --device "pixel"
+
+      - name: Launch emulator
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          echo "ANDROID_HOME: $ANDROID_HOME"
+          echo "PATH: $PATH"
+          export PATH=$ANDROID_HOME/emulator:$PATH
+          emulator -avd test_avd -writable-system -no-window -no-audio -no-boot-anim &
+          adb wait-for-device
+
+          BOOT_STATUS=""
+          timeout=300
+          while [[ "$BOOT_STATUS" != "1" && $timeout -gt 0 ]]; do
+            BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            sleep 1
+            ((timeout--))
+          done
+
+          if [[ "$BOOT_STATUS" != "1" ]]; then
+            echo "Emulator did not fully boot in time."
+            exit 1
+          fi
+
+          echo "Emulator booted successfully!"
+
+          sleep 15
+          adb root
+          sleep 5  
+          adb remount
+          sleep 5  
+          adb shell input keyevent 224
+          adb logcat -c 
+          echo "Emulator ready!"
+
+      - name: Test checks after non-DOS vulnerable scenario
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          echo "Executing tests..."
+          bash -x ./test_checks.sh
+
+      - name: Stop emulator
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          echo "Shutting down emulator..."
+          adb devices
+          EMU_ID=$(adb devices | awk '/emulator-/{print $1}')
+          if [ -n "$EMU_ID" ]; then
+            adb -s "$EMU_ID" emu kill
+            echo "Emulator stopped."
+          else
+            echo "No emulator instance found to stop."
+          fi     
 
       - name: Create check script
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -484,12 +567,12 @@ jobs:
         if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: "${{ steps.get-sdk.outputs.sdk }}"
+          api-level: "${{ steps.get-sdk-java.outputs.sdk }}"
           arch: x86_64
           target: google_apis
           profile: pixel_2
           ram-size: 2048    
-          force-avd-creation: true
+          force-avd-creation: false
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
