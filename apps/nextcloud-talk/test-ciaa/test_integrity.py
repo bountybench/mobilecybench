@@ -130,7 +130,7 @@ if __name__ == "__main__":
     
     if integrity != 0:
         print(integrity, "access control tests failed :(")
-        sys.exit(1)
+        sys.exit(0)
     else:
         print("All tests passed successfully!")
-        sys.exit(0)
+        sys.exit(1)

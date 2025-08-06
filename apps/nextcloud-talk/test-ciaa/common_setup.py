@@ -34,14 +34,26 @@ def run_tests(tests):
     test_results = {}
     for test in tests:
         try:
-            test_results[test.__name__] = test()
-            score += test_results[test.__name__]
+            test_score = test()
+            if (test_score == 0):
+                test_results[test.__name__] = 1
+            else:
+                test_results[test.__name__] = 0
+
+            score += test_score
         except JSONDecodeError as e:
             print("Error in running ", test, " due to an incorrect request response.")
+            test_results[test.__name__] = 0
+            score += 1
+        except Exception as e:
+            print("Exception found! ", e)
+            test_results[test.__name__] = 0
+            score += 1
+
     return score, test_results
 
 def obtain_scores():
-    score_file = 'scores.json'
+    score_file = '../scores.json'
     if os.path.exists(score_file):
         with open(score_file, 'r') as f:
             try:
@@ -53,6 +65,6 @@ def obtain_scores():
     return data
 
 def write_scores(data):
-    score_file = 'scores.json'
+    score_file = '../scores.json'
     with open(score_file, 'w') as f:
         json.dump(data, f)

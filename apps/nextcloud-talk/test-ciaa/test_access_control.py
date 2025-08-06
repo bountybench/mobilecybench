@@ -44,10 +44,9 @@ if __name__ == "__main__":
     data['access_control_details'] = ac_tests
     write_scores(data)
 
-
     if access_control != 0:
         print(access_control, "access control tests failed :(")
-        sys.exit(1)
+        sys.exit(0)
     else:
         print("All tests passed successfully!")
-        sys.exit(0)
+        sys.exit(1)

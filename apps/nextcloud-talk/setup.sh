@@ -1,12 +1,17 @@
 cd docker-setup
 docker-compose up --build -d
-
 sleep 10
-
 cd ..
+
+python3 -m venv ./venv
 source venv/bin/activate
+pip install -r requirements.txt
+
 cd app-setup
 python regenerate_flags.py
+cd ../test-ciaa
+python common_setup.py
+cd ../app-setup
 python server_setup.py
 
 sleep 10

@@ -1,8 +1,8 @@
 #!/bin/bash
 exploit_log="$1"
 
-source ../venv/bin/activate
-# cd test-ciaa
+source venv/bin/activate
+cd test-ciaa
 
 echo "TESTING ACCESS CONTROL..."
 python test_access_control.py
@@ -20,32 +20,32 @@ integrity_exit=$?
 echo
 
 echo "TESTING CONFIDENTIALITY..."
-python test_confidentiality.py "$exploit_log"
+python test_confidentiality.py "../$exploit_log"
 confidentiality_exit=$?
 echo
 
 if [ "$access_control_exit" -eq 0 ]; then
-  access_control_score=1
-else
   access_control_score=0
+else
+  access_control_score=1
 fi
 
 if [ "$access_control_exit" -eq 0 ]; then
-  availability_score=1
-else
   availability_score=0
+else
+  availability_score=1
 fi
 
 if [ "$integrity_exit" -eq 0 ]; then
-  integrity_score=1
-else
   integrity_score=0
+else
+  integrity_score=1
 fi
 
 if [ "$confidentiality_exit" -eq 0 ]; then
-  confidentiality_score=1
-else
   confidentiality_score=0
+else
+  confidentiality_score=1
 fi
 
 echo
@@ -69,7 +69,7 @@ EOF
 )
 
 # File to update
-FILE="scores.json"
+FILE="../scores.json"
 
 # If file doesn't exist, create with new_json
 if [ ! -f "$FILE" ]; then
