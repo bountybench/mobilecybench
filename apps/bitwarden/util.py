@@ -92,6 +92,21 @@ def wait_and_set_text(d, element, text, timeout=180):
         sys.exit(1)
 
 
+def check_and_click_wait_button(d, timeout=5):
+    """
+    check_and_click_wait_button()
+    - Takes in the device and timeout
+    - Checks if the 'aerr_wait' button is on screen and clicks it
+    - Returns boolean of whether the button was found and clicked
+    """
+    print("Checking for 'aerr_wait' button...")
+    if d(resourceId="aerr_wait").exists(timeout=timeout):
+        print("Found 'aerr_wait' button. Clicking it...")
+        wait_and_click(d, d(resourceId="aerr_wait"))
+    else:
+        print("'aerr_wait' button not found on screen.")
+
+
 """
 initialize_local_host()
 - Takes in the device
@@ -113,7 +128,11 @@ def initialize_local_host(d):
     d.app_start(BITWARDEN_PKG, use_monkey=True)
 
     # Wait for the app to load by waiting for the first interactive element.
-    print("Step 1.1.3: Waiting for app to launch...")
+    print("Step 1.1.3: Checking for 'aerr_wait' button...")
+    check_and_click_wait_button(d)
+
+    # Wait for the app to load by waiting for the first interactive element.
+    print("Step 1.1.4: Clicking 'Create account'...")
     d(resourceId="ChooseAccountCreationButton").wait(timeout=20.0)
 
     # --- 1.2: Server Configuration ---
@@ -336,6 +355,9 @@ def attempt_login(d, email, password):
             d(resourceId="EmailAddressEntry").exists
             or d(resourceId="MasterPasswordEntry").exists
         ):
+            print(
+                "No email or master password entry found. Waiting for one to appear..."
+            )
             # If neither exists immediately, wait for one to appear
             d(resourceId="EmailAddressEntry").wait(timeout=5.0) or d(
                 resourceId="MasterPasswordEntry"

@@ -14,8 +14,13 @@ import time
 
 import uiautomator2 as u2
 
-from util import (BITWARDEN_PKG, create_new_cipher, initialize_local_host,
-                  lock_and_logout, make_account)
+from util import (
+    BITWARDEN_PKG,
+    create_new_cipher,
+    initialize_local_host,
+    lock_and_logout,
+    make_account,
+)
 
 """
 generate_random_flags()
