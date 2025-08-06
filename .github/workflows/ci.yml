@@ -40,119 +40,6 @@ jobs:
               awk -F/ '{print $1"/"$2}' | 
               sort -u
           }
-
-          check_server_ready() {
-            # Timeout per container in seconds
-            TIMEOUT=${TIMEOUT:-180}
-            # Interval between checks in seconds
-            INTERVAL=${INTERVAL:-1}
-
-            # Get all running containers
-            containers=$(docker ps --format '{{.Names}}')
-
-            for container in $containers; do
-              echo "Checking readiness for $container..."
-
-              # Check if container has a health check
-              has_health=$(docker inspect --format '{{if .Config.Healthcheck}}true{{else}}false{{end}}' "$container")
-              if [ "$has_health" = "true" ]; then
-                echo "Container has a health check. Waiting to become healthy..."
-                elapsed=0
-                success=0
-                while [ $elapsed -lt $TIMEOUT ]; do
-                  status=$(docker inspect --format '{{.State.Health.Status}}' "$container" 2>/dev/null)
-                  if [ "$status" == "healthy" ]; then
-                    success=1
-                    break
-                  fi
-                  sleep "$INTERVAL"
-                  elapsed=$((elapsed + INTERVAL))
-                done
-                if [ $success -eq 1 ]; then
-                  echo "$container is healthy."
-                  continue
-                else
-                  echo "Timeout: $container did not become healthy within $TIMEOUT seconds." >&2
-                  exit 1
-                fi
-              else
-                # Get exposed TCP ports
-                ports=$(docker inspect --format '{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{.HostPort}} {{end}}{{end}}' "$container")
-                if [ -z "$ports" ]; then
-                  echo "No exposed ports for $container. Skipping readiness check." >&2
-                  continue
-                fi
-
-                elapsed=0
-                all_success=0
-                while [ $elapsed -lt $TIMEOUT ]; do
-                  success=1
-                  for port_spec in $ports; do
-                    port=$(echo "$port_spec" | cut -d'/' -f1)
-                    proto=$(echo "$port_spec" | cut -d'/' -f2)
-                    if [ "$proto" != "tcp" ]; then
-                      continue  # Skip non-TCP ports
-                    fi
-
-                    # Perform TCP check
-                    if ! nc -z -w 1 localhost "$port" &>/dev/null; then
-                      success=0
-                      break
-                    fi
-                  done
-
-                  if [ $success -eq 1 ]; then
-                    all_success=1
-                    break
-                  fi
-
-                  sleep "$INTERVAL"
-                  elapsed=$((elapsed + INTERVAL))
-                done
-
-                if [ $all_success -eq 1 ]; then
-                  echo "$container is ready via port check on all ports."
-                else
-                  echo "Timeout: $container not ready after $TIMEOUT seconds." >&2
-                  exit 1
-                fi
-              fi
-            done
-
-            echo "All containers are ready!"
-          }
-
-          checkout_commit() {
-            pwd
-            if [[ -f "metadata.json" ]]; then
-              commit=$(jq -r '.["commit_version"]' "metadata.json")
-              
-              if [[ -n "$commit" ]]; then
-                echo "Found commit: $commit"
-
-                git submodule update --init codebase
-                echo "Cleaning repository to remove all changes and untracked files..."
-
-                cd "codebase" || exit 1
-
-                echo "Cleaning up the codebase"
-                git reset --hard HEAD
-                sudo git clean -fdx
-
-                # Update the submodule and checkout the commit
-                git checkout "$commit"
-
-                cd - || exit 1
-              else
-                echo "No commit version found in metadata.json"
-                exit 1
-              fi
-            else
-              echo "No metadata.json file found"
-              exit 1
-            fi
-          }
-
           EOF
           chmod +x /tmp/shared_functions.sh
           source /tmp/shared_functions.sh
@@ -271,12 +158,124 @@ jobs:
           submodules: false
           token: ${{ secrets.GH_TOKEN }}
 
-      - name: Restore shared functions
+      - name: Create shared functions
         run: |
           cat << 'EOF' > /tmp/shared_functions.sh
-          # Your shared functions here
+          check_server_ready() {
+            # Timeout per container in seconds
+            TIMEOUT=${TIMEOUT:-180}
+            # Interval between checks in seconds
+            INTERVAL=${INTERVAL:-1}
+
+            # Get all running containers
+            containers=$(docker ps --format '{{.Names}}')
+
+            for container in $containers; do
+              echo "Checking readiness for $container..."
+
+              # Check if container has a health check
+              has_health=$(docker inspect --format '{{if .Config.Healthcheck}}true{{else}}false{{end}}' "$container")
+              if [ "$has_health" = "true" ]; then
+                echo "Container has a health check. Waiting to become healthy..."
+                elapsed=0
+                success=0
+                while [ $elapsed -lt $TIMEOUT ]; do
+                  status=$(docker inspect --format '{{.State.Health.Status}}' "$container" 2>/dev/null)
+                  if [ "$status" == "healthy" ]; then
+                    success=1
+                    break
+                  fi
+                  sleep "$INTERVAL"
+                  elapsed=$((elapsed + INTERVAL))
+                done
+                if [ $success -eq 1 ]; then
+                  echo "$container is healthy."
+                  continue
+                else
+                  echo "Timeout: $container did not become healthy within $TIMEOUT seconds." >&2
+                  exit 1
+                fi
+              else
+                # Get exposed TCP ports
+                ports=$(docker inspect --format '{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{.HostPort}} {{end}}{{end}}' "$container")
+                if [ -z "$ports" ]; then
+                  echo "No exposed ports for $container. Skipping readiness check." >&2
+                  continue
+                fi
+
+                elapsed=0
+                all_success=0
+                while [ $elapsed -lt $TIMEOUT ]; do
+                  success=1
+                  for port_spec in $ports; do
+                    port=$(echo "$port_spec" | cut -d'/' -f1)
+                    proto=$(echo "$port_spec" | cut -d'/' -f2)
+                    if [ "$proto" != "tcp" ]; then
+                      continue  # Skip non-TCP ports
+                    fi
+
+                    # Perform TCP check
+                    if ! nc -z -w 1 localhost "$port" &>/dev/null; then
+                      success=0
+                      break
+                    fi
+                  done
+
+                  if [ $success -eq 1 ]; then
+                    all_success=1
+                    break
+                  fi
+
+                  sleep "$INTERVAL"
+                  elapsed=$((elapsed + INTERVAL))
+                done
+
+                if [ $all_success -eq 1 ]; then
+                  echo "$container is ready via port check on all ports."
+                else
+                  echo "Timeout: $container not ready after $TIMEOUT seconds." >&2
+                  exit 1
+                fi
+              fi
+            done
+
+            echo "All containers are ready!"
+          }
+
+          checkout_commit() {
+            pwd
+            if [[ -f "metadata.json" ]]; then
+              commit=$(jq -r '.["commit_version"]' "metadata.json")
+              
+              if [[ -n "$commit" ]]; then
+                echo "Found commit: $commit"
+
+                git submodule update --init codebase
+                echo "Cleaning repository to remove all changes and untracked files..."
+
+                cd "codebase" || exit 1
+
+                echo "Cleaning up the codebase"
+                git reset --hard HEAD
+                sudo git clean -fdx
+
+                # Update the submodule and checkout the commit
+                git checkout "$commit"
+
+                cd - || exit 1
+              else
+                echo "No commit version found in metadata.json"
+                exit 1
+              fi
+            else
+              echo "No metadata.json file found"
+              exit 1
+            fi
+          }
+
           EOF
           chmod +x /tmp/shared_functions.sh
+          
 
       - name: Set up JDK
         uses: actions/setup-java@v4
