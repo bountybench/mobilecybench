@@ -10,6 +10,10 @@
 	path = joplin/codebase
 	url = https://github.com/cy-suite/joplin.git
 
+[submodule "thunderbird/codebase"]
+	path = thunderbird/codebase
+	url = https://github.com/thunderbird/thunderbird-android.git
+
 [submodule "newPipe/codebase"]
 	path = newPipe/codebase
 	url = https://github.com/cy-suite/NewPipe.git
