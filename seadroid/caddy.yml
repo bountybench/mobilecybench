@@ -8,12 +8,13 @@ services:
       - 8000:80
       # - 443:443
     environment:
-      - CADDY_INGRESS_NETWORKS=seafile-net
+      - CADDY_INGRESS_NETWORKS=private-net
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${SEAFILE_CADDY_VOLUME:-/opt/seafile-caddy}:/data/caddy
     networks:
-      - seafile-net
+      - shared-net
+      - private-net
     healthcheck:
       test: ["CMD-SHELL", "curl --fail http://localhost:2019/metrics || exit 1"]
       start_period: 20s
@@ -22,7 +23,8 @@ services:
       retries: 3
 
 networks:
-  seafile-net:
-    name: seafile-net
+  private-net:
+    name: private-net
   shared-net:
     name: shared-net
+    external: true

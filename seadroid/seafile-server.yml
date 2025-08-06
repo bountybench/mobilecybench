@@ -10,7 +10,7 @@ services:
     volumes:
       - "${SEAFILE_MYSQL_VOLUME:-/opt/seafile-mysql/db}:/var/lib/mysql"
     networks:
-      - seafile-net
+      - private-net
     healthcheck:
       test:
         [
@@ -36,7 +36,7 @@ services:
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
     networks:
-      - seafile-net
+      - private-net
 
   seafile:
     image: ${SEAFILE_IMAGE:-seafileltd/seafile-mc:13.0-latest}
@@ -88,8 +88,8 @@ services:
       redis:
         condition: service_started
     networks:
-      - seafile-net
+      - private-net
 
 networks:
-  seafile-net:
-    name: seafile-net
+  private-net:
+    name: private-net

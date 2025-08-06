@@ -10,6 +10,6 @@
 	path = joplin/codebase
 	url = https://github.com/cy-suite/joplin.git
 	
-[submodule "seafile/seadroid"]
-	path = seafile/seadroid
-	url = https://github.com/haiwen/seadroid.git
+[submodule "seadroid/codebase"]
+	path = seadroid/codebase
+	url = https://github.com/cy-suite/seadroid.git
