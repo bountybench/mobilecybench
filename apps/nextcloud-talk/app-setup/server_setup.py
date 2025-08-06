@@ -26,7 +26,7 @@ ADMIN_FILE_NAME = os.getenv("ADMIN_FILE_NAME")
 USER_B_FILE_CONTENTS = os.getenv("USER_B_LOCAL_FILE")
 USER_B_FILE_NAME = os.getenv("USER_B_FILE_NAME")
 
-#Web Authentication:
+# Web Authentication:
 
 # options = webdriver.SafariOptions()
 # driver = webdriver.Safari(options=options)
@@ -51,13 +51,13 @@ USER_B_FILE_NAME = os.getenv("USER_B_FILE_NAME")
 # print("Clicked install button")
 
 # time.sleep(20)
-#CI Request Authentication:
+# CI Request Authentication:
 BASE_URL = "http://localhost:8080"
 print("hiii", ADMIN_USERNAME, ADMIN_PASSWORD)
 payload = {
-    'install': 'true',
-    'adminlogin': ADMIN_USERNAME,
-    'adminpass': ADMIN_PASSWORD,
+    "install": "true",
+    "adminlogin": ADMIN_USERNAME,
+    "adminpass": ADMIN_PASSWORD,
 }
 r = requests.post(f"{BASE_URL}/index.php", data=payload)
 print("Sent message:", r.status_code, r.text)
