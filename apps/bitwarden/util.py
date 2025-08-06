@@ -78,10 +78,8 @@ wait_and_set_text()
 def wait_and_set_text(d, element, text, timeout=180):
     if element.wait(timeout=timeout):
         element.set_text(text)
-        # Click the "Done" or "Enter" button on the keyboard to confirm input
-        d(
-            resourceId="com.google.android.inputmethod.latin:id/key_pos_ime_action"
-        ).click()
+        # Handle keyboard action with multiple fallback methods
+        handle_keyboard_action(d)
         wait_for_ui_stable(d)
     else:
         print(
@@ -103,8 +101,47 @@ def check_and_click_wait_button(d, timeout=5):
     if d(resourceId="aerr_wait").exists(timeout=timeout):
         print("Found 'aerr_wait' button. Clicking it...")
         wait_and_click(d, d(resourceId="aerr_wait"))
+        return True
     else:
         print("'aerr_wait' button not found on screen.")
+        return False
+
+
+def handle_keyboard_action(d):
+    """
+    handle_keyboard_action()
+    - Takes in the device
+    - Handles keyboard action (Done/Enter) with multiple fallback methods
+    - Returns boolean of whether action was successful
+    """
+    try:
+        # Method 1: Try clicking the keyboard action button
+        if d(
+            resourceId="com.google.android.inputmethod.latin:id/key_pos_ime_action"
+        ).exists(timeout=1):
+            d(
+                resourceId="com.google.android.inputmethod.latin:id/key_pos_ime_action"
+            ).click()
+            return True
+    except Exception as e:
+        print(f"[WARN] Could not click keyboard action button: {e}")
+
+    try:
+        # Method 2: Try pressing Enter key
+        d.press("enter")
+        return True
+    except Exception as e:
+        print(f"[WARN] Could not press Enter key: {e}")
+
+    try:
+        # Method 3: Try pressing the back button to dismiss keyboard
+        d.press("back")
+        return True
+    except Exception as e:
+        print(f"[WARN] Could not press Back key: {e}")
+
+    print("[WARN] All keyboard action methods failed")
+    return False
 
 
 """
@@ -132,7 +169,7 @@ def initialize_local_host(d):
     check_and_click_wait_button(d)
 
     # Wait for the app to load by waiting for the first interactive element.
-    print("Step 1.1.4: Clicking 'Create account'...")
+    print("Step 1.1.4: Clicking 'Account creation'...")
     d(resourceId="ChooseAccountCreationButton").wait(timeout=20.0)
 
     # --- 1.2: Server Configuration ---
