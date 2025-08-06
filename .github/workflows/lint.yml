@@ -23,12 +23,9 @@ jobs:
         run: git fetch origin ${{ github.base_ref }}
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-
-      - name: Print file for debugging
-        run: cat app/joplin/test_integrity.py
+          python-version: '3.12'
 
       - name: Lint modified Python files
         run: |
