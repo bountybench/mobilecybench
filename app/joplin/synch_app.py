@@ -1,9 +1,10 @@
-import uiautomator2 as u2
-import time
 import argparse
-import sys
-import xml.etree.ElementTree as ET
 import re
+import sys
+import time
+import xml.etree.ElementTree as ET
+
+import uiautomator2 as u2
 
 parser = argparse.ArgumentParser(description="Joplin Server synchronization")
 parser.add_argument("--username", required=True, help="email")
@@ -15,23 +16,31 @@ password = args.password
 
 d = u2.connect()
 
+
 def wait_and_click_text(text, timeout=45):
     if d(text=text).wait(timeout=timeout):
         d(text=text).click_exists(timeout=3)
     else:
-        print(f"[ERROR] Could not find text: '{text}' within {timeout}s", file=sys.stderr)
+        print(
+            f"[ERROR] Could not find text: '{text}' within {timeout}s", file=sys.stderr
+        )
         print(d.dump_hierarchy(), file=sys.stderr)
-        exit(1)  
+        exit(1)
     wait_for_ui_stable(timeout=5)
+
 
 def wait_and_click_desc(desc, timeout=45):
     if d(description=desc).wait(timeout=timeout):
         d(description=desc).click_exists(timeout=3)
     else:
-        print(f"[ERROR] Could not find description: '{desc}' within {timeout}s", file=sys.stderr)
+        print(
+            f"[ERROR] Could not find description: '{desc}' within {timeout}s",
+            file=sys.stderr,
+        )
         print(d.dump_hierarchy(), file=sys.stderr)
-        exit(1)  
+        exit(1)
     wait_for_ui_stable(timeout=5)
+
 
 def wait_for_ui_stable(timeout=10, interval=0.5):
     """
@@ -47,6 +56,7 @@ def wait_for_ui_stable(timeout=10, interval=0.5):
         prev_hierarchy = current_hierarchy
         time.sleep(interval)
     return False
+
 
 wait_and_click_desc("Sidebar, Show/hide the sidebar")
 wait_and_click_text("Configuration")
@@ -100,7 +110,7 @@ code = 200
 
 for node in root.iter("node"):
     text = node.attrib.get("text", "")
-    match = re.search(r'Code (\d+)', text)
+    match = re.search(r"Code (\d+)", text)
     if match:
         code = int(match.group(1))
         print("Found code:", code, file=sys.stderr)
@@ -111,13 +121,16 @@ if "Error" in hierarchy:
     print("[ERROR] Found 'Error' in UI hierarchy after sync check.", file=sys.stderr)
     wait_and_click_desc("Back")
     if d(text="There are unsaved changes.").exists(timeout=30):
-        print("[INFO] Unsaved changes dialog detected. Discarding changes.", file=sys.stderr)
+        print(
+            "[INFO] Unsaved changes dialog detected. Discarding changes.",
+            file=sys.stderr,
+        )
         d(text="DISCARD CHANGES").click_exists(timeout=30)
         wait_for_ui_stable(timeout=5)
     else:
         print("[INFO] No unsaved changes dialog appeared.", file=sys.stderr)
-    exit(1)  
+    exit(1)
 else:
     print("[INFO] No errors detected in UI hierarchy.", file=sys.stderr)
     wait_and_click_desc("Back")
-    exit(0)  
+    exit(0)
