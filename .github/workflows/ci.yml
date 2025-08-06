@@ -459,7 +459,6 @@ jobs:
           adb remount
           sleep 5  
           adb shell input keyevent 224
-          adb logcat -c 
           echo "Emulator ready!"
 
       - name: Test checks after non-DOS vulnerable scenario
