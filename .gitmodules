@@ -11,5 +11,5 @@
 	url = https://github.com/cy-suite/joplin.git
 	
 [submodule "nextcloud-talk/codebase/talk-android"]
-	path = nextcloud-talk/codebase/talk-android
+	path = apps/nextcloud-talk/codebase/talk-android
 	url = https://github.com/cy-suite/nextcloud-talk-android
