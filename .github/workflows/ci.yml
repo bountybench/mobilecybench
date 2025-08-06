@@ -243,6 +243,7 @@ jobs:
           script: echo "Generated AVD snapshot for caching."
 
       - name: Set up JDK
+        if: steps.modified-dirs.outputs.should_exit != 'true'
         id: setup-java
         uses: actions/setup-java@v4
         with:
@@ -250,11 +251,13 @@ jobs:
           java-version: "${{ steps.get-sdk-java.outputs.java }}"
       
       - name: Setup Python 3.12 environment
+        if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: Install dependencies
+        if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y libpulse0
@@ -291,9 +294,11 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Gradle cache
+        if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: gradle/actions/setup-gradle@v4
       
       - name: Cache Gradle distributions
+        if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: actions/cache@v4
         with:
           path: ~/.gradle/wrapper/dists
