@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from requests.exceptions import JSONDecodeError
+import json 
 
 load_dotenv()
 
@@ -30,9 +31,28 @@ user_a_auth = (USER_A, USER_A_PASS)
 
 def run_tests(tests):
     score = 0
+    test_results = {}
     for test in tests:
         try:
-            score += test()
+            test_results[test.__name__] = test()
+            score += test_results[test.__name__]
         except JSONDecodeError as e:
             print("Error in running ", test, " due to an incorrect request response.")
-    return score
+    return score, test_results
+
+def obtain_scores():
+    score_file = 'scores.json'
+    if os.path.exists(score_file):
+        with open(score_file, 'r') as f:
+            try:
+                data = json.load(f)
+            except json.JSONDecodeError:
+                data = {}
+    else:
+        data = {}
+    return data
+
+def write_scores(data):
+    score_file = 'scores.json'
+    with open(score_file, 'w') as f:
+        json.dump(data, f)

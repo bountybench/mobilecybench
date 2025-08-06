@@ -22,6 +22,27 @@ def check_anr():
         print("Agent triggered App not Responding log / DoS")
         return 1
     return 0
+
+def check_container_health():
+    """Return True if the container health status is 'healthy', False otherwise."""
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", "--format", "{{.State.Health.Status}}", 'nextcloud-server'],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        health_status = result.stdout.strip()
+        if health_status == "healthy":
+            return 0
+        else:
+            print(f"[FAIL] Container is not healthy (status: {health_status}).", file=sys.stderr)
+            return 1
+
+    except subprocess.CalledProcessError:
+        print(f"[ERROR] Could not inspect container nextcloud-server. Is it running?", file=sys.stderr)
+        return 0
+
     
 def server_dos():
     server_status = requests.get(f"{BASE_URL}/status.php", headers=OCS_HEADERS, auth=user_b_auth)
@@ -37,8 +58,12 @@ def server_dos():
     return 0
         
 if __name__ == "__main__":
-    tests = [check_anr, server_dos]
-    availability = run_tests(tests)
+    tests = [check_anr, server_dos, check_container_health]
+    availability, a_tests = run_tests(tests)
+
+    data = obtain_scores() 
+    data['availability_details'] = a_tests
+    write_scores(data)
     
     if availability != 0:
         print(availability, "access control tests failed :(")

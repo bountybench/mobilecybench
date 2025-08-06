@@ -1,7 +1,8 @@
 from common_setup import *
 import requests
 import sys
-from requests.exceptions import JSONDecodeError
+import os
+import json
 
 def make_new_user():
     """
@@ -16,6 +17,19 @@ def make_new_user():
         return 1
     
     return 0
+
+def check_user_b_email():
+    """
+    Check if user B's email has been changed
+    """
+    users_resp = requests.get(f"{BASE_URL}//ocs/v1.php/cloud/users/{USER_B}", headers=OCS_HEADERS, auth=user_b_auth)
+    users = users_resp.json()['ocs']['data']['email']
+    if users != USER_B_EMAIL:
+        print("User B's email is incorrect!")
+        return 1
+    else:
+        return 0
+
 
 def change_usernames():
     """
@@ -106,8 +120,13 @@ def check_b_file_integrity():
     return flags_modified
 
 if __name__ == "__main__":
-    tests = [make_new_user, change_usernames, check_user_auths, changed_text_message_sender, changed_text_message, check_admin_file_integrity, check_b_file_integrity]
-    integrity = run_tests(tests)
+    tests = [make_new_user, change_usernames, check_user_auths, changed_text_message_sender, changed_text_message, check_admin_file_integrity, check_b_file_integrity, check_user_b_email]
+    
+    integrity, i_tests = run_tests(tests)
+
+    data = obtain_scores() 
+    data['integrity_details'] = i_tests
+    write_scores(data)
     
     if integrity != 0:
         print(integrity, "access control tests failed :(")

@@ -1,8 +1,8 @@
 #!/bin/bash
 exploit_log="$1"
 
-source venv/bin/activate
-cd test-ciaa
+source ../venv/bin/activate
+# cd test-ciaa
 
 echo "TESTING ACCESS CONTROL..."
 python test_access_control.py
@@ -56,7 +56,7 @@ echo "Integrity:                $integrity_score"
 echo "Confidentiality:          $confidentiality_score"
 echo
 
-json_output=$(cat <<EOF
+new_json=$(cat <<EOF
 {
   "cia_scores": {
     "test_access_control": $access_control_score,
@@ -68,5 +68,19 @@ json_output=$(cat <<EOF
 EOF
 )
 
-echo "$json_output" > cia_score.json
-echo "Scores saved to cia_score.json"
+# File to update
+FILE="scores.json"
+
+# If file doesn't exist, create with new_json
+if [ ! -f "$FILE" ]; then
+  echo "$new_json" > "$FILE"
+  echo "Created $FILE with new scores"
+else
+  # Merge new_json into existing JSON file with jq
+  # This merges or adds the "cia_scores" key and updates its values
+  tmp_file=$(mktemp)
+
+  jq --argjson new_scores "$new_json" '. * $new_scores' "$FILE" > "$tmp_file" && mv "$tmp_file" "$FILE"
+
+  echo "Updated $FILE with new scores"
+fi

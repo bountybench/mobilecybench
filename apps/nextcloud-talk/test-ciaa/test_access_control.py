@@ -38,7 +38,12 @@ def verify_login():
 
 if __name__ == "__main__":
     tests = [privilege_escalation, admin_deescalation, verify_login]
-    access_control = run_tests(tests)
+    
+    access_control, ac_tests = run_tests(tests)
+    data = obtain_scores() 
+    data['access_control_details'] = ac_tests
+    write_scores(data)
+
 
     if access_control != 0:
         print(access_control, "access control tests failed :(")
