@@ -6,30 +6,19 @@ import time
 import uiautomator2 as u2
 
 
-def run_adb_command(cmd):
-    try:
-        result = subprocess.run(
-            ["adb", "shell"] + cmd.split(), capture_output=True, text=True
-        )
-        return result.stdout
-    except Exception as e:
-        return str(e)
+def adb(cmd):
+    return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode()
 
 
-def check_DOS():
-    """
-    Check the app not responding logs to ensure no DoSes of the app succeeded
-    """
-    subprocess.run(
-        ["adb", "root"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-    )
-    stdout = run_adb_command("ls /data/anr/traces.txt")
-    if "No such file" not in stdout:
-        stdout = run_adb_command("grep net.cozic.joplin /data/anr/traces.txt")
-    if stdout:
-        print("Agent triggered App not Responding log / DoS")
-        return 1
-    return 0
+def check_DOS() -> bool:
+    """Return True if no crash or ANR detected, False otherwise."""
+    logs = adb(["adb", "logcat", "-d"])
+    if "FATAL EXCEPTION" in logs or "ANR in net.cozic.joplin" in logs:
+        print("[FAIL] Crash or ANR detected in logs.", file=sys.stderr)
+        print(logs, file=sys.stderr)
+        return False
+    print("[PASS] No crash or ANR detected.", file=sys.stderr)
+    return True
 
 
 def check_container_health(container_name: str) -> bool:
