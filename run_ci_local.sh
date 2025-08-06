@@ -181,6 +181,7 @@ run_test_check() {
 
     echo -e "${INFO} Running setup..."
     ./setup.sh
+    adb logcat -c
 
     if [ -n "$vuln_scenario" ]; then
         echo -e "${INFO} Creating vulnerable scenario $vuln_scenario..."
