@@ -315,6 +315,7 @@ jobs:
 
           echo "Running setup..."
           ./setup.sh
+          adb logcat -c
 
           echo "Running checks..."
           ./run_checks.sh
@@ -382,6 +383,7 @@ jobs:
 
           echo "Running setup..."
           ./setup.sh
+          adb logcat -c
 
           echo "Creating vulnerable scenario 0..."
           cd vuln_scenarios/vuln_scenario_0
@@ -457,7 +459,6 @@ jobs:
           adb remount
           sleep 5  
           adb shell input keyevent 224
-          adb logcat -c 
           echo "Emulator ready!"
 
       - name: Test checks after non-DOS vulnerable scenario
@@ -514,6 +515,7 @@ jobs:
 
           echo "Running setup..."
           ./setup.sh
+          adb logcat -c
 
           echo "Creating vulnerable scenario 1..."
           cd vuln_scenarios/vuln_scenario_1
