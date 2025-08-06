@@ -1,6 +1,8 @@
-import uiautomator2 as u2
 import sys
 import time
+
+import uiautomator2 as u2
+
 
 def click_by_resource_id(device, resource_id):
     el = device(resourceId=resource_id)
@@ -10,6 +12,7 @@ def click_by_resource_id(device, resource_id):
     else:
         print(f"Element with resource-id {resource_id} not found.")
 
+
 def click_by_desc(device, content_desc):
     el = device(description=content_desc)
     if el.exists():
@@ -17,6 +20,7 @@ def click_by_desc(device, content_desc):
         print(f"Clicked element with content-desc: {content_desc}")
     else:
         print(f"Element with content-desc {content_desc} not found.")
+
 
 def click_by_text(device, text):
     el = device(text=text)
@@ -26,6 +30,7 @@ def click_by_text(device, text):
         print(f"Clicked element with text: {text}")
     else:
         print(f"Element with text {text} not found.")
+
 
 def main():
     if len(sys.argv) < 3:
@@ -47,6 +52,7 @@ def main():
         click_by_text(d, value)
     else:
         print(f"Unknown action: {action}")
+
 
 if __name__ == "__main__":
     main()
