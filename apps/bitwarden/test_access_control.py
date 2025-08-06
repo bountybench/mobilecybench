@@ -20,7 +20,6 @@ import urllib.request
 
 import psycopg2
 import uiautomator2 as u2
-
 from util import BITWARDEN_PKG, attempt_login
 
 """

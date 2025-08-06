@@ -17,7 +17,6 @@ import time
 import urllib.request
 
 import uiautomator2 as u2
-
 from util import adb
 
 SERVER_SERVICE = "vaultwarden"

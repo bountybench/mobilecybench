@@ -20,12 +20,10 @@ def adb(cmd):
         return None
 
 
-def wait_for_ui_stable(d, timeout=10, interval=0.5):
+def wait_for_ui_stable(d, timeout=3, interval=0.5):
     """
     Waits until the UI hierarchy stops changing.
     """
-    check_and_click_wait_button(d)
-
     prev_hierarchy = None
     start = time.time()
 
@@ -39,7 +37,7 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5):
     return False
 
 
-def wait_and_click(d, element, timeout=180):
+def wait_and_click(d, element, timeout=5):
     """
     Waits for an element and clicks it. Prefers resourceId for reliability.
     """
@@ -57,7 +55,7 @@ def wait_and_click(d, element, timeout=180):
         sys.exit(1)
 
 
-def wait_and_set_text(d, element, text, timeout=180):
+def wait_and_set_text(d, element, text, timeout=5):
     """
     Waits for an EditText element, sets its text, and clicks the IME action button
     """
@@ -77,14 +75,13 @@ def wait_and_set_text(d, element, text, timeout=180):
         sys.exit(1)
 
 
-def check_and_click_wait_button(d, timeout=5):
+def check_and_click_wait_button(d, timeout=3):
     """
     check_and_click_wait_button()
     - Takes in the device and timeout
     - Checks if the 'aerr_wait' button is on screen and clicks it
     - Returns boolean of whether the button was found and clicked
     """
-    print("Checking for 'aerr_wait' button...")
     if d(resourceId="aerr_wait").exists(timeout=timeout):
         print("Found 'aerr_wait' button. Clicking it...")
         wait_and_click(d, d(resourceId="aerr_wait"))

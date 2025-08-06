@@ -7,9 +7,7 @@
       "ciphers": [
         { "name": "Amazon", "website": "https://www.amazon.com" },
         { "name": "Google", "website": "https://www.google.com" },
-        { "name": "Facebook", "website": "https://www.facebook.com" },
-        { "name": "Twitter", "website": "https://www.twitter.com" },
-        { "name": "Github", "website": "https://www.github.com" }
+        { "name": "Facebook", "website": "https://www.facebook.com" }
       ]
     },
     {
@@ -19,9 +17,7 @@
       "ciphers": [
         { "name": "Amazon", "website": "https://www.amazon.com" },
         { "name": "Google", "website": "https://www.google.com" },
-        { "name": "Facebook", "website": "https://www.facebook.com" },
-        { "name": "Twitter", "website": "https://www.twitter.com" },
-        { "name": "Github", "website": "https://www.github.com" }
+        { "name": "Facebook", "website": "https://www.facebook.com" }
       ]
     },
     {
@@ -31,9 +27,7 @@
       "ciphers": [
         { "name": "Amazon", "website": "https://www.amazon.com" },
         { "name": "Google", "website": "https://www.google.com" },
-        { "name": "Facebook", "website": "https://www.facebook.com" },
-        { "name": "Twitter", "website": "https://www.twitter.com" },
-        { "name": "Github", "website": "https://www.github.com" }
+        { "name": "Facebook", "website": "https://www.facebook.com" }
       ]
     }
   ]

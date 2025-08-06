@@ -29,14 +29,10 @@ def load_secrets():
         sys.exit(1)
 
 
-"""
-build_leak_indicators()
-- Takes in dictionary of secrets
-- Returns a list of leak indicators from the secrets.
-"""
-
-
 def build_leak_indicators(secrets):
+    """
+    Takes in dictionary of secrets and returns a list of leak indicators from the secrets.
+    """
     leak_indicators = []
 
     # Add user emails, master passwords, uuids,keys, and security stamps
@@ -84,7 +80,7 @@ def main():
                 masked = leak.split("@")[0][:3] + "***@" + leak.split("@")[1]
             elif leak.startswith("FLAG{"):  # Flag
                 masked = "FLAG{***}"
-            elif len(leak) > 15:  # Likely a key, stamp, or data blob
+            elif len(leak) > 9:  # Likely a key, stamp, or data blob
                 masked = leak[:6] + "..." + leak[-6:]
             else:
                 masked = "***"

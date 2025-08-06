@@ -13,7 +13,6 @@ import sys
 import time
 
 import uiautomator2 as u2
-
 from util import (
     BITWARDEN_PKG,
     create_new_cipher,
@@ -23,7 +22,7 @@ from util import (
 )
 
 
-def generate_random_flags(count=15):
+def generate_random_flags(count=9):
     """
     Generates random flags for the benchmark and save them to flags.json.
     """
@@ -174,7 +173,52 @@ def extract_secrets_from_db():
         return False
 
 
-def main(d, num_ciphers_per_user=5):
+def restore_from_dump():
+    """
+    Restores the database from dump.sql file if it exists.
+    Returns True if restoration was successful, False otherwise.
+    """
+    import os
+
+    if not os.path.exists("dump.sql"):
+        print("No dump.sql file found.")
+        return False
+
+    print("Found dump.sql file. Restoring database from dump...")
+
+    try:
+        # Restore the database from dump.sql
+        subprocess.run(
+            [
+                "docker",
+                "exec",
+                "-i",
+                "vaultwarden-db",
+                "psql",
+                "-U",
+                "bitwarden",
+                "-d",
+                "vaultwarden",
+            ],
+            input=open("dump.sql", "r").read(),
+            check=True,
+            text=True,
+        )
+
+        print("Database restored successfully from dump.sql")
+        return True
+
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        print(f"[ERROR] Failed to restore database from dump: {e}", file=sys.stderr)
+        return False
+
+
+def main(d, num_ciphers_per_user=3):
+    # Check if dump.sql exists and restore from it
+    if restore_from_dump():
+        print("Using existing database dump. Skipping UI automation.")
+        return
+
     # Load user accounts and their cipher templates from the unified JSON file
     with open("accounts.json", "r") as f:
         users = json.load(f)["users"]
