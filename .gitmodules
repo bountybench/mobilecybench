@@ -12,4 +12,4 @@
 	
 [submodule "nextcloud-talk/codebase"]
 	path = nextcloud-talk/codebase
-	url = https://github.com/cy-suite/nextcloud-android
+	url = https://github.com/cy-suite/nextcloud-talk-android
