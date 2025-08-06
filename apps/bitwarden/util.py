@@ -4,15 +4,11 @@ import time
 
 BITWARDEN_PKG = "com.x8bit.bitwarden.dev"
 
-"""
-adb()
-- Takes in a list of ADB commands
-- Runs the ADB commands
-- Returns the output of the ADB commands
-"""
-
 
 def adb(cmd):
+    """
+    Runs ADB commands.
+    """
     full_cmd = ["adb"] + cmd
     try:
         return subprocess.check_output(full_cmd, stderr=subprocess.DEVNULL, text=True)
@@ -24,15 +20,12 @@ def adb(cmd):
         return None
 
 
-"""
-wait_for_ui_stable()
-- Takes in the device, timeout, and interval
-- Waits until the UI hierarchy stops changing
-- Returns boolean of whether the UI hierarchy stops changing
-"""
-
-
 def wait_for_ui_stable(d, timeout=10, interval=0.5):
+    """
+    Waits until the UI hierarchy stops changing.
+    """
+    check_and_click_wait_button(d)
+
     prev_hierarchy = None
     start = time.time()
 
@@ -46,15 +39,12 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5):
     return False
 
 
-"""
-wait_and_click()
-- Takes in the device, element, and timeout
-- Waits for an element and clicks it. Prefers resourceId for reliability.
-- Returns boolean of whether the element is clicked
-"""
-
-
 def wait_and_click(d, element, timeout=180):
+    """
+    Waits for an element and clicks it. Prefers resourceId for reliability.
+    """
+    check_and_click_wait_button(d)
+
     if element.wait(timeout=timeout):
         element.click_exists(timeout=3)
         wait_for_ui_stable(d)
@@ -67,15 +57,12 @@ def wait_and_click(d, element, timeout=180):
         sys.exit(1)
 
 
-"""
-wait_and_set_text()
-- Takes in the device, element, text, and timeout
-- Waits for an EditText element, sets its text, and clicks the IME action button
-- Returns boolean of whether the text is set
-"""
-
-
 def wait_and_set_text(d, element, text, timeout=180):
+    """
+    Waits for an EditText element, sets its text, and clicks the IME action button
+    """
+    check_and_click_wait_button(d)
+
     if element.wait(timeout=timeout):
         element.set_text(text)
         # Handle keyboard action with multiple fallback methods
@@ -103,7 +90,6 @@ def check_and_click_wait_button(d, timeout=5):
         wait_and_click(d, d(resourceId="aerr_wait"))
         return True
     else:
-        print("'aerr_wait' button not found on screen.")
         return False
 
 
@@ -144,14 +130,10 @@ def handle_keyboard_action(d):
     return False
 
 
-"""
-initialize_local_host()
-- Takes in the device
-- Initializes the device connection and launches the Bitwarden app
-"""
-
-
 def initialize_local_host(d):
+    """
+    Initializes the device connection and launches the Bitwarden app
+    """
     # --- Step 1: App Initialization and Server Configuration ---
     # The following steps launch the application and point it to the
     # self-hosted Vaultwarden server instance.
@@ -198,14 +180,10 @@ def initialize_local_host(d):
     wait_and_click(d, d(resourceId="SaveButton"))
 
 
-"""
-make_account()
-- Takes in the device, email, name, master password, and account index
-- Creates a Bitwarden account with the specified credentials
-"""
-
-
 def make_account(d, email, name, master_password, account_index=0):
+    """
+    Creates a Bitwarden account with the specified credentials
+    """
     # --- Step 2: User Account Creation ---
     # The following steps walk through the UI to register a new user
     # with the provided credentials.
@@ -286,14 +264,10 @@ def make_account(d, email, name, master_password, account_index=0):
     print(f"=== Account for {email} created successfully ===")
 
 
-"""
-create_new_cipher()
-- Takes in the device and cipher data
-- Creates a new cipher entry in the vault
-"""
-
-
 def create_new_cipher(d, cipher):
+    """
+    Creates a new cipher entry in the vault
+    """
     # --- Step 3: Cipher Creation ---
     # The following steps create a new login cipher in the user's vault.
     print(f"=== Creating cipher: {cipher['name']} ===")
@@ -336,14 +310,10 @@ def create_new_cipher(d, cipher):
     print(f"=== Finished creating cipher: {cipher['name']} ===")
 
 
-"""
-lock_and_logout()
-- Takes in the device
-- Locks the vault and logs out
-"""
-
-
 def lock_and_logout(d):
+    """
+    Locks the vault and logs out
+    """
     print("=== Locking and logging out ===")
     # Step 4.1: Click the main options button in the header bar
     print("Step 4.1: Clicking header options button...")
@@ -368,15 +338,10 @@ def lock_and_logout(d):
     print("=== Locking and logging out complete ===")
 
 
-"""
-attempt_login()
-- Takes in the device, email, and password
-- Attempts to login to the Bitwarden app
-- Returns boolean of whether the login was successful
-"""
-
-
 def attempt_login(d, email, password):
+    """
+    Attempts to login to the Bitwarden app
+    """
     try:
         # --- Stop any previous instances and start fresh ---
         print(f"Stopping any existing instances of {BITWARDEN_PKG}...")

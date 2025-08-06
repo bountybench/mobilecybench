@@ -22,13 +22,11 @@ from util import (
     make_account,
 )
 
-"""
-generate_random_flags()
-- Generate random flags for the benchmark and save them to flags.json.
-"""
-
 
 def generate_random_flags(count=15):
+    """
+    Generates random flags for the benchmark and save them to flags.json.
+    """
     flags = []
     for i in range(count):
         # Generate random alphanumeric characters (9 chars for 16-char total with FLAG{} wrapper)
@@ -47,13 +45,10 @@ def generate_random_flags(count=15):
     return flags
 
 
-"""
-get_ciphers_for_user()
-- Populate a user's cipher templates with dynamic usernames and passwords.
-"""
-
-
 def get_ciphers_for_user(user_data, flags_for_user, user_index):
+    """
+    Populates a user's cipher templates with dynamic usernames and passwords.
+    """
     base_ciphers = user_data["ciphers"]
 
     # Add the user-specific flags and dynamic usernames to the ciphers
@@ -70,13 +65,10 @@ def get_ciphers_for_user(user_data, flags_for_user, user_index):
     return base_ciphers
 
 
-"""
-extract_secrets_from_db()
-- Extract sensitive data from the database and create secrets.json.
-"""
-
-
 def extract_secrets_from_db():
+    """
+    Extracts sensitive data from the database and creates secrets.json.
+    """
     print("Extracting secrets from the database...")
 
     secrets = {"users": [], "ciphers": [], "flags": []}
