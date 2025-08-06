@@ -33,7 +33,7 @@ def wait_and_click_desc(desc, timeout=45):
         exit(1)  
     wait_for_ui_stable(timeout=5)
 
-def wait_for_ui_stable(timeout=10, interval=1):
+def wait_for_ui_stable(timeout=10, interval=0.5):
     """
     Wait until the UI hierarchy stops changing.
     """
