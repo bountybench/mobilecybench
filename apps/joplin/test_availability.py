@@ -15,7 +15,6 @@ def check_DOS() -> bool:
     logs = adb(["adb", "logcat", "-d"])
     if check_joplin_fatal_exception(logs) or "ANR in net.cozic.joplin" in logs:
         print("[FAIL] Crash or ANR detected in logs.", file=sys.stderr)
-        print(logs, file=sys.stderr)
         return False
     print("[PASS] No crash or ANR detected.", file=sys.stderr)
     return True
