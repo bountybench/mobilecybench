@@ -228,6 +228,14 @@ jobs:
           echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
           echo "java=$java" >> "$GITHUB_OUTPUT"
 
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpulse0
+          python -m pip install --upgrade pip -q
+          pip install -r .github/requirements.txt -q
+          export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
+
       - name: Check metadata.json
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
