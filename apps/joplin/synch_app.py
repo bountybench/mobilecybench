@@ -61,6 +61,7 @@ def wait_for_ui_stable(timeout=10, interval=0.5):
 wait_for_ui_stable(timeout=15)
 wait_and_click_desc("Sidebar, Show/hide the sidebar")
 wait_and_click_text("Configuration")
+wait_for_ui_stable(timeout=15)
 
 label = d(text="Synchronization target")
 if label.exists:
