@@ -27,3 +27,5 @@ docker exec -it nextcloud-server php -r '
 chmod +x setup_app_source.sh
 chmod +x setup_app_apklink.sh
 ./setup_app_apklink.sh
+
+cd ..
