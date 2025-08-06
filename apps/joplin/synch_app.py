@@ -66,7 +66,7 @@ label = d(text="Synchronization target")
 if label.exists:
     dropdown = label.sibling(className="android.view.ViewGroup")
     dropdown.click()
-    wait_for_ui_stable(timeout=5)
+    wait_for_ui_stable(timeout=5, interval=3)
     wait_and_click_text("Joplin Server (Beta)")
 
 # Fill Joplin Server URL
