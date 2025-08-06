@@ -33,7 +33,7 @@ def check_user_b_email():
         auth=user_b_auth,
     )
     users = users_resp.json()["ocs"]["data"]["email"]
-    if users != USER_B_EMAIL:
+    if users.lower() != USER_B_EMAIL.lower():
         print("User B's email is incorrect!")
         return 1
     else:

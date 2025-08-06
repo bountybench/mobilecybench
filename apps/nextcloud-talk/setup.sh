@@ -1,6 +1,6 @@
 cd docker-setup
 docker compose up --build -d
-sleep 10
+sleep 20
 cd ..
 
 python3 -m venv ./venv
@@ -25,4 +25,5 @@ docker exec -it nextcloud-server php -r '
 '
 
 chmod +x setup_app_source.sh
-./setup_app_source.sh
+chmod +x setup_app_apklink.sh
+./setup_app_apklink.sh
