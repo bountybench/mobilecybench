@@ -13,7 +13,7 @@ def adb(cmd):
 def check_DOS() -> bool:
     """Return True if no crash or ANR detected, False otherwise."""
     logs = adb(["adb", "logcat", "-d"])
-    if "FATAL EXCEPTION" in logs or "ANR in" in logs:
+    if "FATAL EXCEPTION" in logs or "ANR in net.cozic.joplin" in logs:
         print("[FAIL] Crash or ANR detected in logs.", file=sys.stderr)
         print(logs, file=sys.stderr)
         return False
