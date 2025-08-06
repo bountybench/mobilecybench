@@ -9,6 +9,7 @@
 [submodule "joplin/codebase"]
 	path = joplin/codebase
 	url = https://github.com/cy-suite/joplin.git
-[submodule "bitwarden/codebase"]
-	path = bitwarden/codebase
+	
+[submodule "apps/bitwarden/codebase"]
+	path = apps/bitwarden/codebase
 	url = https://github.com/cy-suite/bitwarden.git
