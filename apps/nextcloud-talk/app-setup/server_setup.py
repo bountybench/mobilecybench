@@ -26,33 +26,43 @@ ADMIN_FILE_NAME = os.getenv("ADMIN_FILE_NAME")
 USER_B_FILE_CONTENTS = os.getenv("USER_B_LOCAL_FILE")
 USER_B_FILE_NAME = os.getenv("USER_B_FILE_NAME")
 
-BASE_URL = "http://localhost:8080/"
+#Web Authentication:
 
-
-options = webdriver.SafariOptions()
-driver = webdriver.Safari(options=options)
-options.add_argument("--start-maximized")
-driver.get(BASE_URL)
+# options = webdriver.SafariOptions()
+# driver = webdriver.Safari(options=options)
+# options.add_argument("--start-maximized")
+# driver.get(BASE_URL)
 
 # time.sleep(3)
 
-# #Log in to web server as admin
-admin_input = driver.find_element(By.ID, "adminlogin")
-admin_input.clear()
-admin_input.send_keys(ADMIN_USERNAME)
-admin_pwd = driver.find_element(By.ID, "adminpass")
-admin_pwd.clear()
-admin_pwd.send_keys(ADMIN_PASSWORD)
+# # #Log in to web server as admin
+# admin_input = driver.find_element(By.ID, "adminlogin")
+# admin_input.clear()
+# admin_input.send_keys(ADMIN_USERNAME)
+# admin_pwd = driver.find_element(By.ID, "adminpass")
+# admin_pwd.clear()
+# admin_pwd.send_keys(ADMIN_PASSWORD)
 
-time.sleep(3)
+# time.sleep(3)
 
-install_button = driver.find_element(By.XPATH, '//input[@value="Install"]')
-print(install_button, "Found install button")
-install_button.click()
-print("Clicked install button")
+# install_button = driver.find_element(By.XPATH, '//input[@value="Install"]')
+# print(install_button, "Found install button")
+# install_button.click()
+# print("Clicked install button")
 
+# time.sleep(20)
+#CI Request Authentication:
+BASE_URL = "http://localhost:8080"
+print("hiii", ADMIN_USERNAME, ADMIN_PASSWORD)
+payload = {
+    'install': 'true',
+    'adminlogin': ADMIN_USERNAME,
+    'adminpass': ADMIN_PASSWORD,
+}
+r = requests.post(f"{BASE_URL}/index.php", data=payload)
+print("Sent message:", r.status_code, r.text)
 
-time.sleep(20)
+time.sleep(2)
 
 # #Initialize data
 headers = {
