@@ -13,12 +13,24 @@ def adb(cmd):
 def check_DOS() -> bool:
     """Return True if no crash or ANR detected, False otherwise."""
     logs = adb(["adb", "logcat", "-d"])
-    if "FATAL EXCEPTION" in logs or "ANR in net.cozic.joplin" in logs:
+    if check_joplin_fatal_exception(logs) or "ANR in net.cozic.joplin" in logs:
         print("[FAIL] Crash or ANR detected in logs.", file=sys.stderr)
         print(logs, file=sys.stderr)
         return False
     print("[PASS] No crash or ANR detected.", file=sys.stderr)
     return True
+
+
+def check_joplin_fatal_exception(logs: str) -> bool:
+    lines = logs.splitlines()
+
+    for i, line in enumerate(lines):
+        if "FATAL EXCEPTION" in line:
+            nearby_lines = lines[i+1:i+3] 
+            for nearby_line in nearby_lines:
+                if "Process: net.cozic.joplin" in nearby_line:
+                    return True
+    return False
 
 
 def check_container_health(container_name: str) -> bool:
