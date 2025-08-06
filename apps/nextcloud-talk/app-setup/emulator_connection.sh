@@ -13,21 +13,48 @@ adb shell input text "http://10.0.2.2:8080"
 
 #Pass first page
 source ../venv/bin/activate
-sleep 2
+sleep 1
 python ui_utils.py click_id com.nextcloud.talk2:id/text_input_end_icon
 
 sleep 3
-python ui_utils.py click_text "Log in"
-python ui_utils.py click_text "Log in"
-sleep 4
+# Submit server address (press Enter)
+adb shell input keyevent 66  # KEYCODE_ENTER
+adb shell input keyevent 23  # KEYCODE_DPAD_CENTER
+sleep 1
 
-#Log in page 2
+# Login Page
+echo "Logging in..."
+
+# Enter username
 adb shell input text "${USER_A_USERNAME}"
-adb shell input keyevent 61
-adb shell input text "${USER_A_PASSWORD}"
-sleep 2
-python ui_utils.py click_text "Log in"
+sleep 1
 
-#Grant Access page
-sleep 5
-python ui_utils.py click_text "Grant access"
+# Move to password field (2x Tab/Next)
+adb shell input keyevent 61
+adb shell input keyevent 61
+sleep 1
+
+# Enter password
+adb shell input text "${USER_A_PASSWORD}"
+sleep 1
+
+echo "hiii"
+adb shell input keyevent 61
+sleep 1
+adb shell input keyevent 61
+sleep 1
+adb shell input keyevent 61
+sleep 1
+adb shell input keyevent 61
+sleep 3
+
+echo "input 23"
+adb shell input keyevent 23  # Move focus and press
+sleep 3
+
+echo "input 23"
+adb shell input keyevent 23
+adb shell input keyevent 61
+adb shell input keyevent 23
+
+echo "Login automation complete."
