@@ -1,4 +1,5 @@
 #!/bin/bash
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,7 +18,6 @@ check_prerequisites() {
     # check Android SDK
     if [[ ! -d "$ANDROID_HOME" ]]; then
         echo "ERROR: Android SDK not found at $ANDROID_HOME"
-        echo "Please run the Android emulator setup first."
         exit 1
     fi
     
@@ -48,14 +48,12 @@ build_extractor_local() {
     # set temp directory inside SCRIPT_DIR to avoid clutter
     EXTRACTOR_DIR="$SCRIPT_DIR/NewPipeExtractor"
     if [[ ! -d "$EXTRACTOR_DIR" ]]; then
-        git clone --depth 1 --branch ../smain https://github.com/TeamNewPipe/NewPipeExtractor.git "$EXTRACTOR_DIR"
+        git clone --depth 1 --branch master https://github.com/TeamNewPipe/NewPipeExtractor.git "$EXTRACTOR_DIR"
     fi
 
     pushd "$EXTRACTOR_DIR" >/dev/null
     # only run clean and publish tasks, avoiding lint and tests
-    ./gradlew clean publish publishToMavenLocal || {
-        echo "ERROR: Failed to build NewPipeExtractor"; popd >/dev/null; exit 1;
-    }
+    ./gradlew clean publish publishToMavenLocal || { echo "ERROR: Failed to build NewPipeExtractor"; popd >/dev/null; exit 1; }
     popd >/dev/null
 
     echo "NewPipeExtractor published to Maven local repository."
@@ -80,15 +78,11 @@ EOF
 # build NewPipe APK
 build_newpipe() {
     echo "Building NewPipe Android from source..."
-    
-    # ensure extractor is available locally first
-    build_extractor_local
 
-    # create init script to inject mavenLocal into all repository lists
-    INIT_SCRIPT_PATH=$(create_gradle_init_script)
-
+    build_extractor_local # ensure extractor is available locally first
+    INIT_SCRIPT_PATH=$(create_gradle_init_script) # create init script to inject mavenLocal into all repo lists
     ./gradlew assembleDebug --init-script "$INIT_SCRIPT_PATH" -x test -x lint
-    
+
     echo "Build completed successfully."
 }
 
@@ -99,16 +93,14 @@ install_newpipe() {
     # check if emulator is running
     if ! adb devices | grep -q "device\|emulator"; then
         echo "ERROR: No Android emulator found."
-        echo "Please start the emulator first."
         exit 1
     fi
     
-    # attempt to locate APK dynamically (debug build)
+    # locate APK dynamically (debug build)
     APK_PATH="$(find . -path "*/app/build/outputs/apk/debug/*.apk" -type f | head -n 1)"
     
     if [[ -z "$APK_PATH" ]] || [[ ! -f "$APK_PATH" ]]; then
-        echo "ERROR: Could not locate debug APK to install."
-        echo "Searched for */app/build/outputs/apk/debug/*.apk within $(pwd), found:"
+        echo "ERROR: Could not locate debug APK to install. Available APKs:"
         find . -name "*.apk" -type f 2>/dev/null | head -10
         exit 1
     fi
@@ -146,7 +138,6 @@ main() {
     install_newpipe
     launch_newpipe
     
-    echo ""
     echo "Setup complete! NewPipe is ready for testing."
 }
 

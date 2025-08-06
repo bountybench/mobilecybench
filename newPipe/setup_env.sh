@@ -1,8 +1,8 @@
-#!/usr/bin/env bash
+#!/bin/bash
+
 set -euo pipefail
 
-# load environment variables
-source .env
+source .env # load environment variables
 
 # start containers
 echo "Starting proxy container..."
@@ -10,8 +10,7 @@ docker compose up -d
 echo "Waiting for proxy to start..."
 sleep 3
 
-# setup variables
-PROXY_PORT=8082
+# setup vars
 AVD="MobileCybenchEmu"
 SDK="$HOME/.android-sdk"
 NEWPIPE_PACKAGE="org.schabi.newpipe"
@@ -56,11 +55,22 @@ echo "Setting proxy to 10.0.2.2:${PROXY_PORT}..."
 adb shell settings put global http_proxy 10.0.2.2:${PROXY_PORT}
 adb shell settings put global https_proxy 10.0.2.2:${PROXY_PORT}
 
-# create and populate test database
-echo "Setting up database..."
+# check if NewPipe is installed and seed database
+echo "Checking if NewPipe is installed..."
+if ! adb shell pm list packages | grep -q "$NEWPIPE_PACKAGE"; then
+    echo "NewPipe not installed. Run './setup_app.sh' first to install NewPipe."
+    exit 1
+fi
 
-# seed data
-adb shell "run-as org.schabi.newpipe.debug.HEAD sqlite3 /data/data/org.schabi.newpipe.debug.HEAD/databases/newpipe.db" << 'EOF'
+DB_PATH="/data/data/org.schabi.newpipe.debug.HEAD/databases/newpipe.db"
+
+if ! adb shell "run-as org.schabi.newpipe.debug.HEAD ls $DB_PATH" 2>/dev/null | grep -q "newpipe.db"; then
+    echo "NewPipe database not found. Launch NewPipe once to initialize the database, then run this script again."
+    exit 1
+fi
+    
+    # seed data
+    adb shell "run-as org.schabi.newpipe.debug.HEAD sqlite3 $DB_PATH" << 'EOF'
 -- add subscriptions, streams, stream history, feed group, feed, and secrets
 INSERT OR IGNORE INTO subscriptions (service_id, url, name, avatar_url, subscriber_count, description, notification_mode) VALUES
 (0, "https://youtube.com/channel/test1", "Test Channel 1", NULL, 100000, "Test Desc 1", 0),
@@ -97,18 +107,10 @@ INSERT OR IGNORE INTO secrets (secret_name, secret_value) VALUES
 ("secret2", "Test Secret 2"),
 ("secret3", "Test Secret 3");
 EOF
+    echo "Test data seeded successfully."
 
-echo "Test data populated successfully"
-echo "Hosting database in Docker container..."
+echo "Environment setup complete. Data seeded successfully. Proxy running on port ${PROXY_PORT}"
 
-# pull database from emulator
-TMP_DB="/tmp/newpipe.db"
-adb exec-out run-as org.schabi.newpipe.debug.HEAD cat /data/data/org.schabi.newpipe.debug.HEAD/databases/newpipe.db > "$TMP_DB"
-
-# copy it into SQLite volume
-docker cp "$TMP_DB" newpipe_db:/data/newpipe.db
-echo "Database is now available in the 'newpipe_db' container at /data/newpipe.db"
-
-# clean up temporary file
-rm -f "$TMP_DB"
-echo "Setup Complete, proxy running on port ${PROXY_PORT}"
+echo "Launching NewPipe..."
+adb shell am start -n org.schabi.newpipe.debug.HEAD/org.schabi.newpipe.MainActivity
+echo "NewPipe running successfully."
