@@ -11,15 +11,17 @@ It performs two main categories of tests:
     - Ensures legitimate users can log in successfully.
 """
 
-import psycopg2
-import sys
 import json
 import os
-import uiautomator2 as u2
 import subprocess
+import sys
 import time
 import urllib.request
-from util import attempt_login, BITWARDEN_PKG
+
+import psycopg2
+import uiautomator2 as u2
+
+from util import BITWARDEN_PKG, attempt_login
 
 """
 ensure_server_running()

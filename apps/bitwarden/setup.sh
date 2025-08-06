@@ -45,7 +45,7 @@ fi
 
 # Start Docker containers for server and database
 log_info "Starting Docker containers for Vaultwarden server and PostgreSQL database..."
-docker-compose up --build -d
+docker compose up --build -d
 log_success "Docker containers started."
 
 # Wait for Vaultwarden to be ready (not just Postgres)

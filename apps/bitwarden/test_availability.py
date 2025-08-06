@@ -10,14 +10,15 @@ It checks:
     - If crash or ANR for Bitwarden is detected in recent logs
 """
 
+import os
 import subprocess
 import sys
-import urllib.request
-import os
 import time
-import uiautomator2 as u2
-from util import adb
+import urllib.request
 
+import uiautomator2 as u2
+
+from util import adb
 
 SERVER_SERVICE = "vaultwarden"
 DB_SERVICE = "db"

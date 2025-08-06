@@ -20,5 +20,5 @@ echo "[INFO] Removing apk files"
 rm bitwarden.apk || true
 
 echo "[INFO] Cleaning up environment..."
-docker-compose down -v
+docker compose down -v
 echo "[INFO] Environment cleaned up."

@@ -1,6 +1,6 @@
-import time
-import sys
 import subprocess
+import sys
+import time
 
 BITWARDEN_PKG = "com.x8bit.bitwarden.dev"
 

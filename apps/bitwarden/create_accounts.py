@@ -5,23 +5,17 @@ This approach leverages the app itself to handle all the complex encryption,
 guaranteeing that the data is stored correctly.
 """
 
-import uiautomator2 as u2
-import time
-import sys
 import json
 import random
 import string
 import subprocess
-from util import (
-    wait_for_ui_stable,
-    wait_and_click,
-    wait_and_set_text,
-    initialize_local_host,
-    make_account,
-    create_new_cipher,
-    lock_and_logout,
-    BITWARDEN_PKG,
-)
+import sys
+import time
+
+import uiautomator2 as u2
+
+from util import (BITWARDEN_PKG, create_new_cipher, initialize_local_host,
+                  lock_and_logout, make_account)
 
 """
 generate_random_flags()

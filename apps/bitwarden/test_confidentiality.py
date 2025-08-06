@@ -8,8 +8,8 @@ It checks:
     - Flags any occurrence of secrets
 """
 
-import sys
 import json
+import sys
 
 """
 load_secrets()

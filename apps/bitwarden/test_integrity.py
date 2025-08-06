@@ -8,10 +8,11 @@ and queries the database to check:
 - Data Integrity: Has the sensitive, encrypted data within the ciphers been modified? (check_cipher_data)
 """
 
-import sys
 import json
-import psycopg2
 import os
+import sys
+
+import psycopg2
 
 """
 load_secrets()
