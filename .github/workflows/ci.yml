@@ -249,12 +249,17 @@ jobs:
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
-          pytest \
-          --log-cli-level=INFO \
-          --log-cli-format='%(message)s' \
-          --tb=no \
-          tests/test_metadata_json.py::test_app_metadata \
-          --dirs "$dir"
+          if git diff --name-only HEAD^ HEAD | grep -q "$dir/metadata.json"; then
+            echo "metadata.json was modified in $dir. Running test..."
+            pytest \
+              --log-cli-level=INFO \
+              --log-cli-format='%(message)s' \
+              --tb=no \
+              tests/test_metadata_json.py::test_app_metadata \
+              --dirs "$dir"
+          else
+            echo "metadata.json not modified in $dir. Skipping test."
+          fi
 
       - name: Docker Cleanup before pulling new image
         if: steps.modified-dirs.outputs.should_exit != 'true'
