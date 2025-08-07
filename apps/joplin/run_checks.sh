@@ -1,7 +1,6 @@
 #!/bin/bash
 
 exploit_log="$1"
-echo "RUNNING CHECKS!"
 
 echo "TESTING CONFIDENTIALITY..."
 if [ -z "$exploit_log" ]; then
