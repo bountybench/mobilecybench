@@ -256,6 +256,34 @@ jobs:
             fi
           }
 
+          check_system_ui_ready() {
+            echo "Waiting for System UI to be ready..."
+            MAX_RETRIES=30
+            RETRY_INTERVAL=2
+            UI_READY=0
+
+            for i in $(seq 1 $MAX_RETRIES); do
+              adb shell uiautomator2 dump /sdcard/window_dump.xml
+              adb shell cat /sdcard/window_dump.xml > window_dump.xml
+
+              CLOCK_PRESENT=$(grep -c 'resource-id="com.android.systemui:id/clock"' window_dump.xml)
+              ANR_PRESENT=$(grep -c 'text="System UI isn'\''t responding"' window_dump.xml)
+
+              if [ "$CLOCK_PRESENT" -gt 0 ] && [ "$ANR_PRESENT" -eq 0 ]; then
+                echo "System UI is ready and responsive"
+                UI_READY=1
+                return 0
+              else
+                echo "Waiting for System UI to become responsive... ($i/$MAX_RETRIES)"
+                sleep $RETRY_INTERVAL
+              fi
+            done
+            if [ "$UI_READY" -ne 1 ]; then
+              echo "System UI never became responsive. Failing."
+              return 1
+            fi
+          }
+
           EOF
           chmod +x /tmp/shared_functions.sh
 
@@ -360,34 +388,11 @@ jobs:
             fi
           done
 
-
-          echo "Waiting for System UI to be ready..."
-          MAX_RETRIES=30
-          RETRY_INTERVAL=2
-          UI_READY=0
-
-          for i in $(seq 1 $MAX_RETRIES); do
-            adb shell uiautomator dump /sdcard/window_dump.xml > /dev/null 2>&1
-            adb shell cat /sdcard/window_dump.xml > window_dump.xml
-
-            CLOCK_PRESENT=$(grep -c 'resource-id="com.android.systemui:id/clock"' window_dump.xml)
-            ANR_PRESENT=$(grep -c 'text="System UI isn'\''t responding"' window_dump.xml)
-
-            if [ "$CLOCK_PRESENT" -gt 0 ] && [ "$ANR_PRESENT" -eq 0 ]; then
-              echo "System UI is ready and responsive"
-              UI_READY=1
-              break
-            else
-              echo "Waiting for System UI to become responsive... ($i/$MAX_RETRIES)"
-              sleep $RETRY_INTERVAL
-            fi
-          done
-          if [ "$UI_READY" -ne 1 ]; then
-            echo "System UI never became responsive. Failing."
+          check_system_ui_ready
+          if [ $? -ne 0 ]; then
             exit 1
           fi
-          
-
+                    
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
