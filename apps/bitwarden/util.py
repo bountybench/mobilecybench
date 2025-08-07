@@ -6,19 +6,6 @@ from functools import wraps
 BITWARDEN_PKG = "com.x8bit.bitwarden"
 
 
-def handle_wait_alert(func):
-    """
-    Decorator that checks for and clicks the 'aerr_wait' button before executing the decorated function.
-    """
-
-    @wraps(func)
-    def wrapper(d, *args, **kwargs):
-        check_and_click_wait_button(d)
-        return func(d, *args, **kwargs)
-
-    return wrapper
-
-
 def adb(cmd):
     """
     Runs ADB commands.
@@ -51,12 +38,23 @@ def wait_for_ui_stable(d, timeout=3, interval=0.5):
     return False
 
 
-@handle_wait_alert
-def wait_and_click(d, element, timeout=60):
+def wait_and_click(d, element, timeout=180):
     """
-    Waits for an element and clicks it. Prefers resourceId for reliability.
+    Waits for an element and clicks it.
+    Continuously handles ANR dialogs while waiting.
     """
-    if element.wait(timeout=timeout):
+    start_time = time.time()
+    element_found = False
+    while time.time() - start_time < timeout:
+        # Prioritize handling ANRs
+        check_and_click_wait_button(d, max_anrs=1, timeout=1)
+
+        if element.exists:
+            element_found = True
+            break
+        time.sleep(1)  # Poll every second
+
+    if element_found:
         element.click_exists(timeout=3)
         wait_for_ui_stable(d)
     else:
@@ -68,14 +66,23 @@ def wait_and_click(d, element, timeout=60):
         sys.exit(1)
 
 
-@handle_wait_alert
 def wait_and_set_text(d, element, text, timeout=180):
     """
-    Waits for an EditText element, sets its text, and clicks the IME action button
+    Waits for an EditText element and sets its text.
+    Continuously handles ANR dialogs while waiting.
     """
-    if element.wait(timeout=timeout):
+    start_time = time.time()
+    element_found = False
+    while time.time() - start_time < timeout:
+        check_and_click_wait_button(d, max_anrs=1, timeout=1)
+
+        if element.exists:
+            element_found = True
+            break
+        time.sleep(1)
+
+    if element_found:
         element.set_text(text)
-        # Handle keyboard action with multiple fallback methods
         handle_keyboard_action(d)
         wait_for_ui_stable(d)
     else:
