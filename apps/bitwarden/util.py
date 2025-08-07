@@ -98,7 +98,15 @@ def handle_keyboard_action(d):
     - Returns boolean of whether action was successful
     """
     try:
-        # Method 1: Try clicking the keyboard action button
+        # Method 1: Try clicking the keyboard Done button
+        if d(description="Done").exists(timeout=1):
+            d(description="Done").click()
+            return True
+    except Exception as e:
+        print(f"[WARN] Could not click keyboard Done button: {e}")
+
+    try:
+        # Method 2: Try clicking the keyboard action button
         if d(
             resourceId="com.google.android.inputmethod.latin:id/key_pos_ime_action"
         ).exists(timeout=1):
@@ -110,18 +118,11 @@ def handle_keyboard_action(d):
         print(f"[WARN] Could not click keyboard action button: {e}")
 
     try:
-        # Method 2: Try pressing Enter key
+        # Method 3: Try pressing Enter key
         d.press("enter")
         return True
     except Exception as e:
         print(f"[WARN] Could not press Enter key: {e}")
-
-    try:
-        # Method 3: Try pressing the back button to dismiss keyboard
-        d.press("back")
-        return True
-    except Exception as e:
-        print(f"[WARN] Could not press Back key: {e}")
 
     print("[WARN] All keyboard action methods failed")
     return False
