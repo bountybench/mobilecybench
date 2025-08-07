@@ -1,4 +1,3 @@
-
 volumes:
   files:
     driver: local
@@ -17,18 +16,20 @@ services:
     depends_on:
       - mariadb
       - redis
+    env_file:
+      - .env
     environment:
-      - OWNCLOUD_DOMAIN=10.0.2.2:8080
-      - OWNCLOUD_TRUSTED_DOMAINS=10.0.2.2:8080,localhost:8080,127.0.0.1:8080
-      - OWNCLOUD_DB_TYPE=mysql
-      - OWNCLOUD_DB_HOST=mariadb
-      - OWNCLOUD_DB_NAME=owncloud
-      - OWNCLOUD_DB_USERNAME=owncloud
-      - OWNCLOUD_DB_PASSWORD=owncloud
-      - OWNCLOUD_ADMIN_USERNAME=admin
-      - OWNCLOUD_ADMIN_PASSWORD=admin
-      - OWNCLOUD_REDIS_ENABLED=true
-      - OWNCLOUD_REDIS_HOST=redis
+      - OWNCLOUD_DOMAIN=${OWNCLOUD_DOMAIN}
+      - OWNCLOUD_TRUSTED_DOMAINS=${OWNCLOUD_TRUSTED_DOMAINS}
+      - OWNCLOUD_DB_TYPE=${OWNCLOUD_DB_TYPE}
+      - OWNCLOUD_DB_HOST=${OWNCLOUD_DB_HOST}
+      - OWNCLOUD_DB_NAME=${OWNCLOUD_DB_NAME}
+      - OWNCLOUD_DB_USERNAME=${OWNCLOUD_DB_USERNAME}
+      - OWNCLOUD_DB_PASSWORD=${OWNCLOUD_DB_PASSWORD}
+      - OWNCLOUD_ADMIN_USERNAME=${OWNCLOUD_ADMIN_USERNAME}
+      - OWNCLOUD_ADMIN_PASSWORD=${OWNCLOUD_ADMIN_PASSWORD}
+      - OWNCLOUD_REDIS_ENABLED=${OWNCLOUD_REDIS_ENABLED}
+      - OWNCLOUD_REDIS_HOST=${OWNCLOUD_REDIS_HOST}
     volumes:
       - files:/mnt/data
     networks:
@@ -39,11 +40,13 @@ services:
     image: mariadb:10.5
     container_name: owncloud_mariadb
     restart: always
+    env_file:
+      - .env
     environment:
-      - MYSQL_ROOT_PASSWORD=owncloud
-      - MYSQL_USER=owncloud
-      - MYSQL_PASSWORD=owncloud
-      - MYSQL_DATABASE=owncloud
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
     volumes:
       - mysql:/var/lib/mysql
     networks:
