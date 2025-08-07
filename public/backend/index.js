@@ -4,6 +4,11 @@ const { OpenAI } = require("openai");
 const cors = require("cors");
 const fs = require('fs');
 const path = require('path');
+const LOGS_PATH = path.join(__dirname,'..', '..', 'logs');
+
+if (!fs.existsSync(LOGS_PATH)) {
+  fs.mkdirSync(LOGS_PATH);
+}
 
 const app = express();
 const PORT = 3000;
@@ -170,30 +175,39 @@ app.post("/message", async (req, res) => {
         },
       ],
       stream: true,
-      input: conversation.join("\n"),
-      instructions: "After every tool call, explain why you called the tool and how you are changing your plan based on this." 
+      input: conversation.join("\n")
     });
 
-    
     for await (const chunk of response) {
-      if (chunk.type == "response.output_text.done") {
-        res.write(`TEXT: ${chunk.text}`)
-      }
-      else if (chunk.type == "response.output_item.done") {
-        if (chunk.item.type == "mcp_call") {
-          res.write(`CALL: Server: ${chunk.item.server_label}, Type: ${chunk.item.type}, Name: ${chunk.item.name}, Arguments: ${chunk.item.arguments}`);
-        //   console.log(chunk)
-        // }
-        // else {
-        //   console.log(chunk)
+      if (chunk.type === "response.output_text.done") {
+        res.write(`TEXT: ${chunk.text}\n`);
+        conversation.push(chunk.text.trim());
+      } else if (chunk.type === "response.output_item.done") {
+        if (chunk.item.type === "mcp_call") {
+          res.write(`CALL: Server: ${chunk.item.server_label}, Type: ${chunk.item.type}, Name: ${chunk.item.name}, Arguments: ${chunk.item.arguments}\n`);
+
+          // After the tool call, inject a prompt to force reflection
+          const followUpPrompt = `Now that the tool call has completed, please output the following sections:\n\n
+          Reflection: What does the observation mean? If there is an error, what caused the error and how to debug?\n
+          Plan and Status: The full high-level plan. You can revise the high-level plan based on observations and your thoughts. If there is no update, copy the previous response's Plan and Status. The high-level plan from the previous response should be fully retained, unless it is intentionally revised.\n
+          Thought: What you are currently doing, what actions to perform, and why. If there is an error in observation, what caused the error and how to debug?`;
+          conversation.push(followUpPrompt);
+
+          // Create another streaming response to capture the follow-up
+          const followUpResponse = await client.responses.create({
+            model: "gpt-4.1",
+            stream: true,
+            input: conversation.join("\n")
+          });
+
+          for await (const followChunk of followUpResponse) {
+            if (followChunk.type === "response.output_text.done") {
+              res.write(`TEXT: ${followChunk.text}\n`);
+              conversation.push(followChunk.text.trim());
+            }
+          }
         }
       }
-      // else if (chunk.type == "response.output_text.delta") {
-      //   console.log(chunk.delta)
-      // }
-      // else {
-      //   console.log(chunk)
-      // }
     }
   
     res.end();
@@ -227,6 +241,26 @@ app.post("/message", async (req, res) => {
   }
 });
 
+app.post('/save', (req, res) => {
+  const { content } = req.body;
+
+  if (!content) {
+    return res.status(400).json({ error: "Missing content to save" });
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `log-${timestamp}.txt`;
+  const filepath = path.join(LOGS_PATH, filename);
+
+  fs.writeFile(filepath, content, 'utf8', (err) => {
+    if (err) {
+      console.error("Failed to write file:", err);
+      return res.status(500).json({ error: "Failed to write log file" });
+    }
+    console.log(`Saved log to ${filepath}`);
+    return res.json({ success: true, path: filepath });
+  });
+});
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
