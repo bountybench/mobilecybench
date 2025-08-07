@@ -503,7 +503,7 @@ jobs:
           adb wait-for-device
 
           BOOT_STATUS=""
-          timeout=300
+          timeout=600
           while [[ "$BOOT_STATUS" != "1" && $timeout -gt 0 ]]; do
             BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
             sleep 1
