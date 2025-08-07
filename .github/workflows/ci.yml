@@ -258,30 +258,72 @@ jobs:
 
           check_system_ui_ready() {
             echo "Waiting for System UI to be ready..."
-            MAX_RETRIES=30
             RETRY_INTERVAL=2
-            UI_READY=0
+            TIMEOUT=60
 
-            for i in $(seq 1 $MAX_RETRIES); do
-              adb shell uiautomator dump /sdcard/window_dump.xml
-              adb shell cat /sdcard/window_dump.xml > window_dump.xml
+            # Loop until SystemUI process is running
+            echo "Checking if SystemUI process is running..."
+            START_TIME=$(date +%s)
+            while true; do
+              CURRENT_TIME=$(date +%s)
+              if [ $((CURRENT_TIME - START_TIME)) -ge $TIMEOUT ]; then
+                echo "Timeout: SystemUI process not found after $TIMEOUT seconds"
+                return 1
+              fi
+              
+              SYSTEMUI_RUNNING=$(adb shell pidof com.android.systemui 2>/dev/null)
+              if [ -n "$SYSTEMUI_RUNNING" ]; then
+                echo "SystemUI process is now running (PID: $SYSTEMUI_RUNNING)"
+                break
+              fi
+              echo "System UI process not running yet, retrying..."
+              sleep $RETRY_INTERVAL
+            done
 
+            # Loop until UI dump is successful
+            echo "Checking if UI dump is accessible..."
+            START_TIME=$(date +%s)
+            while true; do
+              CURRENT_TIME=$(date +%s)
+              if [ $((CURRENT_TIME - START_TIME)) -ge $TIMEOUT ]; then
+                echo "Timeout: UI dump not accessible after $TIMEOUT seconds"
+                return 1
+              fi
+              
+              DUMP_OUTPUT=$(adb shell uiautomator dump /sdcard/window_dump.xml 2>&1)
+              if adb shell ls /sdcard/window_dump.xml >/dev/null 2>&1; then
+                echo "UI dump file created successfully"
+                break
+              fi
+              echo "Dump file not found. UI probably not ready yet, retrying..."
+              sleep $RETRY_INTERVAL
+            done
+
+            # Loop until System UI is fully responsive
+            echo "Checking if System UI is responsive..."
+            START_TIME=$(date +%s)
+            while true; do
+              CURRENT_TIME=$(date +%s)
+              if [ $((CURRENT_TIME - START_TIME)) -ge $TIMEOUT ]; then
+                echo "Timeout: System UI not responsive after $TIMEOUT seconds"
+                return 1
+              fi
+              
               CLOCK_PRESENT=$(grep -c 'resource-id="com.android.systemui:id/clock"' window_dump.xml)
               ANR_PRESENT=$(grep -c 'text="System UI isn'\''t responding"' window_dump.xml)
 
               if [ "$CLOCK_PRESENT" -gt 0 ] && [ "$ANR_PRESENT" -eq 0 ]; then
                 echo "System UI is ready and responsive"
-                UI_READY=1
                 return 0
-              else
-                echo "Waiting for System UI to become responsive... ($i/$MAX_RETRIES)"
-                sleep $RETRY_INTERVAL
               fi
+              
+              echo "Waiting for System UI to become responsive, retrying..."
+              sleep $RETRY_INTERVAL
+              
+              # Re-dump and retrieve the UI state for the next check
+              adb shell uiautomator dump /sdcard/window_dump.xml 2>/dev/null
+              adb shell cat /sdcard/window_dump.xml > window_dump.xml 2>/dev/null || continue
             done
-            if [ "$UI_READY" -ne 1 ]; then
-              echo "System UI never became responsive. Failing."
-              return 1
-            fi
           }
 
           EOF
