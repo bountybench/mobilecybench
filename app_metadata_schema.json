@@ -9,7 +9,11 @@
       },
       "commit_version": {
         "type": "string",
-        "description": "The commit version of the app."
+        "description": "The commit version (such as v21.1.0) of the app."
+      },
+      "commit_hash": {
+        "type": "string",
+        "description": "The commit hash (such as ab32..1) of the app."
       },
       "download_link": {
         "type": "string",
