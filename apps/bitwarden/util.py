@@ -160,13 +160,9 @@ def initialize_local_host(d):
     print("Step 1.1.3: Checking for 'aerr_wait' button...")
     check_and_click_wait_button(d)
 
-    # Wait for the app to load by waiting for the first interactive element.
-    print("Step 1.1.4: Clicking 'Account creation'...")
-    wait_and_click(d, d(resourceId="ChooseAccountCreationButton"))
-
     # --- 1.2: Server Configuration ---
     # Step 1.2.1: Click the "Create account" button on the welcome screen
-    print("Step 1.2.1: Clicking 'Create account'...")
+    print("Step 1.2.1: Clicking 'Account creation'...")
     wait_and_click(d, d(resourceId="ChooseAccountCreationButton"))
 
     # Step 1.2.2: Click the region selector dropdown to configure a self-hosted server
