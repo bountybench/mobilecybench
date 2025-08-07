@@ -599,6 +599,11 @@ jobs:
           SDK_VERSION=${{ needs.setup.outputs.sdk }}
           echo "no" | avdmanager create avd -n test_avd \
             -k "system-images;android-$SDK_VERSION;google_apis;x86_64" --device "pixel"
+            
+          AVD_PATH="$HOME/.android/avd/test_avd.avd"
+          echo "hw.ramSize=4096" >> "$AVD_PATH/config.ini"
+          echo "vm.heapSize=512" >> "$AVD_PATH/config.ini"
+          echo "disk.dataPartition.size=4096M" >> "$AVD_PATH/config.ini"
 
       - name: Launch emulator for vuln_scenario_0
         if: matrix.test_type == 'vuln_scenario_0'
@@ -606,7 +611,7 @@ jobs:
           echo "ANDROID_HOME: $ANDROID_HOME"
           echo "PATH: $PATH"
           export PATH=$ANDROID_HOME/emulator:$PATH
-          emulator -avd test_avd -writable-system -no-snapshot-load -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none &
+          emulator -avd test_avd -writable-system -no-snapshot-load -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 4096 -camera-back none &
           adb wait-for-device
 
           BOOT_STATUS=""
@@ -679,9 +684,9 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_2
-          ram-size: 2048    
+          ram-size: 4096    
           force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 4096 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
 
