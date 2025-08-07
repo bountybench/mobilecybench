@@ -43,7 +43,6 @@ launch_joplin() {
 # Synching with server
 synch_with_server() {
     echo "Synching app with server..."
-    pip install uiautomator2
     python synch_app.py --username usera@localhost --password userAPW123
     echo "Should now be synched with server."
 }
