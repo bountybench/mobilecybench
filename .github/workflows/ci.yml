@@ -293,12 +293,29 @@ jobs:
               DUMP_OUTPUT=$(adb shell uiautomator dump /sdcard/window_dump.xml 2>&1)
               if adb shell ls /sdcard/window_dump.xml >/dev/null 2>&1; then
                 echo "UI dump file created successfully"
-                adb shell cat /sdcard/window_dump.xml > window_dump.xml
                 break
               fi
               echo "Dump file not found. UI probably not ready yet, retrying..."
               sleep $RETRY_INTERVAL
             done
+
+              # Loop until we can retrieve the dump file
+              echo "Retrieving UI dump file..."
+              START_TIME=$(date +%s)
+              while true; do
+                CURRENT_TIME=$(date +%s)
+                if [ $((CURRENT_TIME - START_TIME)) -ge $TIMEOUT ]; then
+                  echo "Timeout: Failed to retrieve dump file after $TIMEOUT seconds"
+                  return 1
+                fi
+                
+                if adb shell cat /sdcard/window_dump.xml > window_dump.xml; then
+                  echo "Window dump retrieved successfully"
+                  break
+                fi
+                echo "Failed to retrieve window_dump.xml, retrying..."
+                sleep $RETRY_INTERVAL
+              done
 
             # Loop until System UI is fully responsive
             echo "Checking if System UI is responsive..."
