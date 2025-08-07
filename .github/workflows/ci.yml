@@ -324,6 +324,7 @@ jobs:
               CURRENT_TIME=$(date +%s)
               if [ $((CURRENT_TIME - START_TIME)) -ge $TIMEOUT ]; then
                 echo "Timeout: System UI not responsive after $TIMEOUT seconds"
+                cat window_dump.xml
                 return 1
               fi
               
@@ -335,6 +336,7 @@ jobs:
 
               if [ "$HOME_PRESENT" -gt 0 ] && [ "$ANR_PRESENT" -eq 0 ]; then
                 echo "System UI is ready and responsive"
+                cat window_dump.xml
                 return 0
               fi
               
@@ -345,7 +347,6 @@ jobs:
               adb shell uiautomator dump /sdcard/window_dump.xml 2>/dev/null
               adb shell cat /sdcard/window_dump.xml > window_dump.xml 2>/dev/null || continue
             done
-            cat window_dump.xml
           }
 
           EOF
