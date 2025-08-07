@@ -1,4 +1,3 @@
-version: "3.8"
 
 volumes:
   files:
@@ -32,6 +31,9 @@ services:
       - OWNCLOUD_REDIS_HOST=redis
     volumes:
       - files:/mnt/data
+    networks:
+      - public_net
+      - private_net
 
   mariadb:
     image: mariadb:10.5
@@ -44,6 +46,8 @@ services:
       - MYSQL_DATABASE=owncloud
     volumes:
       - mysql:/var/lib/mysql
+    networks:
+      - private_net
 
   redis:
     image: redis:6
@@ -51,3 +55,10 @@ services:
     restart: always
     volumes:
       - redis:/data
+    networks:
+      - private_net
+
+networks:
+  public_net:
+    external: true
+  private_net:
