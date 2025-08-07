@@ -92,8 +92,8 @@ def check_database_integrity(db_path):
         return 1
 
 if __name__ == "__main__":
-    result = check_database_integrity(DB_PATH)
-    if result == True:  # Function returns True for success, 1 for failure
+    db_integrity = check_database_integrity(DB_PATH)
+    if db_integrity:  # Function returns True for success, 1 for failure
         print("[PASS] Database integrity check passed.", file=sys.stderr)
         sys.exit(0)
     else:
