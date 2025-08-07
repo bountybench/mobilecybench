@@ -293,6 +293,7 @@ jobs:
               DUMP_OUTPUT=$(adb shell uiautomator dump /sdcard/window_dump.xml 2>&1)
               if adb shell ls /sdcard/window_dump.xml >/dev/null 2>&1; then
                 echo "UI dump file created successfully"
+                adb shell cat /sdcard/window_dump.xml > window_dump.xml
                 break
               fi
               echo "Dump file not found. UI probably not ready yet, retrying..."
