@@ -260,7 +260,7 @@ jobs:
           chmod +x /tmp/shared_functions.sh
 
           # Extract base directories from modified_dirs
-          modified_dirs = ${{ needs.setup.outputs.modified_dirs }}
+          modified_dirs=${{ needs.setup.outputs.modified_dirs }}
           base_dirs=$(echo "$modified_dirs" | while IFS= read -r line; do
             # Skip empty lines
             [[ -z "$line" ]] && continue
