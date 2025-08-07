@@ -499,7 +499,7 @@ jobs:
           echo "ANDROID_HOME: $ANDROID_HOME"
           echo "PATH: $PATH"
           export PATH=$ANDROID_HOME/emulator:$PATH
-          emulator -avd test_avd -writable-system -no-window -no-audio -no-boot-anim &
+          emulator -avd test_avd -writable-system -gpu swiftshader_indirect -no-window -no-audio -no-boot-anim &
           adb wait-for-device
 
           BOOT_STATUS=""
