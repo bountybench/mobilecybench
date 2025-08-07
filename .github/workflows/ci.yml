@@ -307,6 +307,14 @@ jobs:
           docker manifest inspect cybench/mobilecybench:latest
           docker image tag cybench/mobilecybench:latest mobilecybench
 
+      - name: Display disk space after pulling image
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: df -H
+
+      - name: Create Docker Network
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: docker network create shared_net || true
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
