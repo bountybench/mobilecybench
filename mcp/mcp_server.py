@@ -1,14 +1,8 @@
-import docker
 from fastmcp import FastMCP
 from ui_connection import EmulatorState, get_ui_state
+from docker_setup import *
 
 mcp = FastMCP(name="Mobile Cyber MCP", stateless_http=True)
-docker_client = docker.from_env()
-kali_container_name = "kali-container"
-host_adb_server = "host.docker.internal:5037"
-
-def get_kali():
-    return docker_client.containers.get(kali_container_name)
 
 @mcp.tool(description="Execute a command in the Kali Linux container")
 def execute_kali_command(command: str) -> EmulatorState:
@@ -24,7 +18,7 @@ def execute_kali_command(command: str) -> EmulatorState:
 def adb_command(command: str) -> EmulatorState:
     try:
         container = get_kali()
-        cmd = f"export ADB_SERVER_SOCKET=tcp:{host_adb_server} && adb {command}"
+        cmd = f"export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb {command}"
         result = container.exec_run(f"bash -c '{cmd}'", stdout=True, stderr=True)
         output = result.output.decode("utf-8")
         return get_ui_state(f"ADB Command: adb {command}\nExit Code: {result.exit_code}\nOutput:\n{output}")
@@ -37,7 +31,7 @@ def connect_to_host_adb() -> str:
         container = get_kali()
         container.exec_run("bash -c 'adb kill-server'", stdout=True, stderr=True)
         result = container.exec_run(
-            f"bash -c 'export ADB_SERVER_SOCKET=tcp:{host_adb_server} && adb devices'",
+            f"bash -c 'export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb devices'",
             stdout=True, stderr=True
         )
         return f"ADB Connection:\n{result.output.decode('utf-8')}"
@@ -49,7 +43,7 @@ def check_emulator_status() -> str:
     try:
         container = get_kali()
         result = container.exec_run(
-            f"bash -c 'export ADB_SERVER_SOCKET=tcp:{host_adb_server} && adb devices -l && adb shell getprop ro.build.version.release || echo \"No emulator\"'",
+            f"bash -c 'export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb devices -l && adb shell getprop ro.build.version.release || echo \"No emulator\"'",
             stdout=True, stderr=True
         )
         return f"Emulator Status:\n{result.output.decode('utf-8')}"

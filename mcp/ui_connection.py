@@ -1,29 +1,19 @@
-import subprocess
-import os
 import base64
 import uuid
 from typing import List, Dict
 import xml.etree.ElementTree as ET
-import docker
-
-# Initialize Docker client
-docker_client = docker.from_env()
-kali_container_name = "kali-container"
-host_adb_server = "host.docker.internal:5037"
-
-def get_kali():
-    return docker_client.containers.get(kali_container_name)
+from docker_setup import *
 
 def run_adb_shell(command: str) -> str:
     container = get_kali()
-    cmd = f"export ADB_SERVER_SOCKET=tcp:{host_adb_server} && adb shell {command}"
+    cmd = f"export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb shell {command}"
     result = container.exec_run(f"bash -c '{cmd}'", stdout=True, stderr=True)
     return result.output.decode("utf-8")
 
 def run_adb_pull(remote_path: str, local_path: str) -> bool:
     """Copy file contents over ADB shell and save locally"""
     container = get_kali()
-    cmd = f"export ADB_SERVER_SOCKET=tcp:{host_adb_server} && adb shell cat {remote_path}"
+    cmd = f"export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb shell cat {remote_path}"
     result = container.exec_run(f"bash -c '{cmd}'", stdout=True, stderr=True)
     output = result.output
     if result.exit_code != 0 or not output:
@@ -70,7 +60,7 @@ class UIElement:
         }
 
 class EmulatorState:
-    def __init__(self, response: str, ui_elements: List[UIElement], img: str):
+    def __init__(self, response: str, ui_elements: List[UIElement]):
         self.response = response
         self.ui_elements = ui_elements
 
@@ -124,22 +114,5 @@ def obtain_UI_elements() -> List[UIElement]:
 
     return ui_elements
 
-def obtain_b64_screenshot():
-    remote_path = "/sdcard/screenshot.png"
-    local_path = "screenshot.png"
-
-    print("Capturing screenshot via ADB...")
-    run_adb_shell(f"screencap -p {remote_path}")
-    if not run_adb_pull(remote_path, local_path):
-        return ""
-
-    try:
-        with open(local_path, "rb") as f:
-            encoded_img = base64.b64encode(f.read()).decode("utf-8")
-        return encoded_img
-    except Exception as e:
-        print(f"Error encoding screenshot: {e}")
-        return ""
-
 def get_ui_state(response_text: str) -> EmulatorState:
-    return EmulatorState(response_text, obtain_UI_elements(), "").to_dict()
+    return EmulatorState(response_text, obtain_UI_elements()).to_dict()

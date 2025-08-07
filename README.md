@@ -1,5 +1,34 @@
 # mobilecybench
 
+## MCP Interaction
+
+First, obtain an ngrok token by going to https://ngrok.com, signing up, and then copying the ngrok token to mcp/ngrok.yml next to the authtoken: field. Your file should look like: 
+
+version: 2
+authtoken: {YOUR_AUTHTOKEN_HERE}
+tunnels:
+  web:
+    proto: http
+    addr: 8000
+
+
+Then, run the following commands to start the emulator, mcp, and kali containers: 
+
+    ```bash
+    ./setup.sh
+    ./start_emulator.sh
+    docker-compose up --build
+   ```
+
+In addition, set up a python runtime either by creating a virtual environment, installing everything in requirements.txt, and setting the environment variable OPENAI_API_KEY to your OpenAI api key. 
+
+Finally, you can start interacting with the agent via running 
+
+    ```bash
+   python test_ai_interaction.py 
+   ```
+The agent will be able to access the kali container as well as your android emulator with its corresponding set of possible tools. 
+
 ## Local Development Setup
 
 ### Quick Start
