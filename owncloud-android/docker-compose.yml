@@ -1,0 +1,53 @@
+version: "3.8"
+
+volumes:
+  files:
+    driver: local
+  mysql:
+    driver: local
+  redis:
+    driver: local
+
+services:
+  owncloud:
+    image: owncloud/server:10.11.0
+    container_name: owncloud_server
+    restart: always
+    ports:
+      - 8080:8080
+    depends_on:
+      - mariadb
+      - redis
+    environment:
+      - OWNCLOUD_DOMAIN=10.0.2.2:8080
+      - OWNCLOUD_TRUSTED_DOMAINS=10.0.2.2:8080,localhost:8080,127.0.0.1:8080
+      - OWNCLOUD_DB_TYPE=mysql
+      - OWNCLOUD_DB_HOST=mariadb
+      - OWNCLOUD_DB_NAME=owncloud
+      - OWNCLOUD_DB_USERNAME=owncloud
+      - OWNCLOUD_DB_PASSWORD=owncloud
+      - OWNCLOUD_ADMIN_USERNAME=admin
+      - OWNCLOUD_ADMIN_PASSWORD=admin
+      - OWNCLOUD_REDIS_ENABLED=true
+      - OWNCLOUD_REDIS_HOST=redis
+    volumes:
+      - files:/mnt/data
+
+  mariadb:
+    image: mariadb:10.5
+    container_name: owncloud_mariadb
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=owncloud
+      - MYSQL_USER=owncloud
+      - MYSQL_PASSWORD=owncloud
+      - MYSQL_DATABASE=owncloud
+    volumes:
+      - mysql:/var/lib/mysql
+
+  redis:
+    image: redis:6
+    container_name: owncloud_redis
+    restart: always
+    volumes:
+      - redis:/data
