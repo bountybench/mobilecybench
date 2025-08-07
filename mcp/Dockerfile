@@ -23,6 +23,7 @@ RUN curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | tee /etc/apt/truste
 WORKDIR /app
 COPY ui_connection.py .
 COPY mcp_server.py .
+COPY docker_setup.py .
 COPY ngrok.yml /app/ngrok.yml
 
 EXPOSE 8000
