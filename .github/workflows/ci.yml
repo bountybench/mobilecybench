@@ -388,6 +388,7 @@ jobs:
             fi
           done
 
+          sleep 60
           check_system_ui_ready
           if [ $? -ne 0 ]; then
             exit 1
