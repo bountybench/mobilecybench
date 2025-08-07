@@ -263,7 +263,7 @@ jobs:
             UI_READY=0
 
             for i in $(seq 1 $MAX_RETRIES); do
-              adb shell uiautomator2 dump /sdcard/window_dump.xml
+              adb shell uiautomator dump /sdcard/window_dump.xml
               adb shell cat /sdcard/window_dump.xml > window_dump.xml
 
               CLOCK_PRESENT=$(grep -c 'resource-id="com.android.systemui:id/clock"' window_dump.xml)
