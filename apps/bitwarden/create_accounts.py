@@ -173,9 +173,6 @@ def extract_secrets_from_db():
         return False
 
 
-
-
-
 def main(d, num_ciphers_per_user=3):
     # Load user accounts and their cipher templates from the unified JSON file
     with open("accounts.json", "r") as f:

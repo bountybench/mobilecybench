@@ -4,10 +4,20 @@ import time
 
 BITWARDEN_PKG = "com.x8bit.bitwarden"
 
+# =============================================================================
+# ADB UTILITY FUNCTION
+# =============================================================================
+
 
 def adb(cmd):
     """
-    Runs ADB commands.
+    Runs ADB commands with error handling.
+
+    Args:
+        cmd: List of command arguments (excluding 'adb')
+
+    Returns:
+        Command output as string, or None if failed
     """
     full_cmd = ["adb"] + cmd
     try:
@@ -20,9 +30,22 @@ def adb(cmd):
         return None
 
 
+# =============================================================================
+# UI STABILITY AND INTERACTION FUNCTIONS
+# =============================================================================
+
+
 def wait_for_ui_stable(d, timeout=10, interval=0.5):
     """
     Waits until the UI hierarchy stops changing.
+
+    Args:
+        d: Device object
+        timeout: Maximum time to wait for stability
+        interval: Time between stability checks
+
+    Returns:
+        True if UI stabilized, False if timeout reached
     """
     prev_hierarchy = None
     start = time.time()
@@ -38,21 +61,97 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5):
     return False
 
 
+def check_and_click_wait_button(d, max_anrs=5, timeout=3, target_element=None):
+    """
+    Handles consecutive "Application Not Responding" (ANR) dialogs by clicking "Wait".
+
+    Args:
+        d: Device object
+        max_anrs: Maximum number of consecutive ANR dialogs to handle
+        timeout: Timeout for checking each ANR dialog
+        target_element: Optional element to wait for after dismissing ANR
+
+    Returns:
+        True if ANR dialogs were handled, False if none found
+    """
+    anr_count = 0
+    for i in range(max_anrs):
+        wait_button = d(resourceId="android:id/aerr_wait")
+
+        try:
+            if wait_button.exists(timeout=timeout):
+                anr_count += 1
+                print(
+                    f"[DEBUG] ANR dialog #{anr_count} detected. Clicking 'Wait' to continue..."
+                )
+                wait_button.click()
+
+                # Wait for either target element or UI stability
+                if target_element is not None:
+                    print(
+                        f"[DEBUG] Waiting for target element '{target_element.selector}' to appear after ANR..."
+                    )
+                    if target_element.wait(timeout=10):
+                        print(
+                            f"[DEBUG] Target element '{target_element.selector}' appeared successfully after ANR."
+                        )
+                        break  # Target element found - exit ANR loop
+                    else:
+                        print(
+                            f"[WARN] Target element '{target_element.selector}' did not appear after ANR dismissal."
+                        )
+                        continue  # Continue checking for more ANRs
+                else:
+                    print("[DEBUG] Waiting for UI to stabilize after ANR...")
+                    wait_for_ui_stable(d, timeout=10)
+            else:
+                break  # No ANR dialog found
+        except Exception as e:
+            print(
+                f"[WARN] Could not click ANR 'Wait' button (it may have disappeared): {e}"
+            )
+            break
+
+    # Fatal error if we hit the max ANR limit
+    if anr_count == max_anrs:
+        print(
+            f"[FATAL] Could not handle ANR dialog(s) - reached maximum limit of {max_anrs}."
+        )
+        print(d.dump_hierarchy(), file=sys.stderr)
+        sys.exit(1)
+
+    if anr_count > 0:
+        print(f"[INFO] Handled {anr_count} consecutive ANR dialog(s).")
+        return True
+
+    return False
+
+
+# =============================================================================
+# UI ELEMENT INTERACTION FUNCTIONS
+# =============================================================================
+
+
 def wait_and_click(d, element, timeout=180):
     """
-    Waits for an element and clicks it.
-    Continuously handles ANR dialogs while waiting.
+    Waits for an element and clicks it, with continuous ANR handling.
+
+    Args:
+        d: Device object
+        element: UI element to wait for and click
+        timeout: Maximum time to wait for element
     """
     start_time = time.time()
     element_found = False
+
     while time.time() - start_time < timeout:
-        # Prioritize handling ANRs, passing the target element for verification
+        # Handle ANRs while waiting, passing target element for verification
         check_and_click_wait_button(d, max_anrs=5, timeout=1, target_element=element)
 
         if element.exists:
             element_found = True
             break
-        time.sleep(1)  # Poll every second
+        time.sleep(1)
 
     if element_found:
         element.click_exists(timeout=3)
@@ -69,13 +168,19 @@ def wait_and_click(d, element, timeout=180):
 
 def wait_and_set_text(d, element, text, timeout=180):
     """
-    Waits for an EditText element and sets its text.
-    Continuously handles ANR dialogs while waiting.
+    Waits for an EditText element and sets its text, with continuous ANR handling.
+
+    Args:
+        d: Device object
+        element: UI element to wait for and set text on
+        text: Text to set
+        timeout: Maximum time to wait for element
     """
     start_time = time.time()
     element_found = False
+
     while time.time() - start_time < timeout:
-        # Prioritize handling ANRs, passing the target element for verification
+        # Handle ANRs while waiting, passing target element for verification
         check_and_click_wait_button(d, max_anrs=5, timeout=1, target_element=element)
 
         if element.exists:
@@ -97,75 +202,21 @@ def wait_and_set_text(d, element, text, timeout=180):
         sys.exit(1)
 
 
-def check_and_click_wait_button(d, max_anrs=5, timeout=3, target_element=None):
-    """
-    Handles up to `max_anrs` consecutive "Application Not Responding" (ANR) dialogs
-    by clicking the "Wait" button. This is critical for handling UI freezes.
-    
-    Args:
-        d: Device object
-        max_anrs: Maximum number of consecutive ANR dialogs to handle
-        timeout: Timeout for checking each ANR dialog
-        target_element: Optional element to wait for after dismissing ANR. 
-                       If provided, waits for this element to appear instead of just UI stability.
-    """
-    anr_count = 0
-    for i in range(max_anrs):
-        # Check for the ANR dialog's "Wait" button
-        wait_button = d(resourceId="android:id/aerr_wait")
-
-        try:
-            if wait_button.exists(timeout=timeout):
-                anr_count += 1
-                print(
-                    f"[DEBUG] ANR dialog #{anr_count} detected. Clicking 'Wait' to continue..."
-                )
-
-                # Click the button directly to avoid recursion or other side effects
-                wait_button.click()
-
-                # Wait for either UI stability or the target element to appear
-                if target_element is not None:
-                    print(f"[DEBUG] Waiting for target element '{target_element.selector}' to appear after ANR...")
-                    if target_element.wait(timeout=10):
-                        print(f"[DEBUG] Target element '{target_element.selector}' appeared successfully after ANR.")
-                        # Target element found - break out of the ANR loop
-                        break
-                    else:
-                        print(f"[WARN] Target element '{target_element.selector}' did not appear after ANR dismissal.")
-                        # Continue checking for more ANR dialogs
-                        continue
-                else:
-                    # Fallback to UI stability check if no target element provided
-                    print("[DEBUG] Waiting for UI to stabilize after ANR...")
-                    wait_for_ui_stable(d, timeout=10)
-            else:
-                # If no ANR dialog is found, we can assume the UI is responsive
-                break
-        except Exception as e:
-            # This can happen if the button disappears before we can click it.
-            # We can safely break the loop as the dialog is gone.
-            print(
-                f"[WARN] Could not click ANR 'Wait' button (it may have disappeared): {e}"
-            )
-            break
-
-    if anr_count > 0:
-        print(f"[SUCCESS] Handled {anr_count} consecutive ANR dialog(s).")
-        return True
-
-    return False
-
-
 def handle_keyboard_action(d):
     """
-    handle_keyboard_action()
-    - Takes in the device
-    - Handles keyboard action (Done/Enter) with multiple fallback methods
-    - Returns boolean of whether action was successful
+    Handles keyboard action (Done/Enter) with multiple fallback methods.
+
+    Args:
+        d: Device object
+
+    Returns:
+        True if keyboard action was successful, False otherwise
     """
+    # Handle any ANRs before keyboard interaction
+    check_and_click_wait_button(d, max_anrs=5, timeout=1, target_element=None)
+
+    # Method 1: Try clicking the keyboard Done button
     try:
-        # Method 1: Try clicking the keyboard Done button
         if d(description="Done").exists(timeout=1):
             d(description="Done").click()
             print("[DEBUG] Clicked keyboard Done button")
@@ -173,8 +224,8 @@ def handle_keyboard_action(d):
     except Exception as e:
         print(f"[WARN] Could not click keyboard Done button: {e}")
 
+    # Method 2: Try clicking the keyboard action button
     try:
-        # Method 2: Try clicking the keyboard action button
         if d(
             resourceId="com.google.android.inputmethod.latin:id/key_pos_ime_action"
         ).exists(timeout=1):
@@ -186,8 +237,8 @@ def handle_keyboard_action(d):
     except Exception as e:
         print(f"[WARN] Could not click keyboard action button: {e}")
 
+    # Method 3: Try pressing Enter key
     try:
-        # Method 3: Try pressing Enter key
         d.press("enter")
         print("[DEBUG] Pressed Enter key")
         return True
@@ -196,6 +247,11 @@ def handle_keyboard_action(d):
 
     print("[WARN] All keyboard action methods failed")
     return False
+
+
+# =============================================================================
+# BITWARDEN APP WORKFLOW FUNCTIONS
+# =============================================================================
 
 
 def initialize_local_host(d):
