@@ -406,7 +406,6 @@ jobs:
           cat << 'EOF' > test_checks.sh
           #!/bin/bash
           set -e
-          pip install -r .github/requirements.txt
           source /tmp/shared_functions.sh
           check_server_ready
           EOF
