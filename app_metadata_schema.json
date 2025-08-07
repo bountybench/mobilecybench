@@ -1,0 +1,45 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "description": "App metadata schema definition",
+    "properties": {
+      "gh_link": {
+        "type": "string",
+        "description": "The link to the app's GitHub repository."
+      },
+      "commit_version": {
+        "type": "string",
+        "description": "The commit version of the app."
+      },
+      "download_link": {
+        "type": "string",
+        "description": "The link that can be used to download the app's APK file."
+      },
+      "sdk": {
+        "type": "string",
+        "description": "The SDK/API needed for the app."
+      },
+      "java": {
+        "type": "string",
+        "description": "The Java version needed for the app."
+      },
+      "server": {
+        "type": "string",
+        "description": "The server linked to the app."
+      },
+      "username": {
+        "type": "string",
+        "description": "The username of the account that is logged into the app."
+      },
+      "password": {
+        "type": "string",
+        "description": "The password of the account that is logged into the app."
+      }
+    },
+    "required": [
+      "gh_link",
+      "commit_version",
+      "sdk",
+      "java"
+    ]
+  }
