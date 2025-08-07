@@ -12,7 +12,6 @@ if (!fs.existsSync(LOGS_PATH)) {
 
 const app = express();
 const PORT = 3000;
-
 const APPS_PATH = path.join(__dirname, '..', '..', 'apps');
 
 app.use(cors());
@@ -76,15 +75,15 @@ app.post("/init", async (req, res) => {
       return res.json({ success: false, error: "metadata.json not found" });
     }
 
-    try {
-      // const dockerPath = path.join(APPS_PATH, 'docker-setup');
-      // const { stdout, stderr } = await exec("docker-compose up -d ", { cwd: dockerPath });
-      // console.log(stdout);
-      // console.log(stderr);
+    console.log(app);
+    console.log(clone);
+    console.log("Hello!");
+    console.log(appPath);
 
+    try {
       await new Promise((resolve, reject) => {
-        exec(`docker-compose up -d`, { cwd: APPS_PATH }, (err, stdout, stderr) => {
-            if (err) reject(stderr || err);
+        exec(`docker compose up --build -d`, { cwd: APPS_PATH }, (err, stdout, stderr) => {
+            if (err) { console.log(err); reject(stderr || err); }
             else resolve(stdout);
         });
       });
@@ -97,6 +96,7 @@ app.post("/init", async (req, res) => {
     }
 
     const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+    console.log(metadata);
 
     if (clone) {
       try {
@@ -211,30 +211,6 @@ app.post("/message", async (req, res) => {
     }
   
     res.end();
-
-    // const functionCalls = [];
-
-    // // Iterate through the output and extract required details
-    // response.output.forEach(item => {
-    //   if (item.type === 'mcp_call' || item.server_label == 'mobile_server_mcp') {
-    //     // If it's a function call (mcp_call), add relevant details
-    //     functionCalls.push({
-    //       server_label: item.server_label,
-    //       type: item.type,
-    //       name: item.name || 'N/A', // Default to 'N/A' if 'name' is not present
-    //       arguments: item.arguments || 'N/A', // Default to 'N/A' if 'arguments' is not present
-    //     });
-    //   }
-    // });
-
-    // const toolResults = functionCalls.map(call => {
-    //   return `Server: ${call.server_label}, Type: ${call.type}, Name: ${call.name}, Arguments: ${call.arguments}`;
-    // });
-
-    // res.json({ 
-    //   reply,
-    //   toolResults 
-    // });
 
   } catch (err) {
     res.status(500).json({ error: err.message });
