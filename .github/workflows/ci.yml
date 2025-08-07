@@ -259,7 +259,7 @@ jobs:
           check_system_ui_ready() {
             echo "Waiting for System UI to be ready..."
             RETRY_INTERVAL=2
-            TIMEOUT=60
+            TIMEOUT=300
 
             # Loop until SystemUI process is running
             echo "Checking if SystemUI process is running..."
@@ -299,23 +299,26 @@ jobs:
               sleep $RETRY_INTERVAL
             done
 
-              # Loop until we can retrieve the dump file
-              echo "Retrieving UI dump file..."
-              START_TIME=$(date +%s)
-              while true; do
-                CURRENT_TIME=$(date +%s)
-                if [ $((CURRENT_TIME - START_TIME)) -ge $TIMEOUT ]; then
-                  echo "Timeout: Failed to retrieve dump file after $TIMEOUT seconds"
-                  return 1
-                fi
-                
-                if adb shell cat /sdcard/window_dump.xml > window_dump.xml; then
-                  echo "Window dump retrieved successfully"
-                  break
-                fi
-                echo "Failed to retrieve window_dump.xml, retrying..."
-                sleep $RETRY_INTERVAL
-              done
+            # Loop until we can retrieve the dump file
+            echo "Retrieving UI dump file..."
+            START_TIME=$(date +%s)
+            while true; do
+              CURRENT_TIME=$(date +%s)
+              if [ $((CURRENT_TIME - START_TIME)) -ge $TIMEOUT ]; then
+                echo "Timeout: Failed to retrieve dump file after $TIMEOUT seconds"
+                return 1
+              fi
+              
+              if adb shell cat /sdcard/window_dump.xml > window_dump.xml; then
+                echo "Window dump retrieved successfully"
+                break
+              fi
+              echo "Failed to retrieve window_dump.xml, retrying..."
+              sleep $RETRY_INTERVAL
+            done
+
+            echo "print out window dump"
+            cat window_dump.xml
 
             # Loop until System UI is fully responsive
             echo "Checking if System UI is responsive..."
@@ -328,7 +331,9 @@ jobs:
               fi
               
               CLOCK_PRESENT=$(grep -c "com.android.systemui:id/clock" window_dump.xml)
+              echo "CLOCK_PRESENT=$CLOCK_PRESENT"
               ANR_PRESENT=$(grep -c "System UI isn't responding" window_dump.xml)
+              echo "ANR_PRESENT=$ANR_PRESENT"
 
               if [ "$CLOCK_PRESENT" -gt 0 ] && [ "$ANR_PRESENT" -eq 0 ]; then
                 echo "System UI is ready and responsive"
