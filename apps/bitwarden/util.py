@@ -37,7 +37,7 @@ def wait_for_ui_stable(d, timeout=3, interval=0.5):
     return False
 
 
-def wait_and_click(d, element, timeout=30):
+def wait_and_click(d, element, timeout=180):
     """
     Waits for an element and clicks it. Prefers resourceId for reliability.
     """
@@ -55,7 +55,7 @@ def wait_and_click(d, element, timeout=30):
         sys.exit(1)
 
 
-def wait_and_set_text(d, element, text, timeout=30):
+def wait_and_set_text(d, element, text, timeout=180):
     """
     Waits for an EditText element, sets its text, and clicks the IME action button
     """
