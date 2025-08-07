@@ -56,7 +56,7 @@ def wait_and_click(d, element, timeout=180):
 
     if element_found:
         element.click_exists(timeout=3)
-        print(f"[INFO] Clicked element {element.selector}")
+        print(f"[DEBUG] Clicked element {element.selector}")
         wait_for_ui_stable(d)
     else:
         print(
@@ -84,7 +84,7 @@ def wait_and_set_text(d, element, text, timeout=180):
 
     if element_found:
         element.set_text(text)
-        print(f"[INFO] Set text to {text}")
+        print(f"[DEBUG] Set text to {text}")
         handle_keyboard_action(d)
         wait_for_ui_stable(d)
     else:
@@ -110,14 +110,14 @@ def check_and_click_wait_button(d, max_anrs=5, timeout=3):
             if wait_button.exists(timeout=timeout):
                 anr_count += 1
                 print(
-                    f"[INFO] ANR dialog #{anr_count} detected. Clicking 'Wait' to continue..."
+                    f"[DEBUG] ANR dialog #{anr_count} detected. Clicking 'Wait' to continue..."
                 )
 
                 # Click the button directly to avoid recursion or other side effects
                 wait_button.click()
 
                 # Give the app a moment to recover after the ANR before proceeding
-                print("[INFO] Waiting for UI to stabilize after ANR...")
+                print("[DEBUG] Waiting for UI to stabilize after ANR...")
                 wait_for_ui_stable(d, timeout=10)
             else:
                 # If no ANR dialog is found, we can assume the UI is responsive

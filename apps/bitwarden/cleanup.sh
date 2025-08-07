@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Check for --dump flag
 DUMP_FLAG=false
 while [[ $# -gt 0 ]]; do
@@ -17,24 +19,24 @@ while [[ $# -gt 0 ]]; do
 done
 
 # echo "[INFO] Removing secret files..."
-rm flags.json || true
-rm secrets.json || true
-rm codebase/user.properties || true
+rm "$SCRIPT_DIR/flags.json" || true
+rm "$SCRIPT_DIR/secrets.json" || true
+rm "$SCRIPT_DIR/codebase/user.properties" || true
 
 # Remove dump.sql if --dump flag is provided
 if [ "$DUMP_FLAG" = true ]; then
     echo "[INFO] Removing dump.sql (--dump flag provided)..."
-    rm dump.sql || true
+    rm "$SCRIPT_DIR/dump.sql" || true
 fi
 
 echo "[INFO] Removing evaluating files..."
-rm scores.json || true
+rm "$SCRIPT_DIR/scores.json" || true
 
 echo "[INFO] Removing agent log..."
-rm agent_log.log || true
+rm "$SCRIPT_DIR/vuln_scenarios/vuln_scenario_0/agent_log.log" || true
 
 echo "[INFO] Removing apk files"
-rm bitwarden.apk || true
+rm "$SCRIPT_DIR/bitwarden.apk" || true
 
 echo "[INFO] Cleaning up environment..."
 docker compose down -v
