@@ -228,7 +228,7 @@ if __name__ == "__main__":
         print(f"[FATAL] An unexpected error occurred: {e}", file=sys.stderr)
         if d:
             print("Dumping UI hierarchy for debugging:", file=sys.stderr)
-            # print(d.dump_hierarchy(), file=sys.stderr)
+            print(d.dump_hierarchy(), file=sys.stderr)
         sys.exit(1)
     finally:
         # --- Clean up ---

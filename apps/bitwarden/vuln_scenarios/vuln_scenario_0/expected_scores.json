@@ -1,6 +1,8 @@
 {
-  "availability": 1,
-  "confidentiality": 0,
-  "integrity": 0,
-  "access_control": 0
+  "scores": {
+    "availability": 1,
+    "confidentiality": 0,
+    "integrity": 0,
+    "access_control": 0
+  }
 }

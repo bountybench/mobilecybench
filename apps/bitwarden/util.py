@@ -1,3 +1,4 @@
+import re
 import subprocess
 import sys
 import time
@@ -189,10 +190,18 @@ def wait_and_set_text(d, element, text, timeout=180):
         time.sleep(1)
 
     if element_found:
-        element.set_text(text)
-        print(f"[DEBUG] Set text to {text}")
-        handle_keyboard_action(d)
-        wait_for_ui_stable(d)
+        # Use robust text entry with retries and scroll support
+        if _robust_set_text(d, element, text, max_attempts=3):
+            print(f"[DEBUG] Set text to {text}")
+            handle_keyboard_action(d)
+            wait_for_ui_stable(d)
+        else:
+            print(
+                f"[FATAL] Failed to set text on element: '{element.selector}'",
+                file=sys.stderr,
+            )
+            print(d.dump_hierarchy(), file=sys.stderr)
+            sys.exit(1)
     else:
         print(
             f"[FATAL] Could not find element: '{element.selector}' within {timeout}s",
@@ -252,6 +261,84 @@ def handle_keyboard_action(d):
 # =============================================================================
 # BITWARDEN APP WORKFLOW FUNCTIONS
 # =============================================================================
+
+
+# =============================================================================
+# TEXT ENTRY HELPERS (robust set_text with retries/scroll)
+# =============================================================================
+
+
+def _parse_selector_from_element(element):
+    """
+    Parses a uiautomator2 element's selector string into a dictionary of key/value pairs.
+    Example input: "Selector [resourceId='LoginPasswordEntry']"
+    Returns: dict like {"resourceId": "LoginPasswordEntry"}
+    """
+    try:
+        selector_string = str(element.selector)
+        # Extract inside the brackets
+        bracket_match = re.search(r"\[(.*)\]", selector_string)
+        if not bracket_match:
+            return {}
+        inside = bracket_match.group(1)
+        pairs = re.findall(r"(\w+)='([^']+)'", inside)
+        return {key: value for key, value in pairs}
+    except Exception:
+        return {}
+
+
+def _try_scroll_into_view(d, selector_info):
+    """
+    Attempts to scroll the screen so that an element becomes visible, using selector info.
+    Prefers resourceId, falls back to text if available.
+    Returns True if a scroll attempt was made, False otherwise.
+    """
+    try:
+        scrollable = d(scrollable=True)
+        if not scrollable.exists:
+            return False
+
+        if "resourceId" in selector_info:
+            scrollable.scroll.to(resourceId=selector_info["resourceId"])  # type: ignore
+            return True
+        if "text" in selector_info:
+            scrollable.scroll.to(text=selector_info["text"])  # type: ignore
+            return True
+        return False
+    except Exception:
+        return False
+
+
+def _robust_set_text(d, element, text, max_attempts=3):
+    """
+    Tries to set text into an element with retries, ANR handling, and optional scrolling.
+    Returns True on success, False on failure after retries.
+    """
+    selector_info = _parse_selector_from_element(element)
+
+    for attempt_index in range(1, max_attempts + 1):
+        # Handle any ANR dialogs and wait for the target element
+        check_and_click_wait_button(d, max_anrs=5, timeout=1, target_element=element)
+
+        try:
+            # Bring element into view and focus it
+            if not element.exists:
+                _try_scroll_into_view(d, selector_info)
+
+            element.click_exists(timeout=2)
+            element.set_text(text)
+            print(
+                f"[DEBUG] Set text attempt {attempt_index} succeeded for {element.selector}"
+            )
+            return True
+        except Exception as set_error:
+            print(f"[WARN] set_text attempt {attempt_index} failed: {set_error}")
+            # Try to scroll into view for the next attempt
+            _try_scroll_into_view(d, selector_info)
+            # Small pause before retry
+            time.sleep(0.5)
+
+    return False
 
 
 def initialize_local_host(d):
