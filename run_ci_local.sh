@@ -115,7 +115,7 @@ checkout_commit() {
 
             echo "Cleaning up the codebase"
             git reset --hard HEAD
-            sudo git clean -fdx
+            git clean -fdx
 
             # Update the submodule and checkout the commit
             git checkout "$commit"
@@ -133,7 +133,7 @@ checkout_commit() {
 
 # Check if argument was provided
 if [ -z "$1" ]; then
-    echo "Usage: $0 <dir> [--patch]"
+    echo "Usage: $0 <dir>"
     echo "Example: $0 apps/joplin"
     exit 1
 fi
@@ -233,7 +233,20 @@ if [ -f "start_emulator.sh" ]; then
     print_header "$CYAN" "STARTING EMULATOR"
     ./start_emulator.sh > /dev/null 2>&1 &
     EMULATOR_PID=$!
-    sleep 15
+
+    echo "Waiting for emulator to boot..."
+
+    # Wait for device to appear
+    adb wait-for-device
+
+    # Wait until system property `sys.boot_completed` returns 1
+    boot_completed=""
+    while [ "$boot_completed" != "1" ]; do
+        boot_completed=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+        sleep 1
+    done
+
+    echo "Emulator booted successfully."
     
     # Wait for servers to be ready
     check_server_ready
