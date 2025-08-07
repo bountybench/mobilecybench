@@ -2,7 +2,7 @@ import subprocess
 import sys
 import time
 
-BITWARDEN_PKG = "com.x8bit.bitwarden.dev"
+BITWARDEN_PKG = "com.x8bit.bitwarden"
 
 
 def adb(cmd):
@@ -350,6 +350,14 @@ def attempt_login(d, email, password):
 
         # --- Wait for the app to load ---
         print("Waiting for app to load...")
+        time.sleep(3)  # Give app time to fully load
+        
+        # Check for error dialogs first and dismiss them
+        if d(resourceId="AlertPopup").exists:
+            print("Error dialog detected on app start. Dismissing...")
+            wait_and_click(d, d(resourceId="AcceptAlertButton"))
+            time.sleep(2)
+        
         # Wait for either email entry (initial login) or master password entry (locked vault)
         if not (
             d(resourceId="EmailAddressEntry").exists
@@ -359,9 +367,9 @@ def attempt_login(d, email, password):
                 "No email or master password entry found. Waiting for one to appear..."
             )
             # If neither exists immediately, wait for one to appear
-            d(resourceId="EmailAddressEntry").wait(timeout=5.0) or d(
+            d(resourceId="EmailAddressEntry").wait(timeout=10.0) or d(
                 resourceId="MasterPasswordEntry"
-            ).wait(timeout=5.0)
+            ).wait(timeout=10.0)
 
         # --- Check if vault is locked and handle accordingly ---
         print("Checking if vault is locked...")
@@ -394,10 +402,21 @@ def attempt_login(d, email, password):
         print("Clicking 'Unlock' to log in...")
         wait_and_click(d, d(resourceId="LogInWithMasterPasswordButton"))
 
+        # Wait a moment for any error dialogs to appear
+        time.sleep(2)
+        
+        # Check for error dialogs first
+        if d(resourceId="AlertPopup").exists:
+            print("Error dialog detected. Dismissing...")
+            wait_and_click(d, d(resourceId="AcceptAlertButton"))
+            time.sleep(1)
+            print("Login failed due to error dialog.")
+            return False
+
         # Success is defined by the appearance of the main vault screen's header.
         # A failed login will not proceed to this screen.
         print("Verifying login outcome...")
-        if d(resourceId="VaultTab").wait(timeout=2.0):
+        if d(resourceId="VaultTab").wait(timeout=5.0):
             print("[SUCCESS] Login successful. Main vault is visible.")
             return True
         else:

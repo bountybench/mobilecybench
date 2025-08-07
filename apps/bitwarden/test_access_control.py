@@ -59,7 +59,7 @@ def ensure_server_running():
         for i in range(30):  # Wait up to 30 seconds
             try:
                 with urllib.request.urlopen(
-                    "http://localhost:8080/alive", timeout=5
+                    "http://localhost:8000/alive", timeout=5
                 ) as response:
                     if response.status == 200:
                         print(

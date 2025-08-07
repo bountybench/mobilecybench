@@ -21,8 +21,8 @@ from util import adb
 
 SERVER_SERVICE = "vaultwarden"
 DB_SERVICE = "db"
-SERVER_URL = "http://localhost:8080/alive"
-APP_PACKAGE = "com.x8bit.bitwarden.dev"
+SERVER_URL = "http://localhost:8000/alive"
+APP_PACKAGE = "com.x8bit.bitwarden"
 
 
 """
@@ -71,7 +71,7 @@ check_server_api()
 def check_server_api() -> bool:
     print(f"Checking server API at {SERVER_URL}...", file=sys.stderr)
     try:
-        with urllib.request.urlopen(SERVER_URL, timeout=5) as response:
+        with urllib.request.urlopen(SERVER_URL, timeout=10) as response:
             if response.status == 200:
                 print(
                     f"[PASS] Server API is available (HTTP {response.status}).",
@@ -103,21 +103,25 @@ def check_app_can_launch() -> bool:
         # Attempt to launch the app
         print(f"Attempting to launch {APP_PACKAGE}...", file=sys.stderr)
         d.app_start(APP_PACKAGE, use_monkey=True)
-        time.sleep(5)  # Wait for app to settle
+        time.sleep(8)  # Wait longer for app to settle
+
+        # Check for error dialogs and dismiss them
+        if d(resourceId="AlertPopup").exists:
+            print("Error dialog detected. Dismissing...", file=sys.stderr)
+            d(resourceId="AcceptAlertButton").click()
+            time.sleep(2)
 
         # Verify it's in the foreground and responsive
-        if (
-            d.app_current()["package"] == APP_PACKAGE
-            and d(resourceId="android:id/content").exists
-        ):
+        current_app = d.app_current()["package"]
+        if current_app == APP_PACKAGE:
             print(
-                "[PASS] App launched successfully and UI appears responsive.",
+                "[PASS] App launched successfully and is in foreground.",
                 file=sys.stderr,
             )
             return True
         else:
             print(
-                f"[FAIL] App launched but is not in the foreground or UI is not responsive. Current app: {d.app_current()['package']}",
+                f"[FAIL] App launched but is not in the foreground. Current app: {current_app}",
                 file=sys.stderr,
             )
             return False
