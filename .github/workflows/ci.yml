@@ -362,23 +362,28 @@ jobs:
 
 
           echo "Waiting for System UI to be ready..."
-          timeout=120
-          while [[ $timeout -gt 0 ]]; do
-            # Check multiple indicators
-            pid_check=$(adb shell "pidof com.android.systemui" 2>/dev/null)
-            service_check=$(adb shell "dumpsys statusbar" 2>/dev/null | grep -c "mSystemReady=true" 2>/dev/null || echo "0")
-            
-            if [[ -n "$pid_check" ]] && [[ "$service_check" -gt 0 ]]; then
-                echo "System UI is ready (PID: $pid_check)"
-                break
+          MAX_RETRIES=30
+          RETRY_INTERVAL=2
+          UI_READY=0
+
+          for i in $(seq 1 $MAX_RETRIES); do
+            adb shell uiautomator dump /sdcard/window_dump.xml > /dev/null 2>&1
+            adb shell cat /sdcard/window_dump.xml > window_dump.xml
+
+            CLOCK_PRESENT=$(grep -c 'resource-id="com.android.systemui:id/clock"' window_dump.xml)
+            ANR_PRESENT=$(grep -c 'text="System UI isn'\''t responding"' window_dump.xml)
+
+            if [ "$CLOCK_PRESENT" -gt 0 ] && [ "$ANR_PRESENT" -eq 0 ]; then
+              echo "System UI is ready and responsive"
+              UI_READY=1
+              break
+            else
+              echo "Waiting for System UI to become responsive... ($i/$MAX_RETRIES)"
+              sleep $RETRY_INTERVAL
             fi
-            
-            echo "System UI not ready yet... (timeout: ${timeout}s)"
-            sleep 2
-            ((timeout--))
           done
-          if [[ "$timeout" -le 0 ]]; then
-            echo "System UI not ready in time."
+          if [ "$UI_READY" -ne 1 ]; then
+            echo "System UI never became responsive. Failing."
             exit 1
           fi
           
