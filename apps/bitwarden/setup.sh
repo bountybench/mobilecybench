@@ -43,6 +43,11 @@ else
     fi
 fi
 
+# Install Python requirements
+log_info "Installing Python requirements..."
+pip install -r "${SCRIPT_DIR}/requirements.txt"
+log_success "Python requirements installed."
+
 # Start Docker containers for server and database
 log_info "Starting Docker containers for Vaultwarden server and PostgreSQL database..."
 docker compose up --build -d

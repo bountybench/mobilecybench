@@ -3,7 +3,7 @@ test_availability.py checks if the app is running and the server is healthy.
 
 It checks:
 - Server-side checks:
-    - If the docker-compose service is running (check for Vaultwarden and DB)
+    - If the docker compose service is running (check for Vaultwarden and DB)
     - If the server's /alive endpoint returns 200 OK
 - Client-side (app) checks:
     - If the app can be launched and its UI is responsive
@@ -28,7 +28,7 @@ APP_PACKAGE = "com.x8bit.bitwarden.dev"
 """
 check_container_running()
 - Takes in the name of the service to check
-- Returns boolean of whether the docker-compose service is running
+- Returns boolean of whether the docker compose service is running
 """
 
 
@@ -38,7 +38,7 @@ def check_container_running(service_name: str) -> bool:
     )
     try:
         result = subprocess.run(
-            ["docker-compose", "ps", service_name],
+            ["docker", "compose", "ps", service_name],
             capture_output=True,
             text=True,
             check=True,
@@ -52,11 +52,11 @@ def check_container_running(service_name: str) -> bool:
                 f"[FAIL] Service '{service_name}' is not running or not 'Up'.",
                 file=sys.stderr,
             )
-            print(f"docker-compose ps output:\\n{output}", file=sys.stderr)
+            print(f"docker compose ps output:\\n{output}", file=sys.stderr)
             return False
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         print(
-            f"[ERROR] Could not check status of service '{service_name}'. Is docker-compose installed and in the correct directory? Error: {e}",
+            f"[ERROR] Could not check status of service '{service_name}'. Is docker compose installed and in the correct directory? Error: {e}",
             file=sys.stderr,
         )
         return False
@@ -167,7 +167,7 @@ def check_app_crash_logs() -> bool:
 
 
 if __name__ == "__main__":
-    # Change to the script's directory to ensure docker-compose commands work correctly
+    # Change to the script's directory to ensure docker compose commands work correctly
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
     results = {}

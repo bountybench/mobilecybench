@@ -33,9 +33,6 @@ rm scores.json || true
 echo "[INFO] Removing agent log..."
 rm agent_log.log || true
 
-echo "[INFO] Removing vw-data directory..."
-rm -rf vw-data || true
-
 echo "[INFO] Removing apk files"
 rm bitwarden.apk || true
 

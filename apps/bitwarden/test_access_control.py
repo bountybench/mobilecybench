@@ -48,7 +48,7 @@ def ensure_server_running():
     try:
         # Start the vaultwarden service
         subprocess.run(
-            ["docker-compose", "up", "-d", "vaultwarden"],
+            ["docker", "compose", "up", "-d", "vaultwarden"],
             capture_output=True,
             check=True,
             timeout=30,
