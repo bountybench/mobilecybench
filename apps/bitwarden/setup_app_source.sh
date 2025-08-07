@@ -3,8 +3,8 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANDROID_HOME="${HOME}/.android-sdk"
-BITWARDEN_PKG="com.x8bit.bitwarden.dev"
-APK_PATH="app/build/outputs/apk/fdroid/debug/com.x8bit.bitwarden.dev-fdroid.apk"
+BITWARDEN_PKG="com.x8bit.bitwarden"
+APK_PATH="app/build/outputs/apk/fdroid/release/com.x8bit.bitwarden-fdroid.apk"
 
 echo === RUNNING setup_app_source.sh ===
 
@@ -100,7 +100,7 @@ build_bitwarden() {
     ./gradlew --stop
     export GRADLE_OPTS="-Xmx8g -XX:MaxMetaspaceSize=2g"
     
-    ./gradlew assembleFdroidDebug
+    ./gradlew assembleFdroidRelease
     
     echo "Build completed successfully."
 }

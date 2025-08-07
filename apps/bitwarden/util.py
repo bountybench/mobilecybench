@@ -46,8 +46,8 @@ def wait_and_click(d, element, timeout=180):
     start_time = time.time()
     element_found = False
     while time.time() - start_time < timeout:
-        # Prioritize handling ANRs
-        check_and_click_wait_button(d, max_anrs=5, timeout=1)
+        # Prioritize handling ANRs, passing the target element for verification
+        check_and_click_wait_button(d, max_anrs=5, timeout=1, target_element=element)
 
         if element.exists:
             element_found = True
@@ -60,7 +60,7 @@ def wait_and_click(d, element, timeout=180):
         wait_for_ui_stable(d)
     else:
         print(
-            f"[ERROR] Could not find element: '{element.selector}' within {timeout}s",
+            f"[FATAL] Could not find element: '{element.selector}' within {timeout}s",
             file=sys.stderr,
         )
         print(d.dump_hierarchy(), file=sys.stderr)
@@ -75,7 +75,8 @@ def wait_and_set_text(d, element, text, timeout=180):
     start_time = time.time()
     element_found = False
     while time.time() - start_time < timeout:
-        check_and_click_wait_button(d, max_anrs=5, timeout=1)
+        # Prioritize handling ANRs, passing the target element for verification
+        check_and_click_wait_button(d, max_anrs=5, timeout=1, target_element=element)
 
         if element.exists:
             element_found = True
@@ -89,17 +90,24 @@ def wait_and_set_text(d, element, text, timeout=180):
         wait_for_ui_stable(d)
     else:
         print(
-            f"[ERROR] Could not find element: '{element.selector}' within {timeout}s",
+            f"[FATAL] Could not find element: '{element.selector}' within {timeout}s",
             file=sys.stderr,
         )
         print(d.dump_hierarchy(), file=sys.stderr)
         sys.exit(1)
 
 
-def check_and_click_wait_button(d, max_anrs=5, timeout=3):
+def check_and_click_wait_button(d, max_anrs=5, timeout=3, target_element=None):
     """
     Handles up to `max_anrs` consecutive "Application Not Responding" (ANR) dialogs
     by clicking the "Wait" button. This is critical for handling UI freezes.
+    
+    Args:
+        d: Device object
+        max_anrs: Maximum number of consecutive ANR dialogs to handle
+        timeout: Timeout for checking each ANR dialog
+        target_element: Optional element to wait for after dismissing ANR. 
+                       If provided, waits for this element to appear instead of just UI stability.
     """
     anr_count = 0
     for i in range(max_anrs):
@@ -116,9 +124,21 @@ def check_and_click_wait_button(d, max_anrs=5, timeout=3):
                 # Click the button directly to avoid recursion or other side effects
                 wait_button.click()
 
-                # Give the app a moment to recover after the ANR before proceeding
-                print("[DEBUG] Waiting for UI to stabilize after ANR...")
-                wait_for_ui_stable(d, timeout=10)
+                # Wait for either UI stability or the target element to appear
+                if target_element is not None:
+                    print(f"[DEBUG] Waiting for target element '{target_element.selector}' to appear after ANR...")
+                    if target_element.wait(timeout=10):
+                        print(f"[DEBUG] Target element '{target_element.selector}' appeared successfully after ANR.")
+                        # Target element found - break out of the ANR loop
+                        break
+                    else:
+                        print(f"[WARN] Target element '{target_element.selector}' did not appear after ANR dismissal.")
+                        # Continue checking for more ANR dialogs
+                        continue
+                else:
+                    # Fallback to UI stability check if no target element provided
+                    print("[DEBUG] Waiting for UI to stabilize after ANR...")
+                    wait_for_ui_stable(d, timeout=10)
             else:
                 # If no ANR dialog is found, we can assume the UI is responsive
                 break
@@ -148,6 +168,7 @@ def handle_keyboard_action(d):
         # Method 1: Try clicking the keyboard Done button
         if d(description="Done").exists(timeout=1):
             d(description="Done").click()
+            print("[DEBUG] Clicked keyboard Done button")
             return True
     except Exception as e:
         print(f"[WARN] Could not click keyboard Done button: {e}")
@@ -160,6 +181,7 @@ def handle_keyboard_action(d):
             d(
                 resourceId="com.google.android.inputmethod.latin:id/key_pos_ime_action"
             ).click()
+            print("[DEBUG] Clicked keyboard action button")
             return True
     except Exception as e:
         print(f"[WARN] Could not click keyboard action button: {e}")
@@ -167,6 +189,7 @@ def handle_keyboard_action(d):
     try:
         # Method 3: Try pressing Enter key
         d.press("enter")
+        print("[DEBUG] Pressed Enter key")
         return True
     except Exception as e:
         print(f"[WARN] Could not press Enter key: {e}")

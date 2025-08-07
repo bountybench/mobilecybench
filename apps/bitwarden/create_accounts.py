@@ -173,52 +173,10 @@ def extract_secrets_from_db():
         return False
 
 
-def restore_from_dump():
-    """
-    Restores the database from dump.sql file if it exists.
-    Returns True if restoration was successful, False otherwise.
-    """
-    import os
 
-    if not os.path.exists("dump.sql"):
-        print("No dump.sql file found.")
-        return False
-
-    print("Found dump.sql file. Restoring database from dump...")
-
-    try:
-        # Restore the database from dump.sql
-        subprocess.run(
-            [
-                "docker",
-                "exec",
-                "-i",
-                "vaultwarden-db",
-                "psql",
-                "-U",
-                "bitwarden",
-                "-d",
-                "vaultwarden",
-            ],
-            input=open("dump.sql", "r").read(),
-            check=True,
-            text=True,
-        )
-
-        print("Database restored successfully from dump.sql")
-        return True
-
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        print(f"[ERROR] Failed to restore database from dump: {e}", file=sys.stderr)
-        return False
 
 
 def main(d, num_ciphers_per_user=3):
-    # Check if dump.sql exists and restore from it
-    if restore_from_dump():
-        print("Using existing database dump. Skipping UI automation.")
-        return
-
     # Load user accounts and their cipher templates from the unified JSON file
     with open("accounts.json", "r") as f:
         users = json.load(f)["users"]
@@ -276,29 +234,6 @@ if __name__ == "__main__":
             # print(d.dump_hierarchy(), file=sys.stderr)
         sys.exit(1)
     finally:
-        # --- Create a database dump ---
-        print("\nCreating database dump in dump.sql...")
-        try:
-            with open("dump.sql", "w") as f:
-                subprocess.run(
-                    [
-                        "docker",
-                        "exec",
-                        "vaultwarden-db",
-                        "pg_dump",
-                        "-U",
-                        "bitwarden",
-                        "-d",
-                        "vaultwarden",
-                    ],
-                    stdout=f,
-                    check=True,
-                )
-            print("Database dump created successfully.")
-
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            print(f"[ERROR] Failed to create database dump: {e}", file=sys.stderr)
-
         # --- Clean up ---
         if d:
             print(f"Stopping app {BITWARDEN_PKG}...")
