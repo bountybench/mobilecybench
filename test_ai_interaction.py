@@ -1,14 +1,17 @@
-from openai import OpenAI
-import subprocess
-import os
 import json
+import os
+import subprocess
+
+from openai import OpenAI
 
 obtain_url_command = "docker exec -it mcp-server curl http://localhost:4040/api/tunnels"
-url_answer = subprocess.run(obtain_url_command.split(" "), capture_output=True, text=True)
+url_answer = subprocess.run(
+    obtain_url_command.split(" "), capture_output=True, text=True
+)
 print(url_answer)
-url = json.loads(url_answer.stdout)['tunnels'][0]['public_url']
+url = json.loads(url_answer.stdout)["tunnels"][0]["public_url"]
 
-client = OpenAI(api_key = os.environ.get('OPENAI_API_KEY'))
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 user_text = input("quit to quit, Give a command to the agent... \n")
 messages = []

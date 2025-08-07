@@ -1,8 +1,10 @@
 import base64
 import uuid
-from typing import List, Dict
 import xml.etree.ElementTree as ET
+from typing import Dict, List
+
 from docker_setup import *
+
 
 def run_adb_shell(command: str) -> str:
     container = get_kali()
@@ -10,10 +12,13 @@ def run_adb_shell(command: str) -> str:
     result = container.exec_run(f"bash -c '{cmd}'", stdout=True, stderr=True)
     return result.output.decode("utf-8")
 
+
 def run_adb_pull(remote_path: str, local_path: str) -> bool:
     """Copy file contents over ADB shell and save locally"""
     container = get_kali()
-    cmd = f"export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb shell cat {remote_path}"
+    cmd = (
+        f"export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb shell cat {remote_path}"
+    )
     result = container.exec_run(f"bash -c '{cmd}'", stdout=True, stderr=True)
     output = result.output
     if result.exit_code != 0 or not output:
@@ -23,17 +28,33 @@ def run_adb_pull(remote_path: str, local_path: str) -> bool:
         f.write(output)
     return True
 
+
 def calculate_location(bounds):
     try:
-        points = [int(num) for num in bounds.replace("[", "").replace("]", ",").split(",") if num.strip().isdigit()]
+        points = [
+            int(num)
+            for num in bounds.replace("[", "").replace("]", ",").split(",")
+            if num.strip().isdigit()
+        ]
         x = (points[0] + points[2]) // 2
         y = (points[1] + points[3]) // 2
         return [x, y]
     except:
         return [0, 0]
 
+
 class UIElement:
-    def __init__(self, index: int, text: str = "", resource_id: str = "", class_name: str = "", package: str = "", content_desc: str = "", fields: Dict[str, bool] = {}, bounds: str = ""):
+    def __init__(
+        self,
+        index: int,
+        text: str = "",
+        resource_id: str = "",
+        class_name: str = "",
+        package: str = "",
+        content_desc: str = "",
+        fields: Dict[str, bool] = {},
+        bounds: str = "",
+    ):
         self.id = str(uuid.uuid4())
         self.index = index
         self.text = text
@@ -59,6 +80,7 @@ class UIElement:
             "location": self.location,
         }
 
+
 class EmulatorState:
     def __init__(self, response: str, ui_elements: List[UIElement]):
         self.response = response
@@ -69,6 +91,7 @@ class EmulatorState:
             "response": self.response,
             "ui_elements": [el.to_dict() for el in self.ui_elements],
         }
+
 
 def obtain_UI_elements() -> List[UIElement]:
     remote_path = "/sdcard/window_dump.xml"
@@ -99,20 +122,23 @@ def obtain_UI_elements() -> List[UIElement]:
             "password": node.get("password") == "true",
             "selected": node.get("selected") == "true",
         }
-        ui_elements.append(UIElement(
-            index=node.get("index"),
-            text=node.get("text"),
-            resource_id=node.get("resource-id"),
-            class_name=node.get("class"),
-            package=node.get("package"),
-            content_desc=node.get("content-desc"),
-            fields=fields,
-            bounds=node.get("bounds")
-        ))
+        ui_elements.append(
+            UIElement(
+                index=node.get("index"),
+                text=node.get("text"),
+                resource_id=node.get("resource-id"),
+                class_name=node.get("class"),
+                package=node.get("package"),
+                content_desc=node.get("content-desc"),
+                fields=fields,
+                bounds=node.get("bounds"),
+            )
+        )
 
     print(ui_elements)
 
     return ui_elements
+
 
 def get_ui_state(response_text: str) -> EmulatorState:
     return EmulatorState(response_text, obtain_UI_elements()).to_dict()
