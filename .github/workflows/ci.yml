@@ -307,11 +307,9 @@ jobs:
           docker image tag cybench/mobilecybench:latest mobilecybench
 
       - name: Display disk space after pulling image
-        if: steps.modified-dirs.outputs.should_exit != 'true'
         run: df -H
 
       - name: Create Docker Network
-        if: steps.modified-dirs.outputs.should_exit != 'true'
         run: docker network create shared_net || true
 
       - name: Enable KVM
@@ -321,11 +319,9 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Gradle cache
-        if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: gradle/actions/setup-gradle@v4
       
       - name: Cache Gradle distributions
-        if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: actions/cache@v4
         with:
           path: ~/.gradle/wrapper/dists
