@@ -327,13 +327,13 @@ jobs:
                 return 1
               fi
               
-              CLOCK_PRESENT=$(grep -c "com.android.systemui:id/clock" window_dump.xml || true)
-              echo "CLOCK_PRESENT=$CLOCK_PRESENT"
+              HOME_PRESENT=$(grep -c "Home" window_dump.xml || true)
+              echo "HOME_PRESENT=$HOME_PRESENT"
 
               ANR_PRESENT=$(grep -c "System UI isn't responding" window_dump.xml || true)
               echo "ANR_PRESENT=$ANR_PRESENT"
 
-              if [ "$CLOCK_PRESENT" -gt 0 ] && [ "$ANR_PRESENT" -eq 0 ]; then
+              if [ "$HOME_PRESENT" -gt 0 ] && [ "$ANR_PRESENT" -eq 0 ]; then
                 echo "System UI is ready and responsive"
                 return 0
               fi
