@@ -162,7 +162,7 @@ def initialize_local_host(d):
 
     # Wait for the app to load by waiting for the first interactive element.
     print("Step 1.1.4: Clicking 'Account creation'...")
-    d(resourceId="ChooseAccountCreationButton").wait(timeout=20.0)
+    wait_and_click(d, d(resourceId="ChooseAccountCreationButton"))
 
     # --- 1.2: Server Configuration ---
     # Step 1.2.1: Click the "Create account" button on the welcome screen
