@@ -98,6 +98,7 @@ jobs:
           echo "java=$java" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
+        if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y libpulse0
