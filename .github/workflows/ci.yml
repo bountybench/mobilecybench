@@ -8,9 +8,14 @@ permissions:
   pull-requests: write
 
 jobs:
-  build:
+  setup:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 5
+    outputs:
+      modified_dirs: ${{ steps.modified-dirs.outputs.modified_dirs }}
+      should_exit: ${{ steps.modified-dirs.outputs.should_exit }}
+      sdk: ${{ steps.get-sdk-java.outputs.sdk }}
+      java: ${{ steps.get-sdk-java.outputs.java }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -35,7 +40,109 @@ jobs:
               awk -F/ '{print $1"/"$2}' | 
               sort -u
           }
+          EOF
+          chmod +x /tmp/shared_functions.sh
+          source /tmp/shared_functions.sh
+          modified_dirs=$(get_modified_dirs)
+          if [ -z "$modified_dirs" ]; then
+            echo "No modified directories with essential changes found. Skipping further steps."
+            echo "should_exit=true" >> $GITHUB_OUTPUT
+          else
+            echo "Modified directories:"
+            echo "$modified_dirs"
+          
+            count=${#modified_dirs[@]}
+            if [ "$count" -gt 1 ]; then
+              echo "More than one modified directory detected: ${dirs[*]}"
+              echo "Each PR should only modify one app"
+              exit 1
+            fi
 
+            echo "modified_dirs<<EOF" >> $GITHUB_OUTPUT
+            echo "$modified_dirs" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get API level & Java versions
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        id: get-sdk-java
+        run: |
+          set -e
+
+          # Get the first directory from modified_dirs
+          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
+
+          metadata="$dir/metadata.json"
+          if [ ! -f "$metadata" ]; then
+            echo "ERROR: $metadata not found"
+            exit 1
+          fi
+
+          sdk=$(jq -r '.sdk' $metadata)
+          if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
+              echo "${ERROR} Could not extract SDK from $metadata. Use default (28)."
+              sdk=28
+          else 
+              echo "SDK: $sdk"
+          fi
+
+          java=$(jq -r '.java' $metadata)
+          if [ "$?" -ne 0 ] || [ "$java" = "null" ] || [ -z "$java" ]; then
+              echo "${ERROR} Could not extract Java version from $metadata. Use default (17)."
+              java=17
+          else 
+              echo "Java version: $java"
+          fi
+
+          echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
+          echo "java=$java" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpulse0
+          python -m pip install --upgrade pip -q
+          pip install -r .github/requirements.txt -q
+          export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
+
+      - name: Check metadata.json
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
+          if git diff --name-only HEAD^ HEAD | grep -q "$dir/metadata.json"; then
+            echo "metadata.json was modified in $dir. Running test..."
+            pytest \
+              --log-cli-level=INFO \
+              --log-cli-format='%(message)s' \
+              --tb=no \
+              tests/test_metadata_json.py::test_app_metadata \
+              --dirs "$dir"
+          else
+            echo "metadata.json not modified in $dir. Skipping test."
+          fi      
+
+  test:
+    needs: setup
+    if: needs.setup.outputs.should_exit != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      matrix:
+        test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
+      fail-fast: false  
+      max-parallel: 3 
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Create shared functions
+        run: |
+          cat << 'EOF' > /tmp/shared_functions.sh
           check_server_ready() {
             # Timeout per container in seconds
             TIMEOUT=${TIMEOUT:-180}
@@ -150,94 +257,37 @@ jobs:
 
           EOF
           chmod +x /tmp/shared_functions.sh
-          source /tmp/shared_functions.sh
-          modified_dirs=$(get_modified_dirs)
-          if [ -z "$modified_dirs" ]; then
-            echo "No modified directories with essential changes found. Skipping further steps."
-            echo "should_exit=true" >> $GITHUB_OUTPUT
-          else
-            echo "Modified directories:"
-            echo "$modified_dirs"
-          
-            count=${#modified_dirs[@]}
-            if [ "$count" -gt 1 ]; then
-              echo "More than one modified directory detected: ${dirs[*]}"
-              echo "Each PR should only modify one app"
-              exit 1
+
+          # Extract base directories from modified_dirs
+          modified_dirs=${{ needs.setup.outputs.modified_dirs }}
+          base_dirs=$(echo "$modified_dirs" | while IFS= read -r line; do
+            # Skip empty lines
+            [[ -z "$line" ]] && continue
+            # Extract the base directory (everything before the first "/")
+            echo "${line%%/*}"
+          done | sort -u)
+
+          echo "$base_dirs" | while IFS= read -r base; do
+            if [ -d "$base" ]; then
+              echo "Initialize submodule for $base"
+              git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$base"
+            else
+              echo "$base does not exist."
             fi
-
-            # Extract base directories from modified_dirs
-            base_dirs=$(echo "$modified_dirs" | while IFS= read -r line; do
-              # Skip empty lines
-              [[ -z "$line" ]] && continue
-              # Extract the base directory (everything before the first "/")
-              echo "${line%%/*}"
-            done | sort -u)
-
-            echo "$base_dirs" | while IFS= read -r base; do
-              if [ -d "$base" ]; then
-                echo "Initialize submodule for $base"
-                git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$base"
-              else
-                echo "$base does not exist."
-              fi
-            done
-
-            echo "modified_dirs<<EOF" >> $GITHUB_OUTPUT
-            echo "$modified_dirs" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-          fi
+          done
           
-      - name: Get API level & Java versions
-        if: steps.modified-dirs.outputs.should_exit != 'true'
-        id: get-sdk-java
-        run: |
-          set -e
-
-          # Get the first directory from modified_dirs
-          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
-
-          metadata="$dir/metadata.json"
-          if [ ! -f "$metadata" ]; then
-            echo "ERROR: $metadata not found"
-            exit 1
-          fi
-
-          sdk=$(jq -r '.sdk' $metadata)
-          if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
-              echo "${ERROR} Could not extract SDK from $metadata. Use default (28)."
-              sdk=28
-          else 
-              echo "SDK: $sdk"
-          fi
-
-          java=$(jq -r '.java' $metadata)
-          if [ "$?" -ne 0 ] || [ "$java" = "null" ] || [ -z "$java" ]; then
-              echo "${ERROR} Could not extract Java version from $metadata. Use default (17)."
-              java=17
-          else 
-              echo "Java version: $java"
-          fi
-
-          echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
-          echo "java=$java" >> "$GITHUB_OUTPUT"
-
       - name: Set up JDK
-        if: steps.modified-dirs.outputs.should_exit != 'true'
-        id: setup-java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: "${{ steps.get-sdk-java.outputs.java }}"
+          java-version: "${{ needs.setup.outputs.java }}"
       
       - name: Setup Python 3.12 environment
-        if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: Install dependencies
-        if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y libpulse0
@@ -246,13 +296,11 @@ jobs:
           export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
 
       - name: Docker Cleanup before pulling new image
-        if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           docker system prune -af
           docker image prune -af
 
       - name: Pull Docker container
-        if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           docker pull --quiet cybench/mobilecybench:latest
           docker manifest inspect cybench/mobilecybench:latest
@@ -267,7 +315,6 @@ jobs:
         run: docker network create shared_net || true
 
       - name: Enable KVM
-        if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
@@ -284,26 +331,29 @@ jobs:
           path: ~/.gradle/wrapper/dists
           key: gradle-wrapper-${{ hashFiles('**/gradle-wrapper.properties') }}
 
-      - name: Create check script
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+      - name: Create test script for ${{ matrix.test_type }}
         run: |
-          echo "Generating test_checks.sh"
-          modified_dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
-
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          
           cat << 'EOF' > test_checks.sh
           #!/bin/bash
           set -e
-
           source /tmp/shared_functions.sh
           check_server_ready
           EOF
-                
+          
           echo "dir=\"$modified_dir\"" >> test_checks.sh
+          echo "test_type=\"${{ matrix.test_type }}\"" >> test_checks.sh
 
-          cat <<'EOF' >> test_checks.sh
+          case "${{ matrix.test_type }}" in
+            "baseline")
+              cat <<'EOF' >> test_checks.sh
+          source /tmp/shared_functions.sh
+          check_server_ready
+          
           cd "$dir"
           checkout_commit "$dir"
-
+          
           required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
           echo "Checking for required scripts..."
           for script in "${required_scripts[@]}"; do
@@ -312,66 +362,33 @@ jobs:
               exit 1
             fi
           done
-
+          
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
-
-          echo "Running checks..."
+          
+          echo "Running baseline checks..."
           ./run_checks.sh
-
-          echo "Verifying scores.json contains all 1s..."
+          
           if ! jq -e '[.. | select(type == "number")] | all(. == 1)' scores.json > /dev/null; then
-            echo "ERROR: scores.json does not contain all 1s."
+            echo "ERROR: Baseline scores.json does not contain all 1s."
             cat scores.json
-            echo "Cleaning up..."
             ./cleanup.sh
             exit 1
           fi
-
-          echo "Checks passed successfully. All scores are 1."
-          echo "Cleaning up..."
-          ./cleanup.sh
-          exit 0
-          EOF
-
-          cat test_checks.sh
-          chmod +x test_checks.sh
-
-      - name: Test checks before any vulnerable scenarios
-        if: steps.modified-dirs.outputs.should_exit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: "${{ steps.get-sdk-java.outputs.sdk }}"
-          arch: x86_64
-          target: google_apis
-          profile: pixel_2
-          ram-size: 2048    
-          force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
-          disable-animations: true
-          script: ./test_checks.sh
-
-      - name: Create check script
-        if: steps.modified-dirs.outputs.should_exit != 'true'
-        run: |
-          echo "Generating test_checks.sh"
-          modified_dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
-
-          cat << 'EOF' > test_checks.sh
-          #!/bin/bash
-          set -e
           
+          echo "Baseline checks passed. Cleaning up..."
+          ./cleanup.sh
+          EOF
+              ;;
+            "vuln_scenario_0")
+              cat <<'EOF' >> test_checks.sh
           source /tmp/shared_functions.sh
           check_server_ready
-          EOF
-                
-          echo "dir=\"$modified_dir\"" >> test_checks.sh
-
-          cat <<'EOF' >> test_checks.sh
+          
           cd "$dir"
           checkout_commit "$dir"
-
+          
           required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
           echo "Checking for required scripts..."
           for script in "${required_scripts[@]}"; do
@@ -381,56 +398,106 @@ jobs:
             fi
           done
 
+          ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_HOME
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
-
+          
           echo "Creating vulnerable scenario 0..."
           cd vuln_scenarios/vuln_scenario_0
           ./vuln.sh
           cd -
-
+          
           echo "Running checks..."
           ./run_checks.sh "vuln_scenarios/vuln_scenario_0/fake_agent_log.log"
-
+          
           score1="vuln_scenarios/vuln_scenario_0/expected_scores.json"
           score2="scores.json"
-
+          
           if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
-            echo "Scores match"
-            echo "Cleaning up..."
+            echo "Vuln scenario 0 scores match. Cleaning up..."
             ./cleanup.sh
-            exit 0
           else
-            echo "ERROR: Scores do not match"
+            echo "ERROR: Vuln scenario 0 scores do not match"
             cat scores.json
-            echo "Cleaning up..."
             ./cleanup.sh
             exit 1
           fi
           EOF
+              ;;
+            "vuln_scenario_1")
+              cat <<'EOF' >> test_checks.sh
+          source /tmp/shared_functions.sh
+          check_server_ready
+          
+          cd "$dir"
+          checkout_commit "$dir"
+          
+          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
+          echo "Checking for required scripts..."
+          for script in "${required_scripts[@]}"; do
+            if [[ ! -f "$script" ]]; then
+              echo "ERROR: Required script '$script' not found."
+              exit 1
+            fi
+          done
 
-          cat test_checks.sh
+          ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_HOME
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          
+          echo "Running setup..."
+          ./setup.sh
+          adb logcat -c
+          
+          echo "Creating vulnerable scenario 1..."
+          cd vuln_scenarios/vuln_scenario_1
+          ./vuln.sh
+          cd -
+          
+          echo "Running checks..."
+          ./run_checks.sh
+          
+          score1="vuln_scenarios/vuln_scenario_1/expected_scores.json"
+          score2="scores.json"
+          
+          if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
+            echo "Vuln scenario 1 scores match. Cleaning up..."
+            ./cleanup.sh
+          else
+            echo "ERROR: Vuln scenario 1 scores do not match"
+            cat scores.json
+            ./cleanup.sh
+            exit 1
+          fi
+          EOF
+              ;;
+          esac
+          
           chmod +x test_checks.sh
 
-      - name: Install Android SDK
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+      - name: Install Android SDK (for vuln_scenario_0)
+        if: matrix.test_type == 'vuln_scenario_0'
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 28
+          api-level: ${{ needs.setup.outputs.sdk }}
           target: google_apis
           arch: x86_64
           profile: pixel_2
           script: echo "Temporary run to preinstall SDK"
 
-      - name: Create AVD
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+      - name: Create AVD for vuln_scenario_0
+        if: matrix.test_type == 'vuln_scenario_0'
         run: |
+          SDK_VERSION=${{ needs.setup.outputs.sdk }}
           echo "no" | avdmanager create avd -n test_avd \
-            -k "system-images;android-28;google_apis;x86_64" --device "pixel"
+            -k "system-images;android-$SDK_VERSION;google_apis;x86_64" --device "pixel"
 
-      - name: Launch emulator
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+      - name: Launch emulator for vuln_scenario_0
+        if: matrix.test_type == 'vuln_scenario_0'
         run: |
           echo "ANDROID_HOME: $ANDROID_HOME"
           echo "PATH: $PATH"
@@ -452,7 +519,6 @@ jobs:
           fi
 
           echo "Emulator booted successfully!"
-
           sleep 15
           adb root
           sleep 5  
@@ -461,16 +527,16 @@ jobs:
           adb shell input keyevent 224
           echo "Emulator ready!"
 
-      - name: Test checks after non-DOS vulnerable scenario
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+      - name: Run custom emulator test for vuln_scenario_0
+        if: matrix.test_type == 'vuln_scenario_0'
         run: |
-          echo "Executing tests..."
+          echo "Executing vuln_scenario_0 test..."
           bash -x ./test_checks.sh
 
-      - name: Stop emulator
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+      - name: Stop custom emulator for vuln_scenario_0
+        if: always() && matrix.test_type == 'vuln_scenario_0'
         run: |
-          echo "Shutting down emulator..."
+          echo "Shutting down custom emulator..."
           adb devices
           EMU_ID=$(adb devices | awk '/emulator-/{print $1}')
           if [ -n "$EMU_ID" ]; then
@@ -478,78 +544,13 @@ jobs:
             echo "Emulator stopped."
           else
             echo "No emulator instance found to stop."
-          fi     
-
-      - name: Create check script
-        if: steps.modified-dirs.outputs.should_exit != 'true'
-        run: |
-          echo "Generating test_checks.sh"
-          modified_dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
-
-          cat << 'EOF' > test_checks.sh
-          #!/bin/bash
-          set -e
-          
-          source /tmp/shared_functions.sh
-          check_server_ready
-          EOF
-                
-          echo "dir=\"$modified_dir\"" >> test_checks.sh
-
-          cat <<'EOF' >> test_checks.sh
-          cd "$dir"
-          checkout_commit "$dir"
-
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
-          echo "Checking for required scripts..."
-          for script in "${required_scripts[@]}"; do
-            if [[ ! -f "$script" ]]; then
-              echo "ERROR: Required script '$script' not found."
-              exit 1
-            fi
-          done
-
-          ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          export ANDROID_HOME
-          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-
-          echo "Running setup..."
-          ./setup.sh
-          adb logcat -c
-
-          echo "Creating vulnerable scenario 1..."
-          cd vuln_scenarios/vuln_scenario_1
-          ./vuln.sh
-          cd -
-
-          echo "Running checks..."
-          ./run_checks.sh
-
-          score1="vuln_scenarios/vuln_scenario_1/expected_scores.json"
-          score2="scores.json"
-
-          if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
-            echo "Scores match"
-            echo "Cleaning up..."
-            ./cleanup.sh
-            exit 0
-          else
-            echo "ERROR: Scores do not match"
-            cat scores.json
-            echo "Cleaning up..."
-            ./cleanup.sh
-            exit 1
           fi
-          EOF
 
-          cat test_checks.sh
-          chmod +x test_checks.sh
-
-      - name: Test checks after DOS vulnerable scenario
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+      - name: Run emulator test with action (baseline and vuln_scenario_1)
+        if: matrix.test_type != 'vuln_scenario_0'
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: "${{ steps.get-sdk-java.outputs.sdk }}"
+          api-level: ${{ needs.setup.outputs.sdk }}
           arch: x86_64
           target: google_apis
           profile: pixel_2
@@ -558,16 +559,16 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
-      
+
       - name: Display disk space after tests
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+        if: always()
         run: df -h
 
       - name: Docker Cleanup after tests
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+        if: always()
         run: |
           docker system prune -af
 
       - name: Display disk space after cleanup
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+        if: always()
         run: df -h
