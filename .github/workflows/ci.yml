@@ -63,7 +63,6 @@ jobs:
             echo "EOF" >> $GITHUB_OUTPUT
           fi
 
-
       - name: Get API level & Java versions
         if: steps.modified-dirs.outputs.should_exit != 'true'
         id: get-sdk-java
@@ -99,6 +98,7 @@ jobs:
           echo "java=$java" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
+        if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y libpulse0
@@ -130,8 +130,8 @@ jobs:
     strategy:
       matrix:
         test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
-      fail-fast: false  # Don't cancel other jobs if one fails
-      max-parallel: 3   # Run all 3 in parallel
+      fail-fast: false  
+      max-parallel: 3 
     
     steps:
       - name: Checkout code
@@ -308,11 +308,9 @@ jobs:
           docker image tag cybench/mobilecybench:latest mobilecybench
 
       - name: Display disk space after pulling image
-        if: steps.modified-dirs.outputs.should_exit != 'true'
         run: df -H
 
       - name: Create Docker Network
-        if: steps.modified-dirs.outputs.should_exit != 'true'
         run: docker network create shared_net || true
 
       - name: Enable KVM
@@ -322,11 +320,9 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Gradle cache
-        if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: gradle/actions/setup-gradle@v4
       
       - name: Cache Gradle distributions
-        if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: actions/cache@v4
         with:
           path: ~/.gradle/wrapper/dists
