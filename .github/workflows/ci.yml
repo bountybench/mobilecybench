@@ -317,9 +317,6 @@ jobs:
               sleep $RETRY_INTERVAL
             done
 
-            echo "print out window dump"
-            cat window_dump.xml
-
             # Loop until System UI is fully responsive
             echo "Checking if System UI is responsive..."
             START_TIME=$(date +%s)
@@ -348,6 +345,7 @@ jobs:
               adb shell uiautomator dump /sdcard/window_dump.xml 2>/dev/null
               adb shell cat /sdcard/window_dump.xml > window_dump.xml 2>/dev/null || continue
             done
+            cat window_dump.xml
           }
 
           EOF
