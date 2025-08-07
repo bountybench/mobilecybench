@@ -388,7 +388,6 @@ jobs:
             fi
           done
 
-          sleep 60
           check_system_ui_ready
           if [ $? -ne 0 ]; then
             exit 1
@@ -428,6 +427,11 @@ jobs:
               exit 1
             fi
           done
+
+          check_system_ui_ready
+          if [ $? -ne 0 ]; then
+            exit 1
+          fi
 
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
@@ -475,6 +479,11 @@ jobs:
               exit 1
             fi
           done
+
+          check_system_ui_ready
+          if [ $? -ne 0 ]; then
+            exit 1
+          fi
 
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
