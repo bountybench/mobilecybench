@@ -6,7 +6,7 @@ from functools import wraps
 BITWARDEN_PKG = "com.x8bit.bitwarden"
 
 
-def handle_wait_button(func):
+def handle_wait_alert(func):
     """
     Decorator that checks for and clicks the 'aerr_wait' button before executing the decorated function.
     """
@@ -51,8 +51,8 @@ def wait_for_ui_stable(d, timeout=3, interval=0.5):
     return False
 
 
-@handle_wait_button
-def wait_and_click(d, element, timeout=180):
+@handle_wait_alert
+def wait_and_click(d, element, timeout=60):
     """
     Waits for an element and clicks it. Prefers resourceId for reliability.
     """
@@ -68,7 +68,7 @@ def wait_and_click(d, element, timeout=180):
         sys.exit(1)
 
 
-@handle_wait_button
+@handle_wait_alert
 def wait_and_set_text(d, element, text, timeout=180):
     """
     Waits for an EditText element, sets its text, and clicks the IME action button
@@ -89,17 +89,34 @@ def wait_and_set_text(d, element, text, timeout=180):
 
 def check_and_click_wait_button(d, timeout=3):
     """
-    check_and_click_wait_button()
-    - Takes in the device and timeout
-    - Checks if the 'aerr_wait' button is on screen and clicks it
-    - Returns boolean of whether the button was found and clicked
+    Checks for the "Application Not Responding" (ANR) dialog and clicks the "Wait" button.
+    This is a critical function for handling UI freezes.
     """
-    if d(resourceId="aerr_wait").exists(timeout=timeout):
-        print("Found 'aerr_wait' button. Clicking it...")
-        wait_and_click(d, d(resourceId="aerr_wait"))
-        return True
-    else:
-        return False
+    # Use a more specific selector for the ANR "Wait" button
+    wait_button = d(resourceId="android:id/aerr_wait")
+
+    try:
+        if wait_button.exists(timeout=timeout):
+            print(
+                "[INFO] ANR dialog detected. Clicking the 'Wait' button to continue..."
+            )
+
+            # Click the button directly to avoid recursion
+            wait_button.click()
+
+            # Give the app a moment to recover after the ANR
+            print("[INFO] Waiting for UI to stabilize after ANR...")
+            wait_for_ui_stable(d, timeout=10)
+
+            print("[SUCCESS] ANR dialog handled successfully.")
+            return True
+    except Exception as e:
+        # This can happen if the button disappears before we can click it, which is fine
+        print(
+            f"[WARN] Could not click ANR 'Wait' button (it may have disappeared): {e}"
+        )
+
+    return False
 
 
 def handle_keyboard_action(d):
@@ -157,10 +174,8 @@ def initialize_local_host(d):
     d.app_start(BITWARDEN_PKG, use_monkey=True)
 
     # Wait for the app to load by waiting for the first interactive element.
-    print("Step 1.1.3: Checking for 'aerr_wait' button...")
-    check_and_click_wait_button(d)
+    # The 'aerr_wait' button will be handled by the decorator on wait_and_click.
 
-    # --- 1.2: Server Configuration ---
     # Step 1.2.1: Click the "Create account" button on the welcome screen
     print("Step 1.2.1: Clicking 'Account creation'...")
     wait_and_click(d, d(resourceId="ChooseAccountCreationButton"))
