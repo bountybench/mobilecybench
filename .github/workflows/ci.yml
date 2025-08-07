@@ -261,7 +261,6 @@ jobs:
             MAX_RETRIES=30
             RETRY_INTERVAL=2
             UI_READY=0
-            pip install uiautomator2
 
             for i in $(seq 1 $MAX_RETRIES); do
               adb shell uiautomator2 dump /sdcard/window_dump.xml
@@ -364,6 +363,7 @@ jobs:
           cat << 'EOF' > test_checks.sh
           #!/bin/bash
           set -e
+          pip install -r .github/requirements.txt
           source /tmp/shared_functions.sh
           check_server_ready
           EOF
