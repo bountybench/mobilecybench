@@ -417,7 +417,7 @@ jobs:
         if: steps.modified-dirs.outputs.should_exit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 28
+          api-level: "${{ steps.get-sdk-java.outputs.sdk }}"
           target: google_apis
           arch: x86_64
           profile: pixel_2
@@ -426,8 +426,9 @@ jobs:
       - name: Create AVD
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
+          SDK_VERSION=${{ steps.get-sdk-java.outputs.sdk }}
           echo "no" | avdmanager create avd -n test_avd \
-            -k "system-images;android-28;google_apis;x86_64" --device "pixel"
+            -k "system-images;android-$SDK_VERSION;google_apis;x86_64" --device "pixel"
 
       - name: Launch emulator
         if: steps.modified-dirs.outputs.should_exit != 'true'
