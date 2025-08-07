@@ -509,6 +509,7 @@ jobs:
           done
 
           system_ui_watchdog
+          ./check_focus.sh
                     
           echo "Running setup..."
           ./setup.sh

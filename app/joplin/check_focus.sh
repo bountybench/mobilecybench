@@ -15,7 +15,8 @@ function check_current_focus() {
       printf "$result\n"
       break
     else
-      adb shell input keyevent KEYCODE_HOME
+      #adb shell input keyevent KEYCODE_HOME
+      adb shell input keyevent 224
       printf "==> Menu button is pressed \n"
       i=$(( (i+1) % 8 ))
     fi
