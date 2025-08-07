@@ -1,8 +1,22 @@
 import subprocess
 import sys
 import time
+from functools import wraps
 
 BITWARDEN_PKG = "com.x8bit.bitwarden"
+
+
+def handle_wait_button(func):
+    """
+    Decorator that checks for and clicks the 'aerr_wait' button before executing the decorated function.
+    """
+
+    @wraps(func)
+    def wrapper(d, *args, **kwargs):
+        check_and_click_wait_button(d)
+        return func(d, *args, **kwargs)
+
+    return wrapper
 
 
 def adb(cmd):
@@ -37,12 +51,11 @@ def wait_for_ui_stable(d, timeout=3, interval=0.5):
     return False
 
 
+@handle_wait_button
 def wait_and_click(d, element, timeout=180):
     """
     Waits for an element and clicks it. Prefers resourceId for reliability.
     """
-    check_and_click_wait_button(d)
-
     if element.wait(timeout=timeout):
         element.click_exists(timeout=3)
         wait_for_ui_stable(d)
@@ -55,12 +68,11 @@ def wait_and_click(d, element, timeout=180):
         sys.exit(1)
 
 
+@handle_wait_button
 def wait_and_set_text(d, element, text, timeout=180):
     """
     Waits for an EditText element, sets its text, and clicks the IME action button
     """
-    check_and_click_wait_button(d)
-
     if element.wait(timeout=timeout):
         element.set_text(text)
         # Handle keyboard action with multiple fallback methods
