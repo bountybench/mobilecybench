@@ -87,34 +87,43 @@ def wait_and_set_text(d, element, text, timeout=180):
         sys.exit(1)
 
 
-def check_and_click_wait_button(d, timeout=3):
+def check_and_click_wait_button(d, max_anrs=5, timeout=3):
     """
-    Checks for the "Application Not Responding" (ANR) dialog and clicks the "Wait" button.
-    This is a critical function for handling UI freezes.
+    Handles up to `max_anrs` consecutive "Application Not Responding" (ANR) dialogs
+    by clicking the "Wait" button. This is critical for handling UI freezes.
     """
-    # Use a more specific selector for the ANR "Wait" button
-    wait_button = d(resourceId="android:id/aerr_wait")
+    anr_count = 0
+    for i in range(max_anrs):
+        # Check for the ANR dialog's "Wait" button
+        wait_button = d(resourceId="android:id/aerr_wait")
 
-    try:
-        if wait_button.exists(timeout=timeout):
+        try:
+            if wait_button.exists(timeout=timeout):
+                anr_count += 1
+                print(
+                    f"[INFO] ANR dialog #{anr_count} detected. Clicking 'Wait' to continue..."
+                )
+
+                # Click the button directly to avoid recursion or other side effects
+                wait_button.click()
+
+                # Give the app a moment to recover after the ANR before proceeding
+                print("[INFO] Waiting for UI to stabilize after ANR...")
+                wait_for_ui_stable(d, timeout=10)
+            else:
+                # If no ANR dialog is found, we can assume the UI is responsive
+                break
+        except Exception as e:
+            # This can happen if the button disappears before we can click it.
+            # We can safely break the loop as the dialog is gone.
             print(
-                "[INFO] ANR dialog detected. Clicking the 'Wait' button to continue..."
+                f"[WARN] Could not click ANR 'Wait' button (it may have disappeared): {e}"
             )
+            break
 
-            # Click the button directly to avoid recursion
-            wait_button.click()
-
-            # Give the app a moment to recover after the ANR
-            print("[INFO] Waiting for UI to stabilize after ANR...")
-            wait_for_ui_stable(d, timeout=10)
-
-            print("[SUCCESS] ANR dialog handled successfully.")
-            return True
-    except Exception as e:
-        # This can happen if the button disappears before we can click it, which is fine
-        print(
-            f"[WARN] Could not click ANR 'Wait' button (it may have disappeared): {e}"
-        )
+    if anr_count > 0:
+        print(f"[SUCCESS] Handled {anr_count} consecutive ANR dialog(s).")
+        return True
 
     return False
 
