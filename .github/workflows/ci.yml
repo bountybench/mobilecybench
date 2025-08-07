@@ -519,11 +519,28 @@ jobs:
           fi
 
           echo "Emulator booted successfully!"
-          sleep 15
+          echo "Waiting for adbd to be ready..."
+          timeout=60
+          until adb shell "ls /system" &>/dev/null || [[ $timeout -le 0 ]]; do
+            sleep 1
+            ((timeout--))
+          done
+          if [[ "$timeout" -le 0 ]]; then
+            echo "adbd not ready in time."
+            exit 1
+          fi          
+
           adb root
-          sleep 5  
-          adb remount
-          sleep 5  
+          timeout=30
+          until adb remount &>/dev/null || [[ $timeout -le 0 ]]; do
+            sleep 1
+            ((timeout--))
+          done
+          if [[ "$timeout" -le 0 ]]; then
+            echo "adb remount failed after waiting."
+            exit 1
+          fi
+          
           adb shell input keyevent 224
           echo "Emulator ready!"
 
