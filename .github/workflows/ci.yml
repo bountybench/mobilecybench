@@ -10,7 +10,7 @@ permissions:
 jobs:
   setup:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     outputs:
       modified_dirs: ${{ steps.modified-dirs.outputs.modified_dirs }}
       should_exit: ${{ steps.modified-dirs.outputs.should_exit }}
@@ -57,23 +57,6 @@ jobs:
               echo "Each PR should only modify one app"
               exit 1
             fi
-
-            # Extract base directories from modified_dirs
-            base_dirs=$(echo "$modified_dirs" | while IFS= read -r line; do
-              # Skip empty lines
-              [[ -z "$line" ]] && continue
-              # Extract the base directory (everything before the first "/")
-              echo "${line%%/*}"
-            done | sort -u)
-
-            echo "$base_dirs" | while IFS= read -r base; do
-              if [ -d "$base" ]; then
-                echo "Initialize submodule for $base"
-                git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$base"
-              else
-                echo "$base does not exist."
-              fi
-            done
 
             echo "modified_dirs<<EOF" >> $GITHUB_OUTPUT
             echo "$modified_dirs" >> $GITHUB_OUTPUT
@@ -143,7 +126,7 @@ jobs:
     needs: setup
     if: needs.setup.outputs.should_exit != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 40
     strategy:
       matrix:
         test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
@@ -275,8 +258,25 @@ jobs:
 
           EOF
           chmod +x /tmp/shared_functions.sh
-          
 
+          # Extract base directories from modified_dirs
+          modified_dirs = ${{ needs.setup.outputs.modified_dirs }}
+          base_dirs=$(echo "$modified_dirs" | while IFS= read -r line; do
+            # Skip empty lines
+            [[ -z "$line" ]] && continue
+            # Extract the base directory (everything before the first "/")
+            echo "${line%%/*}"
+          done | sort -u)
+
+          echo "$base_dirs" | while IFS= read -r base; do
+            if [ -d "$base" ]; then
+              echo "Initialize submodule for $base"
+              git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$base"
+            else
+              echo "$base does not exist."
+            fi
+          done
+          
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
@@ -482,15 +482,14 @@ jobs:
           profile: pixel_2
           script: echo "Temporary run to preinstall SDK"
 
-      - name: Setup custom emulator for vuln_scenario_0
+      - name: Create AVD for vuln_scenario_0
         if: matrix.test_type == 'vuln_scenario_0'
         run: |
-          echo "Creating custom AVD for vuln_scenario_0..."
           SDK_VERSION=${{ needs.setup.outputs.sdk }}
           echo "no" | avdmanager create avd -n test_avd \
             -k "system-images;android-$SDK_VERSION;google_apis;x86_64" --device "pixel"
 
-      - name: Launch custom emulator for vuln_scenario_0
+      - name: Launch emulator for vuln_scenario_0
         if: matrix.test_type == 'vuln_scenario_0'
         run: |
           echo "ANDROID_HOME: $ANDROID_HOME"
