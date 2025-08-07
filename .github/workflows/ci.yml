@@ -542,6 +542,26 @@ jobs:
             echo "adb remount failed after waiting."
             exit 1
           fi
+
+          echo "Waiting for System UI to be responsive..."
+          timeout=60
+          while [[ $timeout -gt 0 ]]; do
+            UI_RESPONSE=$(adb shell dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp')
+            if echo "$UI_RESPONSE" | grep -q "StatusBar|Launcher|SystemUI"; then
+              break
+            fi
+            sleep 1
+            ((timeout--))
+          done
+
+          if [[ $timeout -le 0 ]]; then
+            echo "System UI did not become responsive in time."
+            adb shell dumpsys window windows
+            exit 1
+          fi
+
+          echo "System UI is now responsive!"
+
           adb shell input keyevent 224
           echo "Emulator ready!"
 
