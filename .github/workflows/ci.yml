@@ -359,7 +359,30 @@ jobs:
               exit 1
             fi
           done
+
+
+          echo "Waiting for System UI to be ready..."
+          timeout=120
+          while [[ $timeout -gt 0 ]]; do
+            # Check multiple indicators
+            pid_check=$(adb shell "pidof com.android.systemui" 2>/dev/null)
+            service_check=$(adb shell "dumpsys statusbar" 2>/dev/null | grep -c "mSystemReady=true" 2>/dev/null || echo "0")
+            
+            if [[ -n "$pid_check" ]] && [[ "$service_check" -gt 0 ]]; then
+                echo "System UI is ready (PID: $pid_check)"
+                break
+            fi
+            
+            echo "System UI not ready yet... (timeout: ${timeout}s)"
+            sleep 2
+            ((timeout--))
+          done
+          if [[ "$timeout" -le 0 ]]; then
+            echo "System UI not ready in time."
+            exit 1
+          fi
           
+
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
@@ -516,23 +539,6 @@ jobs:
           fi
 
           echo "Emulator booted successfully!"
-
-          # Wait for System UI to be ready
-          echo "Waiting for System UI to be ready..."
-          timeout=60
-          while [[ $timeout -gt 0 ]]; do
-            SYSTEMUI_STATUS=$(adb shell "dumpsys activity | grep -c 'com.android.systemui'" 2>/dev/null || echo "0")
-            if [[ "$SYSTEMUI_STATUS" -gt 0 ]]; then
-              echo "System UI is running"
-              break
-            fi
-            sleep 2
-            ((timeout--))
-          done
-          if [[ "$timeout" -le 0 ]]; then
-            echo "System UI not ready in time."
-            exit 1
-          fi
 
           # Wait for adbd to be ready
           echo "Waiting for adbd to be ready..."
