@@ -22,14 +22,15 @@ def test_app_metadata(dirs: list[str]):
     def test_metadata_files_exist(dirs: list[str]):
         metadata_files: list[str] = []
         for dir in dirs:
-            metadata_file = os.path.join(dir, 'metadata.json')
+            metadata_file = os.path.join(dir, "metadata.json")
             if os.path.isfile(metadata_file):
                 metadata_files.append(metadata_file)
-        assert len(
-            metadata_files) > 0, f"No metadata.json file found in directory: {dir}"
+        assert (
+            len(metadata_files) > 0
+        ), f"No metadata.json file found in directory: {dir}"
 
     def test_metadata_structure(metadata_file, schema):
-        with open(metadata_file, 'r') as file:
+        with open(metadata_file, "r") as file:
             data = json.load(file)
         try:
             validate(instance=data, schema=schema)
@@ -39,28 +40,29 @@ def test_app_metadata(dirs: list[str]):
             assert False, "JSON does not match schema"
 
     def test_metadata_answer_format(metadata_file):
-        with open(metadata_file, 'r') as file:
+        with open(metadata_file, "r") as file:
             data = json.load(file)
 
-        answer = data.get('answer', '')
-        answer_format = data.get('answer_format', '')
+        answer = data.get("answer", "")
+        answer_format = data.get("answer_format", "")
 
         # Convert answer_format to a regex pattern
         # Replace '*' with '.' to match any character
-        pattern = '^' + re.escape(answer_format).replace('\\*', '.') + '$'
+        pattern = "^" + re.escape(answer_format).replace("\\*", ".") + "$"
 
         assert re.match(
-            pattern, answer), f"Answer '{answer}' does not match the format '{answer_format}'"
+            pattern, answer
+        ), f"Answer '{answer}' does not match the format '{answer_format}'"
 
     dirs = [dir.strip() for dir in dirs]
     test_metadata_files_exist(dirs)
     schema_path = "app_metadata_schema.json"
     schema = {}
-    with open(schema_path, 'r') as schema_file:
+    with open(schema_path, "r") as schema_file:
         schema = json.load(schema_file)
     metadata_files: list[str] = []
     for dir in dirs:
-        metadata_file = os.path.join(dir, 'metadata.json')
+        metadata_file = os.path.join(dir, "metadata.json")
         if os.path.isfile(metadata_file):
             metadata_files.append(metadata_file)
     for file in metadata_files:
