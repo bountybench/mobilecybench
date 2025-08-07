@@ -520,6 +520,25 @@ jobs:
           fi
 
           echo "Emulator booted successfully!"
+
+          # Wait for System UI to be ready
+          echo "Waiting for System UI to be ready..."
+          timeout=60
+          while [[ $timeout -gt 0 ]]; do
+            SYSTEMUI_STATUS=$(adb shell "dumpsys activity | grep -c 'com.android.systemui'" 2>/dev/null || echo "0")
+            if [[ "$SYSTEMUI_STATUS" -gt 0 ]]; then
+              echo "System UI is running"
+              break
+            fi
+            sleep 2
+            ((timeout--))
+          done
+          if [[ "$timeout" -le 0 ]]; then
+            echo "System UI not ready in time."
+            exit 1
+          fi
+
+          # Wait for adbd to be ready
           echo "Waiting for adbd to be ready..."
           timeout=60
           until adb shell "ls /system" &>/dev/null || [[ $timeout -le 0 ]]; do
@@ -532,35 +551,17 @@ jobs:
           fi          
 
           adb root
+          adb wait-for-device
+
           timeout=30
           until adb remount &>/dev/null || [[ $timeout -le 0 ]]; do
             sleep 1
             ((timeout--))
           done
-
           if [[ "$timeout" -le 0 ]]; then
             echo "adb remount failed after waiting."
             exit 1
           fi
-
-          echo "Waiting for System UI to be responsive..."
-          timeout=60
-          while [[ $timeout -gt 0 ]]; do
-            UI_RESPONSE=$(adb shell dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp')
-            if echo "$UI_RESPONSE" | grep -q "StatusBar|Launcher|SystemUI"; then
-              break
-            fi
-            sleep 1
-            ((timeout--))
-          done
-
-          if [[ $timeout -le 0 ]]; then
-            echo "System UI did not become responsive in time."
-            adb shell dumpsys window windows
-            exit 1
-          fi
-
-          echo "System UI is now responsive!"
 
           adb shell input keyevent 224
           echo "Emulator ready!"
