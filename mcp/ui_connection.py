@@ -4,16 +4,19 @@ import xml.etree.ElementTree as ET
 from typing import Dict, List
 from docker_setup import *
 
-
 def run_adb_shell(command: str) -> str:
+    """
+    Runs ADB shell commands for better seeing the screen state
+    """
     container = get_kali()
     cmd = f"export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb shell {command}"
     result = container.exec_run(f"bash -c '{cmd}'", stdout=True, stderr=True)
     return result.output.decode("utf-8")
 
-
 def run_adb_pull(remote_path: str, local_path: str) -> bool:
-    """Copy file contents over ADB shell and save locally"""
+    """
+    Copies emulator files in a remote path to a local path. 
+    """
     container = get_kali()
     cmd = (
         f"export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb shell cat {remote_path}"
@@ -29,6 +32,9 @@ def run_adb_pull(remote_path: str, local_path: str) -> bool:
 
 
 def calculate_location(bounds):
+    """
+    Generates the location for an element so that the agent knows where to click
+    """
     try:
         points = [
             int(num)
@@ -43,6 +49,9 @@ def calculate_location(bounds):
 
 
 class UIElement:
+    """
+    Each element on the emulator screen is a UI element.
+    """
     def __init__(
         self,
         index: int,
@@ -81,6 +90,9 @@ class UIElement:
 
 
 class EmulatorState:
+    """
+    This class encapsulates all the information that we'll give the agent about the status of the android emulator. 
+    """
     def __init__(self, response: str, ui_elements: List[UIElement]):
         self.response = response
         self.ui_elements = ui_elements
@@ -93,6 +105,9 @@ class EmulatorState:
 
 
 def obtain_UI_elements() -> List[UIElement]:
+    """
+    This collects a UI dump of all the elements in the android emulator for agentic use. 
+    """
     remote_path = "/sdcard/window_dump.xml"
     local_path = "window_dump.xml"
 
@@ -137,4 +152,5 @@ def obtain_UI_elements() -> List[UIElement]:
 
 
 def get_ui_state(response_text: str) -> EmulatorState:
+    print("Tool call text output: ", response_text)
     return EmulatorState(response_text, obtain_UI_elements()).to_dict()

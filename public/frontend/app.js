@@ -2,6 +2,9 @@ let started = false;
 let lastAgentBox = null;
 let supervisorAgent = false
 
+/*
+Possible senders for ensuring the UI separates messages between different users. 
+*/
 const SENDER = {
   SYSTEM: 'SYSTEM',
   USER: 'USER',
@@ -10,6 +13,9 @@ const SENDER = {
   TOOL: 'TOOL'
 };
 
+/*
+Loads the available apps
+*/
 document.addEventListener('DOMContentLoaded', async () => {
   const selectElement = document.getElementById('apps');
 
@@ -32,6 +38,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 });
 
+/*
+End button to dismantle the currently used app
+*/
 document.getElementById("endBtn").onclick = async () => {
   const app = document.getElementById("apps").value;
   const res = await fetch("http://localhost:3000/end", {
@@ -48,6 +57,9 @@ document.getElementById("endBtn").onclick = async () => {
 
 };
 
+/*
+This allows you to start a new chat via form submission
+*/
 document.getElementById('startChatForm').addEventListener('submit', async function(e) {
   e.preventDefault(); 
 
@@ -73,6 +85,9 @@ document.getElementById('startChatForm').addEventListener('submit', async functi
 
 });
 
+/*
+Send the messages via input text box
+*/
 document.getElementById("sendBtn").onclick = async () => {
   if (!started) {
     appendMsg(SENDER.SYSTEM, "Start the session first.");
@@ -124,6 +139,9 @@ document.getElementById("sendBtn").onclick = async () => {
 
 };
 
+/*
+Generate critic message
+*/
 async function runAutonomousChat() {
   let userInputBox = document.getElementById("userInput")
   const res = await fetch("http://localhost:3000/criticmessage", {
@@ -134,6 +152,9 @@ async function runAutonomousChat() {
   userInputBox.value = data.reply;
 }
 
+/*
+Create a new chat box
+*/
 function createAgentBox(initialText = "") {
   const msgDiv = document.getElementById("messages");
   const msgBox = document.createElement("div");
@@ -154,6 +175,9 @@ function createAgentBox(initialText = "") {
   lastAgentBox = msgBox;
 }
 
+/*
+Turns the send button on or off depending on if the agent is done compiling text
+*/
 function toggleScrollbox() {
   const box = document.getElementById('sendBtn');
   if (box.style.display === 'none') {
@@ -232,6 +256,9 @@ function appendMsg(sender, text) {
   }
 }
 
+/*
+Allows the option to download chat logs
+*/
 async function downloadChatAsText() {
   const messagesContainer = document.getElementById('messages');
   let chatTextContent = "";

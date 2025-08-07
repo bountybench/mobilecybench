@@ -7,6 +7,9 @@ mcp = FastMCP(name="Mobile Cyber MCP", stateless_http=True)
 
 @mcp.tool(description="Execute a terminal command. For adb commands, write 'adb shell ...'. ")
 def execute_command(command: str) -> EmulatorState:
+    """
+    The main tool for the AI model to be able to interact with our
+    """
     try:
         container = get_kali()
 
@@ -20,12 +23,11 @@ def execute_command(command: str) -> EmulatorState:
             label = "Command"
 
         # Safely quote the entire command for bash -c execution inside Docker
+        #This is the safest/best way to do it
         result = container.exec_run(f"bash -c {shlex.quote(full_cmd)}", stdout=True, stderr=True)
-        # note to self: sufficient to do just:
-        #result = container.exec_run(full_cmd, stdout=True, stderr=True)
-        #? verify
         output = result.output.decode("utf-8")
         
+        #Returns the emulator state
         return get_ui_state(
             f"{label}: {command}\nExit Code: {result.exit_code}\nOutput:\n{output}"
         )

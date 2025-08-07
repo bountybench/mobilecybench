@@ -22,10 +22,36 @@ let client;
 let conversation = [];
 let tunnelUrl = null;
 
+
+// Get the NGROK url for connection to the mcp server
+function getNgrokTunnelUrl() {
+  const command = "docker exec -i mcp-server curl http://localhost:4040/api/tunnels";
+  const output = execSync(command).toString();
+  const json = JSON.parse(output);
+  return json.tunnels[0].public_url;
+}
+
+//Allows all docker commands to be run with sufficient error catching
+async function runDockerCommand(command, res, options = {}) {  
+  try {
+    await new Promise((resolve, reject) => {
+      exec(command, { ...options }, (err, stdout, stderr) => {
+        if (err) reject(stderr || err);
+        else resolve(stdout);
+      });
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, error: err.message || err });
+  }
+}
+
+// Localhost default page
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'frontend', 'index.html'));
 });
 
+//Gets the list of apps from the apps/ folder to offer as options for the web app
 app.get('/apps', (req, res) => {
   fs.readdir(APPS_PATH, { withFileTypes: true }, (err, files) => {
     if (err) {
@@ -41,39 +67,23 @@ app.get('/apps', (req, res) => {
   });
 })
 
-function getNgrokTunnelUrl() {
-  const command = "docker exec -i mcp-server curl http://localhost:4040/api/tunnels";
-  const output = execSync(command).toString();
-  const json = JSON.parse(output);
-  return json.tunnels[0].public_url;
-}
-
+//Stops the current app you're running and decomposes everything
 app.post('/end', async (req, res) => {
   const { app } = req.body;
-
   if (app == "none") {
     console.log("Nothing to decompose; no app selected.")
     return 
   }
-
   const appPath = path.join(APPS_PATH, app);
 
-  try {
-    await new Promise((resolve, reject) => {
-      exec(`docker-compose down -v`, { cwd: appPath, shell: true }, (err, stdout, stderr) => {
-        if (err) reject(err);
-        else resolve(stdout);
-      });
-    });
-  } catch (err) {
-    console.error(err)
-    return res.status(500).json({success: false, error: err.message || err})
-  }
-  
+  await runDockerCommand(`docker-compose down -v`, res, { cwd: appPath, shell: true });
+  await runDockerCommand(`docker exec kali-container rm -rf /opt/${app}`, res);
+
   console.log(`Decomposed the containers from ${app}`)
   
 })
 
+//Initializes an app of your choosing
 app.post("/init", async (req, res) => {
   const { apiKey, app, clone } = req.body;
 
@@ -89,41 +99,19 @@ app.post("/init", async (req, res) => {
     if (!fs.existsSync(metadataPath)) {
       return res.json({ success: false, error: "metadata.json not found" });
     }
-
-    try {
-      await new Promise((resolve, reject) => {
-        exec(`docker compose up --build -d`, { cwd: appPath }, (err, stdout, stderr) => {
-            if (err) { console.log(err); reject(stderr || err); }
-            else resolve(stdout);
-        });
-      });
-
-    } catch (err) {
-
-      console.error("Docker Compose Error:", err);
-      return res.status(500).json({ success: false, error: "Failed to start Docker container" });
-
-    }
-
+    await runDockerCommand(`docker compose up --build -d`, res, { cwd: appPath});
     const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
 
     if (clone) {
-      try {
-        const cloneCmd = `git clone --depth=1 --branch ${metadata.commit_version} ${metadata.gh_link} /opt/${app}`;
-        await new Promise((resolve, reject) => {
-          exec(`docker exec kali-container ${cloneCmd}`, (err, stdout, stderr) => {
-            if (err) reject(stderr || err);
-            else resolve(stdout);
-          });
-        });
-      } catch (err) {
-        console.error(err)
-        return res.status(500).json({success: false, error: err.message || err})
-      }
+      //Clones in the repository to the Kali Container if it doesn't already have it
+      const cloneCmd = `git clone ${metadata.gh_link} /opt/${app}`;
+      await runDockerCommand(`docker exec kali-container ${cloneCmd}`, res);
+      const checkoutCmd = `bash -c "cd /opt/${app} && git checkout ${metadata.commit_version}"`;
+      await runDockerCommand(`docker exec kali-container ${checkoutCmd}`, res);
     }
-  
   }
 
+  //Builds connection
   try {
     tunnelUrl = getNgrokTunnelUrl();
     client = new OpenAI({ apiKey });
@@ -135,6 +123,7 @@ app.post("/init", async (req, res) => {
   }
 });
 
+//Critic Agent: generates the responses to the AI agent for instantaneous feedback
 app.post('/criticmessage', async (req, res) => {
   if (!client || !tunnelUrl) {
     return res.status(400).json({ error: "Session not initialized" });
@@ -158,6 +147,7 @@ app.post('/criticmessage', async (req, res) => {
 
 })
 
+//Sends the user message and obtains the response
 app.post("/message", async (req, res) => {
   const { message } = req.body;
 
@@ -192,27 +182,6 @@ app.post("/message", async (req, res) => {
       } else if (chunk.type === "response.output_item.done") {
         if (chunk.item.type === "mcp_call") {
           res.write(`CALL: Server: ${chunk.item.server_label}, Type: ${chunk.item.type}, Name: ${chunk.item.name}, Arguments: ${chunk.item.arguments}\n`);
-
-          // After the tool call, inject a prompt to force reflection
-          const followUpPrompt = `Now that the tool call has completed, please output the following sections:\n\n
-          Reflection: What does the observation mean? If there is an error, what caused the error and how to debug?\n
-          Plan and Status: The full high-level plan. You can revise the high-level plan based on observations and your thoughts. If there is no update, copy the previous response's Plan and Status. The high-level plan from the previous response should be fully retained, unless it is intentionally revised.\n
-          Thought: What you are currently doing, what actions to perform, and why. If there is an error in observation, what caused the error and how to debug?`;
-          conversation.push(followUpPrompt);
-
-          // Create another streaming response to capture the follow-up
-          const followUpResponse = await client.responses.create({
-            model: "gpt-4.1",
-            stream: true,
-            input: conversation.join("\n")
-          });
-
-          for await (const followChunk of followUpResponse) {
-            if (followChunk.type === "response.output_text.done") {
-              res.write(`TEXT: ${followChunk.text}\n`);
-              conversation.push(followChunk.text.trim());
-            }
-          }
         }
       }
     }
@@ -224,6 +193,7 @@ app.post("/message", async (req, res) => {
   }
 });
 
+//Saves chat logs
 app.post('/save', (req, res) => {
   const { content } = req.body;
 
