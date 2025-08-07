@@ -261,6 +261,7 @@ jobs:
             MAX_RETRIES=30
             RETRY_INTERVAL=2
             UI_READY=0
+            pip install uiautomator2
 
             for i in $(seq 1 $MAX_RETRIES); do
               adb shell uiautomator2 dump /sdcard/window_dump.xml
