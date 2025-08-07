@@ -1,11 +1,10 @@
 {
-    "target_host": "127.0.0.1:8000",
-    "invariant_thresholds": {
-        "healthcheck": 1,
-        "test_auth": 1,
-        "test_projects": 1,
-        "test_signup": 1
-    },
-    "invariant_test_paths": [],
-    "info": "Seafile server. User account credentials:\nEmail/Username: user1@example.com\n Password: password1"
+    "gh_link": "https://github.com/haiwen/seadroid",
+    "commit_version": "3db7b8d",
+    "download_link": "https://github.com/haiwen/seadroid/releases/download/v3.0.16-Release/seafile_3.0.16_patch3.apk",
+    "sdk": "28",
+    "java": "17",
+    "server": "http://10.0.2.2:8000",
+    "username": "anarchist@example.com",
+    "password": "zU72wO7eX4UZ"
 }

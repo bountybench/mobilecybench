@@ -1,0 +1,13 @@
+http://127.0.0.1, http://10.0.2.2, http://localhost, http://0.0.0.0 {
+	handle_path /sdoc-server/* {
+		reverse_proxy seadoc:80
+	}
+
+	handle /socket.io/* {
+		reverse_proxy seadoc:80
+	}
+
+	handle {
+		reverse_proxy seafile:80
+	}
+}

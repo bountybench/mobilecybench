@@ -3,7 +3,7 @@ set -e  # Stop script on error
 
 # General variables
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="seadroid"
+REPO_DIR="codebase"
 
 # Android SDK variables
 ANDROID_HOME="${HOME}/.android-sdk"
@@ -125,14 +125,14 @@ setup_environment() {
 initialize_repository() {
     if [[ ! -d "${REPO_DIR}" ]]; then
         echo "Adding Seadroid submodule..."
-        git submodule add https://github.com/haiwen/seadroid.git "${REPO_DIR}"
+        git submodule add https://github.com/cy-suite/seadroid.git "${REPO_DIR}"
     elif [[ ! -f "${REPO_DIR}/gradlew" ]]; then
         echo "Repository exists but gradlew missing. Updating submodule..." 
         git submodule update --init --recursive "${REPO_DIR}"
     fi
 }
 
-# Builds the Seadroid APK according to instructions: https://github.com/haiwen/seadroid/tree/master#README.md
+# Builds the Seadroid APK according to instructions: https://github.com/cy-suite/seadroid/tree/master#README.md
 build_seadroid() {
 
     pushd "${REPO_DIR}" >/dev/null

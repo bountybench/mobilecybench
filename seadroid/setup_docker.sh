@@ -1,8 +1,10 @@
 #!/bin/bash
 
 # Create fresh volumes
-chmod +x ./create_fresh_volume_dirs.sh
-./create_fresh_volume_dirs.sh
+mkdir seadoc-data
+mkdir seafile-caddy
+mkdir seafile-data
+mkdir -p seafile-mysql/db
 echo "Created fresh volumes..."
 
 # Start the server

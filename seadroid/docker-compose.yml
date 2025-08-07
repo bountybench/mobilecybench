@@ -1,4 +1,25 @@
 services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    container_name: seafile-caddy
+    ports:
+      - 8000:80
+    environment:
+      - CADDY_INGRESS_NETWORKS=seadroid_private-net
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ${SEAFILE_CADDY_VOLUME:-/opt/seafile-caddy}:/data/caddy
+    networks:
+      - private-net
+      - shared-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://localhost:2019/metrics || exit 1"]
+      start_period: 20s
+      interval: 20s
+      timeout: 5s
+      retries: 3
+  
   db:
     image: ${SEAFILE_DB_IMAGE:-mariadb:10.11}
     container_name: seafile-mysql
@@ -42,8 +63,6 @@ services:
     image: ${SEAFILE_IMAGE:-seafileltd/seafile-mc:13.0-latest}
     container_name: seafile
     restart: unless-stopped
-    # ports:
-    #   - "80:80"
     volumes:
       - ${SEAFILE_VOLUME:-/opt/seafile-data}:/shared
     environment:
@@ -89,7 +108,40 @@ services:
         condition: service_started
     networks:
       - private-net
+    
+  seadoc:
+    image: ${SEADOC_IMAGE:-seafileltd/sdoc-server:2.0-latest}
+    container_name: seadoc
+    volumes:
+      - ${SEADOC_VOLUME:-/opt/seadoc-data/}:/shared
+    environment:
+      - DB_HOST=${SEAFILE_MYSQL_DB_HOST:-db}
+      - DB_PORT=${SEAFILE_MYSQL_DB_PORT:-3306}
+      - DB_USER=${SEAFILE_MYSQL_DB_USER:-seafile}
+      - DB_PASSWORD=${SEAFILE_MYSQL_DB_PASSWORD:?Variable is not set or empty}
+      - DB_NAME=${SEADOC_MYSQL_DB_NAME:-seahub_db}
+      - TIME_ZONE=${TIME_ZONE:-Etc/UTC}
+      - JWT_PRIVATE_KEY=${JWT_PRIVATE_KEY:?Variable is not set or empty}
+      - NON_ROOT=${NON_ROOT:-false}
+      - SEAHUB_SERVICE_URL=${SEAFILE_SERVER_PROTOCOL:-http}://${SEAFILE_SERVER_HOSTNAME:?Variable is not set or empty}
+    labels:
+      caddy: ${SEAFILE_SERVER_PROTOCOL:-http}://${SEAFILE_SERVER_HOSTNAME:?Variable is not set or empty}
+      caddy.@ws.0_header: "Connection *Upgrade*"
+      caddy.@ws.1_header: "Upgrade websocket"
+      caddy.0_reverse_proxy: "@ws {{upstreams 80}}"
+      caddy.1_handle_path: "/socket.io/*"
+      caddy.1_handle_path.0_rewrite: "* /socket.io{uri}"
+      caddy.1_handle_path.1_reverse_proxy: "{{upstreams 80}}"
+      caddy.2_handle_path: "/sdoc-server/*"
+      caddy.2_handle_path.0_rewrite: "* {uri}"
+      caddy.2_handle_path.1_reverse_proxy: "{{upstreams 80}}"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - private-net
 
 networks:
   private-net:
-    name: private-net
+  shared-net:
+  #   external: true
