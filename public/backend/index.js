@@ -26,6 +26,21 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'frontend', 'index.html'));
 });
 
+app.get('/apps', (req, res) => {
+  fs.readdir(APPS_PATH, { withFileTypes: true }, (err, files) => {
+    if (err) {
+      console.error('Unable to scan directory:', err);
+      return res.status(500).send({ error: 'Failed to read directory' });
+    }
+
+    const directories = files
+      .filter(dirent => dirent.isDirectory() && dirent.name !== '.gitkeep')
+      .map(dirent => dirent.name);
+
+    res.send({ directories });
+  });
+})
+
 function getNgrokTunnelUrl() {
   const command = "docker exec -i mcp-server curl http://localhost:4040/api/tunnels";
   const output = execSync(command).toString();
@@ -75,14 +90,9 @@ app.post("/init", async (req, res) => {
       return res.json({ success: false, error: "metadata.json not found" });
     }
 
-    console.log(app);
-    console.log(clone);
-    console.log("Hello!");
-    console.log(appPath);
-
     try {
       await new Promise((resolve, reject) => {
-        exec(`docker compose up --build -d`, { cwd: APPS_PATH }, (err, stdout, stderr) => {
+        exec(`docker compose up --build -d`, { cwd: appPath }, (err, stdout, stderr) => {
             if (err) { console.log(err); reject(stderr || err); }
             else resolve(stdout);
         });
@@ -96,13 +106,10 @@ app.post("/init", async (req, res) => {
     }
 
     const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
-    console.log(metadata);
 
     if (clone) {
       try {
-        // Clone repo inside the running container into a path you specify (e.g., /opt/repo)
-        const cloneCmd = `git clone --depth=1 --branch ${metadata.commit_version} ${metadata.gh_link} /opt/repo`;
-
+        const cloneCmd = `git clone --depth=1 --branch ${metadata.commit_version} ${metadata.gh_link} /opt/${app}`;
         await new Promise((resolve, reject) => {
           exec(`docker exec kali-container ${cloneCmd}`, (err, stdout, stderr) => {
             if (err) reject(stderr || err);

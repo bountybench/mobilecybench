@@ -10,6 +10,27 @@ const SENDER = {
   TOOL: 'TOOL'
 };
 
+document.addEventListener('DOMContentLoaded', async () => {
+  const selectElement = document.getElementById('apps');
+
+  // Fetch the list of files from the Express endpoint
+  await fetch("http://localhost:3000/apps", {})
+    .then(response => response.json())
+    .then(data => {
+      const files = data.directories || [];
+
+      // Add an <option> for each file
+      files.forEach(file => {
+        const option = document.createElement('option');
+        option.value = file;
+        option.textContent = file;
+        selectElement.appendChild(option);
+      });
+    })
+    .catch(error => {
+      console.error('Error fetching files:', error);
+    });
+});
 
 document.getElementById("endBtn").onclick = async () => {
   const app = document.getElementById("apps").value;
