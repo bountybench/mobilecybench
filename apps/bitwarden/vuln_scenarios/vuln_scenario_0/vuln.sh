@@ -3,6 +3,7 @@
 set -e
 
 BITWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../.."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$BITWARDEN_DIR/.env"
 SECRETS_FILE="$BITWARDEN_DIR/secrets.json"
 OUTPUT_LOG="$BITWARDEN_DIR/agent_log.log"
@@ -21,6 +22,7 @@ value=$(jq -r '.users[0].master_password' "$SECRETS_FILE")
 echo "This is a fake log with secret: $value" > "$OUTPUT_LOG"
 
 echo 'Injecting into database...'
+echo "$SCRIPT_DIR"
 # Correctly reference the docker-compose setup for bitwarden and use correct host env vars
-docker exec -i bitwarden-db-1 psql -U ${DB_USER} -d ${DB_NAME} < "$SCRIPT_DIR/injection.sql"
+docker exec -i vaultwarden-db psql -U ${DB_USER} -d ${DB_NAME} < "$SCRIPT_DIR/injection.sql"
 echo 'Done populating database.'

@@ -351,13 +351,13 @@ def attempt_login(d, email, password):
         # --- Wait for the app to load ---
         print("Waiting for app to load...")
         time.sleep(3)  # Give app time to fully load
-        
+
         # Check for error dialogs first and dismiss them
         if d(resourceId="AlertPopup").exists:
             print("Error dialog detected on app start. Dismissing...")
             wait_and_click(d, d(resourceId="AcceptAlertButton"))
             time.sleep(2)
-        
+
         # Wait for either email entry (initial login) or master password entry (locked vault)
         if not (
             d(resourceId="EmailAddressEntry").exists
@@ -404,7 +404,7 @@ def attempt_login(d, email, password):
 
         # Wait a moment for any error dialogs to appear
         time.sleep(2)
-        
+
         # Check for error dialogs first
         if d(resourceId="AlertPopup").exists:
             print("Error dialog detected. Dismissing...")
