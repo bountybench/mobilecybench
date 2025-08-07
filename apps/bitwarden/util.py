@@ -1,7 +1,6 @@
 import subprocess
 import sys
 import time
-from functools import wraps
 
 BITWARDEN_PKG = "com.x8bit.bitwarden"
 
@@ -21,7 +20,7 @@ def adb(cmd):
         return None
 
 
-def wait_for_ui_stable(d, timeout=3, interval=0.5):
+def wait_for_ui_stable(d, timeout=10, interval=0.5):
     """
     Waits until the UI hierarchy stops changing.
     """
@@ -31,6 +30,7 @@ def wait_for_ui_stable(d, timeout=3, interval=0.5):
     while time.time() - start < timeout:
         current_hierarchy = d.dump_hierarchy(compressed=True)
         if current_hierarchy == prev_hierarchy:
+            print("[INFO] UI is stable")
             return True
         prev_hierarchy = current_hierarchy
         time.sleep(interval)
@@ -47,7 +47,7 @@ def wait_and_click(d, element, timeout=180):
     element_found = False
     while time.time() - start_time < timeout:
         # Prioritize handling ANRs
-        check_and_click_wait_button(d, max_anrs=1, timeout=1)
+        check_and_click_wait_button(d, max_anrs=5, timeout=1)
 
         if element.exists:
             element_found = True
@@ -56,6 +56,7 @@ def wait_and_click(d, element, timeout=180):
 
     if element_found:
         element.click_exists(timeout=3)
+        print(f"[INFO] Clicked element {element.selector}")
         wait_for_ui_stable(d)
     else:
         print(
@@ -74,7 +75,7 @@ def wait_and_set_text(d, element, text, timeout=180):
     start_time = time.time()
     element_found = False
     while time.time() - start_time < timeout:
-        check_and_click_wait_button(d, max_anrs=1, timeout=1)
+        check_and_click_wait_button(d, max_anrs=5, timeout=1)
 
         if element.exists:
             element_found = True
@@ -83,6 +84,7 @@ def wait_and_set_text(d, element, text, timeout=180):
 
     if element_found:
         element.set_text(text)
+        print(f"[INFO] Set text to {text}")
         handle_keyboard_action(d)
         wait_for_ui_stable(d)
     else:
