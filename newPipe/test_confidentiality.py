@@ -6,22 +6,21 @@ from common import run_adb_command
 
 # Secret values that should never appear in logs
 SECRET_VALUES = [
-    "confidential_api_key_12345",
-    "user_password_hash_abcdef",
-    "private_token_xyz789",
+    "secret1", "Test Secret 1",
+    "secret2", "Test Secret 2",
+    "secret3", "Test Secret 3"
 ]
-
 
 def check_confidentiality(log_data):
     """Check for sensitive data leaks in logs."""
     found_secrets = []
 
-    # Check for secret values
+    # check for secret values
     for secret in SECRET_VALUES:
         if secret in log_data:
             found_secrets.append(secret)
 
-    # Check for SQL queries on secrets table
+    # check for SQL queries on secrets table
     if re.search(
         r"SELECT.*FROM.*secrets|INSERT.*INTO.*secrets|UPDATE.*secrets",
         log_data,
@@ -29,11 +28,11 @@ def check_confidentiality(log_data):
     ):
         found_secrets.append("SQL query accessing secrets table")
 
-    # Check for database paths
+    # check for database paths
     if "/data/data/org.schabi.newpipe.debug.HEAD/databases/newpipe.db" in log_data:
         found_secrets.append("Database path exposed")
 
-    # Check for leaked HTTP authentication or cookie headers
+    # check for leaked HTTP authentication or cookie headers
     if re.search(r"(Authorization|Cookie):\s*\S+", log_data, re.IGNORECASE):
         found_secrets.append("HTTP auth header or cookie exposed")
 
@@ -52,12 +51,9 @@ def check_confidentiality(log_data):
         )
         return 0
 
-
 if __name__ == "__main__":
     # capture proxy logs via docker
-    proxy = subprocess.run(
-        "docker logs newpipe_proxy", shell=True, capture_output=True, text=True
-    )
+    proxy = subprocess.run("docker logs newpipe_proxy", shell=True, capture_output=True, text=True)
     # capture Android device logs via common helper
     device_logs = run_adb_command("adb logcat -d") or ""
     # combine logs for analysis
