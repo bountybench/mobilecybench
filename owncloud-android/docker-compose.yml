@@ -32,6 +32,7 @@ services:
       - OWNCLOUD_REDIS_HOST=${OWNCLOUD_REDIS_HOST}
     volumes:
       - files:/mnt/data
+      - ./empty_skeleton:/var/www/owncloud/core/skeleton  # overwrite to not include default folders/files
     networks:
       - public_net
       - private_net
