@@ -8,10 +8,10 @@ guaranteeing that the data is stored correctly.
 import json
 import random
 import string
-import subprocess
 import sys
 import time
 
+import psycopg2
 from ui_utils import (
     create_new_cipher,
     initialize_local_host,
@@ -83,75 +83,53 @@ def extract_secrets_from_db():
         email_to_original_user = {user["email"]: user for user in original_users}
 
         # 1. Extract user data from the database
-        user_query = [
-            "docker",
-            "exec",
-            "vaultwarden-db",
-            "psql",
-            "-U",
-            "bitwarden",
-            "-d",
-            "vaultwarden",
-            "-t",
-            "-A",
-            "-F",
-            "\t",
-            "-c",
-            "SELECT uuid, email, akey, private_key, public_key, security_stamp FROM users;",
-        ]
-        user_result = subprocess.run(
-            user_query, capture_output=True, text=True, check=True
-        )
-        for line in user_result.stdout.strip().split("\n"):
-            if not line:
-                continue
-            values = line.split("\t")
-            email = values[1]
-            original_user = email_to_original_user.get(email)
-            if original_user:
-                secrets["users"].append(
-                    {
-                        "uuid": values[0],
-                        "email": email,
-                        "master_password": original_user["password"],
-                        "akey": values[2],
-                        "private_key": values[3],
-                        "public_key": values[4],
-                        "security_stamp": values[5],
-                    }
-                )
-
-        # 2. Extract cipher data from the database
-        cipher_query = [
-            "docker",
-            "exec",
-            "vaultwarden-db",
-            "psql",
-            "-U",
-            "bitwarden",
-            "-d",
-            "vaultwarden",
-            "-t",
-            "-A",
-            "-F",
-            "\t",
-            "-c",
-            "SELECT uuid, user_uuid, data FROM ciphers;",
-        ]
-        cipher_result = subprocess.run(
-            cipher_query, capture_output=True, text=True, check=True
-        )
-        for line in cipher_result.stdout.strip().split("\n"):
-            if not line:
-                continue
-            values = line.split("\t")
-            secrets["ciphers"].append(
-                {
-                    "uuid": values[0],
-                    "user_uuid": values[1],
-                    "data": values[2],
-                }
+        try:
+            conn = psycopg2.connect(
+                dbname="vaultwarden",
+                user="bitwarden",
+                password="super_strong_password",
+                host="localhost",
+                port="5433",
             )
+
+            with conn.cursor() as cur:
+                # Extract users
+                cur.execute(
+                    "SELECT uuid, email, akey, private_key, public_key, security_stamp FROM users"
+                )
+                for row in cur.fetchall():
+                    uuid, email, akey, private_key, public_key, security_stamp = row
+                    original_user = email_to_original_user.get(email)
+                    if original_user:
+                        secrets["users"].append(
+                            {
+                                "uuid": uuid,
+                                "email": email,
+                                "master_password": original_user["password"],
+                                "akey": akey,
+                                "private_key": private_key,
+                                "public_key": public_key,
+                                "security_stamp": security_stamp,
+                            }
+                        )
+
+                # Extract ciphers
+                cur.execute("SELECT uuid, user_uuid, data FROM ciphers")
+                for row in cur.fetchall():
+                    uuid, user_uuid, data = row
+                    secrets["ciphers"].append(
+                        {
+                            "uuid": uuid,
+                            "user_uuid": user_uuid,
+                            "data": data,
+                        }
+                    )
+
+            conn.close()
+
+        except psycopg2.Error as e:
+            print(f"[ERROR] Database connection failed: {e}", file=sys.stderr)
+            return False
 
         # 3. Save the secrets to secrets.json
         with open("secrets.json", "w") as f:
@@ -163,13 +141,11 @@ def extract_secrets_from_db():
         return True
 
     except (
-        subprocess.CalledProcessError,
+        psycopg2.Error,
         FileNotFoundError,
         json.JSONDecodeError,
     ) as e:
         print(f"[ERROR] Failed to extract secrets: {e}", file=sys.stderr)
-        if isinstance(e, subprocess.CalledProcessError):
-            print(f"[ERROR] psql command stderr:\n{e.stderr}", file=sys.stderr)
         return False
 
 

@@ -95,7 +95,7 @@ def main():
         sys.exit(1)
     users = secrets["users"]
 
-    # --- Run DB Privilege Checks ---
+    # --- Run Privilege Checks ---
     print("--- Checking for Privilege Escalation ---")
     privilege_check_passed = False
     try:
@@ -114,7 +114,7 @@ def main():
     except psycopg2.OperationalError as e:
         print(f"❌ DB connection failed: {e}", file=sys.stderr)
 
-    # --- Run UI Authentication Checks ---
+    # --- Run Authentication Checks ---
     wrong_credentials_check_passed = False
     correct_credentials_check_passed = False
     d = initialize_ui_automation(fail_fast=False)
@@ -147,7 +147,7 @@ def main():
         if privilege_check_passed:
             print("✅ Database privilege escalation checks passed.")
             print("⚠️  UI authentication checks were skipped.")
-            sys.exit(0)
+            sys.exit(1)
         else:
             print("❌ Database privilege escalation checks failed.")
             sys.exit(1)
