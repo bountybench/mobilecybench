@@ -9,7 +9,7 @@ import sys
 import time
 
 import uiautomator2 as u2
-from util import BITWARDEN_PKG
+from util import BITWARDEN_PKG, SERVER_URL
 
 # =============================================================================
 # UI AUTOMATION INITIALIZATION
@@ -86,11 +86,94 @@ def initialize_ui_automation(max_retries=3, retry_delay=5, fail_fast=False):
 
 
 # =============================================================================
-# UI STABILITY AND INTERACTION FUNCTIONS
+# PUBLIC UI ELEMENT INTERACTION FUNCTIONS
 # =============================================================================
 
 
-def wait_for_ui_stable(d, timeout=10, interval=0.5):
+def wait_and_click(d, element, timeout=180):
+    """
+    Waits for an element and clicks it, with continuous ANR handling.
+
+    Args:
+        d: Device object
+        element: UI element to wait for and click
+        timeout: Maximum time to wait for element
+    """
+    start_time = time.time()
+    element_found = False
+
+    while time.time() - start_time < timeout:
+        # Handle ANRs while waiting, passing target element for verification
+        _handle_anr(d, max_anrs=5, timeout=1, target_element=element)
+
+        if element.exists:
+            element_found = True
+            break
+        time.sleep(1)
+
+    if element_found:
+        element.click_exists(timeout=3)
+        print(f"[DEBUG] Clicked element {element.selector}")
+        _wait_for_ui_stable(d)
+    else:
+        print(
+            f"[FATAL] Could not find element: '{element.selector}' within {timeout}s",
+            file=sys.stderr,
+        )
+        print(d.dump_hierarchy(), file=sys.stderr)
+        sys.exit(1)
+
+
+def wait_and_set_text(d, element, text, timeout=180):
+    """
+    Waits for an EditText element and sets its text, with continuous ANR handling.
+
+    Args:
+        d: Device object
+        element: UI element to wait for and set text on
+        text: Text to set
+        timeout: Maximum time to wait for element
+    """
+    start_time = time.time()
+    element_found = False
+
+    while time.time() - start_time < timeout:
+        # Handle ANRs while waiting, passing target element for verification
+        _handle_anr(d, max_anrs=5, timeout=1, target_element=element)
+
+        if element.exists:
+            element_found = True
+            break
+        time.sleep(1)
+
+    if element_found:
+        # Use robust text entry with retries and scroll support
+        if _robust_set_text(d, element, text, max_attempts=3):
+            print(f"[DEBUG] Set text to {text}")
+            _handle_keyboard_action(d)
+            _wait_for_ui_stable(d)
+        else:
+            print(
+                f"[FATAL] Failed to set text on element: '{element.selector}'",
+                file=sys.stderr,
+            )
+            print(d.dump_hierarchy(), file=sys.stderr)
+            sys.exit(1)
+    else:
+        print(
+            f"[FATAL] Could not find element: '{element.selector}' within {timeout}s",
+            file=sys.stderr,
+        )
+        print(d.dump_hierarchy(), file=sys.stderr)
+        sys.exit(1)
+
+
+# =============================================================================
+# PRIVATE UI STABILITY AND INTERACTION FUNCTIONS
+# =============================================================================
+
+
+def _wait_for_ui_stable(d, timeout=10, interval=0.5):
     """
     Waits until the UI hierarchy stops changing.
 
@@ -116,7 +199,7 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5):
     return False
 
 
-def handle_anr(d, max_anrs=5, timeout=3, target_element=None):
+def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
     """
     Handles consecutive "Application Not Responding" (ANR) dialogs by clicking "Wait".
 
@@ -158,7 +241,7 @@ def handle_anr(d, max_anrs=5, timeout=3, target_element=None):
                         continue  # Continue checking for more ANRs
                 else:
                     print("[DEBUG] Waiting for UI to stabilize after ANR...")
-                    wait_for_ui_stable(d, timeout=10)
+                    _wait_for_ui_stable(d, timeout=10)
             else:
                 break  # No ANR dialog found
         except Exception as e:
@@ -183,90 +266,7 @@ def handle_anr(d, max_anrs=5, timeout=3, target_element=None):
 
 
 # =============================================================================
-# UI ELEMENT INTERACTION FUNCTIONS
-# =============================================================================
-
-
-def wait_and_click(d, element, timeout=180):
-    """
-    Waits for an element and clicks it, with continuous ANR handling.
-
-    Args:
-        d: Device object
-        element: UI element to wait for and click
-        timeout: Maximum time to wait for element
-    """
-    start_time = time.time()
-    element_found = False
-
-    while time.time() - start_time < timeout:
-        # Handle ANRs while waiting, passing target element for verification
-        handle_anr(d, max_anrs=5, timeout=1, target_element=element)
-
-        if element.exists:
-            element_found = True
-            break
-        time.sleep(1)
-
-    if element_found:
-        element.click_exists(timeout=3)
-        print(f"[DEBUG] Clicked element {element.selector}")
-        wait_for_ui_stable(d)
-    else:
-        print(
-            f"[FATAL] Could not find element: '{element.selector}' within {timeout}s",
-            file=sys.stderr,
-        )
-        print(d.dump_hierarchy(), file=sys.stderr)
-        sys.exit(1)
-
-
-def wait_and_set_text(d, element, text, timeout=180):
-    """
-    Waits for an EditText element and sets its text, with continuous ANR handling.
-
-    Args:
-        d: Device object
-        element: UI element to wait for and set text on
-        text: Text to set
-        timeout: Maximum time to wait for element
-    """
-    start_time = time.time()
-    element_found = False
-
-    while time.time() - start_time < timeout:
-        # Handle ANRs while waiting, passing target element for verification
-        handle_anr(d, max_anrs=5, timeout=1, target_element=element)
-
-        if element.exists:
-            element_found = True
-            break
-        time.sleep(1)
-
-    if element_found:
-        # Use robust text entry with retries and scroll support
-        if _robust_set_text(d, element, text, max_attempts=3):
-            print(f"[DEBUG] Set text to {text}")
-            _handle_keyboard_action(d)
-            wait_for_ui_stable(d)
-        else:
-            print(
-                f"[FATAL] Failed to set text on element: '{element.selector}'",
-                file=sys.stderr,
-            )
-            print(d.dump_hierarchy(), file=sys.stderr)
-            sys.exit(1)
-    else:
-        print(
-            f"[FATAL] Could not find element: '{element.selector}' within {timeout}s",
-            file=sys.stderr,
-        )
-        print(d.dump_hierarchy(), file=sys.stderr)
-        sys.exit(1)
-
-
-# =============================================================================
-# TEXT ENTRY HELPERS (robust set_text with retries/scroll)
+# PRIVATE TEXT ENTRY HELPERS (robust set_text with retries/scroll + end keyboard action)
 # =============================================================================
 
 
@@ -281,7 +281,7 @@ def _handle_keyboard_action(d):
         True if keyboard action was successful, False otherwise
     """
     # Handle any ANRs before keyboard interaction
-    handle_anr(d, max_anrs=5, timeout=1, target_element=None)
+    _handle_anr(d, max_anrs=5, timeout=1, target_element=None)
 
     # Method 1: Try clicking the keyboard Done button
     try:
@@ -367,7 +367,7 @@ def _robust_set_text(d, element, text, max_attempts=3):
 
     for attempt_index in range(1, max_attempts + 1):
         # Handle any ANR dialogs and wait for the target element
-        handle_anr(d, max_anrs=5, timeout=1, target_element=element)
+        _handle_anr(d, max_anrs=5, timeout=1, target_element=element)
 
         try:
             # Bring element into view and focus it
@@ -396,7 +396,7 @@ def _robust_set_text(d, element, text, max_attempts=3):
 # =============================================================================
 
 
-def initialize_local_host(d):
+def bw_initialize_local_host(d):
     """
     Initializes the device connection and launches the Bitwarden app
     """
@@ -411,9 +411,6 @@ def initialize_local_host(d):
 
     print(f"Step 1.1.2: Launching {BITWARDEN_PKG}...")
     d.app_start(BITWARDEN_PKG, use_monkey=True)
-
-    # Wait for the app to load by waiting for the first interactive element.
-    # The 'aerr_wait' button will be handled by the decorator on wait_and_click.
 
     # Step 1.2.1: Click the "Create account" button on the welcome screen
     print("Step 1.2.1: Clicking 'Account creation'...")
@@ -432,15 +429,15 @@ def initialize_local_host(d):
     wait_and_click(d, d(resourceId="ServerUrlEntry"))
 
     # Step 1.2.5: Enter the self-hosted server URL
-    print("Step 1.2.5: Entering server URL: http://10.0.2.2:8000...")
-    wait_and_set_text(d, d(resourceId="ServerUrlEntry"), "http://10.0.2.2:8000")
+    print(f"Step 1.2.5: Entering server URL: {SERVER_URL}...")
+    wait_and_set_text(d, d(resourceId="ServerUrlEntry"), SERVER_URL)
 
     # Step 1.2.6: Click the Save button to save the server configuration
     print("Step 1.2.6: Saving server configuration...")
     wait_and_click(d, d(resourceId="SaveButton"))
 
 
-def make_account(d, email, name, master_password, account_index=0):
+def bw_make_account(d, email, name, master_password, account_index=0):
     """
     Creates a Bitwarden account with the specified credentials
     """
@@ -496,35 +493,30 @@ def make_account(d, email, name, master_password, account_index=0):
     print("Step 2.10: Clicking Next button...")
     wait_and_click(d, d(text="Next"))
 
-    # Step 2.11: Wait for the "Set up unlock" screen to stabilize
-    # Add a delay to allow the "Set up unlock" screen to fully load and prevent a StaleObjectException.
-    print("Step 2.11: Waiting for unlock screen to stabilize...")
-    wait_for_ui_stable(d)
-
-    # Step 2.12: Click "Set up later" to skip unlock setup
-    print("Step 2.12: Clicking 'Set up later' to skip unlock setup...")
+    # Step 2.11: Click "Set up later" to skip unlock setup
+    print("Step 2.11: Clicking 'Set up later' to skip unlock setup...")
     wait_and_click(d, d(resourceId="SetUpLaterButton"))
 
-    # Step 2.13: Click "Confirm" to confirm skipping unlock setup
-    print("Step 2.13: Clicking 'Confirm' to confirm skipping unlock setup...")
+    # Step 2.12: Click "Confirm" to confirm skipping unlock setup
+    print("Step 2.12: Clicking 'Confirm' to confirm skipping unlock setup...")
     wait_and_click(d, d(resourceId="AcceptAlertButton"))
 
-    # Step 2.14: Click "Turn on later" to skip autofill setup
-    print("Step 2.14: Clicking 'Turn on later' to skip autofill setup...")
+    # Step 2.13: Click "Turn on later" to skip autofill setup
+    print("Step 2.13: Clicking 'Turn on later' to skip autofill setup...")
     wait_and_click(d, d(text="Turn on later"))
 
-    # Step 2.15: Click "Confirm" to confirm skipping autofill setup
-    print("Step 2.15: Clicking 'Confirm' to confirm skipping autofill setup...")
+    # Step 2.14: Click "Confirm" to confirm skipping autofill setup
+    print("Step 2.14: Clicking 'Confirm' to confirm skipping autofill setup...")
     wait_and_click(d, d(resourceId="AcceptAlertButton"))
 
-    # Step 2.16: Click the Continue button to complete account setup
-    print("Step 2.16: Clicking Continue button to complete account setup...")
+    # Step 2.15: Click the Continue button to complete account setup
+    print("Step 2.15: Clicking Continue button to complete account setup...")
     wait_and_click(d, d(text="Continue"))
 
     print(f"=== Account for {email} created successfully ===")
 
 
-def create_new_cipher(d, cipher):
+def bw_create_new_cipher(d, cipher):
     """
     Creates a new cipher entry in the vault
     """
@@ -544,8 +536,7 @@ def create_new_cipher(d, cipher):
     print("Step 3.2: Checking for Autofill Service dialog...")
     if d(resourceId="AcceptAlertButton").exists(timeout=1):
         print("Step 3.2: Autofill dialog found. Clicking 'Okay'...")
-        d(resourceId="AcceptAlertButton").click()
-        wait_for_ui_stable(d)
+        wait_and_click(d, d(resourceId="AcceptAlertButton"))
 
     # Step 3.3: Enter the item name from the cipher data.
     print(f"Step 3.3: Entering item name '{cipher['name']}'...")
@@ -570,7 +561,7 @@ def create_new_cipher(d, cipher):
     print(f"=== Finished creating cipher: {cipher['name']} ===")
 
 
-def lock_and_logout(d):
+def bw_lock_and_logout(d):
     """
     Locks the vault and logs out
     """
@@ -599,7 +590,7 @@ def lock_and_logout(d):
     print("=== Locking and logging out complete ===")
 
 
-def attempt_login(d, email, password):
+def bw_attempt_login(d, email, password):
     """
     Attempts to login to the Bitwarden app
     """
@@ -691,7 +682,6 @@ def attempt_login(d, email, password):
             f"[ERROR] An unexpected error occurred during UI automation: {e}",
             file=sys.stderr,
         )
-        # Attempt to capture a screenshot for debugging
-        d.screenshot("login_error.png")
-        print("Screenshot saved to login_error.png", file=sys.stderr)
+        # Dump the UI hierarchy to the console for debugging
+        print(d.dump_hierarchy(), file=sys.stderr)
         return False

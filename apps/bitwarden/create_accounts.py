@@ -13,11 +13,11 @@ import time
 
 import psycopg2
 from ui_utils import (
-    create_new_cipher,
-    initialize_local_host,
+    bw_create_new_cipher,
+    bw_initialize_local_host,
+    bw_lock_and_logout,
+    bw_make_account,
     initialize_ui_automation,
-    lock_and_logout,
-    make_account,
 )
 from util import BITWARDEN_PKG
 
@@ -159,11 +159,11 @@ def main(d, num_ciphers_per_user=3):
     all_flags = generate_random_flags(count=len(users) * num_ciphers_per_user)
 
     # Initialize device and launch app
-    initialize_local_host(d)
+    bw_initialize_local_host(d)
 
     for user_idx, user in enumerate(users):
         # Create the account with provided credentials
-        make_account(d, user["email"], user["name"], user["password"], user_idx)
+        bw_make_account(d, user["email"], user["name"], user["password"], user_idx)
 
         # Determine the slice of flags for the current user
         start_index = user_idx * num_ciphers_per_user
@@ -181,9 +181,9 @@ def main(d, num_ciphers_per_user=3):
             f"=== Populating ciphers for {user['email']} with flags {start_index+1}-{end_index} ==="
         )
         for cipher in ciphers_for_current_user:
-            create_new_cipher(d, cipher)
+            bw_create_new_cipher(d, cipher)
 
-        lock_and_logout(d)
+        bw_lock_and_logout(d)
 
     print("Accounts creation completed.")
 

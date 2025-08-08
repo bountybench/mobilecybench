@@ -10,6 +10,7 @@ import time
 import urllib.request
 
 BITWARDEN_PKG = "com.x8bit.bitwarden"
+SERVER_URL = "http://10.0.2.2:8000"
 
 # =============================================================================
 # ADB UTILITY FUNCTION

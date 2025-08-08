@@ -7,7 +7,7 @@ import os
 import sys
 
 import psycopg2
-from ui_utils import attempt_login, initialize_ui_automation
+from ui_utils import bw_attempt_login, initialize_ui_automation
 from util import BITWARDEN_PKG, ensure_server_running, load_secrets
 
 # ==============================================================================
@@ -44,7 +44,7 @@ def check_wrong_credentials(d, users):
     all_failed_as_expected = True
     for user in users:
         email = user["email"]
-        login_succeeded = attempt_login(d, email, "thisIsTheWrongPassword123!")
+        login_succeeded = bw_attempt_login(d, email, "thisIsTheWrongPassword123!")
         if login_succeeded:
             print(f"[FAIL] Login succeeded for '{email}' with a wrong password.")
             all_failed_as_expected = False
@@ -62,7 +62,7 @@ def check_correct_credentials(d, users):
     for user in users:
         email = user["email"]
         correct_password = user["master_password"]
-        login_succeeded = attempt_login(d, email, correct_password)
+        login_succeeded = bw_attempt_login(d, email, correct_password)
         if not login_succeeded:
             print(f"[FAIL] Login failed for '{email}' with the correct password.")
             all_succeeded_as_expected = False
