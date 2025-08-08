@@ -1,13 +1,5 @@
 """
-test_availability.py checks if the app is running and the server is healthy.
-
-It checks:
-- Server-side checks:
-    - If the docker compose service is running (check for Vaultwarden and DB)
-    - If the server's /alive endpoint returns 200 OK
-- Client-side (app) checks:
-    - If the app can be launched and its UI is responsive
-    - If crash or ANR for Bitwarden is detected in recent logs
+test_availability.py checks if the Bitwarden app and its server are running and responsive.
 """
 
 import os
@@ -16,7 +8,7 @@ import sys
 import time
 import urllib.request
 
-import uiautomator2 as u2
+from ui_utils import initialize_ui_automation
 from util import adb
 
 SERVER_SERVICE = "vaultwarden"
@@ -24,15 +16,13 @@ DB_SERVICE = "db"
 SERVER_URL = "http://localhost:8000/alive"
 APP_PACKAGE = "com.x8bit.bitwarden"
 
-
-"""
-check_container_running()
-- Takes in the name of the service to check
-- Returns boolean of whether the docker compose service is running
-"""
+# ==============================================================================
+# AVAILABILITY CHECKS
+# ==============================================================================
 
 
 def check_container_running(service_name: str) -> bool:
+    """Checks if a Docker container is running and healthy."""
     print(
         f"Checking status of container for service '{service_name}'...", file=sys.stderr
     )
@@ -56,19 +46,14 @@ def check_container_running(service_name: str) -> bool:
             return False
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         print(
-            f"[ERROR] Could not check status of service '{service_name}'. Is docker compose installed and in the correct directory? Error: {e}",
+            f"[ERROR] Could not check status of service '{service_name}': {e}",
             file=sys.stderr,
         )
         return False
 
 
-"""
-check_server_api()
-- Returns boolean of whether the server's /alive endpoint returns 200 OK.
-"""
-
-
 def check_server_api() -> bool:
+    """Checks if the server's /alive endpoint is responding correctly."""
     print(f"Checking server API at {SERVER_URL}...", file=sys.stderr)
     try:
         with urllib.request.urlopen(SERVER_URL, timeout=10) as response:
@@ -89,29 +74,24 @@ def check_server_api() -> bool:
         return False
 
 
-"""
-check_app_can_launch()
-- Returns boolean of whether the app can be launched and its UI is responsive.
-"""
-
-
 def check_app_can_launch() -> bool:
+    """Checks if the app can be launched and is responsive."""
     print("Checking if app can be launched and is responsive...", file=sys.stderr)
-    d = None
+    d = initialize_ui_automation(fail_fast=False)
+    if d is None:
+        print("[FAIL] Could not connect to device.", file=sys.stderr)
+        return False
+
     try:
-        d = u2.connect()
-        # Attempt to launch the app
         print(f"Attempting to launch {APP_PACKAGE}...", file=sys.stderr)
         d.app_start(APP_PACKAGE, use_monkey=True)
-        time.sleep(8)  # Wait longer for app to settle
+        time.sleep(8)
 
-        # Check for error dialogs and dismiss them
         if d(resourceId="AlertPopup").exists:
             print("Error dialog detected. Dismissing...", file=sys.stderr)
             d(resourceId="AcceptAlertButton").click()
             time.sleep(2)
 
-        # Verify it's in the foreground and responsive
         current_app = d.app_current()["package"]
         if current_app == APP_PACKAGE:
             print(
@@ -126,38 +106,27 @@ def check_app_can_launch() -> bool:
             )
             return False
     except Exception as e:
-        print(
-            f"[FAIL] Could not launch or connect to the app via uiautomator2. Error: {e}",
-            file=sys.stderr,
-        )
+        print(f"[FAIL] Could not launch the app via uiautomator2: {e}", file=sys.stderr)
         return False
     finally:
         if d:
             d.app_stop(APP_PACKAGE)
 
 
-"""
-check_app_crash_logs()
-- Returns boolean of whether crash or ANR for Bitwarden is detected in recent logs.
-"""
-
-
 def check_app_crash_logs() -> bool:
+    """Checks for crash or ANR indicators in recent ADB logs."""
     print("Checking for app crashes or ANRs in ADB logs...", file=sys.stderr)
-    logs = adb(["logcat", "-t", "100"])  # -t 100 gets only the last 100 lines
+    logs = adb(["logcat", "-t", "100"])
     if logs is None:
-        return False  # adb command failed
+        return False
 
-    # Look for specific crash indicators that are less likely to have false positives
     crash_indicators = ["FATAL EXCEPTION", "ANR"]
-
-    crash_lines = []
-    for line in logs.splitlines():
-        if APP_PACKAGE in line:
-            for indicator in crash_indicators:
-                if indicator in line:
-                    crash_lines.append(line)
-                    break
+    crash_lines = [
+        line
+        for line in logs.splitlines()
+        if APP_PACKAGE in line
+        and any(indicator in line for indicator in crash_indicators)
+    ]
 
     if crash_lines:
         print(
@@ -170,28 +139,33 @@ def check_app_crash_logs() -> bool:
     return True
 
 
-if __name__ == "__main__":
-    # Change to the script's directory to ensure docker compose commands work correctly
+# ==============================================================================
+# MAIN EXECUTION
+# ==============================================================================
+
+
+def main():
+    """Main function to run availability checks."""
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-    results = {}
+    results = {
+        "vaultwarden_container_running": (
+            1 if check_container_running(SERVER_SERVICE) else 0
+        ),
+        "db_container_running": 1 if check_container_running(DB_SERVICE) else 0,
+        "server_api_available": 1 if check_server_api() else 0,
+        "no_app_crashes_or_anrs": 1 if check_app_crash_logs() else 0,
+        "app_can_launch": 1 if check_app_can_launch() else 0,
+    }
 
-    # Server-side checks
-    results["vaultwarden_container_running"] = (
-        1 if check_container_running(SERVER_SERVICE) else 0
-    )
-    results["db_container_running"] = 1 if check_container_running(DB_SERVICE) else 0
-    results["server_api_available"] = 1 if check_server_api() else 0
-
-    # Client-side (app) checks
-    results["no_app_crashes_or_anrs"] = 1 if check_app_crash_logs() else 0
-    results["app_can_launch"] = 1 if check_app_can_launch() else 0
-
-    all_passed = all(val == 1 for val in results.values())
-    if not all_passed:
+    if all(results.values()):
+        print("✅ All availability checks passed successfully.", file=sys.stderr)
+        sys.exit(0)
+    else:
         print("❌ One or more availability checks failed.", file=sys.stderr)
         print("Results:", results, file=sys.stderr)
         sys.exit(1)
-    else:
-        print("✅ All availability checks passed successfully.", file=sys.stderr)
-        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

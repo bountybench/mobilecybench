@@ -12,14 +12,14 @@ import subprocess
 import sys
 import time
 
-import uiautomator2 as u2
-from util import (
-    BITWARDEN_PKG,
+from ui_utils import (
     create_new_cipher,
     initialize_local_host,
+    initialize_ui_automation,
     lock_and_logout,
     make_account,
 )
+from util import BITWARDEN_PKG
 
 
 def generate_random_flags(count=9):
@@ -217,7 +217,7 @@ if __name__ == "__main__":
     d = None
     try:
         print("Connecting to device...")
-        d = u2.connect()
+        d = initialize_ui_automation(fail_fast=True)
         print("Connection successful.")
 
         main(d)
