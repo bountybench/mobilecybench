@@ -5,4 +5,6 @@ setup.log
 .DS_Store
 .github/
 *.apk
+.venv/
+pycache/
 
