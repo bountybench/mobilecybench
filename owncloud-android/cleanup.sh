@@ -36,7 +36,7 @@ else
 fi
 
 # Extra safety: remove known leftover named volumes if still present
-for vol in owncloud-android_files files mysql redis; do
+for vol in owncloud-android_files owncloud-android_mysql owncloud-android_redis files mysql redis; do
   if have_cmd docker && docker volume inspect "$vol" >/dev/null 2>&1; then
     info "Removing leftover volume $vol"
     docker volume rm -f "$vol" >/dev/null 2>&1 || warn "Failed removing volume $vol"
