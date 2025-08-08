@@ -1,21 +1,9 @@
 #!/bin/bash
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PKG_NAME="com.x8bit.bitwarden"
 
 set -e
 
-log_info() {
-    echo "[INFO] $1"
-}
-
-log_success() {
-    echo "✅ $1"
-}
-
-log_error() {
-    echo "❌ [ERROR] $1" >&2
-    exit 1
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PKG_NAME="com.x8bit.bitwarden"
 
 echo === RUNNING setup.sh ===
 
@@ -25,48 +13,49 @@ is_github_ci() {
 }
 
 # Check if Bitwarden app is installed on the emulator
-log_info "Checking if Bitwarden app is installed on the emulator..."
+echo "[INFO] Checking if Bitwarden app is installed on the emulator..."
 if adb shell pm list packages | grep -q "$PKG_NAME"; then
-    log_success "Bitwarden app is already installed on the emulator."
+    echo "✅ Bitwarden app is already installed on the emulator."
 else
-    log_info "Bitwarden app not found."
+    echo "[INFO] Bitwarden app not found."
     # In CI, always run setup_app_apk.sh to ensure fresh installation
     if is_github_ci; then
-        log_info "Running in GitHub CI"
-        log_info "Running setup_app_apk.sh to install and launch it..."
+        echo "[INFO] Running in GitHub CI"
+        echo "[INFO] Running setup_app_apk.sh to install and launch it..."
         "${SCRIPT_DIR}/setup_app_apk.sh"
-        log_success "Bitwarden app reinstalled and launched for CI."
+        echo "✅ Bitwarden app reinstalled and launched for CI."
     else
-        log_info "Running setup_app_source.sh to install and launch it..."
-        "${SCRIPT_DIR}/setup_app_source.sh"
-        log_success "Bitwarden app installed and launched."
+        echo "[INFO] Running setup_app_source.sh to install and launch it..."
+        # "${SCRIPT_DIR}/setup_app_source.sh"
+        "${SCRIPT_DIR}/setup_app_apk.sh"
+        echo "✅ Bitwarden app installed and launched."
     fi
 fi
 
 # Install Python requirements
-log_info "Installing Python requirements..."
+echo "[INFO] Installing Python requirements..."
 pip install -r "${SCRIPT_DIR}/requirements.txt"
-log_success "Python requirements installed."
+echo "✅ Python requirements installed."
 
 # Start Docker containers for server and database
-log_info "Starting Docker containers for Vaultwarden server and PostgreSQL database..."
+echo "[INFO] Starting Docker containers for Vaultwarden server and PostgreSQL database..."
 docker compose up --build -d
-log_success "Docker containers started."
+echo "✅ Docker containers started."
 
 # Wait for Vaultwarden to be ready (not just Postgres)
-log_info "Waiting for Vaultwarden to be ready on http://localhost:8000..."
+echo "[INFO] Waiting for Vaultwarden to be ready on http://localhost:8000..."
 until curl -sf http://localhost:8000 > /dev/null; do
   sleep 2
 done
-log_success "Vaultwarden is up."
+echo "✅ Vaultwarden is up."
 
 # Run full account creation process
-log_info "Running account creation script..."
+echo "[INFO] Running account creation script..."
 python3 "${SCRIPT_DIR}/create_accounts.py"
 if [ $? -eq 0 ]; then
-    log_success "Account creation completed successfully."
+    echo "✅ Account creation completed successfully."
 else
-    log_error "Account creation failed."
+    echo "❌ Account creation failed."
 fi
 
 echo === FINISHED setup.sh ===
