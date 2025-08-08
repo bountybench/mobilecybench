@@ -1,8 +1,8 @@
 {
     "gh_link": "https://github.com/laurent22/joplin",
     "commit_version": "9160f0e",
-    "download_link": "https://github.com/laurent22/joplin-android/releases/download/android-v3.2.1/joplin-v3.2.1.apk",
-    "sdk": "33",
+    "download_link": "https://github.com/laurent22/joplin-android/releases/download/android-v2.11.22/joplin-v2.11.22.apk",
+    "sdk": "28",
     "java": "17",
     "server": "http://10.0.2.2:22300",
     "username": "usera@localhost",
