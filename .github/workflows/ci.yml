@@ -255,6 +255,173 @@ jobs:
               exit 1
             fi
           }
+
+          check_system_ui_ready() {
+            echo "Waiting for System UI to be ready..."
+            RETRY_INTERVAL=2
+            TIMEOUT=300
+            # Loop until SystemUI process is running
+            echo "Checking if SystemUI process is running..."
+            START_TIME=$(date +%s)
+            while true; do
+              CURRENT_TIME=$(date +%s)
+              if [ $((CURRENT_TIME - START_TIME)) -ge $TIMEOUT ]; then
+                echo "Timeout: SystemUI process not found after $TIMEOUT seconds"
+                return 1
+              fi
+              
+              SYSTEMUI_RUNNING=$(adb shell pidof com.android.systemui 2>/dev/null)
+              if [ -n "$SYSTEMUI_RUNNING" ]; then
+                echo "SystemUI process is now running (PID: $SYSTEMUI_RUNNING)"
+                break
+              fi
+              echo "System UI process not running yet, retrying..."
+              sleep $RETRY_INTERVAL
+            done
+            # Loop until UI dump is successful
+            echo "Checking if UI dump is accessible..."
+            START_TIME=$(date +%s)
+            while true; do
+              CURRENT_TIME=$(date +%s)
+              if [ $((CURRENT_TIME - START_TIME)) -ge $TIMEOUT ]; then
+                echo "Timeout: UI dump not accessible after $TIMEOUT seconds"
+                return 1
+              fi
+              
+              DUMP_OUTPUT=$(adb shell uiautomator dump /sdcard/window_dump.xml 2>&1)
+              if adb shell ls /sdcard/window_dump.xml >/dev/null 2>&1; then
+                echo "UI dump file created successfully"
+                break
+              fi
+              echo "Dump file not found. UI probably not ready yet, retrying..."
+              sleep $RETRY_INTERVAL
+            done
+            # Loop until we can retrieve the dump file
+            echo "Retrieving UI dump file..."
+            START_TIME=$(date +%s)
+            while true; do
+              CURRENT_TIME=$(date +%s)
+              if [ $((CURRENT_TIME - START_TIME)) -ge $TIMEOUT ]; then
+                echo "Timeout: Failed to retrieve dump file after $TIMEOUT seconds"
+                return 1
+              fi
+              
+              if adb shell cat /sdcard/window_dump.xml > window_dump.xml; then
+                echo "Window dump retrieved successfully"
+                break
+              fi
+              echo "Failed to retrieve window_dump.xml, retrying..."
+              sleep $RETRY_INTERVAL
+            done
+            # Loop until System UI is fully responsive
+            echo "Checking if System UI is responsive..."
+            START_TIME=$(date +%s)
+            while true; do
+              CURRENT_TIME=$(date +%s)
+              if [ $((CURRENT_TIME - START_TIME)) -ge $TIMEOUT ]; then
+                echo "Timeout: System UI not responsive after $TIMEOUT seconds"
+                cat window_dump.xml
+                return 1
+              fi
+              
+              HOME_PRESENT=$(grep -c "Home" window_dump.xml || true)
+              echo "HOME_PRESENT=$HOME_PRESENT"
+              ANR_PRESENT=$(grep -c "System UI isn't responding" window_dump.xml || true)
+              echo "ANR_PRESENT=$ANR_PRESENT"
+              if [ "$HOME_PRESENT" -gt 0 ] && [ "$ANR_PRESENT" -eq 0 ]; then
+                echo "System UI is ready and responsive"
+                cat window_dump.xml
+                return 0
+              fi
+              
+              echo "Waiting for System UI to become responsive, retrying..."
+              sleep $RETRY_INTERVAL
+              
+              # Re-dump and retrieve the UI state for the next check
+              adb shell uiautomator dump /sdcard/window_dump.xml 2>/dev/null
+              adb shell cat /sdcard/window_dump.xml > window_dump.xml 2>/dev/null || continue
+            done
+          }
+          system_ui_watchdog() {
+            echo "Starting System UI watchdog..."
+            EMU_BOOTED=0
+            first_launcher=1
+            n=0
+            while [[ $EMU_BOOTED = 0 ]]; do
+              CURRENT_FOCUS=$(adb shell dumpsys window 2>/dev/null | grep -i mCurrentFocus)
+              echo "Current focus: ${CURRENT_FOCUS}"
+              case $CURRENT_FOCUS in
+                *"Launcher"*)
+                  if [[ $first_launcher == 1 ]]; then
+                    echo "Launcher detected, waiting 10 sec in case of popups..."
+                    sleep 10
+                    first_launcher=0
+                  else
+                    echo "Launcher stable, boot complete."
+                    EMU_BOOTED=1
+                  fi
+                  ;;
+                *"Not Responding: com.android.systemui"*)
+                  echo "Dismissing System UI popup..."
+                  adb shell input keyevent KEYCODE_ENTER
+                  adb shell input keyevent KEYCODE_DPAD_DOWN
+                  adb shell input keyevent KEYCODE_ENTER
+                  first_launcher=1
+                  ;;
+                *"Not Responding: com.google.android.gms"*)
+                  echo "Dismissing GMS popup..."
+                  adb shell input keyevent KEYCODE_ENTER
+                  first_launcher=1
+                  ;;
+                *"Not Responding: system"*)
+                  echo "Dismissing Process System popup..."
+                  adb shell input keyevent KEYCODE_ENTER
+                  first_launcher=1
+                  ;;
+                *"ConversationListActivity"*)
+                  echo "Closing Messaging app..."
+                  adb shell input keyevent KEYCODE_ENTER
+                  first_launcher=1
+                  ;;
+                *)
+                  n=$((n + 1))
+                  echo "Waiting for Android to boot ($n)..."
+                  sleep 10
+                  if [ $n -gt 60 ]; then
+                    echo "Timeout: Emulator failed to boot in 10 minutes."
+                    exit 2
+                  fi
+                  ;;
+              esac
+            done
+          }
+          check_current_focus() {
+            printf "==> Checking emulator running activity \n"
+            start_time=$(date +%s)
+            i=0
+            timeout=20
+            target="com.google.android.apps.nexuslauncher.NexusLauncherActivity"
+            while true; do
+              result=$(adb shell dumpsys window 2>/dev/null | grep -i mCurrentFocus)
+              if [[ $result == *"$target"* ]]; then
+                printf "==>  Activity is okay: \n"
+                printf "$result\n"
+                break
+              else
+                #adb shell input keyevent KEYCODE_HOME
+                adb shell input keyevent 224
+                printf "==> Menu button is pressed \n"
+                i=$(( (i+1) % 8 ))
+              fi
+              current_time=$(date +%s)
+              elapsed_time=$((current_time - start_time))
+              if [ $elapsed_time -gt $timeout ]; then
+                printf "==> Timeout after ${timeout} seconds elapsed 🕛.. \n"
+                return 1
+              fi
+              sleep 4
+            done
+          }
           EOF
           chmod +x /tmp/shared_functions.sh
 
@@ -358,6 +525,10 @@ jobs:
               exit 1
             fi
           done
+
+          system_ui_watchdog
+          check_current_focus
+          check_system_ui_ready
                     
           echo "Running setup..."
           ./setup.sh
@@ -393,6 +564,10 @@ jobs:
               exit 1
             fi
           done
+
+          system_ui_watchdog
+          check_current_focus
+          check_system_ui_ready
 
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
@@ -440,6 +615,10 @@ jobs:
               exit 1
             fi
           done
+
+          system_ui_watchdog
+          check_current_focus
+          check_system_ui_ready
 
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
@@ -503,7 +682,7 @@ jobs:
           echo "ANDROID_HOME: $ANDROID_HOME"
           echo "PATH: $PATH"
           export PATH=$ANDROID_HOME/emulator:$PATH
-          emulator -avd test_avd -writable-system -accel on -no-snapshot-load -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 4096 -camera-back none &
+          emulator -avd test_avd -writable-system -accel on -no-snapshot-load -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 720x1280 -memory 4096 -camera-back none &
           adb wait-for-device
 
           BOOT_STATUS=""
@@ -578,7 +757,7 @@ jobs:
           profile: pixel_2
           ram-size: 4096    
           force-avd-creation: true
-          emulator-options: -accel on -no-snapshot-save -no-snapshot-load -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 4096 -camera-back none
+          emulator-options: -accel on -no-snapshot-save -no-snapshot-load -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 720x1280 -memory 4096 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
 
