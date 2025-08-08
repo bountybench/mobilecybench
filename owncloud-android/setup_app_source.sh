@@ -4,27 +4,32 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANDROID_HOME="${HOME}/.android-sdk"
 
+LOG_PREFIX="[setup_app_source]"
+LOG_FILE="${SCRIPT_DIR}/setup_app_source.log"
+# Duplicate outputs to console and log file
+exec > >(tee -a "$LOG_FILE") 2>&1
+info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
+warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
+error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
+
 check_prerequisites() {
-    echo "Checking prerequisites (Java and Android SDK)..."
+    info "Checking prerequisites (Java and Android SDK)..."
     
     # Check Java
     if ! command -v java >/dev/null 2>&1; then
-        echo "ERROR: Java not found. Please install Java 17."
-        exit 1
+        error "Java not found. Please install Java 17."
     fi
     
     # Check Android SDK
     if [[ ! -d "$ANDROID_HOME" ]]; then
-        echo "ERROR: Android SDK not found at $ANDROID_HOME"
-        echo "Please run the Android emulator setup first."
-        exit 1
+        error "Android SDK not found at $ANDROID_HOME. Please run the Android emulator setup first."
     fi
     
-    echo "Prerequisites verified."
+    info "Prerequisites verified."
 }
 
 setup_environment() {
-    echo "Setting up build environment..."
+    info "Setting up build environment..."
     
     # Set Java 17
     if [[ -d "/opt/homebrew/opt/openjdk@17" ]]; then
@@ -32,7 +37,7 @@ setup_environment() {
     elif [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
     else
-        echo "WARNING: Could not find Java 17. Using system default."
+        warn "Could not find Java 17 via known paths. Using system default."
         export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
     fi
     
@@ -44,29 +49,27 @@ setup_environment() {
     
     # Create local.properties for ownCloud build (in codebase directory)
     echo "sdk.dir=$ANDROID_HOME" > "$SCRIPT_DIR/codebase/local.properties"
-    
-    echo "Environment configured."
+    info "Environment configured."
 }
 
 build_owncloud() {
-    echo "Building ownCloud from source..."
-    echo "This will take several minutes..."
+    info "Building ownCloud from source (this may take several minutes)..."
     git submodule update --init --recursive
 
     ./gradlew clean
     ./gradlew assembleRelease
-    echo "Build completed successfully."
+    info "Build completed successfully."
     sign_apk
 }
 
 # Sign the release APK with debug keystore
 sign_apk() {
-    echo "Signing release APK..."
+    info "Signing release APK (debug keystore)..."
     
     APK_UNSIGNED=$(find owncloudApp/build/outputs/apk/original/release/ -name "*-original-release-unsigned.apk" -type f 2>/dev/null | head -1)
     
     if [[ -z "$APK_UNSIGNED" ]]; then
-        echo "No unsigned release APK found to sign."
+        warn "No unsigned release APK found to sign."
         return 1
     fi
     
@@ -76,28 +79,24 @@ sign_apk() {
     
     mv "$APK_UNSIGNED" "$APK_SIGNED"
     
-    echo "Signed APK: $APK_SIGNED"
+    info "Signed APK: $APK_SIGNED"
 }
 
 check_installed_version() {
     # Check if emulator is running
     if ! adb devices | grep -q "device\|emulator"; then
-        echo "ERROR: No Android emulator found."
-        echo "Please start the emulator first."
-        return 1
+        error "No Android emulator found. Please start the emulator first."
     fi
     
     # Check if ownCloud is installed
     INSTALLED_PACKAGES=$(adb shell pm list packages | grep owncloud || true)
     
     if [[ -z "$INSTALLED_PACKAGES" ]]; then
-        echo "ownCloud is not installed on the device."
-        echo "You need to install the app before checking the version."
+        warn "ownCloud not installed on the device. Install before checking version."
         return 1
     fi
     
-    echo "Installed ownCloud packages:"
-    echo "$INSTALLED_PACKAGES"
+    info "Installed ownCloud packages:\n$INSTALLED_PACKAGES"
     
     # Get version information for release version if available
     if echo "$INSTALLED_PACKAGES" | grep -q "com.owncloud.android"; then
@@ -138,13 +137,11 @@ check_installed_version() {
 }
 
 install_owncloud() {
-    echo "Installing ownCloud on Android emulator..."
+    info "Installing ownCloud on Android emulator..."
     
     # Check if emulator is running
     if ! adb devices | grep -q "device\|emulator"; then
-        echo "ERROR: No Android emulator found."
-        echo "Please start the emulator first."
-        exit 1
+        error "No Android emulator found. Please start the emulator first."
     fi
     
     # Find the built APK
@@ -152,59 +149,52 @@ install_owncloud() {
     APK_PATH=$(find owncloudApp/build/outputs/apk/original/release/ -name "*-original-release.apk" -type f 2>/dev/null | head -1)
     
     if [[ -z "$APK_PATH" ]]; then
-        echo "ERROR: No original release APK found in owncloudApp/build/outputs/apk/original/release/"
-        echo "Available APKs:"
+        warn "No original release APK found. Listing available APKs (first 10):"
         find owncloudApp/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
-        exit 1
+        error "Cannot proceed without APK."
     fi
     
-    echo "Found APK: $APK_PATH"
-    
-    # Uninstall previous version if exists
-    echo "Uninstalling previous version (if exists)..."
+    info "Found APK: $APK_PATH"
+    info "Uninstalling previous versions if present"
     adb uninstall com.owncloud.android 2>/dev/null || true
     adb uninstall com.owncloud.android.debug 2>/dev/null || true
-    
-    # Install new APK
     adb install "$APK_PATH"
-    echo "ownCloud installed successfully."
+    info "ownCloud installed successfully."
 }
 
 launch_owncloud() {
-    echo "Launching ownCloud..."
+    info "Launching ownCloud..."
     
     # Launch the app
     if adb shell pm list packages | grep -q "com.owncloud.android" && ! adb shell pm list packages | grep -q "com.owncloud.android.debug"; then
-        echo "Launching release version..."
+        info "Launching release version"
         adb shell am start -n com.owncloud.android/com.owncloud.android.ui.activity.SplashActivity
         PACKAGE_NAME="com.owncloud.android"
-    elif adb shell pm list packages | grep -q "com.owncloud.android.debug"; then    # debug version (deprecated)
-        echo "Launching debug version..."
+    elif adb shell pm list packages | grep -q "com.owncloud.android.debug"; then
+        info "Launching debug version"
         adb shell am start -n com.owncloud.android.debug/com.owncloud.android.ui.activity.SplashActivity
         PACKAGE_NAME="com.owncloud.android.debug"
     else
-        echo "No ownCloud package found!"
-        exit 1
+        error "No ownCloud package found"
     fi
     
     sleep 1
     
     # Verify the app is running
     if adb shell dumpsys window | grep -q "mCurrentFocus.*$PACKAGE_NAME"; then
-        echo "ownCloud launched successfully!"
+        info "ownCloud launched successfully"
     else
-        echo "ownCloud may not have launched properly. The sleep duration may be too short."
-        echo "Please check your emulator manually."
+        warn "ownCloud may not have launched properly (focus not detected)."
     fi
 }
 
 
 main() {
-    echo "ownCloud Android Setup"
+    info "ownCloud Android Setup"
     echo "====================="
     
     if [[ "$1" == "check-version" ]]; then
-        echo "Checking installed ownCloud version..."
+        info "Checking installed ownCloud version"
         
         # Navigate to owncloud codebase directory for version check
         CODEBASE_DIR="$SCRIPT_DIR/codebase"
@@ -216,21 +206,17 @@ main() {
         exit 0
     fi
     
-    echo "Setting up ownCloud Android from current git checkout"
+    info "Setting up ownCloud Android from current git checkout"
     
     CODEBASE_DIR="$SCRIPT_DIR/codebase"
     if [[ ! -d "$CODEBASE_DIR" ]]; then
-        echo "ERROR: ownCloud codebase directory not found at $CODEBASE_DIR"
-        echo "Please ensure the codebase directory exists."
-        exit 1
+        error "ownCloud codebase directory not found at $CODEBASE_DIR"
     fi
     
     cd "$CODEBASE_DIR"
     
     if [[ ! -f "gradlew" ]]; then
-        echo "ERROR: gradlew not found in codebase directory."
-        echo "Please ensure you're in the correct ownCloud project directory."
-        exit 1
+        error "gradlew not found in codebase directory."
     fi
     
     check_prerequisites
@@ -241,7 +227,7 @@ main() {
     
     echo ""
     echo "=========================================="
-    echo "Setup complete! ownCloud is ready for testing."
+    info "Setup complete! ownCloud is ready for testing."
     echo "=========================================="
     echo ""
     echo "./setup_app.sh check-version                    # Check installed version"
