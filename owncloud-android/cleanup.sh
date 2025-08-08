@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Cleanup script: full teardown of containers, volumes, manifests, and logs.
-# Always performs a full purge (no environment flag controls).
 # Usage: ./cleanup.sh
 set -euo pipefail
 IFS=$'\n\t'
@@ -8,7 +7,6 @@ IFS=$'\n\t'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
 BASELINE_FILE="${SCRIPT_DIR}/baseline_manifest.json"
-LEGACY_FILE="${SCRIPT_DIR}/data.json"
 
 info() { printf '[cleanup] %s\n' "$*"; }
 warn() { printf '[cleanup][warn] %s\n' "$*" >&2; }
@@ -49,10 +47,6 @@ done
 if [[ -f "$BASELINE_FILE" ]]; then
   info "Removing baseline manifest $BASELINE_FILE"
   rm -f -- "$BASELINE_FILE"
-fi
-if [[ -f "$LEGACY_FILE" ]]; then
-  info "Removing legacy manifest $LEGACY_FILE"
-  rm -f -- "$LEGACY_FILE"
 fi
 
 # Remove logs
