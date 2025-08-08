@@ -22,7 +22,7 @@ import requests
 import uuid
 from typing import List, Dict, Any, Optional
 import xml.etree.ElementTree as ET
-import logging  # added
+import logging
 
 load_dotenv()
 
@@ -30,7 +30,7 @@ OWNCLOUD_URL = os.getenv("OWNCLOUD_URL", "http://localhost:8080")
 ADMIN_USER = os.getenv("OWNCLOUD_ADMIN_USERNAME", "admin")
 ADMIN_PASS = os.getenv("OWNCLOUD_ADMIN_PASSWORD", "admin")
 OUTPUT_FILE = os.getenv("SEED_OUTPUT_FILE", "baseline_manifest.json")
-SERVER_TIMEOUT = int(os.getenv("SERVER_READY_TIMEOUT", "120"))
+SERVER_TIMEOUT = int(os.getenv("SERVER_READY_TIMEOUT", "10"))
 LOG_FILE = os.getenv("SEED_LOG_FILE", "owncloud_setup.log")
 
 # Configure logger (idempotent if re-imported)
@@ -104,7 +104,7 @@ def wait_for_server() -> None:
         except Exception:
             pass
         if time.time() - start > SERVER_TIMEOUT:
-            raise RuntimeError(f"Server not ready after {SERVER_TIMEOUT}s")
+            raise RuntimeError(f"Server not ready after {SERVER_TIMEOUT}s. The server could be down or not responding.")
         time.sleep(2)
 
 
