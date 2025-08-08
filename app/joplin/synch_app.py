@@ -58,14 +58,16 @@ def wait_for_ui_stable(timeout=10, interval=0.5):
     return False
 
 
+wait_for_ui_stable(timeout=15, interval=1)
 wait_and_click_desc("Sidebar, Show/hide the sidebar")
 wait_and_click_text("Configuration")
+wait_for_ui_stable(timeout=15, interval=1)
 
 label = d(text="Synchronization target")
 if label.exists:
     dropdown = label.sibling(className="android.view.ViewGroup")
     dropdown.click()
-    wait_for_ui_stable(timeout=5)
+    wait_for_ui_stable(timeout=5, interval=3)
     wait_and_click_text("Joplin Server (Beta)")
 
 # Fill Joplin Server URL
@@ -99,7 +101,7 @@ if label.exists:
     edit.set_text("")
     d.send_keys(password)
     d.press("enter")
-wait_for_ui_stable(timeout=5)
+wait_for_ui_stable(timeout=5, interval=1)
 
 wait_and_click_text("CHECK SYNCHRONIZATION CONFIGURATION")
 wait_for_ui_stable(timeout=10, interval=3)
