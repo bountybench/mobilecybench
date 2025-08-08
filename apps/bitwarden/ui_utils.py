@@ -116,7 +116,7 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5):
     return False
 
 
-def check_and_click_wait_button(d, max_anrs=5, timeout=3, target_element=None):
+def handle_anr(d, max_anrs=5, timeout=3, target_element=None):
     """
     Handles consecutive "Application Not Responding" (ANR) dialogs by clicking "Wait".
 
@@ -201,7 +201,7 @@ def wait_and_click(d, element, timeout=180):
 
     while time.time() - start_time < timeout:
         # Handle ANRs while waiting, passing target element for verification
-        check_and_click_wait_button(d, max_anrs=5, timeout=1, target_element=element)
+        handle_anr(d, max_anrs=5, timeout=1, target_element=element)
 
         if element.exists:
             element_found = True
@@ -236,7 +236,7 @@ def wait_and_set_text(d, element, text, timeout=180):
 
     while time.time() - start_time < timeout:
         # Handle ANRs while waiting, passing target element for verification
-        check_and_click_wait_button(d, max_anrs=5, timeout=1, target_element=element)
+        handle_anr(d, max_anrs=5, timeout=1, target_element=element)
 
         if element.exists:
             element_found = True
@@ -247,7 +247,7 @@ def wait_and_set_text(d, element, text, timeout=180):
         # Use robust text entry with retries and scroll support
         if _robust_set_text(d, element, text, max_attempts=3):
             print(f"[DEBUG] Set text to {text}")
-            handle_keyboard_action(d)
+            _handle_keyboard_action(d)
             wait_for_ui_stable(d)
         else:
             print(
@@ -265,7 +265,12 @@ def wait_and_set_text(d, element, text, timeout=180):
         sys.exit(1)
 
 
-def handle_keyboard_action(d):
+# =============================================================================
+# TEXT ENTRY HELPERS (robust set_text with retries/scroll)
+# =============================================================================
+
+
+def _handle_keyboard_action(d):
     """
     Handles keyboard action (Done/Enter) with multiple fallback methods.
 
@@ -276,7 +281,7 @@ def handle_keyboard_action(d):
         True if keyboard action was successful, False otherwise
     """
     # Handle any ANRs before keyboard interaction
-    check_and_click_wait_button(d, max_anrs=5, timeout=1, target_element=None)
+    handle_anr(d, max_anrs=5, timeout=1, target_element=None)
 
     # Method 1: Try clicking the keyboard Done button
     try:
@@ -310,11 +315,6 @@ def handle_keyboard_action(d):
 
     print("[WARN] All keyboard action methods failed")
     return False
-
-
-# =============================================================================
-# TEXT ENTRY HELPERS (robust set_text with retries/scroll)
-# =============================================================================
 
 
 def _parse_selector_from_element(element):
@@ -367,7 +367,7 @@ def _robust_set_text(d, element, text, max_attempts=3):
 
     for attempt_index in range(1, max_attempts + 1):
         # Handle any ANR dialogs and wait for the target element
-        check_and_click_wait_button(d, max_anrs=5, timeout=1, target_element=element)
+        handle_anr(d, max_anrs=5, timeout=1, target_element=element)
 
         try:
             # Bring element into view and focus it
@@ -392,6 +392,7 @@ def _robust_set_text(d, element, text, max_attempts=3):
 
 # =============================================================================
 # BITWARDEN APP WORKFLOW FUNCTIONS
+# Use python -m weditor to view and debug the UI hierarchy
 # =============================================================================
 
 
@@ -574,6 +575,7 @@ def lock_and_logout(d):
     Locks the vault and logs out
     """
     print("=== Locking and logging out ===")
+
     # Step 4.1: Click the main options button in the header bar
     print("Step 4.1: Clicking header options button...")
     wait_and_click(d, d(resourceId="HeaderBarOptionsButton"))

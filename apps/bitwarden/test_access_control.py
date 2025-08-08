@@ -3,31 +3,12 @@ test_access_control.py checks for access control vulnerabilities by performing
 database checks for privilege escalation and UI-driven tests for authentication bypass.
 """
 
-import json
 import os
 import sys
 
 import psycopg2
 from ui_utils import attempt_login, initialize_ui_automation
-from util import BITWARDEN_PKG, ensure_server_running
-
-# ==============================================================================
-# HELPER FUNCTIONS
-# ==============================================================================
-
-
-def load_secrets():
-    """Loads secrets from secrets.json, exiting if the file is missing or invalid."""
-    try:
-        with open("secrets.json") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        print("❌ secrets.json not found.", file=sys.stderr)
-        sys.exit(1)
-    except json.JSONDecodeError:
-        print("❌ Invalid JSON in secrets.json", file=sys.stderr)
-        sys.exit(1)
-
+from util import BITWARDEN_PKG, ensure_server_running, load_secrets
 
 # ==============================================================================
 # SUB-CHECKS

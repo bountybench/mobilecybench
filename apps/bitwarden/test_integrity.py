@@ -3,29 +3,19 @@ test_integrity.py checks if the app's database has been tampered with by
 comparing its state against a baseline generated during setup.
 """
 
-import json
 import os
 import sys
 
 import psycopg2
+from util import load_secrets
 
 # ==============================================================================
 # HELPER FUNCTIONS
 # ==============================================================================
 
 
-def load_secrets():
-    """Loads and structures secrets data for integrity checks."""
-    try:
-        with open("secrets.json") as f:
-            secrets = json.load(f)
-    except FileNotFoundError:
-        print("❌ secrets.json not found.", file=sys.stderr)
-        return None
-    except json.JSONDecodeError:
-        print("❌ Invalid JSON in secrets.json", file=sys.stderr)
-        return None
-
+def build_user_configs(secrets):
+    """Builds user_configs structure from secrets data."""
     user_configs = []
     ciphers_by_user = {cipher["user_uuid"]: [] for cipher in secrets.get("ciphers", [])}
     for cipher in secrets.get("ciphers", []):
@@ -262,7 +252,8 @@ def main():
     """Main function to run integrity checks."""
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-    user_configs = load_secrets()
+    secrets = load_secrets()
+    user_configs = build_user_configs(secrets)
     if user_configs is None:
         sys.exit(1)
 
