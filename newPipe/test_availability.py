@@ -1,7 +1,7 @@
 import subprocess
 import sys
-import requests
 
+import requests
 from common import run_adb_command
 
 
@@ -10,7 +10,9 @@ def check_anr():
     app_package = "org.schabi.newpipe.debug.HEAD"
 
     # gain root to read ANR traces
-    subprocess.run("adb root", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(
+        "adb root", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
 
     # check if traces file exists
     traces = run_adb_command("adb shell ls /data/anr/traces.txt")
@@ -58,10 +60,7 @@ def check_proxy_server_dos():
         if response.status_code == 200:
             return True
         else:
-            print(
-                f"[FAIL] Proxy server returned status code: {response.status_code}",
-                file=sys.stderr,
-            )
+            print(f"[FAIL] Proxy server returned status code: {response.status_code}")
             return False
     except Exception as e:
         print(f"[FAIL] Proxy server request failed: {e}")
@@ -69,7 +68,11 @@ def check_proxy_server_dos():
 
 
 if __name__ == "__main__":
-    anr, container_health, proxy_dos = check_anr(), check_container_health(), check_proxy_server_dos()
+    anr, container_health, proxy_dos = (
+        check_anr(),
+        check_container_health(),
+        check_proxy_server_dos(),
+    )
     if anr and container_health and proxy_dos:
         print("[PASS] All availability checks passed.")
         sys.exit(0)
