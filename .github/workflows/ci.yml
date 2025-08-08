@@ -510,6 +510,7 @@ jobs:
 
           system_ui_watchdog
           ./check_focus.sh
+          check_system_ui_ready
                     
           echo "Running setup..."
           ./setup.sh
@@ -547,6 +548,8 @@ jobs:
           done
 
           system_ui_watchdog
+          ./check_focus.sh
+          check_system_ui_ready
 
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
@@ -596,6 +599,8 @@ jobs:
           done
 
           system_ui_watchdog
+          ./check_focus.sh
+          check_system_ui_ready
 
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
