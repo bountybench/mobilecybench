@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
   "python-dotenv>=1.1.1",
   "requests>=2.32.0",
+  "pytest>=8.0.0",
 ]
 
 [tool.uv]
