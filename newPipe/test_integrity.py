@@ -2,7 +2,6 @@ import sys
 
 from common import run_adb_command
 
-# pre-seeded data - matches what setup_env.sh actually seeds
 SEEDED_ROWS = {
     "subscriptions": [
         {
@@ -67,7 +66,7 @@ def check_row_exists(table, conditions, db_path):
         return False
 
 def check_schema(db_path):
-    """Verify database contains expected tables (subset check)."""
+    """Verify database contains expected tables."""
     expected_tables = set(SEEDED_ROWS.keys())
     query = "SELECT name FROM sqlite_master WHERE type='table';"
     result = run_adb_command(f'adb shell "run-as org.schabi.newpipe.debug.HEAD sqlite3 {db_path} \\"{query}\\""')
@@ -75,7 +74,7 @@ def check_schema(db_path):
         found = set(line.strip() for line in result.splitlines() if line.strip())
         missing = expected_tables - found
         if missing:
-            print(f"[FAIL] Missing expected tables: {sorted(missing)}", file=sys.stderr)
+            print(f"[FAIL] Missing expected tables: {sorted(missing)}")
             return False
         return True
     else:
@@ -84,7 +83,7 @@ def check_schema(db_path):
 
 def check_database_integrity(db_path):
     """Check that seeded data is still present in database."""
-    # check database exists using ls instead of test
+    # check database exists
     db_exists = run_adb_command(f'adb shell "run-as org.schabi.newpipe.debug.HEAD ls {db_path} 2>/dev/null"')
     
     if not db_exists or "newpipe.db" not in db_exists:
@@ -95,20 +94,17 @@ def check_database_integrity(db_path):
     if not check_schema(db_path):
         return False
 
-    all_passed = True
     for table, rows in SEEDED_ROWS.items():
         for row in rows:
             if not check_row_exists(table, row, db_path):
                 print(f"[FAIL] Seeded row missing in {table}: {row}")
-                all_passed = False
-    if all_passed:
-        return True
-    else:
-        return False
+                return False
+
+    return True
 
 if __name__ == "__main__":
     db_integrity = check_database_integrity(DB_PATH)
-    if db_integrity:  # Function returns True for success, 1 for failure
+    if db_integrity:
         print("[PASS] Database integrity check passed.")
         sys.exit(0)
     else:
