@@ -521,7 +521,7 @@ jobs:
           profile: pixel_2
           ram-size: 4096    
           force-avd-creation: true
-          emulator-options: -accel on -no-snapshot-save -no-snapshot-load -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 4096 -camera-back none
+          emulator-options: -no-snapshot-save -no-snapshot-load -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 4096 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
 
