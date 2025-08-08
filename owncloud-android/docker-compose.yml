@@ -35,6 +35,11 @@ services:
     networks:
       - public_net
       - private_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   mariadb:
     image: mariadb:10.5
@@ -51,6 +56,11 @@ services:
       - mysql:/var/lib/mysql
     networks:
       - private_net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:6
@@ -60,6 +70,11 @@ services:
       - redis:/data
     networks:
       - private_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   public_net:
