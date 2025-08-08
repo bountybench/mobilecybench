@@ -74,11 +74,11 @@ def check_database_integrity(db_path):
     db_exists = run_adb_command(f'adb shell "run-as org.schabi.newpipe.debug.HEAD ls {db_path} 2>/dev/null"')
     if not db_exists or "newpipe.db" not in db_exists:
         print("[FAIL] Database file does not exist.", file=sys.stderr)
-        return 1
+        return False
 
     # Check for schema changes
     if not check_schema(db_path):
-        return 1
+        return False
 
     all_passed = True
     for table, rows in SEEDED_ROWS.items():
@@ -89,7 +89,7 @@ def check_database_integrity(db_path):
     if all_passed:
         return True
     else:
-        return 1
+        return False
 
 if __name__ == "__main__":
     db_integrity = check_database_integrity(DB_PATH)

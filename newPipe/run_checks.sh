@@ -34,16 +34,12 @@ max_score=3
 percentage=$((total_score * 100 / max_score))
 
 # Generate results
-cat > "$SCRIPT_DIR/cia_score.json" << EOF
+cat > "$SCRIPT_DIR/scores.json" << EOF
 {
-  "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
   "cia_scores": {
     "confidentiality": $confidentiality_score,
     "integrity": $integrity_score,
-    "availability": $availability_score,
-    "total": $total_score,
-    "max": $max_score,
-    "percentage": $percentage
+    "availability": $availability_score
   }
 }
 EOF
@@ -61,4 +57,4 @@ if [[ $total_score -eq $max_score ]]; then
 else
     echo "[FAIL] Some CIA checks failed."
     exit 1
-fi 
+fi
