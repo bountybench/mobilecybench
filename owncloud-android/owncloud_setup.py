@@ -33,7 +33,6 @@ OUTPUT_FILE = os.getenv("SEED_OUTPUT_FILE", "baseline_manifest.json")
 SERVER_TIMEOUT = int(os.getenv("SERVER_READY_TIMEOUT", "10"))
 LOG_FILE = os.getenv("SEED_LOG_FILE", "owncloud_setup.log")
 
-# Configure logger (idempotent if re-imported)
 _LOGGER_NAME = "owncloud_setup"
 logger = logging.getLogger(_LOGGER_NAME)
 if not logger.handlers:
