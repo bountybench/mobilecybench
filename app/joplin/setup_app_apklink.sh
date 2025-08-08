@@ -43,7 +43,7 @@ launch_joplin() {
 # Synching with server
 synch_with_server() {
     echo "Synching app with server..."
-    ./system_ui_watchdog.sh
+    ./check_focus.sh
     python synch_app.py --username usera@localhost --password userAPW123
     echo "Should now be synched with server."
 }
