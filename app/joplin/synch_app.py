@@ -26,7 +26,7 @@ def wait_and_click_text(text, timeout=45):
         )
         print(d.dump_hierarchy(), file=sys.stderr)
         exit(1)
-    wait_for_ui_stable(timeout=5)
+    wait_for_ui_stable(timeout=15)
 
 
 def wait_and_click_desc(desc, timeout=45):
@@ -39,7 +39,7 @@ def wait_and_click_desc(desc, timeout=45):
         )
         print(d.dump_hierarchy(), file=sys.stderr)
         exit(1)
-    wait_for_ui_stable(timeout=5)
+    wait_for_ui_stable(timeout=15)
 
 
 def wait_for_ui_stable(timeout=10, interval=0.5):
@@ -55,6 +55,7 @@ def wait_for_ui_stable(timeout=10, interval=0.5):
             return True
         prev_hierarchy = current_hierarchy
         time.sleep(interval)
+    print("UI unstable!", file=sys.stderr)
     return False
 
 
