@@ -7,4 +7,5 @@ setup.log
 *.apk
 .venv/
 pycache/
+*.log
 
