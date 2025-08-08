@@ -529,7 +529,8 @@ jobs:
           system_ui_watchdog
           check_current_focus
           check_system_ui_ready
-                    
+          adb shell pm clear com.android.systemui
+
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
@@ -568,6 +569,7 @@ jobs:
           system_ui_watchdog
           check_current_focus
           check_system_ui_ready
+          adb shell pm clear com.android.systemui
 
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
@@ -619,6 +621,7 @@ jobs:
           system_ui_watchdog
           check_current_focus
           check_system_ui_ready
+          adb shell pm clear com.android.systemui
 
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
