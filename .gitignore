@@ -8,4 +8,5 @@ setup.log
 .venv/
 pycache/
 *.log
+baseline_manifest.json
 
