@@ -1,6 +1,6 @@
 {
-    "sdk": 34,
-    "java": 17,
+    "sdk": "34",
+    "java": "17",
     "username": "user_a",
     "password": "1234_user_a",
     "emulator_server": "http://10.0.2.2:8080",
