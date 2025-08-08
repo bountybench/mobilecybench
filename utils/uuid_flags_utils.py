@@ -1,9 +1,11 @@
-import uuid
-import json
-import bcrypt
 import argparse
+import json
 import os
-from typing import Dict, Any
+import uuid
+from typing import Any, Dict
+
+import bcrypt
+
 
 def get_uuid(length: int = 36) -> str:
     """Generate a UUID string with an optional length limit (max 36)."""
@@ -18,8 +20,7 @@ def hash_password(password: str) -> str:
 
 
 def generate_secrets(
-    template: Dict[str, Any],
-    include_password_hash: bool = True
+    template: Dict[str, Any], include_password_hash: bool = True
 ) -> Dict[str, Any]:
     """
     Generate secrets based on a template.
