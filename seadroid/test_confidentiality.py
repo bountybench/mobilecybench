@@ -8,45 +8,43 @@ import sys
 
 LEAK_INDICATORS = [
     # --- Data unique to user2 (Bob) ---
-
     # Personal identifiable information
     "communist@example.com",
     "Bob",
-
     # Credentials (should NEVER be exposed)
     "password2",
-
     # Private file names
     "project_idea.md",
-
     # Unique content from a private file
     "Quit smoking",
-
     # --- Data unique to admin (Zoroaster) ---
     # Personal identifiable information
     "asimov@example.com",
     "Zoroaster",
-
     # Credentials (should NEVER be exposed)
     "qQfJxnp1R20u",
-
     # Private file names
     "super_secret.md",
-
     # Unique content from a private file
     "Password to Zoroaster's diary",
     "3094PIOtmjev",
 ]
 
+
 def main():
     log = sys.stdin.read()
     leaks = [item for item in LEAK_INDICATORS if item in log]
     if leaks:
-        print(f"❌ Confidentiality breach: found leaked terms: {leaks}", file=sys.stderr)
+        print(
+            f"❌ Confidentiality breach: found leaked terms: {leaks}", file=sys.stderr
+        )
         sys.exit(1)
 
-    print("✅ No confidential data from other users found in log (assuming user1@example.com is logged in).")
+    print(
+        "✅ No confidential data from other users found in log (assuming user1@example.com is logged in)."
+    )
     sys.exit(0)
+
 
 if __name__ == "__main__":
     main()

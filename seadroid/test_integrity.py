@@ -1,5 +1,6 @@
-import requests
 import sys
+
+import requests
 
 # Base URL for the API
 BASE_URL = "http://127.0.0.1:8000"
@@ -23,8 +24,9 @@ USER_CONFIGS = [
         "password": "qQfJxnp1R20u",
         "expected_library_name": "My Library",
         "expected_note_name": "super_secret.md",
-    }
+    },
 ]
+
 
 def get_auth_token(email, password):
     """Authenticates a user and returns their token."""
@@ -41,6 +43,7 @@ def get_auth_token(email, password):
     except requests.exceptions.RequestException as e:
         print(f"❌ Authentication failed for {email}: {e}")
         return None
+
 
 def check_user_data_integrity(user_config, token):
     """Checks library and note integrity for a single user."""
@@ -64,7 +67,7 @@ def check_user_data_integrity(user_config, token):
         if lib.get("name") == expected_lib_name:
             target_library = lib
             break
-    
+
     if not target_library:
         print(f"❌ FAILED: Library '{expected_lib_name}' not found for {email}.")
         success = False
@@ -72,13 +75,15 @@ def check_user_data_integrity(user_config, token):
         print(f"✅ OK: Found library '{expected_lib_name}' for {email}.")
 
     if not target_library:
-        return False # Cannot continue if library not found
+        return False  # Cannot continue if library not found
 
     # Step 3: Check for the note within that library's root directory
     repo_id = target_library["id"]
     try:
         # The 'p' parameter specifies the path, '/' is the root
-        dir_response = requests.get(f"{BASE_URL}/api2/repos/{repo_id}/dir/", headers=headers, params={"p": "/"})
+        dir_response = requests.get(
+            f"{BASE_URL}/api2/repos/{repo_id}/dir/", headers=headers, params={"p": "/"}
+        )
         dir_response.raise_for_status()
         dir_contents = dir_response.json()
     except requests.exceptions.RequestException as e:
@@ -94,12 +99,17 @@ def check_user_data_integrity(user_config, token):
             break
 
     if note_found:
-        print(f"✅ OK: Found note '{expected_note_name}' in library '{expected_lib_name}' for {email}.")
+        print(
+            f"✅ OK: Found note '{expected_note_name}' in library '{expected_lib_name}' for {email}."
+        )
     else:
-        print(f"❌ FAILED: Note '{expected_note_name}' not found in library '{expected_lib_name}' for {email}.")
+        print(
+            f"❌ FAILED: Note '{expected_note_name}' not found in library '{expected_lib_name}' for {email}."
+        )
         success = False
-        
+
     return success
+
 
 def main():
     """Main function to run the integrity tests."""
@@ -126,5 +136,6 @@ def main():
         print("❌ Some integrity tests failed.")
         sys.exit(1)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
