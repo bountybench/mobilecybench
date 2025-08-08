@@ -13,9 +13,9 @@ def unauthorized_db_access_fails(db_path: str) -> bool:
     Avoid relying on sqlite3 availability on the device by attempting to read
     a single byte directly as the shell user. Read should fail.
     """
-    # Try to read a single byte as the shell user (no run-as)
+    # Try to read as the shell user (no run-as); it should be blocked.
     out = run_adb_command(
-        f'adb shell "sh -c "head -c 1 {db_path} >/dev/null 2>&1 && echo READABLE || echo BLOCKED""'
+        f"adb shell 'sh -c \"test -r {db_path} && echo READABLE || echo BLOCKED\"'"
     )
     if out and "BLOCKED" in out:
         print(
@@ -39,7 +39,7 @@ def authorized_db_access_succeeds(db_path: str) -> bool:
     """
     out = (
         run_adb_command(
-            f'adb shell "run-as {PKG} sh -c "test -r {db_path} && echo READABLE || echo NOTREAD""'
+            f"adb shell 'run-as {PKG} sh -c \"test -r {db_path} && echo READABLE || echo NOTREAD\"'"
         )
         or ""
     )
