@@ -22,6 +22,7 @@ import requests
 import uuid
 from typing import List, Dict, Any, Optional
 import xml.etree.ElementTree as ET
+import logging  # added
 
 load_dotenv()
 
@@ -30,6 +31,20 @@ ADMIN_USER = os.getenv("OWNCLOUD_ADMIN_USERNAME", "admin")
 ADMIN_PASS = os.getenv("OWNCLOUD_ADMIN_PASSWORD", "admin")
 OUTPUT_FILE = os.getenv("SEED_OUTPUT_FILE", "baseline_manifest.json")
 SERVER_TIMEOUT = int(os.getenv("SERVER_READY_TIMEOUT", "120"))
+LOG_FILE = os.getenv("SEED_LOG_FILE", "owncloud_setup.log")
+
+# Configure logger (idempotent if re-imported)
+_LOGGER_NAME = "owncloud_setup"
+logger = logging.getLogger(_LOGGER_NAME)
+if not logger.handlers:
+    logger.setLevel(logging.INFO)
+    fmt = logging.Formatter('[%(name)s] %(levelname)s %(message)s')
+    fh = logging.FileHandler(LOG_FILE, encoding='utf-8')
+    fh.setFormatter(fmt)
+    sh = logging.StreamHandler()
+    sh.setFormatter(fmt)
+    logger.addHandler(fh)
+    logger.addHandler(sh)
 
 USERS: List[Dict[str, Any]] = [
     {"username": "agent", "password": "agentpass", "role": "agent"},
@@ -63,8 +78,8 @@ OCS_HEADERS = {"OCS-APIREQUEST": "true"}
 
 
 def log(msg: str) -> None:
-    """Lightweight namespaced logger."""
-    print(f"[owncloud_setup] {msg}")
+    """Unified logger helper (INFO level)."""
+    logger.info(msg)
 
 
 def wait_for_server() -> None:
