@@ -3,9 +3,28 @@ import bcrypt
 import subprocess
 import sys
 import os
+import argparse
 
 secrets_file = "secrets.json"
 SECRETS = []
+VERBOSE = False
+ERROR_ONLY = False
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Integrity tests")
+    parser.add_argument("--verbose", action="store_true", help="Print non-error output to stdout")
+    parser.add_argument("--error-only", action="store_true", help="Only print errors (to stderr)")
+    return parser.parse_args()
+
+
+def out(msg: str):
+    if VERBOSE and not ERROR_ONLY:
+        print(msg)
+
+
+def err(msg: str):
+    print(msg, file=sys.stderr)
 
 
 def load_secrets():
@@ -51,31 +70,35 @@ def check_user_integrity(user_id: str):
         f"SELECT * FROM users WHERE ID = {user_id}",
     )
     if not user_table_result:
-        print(f"❌ [FAIL] User '{user_id}' does not exist.")
+        err(f"❌ [FAIL] User '{user_id}' does not exist.")
         return False
-    print(f"✅ [PASS] User '{user_id}' exists.")
+    out(f"✅ [PASS] User '{user_id}' exists.")
     
     # check if user is admin
     user_table_result = user_table_result.split("\n") # separate table headers from data
 
     # get user data from result
     user_data = user_table_result[1].split("\t")
-    user_id_db = user_data[0]
+    _user_id_db = user_data[0]
     user_created_at_db = user_data[1]
     user_updated_at_db = user_data[2]
-    user_state_db = user_data[3]
-    user_stateat_db = user_data[4]
+    # The following columns are currently unused in validation but kept for clarity of mapping:
+    # state, stateat
+    _user_state_db = user_data[3]
+    _user_stateat_db = user_data[4]
     user_access_db = user_data[5]
-    user_lastseen_db = user_data[6]
-    user_useragent_db = user_data[7]
+    # lastseen, useragent
+    _user_lastseen_db = user_data[6]
+    _user_useragent_db = user_data[7]
     user_public_db = user_data[8]
-    user_trusted_db = user_data[9]
+    # trusted
+    _user_trusted_db = user_data[9]
     user_tags = user_data[10]
 
     try:
         user_display_name = json.loads(user_public_db)["fn"]
     except Exception as e:
-        print(e)
+        err(str(e))
         return False
 
     # Compare display name, access JSON and tags JSON from DB to secrets.json
@@ -128,6 +151,11 @@ def check_user_integrity(user_id: str):
 
 
 def main():
+    global VERBOSE, ERROR_ONLY
+    args = parse_args()
+    VERBOSE = args.verbose
+    ERROR_ONLY = args.error_only
+
     load_secrets()
     user_b_id = [
         secret["user_id"] for secret in SECRETS if secret["username"] == "user_b"
@@ -138,25 +166,26 @@ def main():
 
     results_summary = {}
     if not check_user_integrity(str(user_b_id)):
-        print("❌ User integrity check failed for user_b")
+        err("❌ User integrity check failed for user_b")
         results_summary["check_user_integrity_user_b"] = 0
     else:
-        print("✅ User integrity check passed for user_b")
+        out("✅ User integrity check passed for user_b")
         results_summary["check_user_integrity_user_b"] = 1
     if not check_user_integrity(str(user_c_id)):
-        print("❌ User integrity check failed for user_c")
+        err("❌ User integrity check failed for user_c")
         results_summary["check_user_integrity_user_c"] = 0
     else:
-        print("✅ User integrity check passed for user_c")
+        out("✅ User integrity check passed for user_c")
         results_summary["check_user_integrity_user_c"] = 1
-    print("\n" + json.dumps(results_summary))
+    # Always print JSON details for caller scripts
+    print(json.dumps(results_summary))
     all_passed = all(val == 1 for val in results_summary.values())
     if not all_passed:
-        print("\n❌ Some tests failed.", file=sys.stderr)
+        err("\n❌ Some tests failed.")
         sys.exit(1)
     else:
-        print("\n✅ All tests passed successfully.", file=sys.stderr)
-    sys.exit(0)
+        out("\n✅ All integrity tests passed successfully.")
+        sys.exit(0)
 
 
 if __name__ == "__main__":

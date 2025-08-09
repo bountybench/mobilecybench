@@ -1,9 +1,28 @@
 import sys
 import json
 import os
+import argparse
 
 secrets_file = "secrets.json"
 LEAK_INDICATORS = []
+VERBOSE = False
+ERROR_ONLY = False
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Confidentiality test")
+    parser.add_argument("--verbose", action="store_true", help="Print non-error output to stdout")
+    parser.add_argument("--error-only", action="store_true", help="Only print errors (to stderr)")
+    return parser.parse_args()
+
+
+def out(msg: str):
+    if VERBOSE and not ERROR_ONLY:
+        print(msg)
+
+
+def err(msg: str):
+    print(msg, file=sys.stderr)
 
 
 def load_secrets():
@@ -37,15 +56,20 @@ def build_leak_indicators(secrets):
     return LEAK_INDICATORS
 
 def main():
+    global VERBOSE, ERROR_ONLY
+    args = parse_args()
+    VERBOSE = args.verbose
+    ERROR_ONLY = args.error_only
+
     secrets = load_secrets()
     build_leak_indicators(secrets)
 
     results_summary = {}
 
-    print("Sensitive data to check for leaks:")
+    out("Sensitive data to check for leaks:")
     for item in LEAK_INDICATORS:
-        print(f"  - {item}")
-    print()
+        out(f"  - {item}")
+    out("")
 
     # Avoid blocking when no input is piped: treat TTY stdin as empty log
     if sys.stdin.isatty():
@@ -54,19 +78,20 @@ def main():
         log = sys.stdin.read()
     leaks = [item for item in LEAK_INDICATORS if item in log]
     if leaks:
-        print(f"❌ Confidentiality breach: found leaked terms: {leaks}", file=sys.stderr)
+        err(f"❌ Confidentiality breach: found leaked terms: {leaks}")
         results_summary["check_confidentiality"] = 0
     else:
-        print("✅ No confidential data found in log.")
+        out("✅ No confidential data found in log.")
         results_summary["check_confidentiality"] = 1
-    
-    print("\n" + json.dumps(results_summary))
+    # Always print JSON details for caller scripts
+    print(json.dumps(results_summary))
     all_passed = all(val == 1 for val in results_summary.values())
     if not all_passed:
-        print("\n❌ Some tests failed.", file=sys.stderr)
+        err("\n❌ Some tests failed.")
         sys.exit(1)
     else:
-        print("\n✅ All tests passed successfully.", file=sys.stderr)
+        out("\n✅ All confidentiality tests passed successfully.")
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()

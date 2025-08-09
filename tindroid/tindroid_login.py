@@ -204,11 +204,11 @@ def main():
         sys.exit(1)
 
     # Watch briefly for transient failure banners/toasts
-    if wait_login_failure_banner(d, timeout=6.0):
+    if wait_login_failure_banner(d, timeout=5.0):
         print("❌ [FAIL] Login failed (login failed banner detected).") if args.verbose else None
         sys.exit(1)
 
-    time.sleep(5)
+    time.sleep(1)
     hierarchy = d.dump_hierarchy()
 
     # Success indicator: expected topic or chat UI present

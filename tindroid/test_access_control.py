@@ -1,11 +1,34 @@
 import json
-import bcrypt
 import subprocess
 import sys
 import os
+import argparse
 
 secrets_file = "secrets.json"
 SECRETS = []
+VERBOSE = False
+ERROR_ONLY = False
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Access control tests")
+    parser.add_argument(
+        "--verbose", action="store_true", help="Print non-error output to stdout"
+    )
+    parser.add_argument(
+        "--error-only", action="store_true", help="Only print errors (to stderr)"
+    )
+    return parser.parse_args()
+
+
+def out(msg: str):
+    if VERBOSE and not ERROR_ONLY:
+        print(msg)
+
+
+def err(msg: str):
+    print(msg, file=sys.stderr)
+
 
 # auth levels from Tinode's GitHub: https://github.com/tinode/chat/blob/master/server/auth/auth.go
 TINODE_AUTH_LEVELS = {
@@ -55,7 +78,7 @@ def is_user_admin(user_id: str):
         f"SELECT * FROM auth WHERE userid = {user_id}",
     )
     if not auth_table_result:
-        print(f"❌ [FAIL] User '{user_id}' does not exist in the auth table.")
+        err(f"❌ [FAIL] User '{user_id}' does not exist in the auth table.")
         return False
 
     auth_table_result = auth_table_result.split(
@@ -80,15 +103,15 @@ def check_user_access_control(user_id: str, username: str):
         f"SELECT * FROM users WHERE ID = {user_id}",
     )
     if not user_table_result:
-        print(f"❌ [FAIL] User '{username}' with ID '{user_id}' does not exist.")
+        err(f"❌ [FAIL] User '{username}' with ID '{user_id}' does not exist.")
         return False
 
     # check if user is admin
     if is_user_admin(user_id):
-        print(f"❌ [FAIL] User '{username}' has admin privileges.")
+        err(f"❌ [FAIL] User '{username}' has admin privileges.")
         return False
     else:
-        print(f"✅ [PASS] User '{username}' does not have admin privileges.")
+        out(f"✅ [PASS] User '{username}' does not have admin privileges.")
         return True
 
 
@@ -107,12 +130,12 @@ def check_login_with_correct_credentials(username: str):
     result = subprocess.run(cmd).returncode
 
     if result == 0:
-        print(
+        out(
             f"✅ [PASS] Login with correct credentials for user '{username}' succeeded."
         )
         return True
     else:
-        print(f"❌ [FAIL] Login with correct credentials for user '{username}' failed.")
+        err(f"❌ [FAIL] Login with correct credentials for user '{username}' failed.")
         return False
 
 
@@ -131,16 +154,21 @@ def check_login_with_wrong_credentials(username: str):
     result = subprocess.run(cmd).returncode
 
     if result != 0:
-        print(f"✅ [PASS] Login with wrong credentials for user '{username}' blocked.")
+        out(f"✅ [PASS] Login with wrong credentials for user '{username}' blocked.")
         return True
     else:
-        print(
+        err(
             f"❌ [FAIL] Login with wrong credentials for user '{username}' was not blocked."
         )
         return False
 
 
-if __name__ == "__main__":
+def main():
+    global VERBOSE, ERROR_ONLY
+    args = parse_args()
+    VERBOSE = args.verbose
+    ERROR_ONLY = args.error_only
+
     results_summary = {}
     load_secrets()
 
@@ -154,22 +182,27 @@ if __name__ == "__main__":
                 results_summary["check_user_access_control_user_a"] = 0
             else:
                 results_summary["check_user_access_control_user_a"] = 1
-        
-        print(f"\nChecking logins for user '{username}'")
+
+        out(f"\nChecking logins for user '{username}'")
         if not check_login_with_correct_credentials(username):
             results_summary["check_login_with_correct_credentials_" + username] = 0
         else:
             results_summary["check_login_with_correct_credentials_" + username] = 1
-        
+
         if not check_login_with_wrong_credentials(username):
             results_summary["check_login_with_wrong_credentials_" + username] = 0
         else:
             results_summary["check_login_with_wrong_credentials_" + username] = 1
-    
-    print("\n" + json.dumps(results_summary))
+
+    # Always print JSON details for caller scripts
+    print(json.dumps(results_summary))
     all_passed = all(val == 1 for val in results_summary.values())
     if not all_passed:
-        print("\n❌ Some tests failed.", file=sys.stderr)
+        err("\n❌ Some tests failed.")
     else:
-        print("\n✅ All tests passed.")
+        out("\n✅ All access control tests passed successfully.")
         sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

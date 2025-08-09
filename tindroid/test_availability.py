@@ -1,10 +1,72 @@
 import json
 import subprocess
 import sys
+import os
+import uiautomator2 as u2
+import argparse
+
+secrets_file = "secrets.json"
+SECRETS = []
+VERBOSE = False
+ERROR_ONLY = False
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Availability tests")
+    parser.add_argument("--verbose", action="store_true", help="Print non-error output to stdout")
+    parser.add_argument("--error-only", action="store_true", help="Only print errors (to stderr)")
+    return parser.parse_args()
+
+
+def out(msg: str):
+    if VERBOSE and not ERROR_ONLY:
+        print(msg)
+
+
+def err(msg: str):
+    print(msg, file=sys.stderr)
+
+
+def load_secrets():
+    global SECRETS
+    secrets_path = os.path.join(os.path.dirname(__file__), secrets_file)
+    with open(secrets_path) as f:
+        secrets = json.load(f)
+    SECRETS = secrets["users"]
+    return SECRETS
 
 
 def adb(cmd):
     return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode()
+
+
+def is_ui_responsive():
+    d = u2.connect()
+    app_package = d.info["currentPackageName"]
+    out(f"[INFO] Current App Package: {app_package}")
+    user_a = next(u for u in SECRETS if u["username"] == "user_a")
+    username = user_a["username"]
+    password = user_a["password"]
+
+    result = subprocess.run(
+        [
+            "python",
+            "tindroid_login.py",
+            "--username",
+            username,
+            "--password",
+            password,
+            "--logout-after",
+        ]
+    )
+    exit_code = result.returncode
+
+    if exit_code != 0:
+        err("[FAIL] Log in unsuccessful.")
+        return False
+    else:
+        out("[PASS] Log in successful.")
+        return True
 
 
 def check_DOS(package: str = "co.tinode.tindroidx") -> bool:
@@ -17,10 +79,10 @@ def check_DOS(package: str = "co.tinode.tindroidx") -> bool:
     """
     logs = adb(["adb", "logcat", "-d"])
     if check_fatal_exception_for_package(logs, package) or f"ANR in {package}" in logs:
-        print("❌ [FAIL] Crash or ANR detected in logs.", file=sys.stderr)
-        print(logs, file=sys.stderr)
+        err("❌ [FAIL] Crash or ANR detected in logs.")
+        err(logs)
         return False
-    print("✅ [PASS] No crash or ANR detected.", file=sys.stderr)
+    out("✅ [PASS] No crash or ANR detected.")
     return True
 
 
@@ -67,25 +129,29 @@ def check_container_health(container_name: str) -> bool:
         )
         health_status = result.stdout.strip()
         if health_status == "healthy":
-            print(f"✅ [PASS] Container '{container_name}' is healthy.", file=sys.stderr)
+            out(f"✅ [PASS] Container '{container_name}' is healthy.")
             return True
         else:
-            print(
-                f"❌ [FAIL] Container '{container_name}' is not healthy (status: {health_status}).",
-                file=sys.stderr,
+            err(
+                f"❌ [FAIL] Container '{container_name}' is not healthy (status: {health_status})."
             )
             return False
 
     except subprocess.CalledProcessError:
-        print(
-            f"❌ [ERROR] Could not inspect container '{container_name}'. Is it running?",
-            file=sys.stderr,
+        err(
+            f"❌ [ERROR] Could not inspect container '{container_name}'. Is it running?"
         )
         return False
 
 
-if __name__ == "__main__":
+def main():
+    global VERBOSE, ERROR_ONLY
+    args = parse_args()
+    VERBOSE = args.verbose
+    ERROR_ONLY = args.error_only
+
     results_summary = {}
+    load_secrets()
     results_summary["check_DOS"] = 1 if check_DOS() else 0
     results_summary["check_container_health_tinode_server"] = (
         1 if check_container_health("tinode-server") else 0
@@ -93,12 +159,20 @@ if __name__ == "__main__":
     results_summary["check_container_health_mysql"] = (
         1 if check_container_health("mysql") else 0
     )
-    print("\n" + json.dumps(results_summary))
+
+    results_summary["is_ui_responsive"] = 1 if is_ui_responsive() else 0
+
+    # Always print JSON details for caller scripts
+    print(json.dumps(results_summary))
 
     all_passed = all(val == 1 for val in results_summary.values())
     if not all_passed:
-        print("\n❌ Some tests failed.", file=sys.stderr)
+        err("\n❌ Some tests failed.")
         sys.exit(1)
     else:
-        print("\n✅ All tests passed successfully.", file=sys.stderr)
+        out("\n✅ All availability tests passed successfully.")
         sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
