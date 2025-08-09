@@ -19,9 +19,9 @@ USAGE:
     python3 generate_secrets.py
 
 GENERATED USERS:
-- user_a: basic:user_a / user_a123 (known password) / user_a@example.com
-- user_b: basic:user_b / [random 12-char password] / user_b@example.com  
-- user_c: basic:user_c / [random 12-char password] / user_c@example.com
+- user_a: user_a123 (known password) / user_a@example.com
+- user_b: [random 12-char password] / user_b@example.com  
+- user_c: [random 12-char password] / user_c@example.com
 
 All users are verified with comprehensive profile data (email, phone, tags, access rights).
 
@@ -35,7 +35,7 @@ import string
 import json
 from datetime import datetime
 
-def generate_password(length=5):
+def generate_password(length=7):
     """Generate a secure random password."""
     alphabet = string.ascii_letters + string.digits
     return ''.join(secrets.choice(alphabet) for _ in range(length))
@@ -59,10 +59,10 @@ def generate_user_data():
     user_c_hash = hash_password(user_c_password)
     
     # Define user data with all required information
-    users = {
-        'user_a': {
+    users = [
+        {
             'id': 1423750392084172800,
-            'username': 'basic:user_a',
+            'username': 'user_a',
             'password': user_a_password,
             'hash': user_a_hash,
             'createdat': '2025-08-01 00:00:00.000',
@@ -72,9 +72,9 @@ def generate_user_data():
             'tags': ['User A', 'basic:user_a', 'email:user_a@example.com', 'tel:+1234567891'],
             'display_name': 'User A'
         },
-        'user_b': {
+        {
             'id': 1423750392411328512,
-            'username': 'basic:user_b',
+            'username': 'user_b',
             'password': user_b_password,
             'hash': user_b_hash,
             'createdat': '2025-08-01 00:01:00.000',
@@ -84,9 +84,9 @@ def generate_user_data():
             'tags': ['basic:user_b', 'email:user_b@example.com', 'tel:+1234567892'],
             'display_name': 'User B'
         },
-        'user_c': {
+        {
             'id': 1423750392679763968,
-            'username': 'basic:user_c',
+            'username': 'user_c',
             'password': user_c_password,
             'hash': user_c_hash,
             'createdat': '2025-08-01 00:02:00.000',
@@ -96,58 +96,38 @@ def generate_user_data():
             'tags': ['basic:user_c', 'email:user_c@example.com', 'tel:+1234567893'],
             'display_name': 'User C'
         }
-    }
+    ]
     
     return users
 
 def write_secrets_json(user_data, messages=None):
-    """Write user data and messages to secrets.json."""
+    """Write user data (as a list of dictionaries) and messages to secrets.json."""
+    users_list = []
+    for user in user_data:
+        users_list.append({
+            'user_id': user['id'],
+            'username': user['username'],
+            'password': user['password'],
+            'createdat': user['createdat'],
+            'email': user['email'],
+            'phone': user['phone'],
+            'access': user['access'],
+            'tags': user['tags'],
+            'display_name': user['display_name']
+        })
+
     secrets_data = {
-        'users': {
-            'user_a': {
-                'user_id': user_data['user_a']['id'],
-                'username': user_data['user_a']['username'],
-                'password': user_data['user_a']['password'],
-                'createdat': user_data['user_a']['createdat'],
-                'email': user_data['user_a']['email'],
-                'phone': user_data['user_a']['phone'],
-                'access': user_data['user_a']['access'],
-                'tags': user_data['user_a']['tags'],
-                'display_name': user_data['user_a']['display_name']
-            },
-            'user_b': {
-                'user_id': user_data['user_b']['id'],
-                'username': user_data['user_b']['username'],
-                'password': user_data['user_b']['password'],
-                'createdat': user_data['user_b']['createdat'],
-                'email': user_data['user_b']['email'],
-                'phone': user_data['user_b']['phone'],
-                'access': user_data['user_b']['access'],
-                'tags': user_data['user_b']['tags'],
-                'display_name': user_data['user_b']['display_name']
-            },
-            'user_c': {
-                'user_id': user_data['user_c']['id'],
-                'username': user_data['user_c']['username'],
-                'password': user_data['user_c']['password'],
-                'createdat': user_data['user_c']['createdat'],
-                'email': user_data['user_c']['email'],
-                'phone': user_data['user_c']['phone'],
-                'access': user_data['user_c']['access'],
-                'tags': user_data['user_c']['tags'],
-                'display_name': user_data['user_c']['display_name']
-            }
-        },
+        'users': users_list,
         'generated_at': datetime.now().isoformat()
     }
-    
+
     # Add messages if provided
     if messages:
         secrets_data['messages'] = messages
-    
+
     with open('secrets.json', 'w') as f:
         json.dump(secrets_data, f, indent=2)
-    
+
     print("User data and messages saved to secrets.json")
 
 def generate_clear_tables_sql():
@@ -193,26 +173,38 @@ def escape_json_for_sql(json_obj):
     return json_str.replace('"', '\\"')
 
 def generate_users_inserts(user_data):
-    """Generate SQL inserts for the users table with all users verified."""
-    return f"""--
+    """Generate SQL inserts for the users table with all users verified (accepts list of users)."""
+    header = """--
 -- Fill the `users` table (no dependencies)
 --
 
 LOCK TABLES `users` WRITE;
 /*!40000 ALTER TABLE `users` DISABLE KEYS */;
-/* Insert user_a */
-INSERT INTO `users` (`id`, `createdat`, `updatedat`, `state`, `stateat`, `access`, `lastseen`, `useragent`, `public`, `trusted`, `tags`) VALUES ({user_data['user_a']['id']},'{user_data['user_a']['createdat']}','{user_data['user_a']['createdat']}',0,NULL,'{{\\"Anon\\": \\"N\\", \\"Auth\\": \\"JRWPAS\\"}}',NULL,'','{{\\"fn\\": \\"{user_data['user_a']['display_name']}\\"}}','{{\\"verified\\": true}}','{json.dumps(user_data['user_a']['tags'])}');
+"""
 
-/* Insert user_b */
-INSERT INTO `users` (`id`, `createdat`, `updatedat`, `state`, `stateat`, `access`, `lastseen`, `useragent`, `public`, `trusted`, `tags`) VALUES ({user_data['user_b']['id']},'{user_data['user_b']['createdat']}','{user_data['user_b']['createdat']}',0,NULL,'{{\\"Anon\\": \\"N\\", \\"Auth\\": \\"JRWPAS\\"}}',NULL,'','{{\\"fn\\": \\"{user_data['user_b']['display_name']}\\"}}','{{\\"verified\\": true}}','{json.dumps(user_data['user_b']['tags'])}');
+    inserts = []
+    for user in user_data:
+        user_id = user['id']
+        created_at = user['createdat']
+        display_name = user['display_name']
+        access_json_sql = '{\"Anon\": \"N\", \"Auth\": \"JRWPAS\"}'
+        public_json_sql = f'{{\"fn\": \"{display_name}\"}}'
+        trusted_json_sql = '{\"verified\": true}'
+        tags_json = json.dumps(user['tags'])
 
-/* Insert user_c */
-INSERT INTO `users` (`id`, `createdat`, `updatedat`, `state`, `stateat`, `access`, `lastseen`, `useragent`, `public`, `trusted`, `tags`) VALUES ({user_data['user_c']['id']},'{user_data['user_c']['createdat']}','{user_data['user_c']['createdat']}',0,NULL,'{{\\"Anon\\": \\"N\\", \\"Auth\\": \\"JRWPAS\\"}}',NULL,'','{{\\"fn\\": \\"{user_data['user_c']['display_name']}\\"}}','{{\\"verified\\": true}}','{json.dumps(user_data['user_c']['tags'])}');
+        line = (
+            f"INSERT INTO `users` (`id`, `createdat`, `updatedat`, `state`, `stateat`, `access`, `lastseen`, `useragent`, `public`, `trusted`, `tags`) "
+            f"VALUES ({user_id},'{created_at}','{created_at}',0,NULL,'{access_json_sql}',NULL,'','{public_json_sql}','{trusted_json_sql}','{tags_json}');"
+        )
+        inserts.append(line)
 
+    footer = """
 /*!40000 ALTER TABLE `users` ENABLE KEYS */;
 UNLOCK TABLES;
 
 """
+
+    return header + "\n\n".join(inserts) + "\n\n" + footer
 
 def generate_usertags_inserts():
     """Generate SQL inserts for the usertags table."""
@@ -275,25 +267,33 @@ UNLOCK TABLES;
 """
 
 def generate_auth_inserts(user_data):
-    """Generate SQL inserts for the auth table with new password hashes."""
-    return f"""--
+    """Generate SQL inserts for the auth table with new password hashes (accepts list of users)."""
+    header = """--
 -- Fill the `auth` table (depends on users table)
 --
 
 LOCK TABLES `auth` WRITE;
 /*!40000 ALTER TABLE `auth` DISABLE KEYS */;
-/* Insert authorizations for user_a */
-INSERT INTO `auth` (`id`, `uname`, `userid`, `scheme`, `authlvl`, `secret`, `expires`) VALUES (1,'{user_data["user_a"]["username"]}',{user_data["user_a"]["id"]},'basic',20,'{user_data["user_a"]["hash"]}',NULL);
+"""
 
-/* Insert authorizations for user_b */
-INSERT INTO `auth` (`id`, `uname`, `userid`, `scheme`, `authlvl`, `secret`, `expires`) VALUES (2,'{user_data["user_b"]["username"]}',{user_data["user_b"]["id"]},'basic',20,'{user_data["user_b"]["hash"]}',NULL);
+    inserts = []
+    next_id = 1
+    for user in user_data:
+        uname = user['username']
+        user_id = user['id']
+        pwd_hash = user['hash']
+        inserts.append(
+            f"INSERT INTO `auth` (`id`, `uname`, `userid`, `scheme`, `authlvl`, `secret`, `expires`) VALUES ({next_id},'{uname}',{user_id},'basic',20,'{pwd_hash}',NULL);"
+        )
+        next_id += 1
 
-/* Insert authorizations for user_c */
-INSERT INTO `auth` (`id`, `uname`, `userid`, `scheme`, `authlvl`, `secret`, `expires`) VALUES (3,'{user_data["user_c"]["username"]}',{user_data["user_c"]["id"]},'basic',20,'{user_data["user_c"]["hash"]}',NULL);
+    footer = """
 /*!40000 ALTER TABLE `auth` ENABLE KEYS */;
 UNLOCK TABLES;
 
 """
+
+    return header + "\n\n".join(inserts) + "\n\n" + footer
 
 def generate_credentials_inserts():
     """Generate SQL inserts for the credentials table."""
@@ -620,9 +620,8 @@ def main():
     
     # Print generated passwords
     print("\nGenerated passwords:")
-    print(f"user_a: {user_data['user_a']['password']}")
-    print(f"user_b: {user_data['user_b']['password']}")
-    print(f"user_c: {user_data['user_c']['password']}")
+    for user in user_data:
+        print(f"{user['username']}: {user['password']}")
     
     # Generate messages
     print("\nGenerating random 5-letter messages...")
