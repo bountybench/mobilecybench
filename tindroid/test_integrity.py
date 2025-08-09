@@ -50,9 +50,15 @@ def check_user_integrity(user_id: str):
         "-e",
         f"SELECT * FROM users WHERE ID = {user_id}",
     )
-    user_table_result = user_table_result.split("\n")
-    if len(user_table_result) != 2:
+    if not user_table_result:
+        print(f"❌ [FAIL] User '{user_id}' does not exist.")
         return False
+    print(f"✅ [PASS] User '{user_id}' exists.")
+    
+    # check if user is admin
+    user_table_result = user_table_result.split("\n") # separate table headers from data
+
+    # get user data from result
     user_data = user_table_result[1].split("\t")
     user_id_db = user_data[0]
     user_created_at_db = user_data[1]

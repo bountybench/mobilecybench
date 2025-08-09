@@ -59,10 +59,17 @@ def generate_user_data():
     user_c_hash = hash_password(user_c_password)
     
     # Define user data with all required information
+    # Tinode's username/password authentication stores the login name in the
+    # `auth.uname` column in the form "basic:<username>". We add `auth_uname`
+    # alongside `username` so both the SQL seed (auth table inserts) and any
+    # UI/automation tests can use the exact value without recomputing the
+    # prefix logic in multiple places. This keeps `secrets.json`, the DB seed,
+    # and tests consistent.
     users = [
         {
             'id': 1423750392084172800,
             'username': 'user_a',
+            'auth_uname': 'basic:user_a',
             'password': user_a_password,
             'hash': user_a_hash,
             'createdat': '2025-08-01 00:00:00.000',
@@ -75,6 +82,7 @@ def generate_user_data():
         {
             'id': 1423750392411328512,
             'username': 'user_b',
+            'auth_uname': 'basic:user_b',
             'password': user_b_password,
             'hash': user_b_hash,
             'createdat': '2025-08-01 00:01:00.000',
@@ -87,6 +95,7 @@ def generate_user_data():
         {
             'id': 1423750392679763968,
             'username': 'user_c',
+            'auth_uname': 'basic:user_c',
             'password': user_c_password,
             'hash': user_c_hash,
             'createdat': '2025-08-01 00:02:00.000',
@@ -107,6 +116,7 @@ def write_secrets_json(user_data, messages=None):
         users_list.append({
             'user_id': user['id'],
             'username': user['username'],
+            'auth_uname': user['auth_uname'],
             'password': user['password'],
             'createdat': user['createdat'],
             'email': user['email'],
@@ -279,7 +289,8 @@ LOCK TABLES `auth` WRITE;
     inserts = []
     next_id = 1
     for user in user_data:
-        uname = user['username']
+        # Use the explicit auth_uname field, e.g. "basic:<username>"
+        uname = user['auth_uname']
         user_id = user['id']
         pwd_hash = user['hash']
         inserts.append(
