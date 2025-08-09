@@ -188,3 +188,7 @@ def test_share_exists(db, baseline):
     owner = sh["owner"]
     share_with = sh["share_with"]
     assert fetch_share(db, owner, share_with), "Expected share not found in DB"
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
+    
