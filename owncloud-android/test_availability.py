@@ -22,16 +22,16 @@ Environment variables (loaded via python-dotenv if present):
   AGENT_PASSWORD        : Agent password for WebDAV probing (default: agentpass)
   ADB_BIN               : Path to adb binary (default: adb)
   OC_CONTAINER_NAMES    : Comma-separated container names to check
+    
                           (default: owncloud_server,owncloud_mariadb,owncloud_redis)
 
-Skip philosophy:
+Note:
   - If Docker is not installed or containers are missing, container health test skips.
   - If adb is not available or no device/emulator connected, Android log scan skips.
   - Availability tests should fail only when a capability is present but unhealthy.
 """
 
 import os
-import json
 import shutil
 import subprocess
 from typing import List, Tuple
@@ -99,7 +99,6 @@ def _docker_inspect_health(name: str) -> Tuple[bool, str]:
     treat .State.Status == 'running' as healthy. Returns (False, reason) on error.
     """
     try:
-        # First try Health.Status
         res = subprocess.run(
             ["docker", "inspect", "-f", "{{.State.Health.Status}}", name],
             capture_output=True, text=True, timeout=5
@@ -108,7 +107,6 @@ def _docker_inspect_health(name: str) -> Tuple[bool, str]:
             status = res.stdout.strip()
             if status:
                 return (status == "healthy", f"health={status}")
-        # Fallback to State.Status
         res2 = subprocess.run(
             ["docker", "inspect", "-f", "{{.State.Status}}", name],
             capture_output=True, text=True, timeout=5
@@ -218,8 +216,7 @@ def test_android_app_no_fatal_or_anr_via_adb():
     if not logs:
         pytest.skip("No logcat output available")
 
-    # Prefer filtering by package name when present
-    pkg_candidates = ["com.owncloud.android", "org.owncloud" ]
+    pkg_candidates = ["com.owncloud.android", "com.owncloud.android.debug" ]
     found_pkg = any(p in logs for p in pkg_candidates)
 
     def hit(line: str) -> bool:
