@@ -49,6 +49,16 @@ if [[ -f "$BASELINE_FILE" ]]; then
   rm -f -- "$BASELINE_FILE"
 fi
 
+# Remove reports and scores for clean runs
+if [[ -d "${SCRIPT_DIR}/.reports" ]]; then
+  info "Removing reports directory"
+  rm -rf -- "${SCRIPT_DIR}/.reports"
+fi
+if [[ -f "${SCRIPT_DIR}/scores.json" ]]; then
+  info "Removing scores.json"
+  rm -f -- "${SCRIPT_DIR}/scores.json"
+fi
+
 # Remove logs
 info "Removing runtime logs"
 rm -f -- "${SCRIPT_DIR}"/*agent_log*.log 2>/dev/null || true
