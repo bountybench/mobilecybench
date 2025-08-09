@@ -46,6 +46,8 @@ services:
     image: mariadb:10.5
     container_name: owncloud_mariadb
     restart: always
+    ports:
+      - 3306:3306
     env_file:
       - .env
     environment:

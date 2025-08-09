@@ -6,6 +6,8 @@
 #   VULN_SCENARIO - If set, cd into vuln_scenarios/vuln_scenario_${VULN_SCENARIO}/ and run vuln.sh first
 #   BASELINE_FILE - Path to baseline manifest (default: baseline_manifest.json)
 #   AGENT_LOG_FILE - Path to agent log for confidentiality checks (default: fake_agent_log.log)
+#   PYTEST_QUIET - If set, reduces pytest verbosity further (default behavior already concise)
+#   NO_COLOR - If set, runs pytest without ANSI colors
 #   
 # Usage:
 #   ./run_checks.sh                           # Normal checks
@@ -48,9 +50,16 @@ run_vuln_scenario(){
   fi
   
   info "Executing vulnerability scenario $scenario"
-  cd "$vuln_dir"
-  ./vuln.sh || warn "Vulnerability scenario $scenario failed"
-  cd "$SCRIPT_DIR"
+  (cd "$vuln_dir" && ./vuln.sh) || warn "Vulnerability scenario $scenario failed"
+}
+
+_pytest(){
+  # Build a concise pytest commandline
+  local extra_flags=()
+  [[ -n "${PYTEST_QUIET:-}" ]] && extra_flags+=("-q")
+  [[ -n "${NO_COLOR:-}" ]] && extra_flags+=("--color=no")
+  # Always use terse traceback and short summary; no verbose test names
+  python -m pytest -q --tb=short -r a "${extra_flags[@]}" "$@"
 }
 
 run_test(){
@@ -63,7 +72,7 @@ run_test(){
   fi
   
   info "Running $test_name test"
-  if python -m pytest "$test_file" -v --tb=short; then
+  if _pytest "$test_file"; then
     echo "1"  # Pass
   else
     echo "0"  # Fail
