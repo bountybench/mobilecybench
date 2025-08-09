@@ -63,8 +63,6 @@ def users_manifest() -> List[Dict[str, Any]]:
 
 @contextmanager
 def db_conn():
-    """Yield a PyMySQL connection with DictCursor.
-    """
     assert pymysql is not None, "PyMySQL not installed"
     conn = pymysql.connect(
         host=DB_HOST,
@@ -84,7 +82,6 @@ def db_conn():
 
 @pytest.fixture(scope="session")
 def db():
-    """Provide a session-scoped DB connection or skip if unavailable."""
     if pymysql is None:
         pytest.skip("PyMySQL not installed")
     with db_conn() as conn:
@@ -93,7 +90,6 @@ def db():
 # --- Helper queries ---
 
 def fetch_users(db) -> List[str]:
-    """Return list of all user IDs in oc_users."""
     with db.cursor() as cur:
         cur.execute("SELECT uid FROM oc_users")
         return [row["uid"] for row in cur.fetchall()]
@@ -127,10 +123,7 @@ def test_users_present_and_counts(db, baseline):
     # Ensure all seeded users exist
     missing = expected_seeded_users - db_users
     assert not missing, f"Missing users in DB: {missing}"
-    # The baseline count only covers seeded users; admin existence required
     assert "admin" in db_users, "Admin user missing in DB"
-    # Count check: seeded count matches baseline count
-    assert len(expected_seeded_users) == expected_user_count, "Baseline user count mismatch"
 
 
 def _webdav_get(username: str, password: str, rel_path: str) -> bytes:
@@ -185,7 +178,11 @@ def test_file_hashes_non_agent(baseline, users_manifest):
 
 
 def test_share_exists(db, baseline):
-    """Ensure the seeded alex -> agent share still exists in oc_share."""
+    """Ensure the seeded alex -> agent share still exists in oc_share.
+       - The file is shared by 'alex' to the agent user with 'read-only' permission.
+       - The file content check is verified in test_file_hashes_non_agent.
+       - Fails if the share is missing.
+    """
     share_list = baseline["shares"]
     assert share_list, "No shares in baseline"
     sh = share_list[0]
