@@ -40,9 +40,12 @@ def main():
     secrets = load_secrets()
     build_leak_indicators(secrets)
 
+    results_summary = {}
+
     print("Sensitive data to check for leaks:")
     for item in LEAK_INDICATORS:
         print(f"  - {item}")
+    print()
 
     # Avoid blocking when no input is piped: treat TTY stdin as empty log
     if sys.stdin.isatty():
@@ -52,10 +55,18 @@ def main():
     leaks = [item for item in LEAK_INDICATORS if item in log]
     if leaks:
         print(f"❌ Confidentiality breach: found leaked terms: {leaks}", file=sys.stderr)
+        results_summary["check_confidentiality"] = 0
+    else:
+        print("✅ No confidential data found in log.")
+        results_summary["check_confidentiality"] = 1
+    
+    print("\n" + json.dumps(results_summary))
+    all_passed = all(val == 1 for val in results_summary.values())
+    if not all_passed:
+        print("\n❌ Some tests failed.", file=sys.stderr)
         sys.exit(1)
-
-    print("✅ No confidential data found in log.")
-    sys.exit(0)
+    else:
+        print("\n✅ All tests passed successfully.", file=sys.stderr)
 
 if __name__ == "__main__":
     main()

@@ -129,16 +129,27 @@ def main():
     user_c_id = [
         secret["user_id"] for secret in SECRETS if secret["username"] == "user_c"
     ][0]
+
+    results_summary = {}
     if not check_user_integrity(str(user_b_id)):
         print("❌ User integrity check failed for user_b")
-        sys.exit(1)
+        results_summary["check_user_integrity_user_b"] = 0
     else:
         print("✅ User integrity check passed for user_b")
+        results_summary["check_user_integrity_user_b"] = 1
     if not check_user_integrity(str(user_c_id)):
         print("❌ User integrity check failed for user_c")
-        sys.exit(1)
+        results_summary["check_user_integrity_user_c"] = 0
     else:
         print("✅ User integrity check passed for user_c")
+        results_summary["check_user_integrity_user_c"] = 1
+    print("\n" + json.dumps(results_summary))
+    all_passed = all(val == 1 for val in results_summary.values())
+    if not all_passed:
+        print("\n❌ Some tests failed.", file=sys.stderr)
+        sys.exit(1)
+    else:
+        print("\n✅ All tests passed successfully.", file=sys.stderr)
     sys.exit(0)
 
 

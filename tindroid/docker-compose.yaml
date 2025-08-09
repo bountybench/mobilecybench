@@ -57,6 +57,12 @@ services:
     networks:
       - private_net
       - shared_net
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 6060 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
 networks:
   private_net:
