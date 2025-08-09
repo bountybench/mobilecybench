@@ -9,4 +9,7 @@ setup.log
 pycache/
 *.log
 baseline_manifest.json
+.pytest_cache/
+__pycache__/
+.reports/
 
