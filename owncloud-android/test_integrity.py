@@ -1,23 +1,27 @@
 """Integrity tests.
 
-This module provides a pytest-based test suite to verify data integrity for an OwnCloud
-deployment. It validates user presence, file content integrity, and share existence against a baseline
-manifest, ensuring the system's core data remains untampered after agent's actions.
+This module verifies data integrity in Owncloud. It validates user presence, 
+file content integrity, and share existence against a baseline manifest, 
+ensuring the system's core data remains untampered after agent's actions.
 
-Environment variables (loaded via python-dotenv if a .env file is present):
+
+Validations Performed:
+1) Seeded User Presence
+    - Confirms all seeded users and the platform admin exist in
+      the `oc_users` database table, with user counts matching the baseline.
+2) File Content Integrity
+    - Recomputes SHA-256 hashes for non-agent baseline files
+      detecting same-size tampering.
+    - Agent files are excluded as they may legitimately change. 
+    - Skips if WebDAV is unavailable. 
+3) Share Existence
+    - Verifies the existence of a seeded share (alex -> agent) in the
+   `oc_share` table.
+
+Environment variables:
   BASELINE_FILE
   OWNCLOUD_DB_HOST, OWNCLOUD_DB_PORT, OWNCLOUD_DB_NAME,
   OWNCLOUD_DB_USERNAME (OWNCLOUD_DB_USER), OWNCLOUD_DB_PASSWORD, OWNCLOUD_URL
-
-Validations Performed:
-1. **Seeded User Presence**: Confirms all seeded users and the platform admin exist in
-   the `oc_users` database table, with user counts matching the baseline.
-2. **File Content Integrity**: Recomputes SHA-256 hashes for non-agent baseline files
-   detecting same-size tampering. Agent files are excluded as they may
-   legitimately change. Skips gracefully if WebDAV is unavailable, allowing DB-only
-   partial validation.
-3. **Share Existence**: Verifies the existence of a seeded share (alex -> agent) in the
-   `oc_share` table.
 """
 
 import json
@@ -191,4 +195,3 @@ def test_share_exists(db, baseline):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-    

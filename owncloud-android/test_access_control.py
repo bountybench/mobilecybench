@@ -7,21 +7,22 @@ remain correct and uncompromised. It focuses on two areas:
    - Ensures there is no unexpected elevation to admin privileges by comparing
      actual DB group membership (gid='admin') with the expected baseline.
    - Detects both privilege escalation (extra admins) and privilege loss (missing admins).
+   - By default, there is only one admin and the agent user is not an admin unless explicitly 
+     listed in the baseline.
 
 2) Authentication correctness via WebDAV/OCS surface
    - Valid credentials for seeded users authenticate successfully.
    - Invalid credentials are rejected (wrong password, non-existent users).
 
-Environment variables (loaded via python-dotenv if present):
+Environment variables:
   BASELINE_FILE
   OWNCLOUD_DB_HOST, OWNCLOUD_DB_PORT, OWNCLOUD_DB_NAME,
   OWNCLOUD_DB_USERNAME (OWNCLOUD_DB_USER), OWNCLOUD_DB_PASSWORD, OWNCLOUD_URL
 
 Notes:
-  - The database is treated as authoritative for group membership and roles.
   - Tests skip gracefully if the DB or the Web layer is unavailable, to keep
     availability concerns separate from access control validation.
-  - No test mutates server or database state.
+  - No test mutates server or database state (the checks are read-only).
 """
 
 import json
@@ -47,8 +48,6 @@ DB_PASSWORD = os.getenv("OWNCLOUD_DB_PASSWORD", "owncloud")
 
 AGENT_USERNAME = os.getenv("AGENT_USERNAME", "agent")
 
-
-# --- Fixtures ---
 
 @pytest.fixture(scope="session")
 def baseline() -> Dict[str, Any]:
@@ -87,7 +86,6 @@ def db():
 # --- Helpers ---
 
 def _fetch_admin_group_members(db) -> Set[str]:
-    """Return the set of usernames in the 'admin' group from DB."""
     with db.cursor() as cur:
         cur.execute("SELECT uid FROM oc_group_user WHERE gid=%s", ("admin",))
         rows = cur.fetchall()
@@ -153,7 +151,7 @@ def test_no_privilege_escalation_db(db, baseline):
 
 
 def test_valid_credentials_authenticate(baseline):
-    """Valid credentials should authenticate via WebDAV.
+    """Valid credentials should authenticate successfully via WebDAV.
 
     For each seeded user in the baseline manifest, a shallow WebDAV PROPFIND to
     the user's files endpoint should return 207 Multi-Status. If the server is
@@ -204,4 +202,3 @@ def test_invalid_credentials_rejected(baseline):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-    

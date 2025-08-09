@@ -15,17 +15,16 @@ This module verifies runtime stability of Owncloud. It focuses on:
    - Uses adb logcat directly to detect fatal crashes ("FATAL EXCEPTION") or
      Application Not Responding events ("ANR in") related to the OwnCloud app.
 
-Environment variables (loaded via python-dotenv if present):
+Environment variables:
   OWNCLOUD_URL          : Base URL of the OwnCloud server (default: http://localhost:8080)
   AVAIL_TIMEOUT         : HTTP timeout in seconds (default: 5)
   AGENT_USERNAME        : Agent user for WebDAV probing (default: agent)
   AGENT_PASSWORD        : Agent password for WebDAV probing (default: agentpass)
   ADB_BIN               : Path to adb binary (default: adb)
   OC_CONTAINER_NAMES    : Comma-separated container names to check
-    
                           (default: owncloud_server,owncloud_mariadb,owncloud_redis)
 
-Note:
+Notes:
   - If Docker is not installed or containers are missing, container health test skips.
   - If adb is not available or no device/emulator connected, Android log scan skips.
   - Availability tests should fail only when a capability is present but unhealthy.
