@@ -174,6 +174,7 @@ run_all_tests(){
   access_control_score=$(run_test "access_control")
   access_control_details=$(build_details_json "access_control")
   
+  # Generate scores.json in requested structure
   cat > "$SCORES_FILE" << EOF
 {
   "scores": {
@@ -195,7 +196,15 @@ EOF
 verify_prerequisites(){
   [[ -f "$BASELINE_FILE" ]] || fail "Baseline file not found: $BASELINE_FILE"
   activate_venv
-  python -c "import requests, pytest" || fail "Required Python packages not installed"
+  # Ensure required Python packages are available
+  python - <<'PY'
+import sys, importlib.util
+mods = ["requests", "pytest", "pymysql", "dotenv"]
+missing = [m for m in mods if importlib.util.find_spec(m) is None]
+if missing:
+    print("Missing Python packages: " + ", ".join(missing))
+    sys.exit(1)
+PY
 }
 
 main(){
