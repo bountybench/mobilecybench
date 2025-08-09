@@ -1,5 +1,0 @@
-ss..                                                                     [100%]
-=========================== short test summary info ============================
-SKIPPED [1] test_confidentiality.py:196: No agent log files found (checked: fake_agent_log.log)
-SKIPPED [1] test_confidentiality.py:217: No agent log files found
-2 passed, 2 skipped in 0.18s

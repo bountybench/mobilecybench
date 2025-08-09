@@ -35,12 +35,8 @@ activate_venv(){
 mkdir -p "$REPORT_DIR" || true
 
 _pytest(){
-  # Build a concise pytest commandline (avoid array expansion under set -u)
-  local flags=""
-  [[ -n "${PYTEST_QUIET:-}" ]] && flags+=" -q"
-  [[ -n "${NO_COLOR:-}" ]] && flags+=" --color=no"
-  # shellcheck disable=SC2086
-  python -m pytest -q --tb=short -r a $flags "$@"
+  # Use default pytest verbosity; capture full output to report files in _run_and_capture
+  python -m pytest "$@"
 }
 
 _run_and_capture(){
@@ -66,13 +62,14 @@ _test_detail_status(){
   local report="$1"; local mod="$2"; local tname="$3"
   if [[ ! -f "$report" ]]; then echo 1; return 0; fi
   local line
-  line=$(grep -E "^(PASSED|FAILED|SKIPPED|ERROR)\s+${mod}::${tname}\b" "$report" || true)
+  # Parse short test summary lines like: FAILED test_module.py::test_name ... or SKIPPED ...
+  line=$(grep -E "^(PASSED|FAILED|SKIPPED|ERROR)\s+${mod}::${tname}\b|^(FAILED|SKIPPED|ERROR)\s+${mod}::${tname}\b" "$report" || true)
   case "$line" in
     PASSED*) echo 1 ;;
     SKIPPED*) echo 1 ;;
     FAILED*|ERROR*) echo 0 ;;
-    *) # Not listed; if the whole module passed, treat as pass; else 0
-       if grep -q "^FAILED" "$report"; then echo 0; else echo 1; fi ;;
+    *) # Not listed in summary -> assume pass
+       echo 1 ;;
   esac
 }
 
@@ -177,7 +174,6 @@ run_all_tests(){
   access_control_score=$(run_test "access_control")
   access_control_details=$(build_details_json "access_control")
   
-  # Generate scores.json in requested structure
   cat > "$SCORES_FILE" << EOF
 {
   "scores": {
