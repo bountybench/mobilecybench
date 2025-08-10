@@ -1,9 +1,10 @@
+import argparse
 import json
+import os
 import subprocess
 import sys
-import os
+
 import uiautomator2 as u2
-import argparse
 
 secrets_file = "secrets.json"
 SECRETS = []
@@ -13,8 +14,12 @@ ERROR_ONLY = False
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Availability tests")
-    parser.add_argument("--verbose", action="store_true", help="Print non-error output to stdout")
-    parser.add_argument("--error-only", action="store_true", help="Only print errors (to stderr)")
+    parser.add_argument(
+        "--verbose", action="store_true", help="Print non-error output to stdout"
+    )
+    parser.add_argument(
+        "--error-only", action="store_true", help="Only print errors (to stderr)"
+    )
     return parser.parse_args()
 
 

@@ -1,7 +1,8 @@
-import uiautomator2 as u2
-import time
 import argparse
 import sys
+import time
+
+import uiautomator2 as u2
 
 
 def parse_args():
@@ -83,7 +84,10 @@ def fill_and_submit_login(d: u2.Device, username: str, password: str):
             filled_pw = True
 
     # Submit (accept both Sign In and SIGN IN)
-    if not (wait_and_click_text(d, "SIGN IN", timeout=3) or wait_and_click_text(d, "Sign In", timeout=3)):
+    if not (
+        wait_and_click_text(d, "SIGN IN", timeout=3)
+        or wait_and_click_text(d, "Sign In", timeout=3)
+    ):
         return False
     return True
 
@@ -127,7 +131,10 @@ def wait_login_failure_banner(d: u2.Device, timeout: float = 6.0) -> bool:
         # uiautomator2 toast detection (if enabled)
         try:
             toast = d.toast.get_message(0.1)
-            if toast and any(tok.lower() in toast.lower() for tok in ["login", "failed", "rejected", "401"]):
+            if toast and any(
+                tok.lower() in toast.lower()
+                for tok in ["login", "failed", "rejected", "401"]
+            ):
                 return True
         except Exception:
             pass
@@ -162,16 +169,21 @@ def logout_current_user(d: u2.Device, timeout: float = 15.0) -> bool:
 
     if not wait_and_click_text(d, "LOGOUT", timeout=5):
         return False
-    
+
     if not wait_and_click_text(d, "OK", timeout=5):
         return False
 
     end = time.time() + timeout
     while time.time() < end:
-        if d(text="Tinode Chat").exists or d(text="SIGN IN").exists or d(text="Login").exists:
+        if (
+            d(text="Tinode Chat").exists
+            or d(text="SIGN IN").exists
+            or d(text="Login").exists
+        ):
             return True
         time.sleep(0.3)
     return False
+
 
 def main():
     args = parse_args()
@@ -189,31 +201,51 @@ def main():
     dismiss_runtime_dialogs(d)
     # Ensure login screen is visible
     if not d(text="Tinode Chat").wait(timeout=10):
-        print("[WARN] Login screen not detected. Attempting to logout first.") if args.verbose else None
+        (
+            print("[WARN] Login screen not detected. Attempting to logout first.")
+            if args.verbose
+            else None
+        )
         if not logout_current_user(d):
-            print("[ERROR] Logout attempt failed. Please check Android device and try again.")
+            print(
+                "[ERROR] Logout attempt failed. Please check Android device and try again."
+            )
             print(d.dump_hierarchy())
             sys.exit(1)
         else:
             print("[INFO] Logout successful.") if args.verbose else None
     else:
-        print("[INFO] Login screen detected. Proceeding with login.") if args.verbose else None
-    
+        (
+            print("[INFO] Login screen detected. Proceeding with login.")
+            if args.verbose
+            else None
+        )
+
     if not fill_and_submit_login(d, args.username, args.password):
         print("[ERROR] Could not fill and submit login.")
         sys.exit(1)
 
     # Watch briefly for transient failure banners/toasts
     if wait_login_failure_banner(d, timeout=5.0):
-        print("❌ [FAIL] Login failed (login failed banner detected).") if args.verbose else None
+        (
+            print("❌ [FAIL] Login failed (login failed banner detected).")
+            if args.verbose
+            else None
+        )
         sys.exit(1)
 
     time.sleep(1)
     hierarchy = d.dump_hierarchy()
 
     # Success indicator: expected topic or chat UI present
-    if (args.expect and args.expect in hierarchy) or ("co.tinode.tindroidx:id/startNewChat" in hierarchy):
-        print("✅ [PASS] Login successful and main chat UI detected.") if args.verbose else None
+    if (args.expect and args.expect in hierarchy) or (
+        "co.tinode.tindroidx:id/startNewChat" in hierarchy
+    ):
+        (
+            print("✅ [PASS] Login successful and main chat UI detected.")
+            if args.verbose
+            else None
+        )
         if args.logout_after:
             if logout_current_user(d):
                 print("[INFO] Logout successful.") if args.verbose else None
@@ -228,5 +260,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

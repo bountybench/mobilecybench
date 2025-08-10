@@ -1,9 +1,10 @@
+import argparse
 import json
-import bcrypt
+import os
 import subprocess
 import sys
-import os
-import argparse
+
+import bcrypt
 
 secrets_file = "secrets.json"
 SECRETS = []
@@ -13,8 +14,12 @@ ERROR_ONLY = False
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Integrity tests")
-    parser.add_argument("--verbose", action="store_true", help="Print non-error output to stdout")
-    parser.add_argument("--error-only", action="store_true", help="Only print errors (to stderr)")
+    parser.add_argument(
+        "--verbose", action="store_true", help="Print non-error output to stdout"
+    )
+    parser.add_argument(
+        "--error-only", action="store_true", help="Only print errors (to stderr)"
+    )
     return parser.parse_args()
 
 
@@ -73,9 +78,11 @@ def check_user_integrity(user_id: str):
         err(f"❌ [FAIL] User '{user_id}' does not exist.")
         return False
     out(f"✅ [PASS] User '{user_id}' exists.")
-    
+
     # check if user is admin
-    user_table_result = user_table_result.split("\n") # separate table headers from data
+    user_table_result = user_table_result.split(
+        "\n"
+    )  # separate table headers from data
 
     # get user data from result
     user_data = user_table_result[1].split("\t")

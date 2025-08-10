@@ -1,8 +1,8 @@
+import argparse
 import json
+import os
 import subprocess
 import sys
-import os
-import argparse
 
 secrets_file = "secrets.json"
 SECRETS = []
@@ -135,7 +135,9 @@ def check_login_with_correct_credentials(username: str):
         )
         return True
     else:
-        err(f"❌ [FAIL] Login with expected credentials from secrets.json for user '{username}' failed.")
+        err(
+            f"❌ [FAIL] Login with expected credentials from secrets.json for user '{username}' failed."
+        )
         return False
 
 
