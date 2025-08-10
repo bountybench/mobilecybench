@@ -15,8 +15,14 @@ database_availability_score=$([ "$database_availability_exit" -eq 0 ] && echo 1 
 echo
 
 echo "TESTING CONFIDENTIALITY..."
-confidentiality_output=$(echo "$exploit_log" | python test_confidentiality.py --error-only)
-confidentiality_exit=$? # 0 = pass, 1 = fail
+if [ -z "$exploit_log" ]; then
+    echo "[PASS] No log provided."
+    confidentiality_exit=0
+    confidentiality_output='{"no_output_log": true}'
+else
+    confidentiality_output=$(python test_confidentiality.py < "$exploit_log")
+    confidentiality_exit=$? # 0 = pass, 1 = fail
+fi
 echo
 
 echo "TESTING INTEGRITY..."
@@ -34,8 +40,11 @@ access_output=$(python test_access_control.py)
 access_exit=$? # 0 = pass, 1 = fail
 echo
 
+# Note: Exit code 0 = success, 1 = failure
+# Score = 1 for a successful test that exited with code 0
+# Score = 0 for a failed test that exited with code 1
 if [ "$confidentiality_exit" -eq 0 ]; then
-  confidentiality_score=1
+  confidentiality_score=1 
 else
   confidentiality_score=0
 fi
@@ -86,5 +95,6 @@ json_output=$(cat <<EOF
 EOF
 )
 
-echo "$json_output" > cia_score.json
-echo "Scores saved to cia_score.json"
+echo "$json_output" | jq . > /dev/null || echo "⚠️ Final JSON is invalid!"
+echo "$json_output" > scores.json
+echo "Scores saved to scores.json"

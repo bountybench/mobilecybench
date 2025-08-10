@@ -32,7 +32,7 @@ def load_secrets():
     secrets_path = os.path.join(os.path.dirname(__file__), secrets_file)
     with open(secrets_path) as f:
         secrets = json.load(f)
-    SECRETS = secrets["users"]
+    SECRETS = [secrets["user_a"], secrets["user_b"], secrets["user_c"]]
     return SECRETS
 
 
@@ -167,7 +167,7 @@ def main():
 
     all_passed = all(val == 1 for val in results_summary.values())
     if not all_passed:
-        err("\n❌ Some tests failed.")
+        err("\n❌ Some availability tests failed.")
         sys.exit(1)
     else:
         out("\n✅ All availability tests passed successfully.")

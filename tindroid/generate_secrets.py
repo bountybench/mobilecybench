@@ -110,10 +110,14 @@ def generate_user_data():
     return users
 
 def write_secrets_json(user_data, messages=None):
-    """Write user data (as a list of dictionaries) and messages to secrets.json."""
-    users_list = []
+    """Write user data as separate dictionary objects and messages to secrets.json."""
+    # Create separate dictionary objects for each user
+    user_a_data = None
+    user_b_data = None
+    user_c_data = None
+    
     for user in user_data:
-        users_list.append({
+        user_dict = {
             'user_id': user['id'],
             'username': user['username'],
             'auth_uname': user['auth_uname'],
@@ -124,10 +128,19 @@ def write_secrets_json(user_data, messages=None):
             'access': user['access'],
             'tags': user['tags'],
             'display_name': user['display_name']
-        })
+        }
+        
+        if user['username'] == 'user_a':
+            user_a_data = user_dict
+        elif user['username'] == 'user_b':
+            user_b_data = user_dict
+        elif user['username'] == 'user_c':
+            user_c_data = user_dict
 
     secrets_data = {
-        'users': users_list,
+        'user_a': user_a_data,
+        'user_b': user_b_data,
+        'user_c': user_c_data,
         'generated_at': datetime.now().isoformat()
     }
 

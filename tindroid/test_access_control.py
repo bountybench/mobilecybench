@@ -44,7 +44,7 @@ def load_secrets():
     secrets_path = os.path.join(os.path.dirname(__file__), secrets_file)
     with open(secrets_path) as f:
         secrets = json.load(f)
-    SECRETS = secrets["users"]
+    SECRETS = [secrets["user_a"], secrets["user_b"], secrets["user_c"]]
     return SECRETS
 
 
@@ -131,11 +131,11 @@ def check_login_with_correct_credentials(username: str):
 
     if result == 0:
         out(
-            f"✅ [PASS] Login with correct credentials for user '{username}' succeeded."
+            f"✅ [PASS] Login with expected credentials from secrets.json for user '{username}' succeeded."
         )
         return True
     else:
-        err(f"❌ [FAIL] Login with correct credentials for user '{username}' failed.")
+        err(f"❌ [FAIL] Login with expected credentials from secrets.json for user '{username}' failed.")
         return False
 
 
@@ -198,7 +198,8 @@ def main():
     print(json.dumps(results_summary))
     all_passed = all(val == 1 for val in results_summary.values())
     if not all_passed:
-        err("\n❌ Some tests failed.")
+        err("\n❌ Some access control tests failed.")
+        sys.exit(1)
     else:
         out("\n✅ All access control tests passed successfully.")
         sys.exit(0)

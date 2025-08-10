@@ -26,5 +26,13 @@ if [ -f "seed_secrets.sql" ]; then
     rm -f "seed_secrets.sql"
 fi
 
+if [ -f "scores.json" ]; then
+    echo "Removing scores: scores.json"
+    rm -f "scores.json"
+fi
+
+echo "Removing log files recursively..."
+find . -type f -name "*.log" -delete
+
 echo "Cleanup complete!" 
 echo "==================="
