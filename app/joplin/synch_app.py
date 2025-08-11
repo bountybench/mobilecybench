@@ -17,51 +17,32 @@ password = args.password
 d = u2.connect()
 
 
-def wait_and_click_text(text, timeout=120, max_click_attempts=3, click_retry_delay=5):
-    if not d(text=text).wait(timeout=timeout):
-        print(f"[ERROR] Could not find text: '{text}' within {timeout}s", file=sys.stderr)
+def wait_and_click_text(text, timeout=45):
+    if d(text=text).wait(timeout=timeout):
+        d(text=text).click_exists(timeout=3)
+    else:
+        print(
+            f"[ERROR] Could not find text: '{text}' within {timeout}s", file=sys.stderr
+        )
         print(d.dump_hierarchy(), file=sys.stderr)
         exit(1)
-
-    for attempt in range(1, max_click_attempts + 1):
-        try:
-            d(text=text).click()
-            break  # success, exit loop
-        except Exception as e:
-            if attempt == max_click_attempts:
-                print(f"[ERROR] Failed to click text '{text}' after {max_click_attempts} attempts: {e}", file=sys.stderr)
-                print(d.dump_hierarchy(), file=sys.stderr)
-                exit(1)
-            else:
-                print(f"[WARN] Click attempt {attempt} failed for text '{text}', retrying in {click_retry_delay}s...", file=sys.stderr)
-                time.sleep(click_retry_delay)
-
     wait_for_ui_stable(timeout=15)
 
 
-def wait_and_click_desc(desc, timeout=120, max_click_attempts=3, click_retry_delay=5):
-    if not d(description=desc).wait(timeout=timeout):
-        print(f"[ERROR] Could not find description: '{desc}' within {timeout}s", file=sys.stderr)
+def wait_and_click_desc(desc, timeout=45):
+    if d(description=desc).wait(timeout=timeout):
+        d(description=desc).click_exists(timeout=3)
+    else:
+        print(
+            f"[ERROR] Could not find description: '{desc}' within {timeout}s",
+            file=sys.stderr,
+        )
         print(d.dump_hierarchy(), file=sys.stderr)
         exit(1)
-
-    for attempt in range(1, max_click_attempts + 1):
-        try:
-            d(description=desc).click()
-            break
-        except Exception as e:
-            if attempt == max_click_attempts:
-                print(f"[ERROR] Failed to click description '{desc}' after {max_click_attempts} attempts: {e}", file=sys.stderr)
-                print(d.dump_hierarchy(), file=sys.stderr)
-                exit(1)
-            else:
-                print(f"[WARN] Click attempt {attempt} failed for description '{desc}', retrying in {click_retry_delay}s...", file=sys.stderr)
-                time.sleep(click_retry_delay)
-
     wait_for_ui_stable(timeout=15)
 
 
-def wait_for_ui_stable(timeout=120, interval=1):
+def wait_for_ui_stable(timeout=10, interval=0.5):
     """
     Wait until the UI hierarchy stops changing.
     """
@@ -78,16 +59,16 @@ def wait_for_ui_stable(timeout=120, interval=1):
     return False
 
 
-wait_for_ui_stable(timeout=300)
+wait_for_ui_stable(timeout=15, interval=1)
 wait_and_click_desc("Sidebar, Show/hide the sidebar")
 wait_and_click_text("Configuration")
-wait_for_ui_stable(timeout=300)
+wait_for_ui_stable(timeout=15, interval=1)
 
 label = d(text="Synchronization target")
 if label.exists:
     dropdown = label.sibling(className="android.view.ViewGroup")
     dropdown.click()
-    wait_for_ui_stable(interval=3)
+    wait_for_ui_stable(timeout=5, interval=3)
     wait_and_click_text("Joplin Server (Beta)")
 
 # Fill Joplin Server URL
@@ -95,22 +76,22 @@ label = d(text="Joplin Server URL")
 if label.exists:
     edit = label.sibling(className="android.widget.EditText")
     edit.click()
-    wait_for_ui_stable()
+    wait_for_ui_stable(timeout=5)
     edit.set_text("")
     d.send_keys("http://10.0.2.2:22300")
     d.press("enter")
-wait_for_ui_stable()
+wait_for_ui_stable(timeout=5)
 
 # Fill Joplin Server email
 label = d(text="Joplin Server email")
 if label.exists:
     edit = label.sibling(className="android.widget.EditText")
     edit.click()
-    wait_for_ui_stable()
+    wait_for_ui_stable(timeout=5)
     edit.set_text("")
     d.send_keys(username)
     d.press("enter")
-wait_for_ui_stable()
+wait_for_ui_stable(timeout=5)
 
 width, height = d.window_size()
 d.drag(width/2, height*0.6, width/2, height*0.55, 0.2)
@@ -120,14 +101,14 @@ label = d(text="Joplin Server password")
 if label.exists:
     edit = label.sibling(className="android.widget.EditText")
     edit.click()
-    wait_for_ui_stable()
+    wait_for_ui_stable(timeout=5)
     edit.set_text("")
     d.send_keys(password)
     d.press("enter")
-wait_for_ui_stable()
+wait_for_ui_stable(timeout=5, interval=1)
 
 wait_and_click_text("CHECK SYNCHRONIZATION CONFIGURATION")
-wait_for_ui_stable(interval=3)
+wait_for_ui_stable(timeout=10, interval=3)
 
 hierarchy = d.dump_hierarchy()
 root = ET.fromstring(hierarchy)
@@ -145,13 +126,13 @@ print(code)
 if "Error" in hierarchy:
     print("[ERROR] Found 'Error' in UI hierarchy after sync check.", file=sys.stderr)
     wait_and_click_desc("Back")
-    if d(text="There are unsaved changes.").exists():
+    if d(text="There are unsaved changes.").exists(timeout=30):
         print(
             "[INFO] Unsaved changes dialog detected. Discarding changes.",
             file=sys.stderr,
         )
-        d(text="DISCARD CHANGES").click_exists()
-        wait_for_ui_stable()
+        d(text="DISCARD CHANGES").click_exists(timeout=30)
+        wait_for_ui_stable(timeout=5)
     else:
         print("[INFO] No unsaved changes dialog appeared.", file=sys.stderr)
     exit(1)
