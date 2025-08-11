@@ -16,19 +16,11 @@ json_add_item() {
 # Writes the JSON_ITEMS array to a file as a JSON credentials array.
 json_write_file() {
     local out=${1:-secrets.json}
-    {
-        echo '{'
-        echo '  "credentials": ['
-        local n=${#JSON_ITEMS[@]}
-        for i in "${!JSON_ITEMS[@]}"; do
-            if (( i < n-1 )); then
-                printf '    %s,\n' "${JSON_ITEMS[i]}"
-            else
-                printf '    %s\n' "${JSON_ITEMS[i]}"
-            fi
-        done
-        echo '  ]'
-        echo '}'
-    } > "${out}"
+    local root_key=${2:-}
+    if [[ -z "$root_key" ]]; then
+        printf '%s\n' "${JSON_ITEMS[@]}" | jq -s '.' > "${out}"
+    else
+        printf '%s\n' "${JSON_ITEMS[@]}" | jq -s --arg key "$root_key" '{($key): .}' > "${out}"
+    fi
     log_info "Wrote ${out} (${#JSON_ITEMS[@]} items)"
 }

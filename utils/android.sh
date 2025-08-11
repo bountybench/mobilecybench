@@ -4,46 +4,25 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/wait.sh"
 
-: "${ANDROID_HOME:=${HOME}/.android-sdk}"
-: "${JAVA_HOME:=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home}"
 
 # Checks for required Android tools and SDK presence.
 check_android_prereqs() {
+    if ! command -v java >/dev/null 2>&1; then
+        log_warn "java not found in PATH; building Android apps may fail"
+    fi
+    if ! command -v adb >/dev/null 2>&1; then
+        log_warn "adb not found in PATH; emulator/device connectivity may fail"
+    fi
+    if [[ -z "${ANDROID_HOME:-}" ]]; then
+        log_warn "ANDROID_HOME is not set; Android SDK may be unavailable"
+    elif [[ ! -d "${ANDROID_HOME}" ]]; then
+        log_warn "ANDROID_HOME is set to ${ANDROID_HOME} but directory does not exist"
+    fi
+    log_info "Android environment check complete."
     require_cmd java
     require_cmd git
     require_cmd adb
-    if [[ ! -d "${ANDROID_HOME}" ]]; then
-        fatal "Android SDK not found at ${ANDROID_HOME}"
-    fi
     log_info "Android prerequisites OK"
-}
-
-# Sets JAVA_HOME and ANDROID_HOME environment variables for Android tools. (Works for Homebrew, system JDK, SDK)
-setup_android_env() {
-  local jhome jbin real_jbin
-  if [[ -z "${JAVA_HOME:-}" && -n "$(command -v java 2>/dev/null)" ]]; then
-    jhome=$(java -XshowSettings:properties -version 2>&1 | awk -F' = ' '/java.home/ {print $2; exit}' || true)
-    if [[ -n "$jhome" ]]; then
-      JAVA_HOME="$jhome"
-    else
-      jbin=$(command -v java)
-      if command -v realpath >/dev/null 2>&1; then
-        real_jbin=$(realpath "$jbin" 2>/dev/null || true)
-      elif command -v readlink >/dev/null 2>&1; then
-        real_jbin=$(readlink -f "$jbin" 2>/dev/null || true)
-      else
-        real_jbin="$jbin"
-      fi
-      if [[ -n "$real_jbin" ]]; then
-        JAVA_HOME=$(cd "$(dirname "$(dirname "$real_jbin")")" && pwd -P)
-      fi
-    fi
-  fi
-  export JAVA_HOME="${JAVA_HOME:-}"
-  [[ -n "${JAVA_HOME:-}" ]] && export PATH="${JAVA_HOME}/bin:${PATH}"
-  export ANDROID_HOME="${ANDROID_HOME:-}"
-  [[ -n "${ANDROID_HOME:-}" ]] && export PATH="${ANDROID_HOME}/platform-tools:${PATH}"
-  log_info "Configured JAVA_HOME=${JAVA_HOME:-<not-set>} ANDROID_HOME=${ANDROID_HOME:-<not-set>}"
 }
 
 # Starts an Android emulator waits for it to boot.
@@ -84,51 +63,52 @@ adb_launch_activity() {
 
 # Computes hashes of files in given directories and outputs JSON.
 adb_hash_dirs() {
-    local dirs=("$@")
-    if [[ ${#dirs[@]} -eq 0 ]]; then
+    if [[ $# -eq 0 ]]; then
         fatal "adb_hash_dirs requires at least one directory"
     fi
-    declare -A hashes
-    for d in "${dirs[@]}"; do
-        local combined
-        combined=$(adb shell "find $d -type f -exec sha256sum {} + 2>/dev/null || true" \
+    if ! command -v jq >/dev/null 2>&1; then
+        fatal "adb_hash_dirs requires 'jq' to build JSON"
+    fi
+    for d in "$@"; do
+        local combined=$(adb shell "find \"$d\" -type f -exec sha256sum {} + 2>/dev/null || true" \
             | awk '{print $1}' | sort | sha256sum | awk '{print $1}' || true)
-        hashes["$d"]=${combined:-}
-    done
-    {
-        echo '{'
-        echo '  "dir_hashes": {'
-        local i=0; local n=${#dirs[@]}
-        for d in "${dirs[@]}"; do
-            printf '    "%s": "%s"' "$d" "${hashes[$d]}"
-            ((++i))
-            if (( i < n )); then
-                echo ','
-            else
-                echo
-            fi
-        done
-        echo '  }'
-        echo '}'
-    }
+        jq -n --arg dir "$d" --arg hash "${combined:-}" '{dir:$dir,hash:$hash}'
+    done | jq -s 'reduce .[] as $item ({}; . + { ($item.dir): $item.hash }) | {dir_hashes: .}'
 }
 
-# Writes a UUID string to secret.txt in each specified device directory.
-adb_write_secret_to_dirs() {
-    local uuid=${1:-}
-    shift || true
-    if [[ -z "$uuid" ]]; then
-        if ! command -v uuidgen >/dev/null 2>&1; then
-            fatal "uuidgen not found"
+# Writes a UUID string to secret.txt in each specified device directory and appends UUID string to given file (i.e. secrets.json).
+adb_hide_secret_files() {
+    local out="${1:-secrets.json}"; shift
+    if [[ $# -eq 0 ]]; then
+        fatal "At least one directory required"
+    fi
+    command -v uuidgen >/dev/null 2>&1 || fatal "uuidgen not found"
+    command -v jq >/dev/null 2>&1 || fatal "jq not found"
+    local uuid=$(uuidgen) || fatal "uuidgen failed"
+    local completed=true
+    for d in "$@"; do
+        local remote="${d%/}/secret.txt"
+        adb shell "mkdir -p '${d//\'/\'\\\'\'}'" >/dev/null 2>&1 || log_warn "mkdir failed for $d (may be read-only)"
+        if adb shell "echo -n '$uuid' > '$remote'" 2>/dev/null; then
+            log_info "Wrote secret to device:$remote"
+        else
+            completed=false
+            log_warn "Failed writing to $remote"
         fi
-        uuid=$(uuidgen)
-    fi
-    local dirs=("$@")
-    if [[ ${#dirs[@]} -eq 0 ]]; then
-        fatal "adb_write_secret_to_dirs needs at least one directory"
-    fi
-    for d in "${dirs[@]}"; do
-        adb shell "mkdir -p '$d' && echo '$uuid' > '$d/secret.txt'"
     done
-    log_info "Wrote secret uuid to device dirs"
+    if $completed; then
+        if [[ -f "$out" ]]; then
+            if jq -e 'type == "array"' "$out" >/dev/null 2>&1; then
+                jq --arg u "$uuid" '{credentials: ., sandbox: $u}' "$out" > "$out.tmp"
+            else
+                jq --arg u "$uuid" '. + {sandbox: $u}' "$out" > "$out.tmp"
+            fi
+            mv "$out.tmp" "$out"
+        else
+            jq -n --arg u "$uuid" '{sandbox: $u}' > "$out"
+        fi
+        log_info "Updated sandbox_uuid in $out"
+    else
+        log_warn "No secrets written; skipping JSON update"
+    fi
 }

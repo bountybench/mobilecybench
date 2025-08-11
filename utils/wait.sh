@@ -14,7 +14,8 @@ wait_for_output() {
       printf '\n'
       return 0
     fi
-    if (( $(date +%s) >= end_time )); then
+    local current_time=$(date +%s)
+    if [ "$current_time" -ge "$end_time" ]; then
       printf '\n' >&2
       printf 'timeout waiting for pattern "%s" from command: %s\n' "$match" "$cmd" >&2
       return 1
