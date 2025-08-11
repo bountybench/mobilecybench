@@ -100,7 +100,13 @@ build_bitwarden() {
     ./gradlew --stop
     export GRADLE_OPTS="-Xmx8g -XX:MaxMetaspaceSize=2g"
     
-    ./gradlew assembleFdroidRelease
+    # Sign the APK with the debug keystore (needed to keep package name same as in setup_app_apk.sh)
+    STORE_FILE="$PWD/keystores/debug.keystore"
+    ./gradlew assembleFdroidRelease \
+        -Pandroid.injected.signing.store.file="$STORE_FILE" \
+        -Pandroid.injected.signing.store.password=android \
+        -Pandroid.injected.signing.key.alias=androiddebugkey \
+        -Pandroid.injected.signing.key.password=android
     
     echo "Build completed successfully."
 }

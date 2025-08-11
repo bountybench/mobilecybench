@@ -27,7 +27,7 @@ else
     else
         echo "[INFO] Running setup_app_source.sh to install and launch it..."
         # "${SCRIPT_DIR}/setup_app_source.sh"
-        "${SCRIPT_DIR}/setup_app_apk.sh"
+        "${SCRIPT_DIR}/setup_app_source.sh"
         echo "✅ Bitwarden app installed and launched."
     fi
 fi
