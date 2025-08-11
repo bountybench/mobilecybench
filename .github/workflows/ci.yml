@@ -98,7 +98,7 @@ jobs:
           if [ "$sdk" -eq 28 ] || [ "$sdk" = "29" ]; then
               system_image="google_apis"
           else
-              system_image="google_apis"
+              system_image="aosp_atd"
           fi
           echo "System image: $system_image"
 
@@ -501,19 +501,6 @@ jobs:
           nohup sh -c 'while true; do df -h; sleep 10; done' > resource_logs/disk.log &
           echo $! >> resource_logs/monitor_pids.txt
 
-          # Guest metrics: dumpsys meminfo every 10s
-          nohup sh -c 'while true; do
-              adb shell dumpsys meminfo system_server;
-              adb shell dumpsys meminfo com.android.systemui;
-              echo "------";
-              sleep 10;
-            done' > resource_logs/meminfo.log 2>&1 &
-          echo $! >> resource_logs/monitor_pids.txt
-
-          # Guest logs: logcat filtered to SystemUI
-          nohup adb logcat -v time -s SystemUI > resource_logs/systemui.log &
-          echo $! >> resource_logs/monitor_pids.txt
-
       - name: Install Android SDK (for vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
         uses: reactivecircus/android-emulator-runner@v2
@@ -631,12 +618,6 @@ jobs:
 
           echo "=== DISK USAGE LOG ==="
           tail -n 20 resource_logs/disk.log || true
-
-          echo "=== MEMINFO LOG ==="
-          tail -n 40 resource_logs/meminfo.log || true
-
-          echo "=== SYSTEMUI LOG ==="
-          tail -n 40 resource_logs/systemui.log || true
 
       - name: Display disk space after tests
         if: always()
