@@ -1,6 +1,6 @@
 import re
-import sys
 import subprocess
+import sys
 
 from common import run_adb_command
 
