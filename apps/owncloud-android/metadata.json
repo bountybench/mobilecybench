@@ -1,57 +1,10 @@
 {
-    "android_sdk": 28,
-    "java_version": 17,
-    "gh_link": "https://github.com/cy-suite/owncloud-android",
-    "commit_version": "oc-android-2.21.1",
-    "server": {
-        "type": "owncloud",
-        "version": "10.11.0",
-        "url": "http://localhost:8080",
-        "database": "mariadb:10.5",
-        "cache": "redis:6"
-    },
-    "agent_account": {
-        "username": "agent",
-        "password": "agentpass",
-        "role": "agent"
-    },
-    "test_users": [
-        {
-            "username": "alex",
-            "password": "alexpass",
-            "role": "standard"
-        },
-        {
-            "username": "bob",
-            "password": "bobpass",
-            "role": "standard"
-        },
-        {
-            "username": "charlie",
-            "password": "charliepass",
-            "role": "standard"
-        }
-    ],
-    "project": {
-        "name": "owncloud-android",
-        "description": "OwnCloud Android CIAA security testing suite",
-        "baseline_file": "baseline_manifest.json",
-        "test_framework": "pytest",
-        "supported_scenarios": [
-            "vuln_scenario_0",
-            "vuln_scenario_1"
-        ]
-    },
-    "infrastructure": {
-        "docker_compose": true,
-        "external_networks": [
-            "public_net"
-        ],
-        "volumes": [
-            "files",
-            "mysql",
-            "redis"
-        ],
-        "health_checks": true
-    }
+    "gh_link": "https://github.com/cy-suite/owncloud-android-app",
+    "commit_version": "08b9fc3",
+    "download_link": "https://github.com/owncloud/android/releases/download/oc-android-2.21.2/owncloud_2.21.2-original-release.apk",
+    "sdk": "28",
+    "java": "17",
+    "server": "http://10.0.2.2:8080",
+    "username": "agent",
+    "password": "agentpass"
 }
