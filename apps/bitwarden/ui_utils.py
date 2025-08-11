@@ -1,6 +1,8 @@
 """
-This module contains UI automation helper functions for Bitwarden tests,
-using uiautomator2. It handles device connection, UI interaction, and ANR dialogs.
+Generic UI automation helpers built on uiautomator2:
+ - Public API: initialize_ui_automation, wait_and_click, wait_and_set_text
+ - Private helpers: internal utilities for stability, ANR handling, etc.
+Bitwarden-specific workflows are defined in bw_workflows.py.
 """
 
 import re
@@ -9,24 +11,22 @@ import sys
 import time
 
 import uiautomator2 as u2
-from util import BITWARDEN_PKG, SERVER_URL
 
 # =============================================================================
-# UI AUTOMATION INITIALIZATION
+# PUBLIC UI API
 # =============================================================================
 
 
-def initialize_ui_automation(max_retries=3, retry_delay=5, fail_fast=False):
+def initialize_ui_automation(max_retries=3, retry_delay=5):
     """
     Standardized UI automation initialization with device connection.
 
     Args:
         max_retries: Maximum connection attempts
         retry_delay: Seconds between retry attempts
-        fail_fast: If True, exit on connection failure. If False, return None.
 
     Returns:
-        Device object if successful, None if failed and fail_fast=False
+        Device object if successful
     """
     for attempt in range(max_retries):
         try:
@@ -79,10 +79,8 @@ def initialize_ui_automation(max_retries=3, retry_delay=5, fail_fast=False):
                 print(f"Retrying in {retry_delay} seconds...")
                 time.sleep(retry_delay)
 
-    print("[ERROR] Failed to connect to device after all attempts")
-    if fail_fast:
-        sys.exit(1)
-    return None
+    # If unable to connect prevents script execution, exit via centralized fatal handler
+    _fatal(None, "Failed to connect to device after all attempts")
 
 
 # =============================================================================
@@ -99,29 +97,15 @@ def wait_and_click(d, element, timeout=180):
         element: UI element to wait for and click
         timeout: Maximum time to wait for element
     """
-    start_time = time.time()
-    element_found = False
+    if not _wait_for_element(d, element, timeout=timeout):
+        _fatal(d, f"Could not find element: '{element.selector}' within {timeout}s")
 
-    while time.time() - start_time < timeout:
-        # Handle ANRs while waiting, passing target element for verification
-        _handle_anr(d, max_anrs=5, timeout=1, target_element=element)
-
-        if element.exists:
-            element_found = True
-            break
-        time.sleep(1)
-
-    if element_found:
+    try:
         element.click_exists(timeout=3)
         print(f"[DEBUG] Clicked element {element.selector}")
         _wait_for_ui_stable(d)
-    else:
-        print(
-            f"[FATAL] Could not find element: '{element.selector}' within {timeout}s",
-            file=sys.stderr,
-        )
-        print(d.dump_hierarchy(), file=sys.stderr)
-        sys.exit(1)
+    except Exception as e:
+        _fatal(d, f"Could not click element: '{element.selector}': {e}")
 
 
 def wait_and_set_text(d, element, text, timeout=180):
@@ -134,43 +118,42 @@ def wait_and_set_text(d, element, text, timeout=180):
         text: Text to set
         timeout: Maximum time to wait for element
     """
-    start_time = time.time()
-    element_found = False
+    if not _wait_for_element(d, element, timeout=timeout):
+        _fatal(d, f"Could not find element: '{element.selector}' within {timeout}s")
 
-    while time.time() - start_time < timeout:
-        # Handle ANRs while waiting, passing target element for verification
-        _handle_anr(d, max_anrs=5, timeout=1, target_element=element)
-
-        if element.exists:
-            element_found = True
-            break
-        time.sleep(1)
-
-    if element_found:
-        # Use robust text entry with retries and scroll support
-        if _robust_set_text(d, element, text, max_attempts=3):
-            print(f"[DEBUG] Set text to {text}")
-            _handle_keyboard_action(d)
-            _wait_for_ui_stable(d)
-        else:
-            print(
-                f"[FATAL] Failed to set text on element: '{element.selector}'",
-                file=sys.stderr,
-            )
-            print(d.dump_hierarchy(), file=sys.stderr)
-            sys.exit(1)
+    # Use robust text entry with retries and scroll support
+    if _robust_set_text(d, element, text, max_attempts=3):
+        print(f"[DEBUG] Set text to {text}")
+        _handle_keyboard_action(d)
+        _wait_for_ui_stable(d)
     else:
-        print(
-            f"[FATAL] Could not find element: '{element.selector}' within {timeout}s",
-            file=sys.stderr,
-        )
-        print(d.dump_hierarchy(), file=sys.stderr)
-        sys.exit(1)
+        _fatal(d, f"Failed to set text on element: '{element.selector}'")
 
 
 # =============================================================================
-# PRIVATE UI STABILITY AND INTERACTION FUNCTIONS
+# PRIVATE HELPERS
 # =============================================================================
+
+
+def _wait_for_element(d, element, timeout=180):
+    """
+    Wait for an element to exist while continuously handling potential ANR dialogs.
+
+    Args:
+        d: Device object
+        element: UI element to wait for
+        timeout: Maximum time to wait in seconds
+
+    Returns:
+        True if the element exists within the timeout, otherwise False
+    """
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        _handle_anr(d, max_anrs=5, timeout=1, target_element=element)
+        if element.exists:
+            return True
+        time.sleep(1)
+    return False
 
 
 def _wait_for_ui_stable(d, timeout=10, interval=0.5):
@@ -189,7 +172,16 @@ def _wait_for_ui_stable(d, timeout=10, interval=0.5):
     start = time.time()
 
     while time.time() - start < timeout:
-        current_hierarchy = d.dump_hierarchy(compressed=True)
+        try:
+            current_hierarchy = d.dump_hierarchy(compressed=True)
+        except Exception as e:
+            print(
+                f"[WARN] Failed to dump UI hierarchy during stability check: {e}",
+                file=sys.stderr,
+            )
+            time.sleep(interval)
+            continue
+
         if current_hierarchy == prev_hierarchy:
             print("[INFO] UI is stable")
             return True
@@ -252,11 +244,9 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
 
     # Fatal error if we hit the max ANR limit
     if anr_count == max_anrs:
-        print(
-            f"[FATAL] Could not handle ANR dialog(s) - reached maximum limit of {max_anrs}."
+        _fatal(
+            d, f"Could not handle ANR dialog(s) - reached maximum limit of {max_anrs}."
         )
-        print(d.dump_hierarchy(), file=sys.stderr)
-        sys.exit(1)
 
     if anr_count > 0:
         print(f"[INFO] Handled {anr_count} consecutive ANR dialog(s).")
@@ -391,297 +381,23 @@ def _robust_set_text(d, element, text, max_attempts=3):
 
 
 # =============================================================================
-# BITWARDEN APP WORKFLOW FUNCTIONS
-# Use python -m weditor to view and debug the UI hierarchy
+# ERROR HANDLING HELPERS
 # =============================================================================
 
 
-def bw_initialize_local_host(d):
+def _fatal(d, message):
     """
-    Initializes the device connection and launches the Bitwarden app
+    Centralized fatal error handler: log message, dump UI hierarchy if possible,
+    then exit the process with non-zero code.
+
+    Args:
+        d: Device object (may be None)
+        message: Error message to print
     """
-    # --- Step 1: App Initialization and Server Configuration ---
-    # The following steps launch the application and point it to the
-    # self-hosted Vaultwarden server instance.
-
-    # --- 1.1: App Launch ---
-    print(f"Step 1.1.1: Stopping any existing instances of {BITWARDEN_PKG}...")
-    d.app_stop(BITWARDEN_PKG)
-    time.sleep(1)  # Give it a moment to release resources
-
-    print(f"Step 1.1.2: Launching {BITWARDEN_PKG}...")
-    d.app_start(BITWARDEN_PKG, use_monkey=True)
-
-    # Step 1.2.1: Click the "Create account" button on the welcome screen
-    print("Step 1.2.1: Clicking 'Account creation'...")
-    wait_and_click(d, d(resourceId="ChooseAccountCreationButton"))
-
-    # Step 1.2.2: Click the region selector dropdown to configure a self-hosted server
-    print("Step 1.2.2: Opening self-hosted server configuration...")
-    wait_and_click(d, d(resourceId="RegionSelectorDropdown"))
-
-    # Step 1.2.3: Select the "Self-hosted" option from the dialog
-    print("Step 1.2.3: Selecting 'Self-hosted' option...")
-    wait_and_click(d, d(text="Self-hosted"))
-
-    # Step 1.2.4: Click on the Server URL input field
-    print("Step 1.2.4: Clicking on Server URL input field...")
-    wait_and_click(d, d(resourceId="ServerUrlEntry"))
-
-    # Step 1.2.5: Enter the self-hosted server URL
-    print(f"Step 1.2.5: Entering server URL: {SERVER_URL}...")
-    wait_and_set_text(d, d(resourceId="ServerUrlEntry"), SERVER_URL)
-
-    # Step 1.2.6: Click the Save button to save the server configuration
-    print("Step 1.2.6: Saving server configuration...")
-    wait_and_click(d, d(resourceId="SaveButton"))
-
-
-def bw_make_account(d, email, name, master_password, account_index=0):
-    """
-    Creates a Bitwarden account with the specified credentials
-    """
-    # --- Step 2: User Account Creation ---
-    # The following steps walk through the UI to register a new user
-    # with the provided credentials.
-    print(f"=== Creating account for {email} ===")
-
-    # Step 2.0: Click on the "Create account" button only if not the first account
-    if account_index > 0:
-        print("Step 2.0: Clicking on 'Create account' button...")
-        wait_and_click(d, d(resourceId="CreateAccountLabel"))
-    else:
-        print("Step 2.0: Skipping 'Create account' button (first account)...")
-
-    # Step 2.1: Click on the Email address input field
-    print("Step 2.1: Clicking on Email address input field...")
-    wait_and_click(d, d(resourceId="EmailAddressEntry"))
-
-    # Step 2.2: Enter the email address
-    print(f"Step 2.2: Entering email address: {email}...")
-    wait_and_set_text(d, d(resourceId="EmailAddressEntry"), email)
-
-    # Step 2.3: Click on the Name input field
-    print("Step 2.3: Clicking on Name input field...")
-    wait_and_click(d, d(resourceId="NameEntry"))
-
-    # Step 2.4: Enter the user's name
-    print(f"Step 2.4: Entering name: {name}...")
-    wait_and_set_text(d, d(resourceId="NameEntry"), name)
-
-    # Step 2.5: Click the Continue button to proceed with account creation
-    print("Step 2.5: Clicking Continue button...")
-    wait_and_click(d, d(resourceId="ContinueButton"))
-
-    # Step 2.6: Click on the Master password input field
-    print("Step 2.6: Clicking on Master password input field...")
-    wait_and_click(d, d(resourceId="MasterPasswordEntry"))
-
-    # Step 2.7: Enter the master password
-    print(f"Step 2.7: Entering master password: {master_password}...")
-    wait_and_set_text(d, d(resourceId="MasterPasswordEntry"), master_password)
-
-    # Step 2.8: Click on the Re-type master password input field
-    print("Step 2.8: Clicking on Re-type master password input field...")
-    wait_and_click(d, d(resourceId="ConfirmMasterPasswordEntry"))
-
-    # Step 2.9: Enter the master password confirmation
-    print(f"Step 2.9: Entering master password confirmation: {master_password}...")
-    wait_and_set_text(d, d(resourceId="ConfirmMasterPasswordEntry"), master_password)
-
-    # Step 2.10: Click the Next button to proceed with account creation
-    print("Step 2.10: Clicking Next button...")
-    wait_and_click(d, d(text="Next"))
-
-    # Step 2.11: Click "Set up later" to skip unlock setup
-    print("Step 2.11: Clicking 'Set up later' to skip unlock setup...")
-    wait_and_click(d, d(resourceId="SetUpLaterButton"))
-
-    # Step 2.12: Click "Confirm" to confirm skipping unlock setup
-    print("Step 2.12: Clicking 'Confirm' to confirm skipping unlock setup...")
-    wait_and_click(d, d(resourceId="AcceptAlertButton"))
-
-    # Step 2.13: Click "Turn on later" to skip autofill setup
-    print("Step 2.13: Clicking 'Turn on later' to skip autofill setup...")
-    wait_and_click(d, d(text="Turn on later"))
-
-    # Step 2.14: Click "Confirm" to confirm skipping autofill setup
-    print("Step 2.14: Clicking 'Confirm' to confirm skipping autofill setup...")
-    wait_and_click(d, d(resourceId="AcceptAlertButton"))
-
-    # Step 2.15: Click the Continue button to complete account setup
-    print("Step 2.15: Clicking Continue button to complete account setup...")
-    wait_and_click(d, d(text="Continue"))
-
-    print(f"=== Account for {email} created successfully ===")
-
-
-def bw_create_new_cipher(d, cipher):
-    """
-    Creates a new cipher entry in the vault
-    """
-    # --- Step 3: Cipher Creation ---
-    # The following steps create a new login cipher in the user's vault.
-    print(f"=== Creating cipher: {cipher['name']} ===")
-
-    # Step 3.1: Click the main '+' button to add a new item.
-    print("Step 3.1: Clicking the 'Add Item' button...")
-    wait_and_click(d, d(resourceId="AddItemButton"))
-
-    # Step 3.2: Select "Login" from the item type dialog.
-    print("Step 3.2: Selecting 'Login' as the item type...")
-    wait_and_click(d, d(resourceId="AlertSelectionOption", text="Login"))
-
-    # Handle the optional "Bitwarden Autofill Service" dialog that may appear.
-    print("Step 3.2: Checking for Autofill Service dialog...")
-    if d(resourceId="AcceptAlertButton").exists(timeout=1):
-        print("Step 3.2: Autofill dialog found. Clicking 'Okay'...")
-        wait_and_click(d, d(resourceId="AcceptAlertButton"))
-
-    # Step 3.3: Enter the item name from the cipher data.
-    print(f"Step 3.3: Entering item name '{cipher['name']}'...")
-    wait_and_set_text(d, d(resourceId="ItemNameEntry"), cipher["name"])
-
-    # Step 3.4: Enter the username from the cipher data.
-    print(f"Step 3.4: Entering username '{cipher['username']}'...")
-    wait_and_set_text(d, d(resourceId="LoginUsernameEntry"), cipher["username"])
-
-    # Step 3.5: Enter the password from the cipher data.
-    print(f"Step 3.5: Entering password '{cipher['password']}'...")
-    wait_and_set_text(d, d(resourceId="LoginPasswordEntry"), cipher["password"])
-
-    # Step 3.6: Enter the website URI from the cipher data.
-    print(f"Step 3.6: Entering website URI '{cipher['website']}'...")
-    wait_and_set_text(d, d(resourceId="LoginUriEntry"), cipher["website"])
-
-    # Step 3.7: Click the Save button to save the cipher.
-    print("Step 3.7: Clicking the Save button...")
-    wait_and_click(d, d(resourceId="SaveButton"))
-
-    print(f"=== Finished creating cipher: {cipher['name']} ===")
-
-
-def bw_lock_and_logout(d):
-    """
-    Locks the vault and logs out
-    """
-    print("=== Locking and logging out ===")
-
-    # Step 4.1: Click the main options button in the header bar
-    print("Step 4.1: Clicking header options button...")
-    wait_and_click(d, d(resourceId="HeaderBarOptionsButton"))
-
-    # Step 4.2: Click on "Lock" to lock the vault
-    print("Step 4.2: Clicking 'Lock' to lock the vault...")
-    wait_and_click(d, d(text="Lock"))
-
-    # Step 4.3: Click the header bar options button again
-    print("Step 4.3: Clicking header bar options button...")
-    wait_and_click(d, d(resourceId="HeaderBarOptionsButton"))
-
-    # Step 4.4: Click on "Log out" (FloatingOptionsItem)
-    print("Step 4.4: Clicking 'Log out' (FloatingOptionsItem)...")
-    wait_and_click(d, d(resourceId="FloatingOptionsItem"))
-
-    # Step 4.5: Click "Yes" to confirm logout (AcceptAlertButton)
-    print("Step 4.5: Clicking 'Yes' to confirm logout (AcceptAlertButton)...")
-    wait_and_click(d, d(resourceId="AcceptAlertButton"))
-
-    print("=== Locking and logging out complete ===")
-
-
-def bw_attempt_login(d, email, password):
-    """
-    Attempts to login to the Bitwarden app
-    """
+    print(f"[FATAL] {message}", file=sys.stderr)
     try:
-        # --- Stop any previous instances and start fresh ---
-        print(f"Stopping any existing instances of {BITWARDEN_PKG}...")
-        d.app_stop(BITWARDEN_PKG)
-        time.sleep(1)
-        print(f"Launching {BITWARDEN_PKG}...")
-        d.app_start(BITWARDEN_PKG, use_monkey=True)
-
-        # --- Wait for the app to load ---
-        print("Waiting for app to load...")
-        time.sleep(3)  # Give app time to fully load
-
-        # Check for error dialogs first and dismiss them
-        if d(resourceId="AlertPopup").exists:
-            print("Error dialog detected on app start. Dismissing...")
-            wait_and_click(d, d(resourceId="AcceptAlertButton"))
-            time.sleep(2)
-
-        # Wait for either email entry (initial login) or master password entry (locked vault)
-        if not (
-            d(resourceId="EmailAddressEntry").exists
-            or d(resourceId="MasterPasswordEntry").exists
-        ):
-            print(
-                "No email or master password entry found. Waiting for one to appear..."
-            )
-            # If neither exists immediately, wait for one to appear
-            d(resourceId="EmailAddressEntry").wait(timeout=10.0) or d(
-                resourceId="MasterPasswordEntry"
-            ).wait(timeout=10.0)
-
-        # --- Check if vault is locked and handle accordingly ---
-        print("Checking if vault is locked...")
-        if d(text="Unlock").exists:
-            print("Vault is locked. Clicking HeaderBarOptionsButton...")
-            wait_and_click(d, d(resourceId="HeaderBarOptionsButton"))
-
-            print("Clicking logout")
-            wait_and_click(d, d(resourceId="FloatingOptionsItem"))
-
-            print("Accepting alert")
-            wait_and_click(d, d(resourceId="AcceptAlertButton"))
-
-            # Wait for the app to return to the initial login screen
-            print("Waiting for app to return to login screen...")
-            time.sleep(3)
-
-        # --- Entering Credentials ---
-        print("Vault is unlocked. Entering credentials...")
-        print(f"Entering email: {email}...")
-        wait_and_set_text(d, d(resourceId="EmailAddressEntry"), email)
-
-        print("Clicking 'Continue'...")
-        wait_and_click(d, d(resourceId="ContinueButton"))
-
-        print("Entering master password...")
-        wait_and_set_text(d, d(resourceId="MasterPasswordEntry"), password)
-
-        # --- Submitting and Verifying Outcome ---
-        print("Clicking 'Unlock' to log in...")
-        wait_and_click(d, d(resourceId="LogInWithMasterPasswordButton"))
-
-        # Wait a moment for any error dialogs to appear
-        time.sleep(2)
-
-        # Check for error dialogs first
-        if d(resourceId="AlertPopup").exists:
-            print("Error dialog detected. Dismissing...")
-            wait_and_click(d, d(resourceId="AcceptAlertButton"))
-            time.sleep(1)
-            print("Login failed due to error dialog.")
-            return False
-
-        # Success is defined by the appearance of the main vault screen's header.
-        # A failed login will not proceed to this screen.
-        print("Verifying login outcome...")
-        if d(resourceId="VaultTab").wait(timeout=5.0):
-            print("[SUCCESS] Login successful. Main vault is visible.")
-            return True
-        else:
-            print("Main vault not visible after timeout.")
-            return False
-
-    except Exception as e:
-        print(
-            f"[ERROR] An unexpected error occurred during UI automation: {e}",
-            file=sys.stderr,
-        )
-        # Dump the UI hierarchy to the console for debugging
-        print(d.dump_hierarchy(), file=sys.stderr)
-        return False
+        if d is not None:
+            print(d.dump_hierarchy(), file=sys.stderr)
+    except Exception as dump_err:
+        print(f"[WARN] Failed to dump UI hierarchy: {dump_err}", file=sys.stderr)
+    sys.exit(1)

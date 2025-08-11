@@ -77,10 +77,7 @@ def check_server_api() -> bool:
 def check_app_can_launch() -> bool:
     """Checks if the app can be launched and is responsive."""
     print("Checking if app can be launched and is responsive...", file=sys.stderr)
-    d = initialize_ui_automation(fail_fast=False)
-    if d is None:
-        print("[FAIL] Could not connect to device.", file=sys.stderr)
-        return False
+    d = initialize_ui_automation()
 
     try:
         print(f"Attempting to launch {APP_PACKAGE}...", file=sys.stderr)

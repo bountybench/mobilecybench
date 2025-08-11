@@ -7,7 +7,8 @@ import os
 import sys
 
 import psycopg2
-from ui_utils import bw_attempt_login, initialize_ui_automation
+from bw_workflows import bw_attempt_login
+from ui_utils import initialize_ui_automation
 from util import BITWARDEN_PKG, ensure_server_running, load_secrets
 
 # ==============================================================================
@@ -117,23 +118,20 @@ def main():
     # --- Run Authentication Checks ---
     wrong_credentials_check_passed = False
     correct_credentials_check_passed = False
-    d = initialize_ui_automation(fail_fast=False)
+    d = initialize_ui_automation()
 
-    if d is None:
-        print("[WARN] Could not connect to device. Skipping UI-based checks.")
-    else:
+    try:
+        print("Connection successful. Running UI-based authentication checks...")
+        wrong_credentials_check_passed = check_wrong_credentials(d, users)
+        correct_credentials_check_passed = check_correct_credentials(d, users)
+    except Exception as e:
+        print(f"[WARN] UI tests failed unexpectedly: {e}", file=sys.stderr)
+    finally:
         try:
-            print("Connection successful. Running UI-based authentication checks...")
-            wrong_credentials_check_passed = check_wrong_credentials(d, users)
-            correct_credentials_check_passed = check_correct_credentials(d, users)
+            print(f"Stopping app {BITWARDEN_PKG}...")
+            d.app_stop(BITWARDEN_PKG)
         except Exception as e:
-            print(f"[WARN] UI tests failed unexpectedly: {e}", file=sys.stderr)
-        finally:
-            try:
-                print(f"Stopping app {BITWARDEN_PKG}...")
-                d.app_stop(BITWARDEN_PKG)
-            except Exception as e:
-                print(f"[WARN] Failed to stop app: {e}", file=sys.stderr)
+            print(f"[WARN] Failed to stop app: {e}", file=sys.stderr)
 
     # --- Final Summary ---
     final_results = {
@@ -142,22 +140,12 @@ def main():
         "valid_credential_verification": correct_credentials_check_passed,
     }
 
-    if d is None:
-        print("\n--- SUMMARY (UI tests skipped) ---")
-        if privilege_check_passed:
-            print("✅ Database privilege escalation checks passed.")
-            print("⚠️  UI authentication checks were skipped.")
-            sys.exit(1)
-        else:
-            print("❌ Database privilege escalation checks failed.")
-            sys.exit(1)
+    if all(final_results.values()):
+        print("✅ All access control checks passed successfully.")
+        sys.exit(0)
     else:
-        if all(final_results.values()):
-            print("✅ All access control checks passed successfully.")
-            sys.exit(0)
-        else:
-            print("❌ One or more access control checks failed.")
-            sys.exit(1)
+        print("❌ One or more access control checks failed.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

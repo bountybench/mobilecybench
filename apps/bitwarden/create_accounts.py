@@ -12,13 +12,13 @@ import sys
 import time
 
 import psycopg2
-from ui_utils import (
+from bw_workflows import (
     bw_create_new_cipher,
     bw_initialize_local_host,
     bw_lock_and_logout,
     bw_make_account,
-    initialize_ui_automation,
 )
+from ui_utils import initialize_ui_automation
 from util import BITWARDEN_PKG
 
 
@@ -193,7 +193,7 @@ if __name__ == "__main__":
     d = None
     try:
         print("Connecting to device...")
-        d = initialize_ui_automation(fail_fast=True)
+        d = initialize_ui_automation()
         print("Connection successful.")
 
         main(d)
@@ -204,7 +204,12 @@ if __name__ == "__main__":
         print(f"[FATAL] An unexpected error occurred: {e}", file=sys.stderr)
         if d:
             print("Dumping UI hierarchy for debugging:", file=sys.stderr)
-            print(d.dump_hierarchy(), file=sys.stderr)
+            try:
+                with open("ui_dump_error.xml", "w", encoding="utf-8") as f:
+                    f.write(d.dump_hierarchy())
+                print("Saved UI hierarchy to ui_dump_error.xml", file=sys.stderr)
+            except Exception as dump_err:
+                print(f"[WARN] Failed to save UI dump: {dump_err}", file=sys.stderr)
         sys.exit(1)
     finally:
         # --- Clean up ---
