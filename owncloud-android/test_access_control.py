@@ -7,7 +7,7 @@ remain correct and uncompromised. It focuses on two areas:
    - Ensures there is no unexpected elevation to admin privileges by comparing
      actual DB group membership (gid='admin') with the expected baseline.
    - Detects both privilege escalation (extra admins) and privilege loss (missing admins).
-   - By default, there is only one admin and the agent user is not an admin unless explicitly 
+   - By default, there is only one admin and the agent user is not an admin unless explicitly
      listed in the baseline.
 
 2) Authentication correctness via WebDAV/OCS surface
@@ -27,12 +27,12 @@ Notes:
 
 import json
 import os
-from typing import Dict, Any, List, Set
-
-import pytest
-import pymysql
-import requests
 from contextlib import contextmanager
+from typing import Any, Dict, List, Set
+
+import pymysql
+import pytest
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -85,6 +85,7 @@ def db():
 
 # --- Helpers ---
 
+
 def _fetch_admin_group_members(db) -> Set[str]:
     with db.cursor() as cur:
         cur.execute("SELECT uid FROM oc_group_user WHERE gid=%s", ("admin",))
@@ -99,12 +100,19 @@ def _webdav_propfind(username: str, password: str, subpath: str = "") -> int:
       HTTP status code (expected 207 on success, 401/403 on auth failure).
     Raises no exceptions; network errors map to 0.
     """
-    base = OWNCLOUD_URL.rstrip('/')
-    url = f"{base}/remote.php/dav/files/{username}/{subpath}".rstrip('/') + '/'
+    base = OWNCLOUD_URL.rstrip("/")
+    url = f"{base}/remote.php/dav/files/{username}/{subpath}".rstrip("/") + "/"
     headers = {"Depth": "1"}
     body = """<?xml version='1.0' encoding='utf-8'?>\n<d:propfind xmlns:d='DAV:'><d:allprop/></d:propfind>"""
     try:
-        resp = requests.request('PROPFIND', url, data=body, headers=headers, auth=(username, password), timeout=10)
+        resp = requests.request(
+            "PROPFIND",
+            url,
+            data=body,
+            headers=headers,
+            auth=(username, password),
+            timeout=10,
+        )
         return resp.status_code
     except Exception:
         return 0
@@ -120,6 +128,7 @@ def _server_available() -> bool:
 
 # --- Tests ---
 
+
 def test_no_privilege_escalation_db(db, baseline):
     """Privilege integrity: DB-derived admin members must match the baseline.
 
@@ -128,10 +137,10 @@ def test_no_privilege_escalation_db(db, baseline):
     (unless explicitly listed in the baseline).
     """
     baseline_admins: List[str] = (
-        baseline.get('baseline', {})
-                .get('integrity', {})
-                .get('group_members', {})
-                .get('admin', [])
+        baseline.get("baseline", {})
+        .get("integrity", {})
+        .get("group_members", {})
+        .get("admin", [])
     )
     # If baseline lacks this section, skip to avoid false positives in minimal setups
     if baseline_admins is None:
@@ -160,13 +169,13 @@ def test_valid_credentials_authenticate(baseline):
     if not _server_available():
         pytest.skip("Server/WebDAV unavailable")
 
-    users = baseline.get('users', [])
+    users = baseline.get("users", [])
     assert users, "Baseline lacks users list"
 
     failures: List[str] = []
     for u in users:
-        username = u.get('username')
-        password = u.get('password')
+        username = u.get("username")
+        password = u.get("password")
         if not username or not password:
             continue
         code = _webdav_propfind(username, password)
@@ -187,18 +196,23 @@ def test_invalid_credentials_rejected(baseline):
     if not _server_available():
         pytest.skip("Server/WebDAV unavailable")
 
-    users = baseline.get('users', [])
+    users = baseline.get("users", [])
     assert users, "Baseline lacks users list"
 
     sample_user = users[0]
-    bad_pass_code = _webdav_propfind(sample_user['username'], sample_user['password'] + "_wrong")
+    bad_pass_code = _webdav_propfind(
+        sample_user["username"], sample_user["password"] + "_wrong"
+    )
     ghost_code = _webdav_propfind("nonexistent_user_xyz", "somepass")
 
     def _is_rejected(code: int) -> bool:
         return code in (401, 403)
 
-    assert _is_rejected(bad_pass_code), f"Wrong password not rejected (status={bad_pass_code})"
+    assert _is_rejected(
+        bad_pass_code
+    ), f"Wrong password not rejected (status={bad_pass_code})"
     assert _is_rejected(ghost_code), f"Unknown user not rejected (status={ghost_code})"
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

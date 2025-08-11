@@ -47,14 +47,16 @@ AGENT_USERNAME = os.getenv("AGENT_USERNAME", "agent")
 AGENT_PASSWORD = os.getenv("AGENT_PASSWORD", "agentpass")
 ADB_BIN = os.getenv("ADB_BIN", "adb")
 OC_CONTAINER_NAMES = [
-    name.strip() for name in os.getenv(
-        "OC_CONTAINER_NAMES",
-        "owncloud_server,owncloud_mariadb,owncloud_redis"
-    ).split(',') if name.strip()
+    name.strip()
+    for name in os.getenv(
+        "OC_CONTAINER_NAMES", "owncloud_server,owncloud_mariadb,owncloud_redis"
+    ).split(",")
+    if name.strip()
 ]
 
 
 # --- Helpers ---
+
 
 def _server_status() -> Tuple[bool, int, dict | None]:
     try:
@@ -75,13 +77,19 @@ def _webdav_probe() -> int:
     Returns HTTP status code; 207 indicates success, 401/403 still indicate
     the surface is up; 0 indicates network/process error.
     """
-    base = OWNCLOUD_URL.rstrip('/')
+    base = OWNCLOUD_URL.rstrip("/")
     url = f"{base}/remote.php/dav/files/{AGENT_USERNAME}/"
     headers = {"Depth": "0"}
     body = """<?xml version='1.0' encoding='utf-8'?>\n<d:propfind xmlns:d='DAV:'><d:allprop/></d:propfind>"""
     try:
-        resp = requests.request('PROPFIND', url, data=body, headers=headers,
-                                auth=(AGENT_USERNAME, AGENT_PASSWORD), timeout=AVAIL_TIMEOUT)
+        resp = requests.request(
+            "PROPFIND",
+            url,
+            data=body,
+            headers=headers,
+            auth=(AGENT_USERNAME, AGENT_PASSWORD),
+            timeout=AVAIL_TIMEOUT,
+        )
         return resp.status_code
     except Exception:
         return 0
@@ -100,7 +108,9 @@ def _docker_inspect_health(name: str) -> Tuple[bool, str]:
     try:
         res = subprocess.run(
             ["docker", "inspect", "-f", "{{.State.Health.Status}}", name],
-            capture_output=True, text=True, timeout=5
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if res.returncode == 0:
             status = res.stdout.strip()
@@ -108,7 +118,9 @@ def _docker_inspect_health(name: str) -> Tuple[bool, str]:
                 return (status == "healthy", f"health={status}")
         res2 = subprocess.run(
             ["docker", "inspect", "-f", "{{.State.Status}}", name],
-            capture_output=True, text=True, timeout=5
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if res2.returncode == 0:
             st = res2.stdout.strip()
@@ -125,7 +137,9 @@ def _adb_available() -> bool:
 
 def _adb_has_device() -> bool:
     try:
-        res = subprocess.run([ADB_BIN, "devices"], capture_output=True, text=True, timeout=5)
+        res = subprocess.run(
+            [ADB_BIN, "devices"], capture_output=True, text=True, timeout=5
+        )
         if res.returncode != 0:
             return False
         # Lines with '\tdevice' indicate connected devices
@@ -140,7 +154,9 @@ def _adb_has_device() -> bool:
 def _adb_logcat_recent(max_chars: int = 200000) -> str:
     """Return a truncated snapshot of logcat (-d)."""
     try:
-        res = subprocess.run([ADB_BIN, "logcat", "-d"], capture_output=True, text=True, timeout=20)
+        res = subprocess.run(
+            [ADB_BIN, "logcat", "-d"], capture_output=True, text=True, timeout=20
+        )
         if res.returncode != 0:
             return ""
         out = res.stdout
@@ -152,6 +168,7 @@ def _adb_logcat_recent(max_chars: int = 200000) -> str:
 
 
 # --- Tests ---
+
 
 def test_server_status_endpoint_healthy():
     """Backend readiness: /status.php should respond 200 and report healthy state.
@@ -215,7 +232,7 @@ def test_android_app_no_fatal_or_anr_via_adb():
     if not logs:
         pytest.skip("No logcat output available")
 
-    pkg_candidates = ["com.owncloud.android", "com.owncloud.android.debug" ]
+    pkg_candidates = ["com.owncloud.android", "com.owncloud.android.debug"]
     found_pkg = any(p in logs for p in pkg_candidates)
 
     def hit(line: str) -> bool:
@@ -226,8 +243,8 @@ def test_android_app_no_fatal_or_anr_via_adb():
         return False
 
     matches = [ln for ln in logs.splitlines() if hit(ln)]
-    assert not matches, f"Detected crash/ANR in logcat: {matches[:3]}" 
+    assert not matches, f"Detected crash/ANR in logcat: {matches[:3]}"
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-    
