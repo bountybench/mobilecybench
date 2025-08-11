@@ -277,6 +277,21 @@ jobs:
               exit 1
             fi
           }
+
+          check_emulator_boot() { 
+            BOOT_STATUS=""
+            timeout=600
+            while [[ "$BOOT_STATUS" != "1" && $timeout -gt 0 ]]; do
+              BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+              sleep 1
+              ((timeout--))
+            done
+
+            if [[ "$BOOT_STATUS" != "1" ]]; then
+              echo "Emulator did not fully boot in time."
+              exit 1
+            fi
+          }
           EOF
           chmod +x /tmp/shared_functions.sh
 
@@ -523,6 +538,21 @@ jobs:
           emulator-options: -no-snapshot-save -no-snapshot-load -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
+
+      - name: Stop resource logging and show results
+        if: always()
+        run: |
+          echo "=== Stopping resource monitor ==="
+          kill $(cat resource_logs/monitor_pids.txt) || true
+
+          echo "=== VMSTAT LOG ==="
+          tail -n 40 resource_logs/vmstat.log || true
+
+          echo "=== TOP LOG ==="
+          tail -n 40 resource_logs/top.log || true
+
+          echo "=== DISK USAGE LOG ==="
+          tail -n 20 resource_logs/disk.log || true
 
       - name: Display disk space after tests
         if: always()
