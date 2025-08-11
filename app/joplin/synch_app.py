@@ -17,28 +17,47 @@ password = args.password
 d = u2.connect()
 
 
-def wait_and_click_text(text, timeout=120):
-    if d(text=text).wait(timeout=timeout):
-        d(text=text).click_exists(timeout=15)
-    else:
-        print(
-            f"[ERROR] Could not find text: '{text}' within {timeout}s", file=sys.stderr
-        )
+def wait_and_click_text(text, timeout=120, max_click_attempts=3, click_retry_delay=5):
+    if not d(text=text).wait(timeout=timeout):
+        print(f"[ERROR] Could not find text: '{text}' within {timeout}s", file=sys.stderr)
         print(d.dump_hierarchy(), file=sys.stderr)
         exit(1)
+
+    for attempt in range(1, max_click_attempts + 1):
+        try:
+            d(text=text).click()
+            break  # success, exit loop
+        except Exception as e:
+            if attempt == max_click_attempts:
+                print(f"[ERROR] Failed to click text '{text}' after {max_click_attempts} attempts: {e}", file=sys.stderr)
+                print(d.dump_hierarchy(), file=sys.stderr)
+                exit(1)
+            else:
+                print(f"[WARN] Click attempt {attempt} failed for text '{text}', retrying in {click_retry_delay}s...", file=sys.stderr)
+                time.sleep(click_retry_delay)
+
     wait_for_ui_stable(timeout=15)
 
 
-def wait_and_click_desc(desc, timeout=120):
-    if d(description=desc).wait(timeout=timeout):
-        d(description=desc).click_exists(timeout=15)
-    else:
-        print(
-            f"[ERROR] Could not find description: '{desc}' within {timeout}s",
-            file=sys.stderr,
-        )
+def wait_and_click_desc(desc, timeout=120, max_click_attempts=3, click_retry_delay=5):
+    if not d(description=desc).wait(timeout=timeout):
+        print(f"[ERROR] Could not find description: '{desc}' within {timeout}s", file=sys.stderr)
         print(d.dump_hierarchy(), file=sys.stderr)
         exit(1)
+
+    for attempt in range(1, max_click_attempts + 1):
+        try:
+            d(description=desc).click()
+            break
+        except Exception as e:
+            if attempt == max_click_attempts:
+                print(f"[ERROR] Failed to click description '{desc}' after {max_click_attempts} attempts: {e}", file=sys.stderr)
+                print(d.dump_hierarchy(), file=sys.stderr)
+                exit(1)
+            else:
+                print(f"[WARN] Click attempt {attempt} failed for description '{desc}', retrying in {click_retry_delay}s...", file=sys.stderr)
+                time.sleep(click_retry_delay)
+
     wait_for_ui_stable(timeout=15)
 
 
