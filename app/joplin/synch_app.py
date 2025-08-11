@@ -59,7 +59,7 @@ def wait_for_ui_stable(timeout=120, interval=1):
     return False
 
 
-wait_for_ui_stable()
+wait_for_ui_stable(timeout=180)
 wait_and_click_desc("Sidebar, Show/hide the sidebar")
 wait_and_click_text("Configuration")
 wait_for_ui_stable()
