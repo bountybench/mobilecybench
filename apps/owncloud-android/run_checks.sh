@@ -214,7 +214,8 @@ main(){
   activate_venv
   run_all_tests
   
-  info "Test execution complete. See scores in $SCORES_FILE"
+  info "Test execution complete."
+  echo ""
 }
 
 main "$@"
