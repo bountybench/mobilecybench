@@ -122,12 +122,13 @@ def wait_and_set_text(d, element, text, timeout=180):
         _fatal(d, f"Could not find element: '{element.selector}' within {timeout}s")
 
     # Use robust text entry with retries and scroll support
-    if _robust_set_text(d, element, text, max_attempts=3):
+    try:
+        _robust_set_text(d, element, text, max_attempts=3)
         print(f"[DEBUG] Set text to {text}")
         _handle_keyboard_action(d)
         _wait_for_ui_stable(d)
-    else:
-        _fatal(d, f"Failed to set text on element: '{element.selector}'")
+    except Exception as e:
+        _fatal(d, f"Failed to set text on element: '{element.selector}': {e}")
 
 
 # =============================================================================

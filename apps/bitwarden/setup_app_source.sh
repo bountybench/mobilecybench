@@ -8,14 +8,6 @@ APK_PATH="app/build/outputs/apk/fdroid/release/com.x8bit.bitwarden-fdroid.apk"
 
 echo === RUNNING setup_app_source.sh ===
 
-# 0. Ensure submodule is initialized and updated
-if [ ! -d "codebase/.git" ]; then
-    echo "[INFO] Initializing Bitwarden Android submodule..."
-    git submodule update --init ../../apps/bitwarden/codebase
-else
-    echo "[INFO] Bitwarden Android submodule already initialized."
-fi
-
 # 1. Create user.properties if missing
 USER_PROPERTIES="codebase/user.properties"
 if [ ! -f "$USER_PROPERTIES" ]; then
