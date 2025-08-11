@@ -31,7 +31,7 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
     for attempt in range(max_retries):
         try:
             print(
-                f"Attempting to connect to device (attempt {attempt + 1}/{max_retries})..."
+                f"[DEBUG] Attempting to connect to device (attempt {attempt + 1}/{max_retries})..."
             )
 
             # Check if ADB is working
@@ -50,7 +50,7 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
                     print("[WARN] No devices found via ADB")
                     continue
 
-                print(f"Found {len(connected_devices)} device(s): {connected_devices}")
+                print(f"[DEBUG] Found {len(connected_devices)} device(s): {connected_devices}")
 
             except subprocess.TimeoutExpired:
                 print("[WARN] ADB devices command timed out")
@@ -102,7 +102,7 @@ def wait_and_click(d, element, timeout=180):
 
     try:
         element.click_exists(timeout=3)
-        print(f"[DEBUG] Clicked element {element.selector}")
+        print(f"[INFO] Clicked element {element.selector}")
         _wait_for_ui_stable(d)
     except Exception as e:
         _fatal(d, f"Could not click element: '{element.selector}': {e}")
@@ -124,7 +124,7 @@ def wait_and_set_text(d, element, text, timeout=180):
     # Use robust text entry with retries and scroll support
     try:
         _robust_set_text(d, element, text, max_attempts=3)
-        print(f"[DEBUG] Set text to {text}")
+        print(f"[INFO] Set text to {text}")
         _handle_keyboard_action(d)
         _wait_for_ui_stable(d)
     except Exception as e:
@@ -278,7 +278,7 @@ def _handle_keyboard_action(d):
     try:
         if d(description="Done").exists(timeout=1):
             d(description="Done").click()
-            print("[DEBUG] Clicked keyboard Done button")
+            print("[INFO] Clicked keyboard Done button")
             return True
     except Exception as e:
         print(f"[WARN] Could not click keyboard Done button: {e}")
@@ -291,7 +291,7 @@ def _handle_keyboard_action(d):
             d(
                 resourceId="com.google.android.inputmethod.latin:id/key_pos_ime_action"
             ).click()
-            print("[DEBUG] Clicked keyboard action button")
+            print("[INFO] Clicked keyboard action button")
             return True
     except Exception as e:
         print(f"[WARN] Could not click keyboard action button: {e}")
@@ -299,7 +299,7 @@ def _handle_keyboard_action(d):
     # Method 3: Try pressing Enter key
     try:
         d.press("enter")
-        print("[DEBUG] Pressed Enter key")
+        print("[INFO] Pressed Enter key")
         return True
     except Exception as e:
         print(f"[WARN] Could not press Enter key: {e}")
@@ -368,7 +368,7 @@ def _robust_set_text(d, element, text, max_attempts=3):
             element.click_exists(timeout=2)
             element.set_text(text)
             print(
-                f"[DEBUG] Set text attempt {attempt_index} succeeded for {element.selector}"
+                f"[INFO] Set text attempt {attempt_index} succeeded for {element.selector}"
             )
             return True
         except Exception as set_error:
@@ -395,7 +395,7 @@ def _fatal(d, message):
         d: Device object (may be None)
         message: Error message to print
     """
-    print(f"[FATAL] {message}", file=sys.stderr)
+    print(f"[ERROR] {message}", file=sys.stderr)
     try:
         if d is not None:
             print(d.dump_hierarchy(), file=sys.stderr)

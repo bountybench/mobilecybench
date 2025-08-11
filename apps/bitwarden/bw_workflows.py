@@ -56,7 +56,7 @@ def bw_make_account(d, email, name, master_password, account_index=0):
     # --- Step 2: User Account Creation ---
     # The following steps walk through the UI to register a new user
     # with the provided credentials.
-    print(f"=== Creating account for {email} ===")
+    print(f"[INFO] Creating account for {email}")
 
     # Step 2.0: Click on the "Create account" button only if not the first account
     if account_index > 0:
@@ -109,7 +109,7 @@ def bw_make_account(d, email, name, master_password, account_index=0):
     print("Step 2.11: Clicking Continue button to complete account setup...")
     wait_and_click(d, d(text="Continue"))
 
-    print(f"=== Account for {email} created successfully ===")
+    print(f"[INFO] Account for {email} created successfully")
 
 
 def bw_create_new_cipher(d, cipher):
@@ -118,7 +118,7 @@ def bw_create_new_cipher(d, cipher):
     """
     # --- Step 3: Cipher Creation ---
     # The following steps create a new login cipher in the user's vault.
-    print(f"=== Creating cipher: {cipher['name']} ===")
+    print(f"[INFO] Creating cipher: {cipher['name']}")
 
     # Step 3.1: Click the main '+' button to add a new item.
     print("Step 3.1: Clicking the 'Add Item' button...")
@@ -154,14 +154,14 @@ def bw_create_new_cipher(d, cipher):
     print("Step 3.7: Clicking the Save button...")
     wait_and_click(d, d(resourceId="SaveButton"))
 
-    print(f"=== Finished creating cipher: {cipher['name']} ===")
+    print(f"[INFO] Finished creating cipher: {cipher['name']}")
 
 
 def bw_lock_and_logout(d):
     """
     Locks the vault and logs out
     """
-    print("=== Locking and logging out ===")
+    print("[INFO] Locking and logging out")
 
     # Step 4.1: Click the main options button in the header bar
     print("Step 4.1: Clicking header options button...")
@@ -183,7 +183,7 @@ def bw_lock_and_logout(d):
     print("Step 4.5: Clicking 'Yes' to confirm logout (AcceptAlertButton)...")
     wait_and_click(d, d(resourceId="AcceptAlertButton"))
 
-    print("=== Locking and logging out complete ===")
+    print("[INFO] Locking and logging out complete")
 
 
 def bw_attempt_login(d, email, password):

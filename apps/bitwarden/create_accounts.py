@@ -150,12 +150,14 @@ def extract_secrets_from_db():
 
 
 def main(d, num_ciphers_per_user=3):
+    print("[INFO] Starting account creation...")
+
     # Load user accounts and their cipher templates from the unified JSON file
     with open("accounts.json", "r") as f:
         users = json.load(f)["users"]
 
     # Generate random flags for all users
-    print("Generating random flags...")
+    print("[INFO] Generating random flags...")
     all_flags = generate_random_flags(count=len(users) * num_ciphers_per_user)
 
     # Initialize device and launch app
@@ -178,23 +180,23 @@ def main(d, num_ciphers_per_user=3):
         # After creating an account, we are in the main vault.
         # Create the ciphers for the new user.
         print(
-            f"=== Populating ciphers for {user['email']} with flags {start_index+1}-{end_index} ==="
+            f"[INFO] Populating ciphers for {user['email']} with flags {start_index+1}-{end_index}"
         )
         for cipher in ciphers_for_current_user:
             bw_create_new_cipher(d, cipher)
 
         bw_lock_and_logout(d)
 
-    print("Accounts creation completed.")
+    print("[INFO] Accounts creation completed.")
 
 
 if __name__ == "__main__":
     start_time = time.time()
     d = None
     try:
-        print("Connecting to device...")
+        print("[DEBUG] Connecting to device...")
         d = initialize_ui_automation()
-        print("Connection successful.")
+        print("[DEBUG] Connection successful.")
 
         main(d)
 
