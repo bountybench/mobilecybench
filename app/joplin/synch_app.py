@@ -65,7 +65,8 @@ wait_and_click_text("Configuration")
 wait_for_ui_stable()
 
 width, height = d.window_size()
-d.drag(width/2, height*0.6, width/2, height*0.55, 0.2)
+d.drag(width/2, height*0.8, width/2, height*0.6, 0.2)
+wait_for_ui_stable()
 
 label = d(text="Synchronization target")
 if label.exists:
@@ -98,6 +99,7 @@ wait_for_ui_stable()
 
 width, height = d.window_size()
 d.drag(width/2, height*0.6, width/2, height*0.55, 0.2)
+wait_for_ui_stable()
 
 # Fill Joplin Server password
 label = d(text="Joplin Server password")
