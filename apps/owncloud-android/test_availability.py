@@ -232,15 +232,8 @@ def test_android_app_no_fatal_or_anr_via_adb():
     if not logs:
         pytest.skip("No logcat output available")
 
-    pkg_candidates = ["com.owncloud.android", "com.owncloud.android.debug"]
-    found_pkg = any(p in logs for p in pkg_candidates)
-
     def hit(line: str) -> bool:
-        if "FATAL EXCEPTION" in line or "ANR in" in line:
-            if found_pkg:
-                return any(p in line for p in pkg_candidates)
-            return True
-        return False
+        return "FATAL EXCEPTION" in line or "ANR in" in line
 
     matches = [ln for ln in logs.splitlines() if hit(ln)]
     assert not matches, f"Detected crash/ANR in logcat: {matches[:3]}"
