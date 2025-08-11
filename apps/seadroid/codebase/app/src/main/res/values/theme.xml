@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Splash Theme-->
+    <style name="App.Theme.Splash" parent="Theme.Material3.Light.NoActionBar">
+        <item name="windowSplashScreenBackground">@color/white</item>
+        <item name="android:windowBackground">@color/white</item>
+    </style>
+
+    <style name="BaseTheme.App.Toolbar" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- app window background color -->
+        <item name="android:windowBackground">@color/window_background_color</item>
+
+        <item name="android:windowLightStatusBar">?isLightTheme</item> <!-- android 6.0+ -->
+
+        <!-- action mode -->
+        <item name="windowActionBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="windowActionModeOverlay">true</item>
+        <item name="windowNoTitle">true</item>
+
+        <item name="swipeRefreshLayoutProgressSpinnerBackgroundColor">
+            @color/swipe_refresh_background_color
+        </item>
+
+
+        <item name="actionModeStyle">@style/App.ActionMode.LightTheme</item>
+        <item name="actionModeCloseDrawable">@drawable/baseline_close_24</item>
+        <item name="textInputStyle">@style/App.Widget.TextInput</item>
+        <item name="searchViewStyle">@style/App.Widget.SearchView</item>
+        <item name="tabStyle">@style/App.Widget.TabLayout</item>
+        <item name="bottomSheetDialogTheme">@style/ThemeOverlay.App.BottomSheetDialog</item>
+        <item name="materialButtonStyle">@style/App.Widget.Button</item>
+        <item name="materialAlertDialogTheme">@style/App.AppCompat.AlertDialog</item>
+        <item name="bottomNavigationStyle">@style/App.Widget.BottomNavigationView</item>
+        <item name="actionOverflowMenuStyle">@style/App.Widget.OverflowMenu</item>
+        <item name="editTextStyle">@style/App.Widget.EditText</item>
+        <item name="simpleMenuPreferenceStyle">@style/Preference.Material3.SimpleMenuPreference
+        </item>
+        <item name="switchPreferenceCompatStyle">
+            @style/Preference.Material3.SwitchPreferenceCompat
+        </item>
+        <item name="switchPreferenceStyle">@style/Preference.Material3.SwitchPreferenceCompat</item>
+
+        <!-- Another way to hide the divider line of the PreferenceCategory -->
+        <!--        <item name="preferenceCategoryStyle">@style/Widget.PreferenceCategory</item>-->
+
+        <item name="colorAccent">@color/fancy_orange</item>
+        <!-- Primary -->
+        <item name="colorPrimary">@color/md_theme_primary</item>
+        <item name="colorOnPrimary">@color/md_theme_onPrimary</item>
+
+        <!-- Secondary -->
+        <item name="colorSecondary">@color/md_theme_secondary</item>
+        <item name="colorOnSecondary">@color/md_theme_onSecondary</item>
+
+        <item name="colorSurface">@color/md_theme_surface</item>
+        <item name="colorOnSurface">@color/md_theme_onSurface</item>
+
+        <item name="android:colorControlNormal">@color/fancy_light_black</item>
+        <item name="android:colorControlActivated">@color/fancy_orange</item>
+        <item name="android:colorControlHighlight">@color/fancy_light_black</item>
+
+        <item name="minTouchTargetSize">0dp</item>
+    </style>
+
+    <!-- BottomSheet -->
+    <style name="ThemeOverlay.App.BottomSheetDialog" parent="ThemeOverlay.Material3.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/App.Widget.BottomSheetDialog</item>
+        <item name="android:windowSoftInputMode">adjustNothing</item>
+        <item name="android:windowIsFloating">false</item>
+    </style>
+
+
+    <style name="AppTheme.Editor" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/blue_500</item>
+        <item name="colorPrimary">@color/blue_500</item>
+        <item name="colorPrimaryDark">@color/blue_700</item>
+        <item name="colorAccent">@color/blue_500</item>
+        <item name="colorControlActivated">@color/blue_500</item>
+        <item name="colorSurface">@color/white</item>
+        <item name="android:textColorHighlight">@color/blue_500</item>
+        <item name="colorControlHighlight">@color/blue_200</item>
+        <item name="titleTextColor">@color/white</item>
+        <item name="actionMenuTextColor">@android:color/white</item>
+        <item name="android:colorControlNormal">@android:color/white</item>
+        <item name="android:homeAsUpIndicator">@drawable/baseline_back_24</item>
+        <item name="homeAsUpIndicator">@drawable/baseline_back_24</item>
+        <item name="android:alertDialogTheme">@style/ThemeOverlay.Editor.AlertDialogTheme</item>
+    </style>
+
+
+</resources>

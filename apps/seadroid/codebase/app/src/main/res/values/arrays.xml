@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="main_fragment_titles">
+        <item>@string/tabs_library</item>
+        <item>@string/tabs_starred</item>
+        <item>@string/tabs_activity</item>
+    </string-array>
+
+    <string-array name="network_mode_readable">
+        <item>WIFI</item>
+        <item>@string/folder_backup_mode</item>
+    </string-array>
+
+    <string-array name="network_mode_non_readable">
+        <item>WIFI</item>
+        <item>WIFI_AND_MOBILE</item>
+    </string-array>
+
+    <string-array name="activity_fragment_titles">
+        <item>@string/app_name</item>
+        <item>@string/app_name</item>
+    </string-array>
+
+    <string-array name="transfer_list_titles">
+        <item>@string/transfer_tabs_downloads</item>
+        <item>@string/transfer_tabs_uploads</item>
+    </string-array>
+</resources>

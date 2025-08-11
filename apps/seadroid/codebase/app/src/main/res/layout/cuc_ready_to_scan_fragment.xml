@@ -1,0 +1,35 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:paddingHorizontal="@dimen/tv_title_margin_left">
+
+    <TextView
+        android:id="@+id/cuc_ready_title_tv"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/tv_title_margin_top"
+        android:text="@string/settings_cuc_finish_title"
+        android:textStyle="bold"
+        android:textColor="@color/black"
+        android:textSize="@dimen/tv_title_txt_size" />
+
+    <TextView
+        android:id="@+id/cuc_ready_info_tv"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/section_margin_top"
+        android:text="@string/settings_cuc_ready"
+        android:textColor="@color/fancy_gray"
+        android:textSize="@dimen/tv_subtitle_txt_size" />
+
+    <TextView
+        android:id="@+id/cuc_click_to_finish_tv"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/tv_subtitle_margin_top"
+        android:text="@string/settings_cuc_click_btn"
+        android:textColor="@color/fancy_gray"
+        android:textSize="@dimen/tv_subtitle_txt_size" />
+
+</LinearLayout>

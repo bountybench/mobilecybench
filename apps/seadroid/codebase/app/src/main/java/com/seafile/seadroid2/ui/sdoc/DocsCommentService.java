@@ -1,0 +1,47 @@
+package com.seafile.seadroid2.ui.sdoc;
+
+import com.seafile.seadroid2.framework.model.ResultModel;
+import com.seafile.seadroid2.framework.model.docs_comment.DocsCommentWrapperModel;
+import com.seafile.seadroid2.framework.model.docs_comment.DocsCommentsWrapperModel;
+import com.seafile.seadroid2.framework.model.docs_comment.DocsUploadResultModel;
+import com.seafile.seadroid2.framework.model.sdoc.SDocOutlineWrapperModel;
+
+import java.util.Map;
+
+import io.reactivex.Flowable;
+import io.reactivex.Single;
+import okhttp3.MultipartBody;
+import okhttp3.RequestBody;
+import retrofit2.http.Body;
+import retrofit2.http.DELETE;
+import retrofit2.http.GET;
+import retrofit2.http.Multipart;
+import retrofit2.http.POST;
+import retrofit2.http.PUT;
+import retrofit2.http.Part;
+import retrofit2.http.PartMap;
+import retrofit2.http.Path;
+
+public interface DocsCommentService {
+
+    //
+    @GET("api/v1/docs/{uuid}/comment/")
+    Single<DocsCommentsWrapperModel> getComments(@Path("uuid") String uuid);
+
+    @GET("api/v1/docs/{uuid}/")
+    Single<SDocOutlineWrapperModel> getElements(@Path("uuid") String uuid);
+
+    @Multipart
+    @POST("api/v2.1/seadoc/upload-image/{sdoc_uuid}/")
+    Flowable<DocsUploadResultModel> upload(@Path("sdoc_uuid") String docUid, @Part() MultipartBody.Part file, @PartMap Map<String, RequestBody> map);
+
+    @POST("api/v1/docs/{sdoc_uuid}/comment/")
+    Single<DocsCommentWrapperModel> postComment(@Path("sdoc_uuid") String uuid, @Body Map<String, Object> map);
+
+    @PUT("api/v1/docs/{sdoc_uuid}/comment/{comment_id}/")
+    Single<ResultModel> markResolved(@Path("sdoc_uuid") String docUid, @Path("comment_id") long commentId, @Body Map<String, Object> map);
+
+    @DELETE("api/v1/docs/{sdoc_uuid}/comment/{comment_id}/")
+    Single<ResultModel> delete(@Path("sdoc_uuid") String docUid, @Path("comment_id") long commentId);
+
+}

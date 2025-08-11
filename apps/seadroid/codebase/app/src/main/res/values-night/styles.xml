@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Toolbar -->
+    <style name="App.Widget.ToolBarStyle" parent="Widget.Material3.Toolbar">
+        <item name="colorControlNormal">@color/bar_icon_tint_color</item>
+        <item name="popupTheme">@style/ThemeOverlay.Material3.Dark</item>
+        <item name="theme">@style/ThemeOverlay.Material3.Dark</item>
+        <item name="android:background">@color/bar_background_color</item>
+        <item name="titleTextColor">@color/bar_title_color</item>
+        <item name="colorSurface">@color/white</item>
+        <item name="android:textSize">14sp</item>
+        <item name="navigationIcon">@drawable/baseline_back_24</item>
+        <item name="collapseIcon">@drawable/baseline_back_24</item>
+        <item name="navigationIconTint">@color/bar_icon_tint_color</item>
+        <item name="titleTextAppearance">?attr/textAppearanceTitleMedium</item>
+    </style>
+
+    <!-- App.TabLayout -->
+    <style name="App.Widget.TabLayout" parent="Widget.Material3.TabLayout">
+        <item name="tabIndicatorColor">@color/fancy_orange</item>
+        <item name="android:background">@color/bar_background_color</item>
+        <item name="android:contentInsetStart">?actionBarInsetStart</item>
+        <item name="tabSelectedTextColor">@color/fancy_orange</item>
+    </style>
+
+
+    <!-- App.BottomNavigationView -->
+    <style name="App.Widget.BottomNavigationView" parent="Widget.Material3.BottomNavigationView">
+        <item name="itemActiveIndicatorStyle">@null</item>
+        <item name="android:background">@color/bar_background_color</item>
+        <item name="backgroundTint">@null</item>
+        <item name="itemIconTint">@color/selector_color_primary</item>
+        <item name="itemTextColor">@color/selector_color_primary</item>
+        <item name="labelVisibilityMode">labeled</item>
+        <item name="android:minHeight">?actionBarSize</item>
+        <item name="itemPaddingTop">8dp</item>
+        <item name="itemPaddingBottom">14dp</item>
+    </style>
+
+    <!-- App.AlertDialog -->
+    <style name="App.AppCompat.AlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="alertDialogStyle">@style/App.AppCompat.AlertDialog.Material3</item>
+        <item name="materialAlertDialogTitleTextStyle">@style/App.AppCompat.AlertDialog.Title
+        </item>
+        <item name="buttonBarPositiveButtonStyle">@style/App.AppCompat.AlertDialog.Button</item>
+        <item name="buttonBarNegativeButtonStyle">@style/App.AppCompat.AlertDialog.Button</item>
+        <item name="buttonBarNeutralButtonStyle">@style/App.AppCompat.AlertDialog.Button</item>
+
+        <item name="colorPrimary">@color/white</item>
+        <!--        <item name="colorSecondary">@color/md_theme_secondary</item>-->
+        <item name="colorSurface">@color/alert_dialog_background_color</item>
+        <!--        <item name="colorOnSurface">@color/md_theme_onSurface</item>-->
+    </style>
+
+
+    <style name="App.AppCompat.AlertDialog.Title" parent="MaterialAlertDialog.MaterialComponents.Title.Text">
+        <item name="android:textColor">@color/light_gray</item>
+        <item name="android:textSize">20sp</item>
+    </style>
+
+    <style name="App.AppCompat.AlertDialog.Button" parent="Widget.Material3.Button.TextButton.Dialog">
+        <item name="android:textColor">@color/fancy_orange</item>
+        <item name="android:textSize">16sp</item>
+    </style>
+
+    <style name="App.AppCompat.AlertDialog.Material3" parent="MaterialAlertDialog.Material3">
+        <item name="shapeAppearance">@style/ShapeAppearance.App.LargeComponent</item>
+        <item name="shapeAppearanceOverlay">@null</item>
+    </style>
+
+
+
+    <!-- Notifications -->
+    <style name="NotificationTitle" parent="@android:style/TextAppearance">
+        <item name="android:textColor">#ff000000</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="NotificationContent" parent="@android:style/TextAppearance">
+        <item name="android:textColor">#ff000000</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+</resources>

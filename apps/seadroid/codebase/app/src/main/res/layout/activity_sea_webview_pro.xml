@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <include
+        android:id="@+id/tool_progress_bar"
+        layout="@layout/toolbar_actionbar_progress_bar" />
+
+    <LinearLayout
+        android:id="@+id/nsv"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/ll_bottom_bar"
+        android:layout_width="match_parent"
+        android:layout_height="?actionBarSize"
+        android:layout_gravity="bottom"
+        android:background="@color/bar_background_color"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:visibility="visible">
+
+        <com.google.android.material.divider.MaterialDivider
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:dividerColor="@color/divider_color" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal">
+
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/sdoc_outline"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:foreground="@drawable/ripple_icon_middle"
+                android:scaleType="centerInside"
+                android:src="@drawable/baseline_outline_24"
+                app:tint="@color/bottom_bar_icon_tint_color" />
+
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/sdoc_profile"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:foreground="@drawable/ripple_icon_middle"
+                android:scaleType="centerInside"
+                android:src="@drawable/baseline_info_24"
+                app:tint="@color/bottom_bar_icon_tint_color" />
+
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/sdoc_comment"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:foreground="@drawable/ripple_icon_middle"
+                android:scaleType="centerInside"
+                android:src="@drawable/baseline_comment_24"
+                app:tint="@color/bottom_bar_icon_tint_color" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>
