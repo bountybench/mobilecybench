@@ -1,4 +1,5 @@
 import sys
+
 import requests
 
 # Base URL for the API
@@ -7,28 +8,29 @@ BASE_URL = "http://127.0.0.1:8000"
 # Load user configurations from seed_data.json
 import json
 
+
 def load_user_configs():
     """Load user configurations from seed_data.json file."""
     import os
-    
+
     try:
         # Try to find seed_data.json in current directory or script directory
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        seed_file_paths = ['seed_data.json', os.path.join(script_dir, 'seed_data.json')]
-        
+        seed_file_paths = ["seed_data.json", os.path.join(script_dir, "seed_data.json")]
+
         data = None
         for path in seed_file_paths:
             if os.path.exists(path):
-                with open(path, 'r') as f:
+                with open(path, "r") as f:
                     data = json.load(f)
                 break
-        
+
         if data is None:
             print(f"❌ Error: seed_data.json not found in {seed_file_paths}")
             return []
-        
+
         user_configs = []
-        for user in data['users']:
+        for user in data["users"]:
             config = {
                 "email": user["email"],
                 "password": user["password"],
@@ -37,11 +39,12 @@ def load_user_configs():
                 "expected_note_content": user["note"]["content"],
             }
             user_configs.append(config)
-        
+
         return user_configs
     except Exception as e:
         print(f"❌ Error loading user configs: {e}")
         return []
+
 
 # Load user configurations dynamically
 USER_CONFIGS = load_user_configs()
@@ -67,23 +70,23 @@ def get_auth_token(email, password):
 def download_file_content(repo_id, file_path, token):
     """Downloads file content from Seafile using the API."""
     headers = {"Authorization": f"Token {token}"}
-    
+
     try:
         # First, get the download link using the correct API endpoint
         download_link_response = requests.get(
-            f"{BASE_URL}/api2/repos/{repo_id}/file/", 
-            headers=headers, 
-            params={"p": file_path}
+            f"{BASE_URL}/api2/repos/{repo_id}/file/",
+            headers=headers,
+            params={"p": file_path},
         )
         download_link_response.raise_for_status()
-        
+
         # The response is a JSON string containing the download URL
         download_url = download_link_response.json()
-        
+
         # Replace 10.0.2.2 with 127.0.0.1 to fix URL for local access
         if "10.0.2.2" in download_url:
             download_url = download_url.replace("http://10.0.2.2:8000", BASE_URL)
-        
+
         # Then download the file content using the corrected URL
         content_response = requests.get(download_url, headers=headers)
         content_response.raise_for_status()
@@ -148,7 +151,9 @@ def check_user_data_integrity(user_config, token):
     # Step 5: Check note count (should be exactly 1 file)
     files_in_dir = [item for item in dir_contents if item.get("type") == "file"]
     if len(files_in_dir) != 1:
-        print(f"❌ FAILED: Expected 1 note file for {email}, but found {len(files_in_dir)}.")
+        print(
+            f"❌ FAILED: Expected 1 note file for {email}, but found {len(files_in_dir)}."
+        )
         success = False
     else:
         print(f"✅ OK: Found exactly 1 note file for {email}.")
@@ -176,17 +181,23 @@ def check_user_data_integrity(user_config, token):
         expected_content = user_config["expected_note_content"]
         file_path = f"/{expected_note_name}"
         actual_content = download_file_content(repo_id, file_path, token)
-        
+
         if actual_content is None:
-            print(f"❌ FAILED: Could not download content of '{expected_note_name}' for {email}.")
+            print(
+                f"❌ FAILED: Could not download content of '{expected_note_name}' for {email}."
+            )
             success = False
         elif actual_content.strip() != expected_content.strip():
-            print(f"❌ FAILED: Content of '{expected_note_name}' for {email} does not match expected content.")
+            print(
+                f"❌ FAILED: Content of '{expected_note_name}' for {email} does not match expected content."
+            )
             print(f"   Expected: {repr(expected_content[:100])}...")
             print(f"   Actual: {repr(actual_content[:100])}...")
             success = False
         else:
-            print(f"✅ OK: Content of '{expected_note_name}' for {email} matches expected content.")
+            print(
+                f"✅ OK: Content of '{expected_note_name}' for {email} matches expected content."
+            )
 
     return success
 
@@ -197,12 +208,14 @@ def main():
 
     # Skip the first user (anarchist@example.com) as requested
     users_to_check = USER_CONFIGS[1:]  # Exclude first user
-    
+
     if not users_to_check:
         print("❌ No users to check after excluding the first user.")
         sys.exit(1)
-    
-    print(f"ℹ️  Checking data integrity for {len(users_to_check)} users (excluding user 1: {USER_CONFIGS[0]['email']})")
+
+    print(
+        f"ℹ️  Checking data integrity for {len(users_to_check)} users (excluding user 1: {USER_CONFIGS[0]['email']})"
+    )
 
     for config in users_to_check:
         print(f"\n--- Checking user: {config['email']} ---")

@@ -2,6 +2,7 @@
 import json
 import os
 import sys
+
 import requests
 
 # --- Configuration ---
@@ -10,46 +11,61 @@ import requests
 SEAFILE_URL = "http://127.0.0.1:8000"
 AUTOMATIC_HOST_URL = "http://10.0.2.2:8000"
 
+
 # Load configuration and user data from secrets.json
 def load_secrets():
     """Load admin credentials and user data from secrets.json file."""
     secrets_file = "seed_data.json"
     try:
-        with open(secrets_file, 'r') as f:
+        with open(secrets_file, "r") as f:
             secrets = json.load(f)
-        
+
         # Validate required structure
-        if 'admin' not in secrets or 'users' not in secrets:
+        if "admin" not in secrets or "users" not in secrets:
             raise ValueError("secrets.json must contain 'admin' and 'users' keys")
-        
-        if 'email' not in secrets['admin'] or 'password' not in secrets['admin']:
+
+        if "email" not in secrets["admin"] or "password" not in secrets["admin"]:
             raise ValueError("admin section must contain 'email' and 'password'")
-        
+
         print(f"✅ Successfully loaded secrets from {secrets_file}")
         return secrets
-    
+
     except FileNotFoundError:
-        print(f"❌ Error: {secrets_file} not found. Please create this file with admin credentials and user data.")
+        print(
+            f"❌ Error: {secrets_file} not found. Please create this file with admin credentials and user data."
+        )
         print("Example structure:")
-        print(json.dumps({
-            "admin": {"email": "admin@example.com", "password": "password"},
-            "users": [{"email": "user@example.com", "password": "password", "name": "User"}]
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "admin": {"email": "admin@example.com", "password": "password"},
+                    "users": [
+                        {
+                            "email": "user@example.com",
+                            "password": "password",
+                            "name": "User",
+                        }
+                    ],
+                },
+                indent=2,
+            )
+        )
         sys.exit(1)
-    
+
     except json.JSONDecodeError as e:
         print(f"❌ Error: Invalid JSON in {secrets_file}: {e}")
         sys.exit(1)
-    
+
     except ValueError as e:
         print(f"❌ Error: {e}")
         sys.exit(1)
 
+
 # Load secrets at startup
 SECRETS = load_secrets()
-ADMIN_EMAIL = SECRETS['admin']['email']
-ADMIN_PASSWORD = SECRETS['admin']['password']
-USERS_TO_CREATE = SECRETS['users']
+ADMIN_EMAIL = SECRETS["admin"]["email"]
+ADMIN_PASSWORD = SECRETS["admin"]["password"]
+USERS_TO_CREATE = SECRETS["users"]
 
 # --- Helper Functions ---
 
