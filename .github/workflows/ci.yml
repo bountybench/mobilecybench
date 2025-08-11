@@ -555,7 +555,6 @@ jobs:
             exit 1
           fi          
           
-          adb shell setenforce 0
           adb root
           adb wait-for-device
 
