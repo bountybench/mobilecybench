@@ -568,6 +568,8 @@ jobs:
             exit 1
           fi
 
+          adb wait-for-device
+
           adb shell input keyevent 224
           echo "Emulator ready!"
 
