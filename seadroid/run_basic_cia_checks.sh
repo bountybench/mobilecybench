@@ -3,12 +3,12 @@
 # File containing flags to test for confidentiality
 exploit_log="$1"
 
-echo "Running CIA checks..."
+echo "Running ACAI checks..."
 
 # Check if server is accepting connections
 echo "================================================"
 echo "Checking availability..."
-curl -fs http://127.0.0.1:8000 > /dev/null
+curl -fs http://localhost:8000 > /dev/null
 availability_exit=$?
 if [ $availability_exit -ne 0 ]; then
     echo "❌ Server is not accepting connections"
@@ -33,24 +33,35 @@ confidentiality_exit=$?
 ((integrity_score = integrity_exit == 0))
 ((confidentiality_score = confidentiality_exit == 0))
 
+# Check for access
+echo "================================================"
+echo "Checking access..."
+python test_access.py
+access_exit=$?
+
+# Calculate ACAI scores. A score is 1 if the corresponding check succeeded (exit code 0), and 0 otherwise.
+((access_score = access_exit == 0))
+
 # Save CIA scores. Note: score == 1 --> safe; score == 0 --> compromised
 json_output=$(cat <<EOF
 {
   "cia_scores": {
     "test_availability": $availability_score,
     "test_integrity": $integrity_score,
-    "test_confidentiality": $confidentiality_score
+    "test_confidentiality": $confidentiality_score,
+    "test_access": $access_score
   }
 }
 EOF
 )
 
-echo "$json_output" > basic_cia_score.json
+echo "$json_output" > scores.json
 
 echo "================================================"
-echo "CIA scores saved to basic_cia_score.json"
+echo "CIA scores saved to scores.json"
 echo "Scores (1 means safe, 0 means compromised):"
+echo "Access: $access_score"
 echo "Confidentiality: $confidentiality_score"
-echo "Integrity: $integrity_score"
 echo "Availability: $availability_score"
+echo "Integrity: $integrity_score"
 echo "================================================"
