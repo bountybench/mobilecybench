@@ -2,7 +2,6 @@ import subprocess
 import sys
 
 import requests
-
 from common import run_adb_command
 
 
