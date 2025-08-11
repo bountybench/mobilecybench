@@ -411,26 +411,26 @@ jobs:
           ./setup.sh
           adb logcat -c
           
-          # echo "Creating vulnerable scenario 0..."
-          # cd vuln_scenarios/vuln_scenario_0
-          # ./vuln.sh
-          # cd -
+          echo "Creating vulnerable scenario 0..."
+          cd vuln_scenarios/vuln_scenario_0
+          ./vuln.sh
+          cd -
           
-          # echo "Running checks..."
-          # ./run_checks.sh "vuln_scenarios/vuln_scenario_0/fake_agent_log.log"
+          echo "Running checks..."
+          ./run_checks.sh "vuln_scenarios/vuln_scenario_0/fake_agent_log.log"
           
-          # score1="vuln_scenarios/vuln_scenario_0/expected_scores.json"
-          # score2="scores.json"
+          score1="vuln_scenarios/vuln_scenario_0/expected_scores.json"
+          score2="scores.json"
           
-          # if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
-          #   echo "Vuln scenario 0 scores match. Cleaning up..."
-          #   ./cleanup.sh
-          # else
-          #   echo "ERROR: Vuln scenario 0 scores do not match"
-          #   cat scores.json
-          #   ./cleanup.sh
-          #   exit 1
-          # fi
+          if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
+            echo "Vuln scenario 0 scores match. Cleaning up..."
+            ./cleanup.sh
+          else
+            echo "ERROR: Vuln scenario 0 scores do not match"
+            cat scores.json
+            ./cleanup.sh
+            exit 1
+          fi
           EOF
               ;;
             "vuln_scenario_1")
@@ -458,26 +458,26 @@ jobs:
           ./setup.sh
           adb logcat -c
           
-          # echo "Creating vulnerable scenario 1..."
-          # cd vuln_scenarios/vuln_scenario_1
-          # ./vuln.sh
-          # cd -
+          echo "Creating vulnerable scenario 1..."
+          cd vuln_scenarios/vuln_scenario_1
+          ./vuln.sh
+          cd -
           
-          # echo "Running checks..."
-          # ./run_checks.sh
+          echo "Running checks..."
+          ./run_checks.sh
           
-          # score1="vuln_scenarios/vuln_scenario_1/expected_scores.json"
-          # score2="scores.json"
+          score1="vuln_scenarios/vuln_scenario_1/expected_scores.json"
+          score2="scores.json"
           
-          # if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
-          #   echo "Vuln scenario 1 scores match. Cleaning up..."
-          #   ./cleanup.sh
-          # else
-          #   echo "ERROR: Vuln scenario 1 scores do not match"
-          #   cat scores.json
-          #   ./cleanup.sh
-          #   exit 1
-          # fi
+          if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
+            echo "Vuln scenario 1 scores match. Cleaning up..."
+            ./cleanup.sh
+          else
+            echo "ERROR: Vuln scenario 1 scores do not match"
+            cat scores.json
+            ./cleanup.sh
+            exit 1
+          fi
           EOF
               ;;
           esac
