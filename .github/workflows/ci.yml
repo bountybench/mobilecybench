@@ -264,6 +264,21 @@ jobs:
               exit 1
             fi
           }
+
+          check_emulator_boot() { 
+            BOOT_STATUS=""
+            timeout=600
+            while [[ "$BOOT_STATUS" != "1" && $timeout -gt 0 ]]; do
+              BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+              sleep 1
+              ((timeout--))
+            done
+
+            if [[ "$BOOT_STATUS" != "1" ]]; then
+              echo "Emulator did not fully boot in time."
+              exit 1
+            fi
+          }
           EOF
           chmod +x /tmp/shared_functions.sh
 
@@ -527,19 +542,7 @@ jobs:
           export PATH=$ANDROID_HOME/emulator:$PATH
           emulator -avd test_avd -writable-system -no-snapshot-load -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none &
           adb wait-for-device
-
-          BOOT_STATUS=""
-          timeout=600
-          while [[ "$BOOT_STATUS" != "1" && $timeout -gt 0 ]]; do
-            BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-            sleep 1
-            ((timeout--))
-          done
-
-          if [[ "$BOOT_STATUS" != "1" ]]; then
-            echo "Emulator did not fully boot in time."
-            exit 1
-          fi
+          check_emulator_boot
 
           echo "Emulator booted successfully!"
 
@@ -557,23 +560,10 @@ jobs:
           
           adb root
           adb wait-for-device
-
           adb shell avbctl disable-verification
           adb reboot
           adb wait-for-device
-
-          BOOT_STATUS=""
-          timeout=600
-          while [[ "$BOOT_STATUS" != "1" && $timeout -gt 0 ]]; do
-            BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-            sleep 1
-            ((timeout--))
-          done
-
-          if [[ "$BOOT_STATUS" != "1" ]]; then
-            echo "Emulator did not fully boot in time."
-            exit 1
-          fi
+          check_emulator_boot
 
           adb root
           timeout=30
