@@ -5,13 +5,17 @@
 # - Break non-agent auth by changing a seeded user's password (access/valid-auth fail)
 # - Tamper a non-agent file content via WebDAV (integrity)
 #
-# Usage: from repo root or CI, "cd vuln_scenarios/vuln_scenario_0 && ./vuln.sh"
+# Usage:
+#   - From repo root: ./vuln_scenarios/vuln_scenario_0/vuln.sh
+#   - Or from scenario dir: ./vuln.sh (works now; script runs Python from repo root)
 set -euo pipefail
 IFS=$'\n\t'
 
 SCENARIO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCENARIO_DIR/../.." && pwd)"
 TOOLS_DIR="$ROOT_DIR/tools"
+VENV_DIR="$ROOT_DIR/.venv"
+PYTHON="python3"
 
 log(){ printf '[vuln0] %s\n' "$*"; }
 warn(){ printf '[vuln0][warn] %s\n' "$*" >&2; }
@@ -28,12 +32,24 @@ ensure_python_cli(){
   fi
 }
 
+activate_python_env(){
+  if [[ -x "$VENV_DIR/bin/python" ]]; then
+    # shellcheck source=/dev/null
+    source "$VENV_DIR/bin/activate" || warn "failed to activate venv"
+    PYTHON="$VENV_DIR/bin/python"
+    log "using venv: $VENV_DIR"
+  else
+    warn "venv not found at $VENV_DIR; falling back to system python"
+  fi
+}
+
 run_cmd(){
-  python3 -m tools.vuln_utils "$@"
+  ( cd "$ROOT_DIR" && "$PYTHON" -m tools.vuln_utils "$@" )
 }
 
 main(){
   ensure_python_cli
+  activate_python_env
   # Propagate env used by the Python CLI
   export BASELINE_FILE AGENT_LOG_FILE OWNCLOUD_URL
   # Execute steps
