@@ -34,7 +34,7 @@ services:
       - files:/mnt/data
       - ./empty_skeleton:/var/www/owncloud/core/skeleton  # overwrite to not include default folders/files
     networks:
-      - public_net
+      - shared_net
       - private_net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080"]
@@ -80,6 +80,6 @@ services:
       retries: 5
 
 networks:
-  public_net:
+  shared_net:
     external: true
   private_net:
