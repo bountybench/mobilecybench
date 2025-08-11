@@ -2,7 +2,20 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ANDROID_HOME="${HOME}/.android-sdk"
+# Resolve Android SDK location: honor existing env, then common paths
+if [ -n "$ANDROID_HOME" ]; then
+  ANDROID_HOME="$ANDROID_HOME"
+elif [ -n "$ANDROID_SDK_ROOT" ]; then
+  ANDROID_HOME="$ANDROID_SDK_ROOT"
+else
+  if [ -d "$HOME/Library/Android/sdk" ]; then
+    ANDROID_HOME="$HOME/Library/Android/sdk"
+  elif [ -d "$HOME/Android/Sdk" ]; then
+    ANDROID_HOME="$HOME/Android/Sdk"
+  else
+    ANDROID_HOME="$HOME/.android-sdk"
+  fi
+fi
 BITWARDEN_PKG="com.x8bit.bitwarden"
 APK_PATH="app/build/outputs/apk/fdroid/release/com.x8bit.bitwarden-fdroid.apk"
 
@@ -44,9 +57,9 @@ check_prerequisites() {
         echo "[WARN] pip/pip3 not found. Skipping Python dependency installation."
     fi
 
-    # Check Java 17
+    # Check Java availability
     if ! command -v java >/dev/null 2>&1; then
-        echo "ERROR: Java not found. Please install Java 17."
+        echo "ERROR: Java not found. Please install Java 17 and ensure it is on PATH or set JAVA_HOME."
         exit 1
     fi
     JAVA_VERSION=$(java -version 2>&1 | awk -F[\"_] 'NR==1{print $2}')
@@ -69,9 +82,18 @@ check_prerequisites() {
 setup_environment() {
     echo "Setting up build environment..."
     
-    # Set Java 17
-    export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-    export PATH="$JAVA_HOME/bin:$PATH"
+    # Set Java 17 (cross-platform resolution if JAVA_HOME is not set)
+    if [ -z "$JAVA_HOME" ]; then
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            JAVA_HOME="$(/usr/libexec/java_home -v 17 2>/dev/null)"
+        elif [ -d "/usr/lib/jvm/java-17-openjdk-amd64" ]; then
+            JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
+        fi
+    fi
+    if [ -n "$JAVA_HOME" ]; then
+        export JAVA_HOME
+        export PATH="$JAVA_HOME/bin:$PATH"
+    fi
     
     # Set Android SDK
     export ANDROID_HOME="$ANDROID_HOME"

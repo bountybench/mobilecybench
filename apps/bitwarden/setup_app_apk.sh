@@ -11,8 +11,14 @@ echo === RUNNING setup_app_apk.sh ===
 install_bitwarden() {
     echo "Installing Bitwarden on Android emulator..."
 
+    # Check jq is available
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "ERROR: jq is required to parse metadata.json. Please install jq and retry."
+        exit 1
+    fi
+
     # Check if emulator is running
-    if ! adb devices | grep -q "device\|emulator"; then
+    if ! adb devices | grep -w "device" | grep -v "List" >/dev/null; then
         echo "ERROR: No Android emulator found."
         echo "Please start the emulator first."
         exit 1

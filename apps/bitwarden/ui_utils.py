@@ -50,7 +50,9 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
                     print("[WARN] No devices found via ADB")
                     continue
 
-                print(f"[DEBUG] Found {len(connected_devices)} device(s): {connected_devices}")
+                print(
+                    f"[DEBUG] Found {len(connected_devices)} device(s): {connected_devices}"
+                )
 
             except subprocess.TimeoutExpired:
                 print("[WARN] ADB devices command timed out")

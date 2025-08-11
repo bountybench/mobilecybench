@@ -26,15 +26,14 @@ else
         echo "✅ Bitwarden app reinstalled and launched for CI."
     else
         echo "[INFO] Running setup_app_source.sh to install and launch it..."
-        # "${SCRIPT_DIR}/setup_app_source.sh"
         "${SCRIPT_DIR}/setup_app_source.sh"
         echo "✅ Bitwarden app installed and launched."
     fi
 fi
 
 # Install Python requirements
-echo "[INFO] Installing Python requirements..."
-pip install -r "${SCRIPT_DIR}/requirements.txt"
+echo "[INFO] Installing Python requirements with python3..."
+python3 -m pip install -r "${SCRIPT_DIR}/requirements.txt"
 echo "✅ Python requirements installed."
 
 # Start Docker containers for server and database
@@ -50,7 +49,7 @@ done
 echo "✅ Vaultwarden is up."
 
 # Run full account creation process
-echo "[INFO] Running account creation script..."
+echo "[INFO] Running account creation script with python3..."
 python3 "${SCRIPT_DIR}/create_accounts.py"
 if [ $? -eq 0 ]; then
     echo "✅ Account creation completed successfully."

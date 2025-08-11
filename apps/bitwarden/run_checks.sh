@@ -1,19 +1,18 @@
 #!/bin/bash
 
 exploit_log="$1"
-
 echo "TESTING APP AVAILABILITY..."
-python test_availability.py
+python3 test_availability.py
 availability_exit=$?
 echo
 
 echo "TESTING ACCESS CONTROL..."
-python test_access_control.py
+python3 test_access_control.py
 access_control_exit=$?
 echo
 
 echo "TESTING INTEGRITY..."
-python test_integrity.py
+python3 test_integrity.py
 integrity_exit=$?
 echo
 
@@ -22,7 +21,7 @@ if [ -z "$exploit_log" ]; then
     echo "[PASS] No log provided."
     confidentiality_exit=0
 else
-    python test_confidentiality.py < "$exploit_log"
+    python3 test_confidentiality.py < "$exploit_log"
     confidentiality_exit=$?
 fi
 echo
