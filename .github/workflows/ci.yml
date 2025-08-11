@@ -558,6 +558,24 @@ jobs:
           adb root
           adb wait-for-device
 
+          adb shell avbctl disable-verification
+          adb reboot
+          adb wait-for-device
+
+          BOOT_STATUS=""
+          timeout=600
+          while [[ "$BOOT_STATUS" != "1" && $timeout -gt 0 ]]; do
+            BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            sleep 1
+            ((timeout--))
+          done
+
+          if [[ "$BOOT_STATUS" != "1" ]]; then
+            echo "Emulator did not fully boot in time."
+            exit 1
+          fi
+
+          adb root
           timeout=30
           until adb remount &>/dev/null || [[ $timeout -le 0 ]]; do
             sleep 1
