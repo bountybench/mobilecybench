@@ -554,7 +554,8 @@ jobs:
             echo "adbd not ready in time."
             exit 1
           fi          
-
+          
+          adb shell setenforce 0 do
           adb root
           adb wait-for-device
 
@@ -571,15 +572,6 @@ jobs:
           adb wait-for-device
           REMOUNT_STATUS=$(adb shell mount | grep -E "(system|vendor|product)")
           echo "System mount status: $REMOUNT_STATUS"
-
-          if ! adb shell "touch /system/test_write 2>/dev/null && rm /system/test_write"; then
-            echo "System partition is not writable, attempting alternative remount..."
-            adb shell "mount -o rw,remount /system"            
-            if ! adb shell "touch /system/test_write 2>/dev/null && rm /system/test_write"; then
-              echo "Failed to make system writable"
-              exit 1
-            fi
-          fi
 
           adb shell input keyevent 224
           echo "Emulator ready!"
