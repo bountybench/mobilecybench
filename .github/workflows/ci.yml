@@ -537,11 +537,11 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-snapshot-save -no-snapshot-load -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
-          script: ./test_checks.sh 2>&1
+          script: ./test_checks.sh 
 
       - name: Stop resource logging and show results
         if: always()
-        run: |
+        run: |          
           echo "=== Stopping resource monitor ==="
           kill $(cat resource_logs/monitor_pids.txt) || true
 
