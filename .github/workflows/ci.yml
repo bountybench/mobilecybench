@@ -526,7 +526,7 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-snapshot-save -no-snapshot-load -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
-          script: ./test_checks.sh
+          script: ./test_checks.sh 2>&1
 
       - name: Stop resource logging and show results
         if: always()
