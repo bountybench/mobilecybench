@@ -616,7 +616,7 @@ jobs:
           
           echo "no" | avdmanager create avd -n test_avd \
             -k "system-images;android-$SDK_VERSION;$SYSTEM_IMAGE;x86_64" \
-            --device "pixel" \
+            --device "pixel_2" \
             --sdcard 1024M
             
           # Configure AVD for better stability
