@@ -68,19 +68,6 @@ ensure_dependency() {
 check_prerequisites() {
     ensure_dependency "Java 17" "java -version 2>&1 | grep 'openjdk version \"17'" "openjdk@17" "openjdk-17-jdk"
 
-    if [[ ! -d "${ANDROID_HOME}" ]]; then
-        echo "❌ ERROR: Android SDK not found at ${ANDROID_HOME}. Please make sure to run setup.sh first."
-        echo "For reference, here are the steps to install the Android SDK manually:"
-        echo "  1. Download the command-line tools. E.g. curl -L \"https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip\" -o cmdline-tools.zip"
-        echo "  2. Create the directory: mkdir -p ${ANDROID_HOME}"
-        echo "  3. Extract the downloaded zip file into that directory. E.g. unzip cmdline-tools.zip | mv cmdline-tools/* ${ANDROID_HOME}/cmdline-tools/latest/"
-        echo "  Recommended: Add sdkmanager tool to your PATH. E.g. export PATH=\"${ANDROID_HOME}/cmdline-tools/latest/bin:${PATH}\""
-        echo "  4. Accept licenses: sdkmanager --licenses"
-        exit 1
-    else
-        echo "✅ Android SDK is installed."
-    fi
-
     ensure_dependency "Git" "command -v git" "git" "git"
 }
 
