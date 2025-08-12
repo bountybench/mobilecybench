@@ -281,6 +281,52 @@ jobs:
               exit 1
             fi
           }
+
+          start_emulator_logging() {
+            echo "=== Starting emulator resource monitor ==="
+            mkdir -p emulator_logs
+
+            # Start ADB-based monitoring
+            nohup sh -c 'while adb devices | grep -q "device\$"; do 
+              echo "=== $(date) ===" >> emulator_logs/adb_processes.log
+              adb shell "ps -A | head -20" >> emulator_logs/adb_processes.log 2>/dev/null || true
+              sleep 5
+            done' &
+            echo $! >> emulator_logs/emulator_monitor_pids.txt
+
+            # Memory usage monitoring
+            nohup sh -c 'while adb devices | grep -q "device\$"; do 
+              echo "=== $(date) ===" >> emulator_logs/adb_memory.log
+              adb shell "cat /proc/meminfo | head -10" >> emulator_logs/adb_memory.log 2>/dev/null || true
+              sleep 5
+            done' &
+            echo $! >> emulator_logs/emulator_monitor_pids.txt
+
+            # CPU usage monitoring
+            nohup sh -c 'while adb devices | grep -q "device\$"; do 
+              echo "=== $(date) ===" >> emulator_logs/adb_cpu.log
+              adb shell "cat /proc/loadavg" >> emulator_logs/adb_cpu.log 2>/dev/null || true
+              sleep 3
+            done' &
+            echo $! >> emulator_logs/emulator_monitor_pids.txt
+
+            # Disk usage monitoring
+            nohup sh -c 'while adb devices | grep -q "device\$"; do 
+              echo "=== $(date) ===" >> emulator_logs/adb_disk.log
+              adb shell "df -h | grep -E '\''(system|data|cache)'\''" >> emulator_logs/adb_disk.log 2>/dev/null || true
+              sleep 10
+            done' &
+            echo $! >> emulator_logs/emulator_monitor_pids.txt
+          }
+
+          # Function to stop emulator resource logging
+          stop_emulator_logging() {
+            echo "=== Stopping emulator resource monitor ==="
+            if [ -f emulator_logs/emulator_monitor_pids.txt ]; then
+              kill $(cat emulator_logs/emulator_monitor_pids.txt) 2>/dev/null || true
+              rm -f emulator_logs/emulator_monitor_pids.txt
+            fi
+          }
           EOF
           chmod +x /tmp/shared_functions.sh
 
@@ -353,6 +399,8 @@ jobs:
           set -e
           source /tmp/shared_functions.sh
           check_server_ready
+          start_emulator_logging
+          trap stop_emulator_logging EXIT
           EOF
           
           echo "dir=\"$modified_dir\"" >> test_checks.sh
@@ -530,7 +578,9 @@ jobs:
 
       - name: Stop resource logging and show results
         if: always()
-        run: |          
+        run: |
+          source /tmp/shared_functions.sh
+          
           echo "=== Stopping resource monitor ==="
           kill $(cat resource_logs/monitor_pids.txt) || true
 
@@ -542,6 +592,40 @@ jobs:
 
           echo "=== DISK USAGE LOG ==="
           tail -n 20 resource_logs/disk.log || true
+
+          if [ -d "emulator_logs" ]; then
+            echo "=== EMULATOR RESOURCE LOGS ==="
+            
+            echo "=== EMULATOR PROCESSES ==="
+            if [ -f "emulator_logs/adb_processes.log" ]; then
+              tail -n 50 emulator_logs/adb_processes.log || true
+            else
+              echo "No emulator processes log found"
+            fi
+
+            echo "=== EMULATOR MEMORY USAGE ==="
+            if [ -f "emulator_logs/adb_memory.log" ]; then
+              tail -n 30 emulator_logs/adb_memory.log || true
+            else
+              echo "No emulator memory log found"
+            fi
+
+            echo "=== EMULATOR CPU USAGE ==="
+            if [ -f "emulator_logs/adb_cpu.log" ]; then
+              tail -n 20 emulator_logs/adb_cpu.log || true
+            else
+              echo "No emulator CPU log found"
+            fi
+
+            echo "=== EMULATOR DISK USAGE ==="
+            if [ -f "emulator_logs/adb_disk.log" ]; then
+              tail -n 20 emulator_logs/adb_disk.log || true
+            else
+              echo "No emulator disk log found"
+            fi
+          else
+            echo "No emulator logs directory found"
+          fi
 
       - name: Display disk space after tests
         if: always()
