@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Parse command line arguments
-SETUP_TYPE=${1:-source}  # Default to 'apklink' if no argument provided # TEST using source
+SETUP_TYPE=${1:-apklink}  # Default to 'apklink' if no argument provided # TEST using source
 
 # Validate argument
 if [[ "$SETUP_TYPE" != "source" && "$SETUP_TYPE" != "apklink" ]]; then
