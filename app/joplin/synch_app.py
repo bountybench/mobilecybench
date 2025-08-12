@@ -64,6 +64,10 @@ wait_and_click_desc("Sidebar, Show/hide the sidebar")
 wait_and_click_text("Configuration")
 wait_for_ui_stable()
 
+width, height = d.window_size()
+d.drag(width/2, height*0.8, width/2, height*0.6, 0.2)
+wait_for_ui_stable()
+
 label = d(text="Synchronization target")
 if label.exists:
     dropdown = label.sibling(className="android.view.ViewGroup")
@@ -91,6 +95,10 @@ if label.exists:
     edit.set_text("")
     d.send_keys(username)
     d.press("enter")
+wait_for_ui_stable()
+
+width, height = d.window_size()
+d.drag(width/2, height*0.6, width/2, height*0.55, 0.2)
 wait_for_ui_stable()
 
 # Fill Joplin Server password
