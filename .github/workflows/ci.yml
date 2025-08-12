@@ -562,7 +562,7 @@ jobs:
           
           adb root
           adb wait-for-device
-          if [ "$sdk" -gt 28 ]; then
+          if [ "$SDK_VERSION" -gt 28 ]; then
             adb shell avbctl disable-verification
             adb reboot
             adb wait-for-device
