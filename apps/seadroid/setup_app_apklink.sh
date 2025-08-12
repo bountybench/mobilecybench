@@ -196,13 +196,7 @@ connect_to_server() {
     sleep 1
 }
 
-main() {
-    echo "TESTING!!! Found gradle-wrapper.properties at: skipping"
-    # find . -name "gradle-wrapper.properties" -type f
-    echo "gradle file details:"
-    ls -lR gradle
-    cat ./codebase/gradle/wrapper/gradle-wrapper.properties
-    echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+main() {  
     echo "SEADROID SETUP"
     echo "======================="
     cd "${SCRIPT_DIR}"
