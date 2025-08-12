@@ -285,7 +285,7 @@ jobs:
             mkdir -p emulator_logs
 
             # Start ADB-based monitoring
-            nohup sh -c 'while adb devices | grep -q "device$"; do 
+            nohup sh -c 'while adb devices | grep -q "device\$"; do 
               echo "=== $(date) ===" >> emulator_logs/adb_processes.log
               adb shell "ps -A | head -20" >> emulator_logs/adb_processes.log 2>/dev/null || true
               sleep 5
@@ -293,7 +293,7 @@ jobs:
             echo $! >> emulator_logs/emulator_monitor_pids.txt
 
             # Memory usage monitoring
-            nohup sh -c 'while adb devices | grep -q "device$"; do 
+            nohup sh -c 'while adb devices | grep -q "device\$"; do 
               echo "=== $(date) ===" >> emulator_logs/adb_memory.log
               adb shell "cat /proc/meminfo | head -10" >> emulator_logs/adb_memory.log 2>/dev/null || true
               sleep 5
@@ -301,7 +301,7 @@ jobs:
             echo $! >> emulator_logs/emulator_monitor_pids.txt
 
             # CPU usage monitoring
-            nohup sh -c 'while adb devices | grep -q "device$"; do 
+            nohup sh -c 'while adb devices | grep -q "device\$"; do 
               echo "=== $(date) ===" >> emulator_logs/adb_cpu.log
               adb shell "cat /proc/loadavg" >> emulator_logs/adb_cpu.log 2>/dev/null || true
               sleep 3
@@ -309,9 +309,9 @@ jobs:
             echo $! >> emulator_logs/emulator_monitor_pids.txt
 
             # Disk usage monitoring
-            nohup sh -c 'while adb devices | grep -q "device$"; do 
+            nohup sh -c 'while adb devices | grep -q "device\$"; do 
               echo "=== $(date) ===" >> emulator_logs/adb_disk.log
-              adb shell "df -h | grep -E '(system|data|cache)'" >> emulator_logs/adb_disk.log 2>/dev/null || true
+              adb shell "df -h | grep -E '\''(system|data|cache)'\''" >> emulator_logs/adb_disk.log 2>/dev/null || true
               sleep 10
             done' &
             echo $! >> emulator_logs/emulator_monitor_pids.txt
