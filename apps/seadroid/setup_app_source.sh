@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# TODO: Sync with apklink script
 set -e  # Stop script on error
 
 # General variables

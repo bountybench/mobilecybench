@@ -6,6 +6,7 @@ exploit_log="$1"
 echo "Running ACAI checks..."
 
 # Check if server is accepting connections
+# TODO: Make this more thorough, break out into own py script
 echo "================================================"
 echo "Checking availability..."
 curl -fs http://localhost:8000 > /dev/null

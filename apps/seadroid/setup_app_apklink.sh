@@ -17,7 +17,7 @@ APK_PATH="./${APK_REL}"
 SEAFILE_SITE_URL="10.0.2.2:8000"
 SEAFILE_USER="anarchist@example.com"   # Logging in as normal user
 SEAFILE_PASS="zU72wO7eX4UZ"
-BASIC_ACTIVITY="com.android.launcher3/com.android.launcher3.Launcher"
+SEADROID_PACKAGE="com.seafile.seadroid2"
 
 
 # Ensures a dependency is installed, prompting the user to install it if missing.
@@ -67,7 +67,6 @@ ensure_dependency() {
 # Checks to make sure Java, Android SDK, and Git are installed
 check_prerequisites() {
     ensure_dependency "Java 17" "java -version 2>&1 | grep 'openjdk version \"17'" "openjdk@17" "openjdk-17-jdk"
-
     ensure_dependency "Git" "command -v git" "git" "git"
 }
 
@@ -137,22 +136,18 @@ install_and_launch() {
     echo "Installing APK: ${APK_PATH}"
     adb install -r "${APK_PATH}"
 
-    adb shell am start -n ${BASIC_ACTIVITY}
+    # Launch app
+    adb shell monkey -p "${SEADROID_PACKAGE}" -c android.intent.category.LAUNCHER 1
+
+    # Wait for app to launch
+    wait_for_activity "com.seafile.seadroid2/com.seafile.seadroid2.ui.account.AccountsActivity"
 }
 
 # Performs login and server connection on app
 connect_to_server() {
-    # wait_for_activity "AccountsActivity"
-    wait_for_activity "Launcher"
-
     # Get to login screen
-    sleep 3
-    adb shell input swipe 500 1600 500 500
-    sleep 1
-
-    adb shell input tap 750 900
-    sleep 10
-
+    # TODO: Change this to UI automator?
+    sleep 5
     adb shell input tap 540 615
     sleep 2
 
@@ -209,12 +204,6 @@ main() {
     echo "Setting up environment..."
     setup_environment
     echo "✅ Environment set up."
-    echo "======================="
-    echo "Starting emulator..."
-    start_emulator
-    echo "Waiting for emulator to boot..."
-    wait_for_boot
-    echo "✅ Emulator booted."
     echo "======================="
     echo "Installing and launching APK..."
     install_and_launch
