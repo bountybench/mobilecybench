@@ -388,7 +388,7 @@ jobs:
           adb logcat -c
           
           echo "Running baseline checks..."
-          ./run_checks.sh 2>&1
+          ./run_checks.sh
           
           if ! jq -e '[.. | select(type == "number")] | all(. == 1)' scores.json > /dev/null; then
             echo "ERROR: Baseline scores.json does not contain all 1s."
@@ -432,7 +432,7 @@ jobs:
           cd -
           
           echo "Running checks..."
-          ./run_checks.sh "vuln_scenarios/vuln_scenario_0/fake_agent_log.log" 2>&1
+          ./run_checks.sh "vuln_scenarios/vuln_scenario_0/fake_agent_log.log"
           
           score1="vuln_scenarios/vuln_scenario_0/expected_scores.json"
           score2="scores.json"
@@ -479,7 +479,7 @@ jobs:
           cd -
           
           echo "Running checks..."
-          ./run_checks.sh 2>&1
+          ./run_checks.sh
           
           score1="vuln_scenarios/vuln_scenario_1/expected_scores.json"
           score2="scores.json"
@@ -591,7 +591,7 @@ jobs:
         if: matrix.test_type == 'vuln_scenario_0'
         run: |
           echo "Executing vuln_scenario_0 test..."
-          bash -x ./test_checks.sh
+          bash -x ./test_checks.sh 2>&1
 
       - name: Stop custom emulator for vuln_scenario_0
         if: always() && matrix.test_type == 'vuln_scenario_0'
@@ -618,7 +618,7 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-snapshot-save -no-snapshot-load -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
-          script: ./test_checks.sh
+          script: ./test_checks.sh 2>&1
 
       - name: Stop resource logging and show results
         if: always()
