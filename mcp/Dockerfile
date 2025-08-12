@@ -26,6 +26,7 @@ RUN NGROK_VERSION=3.26.0 \
 WORKDIR /app
 COPY ui_connection.py .
 COPY mcp_server.py .
+COPY docker_setup.py .
 
 EXPOSE 8000
 
