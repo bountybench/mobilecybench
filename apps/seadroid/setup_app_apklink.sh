@@ -197,8 +197,8 @@ connect_to_server() {
 }
 
 main() {
-    echo "TESTING!!! Found gradle-wrapper.properties at:"
-    find . -name "gradle-wrapper.properties" -type f
+    echo "TESTING!!! Found gradle-wrapper.properties at: skipping"
+    # find . -name "gradle-wrapper.properties" -type f
     echo "gradle file details:"
     ls -lR gradle
     cat ./codebase/gradle/wrapper/gradle-wrapper.properties
