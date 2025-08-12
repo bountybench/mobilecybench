@@ -94,9 +94,9 @@ initialize_repository() {
 
 # Starts emulator
 start_emulator() {
-    "${SCRIPT_DIR}/../start_emulator.sh" &
+    "${SCRIPT_DIR}/../../start_emulator.sh" &
     adb wait-for-device
-    "${SCRIPT_DIR}/../check_device.sh"
+    "${SCRIPT_DIR}/../../check_device.sh"
 }
 
 # Waits for emulator to boot
