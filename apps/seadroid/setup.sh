@@ -12,6 +12,9 @@ if [[ "$SETUP_TYPE" != "source" && "$SETUP_TYPE" != "apklink" ]]; then
     exit 1
 fi
 
+# Run general setup script to get ./start_emulator.sh and ./check_device.sh
+chmod +x ../../setup.sh && ./../../setup.sh
+
 # Create fresh volumes
 mkdir seadoc-data
 mkdir seafile-caddy
