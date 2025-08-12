@@ -23,9 +23,13 @@
         "type": "string",
         "description": "The Java version needed for the app."
       },
-      "server": {
+      "emulator_server": {
         "type": "string",
-        "description": "The server linked to the app."
+        "description": "The server URL used inside or by the emulator to access the server."
+      },
+      "app_server": {
+        "type": "string",
+        "description": "The URL of the server that the app communicates with, usually a remote or containerized service."
       },
       "username": {
         "type": "string",
