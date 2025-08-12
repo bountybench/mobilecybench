@@ -633,22 +633,35 @@ jobs:
           export PATH=$ANDROID_HOME/emulator:$PATH
           SDK_VERSION=${{ needs.setup.outputs.sdk }}
 
+          echo "=== First boot (read-only system) ==="
           emulator -avd test_avd \
             -no-snapshot-load -no-snapshot-save -wipe-data \
             -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim \
             -skin 1080x1920 -memory 4096 -camera-back none &
           adb wait-for-device
           check_emulator_boot
-          
+          echo "First boot complete."
+
+          echo "=== Disable AVB/dm-verity ==="
           adb root
-          adb wait-for-device
           if [ "$SDK_VERSION" -gt 28 ]; then
             adb shell avbctl disable-verification
-            adb reboot
-            adb wait-for-device
-            check_emulator_boot
+          else
+            adb disable-verity
+          fi
+          adb reboot
+          adb wait-for-device
+          check_emulator_boot
+          echo "Verity disabled and rebooted."
+
+          echo "=== Killing emulator before writable boot ==="
+          EMU_ID=$(adb devices | awk '/emulator-/{print $1}')
+          if [ -n "$EMU_ID" ]; then
+            adb -s "$EMU_ID" emu kill
+            sleep 5
           fi
 
+          echo "=== Second boot (writable system) ==="
           emulator -avd test_avd \
             -writable-system -no-snapshot-load -no-snapshot-save \
             -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim \
@@ -656,14 +669,26 @@ jobs:
           adb wait-for-device
           check_emulator_boot
 
+          echo "=== Remounting /system ==="
           adb root
-          adb remount
-          adb shell mount | grep system
+          timeout=30
+          until adb remount &>/dev/null || [[ $timeout -le 0 ]]; do
+            sleep 1
+            ((timeout--))
+          done
+          if [[ "$timeout" -le 0 ]]; then
+            echo "adb remount failed after waiting."
+            exit 1
+          fi
+          REMOUNT_STATUS=$(adb shell mount | grep -E "(system|vendor|product)")
+          echo "System mount status: $REMOUNT_STATUS"
 
+          echo "Disabling animations..."
           adb shell settings put global window_animation_scale 0
           adb shell settings put global transition_animation_scale 0
           adb shell settings put global animator_duration_scale 0
 
+          echo "Waking device..."
           adb shell input keyevent 224
           echo "Emulator ready!"
 
