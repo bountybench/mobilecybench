@@ -284,7 +284,7 @@ jobs:
             printf "==> Checking emulator running activity \n"
             start_time=$(date +%s)
             i=0
-            timeout=20
+            timeout=120
             target="com.google.android.apps.nexuslauncher.NexusLauncherActivity"
 
             while true; do
