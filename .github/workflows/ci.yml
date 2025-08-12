@@ -95,7 +95,7 @@ jobs:
               echo "Java version: $java"
           fi
 
-          if [ "$sdk" -eq 28 ] || [ "$sdk" = "29" ]; then
+          if [ "$sdk" -lt 30 ]; then
               system_image="google_apis"
           else
               system_image="aosp_atd"

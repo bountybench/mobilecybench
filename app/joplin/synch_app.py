@@ -17,7 +17,7 @@ password = args.password
 d = u2.connect()
 
 
-def wait_and_click_text(text, timeout=45):
+def wait_and_click_text(text, timeout=120):
     if d(text=text).wait(timeout=timeout):
         d(text=text).click_exists(timeout=3)
     else:
@@ -26,10 +26,10 @@ def wait_and_click_text(text, timeout=45):
         )
         print(d.dump_hierarchy(), file=sys.stderr)
         exit(1)
-    wait_for_ui_stable(timeout=5)
+    wait_for_ui_stable(timeout=15)
 
 
-def wait_and_click_desc(desc, timeout=45):
+def wait_and_click_desc(desc, timeout=120):
     if d(description=desc).wait(timeout=timeout):
         d(description=desc).click_exists(timeout=3)
     else:
@@ -39,10 +39,10 @@ def wait_and_click_desc(desc, timeout=45):
         )
         print(d.dump_hierarchy(), file=sys.stderr)
         exit(1)
-    wait_for_ui_stable(timeout=5)
+    wait_for_ui_stable(timeout=15)
 
 
-def wait_for_ui_stable(timeout=10, interval=0.5):
+def wait_for_ui_stable(timeout=120, interval=3):
     """
     Wait until the UI hierarchy stops changing.
     """
@@ -55,19 +55,20 @@ def wait_for_ui_stable(timeout=10, interval=0.5):
             return True
         prev_hierarchy = current_hierarchy
         time.sleep(interval)
+    print("UI unstable!", file=sys.stderr)
     return False
 
 
-wait_for_ui_stable(timeout=15, interval=1)
+wait_for_ui_stable()
 wait_and_click_desc("Sidebar, Show/hide the sidebar")
 wait_and_click_text("Configuration")
-wait_for_ui_stable(timeout=15, interval=1)
+wait_for_ui_stable()
 
 label = d(text="Synchronization target")
 if label.exists:
     dropdown = label.sibling(className="android.view.ViewGroup")
     dropdown.click()
-    wait_for_ui_stable(timeout=5, interval=3)
+    wait_for_ui_stable()
     wait_and_click_text("Joplin Server (Beta)")
 
 # Fill Joplin Server URL
@@ -75,36 +76,36 @@ label = d(text="Joplin Server URL")
 if label.exists:
     edit = label.sibling(className="android.widget.EditText")
     edit.click()
-    wait_for_ui_stable(timeout=5)
+    wait_for_ui_stable()
     edit.set_text("")
     d.send_keys("http://10.0.2.2:22300")
     d.press("enter")
-wait_for_ui_stable(timeout=5)
+wait_for_ui_stable()
 
 # Fill Joplin Server email
 label = d(text="Joplin Server email")
 if label.exists:
     edit = label.sibling(className="android.widget.EditText")
     edit.click()
-    wait_for_ui_stable(timeout=5)
+    wait_for_ui_stable()
     edit.set_text("")
     d.send_keys(username)
     d.press("enter")
-wait_for_ui_stable(timeout=5)
+wait_for_ui_stable()
 
 # Fill Joplin Server password
 label = d(text="Joplin Server password")
 if label.exists:
     edit = label.sibling(className="android.widget.EditText")
     edit.click()
-    wait_for_ui_stable(timeout=5)
+    wait_for_ui_stable()
     edit.set_text("")
     d.send_keys(password)
     d.press("enter")
-wait_for_ui_stable(timeout=5, interval=1)
+wait_for_ui_stable()
 
 wait_and_click_text("CHECK SYNCHRONIZATION CONFIGURATION")
-wait_for_ui_stable(timeout=10, interval=3)
+wait_for_ui_stable()
 
 hierarchy = d.dump_hierarchy()
 root = ET.fromstring(hierarchy)
