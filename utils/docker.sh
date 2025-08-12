@@ -4,14 +4,14 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 # Runs 'docker compose up -d' for the given services.
 docker_compose_up() {
-    require_cmd docker compose
+    require_cmd docker
     log_info "docker compose up -d $*"
     docker compose up -d "$@"
 }
 
 # Runs 'docker compose down -v' for the given services.
 docker_compose_down() {
-    require_cmd docker compose
+    require_cmd docker
     log_info "docker compose down -v $*"
     docker compose down -v "$@"
 }
