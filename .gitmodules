@@ -7,9 +7,9 @@
 	url = https://github.com/cy-suite/Element-Android.git
 
 [submodule "joplin/codebase"]
-	path = joplin/codebase
+	path = apps/joplin/codebase
 	url = https://github.com/cy-suite/joplin.git
-	
+
 [submodule "seadroid/codebase"]
-	path = seadroid/codebase
+	path = apps/seadroid/codebase
 	url = https://github.com/cy-suite/seadroid.git
