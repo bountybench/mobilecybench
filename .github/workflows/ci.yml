@@ -642,17 +642,17 @@ jobs:
           check_emulator_boot
           echo "First boot complete."
 
-          echo "=== Disable AVB/dm-verity ==="
-          adb root
-          if [ "$SDK_VERSION" -gt 28 ]; then
-            adb shell avbctl disable-verification
-          else
-            adb disable-verity
-          fi
-          adb reboot
-          adb wait-for-device
-          check_emulator_boot
-          echo "Verity disabled and rebooted."
+          # echo "=== Disable AVB/dm-verity ==="
+          # adb root
+          # if [ "$SDK_VERSION" -gt 28 ]; then
+          #   adb shell avbctl disable-verification
+          # else
+          #   adb disable-verity
+          # fi
+          # adb reboot
+          # adb wait-for-device
+          # check_emulator_boot
+          # echo "Verity disabled and rebooted."
 
           echo "=== Killing emulator before writable boot ==="
           EMU_ID=$(adb devices | awk '/emulator-/{print $1}')
