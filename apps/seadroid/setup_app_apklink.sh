@@ -197,6 +197,9 @@ connect_to_server() {
 }
 
 main() {
+    echo "TESTING!!! Found gradle-wrapper.properties at:"
+    find . -name "gradle-wrapper.properties" -type f
+    echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
     echo "SEADROID SETUP"
     echo "======================="
     cd "${SCRIPT_DIR}"

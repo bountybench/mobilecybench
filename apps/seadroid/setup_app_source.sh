@@ -44,8 +44,7 @@ USE_RELEASE_APK=false
 SEAFILE_SITE_URL="10.0.2.2:8000"
 SEAFILE_USER="anarchist@example.com"   # Logging in as normal user
 SEAFILE_PASS="zU72wO7eX4UZ"
-# SEAFILE_ACCOUNT_ACTIVITY="com.seafile.seadroid2.debug/com.seafile.seadroid2.ui.account.AccountsActivity"    # Not exported, for some reason
-BASIC_ACTIVITY="com.android.launcher3/com.android.launcher3.Launcher"
+SEADROID_PACKAGE="com.seafile.seadroid2"
 
 
 # Ensures a dependency is installed, prompting the user to install it if missing.
@@ -168,16 +167,6 @@ start_emulator() {
     "${SCRIPT_DIR}/../check_device.sh"
 }
 
-# Waits for emulator to boot
-wait_for_boot() {
-    echo -n "Waiting for system boot completion..."
-    until adb shell getprop sys.boot_completed 2>/dev/null | grep -q "^1$"; do
-        sleep 0.5
-        echo -n "."
-    done
-    echo
-}
-
 # Waits for desired activity to resume
 wait_for_activity() {
     local target_activity="$1"
@@ -210,26 +199,18 @@ install_and_launch() {
     echo "Installing APK: ${APK_PATH}"
     adb install -r "${APK_PATH}"
 
-    # adb shell am start \
-    # -n ${SEAFILE_ACCOUNT_ACTIVITY}
+    # Launch app
+    adb shell monkey -p "${SEADROID_PACKAGE}" -c android.intent.category.LAUNCHER 1
+    sleep 2
 
-    adb shell am start \
-    -n ${BASIC_ACTIVITY}
+    wait_for_activity "com.seafile.seadroid2/.ui.account.AccountsActivity"
 }
 
 # Performs login and server connection on app
 connect_to_server() {
-    # wait_for_activity "AccountsActivity"
-    wait_for_activity "Launcher"
-
     # Get to login screen
-    sleep 3
-    adb shell input swipe 500 1600 500 500
-    sleep 1
-
-    adb shell input tap 750 900
-    sleep 10
-
+    # TODO: Change this to UI automator?
+    sleep 5
     adb shell input tap 540 615
     sleep 2
 
@@ -290,12 +271,6 @@ main() {
     echo "Building Seadroid APK..."
     build_seadroid
     echo "✅ Seadroid APK built."
-    echo "======================="
-    echo "Starting emulator..."
-    start_emulator
-    echo "Waiting for emulator to boot..."
-    wait_for_boot
-    echo "✅ Emulator booted."
     echo "======================="
     echo "Installing and launching APK..."
     install_and_launch
