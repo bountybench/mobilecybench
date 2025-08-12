@@ -541,6 +541,7 @@ jobs:
           echo "ANDROID_HOME: $ANDROID_HOME"
           echo "PATH: $PATH"
           export PATH=$ANDROID_HOME/emulator:$PATH
+          SDK_VERSION=${{ needs.setup.outputs.sdk }}
           emulator -avd test_avd -writable-system -no-snapshot-load -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none &
           adb wait-for-device
           check_emulator_boot
@@ -561,11 +562,13 @@ jobs:
           
           adb root
           adb wait-for-device
-          adb shell avbctl disable-verification
-          adb reboot
-          adb wait-for-device
-          check_emulator_boot
-
+          if [ "$sdk" -gt 28 ]; then
+            adb shell avbctl disable-verification
+            adb reboot
+            adb wait-for-device
+            check_emulator_boot
+          fi
+          
           adb root
           timeout=30
           until adb remount &>/dev/null || [[ $timeout -le 0 ]]; do
