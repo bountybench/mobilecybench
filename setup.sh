@@ -7,11 +7,13 @@ LOG_FILE="${SCRIPT_DIR}/setup.log"
 ANDROID_HOME="${HOME}/.android-sdk"
 EMULATOR_NAME="MobileCybenchEmu"
 
-# Default SDK version
+# Default SDK version and system image
 DEFAULT_SDK_VERSION=28
+DEFAULT_SYSTEM_IMAGE="google_apis"
 
 # Parse command line arguments
 SDK_VERSION="$DEFAULT_SDK_VERSION"
+SYSTEM_IMAGE_TYPE="$DEFAULT_SYSTEM_IMAGE"
 while [[ $# -gt 0 ]]; do
     case $1 in
         --sdk)
@@ -22,10 +24,26 @@ while [[ $# -gt 0 ]]; do
             SDK_VERSION="${1#*=}"
             shift
             ;;
+        --system-image)
+            SYSTEM_IMAGE_TYPE="$2"
+            shift 2
+            ;;
+        --system-image=*)
+            SYSTEM_IMAGE_TYPE="${1#*=}"
+            shift
+            ;;
         -h|--help)
-            echo "Usage: $0 [--sdk SDK_VERSION]"
-            echo "  --sdk SDK_VERSION    Android SDK version to use (default: $DEFAULT_SDK_VERSION)"
-            echo "  -h, --help          Show this help message"
+            echo "Usage: $0 [--sdk SDK_VERSION] [--system-image SYSTEM_IMAGE_TYPE]"
+            echo "  --sdk SDK_VERSION              Android SDK version to use (default: $DEFAULT_SDK_VERSION)"
+            echo "  --system-image SYSTEM_IMAGE    System image type (default: $DEFAULT_SYSTEM_IMAGE)"
+            echo "                                 Options: google_apis, google_apis_playstore, default, aosp_atd"
+            echo "  -h, --help                     Show this help message"
+            echo ""
+            echo "Examples:"
+            echo "  $0                                    # Use defaults (SDK $DEFAULT_SDK_VERSION, $DEFAULT_SYSTEM_IMAGE)"
+            echo "  $0 --sdk 30                          # Use SDK 30 with default system image"
+            echo "  $0 --system-image google_apis_playstore  # Use Play Store system image"
+            echo "  $0 --sdk 29 --system-image default   # Use SDK 29 with default system image"
             exit 0
             ;;
         *)
@@ -151,23 +169,34 @@ setup_environment() {
     fi
 }
 
+# Get system image string based on architecture and system image type
+get_system_image() {
+    local arch="$1"
+    local image_type="$2"
+    
+    local arch_suffix
+    if [[ "$arch" == "arm64" ]]; then
+        arch_suffix="arm64-v8a"
+    else
+        arch_suffix="x86_64"
+    fi
+    
+    echo "system-images;android-${SDK_VERSION};${image_type};${arch_suffix}"
+}
+
 # Install required Android packages
 install_android_packages() {
     local arch="$1"
-    log "Installing required Android packages for $arch architecture (SDK version: $SDK_VERSION)..."
+    local system_image=$(get_system_image "$arch" "$SYSTEM_IMAGE_TYPE")
+    
+    log "Installing required Android packages for $arch architecture"
+    log "SDK version: $SDK_VERSION, System image: $SYSTEM_IMAGE_TYPE"
+    log "Full system image: $system_image"
     
     local sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
     
     # Accept licenses
     yes | "$sdkmanager" --licenses >/dev/null 2>&1 || true
-    
-    # Determine system image based on architecture
-    local system_image
-    if [[ "$arch" == "arm64" ]]; then
-        system_image="system-images;android-${SDK_VERSION};google_apis;arm64-v8a"
-    else
-        system_image="system-images;android-${SDK_VERSION};google_apis;x86_64"
-    fi
     
     # Install essential packages
     "$sdkmanager" \
@@ -183,17 +212,12 @@ install_android_packages() {
 # Create Android Virtual Device
 create_avd() {
     local arch="$1"
-    log "Creating Android Virtual Device: $EMULATOR_NAME for $arch (SDK version: $SDK_VERSION)"
+    local system_image=$(get_system_image "$arch" "$SYSTEM_IMAGE_TYPE")
+    
+    log "Creating Android Virtual Device: $EMULATOR_NAME for $arch"
+    log "SDK version: $SDK_VERSION, System image: $SYSTEM_IMAGE_TYPE"
     
     local avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
-    
-    # Determine system image based on architecture
-    local system_image
-    if [[ "$arch" == "arm64" ]]; then
-        system_image="system-images;android-${SDK_VERSION};google_apis;arm64-v8a"
-    else
-        system_image="system-images;android-${SDK_VERSION};google_apis;x86_64"
-    fi
     
     # Create AVD
     echo "no" | "$avdmanager" create avd \
@@ -324,7 +348,9 @@ EOF
 
 # Main setup function
 main() {
-    log "Starting Android Emulator Setup (SDK version: $SDK_VERSION)"
+    log "Starting Android Emulator Setup"
+    log "SDK version: $SDK_VERSION"
+    log "System image type: $SYSTEM_IMAGE_TYPE"
     log "This script will install Android SDK and create an emulator"
     
     # Detect operating system and architecture
@@ -363,10 +389,12 @@ main() {
     echo ""
     echo "Android Emulator is ready!"
     echo ""
-    echo "SDK Version: $SDK_VERSION"
-    echo "Architecture: $arch"
+    echo "Configuration:"
+    echo "  SDK Version: $SDK_VERSION"
+    echo "  System Image: $SYSTEM_IMAGE_TYPE"
+    echo "  Architecture: $arch"
     if [[ "$arch" == "arm64" ]]; then
-        echo "Note: Using ARM64 system image for Apple Silicon compatibility"
+        echo "  Note: Using ARM64 system image for Apple Silicon compatibility"
     fi
     echo ""
     echo "Next steps:"
