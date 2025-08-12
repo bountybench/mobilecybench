@@ -12,6 +12,9 @@ if [[ "$SETUP_TYPE" != "source" && "$SETUP_TYPE" != "apklink" ]]; then
     exit 1
 fi
 
+# Run general setup script
+chmod +x ../../setup.sh && ./../../setup.sh
+
 # Create fresh volumes
 mkdir seadoc-data
 mkdir seafile-caddy
