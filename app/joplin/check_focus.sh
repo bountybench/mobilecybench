@@ -17,7 +17,7 @@ function check_current_focus() {
     else
       #adb shell input keyevent KEYCODE_HOME
       adb shell input keyevent 224
-      printf "==> Menu button is pressed \n"
+      printf "==> Wake up motion executed \n"
       i=$(( (i+1) % 8 ))
     fi
 
