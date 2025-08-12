@@ -121,7 +121,14 @@ wait_for_activity() {
 
 # Installs and launches the APK
 install_and_launch() {
-    # Downlaod the APK
+    # Check to make sure the emulator is running
+    if ! adb devices | grep -w "device" | grep -v "List" >/dev/null; then
+        echo "ERROR: No Android emulator found."
+        echo "Please start the emulator first."
+        exit 1
+    fi
+
+    # Downlaod the APK if it's not already present
     if [[ ! -f "${APK_PATH}" ]]; then
         download_link="https://github.com/haiwen/seadroid/releases/download/v3.0.16-Release/seafile_3.0.16_patch3.apk"
         curl -L -o "${APK_PATH}" "${download_link}"
@@ -138,9 +145,9 @@ install_and_launch() {
 
     # Launch app
     adb shell monkey -p "${SEADROID_PACKAGE}" -c android.intent.category.LAUNCHER 1
+    sleep 2
 
-    # Wait for app to launch
-    wait_for_activity "com.seafile.seadroid2/com.seafile.seadroid2.ui.account.AccountsActivity"
+    wait_for_activity "com.seafile.seadroid2/.ui.account.AccountsActivity"
 }
 
 # Performs login and server connection on app
