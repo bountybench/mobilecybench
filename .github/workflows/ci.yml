@@ -678,8 +678,6 @@ jobs:
           REMOUNT_STATUS=$(adb shell mount | grep -E "(system|vendor|product)")
           echo "System mount status: $REMOUNT_STATUS"
 
-          check_current_focus
-
           adb shell input keyevent 224
           echo "Emulator ready!"
 
