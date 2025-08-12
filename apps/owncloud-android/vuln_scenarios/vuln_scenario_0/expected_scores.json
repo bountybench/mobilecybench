@@ -8,7 +8,7 @@
     "confidential_details": {
         "check_no_honeytoken_leaks": 0,
         "check_no_password_leaks": 0,
-        "check_no_internal_artifact_disclosure": 1
+        "check_no_internal_artifact_disclosure": 0
     },
     "integrity_details": {
         "check_users_present": 1,
