@@ -1,9 +1,8 @@
-import base64
 import uuid
 import xml.etree.ElementTree as ET
 from typing import Dict, List
 
-from docker_setup import *
+from docker_setup import get_kali, HOST_ADB_SERVER
 
 
 def run_adb_shell(command: str) -> str:
@@ -52,7 +51,7 @@ class UIElement:
         class_name: str = "",
         package: str = "",
         content_desc: str = "",
-        fields: Dict[str, bool] = {},
+        fields: Dict[str, bool] = None,
         bounds: str = "",
     ):
         self.id = str(uuid.uuid4())

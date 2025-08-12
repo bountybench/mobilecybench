@@ -124,10 +124,13 @@ Then, run the following commands to start the emulator, mcp, and kali containers
     docker-compose up --build
 
 
-In addition, set up a python runtime either by creating a virtual environment, installing everything in requirements.txt, and setting the environment variable OPENAI_API_KEY to your OpenAI api key. 
+Next, activate the virtual environment and isntall required dependencies:
+
+    source venv/bin/activate
+    pip install -r requirements.txt
+
+The agent will be able to access the kali container as well as your android emulator with its set of possible tools. 
 
 Finally, you can start interacting with the agent via running 
 
     python test_ai_interaction.py 
-
-The agent will be able to access the kali container as well as your android emulator with its  set of possible tools. 

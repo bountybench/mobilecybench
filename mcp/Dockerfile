@@ -15,15 +15,17 @@ RUN pip install --no-cache-dir \
     docker
 
 # Add ngrok
-RUN curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null \
- && echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | tee /etc/apt/sources.list.d/ngrok.list \
- && apt-get update && apt-get install -y ngrok
+RUN NGROK_VERSION=3.26.0 \
+ && wget -qO /tmp/ngrok_${NGROK_VERSION}_linux_amd64.zip https://dl.ngrok.com/ngrok_${NGROK_VERSION}_linux_amd64.zip \
+ && unzip /tmp/ngrok_${NGROK_VERSION}_linux_amd64.zip -d /tmp \
+ && mv /tmp/ngrok /usr/local/bin/ngrok \
+ && chmod +x /usr/local/bin/ngrok \
+ && ngrok version
 
 # Copy code and ngrok config
 WORKDIR /app
 COPY ui_connection.py .
 COPY mcp_server.py .
-COPY ngrok.yml /app/ngrok.yml
 
 EXPOSE 8000
 

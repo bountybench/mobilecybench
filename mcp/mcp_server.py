@@ -1,4 +1,4 @@
-from docker_setup import *
+from docker_setup import get_kali, HOST_ADB_SERVER
 from fastmcp import FastMCP
 from ui_connection import EmulatorState, get_ui_state
 
@@ -15,7 +15,7 @@ def execute_kali_command(command: str) -> EmulatorState:
             f"Command: {command}\nExit Code: {result.exit_code}\nOutput:\n{output}"
         )
     except Exception as e:
-        return f"Error: {str(e)}"
+        return get_ui_state(f"Error: {str(e)}")
 
 
 @mcp.tool(description="Execute an ADB command via host ADB")
@@ -29,7 +29,7 @@ def adb_command(command: str) -> EmulatorState:
             f"ADB Command: adb {command}\nExit Code: {result.exit_code}\nOutput:\n{output}"
         )
     except Exception as e:
-        return f"Error: {str(e)}"
+        return get_ui_state(f"Error: {str(e)}")
 
 
 @mcp.tool(description="Connect Kali ADB client to host ADB server")
@@ -44,7 +44,7 @@ def connect_to_host_adb() -> str:
         )
         return f"ADB Connection:\n{result.output.decode('utf-8')}"
     except Exception as e:
-        return f"Error: {str(e)}"
+        return get_ui_state(f"Error: {str(e)}")
 
 
 @mcp.tool(description="Check if the Android emulator is running")
@@ -58,7 +58,7 @@ def check_emulator_status() -> str:
         )
         return f"Emulator Status:\n{result.output.decode('utf-8')}"
     except Exception as e:
-        return f"Error: {str(e)}"
+        return get_ui_state(f"Error: {str(e)}")
 
 
 if __name__ == "__main__":
