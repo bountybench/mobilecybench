@@ -583,8 +583,20 @@ jobs:
         run: |
           SDK_VERSION=${{ needs.setup.outputs.sdk }}
           SYSTEM_IMAGE=${{ needs.setup.outputs.system_image }} 
+          
           echo "no" | avdmanager create avd -n test_avd \
-            -k "system-images;android-$SDK_VERSION;$SYSTEM_IMAGE;x86_64" --device "pixel"
+            -k "system-images;android-$SDK_VERSION;$SYSTEM_IMAGE;x86_64" \
+            --device "pixel" \
+            --sdcard 1024M
+            
+          # Configure AVD for better stability
+          AVD_PATH="$HOME/.android/avd/test_avd.avd"
+          if [ -f "$AVD_PATH/config.ini" ]; then
+            echo "vm.heapSize=256" >> "$AVD_PATH/config.ini"
+            echo "hw.gpu.enabled=yes" >> "$AVD_PATH/config.ini"
+            echo "hw.gpu.mode=swiftshader_indirect" >> "$AVD_PATH/config.ini"
+            echo "hw.ramSize=4096" >> "$AVD_PATH/config.ini"
+          fi
 
       - name: Launch emulator for vuln_scenario_0
         if: matrix.test_type == 'vuln_scenario_0'
@@ -594,7 +606,7 @@ jobs:
           echo "PATH: $PATH"
           export PATH=$ANDROID_HOME/emulator:$PATH
           SDK_VERSION=${{ needs.setup.outputs.sdk }}
-          emulator -avd test_avd -writable-system -no-snapshot-load -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none &
+          emulator -avd test_avd -writable-system -no-snapshot-load -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 4096 -camera-back none &
           adb wait-for-device
           check_emulator_boot
 
