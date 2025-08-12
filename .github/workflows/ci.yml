@@ -436,6 +436,8 @@ jobs:
           set -e
           source /tmp/shared_functions.sh
           check_server_ready
+          start_emulator_logging
+          trap stop_emulator_logging EXIT
           EOF
           
           echo "dir=\"$modified_dir\"" >> test_checks.sh
@@ -458,8 +460,6 @@ jobs:
               exit 1
             fi
           done
-
-          start_emulator_logging
 
           echo "Running setup..."
           ./setup.sh
@@ -499,8 +499,6 @@ jobs:
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-
-          start_emulator_logging
           
           echo "Running setup..."
           ./setup.sh
@@ -548,8 +546,6 @@ jobs:
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-
-          start_emulator_logging
           
           echo "Running setup..."
           ./setup.sh
@@ -737,7 +733,6 @@ jobs:
           tail -n 20 resource_logs/disk.log || true
 
           if [ -d "emulator_logs" ]; then
-            stop_emulator_logging
             echo "=== EMULATOR RESOURCE LOGS ==="
             
             echo "=== EMULATOR PROCESSES ==="
