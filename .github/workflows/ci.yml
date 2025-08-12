@@ -669,6 +669,18 @@ jobs:
           adb wait-for-device
           check_emulator_boot
 
+          echo "=== Disable AVB/dm-verity ==="
+          adb root
+          if [ "$SDK_VERSION" -gt 28 ]; then
+            adb shell avbctl disable-verification
+          else
+            adb disable-verity
+          fi
+          adb reboot
+          adb wait-for-device
+          check_emulator_boot
+          echo "Verity disabled and rebooted."
+
           echo "=== Remounting /system ==="
           adb root
           timeout=30
