@@ -44,15 +44,15 @@ build_wordpress() {
 perform_login() {
     log_info "Performing UI login for user=${WP_USER}"
     adb_launch_activity "${PACKAGE}/.ui.WPLaunchActivity"
-    wait_for_output "adb exec-out uiautomator dump /dev/tty" "site address" 20
+    wait_for_output "adb exec-out uiautomator dump /dev/tty" "site address" 600
     adb shell input tap 540 1730
 
-    wait_for_output "adb shell dumpsys window windows" "LoginActivity" 20
+    wait_for_output "adb shell dumpsys window windows" "LoginActivity" 600
     adb shell input tap 540 700
     adb shell input text "10.0.2.2:8000"
     adb shell input keyevent 66
 
-    wait_for_output "adb exec-out uiautomator dump /dev/tty" "Username" 20
+    wait_for_output "adb exec-out uiautomator dump /dev/tty" "Username" 600
     adb shell input tap 540 850
     adb shell input text "$WP_USER"
     adb shell input keyevent 61
@@ -60,7 +60,7 @@ perform_login() {
     adb shell input text "$WP_PASS"
     adb shell input keyevent 66
 
-    wait_for_output "adb shell dumpsys window windows" "MainActivity" 30
+    wait_for_output "adb shell dumpsys window windows" "MainActivity" 600
     log_info "UI login steps complete (app-specific)"
 }
 
@@ -108,7 +108,7 @@ main() {
     initialize_repository
     build_wordpress
     start_emulator "${AVD_NAME}"
-    wait_for_output "adb shell getprop sys.boot_completed" "1" 120
+    wait_for_output "adb shell getprop sys.boot_completed" "1" 600
     adb reverse tcp:8000 tcp:8000 || log_warn "adb reverse not supported or failed"
 
     adb_install_apk "${APK_PATH}"
