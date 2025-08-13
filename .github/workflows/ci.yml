@@ -452,7 +452,7 @@ jobs:
           cd "$dir"
           checkout_commit "$dir"
           
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
+          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
           echo "Checking for required scripts..."
           for script in "${required_scripts[@]}"; do
             if [[ ! -f "$script" ]]; then
@@ -487,7 +487,7 @@ jobs:
           cd "$dir"
           checkout_commit "$dir"
           
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
+          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
           echo "Checking for required scripts..."
           for script in "${required_scripts[@]}"; do
             if [[ ! -f "$script" ]]; then
@@ -534,7 +534,7 @@ jobs:
           cd "$dir"
           checkout_commit "$dir"
           
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
+          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
           echo "Checking for required scripts..."
           for script in "${required_scripts[@]}"; do
             if [[ ! -f "$script" ]]; then
