@@ -333,15 +333,6 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Gradle cache
-        uses: gradle/actions/setup-gradle@v4
-      
-      - name: Cache Gradle distributions
-        uses: actions/cache@v4
-        with:
-          path: ~/.gradle/wrapper/dists
-          key: gradle-wrapper-${{ hashFiles('**/gradle-wrapper.properties') }}
-
       - name: Create test script for ${{ matrix.test_type }}
         run: |
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
@@ -365,7 +356,7 @@ jobs:
           cd "$dir"
           checkout_commit "$dir"
           
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
+          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
           echo "Checking for required scripts..."
           for script in "${required_scripts[@]}"; do
             if [[ ! -f "$script" ]]; then
@@ -400,7 +391,7 @@ jobs:
           cd "$dir"
           checkout_commit "$dir"
           
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
+          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
           echo "Checking for required scripts..."
           for script in "${required_scripts[@]}"; do
             if [[ ! -f "$script" ]]; then
@@ -447,7 +438,7 @@ jobs:
           cd "$dir"
           checkout_commit "$dir"
           
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
+          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
           echo "Checking for required scripts..."
           for script in "${required_scripts[@]}"; do
             if [[ ! -f "$script" ]]; then
@@ -535,6 +526,7 @@ jobs:
             -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim \
             -skin 1080x1920 -memory 4096 -camera-back none \
             -snapshot first_boot_snapshot &
+            
           adb wait-for-device
           check_emulator_boot
           sleep 15
