@@ -256,51 +256,6 @@ jobs:
             fi
           }
 
-          check_emulator_boot() { 
-            BOOT_STATUS=""
-            timeout=600
-            while [[ "$BOOT_STATUS" != "1" && $timeout -gt 0 ]]; do
-              BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-              sleep 1
-              ((timeout--))
-            done
-
-            if [[ "$BOOT_STATUS" != "1" ]]; then
-              echo "Emulator did not fully boot in time."
-              exit 1
-            fi
-          }
-
-          check_current_focus() {
-            printf "==> Checking emulator running activity \n"
-            start_time=$(date +%s)
-            i=0
-            timeout=20
-            target="com.google.android.apps.nexuslauncher.NexusLauncherActivity"
-
-            while true; do
-              result=$(adb shell dumpsys window 2>/dev/null | grep -i mCurrentFocus)
-
-              if [[ $result == *"$target"* ]]; then
-                printf "==>  Activity is okay: \n"
-                printf "$result\n"
-                break
-              else
-                #adb shell input keyevent KEYCODE_HOME
-                adb shell input keyevent 224
-                printf "==> Wake up motion executed \n"
-                i=$(( (i+1) % 8 ))
-              fi
-
-              current_time=$(date +%s)
-              elapsed_time=$((current_time - start_time))
-              if [ $elapsed_time -gt $timeout ]; then
-                printf "==> Timeout after ${timeout} seconds elapsed 🕛.. \n"
-                return 1
-              fi
-              sleep 4
-            done
-          }
           EOF
           chmod +x /tmp/shared_functions.sh
 
@@ -395,7 +350,7 @@ jobs:
               exit 1
             fi
           done
-
+          
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
@@ -526,76 +481,44 @@ jobs:
         if: matrix.test_type == 'vuln_scenario_0'
         run: |
           SDK_VERSION=${{ needs.setup.outputs.sdk }}
-          SYSTEM_IMAGE="google_apis" 
-          
           echo "no" | avdmanager create avd -n test_avd \
-            -k "system-images;android-$SDK_VERSION;$SYSTEM_IMAGE;x86_64" \
-            --device "pixel_2" \
-            --sdcard 1024M
-            
-          # Configure AVD for better stability
-          AVD_PATH="$HOME/.android/avd/test_avd.avd"
-          if [ -f "$AVD_PATH/config.ini" ]; then
-            echo "vm.heapSize=256" >> "$AVD_PATH/config.ini"
-            echo "hw.gpu.enabled=yes" >> "$AVD_PATH/config.ini"
-            echo "hw.gpu.mode=swiftshader_indirect" >> "$AVD_PATH/config.ini"
-            echo "hw.ramSize=4096" >> "$AVD_PATH/config.ini"
-          fi
+            -k "system-images;android-$SDK_VERSION;google_apis;x86_64" --device "pixel"
 
       - name: Launch emulator for vuln_scenario_0
         if: matrix.test_type == 'vuln_scenario_0'
         run: |
-          source /tmp/shared_functions.sh
           echo "ANDROID_HOME: $ANDROID_HOME"
           echo "PATH: $PATH"
           export PATH=$ANDROID_HOME/emulator:$PATH
-          SDK_VERSION=${{ needs.setup.outputs.sdk }}
-
-          echo "=== First boot (read-only system) ==="
-          emulator -avd test_avd \
-            -no-snapshot-load -wipe-data \
-            -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim \
-            -skin 1080x1920 -memory 4096 -camera-back none \
-            -snapshot first_boot_snapshot &
-            
+          emulator -avd test_avd -writable-system -no-window -no-audio -no-boot-anim &
           adb wait-for-device
-          check_emulator_boot
-          check_current_focus
 
-          echo "First boot complete."
+          BOOT_STATUS=""
+          timeout=300
+          while [[ "$BOOT_STATUS" != "1" && $timeout -gt 0 ]]; do
+            BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            sleep 1
+            ((timeout--))
+          done
 
-          echo "=== Killing emulator before writable boot ==="
-          EMU_ID=$(adb devices | awk '/emulator-/{print $1}')
-          if [ -n "$EMU_ID" ]; then
-            adb -s "$EMU_ID" emu avd snapshot save first_boot_snapshot
-            adb -s "$EMU_ID" emu kill
-            sleep 5
+          if [[ "$BOOT_STATUS" != "1" ]]; then
+            echo "Emulator did not fully boot in time."
+            exit 1
           fi
 
-          echo "=== Second boot (writable system) ==="
-          emulator -avd test_avd \
-            -snapshot first_boot_snapshot \
-            -writable-system -no-snapshot-save \
-            -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim \
-            -skin 1080x1920 -memory 4096 -camera-back none &
-          adb wait-for-device
-          check_emulator_boot
-          check_current_focus
+          echo "Emulator booted successfully!"
+          echo "Waiting for adbd to be ready..."
+          timeout=60
+          until adb shell "ls /system" &>/dev/null || [[ $timeout -le 0 ]]; do
+            sleep 1
+            ((timeout--))
+          done
+          if [[ "$timeout" -le 0 ]]; then
+            echo "adbd not ready in time."
+            exit 1
+          fi          
+          sleep 15
 
-          echo "=== Disable AVB/dm-verity ==="
-          adb root
-          if [ "$SDK_VERSION" -gt 28 ]; then
-            adb shell avbctl disable-verification
-          else
-            adb disable-verity
-          fi
-          adb reboot
-          adb wait-for-device
-          check_emulator_boot
-          check_current_focus
-          echo "Verity disabled and rebooted."
-
-          echo "=== Remounting /system ==="
           adb root
           timeout=30
           until adb remount &>/dev/null || [[ $timeout -le 0 ]]; do
@@ -606,15 +529,8 @@ jobs:
             echo "adb remount failed after waiting."
             exit 1
           fi
-          REMOUNT_STATUS=$(adb shell mount | grep -E "(system|vendor|product)")
-          echo "System mount status: $REMOUNT_STATUS"
-
-          echo "Disabling animations..."
-          adb shell settings put global window_animation_scale 0
-          adb shell settings put global transition_animation_scale 0
-          adb shell settings put global animator_duration_scale 0
-
-          echo "Waking device..."
+          sleep 15
+          
           adb shell input keyevent 224
           echo "Emulator ready!"
 
@@ -647,7 +563,7 @@ jobs:
           profile: pixel_2
           ram-size: 2048    
           force-avd-creation: true
-          emulator-options: -no-snapshot-save -no-snapshot-load -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
 
