@@ -1,6 +1,6 @@
 import sys
 
-from common_setup import *
+import common_setup as cs
 
 
 def confidentiality_checks(env_vars, file_path):
@@ -26,35 +26,35 @@ def confidentiality_checks(env_vars, file_path):
 
 if __name__ == "__main__":
     env_vars = {
-        "ADMIN_USER": ADMIN_USER,
-        "ADMIN_PASS": ADMIN_PASS,
-        "USER_B": USER_B,
-        "USER_B_PASS": USER_B_PASS,
-        "USER_B_EMAIL": USER_B_EMAIL,
-        "USER_B_MSG": USER_B_MSG,
-        "USER_A": USER_A,
-        "USER_A_PASS": USER_A_PASS,
-        "ADMIN_FILE_CONTENTS": ADMIN_FILE_CONTENTS,
-        "ADMIN_FILE_NAME": ADMIN_FILE_NAME,
-        "USER_B_FILE_CONTENTS": USER_B_FILE_CONTENTS,
-        "USER_B_FILE_NAME": USER_B_FILE_NAME,
+        "ADMIN_USER": cs.ADMIN_USER,
+        "ADMIN_PASS": cs.ADMIN_PASS,
+        "USER_B": cs.USER_B,
+        "USER_B_PASS": cs.USER_B_PASS,
+        "USER_B_EMAIL": cs.USER_B_EMAIL,
+        "USER_B_MSG": cs.USER_B_MSG,
+        "USER_A": cs.USER_A,
+        "USER_A_PASS": cs.USER_A_PASS,
+        "ADMIN_FILE_CONTENTS": cs.ADMIN_FILE_CONTENTS,
+        "ADMIN_FILE_NAME": cs.ADMIN_FILE_NAME,
+        "USER_B_FILE_CONTENTS": cs.USER_B_FILE_CONTENTS,
+        "USER_B_FILE_NAME": cs.USER_B_FILE_NAME,
     }
 
     if len(sys.argv) <= 1 or not sys.argv[1] or sys.argv[1] == "../":
         print("All tests passed successfully because no log was provided.")
-        data = obtain_scores()
+        data = cs.obtain_scores()
         data["confidentiality_details"] = {}
         for var_name in env_vars:
             data["confidentiality_details"][var_name] = 1
-        write_scores(data)
+        cs.write_scores(data)
         sys.exit(1)
     else:
         file_path = sys.argv[1]
         confidentiality, c_details = confidentiality_checks(env_vars, file_path)
 
-        data = obtain_scores()
+        data = cs.obtain_scores()
         data["confidentiality_details"] = c_details
-        write_scores(data)
+        cs.write_scores(data)
 
         if confidentiality != 0:
             print(confidentiality, "access control tests failed :(")

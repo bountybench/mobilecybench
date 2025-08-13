@@ -16,7 +16,7 @@ source ../venv/bin/activate
 sleep 10
 python ui_utils.py click_id com.nextcloud.talk2:id/text_input_end_icon
 
-sleep 10
+sleep 15
 python ui_utils.py click_text "Log in"
 python ui_utils.py click_text "Log in"
 sleep 10

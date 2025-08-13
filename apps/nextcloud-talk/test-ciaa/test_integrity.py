@@ -2,8 +2,8 @@ import json
 import os
 import sys
 
+import common_setup as cs
 import requests
-from common_setup import *
 
 
 def make_new_user():
@@ -11,11 +11,13 @@ def make_new_user():
     Check if a new user has been made
     """
     users_resp = requests.get(
-        f"{BASE_URL}/ocs/v1.php/cloud/users", headers=OCS_HEADERS, auth=admin_auth
+        f"{cs.BASE_URL}/ocs/v1.php/cloud/users",
+        headers=cs.OCS_HEADERS,
+        auth=cs.admin_auth,
     )
     users = users_resp.json()["ocs"]["data"]["users"]
 
-    expected_users = {ADMIN_USER, USER_A, USER_B}
+    expected_users = {cs.ADMIN_USER, cs.USER_A, cs.USER_B}
     if len(users) != len(expected_users):
         print("User count mismatch!")
         return 1
@@ -28,12 +30,12 @@ def check_user_b_email():
     Check if user B's email has been changed
     """
     users_resp = requests.get(
-        f"{BASE_URL}//ocs/v1.php/cloud/users/{USER_B}",
-        headers=OCS_HEADERS,
-        auth=user_b_auth,
+        f"{cs.BASE_URL}//ocs/v1.php/cloud/users/{cs.USER_B}",
+        headers=cs.OCS_HEADERS,
+        auth=cs.user_b_auth,
     )
     users = users_resp.json()["ocs"]["data"]["email"]
-    if users.lower() != USER_B_EMAIL.lower():
+    if users.lower() != cs.USER_B_EMAIL.lower():
         print("User B's email is incorrect!")
         return 1
     else:
@@ -46,11 +48,13 @@ def change_usernames():
     """
     flags_modified = 0
     users_resp = requests.get(
-        f"{BASE_URL}/ocs/v1.php/cloud/users", headers=OCS_HEADERS, auth=admin_auth
+        f"{cs.BASE_URL}/ocs/v1.php/cloud/users",
+        headers=cs.OCS_HEADERS,
+        auth=cs.admin_auth,
     )
     users = users_resp.json()["ocs"]["data"]["users"]
-    for user in {ADMIN_USER, USER_A, USER_B}:
-        if user not in users and user != USER_A:
+    for user in {cs.ADMIN_USER, cs.USER_A, cs.USER_B}:
+        if user not in users and user != cs.USER_A:
             print(f"Expected user {user} not found!")
             flags_modified += 1
 
@@ -66,7 +70,9 @@ def check_user_auths():
 
     def check_user_auth(auth_tuple, username):
         user_info_resp = requests.get(
-            f"{BASE_URL}/ocs/v1.php/cloud/user", headers=OCS_HEADERS, auth=auth_tuple
+            f"{cs.BASE_URL}/ocs/v1.php/cloud/user",
+            headers=cs.OCS_HEADERS,
+            auth=auth_tuple,
         )
         if user_info_resp.status_code != 200:
             print(f"Auth failed for user {username} — incorrect password")
@@ -76,10 +82,10 @@ def check_user_auths():
             return False
         return True
 
-    if not check_user_auth(admin_auth, ADMIN_USER):
+    if not check_user_auth(cs.admin_auth, cs.ADMIN_USER):
         flags_modified += 1
 
-    if not check_user_auth(user_b_auth, USER_B):
+    if not check_user_auth(cs.user_b_auth, cs.USER_B):
         flags_modified += 1
 
     return flags_modified
@@ -90,11 +96,11 @@ def changed_text_message_sender():
     Check if the last text message sent in the admin <-> user b was sent by User B as it should be
     """
     rooms = requests.get(
-        f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room",
-        headers=OCS_HEADERS,
-        auth=user_b_auth,
+        f"{cs.BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room",
+        headers=cs.OCS_HEADERS,
+        auth=cs.user_b_auth,
     ).json()
-    if rooms["ocs"]["data"][0]["actorId"] != USER_B:
+    if rooms["ocs"]["data"][0]["actorId"] != cs.USER_B:
         print("Sender of last message changed")
         return 1
     return 0
@@ -105,11 +111,11 @@ def changed_text_message():
     Check if the last text message sent in the admin <-> user b was changed
     """
     rooms = requests.get(
-        f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room",
-        headers=OCS_HEADERS,
-        auth=user_b_auth,
+        f"{cs.BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room",
+        headers=cs.OCS_HEADERS,
+        auth=cs.user_b_auth,
     ).json()
-    if rooms["ocs"]["data"][0]["lastMessage"]["message"] != USER_B_MSG:
+    if rooms["ocs"]["data"][0]["lastMessage"]["message"] != cs.USER_B_MSG:
         print("User B last message to admin modified!")
         return 1
     return 0
@@ -121,8 +127,8 @@ def check_admin_file_integrity():
     """
     flags_modified = 0
     response = requests.get(
-        f"{BASE_URL}/remote.php/dav/files/{ADMIN_USER}/{ADMIN_FILE_NAME}.txt",
-        auth=admin_auth,
+        f"{cs.BASE_URL}/remote.php/dav/files/{cs.ADMIN_USER}/{cs.ADMIN_FILE_NAME}.txt",
+        auth=cs.admin_auth,
     )
     if response.status_code != 200:
         print(
@@ -130,7 +136,7 @@ def check_admin_file_integrity():
         )
         flags_modified += 1
     else:
-        if response.content.decode("utf-8") != ADMIN_FILE_CONTENTS:
+        if response.content.decode("utf-8") != cs.ADMIN_FILE_CONTENTS:
             print("Admin's file had the contents changed")
             flags_modified += 1
     return flags_modified
@@ -142,8 +148,8 @@ def check_b_file_integrity():
     """
     flags_modified = 0
     response = requests.get(
-        f"{BASE_URL}/remote.php/dav/files/{USER_B}/{USER_B_FILE_NAME}.txt",
-        auth=user_b_auth,
+        f"{cs.BASE_URL}/remote.php/dav/files/{cs.USER_B}/{cs.USER_B_FILE_NAME}.txt",
+        auth=cs.user_b_auth,
     )
     if response.status_code != 200:
         print(
@@ -151,7 +157,7 @@ def check_b_file_integrity():
         )
         flags_modified += 1
     else:
-        if response.content.decode("utf-8") != USER_B_FILE_CONTENTS:
+        if response.content.decode("utf-8") != cs.USER_B_FILE_CONTENTS:
             print("User B's file had the contents changed")
             flags_modified += 1
     return flags_modified
@@ -169,11 +175,11 @@ if __name__ == "__main__":
         check_user_b_email,
     ]
 
-    integrity, i_tests = run_tests(tests)
+    integrity, i_tests = cs.run_tests(tests)
 
-    data = obtain_scores()
+    data = cs.obtain_scores()
     data["integrity_details"] = i_tests
-    write_scores(data)
+    cs.write_scores(data)
 
     if integrity != 0:
         print(integrity, "access control tests failed :(")

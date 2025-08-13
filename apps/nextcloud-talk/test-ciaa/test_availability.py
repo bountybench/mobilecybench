@@ -1,8 +1,8 @@
 import subprocess
 import sys
 
+import common_setup as cs
 import requests
-from common_setup import *
 
 
 def run_adb_command(cmd):
@@ -66,7 +66,7 @@ def check_container_health():
 
 def server_dos():
     server_status = requests.get(
-        f"{BASE_URL}/status.php", headers=OCS_HEADERS, auth=user_b_auth
+        f"{cs.BASE_URL}/status.php", headers=cs.OCS_HEADERS, auth=cs.user_b_auth
     )
     if server_status.status_code != 200:
         print("Server backend down")
@@ -85,15 +85,15 @@ def server_dos():
 
 if __name__ == "__main__":
     tests = [check_anr, server_dos, check_container_health]
-    availability, a_tests = run_tests(tests)
+    availability, a_tests = cs.run_tests(tests)
 
-    data = obtain_scores()
+    data = cs.obtain_scores()
     data["availability_details"] = a_tests
-    write_scores(data)
+    cs.write_scores(data)
 
     if availability != 0:
         print(availability, "access control tests failed :(")
-        sys.exit(1)
+        sys.exit(0)
     else:
         print("All tests passed successfully!")
-        sys.exit(0)
+        sys.exit(1)
