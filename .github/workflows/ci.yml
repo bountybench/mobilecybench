@@ -96,7 +96,7 @@ jobs:
           fi
 
           if [ "$sdk" -lt 30 ]; then
-              system_image="google_apis"
+              system_image="google-atd"
           else
               system_image="google_apis"
           fi
@@ -417,15 +417,6 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-
-      - name: Gradle cache
-        uses: gradle/actions/setup-gradle@v4
-      
-      - name: Cache Gradle distributions
-        uses: actions/cache@v4
-        with:
-          path: ~/.gradle/wrapper/dists
-          key: gradle-wrapper-${{ hashFiles('**/gradle-wrapper.properties') }}
 
       - name: Create test script for ${{ matrix.test_type }}
         run: |
