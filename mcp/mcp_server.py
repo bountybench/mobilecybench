@@ -33,7 +33,7 @@ def adb_command(command: str) -> EmulatorState:
 
 
 @mcp.tool(description="Connect Kali ADB client to host ADB server")
-def connect_to_host_adb() -> str:
+def connect_to_host_adb() -> EmulatorState:
     try:
         container = get_kali()
         container.exec_run("bash -c 'adb kill-server'", stdout=True, stderr=True)
@@ -48,7 +48,7 @@ def connect_to_host_adb() -> str:
 
 
 @mcp.tool(description="Check if the Android emulator is running")
-def check_emulator_status() -> str:
+def check_emulator_status() -> EmulatorState:
     try:
         container = get_kali()
         result = container.exec_run(
