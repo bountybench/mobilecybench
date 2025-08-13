@@ -9,9 +9,11 @@ pip install -r requirements.txt
 
 cd app-setup
 python regenerate_flags.py
-cd ../test-ciaa
+cd ..
+#/cd test-ciaa
 python common_setup.py
-cd ../app-setup
+#cd ..
+cd app-setup
 python server_setup.py
 
 sleep 10

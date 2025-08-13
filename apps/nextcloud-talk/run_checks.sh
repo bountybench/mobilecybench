@@ -2,7 +2,7 @@
 exploit_log="$1"
 
 source venv/bin/activate
-cd test-ciaa
+#cd test-ciaa
 
 echo "TESTING ACCESS CONTROL..."
 python test_access_control.py
@@ -69,7 +69,8 @@ EOF
 )
 
 # File to update
-FILE="../scores.json"
+#fix: ../scores.json
+FILE="scores.json"
 
 # If file doesn't exist, create with new_json
 if [ ! -f "$FILE" ]; then
