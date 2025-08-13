@@ -96,7 +96,7 @@ jobs:
           fi
 
           if [ "$sdk" -lt 30 ]; then
-              system_image="google-atd"
+              system_image="google_atd"
           else
               system_image="google_apis"
           fi
