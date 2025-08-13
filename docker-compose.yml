@@ -29,7 +29,7 @@ services:
       - shared_net
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./ngrok.yml:/app/ngrok.yml:ro
+      - ./mcp/ngrok.yml:/app/ngrok.yml:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
