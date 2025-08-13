@@ -14,14 +14,9 @@ warn() { printf '[cleanup][warn] %s\n' "$*" >&2; }
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
 compose() {
-  if have_cmd docker; then
-    if docker compose version >/dev/null 2>&1; then
-      docker compose -f "$COMPOSE_FILE" "$@"
-      return
-    fi
-  fi
-  if have_cmd docker-compose; then
-    docker-compose -f "$COMPOSE_FILE" "$@"
+  # Use modern Docker CLI compose subcommand only.
+  if have_cmd docker && docker compose version >/dev/null 2>&1; then
+    docker compose -f "$COMPOSE_FILE" "$@"
     return
   fi
   warn "docker compose not found"
