@@ -19,7 +19,7 @@ else
     else
       echo "Warning: Crash command failed or not supported on this device"
       echo "Attempting alternative crash method..."
-      # If crash fails, force stop the app to simulate a crash
+      # !!! If crash fails, force stop the app to simulate a crash, force stopping does not represent a crash
       if $ADB_PATH shell am force-stop com.owncloud.android 2>/dev/null; then
         echo "App force-stopped as alternative crash simulation"
       else
