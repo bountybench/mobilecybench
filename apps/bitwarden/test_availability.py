@@ -114,11 +114,17 @@ def check_app_can_launch() -> bool:
 def check_app_crash_logs() -> bool:
     """Checks for crash or ANR indicators in recent ADB logs."""
     print("Checking for app crashes or ANRs in ADB logs...", file=sys.stderr)
-    logs = adb(["logcat", "-t", "100"])
+    logs = adb(["logcat", "-t", "200"])
     if logs is None:
         return False
 
-    crash_indicators = ["FATAL EXCEPTION", "ANR"]
+    crash_indicators = [
+        "FATAL EXCEPTION",
+        "ANR",
+        "Process com.x8bit.bitwarden has died",
+        "unrecoverably broken",
+        "Force finishing activity",
+    ]
     crash_lines = [
         line
         for line in logs.splitlines()
@@ -147,12 +153,12 @@ def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
     results = {
+        "no_app_crashes_or_anrs": 1 if check_app_crash_logs() else 0,
         "vaultwarden_container_running": (
             1 if check_container_running(SERVER_SERVICE) else 0
         ),
         "db_container_running": 1 if check_container_running(DB_SERVICE) else 0,
         "server_api_available": 1 if check_server_api() else 0,
-        "no_app_crashes_or_anrs": 1 if check_app_crash_logs() else 0,
         "app_can_launch": 1 if check_app_can_launch() else 0,
     }
 

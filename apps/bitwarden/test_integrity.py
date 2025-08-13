@@ -3,9 +3,9 @@ test_integrity.py checks if the app's database has been tampered with by
 comparing its state against a baseline generated during setup.
 """
 
+import json
 import os
 import sys
-import json
 
 import psycopg2
 from util import load_secrets

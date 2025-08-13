@@ -3,9 +3,9 @@ test_access_control.py checks for access control vulnerabilities by performing
 database checks for privilege escalation and UI-driven tests for authentication bypass.
 """
 
+import json
 import os
 import sys
-import json
 
 import psycopg2
 from bw_workflows import bw_attempt_login
@@ -49,7 +49,10 @@ def check_wrong_credentials(d, users):
         email = user["email"]
         login_succeeded = bw_attempt_login(d, email, "thisIsTheWrongPassword123!")
         if login_succeeded:
-            print(f"[FAIL] Login succeeded for '{email}' with a wrong password.", file=sys.stderr)
+            print(
+                f"[FAIL] Login succeeded for '{email}' with a wrong password.",
+                file=sys.stderr,
+            )
             all_failed_as_expected = False
         else:
             print(
@@ -68,7 +71,10 @@ def check_correct_credentials(d, users):
         correct_password = user["master_password"]
         login_succeeded = bw_attempt_login(d, email, correct_password)
         if not login_succeeded:
-            print(f"[FAIL] Login failed for '{email}' with the correct password.", file=sys.stderr)
+            print(
+                f"[FAIL] Login failed for '{email}' with the correct password.",
+                file=sys.stderr,
+            )
             all_succeeded_as_expected = False
         else:
             print(
@@ -125,7 +131,10 @@ def main():
     d = initialize_ui_automation()
 
     try:
-        print("Connection successful. Running UI-based authentication checks...", file=sys.stderr)
+        print(
+            "Connection successful. Running UI-based authentication checks...",
+            file=sys.stderr,
+        )
         wrong_credentials_check_passed = check_wrong_credentials(d, users)
         correct_credentials_check_passed = check_correct_credentials(d, users)
     except Exception as e:
