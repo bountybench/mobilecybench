@@ -134,20 +134,52 @@ setup_environment() {
     
     # Add to shell profile
     local shell_profile=""
-    if [[ -n "$ZSH_VERSION" ]]; then
-        shell_profile="$HOME/.zshrc"
-    elif [[ -n "$BASH_VERSION" ]]; then
-        shell_profile="$HOME/.bashrc"
+    
+    # Detect the user's default shell
+    local user_shell=""
+    if [[ -n "$SHELL" ]]; then
+        user_shell=$(basename "$SHELL")
+        log "Detected user shell: $user_shell"
     fi
     
+    # Set profile based on detected shell
+    case "$user_shell" in
+        zsh)
+            shell_profile="$HOME/.zshrc"
+            ;;
+        bash)
+            shell_profile="$HOME/.bashrc"
+            ;;
+        *)
+            # Fallback: check which profile files exist
+            if [[ -f "$HOME/.zshrc" ]]; then
+                shell_profile="$HOME/.zshrc"
+            elif [[ -f "$HOME/.bashrc" ]]; then
+                shell_profile="$HOME/.bashrc"
+            elif [[ -f "$HOME/.bash_profile" ]]; then
+                shell_profile="$HOME/.bash_profile"
+            else
+                log "Warning: Could not detect shell or find existing profile files"
+                log "Skipping shell profile configuration"
+                log "User will need to manually add environment variables"
+                shell_profile=""
+            fi
+            ;;
+    esac
+    
     if [[ -n "$shell_profile" ]]; then
-        log "Adding environment variables to $shell_profile"
-        {
-            echo ""
-            echo "# Android SDK (added by mobile benchmark setup)"
-            echo "export ANDROID_HOME=\"$ANDROID_HOME\""
-            echo "export PATH=\"\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools:\$ANDROID_HOME/emulator:\$PATH\""
-        } >> "$shell_profile"
+        # Check if Android SDK environment variables already exist in the profile
+        if ! grep -q "# Android SDK (added by mobile benchmark setup)" "$shell_profile" 2>/dev/null; then
+            log "Adding environment variables to $shell_profile"
+            {
+                echo ""
+                echo "# Android SDK (added by mobile benchmark setup)"
+                echo "export ANDROID_HOME=\"$ANDROID_HOME\""
+                echo "export PATH=\"\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools:\$ANDROID_HOME/emulator:\$PATH\""
+            } >> "$shell_profile"
+        else
+            log "Android SDK environment variables already exist in $shell_profile"
+        fi
     fi
 }
 
