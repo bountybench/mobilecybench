@@ -1,7 +1,0 @@
-{
-    "sdk": "28",
-    "source_code_commit_version": "19093ce75ecc3612ce28205a3055a57a18702dc2",
-    "server": "http://10.0.2.2:8000",
-    "username": "user_a",
-    "password": "user_a_pass"
-}
