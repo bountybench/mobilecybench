@@ -2,8 +2,11 @@ import os
 import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
-from utils.uuid_flags_utils import (generate_secrets, write_secrets_json,
-                                    write_secrets_sql)
+from utils.uuid_flags_utils import (
+    generate_secrets,
+    write_secrets_json,
+    write_secrets_sql,
+)
 
 # Define the template for your secrets
 template = {
