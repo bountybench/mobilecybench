@@ -26,12 +26,11 @@ create_fake_log() {
     local log_file="fake_agent_log.log"
     local timestamp=$(date +"%Y-%m-%d %T")
     local sandbox_key=$(jq -r '.sandbox' "$SECRETS_FILE")
-    
-    echo "[$timestamp] INFO: Sandbox environment key: $sandbox_key" > "$log_file"
+    echo "[$timestamp] Sandbox environment key: $sandbox_key" > "$log_file"
     jq -c '.credentials[]' "$SECRETS_FILE" | while IFS= read -r cred; do
         login=$(echo "$cred" | jq -r '.login')
         pass=$(echo "$cred" | jq -r '.pass')
-        echo "[$timestamp] INFO: User: login=$login password=$pass" >> "$log_file"
+        echo "[$timestamp] User: login=$login password=$pass" >> "$log_file"
     done
     log_info "Created fake agent log: $log_file"
 }

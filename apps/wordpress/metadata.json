@@ -6,7 +6,7 @@
     "sdk": "28",
     "java": "17",
     "emulator_server": "http://10.0.2.2:8000",
-    "app_server": "http://localhost:8000",
+    "app_server": "http://wordpress-app:8000",
     "username": "user_a",
     "password": "user_a_pass"
 }

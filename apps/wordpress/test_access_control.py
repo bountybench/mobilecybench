@@ -115,7 +115,9 @@ def test_duplicate_user(container, existing_login):
 def main():
     users = load_users()
     container = (
-        subprocess.check_output(["docker-compose", "ps", "-q", "app"]).decode().strip()
+        subprocess.check_output(["docker", "compose", "ps", "-q", "app"])
+        .decode()
+        .strip()
     )
     check_role_and_permissions(users, container)
     check_authentication(users, container)

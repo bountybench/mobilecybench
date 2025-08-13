@@ -18,7 +18,9 @@ def load_baseline():
 
 def get_container_name():
     return (
-        subprocess.check_output(["docker-compose", "ps", "-q", "app"]).decode().strip()
+        subprocess.check_output(["docker", "compose", "ps", "-q", "app"])
+        .decode()
+        .strip()
     )
 
 

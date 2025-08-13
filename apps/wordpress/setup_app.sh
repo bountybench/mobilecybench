@@ -1,6 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null )"
-
 source "${ROOT_DIR}/utils/common.sh"
 source "${ROOT_DIR}/utils/json.sh"
 source "${ROOT_DIR}/utils/android.sh"
@@ -60,12 +61,13 @@ perform_login() {
     adb shell input text "$WP_PASS"
     adb shell input keyevent 66
 
-    wait_for_output "adb shell dumpsys window windows" "MainActivity" 600
+    wait_for_output "adb exec-out uiautomator dump /dev/tty" "Choose a site to open" 60
     log_info "UI login steps complete (app-specific)"
 }
 
 verify_login() {
-    if adb exec-out uiautomator dump /dev/tty 2>/dev/null | grep -q "$WP_USER"; then
+    local ui_dump=$(adb exec-out uiautomator dump /dev/tty 2>/dev/null)
+    if echo $ui_dump | grep -q "$WP_USER"; then
         log_info "Verified login for $WP_USER"
         return 0
     fi
@@ -109,6 +111,7 @@ main() {
     build_wordpress
     start_emulator "${AVD_NAME}"
     wait_for_output "adb shell getprop sys.boot_completed" "1" 600
+    adb shell settings put global window_animation_scale 0
     adb reverse tcp:8000 tcp:8000 || log_warn "adb reverse not supported or failed"
 
     adb_install_apk "${APK_PATH}"
