@@ -1,8 +1,7 @@
 import sys
 
-import requests
-
 import common_setup as cs
+import requests
 
 
 def privilege_escalation():
