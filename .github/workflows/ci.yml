@@ -98,7 +98,7 @@ jobs:
           if [ "$sdk" -lt 30 ]; then
               system_image="google_apis"
           else
-              system_image="aosp_atd"
+              system_image="google_apis"
           fi
           echo "System image: $system_image"
 
