@@ -1,4 +1,3 @@
-
 #!/bin/bash
 set -e
 
@@ -30,33 +29,32 @@ setup_environment() {
     echo "Setting up build environment..."
     
     # Set Java 17
-    export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+    export JAVA_HOME=$(/usr/libexec/java_home -v 17)
     export PATH="$JAVA_HOME/bin:$PATH"
     
     # Set Android SDK
     export ANDROID_HOME="$ANDROID_HOME"
     export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
     
-    # Create local.properties for Signal build
+    # Create local.properties for joplin build
     echo "sdk.dir=$ANDROID_HOME" > local.properties
     
     echo "Environment configured."
 }
 
-# Build Signal APK
-build_signal() {
-    echo "Building Signal Android from source..."
+# Build joplin APK
+build_joplin() {
+    echo "Building joplin Android from source..."
     echo "This will take several minutes..."
     
-    ./gradlew assemblePlayProdDebug
+    ./gradlew assembleDebug
     
     echo "Build completed successfully."
 }
 
 # Install on emulator
-install_signal() {
-    local version="$1"
-    echo "Installing Signal on Android emulator..."
+install_joplin() {
+    echo "Installing joplin on Android emulator..."
     
     # Check if emulator is running
     if ! adb devices | grep -q "device\|emulator"; then
@@ -66,7 +64,7 @@ install_signal() {
     fi
     
     # Install universal APK with correct path
-    APK_PATH="app/build/outputs/apk/playProd/debug/Signal-Android-play-prod-universal-debug-${version}.apk"
+    APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
     
     if [[ ! -f $APK_PATH ]]; then
         echo "ERROR: APK not found at $APK_PATH"
@@ -76,51 +74,67 @@ install_signal() {
     fi
     
     adb install "$APK_PATH"
-    echo "Signal installed successfully."
+    echo "joplin installed successfully."
 }
 
-# Launch Signal
-launch_signal() {
-    echo "Launching Signal..."
-    adb shell am start -n org.thoughtcrime.securesms/.RoutingActivity
-    echo "Signal should now be running on your emulator."
+# Launch joplin
+launch_joplin() {
+    echo "Launching joplin..."
+    adb shell am start -n net.cozic.joplin/.MainActivity
+    echo "joplin should now be running on your emulator."
+}
+
+# Synching with server
+synch_with_server() {
+    echo "Synching app with server..."
+    python synch_app.py --username usera@localhost --password userAPW123
+    echo "Should now be synched with server."
 }
 
 # Main function
 main() {
-    echo "Signal Android Setup"
+    echo "joplin Android Setup"
     echo "==================="
     
-    # Check for version argument
-    if [[ $# -ne 1 ]]; then
-        echo "Usage: $0 <version>"
-        echo "Example: $0 7.13.4"
+    echo "Setting up joplin Android"
+
+    npm uninstall -g react-native-cli @react-native-community/cli
+    cd codebase
+    npm uninstall -g react-native-cli @react-native-community/cli
+    yarn install
+    cd -
+
+    root_dir="$(pwd)"
+
+    if [[ -d "codebase/packages/app-mobile" ]]; then
+        echo "Navigating to codebase/packages/app-mobile directory..."
+        cd codebase/packages/app-mobile
+    else
+        echo "ERROR: Not in joplin Android directory and codebase/packages/app-mobile/ not found."
         exit 1
     fi
-    
-    local version="$1"
-    echo "Setting up Signal Android version: $version"
+
+    npx react-native start --reset-cache > /dev/null 2>&1 &
     
     # Navigate to codebase directory
-    if [[ ! -f "gradlew" ]]; then
-        if [[ -d "codebase" ]]; then
-            echo "Navigating to codebase directory..."
-            cd codebase
-        else
-            echo "ERROR: Not in Signal Android directory and codebase/ not found."
-            echo "Please run this script from the project root or Signal codebase directory."
-            exit 1
-        fi
+    if [[ -d "android" ]]; then
+        echo "Navigating to android directory..."
+        cd android
+    else
+        echo "ERROR: Not in joplin Android directory and codebase/packages/app-mobile/android/ not found."
+        exit 1
     fi
     
     check_prerequisites
     setup_environment
-    build_signal
-    install_signal "$version"
-    launch_signal
+    build_joplin
+    install_joplin
+    launch_joplin
+    cd "$root_dir"
+    synch_with_server
     
     echo ""
-    echo "Setup complete! Signal version $version is ready for testing."
+    echo "Setup complete! joplin is ready for testing."
 }
 
 # Run main function
