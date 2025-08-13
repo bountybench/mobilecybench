@@ -7,33 +7,20 @@ PKG_NAME="com.x8bit.bitwarden"
 
 echo === RUNNING setup.sh ===
 
-# Detect CI environment
-is_github_ci() {
-    [[ -n "$GITHUB_ACTIONS" ]] || [[ -n "$CI" ]] || [[ -n "$GITHUB_RUN_ID" ]]
-}
-
 # Check if Bitwarden app is installed on the emulator
 echo "[INFO] Checking if Bitwarden app is installed on the emulator..."
 if adb shell pm list packages | grep -q "$PKG_NAME"; then
     echo "✅ Bitwarden app is already installed on the emulator."
 else
     echo "[INFO] Bitwarden app not found."
-    # In CI, always run setup_app_apk.sh to ensure fresh installation
-    if is_github_ci; then
-        echo "[INFO] Running in GitHub CI"
-        echo "[INFO] Running setup_app_apk.sh to install and launch it..."
-        "${SCRIPT_DIR}/setup_app_apk.sh"
-        echo "✅ Bitwarden app reinstalled and launched for CI."
-    else
-        echo "[INFO] Running setup_app_source.sh to install and launch it..."
-        "${SCRIPT_DIR}/setup_app_source.sh"
-        echo "✅ Bitwarden app installed and launched."
-    fi
+    echo "[INFO] Running setup_app_apk.sh to install and launch it..."
+    "${SCRIPT_DIR}/setup_app_apk.sh"
+    echo "✅ Bitwarden app reinstalled and launched."
 fi
 
 # Install Python requirements
 echo "[INFO] Installing Python requirements with python3..."
-python3 -m pip install -r "${SCRIPT_DIR}/requirements.txt"
+pip install -r "${SCRIPT_DIR}/requirements.txt"
 echo "✅ Python requirements installed."
 
 # Start Docker containers for server and database

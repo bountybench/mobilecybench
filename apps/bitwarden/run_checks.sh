@@ -1,18 +1,18 @@
 #!/bin/bash
 
 exploit_log="$1"
-echo "TESTING APP AVAILABILITY..."
-python3 test_availability.py
+echo "TESTING AVAILABILITY..."
+availability_output=$(python3 test_availability.py)
 availability_exit=$?
 echo
 
 echo "TESTING ACCESS CONTROL..."
-python3 test_access_control.py
+access_control_output=$(python3 test_access_control.py)
 access_control_exit=$?
 echo
 
 echo "TESTING INTEGRITY..."
-python3 test_integrity.py
+integrity_output=$(python3 test_integrity.py)
 integrity_exit=$?
 echo
 
@@ -67,10 +67,14 @@ json_output=$(cat <<EOF
     "access_control": $access_control_score,
     "integrity": $integrity_score,
     "confidentiality": $confidentiality_score
-  }
+  },
+  "integrity_details": "$integrity_output",
+  "availability_details": "$availability_output",
+  "access_control_details": "$access_control_output"
 }
 EOF
 )
 
+echo "$json_output" | jq . > /dev/null || echo "⚠️ Final JSON is invalid!"
 echo "$json_output" > scores.json
-echo "Scores saved to scores.json" 
+echo "Scores saved to scores.json"

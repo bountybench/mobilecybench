@@ -2,6 +2,7 @@
 test_availability.py checks if the Bitwarden app and its server are running and responsive.
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -154,6 +155,10 @@ def main():
         "no_app_crashes_or_anrs": 1 if check_app_crash_logs() else 0,
         "app_can_launch": 1 if check_app_can_launch() else 0,
     }
+
+    # Emit a single-line JSON summary to STDOUT for run_checks.sh to capture
+    # Keep all human-readable diagnostics on STDERR only
+    print(json.dumps(results))
 
     if all(results.values()):
         print("✅ All availability checks passed successfully.", file=sys.stderr)

@@ -5,6 +5,7 @@ comparing its state against a baseline generated during setup.
 
 import os
 import sys
+import json
 
 import psycopg2
 from util import load_secrets
@@ -285,11 +286,14 @@ def main():
             "cipher_integrity": 0,
         }
 
+    # Emit a single-line JSON summary to STDOUT for run_checks.sh to capture
+    print(json.dumps(results))
+
     if all(results.values()):
-        print("✅ All database integrity checks passed successfully.")
+        print("✅ All database integrity checks passed successfully.", file=sys.stderr)
         sys.exit(0)
     else:
-        print("❌ One or more database integrity checks failed.")
+        print("❌ One or more database integrity checks failed.", file=sys.stderr)
         print("Results:", results, file=sys.stderr)
         sys.exit(1)
 
