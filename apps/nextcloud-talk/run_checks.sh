@@ -20,7 +20,8 @@ integrity_exit=$?
 echo
 
 echo "TESTING CONFIDENTIALITY..."
-python test_confidentiality.py "../$exploit_log"
+#need to add ../ when test-ciaa fixed
+python test_confidentiality.py "$exploit_log"
 confidentiality_exit=$?
 echo
 
