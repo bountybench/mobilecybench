@@ -537,6 +537,8 @@ jobs:
             -snapshot first_boot_snapshot &
           adb wait-for-device
           check_emulator_boot
+          sleep 15
+
           echo "First boot complete."
 
           echo "=== Killing emulator before writable boot ==="
@@ -555,6 +557,7 @@ jobs:
             -skin 1080x1920 -memory 4096 -camera-back none &
           adb wait-for-device
           check_emulator_boot
+          sleep 15
 
           echo "=== Disable AVB/dm-verity ==="
           adb root
@@ -566,6 +569,7 @@ jobs:
           adb reboot
           adb wait-for-device
           check_emulator_boot
+          sleep 15
           echo "Verity disabled and rebooted."
 
           echo "=== Remounting /system ==="
