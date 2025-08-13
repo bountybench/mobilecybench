@@ -531,9 +531,10 @@ jobs:
 
           echo "=== First boot (read-only system) ==="
           emulator -avd test_avd \
-            -no-snapshot-load -no-snapshot-save -wipe-data \
+            -no-snapshot-load -wipe-data \
             -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim \
-            -skin 1080x1920 -memory 4096 -camera-back none &
+            -skin 1080x1920 -memory 4096 -camera-back none \
+            -snapshot first_boot_snapshot &
           adb wait-for-device
           check_emulator_boot
           echo "First boot complete."
@@ -541,13 +542,15 @@ jobs:
           echo "=== Killing emulator before writable boot ==="
           EMU_ID=$(adb devices | awk '/emulator-/{print $1}')
           if [ -n "$EMU_ID" ]; then
+            adb -s "$EMU_ID" emu avd snapshot save first_boot_snapshot
             adb -s "$EMU_ID" emu kill
             sleep 5
           fi
 
           echo "=== Second boot (writable system) ==="
           emulator -avd test_avd \
-            -writable-system -no-snapshot-load -no-snapshot-save \
+            -snapshot first_boot_snapshot \
+            -writable-system -no-snapshot-save \
             -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim \
             -skin 1080x1920 -memory 4096 -camera-back none &
           adb wait-for-device
