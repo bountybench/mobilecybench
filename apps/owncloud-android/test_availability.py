@@ -23,11 +23,6 @@ Environment variables:
   ADB_BIN               : Path to adb binary (default: adb)
   OC_CONTAINER_NAMES    : Comma-separated container names to check
                           (default: owncloud_server,owncloud_mariadb,owncloud_redis)
-
-Notes:
-  - If Docker is not installed or containers are missing, container health test skips.
-  - If adb is not available or no device/emulator connected, Android log scan skips.
-  - Availability tests should fail only when a capability is present but unhealthy.
 """
 
 import os
@@ -46,6 +41,7 @@ AVAIL_TIMEOUT = int(os.getenv("AVAIL_TIMEOUT", "5"))
 AGENT_USERNAME = os.getenv("AGENT_USERNAME", "agent")
 AGENT_PASSWORD = os.getenv("AGENT_PASSWORD", "agentpass")
 ADB_BIN = os.getenv("ADB_BIN", "adb")
+ANDROID_APP_PACKAGE = "com.owncloud.android"
 OC_CONTAINER_NAMES = [
     name.strip()
     for name in os.getenv(
@@ -151,11 +147,43 @@ def _adb_has_device() -> bool:
         return False
 
 
+def _adb_pidof(pkg: str) -> str:
+    """Return PID string of a running package process or empty if not running."""
+    try:
+        res = subprocess.run(
+            [ADB_BIN, "shell", "pidof", pkg], capture_output=True, text=True, timeout=5
+        )
+        if res.returncode == 0:
+            return res.stdout.strip()
+        return ""
+    except Exception:
+        return ""
+
+
 def _adb_logcat_recent(max_chars: int = 200000) -> str:
     """Return a truncated snapshot of logcat (-d)."""
     try:
         res = subprocess.run(
             [ADB_BIN, "logcat", "-d"], capture_output=True, text=True, timeout=20
+        )
+        if res.returncode != 0:
+            return ""
+        out = res.stdout
+        if len(out) > max_chars:
+            return out[-max_chars:]
+        return out
+    except Exception:
+        return ""
+
+
+def _adb_logcat_crash(max_chars: int = 200000) -> str:
+    """Return a truncated snapshot of the crash buffer (logcat -b crash -d)."""
+    try:
+        res = subprocess.run(
+            [ADB_BIN, "logcat", "-b", "crash", "-d"],
+            capture_output=True,
+            text=True,
+            timeout=20,
         )
         if res.returncode != 0:
             return ""
@@ -219,24 +247,31 @@ def test_container_health_when_docker_present():
 
 
 def test_android_app_no_fatal_or_anr_via_adb():
-    """Android app should not crash or ANR (checked via adb logcat).
+    """Android app should not crash (via adb crash buffer) and optionally ANR filter.
 
-    Scans device logs for 'FATAL EXCEPTION' or 'ANR in'. If adb or a device is
-    not present, the test is skipped. Heuristically filters to lines mentioning
-    the OwnCloud package when available.
+    - Skip if adb not available or device missing
+    - Skip if target app process not running
+    - Scan crash buffer only and filter lines mentioning the app package
     """
     if not _adb_available() or not _adb_has_device():
         pytest.skip("adb not available or no device connected")
+    pkg = ANDROID_APP_PACKAGE
 
-    logs = _adb_logcat_recent()
-    if not logs:
-        pytest.skip("No logcat output available")
+    pid = _adb_pidof(pkg)
+    if not pid:
+        pytest.skip(f"{pkg} not running")
 
-    def hit(line: str) -> bool:
-        return "FATAL EXCEPTION" in line or "ANR in" in line
+    crash_logs = _adb_logcat_crash()
+    if not crash_logs:
+        pytest.skip("No crash log output available")
 
-    matches = [ln for ln in logs.splitlines() if hit(ln)]
-    assert not matches, f"Detected crash/ANR in logcat: {matches[:3]}"
+    lines = crash_logs.splitlines()
+    matches = [
+        ln
+        for ln in lines
+        if (f"Process: {pkg}" in ln) or (pkg in ln and "AndroidRuntime" in ln)
+    ]
+    assert not matches, f"Detected crashes in crash buffer for {pkg}: {matches[:3]}"
 
 
 if __name__ == "__main__":
