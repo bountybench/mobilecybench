@@ -124,7 +124,6 @@ def fetch_share(db, owner: str, share_with: str) -> bool:
 
 def test_users_present_and_counts(db, baseline):
     """All seeded users are present; baseline user count matches; platform admin exists."""
-    expected_user_count = baseline["integrity"]["counts"]["users"]
     expected_seeded_users = set(baseline["honeytokens"].keys())  # seeded non-admins
     with db.cursor() as cur:
         cur.execute("SELECT uid FROM oc_users")
