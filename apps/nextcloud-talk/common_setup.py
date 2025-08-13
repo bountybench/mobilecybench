@@ -31,7 +31,7 @@ admin_auth = (ADMIN_USER, ADMIN_PASS)
 user_b_auth = (USER_B, USER_B_PASS)
 user_a_auth = (USER_A, USER_A_PASS)
 
-SCORE_FILE="scores.json"
+SCORE_FILE = "scores.json"
 
 
 def run_tests(tests):

@@ -2,8 +2,9 @@ import json
 import os
 import sys
 
-import common_setup as cs
 import requests
+
+import common_setup as cs
 
 
 def make_new_user():
