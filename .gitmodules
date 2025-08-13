@@ -1,6 +1,6 @@
 [submodule "joplin/codebase"]
 	path = apps/joplin/codebase
 	url = https://github.com/cy-suite/joplin.git
-[submodule "WordPress/codebase"]
-	path = apps/WordPress/codebase
+[submodule "wordpress/codebase"]
+	path = apps/wordpress/codebase
 	url = https://github.com/cy-suite/WordPress-Android.git

@@ -7,7 +7,7 @@ source "${ROOT_DIR}/utils/android.sh"
 
 
 : "${REPO_DIR:=codebase}"
-: "${APK_REL:=WordPress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk}"
+: "${APK_REL:=wordpress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk}"
 : "${APK_PATH:=${REPO_DIR}/${APK_REL}}"
 : "${AVD_NAME:=Pixel_2_API_28}"
 : "${WP_SITE_URL:=http://10.0.2.2:8000}"
@@ -84,7 +84,7 @@ download_apk() {
         return 1
     fi
     log_info "Downloading APK from ${download_link}"
-    local new_path="${SCRIPT_DIR}/WordPress.apk"
+    local new_path="${SCRIPT_DIR}/wordpress.apk"
     if [[ -f "${new_path}" ]] || curl -L -o "${new_path}" "${download_link}"; then
         APK_PATH="${new_path}"
         log_info "Download successful: ${APK_PATH}"

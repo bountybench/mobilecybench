@@ -10,7 +10,7 @@ fi
 source "${ROOT_DIR}/utils/common.sh"
 source "${ROOT_DIR}/utils/docker.sh"
 
-SECRETS_FILE="${ROOT_DIR}/apps/WordPress/secrets.json"
+SECRETS_FILE="${ROOT_DIR}/apps/wordpress/secrets.json"
 
 elevate_user_a() {
     local user_a_login=$(jq -r '.credentials[] | select(.base=="user_a") | .login' "$SECRETS_FILE")
