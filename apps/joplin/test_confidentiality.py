@@ -1,8 +1,12 @@
 import json
 import sys
 
-with open("secrets.json") as f:
-    secrets = json.load(f)
+try:
+    with open("secrets.json") as f:
+        secrets = json.load(f)
+except Exception as e:
+    print(f"Error: {e}", file=sys.stderr)
+    sys.exit(1)
 
 LEAK_INDICATORS = [
     # Decoy passwords
