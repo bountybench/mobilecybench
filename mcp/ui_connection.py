@@ -2,7 +2,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from typing import Dict, List
 
-from docker_setup import get_kali, HOST_ADB_SERVER
+from docker_setup import HOST_ADB_SERVER, get_kali
 
 
 def run_adb_shell(command: str) -> str:

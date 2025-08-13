@@ -1,4 +1,4 @@
-from docker_setup import get_kali, HOST_ADB_SERVER
+from docker_setup import HOST_ADB_SERVER, get_kali
 from fastmcp import FastMCP
 from ui_connection import EmulatorState, get_ui_state
 
