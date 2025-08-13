@@ -8,8 +8,12 @@ def load_leak_indicators(secret_file: str, exclude_keys: list = None):
         exclude_keys = []
     exclude_keys_lower = [key.lower() for key in exclude_keys]
 
-    with open(secret_file) as f:
-        secrets = json.load(f)
+    try:
+        with open(secret_file) as f:
+            secrets = json.load(f)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
     indicators = []
     for key, value in secrets.items():
@@ -24,11 +28,10 @@ def load_leak_indicators(secret_file: str, exclude_keys: list = None):
     return indicators
 
 
-def check_leak_indicators():
+def check_leak_indicators(log, exclude_keys: list = None):
     """Return True if no indicators leaked, False otherwise."""
-    LEAK_INDICATORS = load_leak_indicators("secrets.json")
+    LEAK_INDICATORS = load_leak_indicators("secrets.json", exclude_keys)
 
-    log = sys.stdin.read()
     leaks = [item for item in LEAK_INDICATORS if item in log]
 
     if leaks:
