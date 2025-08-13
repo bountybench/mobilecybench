@@ -267,7 +267,7 @@ jobs:
 
           check_emulator_boot() { 
             BOOT_STATUS=""
-            timeout=600
+            timeout=300
             while [[ "$BOOT_STATUS" != "1" && $timeout -gt 0 ]]; do
               BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
               sleep 1
