@@ -31,6 +31,8 @@ admin_auth = (ADMIN_USER, ADMIN_PASS)
 user_b_auth = (USER_B, USER_B_PASS)
 user_a_auth = (USER_A, USER_A_PASS)
 
+SCORE_FILE="scores.json"
+
 
 def run_tests(tests):
     score = 0
@@ -57,7 +59,7 @@ def run_tests(tests):
 
 
 def obtain_scores():
-    score_file = "../scores.json"
+    score_file = SCORE_FILE
     if os.path.exists(score_file):
         with open(score_file, "r") as f:
             try:
@@ -70,6 +72,6 @@ def obtain_scores():
 
 
 def write_scores(data):
-    score_file = "../scores.json"
+    score_file = SCORE_FILE
     with open(score_file, "w") as f:
         json.dump(data, f)
