@@ -134,12 +134,18 @@ jobs:
       max-parallel: 3 
     
     steps:
+      - name: Display disk space
+        run: df -h
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: false
           token: ${{ secrets.GH_TOKEN }}
+
+      - name: Display disk space
+        run: df -h
 
       - name: Create shared functions
         run: |
@@ -276,17 +282,26 @@ jobs:
               echo "$base does not exist."
             fi
           done
+
+      - name: Display disk space
+        run: df -h
           
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: "${{ needs.setup.outputs.java }}"
+
+      - name: Display disk space
+        run: df -h
       
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      
+      - name: Display disk space
+        run: df -h
 
       - name: Install dependencies
         run: |
