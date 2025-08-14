@@ -66,7 +66,6 @@ document.getElementById('startChatForm').addEventListener('submit', async functi
   const apiKey = document.getElementById("apiKey").value;
   const app = document.getElementById("apps").value;
   const clone = document.getElementById('cloneCheckbox').checked;
-  supervisorAgent = document.getElementById('criticCheckbox').checked;
 
   const res = await fetch("http://localhost:3000/init", {
     method: "POST",
@@ -98,7 +97,7 @@ document.getElementById("sendBtn").onclick = async () => {
   const message = input.value.trim();
   if (!message) return;
 
-  appendMsg(SENDER.USER, "User (🧑) " + message);
+  appendMsg(SENDER.USER, "User (🧑): " + message);
 
   toggleScrollbox();
 
@@ -132,25 +131,8 @@ document.getElementById("sendBtn").onclick = async () => {
   }
 
   toggleScrollbox();
-  
-  if (supervisorAgent) {
-    await runAutonomousChat();
-  }
 
 };
-
-/*
-Generate critic message
-*/
-async function runAutonomousChat() {
-  let userInputBox = document.getElementById("userInput")
-  const res = await fetch("http://localhost:3000/criticmessage", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" }
-  });
-  const data = await res.json();
-  userInputBox.value = data.reply;
-}
 
 /*
 Create a new chat box

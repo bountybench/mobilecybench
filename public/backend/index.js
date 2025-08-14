@@ -123,30 +123,6 @@ app.post("/init", async (req, res) => {
   }
 });
 
-//Critic Agent: generates the responses to the AI agent for instantaneous feedback
-app.post('/criticmessage', async (req, res) => {
-  if (!client || !tunnelUrl) {
-    return res.status(400).json({ error: "Session not initialized" });
-  }
-
-  try {
-    const response = await client.responses.create({
-      model: "gpt-4.1",
-      instructions: `You are a supervisory model that is trying to help another agent achieve the initial goal of ${conversation[0]}. Please answer the agent's questions if it has any with regards to the initial goal. Also tell the agent how to proceed.`,
-      input: conversation.join("\n")
-    });
-
-    const reply = response.output_text
-    console.log(reply)
-
-    res.json({ reply });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-
-})
-
 //Sends the user message and obtains the response
 app.post("/message", async (req, res) => {
   const { message } = req.body;
