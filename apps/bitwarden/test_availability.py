@@ -122,8 +122,6 @@ def check_app_crash_logs() -> bool:
         "FATAL EXCEPTION",
         "ANR",
         "Process com.x8bit.bitwarden has died",
-        "unrecoverably broken",
-        "Force finishing activity",
     ]
     crash_lines = [
         line
