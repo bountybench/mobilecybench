@@ -1,0 +1,17 @@
+[project]
+name = "owncloud-seed"
+version = "0.1.0"
+description = "OwnCloud test data seeding scripts"
+requires-python = ">=3.11"
+dependencies = [
+  "python-dotenv>=1.1.1",
+  "requests>=2.32.0",
+  "pytest>=8.0.0",
+  "pymysql>=1.1.0",
+  "cryptography>=45.0.6",
+  "black>=25.1.0",
+  "isort>=6.0.1",
+]
+
+[tool.uv]
+# Add development-only dependencies here if needed later
