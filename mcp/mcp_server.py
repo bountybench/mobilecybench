@@ -1,7 +1,7 @@
 from fastmcp import FastMCP
 import shlex
 from ui_connection import EmulatorState, get_ui_state
-from docker_setup import *
+from docker_setup import HOST_ADB_SERVER, get_kali
 
 mcp = FastMCP(name="Mobile Cyber MCP", stateless_http=True)
 
@@ -23,7 +23,6 @@ def execute_command(command: str) -> EmulatorState:
             label = "Command"
 
         # Safely quote the entire command for bash -c execution inside Docker
-        #This is the safest/best way to do it
         result = container.exec_run(f"bash -c {shlex.quote(full_cmd)}", stdout=True, stderr=True)
         output = result.output.decode("utf-8")
         
@@ -33,7 +32,7 @@ def execute_command(command: str) -> EmulatorState:
         )
 
     except Exception as e:
-        return f"Error: {str(e)}"
+        return get_ui_state(f"Error: {str(e)}")
 
 if __name__ == "__main__":
     mcp.run(transport="http", port=8000)
