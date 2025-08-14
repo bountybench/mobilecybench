@@ -373,6 +373,10 @@ jobs:
               cat <<'EOF' >> test_checks.sh
           source /tmp/shared_functions.sh
           check_server_ready
+
+          adb root
+          adb shell "remount"
+          adb shell "mount" | grep system
           
           cd "$dir"
           checkout_commit "$dir"
