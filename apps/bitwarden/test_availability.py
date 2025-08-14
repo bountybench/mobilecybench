@@ -118,23 +118,36 @@ def check_app_crash_logs() -> bool:
     if logs is None:
         return False
 
-    crash_indicators = [
-        "FATAL EXCEPTION",
-        "ANR",
-        "Process com.x8bit.bitwarden has died",
+    # 1) Detect classic Android crash pattern: FATAL EXCEPTION + matching Process line
+    lines = logs.splitlines()
+    for i, line in enumerate(lines):
+        if "FATAL EXCEPTION" in line:
+            for nearby_line in lines[i + 1 : i + 4]:
+                if f"Process: {APP_PACKAGE}" in nearby_line:
+                    print(
+                        f"[FAIL] Crash detected for {APP_PACKAGE}: FATAL EXCEPTION with matching process.",
+                        file=sys.stderr,
+                    )
+                    return False
+
+    # 2) Detect inline indicators that include the package on the same line
+    inline_indicators = [
+        "ANR in",
+        "has died",
+        "WIN DEATH",
+        "Force finishing activity",
+        "Channel is unrecoverably broken",
+        "crash",
     ]
-    crash_lines = [
+    inline_hits = [
         line
         for line in logs.splitlines()
-        if APP_PACKAGE in line
-        and any(indicator in line for indicator in crash_indicators)
+        if (APP_PACKAGE in line) and any(ind in line for ind in inline_indicators)
     ]
 
-    if crash_lines:
-        print(
-            f"[FAIL] Crash or ANR detected for {APP_PACKAGE} in logs.", file=sys.stderr
-        )
-        print("\\n".join(crash_lines), file=sys.stderr)
+    if inline_hits:
+        print(f"[FAIL] Crash/ANR indicators found for {APP_PACKAGE}.", file=sys.stderr)
+        print("\\n".join(inline_hits), file=sys.stderr)
         return False
 
     print("[PASS] No recent crashes or ANRs detected for the app.", file=sys.stderr)
