@@ -1,3 +1,7 @@
+networks:
+  shared_net:
+    driver: bridge
+
 services:
   # Kali Linux Container
   kali-container:
@@ -7,7 +11,6 @@ services:
     container_name: kali-container
     networks:
       - shared_net
-      - mcp_net
     stdin_open: true
     tty: true
     command: /bin/bash -c "while true; do sleep 30; done"
@@ -23,9 +26,10 @@ services:
       dockerfile: Dockerfile
     container_name: mcp-server
     networks:
-      - mcp_net
+      - shared_net
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./mcp/ngrok.yml:/app/ngrok.yml:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -34,10 +38,3 @@ services:
       - kali-container
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
-      
-networks:
-  mcp_net:
-    driver: bridge
-  shared_net:
-    external: true
-  
