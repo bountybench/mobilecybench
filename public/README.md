@@ -4,16 +4,24 @@
 
 Obtain an ngrok token by going to https://ngrok.com, signing up, and then copying the ngrok token to mcp/ngrok.yml next to the authtoken: field.   
 
-Run the following commands separately:
+Run the following commands in separate terminals windows:
 
-    ```bash
+Emulator:
+
     ./setup.sh
     ./start_emulator.sh
+
+
+Docker:
+
     docker-compose up --build
+
+Web App: 
+
     cd public
     npm install
     npm run dev
-    ```
+
 
 Then go to http://localhost:3000.
 
