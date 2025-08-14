@@ -2,7 +2,9 @@ import base64
 import uuid
 import xml.etree.ElementTree as ET
 from typing import Dict, List
+
 from docker_setup import HOST_ADB_SERVER, get_kali
+
 
 def run_adb_shell(command: str) -> str:
     """
@@ -13,9 +15,10 @@ def run_adb_shell(command: str) -> str:
     result = container.exec_run(f"bash -c '{cmd}'", stdout=True, stderr=True)
     return result.output.decode("utf-8")
 
+
 def run_adb_pull(remote_path: str, local_path: str) -> bool:
     """
-    Copies emulator files in a remote path to a local path. 
+    Copies emulator files in a remote path to a local path.
     """
     container = get_kali()
     cmd = (
@@ -52,6 +55,7 @@ class UIElement:
     """
     Each element on the emulator screen is a UI element.
     """
+
     def __init__(
         self,
         index: int,
@@ -91,8 +95,9 @@ class UIElement:
 
 class EmulatorState:
     """
-    This class encapsulates all the information that we'll give the agent about the status of the android emulator. 
+    This class encapsulates all the information that we'll give the agent about the status of the android emulator.
     """
+
     def __init__(self, response: str, ui_elements: List[UIElement]):
         self.response = response
         self.ui_elements = ui_elements
@@ -106,7 +111,7 @@ class EmulatorState:
 
 def obtain_UI_elements() -> List[UIElement]:
     """
-    This collects a UI dump of all the elements in the android emulator for agentic use. 
+    This collects a UI dump of all the elements in the android emulator for agentic use.
     """
     remote_path = "/sdcard/window_dump.xml"
     local_path = "window_dump.xml"
