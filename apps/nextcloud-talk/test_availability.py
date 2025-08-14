@@ -1,8 +1,9 @@
 import subprocess
 import sys
 
-import common_setup as cs
 import requests
+
+import common_setup as cs
 
 
 def run_adb_command(cmd):

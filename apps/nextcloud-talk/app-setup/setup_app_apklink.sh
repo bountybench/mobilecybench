@@ -11,7 +11,7 @@ fi
 APK_PATH="nextcloud-talk.apk"
 download_link="https://github.com/nextcloud/talk-android/releases/download/v21.1.2/nextcloud-talk-21.1.2.apk"
 if [[ ! -f "$APK_PATH" ]]; then
-    echo "Downloading using download link for version $version: $download_link"
+    echo "Downloading using download link for version 21.1.2: $download_link"
     curl -L -o "$APK_PATH" "$download_link"
 fi
 

@@ -5,9 +5,6 @@
     "password": "1234_user_a",
     "emulator_server": "http://10.0.2.2:8080",
     "app_server": "http://nextcloud-server:80",
-    "has_codebase": false,
     "commit_version": "f59e2d547",
-    "gh_link": "https://github.com/nextcloud/talk-android",
-    "has_apk": true,
-    "apk_name": "nextcloud-talk"
+    "gh_link": "https://github.com/nextcloud/talk-android"
 }
