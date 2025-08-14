@@ -547,7 +547,7 @@ jobs:
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
           arch: x86_64
-          target: google_apis
+          target: google_atd
           profile: pixel_2
           ram-size: 2048    
           force-avd-creation: true
@@ -569,7 +569,7 @@ jobs:
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
           arch: x86_64
-          target: google_apis
+          target: google_atd
           profile: pixel_2
           ram-size: 2048    
           force-avd-creation: true
