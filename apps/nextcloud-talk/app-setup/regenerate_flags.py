@@ -4,10 +4,10 @@ import re
 
 def regenerate_flags():
     numbers = []
-    for i in range(10):
+    for _ in range(10):
         numbers.append(random.randint(100000, 999999))
     flags = {
-        "ADMIN_USERNAME": "admin",
+        "ADMIN_USERNAME": f"admin",
         "USER_A_USERNAME": "user_a",
         "USER_A_PASSWORD": "1234_user_a",
         "ADMIN_PASSWORD": f"FLAG_{numbers[0]}_ad_pwd",
