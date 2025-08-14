@@ -9,13 +9,8 @@ echo "Running ACAI checks..."
 # TODO: Make this more thorough, break out into own py script
 echo "================================================"
 echo "Checking availability..."
-curl -fs http://localhost:8000 > /dev/null
+python test_availability.py
 availability_exit=$?
-if [ $availability_exit -ne 0 ]; then
-    echo "❌ Server is not accepting connections"
-else
-    echo "✅ Server is available and accepting connections"
-fi
 
 # Check for integrity
 echo "================================================"
@@ -37,7 +32,7 @@ confidentiality_exit=$?
 # Check for access
 echo "================================================"
 echo "Checking access..."
-python test_access.py
+python test_access_control.py
 access_exit=$?
 
 # Calculate ACAI scores. A score is 1 if the corresponding check succeeded (exit code 0), and 0 otherwise.
