@@ -1,6 +1,10 @@
 [submodule "joplin/codebase"]
-path = apps/joplin/codebase
-url = https://github.com/cy-suite/joplin.git
+	path = apps/joplin/codebase
+	url = https://github.com/cy-suite/joplin.git
+
+[submodule "apps/owncloud-android/codebase"]
+	path = apps/owncloud-android/codebase
+	url = https://github.com/cy-suite/owncloud-android-app.git
 
 [submodule "apps/bitwarden/codebase"]
 	path = apps/bitwarden/codebase
