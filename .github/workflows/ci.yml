@@ -467,90 +467,6 @@ jobs:
           
           chmod +x test_checks.sh
 
-      # - name: Install Android SDK (for vuln_scenario_0)
-      #   if: matrix.test_type == 'vuln_scenario_0'
-      #   uses: reactivecircus/android-emulator-runner@v2
-      #   with:
-      #     api-level: ${{ needs.setup.outputs.sdk }}
-      #     target: google_apis
-      #     arch: x86_64
-      #     profile: pixel_2
-      #     script: echo "Temporary run to preinstall SDK"
-
-      # - name: Create AVD for vuln_scenario_0
-      #   if: matrix.test_type == 'vuln_scenario_0'
-      #   run: |
-      #     SDK_VERSION=${{ needs.setup.outputs.sdk }}
-      #     echo "no" | avdmanager create avd -n test_avd \
-      #       -k "system-images;android-$SDK_VERSION;google_apis;x86_64" --device "pixel"
-
-      # - name: Launch emulator for vuln_scenario_0
-      #   if: matrix.test_type == 'vuln_scenario_0'
-      #   run: |
-      #     echo "ANDROID_HOME: $ANDROID_HOME"
-      #     echo "PATH: $PATH"
-      #     export PATH=$ANDROID_HOME/emulator:$PATH
-      #     emulator -avd test_avd -writable-system -no-window -no-audio -no-boot-anim &
-      #     adb wait-for-device
-
-      #     BOOT_STATUS=""
-      #     timeout=300
-      #     while [[ "$BOOT_STATUS" != "1" && $timeout -gt 0 ]]; do
-      #       BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-      #       sleep 1
-      #       ((timeout--))
-      #     done
-
-      #     if [[ "$BOOT_STATUS" != "1" ]]; then
-      #       echo "Emulator did not fully boot in time."
-      #       exit 1
-      #     fi
-
-      #     echo "Emulator booted successfully!"
-      #     echo "Waiting for adbd to be ready..."
-      #     timeout=60
-      #     until adb shell "ls /system" &>/dev/null || [[ $timeout -le 0 ]]; do
-      #       sleep 1
-      #       ((timeout--))
-      #     done
-      #     if [[ "$timeout" -le 0 ]]; then
-      #       echo "adbd not ready in time."
-      #       exit 1
-      #     fi          
-
-      #     adb root
-      #     timeout=30
-      #     until adb remount &>/dev/null || [[ $timeout -le 0 ]]; do
-      #       sleep 1
-      #       ((timeout--))
-      #     done
-      #     if [[ "$timeout" -le 0 ]]; then
-      #       echo "adb remount failed after waiting."
-      #       exit 1
-      #     fi
-          
-      #     adb shell input keyevent 224
-      #     echo "Emulator ready!"
-
-      # - name: Run custom emulator test for vuln_scenario_0
-      #   if: matrix.test_type == 'vuln_scenario_0'
-      #   run: |
-      #     echo "Executing vuln_scenario_0 test..."
-      #     bash -x ./test_checks.sh
-
-      # - name: Stop custom emulator for vuln_scenario_0
-      #   if: always() && matrix.test_type == 'vuln_scenario_0'
-      #   run: |
-      #     echo "Shutting down custom emulator..."
-      #     adb devices
-      #     EMU_ID=$(adb devices | awk '/emulator-/{print $1}')
-      #     if [ -n "$EMU_ID" ]; then
-      #       adb -s "$EMU_ID" emu kill
-      #       echo "Emulator stopped."
-      #     else
-      #       echo "No emulator instance found to stop."
-      #     fi
-
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
         uses: reactivecircus/android-emulator-runner@v2
@@ -565,12 +481,7 @@ jobs:
           disable-animations: true
           script: |
             adb root
-            SDK_VERSION=${{ needs.setup.outputs.sdk }}
-            if [ "$SDK_VERSION" -gt 28 ]; then
-              adb shell avbctl disable-verification
-            else
-              adb disable-verity
-            fi
+            SDK_VERSION=${{ needs.setup.outputs.sdk }}; if [ "$SDK_VERSION" -gt 28 ]; then adb shell avbctl disable-verification; else adb disable-verity; fi
             adb reboot
             adb wait-for-device
             adb root
