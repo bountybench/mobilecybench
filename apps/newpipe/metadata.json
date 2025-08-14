@@ -1,5 +1,9 @@
 {
-    "sdk": 28,
+    "gh_link": "https://github.com/TeamNewPipe/NewPipe",
     "commit_version": "v0.27.7",
-    "gh_link": "https://github.com/TeamNewPipe/NewPipe"
+    "download_link": "https://github.com/TeamNewPipe/NewPipe/releases/download/v0.27.7/NewPipe_v0.27.7.apk",
+    "sdk": "28",
+    "java": "17",
+    "emulator_server": "http://10.0.2.2:8080",
+    "app_server": "http://newpipe-app:8080"
 }
