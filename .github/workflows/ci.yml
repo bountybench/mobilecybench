@@ -565,7 +565,12 @@ jobs:
           disable-animations: true
           script: |
             adb root
-            SDK_VERSION=${{ needs.setup.outputs.sdk }}; if [ "$SDK_VERSION" -gt 28 ]; then adb shell avbctl disable-verification; else adb disable-verity; fi
+            SDK_VERSION=${{ needs.setup.outputs.sdk }}
+            if [ "$SDK_VERSION" -gt 28 ]; then
+              adb shell avbctl disable-verification
+            else
+              adb disable-verity
+            fi
             adb reboot
             adb wait-for-device
             adb root
