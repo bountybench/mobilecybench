@@ -1,4 +1,4 @@
-FROM cybench/kali-linux-base:latest
+FROM python:3.12-slim
 
 # Install common tools, Python 3.12, Docker, and pytest
 RUN apt-get update && \
