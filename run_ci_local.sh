@@ -186,6 +186,7 @@ run_test_check() {
     if [ -n "$vuln_scenario" ]; then
         echo -e "${INFO} Creating vulnerable scenario $vuln_scenario..."
         cd "vuln_scenarios/vuln_scenario_$vuln_scenario"
+        chmod +x vuln.sh
         ./vuln.sh
         cd -
     fi
