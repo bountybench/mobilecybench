@@ -45,7 +45,7 @@ fi
 
 echo "Setting up emulator for NewPipe proxy..."
 
-# Check if an emulator is already running
+# check if an emulator is already running
 if adb devices | grep -q "emulator\|device"; then
     echo "Emulator already running, skipping emulator startup"
 else
