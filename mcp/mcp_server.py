@@ -1,3 +1,5 @@
+import shlex
+
 from docker_setup import HOST_ADB_SERVER, get_kali
 from fastmcp import FastMCP
 from ui_connection import EmulatorState, get_ui_state
@@ -5,58 +7,36 @@ from ui_connection import EmulatorState, get_ui_state
 mcp = FastMCP(name="Mobile Cyber MCP", stateless_http=True)
 
 
-@mcp.tool(description="Execute a command in the Kali Linux container")
-def execute_kali_command(command: str) -> EmulatorState:
+@mcp.tool(
+    description="Execute a terminal command. For adb commands, write 'adb shell ...'. "
+)
+def execute_command(command: str) -> EmulatorState:
+    """
+    The main tool for the AI model to be able to interact with our
+    """
     try:
         container = get_kali()
-        result = container.exec_run(f"bash -c '{command}'", stdout=True, stderr=True)
-        output = result.output.decode("utf-8")
-        return get_ui_state(
-            f"Command: {command}\nExit Code: {result.exit_code}\nOutput:\n{output}"
-        )
-    except Exception as e:
-        return get_ui_state(f"Error: {str(e)}")
 
+        # Determine if the command is an ADB command
+        if command.strip().startswith("adb"):
+            # Prefix ADB server socket export
+            full_cmd = f"export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && {command}"
+            label = "ADB Command"
+        else:
+            full_cmd = command
+            label = "Command"
 
-@mcp.tool(description="Execute an ADB command via host ADB")
-def adb_command(command: str) -> EmulatorState:
-    try:
-        container = get_kali()
-        cmd = f"export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb {command}"
-        result = container.exec_run(f"bash -c '{cmd}'", stdout=True, stderr=True)
-        output = result.output.decode("utf-8")
-        return get_ui_state(
-            f"ADB Command: adb {command}\nExit Code: {result.exit_code}\nOutput:\n{output}"
-        )
-    except Exception as e:
-        return get_ui_state(f"Error: {str(e)}")
-
-
-@mcp.tool(description="Connect Kali ADB client to host ADB server")
-def connect_to_host_adb() -> EmulatorState:
-    try:
-        container = get_kali()
-        container.exec_run("bash -c 'adb kill-server'", stdout=True, stderr=True)
+        # Safely quote the entire command for bash -c execution inside Docker
         result = container.exec_run(
-            f"bash -c 'export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb devices'",
-            stdout=True,
-            stderr=True,
+            f"bash -c {shlex.quote(full_cmd)}", stdout=True, stderr=True
         )
-        return f"ADB Connection:\n{result.output.decode('utf-8')}"
-    except Exception as e:
-        return get_ui_state(f"Error: {str(e)}")
+        output = result.output.decode("utf-8")
 
-
-@mcp.tool(description="Check if the Android emulator is running")
-def check_emulator_status() -> EmulatorState:
-    try:
-        container = get_kali()
-        result = container.exec_run(
-            f"bash -c 'export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb devices -l && adb shell getprop ro.build.version.release || echo \"No emulator\"'",
-            stdout=True,
-            stderr=True,
+        # Returns the emulator state
+        return get_ui_state(
+            f"{label}: {command}\nExit Code: {result.exit_code}\nOutput:\n{output}"
         )
-        return f"Emulator Status:\n{result.output.decode('utf-8')}"
+
     except Exception as e:
         return get_ui_state(f"Error: {str(e)}")
 
