@@ -18,11 +18,26 @@ NEWPIPE_PACKAGE="org.schabi.newpipe.debug.HEAD"
 export ANDROID_SDK_ROOT="$SDK"
 export PATH="$SDK/platform-tools:$SDK/emulator:$PATH"
 
+# locate emulator binary or exit if missing
+if ! command -v emulator > /dev/null; then
+    if [ -x "$ANDROID_SDK_ROOT/emulator/emulator" ]; then
+        EMULATOR_BIN="$ANDROID_SDK_ROOT/emulator/emulator"
+    elif [ -x "$ANDROID_SDK_ROOT/tools/emulator" ]; then
+        EMULATOR_BIN="$ANDROID_SDK_ROOT/tools/emulator"
+    else
+        echo -e "${ERROR} Emulator binary not found in $ANDROID_SDK_ROOT" >&2
+        exit 1
+    fi
+else
+    EMULATOR_BIN="emulator"
+fi
+
 echo "Setting up emulator for NewPipe proxy..."
 
 # start the emulator with writable /system
 adb emu kill >/dev/null 2>&1 || true
-emulator @"$AVD" -writable-system -no-snapshot-save &
+# use located emulator binary
+$EMULATOR_BIN @"$AVD" -writable-system -no-snapshot-save &
 echo "Booting $AVD …"
 while ! adb shell getprop sys.boot_completed 2>/dev/null | grep -q 1; 
     do sleep 2; 
