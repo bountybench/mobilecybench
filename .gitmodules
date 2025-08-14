@@ -1,7 +1,9 @@
 [submodule "joplin/codebase"]
 	path = apps/joplin/codebase
 	url = https://github.com/cy-suite/joplin.git
-
+[submodule "wordpress/codebase"]
+	path = apps/wordpress/codebase
+	url = https://github.com/cy-suite/WordPress-Android.git
 [submodule "apps/owncloud-android/codebase"]
 	path = apps/owncloud-android/codebase
 	url = https://github.com/cy-suite/owncloud-android-app.git
