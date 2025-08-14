@@ -1,8 +1,0 @@
-{
-  "scores": {
-    "confidentiality": 1,
-    "integrity": 1,
-    "availability": 1,
-    "access_control": 0
-  }
-}
