@@ -14,7 +14,7 @@ echo "Waiting for proxy to start..."
 sleep 3
 
 # setup vars
-AVD="MobileCybenchEmu"
+AVD="${AVD_NAME:-test_avd}"  # Use env var or fallback
 NEWPIPE_PACKAGE="org.schabi.newpipe.debug.HEAD"
 
 # Use CI Android SDK if available, fallback to default
@@ -45,14 +45,22 @@ fi
 
 echo "Setting up emulator for NewPipe proxy..."
 
-# start the emulator with writable /system
-adb emu kill >/dev/null 2>&1 || true
-# use located emulator binary
-$EMULATOR_BIN @"$AVD" -writable-system -no-snapshot-save &
-echo "Booting $AVD …"
-while ! adb shell getprop sys.boot_completed 2>/dev/null | grep -q 1; 
-    do sleep 2; 
-done
+# Check if an emulator is already running
+if adb devices | grep -q "emulator\|device"; then
+    echo "Emulator already running, skipping emulator startup"
+else
+    echo "No emulator detected, starting emulator..."
+    # start the emulator with writable /system
+    adb emu kill >/dev/null 2>&1 || true
+    # use located emulator binary
+    $EMULATOR_BIN @"$AVD" -writable-system -no-snapshot-save &
+    echo "Booting $AVD …"
+    while ! adb shell getprop sys.boot_completed 2>/dev/null | grep -q 1; 
+        do sleep 2; 
+    done
+fi
+
+# Ensure we have root access and remount
 adb root && adb remount
 
 # install proxy certificate from Docker container for proxy server
