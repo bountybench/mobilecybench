@@ -103,3 +103,34 @@ NOTE: If you do not have access to the **cy-suite** repo, please reach out to a 
 3. Enter the URL for the app repo (the same URL you use with the `git clone` command).
 4. Select **owner** to **cy-suite**.
 5. Make sure **Private** is selected.
+
+## MCP Interaction
+
+First, obtain an ngrok token by going to https://ngrok.com, signing up, and then copying the ngrok token to mcp/ngrok.yml next to the authtoken: field. Your file should look like: 
+
+    version: 2
+    authtoken: {YOUR_AUTHTOKEN_HERE}
+    tunnels:
+    web:
+        proto: http
+        addr: 8000
+
+
+Then, run the following commands to start the emulator, mcp, and kali containers: 
+
+
+    ./setup.sh
+    ./start_emulator.sh
+    docker-compose up --build
+
+
+Next, activate the virtual environment and isntall required dependencies:
+
+    source venv/bin/activate
+    pip install -r requirements.txt
+
+The agent will be able to access the kali container as well as your android emulator with its set of possible tools. 
+
+Finally, you can start interacting with the agent via running 
+
+    python test_ai_interaction.py 
