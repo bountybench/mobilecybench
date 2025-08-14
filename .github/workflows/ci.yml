@@ -467,83 +467,97 @@ jobs:
           
           chmod +x test_checks.sh
 
-      - name: Install Android SDK (for vuln_scenario_0)
+      # - name: Install Android SDK (for vuln_scenario_0)
+      #   if: matrix.test_type == 'vuln_scenario_0'
+      #   uses: reactivecircus/android-emulator-runner@v2
+      #   with:
+      #     api-level: ${{ needs.setup.outputs.sdk }}
+      #     target: google_apis
+      #     arch: x86_64
+      #     profile: pixel_2
+      #     script: echo "Temporary run to preinstall SDK"
+
+      # - name: Create AVD for vuln_scenario_0
+      #   if: matrix.test_type == 'vuln_scenario_0'
+      #   run: |
+      #     SDK_VERSION=${{ needs.setup.outputs.sdk }}
+      #     echo "no" | avdmanager create avd -n test_avd \
+      #       -k "system-images;android-$SDK_VERSION;google_apis;x86_64" --device "pixel"
+
+      # - name: Launch emulator for vuln_scenario_0
+      #   if: matrix.test_type == 'vuln_scenario_0'
+      #   run: |
+      #     echo "ANDROID_HOME: $ANDROID_HOME"
+      #     echo "PATH: $PATH"
+      #     export PATH=$ANDROID_HOME/emulator:$PATH
+      #     emulator -avd test_avd -writable-system -no-window -no-audio -no-boot-anim &
+      #     adb wait-for-device
+
+      #     BOOT_STATUS=""
+      #     timeout=300
+      #     while [[ "$BOOT_STATUS" != "1" && $timeout -gt 0 ]]; do
+      #       BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+      #       sleep 1
+      #       ((timeout--))
+      #     done
+
+      #     if [[ "$BOOT_STATUS" != "1" ]]; then
+      #       echo "Emulator did not fully boot in time."
+      #       exit 1
+      #     fi
+
+      #     echo "Emulator booted successfully!"
+      #     echo "Waiting for adbd to be ready..."
+      #     timeout=60
+      #     until adb shell "ls /system" &>/dev/null || [[ $timeout -le 0 ]]; do
+      #       sleep 1
+      #       ((timeout--))
+      #     done
+      #     if [[ "$timeout" -le 0 ]]; then
+      #       echo "adbd not ready in time."
+      #       exit 1
+      #     fi          
+      #     sleep 15
+
+      #     adb root
+      #     timeout=30
+      #     until adb remount &>/dev/null || [[ $timeout -le 0 ]]; do
+      #       sleep 1
+      #       ((timeout--))
+      #     done
+      #     if [[ "$timeout" -le 0 ]]; then
+      #       echo "adb remount failed after waiting."
+      #       exit 1
+      #     fi
+      #     sleep 15
+
+      #     echo "Disabling animations..."
+      #     adb shell settings put global window_animation_scale 0
+      #     adb shell settings put global transition_animation_scale 0
+      #     adb shell settings put global animator_duration_scale 0
+          
+      #     adb shell input keyevent 224
+      #     echo "Emulator ready!"
+
+      # - name: Run custom emulator test for vuln_scenario_0
+      #   if: matrix.test_type == 'vuln_scenario_0'
+      #   run: |
+      #     echo "Executing vuln_scenario_0 test..."
+      #     bash -x ./test_checks.sh
+
+      - name: Run emulator test with action (baseline and vuln_scenario_1)
         if: matrix.test_type == 'vuln_scenario_0'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
-          target: google_apis
           arch: x86_64
+          target: google_apis
           profile: pixel_2
-          script: echo "Temporary run to preinstall SDK"
-
-      - name: Create AVD for vuln_scenario_0
-        if: matrix.test_type == 'vuln_scenario_0'
-        run: |
-          SDK_VERSION=${{ needs.setup.outputs.sdk }}
-          echo "no" | avdmanager create avd -n test_avd \
-            -k "system-images;android-$SDK_VERSION;google_apis;x86_64" --device "pixel"
-
-      - name: Launch emulator for vuln_scenario_0
-        if: matrix.test_type == 'vuln_scenario_0'
-        run: |
-          echo "ANDROID_HOME: $ANDROID_HOME"
-          echo "PATH: $PATH"
-          export PATH=$ANDROID_HOME/emulator:$PATH
-          emulator -avd test_avd -writable-system -no-window -no-audio -no-boot-anim &
-          adb wait-for-device
-
-          BOOT_STATUS=""
-          timeout=300
-          while [[ "$BOOT_STATUS" != "1" && $timeout -gt 0 ]]; do
-            BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-            sleep 1
-            ((timeout--))
-          done
-
-          if [[ "$BOOT_STATUS" != "1" ]]; then
-            echo "Emulator did not fully boot in time."
-            exit 1
-          fi
-
-          echo "Emulator booted successfully!"
-          echo "Waiting for adbd to be ready..."
-          timeout=60
-          until adb shell "ls /system" &>/dev/null || [[ $timeout -le 0 ]]; do
-            sleep 1
-            ((timeout--))
-          done
-          if [[ "$timeout" -le 0 ]]; then
-            echo "adbd not ready in time."
-            exit 1
-          fi          
-          sleep 15
-
-          adb root
-          timeout=30
-          until adb remount &>/dev/null || [[ $timeout -le 0 ]]; do
-            sleep 1
-            ((timeout--))
-          done
-          if [[ "$timeout" -le 0 ]]; then
-            echo "adb remount failed after waiting."
-            exit 1
-          fi
-          sleep 15
-
-          echo "Disabling animations..."
-          adb shell settings put global window_animation_scale 0
-          adb shell settings put global transition_animation_scale 0
-          adb shell settings put global animator_duration_scale 0
-          
-          adb shell input keyevent 224
-          echo "Emulator ready!"
-
-      - name: Run custom emulator test for vuln_scenario_0
-        if: matrix.test_type == 'vuln_scenario_0'
-        run: |
-          echo "Executing vuln_scenario_0 test..."
-          bash -x ./test_checks.sh
+          ram-size: 2048    
+          force-avd-creation: true
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none -writable-system
+          disable-animations: true
+          script: ./test_checks.sh
 
       - name: Stop custom emulator for vuln_scenario_0
         if: always() && matrix.test_type == 'vuln_scenario_0'
@@ -568,7 +582,7 @@ jobs:
           profile: pixel_2
           ram-size: 2048    
           force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none -writable-system
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none 
           disable-animations: true
           script: ./test_checks.sh
 
