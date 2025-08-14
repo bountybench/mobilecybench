@@ -2,3 +2,15 @@ check_device.sh
 stop_emulator.sh
 start_emulator.sh
 setup.log
+.DS_Store
+.github/
+*.apk
+.venv/
+pycache/
+*.log
+baseline_manifest.json
+.pytest_cache/
+__pycache__/
+.reports/
+scores.json
+
