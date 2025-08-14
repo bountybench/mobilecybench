@@ -43,7 +43,7 @@ jobs:
           get_modified_dirs() {
             git diff --diff-filter=ACMDR --name-only origin/main...HEAD |
               grep '^app/' |           
-              awk -F/ '{print $1"/"$2}' | 
+              awk -F/ 'NF>=2 && $2 !~ /\.py$/ {print $1"/"$2}' |
               sort -u
           }
           EOF
@@ -381,7 +381,7 @@ jobs:
 
       - name: Create Docker Network
         run: docker network create shared_net || true
-        
+
       - name: Display disk space before tests
         run: df -h
 
