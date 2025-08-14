@@ -46,10 +46,19 @@ def check_container_health(container_name: str) -> bool:
             check=True,
         )
         health_status = result.stdout.strip()
-        return health_status == "healthy"
+        if health_status == "healthy":
+            print(f"[PASS] Container '{container_name}' is healthy.", file=sys.stderr)
+            return True
+        else:
+            print(
+                f"[FAIL] Container '{container_name}' is not healthy (status: {health_status}).",
+                file=sys.stderr,
+            )
+            return False
+
     except subprocess.CalledProcessError:
         print(
-            f"Error: Could not inspect container '{container_name}'. Is it running?",
+            f"[ERROR] Could not inspect container '{container_name}'. Is it running?",
             file=sys.stderr,
         )
         return False
