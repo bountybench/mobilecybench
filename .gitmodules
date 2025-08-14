@@ -5,3 +5,6 @@
 [submodule "apps/seadroid/codebase"]
 	path = apps/seadroid/codebase
 	url = https://github.com/cy-suite/seadroid.git
+[submodule "apps/owncloud-android/codebase"]
+	path = apps/owncloud-android/codebase
+	url = https://github.com/cy-suite/owncloud-android-app.git
