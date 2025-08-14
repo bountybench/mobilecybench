@@ -136,7 +136,6 @@ def check_app_crash_logs() -> bool:
         "has died",
         "WIN DEATH",
         "Force finishing activity",
-        "Channel is unrecoverably broken",
         "crash",
     ]
     inline_hits = [

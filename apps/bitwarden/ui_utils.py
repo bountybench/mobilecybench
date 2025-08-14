@@ -50,7 +50,10 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
             return False
 
     for attempt_index in range(1, max_retries + 1):
-        print(f"[INFO] Connecting to device (attempt {attempt_index}/{max_retries})…")
+        print(
+            f"[INFO] Connecting to device (attempt {attempt_index}/{max_retries})…",
+            file=sys.stderr,
+        )
 
         if not _adb_has_devices():
             print(
@@ -66,7 +69,7 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
             device = u2.connect()
             # Touch the device to ensure the connection is usable
             _ = device.device_info  # may raise if not connected
-            print("[INFO] Connected to device.")
+            print("[INFO] Connected to device.", file=sys.stderr)
             return device
         except Exception as e:
             print(f"[WARN] Connection failed: {e}", file=sys.stderr)
@@ -127,7 +130,7 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
             return False
 
     # Clicked element; return True
-    print(f"[INFO] Clicked element {element.selector}")
+    print(f"[INFO] Clicked element {element.selector}", file=sys.stderr)
     _wait_for_ui_stable(d)
 
     return True
@@ -168,7 +171,7 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
             print(f"[ERROR] {message}", file=sys.stderr)
             return False
 
-    print(f"[INFO] Set text to {text}")
+    print(f"[INFO] Set text to {text}", file=sys.stderr)
     _handle_keyboard_action(d)
     _wait_for_ui_stable(d)
     return True
@@ -227,27 +230,34 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
             if wait_button.exists(timeout=timeout):
                 anr_count += 1
                 print(
-                    f"[DEBUG] ANR dialog #{anr_count} detected. Clicking 'Wait' to continue..."
+                    f"[DEBUG] ANR dialog #{anr_count} detected. Clicking 'Wait' to continue...",
+                    file=sys.stderr,
                 )
                 wait_button.click()
 
                 # Wait for either target element or UI stability
                 if target_element is not None:
                     print(
-                        f"[DEBUG] Waiting for target element '{target_element.selector}' to appear after ANR..."
+                        f"[DEBUG] Waiting for target element '{target_element.selector}' to appear after ANR...",
+                        file=sys.stderr,
                     )
                     if target_element.wait(timeout=10):
                         print(
-                            f"[DEBUG] Target element '{target_element.selector}' appeared successfully after ANR."
+                            f"[DEBUG] Target element '{target_element.selector}' appeared successfully after ANR.",
+                            file=sys.stderr,
                         )
                         break  # Target element found - exit ANR loop
                     else:
                         print(
-                            f"[DEBUG] Target element '{target_element.selector}' did not appear after ANR dismissal."
+                            f"[DEBUG] Target element '{target_element.selector}' did not appear after ANR dismissal.",
+                            file=sys.stderr,
                         )
                         continue  # Continue checking for more ANRs
                 else:
-                    print("[DEBUG] Waiting for UI to stabilize after ANR...")
+                    print(
+                        "[DEBUG] Waiting for UI to stabilize after ANR...",
+                        file=sys.stderr,
+                    )
                     _wait_for_ui_stable(d, timeout=10)
             else:
                 break  # No ANR dialog found
@@ -267,7 +277,8 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
 
     if anr_count > 0:
         print(
-            f"[WARN] Handled {anr_count} consecutive ANR dialog(s) until system UI unfreeze."
+            f"[WARN] Handled {anr_count} consecutive ANR dialog(s) until system UI unfreeze.",
+            file=sys.stderr,
         )
 
     return True
@@ -370,10 +381,10 @@ def _handle_keyboard_action(d):
     try:
         if d(description="Done").exists(timeout=1):
             d(description="Done").click()
-            print("[INFO] Clicked keyboard Done button")
+            print("[INFO] Clicked keyboard Done button", file=sys.stderr)
             return True
     except Exception as e:
-        print(f"[WARN] Could not click keyboard Done button: {e}")
+        print(f"[WARN] Could not click keyboard Done button: {e}", file=sys.stderr)
 
     # Method 2: Try clicking the keyboard action button
     try:
@@ -383,20 +394,20 @@ def _handle_keyboard_action(d):
             d(
                 resourceId="com.google.android.inputmethod.latin:id/key_pos_ime_action"
             ).click()
-            print("[INFO] Clicked keyboard action button")
+            print("[INFO] Clicked keyboard action button", file=sys.stderr)
             return True
     except Exception as e:
-        print(f"[WARN] Could not click keyboard action button: {e}")
+        print(f"[WARN] Could not click keyboard action button: {e}", file=sys.stderr)
 
     # Method 3: Try pressing Enter key
     try:
         d.press("enter")
-        print("[INFO] Pressed Enter key")
+        print("[INFO] Pressed Enter key", file=sys.stderr)
         return True
     except Exception as e:
-        print(f"[WARN] Could not press Enter key: {e}")
+        print(f"[WARN] Could not press Enter key: {e}", file=sys.stderr)
 
-    print("[WARN] All keyboard action methods failed")
+    print("[WARN] All keyboard action methods failed", file=sys.stderr)
     return False
 
 
@@ -469,11 +480,15 @@ def _robust_set_text(d, element, text, max_attempts=3):
             element.click_exists(timeout=2)
             element.set_text(text)
             print(
-                f"[INFO] Set text attempt {attempt_index} succeeded for {element.selector}"
+                f"[INFO] Set text attempt {attempt_index} succeeded for {element.selector}",
+                file=sys.stderr,
             )
             return True
         except Exception as set_error:
-            print(f"[WARN] set_text attempt {attempt_index} failed: {set_error}")
+            print(
+                f"[WARN] set_text attempt {attempt_index} failed: {set_error}",
+                file=sys.stderr,
+            )
             # Try to scroll into view for the next attempt
             _try_scroll_into_view(d, selector_info)
             # Small pause before retry
