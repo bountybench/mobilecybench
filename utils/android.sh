@@ -27,8 +27,13 @@ check_android_prereqs() {
 
 # Starts an Android emulator waits for it to boot.
 start_emulator() {
+    if adb devices | grep -qE '^emulator-[0-9]+\s+device$'; then
+        log_info "Emulator already running. Skipping start."
+        return 0
+    fi
     local avd_name=$1
-    local start_script=${2:-"$(dirname "${BASH_SOURCE[0]}")/../start_emulator.sh"}
+    local repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+    local start_script=${2:-"$repo_root/start_emulator.sh"}
     if [[ -z "$avd_name" ]]; then
         fatal "start_emulator requires AVD name"
     fi
