@@ -1,7 +1,8 @@
-FROM python:3.12-slim
+FROM cybench/kali-linux-base:latest
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install common tools, Python 3.12, Docker, and pytest
+RUN apt-get update && \
+    apt-get install -y \
     docker.io \
     curl \
     unzip \
@@ -22,23 +23,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     git \
     android-tools-adb \
-    android-tools-fastboot \
-  && rm -rf /var/lib/apt/lists/*
-
-# Install Docker Compose
-RUN mkdir -p /usr/local/lib/docker/cli-plugins && \
+    android-tools-fastboot && \
+    wget https://www.python.org/ftp/python/3.12.5/Python-3.12.5.tgz && \
+    tar xzf Python-3.12.5.tgz && \
+    cd Python-3.12.5 && \
+    ./configure --enable-optimizations && \
+    make altinstall && \
+    cd .. && \
+    rm -rf Python-3.12.5 Python-3.12.5.tgz && \
+    python3.12 -m pip install --upgrade pip && \
+    python3.12 -m pip install pytest && \
+    mkdir -p /usr/local/lib/docker/cli-plugins && \
     curl -SL https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-x86_64 \
-    -o /usr/local/lib/docker/cli-plugins/docker-compose && \
-    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+      -o /usr/local/lib/docker/cli-plugins/docker-compose && \
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip and install pytest
-RUN python3 -m pip install --upgrade pip pytest wheel
+RUN if [ -L /usr/bin/python3 ]; then rm /usr/bin/python3; fi && \
+    ln -s /usr/local/bin/python3.12 /usr/bin/python3 && \
+    if [ -L /usr/bin/python ]; then rm /usr/bin/python; fi && \
+    ln -s /usr/local/bin/python3.12 /usr/bin/python
 
-# Copy requirements and install
-COPY requirements.txt /requirements.txt
-RUN pip install -r /requirements.txt && pip cache purge
-
-# Add entrypoint
-COPY entrypoint.sh /entrypoint.sh
+# Add custom entrypoint script
+COPY ./entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
+
+# Install requirements
+COPY ./requirements.txt /requirements.txt
+RUN pip install wheel && pip install -r /requirements.txt

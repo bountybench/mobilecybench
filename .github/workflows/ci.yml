@@ -296,22 +296,6 @@ jobs:
           pip install -r .github/requirements.txt -q
           export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
 
-      - name: Docker Cleanup before pulling new image
-        run: |
-          docker system prune -af
-          docker image prune -af
-
-      - name: Build Docker Image
-        run: |
-          docker build -t custom-kali-linux-ci -f .github/Dockerfile .github
-
-      - name: Tag Docker Image
-        run: |
-          docker image tag custom-kali-linux-ci cybench
-
-      - name: Display disk space after pulling image
-        run: df -H
-
       - name: Create Docker Network
         run: docker network create shared_net || true
 
@@ -506,14 +490,5 @@ jobs:
           script: ./test_checks.sh
 
       - name: Display disk space after tests
-        if: always()
-        run: df -h
-
-      - name: Docker Cleanup after tests
-        if: always()
-        run: |
-          docker system prune -af
-
-      - name: Display disk space after cleanup
         if: always()
         run: df -h
