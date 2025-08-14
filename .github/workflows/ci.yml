@@ -17,6 +17,9 @@ jobs:
       sdk: ${{ steps.get-sdk-java.outputs.sdk }}
       java: ${{ steps.get-sdk-java.outputs.java }}
     steps:
+      - name: Display disk space
+        run: df -h
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -29,6 +32,9 @@ jobs:
         
       - name: Fetch main branch
         run: git fetch origin main:refs/remotes/origin/main
+
+      - name: Display disk space
+        run: df -h
 
       - name: Find modified directories
         id: modified-dirs
@@ -96,6 +102,9 @@ jobs:
 
           echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
           echo "java=$java" >> "$GITHUB_OUTPUT"
+      
+      - name: Display disk space
+        run: df -h
 
       - name: Install dependencies
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -105,6 +114,9 @@ jobs:
           python -m pip install --upgrade pip -q
           pip install -r .github/requirements.txt -q
           export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
+          
+      - name: Display disk space
+        run: df -h
 
       - name: Check metadata.json
         if: steps.modified-dirs.outputs.should_exit != 'true'
