@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+# Define error prefix
+ERROR="[ERROR]"
+
 source .env # load environment variables
 
 # start containers
@@ -12,8 +15,16 @@ sleep 3
 
 # setup vars
 AVD="MobileCybenchEmu"
-SDK="$HOME/.android-sdk"
 NEWPIPE_PACKAGE="org.schabi.newpipe.debug.HEAD"
+
+# Use CI Android SDK if available, fallback to default
+if [[ -n "${ANDROID_SDK_ROOT:-}" ]]; then
+    SDK="$ANDROID_SDK_ROOT"
+elif [[ -n "${ANDROID_HOME:-}" ]]; then
+    SDK="$ANDROID_HOME" 
+else
+    SDK="$HOME/.android-sdk"
+fi
 
 export ANDROID_SDK_ROOT="$SDK"
 export PATH="$SDK/platform-tools:$SDK/emulator:$PATH"
