@@ -5,6 +5,7 @@
 [submodule "apps/owncloud-android/codebase"]
 	path = apps/owncloud-android/codebase
 	url = https://github.com/cy-suite/owncloud-android-app.git
-[submodule "newpipe/codebase"]
-	path = newpipe/codebase
+
+[submodule "apps/newpipe/codebase"]
+	path = apps/newpipe/codebase
 	url = https://github.com/cy-suite/NewPipe.git

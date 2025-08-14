@@ -19,5 +19,6 @@ rm -f newpipe_local_repo.gradle || true
 rm -f ca-cert.pem || true
 rm -f *.0 || true
 rm -rf flows || true
+rm -rf NewPipeExtractor || true
 
 echo "NewPipe environment cleanup complete."
