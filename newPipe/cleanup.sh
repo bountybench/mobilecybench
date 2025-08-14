@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 set -euo pipefail
 
@@ -10,6 +10,14 @@ if [[ ! -f "$COMPOSE_FILE" ]]; then
   exit 1
 fi
 
-echo "Bringing down NewPipe Docker environment"
+echo "Bringing down NewPipe Docker environment."
 docker compose -f "$COMPOSE_FILE" down --remove-orphans
-echo "NewPipe environment cleanup complete" 
+
+echo "Removing generated files..."
+rm -rd scores.json || true
+rm -f newpipe_local_repo.gradle || true
+rm -f ca-cert.pem || true
+rm -f *.0 || true
+rm -rf flows || true
+
+echo "NewPipe environment cleanup complete."
