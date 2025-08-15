@@ -37,7 +37,7 @@ jobs:
           get_modified_dirs() {
             git diff --diff-filter=ACMDR --name-only origin/main...HEAD |
               grep '^apps/' |
-              xargs -n1 dirname |                        
+              xargs -n1 dirname |                       
               awk -F/ 'NF>=2 {print $1"/"$2}' |
               sort -u
           }
@@ -52,7 +52,8 @@ jobs:
             echo "Modified directories:"
             echo "$modified_dirs"
           
-            count=${#modified_dirs[@]}
+            readarray -t dirs <<< "$modified_dirs"
+            count=${#dirs[@]}
             if [ "$count" -gt 1 ]; then
               echo "More than one modified directory detected: ${dirs[*]}"
               echo "Each PR should only modify one app"
