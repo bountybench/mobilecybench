@@ -18,9 +18,6 @@ jobs:
       java: ${{ steps.get-sdk-java.outputs.java }}
       system_image: ${{ steps.get-sdk-java.outputs.system_image }}
     steps:
-      - name: Display disk space
-        run: df -h
-
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -33,9 +30,6 @@ jobs:
         
       - name: Fetch main branch
         run: git fetch origin main:refs/remotes/origin/main
-
-      - name: Display disk space
-        run: df -h
 
       - name: Find modified directories
         id: modified-dirs
@@ -113,9 +107,6 @@ jobs:
           echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
           echo "java=$java" >> "$GITHUB_OUTPUT"
           echo "system_image=$system_image" >> "$GITHUB_OUTPUT"
-      
-      - name: Display disk space
-        run: df -h
 
       - name: Install dependencies
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -125,9 +116,6 @@ jobs:
           python -m pip install --upgrade pip -q
           pip install -r .github/requirements.txt -q
           export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
-
-      - name: Display disk space
-        run: df -h
 
       - name: Check metadata.json
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -157,9 +145,6 @@ jobs:
       max-parallel: 3 
     
     steps:
-      - name: Display disk space
-        run: df -h
-
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
         with:
@@ -171,18 +156,12 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      - name: Display disk space
-        run: df -h
-
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: false
           token: ${{ secrets.GH_TOKEN }}
-
-      - name: Display disk space
-        run: df -h
 
       - name: Create shared functions
         run: |
@@ -319,26 +298,17 @@ jobs:
               echo "$base does not exist."
             fi
           done
-
-      - name: Display disk space
-        run: df -h
           
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: "${{ needs.setup.outputs.java }}"
-
-      - name: Display disk space
-        run: df -h
       
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      
-      - name: Display disk space
-        run: df -h
 
       - name: Install dependencies
         run: |
@@ -361,12 +331,6 @@ jobs:
 
       - name: Display disk space after pulling image
         run: df -H
-
-      - name: Create Docker Network
-        run: docker network create shared_net || true
-
-      - name: Display disk space before tests
-        run: df -h
 
       - name: Enable KVM
         run: |
@@ -603,5 +567,14 @@ jobs:
           fi
 
       - name: Display disk space after tests
+        if: always()
+        run: df -h
+
+      - name: Docker Cleanup after tests
+        if: always()
+        run: |
+          docker system prune -af
+
+      - name: Display disk space after cleanup
         if: always()
         run: df -h
