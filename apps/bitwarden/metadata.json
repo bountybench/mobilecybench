@@ -5,7 +5,7 @@
   "sdk": "29",
   "java": "17",
   "emulator_server": "http://10.0.2.2:8000",
-  "app_server": "http://localhost:8000",
+  "app_server": "http://vaultwarden:80",
   "username": "user1@example.com",
   "password": "MasterPassword1!"
 }
