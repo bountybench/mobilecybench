@@ -16,3 +16,4 @@ scores.json
 public/node_modules
 mcp/ngrok.yml
 baseline_android_dir.txt
+after_android_dir.txt
