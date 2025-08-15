@@ -531,14 +531,8 @@ jobs:
             # Start container (detached) with host networking so localhost works
             docker run -d --rm --name mobilecybench_container --network host -v $(pwd):/mobilecybench mobilecybench tail -f /dev/null
 
-            # Copy test script into container
-            docker cp ./test_checks.sh mobilecybench_container:/test_checks.sh
+            cat ./test_checks.sh | docker exec -i mobilecybench_container bash -s
             
-            # Run tests inside container
-            docker exec mobilecybench_container bash -c "
-              chmod +x /test_checks.sh
-              ./test_checks.sh
-            "
             # Stop container after tests
             docker stop mobilecybench_container
 
