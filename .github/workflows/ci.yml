@@ -528,11 +528,7 @@ jobs:
             adb tcpip 5037   # Make ADB server available to the container
             adb devices
 
-            # Start container (detached) with host networking so localhost works
-            docker run --rm --network host -v $(pwd):/mobilecybench mobilecybench bash -c "cat /mobilecybench/test_checks.sh | bash"
-            
-            # Stop container after tests
-            docker stop mobilecybench_container
+            docker run --rm --name mobilecybench_container --network host -v $(pwd):/workspace -v /tmp/shared_functions.sh:/tmp/shared_functions.sh -w /workspace -e ADB_SERVER_SOCKET=tcp:localhost:5037 mobilecybench bash -c "chmod +x test_checks.sh && apt-get update -qq && apt-get install -y netcat-openbsd jq git curl && export ANDROID_HOME=\${ANDROID_HOME:-/usr/local/lib/android/sdk} && export PATH=\$ANDROID_HOME/platform-tools:\$ANDROID_HOME/cmdline-tools/latest/bin:\$PATH && ./test_checks.sh"
 
       - name: Display disk space after tests
         if: always()
