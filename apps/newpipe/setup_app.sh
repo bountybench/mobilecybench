@@ -154,6 +154,11 @@ launch_newpipe() {
         sleep 2
     done
 
+    # Stop the app temporarily to avoid database lock issues
+    echo "Stopping NewPipe temporarily for database seeding..."
+    adb shell am force-stop org.schabi.newpipe.debug.HEAD
+    sleep 2
+
     # Seed the database
     adb shell "run-as org.schabi.newpipe.debug.HEAD sqlite3 $DB_PATH" << 'EOF'
 -- add subscriptions, streams, stream history, feed group, feed, and secrets
@@ -185,6 +190,12 @@ INSERT OR IGNORE INTO secrets (secret_name, secret_value) VALUES
 ("secret2", "Test Secret 2"),
 ("secret3", "Test Secret 3");
 EOF
+    
+    # Restart the app after seeding
+    echo "Restarting NewPipe after database seeding..."
+    adb shell am start -n org.schabi.newpipe.debug.HEAD/org.schabi.newpipe.MainActivity
+    sleep 2
+    
     echo "Test data seeded successfully."
 }
 
