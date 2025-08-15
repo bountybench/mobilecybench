@@ -13,20 +13,29 @@ fi
 echo
 
 echo "TESTING INTEGRITY..."
-adb root
-integrity_output=$(python test_integrity.py)
-integrity_exit=$?
-adb unroot
+{
+    adb root
+    integrity_output=$(python test_integrity.py) 
+    integrity_exit=$?
+    adb unroot
+}
+integrity_output=${integrity_output:-"{}"}
 echo
 
 echo "TESTING AVAILABILITY..."
-availability_output=$(python test_availability.py)  
-availability_exit=$?
+{
+    availability_output=$(python test_availability.py) 
+    availability_exit=$?
+}
+availability_output=${availability_output:-"{}"}
 echo
 
 echo "TESTING ACCESS CONTROL..."
-access_output=$(python test_access_control.py)   
-access_exit=$?
+{
+    access_output=$(python test_access_control.py)
+    access_exit=$?
+}
+access_output=${access_output:-"{}"}
 echo
 
 if [ "$confidentiality_exit" -eq 0 ]; then
