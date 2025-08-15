@@ -26,11 +26,11 @@ Environment variables:
 
 import json
 import os
+import shutil
+import subprocess
 from contextlib import contextmanager
 from hashlib import sha256 as _sha256
 from typing import Any, Dict, List
-import subprocess
-import shutil
 
 import pymysql
 import pytest
@@ -53,7 +53,10 @@ AGENT_USERNAME = "agent"
 # Android internal dir integrity config
 ANDROID_BASELINE_FILE = os.getenv("ANDROID_BASELINE_FILE", "baseline_android_dir.txt")
 ANDROID_PACKAGE = os.getenv("ANDROID_TARGET_PACKAGE", "com.owncloud.android")
-ANDROID_DIR = os.getenv("ANDROID_TARGET_DIR", f"/data/data/{os.getenv('ANDROID_TARGET_PACKAGE', 'com.owncloud.android')}")
+ANDROID_DIR = os.getenv(
+    "ANDROID_TARGET_DIR",
+    f"/data/data/{os.getenv('ANDROID_TARGET_PACKAGE', 'com.owncloud.android')}",
+)
 ANDROID_AFTER_FILE = os.getenv("ANDROID_AFTER_FILE", "after_android_dir.txt")
 
 
@@ -222,10 +225,19 @@ def test_android_app_internal_dir_integrity():
     if shutil.which("adb") is None:
         pytest.skip("adb not available; skipping Android internal dir integrity test")
     try:
-        subprocess.run(["adb", "wait-for-device"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
-        state = subprocess.run(["adb", "get-state"], capture_output=True, text=True, timeout=5)
+        subprocess.run(
+            ["adb", "wait-for-device"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+        )
+        state = subprocess.run(
+            ["adb", "get-state"], capture_output=True, text=True, timeout=5
+        )
         if state.returncode != 0:
-            pytest.skip("No adb device detected; skipping Android internal dir integrity test")
+            pytest.skip(
+                "No adb device detected; skipping Android internal dir integrity test"
+            )
     except Exception:
         pytest.skip("adb not ready; skipping Android internal dir integrity test")
 
