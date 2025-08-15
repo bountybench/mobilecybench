@@ -13,13 +13,15 @@ import sys
 import time
 
 import psycopg2
+
+from utils.ui_utils import initialize_ui_automation
+
 from .bw_workflows import (
     bw_create_new_cipher,
     bw_initialize_local_host,
     bw_lock_and_logout,
     bw_make_account,
 )
-from utils.ui_utils import initialize_ui_automation
 from .util import BITWARDEN_PKG
 
 

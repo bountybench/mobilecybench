@@ -9,6 +9,7 @@ import sys
 import time
 
 from utils.ui_utils import wait_and_click, wait_and_set_text
+
 from .util import BITWARDEN_PKG, SERVER_URL
 
 

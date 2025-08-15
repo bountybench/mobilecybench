@@ -8,8 +8,10 @@ import os
 import sys
 
 import psycopg2
-from .bw_workflows import bw_attempt_login
+
 from utils.ui_utils import initialize_ui_automation
+
+from .bw_workflows import bw_attempt_login
 from .util import BITWARDEN_PKG, ensure_server_running, load_secrets
 
 # ==============================================================================
