@@ -27,6 +27,8 @@ if [ ! -f "$USER_PROPERTIES" ]; then
     echo "[INFO] Creating user.properties in codebase/"
     if [ -z "$GITHUB_TOKEN" ]; then
         read -p "Enter your GitHub Personal Access Token (with read:packages scope): " GITHUB_TOKEN
+    else
+        echo "[INFO] Using GITHUB_TOKEN from environment."
     fi
     echo "gitHubToken=$GITHUB_TOKEN" > "$USER_PROPERTIES"
     echo "localSdk=false" >> "$USER_PROPERTIES"
@@ -48,13 +50,6 @@ check_prerequisites() {
         PIP_CMD="pip3"
     elif command -v pip >/dev/null 2>&1; then
         PIP_CMD="pip"
-    fi
-
-    if [ -n "$PIP_CMD" ]; then
-        echo "[INFO] Installing Python dependencies from requirements.txt..."
-        "$PIP_CMD" install -r "${SCRIPT_DIR}/requirements.txt"
-    else
-        echo "[WARN] pip/pip3 not found. Skipping Python dependency installation."
     fi
 
     # Check Java availability
@@ -115,12 +110,12 @@ build_bitwarden() {
     export GRADLE_OPTS="-Xmx8g -XX:MaxMetaspaceSize=2g"
     
     # Sign the APK with the debug keystore (needed to keep package name same as in setup_app_apk.sh)
-    STORE_FILE="$PWD/keystores/debug.keystore"
-    ./gradlew assembleFdroidRelease \
-        -Pandroid.injected.signing.store.file="$STORE_FILE" \
-        -Pandroid.injected.signing.store.password=android \
-        -Pandroid.injected.signing.key.alias=androiddebugkey \
-        -Pandroid.injected.signing.key.password=android
+    # STORE_FILE="$PWD/keystores/debug.keystore"
+    ./gradlew assembleFdroidRelease
+    #     -Pandroid.injected.signing.store.file="$STORE_FILE" \
+    #     -Pandroid.injected.signing.store.password=android \
+    #     -Pandroid.injected.signing.key.alias=androiddebugkey \
+    #     -Pandroid.injected.signing.key.password=android
     
     echo "Build completed successfully."
 }
@@ -171,7 +166,7 @@ main() {
     echo "Bitwarden Android Setup"
     echo "======================="
     
-    echo "Setting up Bitwarden Android from current git checkout"
+    echo "Setting up Bitwarden Android"
     
     check_prerequisites
     setup_environment
