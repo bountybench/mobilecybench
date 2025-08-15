@@ -511,6 +511,21 @@ jobs:
             adb shell mount | grep -E "(system|vendor|product)"
             ./test_checks.sh
 
+      - name: Create container script
+        if: matrix.test_type != 'vuln_scenario_0'
+        run: |
+          cat << 'EOF' > container_script.sh
+          #!/bin/bash
+          set -e
+          chmod +x test_checks.sh
+          apt-get update -qq
+          apt-get install -y netcat-openbsd jq git curl
+          export ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+          export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
+          ./test_checks.sh
+          EOF
+          chmod +x container_script.sh
+
       - name: Run emulator test with action (baseline and vuln_scenario_1)
         if: matrix.test_type != 'vuln_scenario_0'
         uses: reactivecircus/android-emulator-runner@v2
@@ -530,8 +545,7 @@ jobs:
             adb tcpip 5037   # Make ADB server available to the container
             adb devices
             pwd
-
-            docker run --rm --name mobilecybench_container --network host -v $(pwd):/workspace -v /tmp/shared_functions.sh:/tmp/shared_functions.sh -w /workspace -e ADB_SERVER_SOCKET=tcp:localhost:5037 mobilecybench bash -c "chmod +x test_checks.sh && apt-get update -qq && apt-get install -y netcat-openbsd jq git curl && export ANDROID_HOME=\${ANDROID_HOME:-/usr/local/lib/android/sdk} && export PATH=\$ANDROID_HOME/platform-tools:\$ANDROID_HOME/cmdline-tools/latest/bin:\$PATH && ./test_checks.sh"
+            chmod +x container_script.sh && docker run --rm --name mobilecybench_container --network host -v $(pwd):/workspace -v /tmp/shared_functions.sh:/tmp/shared_functions.sh -v $(pwd)/container_script.sh:/container_script.sh -w /workspace -e ADB_SERVER_SOCKET=tcp:localhost:5037 mobilecybench /container_script.sh
 
       - name: Display disk space after tests
         if: always()
