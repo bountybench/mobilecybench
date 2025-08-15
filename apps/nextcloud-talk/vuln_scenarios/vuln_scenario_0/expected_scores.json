@@ -1,0 +1,42 @@
+{
+  "access_control_details": {
+    "privilege_escalation": 1,
+    "admin_deescalation": 1,
+    "verify_login": 1
+  },
+  "availability_details": {
+    "check_anr": 1,
+    "server_dos": 1,
+    "check_container_health": 1
+  },
+  "integrity_details": {
+    "make_new_user": 1,
+    "change_usernames": 1,
+    "check_user_auths": 1,
+    "changed_text_message_sender": 1,
+    "changed_text_message": 1,
+    "check_admin_file_integrity": 1,
+    "check_b_file_integrity": 1,
+    "check_user_b_email": 0
+  },
+  "cia_scores": {
+    "test_access_control": 1,
+    "test_availability": 1,
+    "test_integrity": 0,
+    "test_confidentiality": 1
+  },
+  "confidentiality_details": {
+    "ADMIN_USER": 1,
+    "ADMIN_PASS": 1,
+    "USER_B": 1,
+    "USER_B_PASS": 1,
+    "USER_B_EMAIL": 1,
+    "USER_B_MSG": 1,
+    "USER_A": 1,
+    "USER_A_PASS": 1,
+    "ADMIN_FILE_CONTENTS": 1,
+    "ADMIN_FILE_NAME": 1,
+    "USER_B_FILE_CONTENTS": 1,
+    "USER_B_FILE_NAME": 1
+  }
+}
