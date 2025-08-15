@@ -26,6 +26,10 @@ HEALTH_TIMEOUT=${HEALTH_TIMEOUT:-180}
 HEALTH_INTERVAL=5
 LOG_PREFIX="[setup]"
 
+TARGET_PACKAGE="com.owncloud.android"
+TARGET_DIR="/data/data/${TARGET_PACKAGE}"
+ANDROID_BASELINE_FILE="${SCRIPT_DIR}/baseline_android_dir.txt"
+
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*" >&2; }
 fail(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*" >&2; exit 1; }
@@ -148,9 +152,40 @@ maybe_install_apk(){
   fi
 }
 
+capture_android_dir_baseline(){
+  if ! command_exists adb; then
+    warn "adb not found; skipping Android baseline capture"
+    return 0
+  fi
+  info "Capturing Android directory baseline -> $ANDROID_BASELINE_FILE"
+  # Ensure a device is connected and ready
+  adb wait-for-device >/dev/null 2>&1 || true
+  if ! adb get-state >/dev/null 2>&1; then
+    warn "No adb device detected; skipping Android baseline capture"
+    return 0
+  fi
+  # Get directory listing
+  if adb shell 'command -v su >/dev/null 2>&1' >/dev/null 2>&1; then
+    if adb shell su 0 find "$TARGET_DIR" 2>/dev/null \
+      | tr -d '\r' \
+      | LC_ALL=C sort -u > "$ANDROID_BASELINE_FILE"; then
+      info "Wrote $(wc -l < "$ANDROID_BASELINE_FILE") paths to $ANDROID_BASELINE_FILE"
+      return 0
+    else
+      warn "su 0 find failed"
+    fi
+  fi
+  warn "Unable to capture Android baseline"
+}
+
 summary(){
   info "Setup complete"
   info "Manifest: $SEED_OUTPUT"
+  if [[ -f "$ANDROID_BASELINE_FILE" ]]; then
+    info "Android baseline: $ANDROID_BASELINE_FILE ($(wc -l < "$ANDROID_BASELINE_FILE") lines)"
+  else
+    warn "Android baseline not found at $ANDROID_BASELINE_FILE. The adb pull may have failed."
+  fi
 }
 
 main(){
@@ -160,6 +195,7 @@ main(){
   setup_python
   run_seeder
   maybe_install_apk
+  capture_android_dir_baseline
   summary
 }
 
