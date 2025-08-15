@@ -16,6 +16,7 @@ jobs:
       should_exit: ${{ steps.modified-dirs.outputs.should_exit }}
       sdk: ${{ steps.get-sdk-java.outputs.sdk }}
       java: ${{ steps.get-sdk-java.outputs.java }}
+      system_image: ${{ steps.get-sdk-java.outputs.system_image }}
     steps:
       - name: Display disk space
         run: df -h
@@ -102,8 +103,16 @@ jobs:
               echo "Java version: $java"
           fi
 
+          if [ "$sdk" -lt 30 ]; then
+              system_image="google_apis"
+          else
+              system_image="google_atd"
+          fi
+          echo "System image: $system_image"
+
           echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
           echo "java=$java" >> "$GITHUB_OUTPUT"
+          echo "system_image=$system_image" >> "$GITHUB_OUTPUT"
       
       - name: Display disk space
         run: df -h
@@ -155,7 +164,7 @@ jobs:
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: false
-          android: true
+          android: false
           dotnet: true
           haskell: true
           large-packages: true
@@ -290,48 +299,6 @@ jobs:
             fi
           }
 
-          start_emulator_logging() {
-            echo "=== Starting emulator resource monitor ==="
-            mkdir -p emulator_logs
-            # Start ADB-based monitoring
-            nohup sh -c 'while adb devices | grep -q "device\$"; do 
-              echo "=== $(date) ===" >> emulator_logs/adb_processes.log
-              adb shell "ps -A | head -20" >> emulator_logs/adb_processes.log 2>/dev/null || true
-              sleep 5
-            done' &
-            echo $! >> emulator_logs/emulator_monitor_pids.txt
-            # Memory usage monitoring
-            nohup sh -c 'while adb devices | grep -q "device\$"; do 
-              echo "=== $(date) ===" >> emulator_logs/adb_memory.log
-              adb shell "cat /proc/meminfo | head -10" >> emulator_logs/adb_memory.log 2>/dev/null || true
-              sleep 5
-            done' &
-            echo $! >> emulator_logs/emulator_monitor_pids.txt
-            # CPU usage monitoring
-            nohup sh -c 'while adb devices | grep -q "device\$"; do 
-              echo "=== $(date) ===" >> emulator_logs/adb_cpu.log
-              adb shell "cat /proc/loadavg" >> emulator_logs/adb_cpu.log 2>/dev/null || true
-              sleep 3
-            done' &
-            echo $! >> emulator_logs/emulator_monitor_pids.txt
-            # Disk usage monitoring
-            nohup sh -c 'while adb devices | grep -q "device\$"; do 
-              echo "=== $(date) ===" >> emulator_logs/adb_disk.log
-              adb shell "df -h | grep -E '\''(system|data|cache)'\''" >> emulator_logs/adb_disk.log 2>/dev/null || true
-              sleep 10
-            done' &
-            echo $! >> emulator_logs/emulator_monitor_pids.txt
-          }
-
-          # Function to stop emulator resource logging
-          stop_emulator_logging() {
-            echo "=== Stopping emulator resource monitor ==="
-            if [ -f emulator_logs/emulator_monitor_pids.txt ]; then
-              kill $(cat emulator_logs/emulator_monitor_pids.txt) 2>/dev/null || true
-              rm -f emulator_logs/emulator_monitor_pids.txt
-            fi
-          }
-
           EOF
           chmod +x /tmp/shared_functions.sh
 
@@ -416,8 +383,6 @@ jobs:
           set -e
           source /tmp/shared_functions.sh
           check_server_ready
-          start_emulator_logging
-          trap stop_emulator_logging EXIT
           EOF
           
           echo "dir=\"$modified_dir\"" >> test_checks.sh
@@ -557,27 +522,13 @@ jobs:
           
           chmod +x test_checks.sh
 
-      - name: Start resource logging
-        run: |
-          echo "=== Starting resource monitor ==="
-          mkdir -p resource_logs
-          # Host metrics: CPU & memory every 2s
-          nohup vmstat 2 > resource_logs/vmstat.log &
-          echo $! >> resource_logs/monitor_pids.txt
-          # Host metrics: top processes every 5s
-          nohup top -b -d 5 > resource_logs/top.log &
-          echo $! >> resource_logs/monitor_pids.txt
-          # Host metrics: disk space every 10s
-          nohup sh -c 'while true; do df -h; sleep 10; done' > resource_logs/disk.log &
-          echo $! >> resource_logs/monitor_pids.txt
-
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
           arch: x86_64
-          target: google_atd
+          target: ${{ needs.setup.outputs.system_image }} 
           profile: pixel_2
           ram-size: 2048    
           force-avd-creation: true
@@ -599,7 +550,7 @@ jobs:
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
           arch: x86_64
-          target: google_atd
+          target: ${{ needs.setup.outputs.system_image }} 
           profile: pixel_2
           ram-size: 2048    
           force-avd-creation: true
