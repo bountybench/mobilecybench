@@ -3,7 +3,15 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ANDROID_HOME="${HOME}/.android-sdk"
+
+# Use CI Android SDK if available, fallback to default
+if [[ -n "${ANDROID_SDK_ROOT:-}" ]]; then
+    ANDROID_HOME="$ANDROID_SDK_ROOT"
+elif [[ -n "${ANDROID_HOME:-}" ]]; then
+    ANDROID_HOME="$ANDROID_HOME" 
+else
+    ANDROID_HOME="${HOME}/.android-sdk"
+fi
 
 # check prerequisites
 check_prerequisites() {
@@ -18,6 +26,10 @@ check_prerequisites() {
     # check Android SDK
     if [[ ! -d "$ANDROID_HOME" ]]; then
         echo "ERROR: Android SDK not found at $ANDROID_HOME"
+        echo "Available environment variables:"
+        echo "ANDROID_SDK_ROOT: ${ANDROID_SDK_ROOT:-not set}"
+        echo "ANDROID_HOME: ${ANDROID_HOME:-not set}"
+        echo "HOME: ${HOME:-not set}"
         exit 1
     fi
 
@@ -28,9 +40,18 @@ check_prerequisites() {
 setup_environment() {
     echo "Setting up build environment..."
 
-    # set Java 17
-    export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-    export PATH="$JAVA_HOME/bin:$PATH"
+    # set Java - use CI Java if available, fallback to local Homebrew path
+    if [[ -n "${JAVA_HOME:-}" ]]; then
+        echo "Using CI Java at $JAVA_HOME"
+        export JAVA_HOME="$JAVA_HOME"
+        export PATH="$JAVA_HOME/bin:$PATH"
+    elif [[ -d "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ]]; then
+        echo "Using local Homebrew Java"
+        export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+        export PATH="$JAVA_HOME/bin:$PATH"
+    else
+        echo "Using system Java"
+    fi
 
     # set Android SDK
     export ANDROID_HOME="$ANDROID_HOME"
