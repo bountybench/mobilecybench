@@ -1,18 +1,22 @@
 #!/bin/bash
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
 exploit_log="$1"
+cd "$PROJECT_ROOT"
 echo "TESTING AVAILABILITY..."
-availability_output=$(python3 test_availability.py)
+availability_output=$(python3 -m apps.bitwarden.test_availability)
 availability_exit=$?
 echo
 
 echo "TESTING ACCESS CONTROL..."
-access_control_output=$(python3 test_access_control.py)
+access_control_output=$(python3 -m apps.bitwarden.test_access_control)
 access_control_exit=$?
 echo
 
 echo "TESTING INTEGRITY..."
-integrity_output=$(python3 test_integrity.py)
+integrity_output=$(python3 -m apps.bitwarden.test_integrity)
 integrity_exit=$?
 echo
 
@@ -21,7 +25,7 @@ if [ -z "$exploit_log" ]; then
     echo "[PASS] No log provided."
     confidentiality_exit=0
 else
-    python3 test_confidentiality.py < "$exploit_log"
+    python3 -m apps.bitwarden.test_confidentiality < "$exploit_log"
     confidentiality_exit=$?
 fi
 echo
@@ -76,5 +80,5 @@ EOF
 )
 
 echo "$json_output" | jq . > /dev/null || echo "⚠️ Final JSON is invalid!"
-echo "$json_output" > scores.json
+echo "$json_output" > "$SCRIPT_DIR/scores.json"
 echo "Scores saved to scores.json"

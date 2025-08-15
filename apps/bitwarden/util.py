@@ -4,6 +4,7 @@ including ADB commands and server management.
 """
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -46,7 +47,8 @@ def adb(cmd):
 def load_secrets():
     """Loads secrets from secrets.json, exiting if the file is missing or invalid."""
     try:
-        with open("secrets.json") as f:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(script_dir, "secrets.json")) as f:
             return json.load(f)
     except FileNotFoundError:
         print("❌ secrets.json not found.", file=sys.stderr)

@@ -8,8 +8,8 @@ account creation, cipher creation, logging out, and attempting login.
 import sys
 import time
 
-from ui_utils import wait_and_click, wait_and_set_text
-from util import BITWARDEN_PKG, SERVER_URL
+from utils.ui_utils import wait_and_click, wait_and_set_text
+from .util import BITWARDEN_PKG, SERVER_URL
 
 
 def bw_initialize_local_host(d):

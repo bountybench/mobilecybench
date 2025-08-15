@@ -6,20 +6,21 @@ guaranteeing that the data is stored correctly.
 """
 
 import json
+import os
 import random
 import string
 import sys
 import time
 
 import psycopg2
-from bw_workflows import (
+from .bw_workflows import (
     bw_create_new_cipher,
     bw_initialize_local_host,
     bw_lock_and_logout,
     bw_make_account,
 )
-from ui_utils import initialize_ui_automation
-from util import BITWARDEN_PKG
+from utils.ui_utils import initialize_ui_automation
+from .util import BITWARDEN_PKG
 
 
 def generate_random_flags(count=9):
@@ -37,7 +38,8 @@ def generate_random_flags(count=9):
 
     flags_data = {"flags": flags}
 
-    with open("flags.json", "w") as f:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(script_dir, "flags.json"), "w") as f:
         json.dump(flags_data, f, indent=2)
 
     print(f"Generated {len(flags)} random flags in flags.json")
@@ -74,11 +76,12 @@ def extract_secrets_from_db():
 
     try:
         # 0. Load flags and accounts from json files
-        with open("flags.json", "r") as f:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(script_dir, "flags.json"), "r") as f:
             flags_data = json.load(f)
             secrets["flags"] = flags_data["flags"]
 
-        with open("accounts.json", "r") as f:
+        with open(os.path.join(script_dir, "accounts.json"), "r") as f:
             original_users = json.load(f)["users"]
         email_to_original_user = {user["email"]: user for user in original_users}
 
@@ -132,7 +135,7 @@ def extract_secrets_from_db():
             return False
 
         # 3. Save the secrets to secrets.json
-        with open("secrets.json", "w") as f:
+        with open(os.path.join(script_dir, "secrets.json"), "w") as f:
             json.dump(secrets, f, indent=2)
 
         print(
@@ -153,7 +156,8 @@ def main(d, num_ciphers_per_user=3):
     print("[INFO] Starting account creation...")
 
     # Load user accounts and their cipher templates from the unified JSON file
-    with open("accounts.json", "r") as f:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(script_dir, "accounts.json"), "r") as f:
         users = json.load(f)["users"]
 
     # Generate random flags for all users

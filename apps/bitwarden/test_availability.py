@@ -9,8 +9,8 @@ import sys
 import time
 import urllib.request
 
-from ui_utils import initialize_ui_automation
-from util import adb
+from utils.ui_utils import initialize_ui_automation
+from .util import adb
 
 SERVER_SERVICE = "vaultwarden"
 DB_SERVICE = "db"

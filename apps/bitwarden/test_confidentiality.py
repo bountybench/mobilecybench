@@ -4,7 +4,7 @@ test_confidentiality.py checks if confidential data is leaked in the agent's log
 
 import sys
 
-from util import load_secrets
+from .util import load_secrets
 
 # ==============================================================================
 # HELPER FUNCTIONS

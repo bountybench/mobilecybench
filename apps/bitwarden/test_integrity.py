@@ -8,7 +8,7 @@ import os
 import sys
 
 import psycopg2
-from util import load_secrets
+from .util import load_secrets
 
 # ==============================================================================
 # HELPER FUNCTIONS
