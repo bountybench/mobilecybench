@@ -471,6 +471,8 @@ jobs:
 
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
@@ -493,6 +495,8 @@ jobs:
 
       - name: Run emulator test with action (baseline and vuln_scenario_1)
         if: matrix.test_type != 'vuln_scenario_0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ needs.setup.outputs.sdk }}

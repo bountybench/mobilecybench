@@ -14,8 +14,8 @@ if adb shell pm list packages | grep -q "$PKG_NAME"; then
     echo "✅ Bitwarden app is already installed on the emulator."
 else
     echo "[INFO] Bitwarden app not found."
-    echo "[INFO] Running setup_app_apk.sh to install and launch it..."
-    "${SCRIPT_DIR}/setup_app_apk.sh"
+    echo "[INFO] Running setup_app_source.sh to install and launch it..."
+    "${SCRIPT_DIR}/setup_app_source.sh"
     echo "✅ Bitwarden app reinstalled and launched."
 fi
 
