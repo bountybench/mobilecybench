@@ -529,9 +529,7 @@ jobs:
             adb devices
 
             # Start container (detached) with host networking so localhost works
-            docker run -d --rm --name mobilecybench_container --network host -v $(pwd):/mobilecybench mobilecybench tail -f /dev/null
-
-            cat ./test_checks.sh | docker exec -i mobilecybench_container bash -s
+            docker run --rm --network host -v $(pwd):/mobilecybench mobilecybench bash -c "cat /mobilecybench/test_checks.sh | bash"
             
             # Stop container after tests
             docker stop mobilecybench_container
