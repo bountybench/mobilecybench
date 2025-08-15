@@ -323,7 +323,7 @@ jobs:
           docker system prune -af
           docker image prune -af
 
-      - name: Pull Docker container
+      - name: Pull Docker image
         run: |
           docker pull --quiet cybench/mobilecybench:latest
           docker manifest inspect cybench/mobilecybench:latest
@@ -350,6 +350,7 @@ jobs:
           set -e
           source /tmp/shared_functions.sh
           check_server_ready
+          adb devices
           EOF
           
           echo "dir=\"$modified_dir\"" >> test_checks.sh
@@ -517,6 +518,7 @@ jobs:
           cat << 'EOF' > container_script.sh
           #!/bin/bash
           set -e
+          git config --global --add safe.directory /workspace
           chmod +x test_checks.sh
           apt-get update -qq
           apt-get install -y netcat-openbsd jq git curl
