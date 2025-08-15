@@ -20,20 +20,6 @@ jobs:
       - name: Display disk space
         run: df -h
 
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
-          android: false
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: false
-          swap-storage: true
-      
-      - name: Display disk space
-        run: df -h
-
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -162,6 +148,20 @@ jobs:
       max-parallel: 3 
     
     steps:
+      - name: Display disk space
+        run: df -h
+
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: false
+          swap-storage: true
+
       - name: Display disk space
         run: df -h
 
