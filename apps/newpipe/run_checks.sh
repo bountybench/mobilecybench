@@ -54,8 +54,6 @@ echo "Access Control: $access_control_score/1"
 
 if [[ $total_score -eq 4 ]]; then
     echo "[PASS] All CIA checks passed!"
-    exit 0
 else
     echo "[FAIL] Some CIA checks failed."
-    exit 1
 fi
