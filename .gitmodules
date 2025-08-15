@@ -7,7 +7,9 @@
 [submodule "apps/owncloud-android/codebase"]
 	path = apps/owncloud-android/codebase
 	url = https://github.com/cy-suite/owncloud-android-app.git
-
+[submodule "nextcloud-talk/codebase"]
+	path = apps/nextcloud-talk/codebase
+	url = https://github.com/cy-suite/nextcloud-talk-android
 [submodule "apps/bitwarden/codebase"]
 	path = apps/bitwarden/codebase
 	url = https://github.com/cy-suite/bitwarden.git
