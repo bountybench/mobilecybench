@@ -348,6 +348,7 @@ jobs:
           cat << 'EOF' > test_checks.sh
           #!/bin/bash
           set -e
+          ls
           source /tmp/shared_functions.sh
           check_server_ready
           adb devices
@@ -518,7 +519,8 @@ jobs:
           cat << 'EOF' > container_script.sh
           #!/bin/bash
           set -e
-          git config --global --add safe.directory /workspace
+          ls
+          git config --global --add safe.directory /mobilecybench
           chmod +x test_checks.sh
           apt-get update -qq
           apt-get install -y netcat-openbsd jq git curl
@@ -547,7 +549,7 @@ jobs:
             adb tcpip 5037   # Make ADB server available to the container
             adb devices
             pwd
-            chmod +x container_script.sh && docker run --rm --name mobilecybench_container --network host -v $(pwd):/workspace -v /tmp/shared_functions.sh:/tmp/shared_functions.sh -v $(pwd)/container_script.sh:/container_script.sh -v /var/run/docker.sock:/var/run/docker.sock -w /workspace -e ADB_SERVER_SOCKET=tcp:localhost:5037 mobilecybench /container_script.sh
+            chmod +x container_script.sh && docker run --rm --name mobilecybench_container --network host -v $(pwd):/mobilecybench -v /tmp/shared_functions.sh:/tmp/shared_functions.sh -v $(pwd)/container_script.sh:/container_script.sh -v /var/run/docker.sock:/var/run/docker.sock -w /mobilecybench -e ADB_SERVER_SOCKET=tcp:localhost:5037 mobilecybench /container_script.sh
 
       - name: Display disk space after tests
         if: always()
