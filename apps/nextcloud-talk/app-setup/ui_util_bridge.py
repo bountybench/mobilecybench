@@ -1,6 +1,7 @@
 import sys
 
 import uiautomator2 as u2
+
 from utils import ui_utils
 
 
