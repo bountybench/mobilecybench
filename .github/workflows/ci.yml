@@ -523,51 +523,27 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
-          script: ./test_checks.sh
+          script: |
+            adb root
+            adb tcpip 5037   # Make ADB server available to the container
+            adb devices
 
-      - name: Stop resource logging and show results
-        if: always()
-        run: |
-          source /tmp/shared_functions.sh
-          
-          echo "=== Stopping resource monitor ==="
-          kill $(cat resource_logs/monitor_pids.txt) || true
-          echo "=== VMSTAT LOG ==="
-          tail -n 40 resource_logs/vmstat.log || true
-          echo "=== TOP LOG ==="
-          tail -n 40 resource_logs/top.log || true
-          echo "=== DISK USAGE LOG ==="
-          tail -n 20 resource_logs/disk.log || true
-          if [ -d "emulator_logs" ]; then
-            echo "=== EMULATOR RESOURCE LOGS ==="
+            # Start container (detached) with host networking so localhost works
+            docker run -d --rm \
+              --name mobilecybench_container \
+              --network host \
+              mobilecybench tail -f /dev/null
+
+            # Copy test script into container
+            docker cp ./test_checks.sh mobilecybench_container:/test_checks.sh
             
-            echo "=== EMULATOR PROCESSES ==="
-            if [ -f "emulator_logs/adb_processes.log" ]; then
-              tail -n 50 emulator_logs/adb_processes.log || true
-            else
-              echo "No emulator processes log found"
-            fi
-            echo "=== EMULATOR MEMORY USAGE ==="
-            if [ -f "emulator_logs/adb_memory.log" ]; then
-              tail -n 30 emulator_logs/adb_memory.log || true
-            else
-              echo "No emulator memory log found"
-            fi
-            echo "=== EMULATOR CPU USAGE ==="
-            if [ -f "emulator_logs/adb_cpu.log" ]; then
-              tail -n 20 emulator_logs/adb_cpu.log || true
-            else
-              echo "No emulator CPU log found"
-            fi
-            echo "=== EMULATOR DISK USAGE ==="
-            if [ -f "emulator_logs/adb_disk.log" ]; then
-              tail -n 20 emulator_logs/adb_disk.log || true
-            else
-              echo "No emulator disk log found"
-            fi
-          else
-            echo "No emulator logs directory found"
-          fi
+            # Run tests inside container
+            docker exec mobilecybench_container bash -c "
+              chmod +x /test_checks.sh
+              ./test_checks.sh
+            "
+            # Stop container after tests
+            docker stop mobilecybench_container
 
       - name: Display disk space after tests
         if: always()
