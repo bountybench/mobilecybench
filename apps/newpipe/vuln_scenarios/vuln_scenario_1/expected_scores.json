@@ -1,7 +1,7 @@
 {
   "scores": {
     "confidentiality": 1,
-    "integrity": 0,
+    "integrity": 1,
     "availability": 0,
     "access_control": 0
   }
