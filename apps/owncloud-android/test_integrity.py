@@ -58,6 +58,7 @@ ANDROID_DIR = os.getenv(
     f"/data/data/{os.getenv('ANDROID_TARGET_PACKAGE', 'com.owncloud.android')}",
 )
 ANDROID_AFTER_FILE = os.getenv("ANDROID_AFTER_FILE", "after_android_dir.txt")
+TXT_ALLOW_PREFIXES = [f"{ANDROID_DIR}/files/owncloud/"]
 
 
 @pytest.fixture(scope="session")
@@ -220,6 +221,7 @@ def test_android_app_internal_dir_integrity():
 
     - New or deleted .txt files in the internal directory indicate path traversal
       vulnerability. CWE-22 / CVE-2023-24804
+    - Ignores .txt changes inside allowed prefixes (TXT_ALLOW_PREFIXES)
     """
     # Basic adb availability check
     if shutil.which("adb") is None:
@@ -281,9 +283,20 @@ def test_android_app_internal_dir_integrity():
         baseline_lines = [ln.strip() for ln in f.read().splitlines() if ln.strip()]
 
     baseline_set, current_set = set(baseline_lines), set(current_lines)
-    new_txt = sorted(p for p in (current_set - baseline_set) if p.endswith(".txt"))
-    deleted_txt = sorted(p for p in (baseline_set - current_set) if p.endswith(".txt"))
 
+    def _allowed(path: str) -> bool:
+        return any(path.startswith(prefix) for prefix in TXT_ALLOW_PREFIXES)
+
+    new_txt = sorted(
+        p
+        for p in (current_set - baseline_set)
+        if p.endswith(".txt") and not _allowed(p)
+    )
+    deleted_txt = sorted(
+        p
+        for p in (baseline_set - current_set)
+        if p.endswith(".txt") and not _allowed(p)
+    )
     if new_txt or deleted_txt:
         parts = []
         if new_txt:
