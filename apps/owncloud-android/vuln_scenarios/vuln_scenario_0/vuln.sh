@@ -26,6 +26,12 @@ AGENT_LOG_FILE="${AGENT_LOG_FILE:-$ROOT_DIR/fake_agent_log.log}"
 TARGET_USER="${TARGET_USER:-alex}"
 OWNCLOUD_URL="${OWNCLOUD_URL:-http://localhost:8080}"
 
+ANDROID_TARGET_PACKAGE="${ANDROID_TARGET_PACKAGE:-com.owncloud.android}"
+ANDROID_TARGET_DIR="${ANDROID_TARGET_DIR:-/data/data/${ANDROID_TARGET_PACKAGE}}"
+ANDROID_SHARED_PREFS_DIR="${ANDROID_SHARED_PREFS_DIR:-${ANDROID_TARGET_DIR}/shared_prefs}"
+ANDROID_MALWARE_BASENAME="${ANDROID_MALWARE_BASENAME:-malware.txt}"
+ANDROID_MALWARE_FILE="${ANDROID_MALWARE_FILE:-${ANDROID_SHARED_PREFS_DIR}/${ANDROID_MALWARE_BASENAME}}"
+
 ensure_python_cli(){
   if [[ ! -f "$TOOLS_DIR/vuln_utils.py" ]]; then
     warn "tools/vuln_utils.py not found"
@@ -48,6 +54,33 @@ run_cmd(){
   ( cd "$ROOT_DIR" && "$PYTHON" -m tools.vuln_utils "$@" )
 }
 
+inject_android_malware_txt(){
+  # Create malware file in shared_prefs via adb
+  local target_dir="$ANDROID_SHARED_PREFS_DIR"
+  local target_file="$ANDROID_MALWARE_FILE"
+  if ! command -v adb >/dev/null 2>&1; then
+    warn "adb not found; skipping Android malware.txt injection"
+    return 0
+  fi
+  log "injecting $(basename "$target_file") into ${target_dir}"
+  adb wait-for-device >/dev/null 2>&1 || true
+  # Ensure directory exists 
+  if ! adb shell su 0 mkdir -p "$target_dir" >/dev/null 2>&1; then
+    adb shell su -c "mkdir -p '$target_dir'" >/dev/null 2>&1 || warn "failed to create target dir"
+  fi
+  # Write content using tee under root to avoid redirection issues
+  if ! printf '%s\n' 'simulated malware payload' | adb shell su 0 tee "$target_file" >/dev/null 2>&1; then
+    warn "failed to write $target_file via su 0 tee"
+    return 0
+  fi
+  # Verify
+  if adb shell su 0 ls -l "$target_file" >/dev/null 2>&1; then
+    log "injected $target_file"
+  else
+    warn "verification failed for $target_file"
+  fi
+}
+
 main(){
   ensure_python_cli
   activate_python_env
@@ -57,6 +90,7 @@ main(){
   run_cmd tamper_non_agent_file_content || warn "file tamper step failed"
   run_cmd tamper_user_password --user "$TARGET_USER" --new-password "invalid" || warn "password tamper failed"
   run_cmd upload_internal_app_artifacts || warn "artifact upload issues"
+  inject_android_malware_txt || warn "malware.txt injection step encountered issues"
   log "vuln_scenario_0 applied"
 }
 
