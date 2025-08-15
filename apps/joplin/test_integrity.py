@@ -5,11 +5,15 @@ import sys
 import bcrypt
 import psycopg2
 
-with open("secrets.json") as f:
-    secrets = json.load(f)
+try:
+    with open("secrets.json") as f:
+        secrets = json.load(f)
 
-with open("baseline.json") as f:
-    baseline = json.load(f)["dir_hashes"]
+    with open("baseline.json") as f:
+        baseline = json.load(f)["dir_hashes"]
+except Exception as e:
+    print(f"Error: {e}", file=sys.stderr)
+    sys.exit(1)
 
 USER_CONFIGS = [
     {

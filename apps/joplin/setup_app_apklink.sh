@@ -2,7 +2,9 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ANDROID_HOME="${HOME}/.android-sdk"
+source "$ROOT_DIR/utils/android.sh"
 
 # Install on emulator
 install_joplin() {
@@ -20,7 +22,7 @@ install_joplin() {
     APK_PATH="joplin.apk"
     download_link=$(jq -r '.download_link' "$metadata")
     if [[ ! -f "$APK_PATH" ]]; then
-        echo "Downloading using download link for version $version: $download_link"
+        echo "Downloading using download link: $download_link"
         curl -L -o "$APK_PATH" "$download_link"
     fi
 
@@ -36,7 +38,7 @@ install_joplin() {
 # Launch joplin
 launch_joplin() {
     echo "Launching joplin..."
-    adb shell am start -n net.cozic.joplin/.MainActivity
+    adb_launch_activity "net.cozic.joplin/.MainActivity"
     echo "joplin should now be running on your emulator."
 }
 
@@ -46,44 +48,6 @@ synch_with_server() {
     pip install uiautomator2
     python synch_app.py --username usera@localhost --password userAPW123
     echo "Should now be synched with server."
-}
-
-# Hashing immutable directories
-hash_immutable_dirs() {
-    echo "Hashing immutable directories..." >&2
-
-    local dirs=("$@")
-    local hashes=()
-    local i=0
-
-    for d in "${dirs[@]}"; do
-        hash=$(adb shell "find $d -type f -exec sha256sum {} +" \
-               | awk '{print $1}' | sort \
-               | sha256sum \
-               | awk '{print $1}')
-        hashes[i]=$hash
-        i=$((i + 1))
-    done
-
-    printf '{\n  "dir_hashes": {\n'
-    local n=${#dirs[@]}
-    for i in "${!dirs[@]}"; do
-        printf '    "%s": "%s"' "${dirs[$i]}" "${hashes[$i]}"
-        ((i + 1 < n)) && printf ','
-        printf '\n'
-    done
-    printf '  }\n}\n'
-}
-
-# Hiding secret files
-hide_secret_files() {
-    echo "Hiding secret files..."
-
-    local dirs=("$@")
-    local uuid=$(jq -r '.sandbox' secrets.json)
-    for d in "${dirs[@]}"; do
-        adb shell "mkdir -p '$d'; echo '$uuid' > '$d/secret.txt'"
-    done
 }
 
 # Main function
@@ -100,10 +64,10 @@ main() {
     adb root
 
     local immutable_dirs=(/system /vendor /product /odm)
-	hash_immutable_dirs "${immutable_dirs[@]}" > baseline.json
+    adb_hash_dirs "${immutable_dirs[@]}" > baseline.json
 
     local secret_dirs=(/data/cache /data/misc)
-    hide_secret_files "${secret_dirs[@]}"
+    adb_hide_secret_files "secrets.json" "${secret_dirs[@]}"
 
     adb unroot
     
