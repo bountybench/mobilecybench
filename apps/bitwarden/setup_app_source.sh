@@ -117,7 +117,7 @@ build_bitwarden() {
     -Pandroid.injected.signing.store.password=android \
     -Pandroid.injected.signing.key.alias=androiddebugkey \
     -Pandroid.injected.signing.key.password=android \
-    --console=plain --info --stacktrace
+    --console=plain
     
     echo "Build completed successfully."
 }
