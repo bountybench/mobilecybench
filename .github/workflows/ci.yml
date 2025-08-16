@@ -313,12 +313,6 @@ jobs:
           echo "GRADLE_USER_HOME=$HOME/.gradle" >> $GITHUB_ENV
           echo "JAVA_TOOL_OPTIONS=-Xmx2g -XX:MaxMetaspaceSize=512m" >> $GITHUB_ENV
 
-      - name: Baseline system resources
-        run: |
-          echo "Disk usage:" && df -h
-          echo "Memory (free -m):" && free -m || true
-          echo "Top memory processes:" && ps -eo pid,comm,%mem,%cpu --sort=-%mem | head -n 20
-
       - name: Docker Cleanup before pulling new image
         run: |
           docker system prune -af
@@ -329,9 +323,6 @@ jobs:
           docker pull --quiet cybench/mobilecybench:latest
           docker manifest inspect cybench/mobilecybench:latest
           docker image tag cybench/mobilecybench:latest mobilecybench
-
-      - name: Display disk space after pulling image
-        run: df -H
 
       - name: Create Docker Network
         run: docker network create shared_net || true
@@ -527,11 +518,7 @@ jobs:
             adb root
             adb remount
             adb shell mount | grep -E "(system|vendor|product)"
-            set +e
-            ./test_checks.sh 2>&1 | tee bitwarden-test-${{ matrix.test_type }}.log
-            EXIT_CODE=${PIPESTATUS[0]}
-            echo $EXIT_CODE > test-exit-code.txt
-            exit $EXIT_CODE
+            ./test_checks.sh
 
       - name: Run emulator test with action (baseline and vuln_scenario_1)
         if: matrix.test_type != 'vuln_scenario_0'
@@ -548,16 +535,9 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 1536 -camera-back none
           disable-animations: true
           script: |
-            set +e
-            ./test_checks.sh 2>&1 | tee bitwarden-test-${{ matrix.test_type }}.log
-            EXIT_CODE=${PIPESTATUS[0]}
-            echo $EXIT_CODE > test-exit-code.txt
-            exit $EXIT_CODE
+            set -e
+            ./test_checks.sh
 
-      - name: Capture adb logcat
-        if: always()
-        run: |
-          adb logcat -d > adb-logcat-${{ matrix.test_type }}.log || true
 
       - name: Stop resource monitor and collect logs
         if: always()
@@ -570,9 +550,6 @@ jobs:
           free -m >> resource-monitor.log || true
           df -h >> resource-monitor.log
           ps -eo pid,comm,%mem,%cpu --sort=-%mem | head -n 20 >> resource-monitor.log
-          # Collect emulator/device memory info if available
-          adb shell dumpsys meminfo > adb-meminfo-${{ matrix.test_type }}.log || true
-          adb shell top -b -n 1 | head -n 50 > adb-top-${{ matrix.test_type }}.log || true
 
       - name: Upload diagnostics artifacts
         if: always()
@@ -581,22 +558,9 @@ jobs:
           name: bitwarden-ci-diagnostics-${{ matrix.test_type }}
           path: |
             resource-monitor.log
-            bitwarden-test-${{ matrix.test_type }}.log
-            test-exit-code.txt
-            adb-logcat-${{ matrix.test_type }}.log
-            adb-meminfo-${{ matrix.test_type }}.log
-            adb-top-${{ matrix.test_type }}.log
           if-no-files-found: warn
-
-      - name: Display disk space after tests
-        if: always()
-        run: df -h
 
       - name: Docker Cleanup after tests
         if: always()
         run: |
           docker system prune -af
-
-      - name: Display disk space after cleanup
-        if: always()
-        run: df -h
