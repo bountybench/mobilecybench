@@ -311,7 +311,6 @@ jobs:
           echo "GRADLE_OPTS=-Xmx2g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8" >> $GITHUB_ENV
           echo "KOTLIN_DAEMON_JVMARGS=-Xmx1024m" >> $GITHUB_ENV
           echo "GRADLE_USER_HOME=$HOME/.gradle" >> $GITHUB_ENV
-          echo "JAVA_TOOL_OPTIONS=-Xmx2g -XX:MaxMetaspaceSize=512m" >> $GITHUB_ENV
 
       - name: Docker Cleanup before pulling new image
         run: |
