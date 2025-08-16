@@ -107,7 +107,8 @@ build_bitwarden() {
     
     # Stop daemon and set memory options
     ./gradlew --stop
-    export GRADLE_OPTS="-Xmx8g -XX:MaxMetaspaceSize=2g"
+    # Respect pre-set GRADLE_OPTS; otherwise default to a conservative heap on CI runners
+    export GRADLE_OPTS="${GRADLE_OPTS:--Xmx2g -XX:MaxMetaspaceSize=512m}"
     
     # Sign the APK with the debug keystore (needed to keep package name same as in setup_app_apk.sh)
     STORE_FILE="$PWD/keystores/debug.keystore"
