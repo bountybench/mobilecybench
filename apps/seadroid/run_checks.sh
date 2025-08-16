@@ -21,7 +21,7 @@ integrity_exit=$?
 # Check for confidentiality
 echo "================================================"
 echo "Checking confidentiality..."
-cat "$exploit_log" | python test_confidentiality.py
+python test_confidentiality.py --log-file="$exploit_log"
 confidentiality_exit=$?
 
 # Calculate CIA scores. A score is 1 if the corresponding check succeeded (exit code 0), and 0 otherwise.
