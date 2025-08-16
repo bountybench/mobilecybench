@@ -16,6 +16,7 @@ jobs:
       should_exit: ${{ steps.modified-dirs.outputs.should_exit }}
       sdk: ${{ steps.get-sdk-java.outputs.sdk }}
       java: ${{ steps.get-sdk-java.outputs.java }}
+      system_image: ${{ steps.get-sdk-java.outputs.system_image }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -36,8 +37,9 @@ jobs:
           cat << 'EOF' > /tmp/shared_functions.sh
           get_modified_dirs() {
             git diff --diff-filter=ACMDR --name-only origin/main...HEAD |
-              grep '^apps/' |           
-              awk -F/ '{print $1"/"$2}' | 
+              grep '^apps/' |
+              xargs -n1 dirname |   
+              awk -F/ 'NF>=2 {print $1"/"$2}' |
               sort -u
           }
           EOF
@@ -51,7 +53,8 @@ jobs:
             echo "Modified directories:"
             echo "$modified_dirs"
           
-            count=${#modified_dirs[@]}
+            readarray -t dirs <<< "$modified_dirs"
+            count=${#dirs[@]}
             if [ "$count" -gt 1 ]; then
               echo "More than one modified directory detected: ${dirs[*]}"
               echo "Each PR should only modify one app"
@@ -94,8 +97,16 @@ jobs:
               echo "Java version: $java"
           fi
 
+          if [ "$sdk" -lt 30 ]; then
+              system_image="google_apis"
+          else
+              system_image="google_atd"
+          fi
+          echo "System image: $system_image"
+
           echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
           echo "java=$java" >> "$GITHUB_OUTPUT"
+          echo "system_image=$system_image" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -134,6 +145,17 @@ jobs:
       max-parallel: 3 
     
     steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -467,89 +489,27 @@ jobs:
           
           chmod +x test_checks.sh
 
-      - name: Install Android SDK (for vuln_scenario_0)
+      - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
-          target: google_apis
           arch: x86_64
+          target: ${{ needs.setup.outputs.system_image }} 
           profile: pixel_2
-          script: echo "Temporary run to preinstall SDK"
-
-      - name: Create AVD for vuln_scenario_0
-        if: matrix.test_type == 'vuln_scenario_0'
-        run: |
-          SDK_VERSION=${{ needs.setup.outputs.sdk }}
-          echo "no" | avdmanager create avd -n test_avd \
-            -k "system-images;android-$SDK_VERSION;google_apis;x86_64" --device "pixel"
-
-      - name: Launch emulator for vuln_scenario_0
-        if: matrix.test_type == 'vuln_scenario_0'
-        run: |
-          echo "ANDROID_HOME: $ANDROID_HOME"
-          echo "PATH: $PATH"
-          export PATH=$ANDROID_HOME/emulator:$PATH
-          emulator -avd test_avd -writable-system -no-window -no-audio -no-boot-anim &
-          adb wait-for-device
-
-          BOOT_STATUS=""
-          timeout=300
-          while [[ "$BOOT_STATUS" != "1" && $timeout -gt 0 ]]; do
-            BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-            sleep 1
-            ((timeout--))
-          done
-
-          if [[ "$BOOT_STATUS" != "1" ]]; then
-            echo "Emulator did not fully boot in time."
-            exit 1
-          fi
-
-          echo "Emulator booted successfully!"
-          echo "Waiting for adbd to be ready..."
-          timeout=60
-          until adb shell "ls /system" &>/dev/null || [[ $timeout -le 0 ]]; do
-            sleep 1
-            ((timeout--))
-          done
-          if [[ "$timeout" -le 0 ]]; then
-            echo "adbd not ready in time."
-            exit 1
-          fi          
-
-          adb root
-          timeout=30
-          until adb remount &>/dev/null || [[ $timeout -le 0 ]]; do
-            sleep 1
-            ((timeout--))
-          done
-          if [[ "$timeout" -le 0 ]]; then
-            echo "adb remount failed after waiting."
-            exit 1
-          fi
-          
-          adb shell input keyevent 224
-          echo "Emulator ready!"
-
-      - name: Run custom emulator test for vuln_scenario_0
-        if: matrix.test_type == 'vuln_scenario_0'
-        run: |
-          echo "Executing vuln_scenario_0 test..."
-          bash -x ./test_checks.sh
-
-      - name: Stop custom emulator for vuln_scenario_0
-        if: always() && matrix.test_type == 'vuln_scenario_0'
-        run: |
-          echo "Shutting down custom emulator..."
-          adb devices
-          EMU_ID=$(adb devices | awk '/emulator-/{print $1}')
-          if [ -n "$EMU_ID" ]; then
-            adb -s "$EMU_ID" emu kill
-            echo "Emulator stopped."
-          else
-            echo "No emulator instance found to stop."
-          fi
+          ram-size: 2048    
+          force-avd-creation: true
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none -writable-system
+          disable-animations: true
+          script: |
+            adb root
+            SDK_VERSION=${{ needs.setup.outputs.sdk }}; if [ "$SDK_VERSION" -gt 28 ]; then adb shell avbctl disable-verification; else adb disable-verity; fi
+            adb reboot
+            adb wait-for-device
+            adb root
+            adb remount
+            adb shell mount | grep -E "(system|vendor|product)"
+            ./test_checks.sh
 
       - name: Run emulator test with action (baseline and vuln_scenario_1)
         if: matrix.test_type != 'vuln_scenario_0'
@@ -557,7 +517,7 @@ jobs:
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
           arch: x86_64
-          target: google_apis
+          target: ${{ needs.setup.outputs.system_image }} 
           profile: pixel_2
           ram-size: 2048    
           force-avd-creation: true

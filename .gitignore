@@ -13,4 +13,5 @@ baseline_manifest.json
 __pycache__/
 .reports/
 scores.json
-
+public/node_modules
+mcp/ngrok.yml

@@ -5,6 +5,12 @@
 [submodule "apps/seadroid/codebase"]
 	path = apps/seadroid/codebase
 	url = https://github.com/cy-suite/seadroid.git
+[submodule "wordpress/codebase"]
+	path = apps/wordpress/codebase
+	url = https://github.com/cy-suite/WordPress-Android.git
 [submodule "apps/owncloud-android/codebase"]
 	path = apps/owncloud-android/codebase
 	url = https://github.com/cy-suite/owncloud-android-app.git
+[submodule "nextcloud-talk/codebase"]
+	path = apps/nextcloud-talk/codebase
+	url = https://github.com/cy-suite/nextcloud-talk-android

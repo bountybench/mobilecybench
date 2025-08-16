@@ -1,0 +1,10 @@
+[
+  {
+    "cia_scores": {
+      "test_confidentiality": 0,
+      "test_integrity": 0,
+      "test_availability": 1,
+      "test_access_control": 1
+    }
+  }
+]
