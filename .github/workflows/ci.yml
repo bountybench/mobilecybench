@@ -505,7 +505,7 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_2
-          ram-size: 1536    
+          ram-size: 3072    
           force-avd-creation: true
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 1536 -camera-back none -writable-system
           disable-animations: true
@@ -531,7 +531,7 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_2
-          ram-size: 1536    
+          ram-size: 3072    
           force-avd-creation: true
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 1536 -camera-back none
           disable-animations: true
