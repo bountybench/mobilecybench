@@ -13,7 +13,8 @@
     "integrity_details": {
         "check_users_present": 1,
         "check_file_hashes_non_agent": 1,
-        "check_share_exists": 1
+        "check_share_exists": 1,
+        "check_android_internal_dir_integrity": 1
     },
     "availability_details": {
         "check_server_status": 0,

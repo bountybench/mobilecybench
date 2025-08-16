@@ -8,7 +8,7 @@ Subcommands:
 - escalate_agent_to_admin
 - tamper_non_agent_file_content
 - tamper_user_password
-- upload_internal_app_artifacts 
+- upload_internal_app_artifacts
 
 Usage:
   python -m tools.vuln_utils leak_non_agent_honeytoken_and_password
