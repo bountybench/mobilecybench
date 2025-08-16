@@ -298,6 +298,27 @@ jobs:
           pip install -r .github/requirements.txt -q
           export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
 
+      - name: Configure Gradle limits and diagnostics
+        run: |
+          mkdir -p "$HOME/.gradle"
+          cat > "$HOME/.gradle/gradle.properties" <<'EOF'
+          org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8
+          org.gradle.parallel=false
+          org.gradle.daemon=true
+          org.gradle.workers.max=1
+          kotlin.daemon.jvm.options=-Xmx1024m
+          EOF
+          echo "GRADLE_OPTS=-Xmx2g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8" >> $GITHUB_ENV
+          echo "KOTLIN_DAEMON_JVMARGS=-Xmx1024m" >> $GITHUB_ENV
+          echo "GRADLE_USER_HOME=$HOME/.gradle" >> $GITHUB_ENV
+          echo "JAVA_TOOL_OPTIONS=-Xmx2g -XX:MaxMetaspaceSize=512m" >> $GITHUB_ENV
+
+      - name: Baseline system resources
+        run: |
+          echo "Disk usage:" && df -h
+          echo "Memory (free -m):" && free -m || true
+          echo "Top memory processes:" && ps -eo pid,comm,%mem,%cpu --sort=-%mem | head -n 20
+
       - name: Docker Cleanup before pulling new image
         run: |
           docker system prune -af
@@ -469,6 +490,20 @@ jobs:
           
           chmod +x test_checks.sh
 
+      - name: Start resource monitor (background)
+        run: |
+          (
+            echo "Starting resource monitor at $(date)";
+            while true; do
+              echo "---- $(date) ----";
+              free -m || true;
+              df -h;
+              ps -eo pid,comm,%mem,%cpu --sort=-%mem | head -n 20;
+              sleep 30;
+            done
+          ) > resource-monitor.log 2>&1 &
+          echo $! > resource-monitor.pid
+
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
         env:
@@ -479,11 +514,12 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_2
-          ram-size: 2048    
+          ram-size: 1536    
           force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none -writable-system
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 1536 -camera-back none -writable-system
           disable-animations: true
           script: |
+            set -e
             adb root
             SDK_VERSION=${{ needs.setup.outputs.sdk }}; if [ "$SDK_VERSION" -gt 28 ]; then adb shell avbctl disable-verification; else adb disable-verity; fi
             adb reboot
@@ -491,7 +527,11 @@ jobs:
             adb root
             adb remount
             adb shell mount | grep -E "(system|vendor|product)"
-            ./test_checks.sh
+            set +e
+            ./test_checks.sh 2>&1 | tee bitwarden-test-${{ matrix.test_type }}.log
+            EXIT_CODE=${PIPESTATUS[0]}
+            echo $EXIT_CODE > test-exit-code.txt
+            exit $EXIT_CODE
 
       - name: Run emulator test with action (baseline and vuln_scenario_1)
         if: matrix.test_type != 'vuln_scenario_0'
@@ -503,11 +543,50 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_2
-          ram-size: 2048    
+          ram-size: 1536    
           force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 1536 -camera-back none
           disable-animations: true
-          script: ./test_checks.sh
+          script: |
+            set +e
+            ./test_checks.sh 2>&1 | tee bitwarden-test-${{ matrix.test_type }}.log
+            EXIT_CODE=${PIPESTATUS[0]}
+            echo $EXIT_CODE > test-exit-code.txt
+            exit $EXIT_CODE
+
+      - name: Capture adb logcat
+        if: always()
+        run: |
+          adb logcat -d > adb-logcat-${{ matrix.test_type }}.log || true
+
+      - name: Stop resource monitor and collect logs
+        if: always()
+        run: |
+          if [ -f resource-monitor.pid ]; then
+            kill $(cat resource-monitor.pid) || true
+          fi
+          echo "Final system resources:" >> resource-monitor.log
+          date >> resource-monitor.log
+          free -m >> resource-monitor.log || true
+          df -h >> resource-monitor.log
+          ps -eo pid,comm,%mem,%cpu --sort=-%mem | head -n 20 >> resource-monitor.log
+          # Collect emulator/device memory info if available
+          adb shell dumpsys meminfo > adb-meminfo-${{ matrix.test_type }}.log || true
+          adb shell top -b -n 1 | head -n 50 > adb-top-${{ matrix.test_type }}.log || true
+
+      - name: Upload diagnostics artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitwarden-ci-diagnostics-${{ matrix.test_type }}
+          path: |
+            resource-monitor.log
+            bitwarden-test-${{ matrix.test_type }}.log
+            test-exit-code.txt
+            adb-logcat-${{ matrix.test_type }}.log
+            adb-meminfo-${{ matrix.test_type }}.log
+            adb-top-${{ matrix.test_type }}.log
+          if-no-files-found: warn
 
       - name: Display disk space after tests
         if: always()
