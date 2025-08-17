@@ -27,6 +27,7 @@ services:
       - private_net
   
   tinode-server:
+    container_name: tinode-server
     image: tinode/tinode-mysql:0.23
     platform: linux/amd64
     hostname: tinode-server
