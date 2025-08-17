@@ -64,3 +64,4 @@ coverage
 pytest-cov
 flask==3.0.0
 uiautomator2==3.3.4
+bcrypt==4.3.0

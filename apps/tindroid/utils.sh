@@ -25,8 +25,8 @@ get_container_name_by_service() {
         return 1
     fi
     
-    # Try to get container ID using docker-compose ps
-    container_id=$(docker-compose ps -q "$service_name" 2>/dev/null)
+    # Try to get container ID using docker compose ps
+    container_id=$(docker compose ps -q "$service_name" 2>/dev/null)
     
     if [ -n "$container_id" ]; then
         # Get the container name from the ID
