@@ -6,11 +6,7 @@
 services:
   db:
     image: mysql:8.0
-    container_name: mysql
     restart: always
-    # Use your own volume.
-    # volumes:
-    #   - <mysql directory in your file system>:/var/lib/mysql
     command: >
       bash -c "
       docker-entrypoint.sh mysqld &
@@ -33,20 +29,11 @@ services:
   tinode-server:
     image: tinode/tinode-mysql:0.23
     platform: linux/amd64
-    container_name: tinode-server
     hostname: tinode-server
     depends_on:
       db:
         condition: service_healthy
     restart: always
-    # You can mount your volumes as necessary:
-    # volumes:
-      # Mount the data.json file so Tinode can load sample data
-      # - ./data.json:/opt/tinode/data.json
-      # E.g. external config (assuming EXT_CONFIG is set).
-      # - <path to your tinode.conf>:/etc/tinode/tinode.conf
-      # Logs directory.
-      # - <path to your tinode-0 logs directory>:/var/log
     ports:
       - "6060:6060"
     environment:
@@ -69,5 +56,3 @@ networks:
     driver: bridge
     internal: true
   shared_net:
-    # external: true
-  

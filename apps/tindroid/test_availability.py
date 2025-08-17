@@ -149,6 +149,51 @@ def check_container_health(container_name: str) -> bool:
         return False
 
 
+def get_container_name_by_service(service_name: str) -> str:
+    """
+    Get the actual container name for a given service name.
+    Args:
+        service_name: The service name from docker-compose.
+    Returns:
+        The actual container name or the service name if not found.
+    """
+    try:
+        # Try to get container name using docker-compose ps
+        result = subprocess.run(
+            ["docker-compose", "ps", "-q", service_name],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=os.path.dirname(
+                __file__
+            ),  # Run from the directory containing docker-compose.yaml
+        )
+        container_id = result.stdout.strip()
+
+        if container_id:
+            # Get the container name from the ID
+            name_result = subprocess.run(
+                ["docker", "inspect", "--format", "{{.Name}}", container_id],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            container_name = name_result.stdout.strip().lstrip(
+                "/"
+            )  # Remove leading slash
+            out(
+                f"[INFO] Found container '{container_name}' for service '{service_name}'"
+            )
+            return container_name
+
+    except subprocess.CalledProcessError:
+        out(
+            f"[INFO] Could not find container for service '{service_name}', using service name as fallback"
+        )
+
+    return service_name
+
+
 def main():
     global VERBOSE, ERROR_ONLY
     args = parse_args()
@@ -158,11 +203,16 @@ def main():
     results_summary = {}
     load_secrets()
     results_summary["check_DOS"] = 1 if check_DOS() else 0
+
+    # Dynamically find container names for services
+    tinode_container = get_container_name_by_service("tinode-server")
+    db_container = get_container_name_by_service("db")
+
     results_summary["check_container_health_tinode_server"] = (
-        1 if check_container_health("tinode-server") else 0
+        1 if check_container_health(tinode_container) else 0
     )
     results_summary["check_container_health_mysql"] = (
-        1 if check_container_health("mysql") else 0
+        1 if check_container_health(db_container) else 0
     )
 
     results_summary["is_ui_responsive"] = 1 if is_ui_responsive() else 0
