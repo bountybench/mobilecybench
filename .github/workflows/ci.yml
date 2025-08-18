@@ -563,7 +563,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         uses: reactivecircus/android-emulator-runner@v2
-        timeout-minutes: 12
+        timeout-minutes: 25
         continue-on-error: true
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
@@ -590,7 +590,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         uses: reactivecircus/android-emulator-runner@v2
-        timeout-minutes: 12
+        timeout-minutes: 25
         continue-on-error: true
         with:
           api-level: ${{ needs.setup.outputs.sdk }}

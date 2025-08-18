@@ -172,7 +172,14 @@ main() {
     
     check_prerequisites
     setup_environment
-    build_bitwarden
+
+    # In main(), before build_bitwarden
+    if [[ -f $APK_PATH ]]; then
+        echo "[INFO] Prebuilt APK found. Skipping Gradle build."
+    else
+        build_bitwarden
+    fi
+
     install_bitwarden
     
     echo ""
