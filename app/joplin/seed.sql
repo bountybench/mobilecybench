@@ -1,6 +1,6 @@
 -- seed.sql
 
-\i secrets.sql
+\i /secrets.sql
 
 -- 1. Insert/update users
 UPDATE public.users
