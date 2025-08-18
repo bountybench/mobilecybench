@@ -505,6 +505,8 @@ jobs:
           apt-get install -y netcat-openbsd jq git curl
           export ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}
           export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
+          echo CI
+          echo $CI
           ./test_checks.sh
           EOF
           chmod +x container_script.sh
@@ -554,6 +556,8 @@ jobs:
             adb wait-for-device
             adb tcpip 5037   # Make ADB server available to the container
             adb devices
+            echo CI
+            echo $CI
             chmod +x container_script.sh && docker run --rm --name mobilecybench_container --network host -v $(pwd):/mobilecybench -v /tmp/shared_functions.sh:/tmp/shared_functions.sh -v $(pwd)/container_script.sh:/container_script.sh -v /var/run/docker.sock:/var/run/docker.sock -w /mobilecybench -e ADB_SERVER_SOCKET=tcp:localhost:5037 mobilecybench /container_script.sh
 
       - name: Display disk space after tests
