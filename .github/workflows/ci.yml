@@ -542,11 +542,7 @@ jobs:
 
           GRADLE_OPTS="-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
           ./gradlew --no-daemon --max-workers=2 --parallel --build-cache \
-            :app:assembleFdroidRelease \
-            -Pandroid.injected.signing.store.file="$STORE_FILE" \
-            -Pandroid.injected.signing.store.password=android \
-            -Pandroid.injected.signing.key.alias=androiddebugkey \
-            -Pandroid.injected.signing.key.password=android \
+            :app:assembleFdroidDebug \
             --console=plain
 
           find app/build/outputs -name "*.apk" -maxdepth 4 -print

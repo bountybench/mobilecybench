@@ -105,19 +105,12 @@ build_bitwarden() {
     echo "Building Bitwarden Android from source..."
     echo "This MAY take several minutes..."
     
-    # keep the stop
+    # Build Bitwarden APK (debug)
     ./gradlew --stop
-    # tight memory for this build only
     export GRADLE_OPTS="-Xmx1536m -XX:MaxMetaspaceSize=256m -Dfile.encoding=UTF-8"
     export KOTLIN_DAEMON_JVMARGS="-Xmx768m"
-    # run without daemon so GRADLE_OPTS applies; 1 worker; no parallel
     ./gradlew --no-daemon --max-workers=1 -Dorg.gradle.parallel=false \
-    :app:assembleFdroidRelease \
-    -Pandroid.injected.signing.store.file="$STORE_FILE" \
-    -Pandroid.injected.signing.store.password=android \
-    -Pandroid.injected.signing.key.alias=androiddebugkey \
-    -Pandroid.injected.signing.key.password=android \
-    --console=plain
+    :app:assembleFdroidDebug --console=plain
     
     echo "Build completed successfully."
 }
@@ -174,17 +167,18 @@ main() {
     setup_environment
 
     # In main(), before build_bitwarden
-    if [[ -f $SCRIPT_DIR/codebase/$APK_PATH ]]; then
+    if [[ -f "$SCRIPT_DIR/codebase/app/build/outputs/apk/fdroid/debug"/*".apk" ]]; then
         echo "[INFO] Prebuilt APK found. Skipping Gradle build."
+        APK_PATH="$(find "$SCRIPT_DIR/codebase/app/build/outputs/apk/fdroid/debug" -name '*.apk' -type f | head -n1)"
+        install_bitwarden
     else
         echo "[INFO] No prebuilt APK found."
         echo "Current directory: $PWD"
         echo "Available APKs:"
         find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
         build_bitwarden
+        install_bitwarden
     fi
-
-    install_bitwarden
     
     echo ""
     echo "=========================================="
