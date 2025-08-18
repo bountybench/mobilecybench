@@ -549,6 +549,8 @@ jobs:
             -Pandroid.injected.signing.key.password=android \
             --console=plain
 
+          find app/build/outputs -name "*.apk" -maxdepth 4 -print
+
       - name: Free RAM before emulator (stop build daemons)
         run: |
           set -e
