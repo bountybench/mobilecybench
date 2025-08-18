@@ -62,9 +62,7 @@ jobs:
             exit 1
           fi
 
-          echo "modified_dirs<<EOF" >> $GITHUB_OUTPUT
-          echo "$modified_dirs" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "modified_dirs=$modified_dirs" >> $GITHUB_OUTPUT
           echo "should_exit=false" >> $GITHUB_OUTPUT
 
       - name: Get API level & Java versions
@@ -309,6 +307,9 @@ jobs:
             fi
           done
           
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
@@ -532,7 +533,13 @@ jobs:
             cd "$dir"
             checkout_commit "$dir"
             cd codebase
-            ./gradlew --no-daemon --stacktrace --build-cache :app:assembleDebug
+            STORE_FILE="$PWD/keystores/debug.keystore"
+            ./gradlew :app:assembleFdroidRelease \
+            -Pandroid.injected.signing.store.file="$STORE_FILE" \
+            -Pandroid.injected.signing.store.password=android \
+            -Pandroid.injected.signing.key.alias=androiddebugkey \
+            -Pandroid.injected.signing.key.password=android \
+            --console=plain
           else
             echo "Android SDK not available in this step; skipping prebuild."
           fi
@@ -595,7 +602,6 @@ jobs:
           script: |
             set -e
             ./test_checks.sh
-
 
       - name: Stop resource monitor and collect logs
         if: always()
