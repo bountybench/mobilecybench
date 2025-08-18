@@ -332,7 +332,7 @@ jobs:
       - name: Tag Docker Image
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
-          docker image tag custom-kali-linux-ci cybench
+          docker image tag custom-kali-linux-ci mobilecybench
 
       - name: Display disk space after pulling image
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -551,6 +551,7 @@ jobs:
           disable-animations: true
           script: |
             adb start-server
+            adb wait-for-device
             adb root
             adb wait-for-device
             adb tcpip 5037   # Make ADB server available to the container
