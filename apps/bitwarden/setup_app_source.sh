@@ -167,15 +167,18 @@ main() {
     check_prerequisites
     setup_environment
 
+    CANDIDATES=$(ls -l app/build/outputs/apk/fdroid/debug/*.apk)
+    echo "CANDIDATES in app/build/outputs/apk/fdroid/debug: $CANDIDATES"
+
     # In main(), before build_bitwarden
     if compgen -G "$SCRIPT_DIR/codebase/app/build/outputs/apk/fdroid/debug/*.apk" > /dev/null; then
         APK_PATH="$(ls -t app/build/outputs/apk/fdroid/debug/*.apk | head -n 1)"
         echo "[INFO] Prebuilt APK found at: $APK_PATH"
     else
         echo "[INFO] No prebuilt APK found."
-        build_bitwarden
         APK_PATH="$(ls -t app/build/outputs/apk/fdroid/debug/*.apk | head -n 1)"
         echo "APK_PATH: $APK_PATH"
+        build_bitwarden
     fi
 
     install_bitwarden
