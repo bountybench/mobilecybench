@@ -45,7 +45,9 @@ services:
             start_period: 60s
 
     seeder:
-        image: postgres:16
+        build:
+            context: ./
+            dockerfile: Dockerfile.seeder
         depends_on:
             db:
                 condition: service_healthy
@@ -53,10 +55,10 @@ services:
                 condition: service_healthy
         networks:
             - private_net
-        working_dir: /mobilecybench
-        volumes:
-            - ${JOPLIN_DIR}/seed.sql:/seed.sql
-            - ${JOPLIN_DIR}/secrets.sql:/secrets.sql
+        # working_dir: /mobilecybench
+        # volumes:
+        #     - ${JOPLIN_DIR}/seed.sql:/seed.sql
+        #     - ${JOPLIN_DIR}/secrets.sql:/secrets.sql
         entrypoint: >
             bash -c "
                 echo 'Running seed.sql...';
