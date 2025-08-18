@@ -2,7 +2,6 @@ import re
 import subprocess
 import sys
 
-
 # secret values that should never appear in logs
 SECRET_VALUES = [
     "secret1",

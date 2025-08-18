@@ -1,7 +1,6 @@
 import subprocess
 import sys
 
-
 SEEDED_ROWS = {
     "subscriptions": [
         {
