@@ -265,7 +265,8 @@ jobs:
 
                 echo "Cleaning up the codebase"
                 git reset --hard HEAD
-                sudo git clean -fdx
+                # sudo git clean -fdx
+                git clean -fdx
 
                 # Update the submodule and checkout the commit
                 git checkout "$commit"
