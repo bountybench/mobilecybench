@@ -46,24 +46,25 @@ jobs:
           source /tmp/shared_functions.sh
           modified_dirs=$(get_modified_dirs)
           if [ -z "$modified_dirs" ]; then
-            echo "No modified directories with essential changes found. Skipping further steps."
-            echo "should_exit=true" >> $GITHUB_OUTPUT
-          else
-            echo "Modified directories:"
-            echo "$modified_dirs"
-          
-            readarray -t dirs <<< "$modified_dirs"
-            count=${#dirs[@]}
-            if [ "$count" -gt 1 ]; then
-              echo "More than one modified directory detected: ${dirs[*]}"
-              echo "Each PR should only modify one app"
-              exit 1
-            fi
-
-            echo "modified_dirs<<EOF" >> $GITHUB_OUTPUT
-            echo "$modified_dirs" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            echo "No modified directories found. Defaulting to apps/bitwarden."
+            modified_dirs="apps/bitwarden"
           fi
+
+          echo "Modified directories:"
+          echo "$modified_dirs"
+
+          readarray -t dirs <<< "$modified_dirs"
+          count=${#dirs[@]}
+          if [ "$count" -gt 1 ]; then
+            echo "More than one modified directory detected: ${dirs[*]}"
+            echo "Each PR should only modify one app"
+            exit 1
+          fi
+
+          echo "modified_dirs<<EOF" >> $GITHUB_OUTPUT
+          echo "$modified_dirs" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "should_exit=false" >> $GITHUB_OUTPUT
 
       - name: Get API level & Java versions
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -126,14 +127,14 @@ jobs:
 
   test:
     needs: setup
-    if: needs.setup.outputs.should_exit != 'true'
+    # if: needs.setup.outputs.should_exit != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       matrix:
         test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
       fail-fast: false  
-      max-parallel: 1
+      max-parallel: 3
     
     steps:
       - name: Checkout code
