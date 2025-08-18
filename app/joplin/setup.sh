@@ -5,6 +5,7 @@ pip install uiautomator2
 pip install psycopg2-binary
 pip install bcrypt
 export JOPLIN_DIR=$(pwd)
+echo $JOPLIN_DIR
 
 echo "Generating uuids..."
 python generate_uuid.py
