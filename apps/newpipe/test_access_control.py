@@ -38,7 +38,7 @@ def test_unauthorized_db_access_fails(db_path: str) -> bool:
 def test_authorized_db_access_succeeds(db_path: str) -> bool:
     """Ensure the database IS readable with run-as (legitimate app access)."""
 
-    # Add retry mechanism to wait for database initialization
+    # retry mechanism to wait for database initialization before test
     max_retries = 10
     retry_delay = 2
 
@@ -70,7 +70,7 @@ def test_authorized_db_access_succeeds(db_path: str) -> bool:
         )
         return False
 
-    # If we got a size back, the file is readable
+    # if we got a size back, the file is readable
     if result and result.strip().isdigit():
         return True
     print("[FAIL] Unable to read DB with run-as; expected legitimate access.")
@@ -80,7 +80,7 @@ def test_authorized_db_access_succeeds(db_path: str) -> bool:
 def db_permissions_secure(db_path: str) -> bool:
     """Check that on-disk DB file permissions are restrictive."""
 
-    # Add retry mechanism to wait for database initialization
+    # retry mechanism to wait for database initialization before check
     max_retries = 5
     retry_delay = 1
 

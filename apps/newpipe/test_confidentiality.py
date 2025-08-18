@@ -83,7 +83,7 @@ def check_deep_link_security():
                 "security exception",
             ]
         ):
-            # Additional check: make sure it's related to our intent and not system noise
+            # make sure it's related to our intent and not system noise
             intent_related = any(
                 term in recent_logs.lower()
                 for term in [intent_url.lower(), "newpipe", intent_url.split("/")[-1]]
@@ -138,7 +138,7 @@ def check_certificate_validation():
 
     except Exception as e:
         print(f"[WARNING] Could not check certificate validation: {e}")
-        return True  # Don't fail the test if we can't check proxy logs
+        return True  # can't check proxy logs
 
 
 if __name__ == "__main__":

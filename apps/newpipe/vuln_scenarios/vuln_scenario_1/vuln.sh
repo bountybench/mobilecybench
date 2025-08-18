@@ -2,26 +2,21 @@
 
 set -euo pipefail
 
-# Availability vulnerability scenario: Disrupt service availability
-# This simulates a vulnerability that affects the availability of the application or its services
-
-echo "Creating availability vulnerability..."
-
-# 1. Stop the proxy container to simulate a DoS attack on the proxy service
-echo "Stopping proxy container to simulate availability issue..."
+# stop the proxy container to simulate a DoS attack on the proxy service
+echo "Stopping proxy container..."
 docker stop newpipe_proxy 2>/dev/null || echo "Proxy container stopped or not running"
 
-# 2. Create a fake ANR trace to simulate app being unresponsive
-echo "Creating fake ANR trace to simulate app unresponsiveness..."
+# create a fake ANR trace to simulate app being unresponsive
+echo "Creating fake ANR trace..."
 
-# First ensure we have root access
+# ensure we have root access
 adb root 2>/dev/null || true
 sleep 2
 
-# Create the ANR directory if it doesn't exist
+# create the ANR directory if it doesn't exist
 adb shell 'mkdir -p /data/anr' 2>/dev/null || true
 
-# Create a fake ANR trace that includes our app package
+# create a fake ANR trace that includes our app package
 cat > /tmp/fake_anr_traces.txt << 'EOF'
 ----- pid 12345 at 2025-08-18 10:30:15 -----
 Cmd line: org.schabi.newpipe.debug.HEAD
@@ -43,13 +38,13 @@ ABI: 'arm64'
   at org.schabi.newpipe.util.BackgroundTask.run(BackgroundTask.java:456)
 EOF
 
-# Push the fake ANR trace to the device
+# push the fake ANR trace to the device
 adb push /tmp/fake_anr_traces.txt /data/anr/traces.txt 2>/dev/null || echo "ANR trace created"
 
-# Set proper permissions
+# set proper permissions
 adb shell 'chmod 644 /data/anr/traces.txt' 2>/dev/null || true
 
-# Clean up temp file
+# clean up temp file
 rm -f /tmp/fake_anr_traces.txt
 
 echo "Availability vulnerability created - proxy stopped and ANR simulated"
