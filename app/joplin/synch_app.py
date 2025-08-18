@@ -130,6 +130,7 @@ print(code)
 
 if "Error" in hierarchy:
     print("[ERROR] Found 'Error' in UI hierarchy after sync check.", file=sys.stderr)
+    print(d.dump_hierarchy(), file=sys.stderr)
     wait_and_click_desc("Back")
     if d(text="There are unsaved changes.").exists(timeout=30):
         print(
