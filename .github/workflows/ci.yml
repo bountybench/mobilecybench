@@ -25,6 +25,23 @@ jobs:
           submodules: false
           token: ${{ secrets.GH_TOKEN }}
 
+      - name: Start resource monitor (background)
+        run: |
+          : > "$GITHUB_WORKSPACE/resource-monitor.log"
+          (
+            trap 'sync' TERM INT EXIT
+            echo "Starting resource monitor at $(date)"
+            while true; do
+              echo "---- $(date) ----"
+              free -m || true
+              df -h
+              ps -eo pid,comm,%mem,%cpu --sort=-%mem | head -n 20
+              dmesg -T 2>/dev/null | grep -iE 'out of memory|killed process' | tail -n 10 || true
+              sleep 30
+            done
+          ) | tee -a "$GITHUB_WORKSPACE/resource-monitor.log" >/dev/null &
+          echo $! > "$GITHUB_WORKSPACE/resource-monitor.pid"
+
       - name: Disable Git ownership check
         run: git config --global --add safe.directory '*'
         
@@ -140,7 +157,7 @@ jobs:
       matrix:
         test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
       fail-fast: false  
-      max-parallel: 3
+      max-parallel: 1
     
     steps:
       - name: Cache Gradle
@@ -525,6 +542,8 @@ jobs:
           ./gradlew --no-daemon --stacktrace --build-cache help
 
       - name: Prebuild Bitwarden (assembleDebug) if SDK present
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           set -e
           if command -v sdkmanager >/dev/null 2>&1; then
@@ -544,19 +563,7 @@ jobs:
             echo "Android SDK not available in this step; skipping prebuild."
           fi
 
-      - name: Start resource monitor (background)
-        run: |
-          (
-            echo "Starting resource monitor at $(date)";
-            while true; do
-              echo "---- $(date) ----";
-              free -m || true;
-              df -h;
-              ps -eo pid,comm,%mem,%cpu --sort=-%mem | head -n 20;
-              sleep 30;
-            done
-          ) > resource-monitor.log 2>&1 &
-          echo $! > resource-monitor.pid
+      
 
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
@@ -606,14 +613,17 @@ jobs:
       - name: Stop resource monitor and collect logs
         if: always()
         run: |
-          if [ -f resource-monitor.pid ]; then
-            kill $(cat resource-monitor.pid) || true
+          if [ -f "$GITHUB_WORKSPACE/resource-monitor.pid" ]; then
+            kill $(cat "$GITHUB_WORKSPACE/resource-monitor.pid") || true
           fi
-          echo "Final system resources:" >> resource-monitor.log
-          date >> resource-monitor.log
-          free -m >> resource-monitor.log || true
-          df -h >> resource-monitor.log
-          ps -eo pid,comm,%mem,%cpu --sort=-%mem | head -n 20 >> resource-monitor.log
+          {
+            echo "Final system resources:"
+            date
+            free -m || true
+            df -h
+            ps -eo pid,comm,%mem,%cpu --sort=-%mem | head -n 20
+            dmesg -T 2>/dev/null | grep -iE 'out of memory|killed process' | tail -n 50 || true
+          } >> "$GITHUB_WORKSPACE/resource-monitor.log"
 
       - name: Upload diagnostics artifacts
         if: always()
@@ -621,7 +631,7 @@ jobs:
         with:
           name: bitwarden-ci-diagnostics-${{ matrix.test_type }}
           path: |
-            resource-monitor.log
+            ${{ github.workspace }}/resource-monitor.log
           if-no-files-found: warn
 
       - name: Docker Cleanup after tests
