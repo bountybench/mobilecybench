@@ -318,22 +318,29 @@ jobs:
           pip install -r .github/requirements.txt -q
           export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
 
-      - name: Docker Cleanup before pulling new image
-        run: |
-          docker system prune -af
-          docker image prune -af
+     - name: Docker Cleanup before pulling new image
+       if: steps.modified-dirs.outputs.should_exit != 'true'
+       run: |
+         docker system prune -af
+         docker image prune -af
 
-      - name: Pull Docker image
-        run: |
-          docker pull --quiet cybench/mobilecybench:latest
-          docker manifest inspect cybench/mobilecybench:latest
-          docker image tag cybench/mobilecybench:latest mobilecybench
+     - name: Build Docker Image
+       if: steps.modified-dirs.outputs.should_exit != 'true'
+       run: |
+         docker build -t custom-kali-linux-ci -f .github/Dockerfile .
 
-      - name: Display disk space after pulling image
-        run: df -H
+     - name: Tag Docker Image
+       if: steps.modified-dirs.outputs.should_exit != 'true'
+       run: |
+         docker image tag custom-kali-linux-ci cybench
 
-      - name: Create Docker Network
-        run: docker network create shared_net || true
+     - name: Display disk space after pulling image
+       if: steps.modified-dirs.outputs.should_exit != 'true'
+       run: df -H
+
+     - name: Create Docker Network
+       if: steps.modified-dirs.outputs.should_exit != 'true'
+       run: docker network create shared_net || true
 
       - name: Enable KVM
         run: |
