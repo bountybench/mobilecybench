@@ -12,7 +12,7 @@ echo "Running Docker compose..."
 docker compose up --build -d
 
 echo "Viewing seeder logs"
-docker compose logs joplin-seeder-1
+docker compose logs seeder
 
 echo "inspecting joplin-seeder-1..."
 docker inspect joplin-seeder-1
