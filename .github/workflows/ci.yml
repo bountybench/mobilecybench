@@ -155,9 +155,9 @@ jobs:
               df -h
               ps -eo pid,comm,%mem,%cpu --sort=-%mem | head -n 20
               dmesg -T 2>/dev/null | grep -iE 'out of memory|killed process' | tail -n 10 || true
-              sleep 15
+              sleep 60
             done
-          ) | tee -a "$GITHUB_WORKSPACE/resource-monitor.log" &
+          ) | tee -a "$GITHUB_WORKSPACE/resource-monitor.log" >/dev/null &
           echo $! > "$GITHUB_WORKSPACE/resource-monitor.pid"
 
       - name: Cache Gradle
@@ -524,7 +524,7 @@ jobs:
           cd codebase
           GRADLE_OPTS="-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
           ./gradlew --no-daemon \
-            -Dorg.gradle.workers.max=2 -Dorg.gradle.parallel=true -Dorg.gradle.caching=true \
+            --max-workers=2 --parallel \
             --stacktrace --build-cache help
 
       - name: Prebuild Bitwarden (assembleFdroidRelease)
