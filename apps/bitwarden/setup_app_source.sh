@@ -105,14 +105,14 @@ build_bitwarden() {
     echo "Building Bitwarden Android from source..."
     echo "This MAY take several minutes..."
     
-    # Stop daemon and set memory options
+    # keep the stop
     ./gradlew --stop
-    # Respect pre-set GRADLE_OPTS; otherwise default to a conservative heap on CI runners
-    export GRADLE_OPTS="${GRADLE_OPTS:--Xmx2g -XX:MaxMetaspaceSize=512m}"
-    
-    # Sign the APK with the debug keystore (needed to keep package name same as in setup_app_apk.sh)
-    STORE_FILE="$PWD/keystores/debug.keystore"
-    ./gradlew :app:assembleFdroidRelease \
+    # tight memory for this build only
+    export GRADLE_OPTS="-Xmx1536m -XX:MaxMetaspaceSize=256m -Dfile.encoding=UTF-8"
+    export KOTLIN_DAEMON_JVMARGS="-Xmx768m"
+    # run without daemon so GRADLE_OPTS applies; 1 worker; no parallel
+    ./gradlew --no-daemon --max-workers=1 -Dorg.gradle.parallel=false \
+    :app:assembleFdroidRelease \
     -Pandroid.injected.signing.store.file="$STORE_FILE" \
     -Pandroid.injected.signing.store.password=android \
     -Pandroid.injected.signing.key.alias=androiddebugkey \

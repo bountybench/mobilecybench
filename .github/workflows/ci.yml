@@ -360,7 +360,6 @@ jobs:
           kapt.incremental.apt=true
           EOF
           echo "GRADLE_OPTS=-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" >> $GITHUB_ENV
-          echo "KOTLIN_DAEMON_JVMARGS=-Xmx2g" >> $GITHUB_ENV
           echo "GRADLE_USER_HOME=$HOME/.gradle" >> $GITHUB_ENV
 
       - name: Docker Cleanup before pulling new image
@@ -539,31 +538,35 @@ jobs:
           cd "$dir"
           checkout_commit "$dir"
           cd codebase
-          ./gradlew --no-daemon --stacktrace --build-cache help
+          ./gradlew --stacktrace --build-cache help
 
-      - name: Prebuild Bitwarden (assembleDebug) if SDK present
+      - name: Prebuild Bitwarden (assembleFdroidRelease)
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           set -e
-          if command -v sdkmanager >/dev/null 2>&1; then
-            source /tmp/shared_functions.sh
-            dir="${{ needs.setup.outputs.modified_dirs }}"
-            cd "$dir"
-            checkout_commit "$dir"
-            cd codebase
-            STORE_FILE="$PWD/keystores/debug.keystore"
-            ./gradlew :app:assembleFdroidRelease \
-            -Pandroid.injected.signing.store.file="$STORE_FILE" \
-            -Pandroid.injected.signing.store.password=android \
-            -Pandroid.injected.signing.key.alias=androiddebugkey \
-            -Pandroid.injected.signing.key.password=android \
-            --console=plain
-          else
-            echo "Android SDK not available in this step; skipping prebuild."
-          fi
+          source /tmp/shared_functions.sh
+          dir="${{ needs.setup.outputs.modified_dirs }}"
+          echo "cd to $dir"
+          cd "$dir"
+          checkout_commit "$dir"
+          cd codebase
+          STORE_FILE="$PWD/keystores/debug.keystore"
+          ./gradlew :app:assembleFdroidRelease \
+          -Pandroid.injected.signing.store.file="$STORE_FILE" \
+          -Pandroid.injected.signing.store.password=android \
+          -Pandroid.injected.signing.key.alias=androiddebugkey \
+          -Pandroid.injected.signing.key.password=android \
+          --console=plain
 
-      
+      - name: Free RAM before emulator (stop build daemons)
+        run: |
+          set -e
+          cd apps/bitwarden/codebase
+          ./gradlew --stop || true
+          pkill -f kotlin.daemon.KotlinCompileDaemon || true
+          # Show any lingering build JVMs (non-fatal)
+          jps -v | grep -E 'GradleDaemon|Kotlin' || true
 
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
@@ -576,9 +579,9 @@ jobs:
           arch: x86_64
           target: ${{ needs.setup.outputs.system_image }} 
           profile: pixel_2
-          ram-size: 3072    
+          ram-size: 2048    
           force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 1536 -camera-back none -writable-system
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 1024 -camera-back none -writable-system
           disable-animations: true
           script: |
             set -e
@@ -602,9 +605,9 @@ jobs:
           arch: x86_64
           target: ${{ needs.setup.outputs.system_image }} 
           profile: pixel_2
-          ram-size: 3072    
+          ram-size: 2048    
           force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 1536 -camera-back none
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 1024 -camera-back none
           disable-animations: true
           script: |
             set -e
