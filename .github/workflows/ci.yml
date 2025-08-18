@@ -142,9 +142,19 @@ jobs:
       matrix:
         test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
       fail-fast: false  
-      max-parallel: 1
+      max-parallel: 3
     
     steps:
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*','**/gradle-wrapper.properties','**/settings.*','**/gradle/libs.versions.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
         with:
@@ -322,14 +332,17 @@ jobs:
         run: |
           mkdir -p "$HOME/.gradle"
           cat > "$HOME/.gradle/gradle.properties" <<'EOF'
-          org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8
-          org.gradle.parallel=false
+          org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+          org.gradle.parallel=true
           org.gradle.daemon=true
-          org.gradle.workers.max=1
-          kotlin.daemon.jvm.options=-Xmx1024m
+          org.gradle.workers.max=2
+          kotlin.daemon.jvm.options=-Xmx2g
+          org.gradle.caching=true
+          org.gradle.configuration-cache=true
+          kapt.incremental.apt=true
           EOF
-          echo "GRADLE_OPTS=-Xmx2g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8" >> $GITHUB_ENV
-          echo "KOTLIN_DAEMON_JVMARGS=-Xmx1024m" >> $GITHUB_ENV
+          echo "GRADLE_OPTS=-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" >> $GITHUB_ENV
+          echo "KOTLIN_DAEMON_JVMARGS=-Xmx2g" >> $GITHUB_ENV
           echo "GRADLE_USER_HOME=$HOME/.gradle" >> $GITHUB_ENV
 
       - name: Docker Cleanup before pulling new image
@@ -499,6 +512,30 @@ jobs:
           esac
           
           chmod +x test_checks.sh
+
+      - name: Gradle warm-up (dependency resolution)
+        run: |
+          set -e
+          source /tmp/shared_functions.sh
+          dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$dir"
+          checkout_commit "$dir"
+          cd codebase
+          ./gradlew --no-daemon --stacktrace --build-cache help
+
+      - name: Prebuild Bitwarden (assembleDebug) if SDK present
+        run: |
+          set -e
+          if command -v sdkmanager >/dev/null 2>&1; then
+            source /tmp/shared_functions.sh
+            dir="${{ needs.setup.outputs.modified_dirs }}"
+            cd "$dir"
+            checkout_commit "$dir"
+            cd codebase
+            ./gradlew --no-daemon --stacktrace --build-cache :app:assembleDebug
+          else
+            echo "Android SDK not available in this step; skipping prebuild."
+          fi
 
       - name: Start resource monitor (background)
         run: |
