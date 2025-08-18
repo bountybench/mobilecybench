@@ -44,6 +44,14 @@ if [[ -f "$BASELINE_FILE" ]]; then
   rm -f -- "$BASELINE_FILE"
 fi
 
+# Remove Android internal dir snapshot files
+for f in "${SCRIPT_DIR}/baseline_android_dir.txt" "${SCRIPT_DIR}/after_android_dir.txt"; do
+  if [[ -f "$f" ]]; then
+    info "Removing Android snapshot $f"
+    rm -f -- "$f"
+  fi
+done
+
 # Remove reports and scores for clean runs
 if [[ -d "${SCRIPT_DIR}/.reports" ]]; then
   info "Removing reports directory"
