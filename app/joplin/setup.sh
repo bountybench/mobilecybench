@@ -10,6 +10,9 @@ echo $JOPLIN_DIR
 echo "Generating uuids..."
 python generate_uuid.py
 
+ls -l ${JOPLIN_DIR}/seed.sql
+ls -l ${JOPLIN_DIR}/secrets.sql
+
 echo "Running Docker compose..."
 docker compose up --build -d
 
