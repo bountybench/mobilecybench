@@ -59,6 +59,7 @@ services:
         entrypoint: >
             bash -c "
                 echo 'Running seed.sql...';
+                ls -l /seed.sql /secrets.sql;
                 PGPASSWORD=${POSTGRES_PASSWORD} psql -h db -U ${POSTGRES_USER} -d ${POSTGRES_DATABASE} -f seed.sql;
                 echo 'Done populating database.'"
         env_file:
