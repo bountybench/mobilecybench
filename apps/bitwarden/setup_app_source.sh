@@ -1,7 +1,10 @@
 #!/bin/bash
 set -e
 
+# Capture the project root directory at the start for stable pathing.
+PROJECT_ROOT=$(pwd)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Resolve Android SDK location: honor existing env, then common paths
 if [ -n "$ANDROID_HOME" ]; then
   ANDROID_HOME="$ANDROID_HOME"
@@ -17,10 +20,15 @@ else
   fi
 fi
 BITWARDEN_PKG="com.x8bit.bitwarden.dev"
-# APK_PATH="app/build/outputs/apk/fdroid/release/com.x8bit.bitwarden-fdroid.apk"
-APK_PATH="app/build/outputs/apk/fdroid/debug/com.x8bit.bitwarden.dev-fdroid.apk"
 
 echo === RUNNING setup_app_source.sh ===
+
+# Define the APK path as an ABSOLUTE path from the project root.
+APK_PATH="$PROJECT_ROOT/codebase/app/build/outputs/apk/fdroid/debug/com.x8bit.bitwarden.dev-fdroid.apk"
+
+echo "=== RUNNING setup_app_source.sh ==="
+echo "[DEBUG] Project root is: $PROJECT_ROOT"
+echo "[DEBUG] Script will look for APK at: $APK_PATH"
 
 # 1. Create user.properties if missing
 USER_PROPERTIES="codebase/user.properties"
@@ -45,14 +53,6 @@ cd codebase
 check_prerequisites() {
     echo "Checking prerequisites..."
     
-    # Install Python dependencies
-    PIP_CMD=""
-    if command -v pip3 >/dev/null 2>&1; then
-        PIP_CMD="pip3"
-    elif command -v pip >/dev/null 2>&1; then
-        PIP_CMD="pip"
-    fi
-
     # Check Java availability
     if ! command -v java >/dev/null 2>&1; then
         echo "ERROR: Java not found. Please install Java 17 and ensure it is on PATH or set JAVA_HOME."
@@ -78,7 +78,7 @@ check_prerequisites() {
 setup_environment() {
     echo "Setting up build environment..."
     
-    # Set Java 17 (cross-platform resolution if JAVA_HOME is not set)
+    # Set Java 17
     if [ -z "$JAVA_HOME" ]; then
         if [[ "$OSTYPE" == "darwin"* ]]; then
             JAVA_HOME="$(/usr/libexec/java_home -v 17 2>/dev/null)"
@@ -101,36 +101,53 @@ setup_environment() {
     echo "Environment configured."
 }
 
-# Build Bitwarden APK
+# Build Bitwarden APK with optimal settings for CI with an emulator
 build_bitwarden() {
-    echo "Building Bitwarden Android from source..."
-    echo "This MAY take several minutes..."
+    echo "Building Bitwarden (Optimized for CI with Emulator)..."
     
-    # Build Bitwarden APK (debug)
     ./gradlew --stop
-    export GRADLE_OPTS="-Xmx1536m -XX:MaxMetaspaceSize=256m -Dfile.encoding=UTF-8"
-    export KOTLIN_DAEMON_JVMARGS="-Xmx768m"
-    ./gradlew --no-daemon --max-workers=1 -Dorg.gradle.parallel=false \
-    :app:assembleFdroidDebug --console=plain
+    
+    # Memory settings are conservative to leave room for the emulator
+    export GRADLE_OPTS="-Xmx3g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8"
+    export KOTLIN_DAEMON_JVMARGS="-Xmx1536m"
+    
+    # Use --max-workers=2 to perfectly match the 2 CPU cores of the CI runner
+    ./gradlew --daemon --parallel --build-cache --max-workers=2 \
+        :app:assembleFdroidDebug --console=plain
     
     echo "Build completed successfully."
 }
+
+# A robust function to verify the APK exists with rich debugging
+verify_apk_exists() {
+    echo "[INFO] Verifying APK exists before installation..."
+    echo "[DEBUG] Current working directory: $(pwd)"
+    echo "[DEBUG] Checking for file: $APK_PATH"
+    
+    if [[ ! -f "$APK_PATH" ]]; then
+        echo "------------------------------------------------------------"
+        echo "[FATAL ERROR] APK file not found at the expected path."
+        echo "------------------------------------------------------------"
+        
+        echo "[DIAGNOSTIC] Listing contents of the 'outputs' directory to debug..."
+        if [ -d "$PROJECT_ROOT/codebase/app/build/outputs" ]; then
+            ls -lR "$PROJECT_ROOT/codebase/app/build/outputs"
+        else
+            echo "[DIAGNOSTIC] The directory '$PROJECT_ROOT/codebase/app/build/outputs' does not exist. The build likely failed to produce any output."
+        fi
+        echo "------------------------------------------------------------"
+        exit 1
+    fi
+    echo "[SUCCESS] APK file found!"
+}
+
 
 # Install on emulator
 install_bitwarden() {
     echo "Installing Bitwarden on Android emulator..."
     
-    # Check if emulator is running
     if ! adb devices | grep -w "device" | grep -v "List" >/dev/null; then
         echo "ERROR: No Android emulator or device found."
-        echo "Please start the emulator or connect a device first."
-        exit 1
-    fi
-    
-    if [[ ! -f $APK_PATH ]]; then
-        echo "ERROR: APK not found at $APK_PATH"
-        echo "Available APKs:"
-        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
         exit 1
     fi
     
@@ -142,45 +159,37 @@ install_bitwarden() {
 launch_bitwarden() {
     echo "Launching Bitwarden..."
     
-    # Launch Bitwarden using package name
     adb shell monkey -p $BITWARDEN_PKG -c android.intent.category.LAUNCHER 1
     
-    # Verify launch
     sleep 2
     if adb shell dumpsys window | grep -q "mCurrentFocus.*$BITWARDEN_PKG"; then
         echo "Successfully launched Bitwarden!"
         return 0
     else
         echo "Bitwarden may not have launched properly."
-        echo "Please check your emulator or device - Bitwarden should be installed."
         return 1
     fi
 }
 
-# Main function
+# Main function with robust logic
 main() {
     echo "Bitwarden Android Setup"
     echo "======================="
     
-    echo "Setting up Bitwarden Android"
-    
     check_prerequisites
     setup_environment
 
-    CANDIDATES=$(ls -l app/build/outputs/apk/fdroid/debug/*.apk)
-    echo "CANDIDATES in app/build/outputs/apk/fdroid/debug: $CANDIDATES"
-
-    # In main(), before build_bitwarden
-    if compgen -G "$SCRIPT_DIR/codebase/app/build/outputs/apk/fdroid/debug/*.apk" > /dev/null; then
-        APK_PATH="$(ls -t app/build/outputs/apk/fdroid/debug/*.apk | head -n 1)"
-        echo "[INFO] Prebuilt APK found at: $APK_PATH"
-    else
-        echo "[INFO] No prebuilt APK found."
-        APK_PATH="$(ls -t app/build/outputs/apk/fdroid/debug/*.apk | head -n 1)"
-        echo "APK_PATH: $APK_PATH"
+    # Reliably check if a pre-built APK exists before starting a new build
+    if [ ! -f "$APK_PATH" ]; then
+        echo "[INFO] No prebuilt APK found at the expected path. Starting build..."
         build_bitwarden
+    else
+        echo "[INFO] Prebuilt APK found. Skipping build."
     fi
 
+    # Verify the APK exists (or was just built) and provide debug output on failure
+    verify_apk_exists
+    
     install_bitwarden
     
     echo ""
@@ -193,7 +202,6 @@ main() {
         echo "Bitwarden is now running and ready for mobile security testing!"
     else
         echo "Please manually launch Bitwarden from your emulator or device."
-        echo "You can also try running: adb shell monkey -p $BITWARDEN_PKG -c android.intent.category.LAUNCHER 1"
     fi
     
     echo ""
@@ -202,4 +210,4 @@ main() {
 }
 
 # Run main function
-main 
+main

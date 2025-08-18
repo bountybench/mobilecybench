@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   setup:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       modified_dirs: ${{ steps.modified-dirs.outputs.modified_dirs }}
@@ -514,37 +514,29 @@ jobs:
           
           chmod +x test_checks.sh
 
-      - name: Gradle warm-up (dependency resolution)
-        run: |
-          set -e
-          source /tmp/shared_functions.sh
-          dir="${{ needs.setup.outputs.modified_dirs }}"
-          cd "$dir"
-          checkout_commit "$dir"
-          cd codebase
-          GRADLE_OPTS="-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
-          ./gradlew --no-daemon \
-            --max-workers=2 --parallel \
-            --stacktrace --build-cache help
-
       - name: Prebuild Bitwarden (assembleFdroidRelease)
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          # Optimal settings for a 7GB/2-core runner with no emulator active.
+          GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
         run: |
           set -e
           source /tmp/shared_functions.sh
+          
+          # Navigate to the correct directory and checkout the specific commit
           dir="${{ needs.setup.outputs.modified_dirs }}"
-          echo "cd to $dir"
           cd "$dir"
           checkout_commit "$dir"
+          
+          # Change directory into the codebase submodule to run the build
           cd codebase
-          STORE_FILE="$PWD/keystores/debug.keystore"
-
-          GRADLE_OPTS="-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
-          ./gradlew --no-daemon --max-workers=2 --parallel --build-cache \
+          
+          # Execute the Gradle build with flags matching the runner's 2 CPU cores
+          ./gradlew --max-workers=2 --parallel --build-cache \
             :app:assembleFdroidDebug \
             --console=plain
-
+          
+          # Verify the APK was created
           find app/build/outputs -name "*.apk" -maxdepth 4 -print
 
       - name: Free RAM before emulator (stop build daemons)
