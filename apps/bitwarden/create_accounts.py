@@ -199,7 +199,6 @@ def main(d, num_ciphers_per_user=3):
 if __name__ == "__main__":
     start_time = time.time()
     d = None
-    print(f"[DEBUG] Starting script at {time.strftime('%Y-%m-%d %H:%M:%S')}")
     try:
         print("[DEBUG] Connecting to device...")
         d = initialize_ui_automation()

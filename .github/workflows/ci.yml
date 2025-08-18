@@ -346,22 +346,6 @@ jobs:
           pip install -r .github/requirements.txt -q
           export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
 
-      - name: Configure Gradle limits and diagnostics
-        run: |
-          mkdir -p "$HOME/.gradle"
-          cat > "$HOME/.gradle/gradle.properties" <<'EOF'
-          org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
-          org.gradle.parallel=true
-          org.gradle.daemon=true
-          org.gradle.workers.max=2
-          kotlin.daemon.jvm.options=-Xmx2g
-          org.gradle.caching=true
-          org.gradle.configuration-cache=true
-          kapt.incremental.apt=true
-          EOF
-          echo "GRADLE_OPTS=-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" >> $GITHUB_ENV
-          echo "GRADLE_USER_HOME=$HOME/.gradle" >> $GITHUB_ENV
-
       - name: Docker Cleanup before pulling new image
         run: |
           docker system prune -af
@@ -538,7 +522,10 @@ jobs:
           cd "$dir"
           checkout_commit "$dir"
           cd codebase
-          ./gradlew --no-daemon --stacktrace --build-cache help
+          GRADLE_OPTS="-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
+          ./gradlew --no-daemon \
+            -Dorg.gradle.workers.max=2 -Dorg.gradle.parallel=true -Dorg.gradle.caching=true \
+            --stacktrace --build-cache help
 
       - name: Prebuild Bitwarden (assembleFdroidRelease)
         env:
@@ -552,7 +539,10 @@ jobs:
           checkout_commit "$dir"
           cd codebase
           STORE_FILE="$PWD/keystores/debug.keystore"
-          ./gradlew --no-daemon :app:assembleFdroidRelease \
+          GRADLE_OPTS="-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
+          ./gradlew --no-daemon \
+            -Dorg.gradle.workers.max=2 -Dorg.gradle.parallel=true -Dorg.gradle.caching=true \
+          :app:assembleFdroidRelease \
           -Pandroid.injected.signing.store.file="$STORE_FILE" \
           -Pandroid.injected.signing.store.password=android \
           -Pandroid.injected.signing.key.alias=androiddebugkey \
