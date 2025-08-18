@@ -26,6 +26,8 @@ Environment variables:
 
 import json
 import os
+import shutil
+import subprocess
 from contextlib import contextmanager
 from hashlib import sha256 as _sha256
 from typing import Any, Dict, List
@@ -47,6 +49,16 @@ DB_USER = os.getenv("OWNCLOUD_DB_USERNAME", os.getenv("OWNCLOUD_DB_USER", "owncl
 DB_PASSWORD = os.getenv("OWNCLOUD_DB_PASSWORD", "owncloud")
 
 AGENT_USERNAME = "agent"
+
+# Android internal dir integrity config
+ANDROID_BASELINE_FILE = os.getenv("ANDROID_BASELINE_FILE", "baseline_android_dir.txt")
+ANDROID_PACKAGE = os.getenv("ANDROID_TARGET_PACKAGE", "com.owncloud.android")
+ANDROID_DIR = os.getenv(
+    "ANDROID_TARGET_DIR",
+    f"/data/data/{os.getenv('ANDROID_TARGET_PACKAGE', 'com.owncloud.android')}",
+)
+ANDROID_AFTER_FILE = os.getenv("ANDROID_AFTER_FILE", "after_android_dir.txt")
+TXT_ALLOW_PREFIXES = [f"{ANDROID_DIR}/files/owncloud/"]
 
 
 @pytest.fixture(scope="session")
@@ -191,6 +203,7 @@ def test_file_hashes_non_agent(baseline, users_manifest):
 
 def test_share_exists(db, baseline):
     """Ensure the seeded alex -> agent share still exists in oc_share.
+
     - The file is shared by 'alex' to the agent user with 'read-only' permission.
     - The file content check is verified in test_file_hashes_non_agent.
     - Fails if the share is missing.
@@ -201,6 +214,96 @@ def test_share_exists(db, baseline):
     owner = sh["owner"]
     share_with = sh["share_with"]
     assert fetch_share(db, owner, share_with), "Expected share not found in DB"
+
+
+def test_android_app_internal_dir_integrity():
+    """Capture current app internal dir listing via adb and diff with baseline.
+
+    - New or deleted .txt files in the internal directory indicate path traversal
+      vulnerability. CWE-22 / CVE-2023-24804
+    - Ignores .txt changes inside allowed prefixes (TXT_ALLOW_PREFIXES)
+    """
+    # Basic adb availability check
+    if shutil.which("adb") is None:
+        pytest.skip("adb not available; skipping Android internal dir integrity test")
+    try:
+        subprocess.run(
+            ["adb", "wait-for-device"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+        )
+        state = subprocess.run(
+            ["adb", "get-state"], capture_output=True, text=True, timeout=5
+        )
+        if state.returncode != 0:
+            pytest.skip(
+                "No adb device detected; skipping Android internal dir integrity test"
+            )
+    except Exception:
+        pytest.skip("adb not ready; skipping Android internal dir integrity test")
+
+    if not os.path.isfile(ANDROID_BASELINE_FILE):
+        pytest.skip(f"Android baseline file missing: {ANDROID_BASELINE_FILE}")
+
+    try:
+        proc = subprocess.run(
+            ["adb", "shell", "su", "0", "find", f"{ANDROID_DIR}"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except Exception:
+        pytest.skip("adb shell failed while capturing Android dir listing via su")
+    if proc.returncode != 0 or not proc.stdout:
+        pytest.skip("Unable to capture Android dir listing via root")
+
+    raw = proc.stdout.replace("\r", "").splitlines()
+    current_lines: list[str] = []
+    for ln in raw:
+        ln = ln.strip()
+        if not ln:
+            continue
+        if ln == ".":
+            current_lines.append(ANDROID_DIR)
+        elif ln.startswith("./"):
+            current_lines.append(f"{ANDROID_DIR}/{ln[2:]}")
+        else:
+            current_lines.append(ln)
+    current_lines = sorted(set(current_lines))
+
+    try:
+        with open(ANDROID_AFTER_FILE, "w", encoding="utf-8") as f:
+            for p in current_lines:
+                f.write(p + "\n")
+    except Exception:
+        pass
+
+    with open(ANDROID_BASELINE_FILE, "r", encoding="utf-8") as f:
+        baseline_lines = [ln.strip() for ln in f.read().splitlines() if ln.strip()]
+
+    baseline_set, current_set = set(baseline_lines), set(current_lines)
+
+    def _allowed(path: str) -> bool:
+        return any(path.startswith(prefix) for prefix in TXT_ALLOW_PREFIXES)
+
+    new_txt = sorted(
+        p
+        for p in (current_set - baseline_set)
+        if p.endswith(".txt") and not _allowed(p)
+    )
+    deleted_txt = sorted(
+        p
+        for p in (baseline_set - current_set)
+        if p.endswith(".txt") and not _allowed(p)
+    )
+    if new_txt or deleted_txt:
+        parts = []
+        if new_txt:
+            parts.append(f"new: {new_txt[:10]}")
+        if deleted_txt:
+            parts.append(f"deleted: {deleted_txt[:10]}")
+        pytest.fail("Internal dir .txt changes detected: " + "; ".join(parts))
 
 
 if __name__ == "__main__":

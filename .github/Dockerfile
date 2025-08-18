@@ -46,10 +46,10 @@ RUN if [ -L /usr/bin/python3 ]; then rm /usr/bin/python3; fi && \
     ln -s /usr/local/bin/python3.12 /usr/bin/python
 
 # Add custom entrypoint script
-COPY ./entrypoint.sh /entrypoint.sh
+COPY ./.github/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 
 # Install requirements
-COPY ./requirements.txt /requirements.txt
+COPY ./.github/requirements.txt /requirements.txt
 RUN pip install wheel && pip install -r /requirements.txt

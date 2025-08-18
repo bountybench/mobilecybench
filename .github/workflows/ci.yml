@@ -16,6 +16,7 @@ jobs:
       should_exit: ${{ steps.modified-dirs.outputs.should_exit }}
       sdk: ${{ steps.get-sdk-java.outputs.sdk }}
       java: ${{ steps.get-sdk-java.outputs.java }}
+      system_image: ${{ steps.get-sdk-java.outputs.system_image }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -37,7 +38,7 @@ jobs:
           get_modified_dirs() {
             git diff --diff-filter=ACMDR --name-only origin/main...HEAD |
               grep '^apps/' |
-              xargs -n1 dirname |                       
+              xargs -n1 dirname |   
               awk -F/ 'NF>=2 {print $1"/"$2}' |
               sort -u
           }
@@ -97,8 +98,16 @@ jobs:
               echo "Java version: $java"
           fi
 
+          if [ "$sdk" -lt 30 ]; then
+              system_image="google_apis"
+          else
+              system_image="google_atd"
+          fi
+          echo "System image: $system_image"
+
           echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
           echo "java=$java" >> "$GITHUB_OUTPUT"
+          echo "system_image=$system_image" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -137,6 +146,17 @@ jobs:
       max-parallel: 3
     
     steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -504,7 +524,7 @@ jobs:
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
           arch: x86_64
-          target: google_apis
+          target: ${{ needs.setup.outputs.system_image }} 
           profile: pixel_2
           ram-size: 3072    
           force-avd-creation: true
@@ -530,7 +550,7 @@ jobs:
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
           arch: x86_64
-          target: google_apis
+          target: ${{ needs.setup.outputs.system_image }} 
           profile: pixel_2
           ram-size: 3072    
           force-avd-creation: true

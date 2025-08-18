@@ -99,11 +99,13 @@ JSON
       local t1="test_users_present_and_counts"
       local t2="test_file_hashes_non_agent"
       local t3="test_share_exists"
+      local t4="test_android_app_internal_dir_integrity"
       details=$(cat <<JSON
 {
   "check_users_present": $(_test_detail_status "$report" "$modfile" "$t1"),
   "check_file_hashes_non_agent": $(_test_detail_status "$report" "$modfile" "$t2"),
-  "check_share_exists": $(_test_detail_status "$report" "$modfile" "$t3")
+  "check_share_exists": $(_test_detail_status "$report" "$modfile" "$t3"),
+  "check_android_internal_dir_integrity": $(_test_detail_status "$report" "$modfile" "$t4")
 }
 JSON
 )
