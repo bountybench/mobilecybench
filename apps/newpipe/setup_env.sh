@@ -61,7 +61,7 @@ else
 fi
 
 # Ensure we have root access and remount
-adb root && adb remount
+adb root
 
 # install proxy certificate from Docker container for proxy server
 echo "Installing proxy certificate..."
@@ -74,7 +74,6 @@ echo "Pushing CA into /system store"
 adb shell "rm -f /system/etc/security/cacerts/$DER" || true
 adb push "$DER" /system/etc/security/cacerts/
 adb shell chmod 644 /system/etc/security/cacerts/"$DER"
-rm "$DER" ca-cert.pem
 
 # reload keystore
 adb shell 'stop keystore && start keystore' || {

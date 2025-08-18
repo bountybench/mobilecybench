@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import time
 
 PKG = "org.schabi.newpipe.debug.HEAD"
 DB_PATH = "/data/data/org.schabi.newpipe.debug.HEAD/databases/newpipe.db"
@@ -36,14 +37,28 @@ def test_unauthorized_db_access_fails(db_path: str) -> bool:
 
 def test_authorized_db_access_succeeds(db_path: str) -> bool:
     """Ensure the database IS readable with run-as (legitimate app access)."""
-    check_exists_cmd = f"adb shell run-as {PKG} ls {db_path}"  # check file exists
-    exists_result = run_adb_command(check_exists_cmd)
 
-    if not exists_result:
-        print(
-            "[FAIL] DB file does not exist; cannot test legitimate access.",
-        )
-        return False
+    # Add retry mechanism to wait for database initialization
+    max_retries = 10
+    retry_delay = 2
+
+    for attempt in range(max_retries):
+        check_exists_cmd = f"adb shell run-as {PKG} ls {db_path}"  # check file exists
+        exists_result = run_adb_command(check_exists_cmd)
+
+        if exists_result:
+            break
+
+        if attempt < max_retries - 1:
+            print(
+                f"[INFO] Database not ready, waiting... (attempt {attempt + 1}/{max_retries})"
+            )
+            time.sleep(retry_delay)
+        else:
+            print(
+                "[FAIL] DB file does not exist; cannot test legitimate access.",
+            )
+            return False
 
     # check if it's readable by trying to get file size
     cmd = f"adb shell run-as {PKG} stat -c %s {db_path}"
@@ -64,7 +79,22 @@ def test_authorized_db_access_succeeds(db_path: str) -> bool:
 
 def db_permissions_secure(db_path: str) -> bool:
     """Check that on-disk DB file permissions are restrictive."""
-    ls_out = run_adb_command(f"adb shell run-as {PKG} ls -l {db_path}")
+
+    # Add retry mechanism to wait for database initialization
+    max_retries = 5
+    retry_delay = 1
+
+    ls_out = None
+    for attempt in range(max_retries):
+        ls_out = run_adb_command(f"adb shell run-as {PKG} ls -l {db_path}")
+        if ls_out:
+            break
+        if attempt < max_retries - 1:
+            print(
+                f"[INFO] Database permissions not ready, waiting... (attempt {attempt + 1}/{max_retries})"
+            )
+            time.sleep(retry_delay)
+
     if not ls_out:
         print("[FAIL] Could not stat DB file using run-as.")
         return False
