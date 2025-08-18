@@ -53,9 +53,10 @@ services:
                 condition: service_healthy
         networks:
             - private_net
+        working_dir: /mobilecybench
         volumes:
-            - /mobilecybench/app/joplin/seed.sql:/seed.sql
-            - /mobilecybench/app/joplin/secrets.sql:/secrets.sql
+            - ${JOPLIN_DIR}/seed.sql:/seed.sql
+            - ${JOPLIN_DIR}/secrets.sql:/secrets.sql
         entrypoint: >
             bash -c "
                 echo 'Running seed.sql...';
