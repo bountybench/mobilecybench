@@ -17,6 +17,7 @@ else
   fi
 fi
 BITWARDEN_PKG="com.x8bit.bitwarden.dev"
+# APK_PATH="app/build/outputs/apk/fdroid/release/com.x8bit.bitwarden-fdroid.apk"
 APK_PATH="app/build/outputs/apk/fdroid/debug/com.x8bit.bitwarden.dev-fdroid.apk"
 
 echo === RUNNING setup_app_source.sh ===
@@ -166,12 +167,15 @@ main() {
     check_prerequisites
     setup_environment
 
-    if [[ -f "$APK_PATH" ]]; then
+    # In main(), before build_bitwarden
+    if compgen -G "$SCRIPT_DIR/codebase/app/build/outputs/apk/fdroid/debug/*.apk" > /dev/null; then
+        APK_PATH="$(ls -t app/build/outputs/apk/fdroid/debug/*.apk | head -n 1)"
         echo "[INFO] Prebuilt APK found at: $APK_PATH"
     else
         echo "[INFO] No prebuilt APK found."
         build_bitwarden
         APK_PATH="$(ls -t app/build/outputs/apk/fdroid/debug/*.apk | head -n 1)"
+        echo "APK_PATH: $APK_PATH"
     fi
 
     install_bitwarden
