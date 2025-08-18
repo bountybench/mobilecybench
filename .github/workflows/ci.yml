@@ -523,7 +523,7 @@ jobs:
           #!/bin/bash
           set -e
           ls
-          git config --global --add safe.directory /mobilecybench
+          git config --global --add safe.directory '*'
           chmod +x test_checks.sh
           apt-get update -qq
           apt-get install -y netcat-openbsd jq git curl
