@@ -11,11 +11,11 @@ python generate_uuid.py
 echo "Running Docker compose..."
 docker compose up --build -d
 
+pwd
+ls
+
 echo "Viewing seeder logs"
 docker compose logs seeder
-
-echo "inspecting joplin-seeder-1..."
-docker inspect joplin-seeder-1
 
 echo "Setting up app..."
 ./setup_app_apklink.sh

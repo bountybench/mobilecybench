@@ -495,7 +495,6 @@ jobs:
           chmod +x test_checks.sh
 
       - name: Create container script
-        if: matrix.test_type != 'vuln_scenario_0'
         run: |
           cat << 'EOF' > container_script.sh
           #!/bin/bash
