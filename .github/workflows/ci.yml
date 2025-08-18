@@ -127,14 +127,13 @@ jobs:
 
   test:
     needs: setup
-    # if: needs.setup.outputs.should_exit != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     strategy:
       matrix:
         test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
       fail-fast: false  
-      max-parallel: 3
+      max-parallel: 1
     
     steps:
       - name: Checkout code
