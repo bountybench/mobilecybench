@@ -24,7 +24,7 @@ EOF
 # Push the malicious backup to external storage with world-readable permissions
 adb push /tmp/malicious_backup.db /sdcard/newpipe.db
 
-# Set world-readable permissions (this is the vulnerability)
+# Set world-readable permissions
 adb shell 'chmod 644 /sdcard/newpipe.db'
 
 # Create additional files that will definitely be detected

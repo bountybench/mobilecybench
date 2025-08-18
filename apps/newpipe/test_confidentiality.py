@@ -2,7 +2,6 @@ import re
 import subprocess
 import sys
 
-from common import run_adb_command
 
 # secret values that should never appear in logs
 SECRET_VALUES = [
@@ -15,6 +14,13 @@ SECRET_VALUES = [
 ]
 
 PKG = "org.schabi.newpipe.debug.HEAD"
+
+
+def run_adb_command(command: str) -> str | None:
+    result = subprocess.run(
+        command, shell=True, capture_output=True, text=True, timeout=30
+    )
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def check_data_confidentiality(log_data):

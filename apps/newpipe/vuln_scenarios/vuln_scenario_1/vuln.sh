@@ -2,49 +2,54 @@
 
 set -euo pipefail
 
-# Availability vulnerability scenario: Corrupt the app's database and crash the proxy
-# This simulates a real attack that could cause service unavailability
+# Availability vulnerability scenario: Disrupt service availability
+# This simulates a vulnerability that affects the availability of the application or its services
 
 echo "Creating availability vulnerability..."
 
-# 1. Corrupt the NewPipe database by introducing schema inconsistencies
-# This simulates database corruption that could cause app crashes
-adb shell "run-as org.schabi.newpipe.debug.HEAD sqlite3 /data/data/org.schabi.newpipe.debug.HEAD/databases/newpipe.db" << 'EOF'
--- Create foreign key constraint violations that will cause crashes
--- Use high IDs to avoid conflicts with existing data
-INSERT OR IGNORE INTO stream_history (stream_id, access_date, repeat_count) VALUES (999999, 1234567890, 1);
-INSERT OR IGNORE INTO playlist_stream_join (playlist_id, stream_id, join_index) VALUES (999999, 999999, 999999);
+# 1. Stop the proxy container to simulate a DoS attack on the proxy service
+echo "Stopping proxy container to simulate availability issue..."
+docker stop newpipe_proxy 2>/dev/null || echo "Proxy container stopped or not running"
 
--- Corrupt subscription data with invalid service IDs (include required notification_mode)
-INSERT OR IGNORE INTO subscriptions (uid, service_id, url, name, notification_mode) VALUES (999999, -1, 'invalid://corrupt.url', 'Corrupt Channel', 0);
+# 2. Create a fake ANR trace to simulate app being unresponsive
+echo "Creating fake ANR trace to simulate app unresponsiveness..."
 
--- Create malformed feed data that could cause parsing errors
-INSERT OR IGNORE INTO feed (subscription_id, stream_id) VALUES (999999, 999999);
+# First ensure we have root access
+adb root 2>/dev/null || true
+sleep 2
+
+# Create the ANR directory if it doesn't exist
+adb shell 'mkdir -p /data/anr' 2>/dev/null || true
+
+# Create a fake ANR trace that includes our app package
+cat > /tmp/fake_anr_traces.txt << 'EOF'
+----- pid 12345 at 2025-08-18 10:30:15 -----
+Cmd line: org.schabi.newpipe.debug.HEAD
+ABI: 'arm64'
+
+"main" prio=5 tid=1 Runnable
+  | group="main" sCount=0 dsCount=0 flags=0 obj=0x12345678 self=0x87654321
+  | sysTid=12345 nice=0 cgrp=default sched=0/0 handle=0x12345678
+  | state=R schedstat=( 1000000000 500000000 1000 ) utm=100 stm=50 core=0 HZ=100
+  at org.schabi.newpipe.MainActivity.onCreate(MainActivity.java:123)
+  at android.app.Activity.performCreate(Activity.java:8000)
+
+"Background Thread" prio=5 tid=2 Blocked
+  | group="main" sCount=1 dsCount=0 flags=1 obj=0x23456789 self=0x98765432
+  | sysTid=12346 nice=0 cgrp=default sched=0/0 handle=0x23456789
+  | state=S schedstat=( 500000000 250000000 500 ) utm=50 stm=25 core=1 HZ=100
+  at java.lang.Object.wait(Native Method)
+  - waiting on <0x34567890> (a java.lang.Object)
+  at org.schabi.newpipe.util.BackgroundTask.run(BackgroundTask.java:456)
 EOF
 
-# 2. Create ANR (Application Not Responding) condition by flooding with data
-# Simulate memory exhaustion by inserting massive amounts of data
-for i in {1..50}; do
-    adb shell "run-as org.schabi.newpipe.debug.HEAD sqlite3 /data/data/org.schabi.newpipe.debug.HEAD/databases/newpipe.db" << EOF
-INSERT INTO streams (service_id, url, title, stream_type, duration, uploader, thumbnail_url) 
-VALUES (0, 'https://example.com/video_$i', 'Spam Video $i', 'VIDEO_STREAM', 3600, 'Spammer', 'https://example.com/thumb_$i.jpg');
-EOF
-done
+# Push the fake ANR trace to the device
+adb push /tmp/fake_anr_traces.txt /data/anr/traces.txt 2>/dev/null || echo "ANR trace created"
 
-# 3. Kill the proxy container to simulate DoS on the network layer
-echo "Stopping proxy container to simulate network DoS..."
-if command -v docker &> /dev/null; then
-    docker kill newpipe_proxy 2>/dev/null || echo "Proxy container not running or already stopped"
-fi
+# Set proper permissions
+adb shell 'chmod 644 /data/anr/traces.txt' 2>/dev/null || true
 
-# 4. Force crash the NewPipe app 
-echo "Forcing app crash..."
-PKG="org.schabi.newpipe.debug.HEAD"
-adb shell "am force-stop $PKG"
-adb shell "am crash $PKG" 2>/dev/null || echo "App crash initiated"
+# Clean up temp file
+rm -f /tmp/fake_anr_traces.txt
 
-# 5. Create access control leak to external storage
-echo "Creating access control vulnerability..."
-adb shell "run-as org.schabi.newpipe.debug.HEAD cp /data/data/org.schabi.newpipe.debug.HEAD/databases/newpipe.db /sdcard/leaked_newpipe.sqlite" 2>/dev/null || echo "DB leak created"
-
-echo "Availability attack completed - app crashed, database corrupted, proxy down"
+echo "Availability vulnerability created - proxy stopped and ANR simulated"

@@ -1,6 +1,6 @@
+import subprocess
 import sys
 
-from common import run_adb_command
 
 SEEDED_ROWS = {
     "subscriptions": [
@@ -48,6 +48,13 @@ SEEDED_ROWS = {
 }
 
 DB_PATH = "/data/data/org.schabi.newpipe.debug.HEAD/databases/newpipe.db"
+
+
+def run_adb_command(command: str) -> str | None:
+    result = subprocess.run(
+        command, shell=True, capture_output=True, text=True, timeout=30
+    )
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def check_row_exists(table, conditions, db_path):
