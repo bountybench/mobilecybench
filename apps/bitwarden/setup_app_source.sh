@@ -174,9 +174,13 @@ main() {
     setup_environment
 
     # In main(), before build_bitwarden
-    if [[ -f $APK_PATH ]]; then
+    if [[ -f $SCRIPT_DIR/codebase/$APK_PATH ]]; then
         echo "[INFO] Prebuilt APK found. Skipping Gradle build."
     else
+        echo "[INFO] No prebuilt APK found."
+        echo "Current directory: $PWD"
+        echo "Available APKs:"
+        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
         build_bitwarden
     fi
 

@@ -539,15 +539,15 @@ jobs:
           checkout_commit "$dir"
           cd codebase
           STORE_FILE="$PWD/keystores/debug.keystore"
+
           GRADLE_OPTS="-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
-          ./gradlew --no-daemon \
-            -Dorg.gradle.workers.max=2 -Dorg.gradle.parallel=true -Dorg.gradle.caching=true \
-          :app:assembleFdroidRelease \
-          -Pandroid.injected.signing.store.file="$STORE_FILE" \
-          -Pandroid.injected.signing.store.password=android \
-          -Pandroid.injected.signing.key.alias=androiddebugkey \
-          -Pandroid.injected.signing.key.password=android \
-          --console=plain
+          ./gradlew --no-daemon --max-workers=2 --parallel --build-cache \
+            :app:assembleFdroidRelease \
+            -Pandroid.injected.signing.store.file="$STORE_FILE" \
+            -Pandroid.injected.signing.store.password=android \
+            -Pandroid.injected.signing.key.alias=androiddebugkey \
+            -Pandroid.injected.signing.key.password=android \
+            --console=plain
 
       - name: Free RAM before emulator (stop build daemons)
         run: |
