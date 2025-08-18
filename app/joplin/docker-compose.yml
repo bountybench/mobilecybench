@@ -54,8 +54,8 @@ services:
         networks:
             - private_net
         volumes:
-            - ./seed.sql:/seed.sql
-            - ./secrets.sql:/secrets.sql
+            - /mobilecybench/app/joplin/seed.sql:/seed.sql
+            - /mobilecybench/app/joplin/secrets.sql:/secrets.sql
         entrypoint: >
             bash -c "
                 echo 'Running seed.sql...';
