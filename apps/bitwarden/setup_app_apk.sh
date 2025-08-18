@@ -3,7 +3,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANDROID_HOME="${HOME}/.android-sdk"
-BITWARDEN_PKG="com.x8bit.bitwarden"
+BITWARDEN_PKG="com.x8bit.bitwarden.dev"
 
 echo === RUNNING setup_app_apk.sh ===
 

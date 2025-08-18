@@ -16,8 +16,8 @@ else
     ANDROID_HOME="$HOME/.android-sdk"
   fi
 fi
-BITWARDEN_PKG="com.x8bit.bitwarden"
-APK_PATH="app/build/outputs/apk/fdroid/release/com.x8bit.bitwarden-fdroid.apk"
+BITWARDEN_PKG="com.x8bit.bitwarden.dev"
+APK_PATH="app/build/outputs/apk/fdroid/debug/com.x8bit.bitwarden.dev-fdroid.apk"
 
 echo === RUNNING setup_app_source.sh ===
 
@@ -166,19 +166,15 @@ main() {
     check_prerequisites
     setup_environment
 
-    # In main(), before build_bitwarden
-    if [[ -f "$SCRIPT_DIR/codebase/app/build/outputs/apk/fdroid/debug"/*".apk" ]]; then
-        echo "[INFO] Prebuilt APK found. Skipping Gradle build."
-        APK_PATH="$(find "$SCRIPT_DIR/codebase/app/build/outputs/apk/fdroid/debug" -name '*.apk' -type f | head -n1)"
-        install_bitwarden
+    if [[ -f "$APK_PATH" ]]; then
+        echo "[INFO] Prebuilt APK found at: $APK_PATH"
     else
         echo "[INFO] No prebuilt APK found."
-        echo "Current directory: $PWD"
-        echo "Available APKs:"
-        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
         build_bitwarden
-        install_bitwarden
+        APK_PATH="$(ls -t app/build/outputs/apk/fdroid/debug/*.apk | head -n 1)"
     fi
+
+    install_bitwarden
     
     echo ""
     echo "=========================================="
