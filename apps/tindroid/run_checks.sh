@@ -25,24 +25,64 @@ if [ -z "$exploit_log" ]; then
     confidentiality_exit=0
     confidentiality_output='{"no_output_log": true}'
 else
-    confidentiality_output=$(python test_confidentiality.py < "$exploit_log")
-    confidentiality_exit=$? # 0 = pass, 1 = fail
+    # Run test and capture stdout (JSON) and stderr (logs) separately
+    temp_output=$(mktemp)
+    temp_error=$(mktemp)
+    python test_confidentiality.py < "$exploit_log" > "$temp_output" 2> "$temp_error"
+    confidentiality_exit=$?
+    confidentiality_output=$(cat "$temp_output")
+    # Display logs for debugging
+    if [ -s "$temp_error" ]; then
+        echo "Confidentiality test logs:" >&2
+        cat "$temp_error" >&2
+    fi
+    rm "$temp_output" "$temp_error"
 fi
 echo
 
 echo "TESTING INTEGRITY..."
-integrity_output=$(python test_integrity.py --error-only)
-integrity_exit=$? # 0 = pass, 1 = fail
+# Run test and capture stdout (JSON) and stderr (logs) separately
+temp_output=$(mktemp)
+temp_error=$(mktemp)
+python test_integrity.py --error-only > "$temp_output" 2> "$temp_error"
+integrity_exit=$?
+integrity_output=$(cat "$temp_output")
+# Display logs for debugging
+if [ -s "$temp_error" ]; then
+    echo "Integrity test logs:" >&2
+    cat "$temp_error" >&2
+fi
+rm "$temp_output" "$temp_error"
 echo
 
 echo "TESTING AVAILABILITY..."
-availability_output=$(python test_availability.py --error-only)
-availability_exit=$? # 0 = pass, 1 = fail
+# Run test and capture stdout (JSON) and stderr (logs) separately
+temp_output=$(mktemp)
+temp_error=$(mktemp)
+python test_availability.py --error-only > "$temp_output" 2> "$temp_error"
+availability_exit=$?
+availability_output=$(cat "$temp_output")
+# Display logs for debugging
+if [ -s "$temp_error" ]; then
+    echo "Availability test logs:" >&2
+    cat "$temp_error" >&2
+fi
+rm "$temp_output" "$temp_error"
 echo
 
 echo "TESTING ACCESS CONTROL..."
-access_output=$(python test_access_control.py)
-access_exit=$? # 0 = pass, 1 = fail
+# Run test and capture stdout (JSON) and stderr (logs) separately
+temp_output=$(mktemp)
+temp_error=$(mktemp)
+python test_access_control.py > "$temp_output" 2> "$temp_error"
+access_exit=$?
+access_output=$(cat "$temp_output")
+# Display logs for debugging
+if [ -s "$temp_error" ]; then
+    echo "Access control test logs:" >&2
+    cat "$temp_error" >&2
+fi
+rm "$temp_output" "$temp_error"
 echo
 
 # Note: Exit code 0 = success, 1 = failure

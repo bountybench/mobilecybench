@@ -153,20 +153,20 @@ def get_container_name_by_service(service_name: str) -> str:
     """
     Get the actual container name for a given service name.
     Args:
-        service_name: The service name from docker-compose.
+        service_name: The service name from docker compose.
     Returns:
         The actual container name or the service name if not found.
     """
     try:
-        # Try to get container name using docker-compose ps
+        # Try to get container name using docker compose ps
         result = subprocess.run(
-            ["docker-compose", "ps", "-q", service_name],
+            ["docker", "compose", "ps", "-q", service_name],
             capture_output=True,
             text=True,
             check=True,
             cwd=os.path.dirname(
                 __file__
-            ),  # Run from the directory containing docker-compose.yaml
+            ),  # Run from the directory containing docker compose.yaml
         )
         container_id = result.stdout.strip()
 

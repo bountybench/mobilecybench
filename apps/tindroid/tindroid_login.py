@@ -209,8 +209,11 @@ def main():
         if not logout_current_user(d):
             print(
                 "[ERROR] Logout attempt failed. Please check Android device and try again."
+                if args.verbose
+                else None
             )
-            print(d.dump_hierarchy())
+            if args.verbose:
+                print(d.dump_hierarchy())
             sys.exit(1)
         else:
             print("[INFO] Logout successful.") if args.verbose else None

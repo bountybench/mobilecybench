@@ -21,6 +21,11 @@ if [ -f "secrets.json" ]; then
     rm -f "secrets.json"
 fi
 
+if [ -f "init-db.sql" ]; then
+    echo "Removing generated init-db.sql"
+    rm -f "init-db.sql"
+fi
+
 if [ -f "seed_secrets.sql" ]; then
     echo "Removing generated seed DB: seed_secrets.sql"
     rm -f "seed_secrets.sql"

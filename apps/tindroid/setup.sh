@@ -97,6 +97,17 @@ EOF
     # Load environment variables
     source .env
 
+    # Generate init-db.sql with environment variables
+    echo "Generating init-db.sql with environment variables..."
+    cat > init-db.sql <<EOF
+DROP DATABASE IF EXISTS ${MYSQL_DATABASE};
+DROP USER IF EXISTS '${MYSQL_USER}'@'%';
+CREATE USER '${MYSQL_USER}'@'%' IDENTIFIED BY '${MYSQL_PASSWORD}';
+GRANT ALL PRIVILEGES ON *.* TO '${MYSQL_USER}'@'%' WITH GRANT OPTION;
+GRANT ALL PRIVILEGES ON ${MYSQL_DATABASE}.* TO '${MYSQL_USER}'@'%';
+FLUSH PRIVILEGES;
+EOF
+
     echo "Running docker compose up to start the db and tinode-server containers..."
     docker compose up -d
 

@@ -7,20 +7,11 @@ services:
   db:
     image: mysql:8.0
     restart: always
-    command: >
-      bash -c "
-      docker-entrypoint.sh mysqld &
-      sleep 10 &&
-      mysql -u root -p${MYSQL_ROOT_PASSWORD} -e \"DROP DATABASE IF EXISTS ${MYSQL_DATABASE}; GRANT CREATE ON *.* TO '${MYSQL_USER}'@'%'; FLUSH PRIVILEGES;\" &&
-      wait
-      "
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
     volumes:
       - ./mysql.cnf:/etc/mysql/conf.d/custom.cnf:ro
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "${MYSQL_USER}", "-p${MYSQL_PASSWORD}"]
       timeout: 10s

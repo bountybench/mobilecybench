@@ -51,7 +51,7 @@ def load_secrets():
 # get the container id of the specified service
 def get_container_id(service_name: str):
     return (
-        subprocess.check_output(["docker-compose", "ps", "-q", service_name])
+        subprocess.check_output(["docker", "compose", "ps", "-q", service_name])
         .decode()
         .strip()
     )
