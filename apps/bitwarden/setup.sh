@@ -4,7 +4,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-PKG_NAME="com.x8bit.bitwarden"
+PKG_NAME="com.x8bit.bitwarden.dev"
 
 echo === RUNNING setup.sh ===
 

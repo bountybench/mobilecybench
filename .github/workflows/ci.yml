@@ -47,23 +47,24 @@ jobs:
           source /tmp/shared_functions.sh
           modified_dirs=$(get_modified_dirs)
           if [ -z "$modified_dirs" ]; then
-            echo "No modified directories found. Defaulting to apps/bitwarden."
-            modified_dirs="apps/bitwarden"
+            echo "No modified directories with essential changes found. Skipping further steps."
+            echo "should_exit=true" >> $GITHUB_OUTPUT
+          else
+            echo "Modified directories:"
+            echo "$modified_dirs"
+          
+            readarray -t dirs <<< "$modified_dirs"
+            count=${#dirs[@]}
+            if [ "$count" -gt 1 ]; then
+              echo "More than one modified directory detected: ${dirs[*]}"
+              echo "Each PR should only modify one app"
+              exit 1
+            fi
+
+            echo "modified_dirs<<EOF" >> $GITHUB_OUTPUT
+            echo "$modified_dirs" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
           fi
-
-          echo "Modified directories:"
-          echo "$modified_dirs"
-
-          readarray -t dirs <<< "$modified_dirs"
-          count=${#dirs[@]}
-          if [ "$count" -gt 1 ]; then
-            echo "More than one modified directory detected: ${dirs[*]}"
-            echo "Each PR should only modify one app"
-            exit 1
-          fi
-
-          echo "modified_dirs=$modified_dirs" >> $GITHUB_OUTPUT
-          echo "should_exit=false" >> $GITHUB_OUTPUT
 
       - name: Get API level & Java versions
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -134,16 +135,16 @@ jobs:
 
   test:
     needs: setup
+    if: needs.setup.outputs.should_exit != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       matrix:
         test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
       fail-fast: false  
-      max-parallel: 3
+      max-parallel: 3 
     
     steps:
-
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
         with:
@@ -297,7 +298,7 @@ jobs:
               echo "$base does not exist."
             fi
           done
-
+          
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
@@ -328,7 +329,7 @@ jobs:
           docker manifest inspect cybench/mobilecybench:latest
           docker image tag cybench/mobilecybench:latest mobilecybench
 
-      - name: Display disk space after pulling image	
+      - name: Display disk space after pulling image
         run: df -H
 
       - name: Create Docker Network
@@ -508,12 +509,6 @@ jobs:
           ./gradlew --max-workers=2 --parallel --build-cache \
             :app:assembleFdroidDebug \
             --console=plain -S
-
-          echo "Stopping Gradle daemons..."
-          ./gradlew --stop || true
-          pkill -f kotlin.daemon.KotlinCompileDaemon || true
-          # Show any lingering build JVMs (non-fatal)
-          jps -v | grep -E 'GradleDaemon|Kotlin' || true
           
           # Verify the APK was created
           find app/build/outputs -name "*.apk" -maxdepth 4 -print
@@ -528,6 +523,21 @@ jobs:
           else
             echo "WARNING: No APK found to copy to prebuilt-apk cache"
           fi
+
+      - name: Stabilize Runner After Build
+        run: |
+          echo "Stopping Gradle daemons..."
+          ./gradlew --stop || true
+          pkill -f kotlin.daemon.KotlinCompileDaemon || true
+          # Show any lingering build JVMs (non-fatal)
+          jps -v | grep -E 'GradleDaemon|Kotlin' || true
+          
+          echo "Memory usage immediately after build:"
+          free -h
+          echo "Waiting 30 seconds for OS to reclaim memory..."
+          sleep 30
+          echo "Memory usage after waiting:"
+          free -h
 
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
@@ -570,7 +580,7 @@ jobs:
           script: ./test_checks.sh
 
       - name: Display disk space after tests
-        if: always()	
+        if: always()
         run: df -h
 
       - name: Docker Cleanup after tests
@@ -578,6 +588,6 @@ jobs:
         run: |
           docker system prune -af
 
-      - name: Display disk space after cleanup	
-        if: always()	
+      - name: Display disk space after cleanup
+        if: always()
         run: df -h

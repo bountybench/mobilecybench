@@ -113,16 +113,17 @@ def check_app_can_launch() -> bool:
 
 def check_app_crash_logs() -> bool:
     """Checks for crash or ANR indicators in recent ADB logs."""
-    print("Checking for app crashes or ANRs in ADB logs...", file=sys.stderr)
-    logs = adb(["logcat", "-t", "200"])
+    print(f"[INFO]Checking for {BITWARDEN_PKG} crashes or ANRs in ADB logs...", file=sys.stderr)
+    logs = adb(["logcat", "-t", "500"])
     if logs is None:
+        print("[ERROR] No ADB logs found.", file=sys.stderr)
         return False
 
     # 1) Detect classic Android crash pattern: FATAL EXCEPTION + matching Process line
     lines = logs.splitlines()
     for i, line in enumerate(lines):
         if "FATAL EXCEPTION" in line:
-            for nearby_line in lines[i + 1 : i + 4]:
+            for nearby_line in lines[i - 3 : i + 3]:
                 if f"Process: {BITWARDEN_PKG}" in nearby_line:
                     print(
                         f"[FAIL] Crash detected for {BITWARDEN_PKG}: FATAL EXCEPTION with matching process.",

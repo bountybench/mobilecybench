@@ -196,13 +196,21 @@ def _wait_for_element(d, element, timeout=180):
     """
     start_time = time.time()
 
+    selector_info = _parse_selector_from_element(element)
+
+    if not element.exists:
+        _try_scroll_into_view(d, selector_info)
+
     while time.time() - start_time < timeout:
         if not _handle_anr(
             d, max_anrs=5, timeout=1, target_element=element
         ):  # Failed to unfreeze system UI; abort early
             return False
+
         if element.exists:  # Element found; return True
             return True
+        else:
+            _try_scroll_into_view(d, selector_info)
         time.sleep(1)
 
     return False
