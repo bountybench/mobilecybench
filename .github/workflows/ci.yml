@@ -513,6 +513,15 @@ jobs:
           # Verify the APK was created
           find app/build/outputs -name "*.apk" -maxdepth 4 -print
 
+          echo "Memory usage immediately after build:"
+          free -h
+
+          echo "Stopping Gradle daemons..."
+          ./gradlew --stop || true
+          pkill -f kotlin.daemon.KotlinCompileDaemon || true
+          # Show any lingering build JVMs (non-fatal)
+          jps -v | grep -E 'GradleDaemon|Kotlin' || true
+
           # Copy the newest APK outside the submodule so later clean/reset won't delete it
           PREBUILT_DIR="$GITHUB_WORKSPACE/apps/bitwarden/prebuilt-apk"
           mkdir -p "$PREBUILT_DIR"
@@ -524,29 +533,67 @@ jobs:
             echo "WARNING: No APK found to copy to prebuilt-apk cache"
           fi
 
-      - name: Stabilize Runner After Build
+      - name: Debug - Show System State Post Gradle
+        if: always() # Use 'always()' to run this even if a previous step failed
         run: |
-          echo "Memory usage immediately after build:"
+          echo "--- TOP MEMORY/CPU USERS (top) ---"
+          top -b -n 1 | head -n 20
+
+          echo ""
+          echo "--- FULL PROCESS LIST (ps) ---"
+          ps aux
+
+          echo ""
+          echo "--- PROCESS TREE (pstree) ---"
+          pstree -p
+
+          echo ""
+          echo "--- JAVA PROCESSES (jps) ---"
+          jps -v || echo "No Java processes found."
+
+          echo ""
+          echo "--- MEMORY USAGE (free) ---"
           free -h
 
-          echo "Stopping Gradle daemons..."
-          ./gradlew --stop || true
-          pkill -f kotlin.daemon.KotlinCompileDaemon || true
-          # Show any lingering build JVMs (non-fatal)
-          jps -v | grep -E 'GradleDaemon|Kotlin' || true
+          echo ""
+          echo "--- DISK USAGE (df) ---"
+          df -h
 
+      - name: Stabilize Runner After Build
+        run: |
           echo "Memory usage after stopping Gradle daemons:"
           free -h
 
-          echo "Waiting 15 seconds for OS to reclaim memory..."
-          sleep 15
-          echo "Memory usage after waiting 15 seconds:"
-          free -h
-
-          echo "Waiting 15 seconds for OS to reclaim memory..."
-          sleep 15
+          echo "Waiting 30 seconds for OS to reclaim memory..."
+          sleep 30
           echo "Memory usage after waiting 30 seconds:"
           free -h
+
+      - name: Debug - Show System State Post Memory Reclaim
+        if: always() # Use 'always()' to run this even if a previous step failed
+        run: |
+          echo "--- TOP MEMORY/CPU USERS (top) ---"
+          top -b -n 1 | head -n 20
+
+          echo ""
+          echo "--- FULL PROCESS LIST (ps) ---"
+          ps aux
+
+          echo ""
+          echo "--- PROCESS TREE (pstree) ---"
+          pstree -p
+
+          echo ""
+          echo "--- JAVA PROCESSES (jps) ---"
+          jps -v || echo "No Java processes found."
+
+          echo ""
+          echo "--- MEMORY USAGE (free) ---"
+          free -h
+
+          echo ""
+          echo "--- DISK USAGE (df) ---"
+          df -h
 
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'

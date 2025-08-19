@@ -121,6 +121,7 @@ def check_app_crash_logs() -> bool:
     if logs is None:
         print("[ERROR] No ADB logs found.", file=sys.stderr)
         return False
+    print(f"[INFO] ADB logs found: {logs}", file=sys.stderr)
 
     # 1) Detect classic Android crash pattern: FATAL EXCEPTION + matching Process line
     lines = logs.splitlines()

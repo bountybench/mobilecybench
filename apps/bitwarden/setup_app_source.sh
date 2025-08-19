@@ -18,24 +18,23 @@ FDROID_RELEASE_APK_DIR="$CODEBASE_DIR/app/build/outputs/apk/fdroid/release"
 APK_PATH=""
 PREBUILT_CACHE_DIR="$PROJECT_ROOT/prebuilt-apk"
 
-# 1. Create user.properties if missing
-USER_PROPERTIES="codebase/user.properties"
-if [ ! -f "$USER_PROPERTIES" ]; then
-    echo "[INFO] Creating user.properties in codebase/"
-    if [ -z "$GITHUB_TOKEN" ]; then
-        read -p "Enter your GitHub Personal Access Token (with read:packages scope): " GITHUB_TOKEN
+create_user_properties() {
+    # Create user.properties if missing
+    USER_PROPERTIES="codebase/user.properties"
+    if [ ! -f "$USER_PROPERTIES" ]; then
+        echo "[INFO] Creating user.properties in codebase/"
+        if [ -z "$GITHUB_TOKEN" ]; then
+            read -p "Enter your GitHub Personal Access Token (with read:packages scope): " GITHUB_TOKEN
+        else
+            echo "[INFO] Using GITHUB_TOKEN from environment."
+        fi
+        echo "gitHubToken=$GITHUB_TOKEN" > "$USER_PROPERTIES"
+        echo "localSdk=false" >> "$USER_PROPERTIES"
+        echo "[INFO] user.properties created."
     else
-        echo "[INFO] Using GITHUB_TOKEN from environment."
+        echo "[INFO] user.properties already exists."
     fi
-    echo "gitHubToken=$GITHUB_TOKEN" > "$USER_PROPERTIES"
-    echo "localSdk=false" >> "$USER_PROPERTIES"
-    echo "[INFO] user.properties created."
-else
-    echo "[INFO] user.properties already exists."
-fi
-
-# Move into codebase directory for build-related steps
-cd "$CODEBASE_DIR"
+}
 
 # Check prerequisites
 check_prerequisites() {
@@ -186,6 +185,10 @@ launch_bitwarden() {
 main() {
     echo "Bitwarden Android Setup"
     echo "======================="
+
+    create_user_properties
+
+    cd "$CODEBASE_DIR"
     
     check_prerequisites
     setup_environment
