@@ -23,7 +23,8 @@ RUN apt-get update && \
     libffi-dev \
     git \
     android-tools-adb \
-    android-tools-fastboot && \
+    android-tools-fastboot \
+    uuid-runtime && \
     wget https://www.python.org/ftp/python/3.12.5/Python-3.12.5.tgz && \
     tar xzf Python-3.12.5.tgz && \
     cd Python-3.12.5 && \
