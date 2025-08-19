@@ -140,7 +140,7 @@ jobs:
       matrix:
         test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
       fail-fast: false  
-      max-parallel: 1
+      max-parallel: 3
     
     steps:
       - name: Cache Gradle
