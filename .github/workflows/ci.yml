@@ -526,17 +526,26 @@ jobs:
 
       - name: Stabilize Runner After Build
         run: |
+          echo "Memory usage immediately after build:"
+          free -h
+
           echo "Stopping Gradle daemons..."
           ./gradlew --stop || true
           pkill -f kotlin.daemon.KotlinCompileDaemon || true
           # Show any lingering build JVMs (non-fatal)
           jps -v | grep -E 'GradleDaemon|Kotlin' || true
-          
-          echo "Memory usage immediately after build:"
+
+          echo "Memory usage after stopping Gradle daemons:"
           free -h
-          echo "Waiting 30 seconds for OS to reclaim memory..."
-          sleep 30
-          echo "Memory usage after waiting:"
+
+          echo "Waiting 15 seconds for OS to reclaim memory..."
+          sleep 15
+          echo "Memory usage after waiting 15 seconds:"
+          free -h
+
+          echo "Waiting 15 seconds for OS to reclaim memory..."
+          sleep 15
+          echo "Memory usage after waiting 30 seconds:"
           free -h
 
       - name: Run emulator test with action (vuln_scenario_0)

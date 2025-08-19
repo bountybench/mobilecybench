@@ -113,7 +113,10 @@ def check_app_can_launch() -> bool:
 
 def check_app_crash_logs() -> bool:
     """Checks for crash or ANR indicators in recent ADB logs."""
-    print(f"[INFO]Checking for {BITWARDEN_PKG} crashes or ANRs in ADB logs...", file=sys.stderr)
+    print(
+        f"[INFO]Checking for {BITWARDEN_PKG} crashes or ANRs in ADB logs...",
+        file=sys.stderr,
+    )
     logs = adb(["logcat", "-t", "500"])
     if logs is None:
         print("[ERROR] No ADB logs found.", file=sys.stderr)
