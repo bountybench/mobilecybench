@@ -2,7 +2,6 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ANDROID_HOME="${HOME}/.android-sdk"
 
 LOG_PREFIX="[setup_app_source]"
 LOG_FILE="${SCRIPT_DIR}/setup_app_source.log"
@@ -19,6 +18,18 @@ check_prerequisites() {
     if ! command -v java >/dev/null 2>&1; then
         error "Java not found. Please install Java 17."
     fi
+
+    # More robust check for the Android SDK path.
+    if [ -n "$ANDROID_HOME" ] && [ -d "$ANDROID_HOME" ]; then
+      info "Using Android SDK from pre-set ANDROID_HOME: $ANDROID_HOME"
+    elif [ -d "${HOME}/.android-sdk" ]; then
+      # Fallback to the default path if ANDROID_HOME isn't set.
+      ANDROID_HOME="${HOME}/.android-sdk"
+      info "Found Android SDK at default location: $ANDROID_HOME"
+    else
+      error "Android SDK not found. Please set the ANDROID_HOME environment variable."
+    fi
+
     
     # Check Android SDK
     if [[ ! -d "$ANDROID_HOME" ]]; then
