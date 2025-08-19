@@ -11,8 +11,7 @@ import urllib.request
 
 from utils.ui_utils import initialize_ui_automation
 
-from .util import adb
-from .util import BITWARDEN_PKG
+from .util import BITWARDEN_PKG, adb
 
 SERVER_SERVICE = "vaultwarden"
 DB_SERVICE = "db"
@@ -146,7 +145,9 @@ def check_app_crash_logs() -> bool:
     ]
 
     if inline_hits:
-        print(f"[FAIL] Crash/ANR indicators found for {BITWARDEN_PKG}.", file=sys.stderr)
+        print(
+            f"[FAIL] Crash/ANR indicators found for {BITWARDEN_PKG}.", file=sys.stderr
+        )
         print("\\n".join(inline_hits), file=sys.stderr)
         return False
 
