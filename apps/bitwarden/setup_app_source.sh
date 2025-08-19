@@ -123,7 +123,7 @@ build_bitwarden() {
     
     # Use --max-workers=2 to perfectly match the 2 CPU cores of the CI runner
     ./gradlew --daemon --parallel --build-cache --max-workers=2 \
-        :app:assembleFdroidDebug --console=plain --stacktrace
+        :app:assembleFdroidDebug --console=plain -S
     
     echo "Build completed successfully."
 }
