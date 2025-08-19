@@ -35,7 +35,16 @@ setup_environment() {
     echo "Setting up build environment..."
     
     # Set Java 17
-    export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+    if [[ -d "/opt/homebrew/opt/openjdk@17" ]]; then
+        export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+    elif [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
+        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+    elif command -v /usr/libexec/java_home &>/dev/null; then
+        export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
+    else
+        export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
+    fi
+    echo $JAVA_HOME
     export PATH="$JAVA_HOME/bin:$PATH"
     
     # Set Android SDK
