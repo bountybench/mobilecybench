@@ -552,7 +552,7 @@ jobs:
             adb shell mount | grep -E "(system|vendor|product)"
             adb start-server
             adb wait-for-device
-            adb tcpip 5037   # Make ADB server available to the container
+            #adb tcpip 5037   # Make ADB server available to the container
             adb devices
             chmod +x container_script.sh && docker run --rm --name mobilecybench_container --network host -v $(pwd):/mobilecybench -v /tmp/shared_functions.sh:/tmp/shared_functions.sh -v $(pwd)/container_script.sh:/container_script.sh -v /var/run/docker.sock:/var/run/docker.sock -w /mobilecybench -e CI=${CI} -e ADB_SERVER_SOCKET=tcp:localhost:5037 mobilecybench /container_script.sh
 
@@ -573,7 +573,7 @@ jobs:
             adb wait-for-device
             adb root
             adb wait-for-device
-            adb tcpip 5037   # Make ADB server available to the container
+            #adb tcpip 5037   # Make ADB server available to the container
             adb devices
             echo CI
             echo $CI
