@@ -16,8 +16,7 @@ password = args.password
 
 def log_info(message: str):
     """Log informational messages"""
-    if VERBOSE:
-        print(f"[INFO] {message}", file=sys.stderr)
+    print(f"[INFO] {message}", file=sys.stderr)
 
 def log_error(message: str):
     """Log error messages"""
@@ -25,8 +24,7 @@ def log_error(message: str):
 
 def log_debug(message: str):
     """Log debug messages"""
-    if VERBOSE:
-        print(f"[DEBUG] {message}", file=sys.stderr)
+    print(f"[DEBUG] {message}", file=sys.stderr)
 
 try:
     d = u2.connect()
