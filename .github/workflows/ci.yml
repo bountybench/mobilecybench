@@ -534,7 +534,7 @@ jobs:
           # Execute the Gradle build with flags matching the runner's 2 CPU cores
           ./gradlew --max-workers=2 --parallel --build-cache \
             :app:assembleFdroidDebug \
-            --console=plain
+            --console=plain --stacktrace
           
           # Verify the APK was created
           find app/build/outputs -name "*.apk" -maxdepth 4 -print
