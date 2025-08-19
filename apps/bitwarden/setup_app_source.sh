@@ -214,9 +214,7 @@ main() {
         echo "[INFO] Prebuilt APK found at: $APK_PATH. Skipping build."
     else
         echo "[INFO] No prebuilt APK found. Building now..."
-        if [ -d "$CODEBASE_DIR/app/build/outputs" ]; then
-            ls -lR "$CODEBASE_DIR/app/build/outputs" || true
-        fi
+        ls -lR "$CODEBASE_DIR/app/build/outputs/apk/fdroid/debug"
         build_bitwarden
         # Re-resolve after build
         resolve_apk_path
