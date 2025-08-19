@@ -76,7 +76,20 @@ build_owncloud() {
 # Sign the release APK with debug keystore
 sign_apk() {
     info "Signing release APK (debug keystore)..."
+
+    KEYSTORE_FILE="$HOME/.android/debug.keystore"
     
+    # Check if the debug keystore exists, and create it if it doesn't.
+    if [ ! -f "$KEYSTORE_FILE" ]; then
+        info "Debug keystore not found. Generating a new one..."
+        mkdir -p "$HOME/.android/"
+        keytool -genkey -v -keystore "$KEYSTORE_FILE" \
+                -alias androiddebugkey -keyalg RSA -keysize 2048 \
+                -validity 10000 -storepass android -keypass android \
+                -dname "CN=Android Debug, O=Android, C=US"
+        info "Debug keystore generated at $KEYSTORE_FILE"
+    fi
+
     APK_UNSIGNED=$(find owncloudApp/build/outputs/apk/original/release/ -name "*-original-release-unsigned.apk" -type f 2>/dev/null | head -1)
     
     if [[ -z "$APK_UNSIGNED" ]]; then
