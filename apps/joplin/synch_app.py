@@ -14,8 +14,35 @@ args = parser.parse_args()
 username = args.username
 password = args.password
 
-d = u2.connect()
+def log_info(message: str):
+    """Log informational messages"""
+    if VERBOSE:
+        print(f"[INFO] {message}", file=sys.stderr)
 
+def log_error(message: str):
+    """Log error messages"""
+    print(f"[ERROR] {message}", file=sys.stderr)
+
+def log_debug(message: str):
+    """Log debug messages"""
+    if VERBOSE:
+        print(f"[DEBUG] {message}", file=sys.stderr)
+
+try:
+    d = u2.connect()
+    log_info("Successfully connected to device")
+except Exception as e:
+    log_error(f"Failed to connect to device: {e}")
+    exit(1)
+
+def check_device_connection() -> bool:
+    """Check if device is still connected and responsive"""
+    try:
+        d.info
+        return True
+    except Exception as e:
+        log_error(f"Device connection lost: {e}")
+        exit(1)
 
 def wait_and_click_text(text, timeout=45):
     if d(text=text).wait(timeout=timeout):
@@ -57,12 +84,13 @@ def wait_for_ui_stable(timeout=10, interval=0.5):
         time.sleep(interval)
     return False
 
-
+check_device_connection()
 wait_for_ui_stable(timeout=15, interval=1)
 wait_and_click_desc("Sidebar, Show/hide the sidebar")
 wait_and_click_text("Configuration")
 wait_for_ui_stable(timeout=15, interval=1)
 
+check_device_connection()
 label = d(text="Synchronization target")
 if label.exists:
     dropdown = label.sibling(className="android.view.ViewGroup")
@@ -71,6 +99,7 @@ if label.exists:
     wait_and_click_text("Joplin Server (Beta)")
 
 # Fill Joplin Server URL
+check_device_connection()
 label = d(text="Joplin Server URL")
 if label.exists:
     edit = label.sibling(className="android.widget.EditText")
@@ -82,6 +111,7 @@ if label.exists:
 wait_for_ui_stable(timeout=5)
 
 # Fill Joplin Server email
+check_device_connection()
 label = d(text="Joplin Server email")
 if label.exists:
     edit = label.sibling(className="android.widget.EditText")
@@ -93,6 +123,7 @@ if label.exists:
 wait_for_ui_stable(timeout=5)
 
 # Fill Joplin Server password
+check_device_connection()
 label = d(text="Joplin Server password")
 if label.exists:
     edit = label.sibling(className="android.widget.EditText")
@@ -103,6 +134,7 @@ if label.exists:
     d.press("enter")
 wait_for_ui_stable(timeout=5, interval=1)
 
+check_device_connection()
 wait_and_click_text("CHECK SYNCHRONIZATION CONFIGURATION")
 wait_for_ui_stable(timeout=10, interval=3)
 

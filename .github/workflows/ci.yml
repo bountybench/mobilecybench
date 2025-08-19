@@ -321,41 +321,41 @@ jobs:
           pip install -r .github/requirements.txt -q
           export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
 
-      # - name: Docker Cleanup before pulling new image
-      #   run: |
-      #     docker system prune -af
-      #     docker image prune -af
-
-      # - name: Pull Docker container
-      #   run: |
-      #     docker pull --quiet cybench/mobilecybench:latest
-      #     docker manifest inspect cybench/mobilecybench:latest
-      #     docker image tag cybench/mobilecybench:latest mobilecybench
-
-      # - name: Display disk space after pulling image
-      #   run: df -H
-
-      # - name: Create Docker Network
-      #   run: docker network create shared_net || true
-
       - name: Docker Cleanup before pulling new image
         run: |
           docker system prune -af
           docker image prune -af
 
-      - name: Build Docker Image
+      - name: Pull Docker container
         run: |
-          docker build -t custom-kali-linux-ci -f .github/Dockerfile .
-
-      - name: Tag Docker Image
-        run: |
-          docker image tag custom-kali-linux-ci mobilecybench
+          docker pull --quiet cybench/mobilecybench:latest
+          docker manifest inspect cybench/mobilecybench:latest
+          docker image tag cybench/mobilecybench:latest mobilecybench
 
       - name: Display disk space after pulling image
         run: df -H
 
       - name: Create Docker Network
         run: docker network create shared_net || true
+
+      # - name: Docker Cleanup before pulling new image
+      #   run: |
+      #     docker system prune -af
+      #     docker image prune -af
+
+      # - name: Build Docker Image
+      #   run: |
+      #     docker build -t custom-kali-linux-ci -f .github/Dockerfile .
+
+      # - name: Tag Docker Image
+      #   run: |
+      #     docker image tag custom-kali-linux-ci mobilecybench
+
+      # - name: Display disk space after pulling image
+      #   run: df -H
+
+      # - name: Create Docker Network
+      #   run: docker network create shared_net || true
 
       - name: Enable KVM
         run: |
