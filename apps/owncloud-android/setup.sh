@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # Environment + baseline setup script for OwnCloud CIAA tests.
 # Steps:
-#   1. Verify prerequisites (docker, python3, uv, optional adb)
+#   1. Verify prerequisites (docker, python3, uv, adb)
 #   2. Launch docker-compose stack (OwnCloud + DB + Redis)
 #   3. Wait for container health
 #   4. Create / reuse Python virtual environment via uv
 #   5. Ensure Python deps (requests, python-dotenv) present if not declared already
 #   6. Run seeder (produces baseline manifest)
-#   7. (Optional) Download & install APK (skipped with SKIP_APK=1)
+#   7. Install Android app (required):
+#        - By default: build from source and install (setup_app_source.sh)
+#        - With --fast or FAST=1: install via APK link (setup_app_apklink.sh)
 # Usage:
-#   ./setup.sh
-#   SKIP_APK=1 ./setup.sh                # Skip APK install
+#   ./setup.sh [--fast] [--apk-url URL]
+#   FAST=1 ./setup.sh                    # Fast path (APK link)
 #   SEED_OUTPUT=my_manifest.json ./setup.sh
 set -euo pipefail
 IFS=$'\n\t'
@@ -19,6 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)"
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
 SEED_SCRIPT="${SCRIPT_DIR}/owncloud_setup.py"
 APK_LINK_SCRIPT="${SCRIPT_DIR}/setup_app_apklink.sh"
+APP_SOURCE_SCRIPT="${SCRIPT_DIR}/setup_app_source.sh"
 VENV_DIR="${SCRIPT_DIR}/.venv"
 DEFAULT_OUTPUT="baseline_manifest.json"
 SEED_OUTPUT=${SEED_OUTPUT:-$DEFAULT_OUTPUT}
@@ -29,6 +32,43 @@ LOG_PREFIX="[setup]"
 TARGET_PACKAGE="com.owncloud.android"
 TARGET_DIR="/data/data/${TARGET_PACKAGE}"
 ANDROID_BASELINE_FILE="${SCRIPT_DIR}/baseline_android_dir.txt"
+
+# Defaults and CLI flags
+INSTALL_MODE="source"   # source | apk
+APK_URL="${APK_URL:-}"
+
+parse_args(){
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --fast|-f)
+        INSTALL_MODE="apk"
+        shift
+        ;;
+      --apk-url)
+        APK_URL="${2:-}"
+        if [[ -z "$APK_URL" ]]; then fail "--apk-url requires a value"; fi
+        shift 2
+        ;;
+      --help|-h)
+        cat <<EOF
+Usage: ./setup.sh [--fast] [--apk-url URL]
+  --fast, -f      Use APK link install instead of building from source
+  --apk-url URL   Custom APK URL for fast mode (overrides default)
+
+Environment:
+  FAST=1          Same as --fast
+
+EOF
+        exit 0
+        ;;
+      *)
+        warn "Unknown argument: $1 (ignored)"
+        shift
+        ;;
+    esac
+  done
+  if [[ "${FAST:-0}" == "1" ]]; then INSTALL_MODE="apk"; fi
+}
 
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*" >&2; }
@@ -48,6 +88,7 @@ ensure_prereqs(){
   info "Checking prerequisites"
   command_exists docker || fail "docker is required"
   command_exists python3 || fail "python3 is required"
+  command_exists adb || fail "adb is required"
   ensure_uv
   info "Prerequisites OK"
 }
@@ -124,31 +165,41 @@ run_seeder(){
   info "Seeder produced $(ls -l "$SEED_OUTPUT" | awk '{print $5" bytes"}')"
 }
 
-maybe_install_apk(){
-  if [[ "${SKIP_APK:-0}" == "1" ]]; then
-    info "Skipping APK installation (SKIP_APK=1)"
-    return 0
-  fi
+install_app(){
   if ! command_exists adb; then
-    warn "adb not found; skipping APK installation"
-    return 0
+    fail "adb not found; cannot install Android app"
   fi
-  if [[ -x "$APK_LINK_SCRIPT" ]]; then
-    info "Invoking APK link script"
-    if ! "$APK_LINK_SCRIPT"; then
-      warn "APK link script failed"
-      return 0
-    fi
-  else
-    warn "APK link script missing or not executable: $APK_LINK_SCRIPT"
-    return 0
-  fi
+  case "$INSTALL_MODE" in
+    source)
+      if [[ -x "$APP_SOURCE_SCRIPT" ]]; then
+        info "Installing app by building from source (default)"
+        "$APP_SOURCE_SCRIPT" || fail "Source install script failed"
+      else
+        fail "Source install script missing or not executable: $APP_SOURCE_SCRIPT"
+      fi
+      ;;
+    apk)
+      if [[ -x "$APK_LINK_SCRIPT" ]]; then
+        info "Installing app via APK link (--fast)"
+        if [[ -n "$APK_URL" ]]; then
+          "$APK_LINK_SCRIPT" "$APK_URL" || fail "APK link install script failed"
+        else
+          "$APK_LINK_SCRIPT" || fail "APK link install script failed"
+        fi
+      else
+        fail "APK link script missing or not executable: $APK_LINK_SCRIPT"
+      fi
+      ;;
+    *)
+      fail "Unknown INSTALL_MODE=$INSTALL_MODE"
+      ;;
+  esac
   # Basic verification
   sleep 2
   if adb shell pm list packages | grep -q "com.owncloud.android"; then
-    info "APK installed (com.owncloud.android)"
+    info "Android app installed (com.owncloud.android)"
   else
-    warn "APK installation not verified"
+    fail "Android app installation not verified"
   fi
 }
 
@@ -189,12 +240,13 @@ summary(){
 }
 
 main(){
+  parse_args "$@"
   ensure_prereqs
   start_stack
   wait_for_health
   setup_python
   run_seeder
-  maybe_install_apk
+  install_app
   capture_android_dir_baseline
   summary
 }
