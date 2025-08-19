@@ -539,14 +539,16 @@ jobs:
           # Verify the APK was created
           find app/build/outputs -name "*.apk" -maxdepth 4 -print
 
-      - name: Free RAM before emulator (stop build daemons)
-        run: |
-          set -e
-          cd apps/bitwarden/codebase
-          ./gradlew --stop || true
-          pkill -f kotlin.daemon.KotlinCompileDaemon || true
-          # Show any lingering build JVMs (non-fatal)
-          jps -v | grep -E 'GradleDaemon|Kotlin' || true
+          # Copy the newest APK outside the submodule so later clean/reset won't delete it
+          PREBUILT_DIR="$GITHUB_WORKSPACE/apps/bitwarden/prebuilt-apk"
+          mkdir -p "$PREBUILT_DIR"
+          APK_SRC=$(ls -t app/build/outputs/apk/fdroid/debug/*.apk app/build/outputs/apk/fdroid/release/*.apk 2>/dev/null | head -n1 || true)
+          if [ -n "$APK_SRC" ]; then
+            echo "Copying prebuilt APK: $APK_SRC -> $PREBUILT_DIR/bitwarden.apk"
+            cp -f "$APK_SRC" "$PREBUILT_DIR/bitwarden.apk"
+          else
+            echo "WARNING: No APK found to copy to prebuilt-apk cache"
+          fi
 
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'

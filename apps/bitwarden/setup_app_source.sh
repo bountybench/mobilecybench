@@ -38,6 +38,7 @@ FDROID_RELEASE_APK_DIR="$CODEBASE_DIR/app/build/outputs/apk/fdroid/release"
 
 # Resolved APK path (absolute). Will be filled by resolve_apk_path()
 APK_PATH=""
+PREBUILT_CACHE_DIR="$PROJECT_ROOT/prebuilt-apk"
 
 # 1. Create user.properties if missing
 USER_PROPERTIES="codebase/user.properties"
@@ -130,6 +131,10 @@ build_bitwarden() {
 # Resolve latest APK path across common output folders
 resolve_apk_path() {
     local candidates=()
+    # Prefer cached prebuilt APK copied by CI (outside submodule)
+    if [ -f "$PREBUILT_CACHE_DIR/bitwarden.apk" ]; then
+        candidates+=( "$PREBUILT_CACHE_DIR/bitwarden.apk" )
+    fi
     if compgen -G "$FDROID_DEBUG_APK_DIR/*.apk" > /dev/null; then
         candidates+=( $(ls -t "$FDROID_DEBUG_APK_DIR"/*.apk 2>/dev/null) )
     fi
