@@ -143,15 +143,6 @@ jobs:
       max-parallel: 3
     
     steps:
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*','**/gradle-wrapper.properties','**/settings.*','**/gradle/libs.versions.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
 
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
@@ -497,10 +488,9 @@ jobs:
           
           chmod +x test_checks.sh
 
-      - name: Prebuild Bitwarden (assembleFdroidRelease)
+      - name: Prebuild Bitwarden (assembleFdroidDebug)
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-          # Optimal settings for a 7GB/2-core runner with no emulator active.
           GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
         run: |
           set -e
@@ -518,6 +508,12 @@ jobs:
           ./gradlew --max-workers=2 --parallel --build-cache \
             :app:assembleFdroidDebug \
             --console=plain -S
+
+          echo "Stopping Gradle daemons..."
+          ./gradlew --stop || true
+          pkill -f kotlin.daemon.KotlinCompileDaemon || true
+          # Show any lingering build JVMs (non-fatal)
+          jps -v | grep -E 'GradleDaemon|Kotlin' || true
           
           # Verify the APK was created
           find app/build/outputs -name "*.apk" -maxdepth 4 -print
@@ -532,15 +528,6 @@ jobs:
           else
             echo "WARNING: No APK found to copy to prebuilt-apk cache"
           fi
-
-      - name: Free RAM before emulator (stop build daemons)
-        run: |
-          set -e
-          cd apps/bitwarden/codebase
-          ./gradlew --stop || true
-          pkill -f kotlin.daemon.KotlinCompileDaemon || true
-          # Show any lingering build JVMs (non-fatal)
-          jps -v | grep -E 'GradleDaemon|Kotlin' || true
 
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
