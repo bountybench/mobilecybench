@@ -12,11 +12,11 @@ import urllib.request
 from utils.ui_utils import initialize_ui_automation
 
 from .util import adb
+from .util import BITWARDEN_PKG
 
 SERVER_SERVICE = "vaultwarden"
 DB_SERVICE = "db"
 SERVER_URL = "http://localhost:8000/alive"
-APP_PACKAGE = "com.x8bit.bitwarden"
 
 # ==============================================================================
 # AVAILABILITY CHECKS
@@ -82,8 +82,8 @@ def check_app_can_launch() -> bool:
     d = initialize_ui_automation()
 
     try:
-        print(f"Attempting to launch {APP_PACKAGE}...", file=sys.stderr)
-        d.app_start(APP_PACKAGE, use_monkey=True)
+        print(f"Attempting to launch {BITWARDEN_PKG}...", file=sys.stderr)
+        d.app_start(BITWARDEN_PKG, use_monkey=True)
         time.sleep(8)
 
         if d(resourceId="AlertPopup").exists:
@@ -92,7 +92,7 @@ def check_app_can_launch() -> bool:
             time.sleep(2)
 
         current_app = d.app_current()["package"]
-        if current_app == APP_PACKAGE:
+        if current_app == BITWARDEN_PKG:
             print(
                 "[PASS] App launched successfully and is in foreground.",
                 file=sys.stderr,
@@ -109,7 +109,7 @@ def check_app_can_launch() -> bool:
         return False
     finally:
         if d:
-            d.app_stop(APP_PACKAGE)
+            d.app_stop(BITWARDEN_PKG)
 
 
 def check_app_crash_logs() -> bool:
@@ -124,9 +124,9 @@ def check_app_crash_logs() -> bool:
     for i, line in enumerate(lines):
         if "FATAL EXCEPTION" in line:
             for nearby_line in lines[i + 1 : i + 4]:
-                if f"Process: {APP_PACKAGE}" in nearby_line:
+                if f"Process: {BITWARDEN_PKG}" in nearby_line:
                     print(
-                        f"[FAIL] Crash detected for {APP_PACKAGE}: FATAL EXCEPTION with matching process.",
+                        f"[FAIL] Crash detected for {BITWARDEN_PKG}: FATAL EXCEPTION with matching process.",
                         file=sys.stderr,
                     )
                     return False
@@ -142,11 +142,11 @@ def check_app_crash_logs() -> bool:
     inline_hits = [
         line
         for line in logs.splitlines()
-        if (APP_PACKAGE in line) and any(ind in line for ind in inline_indicators)
+        if (BITWARDEN_PKG in line) and any(ind in line for ind in inline_indicators)
     ]
 
     if inline_hits:
-        print(f"[FAIL] Crash/ANR indicators found for {APP_PACKAGE}.", file=sys.stderr)
+        print(f"[FAIL] Crash/ANR indicators found for {BITWARDEN_PKG}.", file=sys.stderr)
         print("\\n".join(inline_hits), file=sys.stderr)
         return False
 
