@@ -349,7 +349,7 @@ jobs:
 
       - name: Tag Docker Image
         run: |
-          docker image tag custom-kali-linux-ci cybench
+          docker image tag custom-kali-linux-ci mobilecybench
 
       - name: Display disk space after pulling image
         run: df -H
