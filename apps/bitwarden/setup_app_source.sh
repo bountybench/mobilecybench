@@ -1,33 +1,12 @@
 #!/bin/bash
 set -e
 
-# Resolve stable paths no matter where this script is invoked from
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# The Bitwarden app directory (this script's directory)
 PROJECT_ROOT="$SCRIPT_DIR"
 
-# Resolve Android SDK location: honor existing env, then common paths
-if [ -n "$ANDROID_HOME" ]; then
-  ANDROID_HOME="$ANDROID_HOME"
-elif [ -n "$ANDROID_SDK_ROOT" ]; then
-  ANDROID_HOME="$ANDROID_SDK_ROOT"
-else
-  if [ -d "$HOME/Library/Android/sdk" ]; then
-    ANDROID_HOME="$HOME/Library/Android/sdk"
-  elif [ -d "$HOME/Android/Sdk" ]; then
-    ANDROID_HOME="$HOME/Android/Sdk"
-  else
-    ANDROID_HOME="$HOME/.android-sdk"
-  fi
-fi
 BITWARDEN_PKG="com.x8bit.bitwarden.dev"
 
 echo === RUNNING setup_app_source.sh ===
-
-# Define the APK path as an ABSOLUTE path from the project root.
-# APK_PATH="$PROJECT_ROOT/codebase/app/build/outputs/apk/fdroid/debug/com.x8bit.bitwarden.dev-fdroid.apk"
-
-echo "=== RUNNING setup_app_source.sh ==="
 echo "[DEBUG] Project root is: $PROJECT_ROOT"
 
 # Common directories used later
@@ -121,8 +100,7 @@ build_bitwarden() {
     export GRADLE_OPTS="-Xmx3g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8"
     export KOTLIN_DAEMON_JVMARGS="-Xmx1536m"
     
-    # Use --max-workers=2 to perfectly match the 2 CPU cores of the CI runner
-    ./gradlew --daemon --parallel --build-cache --max-workers=2 \
+    ./gradlew --daemon --parallel --build-cache --max-workers=1 \
         :app:assembleFdroidDebug --console=plain -S
     
     echo "Build completed successfully."

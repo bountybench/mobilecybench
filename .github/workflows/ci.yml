@@ -135,7 +135,7 @@ jobs:
   test:
     needs: setup
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 40
     strategy:
       matrix:
         test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
@@ -268,9 +268,9 @@ jobs:
 
                 cd "codebase" || exit 1
 
-                # echo "Cleaning up the codebase"
-                # git reset --hard HEAD
-                # sudo git clean -fdx
+                echo "Cleaning up the codebase"
+                git reset --hard HEAD
+                sudo git clean -fdx
 
                 # Update the submodule and checkout the commit
                 git checkout "$commit"
@@ -306,9 +306,6 @@ jobs:
               echo "$base does not exist."
             fi
           done
-          
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -339,6 +336,9 @@ jobs:
           docker pull --quiet cybench/mobilecybench:latest
           docker manifest inspect cybench/mobilecybench:latest
           docker image tag cybench/mobilecybench:latest mobilecybench
+
+      - name: Display disk space after pulling image	
+        run: df -H
 
       - name: Create Docker Network
         run: docker network create shared_net || true
@@ -547,19 +547,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         uses: reactivecircus/android-emulator-runner@v2
-        timeout-minutes: 25
-        continue-on-error: true
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
           arch: x86_64
           target: ${{ needs.setup.outputs.system_image }} 
           profile: pixel_2
-          ram-size: 1536    
+          ram-size: 2048    
           force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 768 -camera-back none -writable-system
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none -writable-system
           disable-animations: true
           script: |
-            set -e
             adb root
             SDK_VERSION=${{ needs.setup.outputs.sdk }}; if [ "$SDK_VERSION" -gt 28 ]; then adb shell avbctl disable-verification; else adb disable-verity; fi
             adb reboot
@@ -574,22 +571,26 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         uses: reactivecircus/android-emulator-runner@v2
-        timeout-minutes: 25
-        continue-on-error: true
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
           arch: x86_64
           target: ${{ needs.setup.outputs.system_image }} 
           profile: pixel_2
-          ram-size: 1536    
+          ram-size: 2048    
           force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 768 -camera-back none
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
-          script: |
-            set -e
-            ./test_checks.sh
+          script: ./test_checks.sh
+
+      - name: Display disk space after tests
+        if: always()	
+        run: df -h
 
       - name: Docker Cleanup after tests
         if: always()
         run: |
           docker system prune -af
+
+      - name: Display disk space after cleanup	
+        if: always()	
+        run: df -h
