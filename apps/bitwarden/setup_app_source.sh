@@ -1,9 +1,10 @@
 #!/bin/bash
 set -e
 
-# Capture the project root directory at the start for stable pathing.
-PROJECT_ROOT=$(pwd)
+# Resolve stable paths no matter where this script is invoked from
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The Bitwarden app directory (this script's directory)
+PROJECT_ROOT="$SCRIPT_DIR"
 
 # Resolve Android SDK location: honor existing env, then common paths
 if [ -n "$ANDROID_HOME" ]; then
@@ -24,11 +25,19 @@ BITWARDEN_PKG="com.x8bit.bitwarden.dev"
 echo === RUNNING setup_app_source.sh ===
 
 # Define the APK path as an ABSOLUTE path from the project root.
-APK_PATH="$PROJECT_ROOT/codebase/app/build/outputs/apk/fdroid/debug/com.x8bit.bitwarden.dev-fdroid.apk"
+# APK_PATH="$PROJECT_ROOT/codebase/app/build/outputs/apk/fdroid/debug/com.x8bit.bitwarden.dev-fdroid.apk"
 
 echo "=== RUNNING setup_app_source.sh ==="
 echo "[DEBUG] Project root is: $PROJECT_ROOT"
-echo "[DEBUG] Script will look for APK at: $APK_PATH"
+
+# Common directories used later
+CODEBASE_DIR="$PROJECT_ROOT/codebase"
+FDROID_DEBUG_APK_DIR="$CODEBASE_DIR/app/build/outputs/apk/fdroid/debug"
+STANDARD_DEBUG_APK_DIR="$CODEBASE_DIR/app/build/outputs/apk/standard/debug"
+FDROID_RELEASE_APK_DIR="$CODEBASE_DIR/app/build/outputs/apk/fdroid/release"
+
+# Resolved APK path (absolute). Will be filled by resolve_apk_path()
+APK_PATH=""
 
 # 1. Create user.properties if missing
 USER_PROPERTIES="codebase/user.properties"
@@ -46,8 +55,8 @@ else
     echo "[INFO] user.properties already exists."
 fi
 
-# Move into codebase directory for all subsequent steps
-cd codebase
+# Move into codebase directory for build-related steps
+cd "$CODEBASE_DIR"
 
 # Check prerequisites
 check_prerequisites() {
@@ -118,6 +127,26 @@ build_bitwarden() {
     echo "Build completed successfully."
 }
 
+# Resolve latest APK path across common output folders
+resolve_apk_path() {
+    local candidates=()
+    if compgen -G "$FDROID_DEBUG_APK_DIR/*.apk" > /dev/null; then
+        candidates+=( $(ls -t "$FDROID_DEBUG_APK_DIR"/*.apk 2>/dev/null) )
+    fi
+    if compgen -G "$STANDARD_DEBUG_APK_DIR/*.apk" > /dev/null; then
+        candidates+=( $(ls -t "$STANDARD_DEBUG_APK_DIR"/*.apk 2>/dev/null) )
+    fi
+    if compgen -G "$FDROID_RELEASE_APK_DIR/*.apk" > /dev/null; then
+        candidates+=( $(ls -t "$FDROID_RELEASE_APK_DIR"/*.apk 2>/dev/null) )
+    fi
+
+    if [ ${#candidates[@]} -gt 0 ]; then
+        APK_PATH="${candidates[0]}"
+    else
+        APK_PATH=""
+    fi
+}
+
 # A robust function to verify the APK exists with rich debugging
 verify_apk_exists() {
     echo "[INFO] Verifying APK exists before installation..."
@@ -130,10 +159,10 @@ verify_apk_exists() {
         echo "------------------------------------------------------------"
         
         echo "[DIAGNOSTIC] Listing contents of the 'outputs' directory to debug..."
-        if [ -d "$PROJECT_ROOT/codebase/app/build/outputs" ]; then
-            ls -lR "$PROJECT_ROOT/codebase/app/build/outputs"
+        if [ -d "$CODEBASE_DIR/app/build/outputs" ]; then
+            ls -lR "$CODEBASE_DIR/app/build/outputs"
         else
-            echo "[DIAGNOSTIC] The directory '$PROJECT_ROOT/codebase/app/build/outputs' does not exist. The build likely failed to produce any output."
+            echo "[DIAGNOSTIC] The directory '$CODEBASE_DIR/app/build/outputs' does not exist. The build likely failed to produce any output."
         fi
         echo "------------------------------------------------------------"
         exit 1
@@ -179,15 +208,20 @@ main() {
     check_prerequisites
     setup_environment
 
-    # Reliably check if a pre-built APK exists before starting a new build
-    if [ ! -f "$APK_PATH" ]; then
-        echo "[INFO] No prebuilt APK found at the expected path. Starting build..."
-        build_bitwarden
+    # Try to resolve a prebuilt APK first
+    resolve_apk_path
+    if [ -n "$APK_PATH" ]; then
+        echo "[INFO] Prebuilt APK found at: $APK_PATH. Skipping build."
     else
-        echo "[INFO] Prebuilt APK found. Skipping build."
+        echo "[INFO] No prebuilt APK found. Building now..."
+        if [ -d "$CODEBASE_DIR/app/build/outputs" ]; then
+            ls -lR "$CODEBASE_DIR/app/build/outputs" || true
+        fi
+        build_bitwarden
+        # Re-resolve after build
+        resolve_apk_path
     fi
 
-    # Verify the APK exists (or was just built) and provide debug output on failure
     verify_apk_exists
     
     install_bitwarden
