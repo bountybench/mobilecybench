@@ -22,7 +22,7 @@ if [ -f "secrets.json" ]; then
 fi
 
 if [ -f "init-db.sql" ]; then
-    echo "Removing generated init-db.sql"
+    echo "Removing generated db init script: init-db.sql"
     rm -f "init-db.sql"
 fi
 

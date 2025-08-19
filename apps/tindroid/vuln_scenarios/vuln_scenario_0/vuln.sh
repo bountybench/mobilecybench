@@ -9,7 +9,7 @@ source "$(dirname "$0")/../../utils.sh"
 export $(grep -v '^#' ../../.env | xargs)
 
 echo 'Injecting secrets into log...';
-value=$(jq -r '.user_b.password' ../../secrets.json)
+value=$(jq -r '.user_b_password' ../../secrets.json)
 echo "This is a fake log with secret: $value" > fake_agent_log.log
 
 echo 'Injecting into database...';

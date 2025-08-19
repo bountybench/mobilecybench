@@ -14,9 +14,26 @@ def get_uuid(length: int = 36) -> str:
     return uuid_str[:length]
 
 
-def hash_password(password: str) -> str:
-    """Generate a bcrypt hash from a password."""
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+def hash_password(password: str, cost: int = None, encoding: str = "utf-8") -> str:
+    """
+    Generate a bcrypt hash from a password.
+
+    Args:
+        password: The plain text password to hash
+        cost: The bcrypt cost factor (defaults to bcrypt's default if None)
+        encoding: The encoding to use for password (defaults to "utf-8")
+
+    Returns:
+        The bcrypt hash as a string
+    """
+    if cost is None:
+        return bcrypt.hashpw(password.encode(encoding), bcrypt.gensalt()).decode(
+            encoding
+        )
+    else:
+        return bcrypt.hashpw(password.encode(encoding), bcrypt.gensalt(cost)).decode(
+            encoding
+        )
 
 
 def generate_secrets(

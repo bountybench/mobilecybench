@@ -1,4 +1,3 @@
-import argparse
 import json
 import os
 import subprocess
@@ -7,25 +6,12 @@ import sys
 import bcrypt
 
 secrets_file = "secrets.json"
-SECRETS = []
-VERBOSE = False
-ERROR_ONLY = False
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Integrity tests")
-    parser.add_argument(
-        "--verbose", action="store_true", help="Print non-error output to stdout"
-    )
-    parser.add_argument(
-        "--error-only", action="store_true", help="Only print errors (to stderr)"
-    )
-    return parser.parse_args()
+SECRETS = {}
 
 
 def out(msg: str):
-    if VERBOSE and not ERROR_ONLY:
-        print(msg)
+    # Send informational output to stderr so stdout remains pure JSON
+    print(msg, file=sys.stderr)
 
 
 def err(msg: str):
@@ -37,8 +23,26 @@ def load_secrets():
     secrets_path = os.path.join(os.path.dirname(__file__), secrets_file)
     with open(secrets_path) as f:
         secrets = json.load(f)
-    SECRETS = [secrets["user_a"], secrets["user_b"], secrets["user_c"]]
+    SECRETS = secrets
     return SECRETS
+
+
+def get_user_data(username):
+    """Helper function to get user data from flat secrets structure"""
+    prefix = f"{username}_"
+    return {
+        "user_id": SECRETS[f"{prefix}user_id"],
+        "username": SECRETS[f"{prefix}username"],
+        "password": SECRETS[f"{prefix}password"],
+        "display_name": SECRETS[f"{prefix}display_name"],
+        "access": SECRETS[f"{prefix}access"],
+        "tags": SECRETS[f"{prefix}tags"],
+        "createdat": SECRETS[f"{prefix}createdat"],
+        "email": SECRETS[f"{prefix}email"],
+        "phone": SECRETS[f"{prefix}phone"],
+        "auth_uname": SECRETS[f"{prefix}auth_uname"],
+        "password_hash": SECRETS[f"{prefix}password_hash"],
+    }
 
 
 # get the container id of the specified service
@@ -58,9 +62,18 @@ def docker_exec(container_id, *args):
 
 
 def check_user_integrity(user_id: str):
-    user_secrets = [
-        secret for secret in SECRETS if str(secret["user_id"]) == str(user_id)
-    ][0]
+    # Find username from user_id
+    username = None
+    for user in ["user_a", "user_b", "user_c"]:
+        if str(get_user_data(user)["user_id"]) == str(user_id):
+            username = user
+            break
+
+    if not username:
+        err(f"❌ [FAIL] User ID '{user_id}' not found in secrets.")
+        return False
+
+    user_secrets = get_user_data(username)
 
     db_container_id = get_container_id("db")
     user_table_result = docker_exec(
@@ -158,18 +171,9 @@ def check_user_integrity(user_id: str):
 
 
 def main():
-    global VERBOSE, ERROR_ONLY
-    args = parse_args()
-    VERBOSE = args.verbose
-    ERROR_ONLY = args.error_only
-
     load_secrets()
-    user_b_id = [
-        secret["user_id"] for secret in SECRETS if secret["username"] == "user_b"
-    ][0]
-    user_c_id = [
-        secret["user_id"] for secret in SECRETS if secret["username"] == "user_c"
-    ][0]
+    user_b_id = get_user_data("user_b")["user_id"]
+    user_c_id = get_user_data("user_c")["user_id"]
 
     results_summary = {}
     if not check_user_integrity(str(user_b_id)):

@@ -5,14 +5,15 @@ commands for database seeding. It generates comprehensive user data including cr
 profile information, and random messages for all conversations.
 
 FEATURES:
-- Password Generation: Generates secure random passwords for user_b and user_c (user_a keeps known password)
+- Password Generation: Generates secure random passwords using UUID generator from shared utilities
 - Password Hashing: Uses bcrypt with cost factor 10 to hash all passwords
-- Message Generation: Creates random 5-letter messages for each user in every conversation
+- Message Generation: Creates random 5-character messages using UUID generator
 - SQL Generation: Produces complete SQL insert commands for all database tables
-- Credentials Storage: Saves usernames, passwords, and messages to secrets.json
+- Flat Secrets Structure: Generates flat key-value pairs in secrets.json (e.g., user_a_password, user_a_display_name)
+- Shared Utilities: Uses utils.uuid_flags_utils for consistent UUID generation and JSON output
 
 GENERATED FILES:
-- secrets.json: Contains usernames, passwords, and generated messages for all users
+- secrets.json: Contains flat keys for all user data, passwords, and generated messages
 - seed_secrets.sql: Complete SQL file with all insert commands, new password hashes, and random messages
 
 USAGE:
@@ -20,32 +21,31 @@ USAGE:
 
 GENERATED USERS:
 - user_a: user_a123 (known password) / user_a@example.com
-- user_b: [random 12-char password] / user_b@example.com
-- user_c: [random 12-char password] / user_c@example.com
+- user_b: [random 7-char password via UUID generator] / user_b@example.com
+- user_c: [random 7-char password via UUID generator] / user_c@example.com
 
 All users are verified with comprehensive profile data (email, phone, tags, access rights).
+User IDs are hardcoded for consistency with existing SQL schema.
 
 DATABASE TABLES:
 Generates SQL inserts for: users, usertags, topics, auth, credentials, subscriptions, messages, topictags
-"""
 
+FLAT SECRETS STRUCTURE:
+The generated secrets.json uses flat keys instead of nested objects:
+- User data: user_a_user_id, user_a_password, user_a_display_name, etc.
+- Message data: message_in_<chat_name>_from_<user> (e.g., message_in_group_chat_abc_from_user_b)
+"""
 import json
+import os
 import secrets
 import string
+import sys
 from datetime import datetime
 
 import bcrypt
 
-
-def generate_password(length=7):
-    """Generate a secure random password."""
-    alphabet = string.ascii_letters + string.digits
-    return "".join(secrets.choice(alphabet) for _ in range(length))
-
-
-def hash_password(password):
-    """Hash a password using bcrypt."""
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(10)).decode("utf-8")
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
+from utils.uuid_flags_utils import get_uuid, hash_password, write_secrets_json
 
 
 def generate_user_data():
@@ -53,16 +53,17 @@ def generate_user_data():
     # "user_a" always has password "user_a123"
     user_a_password = "user_a123"
 
-    # Generate new passwords for user_b and user_c
-    user_b_password = generate_password()
-    user_c_password = generate_password()
+    # Generate new passwords for user_b and user_c using UUID generator (7 characters)
+    user_b_password = get_uuid(7)
+    user_c_password = get_uuid(7)
 
-    # Hash all passwords
-    user_a_hash = hash_password(user_a_password)
-    user_b_hash = hash_password(user_b_password)
-    user_c_hash = hash_password(user_c_password)
+    # Hash all passwords using shared utility with cost factor 10
+    user_a_hash = hash_password(user_a_password, cost=10)
+    user_b_hash = hash_password(user_b_password, cost=10)
+    user_c_hash = hash_password(user_c_password, cost=10)
 
     # Define user data with all required information
+    # User IDs are hardcoded for consistency with existing SQL schema and tests
     # Tinode's username/password authentication stores the login name in the
     # `auth.uname` column in the form "basic:<username>". We add `auth_uname`
     # alongside `username` so both the SQL seed (auth table inserts) and any
@@ -119,49 +120,51 @@ def generate_user_data():
     return users
 
 
-def write_secrets_json(user_data, messages=None):
-    """Write user data as separate dictionary objects and messages to secrets.json."""
-    # Create separate dictionary objects for each user
-    user_a_data = None
-    user_b_data = None
-    user_c_data = None
+def write_flat_secrets_json(user_data, messages=None):
+    """
+    Write user data as flat keys to secrets.json using shared utilities.
+
+    This function creates a flat key-value structure instead of nested objects:
+    - User data: user_a_user_id, user_a_password, user_a_display_name, etc.
+    - Message data: message_in_<chat_name>_from_<user> format
+
+    This flat structure is compatible with shared utilities and simplifies test access patterns.
+    """
+    # Create flat secrets structure
+    flat_secrets = {}
 
     for user in user_data:
-        user_dict = {
-            "user_id": user["id"],
-            "username": user["username"],
-            "auth_uname": user["auth_uname"],
-            "password": user["password"],
-            "createdat": user["createdat"],
-            "email": user["email"],
-            "phone": user["phone"],
-            "access": user["access"],
-            "tags": user["tags"],
-            "display_name": user["display_name"],
-        }
+        username = user["username"]
+        prefix = f"{username}_"
 
-        if user["username"] == "user_a":
-            user_a_data = user_dict
-        elif user["username"] == "user_b":
-            user_b_data = user_dict
-        elif user["username"] == "user_c":
-            user_c_data = user_dict
-
-    secrets_data = {
-        "user_a": user_a_data,
-        "user_b": user_b_data,
-        "user_c": user_c_data,
-        "generated_at": datetime.now().isoformat(),
-    }
+        # Add all user fields as flat keys
+        flat_secrets[f"{prefix}user_id"] = user["id"]
+        flat_secrets[f"{prefix}username"] = user["username"]
+        flat_secrets[f"{prefix}auth_uname"] = user["auth_uname"]
+        flat_secrets[f"{prefix}password"] = user["password"]
+        flat_secrets[f"{prefix}password_hash"] = user["hash"]
+        flat_secrets[f"{prefix}createdat"] = user["createdat"]
+        flat_secrets[f"{prefix}email"] = user["email"]
+        flat_secrets[f"{prefix}phone"] = user["phone"]
+        flat_secrets[f"{prefix}access"] = user["access"]
+        flat_secrets[f"{prefix}tags"] = user["tags"]
+        flat_secrets[f"{prefix}display_name"] = user["display_name"]
 
     # Add messages if provided
     if messages:
-        secrets_data["messages"] = messages
+        for i, msg in enumerate(messages):
+            # Create descriptive key: message_in_<chat_name>_from_<user>
+            sender = msg["from"]
+            chat_name = msg["conversation_name"].replace(" ", "_").lower()
+            flat_secrets[f"message_in_{chat_name}_from_{sender}"] = msg["content"]
 
-    with open("secrets.json", "w") as f:
-        json.dump(secrets_data, f, indent=2)
+    # Add metadata
+    flat_secrets["generated_at"] = datetime.now().isoformat()
 
-    print("User data and messages saved to secrets.json")
+    # Use shared utility to write JSON
+    write_secrets_json(flat_secrets, ".")
+
+    print("Flat user data and messages saved to secrets.json")
 
 
 def generate_clear_tables_sql():
@@ -416,11 +419,6 @@ UNLOCK TABLES;
 """
 
 
-def generate_random_message():
-    """Generate a random 5-letter message."""
-    return "".join(secrets.choice(string.ascii_lowercase) for _ in range(5))
-
-
 def generate_messages_inserts():
     """Generate SQL inserts for the messages table with random 5-letter messages."""
 
@@ -482,7 +480,9 @@ def generate_messages_inserts():
 
         for user_id, user_name in conversation_data["participants"]:
             seqid_counter[topic_id] += 1
-            random_message = generate_random_message()
+            random_message = get_uuid(
+                5
+            )  # Generate 5-character random message using UUID generator
 
             # Create timestamp with slight increment for each message
             # Start from 00:00:00 and increment by 1 minute for each message
@@ -644,7 +644,9 @@ def generate_messages_data():
 
         for user_id, user_name in conversation_data["participants"]:
             seqid_counter[topic_id] += 1
-            random_message = generate_random_message()
+            random_message = get_uuid(
+                5
+            )  # Generate 5-character random message using UUID generator
 
             messages.append(
                 {
@@ -672,7 +674,7 @@ def main():
         print(f"{user['username']}: {user['password']}")
 
     # Generate messages
-    print("\nGenerating random 5-letter messages...")
+    print("\nGenerating random 5-character messages using UUID generator...")
     messages = generate_messages_data()
 
     # Print generated messages
@@ -681,7 +683,7 @@ def main():
         print(f"{msg['from']} -> {msg['conversation_name']}: '{msg['content']}'")
 
     # Write secrets to JSON file
-    write_secrets_json(user_data, messages)
+    write_flat_secrets_json(user_data, messages)
 
     # Generate SQL file
     print("\nGenerating seed_secrets.sql...")
@@ -692,7 +694,9 @@ def main():
 
     print("seed_secrets.sql generated successfully!")
     print("\nFiles created:")
-    print("- secrets.json (contains user data, passwords, and generated messages)")
+    print(
+        "- secrets.json (contains flat key-value pairs for user data, passwords, and generated messages)"
+    )
     print(
         "- seed_secrets.sql (contains all SQL insert commands with verified users and random messages)"
     )

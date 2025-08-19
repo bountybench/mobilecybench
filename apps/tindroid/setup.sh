@@ -36,39 +36,42 @@ log_error() {
     exit 1
 }
 
-generate_secrets() {
-    echo "Generating secrets..."
-    echo "==================="
-        
+# Helper function to install Python packages with proper environment detection
+install_python_package() {
+    local package_name="$1"
+    local import_name="${2:-$1}"
+    
+    echo "Checking if $package_name is available..."
+    
     # Check if we're in a CI environment (GitHub Actions, etc.)
     if [[ -n "$CI" || -n "$GITHUB_ACTIONS" ]]; then
         echo "Detected CI environment, using system Python and pip"
-        # In CI, bcrypt should already be installed from requirements.txt
-        if python3 -c "import bcrypt" 2>/dev/null; then
-            echo "bcrypt is already available, proceeding with secrets generation"
-            python3 generate_secrets.py
+        # In CI, packages should already be installed from requirements.txt
+        if python3 -c "import $import_name" 2>/dev/null; then
+            echo "$package_name is already available"
+            return 0
         else
-            echo "Installing bcrypt for CI environment..."
-            run_with_timeout "pip install bcrypt"
-            python3 generate_secrets.py
+            echo "Installing $package_name for CI environment..."
+            run_with_timeout "pip install $package_name"
+            return $?
         fi
     else
         # Not in CI - check for virtual environment or proceed with system pip
         if [[ "$(which pip)" == *".venv"* ]]; then
             echo "Using .venv's pip"
-            pip install bcrypt
-            python3 generate_secrets.py
+            pip install "$package_name"
+            return $?
         else
-            echo "This script needs to install bcrypt to generate secrets."
+            echo "This script needs to install $package_name."
             echo "You're not using a virtual environment."
-            read -p "Proceed with installing bcrypt using the current pip located at $(which pip)? (y/n): " choice
+            read -p "Proceed with installing $package_name using the current pip located at $(which pip)? (y/n): " choice
             if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
                 echo "Proceeding with installation..."
-                pip install bcrypt
-                python3 generate_secrets.py
+                pip install "$package_name"
+                return $?
             else
                 echo "Aborting. Please set up your .venv and rerun this script."
-                exit 1
+                return 1
             fi
         fi
     fi
@@ -153,8 +156,22 @@ pkg_name="co.tinode.tindroidx"
 
 echo === RUNNING setup.sh ===
 
+# Install required Python packages at the start
+log_info "=== Installing required Python packages ==="
+if install_python_package "bcrypt"; then
+    log_success "bcrypt package is available"
+else
+    log_error "Failed to install bcrypt"
+fi
+
+if install_python_package "uiautomator2"; then
+    log_success "uiautomator2 package is available"
+else
+    log_error "Failed to install uiautomator2"
+fi
+
 log_info "=== Generating secrets ==="
-if generate_secrets; then
+if python3 generate_secrets.py; then
     log_success "Secrets generated successfully"
 else
     log_error "Secrets generation failed"
@@ -179,7 +196,17 @@ else
         log_success "Tindroid installed successfully using source build"
     else
         log_error "Both APK link and source build failed."
+        exit 1
     fi
+fi
+
+log_info "=== Logging in to the Tindroid app ==="
+
+# Test the app setup by running a quick tindroid login test
+if python3 tindroid_login.py --username user_a --password user_a123 --logout-after; then
+    log_success "Login test successful"
+else
+    log_info "Warning: Login test failed"
 fi
 
 echo === FINISHED setup.sh ===

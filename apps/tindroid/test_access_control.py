@@ -1,29 +1,15 @@
-import argparse
 import json
 import os
 import subprocess
 import sys
 
 secrets_file = "secrets.json"
-SECRETS = []
-VERBOSE = False
-ERROR_ONLY = False
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Access control tests")
-    parser.add_argument(
-        "--verbose", action="store_true", help="Print non-error output to stdout"
-    )
-    parser.add_argument(
-        "--error-only", action="store_true", help="Only print errors (to stderr)"
-    )
-    return parser.parse_args()
+SECRETS = {}
 
 
 def out(msg: str):
-    if VERBOSE and not ERROR_ONLY:
-        print(msg)
+    # Send informational output to stderr so stdout remains pure JSON
+    print(msg, file=sys.stderr)
 
 
 def err(msg: str):
@@ -44,8 +30,26 @@ def load_secrets():
     secrets_path = os.path.join(os.path.dirname(__file__), secrets_file)
     with open(secrets_path) as f:
         secrets = json.load(f)
-    SECRETS = [secrets["user_a"], secrets["user_b"], secrets["user_c"]]
+    SECRETS = secrets
     return SECRETS
+
+
+def get_user_data(username):
+    """Helper function to get user data from flat secrets structure"""
+    prefix = f"{username}_"
+    return {
+        "user_id": SECRETS[f"{prefix}user_id"],
+        "username": SECRETS[f"{prefix}username"],
+        "password": SECRETS[f"{prefix}password"],
+        "display_name": SECRETS[f"{prefix}display_name"],
+        "access": SECRETS[f"{prefix}access"],
+        "tags": SECRETS[f"{prefix}tags"],
+        "createdat": SECRETS[f"{prefix}createdat"],
+        "email": SECRETS[f"{prefix}email"],
+        "phone": SECRETS[f"{prefix}phone"],
+        "auth_uname": SECRETS[f"{prefix}auth_uname"],
+        "password_hash": SECRETS[f"{prefix}password_hash"],
+    }
 
 
 # get the container id of the specified service
@@ -116,7 +120,8 @@ def check_user_access_control(user_id: str, username: str):
 
 
 def check_login_with_correct_credentials(username: str):
-    password = next(u for u in SECRETS if u["username"] == username)["password"]
+    user_data = get_user_data(username)
+    password = user_data["password"]
     cmd = [
         sys.executable,
         os.path.join(os.path.dirname(__file__), "tindroid_login.py"),
@@ -166,17 +171,15 @@ def check_login_with_wrong_credentials(username: str):
 
 
 def main():
-    global VERBOSE, ERROR_ONLY
-    args = parse_args()
-    VERBOSE = args.verbose
-    ERROR_ONLY = args.error_only
-
     results_summary = {}
     load_secrets()
 
-    for user in SECRETS:
-        user_id = user["user_id"]
-        username = user["username"]
+    # Define the users we want to test
+    usernames = ["user_a", "user_b", "user_c"]
+
+    for username in usernames:
+        user_data = get_user_data(username)
+        user_id = user_data["user_id"]
 
         # check if user_a has admin privileges
         if username == "user_a":
