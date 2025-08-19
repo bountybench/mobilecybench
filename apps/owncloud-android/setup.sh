@@ -7,7 +7,7 @@
 #   4. Create / reuse Python virtual environment via uv
 #   5. Ensure Python deps (requests, python-dotenv) present if not declared already
 #   6. Run seeder (produces baseline manifest)
-#   7. Install Android app (required):
+#   7. Install Android app 
 #        - By default: build from source and install (setup_app_source.sh)
 #        - With --fast or FAST=1: install via APK link (setup_app_apklink.sh)
 #   8. Verify Frida Gadget listens on port 27042 (owned by com.owncloud.android)
