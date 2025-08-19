@@ -98,6 +98,7 @@ def check_wrong_credentials():
         result = run_command(cmd)
         results.append(result)
         time.sleep(10)  # sleep to prevent Code 429 error
+    print(results, file=sys.stderr)
 
     return_val = all(r["returncode"] != 0 and r["stdout"] == "403" for r in results)
 
@@ -124,6 +125,7 @@ def check_correct_credentials():
         result = run_command(cmd)
         results.append(result)
         time.sleep(10)  # sleep to prevent Code 429 error
+    print(results, file=sys.stderr)
 
     return_val = all(r["returncode"] == 0 and r["stdout"] == "200" for r in results)
 
