@@ -10,6 +10,7 @@
 #   7. Install Android app (required):
 #        - By default: build from source and install (setup_app_source.sh)
 #        - With --fast or FAST=1: install via APK link (setup_app_apklink.sh)
+#   8. Verify Frida Gadget listens on port 27042 (owned by com.owncloud.android)
 # Usage:
 #   ./setup.sh [--fast] [--apk-url URL]
 #   FAST=1 ./setup.sh                    # Fast path (APK link)
@@ -36,6 +37,7 @@ ANDROID_BASELINE_FILE="${SCRIPT_DIR}/baseline_android_dir.txt"
 # Defaults and CLI flags
 INSTALL_MODE="source"   # source | apk
 APK_URL="${APK_URL:-}"
+FRIDA_PORT=${FRIDA_PORT:-27042}
 
 parse_args(){
   while [[ $# -gt 0 ]]; do
@@ -203,6 +205,39 @@ install_app(){
   fi
 }
 
+check_frida_gadget(){
+  local port="$FRIDA_PORT"
+  info "Checking Frida Gadget status on device (port ${port})"
+  # Ensure a device is connected
+  adb wait-for-device >/dev/null 2>&1 || true
+  if ! adb get-state >/dev/null 2>&1; then
+    fail "No adb device detected; cannot perform Frida check"
+  fi
+
+  if ! adb shell su 0 id >/dev/null 2>&1; then
+    fail "root not available on device; root required for Frida check"
+  fi
+
+  local out
+  out=$(adb shell su 0 netstat -tulpn 2>/dev/null) || out=""
+  out=$(printf "%s" "$out" | tr -d '\r')
+  if [[ -z "$out" ]]; then
+    fail "Could not retrieve socket list from device under su"
+  fi
+  local line
+  line=$(printf "%s\n" "$out" | grep -E "LISTEN" | grep -E "[:\.]${port}\b" | head -1 || true)
+  if [[ -n "$line" ]]; then
+    if printf "%s" "$line" | grep -q "com.owncloud.android"; then
+      info "Frida Gadget listening on ${port}. Frida Gadget Injection Successful"
+    else
+      info "Listener detected on ${port}: $line"
+      warn "Port owner not com.owncloud.android; Frida Gadget may not be injected properly"
+    fi
+  else
+    warn "No listener found on port ${port}; Frida Gadget is not be running"
+  fi
+}
+
 capture_android_dir_baseline(){
   if ! command_exists adb; then
     warn "adb not found; skipping Android baseline capture"
@@ -247,6 +282,7 @@ main(){
   setup_python
   run_seeder
   install_app
+  check_frida_gadget
   capture_android_dir_baseline
   summary
 }
