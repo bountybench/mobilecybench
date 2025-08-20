@@ -257,9 +257,17 @@ def test_android_app_no_fatal_or_anr_via_adb():
         pytest.skip("adb not available or no device connected")
     pkg = ANDROID_APP_PACKAGE
 
-    pid = _adb_pidof(pkg)
-    if not pid:
-        pytest.skip(f"{pkg} not running")
+    # pid = _adb_pidof(pkg)
+    # if not pid:
+    #     pytest.skip(f"{pkg} not running")
+
+    # no need to check if the app is running
+    # in scripted crashed scenario, the app won't be running for sure
+    # how was i passing tests before? 
+    # possibly -> some race conditions 
+    # a tiny delay—mere milliseconds—between the am crash command 
+    # finishing and the app's process actually being removed from the system's process list
+    # the test runs during this window, potentially leading to false negatives
 
     crash_logs = _adb_logcat_crash()
     if not crash_logs:
