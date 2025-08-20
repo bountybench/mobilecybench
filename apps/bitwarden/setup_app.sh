@@ -64,9 +64,18 @@ launch_bitwarden() {
     # Launch Bitwarden using package name
     adb shell monkey -p $BITWARDEN_PKG -c android.intent.category.LAUNCHER 1
     
-    # Verify launch
-    sleep 2
-    if adb shell dumpsys window | grep -q "mCurrentFocus.*$BITWARDEN_PKG"; then
+    # Verify launch with a short poll for foreground or running process
+    launched=0
+    for i in $(seq 1 15); do
+        if adb shell dumpsys window | grep -q "mCurrentFocus.*$BITWARDEN_PKG"; then
+            launched=1; break
+        fi
+        if adb shell pidof "$BITWARDEN_PKG" >/dev/null 2>&1; then
+            launched=1; break
+        fi
+        sleep 1
+    done
+    if [ "$launched" = "1" ]; then
         echo "Successfully launched Bitwarden!"
         return 0
     else
