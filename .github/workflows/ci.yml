@@ -489,7 +489,7 @@ jobs:
           
           chmod +x test_checks.sh
 
-      - name: Prebuild Gradle (via setup_app_source)
+      - name: Build from source pre-emulator launch
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
@@ -502,12 +502,9 @@ jobs:
           cd "$dir"
           checkout_commit "$dir"
 
-          # Run unified setup/build script. It will build if needed and cache APK to prebuilt-apk.
-          ./setup_app_source.sh
+          # Run unified setup/build script. It will build if needed and cache APK to app directory.
+          ./build_app.sh
           
-          # Verify the APK was created
-          find codebase/app/build/outputs -name "*.apk" -maxdepth 4 -print
-
           echo "Memory usage immediately after build:"
           free -h
 
@@ -516,37 +513,15 @@ jobs:
           pkill -f kotlin.daemon.KotlinCompileDaemon || true
           jps -v | grep -E 'GradleDaemon|Kotlin' || true
 
-          # Copy the newest APK outside the submodule so later clean/reset won't delete it
-          PREBUILT_DIR="$GITHUB_WORKSPACE/apps/bitwarden/prebuilt-apk"
-          mkdir -p "$PREBUILT_DIR"
-          APK_SRC=$(ls -t app/build/outputs/apk/fdroid/debug/*.apk app/build/outputs/apk/fdroid/release/*.apk 2>/dev/null | head -n1 || true)
-          if [ -n "$APK_SRC" ]; then
-            echo "Copying prebuilt APK: $APK_SRC -> $PREBUILT_DIR/bitwarden.apk"
-            cp -f "$APK_SRC" "$PREBUILT_DIR/bitwarden.apk"
-          else
-            echo "WARNING: No APK found to copy to prebuilt-apk cache"
-          fi
-
-      - name: Debug - Show System State Post Gradle
-        if: always()
-        run: |
-          echo "--- TOP MEMORY/CPU USERS (top) ---"
-          top -b -n 1 | head -n 20
-
-      - name: Stabilize Runner After Build
-        run: |
           echo "Memory usage after stopping Gradle daemons:"
           free -h
+
+      - name: Stabilize Runner After Build (30 seconds)
+        run: |
           echo "Waiting 30 seconds for OS to reclaim memory..."
           sleep 30
           echo "Memory usage after waiting 30 seconds:"
           free -h
-
-      - name: Debug - Show System State Post Memory Reclaim
-        if: always()
-        run: |
-          echo "--- TOP MEMORY/CPU USERS (top) ---"
-          top -b -n 1 | head -n 20
 
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
