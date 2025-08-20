@@ -10,7 +10,7 @@
 
     2.3 [Detailed example: Joplin](#23-detailed-example-joplin)
 
-    2.4 [Detailed example: ownCloud](#24-detailed-example-ownCloud)
+    2.4 [Detailed example: ownCloud](#24-detailed-example-owncloud)
 
 
 3. [CI Validation](#3-ci-validation)
@@ -207,7 +207,7 @@ networks:
 
 The database (`joplin-postgres`) is only on the private network, preventing direct access from the emulator or agent, ensuring isolation of sensitive services.
 
-### 2.3. Detailed example: ownCloud
+### 2.4. Detailed example: ownCloud
 See [ownCloud](/ownCloud/):
 ```
 ├── ownCloud
