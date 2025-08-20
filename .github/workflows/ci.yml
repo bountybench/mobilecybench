@@ -163,6 +163,9 @@ jobs:
           submodules: false
           token: ${{ secrets.GH_TOKEN }}
 
+      - name: Disable Git ownership check
+        run: git config --global --add safe.directory '*'
+
       - name: Create shared functions
         run: |
           cat << 'EOF' > /tmp/shared_functions.sh
@@ -456,12 +459,7 @@ jobs:
           #!/bin/bash
           set -e
           git config --global --add safe.directory '*'
-          chmod +x test_checks.sh
-          apt-get update -qq
-          apt-get install -y netcat-openbsd jq git curl
-          export ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}
-          export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
-
+          
           source /tmp/shared_functions.sh
           check_server_ready
           EOF
