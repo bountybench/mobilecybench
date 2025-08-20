@@ -11,7 +11,7 @@ if [ -z "$ADB_PATH" ]; then
   echo "adb not found; skipping app crash"
 else
   # Check if device is connected
-  if ! $ADB_PATH devices | grep -q "\tdevice$"; then
+  if ! $ADB_PATH devices | awk 'NR>1 && $2=="device" {print $1}' | grep -q .; then
     echo "No Android device/emulator connected; skipping app crash"
   else
     # Verify app is installed
