@@ -31,7 +31,12 @@ def bw_initialize_local_host(d):
 
     print(f"Step 1.1.2: Launching {BITWARDEN_PKG}...", file=sys.stderr)
     d.app_start(BITWARDEN_PKG, use_monkey=True)
-    time.sleep(3)  # Give it a moment to fully load
+
+    # Verify Bitwarden is in the foreground
+    print(f"Verifying {BITWARDEN_PKG} is in the foreground...", file=sys.stderr)
+    if not d.app_wait(BITWARDEN_PKG, front=True, timeout=10.0):
+        current = d.app_current()
+        raise RuntimeError(f"Expected {BITWARDEN_PKG} in foreground, got: {current}")
 
     # Step 1.2.1: Click the "Create account" button on the welcome screen
     print("Step 1.2.1: Clicking 'Account creation'...", file=sys.stderr)
