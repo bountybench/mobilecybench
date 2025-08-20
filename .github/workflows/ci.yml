@@ -137,7 +137,7 @@ jobs:
     needs: setup
     if: needs.setup.outputs.should_exit != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     strategy:
       matrix:
         test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
@@ -545,7 +545,7 @@ jobs:
             
             echo "Waiting for 15 seconds for emulator services to stabilize after reboot..."
             sleep 15
-            
+
             adb root
             adb remount
             adb shell mount | grep -E "(system|vendor|product)"
