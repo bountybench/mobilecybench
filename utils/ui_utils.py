@@ -120,7 +120,7 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
             return False
 
     if not element.click_exists(
-        timeout=3
+        timeout=10
     ):  # Try clicking element; raise error/fatal if failed
         message = f"Could not click element: '{element.selector}'"
         if exit_on_error:
@@ -161,7 +161,7 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
     # Use robust text entry with retries and scroll support
     try:
         # Focus the element before setting text to mirror click flow semantics
-        element.click_exists(timeout=3)
+        element.click_exists(timeout=10)
         _robust_set_text(d, element, text, max_attempts=3)
     except Exception as e:
         message = f"Failed to set text on element: '{element.selector}': {e}"
@@ -292,7 +292,7 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
     return True
 
 
-def _wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
+def _wait_for_ui_stable(d, timeout=30, interval=2, min_consecutive=3):
     """
     Wait until the UI hierarchy appears stable by observing identical dumps
     for a number of consecutive samples.
@@ -485,7 +485,7 @@ def _robust_set_text(d, element, text, max_attempts=3):
             if not element.exists:
                 _try_scroll_into_view(d, selector_info)
 
-            element.click_exists(timeout=2)
+            element.click_exists(timeout=10)
             element.set_text(text)
             print(
                 f"[INFO] Set text attempt {attempt_index} succeeded for {element.selector}",
@@ -497,10 +497,7 @@ def _robust_set_text(d, element, text, max_attempts=3):
                 f"[WARN] set_text attempt {attempt_index} failed: {set_error}",
                 file=sys.stderr,
             )
-            # Try to scroll into view for the next attempt
-            _try_scroll_into_view(d, selector_info)
-            # Small pause before retry
-            time.sleep(0.5)
+            time.sleep(1)
 
     raise RuntimeError(
         f"Exhausted {max_attempts} attempts to set text on element: '{element.selector}'"
