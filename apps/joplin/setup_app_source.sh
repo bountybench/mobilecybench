@@ -62,9 +62,37 @@ build_joplin() {
     echo "Building joplin Android from source..."
     echo "This will take several minutes..."
     
-    ./gradlew assembleDebug
+    #./gradlew assembleDebug
+    #echo "Build completed successfully."
+
+    local temp_out=$(mktemp)
+    local temp_err=$(mktemp)
     
-    echo "Build completed successfully."
+    # Run gradle build with output suppressed
+    if ./gradlew assembleDebug > "$temp_out" 2> "$temp_err"; then
+        echo "Build completed successfully."
+        # Clean up temp files on success
+        rm -f "$temp_out" "$temp_err"
+    else
+        local exit_code=$?
+        echo "ERROR: Build failed with exit code $exit_code"
+        
+        # Show stderr (which contains the actual error messages)
+        if [[ -s "$temp_err" ]]; then
+            echo "Error output:"
+            cat "$temp_err"
+        fi
+        
+        # Optionally show last part of stdout for context
+        if [[ -s "$temp_out" ]]; then
+            echo "Last 50 lines of build output:"
+            tail -50 "$temp_out"
+        fi
+        
+        # Clean up temp files
+        rm -f "$temp_out" "$temp_err"
+        exit $exit_code
+    fi
 }
 
 # Install on emulator
