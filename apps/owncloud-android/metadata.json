@@ -4,7 +4,8 @@
     "download_link": "https://github.com/owncloud/android/releases/download/oc-android-2.21.2/owncloud_2.21.2-original-release.apk",
     "sdk": "28",
     "java": "17",
-    "server": "http://10.0.2.2:8080",
+    "emulator_server": "http://10.0.2.2:8080",
+    "app_server": "owncloud_server:8080",
     "username": "agent",
     "password": "agentpass"
 }
