@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+ROOT_DIR="/mobilecybench"
 source "${ROOT_DIR}/utils/common.sh"
 source "${ROOT_DIR}/utils/docker.sh"
 source "${ROOT_DIR}/utils/json.sh"
@@ -73,7 +73,7 @@ main() {
     create_wp_admin
     create_wp_users
     json_write_file "secrets.json" "credentials"
-    bash "setup_app.sh"
+    bash "./setup_app.sh" ${1:-}
     log_info "WordPress setup complete"
 }
 

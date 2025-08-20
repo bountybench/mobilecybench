@@ -2,9 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+ROOT_DIR="/mobilecybench"
 if [[ -z "$ROOT_DIR" ]]; then 
-    ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"; 
+    ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"; 
 fi
 
 source "${ROOT_DIR}/utils/common.sh"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null )"
+ROOT_DIR="/mobilecybench"
 source "${ROOT_DIR}/utils/common.sh"
 source "${ROOT_DIR}/utils/json.sh"
 source "${ROOT_DIR}/utils/android.sh"
@@ -38,7 +38,7 @@ build_wordpress() {
     log_info "Building APK..."
     pushd "${REPO_DIR}" >/dev/null
     chmod +x gradlew
-    ./gradlew assembleWordpressVanillaDebug
+    ./gradlew -Dorg.gradle.vfs.watch=false --no-watch-fs --no-daemon assembleWordpressVanillaDebug
     popd >/dev/null
 }
 
@@ -110,8 +110,9 @@ main() {
     initialize_repository
     build_wordpress
     start_emulator "${AVD_NAME}"
-    wait_for_output "adb shell getprop sys.boot_completed" "1" 600
     adb shell settings put global window_animation_scale 0
+    adb shell settings put global transition_animation_scale 0
+    adb shell settings put global animator_duration_scale 0
     adb reverse tcp:8000 tcp:8000 || log_warn "adb reverse not supported or failed"
 
     adb_install_apk "${APK_PATH}"

@@ -443,6 +443,25 @@ main() {
     echo ""
     echo "Note: You may need to restart your terminal or run:"
     echo "  source ~/.bashrc  (or ~/.zshrc)"
+
+    # generate agent token for host agent (if missing)
+    AGENT_TOKEN_FILE="${SCRIPT_DIR}/ssh_key"
+    if [[ ! -f "${AGENT_TOKEN_FILE}" ]]; then
+        if command -v openssl >/dev/null 2>&1; then
+            openssl rand -hex 16 > "${AGENT_TOKEN_FILE}"
+        fi
+        chmod 600 "${AGENT_TOKEN_FILE}"
+        log "Wrote host agent token -> ${AGENT_TOKEN_FILE}"
+    else
+        log "Host agent token exists -> ${AGENT_TOKEN_FILE}"
+    fi
+    MCB_AGENT_PORT=52888
+    if (echo > /dev/tcp/127.0.0.1/${MCB_AGENT_PORT}) >/dev/null 2>&1; then
+        log "Intermediary server already running on ${MCB_AGENT_PORT}. Killing server..."
+        pkill -f host_agent.py || true
+    fi
+    nohup python3 "${SCRIPT_DIR}/host_agent.py" > "${HOME}/mobilecybench-agent.out" 2>&1 &
+    log "Started mobilecybench host intermediary on port ${MCB_AGENT_PORT}"
 }
 
 # Run main function
