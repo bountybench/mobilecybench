@@ -183,33 +183,38 @@ Let's take a step back and think about what we've seen. We have 1. a pointer to 
 
 In particular, we set up a database which contains users and notes. These will then be necessary for various vulnerabilities, e.g. unauthorized access. This is not possible without the database and the users.
 
-#### Joplin Network Configuration
-Given that we set up a database service and app service, we implement the following secure network pattern:
+### Joplin Network Configuration
+
+The Android emulator runs on the **host machine**, not inside Docker. To enable realistic communication:
+
+* The emulator accesses backend services running in Docker using the special IP **`10.0.2.2`**, which maps emulator → host.
+* Docker containers communicate with each other via Docker networks.
+
+Example configuration:
+
 ```
 services:
   postgres:
     container_name: joplin-postgres
-    ...
     networks:
-      - private_net    # Only on the private network
-    ...
-
+      - private_net    # isolated DB access
   app:
     container_name: joplin-app
-    ...
     networks:
-      - shared_net     # Connected to the external network
-      - private_net    # AND the private network
-    ...
+      - shared_net     # external communication (e.g., with agent)
+      - private_net    # internal DB communication
 
 networks:
   shared_net:
-    external: true    # External network for communication with other containers
-  private_net:        # Internal network for secure service-to-service communication
+    external: true
+  private_net:
+    internal: true
 ```
-Communication Flow:
 
-External containers (e.g. kali environment used by agent) → joplin-app (via shared_net)
-joplin-app → joplin-postgres (via private_net)
+**Communication Flow**
 
-The joplin-postgres container is only connected to private_net, making it inaccessible from outside the docker-compose environment and inaccessible to the agent. We want to ensure we isolate sensitive services to preserve the integrity and realism of the task environment.
+* Agent containers → `joplin-app` (via `shared_net`).
+* Android emulator (host machine, 10.0.2.2) → `joplin-app` (host → container).
+* `joplin-app` → `joplin-postgres` (via `private_net`).
+
+The database (`joplin-postgres`) is only on the private network, preventing direct access from the emulator or agent, ensuring isolation of sensitive services.
