@@ -6,6 +6,31 @@ ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ANDROID_HOME="${HOME}/.android-sdk"
 source "$ROOT_DIR/utils/android.sh"
 
+# Install on emulator
+install_joplin() {
+    echo "Installing joplin on Android emulator..."
+    
+    # Check if emulator is running
+    if ! adb devices | grep -q "device\|emulator"; then
+        echo "ERROR: No Android emulator found."
+        echo "Please start the emulator first."
+        exit 1
+    fi
+    
+    # Install universal APK with correct path
+    APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+    
+    if [[ ! -f $APK_PATH ]]; then
+        echo "ERROR: APK not found at $APK_PATH"
+        echo "Available APKs:"
+        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
+        exit 1
+    fi
+    
+    adb install "$APK_PATH"
+    echo "joplin installed successfully."
+}
+
 # Launch joplin
 launch_joplin() {
     echo "Launching joplin..."
@@ -30,6 +55,7 @@ main() {
 
     root_dir="$(pwd)"
     cd codebase/packages/app-mobile/android
+    install_joplin
     launch_joplin
     cd "$root_dir"
     synch_with_server

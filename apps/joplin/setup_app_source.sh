@@ -172,7 +172,6 @@ main() {
     check_prerequisites
     setup_environment
     build_joplin
-    install_joplin
     
     echo ""
     echo "Setup complete! joplin is ready for testing."
