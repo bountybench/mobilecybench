@@ -28,11 +28,14 @@ Environment variables:
 import os
 import shutil
 import subprocess
+import sys
 from typing import List, Tuple
 
 import pytest
 import requests
 from dotenv import load_dotenv
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from utils.availability_utils import check_DOS
 
 load_dotenv()
