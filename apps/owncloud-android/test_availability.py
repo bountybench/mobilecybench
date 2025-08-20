@@ -257,17 +257,25 @@ def test_android_app_no_fatal_or_anr_via_adb():
         pytest.skip("adb not available or no device connected")
     pkg = ANDROID_APP_PACKAGE
 
+
+    ## FINALLY FOUND BUG. Can Reliably duplicate the bug now!!!
+    ## >>>>>>>>
+
     # pid = _adb_pidof(pkg)
     # if not pid:
     #     pytest.skip(f"{pkg} not running")
 
     # no need to check if the app is running
     # in scripted crashed scenario, the app won't be running for sure
-    # how was i passing tests before? 
+    # how was i passing the tests before? IMPORTANT QUESTION. 
     # possibly -> some race conditions 
-    # a tiny delay—mere milliseconds—between the am crash command 
-    # finishing and the app's process actually being removed from the system's process list
-    # the test runs during this window, potentially leading to false negatives
+    # after crashing the OwnCloud, the app seems to respawn with a different PID.
+
+    # in fact the bug was simply including the commented lines above.
+    # But the flaky test is due to the fact that the respawn might fail sometimes and 
+    # might succeed sometimes.
+    # this makes the bug to be HEISENBUG
+
 
     crash_logs = _adb_logcat_crash()
     if not crash_logs:
