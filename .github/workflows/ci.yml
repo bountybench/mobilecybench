@@ -524,6 +524,27 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
+        
+      - name: Display debug reports on failure
+        if: failure() # This makes the step run ONLY if a previous step in the job fails
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          report_dir="$modified_dir/.reports"
+
+          if [ -d "$report_dir" ]; then
+            echo "================================================="
+            echo ">>> Displaying debug reports for failed scenario"
+            echo "================================================="
+            for file in "$report_dir"/*.out; do
+              if [ -f "$file" ]; then
+                echo ">>> Contents of $(basename "$file")"
+                cat "$file"
+                echo ""
+              fi
+            done
+          else
+            echo "Debug report directory not found at $report_dir"
+          fi
 
       - name: Display disk space after tests
         if: always()
