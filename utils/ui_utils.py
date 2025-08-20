@@ -70,6 +70,15 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
             # Touch the device to ensure the connection is usable
             _ = device.device_info  # may raise if not connected
             print("[INFO] Connected to device.", file=sys.stderr)
+
+            # Perform initial health check and apply stability settings
+            print(
+                "[INFO] Performing initial health check and applying stability settings...",
+                file=sys.stderr,
+            )
+            device.healthcheck()
+            device.set_compressed_layout_hierarchy(False)
+
             return device
         except Exception as e:
             print(f"[WARN] Connection failed: {e}", file=sys.stderr)

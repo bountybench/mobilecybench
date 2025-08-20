@@ -8,7 +8,7 @@ account creation, cipher creation, logging out, and attempting login.
 import sys
 import time
 
-from utils.ui_utils import wait_and_click, wait_and_set_text
+from utils.ui_utils import _wait_for_ui_stable, wait_and_click, wait_and_set_text
 
 from .util import BITWARDEN_PKG, SERVER_URL
 
@@ -34,12 +34,18 @@ def bw_initialize_local_host(d):
 
     # Verify Bitwarden is in the foreground
     print(f"Verifying {BITWARDEN_PKG} is in the foreground...", file=sys.stderr)
-    if not d.app_wait(BITWARDEN_PKG, front=True, timeout=10.0):
+    if not d.app_wait(BITWARDEN_PKG, front=True, timeout=15):
         current = d.app_current()
         raise RuntimeError(f"Expected {BITWARDEN_PKG} in foreground, got: {current}")
+    time.sleep(2)  # Give it a moment to fully load after verification
+
+    print("Waiting for the initial UI to stabilize after launch...", file=sys.stderr)
+    _wait_for_ui_stable(d, timeout=15)
 
     # Step 1.2.1: Click the "Create account" button on the welcome screen
     print("Step 1.2.1: Clicking 'Account creation'...", file=sys.stderr)
+    # Add an explicit wait for the button to appear to improve robustness
+    d(resourceId="ChooseAccountCreationButton").wait(timeout=10.0)
     wait_and_click(d, d(resourceId="ChooseAccountCreationButton"))
 
     # Step 1.2.2: Click the region selector dropdown to configure a self-hosted server
