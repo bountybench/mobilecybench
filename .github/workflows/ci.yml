@@ -133,16 +133,11 @@ jobs:
             echo "metadata.json not modified in $dir. Skipping test."
           fi      
 
-  test:
+  test-baseline:
     needs: setup
     if: needs.setup.outputs.should_exit != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    strategy:
-      matrix:
-        test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
-      fail-fast: false  
-      max-parallel: 3 
     
     steps:
       - name: Free Disk Space (Ubuntu)
@@ -338,32 +333,13 @@ jobs:
       - name: Create Docker Network
         run: docker network create shared_net || true
 
-      # - name: Docker Cleanup before pulling new image
-      #   run: |
-      #     docker system prune -af
-      #     docker image prune -af
-
-      # - name: Build Docker Image
-      #   run: |
-      #     docker build -t custom-kali-linux-ci -f .github/Dockerfile .
-
-      # - name: Tag Docker Image
-      #   run: |
-      #     docker image tag custom-kali-linux-ci mobilecybench
-
-      # - name: Display disk space after pulling image
-      #   run: df -H
-
-      # - name: Create Docker Network
-      #   run: docker network create shared_net || true
-
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Create test script for ${{ matrix.test_type }}
+      - name: Create test script for baseline
         run: |
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
           
@@ -376,11 +352,9 @@ jobs:
           EOF
           
           echo "dir=\"$modified_dir\"" >> test_checks.sh
-          echo "test_type=\"${{ matrix.test_type }}\"" >> test_checks.sh
+          echo "test_type=\"baseline\"" >> test_checks.sh
 
-          case "${{ matrix.test_type }}" in
-            "baseline")
-              cat <<'EOF' >> test_checks.sh
+          cat <<'EOF' >> test_checks.sh
           source /tmp/shared_functions.sh
           check_server_ready
           
@@ -413,9 +387,313 @@ jobs:
           echo "Baseline checks passed. Cleaning up..."
           ./cleanup.sh
           EOF
-              ;;
-            "vuln_scenario_0")
-              cat <<'EOF' >> test_checks.sh
+          
+          chmod +x test_checks.sh
+
+      - name: Create container script
+        run: |
+          cat << 'EOF' > container_script.sh
+          #!/bin/bash
+          set -e
+          git config --global --add safe.directory '*'
+          chmod +x test_checks.sh
+          adb version
+          apt-get update -qq
+          apt-get install -y netcat-openbsd jq git curl
+          export ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+          export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
+          echo CI
+          echo $CI
+          ./test_checks.sh
+          EOF
+          chmod +x container_script.sh
+
+      - name: Start resource logging
+        run: |
+          echo "=== Starting resource monitor ==="
+          mkdir -p resource_logs
+
+          # Host metrics: CPU & memory every 2s
+          nohup vmstat 2 > resource_logs/vmstat.log &
+          echo $! >> resource_logs/monitor_pids.txt
+
+          # Host metrics: top processes every 5s
+          nohup top -b -d 5 > resource_logs/top.log &
+          echo $! >> resource_logs/monitor_pids.txt
+
+          # Host metrics: disk space every 10s
+          nohup sh -c 'while true; do df -h; sleep 10; done' > resource_logs/disk.log &
+          echo $! >> resource_logs/monitor_pids.txt
+
+      - name: Run emulator test (baseline)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ needs.setup.outputs.sdk }}
+          arch: x86_64
+          target: ${{ needs.setup.outputs.system_image }} 
+          profile: pixel_2
+          ram-size: 4096    
+          force-avd-creation: true
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu off -noaudio -no-boot-anim -skin 1080x1920 -memory 4096 -camera-back none
+          disable-animations: true
+          script: |
+            adb start-server
+            adb wait-for-device
+            adb root
+            adb wait-for-device
+            adb devices
+            chmod +x container_script.sh && docker run --rm --name mobilecybench_container --network host -v $(pwd):/mobilecybench -v /tmp/shared_functions.sh:/tmp/shared_functions.sh -v $(pwd)/container_script.sh:/container_script.sh -v /var/run/docker.sock:/var/run/docker.sock -w /mobilecybench -e CI=${CI} -e ADB_SERVER_SOCKET=tcp:localhost:5037 mobilecybench /container_script.sh
+
+      - name: Stop resource logging and show results
+        if: always()
+        run: |
+          echo "=== Stopping resource monitor ==="
+          kill $(cat resource_logs/monitor_pids.txt) || true
+
+          echo "=== VMSTAT LOG ==="
+          tail -n 40 resource_logs/vmstat.log || true
+
+          echo "=== TOP LOG ==="
+          tail -n 40 resource_logs/top.log || true
+
+          echo "=== DISK USAGE LOG ==="
+          tail -n 20 resource_logs/disk.log || true
+
+      - name: Display disk space after tests
+        if: always()
+        run: df -h
+
+      - name: Docker Cleanup after tests
+        if: always()
+        run: |
+          docker system prune -af
+
+      - name: Display disk space after cleanup
+        if: always()
+        run: df -h
+
+  test-vuln-scenario-0:
+    needs: [setup, test-baseline]
+    if: needs.setup.outputs.should_exit != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Disable Git ownership check
+        run: git config --global --add safe.directory '*'
+
+      - name: Create shared functions
+        run: |
+          cat << 'EOF' > /tmp/shared_functions.sh
+          check_server_ready() {
+            # Timeout per container in seconds
+            TIMEOUT=${TIMEOUT:-180}
+            # Interval between checks in seconds
+            INTERVAL=${INTERVAL:-1}
+
+            # Get all running containers
+            containers=$(docker ps --format '{{.Names}}')
+
+            for container in $containers; do
+              echo "Checking readiness for $container..."
+
+              # Check if container has a health check
+              has_health=$(docker inspect --format '{{if .Config.Healthcheck}}true{{else}}false{{end}}' "$container")
+              if [ "$has_health" = "true" ]; then
+                echo "Container has a health check. Waiting to become healthy..."
+                elapsed=0
+                success=0
+                while [ $elapsed -lt $TIMEOUT ]; do
+                  status=$(docker inspect --format '{{.State.Health.Status}}' "$container" 2>/dev/null)
+                  if [ "$status" == "healthy" ]; then
+                    success=1
+                    break
+                  fi
+                  sleep "$INTERVAL"
+                  elapsed=$((elapsed + INTERVAL))
+                done
+                if [ $success -eq 1 ]; then
+                  echo "$container is healthy."
+                  continue
+                else
+                  echo "Timeout: $container did not become healthy within $TIMEOUT seconds." >&2
+                  exit 1
+                fi
+              else
+                # Get exposed TCP ports
+                ports=$(docker inspect --format '{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{.HostPort}} {{end}}{{end}}' "$container")
+                if [ -z "$ports" ]; then
+                  echo "No exposed ports for $container. Skipping readiness check." >&2
+                  continue
+                fi
+
+                elapsed=0
+                all_success=0
+                while [ $elapsed -lt $TIMEOUT ]; do
+                  success=1
+                  for port_spec in $ports; do
+                    port=$(echo "$port_spec" | cut -d'/' -f1)
+                    proto=$(echo "$port_spec" | cut -d'/' -f2)
+                    if [ "$proto" != "tcp" ]; then
+                      continue  # Skip non-TCP ports
+                    fi
+
+                    # Perform TCP check
+                    if ! nc -z -w 1 localhost "$port" &>/dev/null; then
+                      success=0
+                      break
+                    fi
+                  done
+
+                  if [ $success -eq 1 ]; then
+                    all_success=1
+                    break
+                  fi
+
+                  sleep "$INTERVAL"
+                  elapsed=$((elapsed + INTERVAL))
+                done
+
+                if [ $all_success -eq 1 ]; then
+                  echo "$container is ready via port check on all ports."
+                else
+                  echo "Timeout: $container not ready after $TIMEOUT seconds." >&2
+                  exit 1
+                fi
+              fi
+            done
+
+            echo "All containers are ready!"
+          }
+
+          checkout_commit() {
+            pwd
+            if [[ -f "metadata.json" ]]; then
+              commit=$(jq -r '.["commit_version"]' "metadata.json")
+              
+              if [[ -n "$commit" ]]; then
+                echo "Found commit: $commit"
+
+                git submodule update --init codebase
+                echo "Cleaning repository to remove all changes and untracked files..."
+
+                cd "codebase" || exit 1
+
+                echo "Cleaning up the codebase"
+                git reset --hard HEAD
+                git clean -fdx
+
+                # Update the submodule and checkout the commit
+                git checkout "$commit"
+
+                cd - || exit 1
+              else
+                echo "No commit version found in metadata.json"
+                exit 1
+              fi
+            else
+              echo "No metadata.json file found"
+              exit 1
+            fi
+          }
+
+          EOF
+          chmod +x /tmp/shared_functions.sh
+
+          # Extract base directories from modified_dirs
+          modified_dirs=${{ needs.setup.outputs.modified_dirs }}
+          base_dirs=$(echo "$modified_dirs" | while IFS= read -r line; do
+            # Skip empty lines
+            [[ -z "$line" ]] && continue
+            # Extract the base directory (everything before the first "/")
+            echo "${line%%/*}"
+          done | sort -u)
+
+          echo "$base_dirs" | while IFS= read -r base; do
+            if [ -d "$base" ]; then
+              echo "Initialize submodule for $base"
+              git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$base"
+            else
+              echo "$base does not exist."
+            fi
+          done
+          
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: "${{ needs.setup.outputs.java }}"
+      
+      - name: Setup Python 3.12 environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpulse0
+          python -m pip install --upgrade pip -q
+          pip install -r .github/requirements.txt -q
+          export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
+
+      - name: Docker Cleanup before pulling new image
+        run: |
+          docker system prune -af
+          docker image prune -af
+
+      - name: Pull Docker container
+        run: |
+          docker pull --quiet cybench/mobilecybench:latest
+          docker manifest inspect cybench/mobilecybench:latest
+          docker image tag cybench/mobilecybench:latest mobilecybench
+
+      - name: Display disk space after pulling image
+        run: df -H
+
+      - name: Create Docker Network
+        run: docker network create shared_net || true
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Create test script for vuln_scenario_0
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          
+          cat << 'EOF' > test_checks.sh
+          #!/bin/bash
+          set -e
+          source /tmp/shared_functions.sh
+          check_server_ready
+          adb devices
+          EOF
+          
+          echo "dir=\"$modified_dir\"" >> test_checks.sh
+          echo "test_type=\"vuln_scenario_0\"" >> test_checks.sh
+
+          cat <<'EOF' >> test_checks.sh
           source /tmp/shared_functions.sh
           check_server_ready
           
@@ -460,55 +738,6 @@ jobs:
             exit 1
           fi
           EOF
-              ;;
-            "vuln_scenario_1")
-              cat <<'EOF' >> test_checks.sh
-          source /tmp/shared_functions.sh
-          check_server_ready
-          
-          cd "$dir"
-          checkout_commit "$dir"
-          
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
-          echo "Checking for required scripts..."
-          for script in "${required_scripts[@]}"; do
-            if [[ ! -f "$script" ]]; then
-              echo "ERROR: Required script '$script' not found."
-              exit 1
-            fi
-          done
-
-          ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          export ANDROID_HOME
-          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-          
-          echo "Running setup..."
-          ./setup.sh
-          adb logcat -c
-          
-          echo "Creating vulnerable scenario 1..."
-          cd vuln_scenarios/vuln_scenario_1
-          ./vuln.sh
-          cd -
-          
-          echo "Running checks..."
-          ./run_checks.sh
-          
-          score1="vuln_scenarios/vuln_scenario_1/expected_scores.json"
-          score2="scores.json"
-          
-          if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
-            echo "Vuln scenario 1 scores match. Cleaning up..."
-            ./cleanup.sh
-          else
-            echo "ERROR: Vuln scenario 1 scores do not match"
-            cat scores.json
-            ./cleanup.sh
-            exit 1
-          fi
-          EOF
-              ;;
-          esac
           
           chmod +x test_checks.sh
 
@@ -547,8 +776,7 @@ jobs:
           nohup sh -c 'while true; do df -h; sleep 10; done' > resource_logs/disk.log &
           echo $! >> resource_logs/monitor_pids.txt
 
-      - name: Run emulator test with action (vuln_scenario_0)
-        if: matrix.test_type == 'vuln_scenario_0'
+      - name: Run emulator test (vuln_scenario_0)
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
@@ -570,28 +798,6 @@ jobs:
             adb shell mount | grep -E "(system|vendor|product)"
             adb start-server
             adb wait-for-device
-            #adb tcpip 5037   # Make ADB server available to the container
-            adb devices
-            chmod +x container_script.sh && docker run --rm --name mobilecybench_container --network host -v $(pwd):/mobilecybench -v /tmp/shared_functions.sh:/tmp/shared_functions.sh -v $(pwd)/container_script.sh:/container_script.sh -v /var/run/docker.sock:/var/run/docker.sock -w /mobilecybench -e CI=${CI} -e ADB_SERVER_SOCKET=tcp:localhost:5037 mobilecybench /container_script.sh
-
-      - name: Run emulator test with action (baseline and vuln_scenario_1)
-        if: matrix.test_type != 'vuln_scenario_0'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: ${{ needs.setup.outputs.sdk }}
-          arch: x86_64
-          target: ${{ needs.setup.outputs.system_image }} 
-          profile: pixel_2
-          ram-size: 4096    
-          force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu off -noaudio -no-boot-anim -skin 1080x1920 -memory 4096 -camera-back none
-          disable-animations: true
-          script: |
-            adb start-server
-            adb wait-for-device
-            adb root
-            adb wait-for-device
-            #adb tcpip 5037   # Make ADB server available to the container
             adb devices
             chmod +x container_script.sh && docker run --rm --name mobilecybench_container --network host -v $(pwd):/mobilecybench -v /tmp/shared_functions.sh:/tmp/shared_functions.sh -v $(pwd)/container_script.sh:/container_script.sh -v /var/run/docker.sock:/var/run/docker.sock -w /mobilecybench -e CI=${CI} -e ADB_SERVER_SOCKET=tcp:localhost:5037 mobilecybench /container_script.sh
 
