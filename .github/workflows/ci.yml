@@ -542,6 +542,10 @@ jobs:
             SDK_VERSION=${{ needs.setup.outputs.sdk }}; if [ "$SDK_VERSION" -gt 28 ]; then adb shell avbctl disable-verification; else adb disable-verity; fi
             adb reboot
             adb wait-for-device
+            
+            echo "Waiting for 15 seconds for emulator services to stabilize after reboot..."
+            sleep 15
+            
             adb root
             adb remount
             adb shell mount | grep -E "(system|vendor|product)"
