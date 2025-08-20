@@ -2,13 +2,12 @@
 
 set -euo pipefail
 
-# Define error prefix
-ERROR="[ERROR]"
-
 source .env # load environment variables
 
 # start containers
 echo "Starting proxy container..."
+echo "Creating shared network..."
+docker network create shared_net || echo "Network shared_net already exists"
 docker compose up -d
 echo "Waiting for proxy to start..."
 sleep 3
@@ -36,7 +35,7 @@ if ! command -v emulator > /dev/null; then
     elif [ -x "$ANDROID_SDK_ROOT/tools/emulator" ]; then
         EMULATOR_BIN="$ANDROID_SDK_ROOT/tools/emulator"
     else
-        echo -e "${ERROR} Emulator binary not found in $ANDROID_SDK_ROOT" >&2
+        echo -e "[ERROR] Emulator binary not found in $ANDROID_SDK_ROOT" >&2
         exit 1
     fi
 else
