@@ -40,7 +40,7 @@ launch_bitwarden() {
     adb shell monkey -p $BITWARDEN_PKG -c android.intent.category.LAUNCHER 1
     
     # Verify launch
-    sleep 3
+    sleep 2
     if adb shell dumpsys window | grep -q "mCurrentFocus.*$BITWARDEN_PKG"; then
         echo "Successfully launched Bitwarden!"
         return 0
