@@ -2,26 +2,20 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+BITWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$BITWARDEN_DIR/../.." && pwd)"
 PKG_NAME="com.x8bit.bitwarden.dev"
 
 echo === RUNNING setup.sh ===
 
-# Check if Bitwarden app is installed on the emulator
-echo "[INFO] Checking if Bitwarden app is installed on the emulator..."
-if adb shell pm list packages | grep -q "$PKG_NAME"; then
-    echo "✅ Bitwarden app is already installed on the emulator."
-else
-    echo "[INFO] Bitwarden app not found."
-    echo "[INFO] Running setup_app.sh to install it..."
-    "${SCRIPT_DIR}/setup_app.sh"
-    echo "✅ Bitwarden app installed."
-fi
+# Run setup_app.sh to install Bitwarden app
+echo "[INFO] Running setup_app.sh to install Bitwarden app..."
+"${BITWARDEN_DIR}/setup_app.sh"
+echo "✅ Bitwarden app installed."
 
 # Install Python requirements
 echo "[INFO] Installing Python requirements with python3..."
-pip install -r "${SCRIPT_DIR}/requirements.txt"
+pip install -r "${BITWARDEN_DIR}/requirements.txt"
 echo "✅ Python requirements installed."
 
 # Start Docker containers for server and database
