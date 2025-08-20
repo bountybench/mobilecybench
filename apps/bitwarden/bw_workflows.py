@@ -31,6 +31,7 @@ def bw_initialize_local_host(d):
 
     print(f"Step 1.1.2: Launching {BITWARDEN_PKG}...", file=sys.stderr)
     d.app_start(BITWARDEN_PKG, use_monkey=True)
+    time.sleep(3)  # Give it a moment to fully load
 
     # Step 1.2.1: Click the "Create account" button on the welcome screen
     print("Step 1.2.1: Clicking 'Account creation'...", file=sys.stderr)
