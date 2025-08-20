@@ -37,7 +37,6 @@ def bw_initialize_local_host(d):
     if not d.app_wait(BITWARDEN_PKG, front=True, timeout=15):
         current = d.app_current()
         raise RuntimeError(f"Expected {BITWARDEN_PKG} in foreground, got: {current}")
-    time.sleep(2)  # Give it a moment to fully load after verification
 
     print("Waiting for the initial UI to stabilize after launch...", file=sys.stderr)
     _wait_for_ui_stable(d, timeout=15)

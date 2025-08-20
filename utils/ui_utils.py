@@ -71,14 +71,6 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
             _ = device.device_info  # may raise if not connected
             print("[INFO] Connected to device.", file=sys.stderr)
 
-            # Perform initial health check and apply stability settings
-            print(
-                "[INFO] Performing initial health check and applying stability settings...",
-                file=sys.stderr,
-            )
-            device.healthcheck()
-            device.set_compressed_layout_hierarchy(False)
-
             return device
         except Exception as e:
             print(f"[WARN] Connection failed: {e}", file=sys.stderr)
@@ -322,7 +314,7 @@ def _wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
 
     while time.time() - start < timeout:
         try:
-            current_hierarchy = d.dump_hierarchy(compressed=True)
+            current_hierarchy = d.dump_hierarchy()
         except Exception as e:
             print(
                 f"[WARN] Failed to dump UI hierarchy during stability check: {e}",
