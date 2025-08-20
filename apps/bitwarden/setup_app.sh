@@ -27,7 +27,7 @@ wait_for_device_ready() {
             echo "[INFO] Package Manager is responsive."
             return 0
         fi
-        sleep 2
+        sleep 1
     done
     echo "[WARN] Package Manager did not respond in time; proceeding but installs may fail."
 }

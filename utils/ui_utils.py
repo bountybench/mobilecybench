@@ -131,7 +131,6 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
 
     # Clicked element; return True
     print(f"[INFO] Clicked element {element.selector}", file=sys.stderr)
-    _wait_for_ui_stable(d)
 
     return True
 
@@ -173,7 +172,6 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
 
     print(f"[INFO] Set text to {text}", file=sys.stderr)
     _handle_keyboard_action(d)
-    _wait_for_ui_stable(d)
     return True
 
 
@@ -292,7 +290,7 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
     return True
 
 
-def _wait_for_ui_stable(d, timeout=15, interval=1.5, min_consecutive=3):
+def _wait_for_ui_stable(d, timeout=15, interval=1.0, min_consecutive=3):
     """
     Wait until the UI hierarchy appears stable by observing identical dumps
     for a number of consecutive samples.
