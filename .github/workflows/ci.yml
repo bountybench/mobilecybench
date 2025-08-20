@@ -350,6 +350,7 @@ jobs:
           set -e
           source /tmp/shared_functions.sh
           check_server_ready
+          adb devices
           EOF
           
           echo "dir=\"$modified_dir\"" >> test_checks.sh
@@ -358,21 +359,7 @@ jobs:
           case "${{ matrix.test_type }}" in
             "baseline")
               cat <<'EOF' >> test_checks.sh
-          source /tmp/shared_functions.sh
-          check_server_ready
-          
-          cd "$dir"
-          checkout_commit "$dir"
-          
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
-          echo "Checking for required scripts..."
-          for script in "${required_scripts[@]}"; do
-            if [[ ! -f "$script" ]]; then
-              echo "ERROR: Required script '$script' not found."
-              exit 1
-            fi
-          done
-          
+
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
@@ -393,21 +380,7 @@ jobs:
               ;;
             "vuln_scenario_0")
               cat <<'EOF' >> test_checks.sh
-          source /tmp/shared_functions.sh
-          check_server_ready
           
-          cd "$dir"
-          checkout_commit "$dir"
-          
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
-          echo "Checking for required scripts..."
-          for script in "${required_scripts[@]}"; do
-            if [[ ! -f "$script" ]]; then
-              echo "ERROR: Required script '$script' not found."
-              exit 1
-            fi
-          done
-
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
@@ -440,20 +413,6 @@ jobs:
               ;;
             "vuln_scenario_1")
               cat <<'EOF' >> test_checks.sh
-          source /tmp/shared_functions.sh
-          check_server_ready
-          
-          cd "$dir"
-          checkout_commit "$dir"
-          
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
-          echo "Checking for required scripts..."
-          for script in "${required_scripts[@]}"; do
-            if [[ ! -f "$script" ]]; then
-              echo "ERROR: Required script '$script' not found."
-              exit 1
-            fi
-          done
 
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
@@ -488,6 +447,43 @@ jobs:
           esac
           
           chmod +x test_checks.sh
+
+      - name: Create container script
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+
+          cat << 'EOF' > container_script.sh
+          #!/bin/bash
+          set -e
+          git config --global --add safe.directory '*'
+          chmod +x test_checks.sh
+          apt-get update -qq
+          apt-get install -y netcat-openbsd jq git curl
+          export ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+          export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
+
+          source /tmp/shared_functions.sh
+          check_server_ready
+          EOF
+          echo "dir=\"$modified_dir\"" >> container_script.sh
+          cat <<'EOF' >> container_script.sh
+          cd "$dir"
+          checkout_commit "$dir"
+
+          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
+          echo "Checking for required scripts..."
+          for script in "${required_scripts[@]}"; do
+            if [[ ! -f "$script" ]]; then
+              echo "ERROR: Required script '$script' not found."
+              exit 1
+            fi
+          done
+
+          echo "Running setup app from source..."
+          ./setup_app_source.sh
+          EOF
+          chmod +x container_script.sh
+          ./container_script.sh
 
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'

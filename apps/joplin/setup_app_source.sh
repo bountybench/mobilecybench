@@ -173,19 +173,6 @@ main() {
     setup_environment
     build_joplin
     install_joplin
-    launch_joplin
-    cd "$root_dir"
-    synch_with_server
-
-    adb root
-
-    local immutable_dirs=(/system /vendor /product /odm)
-    adb_hash_dirs "${immutable_dirs[@]}" > baseline.json
-
-    local secret_dirs=(/data/cache /data/misc)
-    adb_hide_secret_files "secrets.json" "${secret_dirs[@]}"
-
-    adb unroot
     
     echo ""
     echo "Setup complete! joplin is ready for testing."
