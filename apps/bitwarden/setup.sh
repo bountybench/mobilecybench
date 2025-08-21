@@ -2,7 +2,7 @@
 set -e
 
 BITWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$BITWARDEN_DIR/../.." && pwd)"
+MOBILECYBENCH_ROOT="$(cd "$BITWARDEN_DIR/../.." && pwd)"
 PKG_NAME="com.x8bit.bitwarden.dev"
 
 echo === RUNNING setup.sh ===
@@ -31,7 +31,7 @@ echo "[INFO] Vaultwarden is up."
 
 # Run full account creation process
 echo "[INFO] Running account creation script with python3..."
-cd "$PROJECT_ROOT"
+cd "$MOBILECYBENCH_ROOT"
 python3 -m apps.bitwarden.create_accounts
 if [ $? -eq 0 ]; then
     echo "[INFO] Account creation completed successfully."

@@ -36,7 +36,6 @@ def bw_initialize_local_host(d):
     # --- 1.1: App Launch ---
     logger.info("Step 1.1.1: Stopping any existing instances of %s...", BITWARDEN_PKG)
     d.app_stop(BITWARDEN_PKG)
-    time.sleep(1)  # Give it a moment to release resources
 
     logger.info("Step 1.1.2: Launching %s...", BITWARDEN_PKG)
     d.app_start(BITWARDEN_PKG, use_monkey=True)
@@ -220,7 +219,7 @@ def bw_attempt_login(d, email, password):
         # --- Stop any previous instances and start fresh ---
         logger.info("Stopping any existing instances of %s...", BITWARDEN_PKG)
         d.app_stop(BITWARDEN_PKG)
-        time.sleep(1)
+
         logger.info("Launching %s...", BITWARDEN_PKG)
         d.app_start(BITWARDEN_PKG, use_monkey=True)
 
@@ -285,10 +284,13 @@ def bw_attempt_login(d, email, password):
         wait_and_click(d, d(resourceId="LogInWithMasterPasswordButton"))
 
         # Check for error dialogs first
-        if d(resourceId="AlertPopup").exists:
+        if d(resourceId="AlertPopup").exists and d(
+            resourceId="AcceptAlertButton"
+        ).exists(timeout=2):
             logger.warning("Error dialog detected. Dismissing...")
-            wait_and_click(d, d(resourceId="AcceptAlertButton"))
-            time.sleep(1)
+            wait_and_click(
+                d, d(resourceId="AcceptAlertButton"), timeout=5, exit_on_error=False
+            )
             logger.error("Login failed due to error dialog.")
             return False
 

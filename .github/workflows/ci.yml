@@ -505,7 +505,7 @@ jobs:
           set -euo pipefail
 
           THRESHOLD=4096 # 4GB
-          MAX_TRIES=120  # 10 minutes at 5s interval
+          MAX_TRIES=24  # 2 minutes at 5s interval
           TRIES=0
           INTERVAL=5
 
@@ -552,14 +552,9 @@ jobs:
             SDK_VERSION=${{ needs.setup.outputs.sdk }}; if [ "$SDK_VERSION" -gt 28 ]; then adb shell avbctl disable-verification; else adb disable-verity; fi
             adb reboot
             adb wait-for-device
-            
-            echo "Waiting for 15 seconds for emulator services to stabilize after reboot..."
-            sleep 15
-
             adb root
             adb remount
             adb shell mount | grep -E "(system|vendor|product)"
-            sleep 10
             ./test_checks.sh
 
       - name: Run emulator test with action (baseline and vuln_scenario_1)
