@@ -358,20 +358,6 @@ jobs:
           case "${{ matrix.test_type }}" in
             "baseline")
               cat <<'EOF' >> test_checks.sh
-          source /tmp/shared_functions.sh
-          check_server_ready
-          
-          cd "$dir"
-          checkout_commit "$dir"
-          
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
-          echo "Checking for required scripts..."
-          for script in "${required_scripts[@]}"; do
-            if [[ ! -f "$script" ]]; then
-              echo "ERROR: Required script '$script' not found."
-              exit 1
-            fi
-          done
           
           echo "Running setup..."
           ./setup.sh
@@ -393,20 +379,6 @@ jobs:
               ;;
             "vuln_scenario_0")
               cat <<'EOF' >> test_checks.sh
-          source /tmp/shared_functions.sh
-          check_server_ready
-          
-          cd "$dir"
-          checkout_commit "$dir"
-          
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
-          echo "Checking for required scripts..."
-          for script in "${required_scripts[@]}"; do
-            if [[ ! -f "$script" ]]; then
-              echo "ERROR: Required script '$script' not found."
-              exit 1
-            fi
-          done
 
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
@@ -440,20 +412,6 @@ jobs:
               ;;
             "vuln_scenario_1")
               cat <<'EOF' >> test_checks.sh
-          source /tmp/shared_functions.sh
-          check_server_ready
-          
-          cd "$dir"
-          checkout_commit "$dir"
-          
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
-          echo "Checking for required scripts..."
-          for script in "${required_scripts[@]}"; do
-            if [[ ! -f "$script" ]]; then
-              echo "ERROR: Required script '$script' not found."
-              exit 1
-            fi
-          done
 
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
@@ -489,22 +447,45 @@ jobs:
           
           chmod +x test_checks.sh
 
-      - name: Build from source pre-emulator launch
+      - name: Create container script to build app from source
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
         run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+
+          cat << 'EOF' > container_script.sh
+          #!/bin/bash
           set -e
+          git config --global --add safe.directory '*'
+
           source /tmp/shared_functions.sh
-          
-          # Navigate to the correct directory and checkout the specific commit
-          dir="${{ needs.setup.outputs.modified_dirs }}"
+          check_server_ready
+          EOF
+
+          echo "dir=\"$modified_dir\"" >> container_script.sh
+          cat <<'EOF' >> container_script.sh
           cd "$dir"
           checkout_commit "$dir"
-
-          # Run unified setup/build script. It will build if needed and cache APK to app directory.
-          ./build_app.sh
           
+          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "build_app.sh" "setup_app.sh")
+          echo "Checking for required scripts..."
+          for script in "${required_scripts[@]}"; do
+            if [[ ! -f "$script" ]]; then
+              echo "ERROR: Required script '$script' not found."
+              exit 1
+            fi
+          done
+
+          echo "Running build_app.sh..."
+          ./build_app.sh
+          EOF
+
+          chmod +x container_script.sh
+          ./container_script.sh
+
+      - name: Stabilize runner after build
+        run: |
           echo "Memory usage immediately after build:"
           free -h
 
@@ -516,26 +497,34 @@ jobs:
           echo "Memory usage after stopping Gradle daemons:"
           free -h
 
-      - name: Stabilize runner after build
-        run: |
           set -euo pipefail
+
           THRESHOLD=4096 # 4GB
           MAX_TRIES=120  # 10 minutes at 5s interval
           TRIES=0
+          INTERVAL=5
+
           echo "Waiting for available memory to exceed ${THRESHOLD}MB..."
-          while true; do
+
+          while ((TRIES < MAX_TRIES)); do
             AVAILABLE_MEM=$(awk '/MemAvailable/ { printf "%d", $2/1024 }' /proc/meminfo)
-            echo "Current available memory: ${AVAILABLE_MEM}MB"
+            echo "Current available memory on attempt ${TRIES}/${MAX_TRIES}: ${AVAILABLE_MEM}MB"
+
             if (( AVAILABLE_MEM > THRESHOLD )); then
               echo "Memory threshold of ${THRESHOLD}MB crossed. Continuing..."
               break
             fi
-            (( TRIES++ ))
-            if (( TRIES >= MAX_TRIES )); then
-              echo "Timeout waiting for memory to exceed ${THRESHOLD}MB"; exit 1
-            fi
-            sleep 5
+
+            echo "Retrying in ${INTERVAL} seconds..."
+            (( ++TRIES ))
+            sleep "${INTERVAL}"
           done
+
+          if (( TRIES >= MAX_TRIES )); then
+            echo "Timeout waiting for memory to exceed ${THRESHOLD}MB"; 
+            exit 1
+          fi
+
           echo "Final memory usage:"
           free -h
 
