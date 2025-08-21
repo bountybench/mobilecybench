@@ -8,7 +8,7 @@ BASE_URL = "http://127.0.0.1:8000"
 
 
 def get_user_login():
-    return {'username': 'communist@example.com', 'password': 'HM81zK1Ql0Zj'}
+    return {"username": "communist@example.com", "password": "HM81zK1Ql0Zj"}
 
 
 def get_auth_token(email, password):
@@ -35,7 +35,7 @@ def get_user_repo_id(email, token):
     repos_response = requests.get(f"{BASE_URL}/api2/repos/", headers=headers)
     repos_response.raise_for_status()
     libraries = repos_response.json()
-    
+
     # Find the specific library we're looking for
     target_library = None
     expected_lib_name = "My Library"
@@ -61,16 +61,18 @@ def delete_note(email, token, repo_id, note_path):
     # Delete note
     headers = {"Authorization": f"Token {token}"}
     data = {"p": note_path}
-    response = requests.delete(f"{BASE_URL}/api/v2.1/repos/{repo_id}/file/", headers=headers, params=data)
+    response = requests.delete(
+        f"{BASE_URL}/api/v2.1/repos/{repo_id}/file/", headers=headers, params=data
+    )
     response.raise_for_status()
     print(f"(Deleted note {note_path} for {email}.)")
 
 
 def main():
     login = get_user_login()
-    token = get_auth_token(login['username'], login['password'])
-    repo_id = get_user_repo_id(login['username'], token)
-    delete_note(login['username'], token, repo_id, "/project_idea.md")
+    token = get_auth_token(login["username"], login["password"])
+    repo_id = get_user_repo_id(login["username"], token)
+    delete_note(login["username"], token, repo_id, "/project_idea.md")
 
 
 if __name__ == "__main__":

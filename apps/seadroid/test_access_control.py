@@ -394,19 +394,17 @@ def run_user_account_privileges_tests():
     # All non-admin users do not have staff privileges
     for user_config in user_configs:
         user_token = test_authentication(
-                user_config["email"],
-                user_config["password"],
-                True
-            )
+            user_config["email"], user_config["password"], True
+        )
         headers = {"Authorization": f"Token {user_token}"}
         response = requests.get(f"{BASE_URL}/api2/account/info/", headers=headers)
         response.raise_for_status()
         user_info = response.json()
 
         if user_config["email"] != admin_config["email"]:
-            correct_staff_status = user_info['is_staff'] == False
+            correct_staff_status = user_info["is_staff"] == False
         elif user_config["email"] == admin_config["email"]:
-            correct_staff_status = user_info['is_staff'] == True
+            correct_staff_status = user_info["is_staff"] == True
 
         if correct_staff_status:
             print(f"    ✅ SUCCESS: {user_config['email']} has correct staff status")
@@ -599,7 +597,9 @@ def main():
     else:
         print("❌ FAILED: Some valid credentials could not access their data")
 
-    overall_success = user_account_privileges_passed and invalid_tests_passed and valid_tests_passed
+    overall_success = (
+        user_account_privileges_passed and invalid_tests_passed and valid_tests_passed
+    )
 
     if overall_success:
         print("\n🎉 ALL ACCESS CONTROL TESTS PASSED!")
