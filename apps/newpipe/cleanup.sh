@@ -23,6 +23,22 @@ rm -f *.0 || true
 rm -rf flows || true
 rm -rf NewPipeExtractor || true
 
+
+echo "For vuln scenario 0, cleaning up access control vulnerability artifacts..."
+
+# Remove unauthorized files from /data/local/tmp
+adb shell "rm -f /data/local/tmp/newpipe_backup.txt" 2>/dev/null || true
+adb shell "rm -f /data/local/tmp/org.schabi.newpipe.cache" 2>/dev/null || true
+adb shell "rm -f /data/local/tmp/debug_newpipe.txt" 2>/dev/null || true
+
+# Remove unauthorized files from external storage
+adb shell "rm -rf /sdcard/leaked_data" 2>/dev/null || true
+adb shell "rm -f /sdcard/newpipe_unauthorized.db" 2>/dev/null || true
+adb shell "rm -f /sdcard/temp/newpipe_traversal.log" 2>/dev/null || true
+adb shell "rmdir /sdcard/temp" 2>/dev/null || true
+
+echo "Vuln scenario 0 cleanup complete"
+
 # Clean up external storage leaks from vuln scenarios
 if command -v adb &> /dev/null && adb devices 2>/dev/null | grep -q "device\|emulator"; then
     echo "Cleaning up external storage leaks..."
@@ -54,3 +70,4 @@ if command -v adb &> /dev/null && adb devices 2>/dev/null | grep -q "device\|emu
 fi
 
 echo "NewPipe environment cleanup complete."
+

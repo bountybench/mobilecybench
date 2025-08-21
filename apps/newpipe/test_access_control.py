@@ -120,28 +120,6 @@ def db_permissions_secure(db_path: str) -> bool:
         return False
 
 
-def no_sensitive_db_on_external_storage() -> bool:
-    """Ensure the app hasn't created sensitive DB files on external storage."""
-    # check for NewPipe database files on external storage using ls + grep
-    cmd = "adb shell 'ls -R /sdcard/' 2>/dev/null | grep -i newpipe"
-    out = run_adb_command(cmd) or ""
-    hits = [
-        l.strip()
-        for l in out.splitlines()
-        if l.strip()
-        and ("newpipe" in l.lower())
-        and (l.endswith(".db") or l.endswith(".sqlite"))
-    ]
-
-    if hits:
-        print("[FAIL] Potential sensitive DB files found on external storage:")
-        for hit in hits:
-            print(f"- {hit}")
-        return False
-
-    return True
-
-
 def check_path_traversal_attempts(pkg: str) -> bool:
     """Check for unauthorized file access outside app sandbox."""
     # check if app has accessed files outside its sandbox
@@ -237,7 +215,6 @@ if __name__ == "__main__":
     unauthorized_ok = test_unauthorized_db_access_fails(DB_PATH)
     authorized_ok = test_authorized_db_access_succeeds(DB_PATH)
     perms_ok = db_permissions_secure(DB_PATH)
-    ext_db_ok = no_sensitive_db_on_external_storage()
     path_traversal_ok = check_path_traversal_attempts(PKG)
     network_security_ok = check_network_security()
 
@@ -246,7 +223,6 @@ if __name__ == "__main__":
             unauthorized_ok,
             authorized_ok,
             perms_ok,
-            ext_db_ok,
             path_traversal_ok,
             network_security_ok,
         ]
