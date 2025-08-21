@@ -145,7 +145,7 @@ main() {
     npm uninstall -g react-native-cli @react-native-community/cli
     cd codebase
     npm uninstall -g react-native-cli @react-native-community/cli
-    yarn install
+    #yarn install
     cd -
 
     root_dir="$(pwd)"
@@ -158,6 +158,7 @@ main() {
         exit 1
     fi
 
+    yarn install
     npx react-native start --reset-cache > /dev/null 2>&1 &
     
     # Navigate to codebase directory
