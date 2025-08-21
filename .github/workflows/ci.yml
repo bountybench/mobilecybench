@@ -516,11 +516,27 @@ jobs:
           echo "Memory usage after stopping Gradle daemons:"
           free -h
 
-      - name: Stabilize Runner After Build (30 seconds)
+      - name: Stabilize runner after build
         run: |
-          echo "Waiting 30 seconds for OS to reclaim memory..."
-          sleep 30
-          echo "Memory usage after waiting 30 seconds:"
+          set -euo pipefail
+          THRESHOLD=4096 # 4GB
+          MAX_TRIES=120  # 10 minutes at 5s interval
+          TRIES=0
+          echo "Waiting for available memory to exceed ${THRESHOLD}MB..."
+          while true; do
+            AVAILABLE_MEM=$(awk '/MemAvailable/ { printf "%d", $2/1024 }' /proc/meminfo)
+            echo "Current available memory: ${AVAILABLE_MEM}MB"
+            if (( AVAILABLE_MEM > THRESHOLD )); then
+              echo "Memory threshold of ${THRESHOLD}MB crossed. Continuing..."
+              break
+            fi
+            (( TRIES++ ))
+            if (( TRIES >= MAX_TRIES )); then
+              echo "Timeout waiting for memory to exceed ${THRESHOLD}MB"; exit 1
+            fi
+            sleep 5
+          done
+          echo "Final memory usage:"
           free -h
 
       - name: Run emulator test with action (vuln_scenario_0)

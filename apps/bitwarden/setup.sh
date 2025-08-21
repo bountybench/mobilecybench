@@ -11,33 +11,33 @@ echo === RUNNING setup.sh ===
 # Run setup_app.sh to install Bitwarden app
 echo "[INFO] Running setup_app.sh to install Bitwarden app..."
 "${BITWARDEN_DIR}/setup_app.sh"
-echo "✅ Bitwarden app installed."
+echo "[INFO] Bitwarden app installed."
 
 # Install Python requirements
 echo "[INFO] Installing Python requirements with python3..."
 pip install -r "${BITWARDEN_DIR}/requirements.txt"
-echo "✅ Python requirements installed."
+echo "[INFO] Python requirements installed."
 
 # Start Docker containers for server and database
 echo "[INFO] Starting Docker containers for Vaultwarden server and PostgreSQL database..."
 docker compose up --build -d
-echo "✅ Docker containers started."
+echo "[INFO] Docker containers started."
 
 # Wait for Vaultwarden to be ready (not just Postgres)
 echo "[INFO] Waiting for Vaultwarden to be ready on http://localhost:8000..."
 until curl -sf http://localhost:8000 > /dev/null; do
   sleep 2
 done
-echo "✅ Vaultwarden is up."
+echo "[INFO] Vaultwarden is up."
 
 # Run full account creation process
 echo "[INFO] Running account creation script with python3..."
 cd "$PROJECT_ROOT"
 python3 -m apps.bitwarden.create_accounts
 if [ $? -eq 0 ]; then
-    echo "✅ Account creation completed successfully."
+    echo "[INFO] Account creation completed successfully."
 else
-    echo "❌ Account creation failed."
+    echo "[ERROR] Account creation failed."
 fi
 
 echo === FINISHED setup.sh ===
