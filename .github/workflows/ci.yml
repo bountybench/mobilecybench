@@ -97,6 +97,14 @@ jobs:
               echo "Java version: $java"
           fi
 
+          node=$(jq -r '.node' $metadata)
+          if [ "$?" -ne 0 ] || [ "$node" = "null" ] || [ -z "$node" ]; then
+              echo "${ERROR} Could not extract node version from $metadata. Use default (17)."
+              node=18
+          else 
+              echo "node version: $node"
+          fi
+
           if [ "$sdk" -lt 30 ]; then
               system_image="google_apis"
           else
@@ -106,6 +114,7 @@ jobs:
 
           echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
           echo "java=$java" >> "$GITHUB_OUTPUT"
+          echo "node=$node" >> "$GITHUB_OUTPUT"
           echo "system_image=$system_image" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
@@ -307,7 +316,14 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: "${{ needs.setup.outputs.java }}"
-      
+          cache: gradle
+
+      - name: Setup Node.js with caching
+        uses: actions/setup-node@v3
+        with:
+          node-version: "${{ needs.setup.outputs.node }}"
+          cache: 'yarn'
+            
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
         with:
