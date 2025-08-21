@@ -8,7 +8,7 @@ account creation, cipher creation, logging out, and attempting login.
 import sys
 import time
 
-from utils.ui_utils import _wait_for_ui_stable, wait_and_click, wait_and_set_text
+from utils.ui_utils import wait_and_click, wait_and_set_text, wait_for_ui_stable
 
 from .util import BITWARDEN_PKG, SERVER_URL
 
@@ -39,7 +39,7 @@ def bw_initialize_local_host(d):
         raise RuntimeError(f"Expected {BITWARDEN_PKG} in foreground, got: {current}")
 
     print("Waiting for the initial UI to stabilize after launch...", file=sys.stderr)
-    _wait_for_ui_stable(d, timeout=15)
+    wait_for_ui_stable(d, timeout=15)
 
     # Step 1.2.1: Click the "Create account" button on the welcome screen
     print("Step 1.2.1: Clicking 'Account creation'...", file=sys.stderr)
@@ -244,7 +244,7 @@ def bw_attempt_login(d, email, password):
         print(
             "Waiting for the initial UI to stabilize after launch...", file=sys.stderr
         )
-        _wait_for_ui_stable(d, timeout=15)
+        wait_for_ui_stable(d, timeout=15)
 
         # Check for error dialogs first and dismiss them
         if d(resourceId="AlertPopup").exists:
