@@ -1,7 +1,6 @@
 """
-Generic UI automation helpers with error handling built on uiautomator2:
- - Public API: wait_and_click, wait_and_set_text
- - Private helpers: internal utilities for stability, ANR handling, etc.
+Concise uiautomator2 helpers for reliable clicking and text entry without sleeps.
+Public API: initialize_ui_automation, wait_and_click, wait_and_set_text
 """
 
 import re
@@ -17,20 +16,7 @@ import uiautomator2 as u2
 
 
 def initialize_ui_automation(max_retries=3, retry_delay=5):
-    """
-    Connect to an Android device for UI automation with concise, helpful errors.
-
-    - Verifies that ADB sees at least one device (best-effort).
-    - Attempts to connect via uiautomator2 up to max_retries.
-    - Returns the connected device on success; otherwise exits fatally.
-
-    Args:
-        max_retries: Maximum connection attempts
-        retry_delay: Seconds to wait between attempts
-
-    Returns:
-        A uiautomator2 Device instance on success.
-    """
+    """Connect to a device and enable sane defaults (implicit waits, no sleeps)."""
 
     def _adb_has_devices(timeout_seconds: int = 5) -> bool:
         try:
@@ -49,6 +35,18 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
             print(f"[WARN] Could not run 'adb devices': {e}", file=sys.stderr)
             return False
 
+    def _adb_wait_for_device(timeout_seconds: int) -> None:
+        """Block on 'adb wait-for-device' instead of sleeping between retries."""
+        try:
+            subprocess.run(["adb", "wait-for-device"], timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            print(
+                f"[WARN] 'adb wait-for-device' timed out after {timeout_seconds}s",
+                file=sys.stderr,
+            )
+        except Exception as e:
+            print(f"[WARN] 'adb wait-for-device' failed: {e}", file=sys.stderr)
+
     for attempt_index in range(1, max_retries + 1):
         print(
             f"[INFO] Connecting to device (attempt {attempt_index}/{max_retries})…",
@@ -61,7 +59,7 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
                 file=sys.stderr,
             )
             if attempt_index < max_retries:
-                time.sleep(retry_delay)
+                _adb_wait_for_device(retry_delay)
                 continue
             _fatal(None, "No devices detected by ADB after all attempts")
 
@@ -75,11 +73,18 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
         except Exception as e:
             print(f"[WARN] Connection failed: {e}", file=sys.stderr)
             if attempt_index < max_retries:
-                time.sleep(retry_delay)
+                _adb_wait_for_device(retry_delay)
                 continue
             _fatal(
                 None, f"Failed to connect to device after {max_retries} attempts: {e}"
             )
+
+        # Configure a sensible implicit wait to reduce flakiness across helpers
+        try:
+            device.implicitly_wait(5.0)
+        except Exception:
+            # Not fatal if the backend does not support implicit waits
+            pass
 
 
 # =============================================================================
@@ -88,28 +93,7 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
 
 
 def wait_and_click(d, element, timeout=180, exit_on_error=True):
-    """
-    Wait for a UI element to appear, then click it. Handles ANR dialogs throughout.
-
-    Args:
-        d: Device object
-        element: UI element selector, e.g., d(text="..."), d(description="..."), d(resourceId="...")
-        timeout: Maximum time to wait for the element to appear
-        exit_on_error: If True, exits the process on failure; otherwise returns False
-
-    Returns:
-        True on success, False on failure when exit_on_error is False.
-
-    Usage examples:
-        # Click by text
-        wait_and_click(d, d(text="Continue"))
-
-        # Click by content description
-        wait_and_click(d, d(description="Navigate up"))
-
-        # Click by resourceId
-        wait_and_click(d, d(resourceId="com.example:id/confirm_button"))
-    """
+    """Wait for an element and click it with ANR awareness and no sleeps."""
     if not _wait_for_element(
         d, element, timeout=timeout
     ):  # Element not found; raise error/fatal if
@@ -132,25 +116,12 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
 
     # Clicked element; return True
     print(f"[INFO] Clicked element {element.selector}", file=sys.stderr)
-    wait_for_ui_stable(d)
 
     return True
 
 
 def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
-    """
-    Wait for an input element and set its text. Handles ANR dialogs and retries.
-
-    Args:
-        d: Device object
-        element: UI element to wait for and set text on (e.g., d(text=...), d(resourceId=...))
-        text: Text to set
-        timeout: Maximum time to wait for element
-        exit_on_error: If True, exits the process on failure; otherwise returns False
-
-    Returns:
-        True on success, False on failure when exit_on_error is False.
-    """
+    """Wait for an input element, focus it, set text, then handle IME action."""
     if not _wait_for_element(d, element, timeout=timeout):
         message = f"Could not find element: '{element.selector}' within {timeout}s"
         if exit_on_error:
@@ -174,28 +145,25 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
 
     print(f"[INFO] Set text to {text}", file=sys.stderr)
     _handle_keyboard_action(d)
-    wait_for_ui_stable(d)
+
     return True
 
 
 def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
-    """
-    Wait until the UI hierarchy appears stable by observing identical dumps
-    for a number of consecutive samples.
-
-    Args:
-        d: Device object
-        timeout: Maximum time to wait for stability
-        interval: Time between stability checks
-        min_consecutive: Number of consecutive identical hierarchy dumps
-            required to consider the UI stable (default: 2)
-
-    Returns:
-        True if UI stabilized within timeout, False otherwise
-    """
+    """Prefer device idle; fall back to lightweight hierarchy-diff stability check."""
     prev_hierarchy = None
     same_count = 0
     start = time.time()
+
+    # Prefer device-level idle detection if available to avoid arbitrary sleeps
+    try:
+        if d.wait_idle(timeout=int(timeout * 1000), idle=int(interval * 1000)):
+            return True
+    except Exception as e:
+        print(
+            f"[WARN] wait_idle not available or failed; falling back to hierarchy diff: {e}",
+            file=sys.stderr,
+        )
 
     while time.time() - start < timeout:
         try:
@@ -205,7 +173,6 @@ def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
                 f"[WARN] Failed to dump UI hierarchy during stability check: {e}",
                 file=sys.stderr,
             )
-            time.sleep(interval)
             continue
 
         # Count consecutive identical dumps
@@ -216,11 +183,9 @@ def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
 
         prev_hierarchy = current_hierarchy
 
-        # Return True if the UI has stabilized for at least min_consecutive samples (UI is stable)
+        # Return True if the UI has stabilized for at least min_consecutive samples
         if same_count >= min_consecutive:
             return True
-
-        time.sleep(interval)
 
     elapsed = time.time() - start
     print(
@@ -260,29 +225,24 @@ def _wait_for_element(d, element, timeout=180):
         ):  # Failed to unfreeze system UI; abort early
             return False
 
-        if element.exists:  # Element found; return True
-            return True
-        else:
-            _try_scroll_into_view(d, selector_info)
-        time.sleep(1)
+        # Prefer element-driven wait rather than arbitrary sleep
+        remaining = max(0, timeout - (time.time() - start_time))
+        wait_slice = min(1, remaining)
+        try:
+            if element.wait(timeout=wait_slice):  # Element found; return True
+                return True
+        except Exception:
+            # If wait is not available for some reason, fall back to existence check
+            if element.exists:
+                return True
+
+        _try_scroll_into_view(d, selector_info)
 
     return False
 
 
 def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
-    """
-    Handles consecutive "Application Not Responding" (ANR) dialogs by clicking "Wait" up to max_anrs times.
-
-    Args:
-        d: Device object
-        max_anrs: Maximum number of consecutive ANR dialogs to handle
-        timeout: Timeout for checking each ANR dialog
-        target_element: Optional element to wait for after dismissing ANR
-
-    Returns:
-        bool: True if the maximum number of consecutive ANRs was not reached,
-              False otherwise (system likely frozen).
-    """
+    """Click ANR 'Wait' up to max_anrs times; settle with idle/stable checks."""
     anr_count = 0
     wait_button = d(resourceId="android:id/aerr_wait")
 
@@ -374,15 +334,7 @@ def _fatal(d, message):
 
 
 def _handle_keyboard_action(d):
-    """
-    Handles keyboard action (Done/Enter) with multiple fallback methods.
-
-    Args:
-        d: Device object
-
-    Returns:
-        True if keyboard action was successful, False otherwise
-    """
+    """Trigger IME action via Done button, IME action key, or Enter key."""
     # Handle any ANRs before keyboard interaction
     _handle_anr(d, max_anrs=5, timeout=1, target_element=None)
 
@@ -498,7 +450,12 @@ def _robust_set_text(d, element, text, max_attempts=3):
                 f"[WARN] set_text attempt {attempt_index} failed: {set_error}",
                 file=sys.stderr,
             )
-            time.sleep(1)
+            # Avoid arbitrary sleep; allow the device to settle using wait_idle
+            try:
+                d.wait_idle(timeout=1000, idle=500)
+            except Exception:
+                # If wait_idle isn't available, proceed to next attempt without sleeping
+                pass
 
     raise RuntimeError(
         f"Exhausted {max_attempts} attempts to set text on element: '{element.selector}'"
