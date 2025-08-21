@@ -15,19 +15,27 @@ check_emulator_ready() {
         echo "[INFO] Emulator is running."
     fi
     
-    echo "[INFO] Ensuring emulator is fully booted and services are ready..."
+    echo "[INFO] Ensuring emulator is ready before install..."
     adb wait-for-device
-
-    # Poll until the package manager is responsive as signal that the OS is ready.
-    for i in $(seq 1 90); do
+    # Check for boot completion
+    for i in $(seq 1 60); do
+        boot=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+        if [ "$boot" = "1" ]; then
+            echo "[INFO] Emulator boot completed."
+            break
+        fi
+        sleep 1
+    done
+    # Check Package Manager is responsive
+    for i in $(seq 1 30); do
         if adb shell cmd package list packages >/dev/null 2>&1; then
-            echo "[INFO] Emulator is ready."
+            echo "[INFO] Emulator package manager is responsive."
             return 0
         fi
         sleep 1
     done
 
-    echo "[ERROR] Emulator did not become ready within 90 seconds." >&2
+    echo "[ERROR] Emulator did not become ready." >&2
     exit 1
 }
 
