@@ -532,15 +532,15 @@ jobs:
           echo "Memory usage after waiting 30 seconds:"
           free -h
 
-      - name: Wait for CPU stabilization
-        run: |
-          echo "Waiting for CPU to stabilize..."
-          sleep 30
-          # Or wait until CPU drops below threshold
-          while top -bn1 | grep "Cpu(s)" | awk '{gsub(/%us,/, "", $2); if ($2 > 50) exit 1; else exit 0}'; do
-            echo "CPU still high, waiting..."
-            sleep 5
-          done
+      # - name: Wait for CPU stabilization
+      #   run: |
+      #     echo "Waiting for CPU to stabilize..."
+      #     sleep 30
+      #     # Or wait until CPU drops below threshold
+      #     while top -bn1 | grep "Cpu(s)" | awk '{gsub(/%us,/, "", $2); if ($2 > 50) exit 1; else exit 0}'; do
+      #       echo "CPU still high, waiting..."
+      #       sleep 5
+      #     done
 
       - name: Stop resource logging and show results
         if: always()
