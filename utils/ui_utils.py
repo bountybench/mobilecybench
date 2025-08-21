@@ -132,7 +132,7 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
 
     # Clicked element; return True
     print(f"[INFO] Clicked element {element.selector}", file=sys.stderr)
-    _wait_for_ui_stable(d)
+    wait_for_ui_stable(d)
 
     return True
 
@@ -174,8 +174,60 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
 
     print(f"[INFO] Set text to {text}", file=sys.stderr)
     _handle_keyboard_action(d)
-    _wait_for_ui_stable(d)
+    wait_for_ui_stable(d)
     return True
+
+
+def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
+    """
+    Wait until the UI hierarchy appears stable by observing identical dumps
+    for a number of consecutive samples.
+
+    Args:
+        d: Device object
+        timeout: Maximum time to wait for stability
+        interval: Time between stability checks
+        min_consecutive: Number of consecutive identical hierarchy dumps
+            required to consider the UI stable (default: 2)
+
+    Returns:
+        True if UI stabilized within timeout, False otherwise
+    """
+    prev_hierarchy = None
+    same_count = 0
+    start = time.time()
+
+    while time.time() - start < timeout:
+        try:
+            current_hierarchy = d.dump_hierarchy()
+        except Exception as e:
+            print(
+                f"[WARN] Failed to dump UI hierarchy during stability check: {e}",
+                file=sys.stderr,
+            )
+            time.sleep(interval)
+            continue
+
+        # Count consecutive identical dumps
+        if prev_hierarchy is not None and current_hierarchy == prev_hierarchy:
+            same_count += 1
+        else:
+            same_count = 1
+
+        prev_hierarchy = current_hierarchy
+
+        # Return True if the UI has stabilized for at least min_consecutive samples (UI is stable)
+        if same_count >= min_consecutive:
+            return True
+
+        time.sleep(interval)
+
+    elapsed = time.time() - start
+    print(
+        f"[WARN] UI did not stabilize within {elapsed:.1f}s (required {min_consecutive} consecutive identical dumps).",
+        file=sys.stderr,
+    )
+    return False
 
 
 # =============================================================================
@@ -267,7 +319,7 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
                         "[DEBUG] Waiting for UI to stabilize after ANR...",
                         file=sys.stderr,
                     )
-                    _wait_for_ui_stable(d, timeout=5)
+                    wait_for_ui_stable(d, timeout=5)
             else:
                 break  # No ANR dialog found
         except Exception as e:
@@ -291,58 +343,6 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
         )
 
     return True
-
-
-def _wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
-    """
-    Wait until the UI hierarchy appears stable by observing identical dumps
-    for a number of consecutive samples.
-
-    Args:
-        d: Device object
-        timeout: Maximum time to wait for stability
-        interval: Time between stability checks
-        min_consecutive: Number of consecutive identical hierarchy dumps
-            required to consider the UI stable (default: 2)
-
-    Returns:
-        True if UI stabilized within timeout, False otherwise
-    """
-    prev_hierarchy = None
-    same_count = 0
-    start = time.time()
-
-    while time.time() - start < timeout:
-        try:
-            current_hierarchy = d.dump_hierarchy()
-        except Exception as e:
-            print(
-                f"[WARN] Failed to dump UI hierarchy during stability check: {e}",
-                file=sys.stderr,
-            )
-            time.sleep(interval)
-            continue
-
-        # Count consecutive identical dumps
-        if prev_hierarchy is not None and current_hierarchy == prev_hierarchy:
-            same_count += 1
-        else:
-            same_count = 1
-
-        prev_hierarchy = current_hierarchy
-
-        # Return True if the UI has stabilized for at least min_consecutive samples (UI is stable)
-        if same_count >= min_consecutive:
-            return True
-
-        time.sleep(interval)
-
-    elapsed = time.time() - start
-    print(
-        f"[WARN] UI did not stabilize within {elapsed:.1f}s (required {min_consecutive} consecutive identical dumps).",
-        file=sys.stderr,
-    )
-    return False
 
 
 # =============================================================================
