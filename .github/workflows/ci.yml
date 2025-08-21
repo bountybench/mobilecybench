@@ -477,11 +477,25 @@ jobs:
             fi
           done
 
-          echo "Running setup app from source..."
+          echo "Setting up app from source..."
           ./setup_app_source.sh
           EOF
           chmod +x container_script.sh
           ./container_script.sh
+
+      - name: Start resource logging
+        run: |
+          echo "=== Starting resource monitor ==="
+          mkdir -p resource_logs
+          # Host metrics: CPU & memory every 2s
+          nohup vmstat 2 > resource_logs/vmstat.log &
+          echo $! >> resource_logs/monitor_pids.txt
+          # Host metrics: top processes every 5s
+          nohup top -b -d 5 > resource_logs/top.log &
+          echo $! >> resource_logs/monitor_pids.txt
+          # Host metrics: disk space every 10s
+          nohup sh -c 'while true; do df -h; sleep 10; done' > resource_logs/disk.log &
+          echo $! >> resource_logs/monitor_pids.txt
 
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
@@ -518,6 +532,18 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 4096 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
+
+      - name: Stop resource logging and show results
+        if: always()
+        run: |
+          echo "=== Stopping resource monitor ==="
+          kill $(cat resource_logs/monitor_pids.txt) || true
+          echo "=== VMSTAT LOG ==="
+          tail -n 40 resource_logs/vmstat.log || true
+          echo "=== TOP LOG ==="
+          tail -n 40 resource_logs/top.log || true
+          echo "=== DISK USAGE LOG ==="
+          tail -n 20 resource_logs/disk.log || true
 
       - name: Display disk space after tests
         if: always()
