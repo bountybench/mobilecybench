@@ -496,6 +496,22 @@ jobs:
           EOF
           chmod +x container_script.sh
           ./container_script.sh
+                
+      - name: Stabilize Runner After Build (30 seconds)
+        run: |
+          echo "Memory usage immediately after build:"
+          free -h
+          # Stop daemons to free RAM in case the script started any
+          (cd codebase && ./gradlew --stop) || true
+          pkill -f kotlin.daemon.KotlinCompileDaemon || true
+          jps -v | grep -E 'GradleDaemon|Kotlin' || true
+          echo "Memory usage after stopping Gradle daemons:"
+          free -h
+
+          echo "Waiting 30 seconds for OS to reclaim memory..."
+          sleep 30
+          echo "Memory usage after waiting 30 seconds:"
+          free -h
 
       - name: Stop resource logging and show results
         if: always()
