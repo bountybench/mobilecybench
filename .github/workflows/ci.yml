@@ -318,11 +318,11 @@ jobs:
           java-version: "${{ needs.setup.outputs.java }}"
           cache: gradle
 
-      - name: Setup Node.js with caching
-        uses: actions/setup-node@v3
-        with:
-          node-version: "${{ needs.setup.outputs.node }}"
-          cache: 'yarn'
+      # - name: Setup Node.js with caching
+      #   uses: actions/setup-node@v3
+      #   with:
+      #     node-version: "${{ needs.setup.outputs.node }}"
+      #     cache: 'yarn'
             
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
@@ -379,6 +379,7 @@ jobs:
             "baseline")
               cat <<'EOF' >> test_checks.sh
 
+          cd "$dir"
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
@@ -404,6 +405,7 @@ jobs:
           export ANDROID_HOME
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           
+          cd "$dir"
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
@@ -437,6 +439,7 @@ jobs:
           export ANDROID_HOME
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           
+          cd "$dir"
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
@@ -568,7 +571,6 @@ jobs:
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
         uses: reactivecircus/android-emulator-runner@v2
-        continue-on-error: true 
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
           arch: x86_64
@@ -591,7 +593,6 @@ jobs:
       - name: Run emulator test with action (baseline and vuln_scenario_1)
         if: matrix.test_type != 'vuln_scenario_0'
         uses: reactivecircus/android-emulator-runner@v2
-        continue-on-error: true 
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
           arch: x86_64
