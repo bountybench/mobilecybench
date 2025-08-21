@@ -132,7 +132,6 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
 
     # Clicked element; return True
     print(f"[INFO] Clicked element {element.selector}", file=sys.stderr)
-    wait_for_ui_stable(d)
 
     return True
 
@@ -174,7 +173,7 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
 
     print(f"[INFO] Set text to {text}", file=sys.stderr)
     _handle_keyboard_action(d)
-    wait_for_ui_stable(d)
+
     return True
 
 
