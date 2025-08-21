@@ -3,12 +3,24 @@ Concise uiautomator2 helpers for reliable clicking and text entry without sleeps
 Public API: initialize_ui_automation, wait_and_click, wait_and_set_text
 """
 
+import logging
+import os
 import re
 import subprocess
 import sys
 import time
 
 import uiautomator2 as u2
+
+# -----------------------------------------------------------------------------
+# Logging setup (stderr only, keeps stdout clean)
+# -----------------------------------------------------------------------------
+logger = logging.getLogger("mobilecybench.ui")
+logger.setLevel(os.getenv("UI_LOG_LEVEL", "DEBUG"))
+_handler = logging.StreamHandler(stream=sys.stderr)
+_handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+logger.handlers[:] = [_handler]
+logger.propagate = False
 
 # =============================================================================
 # UI AUTOMATION INITIALIZATION
@@ -27,12 +39,12 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
                 timeout=timeout_seconds,
             )
             if result.returncode != 0:
-                print(f"[WARN] 'adb devices' failed: {result.stderr}", file=sys.stderr)
+                logger.warning("'adb devices' failed: %s", result.stderr)
                 return False
             lines = [line for line in result.stdout.splitlines()[1:] if line.strip()]
             return any("\tdevice" in line for line in lines)
         except Exception as e:
-            print(f"[WARN] Could not run 'adb devices': {e}", file=sys.stderr)
+            logger.warning("Could not run 'adb devices': %s", e)
             return False
 
     def _adb_wait_for_device(timeout_seconds: int) -> None:
@@ -40,23 +52,16 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
         try:
             subprocess.run(["adb", "wait-for-device"], timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
-            print(
-                f"[WARN] 'adb wait-for-device' timed out after {timeout_seconds}s",
-                file=sys.stderr,
-            )
+            logger.warning("'adb wait-for-device' timed out after %ss", timeout_seconds)
         except Exception as e:
-            print(f"[WARN] 'adb wait-for-device' failed: {e}", file=sys.stderr)
+            logger.warning("'adb wait-for-device' failed: %s", e)
 
     for attempt_index in range(1, max_retries + 1):
-        print(
-            f"[INFO] Connecting to device (attempt {attempt_index}/{max_retries})…",
-            file=sys.stderr,
-        )
+        logger.info("Connecting to device (attempt %s/%s)…", attempt_index, max_retries)
 
         if not _adb_has_devices():
-            print(
-                "[ERROR] No ADB devices detected. Is a device/emulator connected and authorized?",
-                file=sys.stderr,
+            logger.error(
+                "No ADB devices detected. Is a device/emulator connected and authorized?"
             )
             if attempt_index < max_retries:
                 _adb_wait_for_device(retry_delay)
@@ -67,11 +72,11 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
             device = u2.connect()
             # Touch the device to ensure the connection is usable
             _ = device.device_info  # may raise if not connected
-            print("[INFO] Connected to device.", file=sys.stderr)
+            logger.info("Connected to device.")
 
             return device
         except Exception as e:
-            print(f"[WARN] Connection failed: {e}", file=sys.stderr)
+            logger.info("Connection failed: %s", e)
             if attempt_index < max_retries:
                 _adb_wait_for_device(retry_delay)
                 continue
@@ -101,7 +106,7 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
         if exit_on_error:
             _fatal(d, message)
         else:
-            print(f"[ERROR] {message}", file=sys.stderr)
+            logger.error("%s", message)
             return False
 
     if not element.click_exists(
@@ -111,11 +116,11 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
         if exit_on_error:
             _fatal(d, message)
         else:
-            print(f"[ERROR] {message}", file=sys.stderr)
+            logger.error("%s", message)
             return False
 
     # Clicked element; return True
-    print(f"[INFO] Clicked element {element.selector}", file=sys.stderr)
+    logger.info("Clicked element %s", element.selector)
 
     return True
 
@@ -127,7 +132,7 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
         if exit_on_error:
             _fatal(d, message)
         else:
-            print(f"[ERROR] {message}", file=sys.stderr)
+            logger.error("%s", message)
             return False
 
     # Use robust text entry with retries and scroll support
@@ -140,10 +145,10 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
         if exit_on_error:
             _fatal(d, message)
         else:
-            print(f"[ERROR] {message}", file=sys.stderr)
+            logger.error("%s", message)
             return False
 
-    print(f"[INFO] Set text to {text}", file=sys.stderr)
+    logger.info("Set text to %s", text)
     _handle_keyboard_action(d)
 
     return True
@@ -160,19 +165,15 @@ def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
         if d.wait_idle(timeout=int(timeout * 1000), idle=int(interval * 1000)):
             return True
     except Exception as e:
-        print(
-            f"[WARN] wait_idle not available or failed; falling back to hierarchy diff: {e}",
-            file=sys.stderr,
+        logger.debug(
+            "wait_idle not available or failed; falling back to hierarchy diff: %s", e
         )
 
     while time.time() - start < timeout:
         try:
             current_hierarchy = d.dump_hierarchy()
         except Exception as e:
-            print(
-                f"[WARN] Failed to dump UI hierarchy during stability check: {e}",
-                file=sys.stderr,
-            )
+            logger.debug("Failed to dump UI hierarchy during stability check: %s", e)
             continue
 
         # Count consecutive identical dumps
@@ -188,9 +189,10 @@ def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
             return True
 
     elapsed = time.time() - start
-    print(
-        f"[WARN] UI did not stabilize within {elapsed:.1f}s (required {min_consecutive} consecutive identical dumps).",
-        file=sys.stderr,
+    logger.warning(
+        "UI did not stabilize within %.1fs (required %s consecutive identical dumps).",
+        elapsed,
+        min_consecutive,
     )
     return False
 
@@ -250,56 +252,51 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
         try:
             if wait_button.exists(timeout=timeout):
                 anr_count += 1
-                print(
-                    f"[DEBUG] ANR dialog #{anr_count} detected. Clicking 'Wait' to continue...",
-                    file=sys.stderr,
+                logger.debug(
+                    "ANR dialog #%s detected. Clicking 'Wait' to continue...", anr_count
                 )
                 wait_button.click()
 
                 # Wait for either target element or UI stability
                 if target_element is not None:
-                    print(
-                        f"[DEBUG] Waiting for target element '{target_element.selector}' to appear after ANR...",
-                        file=sys.stderr,
+                    logger.debug(
+                        "Waiting for target element '%s' to appear after ANR...",
+                        target_element.selector,
                     )
                     if target_element.wait(timeout=5):
-                        print(
-                            f"[DEBUG] Target element '{target_element.selector}' appeared successfully after ANR.",
-                            file=sys.stderr,
+                        logger.debug(
+                            "Target element '%s' appeared successfully after ANR.",
+                            target_element.selector,
                         )
                         break  # Target element found - exit ANR loop
                     else:
-                        print(
-                            f"[DEBUG] Target element '{target_element.selector}' did not appear after ANR dismissal.",
-                            file=sys.stderr,
+                        logger.debug(
+                            "Target element '%s' did not appear after ANR dismissal.",
+                            target_element.selector,
                         )
                         continue  # Continue checking for more ANRs
                 else:
-                    print(
-                        "[DEBUG] Waiting for UI to stabilize after ANR...",
-                        file=sys.stderr,
-                    )
+                    logger.debug("Waiting for UI to stabilize after ANR...")
                     wait_for_ui_stable(d, timeout=5)
             else:
                 break  # No ANR dialog found
         except Exception as e:
-            print(
-                f"[WARN] Could not click ANR 'Wait' button (it may have disappeared): {e}"
+            logger.warning(
+                "Could not click ANR 'Wait' button (it may have disappeared): %s", e
             )
             break
 
     # Reached max ANR limit: log summary and report False (non-fatal)
     if anr_count == max_anrs:
-        print(
-            f"[ERROR] Could not fully handle ANR dialog(s): reached maximum limit of {max_anrs}.",
-            file=sys.stderr,
+        logger.error(
+            "Could not fully handle ANR dialog(s): reached maximum limit of %s.",
+            max_anrs,
         )
         return False
 
     if anr_count > 0:
-        print(
-            f"[WARN] Handled {anr_count} consecutive ANR dialog(s) until system UI unfreeze.",
-            file=sys.stderr,
+        logger.info(
+            "Handled %s consecutive ANR dialog(s) until system UI unfreeze.", anr_count
         )
 
     return True
@@ -319,12 +316,12 @@ def _fatal(d, message):
         d: Device object (may be None)
         message: Error message to print
     """
-    print(f"[FATAL] {message}", file=sys.stderr)
+    logger.critical("%s", message)
     try:
         if d is not None:
-            print(d.dump_hierarchy(), file=sys.stderr)
+            logger.critical("%s", d.dump_hierarchy())
     except Exception as dump_err:
-        print(f"[WARN] Failed to dump UI hierarchy: {dump_err}", file=sys.stderr)
+        logger.warning("Failed to dump UI hierarchy: %s", dump_err)
     sys.exit(1)
 
 
@@ -342,10 +339,10 @@ def _handle_keyboard_action(d):
     try:
         if d(description="Done").exists(timeout=1):
             d(description="Done").click()
-            print("[INFO] Clicked keyboard Done button", file=sys.stderr)
+            logger.debug("Clicked keyboard Done button")
             return True
     except Exception as e:
-        print(f"[WARN] Could not click keyboard Done button: {e}", file=sys.stderr)
+        logger.warning("Could not click keyboard Done button: %s", e)
 
     # Method 2: Try clicking the keyboard action button
     try:
@@ -355,20 +352,20 @@ def _handle_keyboard_action(d):
             d(
                 resourceId="com.google.android.inputmethod.latin:id/key_pos_ime_action"
             ).click()
-            print("[INFO] Clicked keyboard action button", file=sys.stderr)
+            logger.debug("Clicked keyboard action button")
             return True
     except Exception as e:
-        print(f"[WARN] Could not click keyboard action button: {e}", file=sys.stderr)
+        logger.warning("Could not click keyboard action button: %s", e)
 
     # Method 3: Try pressing Enter key
     try:
         d.press("enter")
-        print("[INFO] Pressed Enter key", file=sys.stderr)
+        logger.debug("Pressed Enter key")
         return True
     except Exception as e:
-        print(f"[WARN] Could not press Enter key: {e}", file=sys.stderr)
+        logger.warning("Could not press Enter key: %s", e)
 
-    print("[WARN] All keyboard action methods failed", file=sys.stderr)
+    logger.error("All keyboard action methods failed")
     return False
 
 
@@ -440,16 +437,12 @@ def _robust_set_text(d, element, text, max_attempts=3):
 
             element.click_exists(timeout=5)
             element.set_text(text)
-            print(
-                f"[INFO] Set text attempt {attempt_index} succeeded for {element.selector}",
-                file=sys.stderr,
+            logger.debug(
+                "Set text attempt %s succeeded for %s", attempt_index, element.selector
             )
             return True
         except Exception as set_error:
-            print(
-                f"[WARN] set_text attempt {attempt_index} failed: {set_error}",
-                file=sys.stderr,
-            )
+            logger.warning("set_text attempt %s failed: %s", attempt_index, set_error)
             # Avoid arbitrary sleep; allow the device to settle using wait_idle
             try:
                 d.wait_idle(timeout=1000, idle=500)
