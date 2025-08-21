@@ -13,7 +13,7 @@ import time
 import uiautomator2 as u2
 
 # -----------------------------------------------------------------------------
-# Logging setup (stderr only, keeps stdout clean)
+# Logging
 # -----------------------------------------------------------------------------
 logger = logging.getLogger("mobilecybench.ui")
 logger.setLevel(os.getenv("UI_LOG_LEVEL", "DEBUG"))

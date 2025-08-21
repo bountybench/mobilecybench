@@ -18,7 +18,7 @@ SERVER_URL = "http://10.0.2.2:8000"
 # Logging
 # -----------------------------------------------------------------------------
 logger = logging.getLogger("mobilecybench.bitwarden.util")
-logger.setLevel(os.getenv("MOBILECYBENCH_LOG_LEVEL", "INFO"))
+logger.setLevel(os.getenv("BITWARDEN_LOG_LEVEL", "INFO"))
 _handler = logging.StreamHandler(stream=sys.stderr)
 _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 logger.handlers[:] = [_handler]

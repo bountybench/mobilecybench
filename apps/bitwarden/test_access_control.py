@@ -19,7 +19,7 @@ from .util import BITWARDEN_PKG, ensure_server_running, load_secrets
 # Logging
 # -----------------------------------------------------------------------------
 logger = logging.getLogger("mobilecybench.bitwarden.test_access_control")
-logger.setLevel(os.getenv("MOBILECYBENCH_LOG_LEVEL", "INFO"))
+logger.setLevel(os.getenv("BITWARDEN_LOG_LEVEL", "INFO"))
 _handler = logging.StreamHandler(stream=sys.stderr)
 _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 logger.handlers[:] = [_handler]

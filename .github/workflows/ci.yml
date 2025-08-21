@@ -354,6 +354,7 @@ jobs:
           
           echo "dir=\"$modified_dir\"" >> test_checks.sh
           echo "test_type=\"${{ matrix.test_type }}\"" >> test_checks.sh
+          echo 'cd "$dir"' >> test_checks.sh
 
           case "${{ matrix.test_type }}" in
             "baseline")
@@ -518,10 +519,6 @@ jobs:
               echo "Memory threshold of ${THRESHOLD}MB crossed. Continuing..."
               break
             fi
-
-            # Aggressively ensure any lingering build daemons are gone during wait
-            pkill -f GradleDaemon || true
-            pkill -f kotlin.daemon.KotlinCompileDaemon || true
 
             echo "Retrying in ${INTERVAL} seconds..."
             (( ++TRIES ))
