@@ -554,6 +554,32 @@ jobs:
           echo "=== DISK USAGE LOG ==="
           tail -n 20 resource_logs/disk.log || true
 
+      - name: Pre-emulator Resource Check
+        run: |
+          echo "=== Pre-Emulator Resource Check ==="
+          
+          # Check if CPU usage is acceptable
+          CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//' | cut -d'.' -f1)
+          if [ "$CPU_USAGE" -gt 25 ]; then
+            echo "WARNING: CPU usage too high ($CPU_USAGE%). Emulator may hang."
+            echo "Top processes:"
+            ps aux --sort=-%cpu | head -10
+            
+            # Try to kill more processes
+            sudo pkill -f chrome || true
+            sudo pkill -f firefox || true
+            sleep 10
+          fi
+          
+          # Check memory
+          AVAILABLE_MEM=$(free -m | awk 'NR==2{printf "%.0f", $7/1024}')
+          if [ "$AVAILABLE_MEM" -lt 2 ]; then
+            echo "WARNING: Low available memory (${AVAILABLE_MEM}GB)"
+            free -h
+          fi
+          
+          echo "System ready for emulator. CPU: ${CPU_USAGE}%, Available Memory: ${AVAILABLE_MEM}GB"
+
       - name: Start resource logging
         run: |
           echo "=== Starting resource monitor ==="
