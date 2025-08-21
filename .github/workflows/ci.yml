@@ -479,6 +479,7 @@ jobs:
 
           echo "Running build_app.sh..."
           ./build_app.sh
+
           EOF
 
           chmod +x container_script.sh
@@ -489,8 +490,11 @@ jobs:
           echo "Memory usage immediately after build:"
           free -h
 
-          # Stop daemons to free RAM in case the script started any
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir" || true
+          
           (cd codebase && ./gradlew --stop) || true
+          pkill -f GradleDaemon || true
           pkill -f kotlin.daemon.KotlinCompileDaemon || true
           jps -v | grep -E 'GradleDaemon|Kotlin' || true
 
@@ -514,6 +518,10 @@ jobs:
               echo "Memory threshold of ${THRESHOLD}MB crossed. Continuing..."
               break
             fi
+
+            # Aggressively ensure any lingering build daemons are gone during wait
+            pkill -f GradleDaemon || true
+            pkill -f kotlin.daemon.KotlinCompileDaemon || true
 
             echo "Retrying in ${INTERVAL} seconds..."
             (( ++TRIES ))

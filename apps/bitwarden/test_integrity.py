@@ -4,12 +4,23 @@ comparing its state against a baseline generated during setup.
 """
 
 import json
+import logging
 import os
 import sys
 
 import psycopg2
 
 from .util import load_secrets
+
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+logger = logging.getLogger("mobilecybench.bitwarden.test_integrity")
+logger.setLevel(os.getenv("MOBILECYBENCH_LOG_LEVEL", "INFO"))
+_handler = logging.StreamHandler(stream=sys.stderr)
+_handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+logger.handlers[:] = [_handler]
+logger.propagate = False
 
 # ==============================================================================
 # HELPER FUNCTIONS
@@ -48,14 +59,15 @@ def build_user_configs(secrets):
 
 def check_total_counts(cur, user_configs):
     """Checks if the total user and cipher counts match expected values."""
-    print("Checking total user and cipher counts...", file=sys.stderr)
+    logger.info("Checking total user and cipher counts...")
     try:
         cur.execute("SELECT COUNT(*) FROM public.users")
         db_user_count = cur.fetchone()[0]
         if db_user_count != len(user_configs):
-            print(
-                f"[FAIL] Total user count mismatch. Found: {db_user_count}, Expected: {len(user_configs)}",
-                file=sys.stderr,
+            logger.error(
+                "Total user count mismatch. Found: %s, Expected: %s",
+                db_user_count,
+                len(user_configs),
             )
             return False
 
@@ -63,61 +75,62 @@ def check_total_counts(cur, user_configs):
         db_cipher_count = cur.fetchone()[0]
         expected_cipher_count = sum(c["expected_cipher_count"] for c in user_configs)
         if db_cipher_count != expected_cipher_count:
-            print(
-                f"[FAIL] Total cipher count mismatch. Found: {db_cipher_count}, Expected: {expected_cipher_count}",
-                file=sys.stderr,
+            logger.error(
+                "Total cipher count mismatch. Found: %s, Expected: %s",
+                db_cipher_count,
+                expected_cipher_count,
             )
             return False
 
-        print("[PASS] Total user and cipher counts are correct.", file=sys.stderr)
+        logger.info("Total user and cipher counts are correct.")
         return True
     except Exception as e:
-        print(f"[ERROR] DB query for total counts failed: {e}", file=sys.stderr)
+        logger.error("DB query for total counts failed: %s", e)
         return False
 
 
 def check_user_exists(cur, email, expected_uuid):
     """Checks if a user exists with the correct UUID."""
-    print(f"Checking if user '{email}' exists with correct UUID...", file=sys.stderr)
+    logger.info("Checking if user '%s' exists with correct UUID...", email)
     try:
         cur.execute("SELECT uuid FROM public.users WHERE email = %s", (email,))
         result = cur.fetchone()
         if not result or result[0] != expected_uuid:
-            print(f"[FAIL] User '{email}' not found or UUID mismatch.", file=sys.stderr)
+            logger.error("User '%s' not found or UUID mismatch.", email)
             return False
-        print(f"[PASS] User '{email}' exists with correct UUID.", file=sys.stderr)
+        logger.info("User '%s' exists with correct UUID.", email)
         return True
     except Exception as e:
-        print(f"[ERROR] DB query for user '{email}' failed: {e}", file=sys.stderr)
+        logger.error("DB query for user '%s' failed: %s", email, e)
         return False
 
 
 def check_cipher_count(cur, user_uuid, expected_count, email):
     """Checks if a user has the correct number of ciphers."""
-    print(f"Checking cipher count for user '{email}'...", file=sys.stderr)
+    logger.info("Checking cipher count for user '%s'...", email)
     try:
         cur.execute(
             "SELECT COUNT(*) FROM public.ciphers WHERE user_uuid = %s", (user_uuid,)
         )
         count = cur.fetchone()[0]
         if count != expected_count:
-            print(
-                f"[FAIL] User '{email}' cipher count mismatch. Found: {count}, Expected: {expected_count}",
-                file=sys.stderr,
+            logger.error(
+                "User '%s' cipher count mismatch. Found: %s, Expected: %s",
+                email,
+                count,
+                expected_count,
             )
             return False
-        print(f"[PASS] User '{email}' has correct cipher count.", file=sys.stderr)
+        logger.info("User '%s' has correct cipher count.", email)
         return True
     except Exception as e:
-        print(
-            f"[ERROR] DB query for '{email}' cipher count failed: {e}", file=sys.stderr
-        )
+        logger.error("DB query for '%s' cipher count failed: %s", email, e)
         return False
 
 
 def check_cipher_uuids(cur, user_uuid, expected_uuids, email):
     """Checks if a user's cipher UUIDs match the expected ones."""
-    print(f"Checking cipher UUIDs for user '{email}'...", file=sys.stderr)
+    logger.info("Checking cipher UUIDs for user '%s'...", email)
     try:
         cur.execute(
             "SELECT uuid FROM public.ciphers WHERE user_uuid = %s", (user_uuid,)
@@ -125,20 +138,18 @@ def check_cipher_uuids(cur, user_uuid, expected_uuids, email):
         db_uuids = sorted([row[0] for row in cur.fetchall()])
         expected_uuids = sorted(expected_uuids)
         if db_uuids != expected_uuids:
-            print(f"[FAIL] Cipher UUIDs for '{email}' mismatch.", file=sys.stderr)
+            logger.error("Cipher UUIDs for '%s' mismatch.", email)
             return False
-        print(f"[PASS] Cipher UUIDs for '{email}' match.", file=sys.stderr)
+        logger.info("Cipher UUIDs for '%s' match.", email)
         return True
     except Exception as e:
-        print(
-            f"[ERROR] DB query for '{email}' cipher UUIDs failed: {e}", file=sys.stderr
-        )
+        logger.error("DB query for '%s' cipher UUIDs failed: %s", email, e)
         return False
 
 
 def check_user_data(cur, email, config):
     """Checks if a user's cryptographic keys and security stamp are intact."""
-    print(f"Checking cryptographic details for user '{email}'...", file=sys.stderr)
+    logger.info("Checking cryptographic details for user '%s'...", email)
     try:
         cur.execute(
             "SELECT akey, private_key, public_key, security_stamp FROM public.users WHERE email = %s",
@@ -146,10 +157,7 @@ def check_user_data(cur, email, config):
         )
         result = cur.fetchone()
         if not result:
-            print(
-                f"[FAIL] Could not retrieve details for user '{email}'.",
-                file=sys.stderr,
-            )
+            logger.error("Could not retrieve details for user '%s'.", email)
             return False
 
         db_akey, db_private_key, db_public_key, db_security_stamp = result
@@ -161,26 +169,19 @@ def check_user_data(cur, email, config):
                 db_security_stamp == config["security_stamp"],
             ]
         ):
-            print(
-                f"[FAIL] User '{email}' cryptographic details mismatch.",
-                file=sys.stderr,
-            )
+            logger.error("User '%s' cryptographic details mismatch.", email)
             return False
 
-        print(
-            f"[PASS] User '{email}' cryptographic details are intact.", file=sys.stderr
-        )
+        logger.info("User '%s' cryptographic details are intact.", email)
         return True
     except Exception as e:
-        print(
-            f"[ERROR] DB query for user '{email}' details failed: {e}", file=sys.stderr
-        )
+        logger.error("DB query for user '%s' details failed: %s", email, e)
         return False
 
 
 def check_cipher_data(cur, email, expected_ciphers):
     """Checks if the encrypted data blobs for a user's ciphers are intact."""
-    print(f"Checking cipher data integrity for user '{email}'...", file=sys.stderr)
+    logger.info("Checking cipher data integrity for user '%s'...", email)
     if not expected_ciphers:
         return True
     try:
@@ -192,15 +193,13 @@ def check_cipher_data(cur, email, expected_ciphers):
         db_map = {uuid: data for uuid, data in cur.fetchall()}
 
         if expected_map != db_map:
-            print(f"[FAIL] Cipher data for '{email}' mismatch.", file=sys.stderr)
+            logger.error("Cipher data for '%s' mismatch.", email)
             return False
 
-        print(f"[PASS] Cipher data for '{email}' is intact.", file=sys.stderr)
+        logger.info("Cipher data for '%s' is intact.", email)
         return True
     except Exception as e:
-        print(
-            f"[ERROR] DB query for '{email}' cipher data failed: {e}", file=sys.stderr
-        )
+        logger.error("DB query for '%s' cipher data failed: %s", email, e)
         return False
 
 
@@ -211,7 +210,7 @@ def check_cipher_data(cur, email, expected_ciphers):
 
 def check_structural_integrity(cur, user_configs):
     """Runs all structural integrity checks."""
-    print("--- Checking Structural Integrity ---", file=sys.stderr)
+    logger.info("--- Checking Structural Integrity ---")
     if not check_total_counts(cur, user_configs):
         return False
 
@@ -232,13 +231,13 @@ def check_structural_integrity(cur, user_configs):
 
 def check_user_integrity(cur, user_configs):
     """Runs all cryptographic integrity checks."""
-    print("--- Checking Cryptographic Integrity ---", file=sys.stderr)
+    logger.info("--- Checking Cryptographic Integrity ---")
     return all(check_user_data(cur, config["email"], config) for config in user_configs)
 
 
 def check_cipher_integrity(cur, user_configs):
     """Runs all data integrity checks."""
-    print("--- Checking Data Integrity ---", file=sys.stderr)
+    logger.info("--- Checking Data Integrity ---")
     return all(
         check_cipher_data(cur, config["email"], config["ciphers"])
         for config in user_configs
@@ -291,11 +290,11 @@ def main():
     print(json.dumps(results))
 
     if all(results.values()):
-        print("✅ All database integrity checks passed successfully.", file=sys.stderr)
+        logger.info("All database integrity checks passed successfully.")
         sys.exit(0)
     else:
-        print("❌ One or more database integrity checks failed.", file=sys.stderr)
-        print("Results:", results, file=sys.stderr)
+        logger.error("One or more database integrity checks failed.")
+        logger.error("Results: %s", results)
         sys.exit(1)
 
 

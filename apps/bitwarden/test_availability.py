@@ -3,6 +3,7 @@ test_availability.py checks if the Bitwarden app and its server are running and 
 """
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -12,6 +13,16 @@ import urllib.request
 from utils.ui_utils import initialize_ui_automation
 
 from .util import BITWARDEN_PKG, adb
+
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+logger = logging.getLogger("mobilecybench.bitwarden.test_availability")
+logger.setLevel(os.getenv("MOBILECYBENCH_LOG_LEVEL", "INFO"))
+_handler = logging.StreamHandler(stream=sys.stderr)
+_handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+logger.handlers[:] = [_handler]
+logger.propagate = False
 
 SERVER_SERVICE = "vaultwarden"
 DB_SERVICE = "db"
@@ -24,9 +35,7 @@ SERVER_URL = "http://localhost:8000/alive"
 
 def check_container_running(service_name: str) -> bool:
     """Checks if a Docker container is running and healthy."""
-    print(
-        f"Checking status of container for service '{service_name}'...", file=sys.stderr
-    )
+    logger.info("Checking status of container for service '%s'...", service_name)
     try:
         result = subprocess.run(
             ["docker", "compose", "ps", service_name],
@@ -36,75 +45,60 @@ def check_container_running(service_name: str) -> bool:
         )
         output = result.stdout.strip()
         if len(output.splitlines()) > 1 and "Up" in output:
-            print(f"[PASS] Service '{service_name}' is running.", file=sys.stderr)
+            logger.info("Service '%s' is running.", service_name)
             return True
         else:
-            print(
-                f"[FAIL] Service '{service_name}' is not running or not 'Up'.",
-                file=sys.stderr,
-            )
-            print(f"docker compose ps output:\\n{output}", file=sys.stderr)
+            logger.error("Service '%s' is not running or not 'Up'.", service_name)
+            logger.error("docker compose ps output:\n%s", output)
             return False
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        print(
-            f"[ERROR] Could not check status of service '{service_name}': {e}",
-            file=sys.stderr,
-        )
+        logger.error("Could not check status of service '%s': %s", service_name, e)
         return False
 
 
 def check_server_api() -> bool:
     """Checks if the server's /alive endpoint is responding correctly."""
-    print(f"Checking server API at {SERVER_URL}...", file=sys.stderr)
+    logger.info("Checking server API at %s...", SERVER_URL)
     try:
         with urllib.request.urlopen(SERVER_URL, timeout=10) as response:
             if response.status == 200:
-                print(
-                    f"[PASS] Server API is available (HTTP {response.status}).",
-                    file=sys.stderr,
-                )
+                logger.info("Server API is available (HTTP %s).", response.status)
                 return True
             else:
-                print(
-                    f"[FAIL] Server API returned status {response.status}.",
-                    file=sys.stderr,
-                )
+                logger.error("Server API returned status %s.", response.status)
                 return False
     except Exception as e:
-        print(f"[FAIL] Could not connect to server API: {e}", file=sys.stderr)
+        logger.error("Could not connect to server API: %s", e)
         return False
 
 
 def check_app_can_launch() -> bool:
     """Checks if the app can be launched and is responsive."""
-    print("Checking if app can be launched and is responsive...", file=sys.stderr)
+    logger.info("Checking if app can be launched and is responsive...")
     d = initialize_ui_automation()
 
     try:
-        print(f"Attempting to launch {BITWARDEN_PKG}...", file=sys.stderr)
+        logger.info("Attempting to launch %s...", BITWARDEN_PKG)
         d.app_start(BITWARDEN_PKG, use_monkey=True)
         time.sleep(8)
 
         if d(resourceId="AlertPopup").exists:
-            print("Error dialog detected. Dismissing...", file=sys.stderr)
+            logger.warning("Error dialog detected. Dismissing...")
             d(resourceId="AcceptAlertButton").click()
             time.sleep(2)
 
         current_app = d.app_current()["package"]
         if current_app == BITWARDEN_PKG:
-            print(
-                "[PASS] App launched successfully and is in foreground.",
-                file=sys.stderr,
-            )
+            logger.info("App launched successfully and is in foreground.")
             return True
         else:
-            print(
-                f"[FAIL] App launched but is not in the foreground. Current app: {current_app}",
-                file=sys.stderr,
+            logger.error(
+                "App launched but is not in the foreground. Current app: %s",
+                current_app,
             )
             return False
     except Exception as e:
-        print(f"[FAIL] Could not launch the app via uiautomator2: {e}", file=sys.stderr)
+        logger.error("Could not launch the app via uiautomator2: %s", e)
         return False
     finally:
         if d:
@@ -113,15 +107,12 @@ def check_app_can_launch() -> bool:
 
 def check_app_crash_logs() -> bool:
     """Checks for crash or ANR indicators in recent ADB logs."""
-    print(
-        f"[INFO]Checking for {BITWARDEN_PKG} crashes or ANRs in ADB logs...",
-        file=sys.stderr,
-    )
+    logger.info("[INFO]Checking for %s crashes or ANRs in ADB logs...", BITWARDEN_PKG)
     logs = adb(["logcat", "-t", "500"])
     if logs is None:
-        print("[ERROR] No ADB logs found.", file=sys.stderr)
+        logger.error("No ADB logs found.")
         return False
-    print(f"[INFO] ADB logs found: {logs}", file=sys.stderr)
+    logger.debug("ADB logs found: %s", logs)
 
     # 1) Detect classic Android crash pattern: FATAL EXCEPTION + matching Process line
     lines = logs.splitlines()
@@ -129,9 +120,9 @@ def check_app_crash_logs() -> bool:
         if "FATAL EXCEPTION" in line:
             for nearby_line in lines[i - 3 : i + 3]:
                 if f"Process: {BITWARDEN_PKG}" in nearby_line:
-                    print(
-                        f"[FAIL] Crash detected for {BITWARDEN_PKG}: FATAL EXCEPTION with matching process.",
-                        file=sys.stderr,
+                    logger.error(
+                        "Crash detected for %s: FATAL EXCEPTION with matching process.",
+                        BITWARDEN_PKG,
                     )
                     return False
 
@@ -150,13 +141,11 @@ def check_app_crash_logs() -> bool:
     ]
 
     if inline_hits:
-        print(
-            f"[FAIL] Crash/ANR indicators found for {BITWARDEN_PKG}.", file=sys.stderr
-        )
-        print("\\n".join(inline_hits), file=sys.stderr)
+        logger.error("Crash/ANR indicators found for %s.", BITWARDEN_PKG)
+        logger.error("%s", "\n".join(inline_hits))
         return False
 
-    print("[PASS] No recent crashes or ANRs detected for the app.", file=sys.stderr)
+    logger.info("No recent crashes or ANRs detected for the app.")
     return True
 
 
@@ -184,11 +173,11 @@ def main():
     print(json.dumps(results))
 
     if all(results.values()):
-        print("✅ All availability checks passed successfully.", file=sys.stderr)
+        logger.info("All availability checks passed successfully.")
         sys.exit(0)
     else:
-        print("❌ One or more availability checks failed.", file=sys.stderr)
-        print("Results:", results, file=sys.stderr)
+        logger.error("One or more availability checks failed.")
+        logger.error("Results: %s", results)
         sys.exit(1)
 
 
