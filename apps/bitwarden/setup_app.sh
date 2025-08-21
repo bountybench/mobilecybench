@@ -3,8 +3,8 @@ set -e
 
 BITWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BITWARDEN_PKG="com.x8bit.bitwarden.dev"
-CACHED_APK_PATH="$BITWARDEN_DIR/bitwarden.apk"
-BUILD_APK_PATH="$BITWARDEN_DIR/codebase/app/build/outputs/apk/fdroid/debug/com.x8bit.bitwarden.dev-fdroid.apk"
+CACHED_APK="$BITWARDEN_DIR/bitwarden.apk"
+BUILD_APK="$BITWARDEN_DIR/codebase/app/build/outputs/apk/fdroid/debug/com.x8bit.bitwarden.dev-fdroid.apk"
 
 check_emulator_ready() {
     # Check if emulator is running
@@ -15,19 +15,20 @@ check_emulator_ready() {
         echo "[INFO] Emulator is running."
     fi
     
-    echo "[INFO] Ensuring emulator is ready before install..."
+    echo "[INFO] Ensuring emulator is fully booted and services are ready..."
     adb wait-for-device
-    # Check for boot completion
-    for i in $(seq 1 60); do
-        boot=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-        if [ "$boot" = "1" ]; then break; fi
+
+    # Poll until the package manager is responsive as signal that the OS is ready.
+    for i in $(seq 1 90); do
+        if adb shell cmd package list packages >/dev/null 2>&1; then
+            echo "[INFO] Emulator is ready."
+            return 0
+        fi
         sleep 1
     done
-    # Check Package Manager is responsive
-    for i in $(seq 1 30); do
-        if adb shell cmd package list packages >/dev/null 2>&1; then break; fi
-        sleep 1
-    done
+
+    echo "[ERROR] Emulator did not become ready within 90 seconds." >&2
+    exit 1
 }
 
 # Install on emulator
@@ -35,54 +36,48 @@ install_bitwarden() {
     echo "[INFO] Installing Bitwarden on Android emulator..."
     
     # Check if cached APK exists, if not, check if build APK exists
-    if [[ -f $CACHED_APK_PATH ]]; then
-        echo "[INFO] Installing cached APK from $CACHED_APK_PATH..."
-        adb install "$CACHED_APK_PATH"
+    if [[ -f $CACHED_APK ]]; then
+        echo "[INFO] Installing cached APK from $CACHED_APK..."
+        adb install "$CACHED_APK"
     else
-        if [[ -f $BUILD_APK_PATH ]]; then
-            echo "[INFO] Installing build APK from $BUILD_APK_PATH..."
-            adb install "$BUILD_APK_PATH"
+        if [[ -f $BUILD_APK ]]; then
+            echo "[INFO] Installing build APK from $BUILD_APK..."
+            adb install "$BUILD_APK"
         else
-            echo "[ERROR] APK not found at $CACHED_APK_PATH or $BUILD_APK_PATH"
+            echo "[ERROR] APK not found at $CACHED_APK or $BUILD_APK"
             exit 1
         fi
     fi
     
     # Verify package is installed
     if ! adb shell cmd package list packages | grep -q "$BITWARDEN_PKG"; then
-        echo "ERROR: Package $BITWARDEN_PKG not found after install."
+        echo "[ERROR] Package $BITWARDEN_PKG not found after install."
         exit 1
     fi
 
-    echo "Bitwarden installed successfully."
+    echo "[INFO] Bitwarden installed successfully."
 }
 
 # Launch Bitwarden directly
 launch_bitwarden() {
-    echo "Launching Bitwarden..."
+    echo "[INFO] Launching Bitwarden..."
     
     # Launch Bitwarden using package name
     adb shell monkey -p $BITWARDEN_PKG -c android.intent.category.LAUNCHER 1
     
-    # Verify launch with a short poll for foreground or running process
-    launched=0
+    # Verify launch by polling for the process ID
+    echo "[INFO] Waiting for Bitwarden process to start..."
     for i in $(seq 1 15); do
-        if adb shell dumpsys window | grep -q "mCurrentFocus.*$BITWARDEN_PKG"; then
-            launched=1; break
-        fi
         if adb shell pidof "$BITWARDEN_PKG" >/dev/null 2>&1; then
-            launched=1; break
+            echo "[INFO] Successfully launched Bitwarden (process found)!"
+            return 0
         fi
         sleep 1
     done
-    if [ "$launched" = "1" ]; then
-        echo "Successfully launched Bitwarden!"
-        return 0
-    else
-        echo "Bitwarden may not have launched properly."
-        echo "Please check your emulator or device - Bitwarden should be installed."
-        return 1
-    fi
+
+    echo "[ERROR] Bitwarden may not have launched properly (process not found)."
+    echo "[ERROR] Please check your emulator or device - Bitwarden should be installed."
+    return 1
 }
 
 # Main function
@@ -93,7 +88,7 @@ main() {
 
     echo "[INFO] Checking if Bitwarden app is installed on the emulator..."
     if adb shell pm list packages | grep -q "$BITWARDEN_PKG"; then
-        echo "✅ Bitwarden app is already installed on the emulator."
+        echo "[INFO] Bitwarden app is already installed on the emulator."
     else
         echo "[INFO] Bitwarden app not found."
         install_bitwarden

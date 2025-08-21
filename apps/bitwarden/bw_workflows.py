@@ -233,15 +233,23 @@ def bw_attempt_login(d, email, password):
         print(f"Launching {BITWARDEN_PKG}...", file=sys.stderr)
         d.app_start(BITWARDEN_PKG, use_monkey=True)
 
-        # --- Wait for the app to load ---
-        print("Waiting for app to load...", file=sys.stderr)
-        time.sleep(3)  # Give app time to fully load
+        # Verify Bitwarden is in the foreground
+        print(f"Verifying {BITWARDEN_PKG} is in the foreground...", file=sys.stderr)
+        if not d.app_wait(BITWARDEN_PKG, front=True, timeout=15):
+            current = d.app_current()
+            raise RuntimeError(
+                f"Expected {BITWARDEN_PKG} in foreground, got: {current}"
+            )
+
+        print(
+            "Waiting for the initial UI to stabilize after launch...", file=sys.stderr
+        )
+        _wait_for_ui_stable(d, timeout=15)
 
         # Check for error dialogs first and dismiss them
         if d(resourceId="AlertPopup").exists:
             print("Error dialog detected on app start. Dismissing...", file=sys.stderr)
             wait_and_click(d, d(resourceId="AcceptAlertButton"))
-            time.sleep(2)
 
         # Wait for either email entry (initial login) or master password entry (locked vault)
         if not (
@@ -273,7 +281,7 @@ def bw_attempt_login(d, email, password):
 
             # Wait for the app to return to the initial login screen
             print("Waiting for app to return to login screen...", file=sys.stderr)
-            time.sleep(3)
+            d(resourceId="EmailAddressEntry").wait(timeout=10.0)
 
         # --- Entering Credentials ---
         print("Vault is unlocked. Entering credentials...", file=sys.stderr)
