@@ -17,7 +17,7 @@ password = args.password
 d = u2.connect()
 
 
-def wait_and_click_text(text, timeout=45):
+def wait_and_click_text(text, timeout=60):
     if d(text=text).wait(timeout=timeout):
         print(text)
         d(text=text).click_exists(timeout=3)
@@ -30,7 +30,7 @@ def wait_and_click_text(text, timeout=45):
     wait_for_ui_stable(timeout=5)
 
 
-def wait_and_click_desc(desc, timeout=45):
+def wait_and_click_desc(desc, timeout=60):
     if d(description=desc).wait(timeout=timeout):
         print(desc)
         d(description=desc).click_exists(timeout=3)
@@ -44,7 +44,7 @@ def wait_and_click_desc(desc, timeout=45):
     wait_for_ui_stable(timeout=5)
 
 
-def wait_for_ui_stable(timeout=10, interval=0.5):
+def wait_for_ui_stable(timeout=60, interval=0.5):
     """
     Wait until the UI hierarchy stops changing.
     """
@@ -57,13 +57,14 @@ def wait_for_ui_stable(timeout=10, interval=0.5):
             return True
         prev_hierarchy = current_hierarchy
         time.sleep(interval)
+    print("UI unstable!")
     return False
 
-wait_for_ui_stable(timeout=15, interval=1)
+wait_for_ui_stable(timeout=120, interval=1)
 print(d.dump_hierarchy(), file=sys.stderr)
 wait_and_click_desc("Sidebar, Show/hide the sidebar")
 wait_and_click_text("Configuration")
-wait_for_ui_stable(timeout=15, interval=1)
+wait_for_ui_stable(interval=1)
 
 label = d(text="Synchronization target")
 if label.exists:
