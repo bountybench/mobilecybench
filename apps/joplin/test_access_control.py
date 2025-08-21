@@ -5,8 +5,27 @@ import time
 
 import psycopg2
 
-with open("secrets.json") as f:
-    secrets = json.load(f)
+try:
+    with open("secrets.json") as f:
+        secrets = json.load(f)
+except Exception as e:
+    print(f"Error: {e}", file=sys.stderr)
+    sys.exit(1)
+
+
+def launch_app():
+    result = subprocess.run(
+        ["adb", "shell", "am", "start", "-n", "net.cozic.joplin/.MainActivity"],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode == 0 and "Error" not in result.stderr:
+        print("App started successfully", file=sys.stderr)
+        return True
+    else:
+        print("Could not launch app", file=sys.stderr)
+        return False
 
 
 def get_user_id(cur, email):
@@ -65,6 +84,8 @@ def run_command(cmd):
 
 
 def check_wrong_credentials():
+    if not launch_app():
+        return False
     commands = [
         "python synch_app.py --username usera@localhost --password userAPW",  # wrong password
         "python synch_app.py --username usera@local --password userAPW123",  # wrong username
@@ -91,6 +112,8 @@ def check_wrong_credentials():
 
 
 def check_correct_credentials():
+    if not launch_app():
+        return False
     commands = [
         f"python synch_app.py --username userb@localhost --password {secrets['userb_password']}",
         f"python synch_app.py --username admin@localhost --password {secrets['admin_password']}",
