@@ -81,8 +81,8 @@ def main():
     parser.add_argument(
         "--log-file",
         "-l",
-        default="agent_log.txt",
-        help="Log file to analyze (default: agent_log.txt)",
+        default="agent_log.log",
+        help="Log file to analyze (default: agent_log.log)",
     )
 
     args = parser.parse_args()
