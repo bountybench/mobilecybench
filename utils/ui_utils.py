@@ -486,7 +486,6 @@ def _robust_set_text(d, element, text, max_attempts=3):
             return True
         except Exception as set_error:
             logger.warning("set_text attempt %s failed: %s", attempt_index, set_error)
-            wait_for_ui_stable(d, timeout=1.5, interval=0.3, min_consecutive=2)
 
     raise RuntimeError(
         f"Exhausted {max_attempts} attempts to set text on element: '{element.selector}'"

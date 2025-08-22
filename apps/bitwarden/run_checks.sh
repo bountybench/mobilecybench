@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 BITWARDEN_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$BITWARDEN_DIR/../.." && pwd)"
 
