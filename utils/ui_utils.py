@@ -91,6 +91,13 @@ def initialize_ui_automation(max_retries=5, retry_delay=5):
                 device.healthcheck()
             except Exception:
                 pass
+
+            # Warm up the accessibility service / hierarchy
+            try:
+                _warmup_accessibility_and_hierarchy(device, timeout=8.0, interval=0.5)
+            except Exception as e:
+                logger.debug("Warm-up helper raised (continuing cautiously): %s", e)
+
             return device
 
         except Exception as e:
@@ -205,6 +212,61 @@ def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
 # =============================================================================
 
 
+def _warmup_accessibility_and_hierarchy(d, timeout=8.0, interval=0.5):
+    """
+    Ensure UiAutomator's accessibility service is bound before we rely on hierarchy.
+    Returns True if hierarchy dump works; False if we give up.
+    """
+    deadline = time.time() + timeout
+    # Make sure we don't trigger compressed-dump path on flaky ROMs
+    try:
+        d.settings["compressHierarchy"] = False
+    except Exception:
+        pass
+
+    last_err = None
+    while time.time() < deadline:
+        try:
+            # A successful dump means the service is up
+            _ = d.dump_hierarchy()
+            logger.debug("Accessibility/hierarchy warm-up succeeded.")
+            return True
+        except Exception as e:
+            msg = str(e)
+            last_err = e
+            # Classic race signature from your stacktrace:
+            # "AccessibilityServiceInfo.flags on a null object"
+            if "AccessibilityServiceInfo.flags" in msg or "NullPointerException" in msg:
+                logger.debug("Hierarchy dump failed (service not ready). Retrying…")
+            else:
+                # Other failures should still retry briefly, but log at debug.
+                logger.debug("Hierarchy dump error during warm-up: %s", e)
+            time.sleep(interval)
+
+    # One gentle restart attempt of UiAutomator, then one last try
+    try:
+        if hasattr(d, "uiautomator"):
+            logger.info("Restarting UiAutomator once to finish binding…")
+            try:
+                d.uiautomator.stop()
+            except Exception:
+                pass
+            try:
+                d.uiautomator.start()
+            except Exception:
+                pass
+            # short settle
+            time.sleep(0.8)
+            _ = d.dump_hierarchy()
+            logger.debug("Hierarchy warm-up succeeded after UiAutomator restart.")
+            return True
+    except Exception as e:
+        last_err = e
+
+    logger.warning("Accessibility warm-up did not complete: %s", last_err)
+    return False
+
+
 def _wait_for_element(d, element, timeout=180):
     """
     Wait for an element to exist while continuously handling potential ANR dialogs.
@@ -305,20 +367,23 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
 
 
 def _fatal(d, message):
-    """
-    Centralized fatal error handler: log message, dump UI hierarchy if possible,
-    then exit the process with non-zero code.
-
-    Args:
-        d: Device object (may be None)
-        message: Error message to print
-    """
     logger.critical("%s", message)
     try:
         if d is not None:
-            logger.critical("%s", d.dump_hierarchy())
-    except Exception as dump_err:
-        logger.warning("Failed to dump UI hierarchy: %s", dump_err)
+            try:
+                logger.critical("%s", d.dump_hierarchy())
+            except Exception as dump_err:
+                # Ignore the classic accessibility bind race to avoid masking the real error
+                if "AccessibilityServiceInfo.flags" in str(
+                    dump_err
+                ) or "NullPointerException" in str(dump_err):
+                    logger.warning(
+                        "Skipped hierarchy dump (accessibility not ready): %s", dump_err
+                    )
+                else:
+                    logger.warning("Failed to dump UI hierarchy: %s", dump_err)
+    except Exception as outer:
+        logger.warning("Fatal handler encountered an error: %s", outer)
     sys.exit(1)
 
 
