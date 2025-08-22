@@ -554,74 +554,25 @@ jobs:
 
             adb wait-for-device
             adb shell 'until [[ "$(getprop sys.boot_completed)" == "1" && "$(getprop dev.bootcomplete)" == "1" && "$(getprop service.bootanim.exit)" == "1" ]]; do sleep 1; done'
-            adb shell 'until cmd package list packages >/dev/null 2>&1; do sleep 1; done'
-            adb shell 'until dumpsys window windows | grep -qE "mCurrentFocus|mFocusedApp"; do sleep 1; done'
+            
+            echo "Waiting 45 seconds for emulator services to stabilize after reboot..."
+            sleep 45
+ 
+            echo "Performing minimal check: verifying package manager is responsive..."
+            if ! adb shell pm list packages > /dev/null; then
+              echo "Error: Package manager is not responsive. Emulator may be unstable."
+              exit 1
+            fi
+            echo "Minimal check passed."
+ 
             adb shell input keyevent 82 || true
             
             adb root
             adb remount
             adb shell mount | grep -E "(system|vendor|product)"
-            # Verify UiAutomator2/Accessibility is ready using Python uiautomator2
-            python - <<'PY'
-            import sys, time
-            import uiautomator2 as u2
 
-            def warmup_uia2(timeout=30.0, interval=0.5):
-                start = time.time()
-                d = u2.connect()
-                # Prefer uncompressed hierarchy to avoid known NPE path
-                try:
-                    d.settings["compressHierarchy"] = False
-                except Exception:
-                    pass
+            sleep 10
 
-                # Best-effort server/JSON-RPC readiness
-                try:
-                    d.healthcheck()
-                except Exception:
-                    pass
-
-                last_err = None
-                while time.time() - start < timeout:
-                    try:
-                        _ = d.dump_hierarchy()
-                        print("UiAutomator2 ready (dump_hierarchy succeeded)")
-                        return True
-                    except Exception as e:
-                        msg = str(e)
-                        last_err = e
-                        # Classic accessibility race signature from emulator boots
-                        if "AccessibilityServiceInfo.flags" in msg or "NullPointerException" in msg:
-                            time.sleep(interval)
-                            continue
-                        # Other transient errors: brief retry
-                        time.sleep(interval)
-
-                # One gentle UiAutomator restart and a short final attempt
-                try:
-                    ua = getattr(d, "uiautomator", None)
-                    if ua is not None:
-                        try:
-                            ua.stop()
-                        except Exception:
-                            pass
-                        try:
-                            ua.start()
-                        except Exception:
-                            pass
-                        time.sleep(0.8)
-                        _ = d.dump_hierarchy()
-                        print("UiAutomator2 ready after restart")
-                        return True
-                except Exception as e:
-                    last_err = e
-
-                print(f"UiAutomator/Accessibility not ready: {last_err}")
-                return False
-
-            if not warmup_uia2():
-                sys.exit(1)
-            PY
             ./test_checks.sh
 
       - name: Run emulator test with action (baseline and vuln_scenario_1)
