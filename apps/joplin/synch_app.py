@@ -48,6 +48,7 @@ def wait_for_ui_stable(timeout=60, interval=0.5):
     """
     Wait until the UI hierarchy stops changing.
     """
+    print("Waiting for UI to stabilize")
     prev_hierarchy = None
     start = time.time()
 
@@ -60,6 +61,7 @@ def wait_for_ui_stable(timeout=60, interval=0.5):
     print("UI unstable!")
     return False
 
+time.sleep(180)
 wait_for_ui_stable(timeout=120, interval=1)
 print(d.dump_hierarchy(), file=sys.stderr)
 wait_and_click_desc("Sidebar, Show/hide the sidebar")
