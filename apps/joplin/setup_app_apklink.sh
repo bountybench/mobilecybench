@@ -31,7 +31,7 @@ install_joplin() {
         exit 1
     fi
     
-    adb install "$APK_PATH"
+    adb_install_apk "${APK_PATH}"
     echo "joplin installed successfully."
 }
 

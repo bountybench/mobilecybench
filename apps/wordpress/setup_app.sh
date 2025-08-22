@@ -27,7 +27,7 @@ initialize_repository() {
 }
 
 build_wordpress() {
-    if [[ -f "${APK_PATH}" && "$BUILD_SOURCE" = false ]]; then
+    if [[ -f "${APK_PATH}" ]]; then
         log_info "Using existing APK at ${APK_PATH}"
         return 0
     elif [[ "$BUILD_SOURCE" = false ]]; then
@@ -38,7 +38,7 @@ build_wordpress() {
     log_info "Building APK..."
     pushd "${REPO_DIR}" >/dev/null
     chmod +x gradlew
-    ./gradlew -Dorg.gradle.vfs.watch=false --no-watch-fs --no-daemon assembleWordpressVanillaDebug
+    ./gradlew assembleWordpressVanillaDebug
     popd >/dev/null
 }
 
@@ -46,7 +46,7 @@ perform_login() {
     log_info "Performing UI login for user=${WP_USER}"
     adb_launch_activity "${PACKAGE}/.ui.WPLaunchActivity"
     wait_for_output "adb exec-out uiautomator dump /dev/tty" "site address" 600
-    adb shell input tap 540 1730
+    adb shell input tap 540 1700
 
     wait_for_output "adb shell dumpsys window windows" "LoginActivity" 600
     adb shell input tap 540 700

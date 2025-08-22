@@ -11,16 +11,10 @@ services:
         - dind-data:/var/lib/docker
         - ./:/mobilecybench
         - /var/run/docker.sock:/var/run/docker.sock
-        - $HOME/.ssh:/root/.ssh
         - gradle-cache:/root/.gradle
-        - android-sdk:/root/.android-sdk
       environment:
         - OPENAI_API_KEY=${OPENAI_API_KEY:-}
         - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
-        - GRADLE_USER_HOME=/root/.gradle
-        - ANDROID_SDK_ROOT=/root/.android-sdk
-        - GRADLE_OPTS=-Xmx6g -Dfile.encoding=UTF-8
-        - JAVA_TOOL_OPTIONS=-Xmx6g
       networks:
         - app-network
       extra_hosts:

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-mobilecybench host agent: start/stop emulator and proxy adb commands.
+mobilecybench host agent: start/stop emulator, proxy adb commands, and push files.
 
 Token file: <repo>/ssh_key
 """
@@ -10,6 +10,9 @@ import sys
 import json
 import subprocess
 import shlex
+import threading
+import socketserver
+import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from shutil import which
@@ -18,6 +21,7 @@ REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get("MCB_AGENT_PORT", "52888"))
 TOKEN_FILE = os.path.join(REPO_ROOT, "ssh_key")
 LOGFILE = os.path.expanduser("~/mobilecybench-agent.log")
+UDS_PATH = os.path.join(REPO_ROOT, "mcb.sock")
 
 def log(s):
     try:
@@ -249,13 +253,70 @@ class Handler(BaseHTTPRequestHandler):
         return
 
 def run():
+    """
+    Start both:
+     - a Unix-domain HTTP server at UDS_PATH (if possible), and
+     - the existing TCP HTTP server on 0.0.0.0:PORT.
 
-    server = HTTPServer(("0.0.0.0", PORT), Handler)
-    log(f"mobilecybench host-agent listening on 0.0.0.0:{PORT}, repo={REPO_ROOT}")
+    The same Handler is used for both transports so behaviour is unchanged.
+    """
+    if os.path.exists(UDS_PATH):
+        try:
+            os.unlink(UDS_PATH)
+        except Exception as e:
+            log(f"Warning: failed to unlink stale UDS {UDS_PATH}: {e}")
+    uds_server = None
+    tcp_server = None
     try:
-        server.serve_forever()
+        uds_server = socketserver.UnixStreamServer(UDS_PATH, Handler)
+        try:
+            os.chmod(UDS_PATH, 0o660)
+        except Exception:
+            pass
+        t_uds = threading.Thread(target=uds_server.serve_forever, name="uds-http", daemon=True)
+        t_uds.start()
+        log(f"mobilecybench host-agent listening on UDS {UDS_PATH}")
+    except Exception as e:
+        uds_server = None
+        log(f"UDS server not available: {e} (falling back to TCP only)")
+
+    try:
+        tcp_server = HTTPServer(("0.0.0.0", PORT), Handler)
+        t_tcp = threading.Thread(target=tcp_server.serve_forever, name="tcp-http", daemon=True)
+        t_tcp.start()
+        log(f"mobilecybench host-agent listening on 0.0.0.0:{PORT}, repo={REPO_ROOT}")
+    except Exception as e:
+        log(f"Failed to start TCP server on port {PORT}: {e}")
+        if uds_server:
+            try:
+                uds_server.shutdown()
+                uds_server.server_close()
+                os.unlink(UDS_PATH)
+            except Exception:
+                pass
+        raise
+    try:
+        while True:
+            time.sleep(1)
     except KeyboardInterrupt:
         pass
+    finally:
+        if uds_server:
+            try:
+                uds_server.shutdown()
+                uds_server.server_close()
+            except Exception:
+                pass
+            try:
+                os.unlink(UDS_PATH)
+            except Exception:
+                pass
+        if tcp_server:
+            try:
+                tcp_server.shutdown()
+                tcp_server.server_close()
+            except Exception:
+                pass
 
 if __name__ == "__main__":
     run()

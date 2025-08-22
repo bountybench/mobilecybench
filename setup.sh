@@ -443,8 +443,8 @@ main() {
     echo ""
     echo "Note: You may need to restart your terminal or run:"
     echo "  source ~/.bashrc  (or ~/.zshrc)"
-
-    # generate agent token for host agent (if missing)
+    
+    # generate token for host agent
     AGENT_TOKEN_FILE="${SCRIPT_DIR}/ssh_key"
     if [[ ! -f "${AGENT_TOKEN_FILE}" ]]; then
         if command -v openssl >/dev/null 2>&1; then

@@ -1,60 +1,3 @@
-#!/bin/bash
-set -euo pipefail
-
-REPO_ROOT="/mobilecybench"
-AGENT_PORT="${MCB_AGENT_PORT:-52888}"
-AGENT_TOKEN_FILE="${REPO_ROOT}/ssh_key"
-UDS_PATH="${REPO_ROOT}/mcb.sock"
-TCP_AGENT_URL="http://host.docker.internal:${AGENT_PORT}"
-UDS_AGENT_URL="http://localhost"
-AGENT_TOKEN="$(cat "${AGENT_TOKEN_FILE}" 2>/dev/null || true)"
-
-call_start_via_uds() {
-    if ! command -v curl >/dev/null 2>&1; then
-        echo "[start_emulator_host] curl not available in container; cannot use UDS transport"
-        return 1
-    fi
-    echo "[start_emulator_host] calling host agent via UDS ${UDS_PATH}"
-    curl -sS --unix-socket "${UDS_PATH}" -H "Content-Type: application/json" -X POST "${UDS_AGENT_URL}/start" -d '{"token":""}' -w "\n%{http_code}" || return 1
-}
-
-call_start_via_tcp() {
-    if [[ -z "${AGENT_TOKEN}" ]]; then
-        echo "[start_emulator_host] No agent token found at ${AGENT_TOKEN_FILE}; cannot use TCP transport"
-        return 1
-    fi
-    echo "[start_emulator_host] calling host agent via TCP ${TCP_AGENT_URL}"
-    curl -sS -H "Content-Type: application/json" -H "X-MCB-TOKEN: ${AGENT_TOKEN}" -X POST "${TCP_AGENT_URL}/start" -d "{\"token\":\"${AGENT_TOKEN}\"}" -w "\n%{http_code}" || return 1
-}
-
-echo "[start_emulator_host] Starting host-agent start request..."
-
-# Choose UDS if socket exists (repo is mounted into container so it will be visible)
-if [[ -S "${UDS_PATH}" ]]; then
-    RESP="$(call_start_via_uds || true)"
-else
-    RESP="$(call_start_via_tcp || true)"
-fi
-
-if [[ -z "${RESP}" ]]; then
-    echo "[start_emulator_host] ERROR: no response from host agent"
-    exit 1
-fi
-
-HTTP_BODY=$(echo "${RESP}" | sed '$d')
-HTTP_STATUS=$(echo "${RESP}" | tail -n1)
-
-echo "[start_emulator_host] HTTP ${HTTP_STATUS} response from host agent:"
-echo "${HTTP_BODY}"
-
-if [[ "${HTTP_STATUS}" =~ ^2[0-9][0-9]$ ]]; then
-    echo "[start_emulator_host] Agent accepted start request (HTTP ${HTTP_STATUS})."
-    sleep 2
-
-    # Install adb shim that prefers UDS (curl) but falls back to TCP (Python)
-    SHIM_PATH="/usr/local/bin/adb"
-    echo "[start_emulator_host] Installing adb shim at ${SHIM_PATH}"
-    cat > "${SHIM_PATH}" <<'PYSHIM'
 #!/usr/bin/env python3
 """
 adb shim: forwards adb commands to host-agent, but will upload local files (e.g. APK)
@@ -242,31 +185,12 @@ def main():
                 i += 1
                 continue
             else:
-                # leave untouched (could be remote path already)
                 new_args.append(a)
                 i += 1
                 continue
-        # call with replaced args
         call_adb(new_args)
         return
-
-    # default: forward as-is
     call_adb(args)
 
 if __name__ == "__main__":
     main()
-
-PYSHIM
-
-    chmod +x "${SHIM_PATH}"
-    # ensure curl exists if we intend to use UDS (container images typically have curl)
-    echo "[start_emulator_host] Attempting remote adb server start (proxied to host) ..."
-    "${SHIM_PATH}" -a -P 5037 server start || true
-    echo "[start_emulator_host] done (container will proxy adb calls to host agent)."
-    exit 0
-else
-    echo "[start_emulator_host] ERROR: host agent returned HTTP ${HTTP_STATUS}"
-    echo "[start_emulator_host] Response body:"
-    echo "${HTTP_BODY}"
-    exit 1
-fi

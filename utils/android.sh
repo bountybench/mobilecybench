@@ -33,23 +33,17 @@ start_emulator() {
     fi
     local avd_name=$1
     local repo_root="/mobilecybench"
-    
     if [[ -z "$avd_name" ]]; then
         fatal "start_emulator requires AVD name"
     fi
-    
-    # Check if we're in a container
     if [[ -f "/.dockerenv" ]]; then
-        log_info "Running in container, starting emulator on host via SSH..."
-        
-        # Use SSH to start emulator on host
-        if /mobilecybench/tools/start_emulator_host.sh; then
-            log_info "Emulator started on host via SSH"
+        log_info "Running in container, starting emulator on host"
+        if /mobilecybench/tools/host_bridge.sh; then
+            log_info "Emulator started on host"
         else
             fatal "Failed to start emulator on host"
         fi
     else
-        # Running on host, start emulator directly
         local start_script="${repo_root}/start_emulator.sh"
         if [[ ! -x "$start_script" ]]; then
             fatal "Start emulator script not found/executable at $start_script"
@@ -58,8 +52,7 @@ start_emulator() {
         adb wait-for-device
         log_info "Emulator started (AVD=${avd_name})"
     fi
-
-    if ! wait_for_device_boot 600; then
+    if ! wait_for_device_boot 120; then
         fatal "Android device did not finish booting within 600s"
     fi
 }

@@ -13,6 +13,10 @@ SUCCESS="${GREEN}[SUCCESS]${RESET}"
 ERROR="${RED}[ERROR]${RESET}"
 WARNING="${YELLOW}[WARNING]${RESET}"
 
+ROOT_DIR=$(pwd)
+source "${ROOT_DIR}/utils/common.sh"
+source "${ROOT_DIR}/utils/android.sh"
+
 print_header() {
     local color="$1"
     local message="$2"
@@ -137,7 +141,6 @@ if [ -z "$1" ]; then
     echo "Example: $0 apps/joplin"
     exit 1
 fi
-ROOT_DIR=$(pwd)
 DIR="$1"
 
 # Get API level from metadata
@@ -232,7 +235,7 @@ run_test_check() {
 # Start emulator (assuming you have a start_emulator.sh script)
 if [ -f "start_emulator.sh" ]; then
     print_header "$CYAN" "STARTING EMULATOR"
-    ./start_emulator.sh > /dev/null 2>&1 &
+    start_emulator > /dev/null 2>&1 &
     EMULATOR_PID=$!
 
     echo "Waiting for emulator to boot..."

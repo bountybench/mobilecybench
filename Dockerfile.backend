@@ -1,97 +1,127 @@
-FROM python:3.12-bookworm
+# syntax=docker/dockerfile:1.4
+FROM python:3.12-trixie
 
-# Create project root directory
-RUN mkdir -p /mobilecybench
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYENV_ROOT=/root/.pyenv
+ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+ENV ANDROID_SDK_ROOT=/root/.android-sdk
+ENV ANDROID_HOME=/root/.android-sdk
+ENV GRADLE_USER_HOME=/root/.gradle
 WORKDIR /mobilecybench
 
-# Install core packages and Docker CE
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install base dependencies
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
       ca-certificates curl gnupg lsb-release wget unzip git build-essential \
       gcc make libffi-dev libssl-dev libxml2-dev libxslt1-dev zlib1g-dev \
       netcat-openbsd tree jq libbz2-dev libreadline-dev libsqlite3-dev liblzma-dev \
       sudo procps iproute2 iputils-ping apt-transport-https \
       libglu1-mesa-dev libpulse0 libxcursor1 libxrandr2 libxinerama1 libxi6 \
-      qemu-kvm php-cli uuid-runtime xvfb x11vnc fluxbox wmctrl libpulse-dev \
-      libxshmfence-dev libdbus-glib-1-2 openssh-client curl \
-    && mkdir -p /etc/apt/keyrings \
-    && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
+      php-cli uuid-runtime xvfb x11vnc fluxbox wmctrl libpulse-dev \
+      libxshmfence-dev libdbus-glib-1-2 openssh-client \
+      qemu-user-static binfmt-support htop lsof \
+    ; \
+    mkdir -p /root/.cache/pip /var/lib/docker; \
+    rm -rf /var/lib/apt/lists/*
 
-# Install Docker and Java with architecture detection
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin \
-      openjdk-17-jdk \
-    && rm -rf /var/lib/apt/lists/*
+# Install OpenJDK 17 
+RUN echo "deb http://deb.debian.org/debian bookworm main" > /etc/apt/sources.list.d/bookworm.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends -t bookworm openjdk-17-jdk && \
+    rm -f /etc/apt/sources.list.d/bookworm.list && \
+    rm -rf /var/lib/apt/lists/*
 
-# Create symlink for Java based on architecture
-RUN if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
-      ln -s /usr/lib/jvm/java-17-openjdk-amd64 /usr/lib/jvm/java-17-openjdk; \
-    elif [ "$(dpkg --print-architecture)" = "arm64" ]; then \
-      ln -s /usr/lib/jvm/java-17-openjdk-arm64 /usr/lib/jvm/java-17-openjdk; \
-    else \
-      echo "Unsupported architecture: $(dpkg --print-architecture)"; exit 1; \
+# Install Docker
+RUN set -eux; \
+    mkdir -p /etc/apt/keyrings; \
+    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg; \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; \
+    rm -rf /var/lib/apt/lists/*
+
+# Java symlink and aapt2 for arm64
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    if [ "$arch" = "amd64" ]; then \
+      ln -sf /usr/lib/jvm/java-17-openjdk-amd64 /usr/lib/jvm/java-17-openjdk || true; \
+    elif [ "$arch" = "arm64" ]; then \
+      ln -sf /usr/lib/jvm/java-17-openjdk-arm64 /usr/lib/jvm/java-17-openjdk || true; \
+      mkdir -p /tmp/aapt2-download; \
+        cd /tmp/aapt2-download; \
+        if curl -fSL "https://github.com/lzhiyong/android-sdk-tools/releases/download/35.0.2/android-sdk-tools-static-aarch64.zip" -o aapt2.zip; then \
+            echo "Downloaded from Lzhiyong v35.0.2"; \
+            unzip aapt2.zip; \
+            mv build-tools/aapt2 /usr/bin/aapt2; \
+        elif curl -fSL "https://github.com/lzhiyong/android-sdk-tools/releases/download/34.0.3/android-sdk-tools-static-aarch64.zip" -o aapt2.zip; then \
+            echo "Downloaded from Lzhiyong v34.0.3"; \
+            unzip aapt2.zip; \
+            mv build-tools/aapt2 /usr/bin/aapt2; \
+        elif curl -fSL "https://github.com/AndroidIDEOfficial/platform-tools/releases/download/v34.0.4/platform-tools-34.0.4-aarch64.tar.xz" -o aapt2.tar.xz; then \
+            echo "Downloaded from AndroidIDEOfficial v34.0.4"; \
+            tar -xJf aapt2.tar.xz; \
+            find . -name "aapt2" -type f -exec mv {} /usr/bin/aapt2 \; || (echo "Could not find aapt2 in extracted files" && exit 1); \
+        elif curl -fSL "https://github.com/rendiix/termux-aapt/releases/download/termux-sdk-tools-34.0.0/termux-sdk-tools-34.0.0.tar.xz" -o aapt2.tar.xz; then \
+            echo "Downloaded from rendiix termux-sdk-tools-34.0.0"; \
+            tar -xJf aapt2.tar.xz; \
+            find . -name "aapt2" -type f -exec mv {} /usr/bin/aapt2 \; || (echo "Could not find aapt2 in extracted files" && exit 1); \
+        else \
+            echo "ERROR: All aapt2 download attempts failed"; \
+            exit 1; \
+        fi; \
+        chmod +x /usr/bin/aapt2; \
+        rm -rf /tmp/aapt2-download; \
     fi
 
-# Create Android SDK directories
-RUN mkdir -p /root/.cache/pip /root/.pyenv /root/.android-sdk /root/.gradle /var/lib/docker
-
-# Install pyenv
-ENV PYENV_ROOT=/root/.pyenv
-ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+# install pyenv (lightweight)
 RUN git clone https://github.com/pyenv/pyenv.git $PYENV_ROOT \
     && mkdir -p $PYENV_ROOT/plugins \
     && git clone https://github.com/pyenv/pyenv-virtualenv.git $PYENV_ROOT/plugins/pyenv-virtualenv
-
-# Android SDK setup
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
-ENV ANDROID_SDK_ROOT=/root/.android-sdk
-ENV ANDROID_HOME=/root/.android-sdk
-
-# Install Android Command Line Tools (using correct architecture)
-RUN mkdir -p ${ANDROID_SDK_ROOT}/cmdline-tools
-RUN if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
-      curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -o /tmp/cmdline-tools.zip; \
-    elif [ "$(dpkg --print-architecture)" = "arm64" ]; then \
-      curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -o /tmp/cmdline-tools.zip; \
-    else \
-      echo "Unsupported architecture: $(dpkg --print-architecture)"; exit 1; \
-    fi
-RUN unzip /tmp/cmdline-tools.zip -d /tmp && \
-    mv /tmp/cmdline-tools ${ANDROID_SDK_ROOT}/cmdline-tools/latest && \
-    rm /tmp/cmdline-tools.zip
-
-# Add Android tools to PATH
-ENV PATH="${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools"
-
-# Accept licenses and install platform-tools (and common build packages used by project)
-RUN yes | sdkmanager --licenses >/dev/null 2>&1 || true
-
-# Install platform-tools and frequently-needed build packages to avoid on-build downloads:
-# (keeps builds deterministic and prevents gradle from failing while installing SDK components)
-RUN sdkmanager "platform-tools" "platforms;android-35" "build-tools;34.0.0" >/dev/null || true
-
-# Ensure gradle cache dir exists and configure Gradle to be robust for container builds:
-RUN mkdir -p /root/.gradle \
- && printf '%s\n' \
-    'org.gradle.vfs.watch=false' \
-    'org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8' \
-    'org.gradle.daemon=true' \
-    > /root/.gradle/gradle.properties
-
-# Create directories for android sdk and gradle cache (these will be mounted persistant volumes in compose)
-RUN mkdir -p /root/.android-sdk /root/.gradle
-
-# Python setup
-RUN pip install --upgrade pip setuptools wheel
 COPY requirements.txt /mobilecybench/requirements.txt
-RUN --mount=type=cache,target=/root/.cache/pip pip install -r /mobilecybench/requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    bash -lc "python -m pip install --upgrade pip setuptools wheel && pip install -r /mobilecybench/requirements.txt"
 
-# Copy entrypoint scripts
+# install Android cmdline-tools and core SDK components
+RUN set -eux; \
+    mkdir -p "${ANDROID_SDK_ROOT}/cmdline-tools"; \
+    curl -fSL "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -o /tmp/cmdline-tools.zip; \
+    unzip -q /tmp/cmdline-tools.zip -d /tmp; \
+    mv /tmp/cmdline-tools "${ANDROID_SDK_ROOT}/cmdline-tools/latest"; \
+    rm -f /tmp/cmdline-tools.zip; \
+    PATH="${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools" ; \
+    yes | sdkmanager --licenses >/dev/null 2>&1 || true; \
+    sdkmanager "platform-tools" "platforms;android-35" "build-tools;34.0.0" >/dev/null || true; \
+    if [ -x "${ANDROID_SDK_ROOT}/platform-tools/adb" ]; then ln -sf "${ANDROID_SDK_ROOT}/platform-tools/adb" /usr/bin/adb || true; fi
+
+# Write gradle props
+RUN set -eux; \
+    mkdir -p /root/.gradle; \
+    printf '%s\n' \
+    'org.gradle.caching=true' \
+    'org.gradle.daemon=true' \
+    'org.gradle.parallel=true' \
+    'org.gradle.configureondemand=true' \
+    'android.aapt2FromMavenOverride=/usr/bin/aapt2' > /root/.gradle/gradle.properties
+
+# Install Node and Yarn
+RUN set -eux; \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends nodejs; \
+    corepack enable; \
+    corepack prepare yarn@stable --activate; \
+    rm -rf /var/lib/apt/lists/*
+
+# copy entrypoint scripts and install bridge shim as /usr/local/bin/adb
 COPY tools/dockerd_entrypoint.sh /usr/local/bin/dockerd_entrypoint.sh
 COPY tools/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY tools/submodule_setup.sh /usr/local/bin/submodule_setup.sh
-COPY tools/start_emulator_host.sh /usr/local/bin/start_emulator_host.sh
-RUN chmod +x /usr/local/bin/dockerd_entrypoint.sh /usr/local/bin/entrypoint.sh /usr/local/bin/submodule_setup.sh /usr/local/bin/start_emulator_host.sh
+COPY tools/host_bridge.sh /usr/local/bin/host_bridge.sh
+COPY tools/bridge_shim.py /usr/local/bin/adb
+RUN chmod +x /usr/local/bin/dockerd_entrypoint.sh /usr/local/bin/entrypoint.sh \
+    /usr/local/bin/submodule_setup.sh /usr/local/bin/host_bridge.sh /usr/local/bin/adb
 
 EXPOSE 7999
 ENTRYPOINT ["dockerd_entrypoint.sh"]
