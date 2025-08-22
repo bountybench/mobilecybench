@@ -135,6 +135,47 @@ synch_with_server() {
     echo "Should now be synched with server."
 }
 
+# Clear all build caches
+clear_build_cache() {
+    echo "Clearing build caches..."
+    
+    # Clear Gradle cache
+    ./gradlew clean || echo "Warning: gradlew clean failed"
+    
+    # Stop any running React Native processes first
+    pkill -f "react-native" 2>/dev/null || true
+    pkill -f "metro" 2>/dev/null || true
+    
+    # Clear npm/yarn cache
+    yarn cache clean || echo "Warning: yarn cache clean failed"
+    
+    # Clear Metro bundler cache
+    rm -rf node_modules/.cache 2>/dev/null || true
+    
+    # Handle TMPDIR properly - use fallback if not set
+    local temp_dir="${TMPDIR:-/tmp}"
+    rm -rf "${temp_dir}/metro-"* 2>/dev/null || true
+    rm -rf "${temp_dir}/react-"* 2>/dev/null || true
+    rm -rf "${temp_dir}/haste-map-"* 2>/dev/null || true
+    
+    # Clear Android build outputs
+    rm -rf app/build 2>/dev/null || true
+    rm -rf build 2>/dev/null || true
+    rm -rf .gradle 2>/dev/null || true
+    
+    # Clear Gradle daemon and cache
+    ./gradlew --stop || echo "Warning: gradlew --stop failed"
+    rm -rf ~/.gradle/caches/ 2>/dev/null || true
+    rm -rf ~/.gradle/daemon/ 2>/dev/null || true
+    
+    # Clear Watchman cache if available
+    if command -v watchman >/dev/null 2>&1; then
+        watchman watch-del-all 2>/dev/null || true
+    fi
+    
+    echo "Build caches cleared."
+}
+
 # Main function
 main() {
     echo "joplin Android Setup"
@@ -173,6 +214,11 @@ main() {
     check_prerequisites
     setup_environment
     build_joplin
+    clear_build_cache
+
+    #if [ -z "$CI" ]; then
+    #    clear_build_cache
+    #fi
     
     echo ""
     echo "Setup complete! joplin is ready for testing."
