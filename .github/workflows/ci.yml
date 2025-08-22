@@ -555,18 +555,12 @@ jobs:
             adb wait-for-device
             adb shell 'until [[ "$(getprop sys.boot_completed)" == "1" && "$(getprop dev.bootcomplete)" == "1" && "$(getprop service.bootanim.exit)" == "1" ]]; do sleep 1; done'
             
-            echo "Waiting 45 seconds for emulator services to stabilize after reboot..."
-            sleep 45
+            echo "Waiting 15 seconds for emulator services to stabilize after reboot..."
+            sleep 15
  
-            echo "Performing minimal check: verifying package manager is responsive..."
-            if ! adb shell pm list packages > /dev/null; then
-              echo "Error: Package manager is not responsive. Emulator may be unstable."
-              exit 1
-            fi
-            echo "Minimal check passed."
- 
-            adb shell input keyevent 82 || true
-            
+            echo "Performing minimal check: verifying package manager is responsive"
+            adb shell pm list packages > /dev/null || { echo "Error: Package manager is not responsive. Emulator may be unstable."; exit 1; }
+             
             adb root
             adb remount
             adb shell mount | grep -E "(system|vendor|product)"
