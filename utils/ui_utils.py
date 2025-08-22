@@ -27,7 +27,7 @@ logger.propagate = False
 # =============================================================================
 
 
-def initialize_ui_automation(max_retries=3, retry_delay=5):
+def initialize_ui_automation(max_retries=5, retry_delay=5):
     """Connect to a device and enable sane defaults (implicit waits, no sleeps)."""
 
     def _adb_has_devices(timeout_seconds: int = 5) -> bool:
@@ -48,7 +48,6 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
             return False
 
     def _adb_wait_for_device(timeout_seconds: int) -> None:
-        """Block on 'adb wait-for-device' instead of sleeping between retries."""
         try:
             subprocess.run(["adb", "wait-for-device"], timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
@@ -74,6 +73,18 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
             _ = device.device_info  # may raise if not connected
             logger.info("Connected to device.")
 
+            # Configure device defaults for stability
+            try:
+                device.settings["compressHierarchy"] = False
+            except Exception:
+                pass
+
+            # healthcheck() is required to avoid RPC errors
+            try:
+                device.healthcheck()
+            except Exception:
+                pass
+
             return device
         except Exception as e:
             logger.info("Connection failed: %s", e)
@@ -83,13 +94,6 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
             _fatal(
                 None, f"Failed to connect to device after {max_retries} attempts: {e}"
             )
-
-        # Configure a sensible implicit wait to reduce flakiness across helpers
-        try:
-            device.implicitly_wait(5.0)
-        except Exception:
-            # Not fatal if the backend does not support implicit waits
-            pass
 
 
 # =============================================================================
@@ -155,7 +159,6 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
 
 
 def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
-    """Prefer device idle; fall back to lightweight hierarchy-diff stability check."""
     prev_hierarchy = None
     same_count = 0
     start = time.time()
@@ -170,10 +173,9 @@ def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
         )
 
     while time.time() - start < timeout:
-        try:
-            current_hierarchy = d.dump_hierarchy()
-        except Exception as e:
-            logger.debug("Failed to dump UI hierarchy during stability check: %s", e)
+        current_hierarchy = _safe_dump_hierarchy(d)
+        if current_hierarchy is None:
+            # If we cannot read the hierarchy now, try next iteration
             continue
 
         # Count consecutive identical dumps
@@ -200,6 +202,35 @@ def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
 # =============================================================================
 # PRIVATE STABILITY HELPERS
 # =============================================================================
+
+
+def _safe_dump_hierarchy(d, retries=5):
+    """
+    Attempts to dump UI hierarchy reliably, guarding against UIA2 NPEs and RPC errors.
+
+    Strategy:
+      1) Try normal dump
+      2) Disable compressed hierarchy and retry
+      3) healthcheck() the device and retry
+
+    Returns the hierarchy string, or None if all attempts fail.
+    """
+    for attempt in range(1, retries + 1):
+        try:
+            return d.dump_hierarchy()
+        except Exception as e:
+            logger.debug("dump_hierarchy attempt %s failed: %s", attempt, e)
+            try:
+                d.settings["compressHierarchy"] = False
+            except Exception:
+                pass
+            try:
+                d.healthcheck()
+            except Exception:
+                pass
+            # brief spin instead of sleep; loop will retry
+            continue
+    return None
 
 
 def _wait_for_element(d, element, timeout=180):
@@ -319,7 +350,11 @@ def _fatal(d, message):
     logger.critical("%s", message)
     try:
         if d is not None:
-            logger.critical("%s", d.dump_hierarchy())
+            hierarchy = _safe_dump_hierarchy(d)
+            if hierarchy is not None:
+                logger.critical("%s", hierarchy)
+            else:
+                logger.warning("Failed to dump UI hierarchy after guarded retries.")
     except Exception as dump_err:
         logger.warning("Failed to dump UI hierarchy: %s", dump_err)
     sys.exit(1)
@@ -443,11 +478,15 @@ def _robust_set_text(d, element, text, max_attempts=3):
             return True
         except Exception as set_error:
             logger.warning("set_text attempt %s failed: %s", attempt_index, set_error)
-            # Avoid arbitrary sleep; allow the device to settle using wait_idle
+            # Allow device to settle using idle if available, otherwise stability check
             try:
                 d.wait_idle(timeout=1000, idle=500)
             except Exception:
-                # If wait_idle isn't available, proceed to next attempt without sleeping
+                pass
+            # Always do a brief stability check before retrying
+            try:
+                wait_for_ui_stable(d, timeout=1.5, interval=0.3, min_consecutive=2)
+            except Exception:
                 pass
 
     raise RuntimeError(

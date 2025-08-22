@@ -234,10 +234,15 @@ def bw_attempt_login(d, email, password):
         logger.info("Waiting for the initial UI to stabilize after launch...")
         wait_for_ui_stable(d, timeout=15)
 
-        # Check for error dialogs first and dismiss them
-        if d(resourceId="AlertPopup").exists:
+        # Check for error dialogs first and dismiss them (non-fatal, with settle)
+        if d(resourceId="AlertPopup").exists and d(
+            resourceId="AcceptAlertButton"
+        ).exists(timeout=2):
             logger.warning("Error dialog detected on app start. Dismissing...")
-            wait_and_click(d, d(resourceId="AcceptAlertButton"))
+            wait_and_click(
+                d, d(resourceId="AcceptAlertButton"), timeout=5, exit_on_error=False
+            )
+            wait_for_ui_stable(d, timeout=3)
 
         # Wait for either email entry (initial login) or master password entry (locked vault)
         if not (
@@ -283,7 +288,7 @@ def bw_attempt_login(d, email, password):
         logger.info("Clicking 'Unlock' to log in...")
         wait_and_click(d, d(resourceId="LogInWithMasterPasswordButton"))
 
-        # Check for error dialogs first
+        # Check for error dialogs first (non-fatal dismissal + settle)
         if d(resourceId="AlertPopup").exists and d(
             resourceId="AcceptAlertButton"
         ).exists(timeout=2):
@@ -297,16 +302,31 @@ def bw_attempt_login(d, email, password):
         # Success is defined by the appearance of the main vault screen's header.
         # A failed login will not proceed to this screen.
         logger.info("Verifying login outcome...")
-        if d(resourceId="VaultTab").wait(timeout=5.0):
+        # Success indicators: Vault tab, HeaderBar, PageTitleLabel 'My vault'
+        if (
+            d(resourceId="VaultTab").wait(timeout=5.0)
+            or d(resourceId="HeaderBarComponent").exists
+            or d(resourceId="PageTitleLabel", text="My vault").exists
+        ):
             logger.info("Login successful. Main vault is visible.")
             return True
         else:
-            logger.error("Main vault not visible after timeout.")
+            # Log a quick diagnostic snapshot to aid debugging
+            missing = []
+            if not d(resourceId="VaultTab").exists:
+                missing.append("VaultTab")
+            if not d(resourceId="HeaderBarComponent").exists:
+                missing.append("HeaderBarComponent")
+            if not d(resourceId="PageTitleLabel", text="My vault").exists:
+                missing.append("PageTitleLabel/My vault")
+            logger.error(
+                "Main vault not visible after timeout. Missing: %s", ", ".join(missing)
+            )
             return False
 
     except Exception as e:
         logger.error("An unexpected error occurred during UI automation: %s", e)
-        # Dump the UI hierarchy to the console for debugging
+        # Dump the UI hierarchy to the console for debugging (guarded)
         try:
             logger.error("%s", d.dump_hierarchy())
         except Exception:
