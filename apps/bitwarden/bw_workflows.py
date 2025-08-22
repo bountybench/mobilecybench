@@ -242,7 +242,6 @@ def bw_attempt_login(d, email, password):
             wait_and_click(
                 d, d(resourceId="AcceptAlertButton"), timeout=5, exit_on_error=False
             )
-            wait_for_ui_stable(d, timeout=3)
 
         # Wait for either email entry (initial login) or master password entry (locked vault)
         if not (

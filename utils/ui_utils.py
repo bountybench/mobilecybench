@@ -1,6 +1,6 @@
 """
-Concise uiautomator2 helpers for reliable clicking and text entry without sleeps.
-Public API: initialize_ui_automation, wait_and_click, wait_and_set_text
+uiautomator2 helpers for reliable clicking and text entry.
+Public API: initialize_ui_automation, wait_and_click, wait_and_set_text, wait_for_ui_stable
 """
 
 import logging
@@ -19,8 +19,6 @@ logger = logging.getLogger("mobilecybench.ui")
 logger.setLevel(os.getenv("UI_LOG_LEVEL", "DEBUG"))
 _handler = logging.StreamHandler(stream=sys.stderr)
 _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
-logger.handlers[:] = [_handler]
-logger.propagate = False
 
 # =============================================================================
 # UI AUTOMATION INITIALIZATION
@@ -79,13 +77,13 @@ def initialize_ui_automation(max_retries=5, retry_delay=5):
             except Exception:
                 pass
 
-            # healthcheck() is required to avoid RPC errors
+            # run healthcheck() to avoid RPC errors
             try:
                 device.healthcheck()
             except Exception:
                 pass
-
             return device
+
         except Exception as e:
             logger.info("Connection failed: %s", e)
             if attempt_index < max_retries:
@@ -113,9 +111,7 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
             logger.error("%s", message)
             return False
 
-    if not element.click_exists(
-        timeout=5
-    ):  # Try clicking element; raise error/fatal if failed
+    if not element.click_exists(timeout=5):
         message = f"Could not click element: '{element.selector}'"
         if exit_on_error:
             _fatal(d, message)
@@ -163,19 +159,12 @@ def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
     same_count = 0
     start = time.time()
 
-    # Prefer device-level idle detection if available to avoid arbitrary sleeps
-    try:
-        if d.wait_idle(timeout=int(timeout * 1000), idle=int(interval * 1000)):
-            return True
-    except Exception as e:
-        logger.debug(
-            "wait_idle not available or failed; falling back to hierarchy diff: %s", e
-        )
-
     while time.time() - start < timeout:
-        current_hierarchy = _safe_dump_hierarchy(d)
-        if current_hierarchy is None:
-            # If we cannot read the hierarchy now, try next iteration
+        try:
+            current_hierarchy = d.dump_hierarchy()
+        except Exception as e:
+            logger.debug("Failed to dump UI hierarchy during stability check: %s", e)
+            time.sleep(interval)
             continue
 
         # Count consecutive identical dumps
@@ -188,12 +177,15 @@ def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
 
         # Return True if the UI has stabilized for at least min_consecutive samples
         if same_count >= min_consecutive:
+            logger.info("UI stabilized in %.1fs", time.time() - start)
             return True
 
-    elapsed = time.time() - start
+        # Wait for some time to avoid false positive before screen transitions
+        time.sleep(interval)
+
     logger.warning(
         "UI did not stabilize within %.1fs (required %s consecutive identical dumps).",
-        elapsed,
+        time.time() - start,
         min_consecutive,
     )
     return False
@@ -202,35 +194,6 @@ def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
 # =============================================================================
 # PRIVATE STABILITY HELPERS
 # =============================================================================
-
-
-def _safe_dump_hierarchy(d, retries=5):
-    """
-    Attempts to dump UI hierarchy reliably, guarding against UIA2 NPEs and RPC errors.
-
-    Strategy:
-      1) Try normal dump
-      2) Disable compressed hierarchy and retry
-      3) healthcheck() the device and retry
-
-    Returns the hierarchy string, or None if all attempts fail.
-    """
-    for attempt in range(1, retries + 1):
-        try:
-            return d.dump_hierarchy()
-        except Exception as e:
-            logger.debug("dump_hierarchy attempt %s failed: %s", attempt, e)
-            try:
-                d.settings["compressHierarchy"] = False
-            except Exception:
-                pass
-            try:
-                d.healthcheck()
-            except Exception:
-                pass
-            # brief spin instead of sleep; loop will retry
-            continue
-    return None
 
 
 def _wait_for_element(d, element, timeout=180):
@@ -310,7 +273,7 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
                     logger.debug("Waiting for UI to stabilize after ANR...")
                     wait_for_ui_stable(d, timeout=5)
             else:
-                break  # No ANR dialog found
+                return True  # No ANR dialog found
         except Exception as e:
             logger.warning(
                 "Could not click ANR 'Wait' button (it may have disappeared): %s", e
@@ -333,11 +296,6 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
     return True
 
 
-# =============================================================================
-# ERROR HANDLING HELPERS
-# =============================================================================
-
-
 def _fatal(d, message):
     """
     Centralized fatal error handler: log message, dump UI hierarchy if possible,
@@ -350,11 +308,7 @@ def _fatal(d, message):
     logger.critical("%s", message)
     try:
         if d is not None:
-            hierarchy = _safe_dump_hierarchy(d)
-            if hierarchy is not None:
-                logger.critical("%s", hierarchy)
-            else:
-                logger.warning("Failed to dump UI hierarchy after guarded retries.")
+            logger.critical("%s", d.dump_hierarchy())
     except Exception as dump_err:
         logger.warning("Failed to dump UI hierarchy: %s", dump_err)
     sys.exit(1)
