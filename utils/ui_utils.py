@@ -1,6 +1,6 @@
 """
-Concise uiautomator2 helpers for reliable clicking and text entry without sleeps.
-Public API: initialize_ui_automation, wait_and_click, wait_and_set_text
+uiautomator2 helpers for reliable clicking and text entry.
+Public API: initialize_ui_automation, wait_and_click, wait_and_set_text, wait_for_ui_stable
 """
 
 import logging
@@ -13,21 +13,22 @@ import time
 import uiautomator2 as u2
 
 # -----------------------------------------------------------------------------
-# Logging setup (stderr only, keeps stdout clean)
+# Logging
 # -----------------------------------------------------------------------------
 logger = logging.getLogger("mobilecybench.ui")
 logger.setLevel(os.getenv("UI_LOG_LEVEL", "DEBUG"))
 _handler = logging.StreamHandler(stream=sys.stderr)
 _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
-logger.handlers[:] = [_handler]
-logger.propagate = False
+if not logger.hasHandlers():
+    logger.addHandler(_handler)
+
 
 # =============================================================================
 # UI AUTOMATION INITIALIZATION
 # =============================================================================
 
 
-def initialize_ui_automation(max_retries=3, retry_delay=5):
+def initialize_ui_automation(max_retries=5, retry_delay=5):
     """Connect to a device and enable sane defaults (implicit waits, no sleeps)."""
 
     def _adb_has_devices(timeout_seconds: int = 5) -> bool:
@@ -48,7 +49,6 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
             return False
 
     def _adb_wait_for_device(timeout_seconds: int) -> None:
-        """Block on 'adb wait-for-device' instead of sleeping between retries."""
         try:
             subprocess.run(["adb", "wait-for-device"], timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
@@ -74,7 +74,25 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
             _ = device.device_info  # may raise if not connected
             logger.info("Connected to device.")
 
+            # Configure device defaults for stability
+            try:
+                device.settings["compressHierarchy"] = False
+            except Exception:
+                pass
+
+            # Set a implicit wait to reduce flakiness
+            try:
+                device.implicitly_wait(5.0)
+            except Exception:
+                pass
+
+            # run healthcheck() to avoid RPC errors
+            try:
+                device.healthcheck()
+            except Exception:
+                pass
             return device
+
         except Exception as e:
             logger.info("Connection failed: %s", e)
             if attempt_index < max_retries:
@@ -83,13 +101,6 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
             _fatal(
                 None, f"Failed to connect to device after {max_retries} attempts: {e}"
             )
-
-        # Configure a sensible implicit wait to reduce flakiness across helpers
-        try:
-            device.implicitly_wait(5.0)
-        except Exception:
-            # Not fatal if the backend does not support implicit waits
-            pass
 
 
 # =============================================================================
@@ -109,9 +120,7 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
             logger.error("%s", message)
             return False
 
-    if not element.click_exists(
-        timeout=5
-    ):  # Try clicking element; raise error/fatal if failed
+    if not element.click_exists(timeout=5):
         message = f"Could not click element: '{element.selector}'"
         if exit_on_error:
             _fatal(d, message)
@@ -155,25 +164,16 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
 
 
 def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
-    """Prefer device idle; fall back to lightweight hierarchy-diff stability check."""
     prev_hierarchy = None
     same_count = 0
     start = time.time()
-
-    # Prefer device-level idle detection if available to avoid arbitrary sleeps
-    try:
-        if d.wait_idle(timeout=int(timeout * 1000), idle=int(interval * 1000)):
-            return True
-    except Exception as e:
-        logger.debug(
-            "wait_idle not available or failed; falling back to hierarchy diff: %s", e
-        )
 
     while time.time() - start < timeout:
         try:
             current_hierarchy = d.dump_hierarchy()
         except Exception as e:
             logger.debug("Failed to dump UI hierarchy during stability check: %s", e)
+            time.sleep(interval)
             continue
 
         # Count consecutive identical dumps
@@ -186,12 +186,15 @@ def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
 
         # Return True if the UI has stabilized for at least min_consecutive samples
         if same_count >= min_consecutive:
+            logger.debug("UI stabilized in %.1fs", time.time() - start)
             return True
 
-    elapsed = time.time() - start
+        # Wait for some time to avoid false positive before screen transitions
+        time.sleep(interval)
+
     logger.warning(
         "UI did not stabilize within %.1fs (required %s consecutive identical dumps).",
-        elapsed,
+        time.time() - start,
         min_consecutive,
     )
     return False
@@ -227,7 +230,6 @@ def _wait_for_element(d, element, timeout=180):
         ):  # Failed to unfreeze system UI; abort early
             return False
 
-        # Prefer element-driven wait rather than arbitrary sleep
         remaining = max(0, timeout - (time.time() - start_time))
         wait_slice = min(1, remaining)
         try:
@@ -279,7 +281,7 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
                     logger.debug("Waiting for UI to stabilize after ANR...")
                     wait_for_ui_stable(d, timeout=5)
             else:
-                break  # No ANR dialog found
+                return True  # No ANR dialog found
         except Exception as e:
             logger.warning(
                 "Could not click ANR 'Wait' button (it may have disappeared): %s", e
@@ -300,11 +302,6 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
         )
 
     return True
-
-
-# =============================================================================
-# ERROR HANDLING HELPERS
-# =============================================================================
 
 
 def _fatal(d, message):
@@ -443,12 +440,7 @@ def _robust_set_text(d, element, text, max_attempts=3):
             return True
         except Exception as set_error:
             logger.warning("set_text attempt %s failed: %s", attempt_index, set_error)
-            # Avoid arbitrary sleep; allow the device to settle using wait_idle
-            try:
-                d.wait_idle(timeout=1000, idle=500)
-            except Exception:
-                # If wait_idle isn't available, proceed to next attempt without sleeping
-                pass
+            wait_for_ui_stable(d, timeout=1.5, interval=0.3, min_consecutive=2)
 
     raise RuntimeError(
         f"Exhausted {max_attempts} attempts to set text on element: '{element.selector}'"
