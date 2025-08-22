@@ -445,23 +445,23 @@ main() {
     echo "  source ~/.bashrc  (or ~/.zshrc)"
     
     # generate token for host agent
-    AGENT_TOKEN_FILE="${SCRIPT_DIR}/ssh_key"
-    if [[ ! -f "${AGENT_TOKEN_FILE}" ]]; then
+    BRIDGE_TOKEN_FILE="${SCRIPT_DIR}/ssh_key"
+    if [[ ! -f "${BRIDGE_TOKEN_FILE}" ]]; then
         if command -v openssl >/dev/null 2>&1; then
-            openssl rand -hex 16 > "${AGENT_TOKEN_FILE}"
+            openssl rand -hex 16 > "${BRIDGE_TOKEN_FILE}"
         fi
-        chmod 600 "${AGENT_TOKEN_FILE}"
-        log "Wrote host agent token -> ${AGENT_TOKEN_FILE}"
+        chmod 600 "${BRIDGE_TOKEN_FILE}"
+        log "Wrote host agent token -> ${BRIDGE_TOKEN_FILE}"
     else
-        log "Host agent token exists -> ${AGENT_TOKEN_FILE}"
+        log "Host agent token exists -> ${BRIDGE_TOKEN_FILE}"
     fi
-    MCB_AGENT_PORT=52888
-    if (echo > /dev/tcp/127.0.0.1/${MCB_AGENT_PORT}) >/dev/null 2>&1; then
-        log "Intermediary server already running on ${MCB_AGENT_PORT}. Killing server..."
-        pkill -f host_agent.py || true
+    MCB_BRIDGE_PORT=52888
+    if (echo > /dev/tcp/127.0.0.1/${MCB_BRIDGE_PORT}) >/dev/null 2>&1; then
+        log "Bridge server already running on ${MCB_BRIDGE_PORT}. Killing server..."
+        pkill -f "${SCRIPT_DIR}/tools/host_bridge.py" || true
     fi
-    nohup python3 "${SCRIPT_DIR}/host_agent.py" > "${HOME}/mobilecybench-agent.out" 2>&1 &
-    log "Started mobilecybench host intermediary on port ${MCB_AGENT_PORT}"
+    nohup python3 "${SCRIPT_DIR}/tools/host_bridge.py" > "${SCRIPT_DIR}/mobilecybench-bridge.log" 2>&1 &
+    log "Started mobilecybench host intermediary on port ${MCB_BRIDGE_PORT}"
 }
 
 # Run main function

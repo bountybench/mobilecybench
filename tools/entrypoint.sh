@@ -1,34 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "/mobilecybench/utils/common.sh"
 
-# Start Docker daemon with log redirection
-dockerd > /var/log/dockerd.log 2>&1 &
+run_setup_submodule() {
+  local candidates=( \
+    "/usr/local/bin/setup_submodule.sh" \
+    "/mobilecybench/tools/setup_submodule.sh" \
+  )
+  for p in "${candidates[@]}"; do
+    if [ -x "$p" ]; then
+      log_info "Running submodule setup script: $p"
+      if ! "$p"; then
+        log_warn "setup_submodule.sh returned non-zero (continuing startup)."
+      fi
+      return
+    fi
+  done
+  log_warn "No setup_submodule.sh found in expected locations; skipping submodule sync."
+}
 
-# Health check for Docker daemon
-echo "==> Validating Docker startup..."
-DOCKER_READY_MAX_RETRIES=30
-DOCKER_READY_INTERVAL=1
-
-for ((i=0; i<DOCKER_READY_MAX_RETRIES; i++)); do
-  if docker info &>/dev/null; then
-    echo " Docker operational after $((i+1)) seconds"
-    break
+main() {
+  run_setup_submodule
+  git config --global --add safe.directory /mobilecybench
+  if [[ $# -gt 0 ]]; then
+    log_info "Executing command: $*"
+    exec "$@"
+  else
+    log_info "No command specified — starting persistent shell"
+    exec /bin/bash -c "trap : TERM INT; sleep infinity & wait"
   fi
-  if [[ $i -eq $((DOCKER_READY_MAX_RETRIES-1)) ]]; then
-    echo "!!! Docker failed to start after $DOCKER_READY_MAX_RETRIES seconds"
-    exit 1
-  fi
-  sleep $DOCKER_READY_INTERVAL
-  echo "    Waiting for Docker... ($((i+1))/$DOCKER_READY_MAX_RETRIES)"
-done
+}
 
-# Main execution logic
-if [[ $# -gt 0 ]]; then
-  echo "==> Executing command: $@"
-  exec "$@"
-else
-  echo "==> No command specified. Starting persistent shell session"
-  echo "    Project directory: /mobilecybench"
-  echo "    Use 'exit' to terminate container"
-  exec /bin/bash -c "trap : TERM INT; sleep infinity & wait"
-fi
+main "$@"

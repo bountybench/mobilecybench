@@ -1,33 +1,69 @@
 services:
-    backend:
-      build:
-        context: .
-        dockerfile: Dockerfile.backend
-      container_name: mobilecybench-backend
-      privileged: true
-      tty: true
-      stdin_open: true
-      volumes:
-        - dind-data:/var/lib/docker
-        - ./:/mobilecybench
-        - /var/run/docker.sock:/var/run/docker.sock
-        - gradle-cache:/root/.gradle
-      environment:
-        - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-        - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
-      networks:
-        - app-network
-      extra_hosts:
-        - "host.docker.internal:host-gateway"
+  # Kali Linux Container
+  # kali-container:
+  #   build:
+  #     context: ./kali
+  #     dockerfile: Dockerfile
+  #   container_name: kali-container
+  #   networks:
+  #     - shared_net
+  #   stdin_open: true
+  #   tty: true
+  #   command: /bin/bash -c "while true; do sleep 30; done"
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
+  #   environment:
+  #     - ANDROID_ADB_SERVER_PORT=5037
+
+  # # MCP Server Container  
+  # mcp-server:
+  #   build:
+  #     context: ./mcp
+  #     dockerfile: Dockerfile
+  #   container_name: mcp-server
+  #   networks:
+  #     - shared_net
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #     - ./mcp/ngrok.yml:/app/ngrok.yml:ro
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
+  #   ports:
+  #     - "8000:8000"
+  #   depends_on:
+  #     - kali-container
+  #   environment:
+  #     - DOCKER_HOST=unix:///var/run/docker.sock
+
+  # Orchestrator Container
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: mobilecybench-backend
+    privileged: true
+    tty: true
+    stdin_open: true
+    volumes:
+      - dind-data:/var/lib/docker
+      - ./:/mobilecybench
+      - /var/run/docker.sock:/var/run/docker.sock
+      - gradle-cache:/root/.gradle
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+    networks:
+      - app-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 networks:
   shared_net:
     driver: bridge
   app-network:
-      driver: bridge
+    driver: bridge
 
 volumes:
   dind-data:
     external: true
   gradle-cache:
-  android-sdk:

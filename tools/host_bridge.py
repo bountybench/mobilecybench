@@ -1,27 +1,25 @@
 #!/usr/bin/env python3
-"""
-mobilecybench host agent: start/stop emulator, proxy adb commands, and push files.
-
-Token file: <repo>/ssh_key
-"""
-
 import os
 import sys
 import json
 import subprocess
 import shlex
 import threading
-import socketserver
+import socket
+import stat
+import traceback
+import platform
+import errno
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from shutil import which
 
-REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
-PORT = int(os.environ.get("MCB_AGENT_PORT", "52888"))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PORT = int(os.environ.get("MCB_BRIDGE_PORT", "52888"))
 TOKEN_FILE = os.path.join(REPO_ROOT, "ssh_key")
-LOGFILE = os.path.expanduser("~/mobilecybench-agent.log")
-UDS_PATH = os.path.join(REPO_ROOT, "mcb.sock")
+LOGFILE = os.path.join(REPO_ROOT, "mobilecybench-bridge.log")
+UDS_PATH = os.environ.get("MCB_UDS_PATH", os.path.join(REPO_ROOT, "mcb.sock"))
 
 def log(s):
     try:
@@ -40,33 +38,26 @@ def read_token():
         return None
 
 def extract_token_from_request(handler, query, body_token=None):
-    # Accept X-MCB-TOKEN, Authorization: Bearer <token>, query token, or JSON body token
     token = None
-
-    # case-insensitive
     def header_get(h):
         for k in handler.headers:
             if k.lower() == h.lower():
                 return handler.headers[k]
         return None
 
-    # Try X-MCB-TOKEN header
     hdr = header_get("X-MCB-TOKEN")
     if hdr:
         token = hdr.strip()
     else:
-        # Try Authorization: Bearer <token>
         auth = header_get("Authorization") or header_get("authorization")
         if auth:
             parts = auth.split(None, 1)
             if len(parts) == 2 and parts[0].lower() == "bearer":
                 token = parts[1].strip()
 
-    # query param
     if not token and "token" in query:
         token = query["token"][0].strip()
 
-    # body token
     if not token and body_token:
         token = str(body_token).strip()
 
@@ -159,7 +150,6 @@ class Handler(BaseHTTPRequestHandler):
                 body_json = None
 
         if parsed.path == "/push_file":
-            # Accepts JSON: {"filename": "<name>", "data_b64": "<base64-encoded bytes>"}
             if not extract_token_from_request(self, query, body_token):
                 self._send_json(403, {"error": "forbidden"})
                 log(f"Unauthorized push_file attempt from {self.client_address!r}")
@@ -183,7 +173,7 @@ class Handler(BaseHTTPRequestHandler):
                 log(f"/push_file error: {e}")
                 self._send_json(500, {"error": "failed to save file", "detail": str(e)})
             return
-        # /start
+
         if parsed.path == "/start":
             if not extract_token_from_request(self, query, body_token):
                 self._send_json(403, {"error": "forbidden"})
@@ -199,7 +189,6 @@ class Handler(BaseHTTPRequestHandler):
             log(f"/start -> {msg} by {self.client_address}")
             return
 
-        # /stop
         if parsed.path == "/stop":
             if not extract_token_from_request(self, query, body_token):
                 self._send_json(403, {"error": "forbidden"})
@@ -216,7 +205,6 @@ class Handler(BaseHTTPRequestHandler):
             log("/stop -> done")
             return
 
-        # /status via POST (authenticated variant)
         if parsed.path == "/status":
             if not extract_token_from_request(self, query, body_token):
                 self._send_json(403, {"error": "forbidden"})
@@ -225,7 +213,6 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(200, {"ok": True, "repo": REPO_ROOT})
             return
 
-        # /adb - proxy
         if parsed.path == "/adb":
             if not extract_token_from_request(self, query, body_token):
                 self._send_json(403, {"error": "forbidden"})
@@ -252,49 +239,82 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json(404, {"error": "not found"})
         return
 
-def run():
-    """
-    Start both:
-     - a Unix-domain HTTP server at UDS_PATH (if possible), and
-     - the existing TCP HTTP server on 0.0.0.0:PORT.
-
-    The same Handler is used for both transports so behaviour is unchanged.
-    """
-    if os.path.exists(UDS_PATH):
+def _start_uds_httpserver(path, handler_class):
+    # create AF_UNIX socket, attach to HTTPServer and return server
+    if os.path.exists(path):
         try:
-            os.unlink(UDS_PATH)
-        except Exception as e:
-            log(f"Warning: failed to unlink stale UDS {UDS_PATH}: {e}")
-    uds_server = None
-    tcp_server = None
-    try:
-        uds_server = socketserver.UnixStreamServer(UDS_PATH, Handler)
-        try:
-            os.chmod(UDS_PATH, 0o660)
+            os.unlink(path)
         except Exception:
             pass
-        t_uds = threading.Thread(target=uds_server.serve_forever, name="uds-http", daemon=True)
-        t_uds.start()
-        log(f"mobilecybench host-agent listening on UDS {UDS_PATH}")
-    except Exception as e:
-        uds_server = None
-        log(f"UDS server not available: {e} (falling back to TCP only)")
 
+    parent = os.path.dirname(path) or "."
+    os.makedirs(parent, exist_ok=True)
+
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
+        sock.bind(path)
+    except Exception:
+        sock.close()
+        raise
+
+    sock.listen(5)
+    try:
+        os.chmod(path, 0o666)
+    except Exception:
+        pass
+
+    server = HTTPServer(("127.0.0.1", 0), handler_class, bind_and_activate=False)
+    server.socket = sock
+    server.server_address = path
+    server.server_activate()
+    return server
+
+def run():
+    uds_server = None
+    tcp_server = None
+
+    enable_uds = (platform.system().lower() == "linux")
+    if not enable_uds:
+        log(f"Host OS is {platform.system()}; UDS disabled (use TCP).")
+
+    # Start UDS if allowed
+    if enable_uds:
+        try:
+            uds_server = _start_uds_httpserver(UDS_PATH, Handler)
+            t_uds = threading.Thread(target=uds_server.serve_forever, name="uds-http", daemon=True)
+            t_uds.start()
+            log(f"mobilecybench host-bridge listening on UDS {UDS_PATH}")
+        except Exception as e:
+            uds_server = None
+            log("UDS bridge not available: " + repr(e))
+            log(traceback.format_exc())
+
+    # Start TCP HTTP server; handle port already-in-use gracefully by continuing if UDS exists
+    try:
+        # allow reuse so quick restarts don't always block
+        socketserver = __import__("socketserver")
+        socketserver.TCPServer.allow_reuse_address = True
         tcp_server = HTTPServer(("0.0.0.0", PORT), Handler)
         t_tcp = threading.Thread(target=tcp_server.serve_forever, name="tcp-http", daemon=True)
         t_tcp.start()
-        log(f"mobilecybench host-agent listening on 0.0.0.0:{PORT}, repo={REPO_ROOT}")
+        log(f"mobilecybench host-bridge listening on 0.0.0.0:{PORT}, repo={REPO_ROOT}")
+    except OSError as e:
+        if e.errno == errno.EADDRINUSE:
+            log(f"TCP port {PORT} already in use; continuing without TCP server.")
+            tcp_server = None
+        else:
+            log(f"Failed to start TCP server on port {PORT}: {e}")
+            if uds_server is None:
+                raise
     except Exception as e:
         log(f"Failed to start TCP server on port {PORT}: {e}")
-        if uds_server:
-            try:
-                uds_server.shutdown()
-                uds_server.server_close()
-                os.unlink(UDS_PATH)
-            except Exception:
-                pass
-        raise
+        if uds_server is None:
+            raise
+
+    if uds_server is None and tcp_server is None:
+        log("No transports available (neither UDS nor TCP); exiting.")
+        raise SystemExit(1)
+
     try:
         while True:
             time.sleep(1)
@@ -320,4 +340,3 @@ def run():
 
 if __name__ == "__main__":
     run()
-

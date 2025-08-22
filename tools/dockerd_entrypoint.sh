@@ -1,32 +1,29 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_SSH_DIR="/root/.ssh"
-
-mkdir -p "${ROOT_SSH_DIR}"
-chmod 700 "${ROOT_SSH_DIR}"
+source "/mobilecybench/utils/common.sh"
 
 check_dockerd() {
     docker info > /dev/null 2>&1
     return $?
 }
 
-echo "[entrypoint] Checking if Docker daemon is already running..."
+log_info "Checking if Docker daemon is already running..."
 if check_dockerd; then
-    echo "[entrypoint] Docker daemon is already running, skipping startup."
+    log_info "Docker daemon is already running"
 else
-    echo "[entrypoint] Starting Docker daemon..."
+    log_info "Starting Docker daemon..."
     dockerd > /var/log/dockerd.log 2>&1 &
 
-    echo "[entrypoint] Waiting for Docker daemon to come up..."
+    log_info "Waiting for Docker daemon to come up..."
     timeout 30 sh -c "while (! docker info > /dev/null 2>&1); do sleep 1; done"
     if [ $? -ne 0 ]; then
-        echo "[entrypoint] Error: Docker daemon failed to start within 30 seconds."
+        log_error "Docker daemon failed to start within 30 seconds."
         cat /var/log/dockerd.log
         exit 1
     fi
-    echo "[entrypoint] Docker daemon is running."
+    log_info "Docker daemon is running."
 fi
 
-echo "[entrypoint] Starting main process: $@"
+log_info "Starting main process: $*"
 exec "$@"

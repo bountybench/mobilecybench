@@ -13,6 +13,8 @@ baseline_manifest.json
 __pycache__/
 .reports/
 scores.json
+baseline.json
+secrets.json
 public/node_modules
 mcp/ngrok.yml
 baseline_android_dir.txt

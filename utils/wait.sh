@@ -27,7 +27,7 @@ wait_for_device_boot() {
       return 1
     fi
     printf '.'
-    sleep 1
+    sleep 0.5
   done
 }
 
@@ -51,5 +51,29 @@ wait_for_output() {
     fi
     printf '.'
     sleep 0.5
+  done
+}
+
+# Wait for UDS to respond to a /status probe. Timeout in seconds.
+wait_for_uds_ready() {
+  local timeout="${1:-10}"
+  local start_ts=$(date +%s)
+  while :; do
+    if [[ -e "${UDS_PATH}" ]]; then
+      # capture curl output to detect "Operation not supported"
+      output=$(curl --unix-socket "${UDS_PATH}" --max-time 1 -sS http://localhost/status 2>&1 || true)
+      rc=$?
+      if [[ $rc -eq 0 && -n "$output" ]]; then
+        return 0
+      fi
+      if echo "$output" | grep -qi 'Operation not supported'; then
+        log_warn "UDS unsupported across this host/container filesystem (Operation not supported)."
+        return 1
+      fi
+    fi
+    if (( $(date +%s) - start_ts >= timeout )); then
+      return 1
+    fi
+    sleep 0.05
   done
 }

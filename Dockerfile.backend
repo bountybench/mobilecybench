@@ -117,11 +117,10 @@ RUN set -eux; \
 # copy entrypoint scripts and install bridge shim as /usr/local/bin/adb
 COPY tools/dockerd_entrypoint.sh /usr/local/bin/dockerd_entrypoint.sh
 COPY tools/entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY tools/submodule_setup.sh /usr/local/bin/submodule_setup.sh
-COPY tools/host_bridge.sh /usr/local/bin/host_bridge.sh
+COPY tools/setup_submodule.sh /usr/local/bin/setup_submodule.sh
 COPY tools/bridge_shim.py /usr/local/bin/adb
 RUN chmod +x /usr/local/bin/dockerd_entrypoint.sh /usr/local/bin/entrypoint.sh \
-    /usr/local/bin/submodule_setup.sh /usr/local/bin/host_bridge.sh /usr/local/bin/adb
+    /usr/local/bin/setup_submodule.sh /usr/local/bin/adb
 
 EXPOSE 7999
 ENTRYPOINT ["dockerd_entrypoint.sh"]

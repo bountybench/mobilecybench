@@ -3,6 +3,7 @@ set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/wait.sh"
+source "/mobilecybench/tools/host_bridge.sh"
 
 
 # Checks for required Android tools and SDK presence.
@@ -31,14 +32,15 @@ start_emulator() {
         log_info "Emulator already running. Skipping start."
         return 0
     fi
-    local avd_name=$1
+    log_info "Starting Android emulator..."
+    local avd_name=${1:-"Pixel_2_API_28"}
     local repo_root="/mobilecybench"
     if [[ -z "$avd_name" ]]; then
         fatal "start_emulator requires AVD name"
     fi
     if [[ -f "/.dockerenv" ]]; then
         log_info "Running in container, starting emulator on host"
-        if /mobilecybench/tools/host_bridge.sh; then
+        if host_bridge_start; then
             log_info "Emulator started on host"
         else
             fatal "Failed to start emulator on host"
@@ -54,6 +56,35 @@ start_emulator() {
     fi
     if ! wait_for_device_boot 120; then
         fatal "Android device did not finish booting within 600s"
+    fi
+}
+
+# Stops the Android emulator.
+stop_emulator() {
+    local repo_root="/mobilecybench"
+    if [[ -f "/.dockerenv" ]]; then
+        log_info "Running in container, requesting host to stop emulator"
+        if host_bridge_stop; then
+            log_info "Stop request sent to host bridge"
+        else
+            log_warn "Host bridge stop request failed; attempting local/shim fallback"
+            if adb emu kill >/dev/null 2>&1; then
+                log_info "Sent adb emu kill (fallback)"
+            else
+                log_warn "adb emu kill fallback failed"
+            fi
+        fi
+    else
+        local stop_script="${repo_root}/stop_emulator.sh"
+        if [[ -x "$stop_script" ]]; then
+            "$stop_script" || fatal "stop_emulator script failed"
+        else
+            if adb emu kill >/dev/null 2>&1; then
+                log_info "Sent adb emu kill"
+            else
+                log_warn "adb emu kill failed; emulator may already be stopped"
+            fi
+        fi
     fi
 }
 

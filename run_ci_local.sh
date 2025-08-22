@@ -229,14 +229,16 @@ run_test_check() {
 
     echo -e "${INFO} Cleaning up..."
     ./cleanup.sh
+    if [ -f "stop_emulator.sh" ]; then
+        stop_emulator
+    fi
     cd -
 }
 
 # Start emulator (assuming you have a start_emulator.sh script)
 if [ -f "start_emulator.sh" ]; then
     print_header "$CYAN" "STARTING EMULATOR"
-    start_emulator > /dev/null 2>&1 &
-    EMULATOR_PID=$!
+    start_emulator
 
     echo "Waiting for emulator to boot..."
 
@@ -265,16 +267,6 @@ run_test_check "TEST CHECKS AFTER NON-DOS VULNERABLE SCENARIO" "0" "true"
 run_test_check "TEST CHECKS AFTER DOS VULNERABLE SCENARIO" "1" "false"
 
 print_header "$GREEN" "ALL TESTS PASSED"
-
-# Stop emulator
-if [ -n "$EMULATOR_PID" ]; then
-    print_header "$CYAN" "STOPPING EMULATOR"
-    if [ -f "stop_emulator.sh" ]; then
-        ./stop_emulator.sh
-    else
-        kill $EMULATOR_PID 2>/dev/null || true
-    fi
-fi
 
 # Final cleanup
 print_header "$CYAN" "FINAL CLEANUP"

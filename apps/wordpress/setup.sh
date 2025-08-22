@@ -6,6 +6,10 @@ source "${ROOT_DIR}/utils/common.sh"
 source "${ROOT_DIR}/utils/docker.sh"
 source "${ROOT_DIR}/utils/json.sh"
 
+: "${REPO_DIR:=codebase}"
+: "${APK_REL:=wordpress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk}"
+: "${APK_PATH:=${REPO_DIR}/${APK_REL}}"
+
 create_wp_admin() {
     local site_url="http://10.0.2.2:8000"
     local rc=0
@@ -67,13 +71,49 @@ create_wp_users() {
     done
 }
 
+initialize_repository() {
+    if [[ ! -d "${REPO_DIR}" || ! -f "${REPO_DIR}/gradlew" ]]; then
+        log_info "Initializing ${REPO_DIR} submodule..."
+        git submodule update --init --recursive "${REPO_DIR}"
+    else
+        log_info "Repository present: ${REPO_DIR}"
+    fi
+}
+
+build_wordpress() {
+    if [[ -f "${APK_PATH}" ]]; then
+        log_info "Using existing APK at ${APK_PATH}"
+        return 0
+    elif [[ "$BUILD_SOURCE" = false ]]; then
+        log_info "Downloading APK..."
+        download_apk || fatal "Download failed"
+        return 0
+    fi
+    log_info "Building APK..."
+    pushd "${REPO_DIR}" >/dev/null
+    chmod +x gradlew
+    ./gradlew assembleWordpressVanillaDebug
+    popd >/dev/null
+}
+
 main() {
+    # Optional argument to build from source
+    BUILD_SOURCE=false
+    if [[ "${1:-}" == "source" ]]; then
+        log_info "Source build requested"
+        BUILD_SOURCE=true
+        shift
+    fi
+    
     json_init
     docker_compose_up
     create_wp_admin
     create_wp_users
     json_write_file "secrets.json" "credentials"
-    bash "./setup_app.sh" ${1:-}
+    check_android_prereqs
+    initialize_repository
+    build_wordpress
+    bash "./setup_app.sh"
     log_info "WordPress setup complete"
 }
 

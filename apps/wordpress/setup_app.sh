@@ -16,32 +16,6 @@ source "${ROOT_DIR}/utils/android.sh"
 : "${WP_PASS:=user_a_pass}"
 : "${PACKAGE:=org.wordpress.android}"
 
-
-initialize_repository() {
-    if [[ ! -d "${REPO_DIR}" || ! -f "${REPO_DIR}/gradlew" ]]; then
-        log_info "Initializing ${REPO_DIR} submodule..."
-        git submodule update --init --recursive "${REPO_DIR}"
-    else
-        log_info "Repository present: ${REPO_DIR}"
-    fi
-}
-
-build_wordpress() {
-    if [[ -f "${APK_PATH}" ]]; then
-        log_info "Using existing APK at ${APK_PATH}"
-        return 0
-    elif [[ "$BUILD_SOURCE" = false ]]; then
-        log_info "Downloading APK..."
-        download_apk || fatal "Download failed"
-        return 0
-    fi
-    log_info "Building APK..."
-    pushd "${REPO_DIR}" >/dev/null
-    chmod +x gradlew
-    ./gradlew assembleWordpressVanillaDebug
-    popd >/dev/null
-}
-
 perform_login() {
     log_info "Performing UI login for user=${WP_USER}"
     adb_launch_activity "${PACKAGE}/.ui.WPLaunchActivity"
@@ -97,18 +71,7 @@ download_apk() {
 }
 
 main() {
-    # Optional argument to build from source
-    BUILD_SOURCE=false
-    if [[ "${1:-}" == "source" ]]; then
-        log_info "Source build requested"
-        BUILD_SOURCE=true
-        shift
-    fi
-
     log_info "Android app setup starting..."
-    check_android_prereqs
-    initialize_repository
-    build_wordpress
     start_emulator "${AVD_NAME}"
     adb shell settings put global window_animation_scale 0
     adb shell settings put global transition_animation_scale 0
