@@ -19,6 +19,8 @@ logger = logging.getLogger("mobilecybench.ui")
 logger.setLevel(os.getenv("UI_LOG_LEVEL", "DEBUG"))
 _handler = logging.StreamHandler(stream=sys.stderr)
 _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+if not logger.hasHandlers():
+    logger.addHandler(_handler)
 
 # =============================================================================
 # UI AUTOMATION INITIALIZATION
@@ -77,11 +79,31 @@ def initialize_ui_automation(max_retries=5, retry_delay=5):
             except Exception:
                 pass
 
+            # Set a implicit wait to reduce flakiness
+            try:
+                device.implicitly_wait(5.0)
+            except Exception:
+                pass
+
             # run healthcheck() to avoid RPC errors
             try:
                 device.healthcheck()
             except Exception:
                 pass
+
+            # Warm up the accessibility service / hierarchy
+            ready = False
+            try:
+                ready = _warmup_accessibility_and_hierarchy(
+                    device, timeout=12.0, interval=0.5
+                )
+            except Exception as e:
+                logger.debug("Warm-up helper raised: %s", e)
+            if not ready:
+                logger.warning(
+                    "Accessibility not confirmed ready; proceeding cautiously"
+                )
+
             return device
 
         except Exception as e:
@@ -177,7 +199,7 @@ def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
 
         # Return True if the UI has stabilized for at least min_consecutive samples
         if same_count >= min_consecutive:
-            logger.info("UI stabilized in %.1fs", time.time() - start)
+            logger.debug("UI stabilized in %.1fs", time.time() - start)
             return True
 
         # Wait for some time to avoid false positive before screen transitions
@@ -194,6 +216,36 @@ def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
 # =============================================================================
 # PRIVATE STABILITY HELPERS
 # =============================================================================
+
+
+def _warmup_accessibility_and_hierarchy(d, timeout=8.0, interval=0.5):
+    """
+    Ensure UiAutomator's accessibility service is bound before we rely on hierarchy.
+    Returns True if hierarchy dump works; False if we give up.
+    """
+    deadline = time.time() + timeout
+    # Make sure we don't trigger compressed-dump path on flaky ROMs
+    try:
+        d.settings["compressHierarchy"] = False
+    except Exception:
+        pass
+
+    while time.time() < deadline:
+        try:
+            # A successful dump means the service is up
+            _ = d.dump_hierarchy()
+            logger.debug("Accessibility/hierarchy warm-up succeeded.")
+            return True
+        except Exception as e:
+            msg = str(e)
+            # Classic race signature from your stacktrace:
+            # "AccessibilityServiceInfo.flags on a null object"
+            if "AccessibilityServiceInfo.flags" in msg or "NullPointerException" in msg:
+                logger.debug("Hierarchy dump failed (race condition). Retrying…")
+            else:
+                # Other failures should still retry briefly, but log at debug.
+                logger.debug("Hierarchy dump error during warm-up: %s", e)
+            time.sleep(interval)
 
 
 def _wait_for_element(d, element, timeout=180):
@@ -221,7 +273,6 @@ def _wait_for_element(d, element, timeout=180):
         ):  # Failed to unfreeze system UI; abort early
             return False
 
-        # Prefer element-driven wait rather than arbitrary sleep
         remaining = max(0, timeout - (time.time() - start_time))
         wait_slice = min(1, remaining)
         try:
@@ -297,20 +348,23 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
 
 
 def _fatal(d, message):
-    """
-    Centralized fatal error handler: log message, dump UI hierarchy if possible,
-    then exit the process with non-zero code.
-
-    Args:
-        d: Device object (may be None)
-        message: Error message to print
-    """
     logger.critical("%s", message)
     try:
         if d is not None:
-            logger.critical("%s", d.dump_hierarchy())
-    except Exception as dump_err:
-        logger.warning("Failed to dump UI hierarchy: %s", dump_err)
+            try:
+                logger.critical("%s", d.dump_hierarchy())
+            except Exception as dump_err:
+                # Ignore the classic accessibility bind race to avoid masking the real error
+                if "AccessibilityServiceInfo.flags" in str(
+                    dump_err
+                ) or "NullPointerException" in str(dump_err):
+                    logger.warning(
+                        "Skipped hierarchy dump (accessibility not ready): %s", dump_err
+                    )
+                else:
+                    logger.warning("Failed to dump UI hierarchy: %s", dump_err)
+    except Exception as outer:
+        logger.warning("Fatal handler encountered an error: %s", outer)
     sys.exit(1)
 
 
@@ -432,16 +486,7 @@ def _robust_set_text(d, element, text, max_attempts=3):
             return True
         except Exception as set_error:
             logger.warning("set_text attempt %s failed: %s", attempt_index, set_error)
-            # Allow device to settle using idle if available, otherwise stability check
-            try:
-                d.wait_idle(timeout=1000, idle=500)
-            except Exception:
-                pass
-            # Always do a brief stability check before retrying
-            try:
-                wait_for_ui_stable(d, timeout=1.5, interval=0.3, min_consecutive=2)
-            except Exception:
-                pass
+            wait_for_ui_stable(d, timeout=1.5, interval=0.3, min_consecutive=2)
 
     raise RuntimeError(
         f"Exhausted {max_attempts} attempts to set text on element: '{element.selector}'"
