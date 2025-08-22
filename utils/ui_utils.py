@@ -95,13 +95,14 @@ def initialize_ui_automation(max_retries=5, retry_delay=5):
             ready = False
             try:
                 ready = _warmup_accessibility_and_hierarchy(
-                    device, timeout=12.0, interval=0.5
+                    device, timeout=30.0, interval=1.0
                 )
             except Exception as e:
                 logger.debug("Warm-up helper raised: %s", e)
             if not ready:
-                logger.warning(
-                    "Accessibility not confirmed ready; proceeding cautiously"
+                _fatal(
+                    device,
+                    "UiAutomator/Accessibility service not ready after all attempts.",
                 )
 
             return device
@@ -177,36 +178,39 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
 
 
 def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
-    prev_hierarchy = None
+    prev_app_state = None
     same_count = 0
     start = time.time()
 
     while time.time() - start < timeout:
         try:
-            current_hierarchy = d.dump_hierarchy()
+            # d.app_current() is a lighter-weight check than dumping the full hierarchy
+            current_app_state = d.app_current()
         except Exception as e:
-            logger.debug("Failed to dump UI hierarchy during stability check: %s", e)
+            logger.debug(
+                "Failed to get current app state during stability check: %s", e
+            )
             time.sleep(interval)
             continue
 
         # Count consecutive identical dumps
-        if prev_hierarchy is not None and current_hierarchy == prev_hierarchy:
+        if prev_app_state is not None and current_app_state == prev_app_state:
             same_count += 1
         else:
             same_count = 1
 
-        prev_hierarchy = current_hierarchy
+        prev_app_state = current_app_state
 
         # Return True if the UI has stabilized for at least min_consecutive samples
         if same_count >= min_consecutive:
-            logger.debug("UI stabilized in %.1fs", time.time() - start)
+            logger.debug("UI stabilized (app state) in %.1fs", time.time() - start)
             return True
 
         # Wait for some time to avoid false positive before screen transitions
         time.sleep(interval)
 
     logger.warning(
-        "UI did not stabilize within %.1fs (required %s consecutive identical dumps).",
+        "UI did not stabilize (app state) within %.1fs (required %s consecutive identical samples).",
         time.time() - start,
         min_consecutive,
     )
@@ -218,7 +222,7 @@ def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
 # =============================================================================
 
 
-def _warmup_accessibility_and_hierarchy(d, timeout=8.0, interval=0.5):
+def _warmup_accessibility_and_hierarchy(d, timeout=25.0, interval=0.5):
     """
     Ensure UiAutomator's accessibility service is bound before we rely on hierarchy.
     Returns True if hierarchy dump works; False if we give up.
@@ -246,6 +250,29 @@ def _warmup_accessibility_and_hierarchy(d, timeout=8.0, interval=0.5):
                 # Other failures should still retry briefly, but log at debug.
                 logger.debug("Hierarchy dump error during warm-up: %s", e)
             time.sleep(interval)
+
+    # Gentle restart as a last resort
+    logger.debug("Warm-up timed out. Attempting to restart UiAutomator service...")
+    try:
+        ua = getattr(d, "uiautomator", None)
+        if ua is not None:
+            try:
+                ua.stop()
+            except Exception:
+                pass
+            time.sleep(0.5)
+            try:
+                ua.start()
+            except Exception:
+                pass
+            time.sleep(1.0)
+            _ = d.dump_hierarchy()
+            logger.info("UiAutomator ready after service restart.")
+            return True
+    except Exception as e:
+        logger.warning("Final warm-up attempt after restart failed: %s", e)
+
+    return False
 
 
 def _wait_for_element(d, element, timeout=180):
