@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="/mobilecybench"
+if [[ ! -f "/.dockerenv" ]]; then
+    ROOT_DIR="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)"
+fi
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/wait.sh"
-source "/mobilecybench/tools/host_bridge.sh"
+source "${ROOT_DIR}/tools/host_bridge.sh"
 
 
 # Checks for required Android tools and SDK presence.

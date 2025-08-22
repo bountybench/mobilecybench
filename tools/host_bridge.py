@@ -1,25 +1,27 @@
 #!/usr/bin/env python3
-import os
-import sys
+import errno
 import json
-import subprocess
+import os
+import platform
 import shlex
-import threading
 import socket
 import stat
-import traceback
-import platform
-import errno
+import subprocess
+import sys
+import threading
 import time
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+import traceback
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from shutil import which
+from urllib.parse import parse_qs, urlparse
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PORT = int(os.environ.get("MCB_BRIDGE_PORT", "52888"))
 TOKEN_FILE = os.path.join(REPO_ROOT, "ssh_key")
-LOGFILE = os.path.join(REPO_ROOT, "mobilecybench-bridge.log")
+LOGFILE = os.path.join(REPO_ROOT, "mobilecybench_bridge.log")
 UDS_PATH = os.environ.get("MCB_UDS_PATH", os.path.join(REPO_ROOT, "mcb.sock"))
+BRIDGE_BIND = os.environ.get("MCB_BRIDGE_BIND", "127.0.0.1")
+
 
 def log(s):
     try:
@@ -29,6 +31,7 @@ def log(s):
         pass
     print(s)
 
+
 def read_token():
     try:
         with open(TOKEN_FILE, "r") as f:
@@ -37,8 +40,10 @@ def read_token():
         log(f"read_token: cannot open token file {TOKEN_FILE}: {e}")
         return None
 
+
 def extract_token_from_request(handler, query, body_token=None):
     token = None
+
     def header_get(h):
         for k in handler.headers:
             if k.lower() == h.lower():
@@ -69,8 +74,11 @@ def extract_token_from_request(handler, query, body_token=None):
     if token == expected:
         return True
     else:
-        log(f"Authorization failed: supplied token mismatch from {handler.client_address}")
+        log(
+            f"Authorization failed: supplied token mismatch from {handler.client_address}"
+        )
         return False
+
 
 def find_adb_executable():
     p = which("adb")
@@ -88,26 +96,39 @@ def find_adb_executable():
             return c
     return None
 
+
 def run_bg(script_path):
     try:
-        p = subprocess.Popen(["/bin/bash", script_path], cwd=REPO_ROOT,
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        p = subprocess.Popen(
+            ["/bin/bash", script_path],
+            cwd=REPO_ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         return True, f"started pid={p.pid}"
     except Exception as e:
         return False, str(e)
 
+
 def run_cmd_capture(cmd, timeout=300):
     try:
-        res = subprocess.run(cmd, cwd=REPO_ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+        res = subprocess.run(
+            cmd,
+            cwd=REPO_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout,
+        )
         return {
             "stdout": res.stdout.decode(errors="replace"),
             "stderr": res.stderr.decode(errors="replace"),
-            "exit_code": res.returncode
+            "exit_code": res.returncode,
         }
     except subprocess.TimeoutExpired:
         return {"stdout": "", "stderr": f"timeout after {timeout}s", "exit_code": 124}
     except Exception as e:
         return {"stdout": "", "stderr": str(e), "exit_code": 1}
+
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -154,20 +175,29 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json(403, {"error": "forbidden"})
                 log(f"Unauthorized push_file attempt from {self.client_address!r}")
                 return
-            if not body_json or "filename" not in body_json or "data_b64" not in body_json:
-                self._send_json(400, {"error": "missing filename or data_b64 in JSON body"})
+            if (
+                not body_json
+                or "filename" not in body_json
+                or "data_b64" not in body_json
+            ):
+                self._send_json(
+                    400, {"error": "missing filename or data_b64 in JSON body"}
+                )
                 return
             try:
-                import base64, uuid
+                import base64
+                import uuid
+
                 fname = os.path.basename(str(body_json["filename"]))
                 data_b64 = str(body_json["data_b64"])
-                data = base64.b64decode(data_b64.encode())
                 dest_dir = os.path.join(REPO_ROOT, "tmp")
                 os.makedirs(dest_dir, exist_ok=True)
                 dest_path = os.path.join(dest_dir, f"{uuid.uuid4().hex}_{fname}")
                 with open(dest_path, "wb") as fh:
                     fh.write(data)
-                log(f"/push_file saved {fname} -> {dest_path} from {self.client_address!r}")
+                log(
+                    f"/push_file saved {fname} -> {dest_path} from {self.client_address!r}"
+                )
                 self._send_json(200, {"path": dest_path})
             except Exception as e:
                 log(f"/push_file error: {e}")
@@ -181,7 +211,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             script = os.path.join(REPO_ROOT, "start_emulator.sh")
             if not os.path.isfile(script) or not os.access(script, os.X_OK):
-                self._send_json(500, {"error": "start script missing or not executable"})
+                self._send_json(
+                    500, {"error": "start script missing or not executable"}
+                )
                 log("start_emulator.sh missing/not executable")
                 return
             ok, msg = run_bg(script)
@@ -227,7 +259,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
             adb_path = find_adb_executable()
             if not adb_path:
-                self._send_json(500, {"error": "adb not found on host; ensure platform-tools installed"})
+                self._send_json(
+                    500,
+                    {"error": "adb not found on host; ensure platform-tools installed"},
+                )
                 log("adb not found on host")
                 return
             cmd = [adb_path] + [str(a) for a in args]
@@ -238,6 +273,7 @@ class Handler(BaseHTTPRequestHandler):
 
         self._send_json(404, {"error": "not found"})
         return
+
 
 def _start_uds_httpserver(path, handler_class):
     # create AF_UNIX socket, attach to HTTPServer and return server
@@ -269,11 +305,12 @@ def _start_uds_httpserver(path, handler_class):
     server.server_activate()
     return server
 
+
 def run():
     uds_server = None
     tcp_server = None
 
-    enable_uds = (platform.system().lower() == "linux")
+    enable_uds = platform.system().lower() == "linux"
     if not enable_uds:
         log(f"Host OS is {platform.system()}; UDS disabled (use TCP).")
 
@@ -281,7 +318,9 @@ def run():
     if enable_uds:
         try:
             uds_server = _start_uds_httpserver(UDS_PATH, Handler)
-            t_uds = threading.Thread(target=uds_server.serve_forever, name="uds-http", daemon=True)
+            t_uds = threading.Thread(
+                target=uds_server.serve_forever, name="uds-http", daemon=True
+            )
             t_uds.start()
             log(f"mobilecybench host-bridge listening on UDS {UDS_PATH}")
         except Exception as e:
@@ -289,15 +328,20 @@ def run():
             log("UDS bridge not available: " + repr(e))
             log(traceback.format_exc())
 
-    # Start TCP HTTP server; handle port already-in-use gracefully by continuing if UDS exists
+    # Start TCP HTTP server
     try:
-        # allow reuse so quick restarts don't always block
+        # Allow reuse so quick restarts don't always block
         socketserver = __import__("socketserver")
         socketserver.TCPServer.allow_reuse_address = True
-        tcp_server = HTTPServer(("0.0.0.0", PORT), Handler)
-        t_tcp = threading.Thread(target=tcp_server.serve_forever, name="tcp-http", daemon=True)
+        bind_addr = BRIDGE_BIND
+        tcp_server = HTTPServer((bind_addr, PORT), Handler)
+        t_tcp = threading.Thread(
+            target=tcp_server.serve_forever, name="tcp-http", daemon=True
+        )
         t_tcp.start()
-        log(f"mobilecybench host-bridge listening on 0.0.0.0:{PORT}, repo={REPO_ROOT}")
+        log(
+            f"mobilecybench host-bridge listening on {bind_addr}:{PORT}, repo={REPO_ROOT}"
+        )
     except OSError as e:
         if e.errno == errno.EADDRINUSE:
             log(f"TCP port {PORT} already in use; continuing without TCP server.")
@@ -337,6 +381,7 @@ def run():
                 tcp_server.server_close()
             except Exception:
                 pass
+
 
 if __name__ == "__main__":
     run()

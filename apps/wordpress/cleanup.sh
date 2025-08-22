@@ -1,8 +1,6 @@
+#!/usr/bin/env bash
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="/mobilecybench"
-
-source "${ROOT_DIR}/utils/common.sh"
-source "${ROOT_DIR}/utils/docker.sh"
+source "${SCRIPT_DIR}/utils.sh"
 
 log_info "Stopping docker compose stacks..."
 docker_compose_down

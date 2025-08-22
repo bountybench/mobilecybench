@@ -510,7 +510,11 @@ jobs:
             adb remount
             adb shell mount | grep -E "(system|vendor|product)"
             ./test_checks.sh
-
+      - name: Show wordpress app files on runner
+        run: |
+          echo "cwd: $(pwd)"
+          ls -la apps/wordpress || true
+          git ls-files | grep metadata.json || true
       - name: Run emulator test with action (baseline and vuln_scenario_1)
         if: matrix.test_type != 'vuln_scenario_0'
         uses: reactivecircus/android-emulator-runner@v2

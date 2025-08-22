@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
-set -uo pipefail
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="/mobilecybench"
-
-source "${ROOT_DIR}/utils/common.sh"
-source "${ROOT_DIR}/utils/json.sh"
+source "${SCRIPT_DIR}/utils.sh"
 
 set +e
 

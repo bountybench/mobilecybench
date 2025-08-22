@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="/mobilecybench"
+if [[ ! -f "/.dockerenv" ]]; then
+    ROOT_DIR="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)"
+fi
 source "${ROOT_DIR}/utils/common.sh"
 source "${ROOT_DIR}/utils/wait.sh"
-
 BRIDGE_PORT="${MCB_BRIDGE_PORT:-52888}"
 BRIDGE_TOKEN_FILE="${ROOT_DIR}/ssh_key"
 UDS_PATH="${ROOT_DIR}/mcb.sock"
@@ -62,7 +64,7 @@ install_shim_if_missing() {
 
 start_proxied_adb() {
     "${SHIM_PATH}" -a -P 5037 server start >/dev/null 2>&1 || true
-    local timeout="${1:-10}"
+    local timeout="${1:-30}"
     local start_ts
     start_ts=$(date +%s)
     while :; do

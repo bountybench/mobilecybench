@@ -1,15 +1,7 @@
 #!/usr/bin/env bash
-set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="/mobilecybench"
-source "${ROOT_DIR}/utils/common.sh"
-source "${ROOT_DIR}/utils/json.sh"
-source "${ROOT_DIR}/utils/android.sh"
+source "${SCRIPT_DIR}/utils.sh"
 
-
-: "${REPO_DIR:=codebase}"
-: "${APK_REL:=wordpress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk}"
-: "${APK_PATH:=${REPO_DIR}/${APK_REL}}"
 : "${AVD_NAME:=Pixel_2_API_28}"
 : "${WP_SITE_URL:=http://10.0.2.2:8000}"
 : "${WP_USER:=user_a}"
@@ -48,29 +40,8 @@ verify_login() {
     fatal "Login verification failed for $WP_USER"
 }
 
-download_apk() {
-    local metadata_file="${SCRIPT_DIR}/metadata.json"
-    if [[ ! -f "${metadata_file}" ]]; then
-        log_warn "metadata.json not found - cannot download APK"
-        return 1
-    fi
-    local download_link=$(jq -r '.download_link' "${metadata_file}")
-    if [[ -z "${download_link}" || "${download_link}" == "null" ]]; then
-        log_warn "No download link found in metadata.json"
-        return 1
-    fi
-    log_info "Downloading APK from ${download_link}"
-    local new_path="${SCRIPT_DIR}/wordpress.apk"
-    if [[ -f "${new_path}" ]] || curl -L -o "${new_path}" "${download_link}"; then
-        APK_PATH="${new_path}"
-        log_info "Download successful: ${APK_PATH}"
-        return 0
-    fi
-    log_warn "Download failed"
-    return 1
-}
-
 main() {
+    APK_PATH=${1:-codebase/wordpress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk}
     log_info "Android app setup starting..."
     start_emulator "${AVD_NAME}"
     adb shell settings put global window_animation_scale 0

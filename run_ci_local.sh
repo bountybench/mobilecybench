@@ -14,8 +14,9 @@ ERROR="${RED}[ERROR]${RESET}"
 WARNING="${YELLOW}[WARNING]${RESET}"
 
 ROOT_DIR=$(pwd)
-source "${ROOT_DIR}/utils/common.sh"
 source "${ROOT_DIR}/utils/android.sh"
+source "${ROOT_DIR}/utils/wait.sh"
+set +e
 
 print_header() {
     local color="$1"
@@ -213,6 +214,7 @@ run_test_check() {
             cat scores.json
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
+            stop_emulator
             exit 1
         fi
     else
@@ -222,6 +224,7 @@ run_test_check() {
             cat scores.json
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
+            stop_emulator
             exit 1
         fi
         echo -e "${SUCCESS} All scores are 1."
@@ -229,9 +232,7 @@ run_test_check() {
 
     echo -e "${INFO} Cleaning up..."
     ./cleanup.sh
-    if [ -f "stop_emulator.sh" ]; then
-        stop_emulator
-    fi
+    stop_emulator
     cd -
 }
 
@@ -246,11 +247,7 @@ if [ -f "start_emulator.sh" ]; then
     adb wait-for-device
 
     # Wait until system property `sys.boot_completed` returns 1
-    boot_completed=""
-    while [ "$boot_completed" != "1" ]; do
-        boot_completed=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-        sleep 1
-    done
+    wait_for_device_boot 300
 
     echo "Emulator booted successfully."
     
@@ -261,6 +258,9 @@ else
 fi
 
 cd $ROOT_DIR
+if [ -f "stop_emulator.sh" ]; then
+    stop_emulator
+fi
 # Run the three test scenarios
 run_test_check "TEST CHECKS BEFORE VULNERABLE SCENARIOS" "" "false"
 run_test_check "TEST CHECKS AFTER NON-DOS VULNERABLE SCENARIO" "0" "true"

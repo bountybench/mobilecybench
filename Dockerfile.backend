@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1.4
-FROM python:3.12-trixie
+FROM python:3.12-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYENV_ROOT=/root/.pyenv
-ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$JAVA_HOME/bin"
 ENV ANDROID_SDK_ROOT=/root/.android-sdk
 ENV ANDROID_HOME=/root/.android-sdk
 ENV GRADLE_USER_HOME=/root/.gradle
@@ -15,6 +15,7 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
       ca-certificates curl gnupg lsb-release wget unzip git build-essential \
+      openjdk-17-jdk-headless ca-certificates-java \
       gcc make libffi-dev libssl-dev libxml2-dev libxslt1-dev zlib1g-dev \
       netcat-openbsd tree jq libbz2-dev libreadline-dev libsqlite3-dev liblzma-dev \
       sudo procps iproute2 iputils-ping apt-transport-https \
@@ -24,13 +25,6 @@ RUN set -eux; \
       qemu-user-static binfmt-support htop lsof \
     ; \
     mkdir -p /root/.cache/pip /var/lib/docker; \
-    rm -rf /var/lib/apt/lists/*
-
-# Install OpenJDK 17 
-RUN echo "deb http://deb.debian.org/debian bookworm main" > /etc/apt/sources.list.d/bookworm.list && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends -t bookworm openjdk-17-jdk && \
-    rm -f /etc/apt/sources.list.d/bookworm.list && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Docker
@@ -117,11 +111,13 @@ RUN set -eux; \
 # copy entrypoint scripts and install bridge shim as /usr/local/bin/adb
 COPY tools/dockerd_entrypoint.sh /usr/local/bin/dockerd_entrypoint.sh
 COPY tools/entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY tools/setup_submodule.sh /usr/local/bin/setup_submodule.sh
+COPY tools/setup_submodules.sh /usr/local/bin/setup_submodules.sh
 COPY tools/bridge_shim.py /usr/local/bin/adb
 RUN chmod +x /usr/local/bin/dockerd_entrypoint.sh /usr/local/bin/entrypoint.sh \
-    /usr/local/bin/setup_submodule.sh /usr/local/bin/adb
+    /usr/local/bin/setup_submodules.sh /usr/local/bin/adb
 
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s \
+  CMD docker info >/dev/null 2>&1 || exit 1
 EXPOSE 7999
 ENTRYPOINT ["dockerd_entrypoint.sh"]
 CMD ["/usr/local/bin/entrypoint.sh"]

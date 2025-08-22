@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
-set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="/mobilecybench"
-source "${ROOT_DIR}/utils/common.sh"
-source "${ROOT_DIR}/utils/docker.sh"
-source "${ROOT_DIR}/utils/json.sh"
+source "${SCRIPT_DIR}/utils.sh"
 
 : "${REPO_DIR:=codebase}"
-: "${APK_REL:=wordpress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk}"
-: "${APK_PATH:=${REPO_DIR}/${APK_REL}}"
+: "${APK_PATH:=${REPO_DIR}/wordpress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk}"
+: "${LOCAL_PATH:=${SCRIPT_DIR}/wordpress.apk}"
 
 create_wp_admin() {
     local site_url="http://10.0.2.2:8000"
@@ -93,7 +89,29 @@ build_wordpress() {
     pushd "${REPO_DIR}" >/dev/null
     chmod +x gradlew
     ./gradlew assembleWordpressVanillaDebug
+    cp ${APK_PATH} ${SCRIPT_DIR}/wordpress.apk
     popd >/dev/null
+}
+
+download_apk() {
+    local metadata_file="${SCRIPT_DIR}/metadata.json"
+    if [[ ! -f "${metadata_file}" ]]; then
+        log_warn "metadata.json not found - cannot download APK"
+        return 1
+    fi
+    local download_link=$(jq -r '.download_link' "${metadata_file}")
+    if [[ -z "${download_link}" || "${download_link}" == "null" ]]; then
+        log_warn "No download link found in metadata.json"
+        return 1
+    fi
+    log_info "Downloading APK from ${download_link}"
+    if [[ -f "${LOCAL_PATH}" ]] || curl -L -o "${LOCAL_PATH}" "${download_link}"; then
+        APK_PATH="${LOCAL_PATH}"
+        log_info "Download successful: ${APK_PATH}"
+        return 0
+    fi
+    log_warn "Download failed"
+    return 1
 }
 
 main() {
@@ -113,7 +131,7 @@ main() {
     check_android_prereqs
     initialize_repository
     build_wordpress
-    bash "./setup_app.sh"
+    bash "./setup_app.sh" ${APK_PATH}
     log_info "WordPress setup complete"
 }
 

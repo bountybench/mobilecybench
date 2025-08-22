@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-source "/mobilecybench/utils/common.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="/mobilecybench"
+if [[ ! -f "/.dockerenv" ]]; then
+    ROOT_DIR="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)"
+fi
+source "${ROOT_DIR}/utils/common.sh"
 
 check_dockerd() {
     docker info > /dev/null 2>&1

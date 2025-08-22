@@ -1,17 +1,6 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="/mobilecybench"
-if [[ -z "$ROOT_DIR" ]]; then 
-    ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"; 
-fi
-
-source "${ROOT_DIR}/utils/common.sh"
-source "${ROOT_DIR}/utils/docker.sh"
-source "${ROOT_DIR}/utils/android.sh"
-source "${ROOT_DIR}/utils/wait.sh"
-
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${SCRIPT_DIR}/utils.sh"
 set +e
 
 crash_servers() {

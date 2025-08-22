@@ -460,8 +460,9 @@ main() {
         log "Bridge server already running on ${MCB_BRIDGE_PORT}. Killing server..."
         pkill -f "${SCRIPT_DIR}/tools/host_bridge.py" || true
     fi
-    nohup python3 "${SCRIPT_DIR}/tools/host_bridge.py" > "${SCRIPT_DIR}/mobilecybench-bridge.log" 2>&1 &
-    log "Started mobilecybench host intermediary on port ${MCB_BRIDGE_PORT}"
+    export MCB_BRIDGE_BIND=127.0.0.1
+    nohup env MCB_BRIDGE_BIND="$MCB_BRIDGE_BIND" python3 "${SCRIPT_DIR}/tools/host_bridge.py" > "${SCRIPT_DIR}/mobilecybench_bridge.log" 2>&1 &
+    log "Started mobilecybench host intermediary on port ${MCB_BRIDGE_PORT} (bind=${MCB_BRIDGE_BIND})"
 }
 
 # Run main function
