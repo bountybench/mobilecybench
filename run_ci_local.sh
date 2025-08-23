@@ -246,9 +246,7 @@ if [ -f "start_emulator.sh" ]; then
     # Wait for device to appear
     adb wait-for-device
 
-    # Wait until system property `sys.boot_completed` returns 1
     wait_for_device_boot 300
-
     echo "Emulator booted successfully."
     
     # Wait for servers to be ready
@@ -257,16 +255,17 @@ else
     echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
 fi
 
-cd $ROOT_DIR
-if [ -f "stop_emulator.sh" ]; then
-    stop_emulator
-fi
 # Run the three test scenarios
 run_test_check "TEST CHECKS BEFORE VULNERABLE SCENARIOS" "" "false"
 run_test_check "TEST CHECKS AFTER NON-DOS VULNERABLE SCENARIO" "0" "true"
 run_test_check "TEST CHECKS AFTER DOS VULNERABLE SCENARIO" "1" "false"
 
 print_header "$GREEN" "ALL TESTS PASSED"
+
+cd $ROOT_DIR
+if [ -f "stop_emulator.sh" ]; then
+    stop_emulator
+fi
 
 # Final cleanup
 print_header "$CYAN" "FINAL CLEANUP"

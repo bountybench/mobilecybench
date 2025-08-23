@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/utils.sh"
-
 : "${REPO_DIR:=codebase}"
 : "${APK_PATH:=${REPO_DIR}/wordpress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk}"
 : "${LOCAL_PATH:=${SCRIPT_DIR}/wordpress.apk}"
