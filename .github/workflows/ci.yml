@@ -123,8 +123,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libpulse0
           python -m pip install --upgrade pip -q
-          pip install -r .github/requirements.txt -q
-          #export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
+          pip install -r requirements.txt -q
+          export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
 
       - name: Check metadata.json
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -334,22 +334,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libpulse0
           python -m pip install --upgrade pip -q
-          pip install -r .github/requirements.txt -q
-          #export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
-
-      - name: Docker Cleanup before pulling new image
-        run: |
-          docker system prune -af
-          docker image prune -af
-
-      - name: Pull Docker container
-        run: |
-          docker pull --quiet cybench/mobilecybench:latest
-          docker manifest inspect cybench/mobilecybench:latest
-          docker image tag cybench/mobilecybench:latest mobilecybench
-
-      - name: Display disk space after pulling image
-        run: df -H
+          pip install -r requirements.txt -q
+          export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
 
       - name: Create Docker Network
         run: docker network create shared_net || true
@@ -600,6 +586,8 @@ jobs:
 
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
@@ -622,6 +610,8 @@ jobs:
 
       - name: Run emulator test with action (baseline and vuln_scenario_1)
         if: matrix.test_type != 'vuln_scenario_0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
