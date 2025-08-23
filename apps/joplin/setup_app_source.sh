@@ -95,86 +95,62 @@ build_joplin() {
     fi
 }
 
-# Install on emulator
-install_joplin() {
-    echo "Installing joplin on Android emulator..."
+# # Saves APK
+# save_apk() {
+#     echo "Saving APK before cache clear..."
     
-    # Check if emulator is running
-    if ! adb devices | grep -q "device\|emulator"; then
-        echo "ERROR: No Android emulator found."
-        echo "Please start the emulator first."
-        exit 1
-    fi
+#     APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+#     SAVE_DIR="../../../../apk_output"  
     
-    # Install universal APK with correct path
-    APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
-    
-    if [[ ! -f $APK_PATH ]]; then
-        echo "ERROR: APK not found at $APK_PATH"
-        echo "Available APKs:"
-        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
-        exit 1
-    fi
-    
-    adb install "$APK_PATH"
-    echo "joplin installed successfully."
-}
+#     if [[ -f "$APK_PATH" ]]; then
+#         mkdir -p "$SAVE_DIR"
+#         cp "$APK_PATH" "$SAVE_DIR/"
+#         echo "APK saved to $SAVE_DIR/app-debug.apk"
+#     else
+#         echo "WARNING: APK not found at $APK_PATH"
+#     fi
+# }
 
-# Launch joplin
-launch_joplin() {
-    echo "Launching joplin..."
-    adb_launch_activity "net.cozic.joplin/.MainActivity"
-    echo "joplin should now be running on your emulator."
-}
-
-# Synching with server
-synch_with_server() {
-    echo "Synching app with server..."
-    pip install uiautomator2
-    python synch_app.py --username usera@localhost --password userAPW123
-    echo "Should now be synched with server."
-}
-
-# Clear all build caches
-clear_build_cache() {
-    echo "Clearing build caches..."
+# # Clear all build caches
+# clear_build_cache() {
+#     echo "Clearing build caches..."
     
-    # Clear Gradle cache
-    ./gradlew clean || echo "Warning: gradlew clean failed"
+#     # Clear Gradle cache
+#     ./gradlew clean || echo "Warning: gradlew clean failed"
     
-    # Stop any running React Native processes first
-    pkill -f "react-native" 2>/dev/null || true
-    pkill -f "metro" 2>/dev/null || true
+#     # Stop any running React Native processes first
+#     pkill -f "react-native" 2>/dev/null || true
+#     pkill -f "metro" 2>/dev/null || true
     
-    # Clear npm/yarn cache
-    yarn cache clean || echo "Warning: yarn cache clean failed"
+#     # Clear npm/yarn cache
+#     yarn cache clean || echo "Warning: yarn cache clean failed"
     
-    # Clear Metro bundler cache
-    rm -rf node_modules/.cache 2>/dev/null || true
+#     # Clear Metro bundler cache
+#     rm -rf node_modules/.cache 2>/dev/null || true
     
-    # Handle TMPDIR properly - use fallback if not set
-    local temp_dir="${TMPDIR:-/tmp}"
-    rm -rf "${temp_dir}/metro-"* 2>/dev/null || true
-    rm -rf "${temp_dir}/react-"* 2>/dev/null || true
-    rm -rf "${temp_dir}/haste-map-"* 2>/dev/null || true
+#     # Handle TMPDIR properly - use fallback if not set
+#     local temp_dir="${TMPDIR:-/tmp}"
+#     rm -rf "${temp_dir}/metro-"* 2>/dev/null || true
+#     rm -rf "${temp_dir}/react-"* 2>/dev/null || true
+#     rm -rf "${temp_dir}/haste-map-"* 2>/dev/null || true
     
-    # Clear Android build outputs
-    rm -rf app/build 2>/dev/null || true
-    rm -rf build 2>/dev/null || true
-    rm -rf .gradle 2>/dev/null || true
+#     # Clear Android build outputs
+#     rm -rf app/build 2>/dev/null || true
+#     rm -rf build 2>/dev/null || true
+#     rm -rf .gradle 2>/dev/null || true
     
-    # Clear Gradle daemon and cache
-    ./gradlew --stop || echo "Warning: gradlew --stop failed"
-    rm -rf ~/.gradle/caches/ 2>/dev/null || true
-    rm -rf ~/.gradle/daemon/ 2>/dev/null || true
+#     # Clear Gradle daemon and cache
+#     ./gradlew --stop || echo "Warning: gradlew --stop failed"
+#     rm -rf ~/.gradle/caches/ 2>/dev/null || true
+#     rm -rf ~/.gradle/daemon/ 2>/dev/null || true
     
-    # Clear Watchman cache if available
-    if command -v watchman >/dev/null 2>&1; then
-        watchman watch-del-all 2>/dev/null || true
-    fi
+#     # Clear Watchman cache if available
+#     if command -v watchman >/dev/null 2>&1; then
+#         watchman watch-del-all 2>/dev/null || true
+#     fi
     
-    echo "Build caches cleared."
-}
+#     echo "Build caches cleared."
+# }
 
 # Main function
 main() {
@@ -214,7 +190,8 @@ main() {
     check_prerequisites
     setup_environment
     build_joplin
-    clear_build_cache
+    # save_apk
+    # clear_build_cache
 
     #if [ -z "$CI" ]; then
     #    clear_build_cache
