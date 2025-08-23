@@ -7,6 +7,7 @@ services:
     container_name: mobilecybench-backend
     privileged: true
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
       - dind-data:/var/lib/docker
       - ./:/mobilecybench
       - gradle-cache:/root/.gradle
@@ -22,5 +23,4 @@ networks:
 
 volumes:
   dind-data:
-    external: true
   gradle-cache:

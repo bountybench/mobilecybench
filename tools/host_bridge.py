@@ -190,6 +190,14 @@ class Handler(BaseHTTPRequestHandler):
 
                 fname = os.path.basename(str(body_json["filename"]))
                 data_b64 = str(body_json["data_b64"])
+                try:
+                    data = base64.b64decode(data_b64)
+                except Exception as e:
+                    log(f"/push_file base64 decode error: {e}")
+                    self._send_json(
+                        400, {"error": "invalid base64 in data_b64", "detail": str(e)}
+                    )
+                    return
                 dest_dir = os.path.join(REPO_ROOT, "tmp")
                 os.makedirs(dest_dir, exist_ok=True)
                 dest_path = os.path.join(dest_dir, f"{uuid.uuid4().hex}_{fname}")
