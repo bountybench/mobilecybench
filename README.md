@@ -118,7 +118,7 @@ mobilecybench/
 
 
 ### 2.3. Detailed example: Joplin
-See [joplin](/joplin/):
+See [joplin](/apps/joplin/):
 ```
 ├── joplin
 │   ├── codebase
@@ -206,7 +206,7 @@ networks:
 The database (`joplin-postgres`) is only on the private network, preventing direct access from the emulator or agent, ensuring isolation of sensitive services.
 
 ### 2.4. Detailed example: ownCloud
-See [ownCloud](/ownCloud/):
+See [ownCloud](/apps/owncloud-android/):
 ```
 ├── ownCloud
 │   ├── codebase
