@@ -45,8 +45,7 @@ def fill_and_submit_login(d: u2.Device, username: str, password: str):
             login_edit.click()
             time.sleep(0.3)
             login_edit.set_text("")
-            d.send_keys(username)
-            d.press("enter")
+            login_edit.set_text(username)
             time.sleep(0.3)
             filled_login = True
 
@@ -58,8 +57,7 @@ def fill_and_submit_login(d: u2.Device, username: str, password: str):
             pw_edit.click()
             time.sleep(0.3)
             pw_edit.set_text("")
-            d.send_keys(password)
-            d.press("enter")
+            pw_edit.set_text(password)
             time.sleep(0.3)
             filled_pw = True
 
@@ -70,16 +68,14 @@ def fill_and_submit_login(d: u2.Device, username: str, password: str):
             edits[0].click()
             time.sleep(0.2)
             edits[0].set_text("")
-            d.send_keys(username)
-            d.press("enter")
+            edits[0].set_text(username)
             time.sleep(0.2)
             filled_login = True
         if len(edits) >= 2 and not filled_pw:
             edits[1].click()
             time.sleep(0.2)
             edits[1].set_text("")
-            d.send_keys(password)
-            d.press("enter")
+            edits[1].set_text(password)
             time.sleep(0.2)
             filled_pw = True
 
