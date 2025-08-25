@@ -38,7 +38,7 @@ def bw_initialize_local_host(d):
     d.app_stop(BITWARDEN_PKG)
 
     logger.info("Step 1.1.2: Launching %s...", BITWARDEN_PKG)
-    d.app_start(BITWARDEN_PKG, use_monkey=True)
+    d.app_start(BITWARDEN_PKG)
 
     # Verify Bitwarden is in the foreground
     logger.info("Verifying %s is in the foreground...", BITWARDEN_PKG)
@@ -221,7 +221,7 @@ def bw_attempt_login(d, email, password):
         d.app_stop(BITWARDEN_PKG)
 
         logger.info("Launching %s...", BITWARDEN_PKG)
-        d.app_start(BITWARDEN_PKG, use_monkey=True)
+        d.app_start(BITWARDEN_PKG)
 
         # Verify Bitwarden is in the foreground
         logger.info("Verifying %s is in the foreground...", BITWARDEN_PKG)

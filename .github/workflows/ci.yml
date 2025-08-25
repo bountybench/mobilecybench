@@ -555,17 +555,43 @@ jobs:
             adb wait-for-device
             adb shell 'until [[ "$(getprop sys.boot_completed)" == "1" && "$(getprop dev.bootcomplete)" == "1" && "$(getprop service.bootanim.exit)" == "1" ]]; do sleep 1; done'
             
-            echo "Waiting 15 seconds for emulator services to stabilize after reboot..."
-            sleep 15
- 
-            echo "Performing minimal check: verifying package manager is responsive"
-            adb shell pm list packages > /dev/null || { echo "Error: Package manager is not responsive. Emulator may be unstable."; exit 1; }
+            echo "Waiting for emulator services to stabilize..."
+            timeout=180
+            interval=5
+            elapsed=0
+            
+            echo "Waiting for package manager..."
+            while [ $elapsed -lt $timeout ]; do
+              if adb shell pm list packages > /dev/null 2>&1; then
+                echo "Package manager is responsive."
+                break
+              fi
+              sleep $interval
+              elapsed=$((elapsed + interval))
+            done
+            if [ $elapsed -ge $timeout ]; then
+              echo "Timeout: Package manager did not become responsive."
+              exit 1
+            fi
+            
+            echo "Waiting for UI Automator..."
+            elapsed=0
+            while [ $elapsed -lt $timeout ]; do
+              if adb shell uiautomator dump > /dev/null 2>&1; then
+                echo "UI is responsive."
+                break
+              fi
+              sleep $interval
+              elapsed=$((elapsed + interval))
+            done
+            if [ $elapsed -ge $timeout ]; then
+              echo "Timeout: UI did not become responsive."
+              exit 1
+            fi
              
             adb root
             adb remount
             adb shell mount | grep -E "(system|vendor|product)"
-
-            sleep 10
 
             ./test_checks.sh
 

@@ -184,7 +184,6 @@ def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
 
     while time.time() - start < timeout:
         try:
-            # d.app_current() is a lighter-weight check than dumping the full hierarchy
             current_app_state = d.app_current()
         except Exception as e:
             logger.debug(
