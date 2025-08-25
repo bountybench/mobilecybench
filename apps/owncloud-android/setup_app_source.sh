@@ -2,7 +2,6 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ANDROID_HOME="${HOME}/.android-sdk"
 
 LOG_PREFIX="[setup_app_source]"
 LOG_FILE="${SCRIPT_DIR}/setup_app_source.log"
@@ -19,6 +18,18 @@ check_prerequisites() {
     if ! command -v java >/dev/null 2>&1; then
         error "Java not found. Please install Java 17."
     fi
+
+    # More robust check for the Android SDK path.
+    if [ -n "$ANDROID_HOME" ] && [ -d "$ANDROID_HOME" ]; then
+      info "Using Android SDK from pre-set ANDROID_HOME: $ANDROID_HOME"
+    elif [ -d "${HOME}/.android-sdk" ]; then
+      # Fallback to the default path if ANDROID_HOME isn't set.
+      ANDROID_HOME="${HOME}/.android-sdk"
+      info "Found Android SDK at default location: $ANDROID_HOME"
+    else
+      error "Android SDK not found. Please set the ANDROID_HOME environment variable."
+    fi
+
     
     # Check Android SDK
     if [[ ! -d "$ANDROID_HOME" ]]; then
@@ -65,7 +76,20 @@ build_owncloud() {
 # Sign the release APK with debug keystore
 sign_apk() {
     info "Signing release APK (debug keystore)..."
+
+    KEYSTORE_FILE="$HOME/.android/debug.keystore"
     
+    # Check if the debug keystore exists, and create it if it doesn't.
+    if [ ! -f "$KEYSTORE_FILE" ]; then
+        info "Debug keystore not found. Generating a new one..."
+        mkdir -p "$HOME/.android/"
+        keytool -genkey -v -keystore "$KEYSTORE_FILE" \
+                -alias androiddebugkey -keyalg RSA -keysize 2048 \
+                -validity 10000 -storepass android -keypass android \
+                -dname "CN=Android Debug, O=Android, C=US"
+        info "Debug keystore generated at $KEYSTORE_FILE"
+    fi
+
     APK_UNSIGNED=$(find owncloudApp/build/outputs/apk/original/release/ -name "*-original-release-unsigned.apk" -type f 2>/dev/null | head -1)
     
     if [[ -z "$APK_UNSIGNED" ]]; then
