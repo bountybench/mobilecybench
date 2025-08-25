@@ -500,6 +500,7 @@ jobs:
           ./setup_app_source.sh
           EOF
           chmod +x container_script.sh
+          free -h
           ./container_script.sh
                 
       - name: Stabilize Runner After Build (30 seconds)
