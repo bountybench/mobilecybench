@@ -195,7 +195,7 @@ main() {
     echo "==================="
     
     echo "Setting up joplin Android"
-    vm_stat       
+    #vm_stat       
     free -h  
 
     npm uninstall -g react-native-cli @react-native-community/cli
@@ -229,10 +229,10 @@ main() {
     check_prerequisites
     setup_environment
     build_joplin
-    vm_stat  
+    #vm_stat  
     free -h
     smart_cache_clear
-    vm_stat         
+    #vm_stat         
     free -h
 
     # save_apk
