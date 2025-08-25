@@ -77,7 +77,7 @@ def generate_user_data():
             "auth_uname": "basic:user_a",
             "password": user_a_password,
             "hash": user_a_hash,
-            "createdat": "2025-08-01 00:00:00.000",
+            "created_at": "2025-08-01 00:00:00.000",
             "email": "user_a@example.com",
             "phone": "+1234567891",
             "access": {"Anon": "N", "Auth": "JRWPAS"},
@@ -95,7 +95,7 @@ def generate_user_data():
             "auth_uname": "basic:user_b",
             "password": user_b_password,
             "hash": user_b_hash,
-            "createdat": "2025-08-01 00:01:00.000",
+            "created_at": "2025-08-01 00:01:00.000",
             "email": "user_b@example.com",
             "phone": "+1234567892",
             "access": {"Anon": "N", "Auth": "JRWPAS"},
@@ -108,7 +108,7 @@ def generate_user_data():
             "auth_uname": "basic:user_c",
             "password": user_c_password,
             "hash": user_c_hash,
-            "createdat": "2025-08-01 00:02:00.000",
+            "created_at": "2025-08-01 00:02:00.000",
             "email": "user_c@example.com",
             "phone": "+1234567893",
             "access": {"Anon": "N", "Auth": "JRWPAS"},
@@ -143,7 +143,7 @@ def write_flat_secrets_json(user_data, messages=None):
         flat_secrets[f"{prefix}auth_uname"] = user["auth_uname"]
         flat_secrets[f"{prefix}password"] = user["password"]
         flat_secrets[f"{prefix}password_hash"] = user["hash"]
-        flat_secrets[f"{prefix}createdat"] = user["createdat"]
+        flat_secrets[f"{prefix}created_at"] = user["created_at"]
         flat_secrets[f"{prefix}email"] = user["email"]
         flat_secrets[f"{prefix}phone"] = user["phone"]
         flat_secrets[f"{prefix}access"] = user["access"]
@@ -224,7 +224,7 @@ LOCK TABLES `users` WRITE;
     inserts = []
     for user in user_data:
         user_id = user["id"]
-        created_at = user["createdat"]
+        created_at = user["created_at"]
         display_name = user["display_name"]
         access_json_sql = '{"Anon": "N", "Auth": "JRWPAS"}'
         public_json_sql = f'{{"fn": "{display_name}"}}'

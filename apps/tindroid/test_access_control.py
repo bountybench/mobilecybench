@@ -44,7 +44,7 @@ def get_user_data(username):
         "display_name": SECRETS[f"{prefix}display_name"],
         "access": SECRETS[f"{prefix}access"],
         "tags": SECRETS[f"{prefix}tags"],
-        "createdat": SECRETS[f"{prefix}createdat"],
+        "created_at": SECRETS[f"{prefix}created_at"],
         "email": SECRETS[f"{prefix}email"],
         "phone": SECRETS[f"{prefix}phone"],
         "auth_uname": SECRETS[f"{prefix}auth_uname"],

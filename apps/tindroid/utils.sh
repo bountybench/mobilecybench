@@ -9,24 +9,8 @@ get_container_name_by_service() {
     local container_id
     local container_name
     
-    # Change to the directory containing docker-compose.yaml (apps/tindroid)
-    # This assumes the script is being sourced from a subdirectory
-    if [ -f "docker-compose.yaml" ]; then
-        # Already in the right directory
-        :
-    elif [ -f "../docker-compose.yaml" ]; then
-        # One level up
-        cd ..
-    elif [ -f "../../docker-compose.yaml" ]; then
-        # Two levels up
-        cd ../..
-    else
-        echo "[ERROR] Could not find docker-compose.yaml" >&2
-        return 1
-    fi
-    
     # Try to get container ID using docker compose ps
-    container_id=$(docker compose ps -q "$service_name" 2>/dev/null)
+    container_id=$(docker ps --filter "name=$service_name" --format "{{.ID}}" 2>/dev/null)
     
     if [ -n "$container_id" ]; then
         # Get the container name from the ID

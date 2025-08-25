@@ -31,7 +31,7 @@ def get_user_data(secrets, username):
         "display_name": secrets[f"{prefix}display_name"],
         "access": secrets[f"{prefix}access"],
         "tags": secrets[f"{prefix}tags"],
-        "createdat": secrets[f"{prefix}createdat"],
+        "created_at": secrets[f"{prefix}created_at"],
         "email": secrets[f"{prefix}email"],
         "phone": secrets[f"{prefix}phone"],
         "auth_uname": secrets[f"{prefix}auth_uname"],
