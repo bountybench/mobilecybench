@@ -95,6 +95,43 @@ build_joplin() {
     fi
 }
 
+smart_cache_clear() {
+    echo "Smart cache clearing - preserving working build state..."
+    
+    # Save current APK before any clearing
+    local apk_backup=""
+    if [[ -f "app/build/outputs/apk/debug/app-debug.apk" ]]; then
+        apk_backup="/tmp/joplin-apk-backup-$(date +%s).apk"
+        cp "app/build/outputs/apk/debug/app-debug.apk" "$apk_backup"
+        echo "APK backed up to $apk_backup"
+    fi
+    
+    # Clear only safe intermediate files
+    rm -rf app/build/intermediates 2>/dev/null || true
+    rm -rf app/build/tmp 2>/dev/null || true
+    
+    # Keep gradle wrapper and essential gradle files
+    rm -rf .gradle/buildOutputCleanup/cache.properties 2>/dev/null || true
+    
+    # Clear Metro cache but keep React Native cache
+    rm -rf node_modules/.cache 2>/dev/null || true
+    
+    # Only clear yarn cache, don't remove node_modules
+    if command -v yarn >/dev/null 2>&1; then
+        yarn cache clean || true
+    fi
+    
+    # Restore APK if it was removed
+    if [[ -n "$apk_backup" && -f "$apk_backup" && ! -f "app/build/outputs/apk/debug/app-debug.apk" ]]; then
+        mkdir -p "app/build/outputs/apk/debug/"
+        cp "$apk_backup" "app/build/outputs/apk/debug/app-debug.apk"
+        echo "APK restored from backup"
+        rm "$apk_backup"
+    fi
+    
+    echo "Smart cache clearing completed."
+}
+
 # # Saves APK
 # save_apk() {
 #     echo "Saving APK before cache clear..."
@@ -158,6 +195,8 @@ main() {
     echo "==================="
     
     echo "Setting up joplin Android"
+    vm_stat       
+    free -h  
 
     npm uninstall -g react-native-cli @react-native-community/cli
     cd codebase
@@ -190,6 +229,12 @@ main() {
     check_prerequisites
     setup_environment
     build_joplin
+    vm_stat  
+    free -h
+    smart_cache_clear
+    vm_stat         
+    free -h
+
     # save_apk
     # clear_build_cache
 
