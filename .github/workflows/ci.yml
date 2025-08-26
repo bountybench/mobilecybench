@@ -519,26 +519,28 @@ jobs:
           script: |
             # 1) Wait for initial boot (the action already launched the emulator)
             adb wait-for-device
-            timeout 180 sh -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 1; done'
+            timeout 180 adb shell 'until [ "$(getprop sys.boot_completed)" = "1" ]; do sleep 1; done'
       
             # 2) Root & disable verification (API > 28 uses avbctl), then reboot exactly once
-            sh -c 'SDK="$(adb shell getprop ro.build.version.sdk | tr -d "\r")"; echo "Device SDK = $SDK"; adb root || true; adb wait-for-device; if [ "${SDK:-0}" -gt 28 ]; then adb shell avbctl disable-verification || true; else adb disable-verity || true; fi'
+            adb root
+            SDK_VERSION=${{ needs.setup.outputs.sdk }}; if [ "$SDK_VERSION" -gt 28 ]; then adb shell avbctl disable-verification; else adb disable-verity; fi
             adb reboot
             adb wait-for-device
-            timeout 180 sh -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 1; done'
+            timeout 180 adb shell 'until [ "$(getprop sys.boot_completed)" = "1" ]; do sleep 1; done'
       
             # 3) Remount /system (overlayfs expected on API 29+)
             adb root
             adb wait-for-device
             adb remount
             adb shell mount | grep -E '(system|vendor|product)'
+            adb wait-for-device
       
             # 4) Core services ready: package manager responsive (no UI dependency)
             echo "Waiting for package manager to be ready..."
-            timeout 90 sh -c 'until adb shell cmd package list packages >/dev/null 2>&1; do sleep 1; done'
+            timeout 30 adb shell 'until cmd package list packages >/dev/null 2>&1; do sleep 1; done'
             echo "Waiting for core installation services..."
-            timeout 90 sh -c 'until adb shell settings list global >/dev/null 2>&1; do sleep 1; done' || { echo "Error: Settings Provider did not become ready in time."; exit 1; }
-            timeout 90 sh -c 'until adb shell sm list-disks >/dev/null 2>&1; do sleep 1; done' || { echo "Error: Storage Manager did not become ready in time."; exit 1; }
+            timeout 30 adb shell 'until settings list global >/dev/null 2>&1; do sleep 1; done'
+            timeout 30 adb shell 'until sm list-disks >/dev/null 2>&1; do sleep 1; done'
             
             # 5) Lightweight UI stabilization to avoid UiAutomator2 NPEs
             #    - Wake screen, dismiss keyguard, keep screen on, and go to home screen
@@ -549,13 +551,13 @@ jobs:
             adb shell input keyevent 3  || true         # HOME
 
             # 6) Prove a resumed window exists (prevents getRootInActiveWindow() == null)
-            timeout 60 sh -c 'until adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" >/dev/null; do sleep 1; done'
+            timeout 60 adb shell 'until dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" >/dev/null; do sleep 1; done'
       
             # 7) Hardened UiAutomator readiness: retry uiautomator dump with self-healing
-            timeout 90 sh -c 'i=0; while [ $i -lt 90 ]; do if adb shell uiautomator dump >/dev/null 2>&1; then echo "UiAutomator dump succeeded."; exit 0; fi; echo "UiAutomator dump failed, attempting recovery (attempt #$i)..."; adb shell input keyevent 224 || true; adb shell wm dismiss-keyguard || true; adb shell input keyevent 3 || true; sleep 1; i=$((i+1)); done; echo "Timeout: UiAutomator did not stabilize after multiple recovery attempts." >&2; exit 1'
+            timeout 60 adb shell 'i=0; while [ $i -lt 90 ]; do if uiautomator dump >/dev/null 2>&1; then echo "UiAutomator dump succeeded."; exit 0; fi; echo "UiAutomator dump failed, attempting recovery (attempt #$i)..."; input keyevent 224 || true; wm dismiss-keyguard || true; input keyevent 3 || true; sleep 1; i=$((i+1)); done; echo "Timeout: UiAutomator did not stabilize after multiple recovery attempts." >&2; exit 1'
 
             # 8) Final diagnostic check (non-fatal): Check for a focused window
-            timeout 90 sh -c 'until adb shell dumpsys window windows | grep -q "mCurrentFocus"; do sleep 1; done' || echo "Warning: No focused window found, but proceeding anyway."
+            timeout 30 adb shell 'until dumpsys window windows | grep -q "mCurrentFocus"; do sleep 1; done' || echo "Warning: No focused window found, but proceeding anyway."
             
             # 9) Run your tests (now safe to interact with UI)
             ./test_checks.sh
