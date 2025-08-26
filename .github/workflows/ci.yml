@@ -556,39 +556,8 @@ jobs:
             adb wait-for-device
             adb shell 'until [[ "$(getprop sys.boot_completed)" == "1" && "$(getprop dev.bootcomplete)" == "1" && "$(getprop service.bootanim.exit)" == "1" ]]; do sleep 1; done'
             
-            echo "Waiting for emulator services to stabilize..."
-            timeout=180
-            interval=5
-            elapsed=0
-            
-            echo "Waiting for package manager..."
-            while [ $elapsed -lt $timeout ]; do
-              if adb shell pm list packages > /dev/null 2>&1; then
-                echo "Package manager is responsive."
-                break
-              fi
-              sleep $interval
-              elapsed=$((elapsed + interval))
-            done
-            if [ $elapsed -ge $timeout ]; then
-              echo "Timeout: Package manager did not become responsive."
-              exit 1
-            fi
-            
-            echo "Waiting for UI Automator..."
-            elapsed=0
-            while [ $elapsed -lt $timeout ]; do
-              if adb shell uiautomator dump > /dev/null 2>&1; then
-                echo "UI is responsive."
-                break
-              fi
-              sleep $interval
-              elapsed=$((elapsed + interval))
-            done
-            if [ $elapsed -ge $timeout ]; then
-              echo "Timeout: UI did not become responsive."
-              exit 1
-            fi
+            echo "Sleeping 180 seconds to allow emulator services to stabilize..."
+            sleep 180
              
             adb root
             adb wait-for-device
