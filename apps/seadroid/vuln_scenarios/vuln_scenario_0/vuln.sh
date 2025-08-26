@@ -9,6 +9,6 @@ echo "This is a fake log with a real secret: $secret" > ./fake_agent_log.log
 echo "Created agent log with leaked admin password..."
 
 # Integrity and Access: delete note data and elevate user to admin/staff account
-chmod +x ./alter_data.py
-python ./alter_data.py
+chmod +x ./alter_data_and_elevate_user.py
+python ./alter_data_and_elevate_user.py
 echo "Deleted note data and elevated user to admin/staff account..."
