@@ -146,7 +146,7 @@ jobs:
     needs: setup
     if: needs.setup.outputs.should_exit != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 55
     strategy:
       matrix:
         test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
@@ -293,7 +293,6 @@ jobs:
           EOF
           chmod +x /tmp/shared_functions.sh
 
-          # Extract base directories from modified_dirs
           modified_dirs=${{ needs.setup.outputs.modified_dirs }}
           echo "Initialize submodule for $modified_dirs"
           git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$modified_dirs"
@@ -304,12 +303,6 @@ jobs:
           distribution: 'temurin'
           java-version: "${{ needs.setup.outputs.java }}"
           cache: gradle
-
-      # - name: Setup Node.js with caching
-      #   uses: actions/setup-node@v3
-      #   with:
-      #     node-version: "${{ needs.setup.outputs.node }}"
-      #     cache: 'yarn'
             
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5

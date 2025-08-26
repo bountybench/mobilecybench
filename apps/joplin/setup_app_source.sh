@@ -6,6 +6,21 @@ ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ANDROID_HOME="${HOME}/.android-sdk"
 source "$ROOT_DIR/utils/android.sh"
 
+# Patch gradle.properties
+patch() {
+    # Patch gradle.properties for low-RAM builds
+    if [[ -f "gradle.properties" ]]; then
+        echo "Patching gradle.properties for low memory usage..."
+        sed -i.bak \
+            -e 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Dfile.encoding=UTF-8/' \
+            -e '/^org.gradle.parallel/d' \
+            -e '/^android.enableR8/d' \
+            gradle.properties
+        # Append if missing
+        grep -q '^org.gradle.parallel=false' gradle.properties || echo 'org.gradle.parallel=false' >> gradle.properties
+    fi
+}
+
 # Check prerequisites
 check_prerequisites() {
     echo "Checking prerequisites..."
@@ -62,9 +77,6 @@ build_joplin() {
     echo "Building joplin Android from source..."
     echo "This will take several minutes..."
     free -h
-    
-    #./gradlew assembleDebug
-    #echo "Build completed successfully."
 
     local temp_out=$(mktemp)
     local temp_err=$(mktemp)
@@ -97,10 +109,9 @@ build_joplin() {
     fi
 }
 
-smart_cache_clear() {
-    echo "Smart cache clearing - preserving working build state..."
+clear() {
+    echo "Clearing cache - preserving working build state..."
     
-    # Save current APK before any clearing
     local apk_backup=""
     if [[ -f "app/build/outputs/apk/release/app-release.apk" ]]; then
         apk_backup="/tmp/joplin-apk-backup-$(date +%s).apk"
@@ -108,22 +119,16 @@ smart_cache_clear() {
         echo "APK backed up to $apk_backup"
     fi
     
-    # Clear only safe intermediate files
     rm -rf app/build/intermediates 2>/dev/null || true
     rm -rf app/build/tmp 2>/dev/null || true
-    
-    # Keep gradle wrapper and essential gradle files
     rm -rf .gradle/buildOutputCleanup/cache.properties 2>/dev/null || true
-    
-    # Clear Metro cache but keep React Native cache
     rm -rf node_modules/.cache 2>/dev/null || true
     
-    # Only clear yarn cache, don't remove node_modules
     if command -v yarn >/dev/null 2>&1; then
         yarn cache clean || true
     fi
+    ./gradlew --stop
     
-    # Restore APK if it was removed
     if [[ -n "$apk_backup" && -f "$apk_backup" && ! -f "app/build/outputs/apk/release/app-release.apk" ]]; then
         mkdir -p "app/build/outputs/apk/release/"
         cp "$apk_backup" "app/build/outputs/apk/release/app-release.apk"
@@ -133,63 +138,6 @@ smart_cache_clear() {
     
     echo "Smart cache clearing completed."
 }
-
-# # Saves APK
-# save_apk() {
-#     echo "Saving APK before cache clear..."
-    
-#     APK_PATH="app/build/outputs/apk/release/app-release.apk"
-#     SAVE_DIR="../../../../apk_output"  
-    
-#     if [[ -f "$APK_PATH" ]]; then
-#         mkdir -p "$SAVE_DIR"
-#         cp "$APK_PATH" "$SAVE_DIR/"
-#         echo "APK saved to $SAVE_DIR/app-release.apk"
-#     else
-#         echo "WARNING: APK not found at $APK_PATH"
-#     fi
-# }
-
-# # Clear all build caches
-# clear_build_cache() {
-#     echo "Clearing build caches..."
-    
-#     # Clear Gradle cache
-#     ./gradlew clean || echo "Warning: gradlew clean failed"
-    
-#     # Stop any running React Native processes first
-#     pkill -f "react-native" 2>/dev/null || true
-#     pkill -f "metro" 2>/dev/null || true
-    
-#     # Clear npm/yarn cache
-#     yarn cache clean || echo "Warning: yarn cache clean failed"
-    
-#     # Clear Metro bundler cache
-#     rm -rf node_modules/.cache 2>/dev/null || true
-    
-#     # Handle TMPDIR properly - use fallback if not set
-#     local temp_dir="${TMPDIR:-/tmp}"
-#     rm -rf "${temp_dir}/metro-"* 2>/dev/null || true
-#     rm -rf "${temp_dir}/react-"* 2>/dev/null || true
-#     rm -rf "${temp_dir}/haste-map-"* 2>/dev/null || true
-    
-#     # Clear Android build outputs
-#     rm -rf app/build 2>/dev/null || true
-#     rm -rf build 2>/dev/null || true
-#     rm -rf .gradle 2>/dev/null || true
-    
-#     # Clear Gradle daemon and cache
-#     ./gradlew --stop || echo "Warning: gradlew --stop failed"
-#     rm -rf ~/.gradle/caches/ 2>/dev/null || true
-#     rm -rf ~/.gradle/daemon/ 2>/dev/null || true
-    
-#     # Clear Watchman cache if available
-#     if command -v watchman >/dev/null 2>&1; then
-#         watchman watch-del-all 2>/dev/null || true
-#     fi
-    
-#     echo "Build caches cleared."
-# }
 
 # Main function
 main() {
@@ -229,35 +177,13 @@ main() {
         exit 1
     fi
 
-    # Patch gradle.properties for low-RAM builds
-    if [[ -f "gradle.properties" ]]; then
-        echo "Patching gradle.properties for low memory usage..."
-        sed -i.bak \
-            -e 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Dfile.encoding=UTF-8/' \
-            -e '/^org.gradle.parallel/d' \
-            -e '/^android.enableR8/d' \
-            gradle.properties
-
-        # Append if missing
-        grep -q '^org.gradle.parallel=false' gradle.properties || echo 'org.gradle.parallel=false' >> gradle.properties
-    fi
-    
+    patch
     check_prerequisites
     setup_environment
     build_joplin
-    #vm_stat  
     free -h  
-    smart_cache_clear
-    ./gradlew --stop
-    #vm_stat         
+    clear
     free -h  
-
-    # save_apk
-    # clear_build_cache
-
-    #if [ -z "$CI" ]; then
-    #    clear_build_cache
-    #fi
     
     echo ""
     echo "Setup complete! joplin is ready for testing."
