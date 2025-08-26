@@ -71,7 +71,7 @@ build_joplin() {
     
     # Run gradle build with output suppressed
     sed -i -- 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
-    if ./gradlew assembleRelease --max-workers=1 > "$temp_out" 2> "$temp_err"; then
+    if ./gradlew assembleRelease --no-daemon --max-workers=1 > "$temp_out" 2> "$temp_err"; then
         echo "Build completed successfully."
         # Clean up temp files on success
         rm -f "$temp_out" "$temp_err"
@@ -233,7 +233,7 @@ main() {
     if [[ -f "gradle.properties" ]]; then
         echo "Patching gradle.properties for low memory usage..."
         sed -i.bak \
-            -e 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=256m -XX:+UseParallelGC -Dfile.encoding=UTF-8/' \
+            -e 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Dfile.encoding=UTF-8/' \
             -e '/^org.gradle.parallel/d' \
             -e '/^android.enableR8/d' \
             gradle.properties
