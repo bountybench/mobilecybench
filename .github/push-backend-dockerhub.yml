@@ -2,6 +2,10 @@ name: Update DockerHub Image
 
 on: workflow_dispatch
 
+concurrency:
+  group: mobilecybench-backend-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -14,6 +18,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
       - uses: docker/build-push-action@v6
+        id: build
         with:
           context: .
           file: Dockerfile.backend
@@ -21,6 +26,8 @@ jobs:
           push: true
           tags: |
             cybench/mobilecybench-backend:latest
+            cybench/mobilecybench-backend:${{ github.sha }}
+            cybench/mobilecybench-backend:pr-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
   test:
