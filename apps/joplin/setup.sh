@@ -12,5 +12,4 @@ echo "Running Docker compose..."
 docker compose up --build -d
 
 echo "Setting up app..."
-./setup_app_source.sh
 ./setup_app.sh
