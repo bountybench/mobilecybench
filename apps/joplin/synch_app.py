@@ -61,6 +61,7 @@ def wait_for_ui_stable(timeout=60, interval=0.5):
     print("UI unstable!")
     return False
 
+
 wait_for_ui_stable(timeout=120, interval=1)
 print(d.dump_hierarchy(), file=sys.stderr)
 wait_and_click_desc("Sidebar, Show/hide the sidebar")

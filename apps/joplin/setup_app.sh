@@ -113,7 +113,14 @@ main() {
     cd "$root_dir"
     synch_with_server
 
-    adb root
+    for i in {1..3}; do
+        adb wait-for-device
+        if adb root; then
+            break
+        fi
+        echo "Retrying adb root..."
+        sleep 5
+    done
 
     local immutable_dirs=(/system /vendor /product /odm)
     adb_hash_dirs "${immutable_dirs[@]}" > baseline.json
