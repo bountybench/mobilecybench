@@ -58,10 +58,6 @@ ensure_uiautomator_ready() {
   timeout "$TIMEOUT_UIA" adb shell 'i=0; while [ $i -lt 90 ]; do if uiautomator dump >/dev/null 2>&1; then echo "UiAutomator dump succeeded."; exit 0; fi; echo "UiAutomator dump failed, attempting recovery (attempt #$i)..."; input keyevent 224 || true; wm dismiss-keyguard || true; input keyevent 3 || true; sleep 1; i=$((i+1)); done; echo "Timeout: UiAutomator did not stabilize after multiple recovery attempts." >&2; exit 1'
 }
 
-check_focused_window_non_fatal() {
-  timeout "$TIMEOUT_FOCUS" adb shell 'until dumpsys window windows | grep -q "mCurrentFocus"; do sleep 1; done' || echo "Warning: No focused window found, but proceeding anyway."
-}
-
 main() {
   wait_for_boot
   ensure_root_and_disable_verification
@@ -70,7 +66,6 @@ main() {
   stabilize_ui
   ensure_resumed_activity
   ensure_uiautomator_ready
-  check_focused_window_non_fatal
 }
 
 main "$@"
