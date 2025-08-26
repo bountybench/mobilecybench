@@ -76,7 +76,6 @@ setup_environment() {
 build_joplin() {    
     echo "Building joplin Android from source..."
     echo "This will take several minutes..."
-    #free -h
 
     local temp_out=$(mktemp)
     local temp_err=$(mktemp)
@@ -131,13 +130,10 @@ main() {
     echo "==================="
     
     echo "Setting up joplin Android"
-    #vm_stat       
-    #free -h  
 
     npm uninstall -g react-native-cli @react-native-community/cli
     cd codebase
     npm uninstall -g react-native-cli @react-native-community/cli
-    #yarn install
     cd -
 
     root_dir="$(pwd)"
@@ -151,8 +147,6 @@ main() {
     fi
 
     yarn install
-    #free -h
-    #npx react-native start --reset-cache > /dev/null 2>&1 &
     
     # Navigate to codebase directory
     if [[ -d "android" ]]; then
@@ -167,9 +161,7 @@ main() {
     check_prerequisites
     setup_environment
     build_joplin
-    #free -h  
     clear
-    #free -h  
     
     echo ""
     echo "Setup complete! joplin is ready for testing."

@@ -97,14 +97,6 @@ jobs:
               echo "Java version: $java"
           fi
 
-          node=$(jq -r '.node' $metadata)
-          if [ "$?" -ne 0 ] || [ "$node" = "null" ] || [ -z "$node" ]; then
-              echo "${ERROR} Could not extract node version from $metadata. Use default (17)."
-              node=18
-          else 
-              echo "node version: $node"
-          fi
-
           if [ "$sdk" -lt 30 ]; then
               system_image="google_apis"
           else
@@ -114,7 +106,6 @@ jobs:
 
           echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
           echo "java=$java" >> "$GITHUB_OUTPUT"
-          echo "node=$node" >> "$GITHUB_OUTPUT"
           echo "system_image=$system_image" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
@@ -436,20 +427,6 @@ jobs:
           
           chmod +x test_checks.sh
 
-      - name: Start resource logging
-        run: |
-          echo "=== Starting resource monitor ==="
-          mkdir -p resource_logs
-          # Host metrics: CPU & memory every 2s
-          nohup vmstat 2 > resource_logs/vmstat.log &
-          echo $! >> resource_logs/monitor_pids.txt
-          # Host metrics: top processes every 5s
-          nohup top -b -d 5 > resource_logs/top.log &
-          echo $! >> resource_logs/monitor_pids.txt
-          # Host metrics: disk space every 10s
-          nohup sh -c 'while true; do df -h; sleep 10; done' > resource_logs/disk.log &
-          echo $! >> resource_logs/monitor_pids.txt
-
       - name: Create container script
         run: |
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
@@ -483,47 +460,42 @@ jobs:
           free -h
           ./container_script.sh
                 
-      - name: Stabilize Runner After Build (30 seconds)
+      - name: Stabilize runner after build
         run: |
           echo "Memory usage immediately after build:"
           free -h
-          # Stop daemons to free RAM in case the script started any
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir" || true
+          
           (cd codebase && ./gradlew --stop) || true
+          pkill -f GradleDaemon || true
           pkill -f kotlin.daemon.KotlinCompileDaemon || true
           jps -v | grep -E 'GradleDaemon|Kotlin' || true
           echo "Memory usage after stopping Gradle daemons:"
           free -h
-
-          sudo swapoff -a || true
-          sudo rm -f /swapfile || true
+          set -euo pipefail
+          THRESHOLD=4096 # 4GB
+          MAX_TRIES=24  # 2 minutes at 5s interval
+          TRIES=0
+          INTERVAL=5
+          echo "Waiting for available memory to exceed ${THRESHOLD}MB..."
+          while ((TRIES < MAX_TRIES)); do
+            AVAILABLE_MEM=$(awk '/MemAvailable/ { printf "%d", $2/1024 }' /proc/meminfo)
+            echo "Current available memory on attempt ${TRIES}/${MAX_TRIES}: ${AVAILABLE_MEM}MB"
+            if (( AVAILABLE_MEM > THRESHOLD )); then
+              echo "Memory threshold of ${THRESHOLD}MB crossed. Continuing..."
+              break
+            fi
+            echo "Retrying in ${INTERVAL} seconds..."
+            (( ++TRIES ))
+            sleep "${INTERVAL}"
+          done
+          if (( TRIES >= MAX_TRIES )); then
+            echo "Timeout waiting for memory to exceed ${THRESHOLD}MB"; 
+            exit 1
+          fi
+          echo "Final memory usage:"
           free -h
-
-          echo "Waiting 30 seconds for OS to reclaim memory..."
-          sleep 30
-          echo "Memory usage after waiting 30 seconds:"
-          free -h
-
-      # - name: Wait for CPU stabilization
-      #   run: |
-      #     echo "Waiting for CPU to stabilize..."
-      #     sleep 30
-      #     # Or wait until CPU drops below threshold
-      #     while top -bn1 | grep "Cpu(s)" | awk '{gsub(/%us,/, "", $2); if ($2 > 50) exit 1; else exit 0}'; do
-      #       echo "CPU still high, waiting..."
-      #       sleep 5
-      #     done
-
-      - name: Stop resource logging and show results
-        if: always()
-        run: |
-          echo "=== Stopping resource monitor ==="
-          kill $(cat resource_logs/monitor_pids.txt) || true
-          echo "=== VMSTAT LOG ==="
-          tail -n 40 resource_logs/vmstat.log || true
-          echo "=== TOP LOG ==="
-          tail -n 40 resource_logs/top.log || true
-          echo "=== DISK USAGE LOG ==="
-          tail -n 20 resource_logs/disk.log || true
 
       - name: Pre-emulator Resource Check
         run: |
@@ -550,20 +522,6 @@ jobs:
           fi
           
           echo "System ready for emulator. CPU: ${CPU_USAGE}%, Available Memory: ${AVAILABLE_MEM}GB"
-
-      - name: Start resource logging
-        run: |
-          echo "=== Starting resource monitor ==="
-          mkdir -p resource_logs
-          # Host metrics: CPU & memory every 2s
-          nohup vmstat 2 > resource_logs/vmstat.log &
-          echo $! >> resource_logs/monitor_pids.txt
-          # Host metrics: top processes every 5s
-          nohup top -b -d 5 > resource_logs/top.log &
-          echo $! >> resource_logs/monitor_pids.txt
-          # Host metrics: disk space every 10s
-          nohup sh -c 'while true; do df -h; sleep 10; done' > resource_logs/disk.log &
-          echo $! >> resource_logs/monitor_pids.txt
 
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
@@ -604,18 +562,6 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
-
-      - name: Stop resource logging and show results
-        if: always()
-        run: |
-          echo "=== Stopping resource monitor ==="
-          kill $(cat resource_logs/monitor_pids.txt) || true
-          echo "=== VMSTAT LOG ==="
-          tail -n 40 resource_logs/vmstat.log || true
-          echo "=== TOP LOG ==="
-          tail -n 40 resource_logs/top.log || true
-          echo "=== DISK USAGE LOG ==="
-          tail -n 20 resource_logs/disk.log || true
 
       - name: Display disk space after tests
         if: always()

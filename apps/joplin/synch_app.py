@@ -63,7 +63,6 @@ def wait_for_ui_stable(timeout=60, interval=0.5):
 
 
 wait_for_ui_stable(timeout=120, interval=1)
-#print(d.dump_hierarchy(), file=sys.stderr)
 wait_and_click_desc("Sidebar, Show/hide the sidebar")
 wait_and_click_text("Configuration")
 wait_for_ui_stable(interval=1)
@@ -105,39 +104,6 @@ if label.exists:
     edit.set_text(password)  # Direct text input instead of send_keys()
     d.press("enter")
 wait_for_ui_stable(timeout=5, interval=1)
-
-# # Fill Joplin Server URL
-# label = d(text="Joplin Server URL")
-# if label.exists:
-#     edit = label.sibling(className="android.widget.EditText")
-#     edit.click()
-#     wait_for_ui_stable(timeout=5)
-#     edit.set_text("")
-#     d.send_keys("http://10.0.2.2:22300")
-#     d.press("enter")
-# wait_for_ui_stable(timeout=5)
-
-# # Fill Joplin Server email
-# label = d(text="Joplin Server email")
-# if label.exists:
-#     edit = label.sibling(className="android.widget.EditText")
-#     edit.click()
-#     wait_for_ui_stable(timeout=5)
-#     edit.set_text("")
-#     d.send_keys(username)
-#     d.press("enter")
-# wait_for_ui_stable(timeout=5)
-
-# # Fill Joplin Server password
-# label = d(text="Joplin Server password")
-# if label.exists:
-#     edit = label.sibling(className="android.widget.EditText")
-#     edit.click()
-#     wait_for_ui_stable(timeout=5)
-#     edit.set_text("")
-#     d.send_keys(password)
-#     d.press("enter")
-# wait_for_ui_stable(timeout=5, interval=1)
 
 wait_and_click_text("CHECK SYNCHRONIZATION CONFIGURATION")
 wait_for_ui_stable(timeout=10, interval=3)
