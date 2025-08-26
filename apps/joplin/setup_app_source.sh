@@ -61,6 +61,7 @@ setup_environment() {
 build_joplin() {    
     echo "Building joplin Android from source..."
     echo "This will take several minutes..."
+    free -h
     
     #./gradlew assembleDebug
     #echo "Build completed successfully."
@@ -70,7 +71,7 @@ build_joplin() {
     
     # Run gradle build with output suppressed
     sed -i -- 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
-    if ./gradlew assembleRelease --max-workers=2 > "$temp_out" 2> "$temp_err"; then
+    if ./gradlew assembleRelease --max-workers=1 > "$temp_out" 2> "$temp_err"; then
         echo "Build completed successfully."
         # Clean up temp files on success
         rm -f "$temp_out" "$temp_err"
@@ -227,6 +228,19 @@ main() {
         echo "ERROR: Not in joplin Android directory and codebase/packages/app-mobile/android/ not found."
         exit 1
     fi
+
+    # Patch gradle.properties for low-RAM builds
+    if [[ -f "gradle.properties" ]]; then
+        echo "Patching gradle.properties for low memory usage..."
+        sed -i.bak \
+            -e 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=256m -XX:+UseParallelGC -Dfile.encoding=UTF-8/' \
+            -e '/^org.gradle.parallel/d' \
+            -e '/^android.enableR8/d' \
+            gradle.properties
+
+        # Append if missing
+        grep -q '^org.gradle.parallel=false' gradle.properties || echo 'org.gradle.parallel=false' >> gradle.properties
+    fi
     
     check_prerequisites
     setup_environment
@@ -234,6 +248,7 @@ main() {
     #vm_stat  
     free -h  
     smart_cache_clear
+    ./gradlew --stop
     #vm_stat         
     free -h  
 
