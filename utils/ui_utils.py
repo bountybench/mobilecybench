@@ -159,6 +159,8 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
     # Clicked element; return True
     logger.info("Clicked element %s", element.selector)
 
+    wait_for_ui_stable(d)
+
     return True
 
 
@@ -193,19 +195,29 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
     logger.info("Set text to %s", text)
     _handle_keyboard_action(d)
 
+    wait_for_ui_stable(d)
+
     return True
 
 
-def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
+def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
     prev_dump = None
     same_count = 0
     start = time.time()
+    fail_count = 0
 
     while time.time() - start < timeout:
         try:
             current_dump = d.dump_hierarchy()
+            fail_count = 0
         except Exception as e:
             logger.debug("Failed to get hierarchy dump during stability check: %s", e)
+            fail_count += 1
+            if fail_count == 3:
+                try:
+                    d.healthcheck()
+                except Exception:
+                    pass
             time.sleep(interval)
             continue
 
@@ -250,6 +262,7 @@ def _warmup_accessibility_and_hierarchy(d, timeout=25.0, interval=0.5):
     except Exception:
         pass
 
+    did_healthcheck = False
     while time.time() < deadline:
         try:
             # A successful dump means the service is up
@@ -262,6 +275,12 @@ def _warmup_accessibility_and_hierarchy(d, timeout=25.0, interval=0.5):
             # "AccessibilityServiceInfo.flags on a null object"
             if "AccessibilityServiceInfo.flags" in msg or "NullPointerException" in msg:
                 logger.debug("Hierarchy dump failed (race condition). Retrying…")
+                if not did_healthcheck:
+                    try:
+                        d.healthcheck()
+                        did_healthcheck = True
+                    except Exception:
+                        pass
             else:
                 # Other failures should still retry briefly, but log at debug.
                 logger.debug("Hierarchy dump error during warm-up: %s", e)
@@ -365,7 +384,7 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
                         continue  # Continue checking for more ANRs
                 else:
                     logger.debug("Waiting for UI to stabilize after ANR...")
-                    wait_for_ui_stable(d, timeout=5)
+                    wait_for_ui_stable(d)
             else:
                 return True  # No ANR dialog found
         except Exception as e:

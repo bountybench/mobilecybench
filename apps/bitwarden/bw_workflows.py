@@ -25,7 +25,9 @@ logger.handlers[:] = [_handler]
 logger.propagate = False
 
 
-def _ensure_app_in_foreground(device, package_name: str, wait_timeout: float = 30.0) -> None:
+def _ensure_app_in_foreground(
+    device, package_name: str, wait_timeout: float = 30.0
+) -> None:
     """
     Start the given package and ensure it reaches the foreground.
 
@@ -46,7 +48,9 @@ def _ensure_app_in_foreground(device, package_name: str, wait_timeout: float = 3
         return
 
     # Second attempt: try monkey-based start
-    logger.warning("%s not in foreground after first start. Retrying with monkey...", package_name)
+    logger.warning(
+        "%s not in foreground after first start. Retrying with monkey...", package_name
+    )
     device.app_start(package_name, wait=True, stop=True, use_monkey=True)
     if device.app_wait(package_name, front=True, timeout=wait_timeout):
         return
@@ -61,6 +65,7 @@ def _ensure_app_in_foreground(device, package_name: str, wait_timeout: float = 3
 
     current = device.app_current()
     raise RuntimeError(f"Expected {package_name} in foreground, got: {current}")
+
 
 def bw_initialize_local_host(d):
     """

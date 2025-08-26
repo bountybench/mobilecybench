@@ -48,11 +48,19 @@ install_bitwarden() {
     # Check if cached APK exists, if not, check if build APK exists
     if [[ -f $CACHED_APK ]]; then
         echo "[INFO] Installing cached APK from $CACHED_APK..."
-        adb install "$CACHED_APK"
+        adb install "$CACHED_APK" \
+          || adb install -r -t -g "$CACHED_APK" \
+          || (adb push "$CACHED_APK" /data/local/tmp/bitwarden.apk \
+              && adb shell pm install -r -t -g /data/local/tmp/bitwarden.apk \
+              && adb shell rm -f /data/local/tmp/bitwarden.apk)
     else
         if [[ -f $BUILD_APK ]]; then
             echo "[INFO] Installing build APK from $BUILD_APK..."
-            adb install "$BUILD_APK"
+            adb install "$BUILD_APK" \
+              || adb install -r -t -g "$BUILD_APK" \
+              || (adb push "$BUILD_APK" /data/local/tmp/bitwarden.apk \
+                  && adb shell pm install -r -t -g /data/local/tmp/bitwarden.apk \
+                  && adb shell rm -f /data/local/tmp/bitwarden.apk)
         else
             echo "[ERROR] APK not found at $CACHED_APK or $BUILD_APK"
             exit 1
@@ -72,8 +80,11 @@ install_bitwarden() {
 launch_bitwarden() {
     echo "[INFO] Launching Bitwarden..."
     
-    # Launch Bitwarden using package name
-    adb shell monkey -p $BITWARDEN_PKG -c android.intent.category.LAUNCHER 1
+    # Prefer starting the explicit main activity; fallback to monkey if needed
+    if ! adb shell am start -n "$BITWARDEN_PKG/.MainActivity" >/dev/null 2>&1; then
+        echo "[WARN] Direct activity start failed; falling back to monkey..."
+        adb shell monkey -p "$BITWARDEN_PKG" -c android.intent.category.LAUNCHER 1
+    fi
     
     # Verify launch by polling for the process ID
     echo "[INFO] Waiting for Bitwarden process to start..."
