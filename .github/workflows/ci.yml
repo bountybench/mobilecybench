@@ -557,8 +557,9 @@ jobs:
             adb wait-for-device
             adb shell 'until [[ "$(getprop sys.boot_completed)" == "1" && "$(getprop dev.bootcomplete)" == "1" && "$(getprop service.bootanim.exit)" == "1" ]]; do sleep 1; done'
             
-            echo "Sleeping 180 seconds to allow emulator services to stabilize..."
-            sleep 180
+            echo "Waiting for Android services (pm+uiautomator)..."
+            timeout 180 sh -c 'until adb shell pm list packages >/dev/null 2>&1 && adb shell uiautomator dump >/dev/null 2>&1; do sleep 1; done'
+            
              
             adb root
             adb wait-for-device
