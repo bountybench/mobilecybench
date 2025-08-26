@@ -63,7 +63,6 @@ def wait_for_ui_stable(timeout=60, interval=0.5):
 
 
 wait_for_ui_stable(timeout=120, interval=1)
-#print(d.dump_hierarchy(), file=sys.stderr)
 wait_and_click_desc("Sidebar, Show/hide the sidebar")
 wait_and_click_text("Configuration")
 wait_for_ui_stable(interval=1)
