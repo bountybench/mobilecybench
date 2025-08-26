@@ -533,41 +533,77 @@ jobs:
           echo "Final memory usage:"
           free -h
 
-      - name: Run emulator test with action (vuln_scenario_0)
-        if: matrix.test_type == 'vuln_scenario_0'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: ${{ needs.setup.outputs.sdk }}
-          arch: x86_64
-          target: ${{ needs.setup.outputs.system_image }} 
-          profile: pixel_2
-          ram-size: 2048    
-          force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none -writable-system
-          disable-animations: true
-          script: |
-            adb root
-            adb wait-for-device
-            SDK_VERSION=${{ needs.setup.outputs.sdk }}
-            if [ "$SDK_VERSION" -gt 28 ]; then adb shell avbctl disable-verification; else adb disable-verity; fi
-            adb reboot
-
-            adb wait-for-device
-            adb shell 'until [[ "$(getprop sys.boot_completed)" == "1" && "$(getprop dev.bootcomplete)" == "1" && "$(getprop service.bootanim.exit)" == "1" ]]; do sleep 1; done'
-            
-            echo "Waiting for Android services (pm+uiautomator)..."
-            timeout 180 sh -c 'until adb shell pm list packages >/dev/null 2>&1 && adb shell uiautomator dump >/dev/null 2>&1; do sleep 1; done'
-            
-             
-            adb root
-            adb wait-for-device
-            adb remount
-            adb shell mount | grep -E "(system|vendor|product)"
-
-            ./test_checks.sh
-
+          - name: Run emulator test with action (vuln_scenario_0)
+          if: matrix.test_type == 'vuln_scenario_0'
+          env:
+            GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          uses: reactivecircus/android-emulator-runner@v2
+          with:
+            api-level: ${{ needs.setup.outputs.sdk }}
+            arch: x86_64
+            target: ${{ needs.setup.outputs.system_image }}
+            profile: pixel_2
+            ram-size: 2048
+            force-avd-creation: true
+            # Cold boot + writable system (overlayfs/remount) => keep these
+            emulator-options: >-
+              -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect
+              -noaudio -no-boot-anim -skin 1080x1920 -memory 2048
+              -camera-back none -writable-system
+            disable-animations: true
+            emulator-port: 5554
+            script: |
+              set -eu
+        
+              ADB="adb -s emulator-5554"
+        
+              # Wait for first boot to complete (action already starts emulator)
+              $ADB wait-for-device
+              until [ "$($ADB shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do
+                sleep 1
+              done
+        
+              # Get actual device SDK to avoid mismatches
+              SDK_VERSION="$($ADB shell getprop ro.build.version.sdk | tr -d '\r')"
+              echo "Device SDK = $SDK_VERSION"
+        
+              # Root and disable verification (only if necessary for remounting /system)
+              $ADB root || true
+              $ADB wait-for-device
+              if [ "${SDK_VERSION:-0}" -gt 28 ]; then
+                $ADB shell avbctl disable-verification || true
+              else
+                $ADB disable-verity || true
+              fi
+        
+              # Single reboot to apply changes
+              $ADB reboot
+              $ADB wait-for-device
+              until [ "$($ADB shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do
+                sleep 1
+              done
+        
+              # Root and remount (overlayfs on API 29+)
+              $ADB root || true
+              $ADB wait-for-device
+              $ADB remount
+              $ADB shell mount | grep -E '(system|vendor|product)' || true
+        
+              # Lightweight readiness: ensure package manager is up (no UI dependency)
+              i=0
+              while [ $i -lt 60 ]; do
+                if $ADB shell 'cmd package list packages >/dev/null 2>&1'; then
+                  echo "Android services ready."
+                  break
+                fi
+                i=$((i+1))
+                sleep 1
+              done
+              [ $i -lt 60 ] || { echo "Timeout waiting for package manager"; exit 1; }
+        
+              # Run your checks
+              ./test_checks.sh
+        
       - name: Run emulator test with action (baseline and vuln_scenario_1)
         if: matrix.test_type != 'vuln_scenario_0'
         env:
