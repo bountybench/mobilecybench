@@ -582,12 +582,8 @@ jobs:
             timeout 60 sh -c 'until adb shell settings list global >/dev/null 2>&1; do sleep 1; done' || { echo "Error: Settings Provider did not become ready in time."; exit 1; }
             timeout 60 sh -c 'until adb shell sm list-disks >/dev/null 2>&1; do sleep 1; done' || { echo "Error: Storage Manager did not become ready in time."; exit 1; }
             echo "Core installation services are ready."
-
-            # 10) Final system settling delay (reduced)
-            echo "Waiting 10s for final system settling..."
-            sleep 10
         
-            # 11) Run your tests (now safe to interact with UI)
+            # 10) Run your tests (now safe to interact with UI)
             ./test_checks.sh
 
       - name: Run emulator test with action (baseline and vuln_scenario_1)
