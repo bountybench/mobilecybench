@@ -448,90 +448,90 @@ jobs:
           
           chmod +x test_checks.sh
 
-      # - name: Create container script to build app from source
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-      #     GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
-      #   run: |
-      #     modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+      - name: Create container script to build app from source
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
 
-      #     cat << 'EOF' > container_script.sh
-      #     #!/bin/bash
-      #     set -e
-      #     git config --global --add safe.directory '*'
+          cat << 'EOF' > container_script.sh
+          #!/bin/bash
+          set -e
+          git config --global --add safe.directory '*'
 
-      #     source /tmp/shared_functions.sh
-      #     check_server_ready
-      #     EOF
+          source /tmp/shared_functions.sh
+          check_server_ready
+          EOF
 
-      #     echo "dir=\"$modified_dir\"" >> container_script.sh
-      #     cat <<'EOF' >> container_script.sh
-      #     cd "$dir"
-      #     checkout_commit "$dir"
+          echo "dir=\"$modified_dir\"" >> container_script.sh
+          cat <<'EOF' >> container_script.sh
+          cd "$dir"
+          checkout_commit "$dir"
           
-      #     required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "build_app.sh" "setup_app.sh")
-      #     echo "Checking for required scripts..."
-      #     for script in "${required_scripts[@]}"; do
-      #       if [[ ! -f "$script" ]]; then
-      #         echo "ERROR: Required script '$script' not found."
-      #         exit 1
-      #       fi
-      #     done
+          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "build_app.sh" "setup_app.sh")
+          echo "Checking for required scripts..."
+          for script in "${required_scripts[@]}"; do
+            if [[ ! -f "$script" ]]; then
+              echo "ERROR: Required script '$script' not found."
+              exit 1
+            fi
+          done
 
-      #     echo "Running build_app.sh..."
-      #     ./build_app.sh
+          echo "Running build_app.sh..."
+          ./build_app.sh
 
-      #     EOF
+          EOF
 
-      #     chmod +x container_script.sh
-      #     ./container_script.sh
+          chmod +x container_script.sh
+          ./container_script.sh
 
-      # - name: Stabilize runner after build
-      #   run: |
-      #     echo "Memory usage immediately after build:"
-      #     free -h
+      - name: Stabilize runner after build
+        run: |
+          echo "Memory usage immediately after build:"
+          free -h
 
-      #     modified_dir="${{ needs.setup.outputs.modified_dirs }}"
-      #     cd "$modified_dir" || true
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir" || true
           
-      #     (cd codebase && ./gradlew --stop) || true
-      #     pkill -f GradleDaemon || true
-      #     pkill -f kotlin.daemon.KotlinCompileDaemon || true
-      #     jps -v | grep -E 'GradleDaemon|Kotlin' || true
+          (cd codebase && ./gradlew --stop) || true
+          pkill -f GradleDaemon || true
+          pkill -f kotlin.daemon.KotlinCompileDaemon || true
+          jps -v | grep -E 'GradleDaemon|Kotlin' || true
 
-      #     echo "Memory usage after stopping Gradle daemons:"
-      #     free -h
+          echo "Memory usage after stopping Gradle daemons:"
+          free -h
 
-      #     set -euo pipefail
+          set -euo pipefail
 
-      #     THRESHOLD=4096 # 4GB
-      #     MAX_TRIES=24  # 2 minutes at 5s interval
-      #     TRIES=0
-      #     INTERVAL=5
+          THRESHOLD=4096 # 4GB
+          MAX_TRIES=24  # 2 minutes at 5s interval
+          TRIES=0
+          INTERVAL=5
 
-      #     echo "Waiting for available memory to exceed ${THRESHOLD}MB..."
+          echo "Waiting for available memory to exceed ${THRESHOLD}MB..."
 
-      #     while ((TRIES < MAX_TRIES)); do
-      #       AVAILABLE_MEM=$(awk '/MemAvailable/ { printf "%d", $2/1024 }' /proc/meminfo)
-      #       echo "Current available memory on attempt ${TRIES}/${MAX_TRIES}: ${AVAILABLE_MEM}MB"
+          while ((TRIES < MAX_TRIES)); do
+            AVAILABLE_MEM=$(awk '/MemAvailable/ { printf "%d", $2/1024 }' /proc/meminfo)
+            echo "Current available memory on attempt ${TRIES}/${MAX_TRIES}: ${AVAILABLE_MEM}MB"
 
-      #       if (( AVAILABLE_MEM > THRESHOLD )); then
-      #         echo "Memory threshold of ${THRESHOLD}MB crossed. Continuing..."
-      #         break
-      #       fi
+            if (( AVAILABLE_MEM > THRESHOLD )); then
+              echo "Memory threshold of ${THRESHOLD}MB crossed. Continuing..."
+              break
+            fi
 
-      #       echo "Retrying in ${INTERVAL} seconds..."
-      #       (( ++TRIES ))
-      #       sleep "${INTERVAL}"
-      #     done
+            echo "Retrying in ${INTERVAL} seconds..."
+            (( ++TRIES ))
+            sleep "${INTERVAL}"
+          done
 
-      #     if (( TRIES >= MAX_TRIES )); then
-      #       echo "Timeout waiting for memory to exceed ${THRESHOLD}MB"; 
-      #       exit 1
-      #     fi
+          if (( TRIES >= MAX_TRIES )); then
+            echo "Timeout waiting for memory to exceed ${THRESHOLD}MB"; 
+            exit 1
+          fi
 
-      #     echo "Final memory usage:"
-      #     free -h
+          echo "Final memory usage:"
+          free -h
 
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
@@ -548,9 +548,7 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none -writable-system
           disable-animations: true
           script: |
-            set -eu
-
-            adb root || true
+            adb root
             adb wait-for-device
             SDK_VERSION=${{ needs.setup.outputs.sdk }}
             if [ "$SDK_VERSION" -gt 28 ]; then adb shell avbctl disable-verification; else adb disable-verity; fi
@@ -558,22 +556,14 @@ jobs:
 
             adb wait-for-device
             adb shell 'until [[ "$(getprop sys.boot_completed)" == "1" && "$(getprop dev.bootcomplete)" == "1" && "$(getprop service.bootanim.exit)" == "1" ]]; do sleep 1; done'
-
-            i=0
-            while [ $i -lt 300 ]; do
-              if adb shell 'pm list packages >/dev/null 2>&1 && uiautomator dump >/dev/null 2>&1'; then
-                echo "Android services ready."
-                break
-              fi
-              i=$((i+1))
-              sleep 1
-            done
-            [ $i -lt 300 ] || { echo "Timeout waiting for Android services"; exit 1; }
-
+            
+            echo "Sleeping 180 seconds to allow emulator services to stabilize..."
+            sleep 180
+             
             adb root
             adb wait-for-device
             adb remount
-            adb shell mount | grep -E '(system|vendor|product)'
+            adb shell mount | grep -E "(system|vendor|product)"
 
             ./test_checks.sh
 
