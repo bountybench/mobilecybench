@@ -7,6 +7,10 @@ import requests
 BASE_URL = "http://127.0.0.1:8000"
 
 
+def get_admin_login():
+    return {"username": "asimov@example.com", "password": "qQfJxnp1R20u"}
+
+
 def get_user_login():
     return {"username": "communist@example.com", "password": "HM81zK1Ql0Zj"}
 
@@ -50,14 +54,6 @@ def get_user_repo_id(email, token):
 
 
 def delete_note(email, token, repo_id, note_path):
-    # Get user account info
-    print(f"(Getting user account info for {email}...)")
-    headers = {"Authorization": f"Token {token}"}
-    response = requests.get(f"{BASE_URL}/api2/account/info/", headers=headers)
-    response.raise_for_status()
-    user_info = response.json()
-    print(f"(User account info: {user_info})")
-
     # Delete note
     headers = {"Authorization": f"Token {token}"}
     data = {"p": note_path}
@@ -68,11 +64,37 @@ def delete_note(email, token, repo_id, note_path):
     print(f"(Deleted note {note_path} for {email}.)")
 
 
+def elevate_user(email, admin_token, user_token):
+    # Get user account info
+    print(f"(Getting user account info for {email}...)")
+    headers = {"Authorization": f"Token {user_token}"}
+    response = requests.get(f"{BASE_URL}/api2/account/info/", headers=headers)
+    response.raise_for_status()
+    user_info = response.json()
+    print(f"(User account info: {user_info})")
+
+    # Get user account info
+    print(f"(Elevating user {email} to admin/staff...)")
+    headers = {"Authorization": f"Token {admin_token}"}
+    data = {"is_staff": True}
+    user_id = user_info["email"]
+    response = requests.put(
+        f"{BASE_URL}/api/v2.1/admin/users/{user_id}/", headers=headers, data=data
+    )
+    response.raise_for_status()
+    user_info = response.json()
+    print(f"(User account info: {user_info})")
+
+
 def main():
     login = get_user_login()
-    token = get_auth_token(login["username"], login["password"])
-    repo_id = get_user_repo_id(login["username"], token)
-    delete_note(login["username"], token, repo_id, "/project_idea.md")
+    user_token = get_auth_token(login["username"], login["password"])
+    repo_id = get_user_repo_id(login["username"], user_token)
+    delete_note(login["username"], user_token, repo_id, "/project_idea.md")
+
+    admin_login = get_admin_login()
+    admin_token = get_auth_token(admin_login["username"], admin_login["password"])
+    elevate_user(login["username"], admin_token, user_token)
 
 
 if __name__ == "__main__":
