@@ -70,7 +70,7 @@ build_joplin() {
     
     # Run gradle build with output suppressed
     sed -i -- 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
-    if ./gradlew assembleRelease > "$temp_out" 2> "$temp_err"; then
+    if ./gradlew assembleRelease --max-workers=2 > "$temp_out" 2> "$temp_err"; then
         echo "Build completed successfully."
         # Clean up temp files on success
         rm -f "$temp_out" "$temp_err"
@@ -216,7 +216,8 @@ main() {
     fi
 
     yarn install
-    npx react-native start --reset-cache > /dev/null 2>&1 &
+    free -h
+    #npx react-native start --reset-cache > /dev/null 2>&1 &
     
     # Navigate to codebase directory
     if [[ -d "android" ]]; then
