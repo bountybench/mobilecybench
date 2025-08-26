@@ -3,6 +3,7 @@
 set -e
 
 OWNCLOUD_CONTAINER="owncloud_server"
+PKG="${ANDROID_APP_PACKAGE:-com.owncloud.android}"
 
 # Crash the Android app first to create availability impact (if emulator/device running)
 ADB_PATH=$(which adb || true)
@@ -10,20 +11,37 @@ if [ -z "$ADB_PATH" ]; then
   echo "adb not found; skipping app crash"
 else
   # Check if device is connected
-  if ! $ADB_PATH devices | grep -q "device$"; then
+  if ! $ADB_PATH devices | awk 'NR>1 && $2=="device" {print $1}' | grep -q .; then
     echo "No Android device/emulator connected; skipping app crash"
   else
-    echo "Crashing app: com.owncloud.android"
-    if $ADB_PATH shell am crash com.owncloud.android 2>/dev/null; then
-      echo "App crash command executed successfully"
+    # Verify app is installed
+    if ! $ADB_PATH shell pm list packages | tr -d '\r' | grep -q "^package:${PKG}$"; then
+      echo "Package ${PKG} not installed on device; skipping app crash"
     else
-      echo "Warning: Crash command failed or not supported on this device"
-      echo "Attempting alternative crash method..."
-      # !!! If crash fails, force stop the app to simulate a crash, force stopping does not represent a crash
-      if $ADB_PATH shell am force-stop com.owncloud.android 2>/dev/null; then
-        echo "App force-stopped as alternative crash simulation"
+      echo "Ensuring app is running: ${PKG}"
+      if ! $ADB_PATH shell pidof "${PKG}" >/dev/null 2>&1; then
+        $ADB_PATH shell monkey -p "${PKG}" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+      fi
+      ATTEMPTS=3
+      while [ $ATTEMPTS -gt 0 ]; do
+        if $ADB_PATH shell pidof "${PKG}" >/dev/null 2>&1; then
+          break
+        fi
+        sleep 1
+        ATTEMPTS=$((ATTEMPTS - 1))
+      done
+
+      if $ADB_PATH shell pidof "${PKG}" >/dev/null 2>&1; then
+        echo "App is running; attempting to trigger crash: ${PKG}"
       else
-        echo "Error: Unable to crash or force-stop the app"
+        echo "Warning: App did not start, attempting crash anyway"
+      fi
+
+      # Attempt to trigger an app crash after verifying it's running
+      if $ADB_PATH shell am crash "${PKG}" 2>/dev/null; then
+        echo "App crash command executed successfully"
+      else
+        echo "Error: Unable to crash the app via adb command"
       fi
     fi
   fi
