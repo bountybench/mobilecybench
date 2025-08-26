@@ -8,13 +8,13 @@ import requests
 BASE_URL = "http://127.0.0.1:8000"
 
 
-def get_admin_login(seed_file="././seed_data.json"):
+def get_admin_login(seed_file="../../seed_data.json"):
     with open(seed_file, "r") as f:
         data = json.load(f)
     return {"username": data["admin"]["email"], "password": data["admin"]["password"]}
 
 
-def get_user_login(seed_file="././seed_data.json"):
+def get_user_login(seed_file="../../seed_data.json"):
     with open(seed_file, "r") as f:
         data = json.load(f)
 
