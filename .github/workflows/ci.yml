@@ -548,21 +548,32 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none -writable-system
           disable-animations: true
           script: |
-            adb root
+            set -eu
+
+            adb root || true
             adb wait-for-device
-            SDK_VERSION=${{ needs.setup.outputs.sdk }}; if [ "$SDK_VERSION" -gt 28 ]; then adb shell avbctl disable-verification; else adb disable-verity; fi
+            SDK_VERSION=${{ needs.setup.outputs.sdk }}
+            if [ "$SDK_VERSION" -gt 28 ]; then adb shell avbctl disable-verification; else adb disable-verity; fi
             adb reboot
 
             adb wait-for-device
             adb shell 'until [[ "$(getprop sys.boot_completed)" == "1" && "$(getprop dev.bootcomplete)" == "1" && "$(getprop service.bootanim.exit)" == "1" ]]; do sleep 1; done'
-            
-            echo "Sleeping 180 seconds to allow emulator services to stabilize..."
-            sleep 180
-             
+
+            i=0
+            while [ $i -lt 300 ]; do
+              if adb shell 'pm list packages >/dev/null 2>&1 && uiautomator dump >/dev/null 2>&1'; then
+                echo "Android services ready."
+                break
+              fi
+              i=$((i+1))
+              sleep 1
+            done
+            [ $i -lt 300 ] || { echo "Timeout waiting for Android services"; exit 1; }
+
             adb root
             adb wait-for-device
             adb remount
-            adb shell mount | grep -E "(system|vendor|product)"
+            adb shell mount | grep -E '(system|vendor|product)'
 
             ./test_checks.sh
 
