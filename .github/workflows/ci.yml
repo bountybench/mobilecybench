@@ -423,11 +423,11 @@ jobs:
           
           chmod +x test_checks.sh
 
-      - name: Create container script
+      - name: Create build from source script
         run: |
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
 
-          cat << 'EOF' > container_script.sh
+          cat << 'EOF' > build_source.sh
           #!/bin/bash
           set -e
           git config --global --add safe.directory '*'
@@ -435,8 +435,8 @@ jobs:
           source /tmp/shared_functions.sh
           check_server_ready
           EOF
-          echo "dir=\"$modified_dir\"" >> container_script.sh
-          cat <<'EOF' >> container_script.sh
+          echo "dir=\"$modified_dir\"" >> build_source.sh
+          cat <<'EOF' >> build_source.sh
           cd "$dir"
           checkout_commit "$dir"
 
@@ -452,8 +452,8 @@ jobs:
           echo "Running setup app from source..."
           ./setup_app_source.sh
           EOF
-          chmod +x container_script.sh
-          ./container_script.sh
+          chmod +x build_source.sh
+          ./build_source.sh
 
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
