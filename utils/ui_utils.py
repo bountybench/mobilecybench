@@ -178,38 +178,36 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
 
 
 def wait_for_ui_stable(d, timeout=5, interval=0.5, min_consecutive=3):
-    prev_app_state = None
+    prev_dump = None
     same_count = 0
     start = time.time()
 
     while time.time() - start < timeout:
         try:
-            current_app_state = d.app_current()
+            current_dump = d.dump_hierarchy()
         except Exception as e:
-            logger.debug(
-                "Failed to get current app state during stability check: %s", e
-            )
+            logger.debug("Failed to get hierarchy dump during stability check: %s", e)
             time.sleep(interval)
             continue
 
         # Count consecutive identical dumps
-        if prev_app_state is not None and current_app_state == prev_app_state:
+        if prev_dump is not None and current_dump == prev_dump:
             same_count += 1
         else:
             same_count = 1
 
-        prev_app_state = current_app_state
+        prev_dump = current_dump
 
         # Return True if the UI has stabilized for at least min_consecutive samples
         if same_count >= min_consecutive:
-            logger.debug("UI stabilized (app state) in %.1fs", time.time() - start)
+            logger.debug("UI stabilized (hierarchy dump) in %.1fs", time.time() - start)
             return True
 
         # Wait for some time to avoid false positive before screen transitions
         time.sleep(interval)
 
     logger.warning(
-        "UI did not stabilize (app state) within %.1fs (required %s consecutive identical samples).",
+        "UI did not stabilize (hierarchy dump) within %.1fs (required %s consecutive identical samples).",
         time.time() - start,
         min_consecutive,
     )
