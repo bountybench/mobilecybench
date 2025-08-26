@@ -522,17 +522,7 @@ jobs:
             timeout 180 sh -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 1; done'
       
             # 2) Root & disable verification (API > 28 uses avbctl), then reboot exactly once
-            sh -c '
-              SDK="$(adb shell getprop ro.build.version.sdk | tr -d "\r")"
-              echo "Device SDK = $SDK"
-              adb root || true
-              adb wait-for-device
-              if [ "${SDK:-0}" -gt 28 ]; then
-                adb shell avbctl disable-verification || true
-              else
-                adb disable-verity || true
-              fi
-            '
+            sh -c 'SDK="$(adb shell getprop ro.build.version.sdk | tr -d "\r")"; echo "Device SDK = $SDK"; adb root || true; adb wait-for-device; if [ "${SDK:-0}" -gt 28 ]; then adb shell avbctl disable-verification || true; else adb disable-verity || true; fi'
             adb reboot
             adb wait-for-device
             timeout 180 sh -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 1; done'
@@ -563,36 +553,13 @@ jobs:
             adb shell input keyevent 82 || true         # MENU / unlock
             adb shell input keyevent 3  || true         # HOME
             adb shell am start -W -n com.android.settings/.Settings >/dev/null 2>&1 || true
-      
+
             # 6) Prove a resumed window exists (prevents getRootInActiveWindow() == null)
             timeout 60 sh -c 'until adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" >/dev/null; do sleep 1; done'
       
             # 7) Hardened UiAutomator readiness: retry uiautomator dump with self-healing
-            timeout 90 sh -c '
-              i=0
-              while [ $i -lt 90 ]; do
-                # Attempt to dump the UI hierarchy. If it succeeds, the UI is stable.
-                if adb shell uiautomator dump >/dev/null 2>&1; then
-                  echo "UiAutomator dump succeeded."
-                  exit 0
-                fi
+            timeout 90 sh -c 'i=0; while [ $i -lt 90 ]; do if adb shell uiautomator dump >/dev/null 2>&1; then echo "UiAutomator dump succeeded."; exit 0; fi; echo "UiAutomator dump failed, attempting recovery (attempt #$i)..."; adb shell input keyevent 224 || true; adb shell wm dismiss-keyguard || true; adb shell input keyevent 3 || true; adb shell am start -W -n com.android.settings/.Settings >/dev/null 2>&1 || true; sleep 1; i=$((i+1)); done; echo "Timeout: UiAutomator did not stabilize after multiple recovery attempts." >&2; exit 1'
 
-                # If the dump fails, attempt to recover by waking the device and returning home.
-                echo "UiAutomator dump failed, attempting recovery (attempt #$i)..."
-                adb shell input keyevent 224 || true
-                adb shell wm dismiss-keyguard || true
-                adb shell input keyevent 3 || true
-                adb shell am start -W -n com.android.settings/.Settings >/dev/null 2>&1 || true
-
-                sleep 1
-                i=$((i+1))
-              done
-              
-              # If the loop completes, all attempts have failed.
-              echo "Timeout: UiAutomator did not stabilize after multiple recovery attempts." >&2
-              exit 1
-            '
-            
             # 8) Final diagnostic check (non-fatal): Check for a focused window
             timeout 90 sh -c 'until adb shell dumpsys window windows | grep -q "mCurrentFocus"; do sleep 1; done' || echo "Warning: No focused window found, but proceeding anyway."
             
