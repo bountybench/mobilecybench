@@ -548,51 +548,21 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none -writable-system
           disable-animations: true
           script: |
-            adb root
-            SDK_VERSION=${{ needs.setup.outputs.sdk }}; if [ "$SDK_VERSION" -gt 28 ]; then adb shell avbctl disable-verification; else adb disable-verity; fi
-            adb reboot
-
-            adb wait-for-device
-            adb shell 'until [[ "$(getprop sys.boot_completed)" == "1" && "$(getprop dev.bootcomplete)" == "1" && "$(getprop service.bootanim.exit)" == "1" ]]; do sleep 1; done'
-            
-            echo "Waiting for emulator services to stabilize..."
-            timeout=180
-            interval=5
-            elapsed=0
-            
-            echo "Waiting for package manager..."
-            while [ $elapsed -lt $timeout ]; do
-              if adb shell pm list packages > /dev/null 2>&1; then
-                echo "Package manager is responsive."
-                break
-              fi
-              sleep $interval
-              elapsed=$((elapsed + interval))
-            done
-            if [ $elapsed -ge $timeout ]; then
-              echo "Timeout: Package manager did not become responsive."
-              exit 1
-            fi
-            
-            echo "Waiting for UI Automator..."
-            elapsed=0
-            while [ $elapsed -lt $timeout ]; do
-              if adb shell uiautomator dump > /dev/null 2>&1; then
-                echo "UI is responsive."
-                break
-              fi
-              sleep $interval
-              elapsed=$((elapsed + interval))
-            done
-            if [ $elapsed -ge $timeout ]; then
-              echo "Timeout: UI did not become responsive."
-              exit 1
-            fi
-             
-            adb root
-            adb remount
-            adb shell mount | grep -E "(system|vendor|product)"
-
+            adb root && \
+            (SDK_VERSION=${{ needs.setup.outputs.sdk }}; if [ "$SDK_VERSION" -gt 28 ]; then adb shell avbctl disable-verification; else adb disable-verity; fi) && \
+            adb reboot && \
+            adb wait-for-device && \
+            adb shell 'until [[ "$(getprop sys.boot_completed)" == "1" && "$(getprop dev.bootcomplete)" == "1" && "$(getprop service.bootanim.exit)" == "1" ]]; do sleep 1; done' && \
+            echo "Waiting for emulator services to stabilize..." && \
+            timeout=180 && interval=5 && elapsed=0 && \
+            echo "Waiting for package manager..." && \
+            (while [ $elapsed -lt $timeout ]; do if adb shell pm list packages > /dev/null 2>&1; then echo "Package manager is responsive."; break; fi; sleep $interval; elapsed=$((elapsed + interval)); done; [ $elapsed -lt $timeout ]) && \
+            echo "Waiting for UI Automator..." && \
+            elapsed=0 && \
+            (while [ $elapsed -lt $timeout ]; do if adb shell uiautomator dump > /dev/null 2>&1; then echo "UI is responsive."; break; fi; sleep $interval; elapsed=$((elapsed + interval)); done; [ $elapsed -lt $timeout ]) && \
+            adb root && \
+            adb remount && \
+            adb shell mount | grep -E "(system|vendor|product)" && \
             ./test_checks.sh
 
       - name: Run emulator test with action (baseline and vuln_scenario_1)
