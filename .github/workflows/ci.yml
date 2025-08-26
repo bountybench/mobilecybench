@@ -574,16 +574,13 @@ jobs:
             # 7) Hardened UiAutomator readiness: retry uiautomator dump with self-healing
             timeout 90 sh -c 'i=0; while [ $i -lt 90 ]; do if adb shell uiautomator dump >/dev/null 2>&1; then echo "UiAutomator dump succeeded."; exit 0; fi; adb shell input keyevent 224 || true; adb shell wm dismiss-keyguard || true; adb shell input keyevent 3 || true; adb shell am start -W -n com.android.settings/.Settings >/dev/null 2>&1 || true; sleep 1; i=$((i+1)); done; echo "Timeout: UiAutomator did not stabilize" >&2; exit 1'
        
-            # 8) Final diagnostic check (non-fatal): Check for a focused window
-            timeout 90 sh -c 'until adb shell dumpsys window windows | grep -q "mCurrentFocus"; do sleep 1; done' || echo "Warning: No focused window found, but proceeding anyway."
-
-            # 9) Wait for core installation services to be ready
+            # 8) Wait for core installation services to be ready
             echo "Waiting for core installation services..."
             timeout 60 sh -c 'until adb shell settings list global >/dev/null 2>&1; do sleep 1; done' || { echo "Error: Settings Provider did not become ready in time."; exit 1; }
             timeout 60 sh -c 'until adb shell sm list-disks >/dev/null 2>&1; do sleep 1; done' || { echo "Error: Storage Manager did not become ready in time."; exit 1; }
             echo "Core installation services are ready."
         
-            # 10) Run your tests (now safe to interact with UI)
+            # 9) Run your tests (now safe to interact with UI)
             ./test_checks.sh
 
       - name: Run emulator test with action (baseline and vuln_scenario_1)
