@@ -530,10 +530,6 @@ jobs:
             # 3) Remount /system (overlayfs expected on API 29+)
             adb root
             adb wait-for-device
-
-            # The following line is a robust retry loop for the remount command, which can be flaky in CI.
-            # It has been temporarily replaced with a single attempt for simplicity.
-            # sh -c 'for i in 1 2 3 4 5; do adb remount && exit 0; echo "remount retry $i"; sleep 2; done; echo "remount failed" >&2; exit 1'
             adb remount
             adb shell mount | grep -E '(system|vendor|product)'
       
