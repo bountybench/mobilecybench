@@ -31,58 +31,6 @@ install_joplin() {
     echo "joplin installed successfully."
 }
 
-# Clear ALL build caches - run after app installation
-clear_all_build_cache() {
-    echo "Clearing ALL build caches and temporary files..."
-    
-    # Stop any running processes first
-    echo "Stopping running processes..."
-    pkill -f "react-native" 2>/dev/null || true
-    pkill -f "metro" 2>/dev/null || true
-    pkill -f "node" 2>/dev/null || true
-    pkill -f "gradle" 2>/dev/null || true
-    
-    # Stop Gradle daemon
-    ./gradlew --stop 2>/dev/null || true
-    
-    # Clear Gradle build outputs and cache
-    echo "Clearing Gradle caches..."
-    ./gradlew clean || echo "Warning: gradlew clean failed"
-    rm -rf app/build 2>/dev/null || true
-    rm -rf build 2>/dev/null || true
-    rm -rf .gradle 2>/dev/null || true
-    rm -rf ~/.gradle/caches/ 2>/dev/null || true
-    rm -rf ~/.gradle/daemon/ 2>/dev/null || true
-    rm -rf ~/.gradle/wrapper/dists/ 2>/dev/null || true
-    
-    # Clear Node.js/NPM/Yarn caches
-    echo "Clearing Node.js and package manager caches..."
-    yarn cache clean 2>/dev/null || true
-    npm cache clean --force 2>/dev/null || true
-    rm -rf node_modules/.cache 2>/dev/null || true
-    rm -rf ~/.npm/_cacache 2>/dev/null || true
-    rm -rf ~/.yarn/cache 2>/dev/null || true
-    
-    # Clear React Native and Metro caches
-    echo "Clearing React Native and Metro caches..."
-    rm -rf node_modules/.cache 2>/dev/null || true
-    
-    # Clear Watchman cache if available
-    if command -v watchman >/dev/null 2>&1; then
-        echo "Clearing Watchman cache..."
-        watchman watch-del-all 2>/dev/null || true
-    fi
-    
-    # Clear Android build caches
-    echo "Clearing Android build caches..."
-    rm -rf app/build/intermediates 2>/dev/null || true
-    rm -rf app/build/generated 2>/dev/null || true
-    rm -rf app/build/tmp 2>/dev/null || true
-    rm -rf app/.cxx 2>/dev/null || true
-    
-    echo "All build caches and temporary files cleared successfully."
-}
-
 # Launch joplin
 launch_joplin() {
     echo "Launching joplin..."
@@ -108,7 +56,6 @@ main() {
     root_dir="$(pwd)"
     cd codebase/packages/app-mobile/android
     install_joplin
-    #clear_all_build_cache
     launch_joplin
     cd "$root_dir"
     synch_with_server
