@@ -539,46 +539,66 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 600
           script: |
-            # 1) Wait for initial boot (the action already launched the emulator)
-            adb wait-for-device
-            timeout 180 sh -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 1; done'
+            # Start logcat in the background
+            adb logcat > /tmp/logcat.log &
+            LOGCAT_PID=$!
+            
+            # Run stabilization and tests
+            if (
+              set -e
+              # 1) Wait for initial boot
+              adb wait-for-device
+              timeout 180 sh -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 1; done'
       
-            # 2) Root & disable verification (API > 28 uses avbctl), then reboot exactly once
-            sh -c 'SDK="$(adb shell getprop ro.build.version.sdk | tr -d "\r")"; echo "Device SDK = $SDK"; adb root || true; adb wait-for-device; if [ "${SDK:-0}" -gt 28 ]; then adb shell avbctl disable-verification || true; else adb disable-verity || true; fi'
-            adb reboot
-            adb wait-for-device
-            timeout 180 sh -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 1; done'
+              # 2) Root & disable verification (API > 28 uses avbctl), then reboot exactly once
+              sh -c 'SDK="$(adb shell getprop ro.build.version.sdk | tr -d "\r")"; echo "Device SDK = $SDK"; adb root || true; adb wait-for-device; if [ "${SDK:-0}" -gt 28 ]; then adb shell avbctl disable-verification || true; else adb disable-verity || true; fi'
+              adb reboot
+              adb wait-for-device
+              timeout 180 sh -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 1; done'
       
-            # 3) Remount /system (overlayfs expected on API 29+)
-            adb root || true
-            adb wait-for-device
-            sh -c 'for i in 1 2 3 4 5; do adb remount && exit 0; echo "remount retry $i"; sleep 2; done; echo "remount failed" >&2; exit 1'
-            adb shell mount | grep -E '(system|vendor|product)' || true
+              # 3) Remount /system (overlayfs expected on API 29+)
+              adb root || true
+              adb wait-for-device
+              sh -c 'for i in 1 2 3 4 5; do adb remount && exit 0; echo "remount retry $i"; sleep 2; done; echo "remount failed" >&2; exit 1'
+              adb shell mount | grep -E '(system|vendor|product)' || true
       
-            # 4) Core services ready: package manager responsive (no UI dependency)
-            timeout 90 sh -c 'until adb shell cmd package list packages >/dev/null 2>&1; do sleep 1; done'
+              # 4) Core services ready: package manager responsive (no UI dependency)
+              timeout 90 sh -c 'until adb shell cmd package list packages >/dev/null 2>&1; do sleep 1; done'
       
-            # 5) UI stabilization to avoid UiAutomator2 NPEs
-            #    - Wake screen, dismiss keyguard, keep screen on, ensure a foreground window (Settings)
-            adb shell input keyevent 224 || true        # WAKEUP
-            adb shell wm dismiss-keyguard || true
-            adb shell settings put global stay_on_while_plugged_in 3 || true
-            adb shell svc power stayon true || true
-            adb shell input keyevent 82 || true         # MENU / unlock
-            adb shell input keyevent 3  || true         # HOME
-            adb shell am start -W -n com.android.settings/.Settings >/dev/null 2>&1 || true
+              # 5) UI stabilization to avoid UiAutomator2 NPEs
+              #    - Wake screen, dismiss keyguard, keep screen on, ensure a foreground window (Settings)
+              adb shell input keyevent 224 || true        # WAKEUP
+              adb shell wm dismiss-keyguard || true
+              adb shell settings put global stay_on_while_plugged_in 3 || true
+              adb shell svc power stayon true || true
+              adb shell input keyevent 82 || true         # MENU / unlock
+              adb shell input keyevent 3  || true         # HOME
+              adb shell am start -W -n com.android.settings/.Settings >/dev/null 2>&1 || true
       
-            # 6) Prove a resumed window exists (prevents getRootInActiveWindow() == null)
-            timeout 60 sh -c 'until adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" >/dev/null; do sleep 1; done'
+              # 6) Prove a resumed window exists (prevents getRootInActiveWindow() == null)
+              timeout 60 sh -c 'until adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" >/dev/null; do sleep 1; done'
       
-            # 7) Hardened UiAutomator readiness: retry uiautomator dump with self-healing
-            timeout 90 sh -c 'i=0; while [ $i -lt 90 ]; do if adb shell uiautomator dump >/dev/null 2>&1; then echo "UiAutomator dump succeeded."; exit 0; fi; adb shell input keyevent 224 || true; adb shell wm dismiss-keyguard || true; adb shell input keyevent 3 || true; adb shell am start -W -n com.android.settings/.Settings >/dev/null 2>&1 || true; sleep 1; i=$((i+1)); done; echo "Timeout: UiAutomator did not stabilize" >&2; exit 1'
+              # 7) Hardened UiAutomator readiness: retry uiautomator dump with self-healing
+              timeout 90 sh -c 'i=0; while [ $i -lt 90 ]; do if adb shell uiautomator dump >/dev/null 2>&1; then echo "UiAutomator dump succeeded."; exit 0; fi; adb shell input keyevent 224 || true; adb shell wm dismiss-keyguard || true; adb shell input keyevent 3 || true; adb shell am start -W -n com.android.settings/.Settings >/dev/null 2>&1 || true; sleep 1; i=$((i+1)); done; echo "Timeout: UiAutomator did not stabilize" >&2; exit 1'
        
-            # 8) Final diagnostic check (non-fatal): Check for a focused window
-            timeout 90 sh -c 'until adb shell dumpsys window windows | grep -q "mCurrentFocus"; do sleep 1; done' || echo "Warning: No focused window found, but proceeding anyway."
+              # 8) Final diagnostic check (non-fatal): Check for a focused window
+              timeout 90 sh -c 'until adb shell dumpsys window windows | grep -q "mCurrentFocus"; do sleep 1; done' || echo "Warning: No focused window found, but proceeding anyway."
        
-            # 9) Run your tests (now safe to interact with UI)
-            ./test_checks.sh
+              # 9) Run your tests (now safe to interact with UI)
+              ./test_checks.sh
+            ); then
+              echo "Tests passed!"
+            else
+              echo "Tests failed. Dumping logcat..."
+              # Stop logcat to flush buffers before cat'ing
+              kill $LOGCAT_PID
+              sleep 2
+              cat /tmp/logcat.log
+              exit 1 # Ensure the step fails
+            fi
+            
+            # Stop logcat on success
+            kill $LOGCAT_PID
 
       - name: Run emulator test with action (baseline and vuln_scenario_1)
         if: matrix.test_type != 'vuln_scenario_0'
@@ -592,7 +612,25 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
-          script: ./test_checks.sh
+          script: |
+            # Start logcat in the background
+            adb logcat > /tmp/logcat.log &
+            LOGCAT_PID=$!
+            
+            # Run the tests and capture the result
+            if ./test_checks.sh; then
+              echo "Tests passed!"
+            else
+              echo "Tests failed. Dumping logcat..."
+              # Stop logcat to flush buffers before cat'ing
+              kill $LOGCAT_PID
+              sleep 2
+              cat /tmp/logcat.log
+              exit 1 # Ensure the step fails
+            fi
+            
+            # Stop logcat on success
+            kill $LOGCAT_PID
 
       - name: Display disk space after tests
         if: always()
