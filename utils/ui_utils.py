@@ -127,7 +127,12 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
     if not _wait_for_element(
         d, element, timeout=timeout
     ):  # Element not found; raise error/fatal if
-        message = f"Could not find element: '{element.selector}' within {timeout}s"
+        app_state = d.app_current()
+        message = (
+            f"Could not find element: '{element.selector}' within {timeout}s.\n"
+            f"  - Current screen: {app_state.get('package', 'unknown')}/{app_state.get('activity', 'unknown')}.\n"
+            f"  - See the full UI hierarchy dump below for details."
+        )
         if exit_on_error:
             _fatal(d, message)
         else:
@@ -135,7 +140,16 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
             return False
 
     if not element.click_exists(timeout=5):
-        message = f"Could not click element: '{element.selector}'"
+        app_state = d.app_current()
+        elem_info = element.info
+        message = (
+            f"Found element '{element.selector}' but it could not be clicked.\n"
+            f"  - Is it visible? {elem_info.get('visibleBounds')}\n"
+            f"  - Is it clickable? {elem_info.get('clickable')}\n"
+            f"  - Is it enabled? {elem_info.get('enabled')}\n"
+            f"  - Current screen: {app_state.get('package', 'unknown')}/{app_state.get('activity', 'unknown')}.\n"
+            f"  - See the full UI hierarchy dump below for details."
+        )
         if exit_on_error:
             _fatal(d, message)
         else:
@@ -151,7 +165,12 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
 def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
     """Wait for an input element, focus it, set text, then handle IME action."""
     if not _wait_for_element(d, element, timeout=timeout):
-        message = f"Could not find element: '{element.selector}' within {timeout}s"
+        app_state = d.app_current()
+        message = (
+            f"Could not find element: '{element.selector}' within {timeout}s.\n"
+            f"  - Current screen: {app_state.get('package', 'unknown')}/{app_state.get('activity', 'unknown')}.\n"
+            f"  - See the full UI hierarchy dump below for details."
+        )
         if exit_on_error:
             _fatal(d, message)
         else:
