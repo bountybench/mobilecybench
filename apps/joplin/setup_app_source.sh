@@ -76,7 +76,7 @@ setup_environment() {
 build_joplin() {    
     echo "Building joplin Android from source..."
     echo "This will take several minutes..."
-    free -h
+    #free -h
 
     local temp_out=$(mktemp)
     local temp_err=$(mktemp)
@@ -112,13 +112,6 @@ build_joplin() {
 clear() {
     echo "Clearing cache - preserving working build state..."
     
-    local apk_backup=""
-    if [[ -f "app/build/outputs/apk/release/app-release.apk" ]]; then
-        apk_backup="/tmp/joplin-apk-backup-$(date +%s).apk"
-        cp "app/build/outputs/apk/release/app-release.apk" "$apk_backup"
-        echo "APK backed up to $apk_backup"
-    fi
-    
     rm -rf app/build/intermediates 2>/dev/null || true
     rm -rf app/build/tmp 2>/dev/null || true
     rm -rf .gradle/buildOutputCleanup/cache.properties 2>/dev/null || true
@@ -129,14 +122,7 @@ clear() {
     fi
     ./gradlew --stop
     
-    if [[ -n "$apk_backup" && -f "$apk_backup" && ! -f "app/build/outputs/apk/release/app-release.apk" ]]; then
-        mkdir -p "app/build/outputs/apk/release/"
-        cp "$apk_backup" "app/build/outputs/apk/release/app-release.apk"
-        echo "APK restored from backup"
-        rm "$apk_backup"
-    fi
-    
-    echo "Smart cache clearing completed."
+    echo "Clearing completed."
 }
 
 # Main function
@@ -146,7 +132,7 @@ main() {
     
     echo "Setting up joplin Android"
     #vm_stat       
-    free -h  
+    #free -h  
 
     npm uninstall -g react-native-cli @react-native-community/cli
     cd codebase
@@ -165,7 +151,7 @@ main() {
     fi
 
     yarn install
-    free -h
+    #free -h
     #npx react-native start --reset-cache > /dev/null 2>&1 &
     
     # Navigate to codebase directory
@@ -181,9 +167,9 @@ main() {
     check_prerequisites
     setup_environment
     build_joplin
-    free -h  
+    #free -h  
     clear
-    free -h  
+    #free -h  
     
     echo ""
     echo "Setup complete! joplin is ready for testing."
