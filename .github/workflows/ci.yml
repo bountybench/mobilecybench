@@ -302,13 +302,16 @@ jobs:
             echo "${line%%/*}"
           done | sort -u)
 
-          echo "$base_dirs" | while IFS= read -r base; do
-            if [ -d "$base" ]; then
-              echo "Initialize submodule for $base"
-              git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$base"
-            else
-              echo "$base does not exist."
-            fi
+          echo "Initialize submodule for $modified_dirs"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$modified_dirs"
+
+          # echo "$base_dirs" | while IFS= read -r base; do
+          #   if [ -d "$base" ]; then
+          #     echo "Initialize submodule for $base"
+          #     git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$base"
+          #   else
+          #     echo "$base does not exist."
+          #   fi
           done
           
       - name: Set up JDK
