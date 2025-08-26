@@ -6,13 +6,13 @@ services:
     ports:
       - 8000:80
     environment:
-      - CADDY_INGRESS_NETWORKS=seadroid_private-net
+      - CADDY_INGRESS_NETWORKS=seadroid_private_net
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - ${SEAFILE_CADDY_VOLUME:-/opt/seafile-caddy}:/data/caddy
     networks:
-      - private-net
-      - shared-net
+      - private_net
+      - shared_net
     healthcheck:
       test: ["CMD-SHELL", "wget --spider --quiet http://localhost:8888/health || exit 1"]
       start_period: 20s
@@ -31,7 +31,7 @@ services:
     volumes:
       - "${SEAFILE_MYSQL_VOLUME:-/opt/seafile-mysql/db}:/var/lib/mysql"
     networks:
-      - private-net
+      - private_net
     healthcheck:
       test:
         [
@@ -57,7 +57,7 @@ services:
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
     networks:
-      - private-net
+      - private_net
 
   seafile:
     image: ${SEAFILE_IMAGE:-seafileltd/seafile-mc:13.0-latest}
@@ -107,7 +107,7 @@ services:
       redis:
         condition: service_started
     networks:
-      - private-net
+      - private_net
     
   seadoc:
     image: ${SEADOC_IMAGE:-seafileltd/sdoc-server:2.0-latest}
@@ -139,9 +139,9 @@ services:
       db:
         condition: service_healthy
     networks:
-      - private-net
+      - private_net
 
 networks:
-  private-net:
-  shared-net:
+  private_net:
+  shared_net:
     external: true
