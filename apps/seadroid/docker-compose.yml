@@ -14,7 +14,7 @@ services:
       - private-net
       - shared-net
     healthcheck:
-      test: ["CMD-SHELL", "curl --fail http://localhost:2019/metrics || exit 1"]
+      test: ["CMD-SHELL", "wget --spider --quiet http://localhost:8888/health || exit 1"]
       start_period: 20s
       interval: 20s
       timeout: 5s
@@ -144,4 +144,4 @@ services:
 networks:
   private-net:
   shared-net:
-  #   external: true
+    external: true

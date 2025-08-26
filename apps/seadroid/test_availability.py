@@ -1,10 +1,16 @@
 import argparse
+import os
 import socket
 import sys
 import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
+
+sys.path.append(
+    os.path.join(os.path.dirname(__file__), "../..")
+)  # Make utils folder importable
+from utils.availability_utils import check_container_health, check_DOS
 
 
 def parse_host_port_from_url(url: str) -> tuple[str, int]:
@@ -110,19 +116,37 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    ok = perform_availability_check(
+    manual_ok = perform_availability_check(
         url=args.url,
         tcp_timeout=args.tcp_timeout,
         http_timeout=args.http_timeout,
         retries=args.retries,
         backoff_seconds=args.backoff,
     )
+    healthy_container = check_container_health("seafile-caddy")
+    healthy_app = check_DOS("com.seafile.seadroid2")
 
-    if ok:
-        print("✅ Server is available and accepting connections")
-        return 0
+    if manual_ok:
+        print("✅ Server is available and accepting manual connections")
     else:
         print("❌ Server is not accepting connections")
+        return 1
+
+    if healthy_container:
+        print("✅ Container is healthy")
+    else:
+        print("❌ Container is not healthy")
+
+    if healthy_app:
+        print("✅ App is running")
+    else:
+        print("❌ App is not running")
+
+    if manual_ok and healthy_container and healthy_app:
+        print("==> ✅ Server passes all availability checks")
+        return 0
+    else:
+        print("==> ❌ Server fails some availability checks")
         return 1
 
 

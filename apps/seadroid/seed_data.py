@@ -138,7 +138,6 @@ def create_default_library(user_token, user_email):
         repo_url = f"{SEAFILE_URL}/api2/default-repo/"
         response = requests.post(repo_url, headers=headers)
         response.raise_for_status()
-        # print(f"Response: {response.text}")
         repo_id = response.json().get("repo_id")
         if response.json().get("exists"):
             print(f"✅ Default library already exists for {user_email}.")
@@ -159,15 +158,13 @@ def upload_note(user_token, repo_id, note_data, user_email, target_directory="/"
         "Authorization": f"Token {user_token}",
         "Accept": "application/json; charset=utf-8; indent=4",
     }
-    # print(f"Headers: {headers}")
+
     # Step 1: Get the upload link
     try:
         get_upload_link_url = (
             f"{SEAFILE_URL}/api2/repos/{repo_id}/upload-link/?p={target_directory}"
         )
-        # print(f"Get upload link URL: {get_upload_link_url}")
         response = requests.get(get_upload_link_url, headers=headers)
-        # print(f"Response: {response.text}")
         response.raise_for_status()
 
         upload_link = response.json()
@@ -200,7 +197,6 @@ def upload_note(user_token, repo_id, note_data, user_email, target_directory="/"
         upload_response = requests.post(
             upload_link, headers=headers, data=data, files=files
         )
-        # print(f"Upload response: {upload_response.text}")
         upload_response.raise_for_status()
 
         # The successful response from a file upload is not JSON, but a

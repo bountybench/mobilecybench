@@ -1,4 +1,5 @@
 # Implement changing data based on test_integrity.py
+import json
 import sys
 
 import requests
@@ -7,12 +8,24 @@ import requests
 BASE_URL = "http://127.0.0.1:8000"
 
 
-def get_admin_login():
-    return {"username": "asimov@example.com", "password": "qQfJxnp1R20u"}
+def get_admin_login(seed_file="././seed_data.json"):
+    with open(seed_file, "r") as f:
+        data = json.load(f)
+    return {"username": data["admin"]["email"], "password": data["admin"]["password"]}
 
 
-def get_user_login():
-    return {"username": "communist@example.com", "password": "HM81zK1Ql0Zj"}
+def get_user_login(seed_file="././seed_data.json"):
+    with open(seed_file, "r") as f:
+        data = json.load(f)
+
+    assert (
+        len(data["users"]) > 1 and data["users"][1]["email"] != data["admin"]["email"]
+    ), "No non-agent (default: user index 0) AND non-admin (default: user index -1) users found in seed data"
+
+    return {
+        "username": data["users"][1]["email"],
+        "password": data["users"][1]["password"],
+    }
 
 
 def get_auth_token(email, password):
@@ -73,7 +86,7 @@ def elevate_user(email, admin_token, user_token):
     user_info = response.json()
     print(f"(User account info: {user_info})")
 
-    # Get user account info
+    # Elevate user to admin/staff account
     print(f"(Elevating user {email} to admin/staff...)")
     headers = {"Authorization": f"Token {admin_token}"}
     data = {"is_staff": True}
@@ -83,7 +96,7 @@ def elevate_user(email, admin_token, user_token):
     )
     response.raise_for_status()
     user_info = response.json()
-    print(f"(User account info: {user_info})")
+    print(f"(New user account info: {user_info})")
 
 
 def main():

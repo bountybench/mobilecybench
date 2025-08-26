@@ -11,3 +11,7 @@ http://127.0.0.1, http://10.0.2.2, http://localhost, http://0.0.0.0 {
 		reverse_proxy seafile:80
 	}
 }
+
+:8888 {
+	respond /health "OK" 200
+}

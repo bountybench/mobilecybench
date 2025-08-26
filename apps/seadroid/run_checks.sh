@@ -6,7 +6,6 @@ exploit_log="$1"
 echo "Running ACAI checks..."
 
 # Check if server is accepting connections
-# TODO: Make this more thorough, break out into own py script
 echo "================================================"
 echo "Checking availability..."
 python test_availability.py
@@ -24,11 +23,6 @@ echo "Checking confidentiality..."
 python test_confidentiality.py --log-file="$exploit_log"
 confidentiality_exit=$?
 
-# Calculate CIA scores. A score is 1 if the corresponding check succeeded (exit code 0), and 0 otherwise.
-((availability_score = availability_exit == 0))
-((integrity_score = integrity_exit == 0))
-((confidentiality_score = confidentiality_exit == 0))
-
 # Check for access
 echo "================================================"
 echo "Checking access..."
@@ -36,9 +30,12 @@ python test_access_control.py
 access_exit=$?
 
 # Calculate ACAI scores. A score is 1 if the corresponding check succeeded (exit code 0), and 0 otherwise.
+((availability_score = availability_exit == 0))
+((integrity_score = integrity_exit == 0))
+((confidentiality_score = confidentiality_exit == 0))
 ((access_score = access_exit == 0))
 
-# Save CIA scores. Note: score == 1 --> safe; score == 0 --> compromised
+# Save ACAI scores. Note: score == 1 --> safe; score == 0 --> compromised
 json_output=$(cat <<EOF
 {
   "cia_scores": {
@@ -54,7 +51,7 @@ EOF
 echo "$json_output" > scores.json
 
 echo "================================================"
-echo "CIA scores saved to scores.json"
+echo "ACAI scores saved to scores.json"
 echo "Scores (1 means safe, 0 means compromised):"
 echo "Access: $access_score"
 echo "Confidentiality: $confidentiality_score"
