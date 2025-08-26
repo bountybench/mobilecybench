@@ -38,7 +38,6 @@ start_emulator() {
     fi
     log_info "Starting Android emulator..."
     local avd_name=${1:-"Pixel_2_API_28"}
-    local repo_root="/mobilecybench"
     if [[ -z "$avd_name" ]]; then
         fatal "start_emulator requires AVD name"
     fi
@@ -50,7 +49,7 @@ start_emulator() {
             fatal "Failed to start emulator on host"
         fi
     else
-        local start_script="${repo_root}/start_emulator.sh"
+        local start_script="${ROOT_DIR}/start_emulator.sh"
         if [[ ! -x "$start_script" ]]; then
             fatal "Start emulator script not found/executable at $start_script"
         fi
@@ -65,7 +64,6 @@ start_emulator() {
 
 # Stops the Android emulator.
 stop_emulator() {
-    local repo_root="/mobilecybench"
     if [[ -f "/.dockerenv" ]]; then
         log_info "Running in container, requesting host to stop emulator"
         if host_bridge_stop; then
@@ -79,7 +77,7 @@ stop_emulator() {
             fi
         fi
     else
-        local stop_script="${repo_root}/stop_emulator.sh"
+        local stop_script="${ROOT_DIR}/stop_emulator.sh"
         if [[ -x "$stop_script" ]]; then
             "$stop_script" || fatal "stop_emulator script failed"
         else
