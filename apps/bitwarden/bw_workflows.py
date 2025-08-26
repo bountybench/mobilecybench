@@ -25,6 +25,43 @@ logger.handlers[:] = [_handler]
 logger.propagate = False
 
 
+def _ensure_app_in_foreground(device, package_name: str, wait_timeout: float = 30.0) -> None:
+    """
+    Start the given package and ensure it reaches the foreground.
+
+    Tries a few strategies to reduce flakiness:
+    - Go HOME first to ensure a stable launcher state
+    - Cold start with stop=True and wait=True
+    - Fallback to a monkey-based start if needed
+    """
+    logger.info("Ensuring %s is in the foreground...", package_name)
+
+    # Ensure launcher is in a stable state
+    device.press("home")
+    time.sleep(0.5)
+
+    # First attempt: hard restart and wait for foreground
+    device.app_start(package_name, wait=True, stop=True)
+    if device.app_wait(package_name, front=True, timeout=wait_timeout):
+        return
+
+    # Second attempt: try monkey-based start
+    logger.warning("%s not in foreground after first start. Retrying with monkey...", package_name)
+    device.app_start(package_name, wait=True, stop=True, use_monkey=True)
+    if device.app_wait(package_name, front=True, timeout=wait_timeout):
+        return
+
+    # Final attempt: go home and try a last normal start
+    logger.warning("%s still not in foreground. Final retry...", package_name)
+    device.press("home")
+    time.sleep(0.5)
+    device.app_start(package_name, wait=True, stop=False)
+    if device.app_wait(package_name, front=True, timeout=wait_timeout):
+        return
+
+    current = device.app_current()
+    raise RuntimeError(f"Expected {package_name} in foreground, got: {current}")
+
 def bw_initialize_local_host(d):
     """
     Initializes the device connection and launches the Bitwarden app
@@ -38,13 +75,7 @@ def bw_initialize_local_host(d):
     d.app_stop(BITWARDEN_PKG)
 
     logger.info("Step 1.1.2: Launching %s...", BITWARDEN_PKG)
-    d.app_start(BITWARDEN_PKG)
-
-    # Verify Bitwarden is in the foreground
-    logger.info("Verifying %s is in the foreground...", BITWARDEN_PKG)
-    if not d.app_wait(BITWARDEN_PKG, front=True, timeout=15):
-        current = d.app_current()
-        raise RuntimeError(f"Expected {BITWARDEN_PKG} in foreground, got: {current}")
+    _ensure_app_in_foreground(d, BITWARDEN_PKG, wait_timeout=30.0)
 
     logger.info("Waiting for the initial UI to stabilize after launch...")
     wait_for_ui_stable(d, timeout=15)
@@ -221,15 +252,7 @@ def bw_attempt_login(d, email, password):
         d.app_stop(BITWARDEN_PKG)
 
         logger.info("Launching %s...", BITWARDEN_PKG)
-        d.app_start(BITWARDEN_PKG)
-
-        # Verify Bitwarden is in the foreground
-        logger.info("Verifying %s is in the foreground...", BITWARDEN_PKG)
-        if not d.app_wait(BITWARDEN_PKG, front=True, timeout=15):
-            current = d.app_current()
-            raise RuntimeError(
-                f"Expected {BITWARDEN_PKG} in foreground, got: {current}"
-            )
+        _ensure_app_in_foreground(d, BITWARDEN_PKG, wait_timeout=30.0)
 
         logger.info("Waiting for the initial UI to stabilize after launch...")
         wait_for_ui_stable(d, timeout=15)
