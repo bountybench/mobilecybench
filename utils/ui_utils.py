@@ -323,6 +323,32 @@ def _wait_for_element(d, element, timeout=180):
         True if the element exists on UI hierarchy within the timeout, False otherwise
     """
     start_time = time.time()
+    relaunch_attempted = False
+    
+    def _is_launcher_package(pkg: str) -> bool:
+        if not pkg:
+            return False
+        launcher_pkgs = {
+            "com.google.android.apps.nexuslauncher",
+            "com.android.launcher",
+            "com.android.launcher3",
+            "com.google.android.googlequicksearchbox",
+        }
+        return pkg in launcher_pkgs
+
+    def _try_relaunch_target_app() -> bool:
+        target_pkg = os.getenv("UI_TARGET_PACKAGE")
+        if not target_pkg:
+            return False
+        try:
+            logger.info("Launcher detected. Attempting to relaunch %s...", target_pkg)
+            d.app_start(target_pkg, wait=True, stop=False)
+            if d.app_wait(target_pkg, front=True, timeout=10):
+                wait_for_ui_stable(d, timeout=5)
+                return True
+        except Exception as e:
+            logger.debug("Relaunch attempt failed: %s", e)
+        return False
 
     selector_info = _parse_selector_from_element(element)
 
@@ -334,6 +360,18 @@ def _wait_for_element(d, element, timeout=180):
             d, max_anrs=5, timeout=1, target_element=element
         ):  # Failed to unfreeze system UI; abort early
             return False
+
+        # If we unexpectedly returned to home/launcher, try to bring app back once
+        try:
+            app_state = d.app_current()
+            if (
+                not relaunch_attempted
+                and _is_launcher_package(app_state.get("package", ""))
+                and _try_relaunch_target_app()
+            ):
+                relaunch_attempted = True
+        except Exception:
+            pass
 
         remaining = max(0, timeout - (time.time() - start_time))
         wait_slice = min(1, remaining)
