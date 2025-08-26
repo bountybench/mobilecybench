@@ -145,6 +145,8 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
     # Clicked element; return True
     logger.info("Clicked element %s", element.selector)
 
+    wait_for_ui_stable(d, timeout=5, interval=1, min_consecutive=2)
+
     return True
 
 
@@ -173,6 +175,8 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
 
     logger.info("Set text to %s", text)
     _handle_keyboard_action(d)
+
+    wait_for_ui_stable(d, timeout=5, interval=1, min_consecutive=2)
 
     return True
 
@@ -510,6 +514,7 @@ def _robust_set_text(d, element, text, max_attempts=3):
             return True
         except Exception as set_error:
             logger.warning("set_text attempt %s failed: %s", attempt_index, set_error)
+            wait_for_ui_stable(d, timeout=5, interval=1, min_consecutive=2)
 
     raise RuntimeError(
         f"Exhausted {max_attempts} attempts to set text on element: '{element.selector}'"
