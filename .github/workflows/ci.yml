@@ -281,23 +281,9 @@ jobs:
           EOF
           chmod +x /tmp/shared_functions.sh
 
-          # Extract base directories from modified_dirs
           modified_dirs=${{ needs.setup.outputs.modified_dirs }}
-          base_dirs=$(echo "$modified_dirs" | while IFS= read -r line; do
-            # Skip empty lines
-            [[ -z "$line" ]] && continue
-            # Extract the base directory (everything before the first "/")
-            echo "${line%%/*}"
-          done | sort -u)
-
-          echo "$base_dirs" | while IFS= read -r base; do
-            if [ -d "$base" ]; then
-              echo "Initialize submodule for $base"
-              git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$base"
-            else
-              echo "$base does not exist."
-            fi
-          done
+          echo "Initialize submodule for $modified_dirs"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$modified_dirs"
           
       - name: Set up JDK
         uses: actions/setup-java@v4
