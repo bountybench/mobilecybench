@@ -80,11 +80,8 @@ install_bitwarden() {
 launch_bitwarden() {
     echo "[INFO] Launching Bitwarden..."
     
-    # Prefer starting the explicit main activity; fallback to monkey if needed
-    if ! adb shell am start -n "$BITWARDEN_PKG/.MainActivity" >/dev/null 2>&1; then
-        echo "[WARN] Direct activity start failed; falling back to monkey..."
-        adb shell monkey -p "$BITWARDEN_PKG" -c android.intent.category.LAUNCHER 1
-    fi
+    # Launch Bitwarden using package name
+    adb shell monkey -p $BITWARDEN_PKG -c android.intent.category.LAUNCHER 1
     
     # Verify launch by polling for the process ID
     echo "[INFO] Waiting for Bitwarden process to start..."
