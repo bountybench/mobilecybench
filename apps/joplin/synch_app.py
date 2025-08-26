@@ -19,7 +19,7 @@ d = u2.connect()
 
 def wait_and_click_text(text, timeout=60):
     if d(text=text).wait(timeout=timeout):
-        print(text)
+        print(text, file=sys.stderr)
         d(text=text).click_exists(timeout=3)
     else:
         print(
@@ -32,7 +32,7 @@ def wait_and_click_text(text, timeout=60):
 
 def wait_and_click_desc(desc, timeout=60):
     if d(description=desc).wait(timeout=timeout):
-        print(desc)
+        print(desc, file=sys.stderr)
         d(description=desc).click_exists(timeout=3)
     else:
         print(
@@ -48,7 +48,7 @@ def wait_for_ui_stable(timeout=60, interval=0.5):
     """
     Wait until the UI hierarchy stops changing.
     """
-    print("Waiting for UI to stabilize")
+    print("Waiting for UI to stabilize", file=sys.stderr)
     prev_hierarchy = None
     start = time.time()
 
@@ -58,11 +58,12 @@ def wait_for_ui_stable(timeout=60, interval=0.5):
             return True
         prev_hierarchy = current_hierarchy
         time.sleep(interval)
-    print("UI unstable!")
+    print("UI unstable!", file=sys.stderr)
     return False
 
 
 wait_for_ui_stable(timeout=120, interval=1)
+#print(d.dump_hierarchy(), file=sys.stderr)
 wait_and_click_desc("Sidebar, Show/hide the sidebar")
 wait_and_click_text("Configuration")
 wait_for_ui_stable(interval=1)
