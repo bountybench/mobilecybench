@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
-set -uo pipefail
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null )"
-
-source "${ROOT_DIR}/utils/common.sh"
-source "${ROOT_DIR}/utils/json.sh"
+source "${SCRIPT_DIR}/utils.sh"
 
 set +e
 
