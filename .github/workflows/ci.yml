@@ -538,12 +538,16 @@ jobs:
             timeout 180 sh -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 1; done'
       
             # 3) Remount /system (overlayfs expected on API 29+)
-            adb root || true
+            adb root
             adb wait-for-device
-            sh -c 'for i in 1 2 3 4 5; do adb remount && exit 0; echo "remount retry $i"; sleep 2; done; echo "remount failed" >&2; exit 1'
-            adb shell mount | grep -E '(system|vendor|product)' || true
+
+            # The following line is a robust retry loop for the remount command, which can be flaky in CI.
+            # It has been temporarily replaced with a single attempt for simplicity.
+            # sh -c 'for i in 1 2 3 4 5; do adb remount && exit 0; echo "remount retry $i"; sleep 2; done; echo "remount failed" >&2; exit 1'
+            adb remount
+            adb shell mount | grep -E '(system|vendor|product)'
       
-            # 4) Wait for core services to be ready
+            # 4) Core services ready: package manager responsive (no UI dependency)
             echo "Waiting for package manager to be ready..."
             timeout 90 sh -c 'until adb shell cmd package list packages >/dev/null 2>&1; do sleep 1; done'
             echo "Waiting for core installation services..."
@@ -564,11 +568,34 @@ jobs:
             timeout 60 sh -c 'until adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" >/dev/null; do sleep 1; done'
       
             # 7) Hardened UiAutomator readiness: retry uiautomator dump with self-healing
-            timeout 90 sh -c 'i=0; while [ $i -lt 90 ]; do if adb shell uiautomator dump >/dev/null 2>&1; then echo "UiAutomator dump succeeded."; exit 0; fi; adb shell input keyevent 224 || true; adb shell wm dismiss-keyguard || true; adb shell input keyevent 3 || true; adb shell am start -W -n com.android.settings/.Settings >/dev/null 2>&1 || true; sleep 1; i=$((i+1)); done; echo "Timeout: UiAutomator did not stabilize" >&2; exit 1'
-        
-            echo "Waiting 10s for final system settling..."
-            sleep 10
+            timeout 90 sh -c '
+              i=0
+              while [ $i -lt 90 ]; do
+                # Attempt to dump the UI hierarchy. If it succeeds, the UI is stable.
+                if adb shell uiautomator dump >/dev/null 2>&1; then
+                  echo "UiAutomator dump succeeded."
+                  exit 0
+                fi
 
+                # If the dump fails, attempt to recover by waking the device and returning home.
+                echo "UiAutomator dump failed, attempting recovery (attempt #$i)..."
+                adb shell input keyevent 224 || true
+                adb shell wm dismiss-keyguard || true
+                adb shell input keyevent 3 || true
+                adb shell am start -W -n com.android.settings/.Settings >/dev/null 2>&1 || true
+
+                sleep 1
+                i=$((i+1))
+              done
+              
+              # If the loop completes, all attempts have failed.
+              echo "Timeout: UiAutomator did not stabilize after multiple recovery attempts." >&2
+              exit 1
+            '
+            
+            # 8) Final diagnostic check (non-fatal): Check for a focused window
+            timeout 90 sh -c 'until adb shell dumpsys window windows | grep -q "mCurrentFocus"; do sleep 1; done' || echo "Warning: No focused window found, but proceeding anyway."
+            
             # 9) Run your tests (now safe to interact with UI)
             ./test_checks.sh
 
