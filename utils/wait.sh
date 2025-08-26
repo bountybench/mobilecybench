@@ -38,15 +38,17 @@ wait_for_output() {
   local timeout=${3:-30}
   local start_time=$(date +%s)
   local end_time=$((start_time + timeout))
+  local output=""
   while true; do
-    if bash -c "$cmd" 2>/dev/null | grep -q -E "$match"; then
+    output=$(bash -c "$cmd" 2>/dev/null || true)
+    if printf '%s\n' "$output" | grep -q -Ei "$match"; then
       printf '\n'
       return 0
     fi
-    local current_time=$(date +%s)
-    if [ "$current_time" -ge "$end_time" ]; then
+    if [ "$(date +%s)" -ge "$end_time" ]; then
       printf '\n' >&2
       printf 'timeout waiting for pattern "%s" from command: %s\n' "$match" "$cmd" >&2
+      printf 'last dump:\n%s\n' "$output" >&2
       return 1
     fi
     printf '.'

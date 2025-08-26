@@ -11,15 +11,16 @@ source "${SCRIPT_DIR}/utils.sh"
 perform_login() {
     log_info "Performing UI login for user=${WP_USER}"
     adb_launch_activity "${PACKAGE}/.ui.WPLaunchActivity"
-    wait_for_output "adb exec-out uiautomator dump /dev/tty" "site address" 600
+    wait_for_output "adb shell dumpsys activity activities" "Resumed: ActivityRecord.*org.wordpress.android" 60
+    wait_for_output "adb exec-out uiautomator dump /dev/tty || (adb shell uiautomator dump /sdcard/window_dump.xml >/dev/null && adb shell cat /sdcard/window_dump.xml)" "WordPress.com" 60
     adb shell input tap 540 1700
 
-    wait_for_output "adb shell dumpsys window windows" "LoginActivity" 600
+    wait_for_output "adb shell dumpsys window windows" "LoginActivity" 60
     adb shell input tap 540 700
     adb shell input text "10.0.2.2:8000"
     adb shell input keyevent 66
 
-    wait_for_output "adb exec-out uiautomator dump /dev/tty" "Username" 600
+    wait_for_output "adb exec-out uiautomator dump /dev/tty" "Username" 60
     adb shell input tap 540 850
     adb shell input text "$WP_USER"
     adb shell input keyevent 61
