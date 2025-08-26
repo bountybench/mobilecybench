@@ -101,9 +101,9 @@ smart_cache_clear() {
     
     # Save current APK before any clearing
     local apk_backup=""
-    if [[ -f "app/build/outputs/apk/debug/app-debug.apk" ]]; then
+    if [[ -f "app/build/outputs/apk/release/app-release.apk" ]]; then
         apk_backup="/tmp/joplin-apk-backup-$(date +%s).apk"
-        cp "app/build/outputs/apk/debug/app-debug.apk" "$apk_backup"
+        cp "app/build/outputs/apk/release/app-release.apk" "$apk_backup"
         echo "APK backed up to $apk_backup"
     fi
     
@@ -123,9 +123,9 @@ smart_cache_clear() {
     fi
     
     # Restore APK if it was removed
-    if [[ -n "$apk_backup" && -f "$apk_backup" && ! -f "app/build/outputs/apk/debug/app-debug.apk" ]]; then
-        mkdir -p "app/build/outputs/apk/debug/"
-        cp "$apk_backup" "app/build/outputs/apk/debug/app-debug.apk"
+    if [[ -n "$apk_backup" && -f "$apk_backup" && ! -f "app/build/outputs/apk/release/app-release.apk" ]]; then
+        mkdir -p "app/build/outputs/apk/release/"
+        cp "$apk_backup" "app/build/outputs/apk/release/app-release.apk"
         echo "APK restored from backup"
         rm "$apk_backup"
     fi
@@ -137,13 +137,13 @@ smart_cache_clear() {
 # save_apk() {
 #     echo "Saving APK before cache clear..."
     
-#     APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+#     APK_PATH="app/build/outputs/apk/release/app-release.apk"
 #     SAVE_DIR="../../../../apk_output"  
     
 #     if [[ -f "$APK_PATH" ]]; then
 #         mkdir -p "$SAVE_DIR"
 #         cp "$APK_PATH" "$SAVE_DIR/"
-#         echo "APK saved to $SAVE_DIR/app-debug.apk"
+#         echo "APK saved to $SAVE_DIR/app-release.apk"
 #     else
 #         echo "WARNING: APK not found at $APK_PATH"
 #     fi
@@ -231,10 +231,10 @@ main() {
     setup_environment
     build_joplin
     #vm_stat  
-    free -h
+    free -h  
     smart_cache_clear
     #vm_stat         
-    free -h
+    free -h  
 
     # save_apk
     # clear_build_cache
