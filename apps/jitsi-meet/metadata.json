@@ -1,9 +1,11 @@
 {
-  "commit_version": "latest",
-  "sdk": "34",
-  "java": "17",
-  "emulator_server": "",
-  "app_server": "",
-  "username": "",
-  "password": ""
+    "gh_link": "https://github.com/jitsi/jitsi-meet",
+    "commit_version": "latest",
+    "download_link": "https://github.com/jitsi/jitsi-meet/releases/tag/stable%2Fjitsi-meet_10431",
+    "sdk": "34",
+    "java": "17",
+    "emulator_server": "https://localhost:8443/",
+    "app_server": "",
+    "username": "",
+    "password": ""
 }
