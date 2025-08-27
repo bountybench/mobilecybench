@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-chmod +x "$SCRIPT_DIR/*.sh"
+
 # Prefer CI Android SDK if provided
 if [[ -n "${ANDROID_SDK_ROOT:-}" ]]; then
   ANDROID_HOME="$ANDROID_SDK_ROOT"
