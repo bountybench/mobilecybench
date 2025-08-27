@@ -42,6 +42,7 @@ mobilecybench/
     |   ├── docker-compose.yaml (if Docker is required for env setup)
     |   ├── metadata.json
     │   ├── setup.sh
+    │   ├── setup_app_source.sh
     │   ├── cleanup.sh
     |   ├── run_checks.sh
     |   |── test_confidentiaility.py
@@ -76,9 +77,12 @@ mobilecybench/
     - ```username```: The username of the account the agent will use to login. Leave blank (empty string) if not required.
     - ```password```: The password of the account the agent will use to login. Leave blank (empty string) if not required.
 - ```setup.sh```: 
-    - Contains all relevant setup for the app (e.g. building app from source, setting up a server, install requirements, etc.). 
+    - Contains all relevant setup for the app after the app is already built from source (e.g. setting up a server, install requirements, etc.). 
     - This may mean adding additional files to the root of the ```env_dir``` such as a ```Dockerfile``` or creating a database. 
     - Must exist to pass schema. If no setup is required, leave the file empty except for the hashtag (`#!/bin/bash`).
+- ```setup_app_source.sh```: 
+    - Builds the app from source and does not rely on emulator 
+    - Is run in CI before emulator is started
 - ```run_checks.sh```: 
     - Entrypoint for various probes measuring confidentiality, integrity, availability, and access control violations.
     - Produces pass/fail scores for each test and aggregates results into a JSON file (scores.json).
@@ -124,6 +128,7 @@ See [joplin](/apps/joplin/):
 │   ├── codebase
 │   ├── setup.sh
 │   ├── setup_app_source.sh
+│   ├── setup_app.sh
 │   ├── docker-compose.yml
 │   ├── Dockerfile
 │   ├── seed.sql
@@ -149,7 +154,8 @@ See [joplin](/apps/joplin/):
 ```joplin```
 - ```codebase/```: Here, codebase points to a private joplin repo that we cloned from the [original repo](https://github.com/laurent22/joplin). This is a free, open source note taking application, which can handle a large number of notes organized into notebooks. It is available for Windows, Linux, macOS, Android and iOS.
 - ```setup.sh```: Installs various requirements, creates randomly generated secrets, and calls docker compose up, i.e. starts docker. This relies on other files such as docker-compose.yml and the system docker to initialize the joplin task docker environment. Afterwards, it builds the app from the source code and sets it up on the emulator.
-- ```setup_app_source.sh```: Sets up the joplin android app on the emulator. Installs any prerequisites (e.g. correct Java and SDK versions), installs the app on the emulator, launches the app, and syncs the app with the task server. 
+- ```setup_app_source.sh```: Sets up the Joplin Android app on the emulator. Installs any prerequisites (e.g. correct Java and SDK versions) and builds the app from source. 
+- ```setup_app.sh```: Is called in ```setup.sh``` after the app has already been built. Installs the app on the emulator, launches the app, and syncs the app with the task server. 
 - ```docker-compose.yml```: This defines the definition of the joplin-postgres docker service. We see that the the ```seeder``` service is responsible for populating the PostgreSQL database with necessary schemas, users, test accounts, and secrets. 
 - ```Dockerfile```: Sets up the joplin backend and frontend services (joplin-app).
 - ```seed.sql```: Creates concrete objects based on the schema including users, notes, etc.
@@ -261,6 +267,7 @@ mobilecybench/
     │   ├── codebase/
     |   ├── metadata.json
     │   ├── setup.sh
+    │   ├── setup_app_source.sh
     │   ├── cleanup.sh
     |   |── run_checks.sh
     |   |── vuln_scenarios/
@@ -284,7 +291,7 @@ mobilecybench/
 Both the GitHub CI and local CI perform the following tests:
 1. File Tree Schema:
     - Confirms that the directory structure includes at least the minimum required file tree.
-Additional setup also occurs for the test environment, including checking out the `commit_version` of the codebase. Then tests:
+Additional setup also occurs for the test environment, including checking out the `commit_version` of the codebase, running ```./setup_app_source.sh```, and starting the emulators. Then, CI tests:
 2. Baseline CIA Check (No Vulnerabilities):
     - Runs ```./setup.sh``` (builds/installs app, spins up any needed infra).
     - Runs ```./run_checks.sh``` which outputs ```scores.json```. 

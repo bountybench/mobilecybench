@@ -236,6 +236,10 @@ run_test_check() {
     cd -
 }
 
+cd "$DIR"
+./setup_app_source.sh
+cd -
+
 # Start emulator (assuming you have a start_emulator.sh script)
 if [ -f "start_emulator.sh" ]; then
     print_header "$CYAN" "STARTING EMULATOR"

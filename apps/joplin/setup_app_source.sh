@@ -6,6 +6,21 @@ ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ANDROID_HOME="${HOME}/.android-sdk"
 source "$ROOT_DIR/utils/android.sh"
 
+# Patch gradle.properties
+patch() {
+    # Patch gradle.properties for low-RAM builds
+    if [[ -f "gradle.properties" ]]; then
+        echo "Patching gradle.properties for low memory usage..."
+        sed -i.bak \
+            -e 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Dfile.encoding=UTF-8/' \
+            -e '/^org.gradle.parallel/d' \
+            -e '/^android.enableR8/d' \
+            gradle.properties
+        # Append if missing
+        grep -q '^org.gradle.parallel=false' gradle.properties || echo 'org.gradle.parallel=false' >> gradle.properties
+    fi
+}
+
 # Check prerequisites
 check_prerequisites() {
     echo "Checking prerequisites..."
@@ -35,7 +50,16 @@ setup_environment() {
     echo "Setting up build environment..."
     
     # Set Java 17
-    export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+    if [[ -d "/opt/homebrew/opt/openjdk@17" ]]; then
+        export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+    elif [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
+        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+    elif command -v /usr/libexec/java_home &>/dev/null; then
+        export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
+    else
+        export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
+    fi
+    echo $JAVA_HOME
     export PATH="$JAVA_HOME/bin:$PATH"
     
     # Set Android SDK
@@ -52,50 +76,52 @@ setup_environment() {
 build_joplin() {    
     echo "Building joplin Android from source..."
     echo "This will take several minutes..."
-    
-    ./gradlew assembleDebug
-    
-    echo "Build completed successfully."
-}
 
-# Install on emulator
-install_joplin() {
-    echo "Installing joplin on Android emulator..."
+    local temp_out=$(mktemp)
+    local temp_err=$(mktemp)
     
-    # Check if emulator is running
-    if ! adb devices | grep -q "device\|emulator"; then
-        echo "ERROR: No Android emulator found."
-        echo "Please start the emulator first."
-        exit 1
+    # Run gradle build with output suppressed
+    sed -i -- 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
+    if ./gradlew assembleRelease --no-daemon --max-workers=1 > "$temp_out" 2> "$temp_err"; then
+        echo "Build completed successfully."
+        # Clean up temp files on success
+        rm -f "$temp_out" "$temp_err"
+    else
+        local exit_code=$?
+        echo "ERROR: Build failed with exit code $exit_code"
+        
+        # Show stderr (which contains the actual error messages)
+        if [[ -s "$temp_err" ]]; then
+            echo "Error output:"
+            cat "$temp_err"
+        fi
+        
+        # Optionally show last part of stdout for context
+        if [[ -s "$temp_out" ]]; then
+            echo "Last 50 lines of build output:"
+            tail -50 "$temp_out"
+        fi
+        
+        # Clean up temp files
+        rm -f "$temp_out" "$temp_err"
+        exit $exit_code
     fi
+}
+
+clear() {
+    echo "Clearing cache - preserving working build state..."
     
-    # Install universal APK with correct path
-    APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+    rm -rf app/build/intermediates 2>/dev/null || true
+    rm -rf app/build/tmp 2>/dev/null || true
+    rm -rf .gradle/buildOutputCleanup/cache.properties 2>/dev/null || true
+    rm -rf node_modules/.cache 2>/dev/null || true
     
-    if [[ ! -f $APK_PATH ]]; then
-        echo "ERROR: APK not found at $APK_PATH"
-        echo "Available APKs:"
-        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
-        exit 1
+    if command -v yarn >/dev/null 2>&1; then
+        yarn cache clean || true
     fi
+    ./gradlew --stop
     
-    adb install "$APK_PATH"
-    echo "joplin installed successfully."
-}
-
-# Launch joplin
-launch_joplin() {
-    echo "Launching joplin..."
-    adb_launch_activity "net.cozic.joplin/.MainActivity"
-    echo "joplin should now be running on your emulator."
-}
-
-# Synching with server
-synch_with_server() {
-    echo "Synching app with server..."
-    pip install uiautomator2
-    python synch_app.py --username usera@localhost --password userAPW123
-    echo "Should now be synched with server."
+    echo "Clearing completed."
 }
 
 # Main function
@@ -108,7 +134,6 @@ main() {
     npm uninstall -g react-native-cli @react-native-community/cli
     cd codebase
     npm uninstall -g react-native-cli @react-native-community/cli
-    yarn install
     cd -
 
     root_dir="$(pwd)"
@@ -121,7 +146,7 @@ main() {
         exit 1
     fi
 
-    npx react-native start --reset-cache > /dev/null 2>&1 &
+    yarn install
     
     # Navigate to codebase directory
     if [[ -d "android" ]]; then
@@ -131,24 +156,12 @@ main() {
         echo "ERROR: Not in joplin Android directory and codebase/packages/app-mobile/android/ not found."
         exit 1
     fi
-    
+
+    patch
     check_prerequisites
     setup_environment
     build_joplin
-    install_joplin
-    launch_joplin
-    cd "$root_dir"
-    synch_with_server
-
-    adb root
-
-    local immutable_dirs=(/system /vendor /product /odm)
-    adb_hash_dirs "${immutable_dirs[@]}" > baseline.json
-
-    local secret_dirs=(/data/cache /data/misc)
-    adb_hide_secret_files "secrets.json" "${secret_dirs[@]}"
-
-    adb unroot
+    clear
     
     echo ""
     echo "Setup complete! joplin is ready for testing."
