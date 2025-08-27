@@ -13,7 +13,7 @@ services:
       timeout: 10s
       start_period: 40s
       retries: 30
-    platform: linux/arm64/v8
+    # platform: linux/arm64/v8
 
   mongo-init-replica:
     image: mongo:6.0
@@ -23,7 +23,7 @@ services:
     command: >
       bash -lc "mongosh --host mongo --quiet --eval 'rs.initiate({_id:\"rs0\",members:[{_id:0,host:\"mongo:27017\"}]}); rs.status()' || true"
     restart: "no"
-    platform: linux/arm64/v8
+    # platform: linux/arm64/v8
 
   rocketchat:
     image: rocketchat/rocket.chat:latest
@@ -49,9 +49,9 @@ services:
       test: ["CMD-SHELL","curl -fsS http://localhost:3000/api/info >/dev/null || exit 1"]
       interval: 15s
       timeout: 10s
-      start_period: 60s
-      retries: 40
-    platform: linux/amd64
+      start_period: 180s
+      retries: 60
+    # platform: linux/amd64
 
 volumes:
   mongo_data:
