@@ -142,6 +142,8 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
         else:
             logger.error("%s", message)
             return False
+    else:
+        logger.debug("Found element %s", element.selector)
 
     if not element.click_exists(timeout=5):
         app_state = d.app_current()
@@ -182,6 +184,8 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
         else:
             logger.error("%s", message)
             return False
+    else:
+        logger.debug("Found element %s", element.selector)
 
     # Use robust text entry with retries and scroll support
     try:
@@ -328,30 +332,58 @@ def _wait_for_element(d, element, timeout=180):
     """
     start_time = time.time()
     relaunch_attempted = False
+    relaunch_attempts = 0
+    max_relaunch_attempts = int(os.getenv("UI_MAX_RELAUNCH_ATTEMPTS", "3"))
+    relaunch_cooldown_seconds = int(os.getenv("UI_RELAUNCH_COOLDOWN_SECONDS", "10"))
+    last_relaunch_time = 0.0
+    next_heartbeat_time = start_time  # immediate first heartbeat
+    # Best-effort selector string for logs
+    try:
+        selector_str = str(getattr(element, "selector", element))
+    except Exception:
+        selector_str = "<unknown>"
+    logger.debug("Waiting for element %s (timeout=%ss)", selector_str, timeout)
 
     def _is_launcher_package(pkg: str) -> bool:
         if not pkg:
             return False
+        logger.debug("Checking if %s is a launcher package", pkg)
+
+        # Known launchers and heuristics
         launcher_pkgs = {
             "com.google.android.apps.nexuslauncher",
             "com.android.launcher",
             "com.android.launcher3",
             "com.google.android.googlequicksearchbox",
         }
-        return pkg in launcher_pkgs
+        if pkg in launcher_pkgs:
+            return True
+        normalized = pkg.lower()
+        # Heuristic: most home apps contain "launcher" or "nexus"
+        return "launcher" in normalized or "nexus" in normalized
+
+    def _is_launcher_activity(activity: str) -> bool:
+        if not activity:
+            return False
+        a = activity.lower()
+        return "launcher" in a or "home" in a
 
     def _try_relaunch_target_app() -> bool:
         target_pkg = os.getenv("UI_TARGET_PACKAGE")
         if not target_pkg:
+            logger.debug("Skipping relaunch: UI_TARGET_PACKAGE not set.")
             return False
         try:
-            logger.info("Launcher detected. Attempting to relaunch %s...", target_pkg)
+            logger.info("Home/launcher detected. Relaunching target app: %s", target_pkg)
             d.app_start(target_pkg, wait=True, stop=False)
             if d.app_wait(target_pkg, front=True, timeout=10):
+                logger.info("Target app %s is front after relaunch attempt.", target_pkg)
                 wait_for_ui_stable(d, timeout=5)
                 return True
+            else:
+                logger.warning("Relaunch initiated but app is not front yet: %s", target_pkg)
         except Exception as e:
-            logger.debug("Relaunch attempt failed: %s", e)
+            logger.debug("Relaunch attempt raised: %s", e)
         return False
 
     selector_info = _parse_selector_from_element(element)
@@ -360,14 +392,49 @@ def _wait_for_element(d, element, timeout=180):
         # If we unexpectedly returned to home/launcher, try to bring app back first
         try:
             app_state = d.app_current()
-            if (
-                not relaunch_attempted
-                and _is_launcher_package(app_state.get("package", ""))
-                and _try_relaunch_target_app()
-            ):
-                relaunch_attempted = True
-        except Exception:
-            pass
+            current_pkg = app_state.get("package", "")
+            current_activity = app_state.get("activity", "")
+
+            now = time.time()
+            if now >= next_heartbeat_time:
+                elapsed = now - start_time
+                logger.info(
+                    "Still waiting for %s (elapsed %.1fs / %.0fs). Current screen: %s/%s",
+                    selector_str,
+                    elapsed,
+                    timeout,
+                    current_pkg or "unknown",
+                    current_activity or "unknown",
+                )
+                next_heartbeat_time = now + 15.0
+
+            in_launcher = _is_launcher_package(current_pkg) or _is_launcher_activity(
+                current_activity
+            )
+            if in_launcher:
+                if relaunch_attempts < max_relaunch_attempts and (now - last_relaunch_time) >= relaunch_cooldown_seconds:
+                    logger.warning(
+                        "Launcher detected (%s/%s). Attempting relaunch #%s of %s...",
+                        current_pkg,
+                        current_activity,
+                        relaunch_attempts + 1,
+                        max_relaunch_attempts,
+                    )
+                    if _try_relaunch_target_app():
+                        relaunch_attempted = True
+                        relaunch_attempts += 1
+                        last_relaunch_time = now
+                    else:
+                        relaunch_attempts += 1
+                        last_relaunch_time = now
+                        logger.warning("Relaunch attempt #%s did not bring app to front yet.", relaunch_attempts)
+                elif relaunch_attempts >= max_relaunch_attempts:
+                    logger.error(
+                        "Reached max relaunch attempts (%s). Remaining wait will continue without relaunch.",
+                        max_relaunch_attempts,
+                    )
+        except Exception as e:
+            logger.debug("Error during launcher detection/relaunch: %s", e)
 
         if not _handle_anr(
             d, max_anrs=5, timeout=1, target_element=element
@@ -378,14 +445,30 @@ def _wait_for_element(d, element, timeout=180):
         wait_slice = min(1, remaining)
         try:
             if element.wait(timeout=wait_slice):  # Element found; return True
+                logger.debug(
+                    "Element %s appeared after %.1fs",
+                    selector_str,
+                    time.time() - start_time,
+                )
                 return True
         except Exception:
             # If wait is not available for some reason, fall back to existence check
             if element.exists:
+                logger.debug("Element %s already exists (no wait).", selector_str)
                 return True
 
-        _try_scroll_into_view(d, selector_info)
+        try:
+            did_scroll = _try_scroll_into_view(d, selector_info)
+            if did_scroll:
+                logger.debug("Attempted scroll into view using selector info: %s", selector_info)
+        except Exception as e:
+            logger.debug("Error during scroll attempt: %s", e)
 
+    logger.debug(
+        "Timed out after %.1fs waiting for element %s",
+        time.time() - start_time,
+        selector_str,
+    )
     return False
 
 
