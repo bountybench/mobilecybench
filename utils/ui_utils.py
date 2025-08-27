@@ -213,11 +213,13 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
     same_count = 0
     start = time.time()
     fail_count = 0
+    npe_seq_count = 0  # Track consecutive accessibility NPEs so we can heal
 
     while time.time() - start < timeout:
         try:
             current_dump = d.dump_hierarchy()
             fail_count = 0
+            npe_seq_count = 0
         except Exception as e:
             logger.debug("Failed to get hierarchy dump during stability check: %s", e)
             fail_count += 1
@@ -226,6 +228,21 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
                     d.healthcheck()
                 except Exception:
                     pass
+            # Self-heal when we observe the classic AccessibilityService NPE repeatedly
+            try:
+                if "AccessibilityServiceInfo.flags" in str(
+                    e
+                ) or "NullPointerException" in str(e):
+                    npe_seq_count += 1
+                    if npe_seq_count >= 3:
+                        _warmup_accessibility_and_hierarchy(
+                            d, timeout=5.0, interval=0.5
+                        )
+                        npe_seq_count = 0
+                else:
+                    npe_seq_count = 0
+            except Exception:
+                pass
             time.sleep(interval)
             continue
 
@@ -405,8 +422,10 @@ def handle_relaunch(
             max_attempts,
         )
         if _try_relaunch_target_app(d):
-            relaunch_state["attempts"] = attempts + 1
+            # Successful relaunch: reset attempts so we can try again in the future
+            relaunch_state["attempts"] = 0
             relaunch_state["last_attempt_time"] = now
+            relaunch_state["gave_up_logged"] = False
         else:
             relaunch_state["attempts"] = attempts + 1
             relaunch_state["last_attempt_time"] = now
@@ -469,27 +488,55 @@ def _wait_for_element(d, element, timeout=180):
                 )
                 next_heartbeat_time = now + 15.0
 
-            # Prefer: if we are not on the Bitwarden package, try to relaunch it.
             target_pkg = os.getenv("UI_TARGET_PACKAGE")
-            if target_pkg and current_pkg and current_pkg != target_pkg:
-                handle_relaunch(
-                    d,
-                    relaunch_state=relaunch_state,
-                    now=now,
-                    reason=f"not on target (current={current_pkg}, target={target_pkg})",
-                )
-            # Otherwise: if the current screen looks like a launcher, relaunch too.
-            elif _is_launcher_package(current_pkg) or _is_launcher_activity(
-                current_activity
-            ):
-                handle_relaunch(
-                    d,
-                    relaunch_state=relaunch_state,
-                    now=now,
-                    reason=f"launcher detected ({current_pkg}/{current_activity})",
-                )
+
+            # If we've returned to the target app after previous relaunch attempts, reset counters
+            try:
+                if (
+                    target_pkg
+                    and current_pkg == target_pkg
+                    and relaunch_state.get("attempts", 0) > 0
+                ):
+                    logger.info(
+                        "Target app %s is front again; resetting relaunch attempts.",
+                        target_pkg,
+                    )
+                    relaunch_state["attempts"] = 0
+                    relaunch_state["gave_up_logged"] = False
+            except Exception:
+                pass
+
+            # If not on the target package, try relaunching; otherwise skip launcher heuristics
+            if target_pkg:
+                if current_pkg and current_pkg != target_pkg:
+                    handle_relaunch(
+                        d,
+                        relaunch_state=relaunch_state,
+                        now=now,
+                        reason=f"not on target (current={current_pkg}, target={target_pkg})",
+                    )
+            else:
+                # No explicit target package; only use launcher heuristics to recover
+                if _is_launcher_package(current_pkg) or _is_launcher_activity(
+                    current_activity
+                ):
+                    handle_relaunch(
+                        d,
+                        relaunch_state=relaunch_state,
+                        now=now,
+                        reason=f"launcher detected ({current_pkg}/{current_activity})",
+                    )
         except Exception as e:
             logger.debug("Error during launcher detection/relaunch: %s", e)
+
+        # Detect and handle crash dialogs such as "App keeps stopping" / "has stopped"
+        try:
+            if _handle_crash_dialog(d):
+                # Give UI a brief moment and continue; relaunch logic above will bring app back
+                time.sleep(0.5)
+                continue
+        except Exception as e:
+            logger.debug("Error during crash dialog handling: %s", e)
 
         if not _handle_anr(
             d, max_anrs=5, timeout=1, target_element=element
@@ -586,6 +633,72 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
         )
 
     return True
+
+
+def _handle_crash_dialog(d) -> bool:
+    """Detect system crash dialogs and dismiss them so we can relaunch.
+
+    Returns True if a dialog was handled (clicked), False otherwise.
+    """
+    try:
+        # Common titles/texts seen on crash dialogs
+        crash_title = d(resourceId="android:id/alertTitle")
+        crash_msg = d(resourceId="android:id/message")
+
+        title_text = ""
+        msg_text = ""
+        try:
+            if crash_title.exists:
+                title_text = (crash_title.get_text() or "").lower()
+        except Exception:
+            pass
+        try:
+            if crash_msg.exists:
+                msg_text = (crash_msg.get_text() or "").lower()
+        except Exception:
+            pass
+
+        indicative = any(
+            s in title_text or s in msg_text
+            for s in [
+                "keeps stopping",
+                "has stopped",
+                "isn't responding",
+                "isn’t responding",
+            ]
+        )
+
+        # Known button choices on these dialogs
+        btn_close = d(resourceId="android:id/aerr_close")
+        btn_ok = d(resourceId="android:id/button1", text="OK")
+        btn_restart = d(text="Restart app")
+        btn_close_text = d(text="Close app")
+
+        if (
+            indicative
+            or btn_close.exists
+            or btn_close_text.exists
+            or btn_ok.exists
+            or btn_restart.exists
+        ):
+            # Prefer closing the app, then we'll relaunch
+            for btn in (btn_close, btn_close_text, btn_ok, btn_restart):
+                try:
+                    if btn.exists(timeout=0.5):
+                        btn.click()
+                        logger.warning(
+                            "Crash dialog dismissed via '%s'",
+                            getattr(btn, "selector", btn),
+                        )
+                        wait_for_ui_stable(
+                            d, timeout=3, interval=0.5, min_consecutive=2
+                        )
+                        return True
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return False
 
 
 def _fatal(d, message):
