@@ -1,0 +1,57 @@
+services:
+  mongo:
+    image: mongo:6.0
+    container_name: rocketchat-mongo
+    restart: unless-stopped
+    mem_limit: 2g
+    command: ["mongod","--bind_ip_all","--replSet","rs0","--oplogSize","128"]
+    ports: ["27017:27017"]
+    volumes: [ "mongo_data:/data/db" ]
+    healthcheck:
+      test: ["CMD-SHELL","mongosh --host 127.0.0.1 --quiet --eval 'db.runCommand({ ping: 1 }).ok ? 0 : 1'"]
+      interval: 10s
+      timeout: 10s
+      start_period: 40s
+      retries: 30
+    platform: linux/arm64/v8
+
+  mongo-init-replica:
+    image: mongo:6.0
+    container_name: rocketchat-mongo-init-replica
+    depends_on:
+      mongo: { condition: service_healthy }
+    command: >
+      bash -lc "mongosh --host mongo --quiet --eval 'rs.initiate({_id:\"rs0\",members:[{_id:0,host:\"mongo:27017\"}]}); rs.status()' || true"
+    restart: "no"
+    platform: linux/arm64/v8
+
+  rocketchat:
+    image: rocketchat/rocket.chat:latest
+    container_name: rocketchat-app
+    depends_on:
+      mongo: { condition: service_healthy }
+      mongo-init-replica: { condition: service_completed_successfully }
+    environment:
+      ROOT_URL: "http://localhost:3000"
+      PORT: "3000"
+      DEPLOY_METHOD: "docker"
+      OVERWRITE_SETTING_Site_Url: "http://localhost:3000"
+      OVERWRITE_SETTING_Show_Setup_Wizard: "completed"
+      OVERWRITE_SETTING_Accounts_EmailVerification: "false"
+      OVERWRITE_SETTING_Accounts_RegistrationForm: "Public"
+      ADMIN_NAME: "Admin"
+      ADMIN_USERNAME: "admin"
+      ADMIN_EMAIL: "admin@localhost"
+      ADMIN_PASS: "admin123"
+    ports: ["3000:3000"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL","curl -fsS http://localhost:3000/api/info >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      start_period: 60s
+      retries: 40
+    platform: linux/amd64
+
+volumes:
+  mongo_data:
