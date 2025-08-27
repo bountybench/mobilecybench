@@ -326,7 +326,6 @@ def _warmup_accessibility_and_hierarchy(d, timeout=25.0, interval=0.5):
 def _is_launcher_package(pkg: str) -> bool:
     if not pkg:
         return False
-    logger.debug("Checking if %s is a launcher package", pkg)
 
     # Known launchers and heuristics
     launcher_pkgs = {
@@ -370,27 +369,16 @@ def _try_relaunch_target_app(d) -> bool:
     return False
 
 
-def _maybe_relaunch_from_launcher(
+def handle_relaunch(
     d,
-    current_pkg: str,
-    current_activity: str,
     relaunch_state: dict,
     now: float,
+    reason: str,
 ) -> None:
-    """Detect launcher state and attempt to relaunch with cooldown/limits.
-
-    relaunch_state keys:
-      - attempts: int
-      - max_attempts: int
-      - cooldown_seconds: int
-      - last_attempt_time: float
-      - gave_up_logged: bool (optional)
-    """
+    """Centralized relaunch gate with cooldown/attempt limits and reasoned logging."""
     try:
-        in_launcher = _is_launcher_package(current_pkg) or _is_launcher_activity(
-            current_activity
-        )
-        if not in_launcher:
+        target_pkg = os.getenv("UI_TARGET_PACKAGE")
+        if not target_pkg:
             return
 
         attempts = relaunch_state.get("attempts", 0)
@@ -411,9 +399,8 @@ def _maybe_relaunch_from_launcher(
             return
 
         logger.warning(
-            "Launcher detected (%s/%s). Attempting relaunch #%s of %s...",
-            current_pkg,
-            current_activity,
+            "Relaunching target due to: %s (attempt #%s of %s)…",
+            reason,
             attempts + 1,
             max_attempts,
         )
@@ -428,7 +415,7 @@ def _maybe_relaunch_from_launcher(
                 relaunch_state["attempts"],
             )
     except Exception as e:
-        logger.debug("Error during launcher detection/relaunch: %s", e)
+        logger.debug("Error in handle_relaunch: %s", e)
 
 
 def _wait_for_element(d, element, timeout=180):
@@ -472,7 +459,7 @@ def _wait_for_element(d, element, timeout=180):
             now = time.time()
             if now >= next_heartbeat_time:
                 elapsed = now - start_time
-                logger.info(
+                logger.debug(
                     "Still waiting for %s (elapsed %.1fs / %.0fs). Current screen: %s/%s",
                     selector_str,
                     elapsed,
@@ -482,13 +469,25 @@ def _wait_for_element(d, element, timeout=180):
                 )
                 next_heartbeat_time = now + 15.0
 
-            _maybe_relaunch_from_launcher(
-                d,
-                current_pkg=current_pkg,
-                current_activity=current_activity,
-                relaunch_state=relaunch_state,
-                now=now,
-            )
+            # Prefer: if we are not on the Bitwarden package, try to relaunch it.
+            target_pkg = os.getenv("UI_TARGET_PACKAGE")
+            if target_pkg and current_pkg and current_pkg != target_pkg:
+                handle_relaunch(
+                    d,
+                    relaunch_state=relaunch_state,
+                    now=now,
+                    reason=f"not on target (current={current_pkg}, target={target_pkg})",
+                )
+            # Otherwise: if the current screen looks like a launcher, relaunch too.
+            elif _is_launcher_package(current_pkg) or _is_launcher_activity(
+                current_activity
+            ):
+                handle_relaunch(
+                    d,
+                    relaunch_state=relaunch_state,
+                    now=now,
+                    reason=f"launcher detected ({current_pkg}/{current_activity})",
+                )
         except Exception as e:
             logger.debug("Error during launcher detection/relaunch: %s", e)
 
