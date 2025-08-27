@@ -127,7 +127,9 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
 
         # Actively probe core services before connecting.
         if not _wait_for_system_services():
-            logger.error("Emulator detected, but its core services are not stable. Retrying...")
+            logger.error(
+                "Emulator detected, but its core services are not stable. Retrying..."
+            )
             if attempt_index < max_retries:
                 _adb_wait_for_device(retry_delay)
                 continue
