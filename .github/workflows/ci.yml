@@ -137,7 +137,7 @@ jobs:
     needs: setup
     if: needs.setup.outputs.should_exit != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 55
     strategy:
       matrix:
         test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
@@ -162,6 +162,9 @@ jobs:
           fetch-depth: 0
           submodules: false
           token: ${{ secrets.GH_TOKEN }}
+
+      - name: Disable Git ownership check
+        run: git config --global --add safe.directory '*'
 
       - name: Create shared functions
         run: |
@@ -290,7 +293,8 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: "${{ needs.setup.outputs.java }}"
-      
+          cache: gradle
+            
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
         with:
@@ -322,6 +326,7 @@ jobs:
           set -e
           source /tmp/shared_functions.sh
           check_server_ready
+          adb devices
           EOF
           
           echo "dir=\"$modified_dir\"" >> test_checks.sh
@@ -330,21 +335,8 @@ jobs:
           case "${{ matrix.test_type }}" in
             "baseline")
               cat <<'EOF' >> test_checks.sh
-          source /tmp/shared_functions.sh
-          check_server_ready
-          
+
           cd "$dir"
-          checkout_commit "$dir"
-          
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
-          echo "Checking for required scripts..."
-          for script in "${required_scripts[@]}"; do
-            if [[ ! -f "$script" ]]; then
-              echo "ERROR: Required script '$script' not found."
-              exit 1
-            fi
-          done
-          
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
@@ -365,25 +357,12 @@ jobs:
               ;;
             "vuln_scenario_0")
               cat <<'EOF' >> test_checks.sh
-          source /tmp/shared_functions.sh
-          check_server_ready
           
-          cd "$dir"
-          checkout_commit "$dir"
-          
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
-          echo "Checking for required scripts..."
-          for script in "${required_scripts[@]}"; do
-            if [[ ! -f "$script" ]]; then
-              echo "ERROR: Required script '$script' not found."
-              exit 1
-            fi
-          done
-
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           
+          cd "$dir"
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
@@ -412,25 +391,12 @@ jobs:
               ;;
             "vuln_scenario_1")
               cat <<'EOF' >> test_checks.sh
-          source /tmp/shared_functions.sh
-          check_server_ready
-          
-          cd "$dir"
-          checkout_commit "$dir"
-          
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
-          echo "Checking for required scripts..."
-          for script in "${required_scripts[@]}"; do
-            if [[ ! -f "$script" ]]; then
-              echo "ERROR: Required script '$script' not found."
-              exit 1
-            fi
-          done
 
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           
+          cd "$dir"
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
@@ -460,6 +426,102 @@ jobs:
           esac
           
           chmod +x test_checks.sh
+
+      - name: Create build source script
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+
+          cat << 'EOF' > build_source.sh
+          #!/bin/bash
+          set -e
+          git config --global --add safe.directory '*'
+          
+          source /tmp/shared_functions.sh
+          check_server_ready
+          EOF
+          echo "dir=\"$modified_dir\"" >> build_source.sh
+          cat <<'EOF' >> build_source.sh
+          cd "$dir"
+          checkout_commit "$dir"
+
+          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
+          echo "Checking for required scripts..."
+          for script in "${required_scripts[@]}"; do
+            if [[ ! -f "$script" ]]; then
+              echo "ERROR: Required script '$script' not found."
+              exit 1
+            fi
+          done
+
+          echo "Setting up app from source..."
+          ./setup_app_source.sh
+          EOF
+          chmod +x build_source.sh
+          free -h
+          ./build_source.sh
+                
+      - name: Stabilize runner after build
+        run: |
+          echo "Memory usage immediately after build:"
+          free -h
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir" || true
+          
+          (cd codebase && ./gradlew --stop) || true
+          pkill -f GradleDaemon || true
+          pkill -f kotlin.daemon.KotlinCompileDaemon || true
+          jps -v | grep -E 'GradleDaemon|Kotlin' || true
+          echo "Memory usage after stopping Gradle daemons:"
+          free -h
+          set -euo pipefail
+          THRESHOLD=4096 # 4GB
+          MAX_TRIES=24  # 2 minutes at 5s interval
+          TRIES=0
+          INTERVAL=5
+          echo "Waiting for available memory to exceed ${THRESHOLD}MB..."
+          while ((TRIES < MAX_TRIES)); do
+            AVAILABLE_MEM=$(awk '/MemAvailable/ { printf "%d", $2/1024 }' /proc/meminfo)
+            echo "Current available memory on attempt ${TRIES}/${MAX_TRIES}: ${AVAILABLE_MEM}MB"
+            if (( AVAILABLE_MEM > THRESHOLD )); then
+              echo "Memory threshold of ${THRESHOLD}MB crossed. Continuing..."
+              break
+            fi
+            echo "Retrying in ${INTERVAL} seconds..."
+            (( ++TRIES ))
+            sleep "${INTERVAL}"
+          done
+          if (( TRIES >= MAX_TRIES )); then
+            echo "Timeout waiting for memory to exceed ${THRESHOLD}MB"; 
+            exit 1
+          fi
+          echo "Final memory usage:"
+          free -h
+
+      - name: Pre-emulator Resource Check
+        run: |
+          echo "=== Pre-Emulator Resource Check ==="
+          
+          # Check if CPU usage is acceptable
+          CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//' | cut -d'.' -f1)
+          if [ "$CPU_USAGE" -gt 25 ]; then
+            echo "WARNING: CPU usage too high ($CPU_USAGE%). Emulator may hang."
+            echo "Top processes:"
+            ps aux --sort=-%cpu | head -10
+            
+            # Try to kill more processes
+            sudo pkill -f chrome || true
+            sudo pkill -f firefox || true
+            sleep 10
+          fi
+          
+          # Check memory
+          AVAILABLE_MEM=$(free -m | awk 'NR==2{printf "%.0f", $7/1024}')
+          if [ "$AVAILABLE_MEM" -lt 2 ]; then
+            echo "WARNING: Low available memory (${AVAILABLE_MEM}GB)"
+            free -h
+          fi
+          
+          echo "System ready for emulator. CPU: ${CPU_USAGE}%, Available Memory: ${AVAILABLE_MEM}GB"
 
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
