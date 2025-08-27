@@ -1,5 +1,5 @@
 {
-  "gh_link": "https://github.com/cy-suite/Rocket-Chat",
+  "gh_link": "https://github.com/cy-suite/rocket-chat-android",
   "commit_version": "develop",
   "download_link": "apps/rocket-chat/codebase/android/app/build/outputs/apk/official/debug/app-official-debug.apk",
   "sdk": "28",
