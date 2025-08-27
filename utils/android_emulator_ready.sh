@@ -9,8 +9,14 @@ TIMEOUT_FOCUS="${TIMEOUT_FOCUS:-60}"  # resumed activity window
 NUDGE_SLEEP="${NUDGE_SLEEP:-1}"       # sleep between UI nudges
 
 # ------------ Readiness gates ------------
+
+# Waits for the core Android OS to finish its boot sequence.
 wait_for_boot() {
   adb wait-for-device
+
+  # 1. Wait for the Android framework to finish booting.
+  #    - 'sys.boot_completed' is the high-level OS flag.
+  #    - 'init.svc.bootanim' ensures the boot animation has stopped.
   echo "Waiting for sys.boot_completed=1 and bootanim stopped..."
   timeout "$TIMEOUT_BOOT" sh -c '
     until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ] && \
@@ -19,6 +25,7 @@ wait_for_boot() {
     done
   '
 
+  # 2. Wait 'system_server' (hosts most core services)
   echo "Waiting for system_server PID..."
   timeout "$TIMEOUT_BOOT" sh -c '
     until adb shell pidof system_server >/dev/null 2>&1; do
@@ -26,21 +33,19 @@ wait_for_boot() {
     done
   '
 
+  # 3. 'SurfaceFlinger' composits different graphical layers -> checks graphics and UI rendering pipeline are running
   echo "Waiting for SurfaceFlinger service..."
   timeout "$TIMEOUT_BOOT" sh -c '
     until adb shell service check SurfaceFlinger | grep -q "found"; do
       sleep 2;
     done
   '
-  # Display stack sanity (non-fatal if grep fails but good signal when present)
-  adb shell "dumpsys display" 2>/dev/null | head -n 60 || true
 }
 
-# This function is very expensive due to the reboot.
-# Only call it if you absolutely need to modify the system partition.
+# Restarts the device with root privileges and disables dm-verity/AVB. Expensive.
 ensure_root_and_disable_verification() {
   echo "Requesting root..."
-  adb root || true
+  adb root
   adb wait-for-device
 
   local sdk
@@ -60,6 +65,7 @@ ensure_root_and_disable_verification() {
   wait_for_boot
 }
 
+# Remounts the system partition as read-write. Requires root.
 remount_system() {
   echo "Remounting /system (overlayfs expected on API 29+)..."
   adb root
@@ -68,8 +74,8 @@ remount_system() {
   adb shell mount | grep -E '(system|vendor|product)'
 }
 
+# Probes critical system services to ensure they are running and responsive.
 wait_core_services() {
-  # Window / Input / Display / Activity / Package / Settings / Accessibility
   echo "Checking WindowManager service..."
   timeout "$TIMEOUT_CORE" sh -c '
     until adb shell service check window | grep -q "found"; do sleep 2; done
@@ -106,6 +112,7 @@ wait_core_services() {
   '
 }
 
+# Performs actions to stabilize the UI and waits for a resumed activity to confirm responsiveness.
 stabilize_ui() {
   echo "Stabilizing UI (wake, unlock, keep awake, go HOME)..."
   adb shell "input keyevent KEYCODE_WAKEUP" 2>/dev/null || true
@@ -113,9 +120,7 @@ stabilize_ui() {
   adb shell "settings put system screen_off_timeout 1800000" 2>/dev/null || true
   adb shell "svc power stayon true" 2>/dev/null || true
   adb shell "input keyevent KEYCODE_HOME" 2>/dev/null || true
-}
 
-ensure_resumed_activity() {
   echo "Waiting for a resumed foreground activity..."
   timeout "$TIMEOUT_FOCUS" sh -c '
     until adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" >/dev/null; do
@@ -124,10 +129,10 @@ ensure_resumed_activity() {
   '
 }
 
+# Waits for the UiAutomator service to be ready to accept commands.
 ensure_uiautomator_ready() {
   echo "Pre-flight: quick PM/Activity poke before UiAutomator..."
   adb shell "cmd package resolve-activity android.intent.action.MAIN >/dev/null 2>&1" 2>/dev/null || true
-  adb shell "service check activity >/dev/null 2>&1" 2>/dev/null || true
 
   echo "Probing UiAutomator (with UI nudges)..."
   local start=$SECONDS
@@ -147,27 +152,28 @@ ensure_uiautomator_ready() {
       adb shell dumpsys accessibility || true
       return 1
     fi
-    echo "UiAutomator not ready (attempt $attempt) – nudging UI and retrying..."
-    adb shell "input keyevent KEYCODE_WAKEUP" 2>/dev/null || true
-    adb shell "wm dismiss-keyguard" 2>/dev/null || true
-    adb shell "svc power stayon true" 2>/dev/null || true
-    adb shell "input keyevent KEYCODE_HOME" 2>/dev/null || true
+    stabilize_ui
     sleep "$NUDGE_SLEEP"
   done
 }
 
-# ------------ Main ------------
 main() {
   echo "=== Running android_emulator_ready.sh ==="
 
+  # 1. Wait for the Android framework to finish booting.
   wait_for_boot
+
+  # 2. Ensure root and disable verification, then remount the system partition as read-write.
   ensure_root_and_disable_verification
   remount_system
+  
+  # 3. Wait for core services and UI to be ready.
   wait_core_services
   stabilize_ui
-  ensure_resumed_activity
-  wait_core_services  # confirm core services are still running after UI changes
   ensure_uiautomator_ready
+
+  # 4. Confirm core services are still running after UI changes
+  wait_core_services
 
   echo "Device is READY for UI tests."
   echo "=== android_emulator_ready.sh completed ==="
