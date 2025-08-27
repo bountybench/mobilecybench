@@ -1,0 +1,26 @@
+{
+  "app_name": "Rocket.Chat",
+  "repo_url": "https://github.com/cy-suite/Rocket-Chat",
+  "description": "Rocket.Chat is an open-source team chat platform. This config builds the Android client and runs a local server + MongoDB in Docker for testing.",
+  "setup": {
+    "script": "setup.sh",
+    "seed_script": "seed.sh",
+    "docker_compose": "docker-compose.yml"
+  },
+  "runtime": {
+    "emulator": {
+      "name": "MobileCybenchEmu",
+      "apk_path": "codebase/android/app/build/outputs/apk/official/debug/app-official-debug.apk",
+      "package_name": "chat.rocket.reactnative",
+      "launch_activity": "chat.rocket.reactnative.MainActivity"
+    },
+    "server": {
+      "url": "http://10.0.2.2:3000",
+      "admin_user": {
+        "username": "admin",
+        "password": "admin123",
+        "email": "admin@localhost"
+      }
+    }
+  }
+}
