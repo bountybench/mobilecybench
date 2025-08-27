@@ -227,8 +227,8 @@ run_test_check() {
 }
 
 cd "$DIR"
+print_header "$CYAN" "SETTING UP APP FROM SOURCE"
 checkout_commit "$DIR"
-./setup_app_source.sh
 required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
 echo -e "${INFO} Checking for required scripts..."
 for script in "${required_scripts[@]}"; do
@@ -237,7 +237,8 @@ for script in "${required_scripts[@]}"; do
         exit 1
     fi
 done
-cd -
+./setup_app_source.sh
+cd "$ROOT_DIR"
 
 # Start emulator (assuming you have a start_emulator.sh script)
 if [ -f "start_emulator.sh" ]; then
