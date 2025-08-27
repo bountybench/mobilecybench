@@ -1,0 +1,9 @@
+{
+  "commit_version": "latest",
+  "sdk": "34",
+  "java": "17",
+  "emulator_server": "",
+  "app_server": "",
+  "username": "",
+  "password": ""
+}
