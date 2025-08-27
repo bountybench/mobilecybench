@@ -92,6 +92,16 @@ wait_core_services() {
     until adb shell service check activity | grep -q "found"; do sleep 2; done
   '
 
+  log "Probing Window service..."
+  timeout "$TIMEOUT_CORE" sh -c '
+    until adb shell service check window | grep -q "found"; do sleep 2; done
+  '
+
+  log "Probing Input service..."
+  timeout "$TIMEOUT_CORE" sh -c '
+    until adb shell service check input | grep -q "found"; do sleep 2; done
+  '
+
   log "Probing PackageManager responsiveness..."
   timeout "$TIMEOUT_CORE" sh -c '
     until adb shell cmd package list packages >/dev/null 2>&1; do sleep 2; done
