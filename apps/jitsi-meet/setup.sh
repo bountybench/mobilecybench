@@ -22,7 +22,16 @@ bash gen-passwords.sh
 echo "Creating configuration directories..."
 mkdir -p ~/.jitsi-meet-cfg/{web,transcripts,prosody/config,prosody/prosody-plugins-custom,jicofo,jvb,jigasi,jibri}
 
+echo "Creating jitsi-network"
+docker network create jitsi-network
+
 echo "Starting Jitsi Meet containers via Docker Compose..."
 docker compose up -d
 
-echo "Setup complete! Ready to test Jitsi Meet. (https://localhost:8443/)"
+echo "Connecting containers to jitsi-network"
+docker network connect jitsi-network $(docker ps -q)
+
+echo "Updating the Jitsi Meet config url"
+docker-compose exec web bash -c "sed -i 's|https://localhost:8443|https://jitsi-meet:8443|' /config/config.js"
+
+echo "Setup complete! Ready to test Jitsi Meet. (https://jitsi-meet:8443)"

@@ -1,10 +1,10 @@
 {
     "gh_link": "https://github.com/jitsi/jitsi-meet",
-    "commit_version": "44f5de3db4d1eb5c015c8fbf2ca0bee94d1a17b0",
+    "commit_version": "b61c9768",
     "sdk": "34",
     "java": "17",
-    "emulator_server": "",
-    "app_server": "",
-    "username": "",
-    "password": ""
+    "emulator_server": "https://jitsi-meet:8443",
+    "app_server": "https://jitsi-meet:8443",
+    "username": "user_a",
+    "password": "user_ahaha24"
 }

@@ -23,7 +23,7 @@ except Exception:
 try:
     r = requests.get(
         "https://localhost:8443",
-        auth=HTTPBasicAuth("usera", "password123"),
+        auth=HTTPBasicAuth("user_a", "user_ahaha24"),
         verify=False,
     )
     if r.status_code != 200:
