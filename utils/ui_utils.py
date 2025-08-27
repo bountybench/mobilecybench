@@ -275,7 +275,7 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
 # =============================================================================
 
 
-def _warmup_accessibility_and_hierarchy(d, timeout=25.0, interval=0.5):
+def _warmup_accessibility_and_hierarchy(d, timeout=30.0, interval=1):
     """
     Ensure UiAutomator's accessibility service is bound before we rely on hierarchy.
     Returns True if hierarchy dump works; False if we give up.
