@@ -1,9 +1,19 @@
 import subprocess
 import sys
 
+
 def launch_app():
     result = subprocess.run(
-        ["adb", "shell", "monkey", "-p", "chat.rocket.reactnative", "-c", "android.intent.category.LAUNCHER", "1"],
+        [
+            "adb",
+            "shell",
+            "monkey",
+            "-p",
+            "chat.rocket.reactnative",
+            "-c",
+            "android.intent.category.LAUNCHER",
+            "1",
+        ],
         capture_output=True,
         text=True,
     )
@@ -14,6 +24,7 @@ def launch_app():
     else:
         print("Could not launch app", file=sys.stderr)
         return False
+
 
 if __name__ == "__main__":
     app_launch = launch_app()
