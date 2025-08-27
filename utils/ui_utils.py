@@ -313,25 +313,34 @@ def _warmup_accessibility_and_hierarchy(d, timeout=30.0, interval=1):
 
     # Gentle restart as a last resort
     logger.debug("Warm-up timed out. Attempting to restart UiAutomator service...")
-    try:
-        ua = getattr(d, "uiautomator", None)
-        if ua is not None:
+    ua = getattr(d, "uiautomator", None)
+    if ua is None:
+        logger.warning("Could not get uiautomator object for service restart.")
+        return False
+
+    for i in range(3):  # Try to restart up to 3 times
+        logger.debug("UiAutomator restart attempt #%d...", i + 1)
+        try:
             try:
                 ua.stop()
             except Exception:
                 pass
-            time.sleep(0.5)
+            time.sleep(1.0)  # Give it a moment to die
             try:
                 ua.start()
             except Exception:
                 pass
-            time.sleep(1.0)
-            _ = d.dump_hierarchy()
-            logger.info("UiAutomator ready after service restart.")
-            return True
-    except Exception as e:
-        logger.warning("Final warm-up attempt after restart failed: %s", e)
+            time.sleep(2.0)  # Give it a moment to start
 
+            # Verify with a dump
+            _ = d.dump_hierarchy()
+            logger.info("UiAutomator ready after service restart (attempt #%d).", i + 1)
+            return True
+        except Exception as e:
+            logger.warning("Restart attempt #%d failed: %s", i + 1, e)
+            time.sleep(2.0)  # wait before next attempt
+
+    logger.error("All attempts to restart UiAutomator service failed.")
     return False
 
 
