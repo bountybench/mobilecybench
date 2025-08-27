@@ -9,7 +9,7 @@ TIMEOUT_FOCUS="${TIMEOUT_FOCUS:-90}"  # resumed activity window
 NUDGE_SLEEP="${NUDGE_SLEEP:-1}"       # sleep between UI nudges
 
 # ------------ Helpers ------------
-log() { printf '[%(%H:%M:%S)T] %s\n' -1 "$*"; }
+log() { echo "$*"; }
 need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing dependency: $1"; exit 127; }; }
 adb_sh() { adb shell "$@" 2>/dev/null; }  # quiet shell helper
 
@@ -64,10 +64,10 @@ ensure_root_and_disable_verification() {
 
 remount_system() {
   log "Remounting /system (overlayfs expected on API 29+)..."
-  adb root || true
+  adb root
   adb wait-for-device
-  adb remount || true
-  adb shell mount | grep -E '(system|vendor|product)' || true
+  adb remount
+  adb shell mount | grep -E '(system|vendor|product)'
 }
 
 wait_core_services() {
@@ -171,10 +171,7 @@ ensure_uiautomator_ready() {
 
 # ------------ Main ------------
 main() {
-  need adb
-  need timeout
-
-  echo "=== Running android_emulator_ready.sh (strong gating) ==="
+  echo "=== Running android_emulator_ready.sh ==="
 
   wait_for_boot
   ensure_root_and_disable_verification

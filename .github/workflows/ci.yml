@@ -428,6 +428,9 @@ jobs:
           chmod +x test_checks.sh
 
       - name: Create build source script
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
         run: |
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
 
