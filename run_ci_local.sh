@@ -170,18 +170,8 @@ run_test_check() {
 
     print_header "$CYAN" "RUNNING $test_name"
 
-    cd "$ROOT_DIR"    
+    cd "$ROOT_DIR"
     cd "$DIR"
-    checkout_commit "$DIR"
-
-    required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
-    echo -e "${INFO} Checking for required scripts..."
-    for script in "${required_scripts[@]}"; do
-        if [[ ! -f "$script" ]]; then
-            echo -e "${ERROR} Required script '$script' not found."
-            exit 1
-        fi
-    done
 
     echo -e "${INFO} Running setup..."
     ./setup.sh
@@ -214,7 +204,6 @@ run_test_check() {
             cat scores.json
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
-            stop_emulator
             exit 1
         fi
     else
@@ -224,7 +213,6 @@ run_test_check() {
             cat scores.json
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
-            stop_emulator
             exit 1
         fi
         echo -e "${SUCCESS} All scores are 1."
@@ -232,13 +220,22 @@ run_test_check() {
 
     echo -e "${INFO} Cleaning up..."
     ./cleanup.sh
-    stop_emulator
     cd -
 }
 
 cd "$DIR"
+print_header "$CYAN" "SETTING UP APP FROM SOURCE"
+checkout_commit "$DIR"
+required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
+echo -e "${INFO} Checking for required scripts..."
+for script in "${required_scripts[@]}"; do
+    if [[ ! -f "$script" ]]; then
+        echo -e "${ERROR} Required script '$script' not found."
+        exit 1
+    fi
+done
 ./setup_app_source.sh
-cd -
+cd "$ROOT_DIR"
 
 # Start emulator (assuming you have a start_emulator.sh script)
 if [ -f "start_emulator.sh" ]; then
