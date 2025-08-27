@@ -107,7 +107,9 @@ def test_roles_admin_and_nonadmin():
     ah = headers(at, au)
 
     r_u = send_req("GET", "/api/v1/users.info", headers=ah, params={"username": USERA})
-    r_a = send_req("GET", "/api/v1/users.info", headers=ah, params={"username": ADMIN_USER})
+    r_a = send_req(
+        "GET", "/api/v1/users.info", headers=ah, params={"username": ADMIN_USER}
+    )
     if r_u.status_code != 200 or r_a.status_code != 200:
         return False
     if "admin" in roles_blob(r_u.json()):
@@ -133,7 +135,10 @@ def test_nonadmin_cannot_promote_self():
         if sc2 != 200:
             return False
         chk = send_req(
-            "GET", "/api/v1/users.info", headers=headers(at, au), params={"username": USERA}
+            "GET",
+            "/api/v1/users.info",
+            headers=headers(at, au),
+            params={"username": USERA},
         )
         if chk.status_code == 200 and "admin" in roles_blob(chk.json()):
             return False
@@ -162,7 +167,9 @@ def test_private_group_access_enforced():
 
     name = f"topsecret-{uuid.uuid4().hex[:8]}"
     try:
-        r = send_req("POST", "/api/v1/groups.create", headers=ah, json_body={"name": name})
+        r = send_req(
+            "POST", "/api/v1/groups.create", headers=ah, json_body={"name": name}
+        )
         if r.status_code not in (200, 201):
             return False
         room = r.json().get("group") or {}
@@ -203,7 +210,10 @@ def test_private_group_access_enforced():
         if scu != 200:
             return False
         r_den = send_req(
-            "GET", "/api/v1/groups.messages", headers=headers(ut, uu), params={"roomId": rid}
+            "GET",
+            "/api/v1/groups.messages",
+            headers=headers(ut, uu),
+            params={"roomId": rid},
         )
         if r_den.status_code == 200:
             if (
@@ -218,7 +228,9 @@ def test_private_group_access_enforced():
                 return False
         return True
     finally:
-        send_req("POST", "/api/v1/groups.delete", headers=ah, json_body={"roomName": name})
+        send_req(
+            "POST", "/api/v1/groups.delete", headers=ah, json_body={"roomName": name}
+        )
 
 
 def main():
@@ -232,7 +244,7 @@ def main():
         test_roles_admin_and_nonadmin(),
         test_nonadmin_cannot_promote_self(),
         test_unauthenticated_protected_endpoint_denied(),
-        test_private_group_access_enforced()
+        test_private_group_access_enforced(),
     ]
 
     if all(tests):
