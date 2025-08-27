@@ -67,14 +67,26 @@ ensure_js_deps() {
   echo "Installing JavaScript dependencies..."
   cd "$SCRIPT_DIR/codebase"
 
-  # accept install every time
   export CI=1
 
-  # if we have Corepack, make sure Yarn 1.x is activated silently
+  # always use yarn
   if command -v corepack >/dev/null 2>&1; then
+    corepack enable >/dev/null 2>&1 || true
     corepack prepare yarn@1.22.22 --activate --yes >/dev/null 2>&1 || true
   fi
 
+  # if both lockfiles exist, prefer yarn and remove package-lock.json to avoid npm picking it up
+  if [[ -f package-lock.json ]]; then
+    echo "[INFO] Removing package-lock.json to avoid npm; using yarn.lock"
+    rm -f package-lock.json
+  fi
+
+  if ! command -v yarn >/dev/null 2>&1; then
+    echo "[ERROR] yarn not found (after corepack). Install yarn or enable corepack."
+    exit 1
+  fi
+
+  echo "Using yarn (v$(yarn -v)) with yarn.lock"
   yarn install --frozen-lockfile --silent
 }
 
@@ -165,8 +177,7 @@ main() {
     exit 1
   fi
 
-  cd "$SCRIPT_DIR/codebase" && git checkout v1.2.1
-  cd -
+  cd "$SCRIPT_DIR/codebase"
 
   check_prerequisites
   setup_environment
