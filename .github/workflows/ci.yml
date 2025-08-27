@@ -137,7 +137,7 @@ jobs:
     needs: setup
     if: needs.setup.outputs.should_exit != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 55
     strategy:
       matrix:
         test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
@@ -162,6 +162,9 @@ jobs:
           fetch-depth: 0
           submodules: false
           token: ${{ secrets.GH_TOKEN }}
+
+      - name: Disable Git ownership check
+        run: git config --global --add safe.directory '*'
 
       - name: Create shared functions
         run: |
@@ -290,7 +293,8 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: "${{ needs.setup.outputs.java }}"
-      
+          cache: gradle
+            
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
         with:
@@ -322,16 +326,17 @@ jobs:
           set -e
           source /tmp/shared_functions.sh
           check_server_ready
+          adb devices
           EOF
           
           echo "dir=\"$modified_dir\"" >> test_checks.sh
           echo "test_type=\"${{ matrix.test_type }}\"" >> test_checks.sh
-          echo 'cd "$dir"' >> test_checks.sh
 
           case "${{ matrix.test_type }}" in
             "baseline")
               cat <<'EOF' >> test_checks.sh
-          
+
+          cd "$dir"
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
@@ -352,11 +357,12 @@ jobs:
               ;;
             "vuln_scenario_0")
               cat <<'EOF' >> test_checks.sh
-
+          
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           
+          cd "$dir"
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
@@ -390,6 +396,7 @@ jobs:
           export ANDROID_HOME
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           
+          cd "$dir"
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
@@ -420,27 +427,24 @@ jobs:
           
           chmod +x test_checks.sh
 
-      - name: Create container script to build app from source
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-          GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
+      - name: Create build source script
         run: |
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
-          cat << 'EOF' > container_script.sh
+
+          cat << 'EOF' > build_source.sh
           #!/bin/bash
           set -e
           git config --global --add safe.directory '*'
-
+          
           source /tmp/shared_functions.sh
           check_server_ready
           EOF
-
-          echo "dir=\"$modified_dir\"" >> container_script.sh
-          cat <<'EOF' >> container_script.sh
+          echo "dir=\"$modified_dir\"" >> build_source.sh
+          cat <<'EOF' >> build_source.sh
           cd "$dir"
           checkout_commit "$dir"
-          
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "build_app.sh" "setup_app.sh")
+
+          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
           echo "Checking for required scripts..."
           for script in "${required_scripts[@]}"; do
             if [[ ! -f "$script" ]]; then
@@ -449,19 +453,17 @@ jobs:
             fi
           done
 
-          echo "Running build_app.sh..."
-          ./build_app.sh
-
+          echo "Setting up app from source..."
+          ./setup_app_source.sh
           EOF
-
-          chmod +x container_script.sh
-          ./container_script.sh
-
+          chmod +x build_source.sh
+          free -h
+          ./build_source.sh
+                
       - name: Stabilize runner after build
         run: |
           echo "Memory usage immediately after build:"
           free -h
-
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
           cd "$modified_dir" || true
           
@@ -469,50 +471,69 @@ jobs:
           pkill -f GradleDaemon || true
           pkill -f kotlin.daemon.KotlinCompileDaemon || true
           jps -v | grep -E 'GradleDaemon|Kotlin' || true
-
           echo "Memory usage after stopping Gradle daemons:"
           free -h
-
           set -euo pipefail
-
           THRESHOLD=4096 # 4GB
           MAX_TRIES=24  # 2 minutes at 5s interval
           TRIES=0
           INTERVAL=5
-
           echo "Waiting for available memory to exceed ${THRESHOLD}MB..."
-
           while ((TRIES < MAX_TRIES)); do
             AVAILABLE_MEM=$(awk '/MemAvailable/ { printf "%d", $2/1024 }' /proc/meminfo)
             echo "Current available memory on attempt ${TRIES}/${MAX_TRIES}: ${AVAILABLE_MEM}MB"
-
             if (( AVAILABLE_MEM > THRESHOLD )); then
               echo "Memory threshold of ${THRESHOLD}MB crossed. Continuing..."
               break
             fi
-
             echo "Retrying in ${INTERVAL} seconds..."
             (( ++TRIES ))
             sleep "${INTERVAL}"
           done
-
           if (( TRIES >= MAX_TRIES )); then
             echo "Timeout waiting for memory to exceed ${THRESHOLD}MB"; 
             exit 1
           fi
-
           echo "Final memory usage:"
           free -h
 
+      - name: Pre-emulator Resource Check
+        run: |
+          echo "=== Pre-Emulator Resource Check ==="
+          
+          # Check if CPU usage is acceptable
+          CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//' | cut -d'.' -f1)
+          if [ "$CPU_USAGE" -gt 25 ]; then
+            echo "WARNING: CPU usage too high ($CPU_USAGE%). Emulator may hang."
+            echo "Top processes:"
+            ps aux --sort=-%cpu | head -10
+            
+            # Try to kill more processes
+            sudo pkill -f chrome || true
+            sudo pkill -f firefox || true
+            sleep 10
+          fi
+          
+          # Check memory
+          AVAILABLE_MEM=$(free -m | awk 'NR==2{printf "%.0f", $7/1024}')
+          if [ "$AVAILABLE_MEM" -lt 2 ]; then
+            echo "WARNING: Low available memory (${AVAILABLE_MEM}GB)"
+            free -h
+          fi
+          
+          echo "System ready for emulator. CPU: ${CPU_USAGE}%, Available Memory: ${AVAILABLE_MEM}GB"
+
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
           arch: x86_64
-          target: ${{ needs.setup.outputs.system_image }}
+          target: ${{ needs.setup.outputs.system_image }} 
           profile: pixel_2
-          ram-size: 2048
+          ram-size: 2048    
           force-avd-creation: true
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none -writable-system
           disable-animations: true
@@ -522,6 +543,8 @@ jobs:
 
       - name: Run emulator test with action (baseline and vuln_scenario_1)
         if: matrix.test_type != 'vuln_scenario_0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
