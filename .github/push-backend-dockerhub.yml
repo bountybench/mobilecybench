@@ -27,7 +27,6 @@ jobs:
           tags: |
             cybench/mobilecybench-backend:latest
             cybench/mobilecybench-backend:${{ github.sha }}
-            cybench/mobilecybench-backend:pr-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
   test:
@@ -37,4 +36,4 @@ jobs:
       - uses: actions/checkout@v4
       - run: docker system prune -af || true
       - run: docker image prune -af || true
-      - run: docker pull cybench/mobilecybench-backend:pr-${{ github.sha }}
+      - run: docker pull cybench/mobilecybench-backend:${{ github.sha }}
