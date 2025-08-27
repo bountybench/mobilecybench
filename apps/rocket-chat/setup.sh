@@ -75,16 +75,7 @@ ensure_js_deps() {
     corepack prepare yarn@1.22.22 --activate --yes >/dev/null 2>&1 || true
   fi
 
-  if [[ -f yarn.lock ]]; then
-    echo "Using yarn (lockfile detected)"
-    yarn install --frozen-lockfile --silent
-  elif [[ -f package-lock.json ]]; then
-    echo "Using npm (package-lock detected)"
-    npm ci --no-audit --fund=false
-  else
-    echo "[WARN] No lockfile found, installing anyway"
-    npm install --no-audit --fund=false
-  fi
+  yarn install --frozen-lockfile --silent
 }
 
 get_aapt() {
