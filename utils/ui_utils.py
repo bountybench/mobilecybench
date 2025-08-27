@@ -221,7 +221,6 @@ def wait_for_accessibility_and_hierarchy(d, timeout=30.0, interval=1):
     except Exception:
         pass
 
-    did_healthcheck = False
     while time.time() < deadline:
         try:
             # A successful dump means the service is up
@@ -234,12 +233,15 @@ def wait_for_accessibility_and_hierarchy(d, timeout=30.0, interval=1):
             # "AccessibilityServiceInfo.flags on a null object"
             if "AccessibilityServiceInfo.flags" in msg or "NullPointerException" in msg:
                 logger.debug("Hierarchy dump failed (race condition). Retrying…")
-                if not did_healthcheck:
-                    try:
-                        d.healthcheck()
-                        did_healthcheck = True
-                    except Exception:
-                        pass
+                try:
+                    d.healthcheck()
+                    ua = getattr(d, "uiautomator", None)
+                    ua.stop()
+                    time.sleep(1.0)  # Give it a moment to die
+                    ua.start()
+                    time.sleep(2.0)  # Give it a moment to start
+                except Exception:
+                    pass
             else:
                 # Other failures should still retry briefly, but log at debug.
                 logger.debug("Hierarchy dump error during warm-up: %s", e)
