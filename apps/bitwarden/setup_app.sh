@@ -7,38 +7,43 @@ CACHED_APK="$BITWARDEN_DIR/bitwarden.apk"
 BUILD_APK="$BITWARDEN_DIR/codebase/app/build/outputs/apk/fdroid/debug/com.x8bit.bitwarden.dev-fdroid.apk"
 
 check_emulator_ready() {
-    # Check if emulator is running
-    if ! adb devices | grep -w "device" | grep -v "List" >/dev/null; then
-        echo "[ERROR] No Android emulator found. Please start the emulator first."
-        exit 1
-    else
-        echo "[INFO] Emulator is running."
-    fi
-    
-    echo "[INFO] Ensuring emulator is ready before install..."
-    adb wait-for-device
-    
-    # Check for boot completion
-    for i in $(seq 1 60); do
-        boot=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-        if [ "$boot" = "1" ]; then
-            echo "[INFO] Emulator boot completed."
-            break
-        fi
-        sleep 1
-    done
-
-    # Check Package Manager is responsive
-    for i in $(seq 1 30); do
-        if adb shell cmd package list packages >/dev/null 2>&1; then
-            echo "[INFO] Emulator package manager is responsive."
-            return 0
-        fi
-        sleep 1
-    done
-
-    echo "[ERROR] Emulator did not become ready." >&2
+  # Device visible to ADB?
+  if ! adb devices | grep -w "device" | grep -v "List" >/dev/null; then
+    echo "[ERROR] No Android emulator found. Please start the emulator first."
     exit 1
+  else
+    echo "[INFO] Emulator is running."
+  fi
+
+  echo "[INFO] Ensuring emulator is fully ready before install..."
+  adb wait-for-device
+
+  # 1) Boot complete + bootanim stopped
+  timeout 300 sh -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ] && \
+                           [ "$(adb shell getprop init.svc.bootanim | tr -d "\r")" = "stopped" ]; do sleep 2; done'
+
+  # 2) system_server and SurfaceFlinger alive
+  timeout 120 sh -c 'until adb shell pidof system_server >/dev/null 2>&1; do sleep 2; done'
+  timeout 120 sh -c 'until adb shell service check SurfaceFlinger | grep -q "found"; do sleep 2; done'
+
+  # 3) core binder services responsive
+  timeout 120 sh -c 'until adb shell service check activity       | grep -q "found"; do sleep 2; done'
+  timeout 120 sh -c 'until adb shell service check window         | grep -q "found"; do sleep 2; done'
+  timeout 120 sh -c 'until adb shell service check input          | grep -q "found"; do sleep 2; done'
+  timeout 120 sh -c 'until adb shell cmd package list packages >/dev/null 2>&1; do sleep 2; done'
+  timeout 120 sh -c 'until adb shell settings list global      >/dev/null 2>&1; do sleep 2; done'
+  timeout 120 sh -c 'until adb shell service check accessibility | grep -q "found"; do sleep 2; done'
+
+  # 4) UI ready: wake, unlock, keep awake, HOME, verify resumed window
+  adb shell input keyevent KEYCODE_WAKEUP || true
+  adb shell wm dismiss-keyguard          || true
+  adb shell settings put system screen_off_timeout 1800000 || true
+  adb shell svc power stayon true || true
+  adb shell input keyevent KEYCODE_HOME || true
+  timeout 90 sh -c 'until adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" >/dev/null; do sleep 1; done'
+
+  # Optional visibility
+  adb shell dumpsys display | head -n 40 || true
 }
 
 # Install on emulator
@@ -98,25 +103,22 @@ launch_bitwarden() {
     return 1
 }
 
-# Main function
 main() {
-    echo "=== RUNNING setup_app.sh ==="
+  echo "=== RUNNING setup_app.sh ==="
+  check_emulator_ready
 
-    check_emulator_ready
+  echo "[INFO] Checking if Bitwarden app is installed on the emulator..."
+  if adb shell pm list packages | grep -q "$BITWARDEN_PKG"; then
+    echo "[INFO] Bitwarden app is already installed on the emulator."
+  else
+    echo "[INFO] Bitwarden app not found."
+    install_bitwarden
+  fi
 
-    echo "[INFO] Checking if Bitwarden app is installed on the emulator..."
-    if adb shell pm list packages | grep -q "$BITWARDEN_PKG"; then
-        echo "[INFO] Bitwarden app is already installed on the emulator."
-    else
-        echo "[INFO] Bitwarden app not found."
-        install_bitwarden
-    fi
-    
-    launch_bitwarden
-    
-    echo ""
-    echo === FINISHED setup_app.sh ===
+  launch_bitwarden
+  
+  echo ""
+  echo "=== FINISHED setup_app.sh ==="
 }
 
-# Run main function
-main 
+main

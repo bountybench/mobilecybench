@@ -2,17 +2,15 @@
 set -euo pipefail
 
 # ------------ Configurable timeouts (seconds) ------------
-TIMEOUT_BOOT="${TIMEOUT_BOOT:-300}"   # full boot + bootanim + core signals
-TIMEOUT_CORE="${TIMEOUT_CORE:-120}"   # core service responsiveness
-TIMEOUT_UIA="${TIMEOUT_UIA:-120}"     # uiautomator readiness
-TIMEOUT_FOCUS="${TIMEOUT_FOCUS:-60}"  # resumed activity window
+TIMEOUT_BOOT="${TIMEOUT_BOOT:-360}"   # full boot + bootanim + compositor + core signals
+TIMEOUT_CORE="${TIMEOUT_CORE:-150}"   # core service responsiveness
+TIMEOUT_UIA="${TIMEOUT_UIA:-150}"     # uiautomator readiness
+TIMEOUT_FOCUS="${TIMEOUT_FOCUS:-90}"  # resumed activity window
 NUDGE_SLEEP="${NUDGE_SLEEP:-1}"       # sleep between UI nudges
 
 # ------------ Helpers ------------
 log() { printf '[%(%H:%M:%S)T] %s\n' -1 "$*"; }
-
 need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing dependency: $1"; exit 127; }; }
-
 adb_sh() { adb shell "$@" 2>/dev/null; }  # quiet shell helper
 
 # ------------ Readiness gates ------------
@@ -37,6 +35,9 @@ wait_for_boot() {
   timeout "$TIMEOUT_BOOT" sh -c '
     until adb shell service check SurfaceFlinger | grep -q "found"; do sleep 2; done
   '
+
+  # Display stack sanity (non-fatal if grep fails but good signal when present)
+  adb_sh dumpsys display | head -n 60 || true
 }
 
 ensure_root_and_disable_verification() {
@@ -70,14 +71,30 @@ remount_system() {
 }
 
 wait_core_services() {
-  log "Probing PackageManager responsiveness..."
+  # Window / Input / Display / Activity / Package / Settings / Accessibility
+  log "Checking WindowManager service..."
   timeout "$TIMEOUT_CORE" sh -c '
-    until adb shell cmd package list packages >/dev/null 2>&1; do sleep 2; done
+    until adb shell service check window | grep -q "found"; do sleep 2; done
+  '
+
+  log "Checking InputManager service..."
+  timeout "$TIMEOUT_CORE" sh -c '
+    until adb shell service check input | grep -q "found"; do sleep 2; done
+  '
+
+  log "Checking Display service..."
+  timeout "$TIMEOUT_CORE" sh -c '
+    until adb shell service check display | grep -q "found"; do sleep 2; done
   '
 
   log "Probing Activity service..."
   timeout "$TIMEOUT_CORE" sh -c '
     until adb shell service check activity | grep -q "found"; do sleep 2; done
+  '
+
+  log "Probing PackageManager responsiveness..."
+  timeout "$TIMEOUT_CORE" sh -c '
+    until adb shell cmd package list packages >/dev/null 2>&1; do sleep 2; done
   '
 
   log "Probing Settings provider..."
@@ -111,6 +128,10 @@ ensure_resumed_activity() {
 }
 
 ensure_uiautomator_ready() {
+  log "Pre-flight: quick PM/Activity poke before UiAutomator..."
+  adb_sh "cmd package resolve-activity android.intent.action.MAIN >/dev/null 2>&1" || true
+  adb_sh "service check activity >/dev/null 2>&1" || true
+
   log "Probing UiAutomator (with UI nudges)..."
   local start=$SECONDS
   local attempt=0
@@ -143,7 +164,7 @@ main() {
   need adb
   need timeout
 
-  echo "=== Running android_emulator_ready.sh ==="
+  echo "=== Running android_emulator_ready.sh (strong gating) ==="
 
   wait_for_boot
   ensure_root_and_disable_verification
