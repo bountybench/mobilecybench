@@ -79,8 +79,6 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
 
         try:
             device = u2.connect()
-            # Touch the device to ensure the connection is usable
-            _ = device.device_info  # may raise if not connected
             logger.info("Connected to device.")
 
             # Configure device defaults for stability
@@ -461,11 +459,10 @@ def _wait_for_element(d, element, timeout=180):
     start_time = time.time()
     relaunch_state = {
         "attempts": 0,
-        "max_attempts": int(os.getenv("UI_MAX_RELAUNCH_ATTEMPTS", "3")),
-        "cooldown_seconds": int(os.getenv("UI_RELAUNCH_COOLDOWN_SECONDS", "10")),
+        "max_attempts": 3,
+        "cooldown_seconds": 10,
         "last_attempt_time": 0.0,
     }
-    next_heartbeat_time = start_time  # immediate first heartbeat
     # Best-effort selector string for logs
     try:
         selector_str = str(getattr(element, "selector", element))
@@ -485,17 +482,6 @@ def _wait_for_element(d, element, timeout=180):
             current_activity = app_state.get("activity", "")
 
             now = time.time()
-            if now >= next_heartbeat_time:
-                elapsed = now - start_time
-                logger.debug(
-                    "Still waiting for %s (elapsed %.1fs / %.0fs). Current screen: %s/%s",
-                    selector_str,
-                    elapsed,
-                    timeout,
-                    current_pkg or "unknown",
-                    current_activity or "unknown",
-                )
-                next_heartbeat_time = now + 15.0
 
             target_pkg = os.getenv("UI_TARGET_PACKAGE")
 
