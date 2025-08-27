@@ -318,6 +318,119 @@ def _warmup_accessibility_and_hierarchy(d, timeout=25.0, interval=0.5):
     return False
 
 
+# =============================================================================
+# PRIVATE LAUNCHER/RELAUNCH HELPERS
+# =============================================================================
+
+
+def _is_launcher_package(pkg: str) -> bool:
+    if not pkg:
+        return False
+    logger.debug("Checking if %s is a launcher package", pkg)
+
+    # Known launchers and heuristics
+    launcher_pkgs = {
+        "com.google.android.apps.nexuslauncher",
+        "com.android.launcher",
+        "com.android.launcher3",
+        "com.google.android.googlequicksearchbox",
+    }
+    if pkg in launcher_pkgs:
+        return True
+    normalized = pkg.lower()
+    # Heuristic: most home apps contain "launcher" or "nexus"
+    return "launcher" in normalized or "nexus" in normalized
+
+
+def _is_launcher_activity(activity: str) -> bool:
+    if not activity:
+        return False
+    a = activity.lower()
+    return "launcher" in a or "home" in a
+
+
+def _try_relaunch_target_app(d) -> bool:
+    target_pkg = os.getenv("UI_TARGET_PACKAGE")
+    if not target_pkg:
+        logger.debug("Skipping relaunch: UI_TARGET_PACKAGE not set.")
+        return False
+    try:
+        logger.info("Home/launcher detected. Relaunching target app: %s", target_pkg)
+        d.app_start(target_pkg, wait=True, stop=False)
+        if d.app_wait(target_pkg, front=True, timeout=10):
+            logger.info("Target app %s is front after relaunch attempt.", target_pkg)
+            wait_for_ui_stable(d, timeout=5)
+            return True
+        else:
+            logger.warning(
+                "Relaunch initiated but app is not front yet: %s", target_pkg
+            )
+    except Exception as e:
+        logger.debug("Relaunch attempt raised: %s", e)
+    return False
+
+
+def _maybe_relaunch_from_launcher(
+    d,
+    current_pkg: str,
+    current_activity: str,
+    relaunch_state: dict,
+    now: float,
+) -> None:
+    """Detect launcher state and attempt to relaunch with cooldown/limits.
+
+    relaunch_state keys:
+      - attempts: int
+      - max_attempts: int
+      - cooldown_seconds: int
+      - last_attempt_time: float
+      - gave_up_logged: bool (optional)
+    """
+    try:
+        in_launcher = _is_launcher_package(current_pkg) or _is_launcher_activity(
+            current_activity
+        )
+        if not in_launcher:
+            return
+
+        attempts = relaunch_state.get("attempts", 0)
+        max_attempts = relaunch_state.get("max_attempts", 3)
+        cooldown = relaunch_state.get("cooldown_seconds", 10)
+        last_time = relaunch_state.get("last_attempt_time", 0.0)
+
+        if attempts >= max_attempts:
+            if not relaunch_state.get("gave_up_logged", False):
+                logger.error(
+                    "Reached max relaunch attempts (%s). Remaining wait will continue without relaunch.",
+                    max_attempts,
+                )
+                relaunch_state["gave_up_logged"] = True
+            return
+
+        if (now - last_time) < cooldown:
+            return
+
+        logger.warning(
+            "Launcher detected (%s/%s). Attempting relaunch #%s of %s...",
+            current_pkg,
+            current_activity,
+            attempts + 1,
+            max_attempts,
+        )
+        if _try_relaunch_target_app(d):
+            relaunch_state["attempts"] = attempts + 1
+            relaunch_state["last_attempt_time"] = now
+        else:
+            relaunch_state["attempts"] = attempts + 1
+            relaunch_state["last_attempt_time"] = now
+            logger.warning(
+                "Relaunch attempt #%s did not bring app to front yet.",
+                relaunch_state["attempts"],
+            )
+    except Exception as e:
+        logger.debug("Error during launcher detection/relaunch: %s", e)
+
+
 def _wait_for_element(d, element, timeout=180):
     """
     Wait for an element to exist while continuously handling potential ANR dialogs.
@@ -331,11 +444,12 @@ def _wait_for_element(d, element, timeout=180):
         True if the element exists on UI hierarchy within the timeout, False otherwise
     """
     start_time = time.time()
-    relaunch_attempted = False
-    relaunch_attempts = 0
-    max_relaunch_attempts = int(os.getenv("UI_MAX_RELAUNCH_ATTEMPTS", "3"))
-    relaunch_cooldown_seconds = int(os.getenv("UI_RELAUNCH_COOLDOWN_SECONDS", "10"))
-    last_relaunch_time = 0.0
+    relaunch_state = {
+        "attempts": 0,
+        "max_attempts": int(os.getenv("UI_MAX_RELAUNCH_ATTEMPTS", "3")),
+        "cooldown_seconds": int(os.getenv("UI_RELAUNCH_COOLDOWN_SECONDS", "10")),
+        "last_attempt_time": 0.0,
+    }
     next_heartbeat_time = start_time  # immediate first heartbeat
     # Best-effort selector string for logs
     try:
@@ -344,47 +458,7 @@ def _wait_for_element(d, element, timeout=180):
         selector_str = "<unknown>"
     logger.debug("Waiting for element %s (timeout=%ss)", selector_str, timeout)
 
-    def _is_launcher_package(pkg: str) -> bool:
-        if not pkg:
-            return False
-        logger.debug("Checking if %s is a launcher package", pkg)
-
-        # Known launchers and heuristics
-        launcher_pkgs = {
-            "com.google.android.apps.nexuslauncher",
-            "com.android.launcher",
-            "com.android.launcher3",
-            "com.google.android.googlequicksearchbox",
-        }
-        if pkg in launcher_pkgs:
-            return True
-        normalized = pkg.lower()
-        # Heuristic: most home apps contain "launcher" or "nexus"
-        return "launcher" in normalized or "nexus" in normalized
-
-    def _is_launcher_activity(activity: str) -> bool:
-        if not activity:
-            return False
-        a = activity.lower()
-        return "launcher" in a or "home" in a
-
-    def _try_relaunch_target_app() -> bool:
-        target_pkg = os.getenv("UI_TARGET_PACKAGE")
-        if not target_pkg:
-            logger.debug("Skipping relaunch: UI_TARGET_PACKAGE not set.")
-            return False
-        try:
-            logger.info("Home/launcher detected. Relaunching target app: %s", target_pkg)
-            d.app_start(target_pkg, wait=True, stop=False)
-            if d.app_wait(target_pkg, front=True, timeout=10):
-                logger.info("Target app %s is front after relaunch attempt.", target_pkg)
-                wait_for_ui_stable(d, timeout=5)
-                return True
-            else:
-                logger.warning("Relaunch initiated but app is not front yet: %s", target_pkg)
-        except Exception as e:
-            logger.debug("Relaunch attempt raised: %s", e)
-        return False
+    # Using top-level helpers for launcher detection and relaunch
 
     selector_info = _parse_selector_from_element(element)
 
@@ -408,31 +482,13 @@ def _wait_for_element(d, element, timeout=180):
                 )
                 next_heartbeat_time = now + 15.0
 
-            in_launcher = _is_launcher_package(current_pkg) or _is_launcher_activity(
-                current_activity
+            _maybe_relaunch_from_launcher(
+                d,
+                current_pkg=current_pkg,
+                current_activity=current_activity,
+                relaunch_state=relaunch_state,
+                now=now,
             )
-            if in_launcher:
-                if relaunch_attempts < max_relaunch_attempts and (now - last_relaunch_time) >= relaunch_cooldown_seconds:
-                    logger.warning(
-                        "Launcher detected (%s/%s). Attempting relaunch #%s of %s...",
-                        current_pkg,
-                        current_activity,
-                        relaunch_attempts + 1,
-                        max_relaunch_attempts,
-                    )
-                    if _try_relaunch_target_app():
-                        relaunch_attempted = True
-                        relaunch_attempts += 1
-                        last_relaunch_time = now
-                    else:
-                        relaunch_attempts += 1
-                        last_relaunch_time = now
-                        logger.warning("Relaunch attempt #%s did not bring app to front yet.", relaunch_attempts)
-                elif relaunch_attempts >= max_relaunch_attempts:
-                    logger.error(
-                        "Reached max relaunch attempts (%s). Remaining wait will continue without relaunch.",
-                        max_relaunch_attempts,
-                    )
         except Exception as e:
             logger.debug("Error during launcher detection/relaunch: %s", e)
 
@@ -460,7 +516,9 @@ def _wait_for_element(d, element, timeout=180):
         try:
             did_scroll = _try_scroll_into_view(d, selector_info)
             if did_scroll:
-                logger.debug("Attempted scroll into view using selector info: %s", selector_info)
+                logger.debug(
+                    "Attempted scroll into view using selector info: %s", selector_info
+                )
         except Exception as e:
             logger.debug("Error during scroll attempt: %s", e)
 
