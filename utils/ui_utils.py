@@ -63,15 +63,21 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
         """
         logger.info("Probing core system services for stability...")
         start_time = time.time()
+        last_log_time = start_time
+
         while time.time() - start_time < timeout:
             try:
                 # Check 1: system_server process must be running.
                 pid_check = subprocess.run(
                     ["adb", "shell", "pidof", "system_server"],
                     capture_output=True,
+                    text=True,
                     timeout=5,
                 )
                 if pid_check.returncode != 0:
+                    if time.time() - last_log_time > 10:
+                        logger.debug("Waiting for system_server process...")
+                        last_log_time = time.time()
                     time.sleep(2)
                     continue
 
@@ -79,9 +85,13 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
                 pm_check = subprocess.run(
                     ["adb", "shell", "pm", "list", "packages"],
                     capture_output=True,
+                    text=True,
                     timeout=5,
                 )
                 if pm_check.returncode != 0:
+                    if time.time() - last_log_time > 10:
+                        logger.debug("Waiting for PackageManager service...")
+                        last_log_time = time.time()
                     time.sleep(2)
                     continue
 
@@ -93,13 +103,22 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
                     timeout=5,
                 )
                 if am_check.returncode != 0 or "found" not in am_check.stdout:
+                    if time.time() - last_log_time > 10:
+                        logger.debug("Waiting for ActivityManager service...")
+                        last_log_time = time.time()
                     time.sleep(2)
                     continue
 
                 logger.info("Core system services are stable.")
                 return True
-            except Exception:
+
+            except subprocess.TimeoutExpired:
+                logger.debug("ADB command timed out during stability probe.")
                 time.sleep(2)
+            except Exception as e:
+                logger.debug("An unexpected error occurred during stability probe: %s", e)
+                time.sleep(2)
+
         logger.warning("Core system services did not stabilize within %ss.", timeout)
         return False
 
@@ -136,22 +155,26 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
             _fatal(None, "Emulator core services did not stabilize after all attempts.")
 
         try:
+            logger.debug("Attempting to connect uiautomator2 client...")
             device = u2.connect()
             logger.info("Connected to device.")
 
             # Configure device defaults for stability
+            logger.debug("Configuring device settings...")
             try:
                 device.settings["compressHierarchy"] = False
             except Exception:
                 pass
 
             # run healthcheck() to avoid RPC errors
+            logger.debug("Running health check...")
             try:
                 device.healthcheck()
             except Exception:
                 pass
 
             # Warm up the accessibility service / hierarchy
+            logger.debug("Warming up accessibility service...")
             ready = False
             try:
                 ready = wait_for_accessibility_and_hierarchy(
@@ -159,12 +182,14 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
                 )
             except Exception as e:
                 logger.debug("Warm-up helper raised: %s", e)
+
             if not ready:
                 _fatal(
                     device,
                     "UiAutomator/Accessibility service not ready after all attempts.",
                 )
 
+            logger.debug("UI automation client is ready.")
             return device
 
         except Exception as e:

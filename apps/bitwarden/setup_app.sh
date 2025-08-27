@@ -6,6 +6,46 @@ BITWARDEN_PKG="com.x8bit.bitwarden.dev"
 CACHED_APK="$BITWARDEN_DIR/bitwarden.apk"
 BUILD_APK="$BITWARDEN_DIR/codebase/app/build/outputs/apk/fdroid/debug/com.x8bit.bitwarden.dev-fdroid.apk"
 
+check_emulator_ready() {
+  # Device visible to ADB?
+  if ! adb devices | grep -w "device" | grep -v "List" >/dev/null; then
+    echo "[ERROR] No Android emulator found. Please start the emulator first."
+    exit 1
+  else
+    echo "[INFO] Emulator is running."
+  fi
+
+  echo "[INFO] Ensuring emulator is fully ready before install..."
+  adb wait-for-device
+
+  # 1) Boot complete + bootanim stopped
+  timeout 300 sh -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ] && \
+                           [ "$(adb shell getprop init.svc.bootanim | tr -d "\r")" = "stopped" ]; do sleep 2; done'
+
+  # 2) system_server and SurfaceFlinger alive
+  timeout 120 sh -c 'until adb shell pidof system_server >/dev/null 2>&1; do sleep 2; done'
+  timeout 120 sh -c 'until adb shell service check SurfaceFlinger | grep -q "found"; do sleep 2; done'
+
+  # 3) core binder services responsive
+  timeout 120 sh -c 'until adb shell service check activity       | grep -q "found"; do sleep 2; done'
+  timeout 120 sh -c 'until adb shell service check window         | grep -q "found"; do sleep 2; done'
+  timeout 120 sh -c 'until adb shell service check input          | grep -q "found"; do sleep 2; done'
+  timeout 120 sh -c 'until adb shell cmd package list packages >/dev/null 2>&1; do sleep 2; done'
+  timeout 120 sh -c 'until adb shell settings list global      >/dev/null 2>&1; do sleep 2; done'
+  timeout 120 sh -c 'until adb shell service check accessibility | grep -q "found"; do sleep 2; done'
+
+  # 4) UI ready: wake, unlock, keep awake, HOME, verify resumed window
+  adb shell input keyevent KEYCODE_WAKEUP || true
+  adb shell wm dismiss-keyguard          || true
+  adb shell settings put system screen_off_timeout 1800000 || true
+  adb shell svc power stayon true || true
+  adb shell input keyevent KEYCODE_HOME || true
+  timeout 90 sh -c 'until adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" >/dev/null; do sleep 1; done'
+
+  # Optional visibility
+  adb shell dumpsys display | head -n 40 || true
+}
+
 # Install on emulator
 install_bitwarden() {
     echo "[INFO] Installing Bitwarden on Android emulator..."
@@ -65,10 +105,7 @@ launch_bitwarden() {
 
 main() {
   echo "=== RUNNING setup_app.sh ==="
-
-  # Use the robust Python-based readiness check.
-  echo "[INFO] Ensuring emulator is fully ready before install..."
-  python3 "$BITWARDEN_DIR/../../utils/wait_for_emulator.py"
+  check_emulator_ready
 
   echo "[INFO] Checking if Bitwarden app is installed on the emulator..."
   if adb shell pm list packages | grep -q "$BITWARDEN_PKG"; then
