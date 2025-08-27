@@ -8,10 +8,6 @@ TIMEOUT_UIA="${TIMEOUT_UIA:-120}"     # uiautomator readiness
 TIMEOUT_FOCUS="${TIMEOUT_FOCUS:-60}"  # resumed activity window
 NUDGE_SLEEP="${NUDGE_SLEEP:-1}"       # sleep between UI nudges
 
-# ------------ Helpers ------------
-need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing dependency: $1"; exit 127; }; }
-adb_sh() { adb shell "$@" 2>/dev/null; }  # quiet shell helper
-
 # ------------ Readiness gates ------------
 wait_for_boot() {
   adb wait-for-device
@@ -37,24 +33,26 @@ wait_for_boot() {
     done
   '
   # Display stack sanity (non-fatal if grep fails but good signal when present)
-  adb_sh dumpsys display | head -n 60 || true
+  adb shell "dumpsys display" 2>/dev/null | head -n 60 || true
 }
 
+# This function is very expensive due to the reboot.
+# Only call it if you absolutely need to modify the system partition.
 ensure_root_and_disable_verification() {
   echo "Requesting root..."
   adb root || true
   adb wait-for-device
 
   local sdk
-  sdk="$(adb_sh getprop ro.build.version.sdk | tr -d $'\r')"
+  sdk="$(adb shell "getprop ro.build.version.sdk" 2>/dev/null | tr -d $'\r')"
   echo "Device SDK = ${sdk:-unknown}"
 
   if [ "${sdk:-0}" -gt 28 ]; then
     echo "Disabling AVB verification (avbctl)..."
-    adb_sh avbctl disable-verification || true
+    adb shell "avbctl disable-verification"
   else
     echo "Disabling dm-verity..."
-    adb disable-verity || true
+    adb disable-verity
   fi
 
   echo "Rebooting after verification change..."
@@ -110,11 +108,11 @@ wait_core_services() {
 
 stabilize_ui() {
   echo "Stabilizing UI (wake, unlock, keep awake, go HOME)..."
-  adb_sh input keyevent KEYCODE_WAKEUP || true
-  adb_sh wm dismiss-keyguard || true
-  adb_sh settings put system screen_off_timeout 1800000 || true
-  adb_sh svc power stayon true || true
-  adb_sh input keyevent KEYCODE_HOME || true
+  adb shell "input keyevent KEYCODE_WAKEUP" 2>/dev/null || true
+  adb shell "wm dismiss-keyguard" 2>/dev/null || true
+  adb shell "settings put system screen_off_timeout 1800000" 2>/dev/null || true
+  adb shell "svc power stayon true" 2>/dev/null || true
+  adb shell "input keyevent KEYCODE_HOME" 2>/dev/null || true
 }
 
 ensure_resumed_activity() {
@@ -128,8 +126,8 @@ ensure_resumed_activity() {
 
 ensure_uiautomator_ready() {
   echo "Pre-flight: quick PM/Activity poke before UiAutomator..."
-  adb_sh "cmd package resolve-activity android.intent.action.MAIN >/dev/null 2>&1" || true
-  adb_sh "service check activity >/dev/null 2>&1" || true
+  adb shell "cmd package resolve-activity android.intent.action.MAIN >/dev/null 2>&1" 2>/dev/null || true
+  adb shell "service check activity >/dev/null 2>&1" 2>/dev/null || true
 
   echo "Probing UiAutomator (with UI nudges)..."
   local start=$SECONDS
@@ -150,10 +148,10 @@ ensure_uiautomator_ready() {
       return 1
     fi
     echo "UiAutomator not ready (attempt $attempt) – nudging UI and retrying..."
-    adb_sh input keyevent KEYCODE_WAKEUP || true
-    adb_sh wm dismiss-keyguard || true
-    adb_sh svc power stayon true || true
-    adb_sh input keyevent KEYCODE_HOME || true
+    adb shell "input keyevent KEYCODE_WAKEUP" 2>/dev/null || true
+    adb shell "wm dismiss-keyguard" 2>/dev/null || true
+    adb shell "svc power stayon true" 2>/dev/null || true
+    adb shell "input keyevent KEYCODE_HOME" 2>/dev/null || true
     sleep "$NUDGE_SLEEP"
   done
 }
@@ -168,12 +166,7 @@ main() {
   wait_core_services
   stabilize_ui
   ensure_resumed_activity
-
-  # Lightweight core services check
-  timeout "$TIMEOUT_CORE" sh -c 'until adb shell service check activity | grep -q "found"; do sleep 2; done'
-  timeout "$TIMEOUT_CORE" sh -c 'until adb shell cmd package list packages >/dev/null 2>&1; do sleep 2; done'
-  timeout "$TIMEOUT_CORE" sh -c 'until adb shell service check accessibility | grep -q "found"; do sleep 2; done'
-
+  wait_core_services  # confirm core services are still running after UI changes
   ensure_uiautomator_ready
 
   echo "Device is READY for UI tests."
