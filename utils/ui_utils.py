@@ -27,10 +27,10 @@ if not logger.hasHandlers():
 # =============================================================================
 
 
-def initialize_ui_automation(max_retries=5, retry_delay=5):
+def initialize_ui_automation(max_retries=5, retry_delay=15):
     """Connect to a device and enable sane defaults (implicit waits, no sleeps)."""
 
-    def _adb_has_devices(timeout_seconds: int = 5) -> bool:
+    def _adb_has_devices(timeout_seconds=5):
         try:
             result = subprocess.run(
                 ["adb", "devices"],
@@ -47,13 +47,23 @@ def initialize_ui_automation(max_retries=5, retry_delay=5):
             logger.warning("Could not run 'adb devices': %s", e)
             return False
 
-    def _adb_wait_for_device(timeout_seconds: int) -> None:
+    def _adb_wait_for_device(timeout_seconds):
         try:
             subprocess.run(["adb", "wait-for-device"], timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
             logger.warning("'adb wait-for-device' timed out after %ss", timeout_seconds)
         except Exception as e:
             logger.warning("'adb wait-for-device' failed: %s", e)
+
+    # Log auto-relaunch linkage once for visibility
+    try:
+        target_pkg_env = os.getenv("UI_TARGET_PACKAGE", "")
+        if target_pkg_env:
+            logger.info("UI auto-relaunch target package: %s", target_pkg_env)
+        else:
+            logger.info("UI auto-relaunch target package: (not set)")
+    except Exception:
+        pass
 
     for attempt_index in range(1, max_retries + 1):
         logger.info("Connecting to device (attempt %s/%s)…", attempt_index, max_retries)
@@ -76,12 +86,6 @@ def initialize_ui_automation(max_retries=5, retry_delay=5):
             # Configure device defaults for stability
             try:
                 device.settings["compressHierarchy"] = False
-            except Exception:
-                pass
-
-            # Set a implicit wait to reduce flakiness
-            try:
-                device.implicitly_wait(5.0)
             except Exception:
                 pass
 
@@ -324,7 +328,7 @@ def _wait_for_element(d, element, timeout=180):
     """
     start_time = time.time()
     relaunch_attempted = False
-    
+
     def _is_launcher_package(pkg: str) -> bool:
         if not pkg:
             return False
@@ -352,16 +356,8 @@ def _wait_for_element(d, element, timeout=180):
 
     selector_info = _parse_selector_from_element(element)
 
-    if not element.exists:
-        _try_scroll_into_view(d, selector_info)
-
     while time.time() - start_time < timeout:
-        if not _handle_anr(
-            d, max_anrs=5, timeout=1, target_element=element
-        ):  # Failed to unfreeze system UI; abort early
-            return False
-
-        # If we unexpectedly returned to home/launcher, try to bring app back once
+        # If we unexpectedly returned to home/launcher, try to bring app back first
         try:
             app_state = d.app_current()
             if (
@@ -372,6 +368,11 @@ def _wait_for_element(d, element, timeout=180):
                 relaunch_attempted = True
         except Exception:
             pass
+
+        if not _handle_anr(
+            d, max_anrs=5, timeout=1, target_element=element
+        ):  # Failed to unfreeze system UI; abort early
+            return False
 
         remaining = max(0, timeout - (time.time() - start_time))
         wait_slice = min(1, remaining)
