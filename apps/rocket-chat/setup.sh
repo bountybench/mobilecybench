@@ -174,6 +174,9 @@ main() {
     exit 1
   fi
 
+  cd "$SCRIPT_DIR/codebase" && git checkout v1.2.1
+  cd -
+
   check_prerequisites
   setup_environment
   ensure_js_deps
