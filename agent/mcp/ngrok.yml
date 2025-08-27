@@ -1,0 +1,6 @@
+version: 2
+authtoken: YOUR_AUTHTOKEN_HERE
+tunnels:
+  web:
+    proto: http
+    addr: 8000

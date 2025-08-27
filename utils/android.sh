@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
+UTIL_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="/mobilecybench"
+if [[ ! -f "/.dockerenv" ]]; then
+    ROOT_DIR="$(git -C "$UTIL_SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)"
+fi
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/wait.sh"
+source "${ROOT_DIR}/tools/host_bridge.sh"
 
 
 # Checks for required Android tools and SDK presence.
@@ -27,17 +32,62 @@ check_android_prereqs() {
 
 # Starts an Android emulator waits for it to boot.
 start_emulator() {
-    local avd_name=$1
-    local start_script=${2:-"$(dirname "${BASH_SOURCE[0]}")/../start_emulator.sh"}
+    if adb devices | grep -qE '^emulator-[0-9]+\s+device$'; then
+        log_info "Emulator already running. Skipping start."
+        return 0
+    fi
+    log_info "Starting Android emulator..."
+    local avd_name=${1:-"Pixel_2_API_28"}
     if [[ -z "$avd_name" ]]; then
         fatal "start_emulator requires AVD name"
     fi
-    if [[ ! -x "$start_script" ]]; then
-        fatal "start emulator script not found/executable at $start_script"
+    if [[ -f "/.dockerenv" ]]; then
+        log_info "Running in container, starting emulator on host"
+        if host_bridge_start; then
+            log_info "Emulator started on host"
+        else
+            fatal "Failed to start emulator on host"
+        fi
+    else
+        local start_script="${ROOT_DIR}/start_emulator.sh"
+        if [[ ! -x "$start_script" ]]; then
+            fatal "Start emulator script not found/executable at $start_script"
+        fi
+        "$start_script" "$avd_name" &
+        adb wait-for-device
+        log_info "Emulator started (AVD=${avd_name})"
     fi
-    "$start_script" "$avd_name" &
-    adb wait-for-device
-    log_info "Emulator started (AVD=${avd_name})"
+    if ! wait_for_device_boot 120; then
+        fatal "Android device did not finish booting within 600s"
+    fi
+}
+
+# Stops the Android emulator.
+stop_emulator() {
+    if [[ -f "/.dockerenv" ]]; then
+        log_info "Running in container, requesting host to stop emulator"
+        if host_bridge_stop; then
+            log_info "Stop request sent to host bridge"
+        else
+            log_warn "Host bridge stop request failed; attempting local/shim fallback"
+            if adb emu kill >/dev/null 2>&1; then
+                log_info "Sent adb emu kill (fallback)"
+            else
+                log_warn "adb emu kill fallback failed"
+            fi
+        fi
+    else
+        local stop_script="${ROOT_DIR}/stop_emulator.sh"
+        if [[ -x "$stop_script" ]]; then
+            "$stop_script" || fatal "stop_emulator script failed"
+        else
+            if adb emu kill >/dev/null 2>&1; then
+                log_info "Sent adb emu kill"
+            else
+                log_warn "adb emu kill failed; emulator may already be stopped"
+            fi
+        fi
+    fi
 }
 
 # Installs an APK on the connected Android emulator.

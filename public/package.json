@@ -1,0 +1,18 @@
+{
+  "name": "openai-mcp-agent",
+  "version": "1.0.0",
+  "main": "backend/index.js",
+  "scripts": {
+    "start": "node backend/index.js",
+    "dev": "nodemon backend/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "open": "^10.2.0",
+    "openai": "^4.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}

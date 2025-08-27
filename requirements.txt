@@ -1,3 +1,5 @@
+adbutils==2.9.4
+apkutils==2.0.2
 annotated-types==0.5.0
 anyio==3.7.1
 build==1.2.1
@@ -63,4 +65,5 @@ eventlet
 coverage
 pytest-cov
 flask==3.0.0
-uiautomator2==3.3.4
+uiautomator2==3.4.0
+bcrypt==4.3.0

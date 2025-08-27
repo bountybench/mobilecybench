@@ -1,0 +1,14 @@
+{
+    "gh_link": "https://github.com/wordpress-mobile/WordPress-Android",
+    "commit_version": "41ed2badd25e77cb5b4b715c9d0bdd2b49354b2a",
+    "download_link": "https://github.com/wordpress-mobile/WordPress-Android/releases/download/26.0/wpandroid-26.0.apk",
+    "app_version": "26.0",
+    "sdk": "35",
+    "java": "17",
+    "emulator_server": "http://10.0.2.2:8000",
+    "app_server": "http://wordpress-app:8000",
+    "username": "user_a",
+    "password": "user_a_pass"
+}
+
+

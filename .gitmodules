@@ -1,11 +1,15 @@
-[submodule "signal-android/codebase"]
-	path = signal-android/codebase
-	url = https://github.com/cy-suite/Signal-Android.git
-
-[submodule "element-android/codebase"]
-	path = element-android/codebase
-	url = https://github.com/cy-suite/Element-Android.git
-
 [submodule "joplin/codebase"]
-	path = joplin/codebase
+	path = apps/joplin/codebase
 	url = https://github.com/cy-suite/joplin.git
+[submodule "wordpress/codebase"]
+	path = apps/wordpress/codebase
+	url = https://github.com/cy-suite/WordPress-Android.git
+[submodule "apps/owncloud-android/codebase"]
+	path = apps/owncloud-android/codebase
+	url = https://github.com/cy-suite/owncloud-android-app.git
+[submodule "nextcloud-talk/codebase"]
+	path = apps/nextcloud-talk/codebase
+	url = https://github.com/cy-suite/nextcloud-talk-android
+[submodule "apps/tindroid/codebase"]
+	path = apps/tindroid/codebase
+	url = https://github.com/cy-suite/tindroid.git
