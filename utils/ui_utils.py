@@ -154,7 +154,7 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
             # Warm up the accessibility service / hierarchy
             ready = False
             try:
-                ready = _warmup_accessibility_and_hierarchy(
+                ready = wait_for_accessibility_and_hierarchy(
                     device, timeout=30.0, interval=1.0
                 )
             except Exception as e:
@@ -180,6 +180,75 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
 # =============================================================================
 # PUBLIC UI ELEMENT INTERACTION FUNCTIONS
 # =============================================================================
+
+
+def wait_for_accessibility_and_hierarchy(d, timeout=30.0, interval=1):
+    """
+    Ensure UiAutomator's accessibility service is bound before we rely on hierarchy.
+    Returns True if hierarchy dump works; False if we give up.
+    """
+    deadline = time.time() + timeout
+    # Make sure we don't trigger compressed-dump path on flaky ROMs
+    try:
+        d.settings["compressHierarchy"] = False
+    except Exception:
+        pass
+
+    did_healthcheck = False
+    while time.time() < deadline:
+        try:
+            # A successful dump means the service is up
+            _ = d.dump_hierarchy()
+            logger.debug("Accessibility/hierarchy warm-up succeeded.")
+            return True
+        except Exception as e:
+            msg = str(e)
+            # Classic race signature from your stacktrace:
+            # "AccessibilityServiceInfo.flags on a null object"
+            if "AccessibilityServiceInfo.flags" in msg or "NullPointerException" in msg:
+                logger.debug("Hierarchy dump failed (race condition). Retrying…")
+                if not did_healthcheck:
+                    try:
+                        d.healthcheck()
+                        did_healthcheck = True
+                    except Exception:
+                        pass
+            else:
+                # Other failures should still retry briefly, but log at debug.
+                logger.debug("Hierarchy dump error during warm-up: %s", e)
+            time.sleep(interval)
+
+    # Gentle restart as a last resort
+    logger.debug("Warm-up timed out. Attempting to restart UiAutomator service...")
+    ua = getattr(d, "uiautomator", None)
+    if ua is None:
+        logger.warning("Could not get uiautomator object for service restart.")
+        return False
+
+    for i in range(3):  # Try to restart up to 3 times
+        logger.debug("UiAutomator restart attempt #%d...", i + 1)
+        try:
+            try:
+                ua.stop()
+            except Exception:
+                pass
+            time.sleep(1.0)  # Give it a moment to die
+            try:
+                ua.start()
+            except Exception:
+                pass
+            time.sleep(2.0)  # Give it a moment to start
+
+            # Verify with a dump
+            _ = d.dump_hierarchy()
+            logger.info("UiAutomator ready after service restart (attempt #%d).", i + 1)
+            return True
+        except Exception as e:
+            logger.warning("Restart attempt #%d failed: %s", i + 1, e)
+            time.sleep(2.0)  # wait before next attempt
+
+    logger.error("All attempts to restart UiAutomator service failed.")
+    return False
 
 
 def wait_and_click(d, element, timeout=180, exit_on_error=True):
@@ -291,7 +360,7 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
                 ) or "NullPointerException" in str(e):
                     npe_seq_count += 1
                     if npe_seq_count >= 3:
-                        _warmup_accessibility_and_hierarchy(
+                        wait_for_accessibility_and_hierarchy(
                             d, timeout=5.0, interval=0.5
                         )
                         npe_seq_count = 0
@@ -329,75 +398,6 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
 # =============================================================================
 # PRIVATE STABILITY HELPERS
 # =============================================================================
-
-
-def _warmup_accessibility_and_hierarchy(d, timeout=30.0, interval=1):
-    """
-    Ensure UiAutomator's accessibility service is bound before we rely on hierarchy.
-    Returns True if hierarchy dump works; False if we give up.
-    """
-    deadline = time.time() + timeout
-    # Make sure we don't trigger compressed-dump path on flaky ROMs
-    try:
-        d.settings["compressHierarchy"] = False
-    except Exception:
-        pass
-
-    did_healthcheck = False
-    while time.time() < deadline:
-        try:
-            # A successful dump means the service is up
-            _ = d.dump_hierarchy()
-            logger.debug("Accessibility/hierarchy warm-up succeeded.")
-            return True
-        except Exception as e:
-            msg = str(e)
-            # Classic race signature from your stacktrace:
-            # "AccessibilityServiceInfo.flags on a null object"
-            if "AccessibilityServiceInfo.flags" in msg or "NullPointerException" in msg:
-                logger.debug("Hierarchy dump failed (race condition). Retrying…")
-                if not did_healthcheck:
-                    try:
-                        d.healthcheck()
-                        did_healthcheck = True
-                    except Exception:
-                        pass
-            else:
-                # Other failures should still retry briefly, but log at debug.
-                logger.debug("Hierarchy dump error during warm-up: %s", e)
-            time.sleep(interval)
-
-    # Gentle restart as a last resort
-    logger.debug("Warm-up timed out. Attempting to restart UiAutomator service...")
-    ua = getattr(d, "uiautomator", None)
-    if ua is None:
-        logger.warning("Could not get uiautomator object for service restart.")
-        return False
-
-    for i in range(3):  # Try to restart up to 3 times
-        logger.debug("UiAutomator restart attempt #%d...", i + 1)
-        try:
-            try:
-                ua.stop()
-            except Exception:
-                pass
-            time.sleep(1.0)  # Give it a moment to die
-            try:
-                ua.start()
-            except Exception:
-                pass
-            time.sleep(2.0)  # Give it a moment to start
-
-            # Verify with a dump
-            _ = d.dump_hierarchy()
-            logger.info("UiAutomator ready after service restart (attempt #%d).", i + 1)
-            return True
-        except Exception as e:
-            logger.warning("Restart attempt #%d failed: %s", i + 1, e)
-            time.sleep(2.0)  # wait before next attempt
-
-    logger.error("All attempts to restart UiAutomator service failed.")
-    return False
 
 
 # =============================================================================
