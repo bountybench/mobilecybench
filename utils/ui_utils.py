@@ -116,7 +116,9 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
                 logger.debug("ADB command timed out during stability probe.")
                 time.sleep(2)
             except Exception as e:
-                logger.debug("An unexpected error occurred during stability probe: %s", e)
+                logger.debug(
+                    "An unexpected error occurred during stability probe: %s", e
+                )
                 time.sleep(2)
 
         logger.warning("Core system services did not stabilize within %ss.", timeout)
