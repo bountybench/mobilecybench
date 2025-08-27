@@ -204,7 +204,6 @@ run_test_check() {
             cat scores.json
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
-            stop_emulator
             exit 1
         fi
     else
@@ -214,7 +213,6 @@ run_test_check() {
             cat scores.json
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
-            stop_emulator
             exit 1
         fi
         echo -e "${SUCCESS} All scores are 1."
@@ -222,7 +220,6 @@ run_test_check() {
 
     echo -e "${INFO} Cleaning up..."
     ./cleanup.sh
-    stop_emulator
     cd -
 }
 
