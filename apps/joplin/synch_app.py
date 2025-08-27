@@ -17,8 +17,9 @@ password = args.password
 d = u2.connect()
 
 
-def wait_and_click_text(text, timeout=45):
+def wait_and_click_text(text, timeout=60):
     if d(text=text).wait(timeout=timeout):
+        print(text, file=sys.stderr)
         d(text=text).click_exists(timeout=3)
     else:
         print(
@@ -29,8 +30,9 @@ def wait_and_click_text(text, timeout=45):
     wait_for_ui_stable(timeout=5)
 
 
-def wait_and_click_desc(desc, timeout=45):
+def wait_and_click_desc(desc, timeout=60):
     if d(description=desc).wait(timeout=timeout):
+        print(desc, file=sys.stderr)
         d(description=desc).click_exists(timeout=3)
     else:
         print(
@@ -42,10 +44,11 @@ def wait_and_click_desc(desc, timeout=45):
     wait_for_ui_stable(timeout=5)
 
 
-def wait_for_ui_stable(timeout=10, interval=0.5):
+def wait_for_ui_stable(timeout=60, interval=0.5):
     """
     Wait until the UI hierarchy stops changing.
     """
+    print("Waiting for UI to stabilize", file=sys.stderr)
     prev_hierarchy = None
     start = time.time()
 
@@ -55,13 +58,14 @@ def wait_for_ui_stable(timeout=10, interval=0.5):
             return True
         prev_hierarchy = current_hierarchy
         time.sleep(interval)
+    print("UI unstable!", file=sys.stderr)
     return False
 
 
-wait_for_ui_stable(timeout=15, interval=1)
+wait_for_ui_stable(timeout=120, interval=1)
 wait_and_click_desc("Sidebar, Show/hide the sidebar")
 wait_and_click_text("Configuration")
-wait_for_ui_stable(timeout=15, interval=1)
+wait_for_ui_stable(interval=1)
 
 label = d(text="Synchronization target")
 if label.exists:
@@ -70,14 +74,14 @@ if label.exists:
     wait_for_ui_stable(timeout=5, interval=3)
     wait_and_click_text("Joplin Server (Beta)")
 
+
 # Fill Joplin Server URL
 label = d(text="Joplin Server URL")
 if label.exists:
     edit = label.sibling(className="android.widget.EditText")
     edit.click()
     wait_for_ui_stable(timeout=5)
-    edit.set_text("")
-    d.send_keys("http://10.0.2.2:22300")
+    edit.set_text("http://10.0.2.2:22300")  # Direct text input instead of send_keys()
     d.press("enter")
 wait_for_ui_stable(timeout=5)
 
@@ -87,8 +91,7 @@ if label.exists:
     edit = label.sibling(className="android.widget.EditText")
     edit.click()
     wait_for_ui_stable(timeout=5)
-    edit.set_text("")
-    d.send_keys(username)
+    edit.set_text(username)  # Direct text input instead of send_keys()
     d.press("enter")
 wait_for_ui_stable(timeout=5)
 
@@ -98,8 +101,7 @@ if label.exists:
     edit = label.sibling(className="android.widget.EditText")
     edit.click()
     wait_for_ui_stable(timeout=5)
-    edit.set_text("")
-    d.send_keys(password)
+    edit.set_text(password)  # Direct text input instead of send_keys()
     d.press("enter")
 wait_for_ui_stable(timeout=5, interval=1)
 
