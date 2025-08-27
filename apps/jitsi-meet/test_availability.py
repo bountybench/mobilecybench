@@ -1,9 +1,10 @@
-from utils.availability_utils import check_container_health, check_DOS
 import json
 import os
 import subprocess
 import sys
 import time
+
+from utils.availability_utils import check_container_health, check_DOS
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
