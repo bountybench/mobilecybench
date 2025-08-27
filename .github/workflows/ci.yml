@@ -517,56 +517,7 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 4096 -camera-back none -writable-system
           disable-animations: true
           script: |
-            adb wait-for-device
-
-            # 1) Root & disable verification (API > 28 uses avbctl)
-            # 1a) Root
-            adb root || true
-            adb wait-for-device
-
-            # 1b) Disable verification
-            SDK_VERSION=${{ needs.setup.outputs.sdk }}; if [ "$SDK_VERSION" -gt 28 ]; then adb shell avbctl disable-verification; else adb disable-verity; fi
-            
-            # 1c) Reboot
-            adb reboot
-            adb wait-for-device
-            timeout 180 adb shell 'until [ "$(getprop sys.boot_completed)" = "1" ]; do sleep 1; done'
-      
-            # 2) Remount /system (overlayfs expected on API 29+)
-            adb root || true
-            adb wait-for-device
-            adb remount
-            adb shell mount | grep -E '(system|vendor|product)'
-            adb wait-for-device
-      
-            # 3) Core services ready: package manager responsive (no UI dependency)
-            echo "Waiting for package manager to be ready..."
-            timeout 90 adb shell 'until cmd package list packages >/dev/null 2>&1; do sleep 1; done' || { echo "Error: Package Manager did not become ready in time."; exit 1; }
-            echo "Waiting for core installation services..."
-            timeout 90 adb shell 'until settings list global >/dev/null 2>&1; do sleep 1; done' || { echo "Error: Settings Provider did not become ready in time."; exit 1; }
-            timeout 90 adb shell 'until sm list-disks >/dev/null 2>&1; do sleep 1; done' || { echo "Error: Storage Manager did not become ready in time."; exit 1; }
-            
-            # 4) Lightweight UI stabilization to avoid UiAutomator2 NPEs
-            adb shell input keyevent 224 || true      # Ensures display is on
-            adb shell wm dismiss-keyguard || true     # Removes lockscreen after boot
-            adb shell svc power stayon true || true   # Prevent device from sleeping during tests
-            adb shell input keyevent 3  || true       # Brings launcher to foreground so a resumed window exists before UI checks
-
-            # 5) Prove a resumed window exists (prevents null pointer exception)
-            timeout 60 adb shell 'until dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" >/dev/null; do sleep 1; done'
-      
-            # 6) Hardened UiAutomator readiness: retry uiautomator dump with self-healing
-            timeout 90 adb shell 'i=0; while [ $i -lt 90 ]; do if uiautomator dump >/dev/null 2>&1; then echo "UiAutomator dump succeeded."; exit 0; fi; echo "UiAutomator dump failed, attempting recovery (attempt #$i)..."; input keyevent 224 || true; wm dismiss-keyguard || true; svc power stayon true || true; input keyevent 3 || true; sleep 1; i=$((i+1)); done; echo "Timeout: UiAutomator did not stabilize after multiple recovery attempts." >&2; exit 1'
-
-            # 6b) Final service readiness check before tests
-            echo "Final check for critical services before starting tests..."
-            timeout 120 adb shell 'until service check package | grep -q "found" && service check activity | grep -q "found"; do echo "Waiting for package/activity services..."; sleep 2; done' || { echo "Error: Package/activity services did not stabilize in time."; exit 1; }
-            echo "Critical services are ready."
-
-            echo "Memory usage after UiAutomator dump:"
-            free -h
-
-            # 7) Run your tests (now safe to interact with UI)
+            bash utils/android_emulator_ready.sh
             ./test_checks.sh
 
       - name: Run emulator test with action (baseline and vuln_scenario_1)
