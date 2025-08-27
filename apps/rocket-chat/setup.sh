@@ -62,34 +62,6 @@ setup_environment() {
   echo "Environment configured."
 }
 
-# dependencies
-ensure_js_deps() {
-  echo "Installing JavaScript dependencies..."
-  cd "$SCRIPT_DIR/codebase"
-
-  export CI=1
-
-  # always use yarn
-  if command -v corepack >/dev/null 2>&1; then
-    corepack enable >/dev/null 2>&1 || true
-    corepack prepare yarn@1.22.22 --activate --yes >/dev/null 2>&1 || true
-  fi
-
-  # if both lockfiles exist, prefer yarn and remove package-lock.json to avoid npm picking it up
-  if [[ -f package-lock.json ]]; then
-    echo "[INFO] Removing package-lock.json to avoid npm; using yarn.lock"
-    rm -f package-lock.json
-  fi
-
-  if ! command -v yarn >/dev/null 2>&1; then
-    echo "[ERROR] yarn not found (after corepack). Install yarn or enable corepack."
-    exit 1
-  fi
-
-  echo "Using yarn (v$(yarn -v)) with yarn.lock"
-  yarn install --frozen-lockfile --silent
-}
-
 get_aapt() {
   local bt_dir="$(ls -1 "${ANDROID_HOME}/build-tools" 2>/dev/null | sort -V | tail -n1 || true)"
   if [[ -n "$bt_dir" && -x "${ANDROID_HOME}/build-tools/${bt_dir}/aapt" ]]; then
@@ -100,27 +72,24 @@ get_aapt() {
 
 start_server() {
   echo "Starting Rocket.Chat server (docker-compose)…"
-  pushd "$SCRIPT_DIR" >/dev/null
   docker compose up -d
   echo "Waiting for Rocket.Chat to be healthy at http://localhost:3000 …"
-  for i in {1..60}; do
-    if curl -fsS http://localhost:3000/api/info >/dev/null 2>&1; then
+  for i in {1..80}; do
+    if curl -fsS http://localhost:3000/api/info | jq '.success'; then
       echo "Rocket.Chat is up."
-      popd >/dev/null
-      return 0
+      break
     fi
-    sleep 2
+    echo "."
+    sleep 1
   done
-  echo "[ERROR] Rocket.Chat server failed to start." >&2
-  popd >/dev/null
-  exit 1
+  if ! curl -fsS http://localhost:3000/api/info | jq '.success'; then
+    echo "[ERROR] Rocket.Chat did not start in time."
+    exit 1
+  fi
+  echo "Rocket.Chat server is healthy."
 }
 
-build_and_install_rocket_chat() {
-  echo "Building Rocket.Chat Android from source..."
-  cd "$SCRIPT_DIR/codebase/android"
-  ./gradlew --no-daemon clean && ./gradlew --no-daemon assembleDebug
-  echo "Build completed successfully. Installing Rocket.Chat on Android emulator..."
+install_rocket_chat() {
 
   if ! adb devices | grep -E "device$|emulator" >/dev/null; then
     echo "No Android emulator/device found. Start it, then re-run."
@@ -128,7 +97,6 @@ build_and_install_rocket_chat() {
   fi
 
   local APK_PATH="$SCRIPT_DIR/codebase/android/app/build/outputs/apk/official/debug/app-official-debug.apk"
-  local PKG="chat.rocket.reactnative"
 
   if [[ -z "${APK_PATH:-}" || ! -f "$APK_PATH" ]]; then
     echo "[ERROR] Could not locate debug APK to install. Available APKs:"
@@ -139,18 +107,19 @@ build_and_install_rocket_chat() {
   echo "Found APK: $APK_PATH"
   adb install -r "$APK_PATH"
   echo "Rocket.Chat installed successfully. Launching Rocket.Chat in emulator..."
-  adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 || true
+  adb shell monkey -p chat.rocket.reactnative -c android.intent.category.LAUNCHER 1 || true
 }
 
 seed_data() {
   echo "Seeding Rocket.Chat data (host)…"
 
   # wait for the server on the host port
-  for i in {1..60}; do
-    if curl -fsS http://localhost:3000/api/info >/dev/null 2>&1; then
+  for i in {1..80}; do
+    if curl -fsS http://localhost:3000/api/info | jq '.success'; then
       break
     fi
-    sleep 2
+    echo "."
+    sleep 1
   done
 
   # ensure deps (jq/curl) exist; bail with a helpful message if not
@@ -178,15 +147,17 @@ main() {
   fi
 
   cd "$SCRIPT_DIR/codebase"
+  git checkout develop || true
+  git pull origin develop || true
+  cd - >/dev/null
 
   check_prerequisites
   setup_environment
-  ensure_js_deps
   start_server
-  build_and_install_rocket_chat
+  install_rocket_chat
   seed_data
 
   echo "Setup complete! Rocket.Chat is ready for testing."
 }
 
-main
+main "$@"
