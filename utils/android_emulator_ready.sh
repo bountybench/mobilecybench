@@ -45,7 +45,7 @@ wait_for_boot() {
 # Restarts the device with root privileges and disables dm-verity/AVB. Expensive.
 ensure_root_and_disable_verification() {
   echo "Requesting root..."
-  adb root
+  adb root || true
   adb wait-for-device
 
   local sdk
@@ -68,9 +68,9 @@ ensure_root_and_disable_verification() {
 # Remounts the system partition as read-write. Requires root.
 remount_system() {
   echo "Remounting /system (overlayfs expected on API 29+)..."
-  adb root
+  adb root || true
   adb wait-for-device
-  adb remount
+  adb remount || true
   adb shell mount | grep -E '(system|vendor|product)'
 }
 
