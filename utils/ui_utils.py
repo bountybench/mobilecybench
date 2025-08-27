@@ -55,6 +55,54 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
         except Exception as e:
             logger.warning("'adb wait-for-device' failed: %s", e)
 
+    def _wait_for_system_services(timeout=90):
+        """
+        Actively probes core Android services to ensure the emulator is stable
+        before attempting to connect the UI automation client. This prevents a
+        common race condition that can lead to a DeadSystemException.
+        """
+        logger.info("Probing core system services for stability...")
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                # Check 1: system_server process must be running.
+                pid_check = subprocess.run(
+                    ["adb", "shell", "pidof", "system_server"],
+                    capture_output=True,
+                    timeout=5,
+                )
+                if pid_check.returncode != 0:
+                    time.sleep(2)
+                    continue
+
+                # Check 2: PackageManager must be responsive.
+                pm_check = subprocess.run(
+                    ["adb", "shell", "pm", "list", "packages"],
+                    capture_output=True,
+                    timeout=5,
+                )
+                if pm_check.returncode != 0:
+                    time.sleep(2)
+                    continue
+
+                # Check 3: ActivityManager must be responsive.
+                am_check = subprocess.run(
+                    ["adb", "shell", "service", "check", "activity"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if am_check.returncode != 0 or "found" not in am_check.stdout:
+                    time.sleep(2)
+                    continue
+
+                logger.info("Core system services are stable.")
+                return True
+            except Exception:
+                time.sleep(2)
+        logger.warning("Core system services did not stabilize within %ss.", timeout)
+        return False
+
     # Log auto-relaunch linkage once for visibility
     try:
         target_pkg_env = os.getenv("UI_TARGET_PACKAGE", "")
@@ -76,6 +124,14 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
                 _adb_wait_for_device(retry_delay)
                 continue
             _fatal(None, "No devices detected by ADB after all attempts")
+
+        # Actively probe core services before connecting.
+        if not _wait_for_system_services():
+            logger.error("Emulator detected, but its core services are not stable. Retrying...")
+            if attempt_index < max_retries:
+                _adb_wait_for_device(retry_delay)
+                continue
+            _fatal(None, "Emulator core services did not stabilize after all attempts.")
 
         try:
             device = u2.connect()
