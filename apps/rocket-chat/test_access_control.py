@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
+import json
+import subprocess
 import sys
 import time
-import subprocess
-import json
+
 import requests
 
-MAX_RETRIES = 6 
+MAX_RETRIES = 6
 BASE_DELAY = 0.4
-TOKENS = {} # cache to avoid re-trying logins
+TOKENS = {}  # cache to avoid re-trying logins
 
 RC_URL = "http://localhost:3000".rstrip("/")
 
@@ -63,9 +64,15 @@ def login(user, pw):
     try:
         json_body = json.dumps({"user": user, "password": pw})
         cmd = [
-            "curl", "-s", "-X", "POST", "http://localhost:3000/api/v1/login",
-            "-H", "Content-type: application/json",
-            "-d", json_body
+            "curl",
+            "-s",
+            "-X",
+            "POST",
+            "http://localhost:3000/api/v1/login",
+            "-H",
+            "Content-type: application/json",
+            "-d",
+            json_body,
         ]
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
 
@@ -79,14 +86,13 @@ def login(user, pw):
     except Exception as e:
         return None, None, False, {"error": str(e)}
 
+
 if __name__ == "__main__":
     if not ready():
         sys.exit(1)
 
-    tests = [
-        login(ADMIN_USER, ADMIN_PASS)[2]
-    ]
-    
+    tests = [login(ADMIN_USER, ADMIN_PASS)[2]]
+
     if all(tests):
         print("[PASS] All access control tests passed.")
         sys.exit(0)
