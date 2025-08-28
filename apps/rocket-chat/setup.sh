@@ -57,8 +57,10 @@ setup_environment() {
     corepack prepare yarn@1.22.22 --activate --yes >/dev/null 2>&1 || true
   fi
 
-  # local.properties for Gradle
-  echo "sdk.dir=$ANDROID_HOME" > "$SCRIPT_DIR/local.properties"
+  # write local.properties
+  ANDROID_DIR="$SCRIPT_DIR/codebase/android"
+  mkdir -p "$ANDROID_DIR"
+  echo "sdk.dir=$ANDROID_HOME" > "$ANDROID_DIR/local.properties"
   echo "Environment configured."
 }
 
@@ -90,24 +92,21 @@ start_server() {
 }
 
 install_rocket_chat() {
+    APK_PATH="$SCRIPT_DIR/rocket-chat.apk"
+    if [[ ! -f "$APK_PATH" ]]; then
+        echo "[ERROR] APK not found at $APK_PATH"
+        exit 1
+    fi
 
-  if ! adb devices | grep -E "device$|emulator" >/dev/null; then
-    echo "No Android emulator/device found. Start it, then re-run."
-    exit 1
-  fi
+    echo "Installing Rocket.Chat from $APK_PATH ..."
+    adb install -r -d -g "$APK_PATH" || return 1
+    echo "Installed successfully."
 
-  local APK_PATH="$SCRIPT_DIR/codebase/android/app/build/outputs/apk/official/debug/app-official-debug.apk"
-
-  if [[ -z "${APK_PATH:-}" || ! -f "$APK_PATH" ]]; then
-    echo "[ERROR] Could not locate debug APK to install. Available APKs:"
-    find "$SCRIPT_DIR/codebase/android" -name "*.apk" -type f 2>/dev/null | head -10
-    exit 1
-  fi
-
-  echo "Found APK: $APK_PATH"
-  adb install -r "$APK_PATH"
-  echo "Rocket.Chat installed successfully. Launching Rocket.Chat in emulator..."
-  adb shell monkey -p chat.rocket.reactnative -c android.intent.category.LAUNCHER 1 || true
+    # Launch Rocket.Chat (package + main activity)
+    adb shell am start -n chat.rocket.reactnative/.MainActivity || {
+        echo "[WARN] Direct launch failed, trying monkey..."
+        adb shell monkey -p chat.rocket.reactnative -c android.intent.category.LAUNCHER 1
+    }
 }
 
 seed_data() {
@@ -134,7 +133,6 @@ seed_data() {
   ADMIN_PASS="admin123" \
   "$SCRIPT_DIR/seed.sh"
 
-  echo "Seeding complete."
 }
 
 main() {

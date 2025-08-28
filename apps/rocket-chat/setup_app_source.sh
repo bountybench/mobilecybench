@@ -41,4 +41,6 @@ cd "$SCRIPT_DIR/codebase/android"
 ./gradlew --no-daemon clean
 ./gradlew --no-daemon assembleDebug
 
-echo "Build completed successfully. Installing Rocket.Chat on Android emulator..."
+cp "$SCRIPT_DIR/codebase/android/app/build/outputs/apk/official/debug/app-official-debug.apk" "$SCRIPT_DIR/rocket-chat.apk"
+
+echo "Build completed successfully."
