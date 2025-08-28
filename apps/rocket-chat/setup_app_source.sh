@@ -28,7 +28,7 @@ ensure_js_deps() {
     exit 1
   fi
 
-  echo "Using yarn (v$(yarn -v)) with yarn.lock"
+  echo "Using yarn with yarn.lock"
   yarn install --frozen-lockfile --silent
 }
 
@@ -38,9 +38,41 @@ ensure_js_deps
 
 cd "$SCRIPT_DIR/codebase/android"
 
-./gradlew --no-daemon clean
-./gradlew --no-daemon assembleDebug
+# Detect the emulator/device ABI (falls back to host arch)
+EMULATOR_ABI=""
+if command -v adb >/dev/null 2>&1 && adb get-state >/dev/null 2>&1; then
+  EMULATOR_ABI="$(adb shell getprop ro.product.cpu.abi | tr -d '\r')"
+fi
+if [[ -z "$EMULATOR_ABI" ]]; then
+  case "$(uname -m)" in
+    arm64|aarch64) EMULATOR_ABI="arm64-v8a" ;;
+    x86_64|amd64)  EMULATOR_ABI="x86_64" ;;
+    *)             EMULATOR_ABI="x86_64" ;;
+  esac
+fi
+echo "Target ABI: $EMULATOR_ABI"
 
-cp "$SCRIPT_DIR/codebase/android/app/build/outputs/apk/official/debug/app-official-debug.apk" "$SCRIPT_DIR/rocket-chat.apk"
+# Gradle perf/caching knobs (idempotent append)
+PROP_FILE="gradle.properties"
+if ! grep -q "org.gradle.daemon" "$PROP_FILE" 2>/dev/null; then
+  cat >> "$PROP_FILE" <<'EOF'
+org.gradle.daemon=true
+org.gradle.caching=true
+org.gradle.parallel=true
+org.gradle.configureondemand=true
+org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g -Dkotlin.daemon.jvm.options=-Xmx1g
+org.gradle.workers.max=2
+reactNativeArchitectures=
+EOF
+fi
 
-echo "Build completed successfully."
+# Build just the OfficialDebug variant for the detected ABI
+./gradlew --no-daemon --build-cache --parallel --max-workers=2 \
+  assembleOfficialDebug \
+  -PreactNativeArchitectures="$EMULATOR_ABI" \
+  -Dorg.gradle.workers.max=2
+
+# Copy the APK
+APK_OUT="$SCRIPT_DIR/codebase/android/app/build/outputs/apk/official/debug/app-official-debug.apk"
+cp "$APK_OUT" "$SCRIPT_DIR/rocket-chat.apk"
+echo "Copied APK to $SCRIPT_DIR/rocket-chat.apk"

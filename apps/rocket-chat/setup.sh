@@ -81,7 +81,6 @@ start_server() {
       echo "Rocket.Chat is up."
       break
     fi
-    echo "."
     sleep 1
   done
   if ! curl -fsS http://localhost:3000/api/info | jq '.success'; then
