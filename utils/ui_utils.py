@@ -669,7 +669,9 @@ def _log_recent_crash_signals(package_name: str, max_lines: int = 300) -> None:
         # Limit to most recent 80 lines to avoid log spam
         snippet = filtered[-80:] if len(filtered) > 80 else filtered
         if snippet:
-            logger.error("Recent logcat signals (filtered, up to %s lines):", len(snippet))
+            logger.error(
+                "Recent logcat signals (filtered, up to %s lines):", len(snippet)
+            )
             try:
                 logger.error("\n" + "\n".join(snippet))
             except Exception:
@@ -677,6 +679,9 @@ def _log_recent_crash_signals(package_name: str, max_lines: int = 300) -> None:
                 for ln in snippet:
                     logger.error("%s", ln)
         else:
-            logger.debug("No indicative crash/ANR lines found in last %s logcat lines.", max_lines)
+            logger.debug(
+                "No indicative crash/ANR lines found in last %s logcat lines.",
+                max_lines,
+            )
     except Exception as e:
         logger.debug("logcat capture failed: %s", e)
