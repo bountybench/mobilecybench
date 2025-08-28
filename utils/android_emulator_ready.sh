@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # ------------ Configurable timeouts (seconds) ------------
-TIMEOUT_BOOT="${TIMEOUT_BOOT:-90}"   # full boot + bootanim + compositor + core signals
-TIMEOUT_CORE="${TIMEOUT_CORE:-30}"   # core service responsiveness
-TIMEOUT_UIA="${TIMEOUT_UIA:-45}"     # uiautomator readiness
-TIMEOUT_FOCUS="${TIMEOUT_FOCUS:-30}"  # resumed activity window
+TIMEOUT_BOOT="${TIMEOUT_BOOT:-30}"   # full boot + bootanim + compositor + core signals
+TIMEOUT_CORE="${TIMEOUT_CORE:-10}"   # core service responsiveness
+TIMEOUT_UIA="${TIMEOUT_UIA:-15}"     # uiautomator readiness
+TIMEOUT_FOCUS="${TIMEOUT_FOCUS:-10}"  # resumed activity window
 NUDGE_SLEEP="${NUDGE_SLEEP:-1}"       # sleep between UI nudges
 
 # ------------ Timing helper ------------
