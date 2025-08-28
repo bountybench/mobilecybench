@@ -672,6 +672,8 @@ def _wait_for_element(d, element, timeout=180):
                     time.time() - start_time,
                 )
                 return True
+            else:
+                logger.debug("Element %s did not appear after %.1fs", selector_str, time.time() - start_time)
         except Exception:
             # If wait is not available for some reason, fall back to existence check
             if element.exists:
@@ -686,6 +688,8 @@ def _wait_for_element(d, element, timeout=180):
                 )
         except Exception as e:
             logger.debug("Error during scroll attempt: %s", e)
+
+        time.sleep(0.5)
 
     logger.debug(
         "Timed out after %.1fs waiting for element %s",
