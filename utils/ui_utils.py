@@ -487,7 +487,6 @@ def _try_relaunch_target_app(d) -> bool:
         d.app_start(target_pkg, wait=True, stop=False)
         if d.app_wait(target_pkg, front=True, timeout=10):
             logger.info("Target app %s is front after relaunch attempt.", target_pkg)
-            wait_for_ui_stable(d, timeout=5)
             return True
         else:
             logger.warning(
