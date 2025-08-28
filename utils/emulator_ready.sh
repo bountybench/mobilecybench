@@ -2,11 +2,24 @@
 set -euo pipefail
 
 # ------------ Configurable timeouts (seconds) ------------
-TIMEOUT_BOOT="${TIMEOUT_BOOT:-300}"   # full boot + bootanim + compositor + core signals
-TIMEOUT_CORE="${TIMEOUT_CORE:-90}"   # core service responsiveness
-TIMEOUT_UIA="${TIMEOUT_UIA:-120}"     # uiautomator readiness
-TIMEOUT_FOCUS="${TIMEOUT_FOCUS:-60}"  # resumed activity window
+TIMEOUT_BOOT="${TIMEOUT_BOOT:-30}"   # full boot + bootanim + compositor + core signals
+TIMEOUT_CORE="${TIMEOUT_CORE:-10}"   # core service responsiveness
+TIMEOUT_UIA="${TIMEOUT_UIA:-15}"     # uiautomator readiness
+TIMEOUT_FOCUS="${TIMEOUT_FOCUS:-10}"  # resumed activity window
 NUDGE_SLEEP="${NUDGE_SLEEP:-1}"       # sleep between UI nudges
+
+# ------------ Timing helper ------------
+SCRIPT_START=$SECONDS
+time_step() {
+  local name="$1"; shift
+  echo "==> $name"
+  local t0=$SECONDS
+  "$@"
+  local status=$?
+  local dt=$((SECONDS - t0))
+  echo "<== $name finished in ${dt}s"
+  return $status
+}
 
 # ------------ Readiness gates ------------
 
@@ -33,7 +46,7 @@ wait_for_boot() {
     done
   '
 
-  # 3. 'SurfaceFlinger' composits different graphical layers -> checks graphics and UI rendering pipeline are running
+  # 3. Checks graphics and UI rendering pipeline are running
   echo "Waiting for SurfaceFlinger service..."
   timeout "$TIMEOUT_BOOT" sh -c '
     until adb shell service check SurfaceFlinger | grep -q "found"; do
@@ -42,10 +55,10 @@ wait_for_boot() {
   '
 }
 
-# Restarts the device with root privileges and disables dm-verity/AVB. Expensive.
-ensure_root_and_disable_verification() {
+# Restarts the device with root and disables verification, then remounts system partition as read-write
+root_and_remount() {
   echo "Requesting root..."
-  adb root || true
+  adb root
   adb wait-for-device
 
   local sdk
@@ -63,18 +76,18 @@ ensure_root_and_disable_verification() {
   echo "Rebooting after verification change..."
   adb reboot
   wait_for_boot
-}
 
-# Remounts the system partition as read-write. Requires root.
-remount_system() {
   echo "Remounting /system (overlayfs expected on API 29+)..."
-  adb root || true
+  adb root
   adb wait-for-device
-  adb remount || true
+  adb remount
   adb shell mount | grep -E '(system|vendor|product)'
+
+  echo "Waiting for device to be ready..."
+  adb wait-for-device
 }
 
-# Probes critical system services to ensure they are running and responsive.
+# Probes core services
 wait_core_services() {
   echo "Checking WindowManager service..."
   timeout "$TIMEOUT_CORE" sh -c '
@@ -145,11 +158,6 @@ ensure_uiautomator_ready() {
     attempt=$((attempt+1))
     if (( SECONDS - start >= TIMEOUT_UIA )); then
       echo "Timeout: UiAutomator did not stabilize."
-      echo "Quick diagnostics:"
-      adb shell getprop | grep -E 'sys.boot_completed|init.svc.bootanim' || true
-      adb shell pidof system_server || true
-      adb shell dumpsys activity top | head -n 120 || true
-      adb shell dumpsys accessibility || true
       return 1
     fi
     stabilize_ui
@@ -159,24 +167,18 @@ ensure_uiautomator_ready() {
 
 main() {
   echo "=== Running android_emulator_ready.sh ==="
+  local t0=$SECONDS
 
-  # 1. Wait for the Android framework to finish booting.
-  wait_for_boot
+  time_step "1) Boot sequence" wait_for_boot
+  time_step "2) Root + disable verification + remount" root_and_remount
+  time_step "3) Wait for core services" wait_core_services
+  time_step "4) Stabilize UI" stabilize_ui
+  time_step "5) UiAutomator readiness" ensure_uiautomator_ready
+  time_step "6) Wait for core services post-stabilize" wait_core_services
 
-  # 2. Ensure root and disable verification, then remount the system partition as read-write.
-  ensure_root_and_disable_verification
-  remount_system
-  
-  # 3. Wait for core services and UI to be ready.
-  wait_core_services
-  stabilize_ui
-  ensure_uiautomator_ready
-
-  # 4. Confirm core services are still running after UI changes
-  wait_core_services
-
-  echo "Device is READY for UI tests."
-  echo "=== android_emulator_ready.sh completed ==="
+  local total_dt=$((SECONDS - t0))
+  echo "Device is READY for UI tests. Total time: ${total_dt}s"
+  echo "=== android_emulator_ready.sh completed in ${total_dt}s ==="
 }
 
 main "$@"
