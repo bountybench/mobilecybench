@@ -1,9 +1,10 @@
 """
-Generic UI automation helpers with error handling built on uiautomator2:
- - Public API: wait_and_click, wait_and_set_text
- - Private helpers: internal utilities for stability, ANR handling, etc.
+uiautomator2 helpers for reliable clicking and text entry.
+Public API: initialize_ui_automation, reinitialize_ui_automation, wait_and_click, wait_and_set_text, wait_for_ui_stable, uiautomator_reconnect
 """
 
+import logging
+import os
 import re
 import subprocess
 import sys
@@ -11,28 +12,25 @@ import time
 
 import uiautomator2 as u2
 
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+logger = logging.getLogger("mobilecybench.ui")
+logger.setLevel(os.getenv("UI_LOG_LEVEL", "DEBUG"))
+_handler = logging.StreamHandler(stream=sys.stderr)
+_handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+if not logger.hasHandlers():
+    logger.addHandler(_handler)
+
 # =============================================================================
 # UI AUTOMATION INITIALIZATION
 # =============================================================================
 
 
-def initialize_ui_automation(max_retries=3, retry_delay=5):
-    """
-    Connect to an Android device for UI automation with concise, helpful errors.
+def initialize_ui_automation(max_retries=5, retry_delay=15):
+    """Connect to a device and enable sane defaults (implicit waits, no sleeps)."""
 
-    - Verifies that ADB sees at least one device (best-effort).
-    - Attempts to connect via uiautomator2 up to max_retries.
-    - Returns the connected device on success; otherwise exits fatally.
-
-    Args:
-        max_retries: Maximum connection attempts
-        retry_delay: Seconds to wait between attempts
-
-    Returns:
-        A uiautomator2 Device instance on success.
-    """
-
-    def _adb_has_devices(timeout_seconds: int = 5) -> bool:
+    def _adb_has_devices(timeout_seconds=5):
         try:
             result = subprocess.run(
                 ["adb", "devices"],
@@ -41,37 +39,169 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
                 timeout=timeout_seconds,
             )
             if result.returncode != 0:
-                print(f"[WARN] 'adb devices' failed: {result.stderr}", file=sys.stderr)
+                logger.warning("'adb devices' failed: %s", result.stderr)
                 return False
             lines = [line for line in result.stdout.splitlines()[1:] if line.strip()]
             return any("\tdevice" in line for line in lines)
         except Exception as e:
-            print(f"[WARN] Could not run 'adb devices': {e}", file=sys.stderr)
+            logger.warning("Could not run 'adb devices': %s", e)
             return False
 
+    def _adb_wait_for_device(timeout_seconds):
+        try:
+            subprocess.run(["adb", "wait-for-device"], timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            logger.warning("'adb wait-for-device' timed out after %ss", timeout_seconds)
+        except Exception as e:
+            logger.warning("'adb wait-for-device' failed: %s", e)
+
+    def _wait_for_system_services(timeout=90):
+        """
+        Actively probes core Android services to ensure the emulator is stable
+        before attempting to connect the UI automation client. This prevents a
+        common race condition that can lead to a DeadSystemException.
+        """
+        logger.info("Probing core system services for stability...")
+        start_time = time.time()
+        last_log_time = start_time
+
+        while time.time() - start_time < timeout:
+            try:
+                # Check 1: system_server process must be running.
+                pid_check = subprocess.run(
+                    ["adb", "shell", "pidof", "system_server"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if pid_check.returncode != 0:
+                    if time.time() - last_log_time > 10:
+                        logger.debug("Waiting for system_server process...")
+                        last_log_time = time.time()
+                    time.sleep(2)
+                    continue
+
+                # Check 2: PackageManager must be responsive.
+                pm_check = subprocess.run(
+                    ["adb", "shell", "pm", "list", "packages"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if pm_check.returncode != 0:
+                    if time.time() - last_log_time > 10:
+                        logger.debug("Waiting for PackageManager service...")
+                        last_log_time = time.time()
+                    time.sleep(2)
+                    continue
+
+                # Check 3: ActivityManager must be responsive.
+                am_check = subprocess.run(
+                    ["adb", "shell", "service", "check", "activity"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if am_check.returncode != 0 or "found" not in am_check.stdout:
+                    if time.time() - last_log_time > 10:
+                        logger.debug("Waiting for ActivityManager service...")
+                        last_log_time = time.time()
+                    time.sleep(2)
+                    continue
+
+                logger.info("Core system services are stable.")
+                return True
+
+            except subprocess.TimeoutExpired:
+                logger.debug("ADB command timed out during stability probe.")
+                time.sleep(2)
+            except Exception as e:
+                logger.debug(
+                    "An unexpected error occurred during stability probe: %s", e
+                )
+                time.sleep(2)
+
+        logger.warning("Core system services did not stabilize within %ss.", timeout)
+        return False
+
+    # Log auto-relaunch linkage once for visibility
+    try:
+        target_pkg_env = os.getenv("UI_TARGET_PACKAGE", "")
+        if target_pkg_env:
+            logger.info("UI auto-relaunch target package: %s", target_pkg_env)
+        else:
+            logger.info("UI auto-relaunch target package: (not set)")
+    except Exception:
+        pass
+
     for attempt_index in range(1, max_retries + 1):
-        print(f"[INFO] Connecting to device (attempt {attempt_index}/{max_retries})…")
+        logger.info("Connecting to device (attempt %s/%s)…", attempt_index, max_retries)
 
         if not _adb_has_devices():
-            print(
-                "[ERROR] No ADB devices detected. Is a device/emulator connected and authorized?",
-                file=sys.stderr,
+            logger.error(
+                "No ADB devices detected. Is a device/emulator connected and authorized?"
             )
             if attempt_index < max_retries:
-                time.sleep(retry_delay)
+                _adb_wait_for_device(retry_delay)
                 continue
             _fatal(None, "No devices detected by ADB after all attempts")
 
-        try:
-            device = u2.connect()
-            # Touch the device to ensure the connection is usable
-            _ = device.device_info  # may raise if not connected
-            print("[INFO] Connected to device.")
-            return device
-        except Exception as e:
-            print(f"[WARN] Connection failed: {e}", file=sys.stderr)
+        # Actively probe core services before connecting.
+        if not _wait_for_system_services():
+            logger.error(
+                "Emulator detected, but its core services are not stable. Retrying..."
+            )
             if attempt_index < max_retries:
-                time.sleep(retry_delay)
+                _adb_wait_for_device(retry_delay)
+                continue
+            _fatal(None, "Emulator core services did not stabilize after all attempts.")
+
+        try:
+            logger.debug("Waiting for device to be ready...")
+            _adb_wait_for_device(retry_delay)
+            logger.debug("Device is ready.")
+
+            logger.debug("Attempting to connect uiautomator2 client...")
+            device = u2.connect()
+            logger.info("Connected to device.")
+
+            # Configure device defaults for stability
+            logger.debug("Configuring device settings...")
+            try:
+                device.settings["compressHierarchy"] = False
+            except Exception:
+                pass
+
+            # run healthcheck() to avoid RPC errors
+            logger.debug("Running health check...")
+            try:
+                device.healthcheck()
+            except Exception:
+                pass
+
+            # Warm up the accessibility service / hierarchy
+            logger.debug("Warming up accessibility service...")
+            ready = False
+            try:
+                ready = wait_for_accessibility_and_hierarchy(
+                    device, timeout=30.0, interval=1.0, allow_reconnect=False
+                )
+            except Exception as e:
+                logger.debug("Warm-up helper raised: %s", e)
+
+            if not ready:
+                _fatal(
+                    device,
+                    "UiAutomator/Accessibility service not ready after all attempts.",
+                )
+
+            logger.debug("UI automation client is ready.")
+            return device
+
+        except Exception as e:
+            logger.info("Connection failed: %s", e)
+            if attempt_index < max_retries:
+                _adb_wait_for_device(retry_delay)
                 continue
             _fatal(
                 None, f"Failed to connect to device after {max_retries} attempts: {e}"
@@ -83,100 +213,386 @@ def initialize_ui_automation(max_retries=3, retry_delay=5):
 # =============================================================================
 
 
-def wait_and_click(d, element, timeout=180, exit_on_error=True):
+def uiautomator_reconnect(d):
     """
-    Wait for a UI element to appear, then click it. Handles ANR dialogs throughout.
+    Attempt to recover a dead/flaky UiAutomator service by stopping the current
+    UiAutomator on the provided device and then fully reinitializing via
+    initialize_ui_automation().
 
     Args:
-        d: Device object
-        element: UI element selector, e.g., d(text="..."), d(description="..."), d(resourceId="...")
-        timeout: Maximum time to wait for the element to appear
-        exit_on_error: If True, exits the process on failure; otherwise returns False
+        d: Connected uiautomator2 device instance.
 
     Returns:
-        True on success, False on failure when exit_on_error is False.
-
-    Usage examples:
-        # Click by text
-        wait_and_click(d, d(text="Continue"))
-
-        # Click by content description
-        wait_and_click(d, d(description="Navigate up"))
-
-        # Click by resourceId
-        wait_and_click(d, d(resourceId="com.example:id/confirm_button"))
+        The newly initialized device on success; False otherwise.
     """
+    try:
+        # Best-effort stop of UiAutomator/agent using ADB (device-agnostic)
+        try:
+            _stop_uia_service_adb()
+        except Exception:
+            pass
+
+        # Re-run full initialization (connect + healthcheck + warm-up)
+        try:
+            new_device = initialize_ui_automation()
+            logger.info("UiAutomator reinitialized via initialize_ui_automation().")
+            return new_device
+        except SystemExit as se:
+            # initialize_ui_automation may call sys.exit() on fatal; convert to False
+            logger.debug("initialize_ui_automation triggered SystemExit: %s", se)
+            return False
+        except Exception as e:
+            logger.debug("initialize_ui_automation failed: %s", e)
+            return False
+    except Exception as e:
+        logger.debug("uiautomator_reconnect failed: %s", e)
+        return False
+
+
+def wait_for_accessibility_and_hierarchy(
+    d, timeout=30.0, interval=1.0, allow_reconnect=True
+):
+    deadline = time.time() + timeout
+    try:
+        d.settings["compressHierarchy"] = False
+    except Exception:
+        pass
+
+    consecutive_npe = 0
+    last_reconnect_ts = 0.0
+    reconnect_cooldown = 5.0  # seconds
+    max_reconnects = 2
+    reconnects_done = 0
+
+    while time.time() < deadline:
+        try:
+            _ = d.dump_hierarchy()
+            logger.debug("Accessibility/hierarchy warm-up succeeded.")
+            return True
+        except Exception as e:
+            msg = str(e)
+            if "AccessibilityServiceInfo.flags" in msg or "NullPointerException" in msg:
+                logger.debug("Hierarchy dump failed (race condition). Retrying…")
+                consecutive_npe += 1
+
+                now = time.time()
+                if (
+                    allow_reconnect
+                    and consecutive_npe >= 3
+                    and reconnects_done < max_reconnects
+                    and (now - last_reconnect_ts) >= reconnect_cooldown
+                ):
+                    new_d = uiautomator_reconnect(d)
+                    if new_d:
+                        d = new_d
+                    else:
+                        logger.debug(
+                            "UiAutomator reconnect failed: no new device object."
+                        )
+                    reconnects_done += 1
+                    last_reconnect_ts = now
+            else:
+                logger.debug("Hierarchy dump error during warm-up: %s", e)
+                consecutive_npe = 0
+
+        time.sleep(interval)
+
+    # Fallback
+    if allow_reconnect:
+        logger.debug("Warm-up timed out. Attempting full UiAutomator reconnect...")
+        for i in range(3):
+            logger.debug("UiAutomator reconnect attempt #%d...", i + 1)
+            new_d = uiautomator_reconnect(d)
+            if new_d:
+                d = new_d
+            try:
+                _ = d.dump_hierarchy()
+                logger.info("UiAutomator ready after reconnect (attempt #%d).", i + 1)
+                return True
+            except Exception as err:
+                logger.warning("Reconnect attempt #%d failed: %s", i + 1, err)
+                time.sleep(2.0)
+        logger.error("All attempts to reconnect UiAutomator failed.")
+        return False
+    else:
+        logger.error(
+            "Warm-up timed out without reconnects (allow_reconnect=False). Accessibility may be unavailable."
+        )
+        return False
+
+
+def wait_and_click(d, element, timeout=180, exit_on_error=True):
+    """Wait for an element and click it with ANR awareness and no sleeps."""
     if not _wait_for_element(
         d, element, timeout=timeout
     ):  # Element not found; raise error/fatal if
-        message = f"Could not find element: '{element.selector}' within {timeout}s"
+        app_state = d.app_current()
+        message = (
+            f"Could not find element: '{element.selector}' within {timeout}s.\n"
+            f"  - Current screen: {app_state.get('package', 'unknown')}/{app_state.get('activity', 'unknown')}.\n"
+            f"  - See the full UI hierarchy dump below for details."
+        )
         if exit_on_error:
             _fatal(d, message)
         else:
-            print(f"[ERROR] {message}", file=sys.stderr)
+            logger.error("%s", message)
             return False
+    else:
+        logger.debug("Found element %s", element.selector)
 
-    if not element.click_exists(
-        timeout=3
-    ):  # Try clicking element; raise error/fatal if failed
-        message = f"Could not click element: '{element.selector}'"
+    if not element.click_exists(timeout=5):
+        app_state = d.app_current()
+        elem_info = element.info
+        message = (
+            f"Found element '{element.selector}' but it could not be clicked.\n"
+            f"  - Is it visible? {elem_info.get('visibleBounds')}\n"
+            f"  - Is it clickable? {elem_info.get('clickable')}\n"
+            f"  - Is it enabled? {elem_info.get('enabled')}\n"
+            f"  - Current screen: {app_state.get('package', 'unknown')}/{app_state.get('activity', 'unknown')}.\n"
+            f"  - See the full UI hierarchy dump below for details."
+        )
         if exit_on_error:
             _fatal(d, message)
         else:
-            print(f"[ERROR] {message}", file=sys.stderr)
+            logger.error("%s", message)
             return False
 
     # Clicked element; return True
-    print(f"[INFO] Clicked element {element.selector}")
-    _wait_for_ui_stable(d)
+    logger.info("Clicked element %s", element.selector)
+
+    wait_for_ui_stable(d)
 
     return True
 
 
 def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
-    """
-    Wait for an input element and set its text. Handles ANR dialogs and retries.
-
-    Args:
-        d: Device object
-        element: UI element to wait for and set text on (e.g., d(text=...), d(resourceId=...))
-        text: Text to set
-        timeout: Maximum time to wait for element
-        exit_on_error: If True, exits the process on failure; otherwise returns False
-
-    Returns:
-        True on success, False on failure when exit_on_error is False.
-    """
+    """Wait for an input element, focus it, set text, then handle IME action."""
     if not _wait_for_element(d, element, timeout=timeout):
-        message = f"Could not find element: '{element.selector}' within {timeout}s"
+        app_state = d.app_current()
+        message = (
+            f"Could not find element: '{element.selector}' within {timeout}s.\n"
+            f"  - Current screen: {app_state.get('package', 'unknown')}/{app_state.get('activity', 'unknown')}.\n"
+            f"  - See the full UI hierarchy dump below for details."
+        )
         if exit_on_error:
             _fatal(d, message)
         else:
-            print(f"[ERROR] {message}", file=sys.stderr)
+            logger.error("%s", message)
             return False
+    else:
+        logger.debug("Found element %s", element.selector)
 
     # Use robust text entry with retries and scroll support
     try:
         # Focus the element before setting text to mirror click flow semantics
-        element.click_exists(timeout=3)
+        element.click_exists(timeout=5)
         _robust_set_text(d, element, text, max_attempts=3)
     except Exception as e:
         message = f"Failed to set text on element: '{element.selector}': {e}"
         if exit_on_error:
             _fatal(d, message)
         else:
-            print(f"[ERROR] {message}", file=sys.stderr)
+            logger.error("%s", message)
             return False
 
-    print(f"[INFO] Set text to {text}")
+    logger.info("Set text to %s", text)
     _handle_keyboard_action(d)
-    _wait_for_ui_stable(d)
+
+    wait_for_ui_stable(d)
+
     return True
+
+
+def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
+    prev_dump = None
+    same_count = 0
+    start = time.time()
+    fail_count = 0
+    npe_seq_count = 0  # Track consecutive accessibility NPEs so we can heal
+
+    while time.time() - start < timeout:
+        try:
+            current_dump = d.dump_hierarchy()
+            fail_count = 0
+            npe_seq_count = 0
+        except Exception as e:
+            logger.debug("Failed to get hierarchy dump during stability check: %s", e)
+            fail_count += 1
+            if fail_count == 3:
+                try:
+                    d.healthcheck()
+                except Exception:
+                    pass
+            # Self-heal when we observe the classic AccessibilityService NPE repeatedly
+            try:
+                if "AccessibilityServiceInfo.flags" in str(
+                    e
+                ) or "NullPointerException" in str(e):
+                    npe_seq_count += 1
+                    if npe_seq_count >= 3:
+                        wait_for_accessibility_and_hierarchy(
+                            d, timeout=5.0, interval=0.5
+                        )
+                        npe_seq_count = 0
+                else:
+                    npe_seq_count = 0
+            except Exception:
+                pass
+            time.sleep(interval)
+            continue
+
+        # Count consecutive identical dumps
+        if prev_dump is not None and current_dump == prev_dump:
+            same_count += 1
+        else:
+            same_count = 1
+
+        prev_dump = current_dump
+
+        # Return True if the UI has stabilized for at least min_consecutive samples
+        if same_count >= min_consecutive:
+            logger.debug("UI stabilized (hierarchy dump) in %.1fs", time.time() - start)
+            return True
+
+        # Wait for some time to avoid false positive before screen transitions
+        time.sleep(interval)
+
+    logger.warning(
+        "UI did not stabilize (hierarchy dump) within %.1fs (required %s consecutive identical samples).",
+        time.time() - start,
+        min_consecutive,
+    )
+    return False
 
 
 # =============================================================================
 # PRIVATE STABILITY HELPERS
 # =============================================================================
+
+
+def _stop_uia_service_adb(timeout_seconds: float = 5.0) -> None:
+    """
+    Best-effort stop of UiAutomator2 agent components via ADB, without relying on
+    device.uiautomator internals.
+
+    This attempts multiple strategies and ignores failures for idempotency.
+    """
+    try:
+        commands = [
+            ["adb", "shell", "pkill", "-f", "atx-agent"],
+            ["adb", "shell", "killall", "atx-agent"],
+            ["adb", "shell", "am", "force-stop", "com.github.uiautomator"],
+            ["adb", "shell", "am", "force-stop", "com.github.uiautomator.test"],
+        ]
+        for cmd in commands:
+            try:
+                subprocess.run(cmd, timeout=timeout_seconds, capture_output=True)
+            except Exception:
+                pass
+        time.sleep(1.0)
+    except Exception:
+        pass
+
+
+# =============================================================================
+# PRIVATE LAUNCHER/RELAUNCH HELPERS
+# =============================================================================
+
+
+def _is_launcher_package(pkg: str) -> bool:
+    if not pkg:
+        return False
+
+    # Known launchers and heuristics
+    launcher_pkgs = {
+        "com.google.android.apps.nexuslauncher",
+        "com.android.launcher",
+        "com.android.launcher3",
+        "com.google.android.googlequicksearchbox",
+    }
+    if pkg in launcher_pkgs:
+        return True
+    normalized = pkg.lower()
+    # Heuristic: most home apps contain "launcher" or "nexus"
+    return "launcher" in normalized or "nexus" in normalized
+
+
+def _is_launcher_activity(activity: str) -> bool:
+    if not activity:
+        return False
+    a = activity.lower()
+    return "launcher" in a or "home" in a
+
+
+def _try_relaunch_target_app(d) -> bool:
+    target_pkg = os.getenv("UI_TARGET_PACKAGE")
+    if not target_pkg:
+        logger.debug("Skipping relaunch: UI_TARGET_PACKAGE not set.")
+        return False
+    try:
+        logger.info("Home/launcher detected. Relaunching target app: %s", target_pkg)
+        d.app_start(target_pkg, wait=True, stop=False)
+        if d.app_wait(target_pkg, front=True, timeout=10):
+            logger.info("Target app %s is front after relaunch attempt.", target_pkg)
+            return True
+        else:
+            logger.warning(
+                "Relaunch initiated but app is not front yet: %s", target_pkg
+            )
+    except Exception as e:
+        logger.debug("Relaunch attempt raised: %s", e)
+    return False
+
+
+def handle_relaunch(
+    d,
+    relaunch_state: dict,
+    now: float,
+    reason: str,
+) -> None:
+    """Centralized relaunch gate with cooldown/attempt limits and reasoned logging."""
+    try:
+        target_pkg = os.getenv("UI_TARGET_PACKAGE")
+        if not target_pkg:
+            return
+
+        attempts = relaunch_state.get("attempts", 0)
+        max_attempts = relaunch_state.get("max_attempts", 3)
+        cooldown = relaunch_state.get("cooldown_seconds", 10)
+        last_time = relaunch_state.get("last_attempt_time", 0.0)
+
+        if attempts >= max_attempts:
+            if not relaunch_state.get("gave_up_logged", False):
+                logger.error(
+                    "Reached max relaunch attempts (%s). Remaining wait will continue without relaunch.",
+                    max_attempts,
+                )
+                relaunch_state["gave_up_logged"] = True
+            return
+
+        if (now - last_time) < cooldown:
+            return
+
+        logger.warning(
+            "Relaunching target due to: %s (attempt #%s of %s)…",
+            reason,
+            attempts + 1,
+            max_attempts,
+        )
+        if _try_relaunch_target_app(d):
+            # Successful relaunch: reset attempts so we can try again in the future
+            relaunch_state["attempts"] = 0
+            relaunch_state["last_attempt_time"] = now
+            relaunch_state["gave_up_logged"] = False
+        else:
+            relaunch_state["attempts"] = attempts + 1
+            relaunch_state["last_attempt_time"] = now
+            logger.warning(
+                "Relaunch attempt #%s did not bring app to front yet.",
+                relaunch_state["attempts"],
+            )
+    except Exception as e:
+        logger.debug("Error in handle_relaunch: %s", e)
 
 
 def _wait_for_element(d, element, timeout=180):
@@ -192,33 +608,130 @@ def _wait_for_element(d, element, timeout=180):
         True if the element exists on UI hierarchy within the timeout, False otherwise
     """
     start_time = time.time()
+    relaunch_state = {
+        "attempts": 0,
+        "max_attempts": 3,
+        "cooldown_seconds": 10,
+        "last_attempt_time": 0.0,
+    }
+    # Best-effort selector string for logs
+    try:
+        selector_str = str(getattr(element, "selector", element))
+    except Exception:
+        selector_str = "<unknown>"
+    logger.debug("Waiting for element %s (timeout=%ss)", selector_str, timeout)
+
+    # Using top-level helpers for launcher detection and relaunch
+
+    selector_info = _parse_selector_from_element(element)
 
     while time.time() - start_time < timeout:
+        # If we unexpectedly returned to home/launcher, try to bring app back first
+        try:
+            app_state = d.app_current()
+            current_pkg = app_state.get("package", "")
+            current_activity = app_state.get("activity", "")
+
+            now = time.time()
+
+            target_pkg = os.getenv("UI_TARGET_PACKAGE")
+
+            # If we've returned to the target app after previous relaunch attempts, reset counters
+            try:
+                if (
+                    target_pkg
+                    and current_pkg == target_pkg
+                    and relaunch_state.get("attempts", 0) > 0
+                ):
+                    logger.info(
+                        "Target app %s is front again; resetting relaunch attempts.",
+                        target_pkg,
+                    )
+                    relaunch_state["attempts"] = 0
+                    relaunch_state["gave_up_logged"] = False
+            except Exception:
+                pass
+
+            # If not on the target package, try relaunching; otherwise skip launcher heuristics
+            if target_pkg:
+                if current_pkg and current_pkg != target_pkg:
+                    handle_relaunch(
+                        d,
+                        relaunch_state=relaunch_state,
+                        now=now,
+                        reason=f"not on target (current={current_pkg}, target={target_pkg})",
+                    )
+            else:
+                # No explicit target package; only use launcher heuristics to recover
+                if _is_launcher_package(current_pkg) or _is_launcher_activity(
+                    current_activity
+                ):
+                    handle_relaunch(
+                        d,
+                        relaunch_state=relaunch_state,
+                        now=now,
+                        reason=f"launcher detected ({current_pkg}/{current_activity})",
+                    )
+        except Exception as e:
+            logger.debug("Error during launcher detection/relaunch: %s", e)
+
+        # Detect and handle crash dialogs such as "App keeps stopping" / "has stopped"
+        try:
+            if _handle_crash_dialog(d):
+                # Give UI a brief moment and continue; relaunch logic above will bring app back
+                time.sleep(0.5)
+                continue
+        except Exception as e:
+            logger.debug("Error during crash dialog handling: %s", e)
+
         if not _handle_anr(
             d, max_anrs=5, timeout=1, target_element=element
         ):  # Failed to unfreeze system UI; abort early
             return False
-        if element.exists:  # Element found; return True
-            return True
-        time.sleep(1)
 
+        remaining = max(0, timeout - (time.time() - start_time))
+        wait_slice = min(1, remaining)
+        try:
+            if element.wait(timeout=wait_slice):  # Element found; return True
+                logger.debug(
+                    "Element %s appeared after %.1fs",
+                    selector_str,
+                    time.time() - start_time,
+                )
+                return True
+            else:
+                logger.debug(
+                    "Element %s did not appear after %.1fs",
+                    selector_str,
+                    time.time() - start_time,
+                )
+        except Exception:
+            # If wait is not available for some reason, fall back to existence check
+            if element.exists:
+                logger.debug("Element %s already exists (no wait).", selector_str)
+                return True
+
+        try:
+            did_scroll = _try_scroll_into_view(d, selector_info)
+            if did_scroll:
+                logger.debug(
+                    "Attempted scroll into view using selector info: %s", selector_info
+                )
+        except Exception as e:
+            logger.debug("Error during scroll attempt: %s", e)
+
+        time.sleep(0.5)
+
+    logger.debug(
+        "Timed out after %.1fs waiting for element %s",
+        time.time() - start_time,
+        selector_str,
+    )
     return False
 
 
 def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
-    """
-    Handles consecutive "Application Not Responding" (ANR) dialogs by clicking "Wait" up to max_anrs times.
-
-    Args:
-        d: Device object
-        max_anrs: Maximum number of consecutive ANR dialogs to handle
-        timeout: Timeout for checking each ANR dialog
-        target_element: Optional element to wait for after dismissing ANR
-
-    Returns:
-        bool: True if the maximum number of consecutive ANRs was not reached,
-              False otherwise (system likely frozen).
-    """
+    """Click ANR 'Wait' up to max_anrs times; settle with idle/stable checks."""
     anr_count = 0
     wait_button = d(resourceId="android:id/aerr_wait")
 
@@ -226,125 +739,140 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
         try:
             if wait_button.exists(timeout=timeout):
                 anr_count += 1
-                print(
-                    f"[DEBUG] ANR dialog #{anr_count} detected. Clicking 'Wait' to continue..."
+                logger.debug(
+                    "ANR dialog #%s detected. Clicking 'Wait' to continue...", anr_count
                 )
                 wait_button.click()
 
                 # Wait for either target element or UI stability
                 if target_element is not None:
-                    print(
-                        f"[DEBUG] Waiting for target element '{target_element.selector}' to appear after ANR..."
+                    logger.debug(
+                        "Waiting for target element '%s' to appear after ANR...",
+                        target_element.selector,
                     )
-                    if target_element.wait(timeout=10):
-                        print(
-                            f"[DEBUG] Target element '{target_element.selector}' appeared successfully after ANR."
+                    if target_element.wait(timeout=5):
+                        logger.debug(
+                            "Target element '%s' appeared successfully after ANR.",
+                            target_element.selector,
                         )
                         break  # Target element found - exit ANR loop
                     else:
-                        print(
-                            f"[DEBUG] Target element '{target_element.selector}' did not appear after ANR dismissal."
+                        logger.debug(
+                            "Target element '%s' did not appear after ANR dismissal.",
+                            target_element.selector,
                         )
                         continue  # Continue checking for more ANRs
                 else:
-                    print("[DEBUG] Waiting for UI to stabilize after ANR...")
-                    _wait_for_ui_stable(d, timeout=10)
+                    logger.debug("Waiting for UI to stabilize after ANR...")
+                    wait_for_ui_stable(d)
             else:
-                break  # No ANR dialog found
+                return True  # No ANR dialog found
         except Exception as e:
-            print(
-                f"[WARN] Could not click ANR 'Wait' button (it may have disappeared): {e}"
+            logger.warning(
+                "Could not click ANR 'Wait' button (it may have disappeared): %s", e
             )
             break
 
     # Reached max ANR limit: log summary and report False (non-fatal)
     if anr_count == max_anrs:
-        print(
-            f"[ERROR] Could not fully handle ANR dialog(s): reached maximum limit of {max_anrs}.",
-            file=sys.stderr,
+        logger.error(
+            "Could not fully handle ANR dialog(s): reached maximum limit of %s.",
+            max_anrs,
         )
         return False
 
     if anr_count > 0:
-        print(
-            f"[WARN] Handled {anr_count} consecutive ANR dialog(s) until system UI unfreeze."
+        logger.info(
+            "Handled %s consecutive ANR dialog(s) until system UI unfreeze.", anr_count
         )
 
     return True
 
 
-def _wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
+def _handle_crash_dialog(d) -> bool:
+    """Detect system crash dialogs and dismiss them so we can relaunch.
+
+    Returns True if a dialog was handled (clicked), False otherwise.
     """
-    Wait until the UI hierarchy appears stable by observing identical dumps
-    for a number of consecutive samples.
+    try:
+        # Common titles/texts seen on crash dialogs
+        crash_title = d(resourceId="android:id/alertTitle")
+        crash_msg = d(resourceId="android:id/message")
 
-    Args:
-        d: Device object
-        timeout: Maximum time to wait for stability
-        interval: Time between stability checks
-        min_consecutive: Number of consecutive identical hierarchy dumps
-            required to consider the UI stable (default: 2)
-
-    Returns:
-        True if UI stabilized within timeout, False otherwise
-    """
-    prev_hierarchy = None
-    same_count = 0
-    start = time.time()
-
-    while time.time() - start < timeout:
+        title_text = ""
+        msg_text = ""
         try:
-            current_hierarchy = d.dump_hierarchy(compressed=True)
-        except Exception as e:
-            print(
-                f"[WARN] Failed to dump UI hierarchy during stability check: {e}",
-                file=sys.stderr,
-            )
-            time.sleep(interval)
-            continue
+            if crash_title.exists:
+                title_text = (crash_title.get_text() or "").lower()
+        except Exception:
+            pass
+        try:
+            if crash_msg.exists:
+                msg_text = (crash_msg.get_text() or "").lower()
+        except Exception:
+            pass
 
-        # Count consecutive identical dumps
-        if prev_hierarchy is not None and current_hierarchy == prev_hierarchy:
-            same_count += 1
-        else:
-            same_count = 1
+        indicative = any(
+            s in title_text or s in msg_text
+            for s in [
+                "keeps stopping",
+                "has stopped",
+                "isn't responding",
+                "isn’t responding",
+            ]
+        )
 
-        prev_hierarchy = current_hierarchy
+        # Known button choices on these dialogs
+        btn_close = d(resourceId="android:id/aerr_close")
+        btn_ok = d(resourceId="android:id/button1", text="OK")
+        btn_restart = d(text="Restart app")
+        btn_close_text = d(text="Close app")
 
-        # Return True if the UI has stabilized for at least min_consecutive samples (UI is stable)
-        if same_count >= min_consecutive:
-            return True
-
-        time.sleep(interval)
-
-    elapsed = time.time() - start
-    print(
-        f"[WARN] UI did not stabilize within {elapsed:.1f}s (required {min_consecutive} consecutive identical dumps).",
-        file=sys.stderr,
-    )
+        if (
+            indicative
+            or btn_close.exists
+            or btn_close_text.exists
+            or btn_ok.exists
+            or btn_restart.exists
+        ):
+            # Prefer closing the app, then we'll relaunch
+            for btn in (btn_close, btn_close_text, btn_ok, btn_restart):
+                try:
+                    if btn.exists(timeout=0.5):
+                        btn.click()
+                        logger.warning(
+                            "Crash dialog dismissed via '%s'",
+                            getattr(btn, "selector", btn),
+                        )
+                        wait_for_ui_stable(
+                            d, timeout=3, interval=0.5, min_consecutive=2
+                        )
+                        return True
+                except Exception:
+                    continue
+    except Exception:
+        pass
     return False
 
 
-# =============================================================================
-# ERROR HANDLING HELPERS
-# =============================================================================
-
-
 def _fatal(d, message):
-    """
-    Centralized fatal error handler: log message, dump UI hierarchy if possible,
-    then exit the process with non-zero code.
-
-    Args:
-        d: Device object (may be None)
-        message: Error message to print
-    """
-    print(f"[FATAL] {message}", file=sys.stderr)
+    logger.critical("%s", message)
     try:
         if d is not None:
-            print(d.dump_hierarchy(), file=sys.stderr)
-    except Exception as dump_err:
-        print(f"[WARN] Failed to dump UI hierarchy: {dump_err}", file=sys.stderr)
+            try:
+                logger.critical("%s", d.dump_hierarchy())
+            except Exception as dump_err:
+                # Ignore the classic accessibility bind race to avoid masking the real error
+                if "AccessibilityServiceInfo.flags" in str(
+                    dump_err
+                ) or "NullPointerException" in str(dump_err):
+                    logger.warning(
+                        "Skipped hierarchy dump (accessibility not ready): %s", dump_err
+                    )
+                else:
+                    logger.warning("Failed to dump UI hierarchy: %s", dump_err)
+    except Exception as outer:
+        logger.warning("Fatal handler encountered an error: %s", outer)
     sys.exit(1)
 
 
@@ -354,15 +882,7 @@ def _fatal(d, message):
 
 
 def _handle_keyboard_action(d):
-    """
-    Handles keyboard action (Done/Enter) with multiple fallback methods.
-
-    Args:
-        d: Device object
-
-    Returns:
-        True if keyboard action was successful, False otherwise
-    """
+    """Trigger IME action via Done button, IME action key, or Enter key."""
     # Handle any ANRs before keyboard interaction
     _handle_anr(d, max_anrs=5, timeout=1, target_element=None)
 
@@ -370,10 +890,10 @@ def _handle_keyboard_action(d):
     try:
         if d(description="Done").exists(timeout=1):
             d(description="Done").click()
-            print("[INFO] Clicked keyboard Done button")
+            logger.debug("Clicked keyboard Done button")
             return True
     except Exception as e:
-        print(f"[WARN] Could not click keyboard Done button: {e}")
+        logger.warning("Could not click keyboard Done button: %s", e)
 
     # Method 2: Try clicking the keyboard action button
     try:
@@ -383,20 +903,20 @@ def _handle_keyboard_action(d):
             d(
                 resourceId="com.google.android.inputmethod.latin:id/key_pos_ime_action"
             ).click()
-            print("[INFO] Clicked keyboard action button")
+            logger.debug("Clicked keyboard action button")
             return True
     except Exception as e:
-        print(f"[WARN] Could not click keyboard action button: {e}")
+        logger.warning("Could not click keyboard action button: %s", e)
 
     # Method 3: Try pressing Enter key
     try:
         d.press("enter")
-        print("[INFO] Pressed Enter key")
+        logger.debug("Pressed Enter key")
         return True
     except Exception as e:
-        print(f"[WARN] Could not press Enter key: {e}")
+        logger.warning("Could not press Enter key: %s", e)
 
-    print("[WARN] All keyboard action methods failed")
+    logger.error("All keyboard action methods failed")
     return False
 
 
@@ -466,18 +986,14 @@ def _robust_set_text(d, element, text, max_attempts=3):
             if not element.exists:
                 _try_scroll_into_view(d, selector_info)
 
-            element.click_exists(timeout=2)
+            element.click_exists(timeout=5)
             element.set_text(text)
-            print(
-                f"[INFO] Set text attempt {attempt_index} succeeded for {element.selector}"
+            logger.debug(
+                "Set text attempt %s succeeded for %s", attempt_index, element.selector
             )
             return True
         except Exception as set_error:
-            print(f"[WARN] set_text attempt {attempt_index} failed: {set_error}")
-            # Try to scroll into view for the next attempt
-            _try_scroll_into_view(d, selector_info)
-            # Small pause before retry
-            time.sleep(0.5)
+            logger.warning("set_text attempt %s failed: %s", attempt_index, set_error)
 
     raise RuntimeError(
         f"Exhausted {max_attempts} attempts to set text on element: '{element.selector}'"
