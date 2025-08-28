@@ -157,6 +157,7 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
             _fatal(None, "Emulator core services did not stabilize after all attempts.")
 
         try:
+            _adb_wait_for_device(retry_delay)
             logger.debug("Attempting to connect uiautomator2 client...")
             device = u2.connect()
             logger.info("Connected to device.")
