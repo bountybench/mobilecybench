@@ -1,6 +1,6 @@
 """
 uiautomator2 helpers for reliable clicking and text entry.
-Public API: initialize_ui_automation, reinitialize_ui_automation, wait_and_click, wait_and_set_text, wait_for_ui_stable, uiautomator_reconnect
+Public API: initialize_ui_automation, wait_and_click, wait_and_set_text, wait_for_ui_stable
 """
 
 import logging
@@ -175,22 +175,6 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
             except Exception:
                 pass
 
-            # Warm up the accessibility service / hierarchy
-            # logger.debug("Warming up accessibility service...")
-            # ready = False
-            # try:
-            #     ready = wait_for_accessibility_and_hierarchy(
-            #         device, timeout=30.0, interval=1.0, allow_reconnect=False
-            #     )
-            # except Exception as e:
-            #     logger.debug("Warm-up helper raised: %s", e)
-
-            # if not ready:
-            #     _fatal(
-            #         device,
-            #         "UiAutomator/Accessibility service not ready after all attempts.",
-            #     )
-
             logger.debug("UI automation client is ready.")
             return device
 
@@ -209,46 +193,13 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
 # =============================================================================
 
 
-# def wait_for_accessibility_and_hierarchy(d, timeout=30.0, interval=1.0, allow_reconnect=True):
-#     deadline = time.time() + timeout
-#     try:
-#         d.settings["compressHierarchy"] = False
-#     except Exception:
-#         pass
-
-#     consecutive_npe = 0
-
-#     while time.time() < deadline:
-#         try:
-#             _ = d.dump_hierarchy()
-#             logger.debug("Accessibility/hierarchy warm-up succeeded.")
-#             return True
-#         except Exception as e:
-#             msg = str(e)
-#             if "AccessibilityServiceInfo.flags" in msg or "NullPointerException" in msg:
-#                 logger.debug("Hierarchy dump failed (race condition). Retrying…")
-#                 consecutive_npe += 1
-#             else:
-#                 logger.debug("Hierarchy dump error during warm-up: %s", e)
-#                 consecutive_npe = 0
-
-#         time.sleep(interval)
-
-#     logger.error(
-#         "Accessibility warm-up timed out after %.1fs without recovery.", timeout
-#     return False
-
-
 def wait_and_click(d, element, timeout=180, exit_on_error=True):
     """Wait for an element and click it with ANR awareness and no sleeps."""
-    if not _wait_for_element(
-        d, element, timeout=timeout
-    ):  # Element not found; raise error/fatal if
+    if not _wait_for_element(d, element, timeout=timeout):
         app_state = d.app_current()
         message = (
             f"Could not find element: '{element.selector}' within {timeout}s.\n"
-            f"  - Current screen: {app_state.get('package', 'unknown')}/{app_state.get('activity', 'unknown')}.\n"
-            f"  - See the full UI hierarchy dump below for details."
+            f"  - Current screen: {app_state.get('package', 'unknown')}/{app_state.get('activity', 'unknown')}."
         )
         if exit_on_error:
             _fatal(d, message)
@@ -263,11 +214,7 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
         elem_info = element.info
         message = (
             f"Found element '{element.selector}' but it could not be clicked.\n"
-            f"  - Is it visible? {elem_info.get('visibleBounds')}\n"
-            f"  - Is it clickable? {elem_info.get('clickable')}\n"
-            f"  - Is it enabled? {elem_info.get('enabled')}\n"
-            f"  - Current screen: {app_state.get('package', 'unknown')}/{app_state.get('activity', 'unknown')}.\n"
-            f"  - See the full UI hierarchy dump below for details."
+            f"  - Is it visible? {elem_info.get('visibleBounds')}"
         )
         if exit_on_error:
             _fatal(d, message)
@@ -289,8 +236,7 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
         app_state = d.app_current()
         message = (
             f"Could not find element: '{element.selector}' within {timeout}s.\n"
-            f"  - Current screen: {app_state.get('package', 'unknown')}/{app_state.get('activity', 'unknown')}.\n"
-            f"  - See the full UI hierarchy dump below for details."
+            f"  - Current screen: {app_state.get('package', 'unknown')}/{app_state.get('activity', 'unknown')}."
         )
         if exit_on_error:
             _fatal(d, message)
@@ -326,13 +272,11 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
     same_count = 0
     start = time.time()
     fail_count = 0
-    npe_seq_count = 0  # Track consecutive accessibility NPEs so we can heal
 
     while time.time() - start < timeout:
         try:
             current_dump = d.dump_hierarchy()
             fail_count = 0
-            # # npe_seq_count = 0
         except Exception as e:
             logger.debug("Failed to get hierarchy dump during stability check: %s", e)
             fail_count += 1
@@ -342,21 +286,6 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
                     d.healthcheck()
                 except Exception:
                     pass
-            # Self-heal when we observe the classic AccessibilityService NPE repeatedly
-            # try:
-            #     if "AccessibilityServiceInfo.flags" in str(
-            #         e
-            #     ) or "NullPointerException" in str(e):
-            #         npe_seq_count += 1
-            #         if npe_seq_count >= 3:
-            #             wait_for_accessibility_and_hierarchy(
-            #                 d, timeout=5.0, interval=0.5
-            #             )
-            #             npe_seq_count = 0
-            #     else:
-            #         npe_seq_count = 0
-            # except Exception:
-            #     pass
             time.sleep(interval)
             continue
 
@@ -389,102 +318,6 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
 # =============================================================================
 
 
-def _is_launcher_package(pkg: str) -> bool:
-    if not pkg:
-        return False
-
-    # Known launchers and heuristics
-    launcher_pkgs = {
-        "com.google.android.apps.nexuslauncher",
-        "com.android.launcher",
-        "com.android.launcher3",
-        "com.google.android.googlequicksearchbox",
-    }
-    if pkg in launcher_pkgs:
-        return True
-    normalized = pkg.lower()
-    # Heuristic: most home apps contain "launcher" or "nexus"
-    return "launcher" in normalized or "nexus" in normalized
-
-
-def _is_launcher_activity(activity: str) -> bool:
-    if not activity:
-        return False
-    a = activity.lower()
-    return "launcher" in a or "home" in a
-
-
-def _try_relaunch_target_app(d) -> bool:
-    target_pkg = os.getenv("UI_TARGET_PACKAGE")
-    if not target_pkg:
-        logger.debug("Skipping relaunch: UI_TARGET_PACKAGE not set.")
-        return False
-    try:
-        logger.info("Home/launcher detected. Relaunching target app: %s", target_pkg)
-        d.app_start(target_pkg, wait=True, stop=False)
-        if d.app_wait(target_pkg, front=True, timeout=10):
-            logger.info("Target app %s is front after relaunch attempt.", target_pkg)
-            return True
-        else:
-            logger.warning(
-                "Relaunch initiated but app is not front yet: %s", target_pkg
-            )
-    except Exception as e:
-        logger.debug("Relaunch attempt raised: %s", e)
-    return False
-
-
-def handle_relaunch(
-    d,
-    relaunch_state: dict,
-    now: float,
-    reason: str,
-) -> None:
-    """Centralized relaunch gate with cooldown/attempt limits and reasoned logging."""
-    try:
-        target_pkg = os.getenv("UI_TARGET_PACKAGE")
-        if not target_pkg:
-            return
-
-        attempts = relaunch_state.get("attempts", 0)
-        max_attempts = relaunch_state.get("max_attempts", 3)
-        cooldown = relaunch_state.get("cooldown_seconds", 10)
-        last_time = relaunch_state.get("last_attempt_time", 0.0)
-
-        if attempts >= max_attempts:
-            if not relaunch_state.get("gave_up_logged", False):
-                logger.error(
-                    "Reached max relaunch attempts (%s). Remaining wait will continue without relaunch.",
-                    max_attempts,
-                )
-                relaunch_state["gave_up_logged"] = True
-            return
-
-        if (now - last_time) < cooldown:
-            return
-
-        logger.warning(
-            "Relaunching target due to: %s (attempt #%s of %s)…",
-            reason,
-            attempts + 1,
-            max_attempts,
-        )
-        if _try_relaunch_target_app(d):
-            # Successful relaunch: reset attempts so we can try again in the future
-            relaunch_state["attempts"] = 0
-            relaunch_state["last_attempt_time"] = now
-            relaunch_state["gave_up_logged"] = False
-        else:
-            relaunch_state["attempts"] = attempts + 1
-            relaunch_state["last_attempt_time"] = now
-            logger.warning(
-                "Relaunch attempt #%s did not bring app to front yet.",
-                relaunch_state["attempts"],
-            )
-    except Exception as e:
-        logger.debug("Error in handle_relaunch: %s", e)
-
-
 def _wait_for_element(d, element, timeout=180):
     """
     Wait for an element to exist while continuously handling potential ANR dialogs.
@@ -498,12 +331,7 @@ def _wait_for_element(d, element, timeout=180):
         True if the element exists on UI hierarchy within the timeout, False otherwise
     """
     start_time = time.time()
-    relaunch_state = {
-        "attempts": 0,
-        "max_attempts": 3,
-        "cooldown_seconds": 10,
-        "last_attempt_time": 0.0,
-    }
+
     # Best-effort selector string for logs
     try:
         selector_str = str(getattr(element, "selector", element))
@@ -511,65 +339,25 @@ def _wait_for_element(d, element, timeout=180):
         selector_str = "<unknown>"
     logger.debug("Waiting for element %s (timeout=%ss)", selector_str, timeout)
 
-    # Using top-level helpers for launcher detection and relaunch
-
     selector_info = _parse_selector_from_element(element)
 
     while time.time() - start_time < timeout:
-        # If we unexpectedly returned to home/launcher, try to bring app back first
+        # Fail fast if we lost the target app foreground
         try:
             app_state = d.app_current()
             current_pkg = app_state.get("package", "")
             current_activity = app_state.get("activity", "")
-
-            now = time.time()
-
             target_pkg = os.getenv("UI_TARGET_PACKAGE")
-
-            # If we've returned to the target app after previous relaunch attempts, reset counters
-            try:
-                if (
-                    target_pkg
-                    and current_pkg == target_pkg
-                    and relaunch_state.get("attempts", 0) > 0
-                ):
-                    logger.info(
-                        "Target app %s is front again; resetting relaunch attempts.",
-                        target_pkg,
-                    )
-                    relaunch_state["attempts"] = 0
-                    relaunch_state["gave_up_logged"] = False
-            except Exception:
-                pass
-
-            # If not on the target package, try relaunching; otherwise skip launcher heuristics
-            if target_pkg:
-                if current_pkg and current_pkg != target_pkg:
-                    handle_relaunch(
-                        d,
-                        relaunch_state=relaunch_state,
-                        now=now,
-                        reason=f"not on target (current={current_pkg}, target={target_pkg})",
-                    )
-            else:
-                # No explicit target package; only use launcher heuristics to recover
-                if _is_launcher_package(current_pkg) or _is_launcher_activity(
-                    current_activity
-                ):
-                    handle_relaunch(
-                        d,
-                        relaunch_state=relaunch_state,
-                        now=now,
-                        reason=f"launcher detected ({current_pkg}/{current_activity})",
-                    )
+            if target_pkg and current_pkg and current_pkg != target_pkg:
+                logger.error(
+                    "Not on target app (current=%s/%s, target=%s).",
+                    current_pkg,
+                    current_activity,
+                    target_pkg,
+                )
+                return False
         except Exception as e:
-            logger.debug("Error during launcher detection/relaunch: %s", e)
-
-        # Detect and handle crash dialogs such as "App keeps stopping" / "has stopped"
-        try:
-            pass
-        except Exception as e:
-            logger.debug("Error during crash dialog handling: %s", e)
+            logger.debug("Could not inspect current app state: %s", e)
 
         if not _handle_anr(
             d, max_anrs=5, timeout=1, target_element=element
