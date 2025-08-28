@@ -355,14 +355,8 @@ def _wait_for_element(d, element, timeout=180):
                     current_activity,
                     target_pkg,
                 )
-                logger.error(
-                    "Target app likely crashed or was backgrounded; aborting current wait."
-                )
-                try:
-                    _log_process_state(target_pkg)
-                    _log_recent_crash_signals(target_pkg, max_lines=300)
-                except Exception as diag_err:
-                    logger.debug("Crash diagnostics collection failed: %s", diag_err)
+                _log_process_state(target_pkg)
+                _log_recent_crash_signals(target_pkg, max_lines=300)
                 return False
         except Exception as e:
             logger.debug("Could not inspect current app state: %s", e)
@@ -474,6 +468,28 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
 
 def _fatal(d, message):
     logger.critical("%s", message)
+    # Always try to collect crash diagnostics before exiting
+    try:
+        pkg_env = os.getenv("UI_TARGET_PACKAGE", "")
+        current_pkg = ""
+        try:
+            if d is not None:
+                app_state = d.app_current()
+                current_pkg = app_state.get("package", "") or ""
+        except Exception:
+            pass
+        pkg = pkg_env or current_pkg
+        if pkg:
+            try:
+                _log_process_state(pkg)
+            except Exception as diag_err:
+                logger.debug("Process state diagnostics failed: %s", diag_err)
+            try:
+                _log_recent_crash_signals(pkg, max_lines=300)
+            except Exception as diag_err:
+                logger.debug("Logcat diagnostics failed: %s", diag_err)
+    except Exception as outer_diag:
+        logger.debug("Crash diagnostics wrapper failed: %s", outer_diag)
     try:
         if d is not None:
             try:
