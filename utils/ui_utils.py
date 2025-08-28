@@ -157,10 +157,6 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
             _fatal(None, "Emulator core services did not stabilize after all attempts.")
 
         try:
-            logger.debug("Waiting for device to be ready...")
-            _adb_wait_for_device(retry_delay)
-            logger.debug("Device is ready.")
-
             logger.debug("Attempting to connect uiautomator2 client...")
             device = u2.connect()
             logger.info("Connected to device.")
@@ -180,20 +176,20 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
                 pass
 
             # Warm up the accessibility service / hierarchy
-            logger.debug("Warming up accessibility service...")
-            ready = False
-            try:
-                ready = wait_for_accessibility_and_hierarchy(
-                    device, timeout=30.0, interval=1.0, allow_reconnect=False
-                )
-            except Exception as e:
-                logger.debug("Warm-up helper raised: %s", e)
+            # logger.debug("Warming up accessibility service...")
+            # ready = False
+            # try:
+            #     ready = wait_for_accessibility_and_hierarchy(
+            #         device, timeout=30.0, interval=1.0, allow_reconnect=False
+            #     )
+            # except Exception as e:
+            #     logger.debug("Warm-up helper raised: %s", e)
 
-            if not ready:
-                _fatal(
-                    device,
-                    "UiAutomator/Accessibility service not ready after all attempts.",
-                )
+            # if not ready:
+            #     _fatal(
+            #         device,
+            #         "UiAutomator/Accessibility service not ready after all attempts.",
+            #     )
 
             logger.debug("UI automation client is ready.")
             return device
@@ -213,112 +209,34 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
 # =============================================================================
 
 
-def uiautomator_reconnect(d):
-    """
-    Attempt to recover a dead/flaky UiAutomator service by stopping the current
-    UiAutomator on the provided device and then fully reinitializing via
-    initialize_ui_automation().
+# def wait_for_accessibility_and_hierarchy(d, timeout=30.0, interval=1.0, allow_reconnect=True):
+#     deadline = time.time() + timeout
+#     try:
+#         d.settings["compressHierarchy"] = False
+#     except Exception:
+#         pass
 
-    Args:
-        d: Connected uiautomator2 device instance.
+#     consecutive_npe = 0
 
-    Returns:
-        The newly initialized device on success; False otherwise.
-    """
-    try:
-        # Best-effort stop of UiAutomator/agent using ADB (device-agnostic)
-        try:
-            _stop_uia_service_adb()
-        except Exception:
-            pass
+#     while time.time() < deadline:
+#         try:
+#             _ = d.dump_hierarchy()
+#             logger.debug("Accessibility/hierarchy warm-up succeeded.")
+#             return True
+#         except Exception as e:
+#             msg = str(e)
+#             if "AccessibilityServiceInfo.flags" in msg or "NullPointerException" in msg:
+#                 logger.debug("Hierarchy dump failed (race condition). Retrying…")
+#                 consecutive_npe += 1
+#             else:
+#                 logger.debug("Hierarchy dump error during warm-up: %s", e)
+#                 consecutive_npe = 0
 
-        # Re-run full initialization (connect + healthcheck + warm-up)
-        try:
-            new_device = initialize_ui_automation()
-            logger.info("UiAutomator reinitialized via initialize_ui_automation().")
-            return new_device
-        except SystemExit as se:
-            # initialize_ui_automation may call sys.exit() on fatal; convert to False
-            logger.debug("initialize_ui_automation triggered SystemExit: %s", se)
-            return False
-        except Exception as e:
-            logger.debug("initialize_ui_automation failed: %s", e)
-            return False
-    except Exception as e:
-        logger.debug("uiautomator_reconnect failed: %s", e)
-        return False
+#         time.sleep(interval)
 
-
-def wait_for_accessibility_and_hierarchy(
-    d, timeout=30.0, interval=1.0, allow_reconnect=True
-):
-    deadline = time.time() + timeout
-    try:
-        d.settings["compressHierarchy"] = False
-    except Exception:
-        pass
-
-    consecutive_npe = 0
-    last_reconnect_ts = 0.0
-    reconnect_cooldown = 5.0  # seconds
-    max_reconnects = 2
-    reconnects_done = 0
-
-    while time.time() < deadline:
-        try:
-            _ = d.dump_hierarchy()
-            logger.debug("Accessibility/hierarchy warm-up succeeded.")
-            return True
-        except Exception as e:
-            msg = str(e)
-            if "AccessibilityServiceInfo.flags" in msg or "NullPointerException" in msg:
-                logger.debug("Hierarchy dump failed (race condition). Retrying…")
-                consecutive_npe += 1
-
-                now = time.time()
-                if (
-                    allow_reconnect
-                    and consecutive_npe >= 3
-                    and reconnects_done < max_reconnects
-                    and (now - last_reconnect_ts) >= reconnect_cooldown
-                ):
-                    new_d = uiautomator_reconnect(d)
-                    if new_d:
-                        d = new_d
-                    else:
-                        logger.debug(
-                            "UiAutomator reconnect failed: no new device object."
-                        )
-                    reconnects_done += 1
-                    last_reconnect_ts = now
-            else:
-                logger.debug("Hierarchy dump error during warm-up: %s", e)
-                consecutive_npe = 0
-
-        time.sleep(interval)
-
-    # Fallback
-    if allow_reconnect:
-        logger.debug("Warm-up timed out. Attempting full UiAutomator reconnect...")
-        for i in range(3):
-            logger.debug("UiAutomator reconnect attempt #%d...", i + 1)
-            new_d = uiautomator_reconnect(d)
-            if new_d:
-                d = new_d
-            try:
-                _ = d.dump_hierarchy()
-                logger.info("UiAutomator ready after reconnect (attempt #%d).", i + 1)
-                return True
-            except Exception as err:
-                logger.warning("Reconnect attempt #%d failed: %s", i + 1, err)
-                time.sleep(2.0)
-        logger.error("All attempts to reconnect UiAutomator failed.")
-        return False
-    else:
-        logger.error(
-            "Warm-up timed out without reconnects (allow_reconnect=False). Accessibility may be unavailable."
-        )
-        return False
+#     logger.error(
+#         "Accessibility warm-up timed out after %.1fs without recovery.", timeout
+#     return False
 
 
 def wait_and_click(d, element, timeout=180, exit_on_error=True):
@@ -414,30 +332,31 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
         try:
             current_dump = d.dump_hierarchy()
             fail_count = 0
-            npe_seq_count = 0
+            # # npe_seq_count = 0
         except Exception as e:
             logger.debug("Failed to get hierarchy dump during stability check: %s", e)
             fail_count += 1
             if fail_count == 3:
                 try:
+                    logger.debug("Running health check...")
                     d.healthcheck()
                 except Exception:
                     pass
             # Self-heal when we observe the classic AccessibilityService NPE repeatedly
-            try:
-                if "AccessibilityServiceInfo.flags" in str(
-                    e
-                ) or "NullPointerException" in str(e):
-                    npe_seq_count += 1
-                    if npe_seq_count >= 3:
-                        wait_for_accessibility_and_hierarchy(
-                            d, timeout=5.0, interval=0.5
-                        )
-                        npe_seq_count = 0
-                else:
-                    npe_seq_count = 0
-            except Exception:
-                pass
+            # try:
+            #     if "AccessibilityServiceInfo.flags" in str(
+            #         e
+            #     ) or "NullPointerException" in str(e):
+            #         npe_seq_count += 1
+            #         if npe_seq_count >= 3:
+            #             wait_for_accessibility_and_hierarchy(
+            #                 d, timeout=5.0, interval=0.5
+            #             )
+            #             npe_seq_count = 0
+            #     else:
+            #         npe_seq_count = 0
+            # except Exception:
+            #     pass
             time.sleep(interval)
             continue
 
@@ -463,35 +382,6 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
         min_consecutive,
     )
     return False
-
-
-# =============================================================================
-# PRIVATE STABILITY HELPERS
-# =============================================================================
-
-
-def _stop_uia_service_adb(timeout_seconds: float = 5.0) -> None:
-    """
-    Best-effort stop of UiAutomator2 agent components via ADB, without relying on
-    device.uiautomator internals.
-
-    This attempts multiple strategies and ignores failures for idempotency.
-    """
-    try:
-        commands = [
-            ["adb", "shell", "pkill", "-f", "atx-agent"],
-            ["adb", "shell", "killall", "atx-agent"],
-            ["adb", "shell", "am", "force-stop", "com.github.uiautomator"],
-            ["adb", "shell", "am", "force-stop", "com.github.uiautomator.test"],
-        ]
-        for cmd in commands:
-            try:
-                subprocess.run(cmd, timeout=timeout_seconds, capture_output=True)
-            except Exception:
-                pass
-        time.sleep(1.0)
-    except Exception:
-        pass
 
 
 # =============================================================================
@@ -677,10 +567,7 @@ def _wait_for_element(d, element, timeout=180):
 
         # Detect and handle crash dialogs such as "App keeps stopping" / "has stopped"
         try:
-            if _handle_crash_dialog(d):
-                # Give UI a brief moment and continue; relaunch logic above will bring app back
-                time.sleep(0.5)
-                continue
+            pass
         except Exception as e:
             logger.debug("Error during crash dialog handling: %s", e)
 
@@ -787,72 +674,6 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
         )
 
     return True
-
-
-def _handle_crash_dialog(d) -> bool:
-    """Detect system crash dialogs and dismiss them so we can relaunch.
-
-    Returns True if a dialog was handled (clicked), False otherwise.
-    """
-    try:
-        # Common titles/texts seen on crash dialogs
-        crash_title = d(resourceId="android:id/alertTitle")
-        crash_msg = d(resourceId="android:id/message")
-
-        title_text = ""
-        msg_text = ""
-        try:
-            if crash_title.exists:
-                title_text = (crash_title.get_text() or "").lower()
-        except Exception:
-            pass
-        try:
-            if crash_msg.exists:
-                msg_text = (crash_msg.get_text() or "").lower()
-        except Exception:
-            pass
-
-        indicative = any(
-            s in title_text or s in msg_text
-            for s in [
-                "keeps stopping",
-                "has stopped",
-                "isn't responding",
-                "isn’t responding",
-            ]
-        )
-
-        # Known button choices on these dialogs
-        btn_close = d(resourceId="android:id/aerr_close")
-        btn_ok = d(resourceId="android:id/button1", text="OK")
-        btn_restart = d(text="Restart app")
-        btn_close_text = d(text="Close app")
-
-        if (
-            indicative
-            or btn_close.exists
-            or btn_close_text.exists
-            or btn_ok.exists
-            or btn_restart.exists
-        ):
-            # Prefer closing the app, then we'll relaunch
-            for btn in (btn_close, btn_close_text, btn_ok, btn_restart):
-                try:
-                    if btn.exists(timeout=0.5):
-                        btn.click()
-                        logger.warning(
-                            "Crash dialog dismissed via '%s'",
-                            getattr(btn, "selector", btn),
-                        )
-                        wait_for_ui_stable(
-                            d, timeout=3, interval=0.5, min_consecutive=2
-                        )
-                        return True
-                except Exception:
-                    continue
-    except Exception:
-        pass
-    return False
 
 
 def _fatal(d, message):
