@@ -673,7 +673,11 @@ def _wait_for_element(d, element, timeout=180):
                 )
                 return True
             else:
-                logger.debug("Element %s did not appear after %.1fs", selector_str, time.time() - start_time)
+                logger.debug(
+                    "Element %s did not appear after %.1fs",
+                    selector_str,
+                    time.time() - start_time,
+                )
         except Exception:
             # If wait is not available for some reason, fall back to existence check
             if element.exists:
