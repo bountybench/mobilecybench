@@ -24,6 +24,7 @@ SEED_SCRIPT="${SCRIPT_DIR}/owncloud_setup.py"
 APK_LINK_SCRIPT="${SCRIPT_DIR}/setup_app_apklink.sh"
 APP_SOURCE_SCRIPT="${SCRIPT_DIR}/setup_app_source.sh"
 VENV_DIR="${SCRIPT_DIR}/.venv"
+CODEBASE_DIR="${SCRIPT_DIR}/codebase"
 DEFAULT_OUTPUT="baseline_manifest.json"
 SEED_OUTPUT=${SEED_OUTPUT:-$DEFAULT_OUTPUT}
 HEALTH_TIMEOUT=${HEALTH_TIMEOUT:-180}
@@ -167,18 +168,74 @@ run_seeder(){
   info "Seeder produced $(ls -l "$SEED_OUTPUT" | awk '{print $5" bytes"}')"
 }
 
+install_owncloud(){
+  info "Installing ownCloud on Android device from source-built artifact"
+  adb wait-for-device
+  if ! adb get-state >/dev/null 2>&1; then
+    fail "No adb device detected; ensure emulator is running"
+  fi
+
+  if [[ ! -d "$CODEBASE_DIR" ]]; then
+    fail "Codebase not found at $CODEBASE_DIR"
+  fi
+
+  local apk
+  apk=$(find "$CODEBASE_DIR/owncloudApp/build/outputs/apk/original/release/" -name "*-original-release.apk" -type f 2>/dev/null | head -1)
+
+  if [[ -z "$apk" ]]; then
+    fail "Could not find built APK. IMPORTANT: Run $APP_SOURCE_SCRIPT before launching the emulator."
+  fi
+
+  info "Found APK: $(basename "$apk")"
+
+  # Uninstall existing versions
+  info "Uninstalling previous packages (if installed)"
+  adb uninstall com.owncloud.android >/dev/null 2>&1 || true
+  adb uninstall com.owncloud.android.debug >/dev/null 2>&1 || true
+
+  info "Installing APK: $apk"
+  if adb install "$apk" > /dev/null 2>&1; then
+    info "OwnCloud installed successfully"
+  else
+    fail "Failed to install APK via ADB. Check device connection and APK integrity."
+  fi
+}
+
+launch_owncloud() {
+    info "Launching ownCloud..."
+    
+    # Launch the app
+    if adb shell pm list packages | grep -q "com.owncloud.android" && ! adb shell pm list packages | grep -q "com.owncloud.android.debug"; then
+        info "Launching release version"
+        adb shell am start -n com.owncloud.android/com.owncloud.android.ui.activity.SplashActivity
+        PACKAGE_NAME="com.owncloud.android"
+    elif adb shell pm list packages | grep -q "com.owncloud.android.debug"; then
+        info "Launching debug version"
+        adb shell am start -n com.owncloud.android.debug/com.owncloud.android.ui.activity.SplashActivity
+        PACKAGE_NAME="com.owncloud.android.debug"
+    else
+        error "No ownCloud package found"
+    fi
+    
+    sleep 1
+    
+    # Verify the app is running
+    if adb shell dumpsys window | grep -q "mCurrentFocus.*$PACKAGE_NAME"; then
+        info "ownCloud launched successfully"
+    else
+        warn "ownCloud may not have launched properly (focus not detected)."
+    fi
+}
+
 install_app(){
   if ! command_exists adb; then
     fail "adb not found; cannot install Android app"
   fi
   case "$INSTALL_MODE" in
     source)
-      if [[ -x "$APP_SOURCE_SCRIPT" ]]; then
-        info "Installing app by building from source (default)"
-        "$APP_SOURCE_SCRIPT" || fail "Source install script failed"
-      else
-        fail "Source install script missing or not executable: $APP_SOURCE_SCRIPT"
-      fi
+      # Expect APK to be already built by setup_app_source.sh (pre-emulator)
+      install_owncloud
+      launch_owncloud
       ;;
     apk)
       if [[ -x "$APK_LINK_SCRIPT" ]]; then
