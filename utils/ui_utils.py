@@ -1,6 +1,6 @@
 """
 uiautomator2 helpers for reliable clicking and text entry.
-Public API: initialize_ui_automation, wait_and_click, wait_and_set_text, wait_for_ui_stable
+Public API: initialize_ui_automation, reinitialize_ui_automation, wait_and_click, wait_and_set_text, wait_for_ui_stable, uiautomator_reconnect
 """
 
 import logging
@@ -209,17 +209,48 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
 # =============================================================================
 
 
+def uiautomator_reconnect(d):
+    """
+    Attempt to recover a dead/flaky UiAutomator service by stopping the current
+    UiAutomator on the provided device and then fully reinitializing via
+    initialize_ui_automation().
+
+    Args:
+        d: Connected uiautomator2 device instance.
+
+    Returns:
+        The newly initialized device on success; False otherwise.
+    """
+    try:
+        # Best-effort stop of UiAutomator/agent using ADB (device-agnostic)
+        try:
+            _stop_uia_service_adb()
+        except Exception:
+            pass
+
+        # Re-run full initialization (connect + healthcheck + warm-up)
+        try:
+            new_device = initialize_ui_automation()
+            logger.info("UiAutomator reinitialized via initialize_ui_automation().")
+            return new_device
+        except SystemExit as se:
+            # initialize_ui_automation may call sys.exit() on fatal; convert to False
+            logger.debug("initialize_ui_automation triggered SystemExit: %s", se)
+            return False
+        except Exception as e:
+            logger.debug("initialize_ui_automation failed: %s", e)
+            return False
+    except Exception as e:
+        logger.debug("uiautomator_reconnect failed: %s", e)
+        return False
+
+
 def wait_for_accessibility_and_hierarchy(d, timeout=30.0, interval=1.0):
     deadline = time.time() + timeout
     try:
         d.settings["compressHierarchy"] = False
     except Exception:
         pass
-
-    consecutive_npe = 0
-    did_healthcheck = False
-    last_restart_ts = 0.0
-    restart_cooldown = 5.0  # seconds
 
     while time.time() < deadline:
         try:
@@ -230,71 +261,36 @@ def wait_for_accessibility_and_hierarchy(d, timeout=30.0, interval=1.0):
             msg = str(e)
             if "AccessibilityServiceInfo.flags" in msg or "NullPointerException" in msg:
                 logger.debug("Hierarchy dump failed (race condition). Retrying…")
-                consecutive_npe += 1
 
-                if not did_healthcheck:
-                    try:
-                        d.healthcheck()
-                    except Exception:
-                        pass
-                    did_healthcheck = True
+                new_d = uiautomator_reconnect(d)
+                if new_d:
+                    d = new_d
+                else:
+                    logger.debug(
+                        "UiAutomator reconnect failed: no new device object. Retrying…"
+                    )
 
-                # Restart only if we keep hitting the race and cooldown passed
-                if (
-                    consecutive_npe >= 3
-                    and (time.time() - last_restart_ts) >= restart_cooldown
-                ):
-                    ua = getattr(d, "uiautomator", None)
-                    if ua is not None:
-                        try:
-                            ua.stop()
-                        except Exception:
-                            pass
-                        time.sleep(1.0)
-                        try:
-                            ua.start()
-                        except Exception:
-                            pass
-                        time.sleep(2.0)
-                        last_restart_ts = time.time()
-                        did_healthcheck = (
-                            False  # allow another healthcheck after restart
-                        )
             else:
                 logger.debug("Hierarchy dump error during warm-up: %s", e)
-                consecutive_npe = 0
-                did_healthcheck = False
 
         time.sleep(interval)
 
-    # Fallback: your existing 3-attempt restart block (unchanged)
-    logger.debug("Warm-up timed out. Attempting to restart UiAutomator service...")
-    ua = getattr(d, "uiautomator", None)
-    if ua is None:
-        logger.warning("Could not get uiautomator object for service restart.")
-        return False
-
+    # Fallback: attempt full reconnect a few times
+    logger.debug("Warm-up timed out. Attempting full UiAutomator reconnect...")
     for i in range(3):
-        logger.debug("UiAutomator restart attempt #%d...", i + 1)
+        logger.debug("UiAutomator reconnect attempt #%d...", i + 1)
+        new_d = uiautomator_reconnect(d)
+        if new_d:
+            d = new_d
         try:
-            try:
-                ua.stop()
-            except Exception:
-                pass
-            time.sleep(1.0)
-            try:
-                ua.start()
-            except Exception:
-                pass
-            time.sleep(2.0)
             _ = d.dump_hierarchy()
-            logger.info("UiAutomator ready after service restart (attempt #%d).", i + 1)
+            logger.info("UiAutomator ready after reconnect (attempt #%d).", i + 1)
             return True
         except Exception as err:
-            logger.warning("Restart attempt #%d failed: %s", i + 1, err)
+            logger.warning("Reconnect attempt #%d failed: %s", i + 1, err)
             time.sleep(2.0)
 
-    logger.error("All attempts to restart UiAutomator service failed.")
+    logger.error("All attempts to reconnect UiAutomator failed.")
     return False
 
 
@@ -445,6 +441,30 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
 # =============================================================================
 # PRIVATE STABILITY HELPERS
 # =============================================================================
+
+
+def _stop_uia_service_adb(timeout_seconds: float = 5.0) -> None:
+    """
+    Best-effort stop of UiAutomator2 agent components via ADB, without relying on
+    device.uiautomator internals.
+
+    This attempts multiple strategies and ignores failures for idempotency.
+    """
+    try:
+        commands = [
+            ["adb", "shell", "pkill", "-f", "atx-agent"],
+            ["adb", "shell", "killall", "atx-agent"],
+            ["adb", "shell", "am", "force-stop", "com.github.uiautomator"],
+            ["adb", "shell", "am", "force-stop", "com.github.uiautomator.test"],
+        ]
+        for cmd in commands:
+            try:
+                subprocess.run(cmd, timeout=timeout_seconds)
+            except Exception:
+                pass
+        time.sleep(1.0)
+    except Exception:
+        pass
 
 
 # =============================================================================
