@@ -169,8 +169,20 @@ main() {
   echo "=== Running android_emulator_ready.sh ==="
   local t0=$SECONDS
 
+  local REMOUNT=false
+  for arg in "$@"; do
+    if [[ "$arg" == "--remount" ]]; then
+      REMOUNT=true
+      break
+    fi
+  done
+
   time_step "1) Boot sequence" wait_for_boot
-  time_step "2) Root + disable verification + remount" root_and_remount
+  if [ "$REMOUNT" = true ]; then
+    time_step "2) Root + disable verification + remount" root_and_remount
+  else
+    echo "Skipping: 2) Root + disable verification + remount (pass --remount to enable)"
+  fi
   time_step "3) Wait for core services" wait_core_services
   time_step "4) Stabilize UI" stabilize_ui
   time_step "5) UiAutomator readiness" ensure_uiautomator_ready

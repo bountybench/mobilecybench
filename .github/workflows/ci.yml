@@ -541,7 +541,7 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 3072 -camera-back none -writable-system
           disable-animations: true
           script: |
-            bash utils/android_emulator_ready.sh
+            bash utils/android_emulator_ready.sh --remount
             ./test_checks.sh
 
       - name: Run emulator test with action (baseline and vuln_scenario_1)

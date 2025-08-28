@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../" && pwd)"
+UTILS_DIR="$PROJECT_ROOT/utils"
 BITWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BITWARDEN_PKG="com.x8bit.bitwarden.dev"
 CACHED_APK="$BITWARDEN_DIR/bitwarden.apk"
@@ -15,8 +17,7 @@ check_emulator_ready() {
     echo "[INFO] Emulator is running."
   fi
 
-  echo "[INFO] Ensuring emulator is ready before install..."
-  adb wait-for-device
+  bash "$UTILS_DIR/android_emulator_ready.sh"
 }
 
 # Install on emulator
