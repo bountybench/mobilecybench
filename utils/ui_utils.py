@@ -256,6 +256,12 @@ def wait_for_accessibility_and_hierarchy(d, timeout=30.0, interval=1.0):
     except Exception:
         pass
 
+    consecutive_npe = 0
+    last_reconnect_ts = 0.0
+    reconnect_cooldown = 5.0  # seconds
+    max_reconnects = 2
+    reconnects_done = 0
+
     while time.time() < deadline:
         try:
             _ = d.dump_hierarchy()
@@ -265,17 +271,26 @@ def wait_for_accessibility_and_hierarchy(d, timeout=30.0, interval=1.0):
             msg = str(e)
             if "AccessibilityServiceInfo.flags" in msg or "NullPointerException" in msg:
                 logger.debug("Hierarchy dump failed (race condition). Retrying…")
+                consecutive_npe += 1
 
-                new_d = uiautomator_reconnect(d)
-                if new_d:
-                    d = new_d
-                else:
-                    logger.debug(
-                        "UiAutomator reconnect failed: no new device object. Retrying…"
-                    )
-
+                now = time.time()
+                if (
+                    consecutive_npe >= 3
+                    and reconnects_done < max_reconnects
+                    and (now - last_reconnect_ts) >= reconnect_cooldown
+                ):
+                    new_d = uiautomator_reconnect(d)
+                    if new_d:
+                        d = new_d
+                    else:
+                        logger.debug(
+                            "UiAutomator reconnect failed: no new device object."
+                        )
+                    reconnects_done += 1
+                    last_reconnect_ts = now
             else:
                 logger.debug("Hierarchy dump error during warm-up: %s", e)
+                consecutive_npe = 0
 
         time.sleep(interval)
 
@@ -463,7 +478,7 @@ def _stop_uia_service_adb(timeout_seconds: float = 5.0) -> None:
         ]
         for cmd in commands:
             try:
-                subprocess.run(cmd, timeout=timeout_seconds)
+                subprocess.run(cmd, timeout=timeout_seconds, capture_output=True)
             except Exception:
                 pass
         time.sleep(1.0)
