@@ -10,12 +10,7 @@ import os
 import sys
 import time
 
-from utils.ui_utils import (
-    wait_and_click,
-    wait_and_set_text,
-    wait_for_accessibility_and_hierarchy,
-    wait_for_ui_stable,
-)
+from utils.ui_utils import wait_and_click, wait_and_set_text
 
 from .util import BITWARDEN_PKG, SERVER_URL
 
@@ -49,7 +44,6 @@ def _ensure_app_in_foreground(
 
     # First attempt: hard restart and wait for foreground
     device.app_start(package_name, wait=True, stop=True)
-    wait_for_accessibility_and_hierarchy(device, timeout=15)
     if device.app_wait(package_name, front=True, timeout=wait_timeout):
         return
 
@@ -58,7 +52,6 @@ def _ensure_app_in_foreground(
         "%s not in foreground after first start. Retrying with monkey...", package_name
     )
     device.app_start(package_name, wait=True, stop=True, use_monkey=True)
-    wait_for_accessibility_and_hierarchy(device, timeout=15)
     if device.app_wait(package_name, front=True, timeout=wait_timeout):
         return
 
@@ -67,7 +60,6 @@ def _ensure_app_in_foreground(
     device.press("home")
     time.sleep(0.5)
     device.app_start(package_name, wait=True, stop=False)
-    wait_for_accessibility_and_hierarchy(device, timeout=15)
     if device.app_wait(package_name, front=True, timeout=wait_timeout):
         return
 
@@ -89,9 +81,6 @@ def bw_initialize_local_host(d):
 
     logger.info("Step 1.1.2: Launching %s...", BITWARDEN_PKG)
     _ensure_app_in_foreground(d, BITWARDEN_PKG, wait_timeout=30.0)
-
-    logger.info("Waiting for the initial UI to stabilize after launch...")
-    wait_for_ui_stable(d, timeout=15)
 
     # Step 1.2.1: Click the "Create account" button on the welcome screen
     logger.info("Step 1.2.1: Clicking 'Account creation'...")
@@ -266,9 +255,6 @@ def bw_attempt_login(d, email, password):
 
         logger.info("Launching %s...", BITWARDEN_PKG)
         _ensure_app_in_foreground(d, BITWARDEN_PKG, wait_timeout=30.0)
-
-        logger.info("Waiting for the initial UI to stabilize after launch...")
-        wait_for_ui_stable(d, timeout=15)
 
         # Check for error dialogs first and dismiss them (non-fatal, with settle)
         if d(resourceId="AlertPopup").exists and d(
