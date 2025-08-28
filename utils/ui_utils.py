@@ -160,7 +160,7 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
             logger.debug("Waiting for device to be ready...")
             _adb_wait_for_device(retry_delay)
             logger.debug("Device is ready.")
-            
+
             logger.debug("Attempting to connect uiautomator2 client...")
             device = u2.connect()
             logger.info("Connected to device.")
