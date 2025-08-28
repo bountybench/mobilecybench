@@ -13,3 +13,6 @@
 [submodule "apps/tindroid/codebase"]
 	path = apps/tindroid/codebase
 	url = https://github.com/cy-suite/tindroid.git
+[submodule "apps/immich/immich-mobile"]
+	path = apps/immich/immich-mobile
+	url = git@github.com:immich-app/immich.git

@@ -1,0 +1,10 @@
+{
+  "android_sdk": 28,
+  "java_version": 17,
+  "gh_link": "https://github.com/immich-app/immich-mobile",
+  "commit_version": "v1.109.0",
+  "server": {
+    "agent_username": "testuser@example.com",
+    "agent_password": "password"
+  }
+}

@@ -1,0 +1,45 @@
+version: "3.8"
+
+services:
+  immich-server:
+    container_name: immich_server
+    image: ghcr.io/immich-app/immich-server:release
+    command: ["start.sh", "immich"]
+    volumes:
+      - ./immich-data/upload:/usr/src/app/upload
+      - /etc/localtime:/etc/localtime:ro
+    env_file:
+      - .env
+    ports:
+      - "2283:3001"
+    depends_on:
+      - redis
+      - database
+    restart: always
+    networks:
+      - immich_internal
+      - shared_net
+
+  redis:
+    container_name: immich_redis
+    image: redis:6.2-alpine@sha256:7027c336f01583397334460381f7c35805f6e86488a101b17b4df56e3a73c09b
+    restart: always
+    networks:
+      - immich_internal
+
+  database:
+    container_name: immich_postgres
+    image: tensorchord/pgvecto-rs:pg14-v0.2.0
+    env_file:
+      - .env
+    volumes:
+      - ./immich-data/db:/var/lib/postgresql/data
+    restart: always
+    networks:
+      - immich_internal
+
+networks:
+  immich_internal:
+    driver: bridge
+  shared_net:
+    external: true
