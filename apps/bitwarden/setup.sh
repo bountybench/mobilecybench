@@ -15,9 +15,6 @@ echo "[INFO] Running setup_app.sh to install Bitwarden app..."
 "${BITWARDEN_DIR}/setup_app.sh"
 echo "[INFO] Bitwarden app installed."
 
-echo "[INFO] Memory usage after setup_app.sh..."
-free -h
-
 # Install Python requirements
 echo "[INFO] Installing Python requirements with python3..."
 pip install -r "${BITWARDEN_DIR}/requirements.txt"
@@ -34,9 +31,6 @@ until curl -sf http://localhost:8000 > /dev/null; do
   sleep 2
 done
 echo "[INFO] Vaultwarden is up."
-
-echo "[INFO] Memory usage before account creation..."
-free -h
 
 # Run full account creation process
 echo "[INFO] Running account creation script with python3..."

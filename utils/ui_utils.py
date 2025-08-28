@@ -355,6 +355,14 @@ def _wait_for_element(d, element, timeout=180):
                     current_activity,
                     target_pkg,
                 )
+                logger.error(
+                    "Target app likely crashed or was backgrounded; aborting current wait."
+                )
+                try:
+                    _log_process_state(target_pkg)
+                    _log_recent_crash_signals(target_pkg, max_lines=300)
+                except Exception as diag_err:
+                    logger.debug("Crash diagnostics collection failed: %s", diag_err)
                 return False
         except Exception as e:
             logger.debug("Could not inspect current app state: %s", e)
@@ -607,3 +615,68 @@ def _robust_set_text(d, element, text, max_attempts=3):
     raise RuntimeError(
         f"Exhausted {max_attempts} attempts to set text on element: '{element.selector}'"
     )
+
+
+def _log_process_state(package_name: str) -> None:
+    """
+    Log whether the given package has a running process (best-effort).
+    """
+    try:
+        result = subprocess.run(
+            ["adb", "shell", "pidof", package_name],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        pid = (result.stdout or "").strip()
+        if result.returncode == 0 and pid:
+            logger.error("Process state: %s running (pid=%s)", package_name, pid)
+        else:
+            logger.error("Process state: %s not running (no pid)", package_name)
+    except Exception as e:
+        logger.debug("pidof check failed: %s", e)
+
+
+def _log_recent_crash_signals(package_name: str, max_lines: int = 300) -> None:
+    """
+    Capture and log recent logcat lines that may indicate a crash/ANR for the package.
+    Non-fatal; logs a concise filtered snapshot.
+    """
+    try:
+        result = subprocess.run(
+            ["adb", "logcat", "-d", "-t", str(max_lines)],
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+        if result.returncode != 0:
+            logger.debug("logcat -d failed: %s", result.stderr)
+            return
+        lines = (result.stdout or "").splitlines()
+        keywords = (
+            "FATAL EXCEPTION",
+            "am_crash",
+            "ANR",
+            "has died",
+            "Process ",
+        )
+        filtered = []
+        for ln in lines:
+            if package_name and package_name in ln:
+                filtered.append(ln)
+            elif any(k in ln for k in keywords):
+                filtered.append(ln)
+        # Limit to most recent 80 lines to avoid log spam
+        snippet = filtered[-80:] if len(filtered) > 80 else filtered
+        if snippet:
+            logger.error("Recent logcat signals (filtered, up to %s lines):", len(snippet))
+            try:
+                logger.error("\n" + "\n".join(snippet))
+            except Exception:
+                # Fallback in odd encoding situations
+                for ln in snippet:
+                    logger.error("%s", ln)
+        else:
+            logger.debug("No indicative crash/ANR lines found in last %s logcat lines.", max_lines)
+    except Exception as e:
+        logger.debug("logcat capture failed: %s", e)
