@@ -610,7 +610,11 @@ def _robust_set_text(d, element, text, max_attempts=3, retry_delay=1.0):
                     element.click()
                 except Exception:
                     pass
-                element.set_text(text)
+                try:
+                    element.set_text(text)
+                except Exception:
+                    # If focus + set_text also fails, we'll fall through to retry path
+                    pass
 
             time.sleep(0.5)
             try:
@@ -630,7 +634,10 @@ def _robust_set_text(d, element, text, max_attempts=3, retry_delay=1.0):
                 element.clear_text()
             except Exception:
                 pass
-            element.set_text(text)
+            try:
+                element.set_text(text)
+            except Exception:
+                pass
 
             time.sleep(0.5)
             try:
