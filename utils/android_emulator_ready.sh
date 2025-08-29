@@ -35,7 +35,7 @@ wait_for_boot() {
       [ "$(adb shell getprop dev.bootcomplete | tr -d "\r")" = "1" ] && \
       adb shell pidof surfaceflinger >/dev/null 2>&1 && \
       adb shell pidof system_server  >/dev/null 2>&1
-    do sleep "$POLL_INTERVAL"; done
+    do sleep '"$POLL_INTERVAL"'; done
   '
 }
 
@@ -74,13 +74,13 @@ root_and_remount() {
 wait_core_services() {
   echo "Waiting for core services (PM/AM/settings)..."
   timeout "$TIMEOUT_CORE" bash -c '
-    until adb shell settings get global device_provisioned 2>/dev/null | tr -d "\r" | grep -q "^1$"; do sleep "$POLL_INTERVAL"; done
+    until adb shell settings get global device_provisioned 2>/dev/null | tr -d "\r" | grep -q "^1$"; do sleep '"$POLL_INTERVAL"'; done
   '
   timeout "$TIMEOUT_CORE" bash -c '
-    until adb shell pm list packages -f >/dev/null 2>&1; do sleep "$POLL_INTERVAL"; done
+    until adb shell pm list packages -f >/dev/null 2>&1; do sleep '"$POLL_INTERVAL"'; done
   '
   timeout "$TIMEOUT_CORE" bash -c '
-    until adb shell cmd activity get-config >/dev/null 2>&1; do sleep "$POLL_INTERVAL"; done
+    until adb shell cmd activity get-config >/dev/null 2>&1; do sleep '"$POLL_INTERVAL"'; done
   '
 }
 
@@ -98,7 +98,7 @@ stabilize_ui() {
   echo "Waiting for a resumed foreground activity..."
   timeout "$TIMEOUT_FOCUS" sh -c '
     until adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" >/dev/null; do
-      sleep "$POLL_INTERVAL";
+      sleep '"$POLL_INTERVAL"';
     done
   '
 }
