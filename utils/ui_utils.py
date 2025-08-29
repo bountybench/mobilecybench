@@ -101,6 +101,12 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
 
 def wait_and_click(d, element, timeout=180, exit_on_error=True):
     """Wait for an element and click it with ANR awareness and no sleeps."""
+    old_activity = None
+    try:
+        old_activity = d.app_current().get("activity")
+    except Exception as e:
+        logger.warning("Could not get current activity before click: %s", e)
+
     if not _wait_for_element(d, element, timeout=timeout):
         app_state = d.app_current()
         message = (
@@ -130,6 +136,9 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
 
     logger.info("Clicked element %s", element.selector)
 
+    if old_activity:
+        _handle_transition(d, old_activity)
+
     wait_for_ui_stable(d)
 
     return True
@@ -137,6 +146,12 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
 
 def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
     """Wait for an input element, focus it, set text, then handle IME action."""
+    old_activity = None
+    try:
+        old_activity = d.app_current().get("activity")
+    except Exception as e:
+        logger.warning("Could not get current activity before setting text: %s", e)
+
     if not _wait_for_element(d, element, timeout=timeout):
         app_state = d.app_current()
         message = (
@@ -164,6 +179,9 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
 
     logger.info("Set text to %s", text)
     _handle_keyboard_action(d)
+
+    if old_activity:
+        _handle_transition(d, old_activity)
 
     wait_for_ui_stable(d)
 
@@ -331,6 +349,31 @@ def _wait_for_system_services(timeout=90):
 
     logger.warning("Core system services did not stabilize within %ss.", timeout)
     return False
+
+
+def _handle_transition(d, old_activity, timeout=3):
+    """Waits for a short period to see if an activity transition occurs."""
+    logger.debug("Checking for screen transition from '%s'...", old_activity)
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            current_activity = d.app_current().get("activity")
+            if current_activity and current_activity != old_activity:
+                logger.debug(
+                    "Screen transition detected: '%s' -> '%s' in %.1fs",
+                    old_activity,
+                    current_activity,
+                    time.time() - start,
+                )
+                # Now that we've detected a transition, wait briefly for it to settle before the more intense
+                # hierarchy check in wait_for_ui_stable begins.
+                time.sleep(1)
+                return
+        except Exception:
+            # Errors are expected here if the UI is in a deep state of flux.
+            pass
+        time.sleep(0.5)
+    logger.debug("No screen transition detected within %ss.", timeout)
 
 
 # =============================================================================
