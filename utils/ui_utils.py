@@ -146,12 +146,6 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
 
 def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
     """Wait for an input element, focus it, set text, then handle IME action."""
-    old_activity = None
-    try:
-        old_activity = d.app_current().get("activity")
-    except Exception as e:
-        logger.warning("Could not get current activity before setting text: %s", e)
-
     if not _wait_for_element(d, element, timeout=timeout):
         app_state = d.app_current()
         message = (
@@ -179,9 +173,6 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
 
     logger.info("Set text to %s", text)
     _handle_keyboard_action(d)
-
-    if old_activity:
-        _handle_transition(d, old_activity)
 
     wait_for_ui_stable(d)
 
@@ -288,53 +279,58 @@ def _wait_for_system_services(timeout=90):
     Actively probes core Android services to ensure the emulator is stable
     before attempting to connect the UI automation client. This prevents a
     common race condition that can lead to a DeadSystemException.
+    This logic is aligned with the readiness checks in android_emulator_ready.sh
     """
     logger.info("Probing core system services for stability...")
     start_time = time.time()
     last_log_time = start_time
+    poll_interval = 2
 
     while time.time() - start_time < timeout:
         try:
-            # Check 1: system_server process must be running.
-            pid_check = subprocess.run(
-                ["adb", "shell", "pidof", "system_server"],
+            # Check 1: Device is provisioned. This is a high-level signal of readiness.
+            provisioned_check = subprocess.run(
+                ["adb", "shell", "settings", "get", "global", "device_provisioned"],
                 capture_output=True,
                 text=True,
                 timeout=5,
             )
-            if pid_check.returncode != 0:
+            if (
+                provisioned_check.returncode != 0
+                or provisioned_check.stdout.strip() != "1"
+            ):
                 if time.time() - last_log_time > 10:
-                    logger.debug("Waiting for system_server process...")
+                    logger.debug("Waiting for device to be provisioned...")
                     last_log_time = time.time()
-                time.sleep(2)
+                time.sleep(poll_interval)
                 continue
 
             # Check 2: PackageManager must be responsive.
             pm_check = subprocess.run(
-                ["adb", "shell", "pm", "list", "packages"],
-                capture_output=True,
-                text=True,
-                timeout=5,
+                ["adb", "shell", "pm", "list", "packages", "-f"],
+                timeout=10,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
             if pm_check.returncode != 0:
                 if time.time() - last_log_time > 10:
                     logger.debug("Waiting for PackageManager service...")
                     last_log_time = time.time()
-                time.sleep(2)
+                time.sleep(poll_interval)
                 continue
 
             # Check 3: ActivityManager must be responsive.
             am_check = subprocess.run(
-                ["adb", "shell", "service", "check", "activity"],
-                capture_output=True,
-                text=True,
+                ["adb", "shell", "cmd", "activity", "get-config"],
                 timeout=5,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
-            if am_check.returncode != 0 or "found" not in am_check.stdout:
+            if am_check.returncode != 0:
                 if time.time() - last_log_time > 10:
                     logger.debug("Waiting for ActivityManager service...")
                     last_log_time = time.time()
-                time.sleep(2)
+                time.sleep(poll_interval)
                 continue
 
             logger.info("Core system services are stable.")
@@ -342,10 +338,10 @@ def _wait_for_system_services(timeout=90):
 
         except subprocess.TimeoutExpired:
             logger.debug("ADB command timed out during stability probe.")
-            time.sleep(2)
+            time.sleep(poll_interval)
         except Exception as e:
             logger.debug("An unexpected error occurred during stability probe: %s", e)
-            time.sleep(2)
+            time.sleep(poll_interval)
 
     logger.warning("Core system services did not stabilize within %ss.", timeout)
     return False
