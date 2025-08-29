@@ -327,36 +327,37 @@ To get started with Docker, follow these installation instructions based on your
 1. **Run the setup script:**
 
    ```bash
-   bash setup.sh
+   bash setup.sh --sdk=<SDK_VERSION>
    ```
 
-2. **Start the emulator:**
-
-   ```bash
-   ./start_emulator.sh
-   ```
-
-3. **Verify setup:**
+2. **Verify setup (Optional):**
    ```bash
    ./check_device.sh
    ```
 
-That's it! The emulator is ready for testing.
+3. **Start the orchestrator container:**
+
+   ```bash
+   docker compose up -d backend && docker exec -it mobilecybench-backend /bin/bash
+   ```
+
+That's it! You are ready to begin developing in the standardized orchestrator container.
 
 ### What the Setup Script Does
 
 - Downloads and installs Android SDK Command Line Tools
-- Creates an Android 9.0 (API 28) emulator
+- Creates an Android emulator with given API level (default to 28 with no flags)
 - Sets up environment variables automatically
 - Creates helper scripts for common tasks
+- Creates a host bridge server that runs in the background to let the orchestrator container communicate with the host.
 
-### Helper Scripts
+### Helper Functions from mobilecybench/utils/android.sh
 
-| Script              | Description                          |
+| Function              | Description                          |
 | ------------------- | ------------------------------------ |
-| `start_emulator.sh` | Start the Android emulator           |
-| `stop_emulator.sh`  | Stop the Android emulator            |
-| `check_device.sh`   | Check if device is ready for testing |
+| `start_emulator` | Start the Android emulator        |
+| `stop_emulator`  | Stop the Android emulator            |
+| `adb_install_apk /path/to/app.apk`   | Installs given APK in the emulator |
 
 ### Requirements
 
