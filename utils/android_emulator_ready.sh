@@ -27,9 +27,7 @@ time_step() {
 wait_for_boot() {
   adb wait-for-device
 
-  # 1. Wait for the Android framework to finish booting.
-  #    - 'sys.boot_completed' is the high-level OS flag.
-  #    - 'init.svc.bootanim' ensures the boot animation has stopped.
+  # 1. Wait for the Android framework to finish booting (including boot animation)
   echo "Waiting for sys.boot_completed=1 and bootanim stopped..."
   timeout "$TIMEOUT_BOOT" sh -c '
     until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ] && \
@@ -42,14 +40,6 @@ wait_for_boot() {
   echo "Waiting for system_server PID..."
   timeout "$TIMEOUT_BOOT" sh -c '
     until adb shell pidof system_server >/dev/null 2>&1; do
-      sleep 2;
-    done
-  '
-
-  # 3. Checks graphics and UI rendering pipeline are running
-  echo "Waiting for SurfaceFlinger service..."
-  timeout "$TIMEOUT_BOOT" sh -c '
-    until adb shell service check SurfaceFlinger | grep -q "found"; do
       sleep 2;
     done
   '
