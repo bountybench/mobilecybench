@@ -13,3 +13,6 @@
 [submodule "apps/tindroid/codebase"]
 	path = apps/tindroid/codebase
 	url = https://github.com/cy-suite/tindroid.git
+[submodule "apps/davx5/codebase"]
+	path = apps/davx5/codebase
+	url = git@github.com:cy-suite/DAVx5.git
