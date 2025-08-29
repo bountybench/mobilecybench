@@ -83,12 +83,23 @@ root_and_remount() {
 # Probes core services by testing responsiveness of various services
 wait_core_services() {
   echo "Waiting for core services (PM/AM/settings)..."
+
+  echo "Waiting for device to be provisioned..."
   "$TIMEOUT_BIN" "$TIMEOUT_CORE" bash -c '
     until adb shell settings get global device_provisioned 2>/dev/null | tr -d "\r" | grep -q "^1$"; do sleep '"$POLL_INTERVAL"'; done
   '
+
+  echo "Waiting for packages to be listed..."
+  "$TIMEOUT_BIN" "$TIMEOUT_CORE" bash -c '
+    until adb shell cmd package list packages >/dev/null 2>&1; do sleep '"$POLL_INTERVAL"'; done
+  '
+
+  echo "Waiting for packages to be installed..."
   "$TIMEOUT_BIN" "$TIMEOUT_CORE" bash -c '
     until adb shell pm list packages -f >/dev/null 2>&1; do sleep '"$POLL_INTERVAL"'; done
   '
+
+  echo "Waiting for activity config to be ready..."
   "$TIMEOUT_BIN" "$TIMEOUT_CORE" bash -c '
     until adb shell cmd activity get-config >/dev/null 2>&1; do sleep '"$POLL_INTERVAL"'; done
   '
