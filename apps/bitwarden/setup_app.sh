@@ -17,7 +17,8 @@ check_emulator_ready() {
     echo "[INFO] Emulator is running."
   fi
 
-  bash "$UTILS_DIR/android_emulator_ready.sh"
+  # Run the readiness util script to ensure the emulator is ready
+  "$UTILS_DIR/android_emulator_ready.sh"
 }
 
 # Install on emulator

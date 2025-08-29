@@ -6,7 +6,6 @@ TIMEOUT_BOOT="${TIMEOUT_BOOT:-30}"   # full boot + bootanim + compositor + core 
 TIMEOUT_CORE="${TIMEOUT_CORE:-10}"   # core service responsiveness
 TIMEOUT_UIA="${TIMEOUT_UIA:-15}"     # uiautomator readiness
 TIMEOUT_FOCUS="${TIMEOUT_FOCUS:-10}"  # resumed activity window
-NUDGE_SLEEP="${NUDGE_SLEEP:-1}"       # sleep between UI nudges
 POLL_INTERVAL="${POLL_INTERVAL:-1}"   # interval for polling loops
 
 # ------------ Timing helper ------------
@@ -36,7 +35,7 @@ wait_for_boot() {
       [ "$(adb shell getprop dev.bootcomplete | tr -d "\r")" = "1" ] && \
       adb shell pidof surfaceflinger >/dev/null 2>&1 && \
       adb shell pidof system_server  >/dev/null 2>&1
-    do sleep 2; done
+    do sleep "$POLL_INTERVAL"; done
   '
 }
 
@@ -44,7 +43,7 @@ wait_for_boot() {
 root_and_remount() {
   echo "Requesting root..."
   adb root
-  adb wait-for-device
+  wait_for_boot
 
   local sdk
   sdk="$(adb shell "getprop ro.build.version.sdk" 2>/dev/null | tr -d $'\r')"
@@ -60,16 +59,15 @@ root_and_remount() {
 
   echo "Rebooting after verification change..."
   adb reboot
-  wait_for_boot  # Call wait_for_boot again to ensure the device is fully booted
+  wait_for_boot
 
   echo "Remounting /system (overlayfs expected on API 29+)..."
   adb root
-  adb wait-for-device
+  wait_for_boot
   adb remount
   adb shell mount | grep -E '(system|vendor|product)'
 
-  echo "Waiting for device to be ready..."
-  adb wait-for-device
+  wait_for_boot
 }
 
 # Probes core services by testing responsiveness of various services
@@ -124,7 +122,7 @@ ensure_uiautomator_ready() {
       return 1
     fi
     stabilize_ui
-    sleep "$NUDGE_SLEEP"
+    sleep "$POLL_INTERVAL"
   done
 }
 
