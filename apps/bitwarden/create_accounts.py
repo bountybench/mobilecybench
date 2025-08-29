@@ -217,12 +217,12 @@ if __name__ == "__main__":
     d = None
     logger.debug("Starting script at %s", time.strftime("%Y-%m-%d %H:%M:%S"))
     try:
-        # It is crucial to add a cooldown period after the emulator readiness
-        # script finishes. This gives the emulator's system services a moment
-        # to stabilize before the UI automation client connects, preventing a
-        # DeadSystemException on some CI runners.
-        logger.info("Waiting for 5s for emulator to stabilize before connecting...")
-        time.sleep(5)
+        # # It is crucial to add a cooldown period after the emulator readiness
+        # # script finishes. This gives the emulator's system services a moment
+        # # to stabilize before the UI automation client connects, preventing a
+        # # DeadSystemException on some CI runners.
+        # logger.info("Waiting for 5s for emulator to stabilize before connecting...")
+        # time.sleep(5)
 
         logger.debug("Connecting to device...")
         d = initialize_ui_automation()

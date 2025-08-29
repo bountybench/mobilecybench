@@ -5,9 +5,6 @@ BITWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MOBILECYBENCH_ROOT="$(cd "$BITWARDEN_DIR/../.." && pwd)"
 PKG_NAME="com.x8bit.bitwarden.dev"
 
-# Export target package so UI helpers can recover when launcher is foreground
-export UI_TARGET_PACKAGE="$PKG_NAME"
-
 echo === RUNNING setup.sh ===
 
 # Run setup_app.sh to install Bitwarden app

@@ -8,6 +8,16 @@ TIMEOUT_UIA="${TIMEOUT_UIA:-15}"     # uiautomator readiness
 TIMEOUT_FOCUS="${TIMEOUT_FOCUS:-10}"  # resumed activity window
 POLL_INTERVAL="${POLL_INTERVAL:-1}"   # interval for polling loops
 
+# ------------ Dependencies ------------
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_BIN=timeout
+elif command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT_BIN=gtimeout
+else
+  echo "ERROR: missing 'timeout'. On macOS: brew install coreutils" >&2
+  exit 1
+fi
+
 # ------------ Timing helper ------------
 SCRIPT_START=$SECONDS
 time_step() {
@@ -29,7 +39,7 @@ wait_for_boot() {
 
   # Wait for the Android framework to finish booting (including boot animation)
   echo "Waiting for boot_completed/dev.bootcomplete + compositor..."
-  timeout "$TIMEOUT_BOOT" sh -c '
+  "$TIMEOUT_BIN" "$TIMEOUT_BOOT" sh -c '
     until \
       [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ] && \
       [ "$(adb shell getprop dev.bootcomplete | tr -d "\r")" = "1" ] && \
@@ -73,13 +83,13 @@ root_and_remount() {
 # Probes core services by testing responsiveness of various services
 wait_core_services() {
   echo "Waiting for core services (PM/AM/settings)..."
-  timeout "$TIMEOUT_CORE" bash -c '
+  "$TIMEOUT_BIN" "$TIMEOUT_CORE" bash -c '
     until adb shell settings get global device_provisioned 2>/dev/null | tr -d "\r" | grep -q "^1$"; do sleep '"$POLL_INTERVAL"'; done
   '
-  timeout "$TIMEOUT_CORE" bash -c '
+  "$TIMEOUT_BIN" "$TIMEOUT_CORE" bash -c '
     until adb shell pm list packages -f >/dev/null 2>&1; do sleep '"$POLL_INTERVAL"'; done
   '
-  timeout "$TIMEOUT_CORE" bash -c '
+  "$TIMEOUT_BIN" "$TIMEOUT_CORE" bash -c '
     until adb shell cmd activity get-config >/dev/null 2>&1; do sleep '"$POLL_INTERVAL"'; done
   '
 }
@@ -96,7 +106,7 @@ stabilize_ui() {
   # The output of `dumpsys` is not a stable API and can change.
   # We check for both mResumedActivity (older) and topResumedActivity (newer) for compatibility.
   echo "Waiting for a resumed foreground activity..."
-  timeout "$TIMEOUT_FOCUS" sh -c '
+  "$TIMEOUT_BIN" "$TIMEOUT_FOCUS" sh -c '
     until adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" >/dev/null; do
       sleep '"$POLL_INTERVAL"';
     done
