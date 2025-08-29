@@ -1,0 +1,1 @@
+{"vector":{"dimensions":512,"distance":"Cos","kind":"F32"},"segment":{"max_growing_segment_size":20000,"max_sealed_segment_size":1000000},"optimizing":{"sealing_secs":60,"sealing_size":1,"optimizing_threads":4},"indexing":{"hnsw":{"m":16,"ef_construction":300,"quantization":{"trivial":{}}}}}
