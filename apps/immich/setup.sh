@@ -45,13 +45,13 @@ sleep 20
 
 # 6. Create the admin user programmatically
 echo "[6/6] Creating admin user via Immich CLI..."
-ADMIN_EMAIL=$(jq -r '.server.agent_username' metadata.json)
-ADMIN_PASSWORD=$(jq -r '.server.agent_password' metadata.json)
+ADMIN_EMAIL=$(jq -r '.username' metadata.json)
+ADMIN_PASSWORD=$(jq -r '.password' metadata.json)
 
-# *** THIS IS THE NEW, CORRECTED COMMAND ***
-# The main entry point is now index.js in the server's dist folder.
-docker-compose exec -T immich-server node /usr/src/app/server/dist/index.js user create --email "$ADMIN_EMAIL" --password "$ADMIN_PASSWORD" --name admin
+# *** THIS IS THE FINAL, VERIFIED COMMAND ***
+# The correct path is /usr/src/app/cli/dist/index.js
+docker-compose exec -T immich-server node /usr/src/app/cli/dist/index.js user create --email "$ADMIN_EMAIL" --password "$ADMIN_PASSWORD" --name admin
 
 echo ""
 echo "🎉 Setup complete! Admin user '$ADMIN_EMAIL' has been created."
-echo "The server is fully ready for the agent at http://localhost:2283"
+echo "The server is fully ready for the agent."

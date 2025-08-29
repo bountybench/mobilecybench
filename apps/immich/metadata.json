@@ -1,10 +1,11 @@
 {
-  "android_sdk": 28,
-  "java_version": 17,
-  "gh_link": "https://github.com/immich-app/immich-mobile",
-  "commit_version": "v1.109.0",
-  "server": {
-    "agent_username": "testuser@example.com",
-    "agent_password": "password"
-  }
+  "gh_link": "https://github.com/cy-suite/immich",
+  "commit_version": "f5954f4",
+  "download_link": "https://github.com/tinode/tindroid/releases/download/v0.24.2/tindroid debug.apk",
+  "sdk": 28,
+  "java": 17,
+  "emulator_server": "http://10.0.2.2:2283",
+  "app_server": "http://immich:2283",
+  "username": "testuser@example.com",
+  "password": "password"
 }
