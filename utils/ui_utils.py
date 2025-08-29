@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import uiautomator2 as u2
 
@@ -27,18 +28,29 @@ if not logger.hasHandlers():
 # =============================================================================
 
 
+def _preflight_emulator_readiness():
+    """Run the android emulator readiness script once with configurable timeouts."""
+    try:
+        project_root = Path(__file__).resolve().parents[1]
+        script_path = project_root / "utils" / "android_emulator_ready.sh"
+        if not script_path.exists():
+            logger.debug(
+                "Readiness script not found at %s; skipping preflight.", script_path
+            )
+            return
+
+        logger.info("Running emulator readiness preflight: %s", script_path)
+        subprocess.run([str(script_path)], check=True)
+    except subprocess.CalledProcessError as e:
+        logger.error("Readiness preflight failed with exit code %s", e.returncode)
+        raise
+    except Exception as e:
+        logger.debug("Preflight readiness skipped: %s", e)
+        return
+
+
 def initialize_ui_automation(max_retries=5, retry_delay=15):
     """Connect to a device and enable sane defaults (implicit waits, no sleeps)."""
-
-    # Log auto-relaunch linkage once for visibility
-    try:
-        target_pkg_env = os.getenv("UI_TARGET_PACKAGE", "")
-        if target_pkg_env:
-            logger.info("UI auto-relaunch target package: %s", target_pkg_env)
-        else:
-            logger.info("UI auto-relaunch target package: (not set)")
-    except Exception:
-        pass
 
     for attempt_index in range(1, max_retries + 1):
         logger.info("Connecting to device (attempt %s/%s)…", attempt_index, max_retries)
@@ -52,15 +64,13 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
                 continue
             _fatal(None, "No devices detected by ADB after all attempts")
 
-        # Actively probe core services before connecting.
-        if not _wait_for_system_services():
-            logger.error(
-                "Emulator detected, but its core services are not stable. Retrying..."
+        try:
+            _preflight_emulator_readiness()
+        except Exception as e:
+            logger.warning(
+                "Readiness preflight script failed: %s. Continuing with Python checks…",
+                e,
             )
-            if attempt_index < max_retries:
-                _adb_wait_for_device(retry_delay)
-                continue
-            _fatal(None, "Emulator core services did not stabilize after all attempts.")
 
         try:
             logger.debug("Attempting to connect uiautomator2 client...")
@@ -274,79 +284,6 @@ def _adb_wait_for_device(timeout_seconds):
         logger.warning("'adb wait-for-device' failed: %s", e)
 
 
-def _wait_for_system_services(timeout=90):
-    """
-    Actively probes core Android services to ensure the emulator is stable
-    before attempting to connect the UI automation client. This prevents a
-    common race condition that can lead to a DeadSystemException.
-    This logic is aligned with the readiness checks in android_emulator_ready.sh
-    """
-    logger.info("Probing core system services for stability...")
-    start_time = time.time()
-    last_log_time = start_time
-    poll_interval = 2
-
-    while time.time() - start_time < timeout:
-        try:
-            # Check 1: Device is provisioned. This is a high-level signal of readiness.
-            provisioned_check = subprocess.run(
-                ["adb", "shell", "settings", "get", "global", "device_provisioned"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if (
-                provisioned_check.returncode != 0
-                or provisioned_check.stdout.strip() != "1"
-            ):
-                if time.time() - last_log_time > 10:
-                    logger.debug("Waiting for device to be provisioned...")
-                    last_log_time = time.time()
-                time.sleep(poll_interval)
-                continue
-
-            # Check 2: PackageManager must be responsive.
-            pm_check = subprocess.run(
-                ["adb", "shell", "pm", "list", "packages", "-f"],
-                timeout=10,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            if pm_check.returncode != 0:
-                if time.time() - last_log_time > 10:
-                    logger.debug("Waiting for PackageManager service...")
-                    last_log_time = time.time()
-                time.sleep(poll_interval)
-                continue
-
-            # Check 3: ActivityManager must be responsive.
-            am_check = subprocess.run(
-                ["adb", "shell", "cmd", "activity", "get-config"],
-                timeout=5,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            if am_check.returncode != 0:
-                if time.time() - last_log_time > 10:
-                    logger.debug("Waiting for ActivityManager service...")
-                    last_log_time = time.time()
-                time.sleep(poll_interval)
-                continue
-
-            logger.info("Core system services are stable.")
-            return True
-
-        except subprocess.TimeoutExpired:
-            logger.debug("ADB command timed out during stability probe.")
-            time.sleep(poll_interval)
-        except Exception as e:
-            logger.debug("An unexpected error occurred during stability probe: %s", e)
-            time.sleep(poll_interval)
-
-    logger.warning("Core system services did not stabilize within %ss.", timeout)
-    return False
-
-
 def _handle_transition(d, old_activity, timeout=3):
     """Waits for a short period to see if an activity transition occurs."""
     logger.debug("Checking for screen transition from '%s'...", old_activity)
@@ -373,7 +310,7 @@ def _handle_transition(d, old_activity, timeout=3):
 
 
 # =============================================================================
-# PRIVATE LAUNCHER/RELAUNCH HELPERS
+# PRIVATE UI UTILITY HELPERS
 # =============================================================================
 
 
