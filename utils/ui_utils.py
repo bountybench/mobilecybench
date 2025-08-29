@@ -40,9 +40,21 @@ def _preflight_emulator_readiness():
             return
 
         logger.info("Running emulator readiness preflight: %s", script_path)
-        subprocess.run([str(script_path)], check=True)
+        # Redirect all output (stdout and stderr) to our logger's stderr stream
+        result = subprocess.run(
+            [str(script_path)], check=True, capture_output=True, text=True
+        )
+        # Write any captured stdout to stderr via logger
+        if result.stdout:
+            logger.info("Script output: %s", result.stdout.rstrip())
+        if result.stderr:
+            logger.warning("Script stderr: %s", result.stderr.rstrip())
     except subprocess.CalledProcessError as e:
         logger.error("Readiness preflight failed with exit code %s", e.returncode)
+        if e.stdout:
+            logger.error("Script stdout: %s", e.stdout.rstrip())
+        if e.stderr:
+            logger.error("Script stderr: %s", e.stderr.rstrip())
         raise
     except Exception as e:
         logger.debug("Preflight readiness skipped: %s", e)
@@ -666,7 +678,10 @@ def _fatal(d, message):
             text=True,
             timeout=10,
         )
-        logger.critical("Raw adb logcat output:\n%s", result.stdout)
+        if result.stdout:
+            logger.critical("Raw adb logcat output:\n%s", result.stdout)
+        if result.stderr:
+            logger.critical("Raw adb logcat stderr:\n%s", result.stderr)
     except Exception as e:
         logger.warning("Failed to get adb logcat output: %s", e)
 
