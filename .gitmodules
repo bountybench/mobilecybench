@@ -43,3 +43,6 @@
 [submodule "apps/openhab/codebase"]
 	path = apps/openhab/codebase
 	url = https://github.com/cy-suite/openhab.git
+[submodule "apps/davx5/codebase"]
+	path = apps/davx5/codebase
+	url = git@github.com:cy-suite/DAVx5.git
