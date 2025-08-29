@@ -19,6 +19,9 @@ cp env.example .env
 echo "Generating strong passwords..."
 bash gen-passwords.sh
 
+sudo chown -R $USER:$USER ~/.jitsi-meet-cfg
+chmod +x setup.sh
+
 echo "Creating configuration directories..."
 mkdir -p ~/.jitsi-meet-cfg/{web,transcripts,prosody/config,prosody/prosody-plugins-custom,jicofo,jvb,jigasi,jibri}
 
