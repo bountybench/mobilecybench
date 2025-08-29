@@ -111,11 +111,6 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
 
 def wait_and_click(d, element, timeout=180, exit_on_error=True):
     """Wait for an element and click it with ANR awareness and no sleeps."""
-    old_activity = None
-    try:
-        old_activity = d.app_current().get("activity")
-    except Exception as e:
-        logger.warning("Could not get current activity before click: %s", e)
 
     if not _wait_for_element(d, element, timeout=timeout):
         app_state = d.app_current()
@@ -131,47 +126,75 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
     else:
         logger.debug("Found element %s", element.selector)
 
-    if not element.click_exists(timeout=5):
-        app_state = d.app_current()
-        elem_info = element.info
+    # Prefer robust built-in wait-and-click first
+    try:
+        if element.click_exists(timeout=10):
+            logger.info("Clicked element %s", element.selector)
+            return True
+    except Exception as e:
+        logger.debug("click_exists failed fast for %s: %s", element.selector, e)
+
+    # Fallback: poll for clickability and click once ready
+    try:
+        start_time = time.time()
+        wait_clickable_timeout = 10
+        while time.time() - start_time < wait_clickable_timeout:
+            try:
+                info = element.info
+            except Exception as info_err:
+                logger.debug(
+                    "Failed to read element.info while waiting clickable: %s", info_err
+                )
+                time.sleep(0.5)
+                continue
+
+            if info.get("clickable"):
+                try:
+                    element.click()
+                    logger.info("Clicked element %s", element.selector)
+                    return True
+                except Exception as click_err:
+                    logger.debug(
+                        "Direct click failed after clickable=true: %s", click_err
+                    )
+            time.sleep(0.5)
+
+        # 4) Last attempt: best-effort direct click
+        element.click()
+        logger.info("Clicked element %s (best-effort)", element.selector)
+        return True
+
+    except Exception as e:
+        # Build diagnostic context safely
+        try:
+            elem_info = element.info
+            clickable = elem_info.get("clickable")
+            enabled = elem_info.get("enabled")
+            visible_bounds = elem_info.get("visibleBounds")
+        except Exception:
+            clickable = enabled = visible_bounds = "<unavailable>"
+
         message = (
-            f"Found element '{element.selector}' but it could not be clicked.\n"
-            f"  - Is it visible? {elem_info.get('visibleBounds')}"
+            f"Found element '{element.selector}' but it could not be clicked: {e}\n"
+            f"  - Clickable: {clickable}, Enabled: {enabled}\n"
+            f"  - Visible Bounds: {visible_bounds}"
         )
         if exit_on_error:
             _fatal(d, message)
         else:
             logger.error("%s", message)
             return False
-
-    logger.info("Clicked element %s", element.selector)
-
-    if old_activity:
-        _handle_transition(d, old_activity)
-
-    wait_for_ui_stable(d)
-
-    return True
 
 
 def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
-    """Wait for an input element, focus it, set text, then handle IME action."""
-    if not _wait_for_element(d, element, timeout=timeout):
-        app_state = d.app_current()
-        message = (
-            f"Could not find element: '{element.selector}' within {timeout}s.\n"
-            f"  - Current screen: {app_state.get('package', 'unknown')}/{app_state.get('activity', 'unknown')}."
-        )
-        if exit_on_error:
-            _fatal(d, message)
-        else:
-            logger.error("%s", message)
-            return False
-    else:
-        logger.debug("Found element %s", element.selector)
+    """Focus the input by clicking it, set text, then finalize IME action."""
+
+    # Reuse the robust click flow to focus the field first
+    clicked = wait_and_click(d, element, timeout=timeout, exit_on_error=exit_on_error)
+    if not clicked:
+        return False
 
     try:
-        element.click_exists(timeout=5)
         _robust_set_text(d, element, text, max_attempts=3)
     except Exception as e:
         message = f"Failed to set text on element: '{element.selector}': {e}"
@@ -552,33 +575,75 @@ def _try_scroll_into_view(d, selector_info):
         return False
 
 
-def _robust_set_text(d, element, text, max_attempts=3):
+def _robust_set_text(d, element, text, max_attempts=3, retry_delay=1.0):
     """
-    Tries to set text into an element with retries, ANR handling, and optional scrolling.
-    Returns True on success; raises fatal error after exhausting retries.
+    Set text with verification and retries. Assumes caller has already focused the field.
+    Strategy:
+      1) Try set_text directly; verify via get_text
+      2) On failure, click then set_text; verify
+      3) On failure, click + clear_text + set_text; verify
+      4) Retry up to max_attempts with small delay; handle ANRs between attempts
     """
-    selector_info = _parse_selector_from_element(element)
-
+    last_err = None
     for attempt_index in range(1, max_attempts + 1):
-        # Handle any ANR dialogs and wait for the target element
-        _handle_anr(d, max_anrs=5, timeout=1, target_element=element)
-
         try:
-            # Bring element into view and focus it
-            if not element.exists:
-                _try_scroll_into_view(d, selector_info)
+            _handle_anr(d, max_anrs=5, timeout=1, target_element=element)
 
-            element.click_exists(timeout=5)
+            # First attempt: set_text directly
+            try:
+                element.set_text(text)
+            except Exception:
+                # Focus, then retry set_text
+                try:
+                    element.click()
+                except Exception:
+                    pass
+                element.set_text(text)
+
+            time.sleep(0.5)
+            try:
+                current = element.get_text()
+            except Exception:
+                current = None
+            if current == text:
+                logger.debug("Set text verified on attempt %s.", attempt_index)
+                return True
+
+            # Retry path: click + clear + set + verify
+            try:
+                element.click()
+            except Exception:
+                pass
+            try:
+                element.clear_text()
+            except Exception:
+                pass
             element.set_text(text)
-            logger.debug(
-                "Set text attempt %s succeeded for %s", attempt_index, element.selector
-            )
-            return True
-        except Exception as set_error:
-            logger.warning("set_text attempt %s failed: %s", attempt_index, set_error)
 
-    raise RuntimeError(
-        f"Exhausted {max_attempts} attempts to set text on element: '{element.selector}'"
+            time.sleep(0.5)
+            try:
+                current = element.get_text()
+            except Exception:
+                current = None
+            if current == text:
+                logger.debug(
+                    "Set text verified after clear on attempt %s.", attempt_index
+                )
+                return True
+
+            last_err = RuntimeError(
+                f"Verification failed. Expected: '{text}', Got: '{current}'"
+            )
+        except Exception as e:
+            last_err = e
+
+        if attempt_index < max_attempts:
+            time.sleep(retry_delay)
+
+    raise (
+        last_err
+        if last_err
+        else RuntimeError(f"Failed to set text on element: '{element.selector}'")
     )
 
 
@@ -596,7 +661,10 @@ def _fatal(d, message):
     # Output raw adb logs
     try:
         result = subprocess.run(
-            ["adb", "logcat", "-d"], capture_output=True, text=True, timeout=10
+            ["adb", "logcat", "-d", "-t", "500"],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         logger.critical("Raw adb logcat output:\n%s", result.stdout)
     except Exception as e:
