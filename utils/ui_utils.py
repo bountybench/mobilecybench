@@ -355,8 +355,18 @@ def _wait_for_element(d, element, timeout=180):
                     current_activity,
                     target_pkg,
                 )
-                _log_process_state(target_pkg)
-                _log_recent_crash_signals(target_pkg, max_lines=300)
+                # Raw adb logcat output
+                try:
+                    result = subprocess.run(
+                        ["adb", "logcat", "-d"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                    )
+                    logger.critical("Raw adb logcat output:\n%s", result.stdout)
+                except Exception as e:
+                    logger.warning("Failed to get adb logcat output: %s", e)
+
                 return False
         except Exception as e:
             logger.debug("Could not inspect current app state: %s", e)
@@ -468,28 +478,16 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
 
 def _fatal(d, message):
     logger.critical("%s", message)
-    # Always try to collect crash diagnostics before exiting
+
+    # Output raw adb logs
     try:
-        pkg_env = os.getenv("UI_TARGET_PACKAGE", "")
-        current_pkg = ""
-        try:
-            if d is not None:
-                app_state = d.app_current()
-                current_pkg = app_state.get("package", "") or ""
-        except Exception:
-            pass
-        pkg = pkg_env or current_pkg
-        if pkg:
-            try:
-                _log_process_state(pkg)
-            except Exception as diag_err:
-                logger.debug("Process state diagnostics failed: %s", diag_err)
-            try:
-                _log_recent_crash_signals(pkg, max_lines=300)
-            except Exception as diag_err:
-                logger.debug("Logcat diagnostics failed: %s", diag_err)
-    except Exception as outer_diag:
-        logger.debug("Crash diagnostics wrapper failed: %s", outer_diag)
+        result = subprocess.run(
+            ["adb", "logcat", "-d"], capture_output=True, text=True, timeout=10
+        )
+        logger.critical("Raw adb logcat output:\n%s", result.stdout)
+    except Exception as e:
+        logger.warning("Failed to get adb logcat output: %s", e)
+
     try:
         if d is not None:
             try:
@@ -631,73 +629,3 @@ def _robust_set_text(d, element, text, max_attempts=3):
     raise RuntimeError(
         f"Exhausted {max_attempts} attempts to set text on element: '{element.selector}'"
     )
-
-
-def _log_process_state(package_name: str) -> None:
-    """
-    Log whether the given package has a running process (best-effort).
-    """
-    try:
-        result = subprocess.run(
-            ["adb", "shell", "pidof", package_name],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        pid = (result.stdout or "").strip()
-        if result.returncode == 0 and pid:
-            logger.error("Process state: %s running (pid=%s)", package_name, pid)
-        else:
-            logger.error("Process state: %s not running (no pid)", package_name)
-    except Exception as e:
-        logger.debug("pidof check failed: %s", e)
-
-
-def _log_recent_crash_signals(package_name: str, max_lines: int = 300) -> None:
-    """
-    Capture and log recent logcat lines that may indicate a crash/ANR for the package.
-    Non-fatal; logs a concise filtered snapshot.
-    """
-    try:
-        result = subprocess.run(
-            ["adb", "logcat", "-d", "-t", str(max_lines)],
-            capture_output=True,
-            text=True,
-            timeout=8,
-        )
-        if result.returncode != 0:
-            logger.debug("logcat -d failed: %s", result.stderr)
-            return
-        lines = (result.stdout or "").splitlines()
-        keywords = (
-            "FATAL EXCEPTION",
-            "am_crash",
-            "ANR",
-            "has died",
-            "Process ",
-        )
-        filtered = []
-        for ln in lines:
-            if package_name and package_name in ln:
-                filtered.append(ln)
-            elif any(k in ln for k in keywords):
-                filtered.append(ln)
-        # Limit to most recent 80 lines to avoid log spam
-        snippet = filtered[-80:] if len(filtered) > 80 else filtered
-        if snippet:
-            logger.error(
-                "Recent logcat signals (filtered, up to %s lines):", len(snippet)
-            )
-            try:
-                logger.error("\n" + "\n".join(snippet))
-            except Exception:
-                # Fallback in odd encoding situations
-                for ln in snippet:
-                    logger.error("%s", ln)
-        else:
-            logger.debug(
-                "No indicative crash/ANR lines found in last %s logcat lines.",
-                max_lines,
-            )
-    except Exception as e:
-        logger.debug("logcat capture failed: %s", e)
