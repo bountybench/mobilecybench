@@ -27,9 +27,7 @@ time_step() {
 wait_for_boot() {
   adb wait-for-device
 
-  # 1. Wait for the Android framework to finish booting.
-  #    - 'sys.boot_completed' is the high-level OS flag.
-  #    - 'init.svc.bootanim' ensures the boot animation has stopped.
+  # 1. Wait for the Android framework to finish booting (including boot animation)
   echo "Waiting for sys.boot_completed=1 and bootanim stopped..."
   timeout "$TIMEOUT_BOOT" sh -c '
     until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ] && \
@@ -169,8 +167,20 @@ main() {
   echo "=== Running android_emulator_ready.sh ==="
   local t0=$SECONDS
 
+  local REMOUNT=false
+  for arg in "$@"; do
+    if [[ "$arg" == "--remount" ]]; then
+      REMOUNT=true
+      break
+    fi
+  done
+
   time_step "1) Boot sequence" wait_for_boot
-  time_step "2) Root + disable verification + remount" root_and_remount
+  if [ "$REMOUNT" = true ]; then
+    time_step "2) Root + disable verification + remount" root_and_remount
+  else
+    echo "Skipping: 2) Root + disable verification + remount (pass --remount to enable)"
+  fi
   time_step "3) Wait for core services" wait_core_services
   time_step "4) Stabilize UI" stabilize_ui
   time_step "5) UiAutomator readiness" ensure_uiautomator_ready
