@@ -7,6 +7,7 @@ TIMEOUT_CORE="${TIMEOUT_CORE:-10}"   # core service responsiveness
 TIMEOUT_UIA="${TIMEOUT_UIA:-15}"     # uiautomator readiness
 TIMEOUT_FOCUS="${TIMEOUT_FOCUS:-10}"  # resumed activity window
 NUDGE_SLEEP="${NUDGE_SLEEP:-1}"       # sleep between UI nudges
+POLL_INTERVAL="${POLL_INTERVAL:-1}"   # interval for polling loops
 
 # ------------ Timing helper ------------
 SCRIPT_START=$SECONDS
@@ -28,12 +29,14 @@ wait_for_boot() {
   adb wait-for-device
 
   # Wait for the Android framework to finish booting (including boot animation)
-  echo "Waiting for sys.boot_completed=1 and bootanim stopped..."
+  echo "Waiting for boot_completed/dev.bootcomplete + compositor..."
   timeout "$TIMEOUT_BOOT" sh -c '
-    until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ] && \
-          [ "$(adb shell getprop init.svc.bootanim | tr -d "\r")" = "stopped" ]; do
-      sleep 2;
-    done
+    until \
+      [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ] && \
+      [ "$(adb shell getprop dev.bootcomplete | tr -d "\r")" = "1" ] && \
+      adb shell pidof surfaceflinger >/dev/null 2>&1 && \
+      adb shell pidof system_server  >/dev/null 2>&1
+    do sleep 2; done
   '
 }
 
@@ -69,41 +72,17 @@ root_and_remount() {
   adb wait-for-device
 }
 
-# Probes core services
+# Probes core services by testing responsiveness of various services
 wait_core_services() {
-  echo "Checking WindowManager service..."
-  timeout "$TIMEOUT_CORE" sh -c '
-    until adb shell service check window | grep -q "found"; do sleep 2; done
+  echo "Waiting for core services (PM/AM/settings)..."
+  timeout "$TIMEOUT_CORE" bash -c '
+    until adb shell settings get global device_provisioned 2>/dev/null | tr -d "\r" | grep -q "^1$"; do sleep "$POLL_INTERVAL"; done
   '
-
-  echo "Checking InputManager service..."
-  timeout "$TIMEOUT_CORE" sh -c '
-    until adb shell service check input | grep -q "found"; do sleep 2; done
+  timeout "$TIMEOUT_CORE" bash -c '
+    until adb shell pm list packages -f >/dev/null 2>&1; do sleep "$POLL_INTERVAL"; done
   '
-
-  echo "Checking Display service..."
-  timeout "$TIMEOUT_CORE" sh -c '
-    until adb shell service check display | grep -q "found"; do sleep 2; done
-  '
-
-  echo "Probing Activity service..."
-  timeout "$TIMEOUT_CORE" sh -c '
-    until adb shell service check activity | grep -q "found"; do sleep 2; done
-  '
-
-  echo "Probing PackageManager responsiveness..."
-  timeout "$TIMEOUT_CORE" sh -c '
-    until adb shell cmd package list packages >/dev/null 2>&1; do sleep 2; done
-  '
-
-  echo "Probing Settings provider..."
-  timeout "$TIMEOUT_CORE" sh -c '
-    until adb shell settings list global >/dev/null 2>&1; do sleep 2; done
-  '
-
-  echo "Probing Accessibility service..."
-  timeout "$TIMEOUT_CORE" sh -c '
-    until adb shell service check accessibility | grep -q "found"; do sleep 2; done
+  timeout "$TIMEOUT_CORE" bash -c '
+    until adb shell cmd activity get-config >/dev/null 2>&1; do sleep "$POLL_INTERVAL"; done
   '
 }
 
@@ -116,10 +95,12 @@ stabilize_ui() {
   adb shell "svc power stayon true" 2>/dev/null || true
   adb shell "input keyevent KEYCODE_HOME" 2>/dev/null || true
 
+  # The output of `dumpsys` is not a stable API and can change.
+  # We check for both mResumedActivity (older) and topResumedActivity (newer) for compatibility.
   echo "Waiting for a resumed foreground activity..."
   timeout "$TIMEOUT_FOCUS" sh -c '
     until adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" >/dev/null; do
-      sleep 1;
+      sleep "$POLL_INTERVAL";
     done
   '
 }

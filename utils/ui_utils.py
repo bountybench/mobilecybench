@@ -181,14 +181,31 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
             current_dump = d.dump_hierarchy()
             fail_count = 0
         except Exception as e:
-            logger.debug("Failed to get hierarchy dump during stability check: %s", e)
-            fail_count += 1
-            if fail_count == 3:
+            # This specific NullPointerException is a known race condition during screen transitions.
+            # We treat it as a signal that the UI is in flux, not a hard error.
+            if "java.lang.NullPointerException" in str(
+                e
+            ) and "AccessibilityServiceInfo.flags" in str(e):
+                logger.debug(
+                    "Caught accessibility service race condition, waiting for UI to settle..."
+                )
+                time.sleep(1)  # Give a longer pause for the service to recover
+                fail_count += 1
+            else:
+                logger.debug(
+                    "Failed to get hierarchy dump during stability check: %s", e
+                )
+                fail_count += 1
+
+            if fail_count >= 3:
                 try:
-                    logger.debug("Running health check...")
+                    logger.debug(
+                        "Running health check after %d consecutive failures...",
+                        fail_count,
+                    )
                     d.healthcheck()
-                except Exception:
-                    pass
+                except Exception as health_err:
+                    logger.warning("Health check also failed: %s", health_err)
             time.sleep(interval)
             continue
 
