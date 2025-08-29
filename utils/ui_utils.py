@@ -30,100 +30,6 @@ if not logger.hasHandlers():
 def initialize_ui_automation(max_retries=5, retry_delay=15):
     """Connect to a device and enable sane defaults (implicit waits, no sleeps)."""
 
-    def _adb_has_devices(timeout_seconds=5):
-        try:
-            result = subprocess.run(
-                ["adb", "devices"],
-                capture_output=True,
-                text=True,
-                timeout=timeout_seconds,
-            )
-            if result.returncode != 0:
-                logger.warning("'adb devices' failed: %s", result.stderr)
-                return False
-            lines = [line for line in result.stdout.splitlines()[1:] if line.strip()]
-            return any("\tdevice" in line for line in lines)
-        except Exception as e:
-            logger.warning("Could not run 'adb devices': %s", e)
-            return False
-
-    def _adb_wait_for_device(timeout_seconds):
-        try:
-            subprocess.run(["adb", "wait-for-device"], timeout=timeout_seconds)
-        except subprocess.TimeoutExpired:
-            logger.warning("'adb wait-for-device' timed out after %ss", timeout_seconds)
-        except Exception as e:
-            logger.warning("'adb wait-for-device' failed: %s", e)
-
-    def _wait_for_system_services(timeout=90):
-        """
-        Actively probes core Android services to ensure the emulator is stable
-        before attempting to connect the UI automation client. This prevents a
-        common race condition that can lead to a DeadSystemException.
-        """
-        logger.info("Probing core system services for stability...")
-        start_time = time.time()
-        last_log_time = start_time
-
-        while time.time() - start_time < timeout:
-            try:
-                # Check 1: system_server process must be running.
-                pid_check = subprocess.run(
-                    ["adb", "shell", "pidof", "system_server"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if pid_check.returncode != 0:
-                    if time.time() - last_log_time > 10:
-                        logger.debug("Waiting for system_server process...")
-                        last_log_time = time.time()
-                    time.sleep(2)
-                    continue
-
-                # Check 2: PackageManager must be responsive.
-                pm_check = subprocess.run(
-                    ["adb", "shell", "pm", "list", "packages"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if pm_check.returncode != 0:
-                    if time.time() - last_log_time > 10:
-                        logger.debug("Waiting for PackageManager service...")
-                        last_log_time = time.time()
-                    time.sleep(2)
-                    continue
-
-                # Check 3: ActivityManager must be responsive.
-                am_check = subprocess.run(
-                    ["adb", "shell", "service", "check", "activity"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if am_check.returncode != 0 or "found" not in am_check.stdout:
-                    if time.time() - last_log_time > 10:
-                        logger.debug("Waiting for ActivityManager service...")
-                        last_log_time = time.time()
-                    time.sleep(2)
-                    continue
-
-                logger.info("Core system services are stable.")
-                return True
-
-            except subprocess.TimeoutExpired:
-                logger.debug("ADB command timed out during stability probe.")
-                time.sleep(2)
-            except Exception as e:
-                logger.debug(
-                    "An unexpected error occurred during stability probe: %s", e
-                )
-                time.sleep(2)
-
-        logger.warning("Core system services did not stabilize within %ss.", timeout)
-        return False
-
     # Log auto-relaunch linkage once for visibility
     try:
         target_pkg_env = os.getenv("UI_TARGET_PACKAGE", "")
@@ -222,7 +128,6 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
             logger.error("%s", message)
             return False
 
-    # Clicked element; return True
     logger.info("Clicked element %s", element.selector)
 
     wait_for_ui_stable(d)
@@ -246,9 +151,7 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
     else:
         logger.debug("Found element %s", element.selector)
 
-    # Use robust text entry with retries and scroll support
     try:
-        # Focus the element before setting text to mirror click flow semantics
         element.click_exists(timeout=5)
         _robust_set_text(d, element, text, max_attempts=3)
     except Exception as e:
@@ -314,6 +217,106 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
 
 
 # =============================================================================
+# PRIVATE ADB INITIALIZATION HELPERS
+# =============================================================================
+
+
+def _adb_has_devices(timeout_seconds=5):
+    try:
+        result = subprocess.run(
+            ["adb", "devices"],
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+        if result.returncode != 0:
+            logger.warning("'adb devices' failed: %s", result.stderr)
+            return False
+        lines = [line for line in result.stdout.splitlines()[1:] if line.strip()]
+        return any("\tdevice" in line for line in lines)
+    except Exception as e:
+        logger.warning("Could not run 'adb devices': %s", e)
+        return False
+
+
+def _adb_wait_for_device(timeout_seconds):
+    try:
+        subprocess.run(["adb", "wait-for-device"], timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        logger.warning("'adb wait-for-device' timed out after %ss", timeout_seconds)
+    except Exception as e:
+        logger.warning("'adb wait-for-device' failed: %s", e)
+
+
+def _wait_for_system_services(timeout=90):
+    """
+    Actively probes core Android services to ensure the emulator is stable
+    before attempting to connect the UI automation client. This prevents a
+    common race condition that can lead to a DeadSystemException.
+    """
+    logger.info("Probing core system services for stability...")
+    start_time = time.time()
+    last_log_time = start_time
+
+    while time.time() - start_time < timeout:
+        try:
+            # Check 1: system_server process must be running.
+            pid_check = subprocess.run(
+                ["adb", "shell", "pidof", "system_server"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if pid_check.returncode != 0:
+                if time.time() - last_log_time > 10:
+                    logger.debug("Waiting for system_server process...")
+                    last_log_time = time.time()
+                time.sleep(2)
+                continue
+
+            # Check 2: PackageManager must be responsive.
+            pm_check = subprocess.run(
+                ["adb", "shell", "pm", "list", "packages"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if pm_check.returncode != 0:
+                if time.time() - last_log_time > 10:
+                    logger.debug("Waiting for PackageManager service...")
+                    last_log_time = time.time()
+                time.sleep(2)
+                continue
+
+            # Check 3: ActivityManager must be responsive.
+            am_check = subprocess.run(
+                ["adb", "shell", "service", "check", "activity"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if am_check.returncode != 0 or "found" not in am_check.stdout:
+                if time.time() - last_log_time > 10:
+                    logger.debug("Waiting for ActivityManager service...")
+                    last_log_time = time.time()
+                time.sleep(2)
+                continue
+
+            logger.info("Core system services are stable.")
+            return True
+
+        except subprocess.TimeoutExpired:
+            logger.debug("ADB command timed out during stability probe.")
+            time.sleep(2)
+        except Exception as e:
+            logger.debug("An unexpected error occurred during stability probe: %s", e)
+            time.sleep(2)
+
+    logger.warning("Core system services did not stabilize within %ss.", timeout)
+    return False
+
+
+# =============================================================================
 # PRIVATE LAUNCHER/RELAUNCH HELPERS
 # =============================================================================
 
@@ -332,7 +335,6 @@ def _wait_for_element(d, element, timeout=180):
     """
     start_time = time.time()
 
-    # Best-effort selector string for logs
     try:
         selector_str = str(getattr(element, "selector", element))
     except Exception:
@@ -342,7 +344,6 @@ def _wait_for_element(d, element, timeout=180):
     selector_info = _parse_selector_from_element(element)
 
     while time.time() - start_time < timeout:
-        # Fail fast if we lost the target app foreground
         try:
             app_state = d.app_current()
             current_pkg = app_state.get("package", "")
@@ -355,18 +356,6 @@ def _wait_for_element(d, element, timeout=180):
                     current_activity,
                     target_pkg,
                 )
-                # Raw adb logcat output
-                try:
-                    result = subprocess.run(
-                        ["adb", "logcat", "-d"],
-                        capture_output=True,
-                        text=True,
-                        timeout=10,
-                    )
-                    logger.critical("Raw adb logcat output:\n%s", result.stdout)
-                except Exception as e:
-                    logger.warning("Failed to get adb logcat output: %s", e)
-
                 return False
         except Exception as e:
             logger.debug("Could not inspect current app state: %s", e)
@@ -474,37 +463,6 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
         )
 
     return True
-
-
-def _fatal(d, message):
-    logger.critical("%s", message)
-
-    # Output raw adb logs
-    try:
-        result = subprocess.run(
-            ["adb", "logcat", "-d"], capture_output=True, text=True, timeout=10
-        )
-        logger.critical("Raw adb logcat output:\n%s", result.stdout)
-    except Exception as e:
-        logger.warning("Failed to get adb logcat output: %s", e)
-
-    try:
-        if d is not None:
-            try:
-                logger.critical("%s", d.dump_hierarchy())
-            except Exception as dump_err:
-                # Ignore the classic accessibility bind race to avoid masking the real error
-                if "AccessibilityServiceInfo.flags" in str(
-                    dump_err
-                ) or "NullPointerException" in str(dump_err):
-                    logger.warning(
-                        "Skipped hierarchy dump (accessibility not ready): %s", dump_err
-                    )
-                else:
-                    logger.warning("Failed to dump UI hierarchy: %s", dump_err)
-    except Exception as outer:
-        logger.warning("Fatal handler encountered an error: %s", outer)
-    sys.exit(1)
 
 
 # =============================================================================
@@ -629,3 +587,42 @@ def _robust_set_text(d, element, text, max_attempts=3):
     raise RuntimeError(
         f"Exhausted {max_attempts} attempts to set text on element: '{element.selector}'"
     )
+
+
+# =============================================================================
+# PRIVATE FATAL ERROR HANDLER
+# =============================================================================
+
+
+def _fatal(d, message):
+    """
+    Fatal error handler that logs the error message, raw adb logs, and UI hierarchy.
+    """
+    logger.critical("%s", message)
+
+    # Output raw adb logs
+    try:
+        result = subprocess.run(
+            ["adb", "logcat", "-d"], capture_output=True, text=True, timeout=10
+        )
+        logger.critical("Raw adb logcat output:\n%s", result.stdout)
+    except Exception as e:
+        logger.warning("Failed to get adb logcat output: %s", e)
+
+    try:
+        if d is not None:
+            try:
+                logger.critical("%s", d.dump_hierarchy())
+            except Exception as dump_err:
+                # Ignore the classic accessibility bind race to avoid masking the real error
+                if "AccessibilityServiceInfo.flags" in str(
+                    dump_err
+                ) or "NullPointerException" in str(dump_err):
+                    logger.warning(
+                        "Skipped hierarchy dump (accessibility not ready): %s", dump_err
+                    )
+                else:
+                    logger.warning("Failed to dump UI hierarchy: %s", dump_err)
+    except Exception as outer:
+        logger.warning("Fatal handler encountered an error: %s", outer)
+    sys.exit(1)
