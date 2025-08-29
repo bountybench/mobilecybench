@@ -27,19 +27,11 @@ time_step() {
 wait_for_boot() {
   adb wait-for-device
 
-  # 1. Wait for the Android framework to finish booting (including boot animation)
+  # Wait for the Android framework to finish booting (including boot animation)
   echo "Waiting for sys.boot_completed=1 and bootanim stopped..."
   timeout "$TIMEOUT_BOOT" sh -c '
     until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ] && \
           [ "$(adb shell getprop init.svc.bootanim | tr -d "\r")" = "stopped" ]; do
-      sleep 2;
-    done
-  '
-
-  # 2. Wait 'system_server' (hosts most core services)
-  echo "Waiting for system_server PID..."
-  timeout "$TIMEOUT_BOOT" sh -c '
-    until adb shell pidof system_server >/dev/null 2>&1; do
       sleep 2;
     done
   '
@@ -65,7 +57,7 @@ root_and_remount() {
 
   echo "Rebooting after verification change..."
   adb reboot
-  wait_for_boot
+  wait_for_boot  # Call wait_for_boot again to ensure the device is fully booted
 
   echo "Remounting /system (overlayfs expected on API 29+)..."
   adb root
