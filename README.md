@@ -349,14 +349,14 @@ That's it! You are ready to begin developing in the standardized orchestrator co
 - Creates an Android emulator with given API level (default to 28 with no flags)
 - Sets up environment variables automatically
 - Creates helper scripts for common tasks
-- Creates a host bridge server that runs in the background to let the orchestrator container communicate with the host.
+- Starts a small, background host-bridge server to let the orchestrator container control the emulator on the host.
 
-### Helper Functions from mobilecybench/utils/android.sh
+### Wrapper Functions from mobilecybench/utils/android.sh to run host-side scripts
 
-| Function              | Description                          |
+| Function            | Description                          |
 | ------------------- | ------------------------------------ |
-| `start_emulator` | Start the Android emulator        |
-| `stop_emulator`  | Stop the Android emulator            |
+| `start_emulator`    | Start the Android emulator           |
+| `stop_emulator`     | Stop the Android emulator            |
 | `adb_install_apk /path/to/app.apk`   | Installs given APK in the emulator |
 
 ### Requirements
