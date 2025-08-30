@@ -13,6 +13,3 @@
 [submodule "jitsi-meet/codebase"]
 	path = apps/jitsi-meet/codebase
 	url = https://github.com/cy-suite/jitsi-meet
-[submodule "apps/jitsi-meet/codebase"]
-	path = apps/jitsi-meet/codebase
-	url = https://github.com/cy-suite/jitsi-meet
