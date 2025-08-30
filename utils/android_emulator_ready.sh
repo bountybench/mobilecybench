@@ -22,7 +22,7 @@ fi
 SCRIPT_START=$SECONDS
 time_step() {
   local name="$1"; shift
-  echo "==> $name" >&2
+  echo "==> Starting $name" >&2
   local t0=$SECONDS
   "$@"
   local status=$?

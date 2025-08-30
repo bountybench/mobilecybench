@@ -87,73 +87,60 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
 # =============================================================================
 
 
-def wait_and_click(d, element, timeout=180, exit_on_error=True):
+def wait_and_click(d, element, timeout=180):
     """Wait for an element and click it with ANR awareness and no sleeps."""
 
     if not _wait_for_element(d, element, timeout=timeout):
-        # Safely obtain current app state for diagnostics
-        try:
-            app_state = d.app_current() or {}
-        except Exception:
-            app_state = {}
+        app_state = d.app_current() or {}
         current_pkg = app_state.get("package", "unknown")
         current_activity = app_state.get("activity", "unknown")
         message = (
             f"Could not find element: '{element.selector}' within {timeout}s.\n"
             f"  - Current screen: {current_pkg}/{current_activity}."
         )
-        if exit_on_error:
-            _fatal(d, message)
-        else:
-            logger.error("%s", message)
-            return False
+        _fatal(d, message)
     else:
         logger.debug("Found element %s", element.selector)
 
-    # Prefer robust built-in wait-and-click first
     try:
         if element.click_exists(timeout=10):
             logger.info("Clicked element %s", element.selector)
             return True
     except Exception as e:
-        logger.debug("click_exists failed fast for %s: %s", element.selector, e)
+        logger.debug("click_exists failed for %s: %s", element.selector, e)
         try:
             elem_info = element.info
             clickable = elem_info.get("clickable")
             enabled = elem_info.get("enabled")
-            visible_bounds = elem_info.get("visibleBounds")
         except Exception:
-            clickable = enabled = visible_bounds = "<unavailable>"
+            clickable = enabled = "<unavailable>"
 
         message = (
             f"Found element '{element.selector}' but it could not be clicked: {e}\n"
-            f"  - Clickable: {clickable}, Enabled: {enabled}\n"
-            f"  - Visible Bounds: {visible_bounds}"
+            f"  - Clickable: {clickable}, Enabled: {enabled}"
         )
-        if exit_on_error:
-            _fatal(d, message)
-        else:
-            logger.error("%s", message)
-            return False
+        _fatal(d, message)
 
 
-def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
+def wait_and_set_text(d, element, text, max_attempts=3, retry_delay=1.0, timeout=180):
     """Focus the input by clicking it, set text, then finalize IME action."""
 
-    # Reuse the robust click flow to focus the field first
-    clicked = wait_and_click(d, element, timeout=timeout, exit_on_error=exit_on_error)
+    # Use the robust click flow to focus the field first
+    clicked = wait_and_click(d, element, timeout=timeout)
     if not clicked:
         return False
 
-    # Set text with retries
-    max_attempts = 3
-    retry_delay = 1.0
     for attempt_index in range(1, max_attempts + 1):
         try:
-            _handle_anr(d, max_anrs=5, timeout=1, target_element=element)
             element.set_text(text)
             logger.debug("Set text on attempt %s.", attempt_index)
-            break  # Success, exit retry loop
+            logger.info("Set text to %s", text)
+
+            _handle_keyboard_action(d)
+            wait_for_ui_stable(d)
+
+            return True
+
         except Exception as e:
             logger.debug("Set text failed on attempt %s: %s", attempt_index, e)
             if attempt_index < max_attempts:
@@ -161,18 +148,7 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
             else:
                 # All attempts failed
                 message = f"Failed to set text on element: '{element.selector}' after {max_attempts} attempts"
-                if exit_on_error:
-                    _fatal(d, message)
-                else:
-                    logger.error("%s", message)
-                    return False
-
-    logger.info("Set text to %s", text)
-    _handle_keyboard_action(d)
-
-    wait_for_ui_stable(d)
-
-    return True
+                _fatal(d, message)
 
 
 def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
@@ -186,6 +162,17 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
             current_dump = d.dump_hierarchy()
             fail_count = 0
         except Exception as e:
+            app_state = d.app_current() or {}
+            current_pkg = app_state.get("package") or ""
+            current_activity = app_state.get("activity") or ""
+            # If launcher is in foreground, the requested element cannot appear
+            if _is_launcher_activity(current_pkg, current_activity):
+                logger.debug(
+                    "Launcher detected in foreground (%s/%s); aborting element wait. UI cannot become stable.",
+                    current_pkg,
+                    current_activity,
+                )
+                return False
             # Known UiAutomator races during transitions; treat as transient
             if "java.lang.NullPointerException" in str(
                 e
@@ -195,32 +182,12 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
                 )
                 time.sleep(1)
                 fail_count += 1
-            elif "Unknown RPC error" in str(
-                e
-            ) and "java.lang.NullPointerException" in str(e):
-                logger.debug(
-                    "Caught UiAutomator RPC error, waiting for service to recover..."
-                )
-                time.sleep(2)
-                fail_count += 1
             else:
                 logger.debug(
                     "Failed to get hierarchy dump during stability check: %s", e
                 )
                 fail_count += 1
 
-            if fail_count >= 3:
-                try:
-                    logger.debug(
-                        "Running health check after %d consecutive failures...",
-                        fail_count,
-                    )
-                    if hasattr(d, "healthcheck"):
-                        d.healthcheck()
-                    else:
-                        logger.debug("Device does not support healthcheck method")
-                except Exception as health_err:
-                    logger.warning("Health check also failed: %s", health_err)
             time.sleep(interval)
             continue
 
@@ -316,6 +283,37 @@ def _adb_wait_for_device(timeout_seconds):
 # =============================================================================
 # PRIVATE UI UTILITY HELPERS
 # =============================================================================
+
+
+def _is_launcher_activity(current_pkg: str, current_activity: str) -> bool:
+    """
+    Heuristically determine if the current foreground activity is a launcher.
+
+    Uses common launcher package names and a substring match on activity/package.
+    """
+    if not current_pkg and not current_activity:
+        return False
+
+    pkg_l = (current_pkg or "").lower()
+    act_l = (current_activity or "").lower()
+
+    known_launcher_pkgs = {
+        "com.android.launcher",
+        "com.android.launcher3",
+        "com.google.android.apps.nexuslauncher",
+        "com.teslacoilsw.launcher",
+        "com.miui.home",
+        "org.lineageos.trebuchet",
+        "com.samsung.android.oneui.home",
+    }
+
+    if pkg_l in known_launcher_pkgs:
+        return True
+
+    if "launcher" in pkg_l or "launcher" in act_l:
+        return True
+
+    return False
 
 
 def _wait_for_element(d, element, timeout=180):
@@ -561,7 +559,7 @@ def _fatal(d, message):
     # Output raw adb logs
     try:
         result = subprocess.run(
-            ["adb", "logcat", "-d", "-t", "200"],
+            ["adb", "logcat", "-t", "100"],
             capture_output=True,
             text=True,
             timeout=10,
