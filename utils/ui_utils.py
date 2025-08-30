@@ -5,7 +5,6 @@ Public API: initialize_ui_automation, wait_and_click, wait_and_set_text, wait_fo
 
 import logging
 import os
-import re
 import subprocess
 import sys
 import time
@@ -118,39 +117,6 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
             return True
     except Exception as e:
         logger.debug("click_exists failed fast for %s: %s", element.selector, e)
-
-    # Fallback: poll for clickability and click once ready
-    try:
-        start_time = time.time()
-        wait_clickable_timeout = 10
-        while time.time() - start_time < wait_clickable_timeout:
-            try:
-                info = element.info
-            except Exception as info_err:
-                logger.debug(
-                    "Failed to read element.info while waiting clickable: %s", info_err
-                )
-                time.sleep(0.5)
-                continue
-
-            if info.get("clickable"):
-                try:
-                    element.click()
-                    logger.info("Clicked element %s", element.selector)
-                    return True
-                except Exception as click_err:
-                    logger.debug(
-                        "Direct click failed after clickable=true: %s", click_err
-                    )
-            time.sleep(0.5)
-
-        # 4) Last attempt: best-effort direct click
-        element.click()
-        logger.info("Clicked element %s (best-effort)", element.selector)
-        return True
-
-    except Exception as e:
-        # Build diagnostic context safely
         try:
             elem_info = element.info
             clickable = elem_info.get("clickable")
@@ -366,18 +332,21 @@ def _wait_for_element(d, element, timeout=180):
     """
     start_time = time.time()
 
-    # Parse selector to get both string representation and attributes
-    selector_data = _parse_selector_from_element(element)
-    selector_str = selector_data.get("selector_string", "<unknown>")
-    selector_info = selector_data.get("attributes", {})
+    # Derive selector string and parse attributes separately
+    try:
+        selector_str = str(getattr(element, "selector", element))
+    except Exception:
+        selector_str = "<unknown>"
+    selector_info = _parse_selector_from_element(element)
 
     logger.debug("Waiting for element %s (timeout=%ss)", selector_str, timeout)
 
     while time.time() - start_time < timeout:
         try:
-            app_state = d.app_current()
-            current_pkg = app_state.get("package", "")
-            current_activity = app_state.get("activity", "")
+            # app_current() may return None transiently; guard with fallback
+            app_state = d.app_current() or {}
+            current_pkg = app_state.get("package") or ""
+            current_activity = app_state.get("activity") or ""
             target_pkg = os.getenv("UI_TARGET_PACKAGE")
             if target_pkg and current_pkg and current_pkg != target_pkg:
                 logger.error(
@@ -554,39 +523,28 @@ def _handle_keyboard_action(d):
 
 def _parse_selector_from_element(element):
     """
-    Extract selector information from a uiautomator2 element.
-        - Returns both the string representation and parsed attributes
-        - Uses direct attribute access when available, falls back to string parsing
+    Extract selector attributes from a uiautomator2 element.
 
     Returns:
-        dict: {
-            'selector_string': str,  # Human-readable selector representation
-            'attributes': dict       # Parsed attributes (resourceId, text, etc.)
-        }
+        dict: Parsed attributes (e.g., resourceId, text). Never None.
     """
-    # Always get the selector string first
-    try:
-        selector_string = str(getattr(element, "selector", element))
-    except Exception:
-        selector_string = "<unknown>"
 
-    result = {"selector_string": selector_string, "attributes": {}}
+    attributes = {}
 
     try:
         # Check if element has direct access to selector attributes
-        if hasattr(element, "resourceId") and element.resourceId:
-            result["attributes"]["resourceId"] = element.resourceId
-        if hasattr(element, "text") and element.text:
-            result["attributes"]["text"] = element.text
-        if result["attributes"]:
+        if hasattr(element, "resourceId") and getattr(element, "resourceId"):
+            attributes["resourceId"] = element.resourceId
+        if hasattr(element, "text") and getattr(element, "text"):
+            attributes["text"] = element.text
+        if attributes:
             logger.debug(
-                "Selector parsed using direct access: %s",
-                list(result["attributes"].keys()),
+                "Selector parsed using direct access: %s", list(attributes.keys())
             )
-            return result
+            return attributes
     except Exception:
         logger.debug("Selector parsing failed")
-        return result
+        return attributes
 
 
 # =============================================================================
