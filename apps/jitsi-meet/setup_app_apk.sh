@@ -56,19 +56,20 @@ build_jitsi() {
 install_jitsi() {
     echo "Installing Jitsi Meet on Android emulator..."
 
-    if ! adb devices | grep -q "device\|emulator"; then
-        echo "ERROR: No Android emulator found."
-        echo "Please start the emulator first."
-        exit 1
-    fi
+    echo "Starting emulator '$AVD_NAME' in background..."
+    nohup $ANDROID_HOME/emulator/emulator -avd "$AVD_NAME" -netdelay none -netspeed full > /dev/null 2>&1 &
 
-    APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+    echo "Waiting for emulator to boot..."
+    adb wait-for-device
 
-    if [[ ! -f $APK_PATH ]]; then
-        echo "ERROR: APK not found at $APK_PATH"
-        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
-        exit 1
-    fi
+    boot_completed=""
+    until [ "$boot_completed" = "1" ]; do
+        boot_completed=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+        sleep 1
+    done
+    echo "Emulator booted successfully."
+
+    APK_PATH="app/app-debug.apk"
 
     adb install -r "$APK_PATH"
     echo "Jitsi Meet installed successfully."
