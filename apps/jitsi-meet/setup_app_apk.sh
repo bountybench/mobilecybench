@@ -45,6 +45,9 @@ build_jitsi() {
     echo "Building Jitsi Meet Android from source..."
     echo "This may take several minutes..."
 
+    if grep -q "MaxPermSize" gradle.properties; then
+        sed -i 's/-XX:MaxPermSize=[^ ]*//g' gradle.properties
+    fi
     ./gradlew assembleDebug
 
     echo "Build completed successfully."
@@ -86,7 +89,7 @@ main() {
     yarn install
 
     npx react-native start --reset-cache > /dev/null 2>&1 &
-    
+
     cd android
 
     check_prerequisites
