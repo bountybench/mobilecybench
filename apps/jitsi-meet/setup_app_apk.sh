@@ -65,12 +65,6 @@ install_jitsi() {
 
     echo "Waiting for emulator to boot..."
     adb wait-for-device
-
-    boot_completed=""
-    until [ "$boot_completed" = "1" ]; do
-        boot_completed=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-        sleep 1
-    done
     echo "Emulator booted successfully."
 
     #APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
