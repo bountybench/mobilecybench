@@ -82,15 +82,11 @@ main() {
 
     npm uninstall -g react-native-cli @react-native-community/cli || true
 
-    cd apps/jitsi-meet/codebase
+    cd codebase
     yarn install
 
     npx react-native start --reset-cache > /dev/null 2>&1 &
-
-    if [[ ! -d "android" ]]; then
-        echo "ERROR: android/ directory not found in jitsi-meet project."
-        exit 1
-    fi
+    
     cd android
 
     check_prerequisites
