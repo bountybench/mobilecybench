@@ -237,11 +237,9 @@ if __name__ == "__main__":
         if d:
             logger.critical("Dumping UI hierarchy for debugging:")
             try:
-                with open("ui_dump_error.xml", "w", encoding="utf-8") as f:
-                    f.write(d.dump_hierarchy())
-                logger.critical("Saved UI hierarchy to ui_dump_error.xml")
+                logger.critical("%s", d.dump_hierarchy())
             except Exception as dump_err:
-                logger.warning("Failed to save UI dump: %s", dump_err)
+                logger.warning("Failed to dump UI hierarchy: %s", dump_err)
         sys.exit(1)
     finally:
         # --- Clean up ---
