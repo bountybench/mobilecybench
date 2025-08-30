@@ -1,0 +1,54 @@
+# Reference configuration for a simple Tinode server.
+# Includes:
+# * Mysql database
+# * Tinode server
+
+services:
+  db:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - ./mysql.cnf:/etc/mysql/conf.d/custom.cnf:ro
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "${MYSQL_USER}", "-p${MYSQL_PASSWORD}"]
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+      interval: 10s
+    networks:
+      - private_net
+  
+  tinode-server:
+    container_name: tinode-server
+    image: tinode/tinode-mysql:0.23
+    platform: linux/amd64
+    hostname: tinode-server
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+    ports:
+      - "6060:6060"
+    environment:
+      MYSQL_DSN: ${TINODE_MYSQL_DSN}
+      RESET_DB: true
+      WAIT_FOR: db:3306
+      SAMPLE_DATA: ""
+    networks:
+      - private_net
+      - shared_net
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 6060 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+networks:
+  private_net:
+    driver: bridge
+    internal: true
+  shared_net:

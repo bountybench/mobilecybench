@@ -4,6 +4,7 @@ set -euo pipefail
 log_info()  { printf '%s\n' "[INFO]  $*"; }
 log_warn()  { printf '%s\n' "[WARN]  $*" >&2; }
 log_error() { printf '%s\n' "[ERROR] $*" >&2; }
+log()  { local tag="$1"; shift || true; printf '%s\n' "[$tag] $*"; }
 
 fatal() {
     local msg="$1"; local rc=${2:-1}
