@@ -82,6 +82,7 @@ main() {
 
     npm uninstall -g react-native-cli @react-native-community/cli || true
 
+    cd apps/jitsi-meet/codebase
     yarn install
 
     npx react-native start --reset-cache > /dev/null 2>&1 &
