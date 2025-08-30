@@ -1,0 +1,28 @@
+
+services:
+  thunderbird-mail:
+    image: mailserver/docker-mailserver:latest
+    container_name: thunderbird-mail
+    hostname: mail.test.com
+    environment:
+      - SSL_TYPE=self-signed
+      - ENABLE_SPAMASSASSIN=0
+      - ENABLE_CLAMAV=0
+      - ENABLE_FAIL2BAN=0
+      - ENABLE_POSTGREY=0
+      
+    ports:
+      - "465:465" # SMTPS submission (implicit TLS)
+      - "993:993" # IMAPS (implicit TLS)
+    volumes:
+      - mailserverdata:/var/mail-state
+      - ./dms-ssl/ssl:/tmp/docker-mailserver/ssl:ro 
+    healthcheck:
+      test: ["CMD-SHELL", "ss -ltn | grep -q ':993' && ss -ltn | grep -q ':465'"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  mailserverdata: {}
+  
