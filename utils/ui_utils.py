@@ -331,31 +331,6 @@ def _adb_wait_for_device(timeout_seconds):
         logger.warning("'adb wait-for-device' failed: %s", e)
 
 
-def _handle_transition(d, old_activity, timeout=3):
-    """Waits for a short period to see if an activity transition occurs."""
-    logger.debug("Checking for screen transition from '%s'...", old_activity)
-    start = time.time()
-    while time.time() - start < timeout:
-        try:
-            current_activity = d.app_current().get("activity")
-            if current_activity and current_activity != old_activity:
-                logger.debug(
-                    "Screen transition detected: '%s' -> '%s' in %.1fs",
-                    old_activity,
-                    current_activity,
-                    time.time() - start,
-                )
-                # Now that we've detected a transition, wait briefly for it to settle before the more intense
-                # hierarchy check in wait_for_ui_stable begins.
-                time.sleep(1)
-                return
-        except Exception:
-            # Errors are expected here if the UI is in a deep state of flux.
-            pass
-        time.sleep(0.5)
-    logger.debug("No screen transition detected within %ss.", timeout)
-
-
 # =============================================================================
 # PRIVATE UI UTILITY HELPERS
 # =============================================================================
@@ -581,7 +556,6 @@ def _parse_selector_from_element(element):
 
     result = {"selector_string": selector_string, "attributes": {}}
 
-    # Method 1: Try direct attribute access (most reliable)
     try:
         # Check if element has direct access to selector attributes
         if hasattr(element, "resourceId") and element.resourceId:
@@ -595,39 +569,8 @@ def _parse_selector_from_element(element):
             )
             return result
     except Exception:
-        pass
-
-    # Method 2: Fallback to string parsing (original approach)
-    try:
-        # More robust regex that handles various formats
-        # Matches: Selector [key='value'] or Selector [key="value"] or Selector [key=value]
-        pattern = r'(\w+)\s*=\s*[\'"]([^\'"]*)[\'"]|(\w+)\s*=\s*([^\'"\s\]]+)'
-        matches = re.findall(pattern, selector_string)
-
-        for match in matches:
-            if match[0] and match[1]:  # key='value' format
-                key, value = match[0], match[1]
-            elif match[2] and match[3]:  # key=value format
-                key, value = match[2], match[3]
-            else:
-                continue
-
-            # Only extract the attributes we actually use
-            if key in ["resourceId", "text"] and value:
-                result["attributes"][key] = value
-
-        if result["attributes"]:
-            logger.debug(
-                "Selector parsed using regex fallback: %s",
-                list(result["attributes"].keys()),
-            )
-            return result
-        else:
-            logger.debug("Selector parsing failed: no usable attributes found")
-            return result  # Still return selector_string even if no attributes
-    except Exception:
-        logger.debug("Selector parsing failed: regex error")
-        return result  # Still return selector_string even on error
+        logger.debug("Selector parsing failed")
+        return result
 
 
 # =============================================================================
