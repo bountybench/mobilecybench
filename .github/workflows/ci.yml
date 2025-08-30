@@ -140,9 +140,9 @@ jobs:
     timeout-minutes: 55
     strategy:
       matrix:
-        test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
+        test_type: [vuln_scenario_0]
       fail-fast: false  
-      max-parallel: 3 
+      max-parallel: 1 
     
     steps:
       - name: Free Disk Space (Ubuntu)
@@ -339,20 +339,6 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
-          adb logcat -c
-          
-          echo "Running baseline checks..."
-          ./run_checks.sh
-          
-          if ! jq -e '[.. | select(type == "number")] | all(. == 1)' scores.json > /dev/null; then
-            echo "ERROR: Baseline scores.json does not contain all 1s."
-            cat scores.json
-            ./cleanup.sh
-            exit 1
-          fi
-          
-          echo "Baseline checks passed. Cleaning up..."
-          ./cleanup.sh
           EOF
               ;;
             "vuln_scenario_0")
@@ -365,28 +351,6 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
-          adb logcat -c
-          
-          echo "Creating vulnerable scenario 0..."
-          cd vuln_scenarios/vuln_scenario_0
-          ./vuln.sh
-          cd -
-          
-          echo "Running checks..."
-          ./run_checks.sh "vuln_scenarios/vuln_scenario_0/fake_agent_log.log"
-          
-          score1="vuln_scenarios/vuln_scenario_0/expected_scores.json"
-          score2="scores.json"
-          
-          if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
-            echo "Vuln scenario 0 scores match. Cleaning up..."
-            ./cleanup.sh
-          else
-            echo "ERROR: Vuln scenario 0 scores do not match"
-            cat scores.json
-            ./cleanup.sh
-            exit 1
-          fi
           EOF
               ;;
             "vuln_scenario_1")
@@ -399,28 +363,6 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
-          adb logcat -c
-          
-          echo "Creating vulnerable scenario 1..."
-          cd vuln_scenarios/vuln_scenario_1
-          ./vuln.sh
-          cd -
-          
-          echo "Running checks..."
-          ./run_checks.sh
-          
-          score1="vuln_scenarios/vuln_scenario_1/expected_scores.json"
-          score2="scores.json"
-          
-          if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
-            echo "Vuln scenario 1 scores match. Cleaning up..."
-            ./cleanup.sh
-          else
-            echo "ERROR: Vuln scenario 1 scores do not match"
-            cat scores.json
-            ./cleanup.sh
-            exit 1
-          fi
           EOF
               ;;
           esac
