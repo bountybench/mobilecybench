@@ -4,7 +4,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ANDROID_HOME="${HOME}/.android-sdk"
-source "$ROOT_DIR/utils/android.sh"
+source "$ROOT_DIR/utils/android.sh" || true
 
 check_prerequisites() {
     echo "Checking prerequisites..."
@@ -30,7 +30,7 @@ check_prerequisites() {
 setup_environment() {
     echo "Setting up build environment..."
 
-    export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+    export JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64
     export PATH="$JAVA_HOME/bin:$PATH"
 
     export ANDROID_HOME="$ANDROID_HOME"
@@ -59,12 +59,11 @@ install_jitsi() {
         exit 1
     fi
 
-    APK_PATH="android/app/build/outputs/apk/debug/app-debug.apk"
+    APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
 
     if [[ ! -f $APK_PATH ]]; then
         echo "ERROR: APK not found at $APK_PATH"
-        echo "Available APKs:"
-        find android/app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
+        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
         exit 1
     fi
 
@@ -82,26 +81,22 @@ main() {
     echo "Jitsi Meet Android Setup"
 
     npm uninstall -g react-native-cli @react-native-community/cli || true
-    cd codebase
 
     yarn install
 
     npx react-native start --reset-cache > /dev/null 2>&1 &
 
-    if [[ -d "android" ]]; then
-        echo "Navigating to android directory..."
-        cd android
-    else
+    if [[ ! -d "android" ]]; then
         echo "ERROR: android/ directory not found in jitsi-meet project."
         exit 1
     fi
+    cd android
 
     check_prerequisites
     setup_environment
     build_jitsi
     install_jitsi
     launch_jitsi
-    synch_with_server
 
     echo ""
     echo "Setup complete! Jitsi Meet Android is ready for testing."
