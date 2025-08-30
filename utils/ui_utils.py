@@ -28,39 +28,6 @@ if not logger.hasHandlers():
 # =============================================================================
 
 
-def _preflight_emulator_readiness():
-    """Run the android emulator readiness script once with configurable timeouts."""
-    try:
-        project_root = Path(__file__).resolve().parents[1]
-        script_path = project_root / "utils" / "android_emulator_ready.sh"
-        if not script_path.exists():
-            logger.debug(
-                "Readiness script not found at %s; skipping preflight.", script_path
-            )
-            return
-
-        logger.info("Running emulator readiness preflight: %s", script_path)
-        # Redirect all output (stdout and stderr) to our logger's stderr stream
-        result = subprocess.run(
-            [str(script_path)], check=True, capture_output=True, text=True
-        )
-        # Write any captured stdout to stderr via logger
-        if result.stdout:
-            logger.info("Script output: %s", result.stdout.rstrip())
-        if result.stderr:
-            logger.warning("Script stderr: %s", result.stderr.rstrip())
-    except subprocess.CalledProcessError as e:
-        logger.error("Readiness preflight failed with exit code %s", e.returncode)
-        if e.stdout:
-            logger.error("Script stdout: %s", e.stdout.rstrip())
-        if e.stderr:
-            logger.error("Script stderr: %s", e.stderr.rstrip())
-        raise
-    except Exception as e:
-        logger.debug("Preflight readiness skipped: %s", e)
-        return
-
-
 def initialize_ui_automation(max_retries=5, retry_delay=15):
     """Connect to a device and enable sane defaults (implicit waits, no sleeps)."""
 
@@ -80,7 +47,7 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
             _preflight_emulator_readiness()
         except Exception as e:
             logger.warning(
-                "Readiness preflight script failed: %s. Continuing with Python checks…",
+                "Readiness preflight script failed: %s.",
                 e,
             )
 
@@ -206,15 +173,27 @@ def wait_and_set_text(d, element, text, timeout=180, exit_on_error=True):
     if not clicked:
         return False
 
-    try:
-        _robust_set_text(d, element, text, max_attempts=3)
-    except Exception as e:
-        message = f"Failed to set text on element: '{element.selector}': {e}"
-        if exit_on_error:
-            _fatal(d, message)
-        else:
-            logger.error("%s", message)
-            return False
+    # Set text with retries
+    max_attempts = 3
+    retry_delay = 1.0
+    for attempt_index in range(1, max_attempts + 1):
+        try:
+            _handle_anr(d, max_anrs=5, timeout=1, target_element=element)
+            element.set_text(text)
+            logger.debug("Set text on attempt %s.", attempt_index)
+            break  # Success, exit retry loop
+        except Exception as e:
+            logger.debug("Set text failed on attempt %s: %s", attempt_index, e)
+            if attempt_index < max_attempts:
+                time.sleep(retry_delay)
+            else:
+                # All attempts failed
+                message = f"Failed to set text on element: '{element.selector}' after {max_attempts} attempts"
+                if exit_on_error:
+                    _fatal(d, message)
+                else:
+                    logger.error("%s", message)
+                    return False
 
     logger.info("Set text to %s", text)
     _handle_keyboard_action(d)
@@ -292,6 +271,39 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
 # =============================================================================
 
 
+def _preflight_emulator_readiness():
+    """Run the android emulator readiness script once with configurable timeouts."""
+    try:
+        project_root = Path(__file__).resolve().parents[1]
+        script_path = project_root / "utils" / "android_emulator_ready.sh"
+        if not script_path.exists():
+            logger.debug(
+                "Readiness script not found at %s; skipping preflight.", script_path
+            )
+            return
+
+        logger.info("Running emulator readiness preflight: %s", script_path)
+        # Redirect all output (stdout and stderr) to our logger's stderr stream
+        result = subprocess.run(
+            [str(script_path)], check=True, capture_output=True, text=True
+        )
+        # Write any captured stdout to stderr via logger
+        if result.stdout:
+            logger.info("Script output: %s", result.stdout.rstrip())
+        if result.stderr:
+            logger.warning("Script stderr: %s", result.stderr.rstrip())
+    except subprocess.CalledProcessError as e:
+        logger.error("Readiness preflight failed with exit code %s", e.returncode)
+        if e.stdout:
+            logger.error("Script stdout: %s", e.stdout.rstrip())
+        if e.stderr:
+            logger.error("Script stderr: %s", e.stderr.rstrip())
+        raise
+    except Exception as e:
+        logger.debug("Preflight readiness skipped: %s", e)
+        return
+
+
 def _adb_has_devices(timeout_seconds=5):
     try:
         result = subprocess.run(
@@ -363,13 +375,12 @@ def _wait_for_element(d, element, timeout=180):
     """
     start_time = time.time()
 
-    try:
-        selector_str = str(getattr(element, "selector", element))
-    except Exception:
-        selector_str = "<unknown>"
-    logger.debug("Waiting for element %s (timeout=%ss)", selector_str, timeout)
+    # Parse selector to get both string representation and attributes
+    selector_data = _parse_selector_from_element(element)
+    selector_str = selector_data.get("selector_string", "<unknown>")
+    selector_info = selector_data.get("attributes", {})
 
-    selector_info = _parse_selector_from_element(element)
+    logger.debug("Waiting for element %s (timeout=%ss)", selector_str, timeout)
 
     while time.time() - start_time < timeout:
         try:
@@ -415,12 +426,22 @@ def _wait_for_element(d, element, timeout=180):
                 logger.debug("Element %s already exists (no wait).", selector_str)
                 return True
 
+        # Try to scroll element into view using parsed selector attributes
         try:
-            did_scroll = _try_scroll_into_view(d, selector_info)
-            if did_scroll:
-                logger.debug(
-                    "Attempted scroll into view using selector info: %s", selector_info
-                )
+            if selector_info:
+                scrollable = d(scrollable=True)
+                if scrollable.exists:
+                    if "resourceId" in selector_info:
+                        scrollable.scroll.to(resourceId=selector_info["resourceId"])
+                        logger.debug(
+                            "Scrolled to element using resourceId: %s",
+                            selector_info["resourceId"],
+                        )
+                    elif "text" in selector_info:
+                        scrollable.scroll.to(text=selector_info["text"])
+                        logger.debug(
+                            "Scrolled to element using text: %s", selector_info["text"]
+                        )
         except Exception as e:
             logger.debug("Error during scroll attempt: %s", e)
 
@@ -499,7 +520,10 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
 
 
 def _handle_keyboard_action(d):
-    """Trigger IME action via Done button, IME action key, or Enter key."""
+    """
+    Trigger IME action via Done button, IME action key, or Enter key.
+    Various Android SDKs use various keyboard action buttons.
+    """
     # Handle any ANRs before keyboard interaction
     _handle_anr(d, max_anrs=5, timeout=1, target_element=None)
 
@@ -539,99 +563,71 @@ def _handle_keyboard_action(d):
 
 def _parse_selector_from_element(element):
     """
-    Extract selector attributes from a uiautomator2 element for downstream use.
-        - This helper parses the string form of the selector and returns a
-          dictionary so that `_try_scroll_into_view` can do:
-              scroll.to(resourceId=...) or scroll.to(text=...)
+    Extract selector information from a uiautomator2 element.
+        - Returns both the string representation and parsed attributes
+        - Uses direct attribute access when available, falls back to string parsing
 
-    Example:
-        Input string:  "Selector [resourceId='LoginPasswordEntry']"
-        Output dict:   {"resourceId": "LoginPasswordEntry"}
-
-    Notes:
-        - Falls back to an empty dict if the selector cannot be parsed.
-        - Safe to call on any element; non-fatal on parsing errors.
+    Returns:
+        dict: {
+            'selector_string': str,  # Human-readable selector representation
+            'attributes': dict       # Parsed attributes (resourceId, text, etc.)
+        }
     """
+    # Always get the selector string first
     try:
-        selector_string = str(element.selector)
-        # Extract inside the brackets
-        bracket_match = re.search(r"\[(.*)\]", selector_string)
-        if not bracket_match:
-            return {}
-        inside = bracket_match.group(1)
-        pairs = re.findall(r"(\w+)='([^']+)'", inside)
-        return {key: value for key, value in pairs}
+        selector_string = str(getattr(element, "selector", element))
     except Exception:
-        return {}
+        selector_string = "<unknown>"
 
+    result = {"selector_string": selector_string, "attributes": {}}
 
-def _try_scroll_into_view(d, selector_info):
-    """
-    Attempts to scroll the screen so that an element becomes visible, using selector info.
-    Prefers resourceId, falls back to text if available.
-    Returns True if a scroll attempt was made, False otherwise.
-    """
+    # Method 1: Try direct attribute access (most reliable)
     try:
-        scrollable = d(scrollable=True)
-        if not scrollable.exists:
-            return False
-
-        if "resourceId" in selector_info:
-            scrollable.scroll.to(resourceId=selector_info["resourceId"])
-            return True
-        if "text" in selector_info:
-            scrollable.scroll.to(text=selector_info["text"])
-            return True
-        return False
+        # Check if element has direct access to selector attributes
+        if hasattr(element, "resourceId") and element.resourceId:
+            result["attributes"]["resourceId"] = element.resourceId
+        if hasattr(element, "text") and element.text:
+            result["attributes"]["text"] = element.text
+        if result["attributes"]:
+            logger.debug(
+                "Selector parsed using direct access: %s",
+                list(result["attributes"].keys()),
+            )
+            return result
     except Exception:
-        return False
+        pass
 
+    # Method 2: Fallback to string parsing (original approach)
+    try:
+        # More robust regex that handles various formats
+        # Matches: Selector [key='value'] or Selector [key="value"] or Selector [key=value]
+        pattern = r'(\w+)\s*=\s*[\'"]([^\'"]*)[\'"]|(\w+)\s*=\s*([^\'"\s\]]+)'
+        matches = re.findall(pattern, selector_string)
 
-def _robust_set_text(d, element, text, max_attempts=3, retry_delay=1.0):
-    """
-    Set text with retries. Assumes caller has already focused the field.
-    """
-    last_err = None
-    for attempt_index in range(1, max_attempts + 1):
-        try:
-            _handle_anr(d, max_anrs=5, timeout=1, target_element=element)
+        for match in matches:
+            if match[0] and match[1]:  # key='value' format
+                key, value = match[0], match[1]
+            elif match[2] and match[3]:  # key=value format
+                key, value = match[2], match[3]
+            else:
+                continue
 
-            # First attempt: set_text directly
-            try:
-                element.set_text(text)
-                logger.debug("Set text on attempt %s.", attempt_index)
-                return True
-            except Exception as e:
-                logger.debug(
-                    "Direct set_text failed on attempt %s: %s", attempt_index, e
-                )
-                # Focus, then retry set_text
-                try:
-                    element.click()
-                except Exception:
-                    pass
-                try:
-                    element.set_text(text)
-                    logger.debug("Set text after click on attempt %s.", attempt_index)
-                    return True
-                except Exception as e2:
-                    logger.debug(
-                        "Click + set_text failed on attempt %s: %s", attempt_index, e2
-                    )
+            # Only extract the attributes we actually use
+            if key in ["resourceId", "text"] and value:
+                result["attributes"][key] = value
 
-        except Exception as e:
-            last_err = e
-
-        if attempt_index < max_attempts:
-            time.sleep(retry_delay)
-
-    raise (
-        last_err
-        if last_err
-        else RuntimeError(
-            f"Failed to set text on element: '{element.selector}' after {max_attempts} attempts"
-        )
-    )
+        if result["attributes"]:
+            logger.debug(
+                "Selector parsed using regex fallback: %s",
+                list(result["attributes"].keys()),
+            )
+            return result
+        else:
+            logger.debug("Selector parsing failed: no usable attributes found")
+            return result  # Still return selector_string even if no attributes
+    except Exception:
+        logger.debug("Selector parsing failed: regex error")
+        return result  # Still return selector_string even on error
 
 
 # =============================================================================
@@ -648,7 +644,7 @@ def _fatal(d, message):
     # Output raw adb logs
     try:
         result = subprocess.run(
-            ["adb", "logcat", "-d", "-t", "500"],
+            ["adb", "logcat", "-d", "-t", "200"],
             capture_output=True,
             text=True,
             timeout=10,
@@ -676,4 +672,5 @@ def _fatal(d, message):
                     logger.warning("Failed to dump UI hierarchy: %s", dump_err)
     except Exception as outer:
         logger.warning("Fatal handler encountered an error: %s", outer)
+
     sys.exit(1)
