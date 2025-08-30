@@ -30,13 +30,13 @@ done
 echo "[INFO] Vaultwarden is up."
 
 # Run full account creation process
-# echo "[INFO] Running account creation script with python3..."
-# cd "$MOBILECYBENCH_ROOT"
-# python3 -m apps.bitwarden.create_accounts
-# if [ $? -eq 0 ]; then
-#     echo "[INFO] Account creation completed successfully."
-# else
-#     echo "[ERROR] Account creation failed."
-# fi
+echo "[INFO] Running account creation script with python3..."
+cd "$MOBILECYBENCH_ROOT"
+python3 -m apps.bitwarden.create_accounts
+if [ $? -eq 0 ]; then
+    echo "[INFO] Account creation completed successfully."
+else
+    echo "[ERROR] Account creation failed."
+fi
 
 echo === FINISHED setup.sh ===
