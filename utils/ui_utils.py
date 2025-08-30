@@ -92,10 +92,16 @@ def wait_and_click(d, element, timeout=180, exit_on_error=True):
     """Wait for an element and click it with ANR awareness and no sleeps."""
 
     if not _wait_for_element(d, element, timeout=timeout):
-        app_state = d.app_current()
+        # Safely obtain current app state for diagnostics
+        try:
+            app_state = d.app_current() or {}
+        except Exception:
+            app_state = {}
+        current_pkg = app_state.get("package", "unknown")
+        current_activity = app_state.get("activity", "unknown")
         message = (
             f"Could not find element: '{element.selector}' within {timeout}s.\n"
-            f"  - Current screen: {app_state.get('package', 'unknown')}/{app_state.get('activity', 'unknown')}."
+            f"  - Current screen: {current_pkg}/{current_activity}."
         )
         if exit_on_error:
             _fatal(d, message)
@@ -214,15 +220,22 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
             current_dump = d.dump_hierarchy()
             fail_count = 0
         except Exception as e:
-            # This specific NullPointerException is a known race condition during screen transitions.
-            # We treat it as a signal that the UI is in flux, not a hard error.
+            # Known UiAutomator races during transitions; treat as transient
             if "java.lang.NullPointerException" in str(
                 e
             ) and "AccessibilityServiceInfo.flags" in str(e):
                 logger.debug(
                     "Caught accessibility service race condition, waiting for UI to settle..."
                 )
-                time.sleep(1)  # Give a longer pause for the service to recover
+                time.sleep(1)
+                fail_count += 1
+            elif "Unknown RPC error" in str(
+                e
+            ) and "java.lang.NullPointerException" in str(e):
+                logger.debug(
+                    "Caught UiAutomator RPC error, waiting for service to recover..."
+                )
+                time.sleep(2)
                 fail_count += 1
             else:
                 logger.debug(
@@ -236,7 +249,10 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
                         "Running health check after %d consecutive failures...",
                         fail_count,
                     )
-                    d.healthcheck()
+                    if hasattr(d, "healthcheck"):
+                        d.healthcheck()
+                    else:
+                        logger.debug("Device does not support healthcheck method")
                 except Exception as health_err:
                     logger.warning("Health check also failed: %s", health_err)
             time.sleep(interval)
