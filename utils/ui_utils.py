@@ -589,12 +589,7 @@ def _try_scroll_into_view(d, selector_info):
 
 def _robust_set_text(d, element, text, max_attempts=3, retry_delay=1.0):
     """
-    Set text with verification and retries. Assumes caller has already focused the field.
-    Strategy:
-      1) Try set_text directly; verify via get_text
-      2) On failure, click then set_text; verify
-      3) On failure, click + clear_text + set_text; verify
-      4) Retry up to max_attempts with small delay; handle ANRs between attempts
+    Set text with retries. Assumes caller has already focused the field.
     """
     last_err = None
     for attempt_index in range(1, max_attempts + 1):
@@ -604,7 +599,12 @@ def _robust_set_text(d, element, text, max_attempts=3, retry_delay=1.0):
             # First attempt: set_text directly
             try:
                 element.set_text(text)
-            except Exception:
+                logger.debug("Set text on attempt %s.", attempt_index)
+                return True
+            except Exception as e:
+                logger.debug(
+                    "Direct set_text failed on attempt %s: %s", attempt_index, e
+                )
                 # Focus, then retry set_text
                 try:
                     element.click()
@@ -612,47 +612,13 @@ def _robust_set_text(d, element, text, max_attempts=3, retry_delay=1.0):
                     pass
                 try:
                     element.set_text(text)
-                except Exception:
-                    # If focus + set_text also fails, we'll fall through to retry path
-                    pass
+                    logger.debug("Set text after click on attempt %s.", attempt_index)
+                    return True
+                except Exception as e2:
+                    logger.debug(
+                        "Click + set_text failed on attempt %s: %s", attempt_index, e2
+                    )
 
-            time.sleep(0.5)
-            try:
-                current = element.get_text()
-            except Exception:
-                current = None
-            if current == text:
-                logger.debug("Set text verified on attempt %s.", attempt_index)
-                return True
-
-            # Retry path: click + clear + set + verify
-            try:
-                element.click()
-            except Exception:
-                pass
-            try:
-                element.clear_text()
-            except Exception:
-                pass
-            try:
-                element.set_text(text)
-            except Exception:
-                pass
-
-            time.sleep(0.5)
-            try:
-                current = element.get_text()
-            except Exception:
-                current = None
-            if current == text:
-                logger.debug(
-                    "Set text verified after clear on attempt %s.", attempt_index
-                )
-                return True
-
-            last_err = RuntimeError(
-                f"Verification failed. Expected: '{text}', Got: '{current}'"
-            )
         except Exception as e:
             last_err = e
 
@@ -662,7 +628,9 @@ def _robust_set_text(d, element, text, max_attempts=3, retry_delay=1.0):
     raise (
         last_err
         if last_err
-        else RuntimeError(f"Failed to set text on element: '{element.selector}'")
+        else RuntimeError(
+            f"Failed to set text on element: '{element.selector}' after {max_attempts} attempts"
+        )
     )
 
 
