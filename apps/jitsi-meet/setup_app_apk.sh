@@ -61,8 +61,8 @@ install_jitsi() {
     echo "Installing Jitsi Meet on Android emulator..."
 
     echo "Starting emulator '$AVD_NAME' in foreground..."
-    $ANDROID_HOME/emulator/emulator -avd "$AVD_NAME" -netdelay none -netspeed full > /dev/null 2>&1
-
+    $ANDROID_HOME/emulator/emulator -avd "$AVD_NAME" -netdelay none -netspeed full > /dev/null 2>&1 &
+adb wait-for-device
     echo "Emulator booted successfully."
 
     #APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
