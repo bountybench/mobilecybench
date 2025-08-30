@@ -76,7 +76,7 @@ install_jitsi() {
 
 launch_jitsi() {
     echo "Launching Jitsi Meet..."
-    adb_launch_activity "org.jitsi.meet/.MainActivity"
+    adb shell am start -n org.jitsi.meet/.MainActivity
     echo "Jitsi Meet should now be running on your emulator."
 }
 
