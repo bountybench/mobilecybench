@@ -1,8 +1,6 @@
+#!/usr/bin/env bash
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)"
-
-source "${ROOT_DIR}/utils/common.sh"
-source "${ROOT_DIR}/utils/docker.sh"
+source "${SCRIPT_DIR}/utils.sh"
 
 log_info "Stopping docker compose stacks..."
 docker_compose_down

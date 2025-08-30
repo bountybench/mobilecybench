@@ -13,6 +13,11 @@ SUCCESS="${GREEN}[SUCCESS]${RESET}"
 ERROR="${RED}[ERROR]${RESET}"
 WARNING="${YELLOW}[WARNING]${RESET}"
 
+ROOT_DIR=$(pwd)
+source "${ROOT_DIR}/utils/android.sh"
+source "${ROOT_DIR}/utils/wait.sh"
+set +e
+
 print_header() {
     local color="$1"
     local message="$2"
@@ -137,7 +142,6 @@ if [ -z "$1" ]; then
     echo "Example: $0 apps/joplin"
     exit 1
 fi
-ROOT_DIR=$(pwd)
 DIR="$1"
 
 # Get API level from metadata
@@ -166,18 +170,8 @@ run_test_check() {
 
     print_header "$CYAN" "RUNNING $test_name"
 
-    cd "$ROOT_DIR"    
+    cd "$ROOT_DIR"
     cd "$DIR"
-    checkout_commit "$DIR"
-
-    required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh")
-    echo -e "${INFO} Checking for required scripts..."
-    for script in "${required_scripts[@]}"; do
-        if [[ ! -f "$script" ]]; then
-            echo -e "${ERROR} Required script '$script' not found."
-            exit 1
-        fi
-    done
 
     echo -e "${INFO} Running setup..."
     ./setup.sh
@@ -229,24 +223,31 @@ run_test_check() {
     cd -
 }
 
+cd "$DIR"
+print_header "$CYAN" "SETTING UP APP FROM SOURCE"
+checkout_commit "$DIR"
+required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
+echo -e "${INFO} Checking for required scripts..."
+for script in "${required_scripts[@]}"; do
+    if [[ ! -f "$script" ]]; then
+        echo -e "${ERROR} Required script '$script' not found."
+        exit 1
+    fi
+done
+./setup_app_source.sh
+cd "$ROOT_DIR"
+
 # Start emulator (assuming you have a start_emulator.sh script)
 if [ -f "start_emulator.sh" ]; then
     print_header "$CYAN" "STARTING EMULATOR"
-    ./start_emulator.sh > /dev/null 2>&1 &
-    EMULATOR_PID=$!
+    start_emulator
 
     echo "Waiting for emulator to boot..."
 
     # Wait for device to appear
     adb wait-for-device
 
-    # Wait until system property `sys.boot_completed` returns 1
-    boot_completed=""
-    while [ "$boot_completed" != "1" ]; do
-        boot_completed=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-        sleep 1
-    done
-
+    wait_for_device_boot 300
     echo "Emulator booted successfully."
     
     # Wait for servers to be ready
@@ -255,7 +256,6 @@ else
     echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
 fi
 
-cd $ROOT_DIR
 # Run the three test scenarios
 run_test_check "TEST CHECKS BEFORE VULNERABLE SCENARIOS" "" "false"
 run_test_check "TEST CHECKS AFTER NON-DOS VULNERABLE SCENARIO" "0" "true"
@@ -263,14 +263,9 @@ run_test_check "TEST CHECKS AFTER DOS VULNERABLE SCENARIO" "1" "false"
 
 print_header "$GREEN" "ALL TESTS PASSED"
 
-# Stop emulator
-if [ -n "$EMULATOR_PID" ]; then
-    print_header "$CYAN" "STOPPING EMULATOR"
-    if [ -f "stop_emulator.sh" ]; then
-        ./stop_emulator.sh
-    else
-        kill $EMULATOR_PID 2>/dev/null || true
-    fi
+cd $ROOT_DIR
+if [ -f "stop_emulator.sh" ]; then
+    stop_emulator
 fi
 
 # Final cleanup

@@ -1,40 +1,25 @@
-networks:
-  shared_net:
-    driver: bridge
-
 services:
-  # Kali Linux Container
-  kali-container:
+  # Orchestrator Container
+  backend:
     build:
-      context: ./kali
-      dockerfile: Dockerfile
-    container_name: kali-container
-    networks:
-      - shared_net
-    stdin_open: true
-    tty: true
-    command: /bin/bash -c "while true; do sleep 30; done"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    environment:
-      - ANDROID_ADB_SERVER_PORT=5037
-
-  # MCP Server Container  
-  mcp-server:
-    build:
-      context: ./mcp
-      dockerfile: Dockerfile
-    container_name: mcp-server
-    networks:
-      - shared_net
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: mobilecybench-backend
+    privileged: true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./mcp/ngrok.yml:/app/ngrok.yml:ro
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - "8000:8000"
-    depends_on:
-      - kali-container
+      - dind-data:/var/lib/docker
+      - ./:/mobilecybench
+      - gradle-cache:/root/.gradle
     environment:
-      - DOCKER_HOST=unix:///var/run/docker.sock
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  dind-data:
+  gradle-cache:
