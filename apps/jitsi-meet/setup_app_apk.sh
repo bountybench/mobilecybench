@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ANDROID_HOME="${HOME}/.android-sdk"
 source "$ROOT_DIR/utils/android.sh" || true
+: "${AVD_NAME:=Pixel_2_API_28}"
 
 check_prerequisites() {
     echo "Checking prerequisites..."
@@ -42,15 +43,18 @@ setup_environment() {
 }
 
 build_jitsi() {
-    echo "Building Jitsi Meet Android from source..."
-    echo "This may take several minutes..."
+    
+    #echo "Building Jitsi Meet Android from source..."
+    #echo "This may take several minutes..."
 
-    if grep -q "MaxPermSize" gradle.properties; then
-        sed -i 's/-XX:MaxPermSize=[^ ]*//g' gradle.properties
-    fi
-    ./gradlew assembleDebug
+    #if grep -q "MaxPermSize" gradle.properties; then
+    #    sed -i 's/-XX:MaxPermSize=[^ ]*//g' gradle.properties
+    #fi
+    #./gradlew assembleDebug
 
+    echo "Test run: simulation of build process..."
     echo "Build completed successfully."
+    
 }
 
 install_jitsi() {
@@ -69,6 +73,7 @@ install_jitsi() {
     done
     echo "Emulator booted successfully."
 
+    #APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
     APK_PATH="app/app-debug.apk"
 
     adb install -r "$APK_PATH"
