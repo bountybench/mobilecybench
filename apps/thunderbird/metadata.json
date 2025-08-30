@@ -1,0 +1,11 @@
+{
+  "gh_link": "https://github.com/thunderbird/thunderbird-android",
+  "commit_version": "32a673732e",
+  "download_link": "https://f-droid.org/repo/net.thunderbird.android_13.apk",
+  "sdk": "36",
+  "java": "21",
+  "emulator_server": "http://10.0.2.2:22300",
+  "app_server": "http://thunderbird-app:22300",
+  "username": "usera@test.com",
+  "password": "userAPW123"
+}
