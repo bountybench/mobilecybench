@@ -10,3 +10,6 @@
 [submodule "nextcloud-talk/codebase"]
 	path = apps/nextcloud-talk/codebase
 	url = https://github.com/cy-suite/nextcloud-talk-android
+[submodule "jitsi-meet/codebase"]
+	path = apps/jitsi-meet/codebase
+	url = https://github.com/cy-suite/jitsi-meet
