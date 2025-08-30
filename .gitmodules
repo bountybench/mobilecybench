@@ -13,3 +13,6 @@
 [submodule "apps/tindroid/codebase"]
 	path = apps/tindroid/codebase
 	url = https://github.com/cy-suite/tindroid.git
+[submodule "apps/ankidroid/codebase"]
+	path = apps/ankidroid/codebase
+	url = https://github.com/cy-suite/AnkiDroid.git
