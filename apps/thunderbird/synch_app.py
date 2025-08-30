@@ -157,13 +157,7 @@ def setup_incoming_server():
     to identify and fill in the server hostname and password fields.
     """
     print("[INFO] Setting up incoming server", file=sys.stderr)
-    wait_for_ui_stable(timeout=5)
-    
-    # Dump hierarchy to debug UI
-    print("[DEBUG] Current UI hierarchy:", file=sys.stderr)
-    hierarchy = d.dump_hierarchy()
-    print(hierarchy, file=sys.stderr)
-    
+    wait_for_ui_stable(timeout=5)   
     
     # Try by field index first after handling potential dropdowns
     edit_texts = d(className="android.widget.EditText")
@@ -196,11 +190,6 @@ def setup_outgoing_server():
     """
     print("[INFO] Setting up outgoing server", file=sys.stderr)
     wait_for_ui_stable(timeout=5)
-    
-    # Dump hierarchy to debug UI
-    print("[DEBUG] Current UI hierarchy for outgoing server:", file=sys.stderr)
-    hierarchy = d.dump_hierarchy()
-    print(hierarchy, file=sys.stderr)
     
     # Try by field index first
     edit_texts = d(className="android.widget.EditText")
@@ -325,9 +314,9 @@ def main():
     tap_if_exists(text="Next") 
     wait_for_ui_stable()
     
-    # Skip if presented
+    # Skip if presented  
+    wait_for_ui_stable(15)
     tap_if_exists(text="Skip")  
-    wait_for_ui_stable()
     
     print("[INFO] Thunderbird account setup completed successfully", file=sys.stderr)
     return 0
