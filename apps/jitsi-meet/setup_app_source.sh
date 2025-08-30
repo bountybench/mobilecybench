@@ -6,6 +6,8 @@ ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ANDROID_HOME="${HOME}/.android-sdk"
 source "$ROOT_DIR/utils/android.sh"
 
+chmod +x setup_app_source.sh
+
 check_prerequisites() {
     echo "Checking prerequisites..."
 
