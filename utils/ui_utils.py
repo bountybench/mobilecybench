@@ -539,6 +539,7 @@ def _parse_selector_from_element(element):
             logger.debug(
                 "Selector parsed using direct access: %s", list(attributes.keys())
             )
+            logger.debug("Selector attributes: %s", attributes)
             return attributes
     except Exception:
         logger.debug("Selector parsing failed")
@@ -559,7 +560,7 @@ def _fatal(d, message):
     # Output raw adb logs
     try:
         result = subprocess.run(
-            ["adb", "logcat", "-t", "100"],
+            ["adb", "logcat", "-t", "200"],
             capture_output=True,
             text=True,
             timeout=10,
@@ -577,11 +578,9 @@ def _fatal(d, message):
                 logger.critical("%s", d.dump_hierarchy())
             except Exception as dump_err:
                 # Ignore the classic accessibility bind race to avoid masking the real error
-                if "AccessibilityServiceInfo.flags" in str(
-                    dump_err
-                ) or "NullPointerException" in str(dump_err):
+                if "NullPointerException" in str(dump_err):
                     logger.warning(
-                        "Skipped hierarchy dump (accessibility not ready): %s", dump_err
+                        "Skipped hierarchy dump (NullPointerException): %s", dump_err
                     )
                 else:
                     logger.warning("Failed to dump UI hierarchy: %s", dump_err)

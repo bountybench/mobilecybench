@@ -258,9 +258,7 @@ def bw_attempt_login(d, email, password):
             resourceId="AcceptAlertButton"
         ).exists(timeout=2):
             logger.warning("Error dialog detected on app start. Dismissing...")
-            wait_and_click(
-                d, d(resourceId="AcceptAlertButton"), timeout=5
-            )
+            wait_and_click(d, d(resourceId="AcceptAlertButton"), timeout=5)
 
         # Wait for either email entry (initial login) or master password entry (locked vault)
         if not (
@@ -311,9 +309,7 @@ def bw_attempt_login(d, email, password):
             resourceId="AcceptAlertButton"
         ).exists(timeout=2):
             logger.warning("Error dialog detected. Dismissing...")
-            wait_and_click(
-                d, d(resourceId="AcceptAlertButton"), timeout=5
-            )
+            wait_and_click(d, d(resourceId="AcceptAlertButton"), timeout=5)
             logger.error("Login failed due to error dialog.")
             return False
 

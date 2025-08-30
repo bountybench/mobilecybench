@@ -536,9 +536,9 @@ jobs:
           arch: x86_64
           target: ${{ needs.setup.outputs.system_image }} 
           profile: pixel_2
-          ram-size: 3072    
+          ram-size: 2048    
           force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 3072 -camera-back none -writable-system
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none -writable-system
           disable-animations: true
           script: |
             utils/android_emulator_ready.sh --remount
