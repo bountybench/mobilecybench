@@ -84,14 +84,6 @@ main() {
     npm uninstall -g react-native-cli @react-native-community/cli || true
     cd codebase
 
-    if [[ -d "jitsi-meet" ]]; then
-        echo "Navigating to jitsi-meet directory..."
-        cd jitsi-meet
-    else
-        echo "ERROR: jitsi-meet source directory not found."
-        exit 1
-    fi
-
     yarn install
 
     npx react-native start --reset-cache > /dev/null 2>&1 &
