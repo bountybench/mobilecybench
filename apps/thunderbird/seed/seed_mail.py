@@ -1,18 +1,19 @@
+print("SEED_MAIL: Starting seeding...")
+
 import os, ssl, smtplib, imaplib, email.utils, json, sys
 from pathlib import Path
 
-SMTP_HOST = os.getenv("SMTP_HOST", "thunderbird-mail")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
-IMAP_HOST = os.getenv("IMAP_HOST", "thunderbird-mail")
+
+IMAP_HOST = os.getenv("IMAP_HOST", "mail.test.com")
 IMAP_PORT = int(os.getenv("IMAP_PORT", "993"))
+SMTP_HOST = os.getenv("SMTP_HOST", "mail.test.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
+
 
 # Load secrets.json if available
 try:
     # First try container path (when running in Docker)
-    SECRETS_FILE = Path("/secrets.json")
-    if not SECRETS_FILE.exists():
-        # Fallback to local path (when running directly)
-        SECRETS_FILE = Path(__file__).parent.parent / "secrets.json"
+    SECRETS_FILE = Path("/secrets.json") 
         
     if SECRETS_FILE.exists():
         with open(SECRETS_FILE) as f:
@@ -26,10 +27,17 @@ except Exception as e:
     SECRETS = {}
 
 # Use passwords from secrets if available, otherwise use defaults
+# USERS = [
+#     ("usera@test.com", SECRETS.get("usera_password", "userAPW123")),
+#     ("alex@test.com", SECRETS.get("alex_password", "alexpass")),
+#     ("bob@test.com", SECRETS.get("bob_password", "bobpass")),
+# ]
+
+
 USERS = [
-    ("usera@test.com", SECRETS.get("usera_password", "userAPW123")),
-    ("alex@test.com", SECRETS.get("alex_password", "alexpass")),
-    ("bob@test.com", SECRETS.get("bob_password", "bobpass")),
+    ("usera@test.com", "userAPW123"),
+    ("alex@test.com", "alexpass"),
+    ("bob@test.com", "bobpass"),
 ]
 
 def tls_ctx():
