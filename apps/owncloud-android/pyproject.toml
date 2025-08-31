@@ -11,6 +11,7 @@ dependencies = [
   "cryptography>=45.0.6",
   "black>=25.1.0",
   "isort>=6.0.1",
+  "uiautomator2>=3.4.0",
 ]
 
 [tool.uv]
