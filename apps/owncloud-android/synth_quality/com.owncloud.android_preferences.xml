@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <int name="lastSeenVersionCode" value="22100100" />
+    <long name="last_unlock_timestamp" value="34961287" />
+    <string name="PrefPinCode">1111</string>
+    <string name="lock_timeout">IMMEDIATELY</string>
+</map>
