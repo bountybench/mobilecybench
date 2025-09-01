@@ -31,6 +31,7 @@ build_zulip() {
     # Failed to update packages.
 
     docker run --rm --platform=linux/amd64 \
+    --memory=8g --cpus=4 \
     -v "$PWD":/app -w /app \
     -v "$HOME/.gradle":/root/.gradle \
     -v "$HOME/.pub-cache":/root/.pub-cache \

@@ -16,8 +16,8 @@ echo "Server is set up."
 
 echo "Setup app"
 
-chmod +x setup_app.sh
-./setup_app.sh
+chmod +x setup_app_source.sh
+./setup_app_source.sh
 
 echo "App is set up."
 
