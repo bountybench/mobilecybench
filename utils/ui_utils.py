@@ -91,6 +91,7 @@ def wait_and_click(d, element, timeout=180):
     try:
         if element.click_exists(timeout=10):
             logger.info("Clicked element %s", element.selector)
+            wait_for_ui_stable(d)
             _ensure_target_app_foreground(d)
             return True
     except Exception as e:
@@ -338,10 +339,9 @@ def _wait_for_element(d, element, timeout=180):
     coarse_scrolls = 0
     while time.time() - start < timeout:
         try:
-            # app_current() may return None transiently; guard with fallback
-            app_state = d.app_current() or {}
-            current_pkg = app_state.get("package") or ""
-            current_activity = app_state.get("activity") or ""
+            app_state = d.app_current()
+            current_pkg = app_state.get("package")
+            current_activity = app_state.get("activity")
             target_pkg = os.getenv("UI_TARGET_PACKAGE")
             if target_pkg and current_pkg and current_pkg != target_pkg:
                 logger.debug(
@@ -360,6 +360,9 @@ def _wait_for_element(d, element, timeout=180):
 
         # Short wait slice; return early when found
         if element.wait(timeout=0.75) or element.exists:
+            logger.debug(
+                "Element %s appeared after %.1fs", selector_str, time.time() - start
+            )
             return True
 
         # Coarse scroll forward to try to reveal the element
