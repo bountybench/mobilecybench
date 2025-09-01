@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  openvpn-server:
+    image: kylemanna/openvpn:latest
+    container_name: openvpn-server
+    command: >
+      sh -c "
+        apk update && 
+        apk add --no-cache bash curl tcpdump python3 py3-pip jq netcat-openbsd &&
+        pip3 install requests psutil &&
+        mkdir -p /var/log/openvpn /etc/openvpn/scripts &&
+        exec ovpn_run
+      "
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    ports:
+      - "1194:1194/udp"
+      - "8080:8080"
+    volumes:
+      - openvpn-data:/etc/openvpn
+    environment:
+      - OVPN_DATA=/etc/openvpn
+      - EASYRSA_BATCH=1
+    networks:
+      - shared_net
+    restart: unless-stopped
+
+volumes:
+  openvpn-data:
+
+networks:
+  shared_net:
+    external: true
