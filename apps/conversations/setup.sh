@@ -160,6 +160,26 @@ launch_conversations() {
     fi
 }
 
+setup_prosody_server(){
+  info "Setting up Prosody XMPP server with TLS certificates"
+  
+  # Check if docker and docker compose are available
+  if ! command_exists docker; then
+    warn "Docker not found, skipping server setup"
+    return 0
+  fi
+  
+  # Build and start Prosody server (certificates pre-generated in image)
+  info "Building and starting Prosody server..."
+  docker compose up -d --build prosody
+  
+  # Wait for container to be ready
+  info "Waiting for container to start..."
+  sleep 5
+  
+  info "Prosody server ready at 10.0.2.2:5222 with TLS enabled"
+}
+
 install_and_launch_app(){
   if ! command_exists adb; then
     fail "adb not found; cannot install Android app"
@@ -177,8 +197,9 @@ summary(){
 main(){
   parse_args "$@"
   ensure_prereqs
-  build_app
-  install_and_launch_app
+  # build_app
+  # install_and_launch_app
+  setup_prosody_server
   summary
 }
 
