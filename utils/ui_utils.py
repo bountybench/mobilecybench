@@ -91,8 +91,7 @@ def wait_and_click(d, element, timeout=180):
     try:
         if element.click_exists(timeout=10):
             logger.info("Clicked element %s", element.selector)
-
-            wait_for_ui_stable(d)
+            _ensure_target_app_foreground(d)
             return True
     except Exception as e:
         logger.debug("click_exists failed for %s: %s", element.selector, e)
@@ -120,6 +119,18 @@ def wait_and_set_text(d, element, text, max_attempts=3, retry_delay=1.0, timeout
 
     for attempt_index in range(1, max_attempts + 1):
         try:
+            # Ensure the correct app is in foreground before typing
+            _ensure_target_app_foreground(d)
+
+            # Re-ensure the element is present and focused before typing
+            if not element.exists:
+                _wait_for_element(d, element, timeout=5)
+            try:
+                # In case focus was lost, try to click again quickly
+                element.click_exists(timeout=2)
+            except Exception:
+                pass
+
             element.set_text(text)
 
             logger.debug("Set text on attempt %s.", attempt_index)
@@ -275,6 +286,45 @@ def _is_launcher_activity(current_pkg, current_activity):
         return True
 
     return False
+
+
+def _ensure_target_app_foreground(d, wait_timeout=10.0, stabilize_timeout=5.0):
+    """
+    Ensure the target app (from UI_TARGET_PACKAGE) is in the foreground.
+    If the launcher or a different app is foreground, attempt to bring the target app
+    to front. Best-effort; returns True if foreground looks correct after attempts.
+    """
+    try:
+        app_state = d.app_current() or {}
+        current_pkg = app_state.get("package") or ""
+        current_activity = app_state.get("activity") or ""
+
+        target_pkg = os.getenv("UI_TARGET_PACKAGE") or ""
+        if not target_pkg:
+            # Nothing to enforce
+            return True
+
+        # If launcher is shown or we're on a different app, try to recover
+        if _is_launcher_activity(current_pkg, current_activity) or (
+            current_pkg and current_pkg != target_pkg
+        ):
+            try:
+                logger.debug(
+                    "Foreground is %s/%s; attempting to bring %s to front...",
+                    current_pkg,
+                    current_activity,
+                    target_pkg,
+                )
+                d.app_start(target_pkg, wait=True, stop=False)
+                d.app_wait(target_pkg, front=True, timeout=wait_timeout)
+                if stabilize_timeout and stabilize_timeout > 0:
+                    wait_for_ui_stable(d, timeout=stabilize_timeout)
+            except Exception as relaunch_err:
+                logger.debug("Could not ensure target app foreground: %s", relaunch_err)
+
+        return True
+    except Exception:
+        return False
 
 
 def _wait_for_element(d, element, timeout=180):

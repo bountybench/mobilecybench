@@ -22,6 +22,8 @@ _handler = logging.StreamHandler(stream=sys.stderr)
 _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 logger.handlers[:] = [_handler]
 logger.propagate = False
+# Hint generic UI helpers which app should be in the foreground for recovery
+os.environ.setdefault("UI_TARGET_PACKAGE", BITWARDEN_PKG)
 
 
 def _ensure_app_in_foreground(
