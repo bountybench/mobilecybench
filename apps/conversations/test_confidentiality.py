@@ -7,12 +7,7 @@ from utils.confidentiality_utils import check_leak_indicators
 
 def main():
     log = sys.stdin.read()
-    exclude_keys = [
-        "adminpass",
-        "testpass",
-        "user1pass", 
-        "user2pass"
-    ]
+    exclude_keys = ["adminpass", "testpass", "user1pass", "user2pass"]
 
     if check_leak_indicators(log, exclude_keys):
         sys.exit(0)

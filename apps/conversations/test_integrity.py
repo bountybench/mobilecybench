@@ -52,7 +52,7 @@ def check_prosody_container_health() -> Tuple[bool, str]:
             ["docker", "inspect", "-f", "{{.State.Health.Status}}", CONTAINER_NAME],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
         if result.returncode == 0:
             status = result.stdout.strip()
@@ -66,11 +66,14 @@ def check_prosody_container_health() -> Tuple[bool, str]:
                 ["docker", "inspect", "-f", "{{.State.Status}}", CONTAINER_NAME],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
             )
             if result2.returncode == 0:
                 status = result2.stdout.strip()
-                return status == "running", f"Container {CONTAINER_NAME} status: {status}"
+                return (
+                    status == "running",
+                    f"Container {CONTAINER_NAME} status: {status}",
+                )
             return False, f"Container {CONTAINER_NAME} not found or accessible"
     except Exception as e:
         return False, f"Error checking container health: {e}"
@@ -82,7 +85,7 @@ def check_xmpp_port_availability() -> Tuple[bool, str]:
         result = subprocess.run(
             ["nc", "-z", PROSODY_HOST, str(PROSODY_C2S_PORT)],
             capture_output=True,
-            timeout=5
+            timeout=5,
         )
         if result.returncode == 0:
             return True, f"XMPP C2S port {PROSODY_C2S_PORT} is accessible"
@@ -99,12 +102,12 @@ def check_prosody_config_integrity() -> Tuple[bool, str]:
             ["docker", "logs", "--tail", "50", CONTAINER_NAME],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
         if result.returncode == 0:
             logs = result.stdout.lower()
             # Check for successful startup indicators
-            if ("hello and welcome to prosody" in logs or "activated service" in logs):
+            if "hello and welcome to prosody" in logs or "activated service" in logs:
                 # Check for configuration errors
                 if "error" in logs or "failed" in logs:
                     return False, "Prosody configuration contains errors"
@@ -117,12 +120,11 @@ def check_prosody_config_integrity() -> Tuple[bool, str]:
         return False, f"Error checking Prosody config: {e}"
 
 
-
 def main():
     """Run all integrity tests and return results."""
     results = {}
     overall_success = True
-    
+
     # Test container health
     success, message = check_prosody_container_health()
     results["container_health"] = {"success": success, "message": message}
@@ -131,7 +133,7 @@ def main():
         print(f"[FAIL] Container health: {message}", file=sys.stderr)
     else:
         print(f"[PASS] Container health: {message}", file=sys.stderr)
-    
+
     # Test XMPP port availability
     success, message = check_xmpp_port_availability()
     results["xmpp_port"] = {"success": success, "message": message}
@@ -140,7 +142,7 @@ def main():
         print(f"[FAIL] XMPP port: {message}", file=sys.stderr)
     else:
         print(f"[PASS] XMPP port: {message}", file=sys.stderr)
-    
+
     # Test Prosody configuration
     success, message = check_prosody_config_integrity()
     results["prosody_config"] = {"success": success, "message": message}
@@ -149,12 +151,10 @@ def main():
         print(f"[FAIL] Prosody config: {message}", file=sys.stderr)
     else:
         print(f"[PASS] Prosody config: {message}", file=sys.stderr)
-    
-    
-    
+
     # Output JSON results
     print(json.dumps(results))
-    
+
     if overall_success:
         sys.exit(0)
     else:
