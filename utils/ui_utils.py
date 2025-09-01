@@ -12,6 +12,9 @@ from pathlib import Path
 
 import uiautomator2 as u2
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+ANDROID_READY_SCRIPT = PROJECT_ROOT / "utils" / "android_emulator_ready.sh"
+
 # -----------------------------------------------------------------------------
 # Logging
 # -----------------------------------------------------------------------------
@@ -28,46 +31,23 @@ if not logger.hasHandlers():
 
 
 def initialize_ui_automation(max_retries=5, retry_delay=15):
-    """Connect to a device and enable sane defaults (implicit waits, no sleeps)."""
+    """Connect to a device with uiautomator2"""
+
+    try:
+        _preflight_emulator_readiness()
+    except Exception as e:
+        logger.warning("Readiness preflight script failed: %s.", e)
 
     for attempt_index in range(1, max_retries + 1):
         logger.info("Connecting to device (attempt %s/%s)…", attempt_index, max_retries)
-
-        if not _adb_has_devices():
-            logger.error(
-                "No ADB devices detected. Is a device/emulator connected and authorized?"
-            )
-            if attempt_index < max_retries:
-                _adb_wait_for_device(retry_delay)
-                continue
-            _fatal(None, "No devices detected by ADB after all attempts")
-
-        try:
-            _preflight_emulator_readiness()
-        except Exception as e:
-            logger.warning(
-                "Readiness preflight script failed: %s.",
-                e,
-            )
 
         try:
             logger.debug("Attempting to connect uiautomator2 client...")
             device = u2.connect()
             logger.info("Connected to device.")
 
-            # Configure device defaults for stability
             logger.debug("Configuring device settings...")
-            try:
-                device.settings["compressHierarchy"] = False
-            except Exception:
-                pass
-
-            # run healthcheck() to avoid RPC errors
-            logger.debug("Running health check...")
-            try:
-                device.healthcheck()
-            except Exception:
-                pass
+            _configure_device_defaults(device)
 
             logger.debug("UI automation client is ready.")
             return device
@@ -75,7 +55,7 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
         except Exception as e:
             logger.info("Connection failed: %s", e)
             if attempt_index < max_retries:
-                _adb_wait_for_device(retry_delay)
+                time.sleep(retry_delay)
                 continue
             _fatal(
                 None, f"Failed to connect to device after {max_retries} attempts: {e}"
@@ -136,9 +116,16 @@ def wait_and_set_text(d, element, text, max_attempts=3, retry_delay=1.0, timeout
             logger.debug("Set text on attempt %s.", attempt_index)
             logger.info("Set text to %s", text)
 
-            _handle_keyboard_action(d)
-            wait_for_ui_stable(d)
+            # Prefer IME-agnostic finalize: send Enter, then fallback
+            try:
+                d.send_keys("\n")
+            except Exception:
+                try:
+                    d.press("enter")
+                except Exception:
+                    _handle_keyboard_action(d)
 
+            wait_for_ui_stable(d)
             return True
 
         except Exception as e:
@@ -146,7 +133,6 @@ def wait_and_set_text(d, element, text, max_attempts=3, retry_delay=1.0, timeout
             if attempt_index < max_attempts:
                 time.sleep(retry_delay)
             else:
-                # All attempts failed
                 message = f"Failed to set text on element: '{element.selector}' after {max_attempts} attempts"
                 _fatal(d, message)
 
@@ -221,56 +207,43 @@ def wait_for_ui_stable(d, timeout=10, interval=0.5, min_consecutive=3):
 
 
 def _preflight_emulator_readiness():
-    """Run the android emulator readiness script once with configurable timeouts."""
+    """Run the android emulator readiness script once; keep stdout silent."""
     try:
-        project_root = Path(__file__).resolve().parents[1]
-        script_path = project_root / "utils" / "android_emulator_ready.sh"
-        if not script_path.exists():
+        if not ANDROID_READY_SCRIPT.exists():
             logger.debug(
-                "Readiness script not found at %s; skipping preflight.", script_path
+                "Readiness script not found at %s; skipping preflight.",
+                ANDROID_READY_SCRIPT,
             )
             return
 
-        logger.info("Running emulator readiness preflight: %s", script_path)
-        # Redirect all output (stdout and stderr) to our logger's stderr stream
-        result = subprocess.run(
-            [str(script_path)], check=True, capture_output=True, text=True
+        logger.info("Running emulator readiness preflight: %s", ANDROID_READY_SCRIPT)
+        subprocess.run(
+            [str(ANDROID_READY_SCRIPT)], check=True, stdout=subprocess.DEVNULL
         )
-        logger.debug(result.stderr.rstrip())
     except subprocess.CalledProcessError as e:
-        logger.error("Readiness preflight failed with exit code %s", e.returncode)
-        logger.error("Script stderr: %s", e.stderr.rstrip())
-        raise
+        logger.warning("Readiness preflight failed (exit %s); continuing", e.returncode)
     except Exception as e:
         logger.debug("Preflight readiness skipped: %s", e)
-        return
 
 
-def _adb_has_devices(timeout_seconds=5):
+def _configure_device_defaults(device):
+    """Apply safe, fast defaults on a connected device (best-effort)."""
     try:
-        result = subprocess.run(
-            ["adb", "devices"],
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-        )
-        if result.returncode != 0:
-            logger.warning("'adb devices' failed: %s", result.stderr)
-            return False
-        lines = [line for line in result.stdout.splitlines()[1:] if line.strip()]
-        return any("\tdevice" in line for line in lines)
-    except Exception as e:
-        logger.warning("Could not run 'adb devices': %s", e)
-        return False
-
-
-def _adb_wait_for_device(timeout_seconds):
+        device.settings["compressHierarchy"] = False
+    except Exception:
+        pass
     try:
-        subprocess.run(["adb", "wait-for-device"], timeout=timeout_seconds)
-    except subprocess.TimeoutExpired:
-        logger.warning("'adb wait-for-device' timed out after %ss", timeout_seconds)
-    except Exception as e:
-        logger.warning("'adb wait-for-device' failed: %s", e)
+        device.set_fastinput_ime(True)
+    except Exception:
+        pass
+    try:
+        device.wait_idle(timeout=2)
+    except Exception:
+        pass
+    try:
+        device.healthcheck()
+    except Exception:
+        pass
 
 
 # =============================================================================
@@ -294,10 +267,6 @@ def _is_launcher_activity(current_pkg: str, current_activity: str) -> bool:
         "com.android.launcher",
         "com.android.launcher3",
         "com.google.android.apps.nexuslauncher",
-        "com.teslacoilsw.launcher",
-        "com.miui.home",
-        "org.lineageos.trebuchet",
-        "com.samsung.android.oneui.home",
     }
 
     if pkg_l in known_launcher_pkgs:
@@ -312,14 +281,6 @@ def _is_launcher_activity(current_pkg: str, current_activity: str) -> bool:
 def _wait_for_element(d, element, timeout=180):
     """
     Wait for an element to exist while continuously handling potential ANR dialogs.
-
-    Args:
-        d: Device object
-        element: UI element to wait for
-        timeout: Maximum time to wait in seconds
-
-    Returns:
-        True if the element exists on UI hierarchy within the timeout, False otherwise
     """
     start_time = time.time()
 
