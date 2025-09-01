@@ -8,6 +8,17 @@ echo "Starting Zulip containers with docker compose up"
 docker compose up -d
 
 echo "Add containers to zulip-network"
-docker network connect zulip-network $(docker ps -q)
+for cid in $(docker ps -q); do
+  docker network connect zulip-network $cid
+done
 
-echo "Setup server"
+echo "Server is set up."
+
+echo "Setup app"
+
+chmod +x setup_app.sh
+./setup_app.sh
+
+echo "App is set up."
+
+echo "Done."
