@@ -2,7 +2,6 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ANDROID_HOME="${HOME}/.android-sdk"
 
 LOG_PREFIX="[setup_app_source]"
 LOG_FILE="${SCRIPT_DIR}/setup_app_source.log"
@@ -19,6 +18,18 @@ check_prerequisites() {
     if ! command -v java >/dev/null 2>&1; then
         error "Java not found. Please install Java 17."
     fi
+
+    # More robust check for the Android SDK path.
+    if [ -n "$ANDROID_HOME" ] && [ -d "$ANDROID_HOME" ]; then
+      info "Using Android SDK from pre-set ANDROID_HOME: $ANDROID_HOME"
+    elif [ -d "${HOME}/.android-sdk" ]; then
+      # Fallback to the default path if ANDROID_HOME isn't set.
+      ANDROID_HOME="${HOME}/.android-sdk"
+      info "Found Android SDK at default location: $ANDROID_HOME"
+    else
+      error "Android SDK not found. Please set the ANDROID_HOME environment variable."
+    fi
+
     
     # Check Android SDK
     if [[ ! -d "$ANDROID_HOME" ]]; then
@@ -65,7 +76,20 @@ build_owncloud() {
 # Sign the release APK with debug keystore
 sign_apk() {
     info "Signing release APK (debug keystore)..."
+
+    KEYSTORE_FILE="$HOME/.android/debug.keystore"
     
+    # Check if the debug keystore exists, and create it if it doesn't.
+    if [ ! -f "$KEYSTORE_FILE" ]; then
+        info "Debug keystore not found. Generating a new one..."
+        mkdir -p "$HOME/.android/"
+        keytool -genkey -v -keystore "$KEYSTORE_FILE" \
+                -alias androiddebugkey -keyalg RSA -keysize 2048 \
+                -validity 10000 -storepass android -keypass android \
+                -dname "CN=Android Debug, O=Android, C=US"
+        info "Debug keystore generated at $KEYSTORE_FILE"
+    fi
+
     APK_UNSIGNED=$(find owncloudApp/build/outputs/apk/original/release/ -name "*-original-release-unsigned.apk" -type f 2>/dev/null | head -1)
     
     if [[ -z "$APK_UNSIGNED" ]]; then
@@ -82,131 +106,10 @@ sign_apk() {
     info "Signed APK: $APK_SIGNED"
 }
 
-check_installed_version() {
-    # Check if emulator is running
-    if ! adb devices | grep -q "device\|emulator"; then
-        error "No Android emulator found. Please start the emulator first."
-    fi
-    
-    # Check if ownCloud is installed
-    INSTALLED_PACKAGES=$(adb shell pm list packages | grep owncloud || true)
-    
-    if [[ -z "$INSTALLED_PACKAGES" ]]; then
-        warn "ownCloud not installed on the device. Install before checking version."
-        return 1
-    fi
-    
-    info "Installed ownCloud packages:\n$INSTALLED_PACKAGES"
-    
-    # Get version information for release version if available
-    if echo "$INSTALLED_PACKAGES" | grep -q "com.owncloud.android"; then
-        echo ""
-        echo "Release version details:"
-        VERSION_INFO=$(adb shell dumpsys package com.owncloud.android | grep -E "versionCode|versionName")
-        echo "$VERSION_INFO"
-        
-        # Check APK path and compare with built version
-        echo ""
-        echo "Checking for built APK files..."
-        
-        # Find the actual built APK dynamically
-        BUILT_APK=$(find owncloudApp/build/outputs/apk/original/release/ -name "*-original-release.apk" -type f 2>/dev/null | head -1)
-        
-        if [[ -n "$BUILT_APK" ]]; then
-            echo "Found built APK: $BUILT_APK"
-            BUILT_APK_SIZE=$(stat -f%z "$BUILT_APK" 2>/dev/null || echo "Unknown")
-            echo "Built APK size: $BUILT_APK_SIZE bytes"
-        else
-            echo "No built APK found in owncloudApp/build/outputs/apk/original/release/"
-            echo "Available APK files:"
-            find owncloudApp/build/outputs -name "*.apk" -type f 2>/dev/null | head -5
-        fi
-    fi
-    
-    # Check installation time
-    echo ""
-    echo "Installation details:"
-    if echo "$INSTALLED_PACKAGES" | grep -q "com.owncloud.android"; then
-        INSTALL_TIME=$(adb shell dumpsys package com.owncloud.android | grep -E "firstInstallTime|lastUpdateTime")
-        echo "Release version:"
-        echo "$INSTALL_TIME"
-    fi
-    
-    echo ""
-    echo "Version check completed."
-}
-
-install_owncloud() {
-    info "Installing ownCloud on Android emulator..."
-    
-    # Check if emulator is running
-    if ! adb devices | grep -q "device\|emulator"; then
-        error "No Android emulator found. Please start the emulator first."
-    fi
-    
-    # Find the built APK
-    echo "Looking for built APK..."
-    APK_PATH=$(find owncloudApp/build/outputs/apk/original/release/ -name "*-original-release.apk" -type f 2>/dev/null | head -1)
-    
-    if [[ -z "$APK_PATH" ]]; then
-        warn "No original release APK found. Listing available APKs (first 10):"
-        find owncloudApp/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
-        error "Cannot proceed without APK."
-    fi
-    
-    info "Found APK: $APK_PATH"
-    info "Uninstalling previous versions if present"
-    adb uninstall com.owncloud.android 2>/dev/null || true
-    adb uninstall com.owncloud.android.debug 2>/dev/null || true
-    adb install "$APK_PATH"
-    info "ownCloud installed successfully."
-}
-
-launch_owncloud() {
-    info "Launching ownCloud..."
-    
-    # Launch the app
-    if adb shell pm list packages | grep -q "com.owncloud.android" && ! adb shell pm list packages | grep -q "com.owncloud.android.debug"; then
-        info "Launching release version"
-        adb shell am start -n com.owncloud.android/com.owncloud.android.ui.activity.SplashActivity
-        PACKAGE_NAME="com.owncloud.android"
-    elif adb shell pm list packages | grep -q "com.owncloud.android.debug"; then
-        info "Launching debug version"
-        adb shell am start -n com.owncloud.android.debug/com.owncloud.android.ui.activity.SplashActivity
-        PACKAGE_NAME="com.owncloud.android.debug"
-    else
-        error "No ownCloud package found"
-    fi
-    
-    sleep 1
-    
-    # Verify the app is running
-    if adb shell dumpsys window | grep -q "mCurrentFocus.*$PACKAGE_NAME"; then
-        info "ownCloud launched successfully"
-    else
-        warn "ownCloud may not have launched properly (focus not detected)."
-    fi
-}
-
 
 main() {
     info "ownCloud Android Setup"
     echo "====================="
-    
-    if [[ "$1" == "check-version" ]]; then
-        info "Checking installed ownCloud version"
-        
-        # Navigate to owncloud codebase directory for version check
-        CODEBASE_DIR="$SCRIPT_DIR/codebase"
-        if [[ -d "$CODEBASE_DIR" ]]; then
-            cd "$CODEBASE_DIR"
-        fi
-        
-        check_installed_version
-        exit 0
-    fi
-    
-    info "Setting up ownCloud Android from current git checkout"
     
     CODEBASE_DIR="$SCRIPT_DIR/codebase"
     if [[ ! -d "$CODEBASE_DIR" ]]; then
@@ -222,16 +125,11 @@ main() {
     check_prerequisites
     setup_environment
     build_owncloud
-    install_owncloud
-    launch_owncloud
     
     echo ""
     echo "=========================================="
-    info "Setup complete! ownCloud is ready for testing."
+    info "OwnCloud Build complete! ownCloud is ready to be installed"
     echo "=========================================="
-    echo ""
-    echo "./setup_app.sh check-version                    # Check installed version"
-    echo "Main Activity: com.owncloud.android.ui.activity.SplashActivity"
     echo ""
 }
 

@@ -3,7 +3,6 @@ stop_emulator.sh
 start_emulator.sh
 setup.log
 .DS_Store
-.github/
 *.apk
 .venv/
 pycache/
