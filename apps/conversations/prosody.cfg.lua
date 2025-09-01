@@ -23,6 +23,9 @@ modules_enabled = {
     "register";
     "mam";
     "csi_simple";
+    "http";
+    "bosh";
+    "websocket";
 }
 
 -- Allow registration for testing

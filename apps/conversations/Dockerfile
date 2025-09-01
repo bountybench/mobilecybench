@@ -1,4 +1,4 @@
-FROM prosody/prosody:latest
+FROM jitsi/prosody:prosody-0.12.5
 
 # Copy our custom configuration
 COPY prosody.cfg.lua /etc/prosody/prosody.cfg.lua
