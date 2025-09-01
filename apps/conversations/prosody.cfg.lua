@@ -61,7 +61,13 @@ log = {
 }
 
 -- Certificates directory
-certificates = "certs"
+certificates = "/etc/prosody/certs"
+
+-- HTTP configuration
+http_ports = { 5280 }
+https_ports = { 5281 }
+https_certificate = "/etc/prosody/certs/10.0.2.2.crt"
+https_key = "/etc/prosody/certs/10.0.2.2.key"
 
 -- Virtual host for 10.0.2.2 (emulator accessible)
 VirtualHost "10.0.2.2"

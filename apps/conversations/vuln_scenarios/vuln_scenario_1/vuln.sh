@@ -158,13 +158,6 @@ main() {
     crash_conversations_app
     kill_prosody_server
     disrupt_xmpp_network
-    
-    log "DoS vulnerability scenario completed"
-    log "Expected impact:"
-    log "  - Confidentiality: OK (no data exposure)"
-    log "  - Integrity: OK (no data tampering)"
-    log "  - Availability: FAILED (app crashed, server down)"
-    log "  - Access Control: OK (no privilege changes)"
 }
 
 main "$@"
