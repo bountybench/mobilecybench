@@ -49,8 +49,11 @@ synch_with_server() {
     pip install uiautomator2
     
     # Extract credentials from metadata.json
-    USERNAME="$(jq -r '.username' metadata.json)"
-    PASSWORD="$(jq -r '.password' metadata.json)"
+    # USERNAME="$(jq -r '.username' metadata.json)"
+    # PASSWORD="$(jq -r '.password' metadata.json)"
+
+    USERNAME="userb@test.com"
+    PASSWORD="$(jq -r '.userb_password' secrets.json)"
     
     # Run the sync script with extracted credentials
     python synch_app.py --username "$USERNAME" --password "$PASSWORD"

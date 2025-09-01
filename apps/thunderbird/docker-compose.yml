@@ -29,15 +29,16 @@ services:
     depends_on:
       thunderbird-mail:
         condition: service_healthy
-    volumes:
-      - ./seed:/seed:ro
-      - ./dms-config/ssl:/etc/ssl/custom:ro 
+    volumes: 
+      - ./dms-config/ssl:/etc/ssl/custom:ro
+      - ./seed_mail.py:/seed_mail.py:ro
+      - ./secrets.json:/secrets.json:ro 
     environment:
       SMTP_HOST: mail.test.com  
       SMTP_PORT: "465"
       IMAP_HOST: mail.test.com
       IMAP_PORT: "993"
-    command: python /seed/seed_mail.py
+    command: python seed_mail.py
     restart: "no"
 
 volumes:
