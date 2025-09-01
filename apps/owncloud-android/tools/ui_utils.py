@@ -21,6 +21,10 @@ except Exception:
     logger.exception("Failed to connect to uiautomator2 device")
     raise
 
+class IncorrectPasscodeError(Exception):
+    """Raised when an incorrect passcode is detected on the passcode screen."""
+    pass
+
 USERNAME = os.getenv("AGENT_USERNAME", "agent")
 PASSWORD = os.getenv("AGENT_PASSWORD", "agentpass")
 APP_PACKAGE = "com.owncloud.android"
@@ -52,6 +56,7 @@ SEL = {
     "list_root": f"{APP_PACKAGE}:id/list_root",
     "fab_button": f"{APP_PACKAGE}:id/fab_expand_menu_button",
     "bottom_nav_view": f"{APP_PACKAGE}:id/bottom_nav_view",
+    "passcode_error": f"{APP_PACKAGE}:id/error",
 }
 
 
@@ -60,6 +65,25 @@ SEL = {
 ########################################
 def is_on_passcode_page(timeout: float = WAIT_SHORT) -> bool:
     return d(resourceId=SEL["passcode_kb"]).exists(timeout=timeout)
+
+
+def has_incorrect_passcode_error(timeout: float = WAIT_SHORT) -> bool:
+    """Return True if the passcode screen shows an 'Incorrect passcode' error.
+
+    Relies on a TextView with resource-id 'com.owncloud.android:id/error' and the
+    text 'Incorrect passcode'. If the resource exists but text check fails, returns False.
+    """
+    el = d(resourceId=SEL["passcode_error"])  # com.owncloud.android:id/error
+    if not el.exists(timeout=timeout):
+        return False
+    try:
+        if d(resourceId=SEL["passcode_error"], text="Incorrect passcode").exists(
+            timeout=0
+        ):
+            return True
+    except Exception:
+        return False
+    return False
 
 
 def is_on_server_url_page(timeout: float = WAIT_SHORT) -> bool:
@@ -204,10 +228,20 @@ def _enter_passcode(pin: str) -> bool:
                 d(resourceId=rid).click()
             else:
                 d(text=ch).click_exists(timeout=WAIT_SHORT)
-        return True
     except Exception:
         logger.exception("Failed entering passcode")
         return False
+
+    time.sleep(WAIT_SHORT)
+    if has_incorrect_passcode_error():
+        logger.error("Incorrect passcode detected")
+        raise IncorrectPasscodeError("Incorrect passcode")
+    return True
+
+def _close_app() -> None:
+    print("Closing ownCloud app...")
+    d.app_stop(APP_PACKAGE)
+    time.sleep(WAIT_MED)
 
 def _open_app() -> None:
     print("Opening ownCloud app...")
@@ -228,6 +262,7 @@ def reach_main_screen(pin: str, timeout: float) -> bool:
         - pin: The passcode to enter.
         - timeout: The maximum time to wait for the main screen.
     """
+    _close_app()
     _open_app()
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -251,6 +286,9 @@ def reach_main_screen(pin: str, timeout: float) -> bool:
                     logger.warning("do_login() did not complete. Retrying…")
                     time.sleep(WAIT_SHORT)
                 continue
+        except IncorrectPasscodeError:
+            logger.error("Incorrect passcode supplied; aborting UI flow")
+            raise
         except Exception:
             # Prevent loop from breaking on transient UI errors
             logger.exception("Transient error in reach_main_screen; retrying")
