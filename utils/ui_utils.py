@@ -14,6 +14,9 @@ import uiautomator2 as u2
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ANDROID_READY_SCRIPT = PROJECT_ROOT / "utils" / "android_emulator_ready.sh"
+UI_MAX_RETRIES = 5
+UI_RETRY_DELAY = 15
+UI_MAX_SCROLLS = 8
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -30,7 +33,7 @@ if not logger.hasHandlers():
 # =============================================================================
 
 
-def initialize_ui_automation(max_retries=5, retry_delay=15):
+def initialize_ui_automation():
     """Connect to a device with uiautomator2"""
 
     try:
@@ -38,8 +41,10 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
     except Exception as e:
         logger.warning("Readiness preflight script failed: %s.", e)
 
-    for attempt_index in range(1, max_retries + 1):
-        logger.info("Connecting to device (attempt %s/%s)…", attempt_index, max_retries)
+    for attempt_index in range(1, UI_MAX_RETRIES + 1):
+        logger.info(
+            "Connecting to device (attempt %s/%s)…", attempt_index, UI_MAX_RETRIES
+        )
 
         try:
             logger.debug("Attempting to connect uiautomator2 client...")
@@ -54,11 +59,12 @@ def initialize_ui_automation(max_retries=5, retry_delay=15):
 
         except Exception as e:
             logger.info("Connection failed: %s", e)
-            if attempt_index < max_retries:
-                time.sleep(retry_delay)
+            if attempt_index < UI_MAX_RETRIES:
+                time.sleep(UI_RETRY_DELAY)
                 continue
             _fatal(
-                None, f"Failed to connect to device after {max_retries} attempts: {e}"
+                None,
+                f"Failed to connect to device after {UI_MAX_RETRIES} attempts: {e}",
             )
 
 
@@ -85,6 +91,8 @@ def wait_and_click(d, element, timeout=180):
     try:
         if element.click_exists(timeout=10):
             logger.info("Clicked element %s", element.selector)
+
+            wait_for_ui_stable(d)
             return True
     except Exception as e:
         logger.debug("click_exists failed for %s: %s", element.selector, e)
@@ -113,17 +121,9 @@ def wait_and_set_text(d, element, text, max_attempts=3, retry_delay=1.0, timeout
     for attempt_index in range(1, max_attempts + 1):
         try:
             element.set_text(text)
+
             logger.debug("Set text on attempt %s.", attempt_index)
             logger.info("Set text to %s", text)
-
-            # Prefer IME-agnostic finalize: send Enter, then fallback
-            try:
-                d.send_keys("\n")
-            except Exception:
-                try:
-                    d.press("enter")
-                except Exception:
-                    _handle_keyboard_action(d)
 
             wait_for_ui_stable(d)
             return True
@@ -233,6 +233,7 @@ def _configure_device_defaults(device):
     except Exception:
         pass
     try:
+        # Set fastinput IME to True to avoid various IME handling logic
         device.set_fastinput_ime(True)
     except Exception:
         pass
@@ -251,11 +252,9 @@ def _configure_device_defaults(device):
 # =============================================================================
 
 
-def _is_launcher_activity(current_pkg: str, current_activity: str) -> bool:
+def _is_launcher_activity(current_pkg, current_activity):
     """
-    Heuristically determine if the current foreground activity is a launcher.
-
-    Uses common launcher package names and a substring match on activity/package.
+    Check if the current foreground activity is a launcher with common launcher package names.
     """
     if not current_pkg and not current_activity:
         return False
@@ -279,21 +278,15 @@ def _is_launcher_activity(current_pkg: str, current_activity: str) -> bool:
 
 
 def _wait_for_element(d, element, timeout=180):
-    """
-    Wait for an element to exist while continuously handling potential ANR dialogs.
-    """
-    start_time = time.time()
-
-    # Derive selector string and parse attributes separately
+    """Wait for an element; if missing, perform limited coarse scrolls to reveal it."""
+    start = time.time()
     try:
         selector_str = str(getattr(element, "selector", element))
     except Exception:
         selector_str = "<unknown>"
-    selector_info = _parse_selector_from_element(element)
 
-    logger.debug("Waiting for element %s (timeout=%ss)", selector_str, timeout)
-
-    while time.time() - start_time < timeout:
+    coarse_scrolls = 0
+    while time.time() - start < timeout:
         try:
             # app_current() may return None transiently; guard with fallback
             app_state = d.app_current() or {}
@@ -301,13 +294,12 @@ def _wait_for_element(d, element, timeout=180):
             current_activity = app_state.get("activity") or ""
             target_pkg = os.getenv("UI_TARGET_PACKAGE")
             if target_pkg and current_pkg and current_pkg != target_pkg:
-                logger.error(
-                    "Not on target app (current=%s/%s, target=%s).",
+                logger.debug(
+                    "Not on target app yet (current=%s/%s, target=%s). Continuing to wait.",
                     current_pkg,
                     current_activity,
                     target_pkg,
                 )
-                return False
         except Exception as e:
             logger.debug("Could not inspect current app state: %s", e)
 
@@ -316,54 +308,25 @@ def _wait_for_element(d, element, timeout=180):
         ):  # Failed to unfreeze system UI; abort early
             return False
 
-        remaining = max(0, timeout - (time.time() - start_time))
-        wait_slice = min(1, remaining)
+        # Short wait slice; return early when found
+        if element.wait(timeout=0.75) or element.exists:
+            return True
+
+        # Coarse scroll forward to try to reveal the element
         try:
-            if element.wait(timeout=wait_slice):  # Element found; return True
-                logger.debug(
-                    "Element %s appeared after %.1fs",
-                    selector_str,
-                    time.time() - start_time,
-                )
-                return True
-            else:
-                logger.debug(
-                    "Element %s did not appear after %.1fs",
-                    selector_str,
-                    time.time() - start_time,
-                )
+            scroller = d(scrollable=True)
+            if scroller.exists and coarse_scrolls < UI_MAX_SCROLLS:
+                coarse_scrolls += 1
+                try:
+                    scroller.scroll.forward(steps=20)
+                except Exception:
+                    pass
         except Exception:
-            # If wait is not available for some reason, fall back to existence check
-            if element.exists:
-                logger.debug("Element %s already exists (no wait).", selector_str)
-                return True
+            pass
 
-        # Try to scroll element into view using parsed selector attributes
-        try:
-            if selector_info:
-                scrollable = d(scrollable=True)
-                if scrollable.exists:
-                    if "resourceId" in selector_info:
-                        scrollable.scroll.to(resourceId=selector_info["resourceId"])
-                        logger.debug(
-                            "Scrolled to element using resourceId: %s",
-                            selector_info["resourceId"],
-                        )
-                    elif "text" in selector_info:
-                        scrollable.scroll.to(text=selector_info["text"])
-                        logger.debug(
-                            "Scrolled to element using text: %s", selector_info["text"]
-                        )
-        except Exception as e:
-            logger.debug("Error during scroll attempt: %s", e)
+        time.sleep(0.25)
 
-        time.sleep(0.5)
-
-    logger.debug(
-        "Timed out after %.1fs waiting for element %s",
-        time.time() - start_time,
-        selector_str,
-    )
+    logger.debug("Timed out waiting for %s", selector_str)
     return False
 
 
@@ -427,80 +390,6 @@ def _handle_anr(d, max_anrs=5, timeout=3, target_element=None):
 
 
 # =============================================================================
-# PRIVATE TEXT ENTRY HELPERS (robust set_text with retries/scroll + end keyboard action)
-# =============================================================================
-
-
-def _handle_keyboard_action(d):
-    """
-    Trigger IME action via Done button, IME action key, or Enter key.
-    Various Android SDKs use various keyboard action buttons.
-    """
-    # Handle any ANRs before keyboard interaction
-    _handle_anr(d, max_anrs=5, timeout=1, target_element=None)
-
-    # Method 1: Try clicking the keyboard Done button
-    try:
-        if d(description="Done").exists(timeout=1):
-            d(description="Done").click()
-            logger.debug("Clicked keyboard Done button")
-            return True
-    except Exception as e:
-        logger.warning("Could not click keyboard Done button: %s", e)
-
-    # Method 2: Try clicking the keyboard action button
-    try:
-        if d(
-            resourceId="com.google.android.inputmethod.latin:id/key_pos_ime_action"
-        ).exists(timeout=1):
-            d(
-                resourceId="com.google.android.inputmethod.latin:id/key_pos_ime_action"
-            ).click()
-            logger.debug("Clicked keyboard action button")
-            return True
-    except Exception as e:
-        logger.warning("Could not click keyboard action button: %s", e)
-
-    # Method 3: Try pressing Enter key
-    try:
-        d.press("enter")
-        logger.debug("Pressed Enter key")
-        return True
-    except Exception as e:
-        logger.warning("Could not press Enter key: %s", e)
-
-    logger.error("All keyboard action methods failed")
-    return False
-
-
-def _parse_selector_from_element(element):
-    """
-    Extract selector attributes from a uiautomator2 element.
-
-    Returns:
-        dict: Parsed attributes (e.g., resourceId, text). Never None.
-    """
-
-    attributes = {}
-
-    try:
-        # Check if element has direct access to selector attributes
-        if hasattr(element, "resourceId") and getattr(element, "resourceId"):
-            attributes["resourceId"] = element.resourceId
-        if hasattr(element, "text") and getattr(element, "text"):
-            attributes["text"] = element.text
-        if attributes:
-            logger.debug(
-                "Selector parsed using direct access: %s", list(attributes.keys())
-            )
-            logger.debug("Selector attributes: %s", attributes)
-            return attributes
-    except Exception:
-        logger.debug("Selector parsing failed")
-        return attributes
-
-
-# =============================================================================
 # PRIVATE FATAL ERROR HANDLER
 # =============================================================================
 
@@ -511,33 +400,27 @@ def _fatal(d, message):
     """
     logger.critical("%s", message)
 
+    logger.debug("Current pacakge: %s", d.app_current().get("package"))
+    logger.debug("Current activity: %s", d.app_current().get("activity"))
+
     # Output raw adb logs
     try:
-        result = subprocess.run(
-            ["adb", "logcat", "-t", "200"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.stdout:
-            logger.critical("Raw adb logcat output:\n%s", result.stdout)
-        if result.stderr:
-            logger.critical("Raw adb logcat stderr:\n%s", result.stderr)
+        subprocess.run(["adb", "logcat", "-t", "200"], stdout=sys.stderr, timeout=10)
     except Exception as e:
         logger.warning("Failed to get adb logcat output: %s", e)
 
+    # Dump UI hierarchy
     try:
         if d is not None:
             try:
                 logger.critical("%s", d.dump_hierarchy())
             except Exception as dump_err:
-                # Ignore the classic accessibility bind race to avoid masking the real error
+                logger.warning("Failed to dump UI hierarchy: %s", dump_err)
+                # Raise special exception for accessibility bind race
                 if "NullPointerException" in str(dump_err):
                     logger.warning(
                         "Skipped hierarchy dump (NullPointerException): %s", dump_err
                     )
-                else:
-                    logger.warning("Failed to dump UI hierarchy: %s", dump_err)
     except Exception as outer:
         logger.warning("Fatal handler encountered an error: %s", outer)
 
