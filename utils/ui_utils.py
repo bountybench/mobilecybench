@@ -316,8 +316,7 @@ def _ensure_target_app_foreground(d, wait_timeout=10.0, stabilize_timeout=5.0):
                     current_activity,
                     target_pkg,
                 )
-                d.app_start(target_pkg, wait=True, stop=False)
-                d.app_wait(target_pkg, front=True, timeout=wait_timeout)
+                d.app_start(target_pkg, wait=True, stop=True, use_monkey=True)
                 if stabilize_timeout and stabilize_timeout > 0:
                     wait_for_ui_stable(d, timeout=stabilize_timeout)
             except Exception as relaunch_err:
@@ -338,20 +337,8 @@ def _wait_for_element(d, element, timeout=180):
 
     coarse_scrolls = 0
     while time.time() - start < timeout:
-        try:
-            app_state = d.app_current()
-            current_pkg = app_state.get("package")
-            current_activity = app_state.get("activity")
-            target_pkg = os.getenv("UI_TARGET_PACKAGE")
-            if target_pkg and current_pkg and current_pkg != target_pkg:
-                logger.debug(
-                    "Not on target app yet (current=%s/%s, target=%s). Continuing to wait.",
-                    current_pkg,
-                    current_activity,
-                    target_pkg,
-                )
-        except Exception as e:
-            logger.debug("Could not inspect current app state: %s", e)
+        # Ensure we're in the intended app before attempting waits/scrolls
+        _ensure_target_app_foreground(d)
 
         if not _handle_anr(
             d, max_anrs=5, timeout=1, target_element=element
