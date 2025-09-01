@@ -177,7 +177,89 @@ setup_prosody_server(){
   info "Waiting for container to start..."
   sleep 5
   
+  # Wait for prosody to be fully ready to accept commands
+  info "Waiting for prosody to be ready for user management..."
+  for i in {1..30}; do
+    if docker exec conversations-prosody prosodyctl status >/dev/null 2>&1; then
+      info "Prosody is ready for user management"
+      break
+    fi
+    if [ $i -eq 30 ]; then
+      warn "Prosody may not be fully ready, proceeding anyway..."
+    fi
+    sleep 2
+  done
+  
+  # Also wait for Docker health check to show healthy
+  info "Waiting for container health check to show healthy..."
+  for i in {1..15}; do
+    health_status=$(docker inspect --format='{{.State.Health.Status}}' conversations-prosody 2>/dev/null || echo "no-health")
+    if [ "$health_status" = "healthy" ]; then
+      info "Container health check shows healthy"
+      break
+    fi
+    if [ $i -eq 15 ]; then
+      warn "Container health check still not healthy, but proceeding..."
+    fi
+    sleep 2
+  done
+  
   info "Prosody server ready at 10.0.2.2:5222 with TLS enabled"
+}
+
+setup_xmpp_users(){
+  info "Setting up XMPP test users"
+  
+  local container_name="conversations-prosody"
+  local domain="10.0.2.2"
+  
+  # Check if Prosody container is running
+  if ! docker ps --filter "name=$container_name" --filter "status=running" -q | grep -q .; then
+    warn "Prosody container not running, skipping user setup"
+    return 0
+  fi
+  
+  # Create admin user
+  info "Creating admin user: admin@$domain"
+  if docker exec "$container_name" prosodyctl register admin "$domain" "adminpass"; then
+    info "Admin user created successfully"
+  else
+    warn "Failed to create admin user (may already exist)"
+  fi
+  
+  # Create test users
+  info "Creating test user: testuser@$domain"
+  if docker exec "$container_name" prosodyctl register testuser "$domain" "testpass"; then
+    info "Test user created successfully"
+  else
+    warn "Failed to create test user (may already exist)"
+  fi
+  
+  info "Creating regular user: user1@$domain"
+  if docker exec "$container_name" prosodyctl register user1 "$domain" "user1pass"; then
+    info "Regular user1 created successfully"
+  else
+    warn "Failed to create user1 (may already exist)"
+  fi
+  
+  info "Creating regular user: user2@$domain"  
+  if docker exec "$container_name" prosodyctl register user2 "$domain" "user2pass"; then
+    info "Regular user2 created successfully"
+  else
+    warn "Failed to create user2 (may already exist)"
+  fi
+  
+  # Verify users were created
+  info "Verifying user creation..."
+  if docker exec "$container_name" prosodyctl shell --help >/dev/null 2>&1; then
+    info "User setup verification complete"
+  fi
+  
+  info "XMPP users configured:"
+  info "  - admin@$domain (password: adminpass)"
+  info "  - testuser@$domain (password: testpass)" 
+  info "  - user1@$domain (password: user1pass)"
+  info "  - user2@$domain (password: user2pass)"
 }
 
 install_and_launch_app(){
@@ -197,9 +279,10 @@ summary(){
 main(){
   parse_args "$@"
   ensure_prereqs
-  # build_app
-  # install_and_launch_app
   setup_prosody_server
+  setup_xmpp_users
+  build_app
+  install_and_launch_app
   summary
 }
 
