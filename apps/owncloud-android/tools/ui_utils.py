@@ -171,7 +171,7 @@ def _enter_username_and_password() -> bool:
         return False
 
 
-def _do_login(pin: str) -> bool:
+def _do_login(pin: str) -> tuple[bool, bool, bool]:
     """Perform login covering both URL-connect-first and direct login screens.
 
     Steps:
@@ -179,30 +179,41 @@ def _do_login(pin: str) -> bool:
       - If login screen is visible after first step, enter credentials and submit.
       - If passcode appears after submission, enter it. (glitch)
       - Return True only if main screen is reached.
+      
+    Returns:
+        tuple[bool, bool, bool]: (success, did_enter_passcode, did_enter_credentials)
+            - success: Whether login was successful
+            - did_enter_passcode: Whether passcode was entered during login flow
+            - did_enter_credentials: Whether username/password credentials were entered
     """
+    did_enter_passcode = False
+    did_enter_credentials = False
+    
     # If we are on the server URL screen, fill and refresh
     if is_on_server_url_page():
         if not _enter_server_url():
             logger.warning("Failed to set server URL")
-            return False
+            return False, did_enter_passcode, did_enter_credentials
         if not _click_refresh_button():
             logger.warning("Refresh button not clickable")
-            return False
+            return False, did_enter_passcode, did_enter_credentials
     time.sleep(WAIT_SHORT)
     # If we can see the login form, proceed with credentials
     if is_credential_input_visible():
+        did_enter_credentials = True
         if not _enter_username_and_password():
             logger.warning("Credentials input step failed")
-            return False
+            return False, did_enter_passcode, did_enter_credentials
     else:
         if is_logged_in():
-            return True
+            return True, did_enter_passcode, did_enter_credentials
     # glitch in UI. (mostly due to pushing preference file straight to app's private storage)
     if is_on_passcode_page():
+        did_enter_passcode = True
         _enter_passcode(pin)
     time.sleep(WAIT_SHORT)
 
-    return is_logged_in()
+    return is_logged_in(), did_enter_passcode, did_enter_credentials
 
 
 def _enter_passcode(pin: str) -> bool:
@@ -239,17 +250,100 @@ def _enter_passcode(pin: str) -> bool:
     return True
 
 def _close_app() -> None:
-    print("Closing ownCloud app...")
+    logger.info("Closing ownCloud app...")
     d.app_stop(APP_PACKAGE)
     time.sleep(WAIT_MED)
 
 def _open_app() -> None:
-    print("Opening ownCloud app...")
+    logger.info("Opening ownCloud app...")
     d.app_start(APP_PACKAGE, use_monkey=True)
     time.sleep(WAIT_MED)
 
 
-def reach_main_screen(pin: str, timeout: float) -> bool:
+def _enter_passcode_twice(pin: str) -> bool:
+    """Enter passcode twice for passcode creation/confirmation.
+    Args:
+        pin: The passcode to enter
+    Returns:
+        bool: True if both entries were successful, False otherwise
+    """
+    logger.info("Entering passcode for first time")
+    if not _enter_passcode(pin):
+        logger.error("Failed to enter passcode on first attempt")
+        return False
+    time.sleep(WAIT_SHORT)  # Give UI time to transition
+    logger.info("Entering passcode for confirmation")
+    if not _enter_passcode(pin):
+        logger.error("Failed to enter passcode on confirmation")
+        return False
+    logger.info("Passcode entered successfully twice")
+    return True
+
+
+def create_passcode_in_ui(pin: str) -> bool:
+    """Navigate through UI to create a passcode: Settings -> Security -> Passcode lock -> enter PIN twice.
+    Args:
+        pin: The passcode to set
+    Returns:
+        bool: True if passcode was successfully created, False otherwise
+    """
+    _close_app()
+    _open_app()
+    _handle_skip_first_run()
+    logger.info("Creating passcode via UI navigation")
+    
+    # Step 1: Navigate to Settings
+    if not d(resourceId=SEL["settings_link"]).click_exists(timeout=WAIT_SHORT):
+        logger.error("Could not find Settings link")
+        return False
+    time.sleep(WAIT_SHORT)
+
+    # Step 2: Navigate to Security section
+    if not d(text="Security").click_exists(timeout=WAIT_SHORT):
+        logger.error("Could not find Security option")
+        return False
+    time.sleep(WAIT_SHORT)
+
+    # Step 3: Navigate to Passcode lock
+    if not d(text="Passcode lock").click_exists(timeout=WAIT_SHORT):
+        logger.info("Passcode lock option not visible, attempting to scroll")
+        try:
+            d(scrollable=True).scroll.to(text="Passcode lock")
+        except Exception as e:
+            logger.warning(f"Scroll failed: {e}")
+        if not d(text="Passcode lock").click_exists(timeout=WAIT_MED):
+            logger.error("Could not find Passcode lock option")
+            return False
+    time.sleep(WAIT_SHORT)
+
+    # Step 4: Enter passcode twice
+    logger.info("Entering passcode twice")
+    if not _enter_passcode_twice(pin):
+        logger.error("Failed to enter passcode")
+        return False
+    
+    logger.info("Passcode created successfully")
+
+    # Step 5: Navigate back to main screen
+    logger.info("Navigating back to main screen")
+    for attempt in range(3):  # Try up to 3 times
+        if d(description="Navigate up").click_exists(timeout=WAIT_SHORT):
+            time.sleep(WAIT_SHORT)
+        elif attempt < 2:  # Only press back if Navigate up fails and we have attempts left
+            d.press("back")
+            time.sleep(WAIT_SHORT)
+
+    # Verify we're back at a recognizable screen
+    time.sleep(WAIT_SHORT)
+    if is_logged_in() or is_on_server_url_page() or is_credential_input_visible():
+        logger.info("Successfully returned to main screen")
+        return True
+    else:
+        logger.warning("May not have returned to main screen properly")
+        return True
+
+
+def reach_main_screen(pin: str, timeout: float) -> tuple[bool, bool, bool]:
     """Drive the app to its main (logged-in) screen from any entry state.
     Covers:
       1) Passcode -> Login -> Main          (with passcode, have not logged in)
@@ -261,19 +355,29 @@ def reach_main_screen(pin: str, timeout: float) -> bool:
     Args:
         - pin: The passcode to enter.
         - timeout: The maximum time to wait for the main screen.
+    
+    Returns:
+        tuple[bool, bool, bool]: (success, did_login, did_enter_passcode)
+            - success: Whether we reached the main screen
+            - did_login: Whether we entered username/password credentials during the flow
+            - did_enter_passcode: Whether we entered the passcode during the flow
     """
     _close_app()
     _open_app()
     deadline = time.time() + timeout
+    did_login = False
+    did_enter_passcode = False
+    
     while time.time() < deadline:
         try:
             _handle_skip_first_run()
 
             if is_logged_in():
                 logger.info("Already logged in")
-                return True
+                return True, did_login, did_enter_passcode
 
             if is_on_passcode_page():
+                did_enter_passcode = True
                 if not _enter_passcode(pin):
                     logger.warning("Failed to enter passcode")
                     time.sleep(WAIT_SHORT)
@@ -282,7 +386,13 @@ def reach_main_screen(pin: str, timeout: float) -> bool:
             # On login flow or server URL flow
             logger.info("Checking for login page")
             if is_on_login_page() or is_on_server_url_page():
-                if not _do_login(pin):
+                login_result, did_enter_passcode_during_login, did_enter_credentials = _do_login(pin)
+                # Track if we entered credentials during this login attempt
+                if did_enter_credentials:
+                    did_login = True
+                if did_enter_passcode_during_login:
+                    did_enter_passcode = True
+                if not login_result:
                     logger.warning("do_login() did not complete. Retrying…")
                     time.sleep(WAIT_SHORT)
                 continue
@@ -294,12 +404,14 @@ def reach_main_screen(pin: str, timeout: float) -> bool:
             logger.exception("Transient error in reach_main_screen; retrying")
             time.sleep(WAIT_SHORT)
 
-    return is_logged_in()
+    return is_logged_in(), did_login, did_enter_passcode
 
 
 if __name__ == "__main__":
     try:
-        ok = reach_main_screen(pin="4512", timeout=20)
+        ok, did_login, did_enter_passcode = reach_main_screen(pin="4512", timeout=20)
         logger.info("Login flow completed: %s", ok)
+        logger.info("Did enter credentials: %s", did_login)
+        logger.info("Did enter passcode: %s", did_enter_passcode)
     except Exception:
         logger.exception("Fatal error running UI flow")

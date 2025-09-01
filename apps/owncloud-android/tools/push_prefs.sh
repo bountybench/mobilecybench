@@ -75,6 +75,11 @@ log "Installing prefs in OwnCloud private storage"
 adb shell su 0 cp /sdcard/oc_prefs.xml /data/data/com.owncloud.android/shared_prefs/com.owncloud.android_preferences.xml
 
 log "Forcing stop to ensure app reloads preferences"
-adb shell am force-stop "${APP_ID}" || true
+
+# run this several times to make sure it actually stops
+for i in {1..5}; do
+	adb shell am force-stop "${APP_ID}" || true
+	sleep 0.1
+done
 
 log "Done"
