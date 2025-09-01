@@ -2,7 +2,7 @@ import argparse
 import sys
 
 sys.path.append("../../utils")
-from availability_utils import check_container_health, check_DOS
+from utils.availability_utils import check_container_health, check_DOS
 
 def main():
     p = argparse.ArgumentParser()
