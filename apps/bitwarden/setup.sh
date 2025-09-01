@@ -5,6 +5,8 @@ BITWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MOBILECYBENCH_ROOT="$(cd "$BITWARDEN_DIR/../.." && pwd)"
 PKG_NAME="com.x8bit.bitwarden.dev"
 
+export UI_TARGET_PACKAGE="com.x8bit.bitwarden.dev"
+
 echo === RUNNING setup.sh ===
 
 # Run setup_app.sh to install Bitwarden app
