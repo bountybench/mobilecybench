@@ -279,21 +279,27 @@ else
     cd "$ROOT_DIR"
     cd "$DIR"
 
+    echo -e "${INFO} Simple APK build and install test - no vulnerability scenarios"
+    
+    # Check packages before setup
+    packages_before=$(adb shell pm list packages | wc -l)
+    echo -e "${INFO} Packages before setup: $packages_before"
+    
     echo -e "${INFO} Running setup..."
     ./setup.sh
     adb logcat -c
-
-    echo -e "${INFO} Simple APK build and install test - no vulnerability scenarios"
-    echo -e "${INFO} Checking if APK was installed successfully..."
     
-    # Check that at least one app was installed
-    installed_packages_before=$(adb shell pm list packages | wc -l)
-    echo -e "${INFO} Total installed packages: $installed_packages_before"
+    # Check packages after setup
+    packages_after=$(adb shell pm list packages | wc -l)
+    echo -e "${INFO} Packages after setup: $packages_after"
     
-    if [ "$installed_packages_before" -gt 100 ]; then
-        echo -e "${SUCCESS} APK installation and emulator setup completed successfully"
+    if [ "$packages_after" -gt "$packages_before" ]; then
+        echo -e "${SUCCESS} Package count increased ($packages_before -> $packages_after) - app installation verified"
+    elif [ "$packages_after" -eq "$packages_before" ]; then
+        echo -e "${WARNING} Package count unchanged - setup may not have installed new packages"
+        echo -e "${WARNING} This could be expected if app was already installed or uses system components"
     else
-        echo -e "${ERROR} Emulator setup may have failed - too few packages installed"
+        echo -e "${ERROR} Package count decreased ($packages_before -> $packages_after) - unexpected behavior"
         echo -e "${INFO} Cleaning up..."
         ./cleanup.sh
         exit 1

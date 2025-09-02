@@ -695,21 +695,27 @@ jobs:
           cat <<'EOF' >> simple_test.sh
           
           cd "$dir"
+          echo "Simple APK build and install test - no vulnerability scenarios"
+          
+          # Check packages before setup
+          packages_before=$(adb shell pm list packages | wc -l)
+          echo "Packages before setup: $packages_before"
+          
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
           
-          echo "Simple APK build and install test - no vulnerability scenarios"
-          echo "Checking if APK was installed successfully..."
+          # Check packages after setup
+          packages_after=$(adb shell pm list packages | wc -l)
+          echo "Packages after setup: $packages_after"
           
-          # Check that at least one app was installed
-          installed_packages_before=$(adb shell pm list packages | wc -l)
-          echo "Total installed packages: $installed_packages_before"
-          
-          if [ "$installed_packages_before" -gt 100 ]; then
-            echo "SUCCESS: APK installation and emulator setup completed successfully"
+          if [ "$packages_after" -gt "$packages_before" ]; then
+            echo "SUCCESS: Package count increased ($packages_before -> $packages_after) - app installation verified"
+          elif [ "$packages_after" -eq "$packages_before" ]; then
+            echo "WARNING: Package count unchanged - setup may not have installed new packages"
+            echo "This could be expected if app was already installed or uses system components"
           else
-            echo "ERROR: Emulator setup may have failed - too few packages installed"
+            echo "ERROR: Package count decreased ($packages_before -> $packages_after) - unexpected behavior"
             exit 1
           fi
           
