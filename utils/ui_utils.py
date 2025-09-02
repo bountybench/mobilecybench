@@ -1,6 +1,8 @@
 """
-uiautomator2 helpers for reliable clicking and text entry.
-Public API: initialize_ui_automation, wait_and_click, wait_and_set_text, wait_for_ui_stable
+A collection of helpers for Android UI automation using uiautomator2.
+
+This module provides an API for common UI interactions like finding elements,
+clicking, and setting text, with built-in handling for ANRs and UI instability.
 """
 
 import logging
@@ -9,8 +11,17 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import NoReturn, Optional
 
 import uiautomator2 as u2
+from uiautomator2 import Device, UiObject
+
+__all__ = [
+    "initialize_ui_automation",
+    "wait_and_click",
+    "wait_and_set_text",
+    "wait_for_ui_stable",
+]
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ANDROID_READY_SCRIPT = PROJECT_ROOT / "utils" / "android_emulator_ready.sh"
@@ -19,15 +30,15 @@ ANDROID_READY_SCRIPT = PROJECT_ROOT / "utils" / "android_emulator_ready.sh"
 # If unset, TARGET_PACKAGE becomes None.
 TARGET_PACKAGE = os.getenv("UI_TARGET_PACKAGE")
 
-UI_RETRIES = 5
-RETRY_INTERVAL = 1  # seconds
+UI_RETRIES = 5  # Default number of retries for fallible operations
+RETRY_INTERVAL = 1  # Default seconds to wait between retries
 
-MAX_ANRS = 5
-MAX_SCROLLS = 5
+MAX_ANRS = 5  # Max ANR dialogs to dismiss before failing
+MAX_SCROLLS = 5  # Max scrolls to perform when searching for an element
 
-CLICK_TIMEOUT = 3  # seconds
-SHORT_TIMEOUT = 10
-MAX_TIMEOUT = 180
+CLICK_TIMEOUT = 3  # Seconds to wait for a click to register
+SHORT_TIMEOUT = 10  # Short timeout for non-critical waits
+MAX_TIMEOUT = 180  # Long timeout for critical waits (e.g., finding an element)
 
 logger = logging.getLogger("mobilecybench.ui")
 logger.setLevel(os.getenv("UI_LOG_LEVEL", "DEBUG"))
@@ -41,8 +52,10 @@ if not logger.handlers:
 # =============================================================================
 
 
-def initialize_ui_automation(max_retries=UI_RETRIES, retry_delay=RETRY_INTERVAL):
-    """Connect to a device with uiautomator2"""
+def initialize_ui_automation(
+    max_retries: int = UI_RETRIES, retry_delay: int = RETRY_INTERVAL
+) -> Device:
+    """Connect to a device with uiautomator2."""
     try:
         _preflight_emulator_readiness()
     except Exception as e:
@@ -78,7 +91,7 @@ def initialize_ui_automation(max_retries=UI_RETRIES, retry_delay=RETRY_INTERVAL)
 # =============================================================================
 
 
-def wait_and_click(d, element, timeout=MAX_TIMEOUT):
+def wait_and_click(d: Device, element: UiObject, timeout: int = MAX_TIMEOUT) -> bool:
     """Wait for an element and click it with ANR awareness and no sleeps."""
     _ensure_target_app_foreground(d)
 
@@ -91,13 +104,13 @@ def wait_and_click(d, element, timeout=MAX_TIMEOUT):
             f"  - Current screen: {current_pkg}/{current_activity}."
         )
         _fatal(d, message)
+
     else:
         logger.debug("Found element %s", element.selector)
 
     if element.click_exists(timeout=CLICK_TIMEOUT):
         logger.info("Clicked element %s", element.selector)
         wait_for_ui_stable(d)
-
         return True
 
     else:
@@ -120,8 +133,12 @@ def wait_and_click(d, element, timeout=MAX_TIMEOUT):
 
 
 def wait_and_set_text(
-    d, element, text, max_retries=UI_RETRIES, retry_delay=RETRY_INTERVAL
-):
+    d: Device,
+    element: UiObject,
+    text: str,
+    max_retries: int = UI_RETRIES,
+    retry_delay: int = RETRY_INTERVAL,
+) -> bool:
     """Focus the input by clicking it, set text, then finalize IME action."""
     # Use wait_and_click to focus the field first
     clicked = wait_and_click(d, element)
@@ -139,7 +156,6 @@ def wait_and_set_text(
             logger.info("Set text to %s", text)
 
             wait_for_ui_stable(d)
-
             return True
 
         except Exception as e:
@@ -152,8 +168,12 @@ def wait_and_set_text(
 
 
 def wait_for_ui_stable(
-    d, min_consecutive=3, retry_delay=RETRY_INTERVAL, timeout=SHORT_TIMEOUT
-):
+    d: Device,
+    min_consecutive: int = 3,
+    retry_delay: int = RETRY_INTERVAL,
+    timeout: int = SHORT_TIMEOUT,
+) -> bool:
+    """Wait for the UI to stabilize by checking consecutive identical hierarchy dumps."""
     prev_dump = None
     same_count = 0
     start = time.time()
@@ -173,6 +193,7 @@ def wait_for_ui_stable(
                     current_activity,
                 )
                 return False
+
             else:
                 logger.debug(
                     "Failed to get hierarchy dump during stability check: %s", e
@@ -230,8 +251,8 @@ def _preflight_emulator_readiness():
         logger.debug("Preflight readiness skipped: %s", e)
 
 
-def _configure_device_defaults(device):
-    """Apply safe, fast defaults on a connected device (best-effort)."""
+def _configure_device_defaults(device: Device):
+    """Apply safe, fast defaults on a connected device."""
     try:
         device.settings["compressHierarchy"] = False
     except Exception:
@@ -253,8 +274,12 @@ def _configure_device_defaults(device):
 
 
 def _wait_for_element(
-    d, element, max_scrolls=MAX_SCROLLS, retry_delay=RETRY_INTERVAL, timeout=MAX_TIMEOUT
-):
+    d: Device,
+    element: UiObject,
+    max_scrolls: int = MAX_SCROLLS,
+    retry_delay: int = RETRY_INTERVAL,
+    timeout: int = MAX_TIMEOUT,
+) -> bool:
     """Wait for an element; if missing, perform limited coarse scrolls to reveal it."""
 
     start = time.time()
@@ -296,7 +321,9 @@ def _wait_for_element(
     return False
 
 
-def _is_launcher_activity(current_pkg, current_activity):
+def _is_launcher_activity(
+    current_pkg: Optional[str], current_activity: Optional[str]
+) -> bool:
     """
     Check if the current foreground activity is a launcher with common launcher package names.
     """
@@ -321,7 +348,7 @@ def _is_launcher_activity(current_pkg, current_activity):
     return False
 
 
-def _ensure_target_app_foreground(d, timeout=SHORT_TIMEOUT):
+def _ensure_target_app_foreground(d: Device, timeout: int = SHORT_TIMEOUT) -> bool:
     """
     Ensure the target app (from UI_TARGET_PACKAGE) is in the foreground.
     If the launcher or a different app is foreground, attempt to bring the target app to front.
@@ -338,32 +365,58 @@ def _ensure_target_app_foreground(d, timeout=SHORT_TIMEOUT):
         if _is_launcher_activity(current_pkg, current_activity) or (
             current_pkg and current_pkg != TARGET_PACKAGE
         ):
+            logger.info(
+                "Incorrect app in foreground (%s). Attempting to restart %s...",
+                current_pkg,
+                TARGET_PACKAGE,
+            )
             try:
-                logger.debug(
-                    "Foreground is %s/%s; attempting to bring %s to front...",
-                    current_pkg,
-                    current_activity,
-                    TARGET_PACKAGE,
-                )
-                d.app_start(TARGET_PACKAGE, wait=True, use_monkey=True)
-                if timeout and timeout > 0:
-                    wait_for_ui_stable(d, timeout=timeout)
-            except Exception as relaunch_err:
-                logger.debug("Could not ensure target app foreground: %s", relaunch_err)
+                # Force-stop the app before starting to ensure a clean state
+                d.app_start(TARGET_PACKAGE, stop=True, wait=True, use_monkey=True)
 
+                # Wait for the app to launch and UI to settle
+                if timeout > 0:
+                    wait_for_ui_stable(d, timeout=timeout)
+
+                # Verify that the correct app is now in the foreground
+                restarted_app_state = d.app_current()
+                if restarted_app_state.get("package") == TARGET_PACKAGE:
+                    logger.info(
+                        "Successfully brought %s to foreground.", TARGET_PACKAGE
+                    )
+                else:
+                    logger.warning(
+                        "Failed to bring %s to foreground after restart. Current app: %s",
+                        TARGET_PACKAGE,
+                        restarted_app_state.get("package"),
+                    )
+
+            except Exception as relaunch_err:
+                logger.warning(
+                    "An error occurred while trying to restart %s: %s",
+                    TARGET_PACKAGE,
+                    relaunch_err,
+                )
         return True
-    except Exception:
+
+    except Exception as e:
+        logger.warning("Failed to ensure target app foreground: %s", e)
         return False
 
 
-def _handle_anr(d, max_anrs=MAX_ANRS, wait_timeout=SHORT_TIMEOUT, target_element=None):
+def _handle_anr(
+    d: Device,
+    max_anrs: int = MAX_ANRS,
+    wait_timeout: int = SHORT_TIMEOUT,
+    target_element: Optional[UiObject] = None,
+) -> bool:
     """Click ANR 'Wait' up to max_anrs times; settle with idle/stable checks."""
     anr_count = 0
     wait_button = d(resourceId="android:id/aerr_wait")
 
     for _ in range(max_anrs):
         try:
-            if wait_button.wait(timeout=wait_timeout):
+            if wait_button.exists():
                 anr_count += 1
                 logger.debug(
                     "ANR dialog #%s detected. Clicking 'Wait' to continue...", anr_count
@@ -420,7 +473,7 @@ def _handle_anr(d, max_anrs=MAX_ANRS, wait_timeout=SHORT_TIMEOUT, target_element
 # =============================================================================
 
 
-def _fatal(d, message):
+def _fatal(d: Optional[Device], message: str) -> NoReturn:
     """
     Fatal error handler that logs the error message, raw adb logs, and UI hierarchy.
     """
