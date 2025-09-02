@@ -8,7 +8,7 @@ filesystem_folder = /data/collection-root
 [auth]
 type = htpasswd
 htpasswd_filename = /users/htpasswd
-htpasswd_encryption = plain
+htpasswd_encryption = bcrypt
 
 [rights]
 type = owner_only
