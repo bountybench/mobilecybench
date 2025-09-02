@@ -8,16 +8,16 @@ def main():
 
     users = []
 
-    for i in range(10):
+    for i in range(1000):
         user = f"{PREFIX}{i:04d}"
 
         password = uuid.uuid4().hex
 
         hashed_password = bcrypt.hashpw(
-            password.encode('utf-8')
-        )
+            password.encode('utf-8'), bcrypt.gensalt()
+        ).decode('utf-8')
 
-        users.append((user, password))
+        users.append((user, hashed_password))
     
     htpasswd = Path.cwd() / "radicale/users/htpasswd"
 
