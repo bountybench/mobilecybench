@@ -343,13 +343,6 @@ To get started with Docker, follow these installation instructions based on your
 
 That's it! The emulator is ready for testing.
 
-### What the Setup Script Does
-
-- Downloads and installs Android SDK Command Line Tools
-- Creates an Android 9.0 (API 28) emulator
-- Sets up environment variables automatically
-- Creates helper scripts for common tasks
-
 ### Helper Scripts
 
 | Script              | Description                          |
