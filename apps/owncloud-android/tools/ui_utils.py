@@ -21,9 +21,12 @@ except Exception:
     logger.exception("Failed to connect to uiautomator2 device")
     raise
 
+
 class IncorrectPasscodeError(Exception):
     """Raised when an incorrect passcode is detected on the passcode screen."""
+
     pass
+
 
 USERNAME = os.getenv("AGENT_USERNAME", "agent")
 PASSWORD = os.getenv("AGENT_PASSWORD", "agentpass")
@@ -179,7 +182,7 @@ def _do_login(pin: str) -> tuple[bool, bool, bool]:
       - If login screen is visible after first step, enter credentials and submit.
       - If passcode appears after submission, enter it. (glitch)
       - Return True only if main screen is reached.
-      
+
     Returns:
         tuple[bool, bool, bool]: (success, did_enter_passcode, did_enter_credentials)
             - success: Whether login was successful
@@ -188,7 +191,7 @@ def _do_login(pin: str) -> tuple[bool, bool, bool]:
     """
     did_enter_passcode = False
     did_enter_credentials = False
-    
+
     # If we are on the server URL screen, fill and refresh
     if is_on_server_url_page():
         if not _enter_server_url():
@@ -249,10 +252,12 @@ def _enter_passcode(pin: str) -> bool:
         raise IncorrectPasscodeError("Incorrect passcode")
     return True
 
+
 def _close_app() -> None:
     logger.info("Closing ownCloud app...")
     d.app_stop(APP_PACKAGE)
     time.sleep(WAIT_MED)
+
 
 def _open_app() -> None:
     logger.info("Opening ownCloud app...")
@@ -280,6 +285,7 @@ def _enter_passcode_twice(pin: str) -> bool:
     return True
 
 
+# this is not used currently but may be useful in the future
 def create_passcode_in_ui(pin: str) -> bool:
     """Navigate through UI to create a passcode: Settings -> Security -> Passcode lock -> enter PIN twice.
     Args:
@@ -291,7 +297,7 @@ def create_passcode_in_ui(pin: str) -> bool:
     _open_app()
     _handle_skip_first_run()
     logger.info("Creating passcode via UI navigation")
-    
+
     # Step 1: Navigate to Settings
     if not d(resourceId=SEL["settings_link"]).click_exists(timeout=WAIT_SHORT):
         logger.error("Could not find Settings link")
@@ -321,7 +327,7 @@ def create_passcode_in_ui(pin: str) -> bool:
     if not _enter_passcode_twice(pin):
         logger.error("Failed to enter passcode")
         return False
-    
+
     logger.info("Passcode created successfully")
 
     # Step 5: Navigate back to main screen
@@ -329,7 +335,9 @@ def create_passcode_in_ui(pin: str) -> bool:
     for attempt in range(3):  # Try up to 3 times
         if d(description="Navigate up").click_exists(timeout=WAIT_SHORT):
             time.sleep(WAIT_SHORT)
-        elif attempt < 2:  # Only press back if Navigate up fails and we have attempts left
+        elif (
+            attempt < 2
+        ):  # Only press back if Navigate up fails and we have attempts left
             d.press("back")
             time.sleep(WAIT_SHORT)
 
@@ -355,7 +363,7 @@ def reach_main_screen(pin: str, timeout: float) -> tuple[bool, bool, bool]:
     Args:
         - pin: The passcode to enter.
         - timeout: The maximum time to wait for the main screen.
-    
+
     Returns:
         tuple[bool, bool, bool]: (success, did_login, did_enter_passcode)
             - success: Whether we reached the main screen
@@ -367,7 +375,7 @@ def reach_main_screen(pin: str, timeout: float) -> tuple[bool, bool, bool]:
     deadline = time.time() + timeout
     did_login = False
     did_enter_passcode = False
-    
+
     while time.time() < deadline:
         try:
             _handle_skip_first_run()
@@ -386,7 +394,9 @@ def reach_main_screen(pin: str, timeout: float) -> tuple[bool, bool, bool]:
             # On login flow or server URL flow
             logger.info("Checking for login page")
             if is_on_login_page() or is_on_server_url_page():
-                login_result, did_enter_passcode_during_login, did_enter_credentials = _do_login(pin)
+                login_result, did_enter_passcode_during_login, did_enter_credentials = (
+                    _do_login(pin)
+                )
                 # Track if we entered credentials during this login attempt
                 if did_enter_credentials:
                     did_login = True
