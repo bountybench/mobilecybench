@@ -19,7 +19,7 @@ Example:
 
 import json
 import sys
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 def format_scores_json(

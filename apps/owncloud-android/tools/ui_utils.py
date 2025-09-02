@@ -1,8 +1,9 @@
-import time
-import os
-from dotenv import load_dotenv
 import logging
+import os
+import time
+
 import uiautomator2 as u2
+from dotenv import load_dotenv
 
 load_dotenv()
 
