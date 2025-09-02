@@ -1,0 +1,17 @@
+[server]
+hosts = 0.0.0.0:5232
+
+[storage]
+type = multifilesystem
+filesystem_folder = /data
+
+[auth]
+type = htpasswd
+htpasswd_filename = /users/htpasswd
+htpasswd_encryption = plain
+
+[rights]
+type = owner_only
+
+[logging]
+level = info
