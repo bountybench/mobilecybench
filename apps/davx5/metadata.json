@@ -6,5 +6,6 @@
     "emulator_server": "http://10.0.2.2:/5232",
     "app_server": "http://radicale:5232",
     "username": "user_a",
-    "password": "xC33jh2s"
+    "password": "xC33jh2s",
+    "download_link": "https://github.com/bitfireAT/davx5-ose/releases/download/4.5.3/davx5-ose-4.5.3-ose-release.apk"
 }

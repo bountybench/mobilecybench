@@ -11,3 +11,4 @@ python3 "${SCRIPT_DIR}/seed_data.py"
 
 docker compose up -d
 
+./setup_app_apklink
