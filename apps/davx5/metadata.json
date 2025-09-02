@@ -3,8 +3,8 @@
     "commit_version": "235a5da",
     "sdk": "36",
     "java": "21",
-    "emulator_server": "http://10.0.2.2:/8000",
-    "app_server": "http://wordpress-app:8000",
+    "emulator_server": "http://10.0.2.2:/5232",
+    "app_server": "http://radicale:5232",
     "username": "user_a",
     "password": "xC33jh2s"
 }
