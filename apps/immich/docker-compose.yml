@@ -1,47 +1,42 @@
 services:
   immich-server:
     container_name: immich_server
-    image: ghcr.io/immich-app/immich-server:release
-    command: ["start.sh", "immich"]
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
+    command: [ "start.sh", "immich" ]
     volumes:
-      - ./immich-data/upload:/usr/src/app/upload
-      - /etc/localtime:/etc/localtime:ro
+      - ./immich-data:/usr/src/app/upload
     env_file:
       - .env
     ports:
       - "2283:2283"
     depends_on:
-      - redis
       - database
+      - redis
     restart: always
     networks:
-      - immich_internal
-      - shared_net
+      - immich_network
 
   redis:
     container_name: immich_redis
     image: redis:6.2-alpine
     restart: always
     networks:
-      - immich_internal
+      - immich_network
 
   database:
     container_name: immich_postgres
+    # This is the corrected image with the required vector extension
     image: tensorchord/pgvecto-rs:pg14-v0.2.0
-    env_file:
-      - .env
     environment:
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_USER: ${DB_USERNAME}
-      POSTGRES_DB: ${DB_DATABASE_NAME}
+      POSTGRES_PASSWORD: 'postgres'
+      POSTGRES_USER: 'postgres'
+      POSTGRES_DB: 'immich'
     volumes:
       - ./immich-data/db:/var/lib/postgresql/data
     restart: always
     networks:
-      - immich_internal
+      - immich_network
 
 networks:
-  immich_internal:
+  immich_network:
     driver: bridge
-  shared_net:
-    external: true
