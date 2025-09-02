@@ -119,6 +119,39 @@ def is_logged_in() -> bool:
 ########################################
 #  Helper Functions
 ########################################
+def _is_keyboard_visible() -> bool:
+    """Check if the soft keyboard is currently visible using multiple methods."""
+    try:
+        # 1. Check device info for inputMethodShown
+        device_info = d.info
+        if device_info.get('inputMethodShown', False):
+            logger.debug("Keyboard detected via inputMethodShown")
+            return True
+
+        # 2. Check window hierarchy for keyboard indicators
+        # Some keyboards add specific elements to the hierarchy
+        dump = d.dump_hierarchy()
+        keyboard_indicators = [
+            'com.android.inputmethod',
+            'inputmethod',
+            'keyboard',
+            'Keyboard',
+            'com.google.android.inputmethod',
+            'com.samsung.android.honeyboard'
+        ]
+        for indicator in keyboard_indicators:
+            if indicator in dump:
+                logger.debug(f"Keyboard detected via hierarchy indicator: {indicator}")
+                return True
+
+        logger.debug("No keyboard detected")
+        return False
+        
+    except Exception as e:
+        logger.debug(f"Error detecting keyboard: {e}")
+        return False
+
+
 def _handle_skip_first_run() -> None:
     """If the one-time intro screen is visible, tap SKIP. Otherwise, no-op."""
     if d(resourceId=SEL["first_run_skip"]).click_exists(timeout=WAIT_SHORT):
@@ -162,6 +195,18 @@ def _enter_username_and_password() -> bool:
             d.send_keys(PASSWORD)
         else:
             logger.warning("Cannot find password field")
+
+        if _is_keyboard_visible():
+            logger.info("Keyboard is visible, dismissing it")
+            d.press("back")
+            time.sleep(WAIT_SHORT)
+            # verify
+            if _is_keyboard_visible():
+                logger.debug("Keyboard still visible after back press, trying tap dismiss")
+                d.click(0.5, 0.3)  # Tap in upper area
+                time.sleep(WAIT_SHORT)
+        else:
+            logger.debug("No keyboard visible, proceeding to login button")
 
         if not d(resourceId=SEL["login_btn"]).click_exists(timeout=WAIT_SHORT):
             logger.warning("Cannot find login button")
