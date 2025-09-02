@@ -14,20 +14,26 @@ import uiautomator2 as u2
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ANDROID_READY_SCRIPT = PROJECT_ROOT / "utils" / "android_emulator_ready.sh"
+
+# Target Android package name for UI automation. Must be set via UI_TARGET_PACKAGE env var.
+# If unset, TARGET_PACKAGE becomes None.
 TARGET_PACKAGE = os.getenv("UI_TARGET_PACKAGE")
 
 UI_RETRIES = 5
-UI_POLL = 0.5
-UI_DELAY = 5
+RETRY_INTERVAL = 1  # seconds
 
-CLICK_TIMEOUT = 10
-UI_TIMEOUT = 180
+MAX_ANRS = 5
+MAX_SCROLLS = 5
+
+CLICK_TIMEOUT = 3  # seconds
+SHORT_TIMEOUT = 10
+MAX_TIMEOUT = 180
 
 logger = logging.getLogger("mobilecybench.ui")
 logger.setLevel(os.getenv("UI_LOG_LEVEL", "DEBUG"))
 _handler = logging.StreamHandler(stream=sys.stderr)
 _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
-if not logger.hasHandlers():
+if not logger.handlers:
     logger.addHandler(_handler)
 
 # =============================================================================
@@ -35,7 +41,7 @@ if not logger.hasHandlers():
 # =============================================================================
 
 
-def initialize_ui_automation(max_retries=UI_RETRIES, retry_delay=UI_DELAY):
+def initialize_ui_automation(max_retries=UI_RETRIES, retry_delay=RETRY_INTERVAL):
     """Connect to a device with uiautomator2"""
     try:
         _preflight_emulator_readiness()
@@ -72,11 +78,12 @@ def initialize_ui_automation(max_retries=UI_RETRIES, retry_delay=UI_DELAY):
 # =============================================================================
 
 
-def wait_and_click(d, element, timeout=UI_TIMEOUT):
+def wait_and_click(d, element, timeout=MAX_TIMEOUT):
     """Wait for an element and click it with ANR awareness and no sleeps."""
+    _ensure_target_app_foreground(d)
 
     if not _wait_for_element(d, element, timeout=timeout):
-        app_state = d.app_current() or {}
+        app_state = d.app_current()
         current_pkg = app_state.get("package", "unknown")
         current_activity = app_state.get("activity", "unknown")
         message = (
@@ -87,14 +94,14 @@ def wait_and_click(d, element, timeout=UI_TIMEOUT):
     else:
         logger.debug("Found element %s", element.selector)
 
-    try:
-        if element.click_exists(timeout=CLICK_TIMEOUT):
-            logger.info("Clicked element %s", element.selector)
-            wait_for_ui_stable(d)
-            _ensure_target_app_foreground(d)
-            return True
-    except Exception as e:
-        logger.debug("click_exists failed for %s: %s", element.selector, e)
+    if element.click_exists(timeout=CLICK_TIMEOUT):
+        logger.info("Clicked element %s", element.selector)
+        wait_for_ui_stable(d)
+
+        return True
+
+    else:
+        logger.warning("Element %s exists but could not be clicked", element.selector)
         try:
             elem_info = element.info
             clickable = elem_info.get("clickable")
@@ -102,28 +109,29 @@ def wait_and_click(d, element, timeout=UI_TIMEOUT):
         except Exception:
             clickable = enabled = "<unavailable>"
 
-        message = (
-            f"Found element '{element.selector}' but it could not be clicked: {e}\n"
-            f"  - Clickable: {clickable}, Enabled: {enabled}"
+        logger.warning(
+            "Found element '%s' but it could not be clicked.\n"
+            "  - Clickable: %s, Enabled: %s",
+            element.selector,
+            clickable,
+            enabled,
         )
-        _fatal(d, message)
+        return False
 
 
-def wait_and_set_text(d, element, text, max_retries=UI_RETRIES, retry_delay=UI_DELAY):
+def wait_and_set_text(
+    d, element, text, max_retries=UI_RETRIES, retry_delay=RETRY_INTERVAL
+):
     """Focus the input by clicking it, set text, then finalize IME action."""
-
-    # Use the robust click flow to focus the field first
+    # Use wait_and_click to focus the field first
     clicked = wait_and_click(d, element)
     if not clicked:
         return False
 
     for attempt_index in range(1, max_retries + 1):
         try:
-            # Ensure the correct app is in foreground before typing
-            _ensure_target_app_foreground(d)
-
-            # Re-ensure the element is present and focused before typing
             if not element.exists:
+                _ensure_target_app_foreground(d)
                 _wait_for_element(d, element)
 
             element.set_text(text)
@@ -143,7 +151,9 @@ def wait_and_set_text(d, element, text, max_retries=UI_RETRIES, retry_delay=UI_D
                 _fatal(d, message)
 
 
-def wait_for_ui_stable(d, timeout=10, interval=UI_POLL, min_consecutive=3):
+def wait_for_ui_stable(
+    d, min_consecutive=3, retry_delay=RETRY_INTERVAL, timeout=SHORT_TIMEOUT
+):
     prev_dump = None
     same_count = 0
     start = time.time()
@@ -152,9 +162,9 @@ def wait_for_ui_stable(d, timeout=10, interval=UI_POLL, min_consecutive=3):
         try:
             current_dump = d.dump_hierarchy()
         except Exception as e:
-            app_state = d.app_current() or {}
-            current_pkg = app_state.get("package") or ""
-            current_activity = app_state.get("activity") or ""
+            app_state = d.app_current()
+            current_pkg = app_state.get("package")
+            current_activity = app_state.get("activity")
 
             if _is_launcher_activity(current_pkg, current_activity):
                 logger.debug(
@@ -168,7 +178,7 @@ def wait_for_ui_stable(d, timeout=10, interval=UI_POLL, min_consecutive=3):
                     "Failed to get hierarchy dump during stability check: %s", e
                 )
 
-            time.sleep(interval)
+            time.sleep(retry_delay)
             continue
 
         # Count consecutive identical dumps
@@ -185,7 +195,7 @@ def wait_for_ui_stable(d, timeout=10, interval=UI_POLL, min_consecutive=3):
             return True
 
         # Wait for some time to avoid false positive before screen transitions
-        time.sleep(interval)
+        time.sleep(retry_delay)
 
     logger.warning(
         "UI did not stabilize (hierarchy dump) within %.1fs (required %s consecutive identical samples).",
@@ -243,7 +253,7 @@ def _configure_device_defaults(device):
 
 
 def _wait_for_element(
-    d, element, max_scrolls=5, retry_delay=UI_DELAY, timeout=UI_TIMEOUT
+    d, element, max_scrolls=MAX_SCROLLS, retry_delay=RETRY_INTERVAL, timeout=MAX_TIMEOUT
 ):
     """Wait for an element; if missing, perform limited coarse scrolls to reveal it."""
 
@@ -258,7 +268,7 @@ def _wait_for_element(
         # Ensure we're in the intended app before attempting waits/scrolls
         _ensure_target_app_foreground(d)
 
-        if not _handle_anr(d, max_anrs=5, timeout=1, target_element=element):
+        if not _handle_anr(d, target_element=element):
             logger.debug("Failed to unfreeze system UI; aborting element wait.")
             return False
 
@@ -311,7 +321,7 @@ def _is_launcher_activity(current_pkg, current_activity):
     return False
 
 
-def _ensure_target_app_foreground(d, stabilize_timeout=UI_DELAY):
+def _ensure_target_app_foreground(d, timeout=SHORT_TIMEOUT):
     """
     Ensure the target app (from UI_TARGET_PACKAGE) is in the foreground.
     If the launcher or a different app is foreground, attempt to bring the target app to front.
@@ -322,7 +332,7 @@ def _ensure_target_app_foreground(d, stabilize_timeout=UI_DELAY):
         current_activity = app_state.get("activity")
 
         if not TARGET_PACKAGE:
-            return True
+            return True  # No target package, so no need to bring it to front
 
         # If launcher is shown or we're on a different app, try to recover
         if _is_launcher_activity(current_pkg, current_activity) or (
@@ -335,9 +345,9 @@ def _ensure_target_app_foreground(d, stabilize_timeout=UI_DELAY):
                     current_activity,
                     TARGET_PACKAGE,
                 )
-                d.app_start(TARGET_PACKAGE, wait=True, stop=True, use_monkey=True)
-                if stabilize_timeout and stabilize_timeout > 0:
-                    wait_for_ui_stable(d, timeout=stabilize_timeout)
+                d.app_start(TARGET_PACKAGE, wait=True, use_monkey=True)
+                if timeout and timeout > 0:
+                    wait_for_ui_stable(d, timeout=timeout)
             except Exception as relaunch_err:
                 logger.debug("Could not ensure target app foreground: %s", relaunch_err)
 
@@ -346,14 +356,14 @@ def _ensure_target_app_foreground(d, stabilize_timeout=UI_DELAY):
         return False
 
 
-def _handle_anr(d, max_anrs=5, timeout=UI_DELAY, target_element=None):
+def _handle_anr(d, max_anrs=MAX_ANRS, wait_timeout=SHORT_TIMEOUT, target_element=None):
     """Click ANR 'Wait' up to max_anrs times; settle with idle/stable checks."""
     anr_count = 0
     wait_button = d(resourceId="android:id/aerr_wait")
 
     for _ in range(max_anrs):
         try:
-            if wait_button.exists(timeout=timeout):
+            if wait_button.wait(timeout=wait_timeout):
                 anr_count += 1
                 logger.debug(
                     "ANR dialog #%s detected. Clicking 'Wait' to continue...", anr_count
@@ -366,7 +376,7 @@ def _handle_anr(d, max_anrs=5, timeout=UI_DELAY, target_element=None):
                         "Waiting for target element '%s' to appear after ANR...",
                         target_element.selector,
                     )
-                    if target_element.wait(timeout=timeout):
+                    if target_element.wait(timeout=wait_timeout):
                         logger.debug(
                             "Target element '%s' appeared successfully after ANR.",
                             target_element.selector,
@@ -416,13 +426,21 @@ def _fatal(d, message):
     """
     logger.critical("%s", message)
 
-    logger.debug("Current pacakge: %s", d.app_current().get("package"))
-    logger.debug("Current activity: %s", d.app_current().get("activity"))
+    try:
+        if d is not None:
+            app_state = d.app_current()
+            logger.debug("Current package: %s", app_state.get("package"))
+            logger.debug("Current activity: %s", app_state.get("activity"))
+    except Exception as e:
+        logger.warning("Failed to get current app state: %s", e)
 
-    # Output raw adb logs
+    # Output last 100 lines of adb logs
     try:
         subprocess.run(
-            ["adb", "logcat", "-t", "200"], stdout=sys.stderr, timeout=UI_TIMEOUT
+            ["adb", "logcat", "-t", "100"],
+            stdout=sys.stderr,
+            timeout=MAX_TIMEOUT,
+            check=True,
         )
     except Exception as e:
         logger.warning("Failed to get adb logcat output: %s", e)
