@@ -41,7 +41,8 @@ SHORT_TIMEOUT = 10  # Short timeout for non-critical waits
 MAX_TIMEOUT = 180  # Long timeout for critical waits (e.g., finding an element)
 
 logger = logging.getLogger("mobilecybench.ui")
-logger.setLevel(os.getenv("UI_LOG_LEVEL", "DEBUG"))
+logger.setLevel("DEBUG")
+
 _handler = logging.StreamHandler(stream=sys.stderr)
 _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 if not logger.handlers:
@@ -114,7 +115,6 @@ def wait_and_click(d: Device, element: UiObject, timeout: int = MAX_TIMEOUT) -> 
         return True
 
     else:
-        logger.warning("Element %s exists but could not be clicked", element.selector)
         try:
             elem_info = element.info
             clickable = elem_info.get("clickable")
@@ -122,14 +122,11 @@ def wait_and_click(d: Device, element: UiObject, timeout: int = MAX_TIMEOUT) -> 
         except Exception:
             clickable = enabled = "<unavailable>"
 
-        logger.warning(
-            "Found element '%s' but it could not be clicked.\n"
-            "  - Clickable: %s, Enabled: %s",
-            element.selector,
-            clickable,
-            enabled,
+        message = (
+            f"Found element '{element.selector}' but it could not be clicked.\n"
+            f"  - Clickable: {clickable}, Enabled: {enabled}"
         )
-        return False
+        _fatal(d, message)
 
 
 def wait_and_set_text(
