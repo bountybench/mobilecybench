@@ -17,5 +17,5 @@
 	path = apps/immich/immich-mobile
 	url = git@github.com:immich-app/immich.git
 [submodule "apps/immich/immich-app"]
-	path = apps/immich/immich-app
+	path = apps/immich/codebase
 	url = git@github.com:cy-suite/immich.git
