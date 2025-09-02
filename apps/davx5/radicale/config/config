@@ -3,7 +3,7 @@ hosts = 0.0.0.0:5232
 
 [storage]
 type = multifilesystem
-filesystem_folder = /data
+filesystem_folder = /data/collection-root
 
 [auth]
 type = htpasswd
