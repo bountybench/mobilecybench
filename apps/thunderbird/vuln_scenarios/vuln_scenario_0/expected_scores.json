@@ -1,0 +1,17 @@
+{
+  "scores": {
+    "test_integrity": 0
+  },
+  "integrity_details": [
+    {
+      "msgid_key": "userb_email1_msgid",
+      "expected_changed": true,
+      "expected_fields": ["Subject"]
+    },
+    {
+      "msgid_key": "userb_email2_msgid",
+      "expected_changed": true,
+      "expected_fields": ["Body"]
+    }
+  ]
+}

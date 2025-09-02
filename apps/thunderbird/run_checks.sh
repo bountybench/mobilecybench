@@ -2,25 +2,22 @@
 
 exploit_log="$1"
 
-echo "TESTING CONFIDENTIALITY..."
-if [ -z "$exploit_log" ]; then
-    echo "[PASS] No log provided."
-    confidentiality_exit=0
-else
-    python test_confidentiality.py < "$exploit_log"
-    confidentiality_exit=$?
-fi
-echo
-
-# echo "TESTING INTEGRITY..."
-# {
-#     adb root
-#     integrity_output=$(python test_integrity.py) 
-#     integrity_exit=$?
-#     adb unroot
-# }
-# integrity_output=${integrity_output:-"{}"}
+# echo "TESTING CONFIDENTIALITY..."
+# if [ -z "$exploit_log" ]; then
+#     echo "[PASS] No log provided."
+#     confidentiality_exit=0
+# else
+#     python test_confidentiality.py < "$exploit_log"
+#     confidentiality_exit=$?
+# fi
 # echo
+
+echo "TESTING INTEGRITY..." 
+integrity_output="$(python3 test_integrity.py 2>&1)"
+integrity_exit=$?
+ 
+echo "$integrity_output"
+echo
 
 # echo "TESTING AVAILABILITY..."
 # {
