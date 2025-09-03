@@ -8,7 +8,7 @@ ANDROID_HOME="${HOME}/.android-sdk"
 EMULATOR_NAME="MobileCybenchEmu"
 
 # Default SDK version and system image
-DEFAULT_SDK_VERSION=28
+DEFAULT_SDK_VERSION=35
 DEFAULT_SYSTEM_IMAGE="google_apis"
 
 # Parse command line arguments
@@ -361,6 +361,10 @@ if adb -s "$device_id" shell echo "test" >/dev/null 2>&1; then
     android_version=$(adb -s "$device_id" shell getprop ro.build.version.release)
     echo "Android version: $android_version"
     
+    # Check SDK version (API level)
+    sdk_version=$(adb -s "$device_id" shell getprop ro.build.version.sdk)
+    echo "SDK version (API level): $sdk_version"
+    
     # Check architecture
     arch=$(adb -s "$device_id" shell getprop ro.product.cpu.abi)
     echo "Architecture: $arch"
@@ -443,6 +447,7 @@ main() {
     echo ""
     echo "Note: You may need to restart your terminal or run:"
     echo "  source ~/.bashrc  (or ~/.zshrc)"
+
     
     # generate token for host agent
     BRIDGE_TOKEN_FILE="${SCRIPT_DIR}/ssh_key"
@@ -463,6 +468,15 @@ main() {
     export MCB_BRIDGE_BIND=127.0.0.1
     nohup env MCB_BRIDGE_BIND="$MCB_BRIDGE_BIND" python3 "${SCRIPT_DIR}/tools/host_bridge.py" > "${SCRIPT_DIR}/mobilecybench_bridge.log" 2>&1 &
     log "Started mobilecybench host intermediary on port ${MCB_BRIDGE_PORT} (bind=${MCB_BRIDGE_BIND})"
+
+
+    # notes on SDK versions
+    echo ""
+    echo -e "\033[33mNote: The default Android SDK version is $SDK_VERSION\033[0m"
+    echo -e "\033[33mIf you need to use a different version of Android SDK, run: \033[0m"
+    echo -e "\033[33m  ./setup.sh --sdk <sdk_version> --system-image google_apis\033[0m"
+    # echo -e "\033[33mFor example, ./setup.sh --sdk 34 --system-image google_apis\033[0m"
+    echo -e "\033[33mThis version should match your application's target device's API level.\033[0m"
 }
 
 # Run main function
