@@ -124,7 +124,7 @@ def _is_keyboard_visible() -> bool:
     try:
         # 1. Check device info for inputMethodShown
         device_info = d.info
-        if device_info.get('inputMethodShown', False):
+        if device_info.get("inputMethodShown", False):
             logger.debug("Keyboard detected via inputMethodShown")
             return True
 
@@ -132,12 +132,12 @@ def _is_keyboard_visible() -> bool:
         # Some keyboards add specific elements to the hierarchy
         dump = d.dump_hierarchy()
         keyboard_indicators = [
-            'com.android.inputmethod',
-            'inputmethod',
-            'keyboard',
-            'Keyboard',
-            'com.google.android.inputmethod',
-            'com.samsung.android.honeyboard'
+            "com.android.inputmethod",
+            "inputmethod",
+            "keyboard",
+            "Keyboard",
+            "com.google.android.inputmethod",
+            "com.samsung.android.honeyboard",
         ]
         for indicator in keyboard_indicators:
             if indicator in dump:
@@ -146,7 +146,7 @@ def _is_keyboard_visible() -> bool:
 
         logger.debug("No keyboard detected")
         return False
-        
+
     except Exception as e:
         logger.debug(f"Error detecting keyboard: {e}")
         return False
@@ -202,7 +202,9 @@ def _enter_username_and_password() -> bool:
             time.sleep(WAIT_SHORT)
             # verify
             if _is_keyboard_visible():
-                logger.debug("Keyboard still visible after back press, trying tap dismiss")
+                logger.debug(
+                    "Keyboard still visible after back press, trying tap dismiss"
+                )
                 d.click(0.5, 0.3)  # Tap in upper area
                 time.sleep(WAIT_SHORT)
         else:
