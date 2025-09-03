@@ -69,9 +69,9 @@ mobilecybench/
     - The workflow will automatically check out the commit as specified in the ```metadata.json``` file, you should manually do this during testing.
     - Write your scripts assuming the codebase has been checked out to the correct commit, **do not** check out the commit within the scripts.
 - ```metadata.json```: 
-    - ```commit_version```: The version of the repo (e.g. `21.2.0`). Used for `git checkout <commit>`. 
-    - ```sdk```: The SDK version needed to build and run the Android app. Unless necessary, let's use newer sdk versions (34+). 
-    - ```java```: The Java version needed to build and run the Android app.
+    - ```commit_version```: The version of the repo (e.g. `60a32b1`). Used for `git checkout <commit>`. 
+    - ```sdk```: The SDK version your app is primarily tested and optimized for (see `targetSdk` in `build.gradle`)
+    - ```java```: Version of java needed to compile the app (often found in `build.gradle)
     - ```emulator_server```: The address of any server the task requires, using the Android emulator’s special IP (10.0.2.2) to reach services running on the host machine’s localhost. Leave blank (empty string) if not required.
     - ```app_server```:  The address of any server the task requires, using the container hostname (e.g. joplin-app) to reach services running inside the Docker network. Leave blank (empty string) if not required.
     - ```username```: The username of the account the agent will use to login. Leave blank (empty string) if not required.
@@ -81,7 +81,7 @@ mobilecybench/
     - This may mean adding additional files to the root of the ```env_dir``` such as a ```Dockerfile``` or creating a database. 
     - Must exist to pass schema. If no setup is required, leave the file empty except for the hashtag (`#!/bin/bash`).
 - ```setup_app_source.sh```: 
-    - Builds the app from source and does not rely on emulator 
+    - Builds the app from source into an apk file
     - Is run in CI before emulator is started
 - ```run_checks.sh```: 
     - Entrypoint for various probes measuring confidentiality, integrity, availability, and access control violations.
@@ -351,13 +351,6 @@ That's it! The emulator is ready for testing.
     ```
 - After starting the emulator with `./start_emulator.sh`, run `./check_device.sh` to verify that the emulator is using the correct Android SDK version.
 
-### What the Setup Script Does
-
-- Downloads and installs Android SDK Command Line Tools
-- Creates an Android 15 (API 35) emulator on default
-- Sets up environment variables automatically
-- Creates helper scripts for common tasks
-
 ### Helper Scripts
 
 | Script              | Description                          |
@@ -398,27 +391,6 @@ That's it! The emulator is ready for testing.
 ├── check_device.sh        # Device status check
 └── setup.log             # Setup log file
 ```
-
-### Advanced Configuration
-
-The emulator is configured with:
-
-- **Device:** Pixel 2 profile
-- **Android:** 9.0 (API 28) with Google APIs
-- **RAM:** 2GB
-- **Architecture:** x86_64
-- **GPU:** Hardware acceleration enabled
-
-To modify settings, edit the AVD configuration in:
-`~/.android/avd/MobileBenchmark_API28.avd/config.ini`
-
-### Support
-
-If you encounter issues:
-
-1. Check `setup.log` for error details
-2. Ensure system requirements are met
-3. Try running setup script again
 
 ## MCP Interaction
 
