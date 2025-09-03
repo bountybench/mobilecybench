@@ -48,12 +48,9 @@ synch_with_server() {
     echo "Setting up Thunderbird email account..."
     pip install uiautomator2
     
-    # Extract credentials from metadata.json
-    # USERNAME="$(jq -r '.username' metadata.json)"
-    # PASSWORD="$(jq -r '.password' metadata.json)"
-
-    USERNAME="userb@test.com"
-    PASSWORD="$(jq -r '.userb_password' secrets.json)"
+    # Extract agent credentials from metadata.json
+    USERNAME="$(jq -r '.username' metadata.json)"
+    PASSWORD="$(jq -r '.password' metadata.json)" 
     
     # Run the sync script with extracted credentials
     python synch_app.py --username "$USERNAME" --password "$PASSWORD"
