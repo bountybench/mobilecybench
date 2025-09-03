@@ -9,15 +9,17 @@ export UI_TARGET_PACKAGE="com.x8bit.bitwarden.dev"
 
 echo === RUNNING setup.sh ===
 
-# Run setup_app.sh to install Bitwarden app
-echo "[INFO] Running setup_app.sh to install Bitwarden app..."
-"${BITWARDEN_DIR}/setup_app.sh"
-echo "[INFO] Bitwarden app installed."
-
 # Install Python requirements
 echo "[INFO] Installing Python requirements with python3..."
 pip install -r "${BITWARDEN_DIR}/requirements.txt"
 echo "[INFO] Python requirements installed."
+pip show uiautomator2
+python -m uiautomator2 init
+
+# Run setup_app.sh to install Bitwarden app
+echo "[INFO] Running setup_app.sh to install Bitwarden app..."
+"${BITWARDEN_DIR}/setup_app.sh"
+echo "[INFO] Bitwarden app installed."
 
 # Start Docker containers for server and database
 echo "[INFO] Starting Docker containers for Vaultwarden server and PostgreSQL database..."

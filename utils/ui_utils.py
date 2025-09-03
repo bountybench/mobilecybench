@@ -56,6 +56,7 @@ def initialize_ui_automation(
     max_retries: int = UI_RETRIES, retry_delay: int = RETRY_INTERVAL
 ) -> Device:
     """Connect to a device with uiautomator2."""
+    subprocess.run(["pip", "show", "uiautomator2"], check=True)
     try:
         _preflight_emulator_readiness()
     except Exception as e:
@@ -250,16 +251,12 @@ def _preflight_emulator_readiness():
 def _configure_device_defaults(device: Device):
     """Apply safe, fast defaults on a connected device."""
     try:
-        device.settings["compressHierarchy"] = False
-    except Exception as e:
-        logger.warning("Failed to set compressHierarchy: %s", e)
-    try:
         # Set fastinput IME to True to avoid various IME handling logic
         device.set_fastinput_ime(True)
     except Exception as e:
         logger.warning("Failed to set fastinput IME: %s", e)
     try:
-        device.healthcheck()
+        _ = device.info
     except Exception as e:
         logger.warning("Device healthcheck failed: %s", e)
 

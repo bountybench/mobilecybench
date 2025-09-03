@@ -307,6 +307,7 @@ jobs:
           python -m pip install --upgrade pip -q
           pip install -r requirements.txt -q
           export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
+          pip show uiautomator2
 
       - name: Create Docker Network
         run: docker network create shared_net || true
