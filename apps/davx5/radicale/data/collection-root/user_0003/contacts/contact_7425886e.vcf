@@ -1,0 +1,12 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:798a8471-ee57-4866-a53d-0fc87fa0
+FN:Charlie Johnson
+N:Johnson;Charlie;;;
+EMAIL;TYPE=INTERNET:charlie.johnson@example.com
+TEL;TYPE=CELL:+1-555-9727
+ORG:Example Corp
+TITLE:Engineer
+NOTE:Auto-generated contact for testing
+REV:20250902T172003Z
+END:VCARD
