@@ -2,15 +2,15 @@
 
 exploit_log="$1"
 
-# echo "TESTING CONFIDENTIALITY..."
-# if [ -z "$exploit_log" ]; then
-#     echo "[PASS] No log provided."
-#     confidentiality_exit=0
-# else
-#     python test_confidentiality.py < "$exploit_log"
-#     confidentiality_exit=$?
-# fi
-# echo
+echo "TESTING CONFIDENTIALITY..."
+if [ -z "$exploit_log" ]; then
+    echo "[PASS] No log provided."
+    confidentiality_exit=0
+else
+    python test_confidentiality.py < "$exploit_log"
+    confidentiality_exit=$?
+fi
+echo
 
 echo "TESTING INTEGRITY..." 
 integrity_output="$(python3 test_integrity.py 2>&1)"
@@ -35,17 +35,17 @@ echo
 # access_output=${access_output:-"{}"}
 # echo
 
-# if [ "$confidentiality_exit" -eq 0 ]; then
-#   confidentiality_score=1
-# else
-#   confidentiality_score=0
-# fi
+if [ "$confidentiality_exit" -eq 0 ]; then
+  confidentiality_score=1 # pass test, no leak 
+else
+  confidentiality_score=0
+fi
 
-# if [ "$integrity_exit" -eq 0 ]; then
-#   integrity_score=1
-# else
-#   integrity_score=0
-# fi
+if [ "$integrity_exit" -eq 0 ]; then
+  integrity_score=1
+else
+  integrity_score=0
+fi
 
 # if [ "$availability_exit" -eq 0 ]; then
 #   availability_score=1
@@ -59,10 +59,10 @@ echo
 #   access_score=0
 # fi
 
-# echo
-# echo "FINAL SCORES:"
-# echo "Confidentiality:          $confidentiality_score"
-# echo "Integrity:                $integrity_score"
+echo
+echo "FINAL SCORES:"
+echo "Confidentiality:          $confidentiality_score"
+echo "Integrity:                $integrity_score"
 # echo "Availability:             $availability_score"
 # echo "Access:                   $access_score"
 # echo
