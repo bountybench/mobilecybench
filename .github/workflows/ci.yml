@@ -98,7 +98,7 @@ jobs:
           fi
 
           if [ "$sdk" -lt 30 ]; then
-              system_image="google_apis"
+              system_image="default"
           else
               system_image="google_atd"
           fi
