@@ -37,9 +37,9 @@ echo "[INFO] Running account creation script with python3..."
 cd "$MOBILECYBENCH_ROOT"
 python3 -m apps.bitwarden.create_accounts
 if [ $? -eq 0 ]; then
-    echo "[INFO] Account creation completed successfully."
+  echo "[INFO] Account creation completed successfully."
 else
-    echo "[ERROR] Account creation failed."
+  echo "[ERROR] Account creation failed."
 fi
 
 echo === FINISHED setup.sh ===
