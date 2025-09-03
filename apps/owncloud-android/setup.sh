@@ -235,11 +235,11 @@ launch_owncloud() {
     
     sleep 1
     
-    # Verify the app is running
-    if adb shell dumpsys window | grep -q "mCurrentFocus.*$PACKAGE_NAME"; then
-        info "ownCloud launched successfully"
+    # Verify the app is running by checking if the process exists
+    if adb shell pidof "$PACKAGE_NAME" >/dev/null 2>&1; then
+        info "ownCloud launched successfully (process running)"
     else
-        warn "ownCloud may not have launched properly (focus not detected)."
+        warn "ownCloud may not have launched properly (process not found)."
     fi
 }
 
