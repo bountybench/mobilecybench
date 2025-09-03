@@ -227,7 +227,7 @@ install_android_packages() {
     
     local sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager.bat"
     
-    # Fix path for Windows users (msys = Lightweight shell and GNU utilities compiled for Windows (part of MinGW))
+    # Fix path for Windows MinGW users
     if [[ "$OSTYPE" == "msys" ]]; then
         {
             sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager.bat"
@@ -258,7 +258,7 @@ create_avd() {
     
     local avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
 
-    # Fix path for Windows users (msys = Lightweight shell and GNU utilities compiled for Windows (part of MinGW))
+    # Fix path for Windows MinGW users
     if [[ "$OSTYPE" == "msys" ]]; then
         {
             avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager.bat"
