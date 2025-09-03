@@ -14,7 +14,6 @@ echo "[INFO] Installing Python requirements with python3..."
 pip install -r "${BITWARDEN_DIR}/requirements.txt"
 echo "[INFO] Python requirements installed."
 pip show uiautomator2
-python -m uiautomator2 init
 
 # Run setup_app.sh to install Bitwarden app
 echo "[INFO] Running setup_app.sh to install Bitwarden app..."
