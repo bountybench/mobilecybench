@@ -41,24 +41,24 @@ echo "Checking Android emulator..."
 if ! adb devices | grep -q "emulator"; then
     echo "No emulator running, starting one..."
     
-    # List available AVDs
-    AVDS=(/home/ubuntu/.android/avd/*.avd)
-    if [ ${#AVDS[@]} -eq 0 ]; then
+    # List available AVDs using proper SDK tool
+    AVD_LIST=$(/home/ubuntu/Android/Sdk/emulator/emulator -list-avds)
+    if [ -z "$AVD_LIST" ]; then
         echo "Error: No Android Virtual Devices found. Please create one first."
         exit 1
     fi
     
     # Use the first available AVD
-    AVD_NAME=$(basename "${AVDS[0]}" .avd)
+    AVD_NAME=$(echo "$AVD_LIST" | head -n 1)
     echo "Starting emulator: $AVD_NAME"
     
-    # Start emulator in background
-    /home/ubuntu/Android/Sdk/emulator/emulator -avd "$AVD_NAME" -no-audio -no-window &
+    # Start emulator in background with optimization flags
+    /home/ubuntu/Android/Sdk/emulator/emulator -avd "$AVD_NAME" -no-audio -no-window -no-boot-anim -memory 2048 -partition-size 4096 -wipe-data &
     EMULATOR_PID=$!
     
     # Wait for emulator to boot
     echo "Waiting for emulator to boot..."
-    timeout=180
+    timeout=300
     while [ $timeout -gt 0 ]; do
         if adb shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
             echo "Emulator booted successfully"
