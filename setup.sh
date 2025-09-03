@@ -225,7 +225,14 @@ install_android_packages() {
     log "SDK version: $SDK_VERSION, System image: $SYSTEM_IMAGE_TYPE"
     log "Full system image: $system_image"
     
-    local sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+    local sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager.bat"
+    
+    # Fix path for Windows users (msys = Lightweight shell and GNU utilities compiled for Windows (part of MinGW))
+    if [[ "$OSTYPE" == "msys" ]]; then
+        {
+            sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager.bat"
+        }
+    fi
     
     # Accept licenses
     yes | "$sdkmanager" --licenses >/dev/null 2>&1 || true
@@ -250,6 +257,13 @@ create_avd() {
     log "SDK version: $SDK_VERSION, System image: $SYSTEM_IMAGE_TYPE"
     
     local avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
+
+    # Fix path for Windows users (msys = Lightweight shell and GNU utilities compiled for Windows (part of MinGW))
+    if [[ "$OSTYPE" == "msys" ]]; then
+        {
+            avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager.bat"
+        }
+    fi
     
     # Create AVD
     echo "no" | "$avdmanager" create avd \
