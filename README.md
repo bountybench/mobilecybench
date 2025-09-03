@@ -13,8 +13,15 @@
     2.4 [Detailed example: ownCloud](#24-detailed-example-owncloud)
 
 3. [CI Validation](#3-ci-validation)
+
+    3.1 [Simple CI](#31-simple-ci)
+
+    3.2 [Full CI](#32-full-ci)
+
+    3.3 [CI Trigger and Local Testing](#33-ci-trigger-and-local-testing)
+
 4. [Setting Up Docker](#4-setup-docker-desktop-app)
-6. [Local Development Setup](#5-local-development-setup)
+5. [Local Development Setup](#5-local-development-setup)
 
 
 ## 1. Adding Target Android App Repo
@@ -257,14 +264,47 @@ See [ownCloud](/apps/owncloud-android/):
 - ```cleanup.sh```: Cleans up any files created and tears down server. 
 
 ## 3. CI Validation:
-### 3.1 Minimum File Tree Structure
-We expect the following minimum file tree structure:
+
+CI runs in two modes:
+- **Simple CI**: Builds APK and verifies it can be installed on the emulator
+- **Full CI**: Runs all comprehensive tests including vulnerability scenarios
+
+The mode is determined by the presence of `run_checks.sh` in the app directory. If `run_checks.sh` exists, full CI runs; otherwise, simple CI runs.
+
+### 3.1 Simple CI
+
+Simple CI only requires the basic files to build and install the app:
+
+**Required Files:**
 ```
 mobilecybench/
 │
 ├── apps/
     ├── env_dir/
-    │   ├── codebase/
+    │   ├── codebase/ (submodule)
+    |   ├── metadata.json
+    │   ├── setup.sh
+    │   ├── setup_app_source.sh
+```
+
+**Process:**
+1. File Tree Schema: Confirms the directory structure includes the minimum required files
+2. App Build and Install: 
+   - Runs `./setup_app_source.sh` to check out the specified commit version
+   - Runs `./setup.sh` to build and install the APK on the emulator
+   - Verifies successful installation
+
+### 3.2 Full CI
+
+Full CI includes all vulnerability testing capabilities:
+
+**Required File Tree Structure:**
+```
+mobilecybench/
+│
+├── apps/
+    ├── env_dir/
+    │   ├── codebase/ (submodule)
     |   ├── metadata.json
     │   ├── setup.sh
     │   ├── setup_app_source.sh
@@ -281,14 +321,9 @@ mobilecybench/
     |   |   |       └── ...
     |
 ```
-### 3.2 CI Trigger and Local Testing
-- CI is triggered when you open a PR and for each subsequent push to the origin/branch. 
-- To test and validate that your code will pass CI locally, use the provided `run_ci_local.sh` script:
-```
-./run_ci_local.sh apps/<env_dir>
-```
-### 3.3 CI Test Process
-Both the GitHub CI and local CI perform the following tests:
+
+**Process:**
+Both GitHub CI and local CI perform the following tests:
 1. File Tree Schema:
     - Confirms that the directory structure includes at least the minimum required file tree.
 Additional setup also occurs for the test environment, including checking out the `commit_version` of the codebase, running ```./setup_app_source.sh```, and starting the emulators. Then, CI tests:
@@ -310,6 +345,13 @@ Additional setup also occurs for the test environment, including checking out th
         - ```vuln_scenarios/vuln_scenario_1/vuln.sh```
     - Runs checks: ```./run_checks.sh```
     - Compares produced scores.json to expected ```vuln_scenarios/vuln_scenario_1/expected_scores.json``` (expected to pass if ```scores.json == expected_scores.json```)
+
+### 3.3 CI Trigger and Local Testing
+- CI is triggered when you open a PR and for each subsequent push to the origin/branch
+- To test and validate that your code will pass CI locally, use the provided `run_ci_local.sh` script:
+```
+./run_ci_local.sh apps/<env_dir>
+```
 
 ## 4. Setup Docker Desktop App. 
 You need to install the Docker Desktop App. 
