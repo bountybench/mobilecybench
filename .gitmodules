@@ -13,9 +13,15 @@
 [submodule "apps/tindroid/codebase"]
 	path = apps/tindroid/codebase
 	url = https://github.com/cy-suite/tindroid.git
+<<<<<<< HEAD
 [submodule "apps/immich/immich-mobile"]
 	path = apps/immich/immich-mobile
 	url = git@github.com:immich-app/immich.git
 [submodule "apps/immich/immich-app"]
 	path = apps/immich/codebase
 	url = git@github.com:cy-suite/immich.git
+=======
+[submodule "apps/conversations/codebase"]
+	path = apps/conversations/codebase
+	url = https://github.com/cy-suite/conversations.git
+>>>>>>> 9c649f0d5d3b50047f0419c4e03cb892c5f0fcae
