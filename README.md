@@ -343,6 +343,14 @@ To get started with Docker, follow these installation instructions based on your
 
 That's it! The emulator is ready for testing.
 
+**Notes:**
+- If you need a different SDK version, for example SDK version 34, run:
+    ```bash
+    # ./setup.sh will default to sdk version 35
+    ./setup.sh --sdk 34 --system-image google_apis
+    ```
+- After starting the emulator with `./start_emulator.sh`, run `./check_device.sh` to verify that the emulator is using the correct Android SDK version.
+
 ### Helper Scripts
 
 | Script              | Description                          |
