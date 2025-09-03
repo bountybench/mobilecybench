@@ -225,7 +225,7 @@ install_android_packages() {
     log "SDK version: $SDK_VERSION, System image: $SYSTEM_IMAGE_TYPE"
     log "Full system image: $system_image"
     
-    local sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager.bat"
+    local sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
     
     # Fix path for Windows MinGW users
     if [[ "$OSTYPE" == "msys" ]]; then
