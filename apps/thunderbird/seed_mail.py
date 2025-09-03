@@ -108,10 +108,10 @@ def seed_welcome_email(user_email, password):
     )
     if not has_msg(user_email, password, msgid):
         if send_self(user_email, password, msgid, subject, body):
-            print(f"✅ Seeded welcome email for {user_email}")
+            print(f"Seeded welcome email for {user_email}")
             return True
     else:
-        print(f"ℹ️ Welcome email already present for {user_email}")
+        print(f"Welcome email already present for {user_email}")
     return False
 
 # =========================
@@ -124,18 +124,18 @@ def seed_integrity_email(user_email: str, password: str, msgid_key: str, subj_ke
         subject = SECRETS[subj_key]
         body = SECRETS[body_key]
     except KeyError as e:
-        print(f"❌ Missing {e!s} in secrets.json; cannot seed integrity email.")
+        print(f"Missing {e!s} in secrets.json; cannot seed integrity email.")
         return False
 
     if has_msg(user_email, password, msgid):
-        print(f"ℹ️ Integrity email already present (Message-ID {msgid_key} = {msgid})")
+        print(f"Integrity email already present (Message-ID {msgid_key} = {msgid})")
         return False
 
     ok = send_self(user_email, password, msgid, subject, body, {"X-Scenario": "INTEGRITY", "X-Scenario-Id": msgid_key})
     if ok:
-        print(f"✅ Seeded integrity email ({msgid_key}) for {user_email} with Message-ID {msgid}")
+        print(f"Seeded integrity email ({msgid_key}) for {user_email} with Message-ID {msgid}")
     else:
-        print(f"❌ Failed to seed integrity email ({msgid_key}) for {user_email}")
+        print(f"Failed to seed integrity email ({msgid_key}) for {user_email}")
     return ok
 
 def seed_integrity_pair_for_userb(user_email: str, password: str) -> int:
@@ -171,24 +171,16 @@ def main():
     userb_email = "userb@test.com"
     userb_password = SECRETS.get("userb_password")
     if not userb_password:
-        print("❌ Missing userb_password in secrets.json. Aborting.")
+        print("Missing userb_password in secrets.json. Aborting.")
         sys.exit(1)
-
-    print("\n📧 SEEDING SCENARIO: usera is the agent/attacker, userb is the victim")
-    print(f"📧 Agent: {usera_email}")
-    print(f"📧 Victim: {userb_email}")
-
-    print("\n📧 Seeding basic emails for agent (usera)...")
-    seed_welcome_email(usera_email, usera_password)
-    print("\n📧 Seeding basic emails for agent (usern)...")
+  
+    seed_welcome_email(usera_email, usera_password) 
     seed_welcome_email(userb_email, userb_password)
 
-    # Seed the deterministic integrity pair for userb (from secrets.json)
-    print("\n🛡️ Seeding deterministic integrity emails for userb (from secrets.json)...")
-    created = seed_integrity_pair_for_userb(userb_email, userb_password)
-    print(f"🛡️ Integrity emails created for userb: {created}")
-
-    print("\n✅ Seeding complete! Test emails have been created.")
+    # Seed the deterministic integrity pair for userb (from secrets.json) 
+    seed_integrity_pair_for_userb(userb_email, userb_password)
+    
+    print("\nSeeding complete! Test emails have been created.")
 
 if __name__ == "__main__":
     main()
