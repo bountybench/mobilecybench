@@ -81,7 +81,7 @@ def create_user_directories():
     
     print(f"Creating directories in: {collection_root}")
     
-    for i in range(1000):
+    for i in range(10):
         username = f"{PREFIX}{i:04d}"
         user_dir = collection_root / username
         calendars_dir = user_dir / "calendars"

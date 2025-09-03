@@ -1,0 +1,12 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:7c706bbe-5c7b-4d15-af63-1ed8fa53
+FN:Charlie Clark
+N:Clark;Charlie;;;
+EMAIL;TYPE=INTERNET:charlie.clark@example.com
+TEL;TYPE=CELL:+1-555-6691
+ORG:Example Corp
+TITLE:Developer
+NOTE:Auto-generated contact for testing
+REV:20250902T172003Z
+END:VCARD

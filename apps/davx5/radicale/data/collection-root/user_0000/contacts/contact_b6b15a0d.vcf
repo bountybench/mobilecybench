@@ -1,0 +1,12 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:b5f3d0e0-1f68-439b-a235-24301ba6
+FN:Bob Evans
+N:Evans;Bob;;;
+EMAIL;TYPE=INTERNET:bob.evans@example.com
+TEL;TYPE=CELL:+1-555-9303
+ORG:Example Corp
+TITLE:Engineer
+NOTE:Auto-generated contact for testing
+REV:20250902T172003Z
+END:VCARD
