@@ -42,7 +42,6 @@ MAX_TIMEOUT = 180  # Long timeout for critical waits (e.g., finding an element)
 
 logger = logging.getLogger("mobilecybench.ui")
 logger.setLevel("DEBUG")
-
 _handler = logging.StreamHandler(stream=sys.stderr)
 _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 if not logger.handlers:
@@ -252,17 +251,17 @@ def _configure_device_defaults(device: Device):
     """Apply safe, fast defaults on a connected device."""
     try:
         device.settings["compressHierarchy"] = False
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to set compressHierarchy: %s", e)
     try:
         # Set fastinput IME to True to avoid various IME handling logic
         device.set_fastinput_ime(True)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to set fastinput IME: %s", e)
     try:
         device.healthcheck()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Device healthcheck failed: %s", e)
 
 
 # =============================================================================
