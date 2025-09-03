@@ -15,4 +15,4 @@
 	url = https://github.com/cy-suite/tindroid.git
 [submodule "apps/openvpn/codebase"]
 	path = apps/openvpn/codebase
-	url = https://github.com/schwabe/ics-openvpn.git
+	url = https://github.com/cy-suite/OpenVPN-Android.git
