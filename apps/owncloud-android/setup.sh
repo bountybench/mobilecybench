@@ -194,10 +194,26 @@ install_owncloud(){
   adb uninstall com.owncloud.android.debug >/dev/null 2>&1 || true
 
   info "Installing APK: $apk"
-  if adb install "$apk" > /dev/null 2>&1; then
+  
+  # Add debugging information for CI troubleshooting
+  info "Device info for debugging:"
+  info "- SDK level: $(adb shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r' || echo 'unknown')"
+  info "- CPU ABI: $(adb shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r' || echo 'unknown')"
+  info "- Device model: $(adb shell getprop ro.product.model 2>/dev/null | tr -d '\r' || echo 'unknown')"
+  
+  # Check APK info if aapt is available
+  if command -v aapt >/dev/null 2>&1; then
+    info "APK info: $(aapt dump badging "$apk" 2>/dev/null | grep -E '(package:|native-code:)' | head -2 || echo 'aapt info unavailable')"
+  fi
+  
+  # Try installation with verbose output for debugging
+  info "Attempting installation with detailed error output..."
+  local install_output
+  if install_output=$(adb install "$apk" 2>&1); then
     info "OwnCloud installed successfully"
+    info "Install output: $install_output"
   else
-    fail "Failed to install APK via ADB. Check device connection and APK integrity."
+    fail "Failed to install APK via ADB. Error: $install_output"
   fi
 }
 
