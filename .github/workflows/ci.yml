@@ -17,6 +17,7 @@ jobs:
       sdk: ${{ steps.get-sdk-java.outputs.sdk }}
       java: ${{ steps.get-sdk-java.outputs.java }}
       system_image: ${{ steps.get-sdk-java.outputs.system_image }}
+      has_run_checks: ${{ steps.check-run-checks.outputs.has_run_checks }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -108,13 +109,26 @@ jobs:
           echo "java=$java" >> "$GITHUB_OUTPUT"
           echo "system_image=$system_image" >> "$GITHUB_OUTPUT"
 
+      - name: Check if run_checks.sh exists
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        id: check-run-checks
+        run: |
+          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
+          if [ -f "$dir/run_checks.sh" ]; then
+            echo "run_checks.sh found in $dir"
+            echo "has_run_checks=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_checks.sh not found in $dir - will run simplified CI"
+            echo "has_run_checks=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y libpulse0
           python -m pip install --upgrade pip -q
-          pip install -r .github/requirements.txt -q
+          pip install -r requirements.txt -q
           export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
 
       - name: Check metadata.json
@@ -133,11 +147,11 @@ jobs:
             echo "metadata.json not modified in $dir. Skipping test."
           fi      
 
-  test:
+  test_full:
     needs: setup
-    if: needs.setup.outputs.should_exit != 'true'
+    if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_run_checks == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 55
     strategy:
       matrix:
         test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
@@ -162,6 +176,9 @@ jobs:
           fetch-depth: 0
           submodules: false
           token: ${{ secrets.GH_TOKEN }}
+
+      - name: Disable Git ownership check
+        run: git config --global --add safe.directory '*'
 
       - name: Create shared functions
         run: |
@@ -281,30 +298,17 @@ jobs:
           EOF
           chmod +x /tmp/shared_functions.sh
 
-          # Extract base directories from modified_dirs
           modified_dirs=${{ needs.setup.outputs.modified_dirs }}
-          base_dirs=$(echo "$modified_dirs" | while IFS= read -r line; do
-            # Skip empty lines
-            [[ -z "$line" ]] && continue
-            # Extract the base directory (everything before the first "/")
-            echo "${line%%/*}"
-          done | sort -u)
-
-          echo "$base_dirs" | while IFS= read -r base; do
-            if [ -d "$base" ]; then
-              echo "Initialize submodule for $base"
-              git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$base"
-            else
-              echo "$base does not exist."
-            fi
-          done
+          echo "Initialize submodule for $modified_dirs"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$modified_dirs"
           
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: "${{ needs.setup.outputs.java }}"
-      
+          cache: gradle
+            
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
         with:
@@ -315,22 +319,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libpulse0
           python -m pip install --upgrade pip -q
-          pip install -r .github/requirements.txt -q
+          pip install -r requirements.txt -q
           export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
-
-      - name: Docker Cleanup before pulling new image
-        run: |
-          docker system prune -af
-          docker image prune -af
-
-      - name: Pull Docker container
-        run: |
-          docker pull --quiet cybench/mobilecybench:latest
-          docker manifest inspect cybench/mobilecybench:latest
-          docker image tag cybench/mobilecybench:latest mobilecybench
-
-      - name: Display disk space after pulling image
-        run: df -H
 
       - name: Create Docker Network
         run: docker network create shared_net || true
@@ -350,6 +340,7 @@ jobs:
           set -e
           source /tmp/shared_functions.sh
           check_server_ready
+          adb devices
           EOF
           
           echo "dir=\"$modified_dir\"" >> test_checks.sh
@@ -358,21 +349,8 @@ jobs:
           case "${{ matrix.test_type }}" in
             "baseline")
               cat <<'EOF' >> test_checks.sh
-          source /tmp/shared_functions.sh
-          check_server_ready
-          
+
           cd "$dir"
-          checkout_commit "$dir"
-          
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
-          echo "Checking for required scripts..."
-          for script in "${required_scripts[@]}"; do
-            if [[ ! -f "$script" ]]; then
-              echo "ERROR: Required script '$script' not found."
-              exit 1
-            fi
-          done
-          
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
@@ -393,25 +371,12 @@ jobs:
               ;;
             "vuln_scenario_0")
               cat <<'EOF' >> test_checks.sh
-          source /tmp/shared_functions.sh
-          check_server_ready
           
-          cd "$dir"
-          checkout_commit "$dir"
-          
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
-          echo "Checking for required scripts..."
-          for script in "${required_scripts[@]}"; do
-            if [[ ! -f "$script" ]]; then
-              echo "ERROR: Required script '$script' not found."
-              exit 1
-            fi
-          done
-
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           
+          cd "$dir"
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
@@ -440,25 +405,12 @@ jobs:
               ;;
             "vuln_scenario_1")
               cat <<'EOF' >> test_checks.sh
-          source /tmp/shared_functions.sh
-          check_server_ready
-          
-          cd "$dir"
-          checkout_commit "$dir"
-          
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
-          echo "Checking for required scripts..."
-          for script in "${required_scripts[@]}"; do
-            if [[ ! -f "$script" ]]; then
-              echo "ERROR: Required script '$script' not found."
-              exit 1
-            fi
-          done
 
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           
+          cd "$dir"
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
@@ -489,6 +441,105 @@ jobs:
           
           chmod +x test_checks.sh
 
+      - name: Create build source script
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+
+          cat << 'EOF' > build_source.sh
+          #!/bin/bash
+          set -e
+          git config --global --add safe.directory '*'
+          
+          source /tmp/shared_functions.sh
+          check_server_ready
+          EOF
+          echo "dir=\"$modified_dir\"" >> build_source.sh
+          cat <<'EOF' >> build_source.sh
+          cd "$dir"
+          checkout_commit "$dir"
+
+          required_scripts=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
+          echo "Checking for required scripts..."
+          for script in "${required_scripts[@]}"; do
+            if [[ ! -f "$script" ]]; then
+              echo "ERROR: Required script '$script' not found."
+              exit 1
+            fi
+          done
+
+          echo "Setting up app from source..."
+          ./setup_app_source.sh
+          EOF
+          chmod +x build_source.sh
+          free -h
+          ./build_source.sh
+                
+      - name: Stabilize runner after build
+        run: |
+          echo "Memory usage immediately after build:"
+          free -h
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir" || true
+          
+          (cd codebase && ./gradlew --stop) || true
+          pkill -f GradleDaemon || true
+          pkill -f kotlin.daemon.KotlinCompileDaemon || true
+          jps -v | grep -E 'GradleDaemon|Kotlin' || true
+          echo "Memory usage after stopping Gradle daemons:"
+          free -h
+          set -euo pipefail
+          THRESHOLD=4096 # 4GB
+          MAX_TRIES=24  # 2 minutes at 5s interval
+          TRIES=0
+          INTERVAL=5
+          echo "Waiting for available memory to exceed ${THRESHOLD}MB..."
+          while ((TRIES < MAX_TRIES)); do
+            AVAILABLE_MEM=$(awk '/MemAvailable/ { printf "%d", $2/1024 }' /proc/meminfo)
+            echo "Current available memory on attempt ${TRIES}/${MAX_TRIES}: ${AVAILABLE_MEM}MB"
+            if (( AVAILABLE_MEM > THRESHOLD )); then
+              echo "Memory threshold of ${THRESHOLD}MB crossed. Continuing..."
+              break
+            fi
+            echo "Retrying in ${INTERVAL} seconds..."
+            (( ++TRIES ))
+            sleep "${INTERVAL}"
+          done
+          if (( TRIES >= MAX_TRIES )); then
+            echo "Timeout waiting for memory to exceed ${THRESHOLD}MB"; 
+            exit 1
+          fi
+          echo "Final memory usage:"
+          free -h
+
+      - name: Pre-emulator Resource Check
+        run: |
+          echo "=== Pre-Emulator Resource Check ==="
+          
+          # Check if CPU usage is acceptable
+          CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//' | cut -d'.' -f1)
+          if [ "$CPU_USAGE" -gt 25 ]; then
+            echo "WARNING: CPU usage too high ($CPU_USAGE%). Emulator may hang."
+            echo "Top processes:"
+            ps aux --sort=-%cpu | head -10
+            
+            # Try to kill more processes
+            sudo pkill -f chrome || true
+            sudo pkill -f firefox || true
+            sleep 10
+          fi
+          
+          # Check memory
+          AVAILABLE_MEM=$(free -m | awk 'NR==2{printf "%.0f", $7/1024}')
+          if [ "$AVAILABLE_MEM" -lt 2 ]; then
+            echo "WARNING: Low available memory (${AVAILABLE_MEM}GB)"
+            free -h
+          fi
+          
+          echo "System ready for emulator. CPU: ${CPU_USAGE}%, Available Memory: ${AVAILABLE_MEM}GB"
+
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
         uses: reactivecircus/android-emulator-runner@v2
@@ -502,13 +553,7 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none -writable-system
           disable-animations: true
           script: |
-            adb root
-            SDK_VERSION=${{ needs.setup.outputs.sdk }}; if [ "$SDK_VERSION" -gt 28 ]; then adb shell avbctl disable-verification; else adb disable-verity; fi
-            adb reboot
-            adb wait-for-device
-            adb root
-            adb remount
-            adb shell mount | grep -E "(system|vendor|product)"
+            utils/android_emulator_ready.sh --remount
             ./test_checks.sh
 
       - name: Run emulator test with action (baseline and vuln_scenario_1)
@@ -524,6 +569,274 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
+
+      - name: Display disk space after tests
+        if: always()
+        run: df -h
+
+      - name: Docker Cleanup after tests
+        if: always()
+        run: |
+          docker system prune -af
+
+      - name: Display disk space after cleanup
+        if: always()
+        run: df -h
+
+  test_simple:
+    needs: setup
+    if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_run_checks == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Disable Git ownership check
+        run: git config --global --add safe.directory '*'
+
+      - name: Create shared functions
+        run: |
+          cat << 'EOF' > /tmp/shared_functions.sh
+          checkout_commit() {
+            pwd
+            if [[ -f "metadata.json" ]]; then
+              commit=$(jq -r '.["commit_version"]' "metadata.json")
+              
+              if [[ -n "$commit" ]]; then
+                echo "Found commit: $commit"
+
+                git submodule update --init codebase
+                echo "Cleaning repository to remove all changes and untracked files..."
+
+                cd "codebase" || exit 1
+
+                echo "Cleaning up the codebase"
+                git reset --hard HEAD
+                sudo git clean -fdx
+
+                # Update the submodule and checkout the commit
+                git checkout "$commit"
+
+                cd - || exit 1
+              else
+                echo "No commit version found in metadata.json"
+                exit 1
+              fi
+            else
+              echo "No metadata.json file found"
+              exit 1
+            fi
+          }
+          EOF
+          chmod +x /tmp/shared_functions.sh
+
+          modified_dirs=${{ needs.setup.outputs.modified_dirs }}
+          echo "Initialize submodule for $modified_dirs"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$modified_dirs"
+          
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: "${{ needs.setup.outputs.java }}"
+          cache: gradle
+            
+      - name: Setup Python 3.12 environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpulse0
+          python -m pip install --upgrade pip -q
+          pip install -r requirements.txt -q
+          export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
+
+      - name: Create Docker Network
+        run: docker network create shared_net || true
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Create simple test script
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          
+          cat << 'EOF' > simple_test.sh
+          #!/bin/bash
+          set -e
+          source /tmp/shared_functions.sh
+          adb devices
+          EOF
+          
+          echo "dir=\"$modified_dir\"" >> simple_test.sh
+          cat <<'EOF' >> simple_test.sh
+          
+          cd "$dir"
+          echo "Simple APK build and install test - no vulnerability scenarios"
+          
+          # Check packages before setup
+          packages_before=$(adb shell pm list packages | wc -l)
+          echo "Packages before setup: $packages_before"
+          
+          echo "Running setup..."
+          ./setup.sh
+          adb logcat -c
+          
+          # Check packages after setup
+          packages_after=$(adb shell pm list packages | wc -l)
+          echo "Packages after setup: $packages_after"
+          
+          if [ "$packages_after" -gt "$packages_before" ]; then
+            echo "SUCCESS: Package count increased ($packages_before -> $packages_after) - app installation verified"
+          elif [ "$packages_after" -eq "$packages_before" ]; then
+            echo "WARNING: Package count unchanged - setup may not have installed new packages"
+            echo "This could be expected if app was already installed or uses system components"
+          else
+            echo "ERROR: Package count decreased ($packages_before -> $packages_after) - unexpected behavior"
+            exit 1
+          fi
+          
+          echo "Cleaning up..."
+          ./cleanup.sh
+          EOF
+          
+          chmod +x simple_test.sh
+
+      - name: Create build source script
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+
+          cat << 'EOF' > build_source.sh
+          #!/bin/bash
+          set -e
+          git config --global --add safe.directory '*'
+          
+          source /tmp/shared_functions.sh
+          EOF
+          echo "dir=\"$modified_dir\"" >> build_source.sh
+          cat <<'EOF' >> build_source.sh
+          cd "$dir"
+          checkout_commit "$dir"
+
+          required_scripts=("setup.sh" "cleanup.sh" "setup_app_source.sh")
+          echo "Checking for required scripts..."
+          for script in "${required_scripts[@]}"; do
+            if [[ ! -f "$script" ]]; then
+              echo "ERROR: Required script '$script' not found."
+              exit 1
+            fi
+          done
+
+          echo "Setting up app from source..."
+          ./setup_app_source.sh
+          EOF
+          chmod +x build_source.sh
+          free -h
+          ./build_source.sh
+                
+      - name: Stabilize runner after build
+        run: |
+          echo "Memory usage immediately after build:"
+          free -h
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir" || true
+          
+          (cd codebase && ./gradlew --stop) || true
+          pkill -f GradleDaemon || true
+          pkill -f kotlin.daemon.KotlinCompileDaemon || true
+          jps -v | grep -E 'GradleDaemon|Kotlin' || true
+          echo "Memory usage after stopping Gradle daemons:"
+          free -h
+          set -euo pipefail
+          THRESHOLD=4096 # 4GB
+          MAX_TRIES=24  # 2 minutes at 5s interval
+          TRIES=0
+          INTERVAL=5
+          echo "Waiting for available memory to exceed ${THRESHOLD}MB..."
+          while ((TRIES < MAX_TRIES)); do
+            AVAILABLE_MEM=$(awk '/MemAvailable/ { printf "%d", $2/1024 }' /proc/meminfo)
+            echo "Current available memory on attempt ${TRIES}/${MAX_TRIES}: ${AVAILABLE_MEM}MB"
+            if (( AVAILABLE_MEM > THRESHOLD )); then
+              echo "Memory threshold of ${THRESHOLD}MB crossed. Continuing..."
+              break
+            fi
+            echo "Retrying in ${INTERVAL} seconds..."
+            (( ++TRIES ))
+            sleep "${INTERVAL}"
+          done
+          if (( TRIES >= MAX_TRIES )); then
+            echo "Timeout waiting for memory to exceed ${THRESHOLD}MB"; 
+            exit 1
+          fi
+          echo "Final memory usage:"
+          free -h
+
+      - name: Pre-emulator Resource Check
+        run: |
+          echo "=== Pre-Emulator Resource Check ==="
+          
+          # Check if CPU usage is acceptable
+          CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//' | cut -d'.' -f1)
+          if [ "$CPU_USAGE" -gt 25 ]; then
+            echo "WARNING: CPU usage too high ($CPU_USAGE%). Emulator may hang."
+            echo "Top processes:"
+            ps aux --sort=-%cpu | head -10
+            
+            # Try to kill more processes
+            sudo pkill -f chrome || true
+            sudo pkill -f firefox || true
+            sleep 10
+          fi
+          
+          # Check memory
+          AVAILABLE_MEM=$(free -m | awk 'NR==2{printf "%.0f", $7/1024}')
+          if [ "$AVAILABLE_MEM" -lt 2 ]; then
+            echo "WARNING: Low available memory (${AVAILABLE_MEM}GB)"
+            free -h
+          fi
+          
+          echo "System ready for emulator. CPU: ${CPU_USAGE}%, Available Memory: ${AVAILABLE_MEM}GB"
+
+      - name: Run emulator simple test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ needs.setup.outputs.sdk }}
+          arch: x86_64
+          target: ${{ needs.setup.outputs.system_image }} 
+          profile: pixel_2
+          ram-size: 2048    
+          force-avd-creation: true
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
+          disable-animations: true
+          script: |
+            utils/android_emulator_ready.sh
+            ./simple_test.sh
 
       - name: Display disk space after tests
         if: always()

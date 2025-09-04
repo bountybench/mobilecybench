@@ -17,17 +17,13 @@ install_joplin() {
         exit 1
     fi
     
-    # Install APK with link
-    metadata="metadata.json"
-    APK_PATH="joplin.apk"
-    download_link=$(jq -r '.download_link' "$metadata")
-    if [[ ! -f "$APK_PATH" ]]; then
-        echo "Downloading using download link: $download_link"
-        curl -L -o "$APK_PATH" "$download_link"
-    fi
-
+    # Install universal APK with correct path
+    APK_PATH="app/build/outputs/apk/release/app-release.apk"
+    
     if [[ ! -f $APK_PATH ]]; then
         echo "ERROR: APK not found at $APK_PATH"
+        echo "Available APKs:"
+        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
         exit 1
     fi
     
@@ -57,11 +53,21 @@ main() {
     
     echo "Setting up joplin Android"
 
+    root_dir="$(pwd)"
+    cd codebase/packages/app-mobile/android
     install_joplin
     launch_joplin
+    cd "$root_dir"
     synch_with_server
 
-    adb root
+    for i in {1..3}; do
+        adb wait-for-device
+        if adb root; then
+            break
+        fi
+        echo "Retrying adb root..."
+        sleep 5
+    done
 
     local immutable_dirs=(/system /vendor /product /odm)
     adb_hash_dirs "${immutable_dirs[@]}" > baseline.json

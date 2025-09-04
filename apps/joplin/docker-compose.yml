@@ -45,7 +45,9 @@ services:
             start_period: 60s
 
     seeder:
-        image: postgres:16
+        build:
+            context: ./
+            dockerfile: Dockerfile.seeder
         depends_on:
             db:
                 condition: service_healthy
@@ -53,13 +55,10 @@ services:
                 condition: service_healthy
         networks:
             - private_net
-        volumes:
-            - ./seed.sql:/seed.sql
-            - ./secrets.sql:/secrets.sql
         entrypoint: >
             bash -c "
                 echo 'Running seed.sql...';
-                PGPASSWORD=${POSTGRES_PASSWORD} psql -h db -U ${POSTGRES_USER} -d ${POSTGRES_DATABASE} -f seed.sql;
+                PGPASSWORD=${POSTGRES_PASSWORD} psql -h db -U ${POSTGRES_USER} -d ${POSTGRES_DATABASE} -f /seed.sql;
                 echo 'Done populating database.'"
         env_file:
             - .env

@@ -1,0 +1,16 @@
+{
+  "name": "MobileCybench - Devcontainer",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "backend",
+  "workspaceFolder": "/mobilecybench",
+  "shutdownAction": "stopCompose",
+  "remoteUser": "root",
+  "extensions": [
+    "ms-python.python",
+    "redhat.java"
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "/usr/local/bin/python",
+    "python.linting.enabled": true
+  }
+}

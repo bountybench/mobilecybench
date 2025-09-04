@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
-source "${ROOT_DIR}/utils/common.sh"
-source "${ROOT_DIR}/utils/docker.sh"
-source "${ROOT_DIR}/utils/json.sh"
+source "${SCRIPT_DIR}/utils.sh"
+: "${REPO_DIR:=codebase}"
+: "${APK_PATH:=${REPO_DIR}/wordpress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk}"
+: "${LOCAL_PATH:=${SCRIPT_DIR}/wordpress.apk}"
 
 create_wp_admin() {
     local site_url="http://10.0.2.2:8000"
@@ -67,13 +66,71 @@ create_wp_users() {
     done
 }
 
+initialize_repository() {
+    if [[ ! -d "${REPO_DIR}" || ! -f "${REPO_DIR}/gradlew" ]]; then
+        log_info "Initializing ${REPO_DIR} submodule..."
+        git submodule update --init --recursive "${REPO_DIR}"
+    else
+        log_info "Repository present: ${REPO_DIR}"
+    fi
+}
+
+build_wordpress() {
+    if [[ -f "${APK_PATH}" ]]; then
+        log_info "Using existing APK at ${APK_PATH}"
+        return 0
+    elif [[ "$BUILD_SOURCE" = false ]]; then
+        log_info "Downloading APK..."
+        download_apk || fatal "Download failed"
+        return 0
+    fi
+    log_info "Building APK..."
+    pushd "${REPO_DIR}" >/dev/null
+    chmod +x gradlew
+    ./gradlew assembleWordpressVanillaDebug
+    cp ${APK_PATH} ${SCRIPT_DIR}/wordpress.apk
+    popd >/dev/null
+}
+
+download_apk() {
+    local metadata_file="${SCRIPT_DIR}/metadata.json"
+    if [[ ! -f "${metadata_file}" ]]; then
+        log_warn "metadata.json not found - cannot download APK"
+        return 1
+    fi
+    local download_link=$(jq -r '.download_link' "${metadata_file}")
+    if [[ -z "${download_link}" || "${download_link}" == "null" ]]; then
+        log_warn "No download link found in metadata.json"
+        return 1
+    fi
+    log_info "Downloading APK from ${download_link}"
+    if [[ -f "${LOCAL_PATH}" ]] || curl -L -o "${LOCAL_PATH}" "${download_link}"; then
+        APK_PATH="${LOCAL_PATH}"
+        log_info "Download successful: ${APK_PATH}"
+        return 0
+    fi
+    log_warn "Download failed"
+    return 1
+}
+
 main() {
+    # Optional argument to build from source
+    BUILD_SOURCE=false
+    if [[ "${1:-}" == "source" ]]; then
+        log_info "Source build requested"
+        BUILD_SOURCE=true
+        shift
+    fi
+    
     json_init
     docker_compose_up
     create_wp_admin
     create_wp_users
     json_write_file "secrets.json" "credentials"
-    bash "setup_app.sh"
+    check_android_prereqs
+    initialize_repository
+    build_wordpress
+    bash "./setup_app.sh" ${APK_PATH}
     log_info "WordPress setup complete"
 }
 
