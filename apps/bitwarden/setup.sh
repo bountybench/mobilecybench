@@ -11,9 +11,11 @@ echo === RUNNING setup.sh ===
 
 # Install Python requirements
 echo "[INFO] Installing Python requirements with python3..."
+pip uninstall -y apkutils apkutils2 >/dev/null 2>&1 || true
 pip install -r "${BITWARDEN_DIR}/requirements.txt"
 echo "[INFO] Python requirements installed."
 pip show uiautomator2
+python -m uiautomator2 init || true
 
 # Run setup_app.sh to install Bitwarden app
 echo "[INFO] Running setup_app.sh to install Bitwarden app..."
