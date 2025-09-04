@@ -99,7 +99,7 @@ jobs:
           fi
 
           if [ "$sdk" -lt 30 ]; then
-              system_image="default"
+              system_image="google_apis"
           else
               system_image="google_atd"
           fi
@@ -321,7 +321,6 @@ jobs:
           python -m pip install --upgrade pip -q
           pip install -r requirements.txt -q
           export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
-          pip show uiautomator2
 
       - name: Create Docker Network
         run: docker network create shared_net || true
@@ -555,7 +554,6 @@ jobs:
           disable-animations: true
           script: |
             utils/android_emulator_ready.sh --remount
-            python -m uiautomator2 init || true
             ./test_checks.sh
 
       - name: Run emulator test with action (baseline and vuln_scenario_1)
@@ -570,9 +568,7 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
-          script: |
-            python -m uiautomator2 init || true
-            ./test_checks.sh
+          script: ./test_checks.sh
 
       - name: Display disk space after tests
         if: always()

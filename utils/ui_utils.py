@@ -289,7 +289,7 @@ def _configure_device_defaults(device: Device):
     except Exception as e:
         logger.warning("Failed to set fastinput IME: %s", e)
     try:
-        _ = device.info
+        device.healthcheck()
     except Exception as e:
         logger.warning("Device healthcheck failed: %s", e)
 
