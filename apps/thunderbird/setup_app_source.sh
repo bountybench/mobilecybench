@@ -1,14 +1,33 @@
 #!/bin/bash
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
-ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" 
+ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")" 
+
+# Default Android SDK locations (macOS → Linux fallback)
+if [[ -z "${ANDROID_HOME:-}" ]]; then
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    ANDROID_HOME="${HOME}/Library/Android/sdk"
+  else
+    ANDROID_HOME="${HOME}/.android-sdk"
+  fi
+fi
 
 check_prerequisites() {
-  command -v java >/dev/null 2>&1 || { echo "ERROR: Java not found"; exit 1; }
-  command -v adb  >/dev/null 2>&1 || { echo "ERROR: adb not found"; exit 1; }
-  [[ -d "$ANDROID_HOME" ]] || { echo "ERROR: Android SDK not found at $ANDROID_HOME"; exit 1; }
+  echo "Checking prerequisites..."
+ 
+  if ! command -v java >/dev/null 2>&1; then
+    echo "ERROR: Java not found"
+    exit 1
+  fi
+
+  if [[ ! -d "$ANDROID_HOME" ]]; then
+    echo "ERROR: Android SDK not found at $ANDROID_HOME"
+    echo "Please install or set ANDROID_HOME to a valid SDK path."
+    exit 1
+  fi
+
+  echo "Prerequisites verified."
 }
 
 enter_codebase() {
@@ -20,32 +39,61 @@ enter_codebase() {
 }
 
 setup_environment() {
-  export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+  echo "Setting up build environment..." 
+
+  export ANDROID_HOME="$ANDROID_HOME"
+  [[ -d "$ANDROID_HOME/platform-tools" ]] && export PATH="$ANDROID_HOME/platform-tools:$PATH"
+  [[ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]] && export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+  [[ -d "$ANDROID_HOME/emulator" ]] && export PATH="$ANDROID_HOME/emulator:$PATH"
+
   echo "sdk.dir=$ANDROID_HOME" > local.properties
+  echo "Environment configured."
 }
 
-build_from_source() {
+build_from_source() { 
+  echo "Building from source..."
   ./gradlew --no-daemon clean assembleDebug \
     -Dorg.gradle.jvmargs="-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8"
+  echo "Build completed successfully."
 }
 
-install_thunderbird() {
-  adb devices | grep -q "device\|emulator" || { echo "ERROR: No emulator found"; exit 1; }
+install_thunderbird() { 
+  echo "Installing on emulator/device..." 
+  if ! command -v adb >/dev/null 2>&1; then
+    echo "ERROR: adb not found. Ensure platform-tools are installed and on PATH."
+    exit 1
+  fi
+
+  adb start-server >/dev/null 2>&1 || true
+  if ! adb devices | grep -q "device\|emulator"; then
+    echo "ERROR: No emulator/device found. Please start one first."
+    exit 1
+  fi
+
   APK_PATH="app-thunderbird/build/outputs/apk/full/debug/app-thunderbird-full-debug.apk"
-  [[ -f "$APK_PATH" ]] || { echo "ERROR: APK not found at $APK_PATH"; exit 1; }
-  adb install "$APK_PATH"
+  if [[ ! -f "$APK_PATH" ]]; then
+    echo "ERROR: APK not found at $APK_PATH"
+    echo "Available APKs under build/outputs:"
+    find . -path '*build/outputs/apk*' -name '*.apk' -type f 2>/dev/null | head -10 || true
+    exit 1
+  fi
+
+  adb install -r -g "$APK_PATH"
+  echo "App installed successfully."
 }
 
 synch_with_server() {
+  echo "Syncing with server via uiautomator2..."
   cd "$SCRIPT_DIR"
   pip install -q uiautomator2
   USERNAME="$(jq -r '.username' metadata.json)"
   PASSWORD="$(jq -r '.password' metadata.json)"
-  python synch_app.py --username "$USERNAME" --password "$PASSWORD"
+  python synch_app.py --username "$USERNAME" --password "$PASSWORD" 
 }
 
 launch_thunderbird() {
-  adb shell monkey -p net.thunderbird.android -c android.intent.category.LAUNCHER 1
+  echo "Launching Thunderbird..."
+  adb shell monkey -p net.thunderbird.android -c android.intent.category.LAUNCHER 1 
 }
 
 main() {
