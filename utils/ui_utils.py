@@ -56,7 +56,6 @@ def initialize_ui_automation(
     max_retries: int = UI_RETRIES, retry_delay: int = RETRY_INTERVAL
 ) -> Device:
     """Connect to a device with uiautomator2."""
-    subprocess.run(["pip", "show", "uiautomator2"], check=True)
     try:
         _preflight_emulator_readiness()
     except Exception as e:
