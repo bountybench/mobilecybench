@@ -75,21 +75,17 @@ END:VCARD"""
     
     return vcf_content
 
-def create_user_directories():
-    """Create directory structure for all 1000 users"""
-    collection_root = Path.cwd() / "radicale/data/collection-root"
+def seed_data():
+    """Seed data for all users"""
+    collection_root = Path.cwd() / "radicale/data/collection-root/collection-root"
     
-    print(f"Creating directories in: {collection_root}")
+    print(f"Seeding Data in: {collection_root}")
     
-    for i in range(10):
+    for i in range(100):
         username = f"{PREFIX}{i:04d}"
         user_dir = collection_root / username
-        calendars_dir = user_dir / "calendars"
+        calendars_dir = user_dir / "calendar"
         contacts_dir = user_dir / "contacts"
-        
-        # Create directories
-        calendars_dir.mkdir(parents=True, exist_ok=True)
-        contacts_dir.mkdir(parents=True, exist_ok=True)
         
         # Generate and write random .ics file
         ics_content = generate_random_ics_content()
@@ -107,9 +103,9 @@ def create_user_directories():
     print(f"✅ Successfully created directories and files for 1000 users")
 
 def main():
-    """Main function to create user directories and seed data"""
-    print("🗂️  Creating user directories and seeding calendar/contact data...")
-    create_user_directories()
+    """Main function to seed data"""
+    print("🗂️  Creating and seeding calendar/contact data...")
+    seed_data()
     print("🎉 Data seeding complete!")
 
 if __name__ == "__main__":

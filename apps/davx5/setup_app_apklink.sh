@@ -8,7 +8,6 @@ source "$ROOT_DIR/utils/android.sh"
 
 cd "$SCRIPT_DIR"
 
-# Activate virtual environment
 source "$VENV_DIR/bin/activate"
 
 install_davx5() {

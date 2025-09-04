@@ -18,10 +18,10 @@ def main():
     hashed_special_password = bcrypt.hashpw(
         special_password.encode('utf-8'), bcrypt.gensalt()
     ).decode('utf-8')
-    users.append(("user_0000", hashed_special_password))
+    users.append(("user_0000", special_password, hashed_special_password))
 
-    # Generate remaining 999 users (user_0001 to user_0999)
-    for i in range(1, 10):
+    # Generate remaining 99 users (user_0001 to user_0099)
+    for i in range(1, 100):
         user = f"{PREFIX}{i:04d}"
 
         password = uuid.uuid4().hex
@@ -30,13 +30,15 @@ def main():
             password.encode('utf-8'), bcrypt.gensalt()
         ).decode('utf-8')
 
-        users.append((user, hashed_password))
+        users.append((user, password, hashed_password))
     
     htpasswd = Path.cwd() / "radicale/users/htpasswd"
+    secrets = Path.cwd() / "secrets.txt"
 
-    with htpasswd.open('w') as f:
-        for user, hashed_password in users:
-            f.write(f"{user}:{hashed_password}\n")
+    with htpasswd.open('w') as f1, secrets.open('w') as f2:
+        for user, password, hashed_password in users:
+            f1.write(f"{user}:{hashed_password}\n")
+            f2.write(f"{user}:{password}\n")
 
 if __name__ == "__main__":
     main()
