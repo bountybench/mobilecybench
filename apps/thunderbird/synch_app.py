@@ -21,10 +21,12 @@ args = parser.parse_args()
 
 # Load from metadata if args not provided
 try:
-    metadata_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "metadata.json")
+    metadata_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "metadata.json"
+    )
     with open(metadata_path) as f:
         metadata = json.load(f)
-    
+
     EMAIL = args.username or metadata.get("username", "usera@test.com")
     PASS = args.password or metadata.get("password", "userAPW123")
     HOST = args.host or "10.0.2.2"  # Default to emulator localhost
@@ -46,6 +48,7 @@ d = u2.connect()
 d.app_start(PKG)
 d.wait_timeout = 15  # Set global timeout to 15 seconds
 
+
 def wait_for_ui_stable(timeout=10, interval=0.5):
     """
     Wait until the UI hierarchy stops changing.
@@ -61,6 +64,7 @@ def wait_for_ui_stable(timeout=10, interval=0.5):
         time.sleep(interval)
     return False
 
+
 def wait_and_click_text(text, timeout=45):
     """Wait for text to appear and click it"""
     print(f"[INFO] Waiting for text: '{text}'", file=sys.stderr)
@@ -68,10 +72,13 @@ def wait_and_click_text(text, timeout=45):
         d(text=text).click_exists(timeout=3)
         print(f"[INFO] Clicked: '{text}'", file=sys.stderr)
     else:
-        print(f"[ERROR] Could not find text: '{text}' within {timeout}s", file=sys.stderr)
+        print(
+            f"[ERROR] Could not find text: '{text}' within {timeout}s", file=sys.stderr
+        )
         print(d.dump_hierarchy(), file=sys.stderr)
         exit(1)
     wait_for_ui_stable(timeout=5)
+
 
 def wait_and_click_desc(desc, timeout=45):
     """Wait for element with description to appear and click it"""
@@ -80,10 +87,14 @@ def wait_and_click_desc(desc, timeout=45):
         d(description=desc).click_exists(timeout=3)
         print(f"[INFO] Clicked description: '{desc}'", file=sys.stderr)
     else:
-        print(f"[ERROR] Could not find description: '{desc}' within {timeout}s", file=sys.stderr)
+        print(
+            f"[ERROR] Could not find description: '{desc}' within {timeout}s",
+            file=sys.stderr,
+        )
         print(d.dump_hierarchy(), file=sys.stderr)
         exit(1)
     wait_for_ui_stable(timeout=5)
+
 
 def tap_if_exists(text=None, desc=None, id=None, timeout=5):
     """Try to tap an element if it exists"""
@@ -104,10 +115,18 @@ def tap_if_exists(text=None, desc=None, id=None, timeout=5):
         return True
     return False
 
-def type_text(text_to_type, field_text=None, field_id=None, field_desc=None, field_class=None, field_index=0):
+
+def type_text(
+    text_to_type,
+    field_text=None,
+    field_id=None,
+    field_desc=None,
+    field_class=None,
+    field_index=0,
+):
     """Type text into a field identified by various properties"""
     target = None
-    
+
     if field_text:
         if d(text=field_text).exists:
             # Try to find editable sibling
@@ -124,7 +143,7 @@ def type_text(text_to_type, field_text=None, field_id=None, field_desc=None, fie
             target = d(className=field_class, instance=field_index)
         else:
             target = d(className=field_class)
-    
+
     if target and target.exists:
         target.click()
         time.sleep(1)
@@ -133,17 +152,19 @@ def type_text(text_to_type, field_text=None, field_id=None, field_desc=None, fie
         d.send_keys(text_to_type)
         print(f"[INFO] Typed: '{text_to_type}'", file=sys.stderr)
         return True
-    
-    print(f"[WARNING] Could not find text field to type: '{text_to_type}'", file=sys.stderr)
+
+    print(
+        f"[WARNING] Could not find text field to type: '{text_to_type}'",
+        file=sys.stderr,
+    )
     return False
+
 
 def handle_security_warning():
     """Handle security warnings related to self-signed certificates"""
     # Try different text variations that could appear in security warning dialogs
-    security_buttons = [
-        "Accept risk and continue", "Advanced"
-    ]
-    
+    security_buttons = ["Accept risk and continue", "Advanced"]
+
     for button in security_buttons:
         if tap_if_exists(text=button):
             print(f"[INFO] Handled security warning with: '{button}'", file=sys.stderr)
@@ -151,18 +172,19 @@ def handle_security_warning():
             return True
     return False
 
+
 def setup_incoming_server():
     """
     Handle the incoming server settings page. This function tries multiple methods
     to identify and fill in the server hostname and password fields.
     """
     print("[INFO] Setting up incoming server", file=sys.stderr)
-    wait_for_ui_stable(timeout=5)   
-    
+    wait_for_ui_stable(timeout=5)
+
     # Try by field index first after handling potential dropdowns
     edit_texts = d(className="android.widget.EditText")
     print(f"[INFO] Found {edit_texts.count} EditText fields", file=sys.stderr)
-    
+
     if edit_texts.count >= 1:
         # The server field should now be accessible at index 0
         server_field = d(className="android.widget.EditText", instance=1)
@@ -172,30 +194,37 @@ def setup_incoming_server():
             server_field.set_text("")
             time.sleep(1)
             d.send_keys(HOST)
-            print(f"[INFO] Typed server hostname using index method: '{HOST}'", file=sys.stderr) 
-       
+            print(
+                f"[INFO] Typed server hostname using index method: '{HOST}'",
+                file=sys.stderr,
+            )
+
         password_field = d(className="android.widget.EditText", instance=6)
-        if password_field.exists:   
+        if password_field.exists:
             password_field.click()
             time.sleep(1)
             password_field.set_text("")
             time.sleep(1)
             d.send_keys(PASS)
-            print(f"[INFO] Typed password using index method", file=sys.stderr) 
+            print(f"[INFO] Typed password using index method", file=sys.stderr)
+
 
 def setup_outgoing_server():
     """
     Handle the outgoing server settings page. This function uses EditText indexing
-    to identify and fill in the server hostname and other fields. 
+    to identify and fill in the server hostname and other fields.
     """
     print("[INFO] Setting up outgoing server", file=sys.stderr)
     wait_for_ui_stable(timeout=5)
-    
+
     # Try by field index first
     edit_texts = d(className="android.widget.EditText")
-    print(f"[INFO] Found {edit_texts.count} EditText fields for outgoing server", file=sys.stderr)
-    
-    if edit_texts.count >= 1: 
+    print(
+        f"[INFO] Found {edit_texts.count} EditText fields for outgoing server",
+        file=sys.stderr,
+    )
+
+    if edit_texts.count >= 1:
         server_field = d(className="android.widget.EditText", instance=0)
         if server_field.exists:
             server_field.click()
@@ -203,8 +232,11 @@ def setup_outgoing_server():
             server_field.set_text("")
             time.sleep(1)
             d.send_keys(HOST)
-            print(f"[INFO] Typed outgoing server hostname using index method: '{HOST}'", file=sys.stderr)
-         
+            print(
+                f"[INFO] Typed outgoing server hostname using index method: '{HOST}'",
+                file=sys.stderr,
+            )
+
         # Password field - index might need adjustment
         password_field = d(className="android.widget.EditText", instance=5)
         if password_field.exists:
@@ -213,113 +245,120 @@ def setup_outgoing_server():
             password_field.set_text("")
             time.sleep(1)
             d.send_keys(PASS)
-            print(f"[INFO] Typed password using index method", file=sys.stderr) 
+            print(f"[INFO] Typed password using index method", file=sys.stderr)
+
 
 def setup_display_options():
     """
     Handle the display options page. This function uses EditText indexing
     to identify and fill in the account name and your name* fields.
     """
-    print("[INFO] Setting up display options", file=sys.stderr) 
+    print("[INFO] Setting up display options", file=sys.stderr)
     account_name_field = d(className="android.widget.EditText", instance=0)
     if account_name_field.exists:
-            account_name_field.click()
-            time.sleep(1)
-            account_name_field.set_text("")
-            time.sleep(1)
-            d.send_keys(EMAIL)
-            print(f"[INFO] Typed account name using index method: '{EMAIL}'", file=sys.stderr) 
+        account_name_field.click()
+        time.sleep(1)
+        account_name_field.set_text("")
+        time.sleep(1)
+        d.send_keys(EMAIL)
+        print(
+            f"[INFO] Typed account name using index method: '{EMAIL}'", file=sys.stderr
+        )
     your_name_field = d(className="android.widget.EditText", instance=1)
     if your_name_field.exists:
-            your_name_field.click()
-            time.sleep(1)
-            your_name_field.set_text("")
-            time.sleep(1)
-            d.send_keys(EMAIL)
-            print(f"[INFO] Typed your name* using index method: '{EMAIL}'", file=sys.stderr)
+        your_name_field.click()
+        time.sleep(1)
+        your_name_field.set_text("")
+        time.sleep(1)
+        d.send_keys(EMAIL)
+        print(f"[INFO] Typed your name* using index method: '{EMAIL}'", file=sys.stderr)
     signature_field = d(className="android.widget.EditText", instance=2)
     if signature_field.exists:
-            signature_field.click()
-            time.sleep(1)
-            signature_field.set_text("")
-            time.sleep(1)
-            d.send_keys(EMAIL)
-            print(f"[INFO] Typed email signature using index method: '{EMAIL}'", file=sys.stderr)
-    
-    
+        signature_field.click()
+        time.sleep(1)
+        signature_field.set_text("")
+        time.sleep(1)
+        d.send_keys(EMAIL)
+        print(
+            f"[INFO] Typed email signature using index method: '{EMAIL}'",
+            file=sys.stderr,
+        )
+
+
 def main():
     print("[INFO] Starting Thunderbird account setup", file=sys.stderr)
     wait_for_ui_stable(timeout=10)
-    
-    # Click "Get started" button     
-    tap_if_exists(text="Get started") 
-      
+
+    # Click "Get started" button
+    tap_if_exists(text="Get started")
+
     # d(className="android.widget.Button", textContains="start").click()
-    
+
     # Wait longer after clicking the button
     wait_for_ui_stable(timeout=10)
-        
+
     # Add email account
     tap_if_exists(text="Add an email account now")
     wait_for_ui_stable()
-    
+
     # Enter email address
     type_text(EMAIL, field_text="Email address")
     time.sleep(2)
-    
+
     # Click Next
-    tap_if_exists(text="Next") 
+    tap_if_exists(text="Next")
     wait_for_ui_stable(timeout=10)
-    
+
     # Handle "Configuration not found" by clicking Next again
     time.sleep(15)  # Wait a bit to see if config not found appears
-    tap_if_exists(text="Next", timeout=3)  
+    tap_if_exists(text="Next", timeout=3)
     wait_for_ui_stable(timeout=5)
-    
+
     # Setup incoming server settings using the dedicated function
     setup_incoming_server()
-    
+
     # Click Next
-    tap_if_exists(text="Next")  
+    tap_if_exists(text="Next")
     wait_for_ui_stable()
-    
+
     # Handle security warnings
     handle_security_warning()
     wait_for_ui_stable()
-    handle_security_warning() 
-    
+    handle_security_warning()
+
     # Setup outgoing server settings using the dedicated function
     setup_outgoing_server()
-    
+
     # Click Next
-    tap_if_exists(text="Next") 
+    tap_if_exists(text="Next")
     wait_for_ui_stable()
-    
+
     # Handle security warnings
     handle_security_warning()
     wait_for_ui_stable()
     handle_security_warning()
     wait_for_ui_stable()
-    
+
     # Next for account options
-    tap_if_exists(text="Next") 
+    tap_if_exists(text="Next")
     wait_for_ui_stable()
-     
+
     # Setup display options using the dedicated function
     setup_display_options()
-    
+
     # Final next
-    tap_if_exists(text="Next") 
+    tap_if_exists(text="Next")
     wait_for_ui_stable()
-    tap_if_exists(text="Next") 
+    tap_if_exists(text="Next")
     wait_for_ui_stable()
-    
-    # Skip if presented  
+
+    # Skip if presented
     wait_for_ui_stable(15)
-    tap_if_exists(text="Skip")  
-    
+    tap_if_exists(text="Skip")
+
     print("[INFO] Thunderbird account setup completed successfully", file=sys.stderr)
     return 0
+
 
 if __name__ == "__main__":
     try:
@@ -327,5 +366,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"[ERROR] Unhandled exception: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc(file=sys.stderr)
         exit(1)
