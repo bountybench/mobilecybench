@@ -42,13 +42,13 @@ setup_matrix_server() {
     cd "$SCRIPT_DIR"
     docker-compose up -d --build
     
-    # Wait for server
+    # Wait for server (longer timeout for ephemeral setup)
     info "Waiting for Matrix server..."
-    for i in {1..12}; do
+    for i in {1..18}; do
         if curl -sf http://localhost:8008/_matrix/client/versions >/dev/null 2>&1; then
             info "Matrix server ready"
             break
-        elif [[ $i -eq 12 ]]; then
+        elif [[ $i -eq 18 ]]; then
             error "Matrix server failed to start"
         fi
         sleep 5
@@ -76,10 +76,14 @@ install_and_launch_app() {
     info "Installing: $(basename "$APK_PATH")"
     adb install -r "$APK_PATH" || error "APK installation failed"
     
-    # Launch app
+    # Clear app data and launch fresh
+    info "Clearing Element X app data for fresh start..."
+    adb shell am force-stop io.element.android.x.debug 2>/dev/null || true
+    adb shell pm clear io.element.android.x.debug 2>/dev/null || true
+    
     info "Launching Element X..."
     adb shell am start -n io.element.android.x.debug/io.element.android.x.MainActivity
-    sleep 3
+    sleep 5
     
     # Attempt login
     info "Attempting automatic login..."
