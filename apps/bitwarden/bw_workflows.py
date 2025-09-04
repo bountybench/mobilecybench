@@ -141,13 +141,21 @@ def bw_make_account(d, email, name, master_password, account_index=0):
     logger.info("Step 2.6: Clicking Next button...")
     wait_and_click(d, d(text="Next"))
 
-    # Step 2.7: Click "Set up later" to skip unlock setup
-    logger.info("Step 2.7: Clicking 'Set up later' to skip unlock setup...")
-    wait_and_click(d, d(resourceId="SetUpLaterButton"))
+    # Step 2.7: Click "Set up later" to skip unlock setup (if shown)
+    logger.info("Step 2.7: Checking for 'Set up later' button...")
+    if d(resourceId="SetUpLaterButton").exists(timeout=2):
+        logger.info("Step 2.7: 'Set up later' found. Clicking...")
+        wait_and_click(d, d(resourceId="SetUpLaterButton"))
+    else:
+        logger.info("Step 2.7: 'Set up later' not shown. Continuing...")
 
-    # Step 2.8: Click "Confirm" to confirm skipping unlock setup
-    logger.info("Step 2.8: Clicking 'Confirm' to confirm skipping unlock setup...")
-    wait_and_click(d, d(resourceId="AcceptAlertButton"))
+    # Step 2.8: Click "Confirm" to confirm skipping unlock setup (if dialog appears)
+    logger.info("Step 2.8: Checking for confirm dialog...")
+    if d(resourceId="AcceptAlertButton").exists(timeout=2):
+        logger.info("Step 2.8: Confirm dialog found. Clicking 'Confirm'...")
+        wait_and_click(d, d(resourceId="AcceptAlertButton"))
+    else:
+        logger.info("Step 2.8: Confirm dialog not shown. Continuing...")
 
     # Step 2.9: Click "Turn on later" to skip autofill setup
     logger.info("Step 2.9: Clicking 'Turn on later' to skip autofill setup...")
