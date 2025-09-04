@@ -11,48 +11,100 @@ EMULATOR_NAME="MobileCybenchEmu"
 DEFAULT_SDK_VERSION=35
 DEFAULT_SYSTEM_IMAGE="google_apis"
 
+# Load app metadata if app name provided
+load_app_metadata() {
+    local app_name="$1"
+    local metadata_file="${SCRIPT_DIR}/apps/${app_name}/metadata.json"
+    
+    if [[ -f "$metadata_file" ]]; then
+        local app_sdk=$(python3 -c "import json; data=json.load(open('$metadata_file')); print(data.get('sdk', '$DEFAULT_SDK_VERSION'))" 2>/dev/null || echo "$DEFAULT_SDK_VERSION")
+        echo "$app_sdk"
+    else
+        echo "$DEFAULT_SDK_VERSION"
+    fi
+}
+
 # Parse command line arguments
+APP_NAME=""
 SDK_VERSION="$DEFAULT_SDK_VERSION"
 SYSTEM_IMAGE_TYPE="$DEFAULT_SYSTEM_IMAGE"
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --sdk)
-            SDK_VERSION="$2"
-            shift 2
-            ;;
-        --sdk=*)
-            SDK_VERSION="${1#*=}"
-            shift
-            ;;
-        --system-image)
-            SYSTEM_IMAGE_TYPE="$2"
-            shift 2
-            ;;
-        --system-image=*)
-            SYSTEM_IMAGE_TYPE="${1#*=}"
-            shift
-            ;;
-        -h|--help)
-            echo "Usage: $0 [--sdk SDK_VERSION] [--system-image SYSTEM_IMAGE_TYPE]"
-            echo "  --sdk SDK_VERSION              Android SDK version to use (default: $DEFAULT_SDK_VERSION)"
-            echo "  --system-image SYSTEM_IMAGE    System image type (default: $DEFAULT_SYSTEM_IMAGE)"
-            echo "                                 Options: google_apis, google_apis_playstore, default, aosp_atd"
-            echo "  -h, --help                     Show this help message"
-            echo ""
-            echo "Examples:"
-            echo "  $0                                    # Use defaults (SDK $DEFAULT_SDK_VERSION, $DEFAULT_SYSTEM_IMAGE)"
-            echo "  $0 --sdk 30                          # Use SDK 30 with default system image"
-            echo "  $0 --system-image google_apis_playstore  # Use Play Store system image"
-            echo "  $0 --sdk 29 --system-image default   # Use SDK 29 with default system image"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Use -h or --help for usage information"
-            exit 1
-            ;;
-    esac
-done
+
+# Check if first argument is an app name (no dashes, exists in apps/ directory)
+if [[ $# -gt 0 && "$1" != -* && -d "${SCRIPT_DIR}/apps/$1" ]]; then
+    APP_NAME="$1"
+    SDK_VERSION=$(load_app_metadata "$APP_NAME")
+    SYSTEM_IMAGE_TYPE="$DEFAULT_SYSTEM_IMAGE"
+    # No further argument parsing allowed for app mode
+else
+    # Standard flag parsing mode
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --sdk)
+                SDK_VERSION="$2"
+                shift 2
+                ;;
+            --sdk=*)
+                SDK_VERSION="${1#*=}"
+                shift
+                ;;
+            --system-image)
+                SYSTEM_IMAGE_TYPE="$2"
+                shift 2
+                ;;
+            --system-image=*)
+                SYSTEM_IMAGE_TYPE="${1#*=}"
+                shift
+                ;;
+            -h|--help)
+                echo "Usage: $0"
+                echo "   or: $0 APP_NAME"
+                echo "   or: $0 [--sdk SDK_VERSION] [--system-image SYSTEM_IMAGE_TYPE]"
+                echo ""
+                echo "Mode 1: Use defaults (SDK $DEFAULT_SDK_VERSION, $DEFAULT_SYSTEM_IMAGE)"
+                echo "Mode 2: Auto-configure from app metadata (Recommended)"
+                echo "Mode 3: Manual SDK and system image configuration"
+                echo ""
+                echo "Arguments:"
+                echo "  APP_NAME                       App name from apps/ directory (uses SDK from metadata)"
+                echo "  --sdk SDK_VERSION              Android SDK version (default: $DEFAULT_SDK_VERSION)"
+                echo "  --system-image SYSTEM_IMAGE    System image type (default: $DEFAULT_SYSTEM_IMAGE)"
+                echo "  -h, --help                     Show this help message"
+                echo ""
+                echo "Available apps:"
+                if [[ -d "${SCRIPT_DIR}/apps" ]]; then
+                    for app_dir in "${SCRIPT_DIR}/apps"/*; do
+                        if [[ -d "$app_dir" && -f "$app_dir/metadata.json" ]]; then
+                            app_name=$(basename "$app_dir")
+                            app_sdk=$(python3 -c "import json; data=json.load(open('$app_dir/metadata.json')); print(data.get('sdk', 'N/A'))" 2>/dev/null || echo "N/A")
+                            echo "  $app_name (SDK $app_sdk)"
+                        fi
+                    done
+                fi
+                echo ""
+                echo "Examples:"
+                echo "  $0                                    # Use defaults (SDK $DEFAULT_SDK_VERSION, $DEFAULT_SYSTEM_IMAGE)"
+                echo "  $0 conversations                      # Use conversations app (SDK 35, google_apis)"
+                echo "  $0 owncloud-android                   # Use owncloud-android app (SDK 34, google_apis)"
+                echo "  $0 wordpress                          # Use wordpress app (SDK 35, google_apis)"
+                echo "  $0 --sdk 30                           # Use SDK 30 with default system image"
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1"
+                echo "Available apps:"
+                if [[ -d "${SCRIPT_DIR}/apps" ]]; then
+                    for app_dir in "${SCRIPT_DIR}/apps"/*; do
+                        if [[ -d "$app_dir" && -f "$app_dir/metadata.json" ]]; then
+                            echo "  $(basename "$app_dir")"
+                        fi
+                    done
+                fi
+                echo "Use -h or --help for usage information"
+                exit 1
+                ;;
+        esac
+    done
+fi
 
 # Logging function
 log() {
