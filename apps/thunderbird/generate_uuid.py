@@ -24,5 +24,4 @@ secrets = generate_secrets(template, include_password_hash=True)
 
 # Write to JSON files 
 write_secrets_json(secrets, ".")
-
-print("✅ Secrets written to secrets.json")
+ 
