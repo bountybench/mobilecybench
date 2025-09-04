@@ -16,3 +16,6 @@
 [submodule "apps/davx5/codebase"]
 	path = apps/davx5/codebase
 	url = git@github.com:cy-suite/DAVx5.git
+[submodule "apps/conversations/codebase"]
+	path = apps/conversations/codebase
+	url = https://github.com/cy-suite/conversations.git
