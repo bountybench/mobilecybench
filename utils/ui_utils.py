@@ -186,7 +186,7 @@ def wait_and_set_text(
 
 def wait_for_ui_stable(
     d: Device,
-    min_consecutive: int = 5,
+    min_consecutive: int = 3,
     retry_delay: int = RETRY_INTERVAL,
     timeout: int = SHORT_TIMEOUT,
 ) -> bool:
