@@ -672,7 +672,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libpulse0
           python -m pip install --upgrade pip -q
-          pip install --no-cache-dir --force-reinstall -r requirements.txt -q
+          pip install -r requirements.txt -q
           export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
 
       - name: Create Docker Network

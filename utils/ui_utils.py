@@ -114,32 +114,14 @@ def wait_and_click(d: Device, element: UiObject, timeout: int = MAX_TIMEOUT) -> 
                 logger.info("Clicked element %s", element.selector)
                 wait_for_ui_stable(d)
                 return True
-
-            # Element is present but not clickable; this is unlikely to be stale-related
-            try:
-                elem_info = element.info
-                clickable = elem_info.get("clickable")
-                enabled = elem_info.get("enabled")
-            except Exception:
-                clickable = enabled = "<unavailable>"
-
-            message = (
-                f"Found element '{element.selector}' but it could not be clicked.\n"
-                f"  - Clickable: {clickable}, Enabled: {enabled}"
-            )
-            _fatal(d, message)
+            else:  # Element is present but not clickable (timeout exceeded)
+                _fatal(
+                    d,
+                    f"Found element '{element.selector}' but it could not be clicked.",
+                )
 
         except Exception as click_error:
-            # Guard against redraws causing stale object exceptions between find and click
-            try:
-                _click_err_msg = str(click_error).lower()
-            except Exception:
-                _click_err_msg = ""
-
-            is_stale = "staleobjectexception" in _click_err_msg or (
-                "unknown rpc error" in _click_err_msg and "-32001" in _click_err_msg
-            )
-            if is_stale:
+            if "staleobjectexception" in str(click_error).lower():
                 logger.debug(
                     "Click failed due to stale object (attempt %s/%s) for %s: %s",
                     attempt_index,
@@ -147,27 +129,24 @@ def wait_and_click(d: Device, element: UiObject, timeout: int = MAX_TIMEOUT) -> 
                     element.selector,
                     click_error,
                 )
-                # Refresh UI snapshot and wait briefly for stability before retrying
-                try:
-                    _ = d.dump_hierarchy()
-                except Exception:
-                    pass
-                wait_for_ui_stable(d)
-
-                if attempt_index < UI_RETRIES:
-                    time.sleep(RETRY_INTERVAL)
-                    continue
-                else:
-                    _fatal(
-                        d,
-                        (
-                            f"Failed to click element '{element.selector}' due to repeated stale object "
-                            f"exceptions after {UI_RETRIES} attempts"
-                        ),
-                    )
             else:
-                # Not a stale exception; re-raise to preserve original error handling upstream
-                raise
+                logger.debug(
+                    "Click failed due to non-stale error (attempt %s/%s) for %s: %s",
+                    attempt_index,
+                    UI_RETRIES,
+                    element.selector,
+                    click_error,
+                )
+
+            if attempt_index < UI_RETRIES:
+                wait_for_ui_stable(d)
+                time.sleep(RETRY_INTERVAL)
+                continue
+            else:
+                _fatal(
+                    d,
+                    f"Failed to click element '{element.selector}' after {UI_RETRIES} attempts",
+                )
 
 
 def wait_and_set_text(
