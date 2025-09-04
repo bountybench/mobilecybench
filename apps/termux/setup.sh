@@ -8,11 +8,14 @@ APK_PATH="termux-debug.apk"
 if [ ! -f "$APK_PATH" ]; then
     echo "APK not found, building it now..."
     echo "Running setup_app_source.sh to build APK..."
-    ./setup_app_source.sh
+    if ! ./setup_app_source.sh; then
+        echo "Error: setup_app_source.sh failed"
+        exit 1
+    fi
     
     # Check if build was successful
     if [ ! -f "$APK_PATH" ]; then
-        echo "Error: APK build failed"
+        echo "Error: APK build failed - APK not found"
         exit 1
     fi
     echo "APK built successfully"
@@ -62,14 +65,8 @@ else
     echo "Termux app may not be fully accessible (this is normal for initial setup)"
 fi
 
-# Ensure Termux creates its expected directory structure
-echo "Initializing Termux filesystem..."
-adb shell "run-as com.termux mkdir -p files/home files/usr files/tmp" >/dev/null 2>&1 || true
-adb shell "run-as com.termux chmod 700 files/home files/usr files/tmp" >/dev/null 2>&1 || true
-
-# Create minimal expected files if they don't exist
-adb shell "run-as com.termux touch files/home/.bashrc" >/dev/null 2>&1 || true
-adb shell "run-as com.termux touch files/home/.profile" >/dev/null 2>&1 || true
+# Termux will create its own directory structure when it starts
+# No need to manually create directories or files
 
 echo "Termux setup completed successfully!"
 echo "APK: $APK_PATH"

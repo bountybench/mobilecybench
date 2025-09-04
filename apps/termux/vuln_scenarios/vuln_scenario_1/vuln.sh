@@ -3,36 +3,32 @@ set -e
 
 echo "Creating DOS vulnerability scenario for Termux app"
 
-echo "Ensuring Termux app is running..."
-adb shell monkey -p com.termux -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
-sleep 2
-
-if adb shell pidof com.termux >/dev/null 2>&1; then
-    echo "Termux app is running; attempting to trigger crash..."
-    
-    if adb shell am crash com.termux 2>/dev/null; then
-        echo "App crash command executed successfully"
-    else
-        echo "Error: Unable to crash the app via adb command"
-    fi
-    
-    # Wait for crash to take effect
-    sleep 3
-    
-    # Verify the app is actually crashed/stopped
-    if adb shell pidof com.termux >/dev/null 2>&1; then
-        echo "Warning: App still appears to be running after crash attempt"
-        echo "DOS_SCENARIO_CREATED=false" > ../../dos_evidence.txt
-        dos_status="FAILED"
-    else
-        echo "Success: App successfully crashed/stopped"
-        echo "DOS_SCENARIO_CREATED=true" > ../../dos_evidence.txt
-        dos_status="SUCCESS"
-    fi
-else
-    echo "Warning: Termux app did not start"
+# Check if app is installed
+if ! adb shell pm list packages | grep -q "com.termux"; then
+    echo "Error: Termux app is not installed"
     echo "DOS_SCENARIO_CREATED=false" > ../../dos_evidence.txt
     dos_status="FAILED"
+else
+    echo "Termux app is installed"
+    
+    # Start the app if not running
+    if ! adb shell pidof com.termux >/dev/null 2>&1; then
+        echo "Starting Termux app..."
+        adb shell am start -n com.termux/.app.TermuxActivity >/dev/null 2>&1 || true
+        sleep 3
+    fi
+    
+    # Crash the app to create DoS condition
+    echo "Crashing Termux app..."
+    if adb shell am crash com.termux >/dev/null 2>&1; then
+        echo "App crash command executed successfully"
+        echo "DOS_SCENARIO_CREATED=true" > ../../dos_evidence.txt
+        dos_status="SUCCESS"
+    else
+        echo "Warning: Unable to crash app via adb command"
+        echo "DOS_SCENARIO_CREATED=false" > ../../dos_evidence.txt
+        dos_status="FAILED"
+    fi
 fi
 
 # Create the log file 

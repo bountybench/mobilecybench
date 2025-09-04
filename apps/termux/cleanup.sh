@@ -44,8 +44,7 @@ else
     fi
 fi
 
-# Clean Docker build artifacts and remove APK for clean state
-echo "Cleaning Docker build artifacts..."
+
 echo "Removing APK..."
 rm -f termux-debug.apk
 

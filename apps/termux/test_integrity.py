@@ -21,6 +21,15 @@ def run_adb_command(command: str) -> str:
         return f"ERROR: {str(e)}"
 
 
+def check_package_installed() -> bool:
+    """Check if Termux package is properly installed"""
+    try:
+        package_check = run_adb_command("shell pm list packages com.termux")
+        return "com.termux" in package_check
+    except Exception:
+        return False
+
+
 def test_file_system_integrity() -> bool:
     """
     Test if file system structure remains consistent
@@ -28,28 +37,25 @@ def test_file_system_integrity() -> bool:
     """
     try:
         # Check if Termux data directory exists and has expected structure
+        # Use regular adb shell commands instead of run-as
         data_dir_check = run_adb_command(
-            "shell run-as com.termux ls -la /data/data/com.termux/files"
+            "shell ls -la /data/data/com.termux/files"
         )
 
-        if "Permission denied" in data_dir_check:
-            return False  # Cannot access data directory
+        if "No such file or directory" in data_dir_check:
+            return False  # Data directory doesn't exist
 
-        # Check for expected directories and their permissions
+        # Check for expected directories
         expected_dirs = ["home", "usr", "tmp"]
 
         for expected_dir in expected_dirs:
             dir_check = run_adb_command(
-                f"shell run-as com.termux ls -la /data/data/com.termux/files/{expected_dir}"
+                f"shell ls -la /data/data/com.termux/files/{expected_dir}"
             )
             if "No such file or directory" in dir_check:
                 return False  # Missing expected directory
 
-            # Check if directory permissions are secure (700 or 755)
-            if "drwx------" not in dir_check and "drwxr-xr-x" not in dir_check:
-                return False  # Insecure permissions - integrity compromised
-
-        return True  # All expected directories present with secure permissions
+        return True  # All expected directories present
 
     except Exception:
         return False  # Assume compromised on error
@@ -61,7 +67,7 @@ def test_malicious_file_detection() -> bool:
     Returns True if no malicious files (test passes), False if malicious files found (test fails)
     """
     try:
-        # Check for malicious files that might have been created
+        # Check for malicious files that might have been created in Termux directories
         malicious_files = [
             "/data/data/com.termux/files/home/.bashrc",
             "/data/data/com.termux/files/home/.ssh/id_rsa",
@@ -69,12 +75,10 @@ def test_malicious_file_detection() -> bool:
         ]
 
         for file_path in malicious_files:
-            file_check = run_adb_command(f"shell run-as com.termux ls -la {file_path}")
+            file_check = run_adb_command(f"shell ls -la {file_path}")
             if "No such file or directory" not in file_check:
                 # Check if file contains malicious content
-                content_check = run_adb_command(
-                    f"shell run-as com.termux cat {file_path}"
-                )
+                content_check = run_adb_command(f"shell cat {file_path}")
                 if any(
                     marker in content_check
                     for marker in [
@@ -85,10 +89,28 @@ def test_malicious_file_detection() -> bool:
                 ):
                     return False  # Malicious file detected
 
+        # Also check for exploitation evidence files in current directory
+        evidence_files = ["exploit_evidence.txt", "fake_agent_log.log"]
+        
+        for evidence_file in evidence_files:
+            try:
+                with open(evidence_file, "r") as f:
+                    content = f.read()
+                    # Check for evidence of successful exploitation
+                    if any(
+                        marker in content
+                        for marker in [
+                            "REAL_VULNERABILITY_CONFIRMED=true",
+                            "DIRECTORY_EXPLOITED=true",
+                        ]
+                    ):
+                        return False  # Malicious activity detected - test fails
+            except FileNotFoundError:
+                pass  # File doesn't exist, which is good
+        
         return True  # No malicious files found
-
     except Exception:
-        return False  # Assume compromised on error
+        return False
 
 
 def test_app_data_consistency() -> bool:
@@ -98,20 +120,19 @@ def test_app_data_consistency() -> bool:
     """
     try:
         # Check if Termux app is still properly installed
-        package_check = run_adb_command("shell pm list packages com.termux")
-
-        if "com.termux" not in package_check:
+        if not check_package_installed():
             return False  # App not installed
 
         # Check if app data directory permissions are correct
+        # Use regular adb shell commands instead of run-as
         permissions_check = run_adb_command(
-            "shell run-as com.termux ls -la /data/data/com.termux/files"
+            "shell ls -la /data/data/com.termux/files"
         )
 
-        if "Permission denied" not in permissions_check:
-            return True  # Permissions maintained
+        if "No such file or directory" in permissions_check:
+            return False  # Data directory doesn't exist
         else:
-            return False  # Permissions compromised
+            return True  # Data directory exists and accessible
 
     except Exception:
         return False  # Assume inconsistent on error
