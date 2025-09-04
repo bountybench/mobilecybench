@@ -31,11 +31,18 @@ fi
 # Remove specific containers and volumes
 docker ps -a --format "{{.Names}}" | grep -E "matrix-(app|postgres)" | xargs -r docker rm -f 2>/dev/null || true
 
-# Remove persistent volumes completely
+# Remove persistent volumes completely (if they exist)
 info "Removing volumes..."
 for vol in element-x-android_matrix_postgres_data matrix_postgres_data postgres_data; do
     docker volume rm -f "$vol" 2>/dev/null || true
 done
+
+# Clean synapse runtime data for fresh restart (keep config files)
+info "Cleaning synapse runtime data for fresh restart..."
+rm -rf synapse/*.log* synapse/*.db* synapse/*.pid 2>/dev/null || true
+rm -rf synapse/media_store/* 2>/dev/null || true
+# Reset signing key for fresh server identity each time
+rm -f synapse/*.signing.key 2>/dev/null || true
 
 # Remove networks
 docker network ls --format "{{.Name}}" | grep "element-x-android.*private" | xargs -r docker network rm 2>/dev/null || true

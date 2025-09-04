@@ -18,19 +18,75 @@ def main():
     
     try:
         d = u2.connect()
+        
+        # Clear app data to ensure fresh start
+        print("✅ Clearing app data for fresh login attempt", file=sys.stderr)
+        d.app_stop("io.element.android.x.debug")
+        d.app_clear("io.element.android.x.debug")
+        time.sleep(2)
+        
+        # Start app fresh
         d.app_start("io.element.android.x.debug")
-        time.sleep(3)
+        time.sleep(5)  # Wait longer for fresh app startup
         
         # Check if already logged in
         if d(text="Messages").exists or d(text="Rooms").exists:
             print("✅ Already logged in!", file=sys.stderr)
             return
         
-        # Handle welcome screen first
-        if d(text="Sign in manually").exists:
+        # Debug: Check what screen we're starting from
+        print("🔍 Checking initial screen state...", file=sys.stderr)
+        
+        # Handle different starting screens
+        if d(text="You're signed out").exists or d(text="Sign in again").exists:
+            print("✅ On 'signed out' screen, clicking 'Sign in again'", file=sys.stderr)
+            if d(text="Sign in again").exists:
+                d(text="Sign in again").click()
+                time.sleep(3)
+            elif d(text="Sign in").exists:
+                d(text="Sign in").click() 
+                time.sleep(3)
+        elif d(text="Sign in manually").exists:
             print("✅ On welcome screen, clicking 'Sign in manually'", file=sys.stderr)
             d(text="Sign in manually").click()
             time.sleep(3)
+        elif d(text="Continue").exists and d(text="Get started").exists:
+            # Sometimes Element X shows a "Get started" screen first
+            print("✅ On get started screen, clicking 'Continue'", file=sys.stderr)
+            d(text="Continue").click()
+            time.sleep(3)
+            # After clicking Continue, look for Sign in manually
+            if d(text="Sign in manually").exists:
+                print("✅ Now clicking 'Sign in manually'", file=sys.stderr)
+                d(text="Sign in manually").click()
+                time.sleep(3)
+        else:
+            # Try to find any sign in related buttons
+            sign_in_options = ["Sign in", "Log in", "Continue", "Get started"]
+            found_option = False
+            for option in sign_in_options:
+                if d(text=option).exists:
+                    print(f"✅ Found '{option}' button, clicking it", file=sys.stderr)
+                    d(text=option).click()
+                    time.sleep(3)
+                    found_option = True
+                    break
+            
+            if not found_option:
+                print("⚠️ Unknown starting screen, checking visible elements...", file=sys.stderr)
+                try:
+                    text_elements = d(className="android.widget.TextView")
+                    visible_texts = []
+                    for i in range(min(10, text_elements.count)):
+                        try:
+                            text = text_elements[i].get_text()
+                            if text and len(text.strip()) > 0:
+                                visible_texts.append(text.strip())
+                        except:
+                            pass
+                    print(f"🔍 Visible texts: {visible_texts[:5]}", file=sys.stderr)
+                except Exception as e:
+                    print(f"⚠️ Could not analyze screen: {e}", file=sys.stderr)
         
         # Handle server selection screen
         if d(text="Change account provider").exists:

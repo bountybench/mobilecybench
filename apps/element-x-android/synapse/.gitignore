@@ -1,0 +1,18 @@
+# Matrix Synapse runtime data - don't commit to version control
+
+# Log files (can grow large and accumulate daily)
+*.log
+*.log.*
+
+# Media store (uploaded files - can become thousands of files)
+media_store/
+
+# Database files (if ever switched from PostgreSQL to SQLite)
+*.db
+*.db.*
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.pid

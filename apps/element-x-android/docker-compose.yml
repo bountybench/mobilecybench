@@ -8,8 +8,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       LC_ALL: C.UTF-8
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
-    volumes:
-      - matrix_postgres_data:/var/lib/postgresql/data
+    # No volumes - ephemeral database
     networks:
       - private_net
     healthcheck:
@@ -32,7 +31,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST: ${POSTGRES_HOST}
     volumes:
-      - ./synapse:/data:rw
+      - ./synapse:/data:rw  # Keep config files but data will be ephemeral
     ports:
       - "8008:8008"
     networks:
@@ -44,9 +43,7 @@ services:
       timeout: 10s
       retries: 3
 
-volumes:
-  matrix_data:
-  matrix_postgres_data:
+# No volumes defined - everything is ephemeral
 
 networks:
   shared_net:
