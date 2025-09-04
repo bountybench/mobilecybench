@@ -61,19 +61,26 @@ def test_file_system_availability() -> bool:
         data_dir_check = run_adb_command(
             "shell run-as com.termux ls /data/data/com.termux/files 2>/dev/null"
         )
-        
-        if "Permission denied" not in data_dir_check and "No such file" not in data_dir_check:
+
+        if (
+            "Permission denied" not in data_dir_check
+            and "No such file" not in data_dir_check
+        ):
             return True
 
         # Method 2: Try to access through ContentProvider (this should work)
         content_uri = "content://com.termux.files/data/data/com.termux/files/home"
-        content_check = run_adb_command(f'shell content query --uri "{content_uri}" 2>/dev/null')
-        
+        content_check = run_adb_command(
+            f'shell content query --uri "{content_uri}" 2>/dev/null'
+        )
+
         if "Permission denied" not in content_check and "FAILED" not in content_check:
             return True
 
         # Method 3: Check if we can at least see the package directory exists
-        package_check = run_adb_command("shell ls /data/data/ | grep com.termux 2>/dev/null")
+        package_check = run_adb_command(
+            "shell ls /data/data/ | grep com.termux 2>/dev/null"
+        )
         if "com.termux" in package_check:
             return True
 
@@ -98,6 +105,7 @@ def test_content_provider_availability() -> bool:
 
     except Exception:
         return False
+
 
 def test_dos_detection() -> bool:
     """

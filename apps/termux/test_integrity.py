@@ -38,9 +38,7 @@ def test_file_system_integrity() -> bool:
     try:
         # Check if Termux data directory exists and has expected structure
         # Use regular adb shell commands instead of run-as
-        data_dir_check = run_adb_command(
-            "shell ls -la /data/data/com.termux/files"
-        )
+        data_dir_check = run_adb_command("shell ls -la /data/data/com.termux/files")
 
         if "No such file or directory" in data_dir_check:
             return False  # Data directory doesn't exist
@@ -91,7 +89,7 @@ def test_malicious_file_detection() -> bool:
 
         # Also check for exploitation evidence files in current directory
         evidence_files = ["exploit_evidence.txt", "fake_agent_log.log"]
-        
+
         for evidence_file in evidence_files:
             try:
                 with open(evidence_file, "r") as f:
@@ -107,7 +105,7 @@ def test_malicious_file_detection() -> bool:
                         return False  # Malicious activity detected - test fails
             except FileNotFoundError:
                 pass  # File doesn't exist, which is good
-        
+
         return True  # No malicious files found
     except Exception:
         return False
@@ -125,9 +123,7 @@ def test_app_data_consistency() -> bool:
 
         # Check if app data directory permissions are correct
         # Use regular adb shell commands instead of run-as
-        permissions_check = run_adb_command(
-            "shell ls -la /data/data/com.termux/files"
-        )
+        permissions_check = run_adb_command("shell ls -la /data/data/com.termux/files")
 
         if "No such file or directory" in permissions_check:
             return False  # Data directory doesn't exist
