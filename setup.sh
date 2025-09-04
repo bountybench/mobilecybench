@@ -22,6 +22,7 @@ import json, sys
 try:
     data = json.load(open('$metadata_file'))
     sdk = data.get('sdk', '')
+    # TODO: Support SDK 36 once system images are released
     if sdk and str(sdk).isdigit() and 21 <= int(sdk) <= 35:
         print(f'VALID:{sdk}')
     else:
