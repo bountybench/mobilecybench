@@ -3,11 +3,41 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ANDROID_HOME="${HOME}/.android-sdk"
+
+# Set Android SDK path - handle both local development and CI environments
+if [[ -n "$ANDROID_HOME" && -d "$ANDROID_HOME" ]]; then
+    # Use existing ANDROID_HOME if set and valid
+    echo "Using existing ANDROID_HOME: $ANDROID_HOME"
+elif [[ -d "/usr/local/lib/android/sdk" ]]; then
+    # GitHub Actions default path
+    ANDROID_HOME="/usr/local/lib/android/sdk"
+    echo "Using GitHub Actions Android SDK path: $ANDROID_HOME"
+elif [[ -d "${HOME}/.android-sdk" ]]; then
+    # Local development default path
+    ANDROID_HOME="${HOME}/.android-sdk"
+    echo "Using local development Android SDK path: $ANDROID_HOME"
+else
+    echo "ERROR: Android SDK not found in any expected location"
+    exit 1
+fi
 
 # Check prerequisites
 check_prerequisites() {
     echo "Checking prerequisites..."
+    
+    # Debug: Print Android SDK location information
+    echo "=== DEBUG: Android SDK Location Detection ==="
+    echo "ANDROID_HOME environment variable: ${ANDROID_HOME:-'(not set)'}"
+    echo "ANDROID_SDK_ROOT environment variable: ${ANDROID_SDK_ROOT:-'(not set)'}"
+    echo "Checking common Android SDK locations:"
+    echo "  /usr/local/lib/android/sdk: $([ -d '/usr/local/lib/android/sdk' ] && echo 'EXISTS' || echo 'NOT FOUND')"
+    echo "  ${HOME}/.android-sdk: $([ -d "${HOME}/.android-sdk" ] && echo 'EXISTS' || echo 'NOT FOUND')"
+    echo "  /opt/android-sdk: $([ -d '/opt/android-sdk' ] && echo 'EXISTS' || echo 'NOT FOUND')"
+    echo "  /usr/lib/android-sdk: $([ -d '/usr/lib/android-sdk' ] && echo 'EXISTS' || echo 'NOT FOUND')"
+    echo "Current PATH: $PATH"
+    echo "Which adb: $(which adb 2>/dev/null || echo 'adb not found in PATH')"
+    echo "Which sdkmanager: $(which sdkmanager 2>/dev/null || echo 'sdkmanager not found in PATH')"
+    echo "=============================================="
     
     # Check Java 17
     if ! command -v java >/dev/null 2>&1; then
@@ -29,13 +59,28 @@ check_prerequisites() {
 setup_environment() {
     echo "Setting up build environment..."
     
-    # Set Java 17
-    export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+    # Set Java 17 - use existing JAVA_HOME if available, otherwise fallback to macOS path
+    if [[ -n "$JAVA_HOME" && -d "$JAVA_HOME" ]]; then
+        echo "Using existing JAVA_HOME: $JAVA_HOME"
+    else
+        # Fallback to macOS Homebrew path for local development
+        export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+        echo "Using macOS Homebrew JAVA_HOME: $JAVA_HOME"
+    fi
     export PATH="$JAVA_HOME/bin:$PATH"
     
     # Set Android SDK
     export ANDROID_HOME="$ANDROID_HOME"
     export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+    
+    # Debug: Check if Android tools are now available
+    echo "=== DEBUG: After PATH update ==="
+    echo "Updated PATH includes: $ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin"
+    echo "Which adb: $(which adb 2>/dev/null || echo 'adb still not found in PATH')"
+    echo "Which sdkmanager: $(which sdkmanager 2>/dev/null || echo 'sdkmanager still not found in PATH')"
+    echo "Contents of $ANDROID_HOME/platform-tools: $(ls -la "$ANDROID_HOME/platform-tools" 2>/dev/null | head -5 || echo 'directory not accessible')"
+    echo "Contents of $ANDROID_HOME/cmdline-tools/latest/bin: $(ls -la "$ANDROID_HOME/cmdline-tools/latest/bin" 2>/dev/null | head -5 || echo 'directory not accessible')"
+    echo "================================="
     
     # Create local.properties for Tindroid build
     echo "sdk.dir=$ANDROID_HOME" > local.properties
