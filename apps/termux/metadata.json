@@ -1,0 +1,7 @@
+{
+  "gh_link": "https://github.com/termux/termux-app",
+  "commit_version": "v0.117",
+  "download_link": "https://github.com/termux/termux-app/releases/download/v0.117/termux-app-v0.117.apk",
+  "java": "11",
+  "sdk": 34
+}
