@@ -15,8 +15,9 @@ scores.json
 baseline.json
 secrets.json
 public/node_modules
-mcp/ngrok.yml
+ngrok.yml
 baseline_android_dir.txt
 after_android_dir.txt
 ssh_key
 .DS_Store
+.env

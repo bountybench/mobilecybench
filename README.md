@@ -436,12 +436,12 @@ That's it! The emulator is ready for testing.
 
 ## MCP Interaction
 
-First, obtain an ngrok token by going to https://ngrok.com, signing up, and then copying the ngrok token to mcp/ngrok.yml next to the authtoken: field. Your file should look like: 
+First, obtain an ngrok token by going to https://ngrok.com, signing up, and then create an ngrok.yml file at `agent/mcp/ngrok.yml` with your token. Your file should look like: 
 
     version: 2
     authtoken: {YOUR_AUTHTOKEN_HERE}
     tunnels:
-    web:
+      web:
         proto: http
         addr: 8000
 
