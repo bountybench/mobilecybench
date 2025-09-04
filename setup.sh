@@ -11,48 +11,148 @@ EMULATOR_NAME="MobileCybenchEmu"
 DEFAULT_SDK_VERSION=35
 DEFAULT_SYSTEM_IMAGE="google_apis"
 
+# Load app metadata if app name provided
+load_app_metadata() {
+    local app_name="$1"
+    local metadata_file="${SCRIPT_DIR}/apps/${app_name}/metadata.json"
+    
+    if [[ -f "$metadata_file" ]]; then
+        local validation_result=$(python3 -c "
+import json, sys
+try:
+    data = json.load(open('$metadata_file'))
+    sdk = data.get('sdk', '')
+    # TODO: Support SDK 36 once system images are released
+    if sdk and str(sdk).isdigit() and 21 <= int(sdk) <= 35:
+        print(f'VALID:{sdk}')
+    else:
+        print('INVALID')
+except:
+    print('INVALID')
+" 2>/dev/null)
+        
+        if [[ "$validation_result" =~ ^VALID: ]]; then
+            echo "${validation_result#VALID:}"
+        else
+            echo "INVALID"
+        fi
+    else
+        echo "MISSING"
+    fi
+}
+
+# Warn user about old SDK versions and ask for confirmation
+warn_old_sdk_version() {
+    local sdk_version="$1"
+    local context="${2:-Android SDK}"  
+    
+    if [[ $sdk_version -lt 30 ]]; then
+        echo "Warning: $context $sdk_version is quite old."
+        echo "Old SDK versions may have compatibility issues with modern devices."
+        read -p "Are you sure you want to proceed? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Setup cancelled."
+            exit 0
+        fi
+    fi
+}
+
 # Parse command line arguments
+APP_NAME=""
 SDK_VERSION="$DEFAULT_SDK_VERSION"
 SYSTEM_IMAGE_TYPE="$DEFAULT_SYSTEM_IMAGE"
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --sdk)
-            SDK_VERSION="$2"
-            shift 2
-            ;;
-        --sdk=*)
-            SDK_VERSION="${1#*=}"
-            shift
-            ;;
-        --system-image)
-            SYSTEM_IMAGE_TYPE="$2"
-            shift 2
-            ;;
-        --system-image=*)
-            SYSTEM_IMAGE_TYPE="${1#*=}"
-            shift
-            ;;
-        -h|--help)
-            echo "Usage: $0 [--sdk SDK_VERSION] [--system-image SYSTEM_IMAGE_TYPE]"
-            echo "  --sdk SDK_VERSION              Android SDK version to use (default: $DEFAULT_SDK_VERSION)"
-            echo "  --system-image SYSTEM_IMAGE    System image type (default: $DEFAULT_SYSTEM_IMAGE)"
-            echo "                                 Options: google_apis, google_apis_playstore, default, aosp_atd"
-            echo "  -h, --help                     Show this help message"
-            echo ""
-            echo "Examples:"
-            echo "  $0                                    # Use defaults (SDK $DEFAULT_SDK_VERSION, $DEFAULT_SYSTEM_IMAGE)"
-            echo "  $0 --sdk 30                          # Use SDK 30 with default system image"
-            echo "  $0 --system-image google_apis_playstore  # Use Play Store system image"
-            echo "  $0 --sdk 29 --system-image default   # Use SDK 29 with default system image"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Use -h or --help for usage information"
-            exit 1
-            ;;
-    esac
-done
+
+# Check if first argument is an app name (no dashes, exists in apps/ directory with valid metadata)
+if [[ $# -gt 0 && "$1" != -* && -d "${SCRIPT_DIR}/apps/$1" ]]; then
+    APP_NAME="$1"
+    SDK_VERSION=$(load_app_metadata "$APP_NAME")
+    
+    # Validate metadata
+    if [[ "$SDK_VERSION" == "MISSING" ]]; then
+        echo "Error: App '$APP_NAME' has no metadata.json file"
+        exit 1
+    elif [[ "$SDK_VERSION" == "INVALID" ]]; then
+        echo "Error: App '$APP_NAME' has invalid or missing SDK version in metadata.json"
+        echo "SDK must be a number between 21-35"
+        exit 1
+    fi
+    
+    SYSTEM_IMAGE_TYPE="$DEFAULT_SYSTEM_IMAGE"
+    
+    warn_old_sdk_version "$SDK_VERSION" "App '$APP_NAME' uses Android SDK"
+else
+    # Standard flag parsing mode
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --sdk)
+                SDK_VERSION="$2"
+                warn_old_sdk_version "$SDK_VERSION"
+                shift 2
+                ;;
+            --sdk=*)
+                SDK_VERSION="${1#*=}"
+                warn_old_sdk_version "$SDK_VERSION"
+                shift
+                ;;
+            --system-image)
+                SYSTEM_IMAGE_TYPE="$2"
+                shift 2
+                ;;
+            --system-image=*)
+                SYSTEM_IMAGE_TYPE="${1#*=}"
+                shift
+                ;;
+            -h|--help)
+                echo "Usage: $0"
+                echo "   or: $0 APP_NAME"
+                echo "   or: $0 [--sdk SDK_VERSION] [--system-image SYSTEM_IMAGE_TYPE]"
+                echo ""
+                echo "Mode 1: Use defaults (SDK $DEFAULT_SDK_VERSION, $DEFAULT_SYSTEM_IMAGE)"
+                echo "Mode 2: Auto-configure from app metadata (Recommended)"
+                echo "Mode 3: Manual SDK and system image configuration"
+                echo ""
+                echo "Arguments:"
+                echo "  APP_NAME                       App name from apps/ directory (uses SDK from metadata)"
+                echo "  --sdk SDK_VERSION              Android SDK version (default: $DEFAULT_SDK_VERSION)"
+                echo "  --system-image SYSTEM_IMAGE    System image type (default: $DEFAULT_SYSTEM_IMAGE)"
+                echo "  -h, --help                     Show this help message"
+                echo ""
+                echo "Available apps:"
+                if [[ -d "${SCRIPT_DIR}/apps" ]]; then
+                    for app_dir in "${SCRIPT_DIR}/apps"/*; do
+                        if [[ -d "$app_dir" && -f "$app_dir/metadata.json" ]]; then
+                            app_name=$(basename "$app_dir")
+                            app_sdk=$(python3 -c "import json; data=json.load(open('$app_dir/metadata.json')); print(data.get('sdk', 'N/A'))" 2>/dev/null || echo "N/A")
+                            echo "  $app_name (SDK $app_sdk)"
+                        fi
+                    done
+                fi
+                echo ""
+                echo "Examples:"
+                echo "  $0                                    # Use defaults (SDK $DEFAULT_SDK_VERSION, $DEFAULT_SYSTEM_IMAGE)"
+                echo "  $0 conversations                      # Use conversations app (SDK 35, google_apis)"
+                echo "  $0 owncloud-android                   # Use owncloud-android app (SDK 34, google_apis)"
+                echo "  $0 wordpress                          # Use wordpress app (SDK 35, google_apis)"
+                echo "  $0 --sdk 30                           # Use SDK 30 with default system image"
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1"
+                echo "Available apps:"
+                if [[ -d "${SCRIPT_DIR}/apps" ]]; then
+                    for app_dir in "${SCRIPT_DIR}/apps"/*; do
+                        if [[ -d "$app_dir" && -f "$app_dir/metadata.json" ]]; then
+                            echo "  $(basename "$app_dir")"
+                        fi
+                    done
+                fi
+                echo "Use -h or --help for usage information"
+                exit 1
+                ;;
+        esac
+    done
+fi
 
 # Logging function
 log() {
@@ -300,6 +400,42 @@ create_helper_scripts() {
 
 ANDROID_HOME="${HOME}/.android-sdk"
 EMULATOR_NAME="MobileCybenchEmu"
+
+# Check if emulator is already running
+check_running_emulator() {
+    local running_emulators
+    if command -v adb >/dev/null 2>&1; then
+        running_emulators=$(adb devices | grep -E "emulator-[0-9]+.*device$" | wc -l)
+    elif [[ -f "$ANDROID_HOME/platform-tools/adb" ]]; then
+        running_emulators=$("$ANDROID_HOME/platform-tools/adb" devices | grep -E "emulator-[0-9]+.*device$" | wc -l)
+    else
+        echo "Warning: ADB not found, cannot check for running emulators"
+        return 0
+    fi
+    
+    if [[ $running_emulators -gt 0 ]]; then
+        echo "Warning: There are $running_emulators Android emulator(s) already running."
+        echo "Starting another emulator may cause performance issues or conflicts."
+        echo ""
+        echo "Current running emulators:"
+        if command -v adb >/dev/null 2>&1; then
+            adb devices | grep -E "emulator-[0-9]+.*device$"
+        else
+            "$ANDROID_HOME/platform-tools/adb" devices | grep -E "emulator-[0-9]+.*device$"
+        fi
+        echo ""
+        read -p "Do you want to proceed anyway? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Emulator start cancelled."
+            echo "To stop the currently running emulators, you can use: ./stop_emulator.sh"
+            exit 0
+        fi
+    fi
+}
+
+# Check for running emulators before starting
+check_running_emulator
 
 echo "Starting Android emulator: $EMULATOR_NAME"
 echo "This may take a few minutes on first boot..."
