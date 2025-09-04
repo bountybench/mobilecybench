@@ -51,8 +51,14 @@ setup_environment() {
 }
 
 build_from_source() { 
-  echo "Building from source..."
-  ./gradlew --no-daemon clean assembleDebug \
+  # echo "Building from source..."
+  # ./gradlew --no-daemon clean assembleDebug \
+  #   -Dorg.gradle.jvmargs="-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8"
+  # echo "Build completed successfully."
+
+  echo "Building Thunderbird from source..."
+  ./gradlew --no-daemon --build-cache --parallel \
+    :app-thunderbird:assembleFullDebug \
     -Dorg.gradle.jvmargs="-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8"
   echo "Build completed successfully."
 }
