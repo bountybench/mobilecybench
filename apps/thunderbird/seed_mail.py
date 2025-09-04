@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 print("SEED_MAIL: Starting seeding...")
 
-import os, ssl, smtplib, imaplib, email.utils, json, sys, random
+import email.utils
+import imaplib
+import json
+import os
+import random
+import smtplib
+import ssl
+import sys
 from pathlib import Path
 
 # =========================
@@ -29,6 +36,7 @@ except json.JSONDecodeError:
     print(f"Error: {SECRETS_PATH} is not valid JSON. Aborting.")
     sys.exit(1)
 
+
 # =========================
 # TLS context helpers
 # =========================
@@ -40,6 +48,7 @@ def tls_ctx():
     ctx.verify_mode = ssl.CERT_NONE
     return ctx
 
+
 # =========================
 # IMAP helpers
 # =========================
@@ -49,6 +58,7 @@ def normalize_msgid(msgid: str) -> str:
     if mid.startswith("<") and mid.endswith(">"):
         return mid
     return f"<{mid}>"
+
 
 def has_msg(user_email: str, password: str, msgid: str) -> bool:
     """Check if INBOX already contains a message with this Message-ID."""
@@ -65,10 +75,18 @@ def has_msg(user_email: str, password: str, msgid: str) -> bool:
         print(f"Error checking for message {mid}: {e}")
         return False
 
+
 # =========================
 # SMTP helper
 # =========================
-def send_self(user_email: str, password: str, msgid: str, subject: str, body: str, extra_headers=None):
+def send_self(
+    user_email: str,
+    password: str,
+    msgid: str,
+    subject: str,
+    body: str,
+    extra_headers=None,
+):
     """Send an email From/To the same user with a fixed Message-ID, Subject, Body."""
     mid = normalize_msgid(msgid)
     h = {
@@ -90,21 +108,23 @@ def send_self(user_email: str, password: str, msgid: str, subject: str, body: st
         return False
     return True
 
+
 # =========================
 # Generators for non-integrity seeds (unchanged behavior)
 # =========================
 def generate_message_id(user, category):
     """Generate a unique message ID based on user and category."""
-    random_part = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=8))
+    random_part = "".join(random.choices("abcdefghijklmnopqrstuvwxyz0123456789", k=8))
     return f"<{category}-{random_part}@test.com>"
 
+
 def seed_welcome_email(user_email, password):
-    username = user_email.split('@')[0]
+    username = user_email.split("@")[0]
     msgid = generate_message_id(username, "welcome")
-    subject = f"Welcome {username}" 
+    subject = f"Welcome {username}"
     body = (
         f"Hello {username}, welcome to your secure email account.\n\n"
-        f"This is your standard welcome message.\n" 
+        f"This is your standard welcome message.\n"
     )
     if not has_msg(user_email, password, msgid):
         if send_self(user_email, password, msgid, subject, body):
@@ -114,10 +134,13 @@ def seed_welcome_email(user_email, password):
         print(f"Welcome email already present for {user_email}")
     return False
 
+
 # =========================
 # Integrity seeds (NEW) — deterministic from secrets.json
 # =========================
-def seed_integrity_email(user_email: str, password: str, msgid_key: str, subj_key: str, body_key: str) -> bool:
+def seed_integrity_email(
+    user_email: str, password: str, msgid_key: str, subj_key: str, body_key: str
+) -> bool:
     """Seed a single integrity email for user_email using exact fields from secrets.json."""
     try:
         msgid = normalize_msgid(SECRETS[msgid_key])
@@ -131,39 +154,51 @@ def seed_integrity_email(user_email: str, password: str, msgid_key: str, subj_ke
         print(f"Integrity email already present (Message-ID {msgid_key} = {msgid})")
         return False
 
-    ok = send_self(user_email, password, msgid, subject, body, {"X-Scenario": "INTEGRITY", "X-Scenario-Id": msgid_key})
+    ok = send_self(
+        user_email,
+        password,
+        msgid,
+        subject,
+        body,
+        {"X-Scenario": "INTEGRITY", "X-Scenario-Id": msgid_key},
+    )
     if ok:
-        print(f"Seeded integrity email ({msgid_key}) for {user_email} with Message-ID {msgid}")
+        print(
+            f"Seeded integrity email ({msgid_key}) for {user_email} with Message-ID {msgid}"
+        )
     else:
         print(f"Failed to seed integrity email ({msgid_key}) for {user_email}")
     return ok
+
 
 def seed_integrity_pair_for_userb(user_email: str, password: str) -> int:
     """Seed the two deterministic integrity emails for userb from secrets.json."""
     created = 0
     # Email 1 (subject-focus)
     if seed_integrity_email(
-        user_email, password,
+        user_email,
+        password,
         msgid_key="userb_email1_msgid",
         subj_key="userb_email1_subject",
-        body_key="userb_email1_content"
+        body_key="userb_email1_content",
     ):
         created += 1
     # Email 2 (body-focus)
     if seed_integrity_email(
-        user_email, password,
+        user_email,
+        password,
         msgid_key="userb_email2_msgid",
         subj_key="userb_email2_subject",
-        body_key="userb_email2_content"
+        body_key="userb_email2_content",
     ):
         created += 1
     return created
- 
+
 
 def main():
     """Seed flow:
-       - userb (victim): general emails + 2 deterministic integrity emails (from secrets.json)
-       - usera (agent): welcome email only
+    - userb (victim): general emails + 2 deterministic integrity emails (from secrets.json)
+    - usera (agent): welcome email only
     """
     usera_email = "usera@test.com"
     usera_password = "userAPW123"
@@ -173,14 +208,15 @@ def main():
     if not userb_password:
         print("Missing userb_password in secrets.json. Aborting.")
         sys.exit(1)
-  
-    seed_welcome_email(usera_email, usera_password) 
+
+    seed_welcome_email(usera_email, usera_password)
     seed_welcome_email(userb_email, userb_password)
 
-    # Seed the deterministic integrity pair for userb (from secrets.json) 
+    # Seed the deterministic integrity pair for userb (from secrets.json)
     seed_integrity_pair_for_userb(userb_email, userb_password)
-    
+
     print("\nSeeding complete! Test emails have been created.")
+
 
 if __name__ == "__main__":
     main()
