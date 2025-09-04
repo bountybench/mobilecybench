@@ -92,7 +92,7 @@ def initialize_ui_automation(
 
 
 def wait_and_click(d: Device, element: UiObject, timeout: int = MAX_TIMEOUT) -> bool:
-    """Wait for an element and click it with ANR awareness and no sleeps."""
+    """Wait for an element and click it with retries for stale object errors."""
     _ensure_target_app_foreground(d)
 
     if not _wait_for_element(d, element, timeout=timeout):
@@ -108,24 +108,66 @@ def wait_and_click(d: Device, element: UiObject, timeout: int = MAX_TIMEOUT) -> 
     else:
         logger.debug("Found element %s", element.selector)
 
-    if element.click_exists(timeout=CLICK_TIMEOUT):
-        logger.info("Clicked element %s", element.selector)
-        wait_for_ui_stable(d)
-        return True
-
-    else:
+    for attempt_index in range(1, UI_RETRIES + 1):
         try:
-            elem_info = element.info
-            clickable = elem_info.get("clickable")
-            enabled = elem_info.get("enabled")
-        except Exception:
-            clickable = enabled = "<unavailable>"
+            if element.click_exists(timeout=CLICK_TIMEOUT):
+                logger.info("Clicked element %s", element.selector)
+                wait_for_ui_stable(d)
+                return True
 
-        message = (
-            f"Found element '{element.selector}' but it could not be clicked.\n"
-            f"  - Clickable: {clickable}, Enabled: {enabled}"
-        )
-        _fatal(d, message)
+            # Element is present but not clickable; this is unlikely to be stale-related
+            try:
+                elem_info = element.info
+                clickable = elem_info.get("clickable")
+                enabled = elem_info.get("enabled")
+            except Exception:
+                clickable = enabled = "<unavailable>"
+
+            message = (
+                f"Found element '{element.selector}' but it could not be clicked.\n"
+                f"  - Clickable: {clickable}, Enabled: {enabled}"
+            )
+            _fatal(d, message)
+
+        except Exception as click_error:
+            # Guard against redraws causing stale object exceptions between find and click
+            try:
+                _click_err_msg = str(click_error).lower()
+            except Exception:
+                _click_err_msg = ""
+
+            is_stale = "staleobjectexception" in _click_err_msg or (
+                "unknown rpc error" in _click_err_msg and "-32001" in _click_err_msg
+            )
+            if is_stale:
+                logger.debug(
+                    "Click failed due to stale object (attempt %s/%s) for %s: %s",
+                    attempt_index,
+                    UI_RETRIES,
+                    element.selector,
+                    click_error,
+                )
+                # Refresh UI snapshot and wait briefly for stability before retrying
+                try:
+                    _ = d.dump_hierarchy()
+                except Exception:
+                    pass
+                wait_for_ui_stable(d)
+
+                if attempt_index < UI_RETRIES:
+                    time.sleep(RETRY_INTERVAL)
+                    continue
+                else:
+                    _fatal(
+                        d,
+                        (
+                            f"Failed to click element '{element.selector}' due to repeated stale object "
+                            f"exceptions after {UI_RETRIES} attempts"
+                        ),
+                    )
+            else:
+                # Not a stale exception; re-raise to preserve original error handling upstream
+                raise
 
 
 def wait_and_set_text(
