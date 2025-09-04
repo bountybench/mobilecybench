@@ -42,7 +42,6 @@ MAX_TIMEOUT = 180  # Long timeout for critical waits (e.g., finding an element)
 
 logger = logging.getLogger("mobilecybench.ui")
 logger.setLevel("DEBUG")
-
 _handler = logging.StreamHandler(stream=sys.stderr)
 _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 if not logger.handlers:
@@ -93,7 +92,7 @@ def initialize_ui_automation(
 
 
 def wait_and_click(d: Device, element: UiObject, timeout: int = MAX_TIMEOUT) -> bool:
-    """Wait for an element and click it with ANR awareness and no sleeps."""
+    """Wait for an element and click it with retries for stale object errors."""
     _ensure_target_app_foreground(d)
 
     if not _wait_for_element(d, element, timeout=timeout):
@@ -109,24 +108,58 @@ def wait_and_click(d: Device, element: UiObject, timeout: int = MAX_TIMEOUT) -> 
     else:
         logger.debug("Found element %s", element.selector)
 
-    if element.click_exists(timeout=CLICK_TIMEOUT):
-        logger.info("Clicked element %s", element.selector)
-        wait_for_ui_stable(d)
-        return True
-
-    else:
+    for attempt_index in range(1, UI_RETRIES + 1):
         try:
-            elem_info = element.info
-            clickable = elem_info.get("clickable")
-            enabled = elem_info.get("enabled")
-        except Exception:
-            clickable = enabled = "<unavailable>"
+            if element.click_exists(timeout=CLICK_TIMEOUT):
+                logger.info(
+                    "Clicked element %s on attempt %s", element.selector, attempt_index
+                )
+                wait_for_ui_stable(d)
+                return True
+            # Element is present but not clickable (timeout exceeded)
+            raise TimeoutError("click timeout")
 
-        message = (
-            f"Found element '{element.selector}' but it could not be clicked.\n"
-            f"  - Clickable: {clickable}, Enabled: {enabled}"
-        )
-        _fatal(d, message)
+        except Exception as e:
+            if isinstance(e, TimeoutError):
+                logger.debug(
+                    "Click failed due to timeout (not clickable) (attempt %s/%s) for %s",
+                    attempt_index,
+                    UI_RETRIES,
+                    element.selector,
+                )
+            elif "StaleObjectException" in e:
+                logger.debug(
+                    "Click failed due to stale object (attempt %s/%s) for %s: %s",
+                    attempt_index,
+                    UI_RETRIES,
+                    element.selector,
+                    e,
+                )
+            else:
+                logger.debug(
+                    "Click failed due to unknown error (attempt %s/%s) for %s: %s",
+                    attempt_index,
+                    UI_RETRIES,
+                    element.selector,
+                    e,
+                )
+
+            if attempt_index < UI_RETRIES:
+                logger.debug(
+                    "Retrying click for %s (attempt %s/%s): %s",
+                    element.selector,
+                    attempt_index,
+                    UI_RETRIES,
+                    e,
+                )
+                wait_for_ui_stable(d)
+                time.sleep(RETRY_INTERVAL)
+                continue
+
+            _fatal(
+                d,
+                f"Failed to click element '{element.selector}' after {UI_RETRIES} attempts",
+            )
 
 
 def wait_and_set_text(
@@ -166,7 +199,7 @@ def wait_and_set_text(
 
 def wait_for_ui_stable(
     d: Device,
-    min_consecutive: int = 3,
+    min_consecutive: int = 5,
     retry_delay: int = RETRY_INTERVAL,
     timeout: int = SHORT_TIMEOUT,
 ) -> bool:
@@ -251,18 +284,14 @@ def _preflight_emulator_readiness():
 def _configure_device_defaults(device: Device):
     """Apply safe, fast defaults on a connected device."""
     try:
-        device.settings["compressHierarchy"] = False
-    except Exception:
-        pass
-    try:
         # Set fastinput IME to True to avoid various IME handling logic
-        device.set_fastinput_ime(True)
-    except Exception:
-        pass
+        device.set_fastinput_ime(enable=True)
+    except Exception as e:
+        logger.warning("Failed to set fastinput IME: %s", e)
     try:
         device.healthcheck()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Device healthcheck failed: %s", e)
 
 
 # =============================================================================
@@ -305,12 +334,9 @@ def _wait_for_element(
             scroller = d(scrollable=True)
             if scroller.exists and scrolls < max_scrolls:
                 scrolls += 1
-                try:
-                    scroller.scroll.forward()
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                scroller.scroll.forward()
+        except Exception as e:
+            logger.warning("Failed to scroll forward: %s", e)
 
         time.sleep(retry_delay)
 
