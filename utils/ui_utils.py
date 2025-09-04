@@ -111,42 +111,57 @@ def wait_and_click(d: Device, element: UiObject, timeout: int = MAX_TIMEOUT) -> 
     for attempt_index in range(1, UI_RETRIES + 1):
         try:
             if element.click_exists(timeout=CLICK_TIMEOUT):
-                logger.info("Clicked element %s", element.selector)
+                logger.info(
+                    "Clicked element %s on attempt %s", element.selector, attempt_index
+                )
                 wait_for_ui_stable(d)
                 return True
-            else:  # Element is present but not clickable (timeout exceeded)
-                _fatal(
-                    d,
-                    f"Found element '{element.selector}' but it could not be clicked.",
-                )
+            # Element is present but not clickable (timeout exceeded)
+            raise TimeoutError("click timeout")
 
-        except Exception as click_error:
-            if "staleobjectexception" in str(click_error).lower():
+        except Exception as e:
+            msg = str(e).lower()
+
+            if isinstance(e, TimeoutError):
+                logger.debug(
+                    "Click failed due to timeout (not clickable) (attempt %s/%s) for %s",
+                    attempt_index,
+                    UI_RETRIES,
+                    element.selector,
+                )
+            elif "staleobjectexception" in msg:
                 logger.debug(
                     "Click failed due to stale object (attempt %s/%s) for %s: %s",
                     attempt_index,
                     UI_RETRIES,
                     element.selector,
-                    click_error,
+                    e,
                 )
             else:
                 logger.debug(
-                    "Click failed due to non-stale error (attempt %s/%s) for %s: %s",
+                    "Click failed due to unknown error (attempt %s/%s) for %s: %s",
                     attempt_index,
                     UI_RETRIES,
                     element.selector,
-                    click_error,
+                    e,
                 )
 
             if attempt_index < UI_RETRIES:
+                logger.debug(
+                    "Retrying click for %s (attempt %s/%s): %s",
+                    element.selector,
+                    attempt_index,
+                    UI_RETRIES,
+                    e,
+                )
                 wait_for_ui_stable(d)
                 time.sleep(RETRY_INTERVAL)
                 continue
-            else:
-                _fatal(
-                    d,
-                    f"Failed to click element '{element.selector}' after {UI_RETRIES} attempts",
-                )
+
+            _fatal(
+                d,
+                f"Failed to click element '{element.selector}' after {UI_RETRIES} attempts",
+            )
 
 
 def wait_and_set_text(
@@ -186,7 +201,7 @@ def wait_and_set_text(
 
 def wait_for_ui_stable(
     d: Device,
-    min_consecutive: int = 3,
+    min_consecutive: int = 5,
     retry_delay: int = RETRY_INTERVAL,
     timeout: int = SHORT_TIMEOUT,
 ) -> bool:
