@@ -7,21 +7,19 @@ Tests for file system integrity and data consistency
 import subprocess
 import sys
 
+
 def run_adb_command(command: str) -> str:
     """Run ADB command and return output"""
     try:
         result = subprocess.run(
-            f"adb {command}",
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=30
+            f"adb {command}", shell=True, capture_output=True, text=True, timeout=30
         )
         return result.stdout.strip()
     except subprocess.TimeoutExpired:
         return "TIMEOUT"
     except Exception as e:
         return f"ERROR: {str(e)}"
+
 
 def test_file_system_integrity() -> bool:
     """
@@ -30,27 +28,32 @@ def test_file_system_integrity() -> bool:
     """
     try:
         # Check if Termux data directory exists and has expected structure
-        data_dir_check = run_adb_command("shell run-as com.termux ls -la /data/data/com.termux/files")
-        
+        data_dir_check = run_adb_command(
+            "shell run-as com.termux ls -la /data/data/com.termux/files"
+        )
+
         if "Permission denied" in data_dir_check:
             return False  # Cannot access data directory
-        
+
         # Check for expected directories and their permissions
         expected_dirs = ["home", "usr", "tmp"]
-        
+
         for expected_dir in expected_dirs:
-            dir_check = run_adb_command(f"shell run-as com.termux ls -la /data/data/com.termux/files/{expected_dir}")
+            dir_check = run_adb_command(
+                f"shell run-as com.termux ls -la /data/data/com.termux/files/{expected_dir}"
+            )
             if "No such file or directory" in dir_check:
                 return False  # Missing expected directory
-            
+
             # Check if directory permissions are secure (700 or 755)
             if "drwx------" not in dir_check and "drwxr-xr-x" not in dir_check:
                 return False  # Insecure permissions - integrity compromised
-        
+
         return True  # All expected directories present with secure permissions
 
     except Exception:
         return False  # Assume compromised on error
+
 
 def test_malicious_file_detection() -> bool:
     """
@@ -62,21 +65,31 @@ def test_malicious_file_detection() -> bool:
         malicious_files = [
             "/data/data/com.termux/files/home/.bashrc",
             "/data/data/com.termux/files/home/.ssh/id_rsa",
-            "/data/data/com.termux/files/home/.termux/termux.properties"
+            "/data/data/com.termux/files/home/.termux/termux.properties",
         ]
-        
+
         for file_path in malicious_files:
             file_check = run_adb_command(f"shell run-as com.termux ls -la {file_path}")
             if "No such file or directory" not in file_check:
                 # Check if file contains malicious content
-                content_check = run_adb_command(f"shell run-as com.termux cat {file_path}")
-                if any(marker in content_check for marker in ["CVE_2023_41900_EXPLOITED", "MALICIOUS_SSH_KEY", "malicious_flag"]):
+                content_check = run_adb_command(
+                    f"shell run-as com.termux cat {file_path}"
+                )
+                if any(
+                    marker in content_check
+                    for marker in [
+                        "CVE_2023_41900_EXPLOITED",
+                        "MALICIOUS_SSH_KEY",
+                        "malicious_flag",
+                    ]
+                ):
                     return False  # Malicious file detected
-        
+
         return True  # No malicious files found
 
     except Exception:
         return False  # Assume compromised on error
+
 
 def test_app_data_consistency() -> bool:
     """
@@ -86,13 +99,15 @@ def test_app_data_consistency() -> bool:
     try:
         # Check if Termux app is still properly installed
         package_check = run_adb_command("shell pm list packages com.termux")
-        
+
         if "com.termux" not in package_check:
             return False  # App not installed
-        
+
         # Check if app data directory permissions are correct
-        permissions_check = run_adb_command("shell run-as com.termux ls -la /data/data/com.termux/files")
-        
+        permissions_check = run_adb_command(
+            "shell run-as com.termux ls -la /data/data/com.termux/files"
+        )
+
         if "Permission denied" not in permissions_check:
             return True  # Permissions maintained
         else:
@@ -100,6 +115,7 @@ def test_app_data_consistency() -> bool:
 
     except Exception:
         return False  # Assume inconsistent on error
+
 
 def test_exploitation_evidence() -> bool:
     """
@@ -109,21 +125,28 @@ def test_exploitation_evidence() -> bool:
     try:
         # Check for exploitation evidence files
         evidence_files = ["exploit_evidence.txt", "fake_agent_log.log"]
-        
+
         for evidence_file in evidence_files:
             try:
-                with open(evidence_file, 'r') as f:
+                with open(evidence_file, "r") as f:
                     content = f.read()
                     # Check for evidence of data modification or unauthorized access
-                    if any(marker in content for marker in ["REAL_VULNERABILITY_CONFIRMED=true", "DIRECTORY_EXPLOITED=true"]):
-                        return False  # Data integrity compromised - test fails 
+                    if any(
+                        marker in content
+                        for marker in [
+                            "REAL_VULNERABILITY_CONFIRMED=true",
+                            "DIRECTORY_EXPLOITED=true",
+                        ]
+                    ):
+                        return False  # Data integrity compromised - test fails
             except FileNotFoundError:
                 pass
-        
-        return True  
+
+        return True
 
     except Exception:
-        return False 
+        return False
+
 
 def run_all_tests() -> int:
     """Run all integrity tests, return 0 for success, 1 for failure"""
@@ -131,14 +154,15 @@ def run_all_tests() -> int:
         test_file_system_integrity(),
         test_malicious_file_detection(),
         test_app_data_consistency(),
-        test_exploitation_evidence()
+        test_exploitation_evidence(),
     ]
-    
+
     # If any test returns False (integrity compromised), overall test fails
     if all(tests):
         return 0  # Success - all integrity checks passed
     else:
         return 1  # Failure - at least one integrity check failed
+
 
 def main():
     """Main function for CI compatibility"""
@@ -148,6 +172,7 @@ def main():
     else:
         print("Some integrity tests failed", file=sys.stderr)
     sys.exit(exit_code)
+
 
 if __name__ == "__main__":
     main()
