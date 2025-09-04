@@ -58,24 +58,48 @@ setup_environment() {
     export ANDROID_HOME="$ANDROID_HOME"
     export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
     
-    # Create local.properties for ownCloud build (in codebase directory)
+    # Create local.properties for Conversations build (in codebase directory)
     echo "sdk.dir=$ANDROID_HOME" > "$SCRIPT_DIR/codebase/local.properties"
     info "Environment configured."
 }
 
-build_owncloud() {
-    info "Building ownCloud from source (this may take several minutes)..."
-    git submodule update --init --recursive
-
-    ./gradlew clean
-    ./gradlew assembleRelease
-    info "Build completed successfully."
-    sign_apk
+get_emulator_arch() {
+    # Detect emulator architecture
+    if command -v adb >/dev/null 2>&1 && adb get-state >/dev/null 2>&1; then
+        local arch
+        arch=$(adb shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r\n' || echo "")
+        if [[ -n "$arch" ]]; then
+            info "Detected emulator architecture: $arch"
+            echo "$arch"
+            return 0
+        fi
+    fi
+    
+    # Default to universal if can't detect
+    warn "Could not detect emulator architecture, building universal APK"
+    echo "universal"
 }
 
-# Sign the release APK with debug keystore using modern APK signing
+build_conversations() {
+    info "Building Conversations from source (this may take several minutes)..."
+
+    local arch
+    arch=$(get_emulator_arch)
+    
+    ./gradlew clean
+    
+    # Build all architectures - Android will create splits automatically
+    info "Building Conversations (with architecture splits for $arch)"
+    ./gradlew assembleConversationsFreeRelease
+    
+    info "Build completed successfully."
+    sign_apk "$arch"
+}
+
+# Sign the release APK with debug keystore
 sign_apk() {
-    info "Signing release APK (debug keystore with v2+ signature scheme)..."
+    local arch="$1"
+    info "Signing release APK for $arch architecture (debug keystore)..."
 
     KEYSTORE_FILE="$HOME/.android/debug.keystore"
     
@@ -90,80 +114,72 @@ sign_apk() {
         info "Debug keystore generated at $KEYSTORE_FILE"
     fi
 
-    APK_UNSIGNED=$(find owncloudApp/build/outputs/apk/original/release/ -name "*-original-release-unsigned.apk" -type f 2>/dev/null | head -1)
+    # Check if architecture-specific APK already signed
+    APK_SIGNED=$(find build/outputs/apk/conversationsFree/release/ -name "*-conversations-free-$arch-release.apk" -not -name "*unsigned*" -type f 2>/dev/null | head -1)
+    if [[ -n "$APK_SIGNED" ]]; then
+        info "APK already signed: $(basename "$APK_SIGNED")"
+        return 0
+    fi
+    
+    # Find unsigned APK to sign (prefer architecture-specific, fallback to universal)
+    APK_UNSIGNED=$(find build/outputs/apk/conversationsFree/release/ -name "*-conversations-free-$arch-release-unsigned.apk" -type f 2>/dev/null | head -1)
     
     if [[ -z "$APK_UNSIGNED" ]]; then
-        warn "No unsigned release APK found to sign."
-        return 1
+        warn "No $arch APK found, trying universal APK"
+        APK_UNSIGNED=$(find build/outputs/apk/conversationsFree/release/ -name "*-conversations-free-universal-release-unsigned.apk" -type f 2>/dev/null | head -1)
+    fi
+    
+    if [[ -z "$APK_UNSIGNED" ]]; then
+        fail "No unsigned APK found to sign"
+    fi
+    
+    info "Signing APK: $APK_UNSIGNED"
+    
+    # Use apksigner instead of deprecated jarsigner
+    if [[ -z "$ANDROID_HOME" ]]; then
+        fail "ANDROID_HOME not set, cannot find apksigner"
+    fi
+    
+    APKSIGNER="$ANDROID_HOME/build-tools/*/apksigner"
+    APKSIGNER=$(ls $APKSIGNER 2>/dev/null | head -1)
+    
+    if [[ ! -f "$APKSIGNER" ]]; then
+        warn "apksigner not found, falling back to jarsigner"
+        jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA256 -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android "$APK_UNSIGNED" androiddebugkey
+    else
+        info "Using apksigner: $APKSIGNER"
+        "$APKSIGNER" sign --ks "$HOME/.android/debug.keystore" --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --v2-signing-enabled true "$APK_UNSIGNED"
     fi
     
     APK_SIGNED="${APK_UNSIGNED/-unsigned.apk/.apk}"
-    
-    # Use apksigner for SDK 30+ compatibility (supports v2+ signature schemes)
-    local apksigner_path="$ANDROID_HOME/build-tools"
-    local apksigner_tool=""
-    
-    # Find the latest build-tools version that has apksigner
-    if [[ -d "$apksigner_path" ]]; then
-        local latest_build_tools
-        latest_build_tools=$(ls -1 "$apksigner_path" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1)
-        if [[ -n "$latest_build_tools" && -f "$apksigner_path/$latest_build_tools/apksigner" ]]; then
-            apksigner_tool="$apksigner_path/$latest_build_tools/apksigner"
-            info "Using apksigner from build-tools $latest_build_tools"
-        fi
-    fi
-    
-    if [[ -n "$apksigner_tool" && -x "$apksigner_tool" ]]; then
-        info "Signing with apksigner (v1+v2 schemes for SDK 30+ compatibility)"
-        "$apksigner_tool" sign \
-            --ks "$KEYSTORE_FILE" \
-            --ks-key-alias androiddebugkey \
-            --ks-pass pass:android \
-            --key-pass pass:android \
-            --v1-signing-enabled true \
-            --v2-signing-enabled true \
-            --out "$APK_SIGNED" \
-            "$APK_UNSIGNED"
-    else
-        error "apksigner not found. Required for SDK 30+ compatibility. Please ensure Android build-tools are properly installed."
-    fi
+    mv "$APK_UNSIGNED" "$APK_SIGNED"
     
     info "Signed APK: $APK_SIGNED"
-    
-    # Verify the signature
-    if [[ -n "$apksigner_tool" && -x "$apksigner_tool" ]]; then
-        info "Verifying APK signature..."
-        if "$apksigner_tool" verify "$APK_SIGNED"; then
-            info "APK signature verification successful"
-        else
-            warn "APK signature verification failed"
-        fi
-    fi
 }
 
 
 main() {
-    info "ownCloud Android Setup"
-    echo "====================="
+    info "Conversations Android Setup"
+    echo "============================"
     
     CODEBASE_DIR="$SCRIPT_DIR/codebase"
     if [[ ! -d "$CODEBASE_DIR" ]]; then
-        error "ownCloud codebase directory not found at $CODEBASE_DIR"
+        fail "Conversations codebase directory not found at $CODEBASE_DIR"
     fi
     
     cd "$CODEBASE_DIR"
     
     if [[ ! -f "gradlew" ]]; then
-        error "gradlew not found in codebase directory."
+        fail "gradlew not found in codebase directory."
     fi
     
     check_prerequisites
     setup_environment
-    build_owncloud
+    build_conversations
     
     echo ""
     echo "=========================================="
-    info "OwnCloud Build complete! ownCloud is ready to be installed"
+    info "Conversations Build complete! Conversations is ready to be installed"
     echo "=========================================="
     echo ""
 }
