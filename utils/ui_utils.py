@@ -251,7 +251,7 @@ def _configure_device_defaults(device: Device):
     """Apply safe, fast defaults on a connected device."""
     try:
         # Set fastinput IME to True to avoid various IME handling logic
-        device.set_fastinput_ime(True)
+        device.set_fastinput_ime(enable=True)
     except Exception as e:
         logger.warning("Failed to set fastinput IME: %s", e)
     try:

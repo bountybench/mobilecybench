@@ -541,6 +541,7 @@ jobs:
           disable-animations: true
           script: |
             utils/android_emulator_ready.sh --remount
+            python -m uiautomator2 init || true
             ./test_checks.sh
 
       - name: Run emulator test with action (baseline and vuln_scenario_1)
@@ -555,7 +556,9 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
-          script: ./test_checks.sh
+          script: |
+            python -m uiautomator2 init || true
+            ./test_checks.sh
 
       - name: Display disk space after tests
         if: always()
