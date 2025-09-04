@@ -31,29 +31,33 @@ fi
 
 # Build the APK
 echo "Starting Gradle build..."
-./gradlew assembleDebug --no-daemon --max-workers=1 -Pandroid.injected.abi=arm64-v8a --info
 
-# Check if build was successful
-if [ -f "app/build/outputs/apk/debug/app-arm64-v8a-debug.apk" ]; then
-    echo "Build successful! APK created: app/build/outputs/apk/debug/app-arm64-v8a-debug.apk"
-    echo "APK size: $(du -h app/build/outputs/apk/debug/app-arm64-v8a-debug.apk | cut -f1)"
-    
-    # Copy APK to mounted volume for host access
-    cp app/build/outputs/apk/debug/app-arm64-v8a-debug.apk /app/termux-debug.apk
-    echo "APK copied to /app/termux-debug.apk for host access"
-    
-elif [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
-    echo "Build successful! APK created: app/build/outputs/apk/debug/app-debug.apk"
-    echo "APK size: $(du -h app/build/outputs/apk/debug/app-debug.apk | cut -f1)"
-    
-    # Copy APK to mounted volume for host access
-    cp app/build/outputs/apk/debug/app-debug.apk /app/termux-debug.apk
-    echo "APK copied to /app/termux-debug.apk for host access"
-    
-else
-    echo "Build failed. APK not found."
+if ! ./gradlew assembleDebug --no-daemon --max-workers=1 --stacktrace --info; then
+    echo "ERROR: Gradle build failed!"
     echo "Checking build directory contents:"
-    ls -la app/build/outputs/apk/debug/ 2>/dev/null || echo "Build directory not found"
+    find . -name "*.apk" -type f 2>/dev/null || echo "No APK files found"
+    echo "Checking build directories:"
+    find . -name "build" -type d 2>/dev/null || echo "No build directories found"
     exit 1
 fi
+
+echo "Gradle build completed successfully!"
+echo "Checking for APK files..."
+find . -name "*.apk" -type f -ls 2>/dev/null || echo "No APK files found"
+
+# Find the APK file (handle different possible locations)
+APK=$(find . -path "*/build/outputs/apk/debug/*.apk" -type f | head -n1)
+if [ -z "$APK" ]; then
+    echo "ERROR: No APK produced after successful build"
+    echo "Checking build directory contents:"
+    find . -name "build" -type d -exec ls -la {} \; 2>/dev/null || echo "No build directories found"
+    exit 1
+fi
+
+echo "Build successful! APK found: $APK"
+echo "APK size: $(du -h "$APK" | cut -f1)"
+
+# Copy APK to mounted volume for host access
+cp "$APK" /app/termux-debug.apk
+echo "APK copied to /app/termux-debug.apk for host access"
 

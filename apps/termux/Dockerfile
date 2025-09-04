@@ -14,11 +14,15 @@ RUN apt-get update --fix-missing && \
     ca-certificates \
     git \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && update-ca-certificates
 
 # Set JAVA_HOME
 ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 ENV PATH=$JAVA_HOME/bin:$PATH
+
+# Set Java options for better SSL/TLS handling
+ENV JAVA_TOOL_OPTIONS="-Dhttps.protocols=TLSv1.2 -Djava.net.useSystemProxies=true"
 
 # Set environment variables
 ENV ANDROID_HOME=/opt/android-sdk
@@ -36,8 +40,8 @@ RUN mkdir -p $ANDROID_HOME/cmdline-tools && \
 RUN yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses && \
     $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
     "platform-tools" \
-    "platforms;android-30" \
-    "build-tools;30.0.3"
+    "platforms;android-34" \
+    "build-tools;34.0.0"
 
 # Download and install specific NDK version (21.4.7075529 = NDK r21e)
 # Gradle expects: $ANDROID_HOME/ndk/21.4.7075529/
@@ -61,8 +65,10 @@ WORKDIR /app
 # Pre-download Gradle to avoid SSL issues during build
 RUN mkdir -p ~/.gradle/wrapper/dists/gradle-7.1-all && \
     cd ~/.gradle/wrapper/dists/gradle-7.1-all && \
-    wget -q --retry-connrefused --tries=3 https://services.gradle.org/distributions/gradle-7.1-all.zip || \
-    echo "Gradle download failed, will try during build"
+    (wget -q --retry-connrefused --tries=3 --timeout=30 https://services.gradle.org/distributions/gradle-7.1-all.zip && \
+     unzip -q gradle-7.1-all.zip && \
+     rm gradle-7.1-all.zip) || \
+    echo "Gradle pre-download failed, will download during build"
 
 # Copy the build script
 COPY build_termux.sh /app/

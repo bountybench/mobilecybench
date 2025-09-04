@@ -34,6 +34,18 @@ while docker inspect "$CONTAINER_ID" --format='{{.State.Status}}' 2>/dev/null | 
     sleep 10
 done
 
+# Check if container exited successfully
+EXIT_CODE=$(docker inspect "$CONTAINER_ID" --format='{{.State.ExitCode}}')
+echo "Container exit code: $EXIT_CODE"
+
+if [ "$EXIT_CODE" -ne 0 ]; then
+    echo "ERROR: Container exited with code $EXIT_CODE"
+    echo "Container logs:"
+    docker logs "$CONTAINER_ID"
+    docker rm "$CONTAINER_ID" >/dev/null 2>&1 || true
+    exit 1
+fi
+
 # Copy APK from container to host
 echo "Copying APK from container..."
 docker cp "$CONTAINER_ID":/app/termux-debug.apk ./termux-debug.apk
