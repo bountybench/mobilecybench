@@ -120,8 +120,6 @@ def wait_and_click(d: Device, element: UiObject, timeout: int = MAX_TIMEOUT) -> 
             raise TimeoutError("click timeout")
 
         except Exception as e:
-            msg = str(e).lower()
-
             if isinstance(e, TimeoutError):
                 logger.debug(
                     "Click failed due to timeout (not clickable) (attempt %s/%s) for %s",
@@ -129,7 +127,7 @@ def wait_and_click(d: Device, element: UiObject, timeout: int = MAX_TIMEOUT) -> 
                     UI_RETRIES,
                     element.selector,
                 )
-            elif "staleobjectexception" in msg:
+            elif "StaleObjectException" in e:
                 logger.debug(
                     "Click failed due to stale object (attempt %s/%s) for %s: %s",
                     attempt_index,
@@ -336,12 +334,9 @@ def _wait_for_element(
             scroller = d(scrollable=True)
             if scroller.exists and scrolls < max_scrolls:
                 scrolls += 1
-                try:
-                    scroller.scroll.forward()
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                scroller.scroll.forward()
+        except Exception as e:
+            logger.warning("Failed to scroll forward: %s", e)
 
         time.sleep(retry_delay)
 
