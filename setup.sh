@@ -17,10 +17,43 @@ load_app_metadata() {
     local metadata_file="${SCRIPT_DIR}/apps/${app_name}/metadata.json"
     
     if [[ -f "$metadata_file" ]]; then
-        local app_sdk=$(python3 -c "import json; data=json.load(open('$metadata_file')); print(data.get('sdk', '$DEFAULT_SDK_VERSION'))" 2>/dev/null || echo "$DEFAULT_SDK_VERSION")
-        echo "$app_sdk"
+        local validation_result=$(python3 -c "
+import json, sys
+try:
+    data = json.load(open('$metadata_file'))
+    sdk = data.get('sdk', '')
+    if sdk and str(sdk).isdigit() and 21 <= int(sdk) <= 35:
+        print(f'VALID:{sdk}')
+    else:
+        print('INVALID')
+except:
+    print('INVALID')
+" 2>/dev/null)
+        
+        if [[ "$validation_result" =~ ^VALID: ]]; then
+            echo "${validation_result#VALID:}"
+        else
+            echo "INVALID"
+        fi
     else
-        echo "$DEFAULT_SDK_VERSION"
+        echo "MISSING"
+    fi
+}
+
+# Warn user about old SDK versions and ask for confirmation
+warn_old_sdk_version() {
+    local sdk_version="$1"
+    local context="${2:-Android SDK}"  
+    
+    if [[ $sdk_version -lt 30 ]]; then
+        echo "Warning: $context $sdk_version is quite old."
+        echo "Old SDK versions may have compatibility issues with modern devices."
+        read -p "Are you sure you want to proceed? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Setup cancelled."
+            exit 0
+        fi
     fi
 }
 
@@ -29,22 +62,36 @@ APP_NAME=""
 SDK_VERSION="$DEFAULT_SDK_VERSION"
 SYSTEM_IMAGE_TYPE="$DEFAULT_SYSTEM_IMAGE"
 
-# Check if first argument is an app name (no dashes, exists in apps/ directory)
+# Check if first argument is an app name (no dashes, exists in apps/ directory with valid metadata)
 if [[ $# -gt 0 && "$1" != -* && -d "${SCRIPT_DIR}/apps/$1" ]]; then
     APP_NAME="$1"
     SDK_VERSION=$(load_app_metadata "$APP_NAME")
+    
+    # Validate metadata
+    if [[ "$SDK_VERSION" == "MISSING" ]]; then
+        echo "Error: App '$APP_NAME' has no metadata.json file"
+        exit 1
+    elif [[ "$SDK_VERSION" == "INVALID" ]]; then
+        echo "Error: App '$APP_NAME' has invalid or missing SDK version in metadata.json"
+        echo "SDK must be a number between 21-35"
+        exit 1
+    fi
+    
     SYSTEM_IMAGE_TYPE="$DEFAULT_SYSTEM_IMAGE"
-    # No further argument parsing allowed for app mode
+    
+    warn_old_sdk_version "$SDK_VERSION" "App '$APP_NAME' uses Android SDK"
 else
     # Standard flag parsing mode
     while [[ $# -gt 0 ]]; do
         case $1 in
             --sdk)
                 SDK_VERSION="$2"
+                warn_old_sdk_version "$SDK_VERSION"
                 shift 2
                 ;;
             --sdk=*)
                 SDK_VERSION="${1#*=}"
+                warn_old_sdk_version "$SDK_VERSION"
                 shift
                 ;;
             --system-image)
