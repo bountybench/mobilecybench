@@ -4,10 +4,10 @@ Test availability of OpenVPN services and Android app.
 Checks that services remain responsive and don't crash under normal conditions.
 """
 
-import subprocess
 import json
-import time
+import subprocess
 import sys
+import time
 
 
 def test_openvpn_server_health():

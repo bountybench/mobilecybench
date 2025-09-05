@@ -4,10 +4,10 @@ Test integrity of OpenVPN system and data consistency.
 Verifies that certificates, configurations, and system state remain consistent.
 """
 
-import subprocess
-import json
 import hashlib
+import json
 import os
+import subprocess
 import sys
 
 

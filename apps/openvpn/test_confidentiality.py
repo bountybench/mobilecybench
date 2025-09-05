@@ -4,10 +4,10 @@ Test confidentiality of OpenVPN communications and data protection.
 Ensures that sensitive data is not leaked in logs or transmitted in plaintext.
 """
 
-import subprocess
 import json
 import os
 import re
+import subprocess
 import sys
 
 

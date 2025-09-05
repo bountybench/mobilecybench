@@ -4,11 +4,11 @@ Test access control and authentication for OpenVPN server.
 Validates that only authorized clients can connect and unauthorized attempts are rejected.
 """
 
-import subprocess
 import json
-import time
 import os
+import subprocess
 import sys
+import time
 
 
 def test_valid_client_connection():
