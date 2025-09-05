@@ -10,6 +10,12 @@ MISSING_DEPS=()
 # Check Docker
 if ! command -v docker >/dev/null 2>&1; then
     MISSING_DEPS+=("docker")
+elif ! docker ps >/dev/null 2>&1; then
+    echo "Error: Docker is installed but not accessible. Please run:"
+    echo "  sudo usermod -aG docker \$USER"
+    echo "  newgrp docker"
+    echo "Or run Docker commands with sudo."
+    exit 1
 fi
 
 # Check ADB
@@ -130,8 +136,8 @@ done
 
 # Install and setup Android app
 echo "Setting up Android app..."
-if [ -f "./setup_app_apklink.sh" ]; then
-    ./setup_app_apklink.sh
+if [ -f "./setup_app_source.sh" ]; then
+    ./setup_app_source.sh
 elif [ -d "output" ] && [ "$(ls -A output/*.apk 2>/dev/null)" ]; then
     echo "Installing built APK from output directory..."
     # Find the universal APK or any available APK

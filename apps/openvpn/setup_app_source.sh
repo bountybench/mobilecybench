@@ -28,8 +28,8 @@ echo "Building OpenVPN Android app locally..."
 cd codebase
 
 # Set up build environment
-export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
-export PATH="$ANDROID_HOME/platform-tools:$PATH"
+export ANDROID_HOME="${ANDROID_HOME:-$HOME/.android-sdk}"
+export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
 
 # Update git submodules
 git submodule update --init --recursive
