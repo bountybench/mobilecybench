@@ -226,7 +226,18 @@ run_test_check() {
 cd "$DIR"
 print_header "$CYAN" "SETTING UP APP FROM SOURCE"
 checkout_commit "$DIR"
-required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
+
+# Check if run_checks.sh exists to determine test strategy and required scripts
+if [ -f "$DIR/run_checks.sh" ]; then
+    echo -e "${INFO} run_checks.sh found - running full vulnerability scenario tests"
+    HAS_RUN_CHECKS=true
+    required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
+else
+    echo -e "${INFO} run_checks.sh not found - running simplified APK installation test"
+    HAS_RUN_CHECKS=false
+    required_scripts=("setup.sh" "cleanup.sh" "setup_app_source.sh")
+fi
+
 echo -e "${INFO} Checking for required scripts..."
 for script in "${required_scripts[@]}"; do
     if [[ ! -f "$script" ]]; then
@@ -256,12 +267,72 @@ else
     echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
 fi
 
-# Run the three test scenarios
-run_test_check "TEST CHECKS BEFORE VULNERABLE SCENARIOS" "" "false"
-run_test_check "TEST CHECKS AFTER NON-DOS VULNERABLE SCENARIO" "0" "true"
-run_test_check "TEST CHECKS AFTER DOS VULNERABLE SCENARIO" "1" "false"
+if [ "$HAS_RUN_CHECKS" = true ]; then
+    # Run the three test scenarios
+    run_test_check "TEST CHECKS BEFORE VULNERABLE SCENARIOS" "" "false"
+    run_test_check "TEST CHECKS AFTER NON-DOS VULNERABLE SCENARIO" "0" "true"
+    run_test_check "TEST CHECKS AFTER DOS VULNERABLE SCENARIO" "1" "false"
+else
+    # Run simplified test
+    print_header "$CYAN" "RUNNING SIMPLIFIED APK INSTALLATION TEST"
+    
+    cd "$ROOT_DIR"
+    cd "$DIR"
 
-print_header "$GREEN" "ALL TESTS PASSED"
+    echo -e "${INFO} Simple APK build and install test - no vulnerability scenarios"
+    
+    # Check packages before setup
+    packages_before=$(adb shell pm list packages | wc -l)
+    echo -e "${INFO} Packages before setup: $packages_before"
+    
+    echo -e "${INFO} Running setup..."
+    ./setup.sh
+    adb logcat -c
+    
+    # Check packages after setup
+    packages_after=$(adb shell pm list packages | wc -l)
+    echo -e "${INFO} Packages after setup: $packages_after"
+    
+    if [ "$packages_after" -gt "$packages_before" ]; then
+        echo -e "${SUCCESS} Package count increased ($packages_before -> $packages_after) - app installation verified"
+    elif [ "$packages_after" -eq "$packages_before" ]; then
+        echo -e "${WARNING} Package count unchanged - setup may not have installed new packages"
+        echo -e "${WARNING} This could be expected if app was already installed or uses system components"
+    else
+        echo -e "${ERROR} Package count decreased ($packages_before -> $packages_after) - unexpected behavior"
+        echo -e "${INFO} Cleaning up..."
+        ./cleanup.sh
+        exit 1
+    fi
+    
+    echo -e "${INFO} Cleaning up..."
+    ./cleanup.sh
+    cd -
+fi
+
+if [ "$HAS_RUN_CHECKS" = true ]; then
+    print_header "$GREEN" "ALL TESTS PASSED"
+    print_header "$GREEN" "FULL CI COMPLETED SUCCESSFULLY"
+    echo -e "${SUCCESS} Complete vulnerability testing performed:"
+    echo -e "${SUCCESS} ✓ Baseline scenario"  
+    echo -e "${SUCCESS} ✓ Vulnerability scenario 0 (non-DoS)"
+    echo -e "${SUCCESS} ✓ Vulnerability scenario 1 (DoS)"
+    echo -e "${SUCCESS} ✓ All CIAA (Confidentiality, Integrity, Availability, Access Control) checks"
+else
+    print_header "$GREEN" "BASIC TESTS PASSED"
+    print_header "$YELLOW" "SIMPLIFIED CI COMPLETED - FULL CI NOT RUN"
+    echo ""
+    echo -e "${WARNING} ⚠️  IMPORTANT: Only basic APK installation testing was performed"
+    echo -e "${WARNING} ⚠️  Full vulnerability scenario testing was NOT run"
+    echo ""  
+    echo -e "${INFO} To enable full CI testing, this app needs:"
+    echo -e "${INFO} • run_checks.sh script"
+    echo -e "${INFO} • Vulnerability scenario implementations"
+    echo -e "${INFO} • Full CIAA security test coverage"
+    echo ""
+    echo -e "${CYAN} The GitHub CI will also run in simplified mode for this app"
+    echo -e "${CYAN} until run_checks.sh is added."
+fi
 
 cd $ROOT_DIR
 if [ -f "stop_emulator.sh" ]; then
@@ -270,4 +341,8 @@ fi
 
 # Final cleanup
 print_header "$CYAN" "FINAL CLEANUP"
-print_header "$GREEN" "LOCAL CIA TESTS COMPLETED SUCCESSFULLY"
+if [ "$HAS_RUN_CHECKS" = true ]; then
+    print_header "$GREEN" "LOCAL CIA TESTS COMPLETED SUCCESSFULLY"
+else
+    print_header "$YELLOW" "LOCAL BASIC TESTS COMPLETED - ADD run_checks.sh FOR FULL CI"
+fi

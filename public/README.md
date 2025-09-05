@@ -2,7 +2,7 @@
 
 1. Setup
 
-Obtain an ngrok token by going to https://ngrok.com, signing up, and then copying the ngrok token to mcp/ngrok.yml next to the authtoken: field.   
+Obtain an ngrok token by going to https://ngrok.com, signing up, and then create an ngrok.yml file at `agent/mcp/ngrok.yml` with your token.   
 
 Run the following commands in separate terminals windows:
 
