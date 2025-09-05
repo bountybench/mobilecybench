@@ -73,6 +73,67 @@ echo "Android APK build completed!"
 if [ -d "output" ] && [ "$(ls -A output)" ]; then
     echo "APKs available in: output/"
     ls -la output/
+    
+    # Install APK on emulator
+    echo "Installing APK on emulator..."
+    export ANDROID_HOME="${ANDROID_HOME:-$HOME/.android-sdk}"
+    export PATH="$ANDROID_HOME/platform-tools:$PATH"
+    
+    # Check if emulator is running
+    if ! adb devices | grep -q "emulator.*device"; then
+        echo "Warning: No emulator detected. Please start emulator first."
+        exit 1
+    fi
+    
+    # Find the best APK to install (prefer universal, then x86_64)
+    APK_FILE=""
+    if [ -f "output/main-ui-ovpn2-universal-debug.apk" ]; then
+        APK_FILE="output/main-ui-ovpn2-universal-debug.apk"
+    elif [ -f "output/main-ui-ovpn2-x86_64-debug.apk" ]; then
+        APK_FILE="output/main-ui-ovpn2-x86_64-debug.apk" 
+    else
+        APK_FILE=$(ls output/*.apk | head -1)
+    fi
+    
+    if [ -n "$APK_FILE" ]; then
+        echo "Installing APK: $APK_FILE"
+        
+        # Uninstall existing version
+        adb uninstall de.blinkt.openvpn 2>/dev/null || echo "No existing app to uninstall"
+        
+        # Install new APK
+        adb install "$APK_FILE"
+        
+        # Push OpenVPN config if available
+        if [ -f "client-configs/android-client.ovpn" ]; then
+            echo "Copying OpenVPN config to emulator..."
+            adb push client-configs/android-client.ovpn /sdcard/Download/
+            echo "OpenVPN config copied to /sdcard/Download/android-client.ovpn"
+        fi
+        
+        # Launch the app
+        echo "Launching OpenVPN app..."
+        adb shell am start -n de.blinkt.openvpn/de.blinkt.openvpn.LaunchVPN
+        
+        # Wait for app to start
+        sleep 3
+        
+        # Check if app launched successfully
+        if adb shell dumpsys package de.blinkt.openvpn | grep -q "ACTIVITY"; then
+            echo "✓ OpenVPN app launched successfully"
+            echo ""
+            echo "Setup completed! Next steps:"
+            echo "1. Open the OpenVPN app on the emulator"
+            echo "2. Import the client configuration from /sdcard/Download/android-client.ovpn"
+            echo "3. Connect to the VPN server at 10.0.2.2:1194"
+        else
+            echo "⚠ App may not have launched properly"
+        fi
+        
+    else
+        echo "Error: No APK files found to install"
+        exit 1
+    fi
 else
     echo "Warning: No APK files found in output directory"
 fi

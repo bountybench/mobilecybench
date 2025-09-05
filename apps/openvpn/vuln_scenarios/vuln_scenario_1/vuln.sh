@@ -13,7 +13,7 @@ echo "1. Testing OpenVPN server resilience under connection flood..."
 echo "Starting connection flood test..."
 for i in {1..10}; do
     timeout 5 docker run --rm --net=host \
-        kylemanna/openvpn \
+        openvpn:2.5 \
         openvpn --remote 10.0.2.2 1194 --dev tun --proto udp --verb 0 &
 done
 
@@ -69,7 +69,7 @@ EOF
 echo "6. Attempting connection with oversized certificate..."
 timeout 10 docker run --rm --net=host \
     -v "$(pwd)/resource_exhaustion.ovpn:/client.ovpn" \
-    kylemanna/openvpn \
+    openvpn:2.5 \
     openvpn --config /client.ovpn --verb 0 > large_cert_attempt.log 2>&1 || echo "Large cert connection failed"
 
 echo "7. Checking server stability after resource exhaustion attempt..."
@@ -170,6 +170,7 @@ echo "DoS vulnerability scenario completed. Results in dos_vulnerability_report.
 echo "Overall Status: $OVERALL_STATUS (Score: $SECURITY_SCORE/100)"
 
 # Copy results back to main directory
+mkdir -p ../../../results  
 cp dos_vulnerability_report.json ../../../results/vuln_scenario_1_results.json
 
 # Clean up processes
