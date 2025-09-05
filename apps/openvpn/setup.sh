@@ -106,14 +106,20 @@ docker network create shared_net 2>/dev/null || echo "Network shared_net already
 docker stop openvpn-server 2>/dev/null || true
 docker rm openvpn-server 2>/dev/null || true
 
-# Initialize OpenVPN configuration with temporary containers
-echo "Initializing OpenVPN configuration..."
-docker run --rm -v openvpn-data:/etc/openvpn kylemanna/openvpn:latest ovpn_genconfig -u udp://10.0.2.2:1194 -s 10.8.0.0/24
-docker run --rm -v openvpn-data:/etc/openvpn -e EASYRSA_BATCH=1 kylemanna/openvpn:latest ovpn_initpki nopass
+# Build official OpenVPN server for CVE testing
+echo "Building official OpenVPN server..."
+docker build -f Dockerfile.openvpn-server -t openvpn-cve-server .
 
 # Start OpenVPN server
 echo "Starting OpenVPN server..."
-docker run -d --name openvpn-server --cap-add=NET_ADMIN --device=/dev/net/tun -p 1194:1194/udp -p 8080:8080 --network=shared_net --restart=unless-stopped -v openvpn-data:/etc/openvpn kylemanna/openvpn:latest
+docker run -d --name openvpn-server \
+    --cap-add=NET_ADMIN \
+    --device=/dev/net/tun \
+    -p 1194:1194/udp \
+    --network=shared_net \
+    --restart=unless-stopped \
+    --sysctl net.ipv4.ip_forward=1 \
+    openvpn-cve-server
 
 # Wait for server to be ready
 echo "Waiting for OpenVPN server to initialize..."
@@ -125,13 +131,35 @@ for i in {1..30}; do
     sleep 2
 done
 
-# Generate client certificates
-echo "Generating client certificates..."
+# Generate client configurations
+echo "Generating client configurations..."
+mkdir -p client-configs
 for client in android-client test-user-1 test-user-2; do
-    docker exec -e EASYRSA_BATCH=1 openvpn-server easyrsa build-client-full "$client" nopass
-    docker exec openvpn-server ovpn_getclient "$client" > "client-configs/$client.ovpn"
-    sed -i.bak 's/remote localhost/remote 10.0.2.2/g' "client-configs/$client.ovpn"
-    rm -f "client-configs/$client.ovpn.bak"
+    # Create client config file
+    cat > "client-configs/$client.ovpn" <<EOF
+client
+dev tun
+proto udp
+remote 10.0.2.2 1194
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+cipher AES-256-GCM
+auth SHA256
+tls-version-min 1.2
+remote-cert-tls server
+verb 3
+<ca>
+$(docker exec openvpn-server cat /etc/openvpn/easy-rsa/pki/ca.crt)
+</ca>
+<cert>
+$(docker exec openvpn-server cat /etc/openvpn/easy-rsa/pki/issued/$client.crt)
+</cert>
+<key>
+$(docker exec openvpn-server cat /etc/openvpn/easy-rsa/pki/private/$client.key)
+</key>
+EOF
 done
 
 # Install and setup Android app

@@ -10,7 +10,8 @@ docker rm openvpn-server 2>/dev/null || echo "No openvpn-server container to rem
 
 # Remove Docker images
 echo "Removing Docker images..."
-docker rmi kylemanna/openvpn:latest 2>/dev/null || echo "No OpenVPN images to remove"
+docker rmi openvpn-cve-server:latest 2>/dev/null || echo "No OpenVPN CVE server image to remove"
+docker rmi kylemanna/openvpn:latest 2>/dev/null || echo "No kylemanna OpenVPN images to remove"
 
 # Clean up generated files
 echo "Cleaning up generated files..."

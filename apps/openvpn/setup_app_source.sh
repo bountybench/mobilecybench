@@ -11,8 +11,25 @@ if [ ! -d "codebase" ]; then
 fi
 
 # Check for required build tools
+MISSING_BUILD_DEPS=()
+
 if ! command -v java >/dev/null 2>&1; then
-    echo "Error: Java not found. Please install Java 17."
+    MISSING_BUILD_DEPS+=("java")
+fi
+
+if ! command -v cmake >/dev/null 2>&1; then
+    MISSING_BUILD_DEPS+=("cmake")
+fi
+
+if ! command -v swig >/dev/null 2>&1; then
+    MISSING_BUILD_DEPS+=("swig")
+fi
+
+if [ ${#MISSING_BUILD_DEPS[@]} -ne 0 ]; then
+    echo "Error: Missing build dependencies: ${MISSING_BUILD_DEPS[*]}"
+    echo "Please install the missing dependencies:"
+    echo "  sudo apt update"
+    echo "  sudo apt install -y openjdk-17-jdk cmake swig"
     exit 1
 fi
 
