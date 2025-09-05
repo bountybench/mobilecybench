@@ -25,7 +25,7 @@ def test_valid_client_connection():
         result = subprocess.run([
             "docker", "run", "--rm", "--net=host", 
             "-v", f"{os.path.abspath(config_file)}:/client.ovpn",
-            "kylemanna/openvpn", 
+            "openvpn:2.5", 
             "openvpn", "--config", "/client.ovpn", "--daemon", "--verb", "3"
         ], capture_output=True, text=True, timeout=30)
         
@@ -87,7 +87,7 @@ INVALID_PRIVATE_KEY_DATA
         result = subprocess.run([
             "docker", "run", "--rm", "--net=host",
             "-v", "/tmp/invalid-client.ovpn:/client.ovpn", 
-            "kylemanna/openvpn",
+            "openvpn:2.5",
             "openvpn", "--config", "/client.ovpn", "--verb", "3"
         ], capture_output=True, text=True, timeout=15)
         

@@ -24,7 +24,8 @@ if ! command -v adb >/dev/null 2>&1; then
 fi
 
 # Check Android SDK emulator
-if [ ! -f "/home/ubuntu/Android/Sdk/emulator/emulator" ]; then
+ANDROID_HOME="${ANDROID_HOME:-$HOME/.android-sdk}"
+if [ ! -f "$ANDROID_HOME/emulator/emulator" ]; then
     MISSING_DEPS+=("android-emulator")
 fi
 
@@ -40,7 +41,7 @@ if [ ${#MISSING_DEPS[@]} -ne 0 ]; then
 fi
 
 # Add Android SDK to PATH
-export PATH="$PATH:/home/ubuntu/Android/Sdk/emulator:/home/ubuntu/Android/Sdk/platform-tools"
+export PATH="$PATH:$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools"
 
 # Check if emulator is running, if not start one
 echo "Checking Android emulator..."
@@ -48,7 +49,7 @@ if ! adb devices | grep -q "emulator"; then
     echo "No emulator running, starting one..."
     
     # List available AVDs using proper SDK tool
-    AVD_LIST=$(/home/ubuntu/Android/Sdk/emulator/emulator -list-avds)
+    AVD_LIST=$($ANDROID_HOME/emulator/emulator -list-avds)
     if [ -z "$AVD_LIST" ]; then
         echo "Error: No Android Virtual Devices found. Please create one first."
         exit 1
@@ -59,7 +60,7 @@ if ! adb devices | grep -q "emulator"; then
     echo "Starting emulator: $AVD_NAME"
     
     # Start emulator in background with optimization flags
-    /home/ubuntu/Android/Sdk/emulator/emulator -avd "$AVD_NAME" -no-audio -no-window -no-boot-anim -memory 2048 -partition-size 4096 -wipe-data &
+    $ANDROID_HOME/emulator/emulator -avd "$AVD_NAME" -no-audio -no-window -no-boot-anim -memory 2048 -partition-size 4096 -wipe-data &
     EMULATOR_PID=$!
     
     # Wait for emulator to boot
