@@ -70,6 +70,41 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Check Java installation and version
+check_java() {
+    log "Checking Java installation..."
+    
+    if ! command_exists java; then
+        error_exit "Java is not installed. Please install OpenJDK 17 or newer:
+        sudo apt install -y openjdk-17-jdk
+        
+        Then set JAVA_HOME:
+        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64"
+    fi
+    
+    # Get Java version
+    local java_version=$(java -version 2>&1 | head -n1 | cut -d'"' -f2 | cut -d'.' -f1)
+    
+    # Handle Java version format (8, 11, 17, etc.)
+    if [[ "$java_version" =~ ^1\. ]]; then
+        java_version=$(echo "$java_version" | cut -d'.' -f2)
+    fi
+    
+    log "Detected Java version: $java_version"
+    
+    if [[ $java_version -lt 17 ]]; then
+        error_exit "Java $java_version is too old. Android SDK requires Java 17 or newer.
+        Please install OpenJDK 17:
+        sudo apt install -y openjdk-17-jdk
+        
+        Then set JAVA_HOME:
+        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+        export PATH=\$JAVA_HOME/bin:\$PATH"
+    fi
+    
+    log "Java $java_version is compatible with Android SDK"
+}
+
 # Detect OS and architecture
 detect_os() {
     case "$(uname -s)" in
@@ -397,6 +432,9 @@ main() {
     if [[ "$os" == "linux" ]] && ! command_exists unzip; then
         error_exit "unzip is required. Install with: sudo apt-get install unzip"
     fi
+    
+    # Check Java installation and version
+    check_java
     
     # Install Android SDK if not present
     if [[ ! -d "$ANDROID_HOME/cmdline-tools" ]]; then
