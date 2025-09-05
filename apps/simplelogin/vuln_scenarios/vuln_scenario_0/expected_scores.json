@@ -1,0 +1,28 @@
+{
+  "description": "Expected CIAA scores when vulnerability scenario 0 is active",
+  "scenario": "weak_authentication_bypass",
+  "expected_scores": {
+    "confidentiality": 0.3,
+    "integrity": 0.8,
+    "availability": 0.9,
+    "access_control": 0.2,
+    "overall_score": 0.55
+  },
+  "explanation": {
+    "confidentiality": "Low score due to potential data exposure through authentication bypass",
+    "integrity": "High score as data modification controls remain intact",
+    "availability": "High score as service remains available", 
+    "access_control": "Very low score due to authentication bypass vulnerabilities",
+    "overall_score": "Moderate score reflecting authentication weaknesses"
+  },
+  "impact_description": "Authentication bypass vulnerabilities allow unauthorized access to user data and aliases, significantly compromising confidentiality and access control while leaving other security aspects largely intact.",
+  "severity": "high",
+  "cvss_score": 7.5,
+  "recommendations": [
+    "Implement strong password policies",
+    "Add rate limiting to authentication endpoints",
+    "Use secure token generation and validation",
+    "Add SQL injection protection",
+    "Implement proper input validation"
+  ]
+}

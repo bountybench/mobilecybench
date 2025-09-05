@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: simplelogin
+      POSTGRES_USER: simplelogin
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U simplelogin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  simplelogin-api:
+    image: simplelogin/app:latest
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Database
+      DB_URI: postgresql://simplelogin:password@db:5432/simplelogin
+      
+      # Flask
+      FLASK_SECRET: a-very-secret-flask-key-for-testing-only
+      
+      # SimpleLogin specific
+      URL: http://localhost:7777
+      EMAIL_DOMAIN: simplelogin.local
+      SUPPORT_EMAIL: support@simplelogin.local
+      ADMIN_EMAIL: admin@simplelogin.local
+      
+      # Email settings (disable for testing)
+      DISABLE_REGISTRATION: 0
+      DISABLE_ONBOARDING: 1
+      
+      # Development settings
+      FLASK_ENV: development
+      DEBUG: 1
+      
+      # DKIM (disabled for testing)
+      DKIM_PRIVATE_KEY_PATH: ""
+      
+      # Postfix (disabled for testing)
+      POSTFIX_SERVER: ""
+      
+    ports:
+      - "7777:7777"
+    volumes:
+      - simplelogin_data:/app/static/upload
+    command: python server.py
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7777/api/auth/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
+  simplelogin_data:
