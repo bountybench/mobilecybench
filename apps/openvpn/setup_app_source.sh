@@ -74,16 +74,19 @@ if [ -d "output" ] && [ "$(ls -A output)" ]; then
     echo "APKs available in: output/"
     ls -la output/
     
-    # Install APK on emulator
-    echo "Installing APK on emulator..."
+    # Check if emulator is running - only install if available
+    echo "Checking for Android emulator..."
     export ANDROID_HOME="${ANDROID_HOME:-$HOME/.android-sdk}"
     export PATH="$ANDROID_HOME/platform-tools:$PATH"
     
-    # Check if emulator is running
     if ! adb devices | grep -q "emulator.*device"; then
-        echo "Warning: No emulator detected. Please start emulator first."
-        exit 1
+        echo "Warning: No emulator detected. Skipping APK installation."
+        echo "APK build completed successfully. Install manually if needed."
+        exit 0
     fi
+    
+    # Install APK on emulator
+    echo "Installing APK on emulator..."
     
     # Find the best APK to install (prefer universal, then x86_64)
     APK_FILE=""
@@ -135,5 +138,7 @@ if [ -d "output" ] && [ "$(ls -A output)" ]; then
         exit 1
     fi
 else
-    echo "Warning: No APK files found in output directory"
+    echo "Error: No APK files found in output directory"
+    echo "Build may have failed - check build logs above"
+    exit 1
 fi
