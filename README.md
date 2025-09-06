@@ -388,7 +388,7 @@ That's it! You are ready to begin developing in the standardized orchestrator co
 ### What the Setup Script Does
 
 - Downloads and installs Android SDK Command Line Tools
-- Creates an Android 9.0 (API 28) emulator
+- Creates an Android 15.0 (API 35) emulator
 - Sets up environment variables automatically
 - Creates helper scripts for common tasks
 
@@ -438,13 +438,13 @@ That's it! You are ready to begin developing in the standardized orchestrator co
 The emulator is configured with:
 
 - **Device:** Pixel 2 profile
-- **Android:** 9.0 (API 28) with Google APIs
+- **Android:** 15.0 (API 35) with Google APIs
 - **RAM:** 2GB
 - **Architecture:** x86_64
 - **GPU:** Hardware acceleration enabled
 
 To modify settings, edit the AVD configuration in:
-`~/.android/avd/MobileBenchmark_API28.avd/config.ini`
+`~/.android/avd/MobileBenchmark_API35.avd/config.ini`
 
 ### Support
 
