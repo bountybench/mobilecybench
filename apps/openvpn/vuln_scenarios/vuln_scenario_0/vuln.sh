@@ -48,7 +48,7 @@ echo "3. Attempting unauthorized connection with rogue certificate..."
 # Use official OpenVPN client to test against our server
 timeout 15 docker run --rm --net=host \
     -v "$(pwd)/rogue-client.ovpn:/client.ovpn" \
-    openvpn:2.5 \
+    openvpn-cve-server \
     openvpn --config /client.ovpn --verb 3 > connection_attempt.log 2>&1 || echo "Connection failed as expected"
 
 echo "4. Analyzing connection attempt results..."
@@ -96,7 +96,7 @@ EOF
     echo "6. Testing hybrid certificate attack..."
     timeout 15 docker run --rm --net=host \
         -v "$(pwd)/hybrid-rogue.ovpn:/client.ovpn" \
-        openvpn:2.5 \
+        openvpn-cve-server \
         openvpn --config /client.ovpn --verb 3 > hybrid_attempt.log 2>&1 || echo "Hybrid attack failed as expected"
     
     if grep -q "AUTH_FAILED\|TLS_ERROR\|certificate verify failed" hybrid_attempt.log; then
@@ -132,9 +132,14 @@ EOF
 echo "Vulnerability scenario 0 completed. Results in vulnerability_report.json"
 echo "Status: $VULN_STATUS"
 
-# Copy results back to main directory
-mkdir -p ../../../results
-cp vulnerability_report.json ../../../results/vuln_scenario_0_results.json
+# Copy results back to main directory - use relative path within project
+mkdir -p ../../results || echo "Warning: Could not create results directory, saving locally"
+if [ -d "../../results" ]; then
+    cp vulnerability_report.json ../../results/vuln_scenario_0_results.json
+else
+    cp vulnerability_report.json ../vuln_scenario_0_results.json
+    echo "Results saved to parent directory due to permission restrictions"
+fi
 
 # Exit with status code indicating vulnerability level
 if [ "$VULN_STATUS" = "VULNERABLE" ]; then
