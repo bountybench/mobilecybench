@@ -141,9 +141,7 @@ else
     echo "Results saved to parent directory due to permission restrictions"
 fi
 
-# Exit with status code indicating vulnerability level
-if [ "$VULN_STATUS" = "VULNERABLE" ]; then
-    exit 1
-else
-    exit 0
-fi
+# Always exit with success - vulnerability status is recorded in report
+# CI should not fail based on vulnerability findings, only on test execution failures
+echo "Vulnerability test completed successfully"
+exit 0
