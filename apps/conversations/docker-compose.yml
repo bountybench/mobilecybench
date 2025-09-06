@@ -14,7 +14,8 @@ services:
     ports:
       - "5222:5222"  # Client connections (C2S)
       - "5269:5269"  # Server-to-server (S2S)
-      - "5281:5281"  # HTTP/BOSH/WebSocket
+      - "5280:5280"  # HTTP/BOSH/WebSocket (HTTP)
+      - "5281:5281"  # HTTP/BOSH/WebSocket (HTTPS)
     environment:
       PROSODY_VIRTUAL_HOSTS: 10.0.2.2
       PROSODY_ADMINS: admin@10.0.2.2

@@ -10,6 +10,11 @@
 #   ./setup.sh [--fast] [--help]
 #   ./setup.sh --fast        # Skip build, use existing APK
 #   FAST=1 ./setup.sh         # Same as --fast
+# Users:
+#  1. admin@10.0.2.2 (password: adminpass)
+#  2. testuser@10.0.2.2 (password: testpass)
+#  3. user1@10.0.2.2 (password: user1pass)
+#  4. user2@10.0.2.2 (password: user2pass)
 set -euo pipefail
 IFS=$'\n\t'
 

@@ -57,7 +57,10 @@ archive_expires_after = "1w"
 
 -- Logging
 log = {
-    {levels = {min = "info"}, to = "console"};
+    debug = "/var/log/prosody/debug.log";
+    info = "/var/log/prosody/prosody.log"; 
+    error = "/var/log/prosody/prosody.err";
+    "*console";
 }
 
 -- Certificates directory
