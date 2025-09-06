@@ -32,6 +32,8 @@ services:
       retries: 10
     env_file: [.env]
     container_name: wordpress-app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 networks:
   private_net:

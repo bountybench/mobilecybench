@@ -36,6 +36,16 @@ start_emulator() {
         log_info "Emulator already running. Skipping start."
         return 0
     fi
+    if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+        log_info "Running in GitHub - skipping emulator startup."
+        if adb devices | grep -qE '^emulator-[0-9]+\s+device$'; then
+            log_info "Emulator detected in CI."
+        else
+            log_warn "No emulator detected in CI. Continuing..."
+        fi
+        return 0
+    fi
+
     log_info "Starting Android emulator..."
     local avd_name=${1:-"Pixel_2_API_28"}
     if [[ -z "$avd_name" ]]; then
@@ -58,7 +68,7 @@ start_emulator() {
         log_info "Emulator started (AVD=${avd_name})"
     fi
     if ! wait_for_device_boot 120; then
-        fatal "Android device did not finish booting within 600s"
+        fatal "Android device did not finish booting within 120s"
     fi
 }
 
@@ -185,27 +195,24 @@ choose_volume() {
 #   $3 = gradle command (e.g., "./gradlew assembleDebug")
 #   $4 = OPTIONAL: build container name (default: "mobilecybench-build")
 build_app_source() {
-    local in_src="$1"
+    local host_src="$1"
     local dest="$2"
     local gradle_cmd="$3"
     local container_name="${4:-mobilecybench-build}"
 
-    if [[ -z "${in_src:-}" || -z "${dest:-}" || -z "${gradle_cmd:-}" ]]; then
+    if [[ -z "${host_src:-}" || -z "${dest:-}" || -z "${gradle_cmd:-}" ]]; then
         fatal "build_app_source requires: <src-path> <dest-apk-path> <gradle-cmd> [container-name]"
     fi
     require_cmd docker
     require_cmd tar
 
     # Resolve host_src (accept absolute or relative to ROOT_DIR)
-    local host_src
-    if [[ "$in_src" = /* ]]; then
-        host_src="$in_src"
-    else
-        host_src="${ROOT_DIR%/}/${in_src#/}"
+    if [[ ! "$host_src" = /* ]]; then
+        host_src="${ROOT_DIR%/}/${host_src#/}"
     fi
 
-    if [[ ! -d "$host_src" || ! -f "$host_src/gradlew" ]]; then
-        fatal "Source missing or gradlew not found at path: $host_src. Initialize submodule on host/orchestrator."
+    if [[ ! -d "$host_src" ]]; then
+        fatal "Source missing. Initialize submodule on host/orchestrator."
     fi
 
     # Compute container_src relative to ROOT_DIR
@@ -226,16 +233,16 @@ build_app_source() {
     local started_build=false
     if ! docker ps --format '{{.Names}}' | grep -q -x "$container_name"; then
         if [[ "$container_name" == "mobilecybench-build" ]]; then
-            log_info "Attempting: docker compose up -d build"
-            if docker compose -f "${ROOT_DIR}/docker-compose.yml" up -d build >/dev/null 2>&1; then
+            log_info "Attempting: docker compose up -d --build build at ${ROOT_DIR}/docker-compose.yml"
+            if docker compose -f "${ROOT_DIR}/docker-compose.yml" up -d --build build; then
                 started_build=true
             else
-                log_warn "docker compose up -d build failed; will attempt docker run fallback"
+                log_warn "docker compose up failed; collecting diagnostics and trying explicit build"
             fi
-        fi
+        fi      
     fi
 
-    # docker run fallback (do NOT mount repo root)
+    # docker run fallback
     if ! docker ps --format '{{.Names}}' | grep -q -x "$container_name"; then
         local img="$(docker compose -f "${ROOT_DIR}/docker-compose.yml" images -q build 2>/dev/null | head -n1 || true)"
         if [[ -z "$img" ]]; then
@@ -305,7 +312,7 @@ build_app_source() {
     fi
 
     mkdir -p "$(dirname "$dest")"
-    docker cp "${container_name}:${apk_container}" "$dest" || fatal "docker cp failed copying ${apk_container} -> $dest"
-    log_info "Copied APK from container: ${apk_container} -> $dest"
+    docker cp "${container_name}:${apk_container}" "$dest" || fatal "docker cp failed copying ${apk_container} to $dest"
+    log_info "Copied APK from container: ${apk_container} to $dest"
     return 0
 }

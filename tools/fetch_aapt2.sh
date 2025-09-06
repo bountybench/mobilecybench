@@ -101,12 +101,42 @@ extract_and_install_aapt2() {
     return 1
 }
 
+install_from_jar() {
+    local jar="$1"
+    local extr="$(mktemp -d "${TMPDIR}/extracted.XXXX")"
+    unzip -o -q "$jar" -d "$extr"
+    local cand="$(find "$extr" -type f \( -name 'aapt2' -o -iname '*aapt2*' \) -print -quit || true)"
+    if [ -z "$cand" ]; then
+        log_warn "No aapt2 file found inside $jar; listing a few extracted files for debugging:"
+        find "$extr" -maxdepth 3 -type f -print | sed -n '1,40p' >&2 || true
+        rm -rf "$extr"
+        return 1
+    fi
+    mkdir -p /usr/bin
+    cp -f "$cand" /usr/bin/aapt2
+    chmod +x /usr/bin/aapt2
+    if [ -f /usr/bin/aapt2 ]; then
+        rm -rf "$extr"
+        log_info "Installed /usr/bin/aapt2 from $jar (source: $cand)"
+        return 0
+    else
+        log_warn "Candidate $cand was not installed properly."
+        rm -f /usr/bin/aapt2 || true
+        rm -rf "$extr"
+        return 1
+    fi
+}
+
 amd64_install() {
-    local ver="35.0.2"
-    local url="https://dl.google.com/android/maven2/com/android/tools/build/aapt2/${ver}/aapt2-${ver}-linux-x86_64.zip"
-    local out="${TMPDIR}/aapt2-${ver}-x86_64.zip"
-    download_file "$url" "$out"
-    extract_and_install_aapt2 "$out"
+    log_info "Attempting direct download of official aapt2 linux/amd64"
+    local url="https://dl.google.com/dl/android/maven2/com/android/tools/build/aapt2/8.12.2-13700139/aapt2-8.12.2-13700139-linux.jar"
+    local out="${TMPDIR}/aapt2-fixed.jar"
+    log_info "curl -> $url"
+    curl -fSL --retry 2 --retry-delay 1 -o "$out" "$url"
+    if install_from_jar "$out"; then
+        return 0
+    fi
+    fatal "Failed to install aapt2 from fixed URL: $url"
 }
 
 arm64_install() {
@@ -119,14 +149,14 @@ arm64_install() {
     for u in "${urls[@]}"; do
         local out="${TMPDIR}/pkg.$(basename "$u")"
         if download_file "$u" "$out"; then
-        if extract_and_install_aapt2 "$out"; then
-            log_info "aapt2 installed from community URL: $u"
-            return 0
+            if extract_and_install_aapt2 "$out"; then
+                log_info "aapt2 installed from community URL: $u"
+                return 0
+            else
+                log_info "Downloaded package from $u but could not find aapt2 inside"
+            fi
         else
-            log_info "Downloaded package from $u but could not find aapt2 inside"
-        fi
-        else
-        log_warn "Download failed for $u"
+            log_warn "Download failed for $u"
         fi
     done
     return 1

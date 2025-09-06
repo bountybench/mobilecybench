@@ -106,7 +106,7 @@ download_apk() {
 }
 
 main() {
-    # Optional argument to build from source
+    # Optional argument to download apk from release link
     BUILD_APK=false
     if [[ "${1:-}" == "apk" ]]; then
         log_info "apk download requested"
@@ -122,7 +122,6 @@ main() {
     check_android_prereqs
     initialize_repository
     build_wordpress
-    bash "./setup.sh" ${APK_PATH}
     log_info "WordPress setup complete"
 }
 

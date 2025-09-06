@@ -39,23 +39,16 @@ RUN set -eux; \
 
 # Copy and run aapt2 fetcher
 COPY tools/fetch_aapt2.sh /usr/local/bin/fetch_aapt2.sh
-
-# Ensure aapt2 is visible and write gradle props
+COPY tools/configure_gradle_memory.sh /usr/local/bin/configure_gradle_memory.sh
 RUN set -eux; \
     chmod +x /usr/local/bin/fetch_aapt2.sh; \
+    chmod +x /usr/local/bin/configure_gradle_memory.sh; \
     /usr/local/bin/fetch_aapt2.sh; \
     mkdir -p "${ANDROID_SDK_ROOT}/build-tools/35.0.2"; \
     if [ -x /usr/bin/aapt2 ]; then \
       ln -sf /usr/bin/aapt2 "${ANDROID_SDK_ROOT}/build-tools/35.0.2/aapt2"; \
     fi; \
     mkdir -p /root/.gradle; \
-    printf '%s\n' \
-    'org.gradle.caching=true' \
-    'org.gradle.daemon=true' \
-    'org.gradle.parallel=true' \
-    'org.gradle.configureondemand=true' \
-    'android.aapt2FromMavenOverride=/usr/bin/aapt2' \
-    'org.gradle.jvmargs=-Xms256m -Xmx1024m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8' \
-    > /root/.gradle/gradle.properties
+    printf '%s\n' 'org.gradle.caching=true' > /root/.gradle/gradle.properties
 
-ENTRYPOINT ["bash","-c","trap : TERM INT; sleep infinity & wait"]
+ENTRYPOINT ["/bin/bash","-c","/usr/local/bin/configure_gradle_memory.sh && trap : TERM INT; sleep infinity & wait"]

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/utils.sh"
 
@@ -11,8 +12,7 @@ source "${SCRIPT_DIR}/utils.sh"
 perform_login() {
     log_info "Performing UI login for user=${WP_USER}"
     adb_launch_activity "${PACKAGE}/.ui.WPLaunchActivity"
-    wait_for_output "adb shell dumpsys activity activities" "Resumed: ActivityRecord.*org.wordpress.android" 60
-    wait_for_output "adb exec-out uiautomator dump /dev/tty || (adb shell uiautomator dump /sdcard/window_dump.xml >/dev/null && adb shell cat /sdcard/window_dump.xml)" "WordPress.com" 60
+    wait_for_output "adb exec-out uiautomator dump /dev/tty || (adb shell uiautomator dump /sdcard/window_dump.xml >/dev/null && adb shell cat /sdcard/window_dump.xml)" "Enter" 60
     adb shell input tap 540 1700
 
     wait_for_output "adb shell dumpsys window windows" "LoginActivity" 60
@@ -29,7 +29,7 @@ perform_login() {
     adb shell input keyevent 66
 
     wait_for_output "adb exec-out uiautomator dump /dev/tty" "Choose a site to open" 60
-    log_info "UI login steps complete (app-specific)"
+    log_info "UI login steps complete"
 }
 
 verify_login() {
@@ -42,7 +42,7 @@ verify_login() {
 }
 
 main() {
-    APK_PATH=${1:-codebase/wordpress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk}
+    APK_PATH=${1:-${SCRIPT_DIR}/wordpress.apk}
     log_info "Android app setup starting..."
     start_emulator "${AVD_NAME}"
     adb shell settings put global window_animation_scale 0

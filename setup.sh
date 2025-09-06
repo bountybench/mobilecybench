@@ -611,10 +611,15 @@ main() {
         log "Host agent token exists -> ${BRIDGE_TOKEN_FILE}"
     fi
     MCB_BRIDGE_PORT=52888
-    if (echo > /dev/tcp/127.0.0.1/${MCB_BRIDGE_PORT}) >/dev/null 2>&1; then
+
+    pids=$(pgrep -f "${SCRIPT_DIR}/tools/host_bridge.py" || true)
+    if [[ -n "$pids" ]]; then
         log "Bridge server already running on ${MCB_BRIDGE_PORT}. Killing server..."
-        pkill -f "${SCRIPT_DIR}/tools/host_bridge.py" || true
+        for p in $pids; do
+            kill "$p" || true
+        done
     fi
+    rm -f "${SCRIPT_DIR}/mobilecybench_bridge.log"
     export MCB_BRIDGE_BIND=127.0.0.1
     nohup env MCB_BRIDGE_BIND="$MCB_BRIDGE_BIND" python3 "${SCRIPT_DIR}/tools/host_bridge.py" > "${SCRIPT_DIR}/mobilecybench_bridge.log" 2>&1 &
     log "Started mobilecybench host intermediary on port ${MCB_BRIDGE_PORT} (bind=${MCB_BRIDGE_BIND})"
@@ -629,5 +634,4 @@ main() {
     echo -e "\033[33mThis version should match your application's target device's API level.\033[0m"
 }
 
-# Run main function
 main "$@"
