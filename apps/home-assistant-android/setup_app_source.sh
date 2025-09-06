@@ -50,19 +50,19 @@ check_prerequisites() {
 setup_environment() {
     echo "Setting up build environment..."
 
-    # Set Java 17
-    export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-    export PATH="$JAVA_HOME/bin:$PATH"
-    
-        # Set Android SDK (already discovered); add common tool paths if present.
-        export ANDROID_HOME="$ANDROID_HOME"
-        if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
-            export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-        elif comp_tools_dir=$(ls -dt "$ANDROID_HOME"/cmdline-tools/*/bin 2>/dev/null | head -1); then
-            export PATH="$ANDROID_HOME/platform-tools:$comp_tools_dir:$PATH"
-        else
-            export PATH="$ANDROID_HOME/platform-tools:$PATH"
-        fi
+    # Set Java 17 - use existing JAVA_HOME if available, otherwise fallback to macOS path
+    if [[ -n "$JAVA_HOME" && -d "$JAVA_HOME" ]]; then
+        info "Using existing JAVA_HOME: $JAVA_HOME"
+    elif [[ -d "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ]]; then
+        export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+        info "Using macOS Homebrew JAVA_HOME: $JAVA_HOME"
+    elif [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
+        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+        info "Using Linux JAVA_HOME: $JAVA_HOME"
+    else
+        warn "Could not find Java 17 via known paths. Using system default."
+        export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
+    fi
     
     # Create local.properties for Home Assistant build
     echo "sdk.dir=$ANDROID_HOME" > local.properties
