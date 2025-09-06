@@ -3,20 +3,46 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ANDROID_HOME="${HOME}/.android-sdk"
+
+# Respect an existing ANDROID_HOME/ANDROID_SDK_ROOT if already provided by CI, otherwise discover.
+if [ -z "${ANDROID_HOME}" ]; then
+    if [ -n "${ANDROID_SDK_ROOT}" ]; then
+        ANDROID_HOME="${ANDROID_SDK_ROOT}"
+    else
+        # Common fallback locations (GitHub Actions, local installs, custom installs)
+        for cand in "/usr/local/lib/android/sdk" "$HOME/Android/Sdk" "$HOME/.android-sdk" "/opt/android-sdk"; do
+            if [ -d "$cand" ]; then
+                ANDROID_HOME="$cand"
+                break
+            fi
+        done
+    fi
+fi
+
+# Final fallback (will likely not exist yet; prerequisite check will handle)
+: "${ANDROID_HOME:=$HOME/.android-sdk}"
 
 
 # Check prerequisites
 check_prerequisites() {
-    echo "Checking prerequisites..."
-    if [ ! -d "$ANDROID_HOME" ]; then
-        echo "Android SDK not found at $ANDROID_HOME"
-        exit 1
-    fi
+    echo "[home-assistant-android][prereq] Checking prerequisites..."
+
     if ! command -v java >/dev/null 2>&1; then
-        echo "Java not found. Please install Java 17."
+        echo "Java not found. Please install Java 17 (actions/setup-java in CI)."
         exit 1
     fi
+
+    if [ ! -d "$ANDROID_HOME" ]; then
+        echo "Android SDK not found. Searched path: $ANDROID_HOME"
+        echo "Set ANDROID_HOME or ANDROID_SDK_ROOT before invoking this script (CI step to install SDK)."
+        exit 1
+    fi
+
+    # Basic sanity check for required tools
+    if [ ! -x "$ANDROID_HOME/platform-tools/adb" ]; then
+        echo "adb not found under $ANDROID_HOME/platform-tools. Ensure platform-tools are installed (sdkmanager \"platform-tools\")."
+    fi
+    echo "Using ANDROID_HOME=$ANDROID_HOME"
     echo "Prerequisites verified."
 }
 
@@ -28,9 +54,15 @@ setup_environment() {
     export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
     export PATH="$JAVA_HOME/bin:$PATH"
     
-    # Set Android SDK
-    export ANDROID_HOME="$ANDROID_HOME"
-    export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+        # Set Android SDK (already discovered); add common tool paths if present.
+        export ANDROID_HOME="$ANDROID_HOME"
+        if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+            export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+        elif comp_tools_dir=$(ls -dt "$ANDROID_HOME"/cmdline-tools/*/bin 2>/dev/null | head -1); then
+            export PATH="$ANDROID_HOME/platform-tools:$comp_tools_dir:$PATH"
+        else
+            export PATH="$ANDROID_HOME/platform-tools:$PATH"
+        fi
     
     # Create local.properties for Home Assistant build
     echo "sdk.dir=$ANDROID_HOME" > local.properties
@@ -67,13 +99,11 @@ setup_environment() {
 
 # Build Home Assistant APK
 build_home_assistant() {
-    echo "Building Home Assistant from source..."
-    echo "This will take several minutes..."
-        
+    echo "Building Home Assistant (MinimalRelease variant)..."
+    echo "This may take several minutes..."
     git submodule update --init --recursive
-
-    ./gradlew clean
-    ./gradlew assembleMinimalRelease -Dorg.gradle.jvmargs="-Xmx8g"
+    ./gradlew --no-daemon clean
+    ./gradlew --no-daemon assembleMinimalRelease -Dorg.gradle.jvmargs="-Xmx8g"
     echo "Build completed successfully."
 }
 
@@ -88,8 +118,8 @@ install_home_assistant() {
         exit 1
     fi
 
-    # Install universal APK with correct path
-    APK_PATH="app/build/outputs/apk/minimal/debug/app-minimal-debug.apk"
+    # Install minimal release APK (matches assembleMinimalRelease)
+    APK_PATH="app/build/outputs/apk/minimal/release/app-minimal-release.apk"
 
     if [[ ! -f $APK_PATH ]]; then
         echo "ERROR: APK not found at $APK_PATH"

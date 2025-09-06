@@ -29,12 +29,14 @@ def wait_and_click_text(d: u2.Device, text: str, timeout: float = 30):
         return True
     return False
 
+
 def wait_and_click_hamburger(d: u2.Device, timeout: float = 30):
     if d(className="android.widget.ImageButton").wait(timeout=timeout):
         d(className="android.widget.ImageButton").click_exists(timeout=3)
         time.sleep(1.5)
         return True
     return False
+
 
 def fill_and_submit_server_address(d: u2.Device, address: str):
     edits = list(d(className="android.widget.EditText"))
@@ -47,6 +49,7 @@ def fill_and_submit_server_address(d: u2.Device, address: str):
 
     d(className="android.view.View", clickable=True).click()
     return True
+
 
 def fill_and_submit_login(d: u2.Device, username: str, password: str):
     edits = list(d(classNameMatches=".*EditText"))
@@ -74,6 +77,7 @@ def skip_continue_dialog(d: u2.Device):
             d(text="Continue").click_exists()
             time.sleep(0.5)
 
+
 def wait_login_failure_banner(d: u2.Device, timeout: float = 6.0) -> bool:
     start = time.time()
     while time.time() - start < timeout:
@@ -98,10 +102,7 @@ def logout_current_user(d: u2.Device, username: str, timeout: float = 15.0) -> b
         return False
 
     while time.time() < start + timeout:
-        if (
-            d(text="Welcome").exists
-            or d(text="Continue").exists
-        ):
+        if d(text="Welcome").exists or d(text="Continue").exists:
             return True
         time.sleep(0.3)
     return False
