@@ -140,20 +140,53 @@ def test_configuration_consistency():
             print("✗ Server configuration missing in all expected locations")
             return False
 
-        # Verify essential configuration parameters
+        # Verify essential configuration parameters - check for both relative and absolute paths
         required_configs = [
-            "proto udp",
-            "port 1194",
-            "ca ca.crt",
-            "cert server.crt",
-            "key server.key",
-            "dh dh.pem",
+            ("proto udp", ["proto udp"]),
+            ("port 1194", ["port 1194"]),
+            (
+                "ca certificate",
+                [
+                    "ca ca.crt",
+                    "ca /etc/openvpn/easy-rsa/pki/ca.crt",
+                    "ca /etc/openvpn/pki/ca.crt",
+                ],
+            ),
+            (
+                "server certificate",
+                [
+                    "cert server.crt",
+                    "cert /etc/openvpn/easy-rsa/pki/issued/server.crt",
+                    "cert /etc/openvpn/pki/issued/server.crt",
+                ],
+            ),
+            (
+                "server key",
+                [
+                    "key server.key",
+                    "key /etc/openvpn/easy-rsa/pki/private/server.key",
+                    "key /etc/openvpn/pki/private/server.key",
+                ],
+            ),
+            (
+                "dh parameters",
+                [
+                    "dh dh.pem",
+                    "dh /etc/openvpn/easy-rsa/pki/dh.pem",
+                    "dh /etc/openvpn/pki/dh.pem",
+                ],
+            ),
         ]
 
         missing_configs = []
-        for config in required_configs:
-            if config not in config_content:
-                missing_configs.append(config)
+        for config_name, config_options in required_configs:
+            config_found = False
+            for config_option in config_options:
+                if config_option in config_content:
+                    config_found = True
+                    break
+            if not config_found:
+                missing_configs.append(config_name)
 
         if missing_configs:
             print(f"✗ Missing configuration parameters: {missing_configs}")
@@ -449,15 +482,8 @@ def main():
 
     print(f"\nIntegrity Tests: {passed_tests}/{total_tests} passed")
 
-    # For CI environments, pass if we have at least 50% success rate
-    # Some tests may fail due to container differences (file paths, config structure, etc.)
-    success_rate = passed_tests / total_tests
-    if success_rate >= 0.5:  # 3/6 tests or better
-        print("✓ Integrity tests passed (acceptable for CI environment)")
-        sys.exit(0)
-    else:
-        print("✗ Integrity tests failed - too many critical failures")
-        sys.exit(1)
+    # Exit with 0 if all tests passed, 1 otherwise
+    sys.exit(0 if passed_tests == total_tests else 1)
 
 
 if __name__ == "__main__":

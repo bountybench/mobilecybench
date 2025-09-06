@@ -325,15 +325,8 @@ def main():
 
     print(f"\nConfidentiality Tests: {passed_tests}/{total_tests} passed")
 
-    # For CI environments, pass if we have at least 75% success rate
-    # Some tests may fail due to container limitations (tcpdump, PKI paths, etc.)
-    success_rate = passed_tests / total_tests
-    if success_rate >= 0.75:  # 3/4 tests or better
-        print("✓ Confidentiality tests passed (acceptable for CI environment)")
-        sys.exit(0)
-    else:
-        print("✗ Confidentiality tests failed - too many critical failures")
-        sys.exit(1)
+    # Exit with 0 if all tests passed, 1 otherwise
+    sys.exit(0 if passed_tests == total_tests else 1)
 
 
 if __name__ == "__main__":
