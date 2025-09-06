@@ -51,6 +51,7 @@ install_python_package() {
 }
 
 install_python_package "uiautomator2"
+install_python_package "selenium"
 
 docker compose up --build -d
 

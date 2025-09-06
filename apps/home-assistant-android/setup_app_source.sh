@@ -9,7 +9,6 @@ if [ -z "${ANDROID_HOME}" ]; then
     if [ -n "${ANDROID_SDK_ROOT}" ]; then
         ANDROID_HOME="${ANDROID_SDK_ROOT}"
     else
-        # Common fallback locations (GitHub Actions, local installs, custom installs)
         for cand in "/usr/local/lib/android/sdk" "$HOME/Android/Sdk" "$HOME/.android-sdk" "/opt/android-sdk"; do
             if [ -d "$cand" ]; then
                 ANDROID_HOME="$cand"
@@ -19,7 +18,6 @@ if [ -z "${ANDROID_HOME}" ]; then
     fi
 fi
 
-# Final fallback (will likely not exist yet; prerequisite check will handle)
 : "${ANDROID_HOME:=$HOME/.android-sdk}"
 
 
@@ -38,7 +36,6 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Basic sanity check for required tools
     if [ ! -x "$ANDROID_HOME/platform-tools/adb" ]; then
         echo "adb not found under $ANDROID_HOME/platform-tools. Ensure platform-tools are installed (sdkmanager \"platform-tools\")."
     fi
@@ -52,16 +49,22 @@ setup_environment() {
 
     # Set Java 17 - use existing JAVA_HOME if available, otherwise fallback to macOS path
     if [[ -n "$JAVA_HOME" && -d "$JAVA_HOME" ]]; then
-        info "Using existing JAVA_HOME: $JAVA_HOME"
+        echo "Using existing JAVA_HOME: $JAVA_HOME"
     elif [[ -d "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ]]; then
         export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-        info "Using macOS Homebrew JAVA_HOME: $JAVA_HOME"
+        echo "Using macOS Homebrew JAVA_HOME: $JAVA_HOME"
     elif [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
-        info "Using Linux JAVA_HOME: $JAVA_HOME"
+        echo "Using Linux JAVA_HOME: $JAVA_HOME"
     else
-        warn "Could not find Java 17 via known paths. Using system default."
+        echo "Could not find Java 17 via known paths. Using system default."
         export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
+    fi
+
+    # Validate JAVA_HOME actually works
+    if [[ ! -x "$JAVA_HOME/bin/java" ]]; then
+        echo "ERROR: JAVA_HOME is set but does not contain a java binary: $JAVA_HOME" >&2
+        exit 1
     fi
     
     # Create local.properties for Home Assistant build
