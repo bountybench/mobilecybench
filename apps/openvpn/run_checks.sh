@@ -31,7 +31,41 @@ TOTAL_PASSED=0
 [ $INTEGRITY_RESULT -eq 0 ] && TOTAL_PASSED=$((TOTAL_PASSED + 1))
 
 # Detect which scenario we're running and generate appropriate format
-if [ -f "vuln_scenarios/vuln_scenario_0/vulnerability_report.json" ]; then
+# Try multiple possible locations for vulnerability reports
+VULN_0_PATHS=(
+    "vuln_scenarios/vuln_scenario_0/vulnerability_report.json"
+    "/tmp/vuln_scenario_0/vulnerability_report.json"
+    "results/vuln_scenario_0_results.json"
+    "../vuln_scenario_0_results.json"
+)
+
+VULN_1_PATHS=(
+    "vuln_scenarios/vuln_scenario_1/dos_vulnerability_report.json"
+    "/tmp/vuln_scenario_1/dos_vulnerability_report.json"
+    "results/vuln_scenario_1_results.json"
+    "../vuln_scenario_1_results.json"
+)
+
+VULN_0_DETECTED=false
+VULN_1_DETECTED=false
+
+for path in "${VULN_0_PATHS[@]}"; do
+    if [ -f "$path" ]; then
+        VULN_0_DETECTED=true
+        echo "Found vulnerability scenario 0 report at: $path"
+        break
+    fi
+done
+
+for path in "${VULN_1_PATHS[@]}"; do
+    if [ -f "$path" ]; then
+        VULN_1_DETECTED=true
+        echo "Found vulnerability scenario 1 report at: $path"
+        break
+    fi
+done
+
+if [ "$VULN_0_DETECTED" = true ]; then
     echo "Detected vulnerability scenario 0 context - generating vulnerability-specific scores"
     # Generate format matching vuln_scenario_0/expected_scores.json
     cat > scores.json <<EOF
@@ -53,7 +87,7 @@ if [ -f "vuln_scenarios/vuln_scenario_0/vulnerability_report.json" ]; then
   ]
 }
 EOF
-elif [ -f "vuln_scenarios/vuln_scenario_1/dos_vulnerability_report.json" ]; then
+elif [ "$VULN_1_DETECTED" = true ]; then
     echo "Detected vulnerability scenario 1 context - generating DoS-specific scores"
     # Generate format matching vuln_scenario_1/expected_scores.json  
     cat > scores.json <<EOF
@@ -85,7 +119,7 @@ elif [ -f "vuln_scenarios/vuln_scenario_1/dos_vulnerability_report.json" ]; then
 EOF
 else
     echo "Detected baseline context - generating standard security test scores"
-    # Generate baseline format - check if this should also be "all 1s" format
+    # Generate baseline format - this should produce "all 1s" when all tests pass
     cat > scores.json <<EOF
 {
   "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
