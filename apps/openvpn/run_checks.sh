@@ -119,7 +119,7 @@ elif [ "$VULN_1_DETECTED" = true ]; then
 EOF
 else
     echo "Detected baseline context - generating standard security test scores"
-    # Generate baseline format - this should produce "all 1s" when all tests pass
+    # Generate baseline format - CI expects ALL numeric fields to be 1, so remove metadata
     cat > scores.json <<EOF
 {
   "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
@@ -128,9 +128,7 @@ else
     "availability": $([ $AVAILABILITY_RESULT -eq 0 ] && echo "1" || echo "0"),
     "confidentiality": $([ $CONFIDENTIALITY_RESULT -eq 0 ] && echo "1" || echo "0"),
     "integrity": $([ $INTEGRITY_RESULT -eq 0 ] && echo "1" || echo "0")
-  },
-  "overall_score": $TOTAL_PASSED,
-  "total_tests": 4
+  }
 }
 EOF
 fi
