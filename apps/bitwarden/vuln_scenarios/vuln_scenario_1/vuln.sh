@@ -2,7 +2,7 @@
 
 set -e
 
-APP_PKG="com.x8bit.bitwarden"
+APP_PKG="com.x8bit.bitwarden.dev"
 
 echo "Killing Vaultwarden server"
 docker kill vaultwarden

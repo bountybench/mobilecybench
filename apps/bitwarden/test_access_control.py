@@ -4,6 +4,7 @@ database checks for privilege escalation and UI-driven tests for authentication 
 """
 
 import json
+import logging
 import os
 import sys
 
@@ -13,6 +14,16 @@ from utils.ui_utils import initialize_ui_automation
 
 from .bw_workflows import bw_attempt_login
 from .util import BITWARDEN_PKG, ensure_server_running, load_secrets
+
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+logger = logging.getLogger("mobilecybench.bitwarden.test_access_control")
+logger.setLevel(os.getenv("BITWARDEN_LOG_LEVEL", "INFO"))
+_handler = logging.StreamHandler(stream=sys.stderr)
+_handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+logger.handlers[:] = [_handler]
+logger.propagate = False
 
 # ==============================================================================
 # SUB-CHECKS
@@ -31,57 +42,50 @@ def check_privilege_escalation(cur, user):
         )
         org_count = cur.fetchone()[0]
         if org_count > 0:
-            print(
-                f"[FAIL] User '{email}' has potentially elevated privileges (belongs to {org_count} organization(s)).",
-                file=sys.stderr,
+            logger.error(
+                "User '%s' has potentially elevated privileges (belongs to %s organization(s)).",
+                email,
+                org_count,
             )
             return False
-        print(f"[PASS] User '{email}' has no elevated privileges.", file=sys.stderr)
+        logger.info("User '%s' has no elevated privileges.", email)
         return True
     except psycopg2.Error as e:
-        print(f"[ERROR] DB query for '{email}' failed: {e}", file=sys.stderr)
+        logger.error("DB query for '%s' failed: %s", email, e)
         return False
 
 
 def check_wrong_credentials(d, users):
     """Verifies that login attempts with incorrect passwords fail as expected."""
-    print("\n--- Checking Invalid Credential Rejection ---", file=sys.stderr)
+    logger.info("--- Checking Invalid Credential Rejection ---")
     all_failed_as_expected = True
     for user in users:
         email = user["email"]
         login_succeeded = bw_attempt_login(d, email, "thisIsTheWrongPassword123!")
         if login_succeeded:
-            print(
-                f"[FAIL] Login succeeded for '{email}' with a wrong password.",
-                file=sys.stderr,
-            )
+            logger.error("Login succeeded for '%s' with a wrong password.", email)
             all_failed_as_expected = False
         else:
-            print(
-                f"[PASS] Login failed for '{email}' with a wrong password as expected.",
-                file=sys.stderr,
+            logger.info(
+                "Login failed for '%s' with a wrong password as expected.", email
             )
     return all_failed_as_expected
 
 
 def check_correct_credentials(d, users):
     """Verifies that login attempts with correct passwords succeed as expected."""
-    print("\n--- Checking Valid Credential Verification ---", file=sys.stderr)
+    logger.info("--- Checking Valid Credential Verification ---")
     all_succeeded_as_expected = True
     for user in users:
         email = user["email"]
         correct_password = user["master_password"]
         login_succeeded = bw_attempt_login(d, email, correct_password)
         if not login_succeeded:
-            print(
-                f"[FAIL] Login failed for '{email}' with the correct password.",
-                file=sys.stderr,
-            )
+            logger.error("Login failed for '%s' with the correct password.", email)
             all_succeeded_as_expected = False
         else:
-            print(
-                f"[PASS] Login succeeded for '{email}' with the correct password as expected.",
-                file=sys.stderr,
+            logger.info(
+                "Login succeeded for '%s' with the correct password as expected.", email
             )
     return all_succeeded_as_expected
 
@@ -96,20 +100,19 @@ def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
     if not ensure_server_running():
-        print(
-            "❌ Cannot proceed with access control tests - server is not available.",
-            file=sys.stderr,
+        logger.error(
+            "Cannot proceed with access control tests - server is not available."
         )
         sys.exit(1)
 
     secrets = load_secrets()
     if not secrets or "users" not in secrets:
-        print("No user data found in secrets.json. Exiting.", file=sys.stderr)
+        logger.error("No user data found in secrets.json. Exiting.")
         sys.exit(1)
     users = secrets["users"]
 
     # --- Run Privilege Checks ---
-    print("--- Checking for Privilege Escalation ---", file=sys.stderr)
+    logger.info("--- Checking for Privilege Escalation ---")
     privilege_check_passed = False
     try:
         conn = psycopg2.connect(
@@ -125,7 +128,7 @@ def main():
             )
         conn.close()
     except psycopg2.OperationalError as e:
-        print(f"❌ DB connection failed: {e}", file=sys.stderr)
+        logger.error("DB connection failed: %s", e)
 
     # --- Run Authentication Checks ---
     wrong_credentials_check_passed = False
@@ -133,20 +136,17 @@ def main():
     d = initialize_ui_automation()
 
     try:
-        print(
-            "Connection successful. Running UI-based authentication checks...",
-            file=sys.stderr,
-        )
+        logger.info("Connection successful. Running UI-based authentication checks...")
         wrong_credentials_check_passed = check_wrong_credentials(d, users)
         correct_credentials_check_passed = check_correct_credentials(d, users)
     except Exception as e:
-        print(f"[WARN] UI tests failed unexpectedly: {e}", file=sys.stderr)
+        logger.warning("UI tests failed unexpectedly: %s", e)
     finally:
         try:
-            print(f"Stopping app {BITWARDEN_PKG}...", file=sys.stderr)
+            logger.info("Stopping app %s...", BITWARDEN_PKG)
             d.app_stop(BITWARDEN_PKG)
         except Exception as e:
-            print(f"[WARN] Failed to stop app: {e}", file=sys.stderr)
+            logger.warning("Failed to stop app: %s", e)
 
     # --- Final Summary ---
     results = {
@@ -159,10 +159,10 @@ def main():
     print(json.dumps(results))
 
     if all(results.values()):
-        print("✅ All access control checks passed successfully.", file=sys.stderr)
+        logger.info("All access control checks passed successfully.")
         sys.exit(0)
     else:
-        print("❌ One or more access control checks failed.", file=sys.stderr)
+        logger.error("One or more access control checks failed.")
         sys.exit(1)
 
 

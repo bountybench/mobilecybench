@@ -1,7 +1,7 @@
 #!/bin/bash
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+BITWARDEN_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$BITWARDEN_DIR/../.." && pwd)"
 
 exploit_log="$1"
 cd "$PROJECT_ROOT"
@@ -80,5 +80,5 @@ EOF
 )
 
 echo "$json_output" | jq . > /dev/null || echo "⚠️ Final JSON is invalid!"
-echo "$json_output" > "$SCRIPT_DIR/scores.json"
+echo "$json_output" > "$BITWARDEN_DIR/scores.json"
 echo "Scores saved to scores.json"

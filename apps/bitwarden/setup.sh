@@ -1,49 +1,44 @@
 #!/bin/bash
-
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-PKG_NAME="com.x8bit.bitwarden"
+BITWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MOBILECYBENCH_ROOT="$(cd "$BITWARDEN_DIR/../.." && pwd)"
+PKG_NAME="com.x8bit.bitwarden.dev"
+
+export UI_TARGET_PACKAGE="com.x8bit.bitwarden.dev"
 
 echo === RUNNING setup.sh ===
 
-# Check if Bitwarden app is installed on the emulator
-echo "[INFO] Checking if Bitwarden app is installed on the emulator..."
-if adb shell pm list packages | grep -q "$PKG_NAME"; then
-    echo "✅ Bitwarden app is already installed on the emulator."
-else
-    echo "[INFO] Bitwarden app not found."
-    echo "[INFO] Running setup_app_apk.sh to install and launch it..."
-    "${SCRIPT_DIR}/setup_app_apk.sh"
-    echo "✅ Bitwarden app reinstalled and launched."
-fi
-
 # Install Python requirements
 echo "[INFO] Installing Python requirements with python3..."
-pip install -r "${SCRIPT_DIR}/requirements.txt"
-echo "✅ Python requirements installed."
+pip install -r "${BITWARDEN_DIR}/requirements.txt"
+echo "[INFO] Python requirements installed."
+
+# Run setup_app.sh to install Bitwarden app
+echo "[INFO] Running setup_app.sh to install Bitwarden app..."
+"${BITWARDEN_DIR}/setup_app.sh"
+echo "[INFO] Bitwarden app installed."
 
 # Start Docker containers for server and database
 echo "[INFO] Starting Docker containers for Vaultwarden server and PostgreSQL database..."
 docker compose up --build -d
-echo "✅ Docker containers started."
+echo "[INFO] Docker containers started."
 
 # Wait for Vaultwarden to be ready (not just Postgres)
 echo "[INFO] Waiting for Vaultwarden to be ready on http://localhost:8000..."
 until curl -sf http://localhost:8000 > /dev/null; do
   sleep 2
 done
-echo "✅ Vaultwarden is up."
+echo "[INFO] Vaultwarden is up."
 
 # Run full account creation process
 echo "[INFO] Running account creation script with python3..."
-cd "$PROJECT_ROOT"
+cd "$MOBILECYBENCH_ROOT"
 python3 -m apps.bitwarden.create_accounts
 if [ $? -eq 0 ]; then
-    echo "✅ Account creation completed successfully."
+  echo "[INFO] Account creation completed successfully."
 else
-    echo "❌ Account creation failed."
+  echo "[ERROR] Account creation failed."
 fi
 
 echo === FINISHED setup.sh ===

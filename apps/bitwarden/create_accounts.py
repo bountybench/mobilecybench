@@ -6,6 +6,7 @@ guaranteeing that the data is stored correctly.
 """
 
 import json
+import logging
 import os
 import random
 import string
@@ -23,6 +24,16 @@ from .bw_workflows import (
     bw_make_account,
 )
 from .util import BITWARDEN_PKG
+
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+logger = logging.getLogger("mobilecybench.bitwarden.create_accounts")
+logger.setLevel(os.getenv("BITWARDEN_LOG_LEVEL", "INFO"))
+_handler = logging.StreamHandler(stream=sys.stderr)
+_handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+logger.handlers[:] = [_handler]
+logger.propagate = False
 
 
 def generate_random_flags(count=9):
@@ -44,7 +55,7 @@ def generate_random_flags(count=9):
     with open(os.path.join(script_dir, "flags.json"), "w") as f:
         json.dump(flags_data, f, indent=2)
 
-    print(f"Generated {len(flags)} random flags in flags.json")
+    logger.info("Generated %s random flags in flags.json", len(flags))
     return flags
 
 
@@ -72,7 +83,7 @@ def extract_secrets_from_db():
     """
     Extracts sensitive data from the database and creates secrets.json.
     """
-    print("Extracting secrets from the database...")
+    logger.info("Extracting secrets from the database...")
 
     secrets = {"users": [], "ciphers": [], "flags": []}
 
@@ -133,15 +144,17 @@ def extract_secrets_from_db():
             conn.close()
 
         except psycopg2.Error as e:
-            print(f"[ERROR] Database connection failed: {e}", file=sys.stderr)
+            logger.error("Database connection failed: %s", e)
             return False
 
         # 3. Save the secrets to secrets.json
         with open(os.path.join(script_dir, "secrets.json"), "w") as f:
             json.dump(secrets, f, indent=2)
 
-        print(
-            f"Created secrets.json with {len(secrets['users'])} users and {len(secrets['ciphers'])} ciphers."
+        logger.info(
+            "Created secrets.json with %s users and %s ciphers.",
+            len(secrets["users"]),
+            len(secrets["ciphers"]),
         )
         return True
 
@@ -150,12 +163,12 @@ def extract_secrets_from_db():
         FileNotFoundError,
         json.JSONDecodeError,
     ) as e:
-        print(f"[ERROR] Failed to extract secrets: {e}", file=sys.stderr)
+        logger.error("Failed to extract secrets: %s", e)
         return False
 
 
 def main(d, num_ciphers_per_user=3):
-    print("[INFO] Starting account creation...")
+    logger.info("Starting account creation...")
 
     # Load user accounts and their cipher templates from the unified JSON file
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -163,7 +176,7 @@ def main(d, num_ciphers_per_user=3):
         users = json.load(f)["users"]
 
     # Generate random flags for all users
-    print("[INFO] Generating random flags...")
+    logger.info("Generating random flags...")
     all_flags = generate_random_flags(count=len(users) * num_ciphers_per_user)
 
     # Initialize device and launch app
@@ -185,44 +198,46 @@ def main(d, num_ciphers_per_user=3):
 
         # After creating an account, we are in the main vault.
         # Create the ciphers for the new user.
-        print(
-            f"[INFO] Populating ciphers for {user['email']} with flags {start_index+1}-{end_index}"
+        logger.info(
+            "Populating ciphers for %s with flags %s-%s",
+            user["email"],
+            start_index + 1,
+            end_index,
         )
         for cipher in ciphers_for_current_user:
             bw_create_new_cipher(d, cipher)
 
         bw_lock_and_logout(d)
 
-    print("[INFO] Accounts creation completed.")
+    logger.info("Accounts creation completed.")
 
 
 if __name__ == "__main__":
     start_time = time.time()
     d = None
+    logger.debug("Starting script at %s", time.strftime("%Y-%m-%d %H:%M:%S"))
     try:
-        print("[DEBUG] Connecting to device...")
+        logger.debug("Connecting to device...")
         d = initialize_ui_automation()
-        print("[DEBUG] Connection successful.")
+        logger.debug("Connection successful.")
 
         main(d)
 
         extract_secrets_from_db()
 
     except Exception as e:
-        print(f"[FATAL] An unexpected error occurred: {e}", file=sys.stderr)
+        logger.critical("An unexpected error occurred: %s", e)
         if d:
-            print("Dumping UI hierarchy for debugging:", file=sys.stderr)
+            logger.critical("Dumping UI hierarchy for debugging:")
             try:
-                with open("ui_dump_error.xml", "w", encoding="utf-8") as f:
-                    f.write(d.dump_hierarchy())
-                print("Saved UI hierarchy to ui_dump_error.xml", file=sys.stderr)
+                logger.critical("%s", d.dump_hierarchy())
             except Exception as dump_err:
-                print(f"[WARN] Failed to save UI dump: {dump_err}", file=sys.stderr)
+                logger.warning("Failed to dump UI hierarchy: %s", dump_err)
         sys.exit(1)
     finally:
         # --- Clean up ---
         if d:
-            print(f"Stopping app {BITWARDEN_PKG}...")
+            logger.info("Stopping app %s...", BITWARDEN_PKG)
             d.app_stop(BITWARDEN_PKG)
 
         # --- Report total execution time ---
@@ -230,4 +245,4 @@ if __name__ == "__main__":
         duration = end_time - start_time
         minutes = int(duration // 60)
         seconds = int(duration % 60)
-        print(f"\n--- Script finished in {minutes}m {seconds}s ---")
+        logger.info("--- Script finished in %sm %ss ---", minutes, seconds)

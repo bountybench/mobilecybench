@@ -4,14 +4,25 @@ including ADB commands and server management.
 """
 
 import json
+import logging
 import os
 import subprocess
 import sys
 import time
 import urllib.request
 
-BITWARDEN_PKG = "com.x8bit.bitwarden"
+BITWARDEN_PKG = "com.x8bit.bitwarden.dev"
 SERVER_URL = "http://10.0.2.2:8000"
+
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+logger = logging.getLogger("mobilecybench.bitwarden.util")
+logger.setLevel(os.getenv("BITWARDEN_LOG_LEVEL", "INFO"))
+_handler = logging.StreamHandler(stream=sys.stderr)
+_handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+logger.handlers[:] = [_handler]
+logger.propagate = False
 
 # =============================================================================
 # ADB UTILITY FUNCTION
@@ -32,9 +43,10 @@ def adb(cmd):
     try:
         return subprocess.check_output(full_cmd, stderr=subprocess.DEVNULL, text=True)
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        print(
-            f"[ERROR] Failed to run adb command: {' '.join(full_cmd)}. Is ADB installed and in your PATH? Error: {e}",
-            file=sys.stderr,
+        logger.error(
+            "Failed to run adb command: %s. Is ADB installed and in your PATH? Error: %s",
+            " ".join(full_cmd),
+            e,
         )
         return None
 
@@ -51,10 +63,10 @@ def load_secrets():
         with open(os.path.join(script_dir, "secrets.json")) as f:
             return json.load(f)
     except FileNotFoundError:
-        print("❌ secrets.json not found.", file=sys.stderr)
+        logger.error("secrets.json not found.")
         sys.exit(1)
     except json.JSONDecodeError:
-        print("❌ Invalid JSON in secrets.json", file=sys.stderr)
+        logger.error("Invalid JSON in secrets.json")
         sys.exit(1)
 
 
@@ -68,7 +80,7 @@ def ensure_server_running():
     Ensures the Vaultwarden server is running before testing.
     Returns boolean of whether the server is available.
     """
-    print("Ensuring Vaultwarden server is running...", file=sys.stderr)
+    logger.info("Ensuring Vaultwarden server is running...")
 
     # Check if server is already running
     try:
@@ -76,13 +88,13 @@ def ensure_server_running():
             "http://localhost:8000/alive", timeout=5
         ) as response:
             if response.status == 200:
-                print("[PASS] Vaultwarden server is already running.", file=sys.stderr)
+                logger.info("Vaultwarden server is already running.")
                 return True
     except:
         pass
 
     # Server not running, try to start it
-    print("Vaultwarden server not running. Attempting to start it...", file=sys.stderr)
+    logger.info("Vaultwarden server not running. Attempting to start it...")
     try:
         # Start the vaultwarden service
         subprocess.run(
@@ -93,29 +105,24 @@ def ensure_server_running():
         )
 
         # Wait for server to be ready
-        print("Waiting for Vaultwarden server to be ready...", file=sys.stderr)
+        logger.info("Waiting for Vaultwarden server to be ready...")
         for i in range(30):  # Wait up to 30 seconds
             try:
                 with urllib.request.urlopen(
                     "http://localhost:8000/alive", timeout=5
                 ) as response:
                     if response.status == 200:
-                        print(
-                            "[PASS] Vaultwarden server started successfully.",
-                            file=sys.stderr,
-                        )
+                        logger.info("Vaultwarden server started successfully.")
                         return True
             except:
                 time.sleep(1)
 
-        print(
-            "[FAIL] Vaultwarden server failed to start within timeout.", file=sys.stderr
-        )
+        logger.error("Vaultwarden server failed to start within timeout.")
         return False
 
     except subprocess.TimeoutExpired:
-        print("[FAIL] Timeout starting Vaultwarden server.", file=sys.stderr)
+        logger.error("Timeout starting Vaultwarden server.")
         return False
     except subprocess.CalledProcessError as e:
-        print(f"[FAIL] Failed to start Vaultwarden server: {e}", file=sys.stderr)
+        logger.error("Failed to start Vaultwarden server: %s", e)
         return False
