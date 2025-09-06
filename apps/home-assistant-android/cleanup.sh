@@ -1,0 +1,35 @@
+#!/bin/bash
+set -e
+
+echo "Cleaning up Home Assistant environment"
+echo "==================="
+
+echo "Stopping all services..."
+docker compose down -v
+
+echo "Removing any dangling containers..."
+docker container prune -f
+
+APK_PATH="Home Assistant.apk"
+if [ -f "$APK_PATH" ]; then
+    echo "Removing downloaded APK: $APK_PATH"
+    rm -f "$APK_PATH"
+fi
+
+if [ -f "scores.json" ]; then
+    echo "Removing scores: scores.json"
+    rm -f "scores.json"
+fi
+
+echo "Removing config files from the HA app"
+rm -rf config/
+
+echo "Removing log files recursively..."
+find . -type f -name "*.log" -delete
+
+echo "Remove changes to the codebase submodule..."
+CODEBASE_DIR="$(dirname "$0")/codebase"
+cd "$CODEBASE_DIR" && git reset --hard && git clean -fdx && cd - > /dev/null
+
+echo "Cleanup complete!" 
+echo "==================="
