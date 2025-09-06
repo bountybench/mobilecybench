@@ -31,14 +31,14 @@ def test_openvpn_server_health():
         if result.returncode == 0 and "healthy" in result.stdout:
             print("✓ OpenVPN server is healthy")
             return True
-        
+
         # Fallback: check if container is running and has openvpn process
         status_result = subprocess.run(
             ["docker", "inspect", "--format", "{{.State.Status}}", "openvpn-server"],
             capture_output=True,
             text=True,
         )
-        
+
         if status_result.returncode == 0 and "running" in status_result.stdout:
             # Check if OpenVPN process is running inside
             proc_result = subprocess.run(
@@ -46,11 +46,11 @@ def test_openvpn_server_health():
                 capture_output=True,
                 text=True,
             )
-            
+
             if proc_result.returncode == 0:
                 print("✓ OpenVPN server container running with active process")
                 return True
-                
+
         print("✗ OpenVPN server health check failed - container not healthy")
         return False
 
@@ -133,12 +133,44 @@ def test_network_connectivity():
     try:
         # Try multiple connectivity tests in order of preference
         connectivity_tests = [
-            (["docker", "exec", "openvpn-server", "ping", "-c", "1", "-W", "3", "8.8.8.8"], "Google DNS"),
-            (["docker", "exec", "openvpn-server", "ping", "-c", "1", "-W", "3", "1.1.1.1"], "Cloudflare DNS"), 
-            (["docker", "exec", "openvpn-server", "nslookup", "google.com"], "DNS resolution"),
-            (["docker", "exec", "openvpn-server", "echo", "connection-test"], "Container connectivity"),
+            (
+                [
+                    "docker",
+                    "exec",
+                    "openvpn-server",
+                    "ping",
+                    "-c",
+                    "1",
+                    "-W",
+                    "3",
+                    "8.8.8.8",
+                ],
+                "Google DNS",
+            ),
+            (
+                [
+                    "docker",
+                    "exec",
+                    "openvpn-server",
+                    "ping",
+                    "-c",
+                    "1",
+                    "-W",
+                    "3",
+                    "1.1.1.1",
+                ],
+                "Cloudflare DNS",
+            ),
+            (
+                ["docker", "exec", "openvpn-server", "nslookup", "google.com"],
+                "DNS resolution",
+            ),
+            (
+                ["docker", "exec", "openvpn-server", "echo", "connection-test"],
+                "Container connectivity",
+            ),
         ]
-        
+
         for test_cmd, test_name in connectivity_tests:
             try:
                 result = subprocess.run(
@@ -147,16 +179,16 @@ def test_network_connectivity():
                     text=True,
                     timeout=10,
                 )
-                
+
                 if result.returncode == 0:
                     print(f"✓ Network connectivity working ({test_name})")
                     return True
-                    
+
             except subprocess.TimeoutExpired:
                 continue
             except Exception:
                 continue
-                
+
         print("⚠ Network connectivity tests failed - may be expected in CI environment")
         return True  # Don't fail CI for network connectivity issues
 
@@ -196,14 +228,16 @@ def test_service_ports():
                     text=True,
                     timeout=5,
                 )
-                
+
                 if f":{port}" in fallback_result.stdout:
                     print(f"✓ {service} port {port} is bound (verified via container)")
                 else:
-                    print(f"⚠ {service} port {port} test timed out - may be expected in CI")
+                    print(
+                        f"⚠ {service} port {port} test timed out - may be expected in CI"
+                    )
                     # Don't fail for port accessibility in CI environment
                     continue
-                    
+
         except subprocess.TimeoutExpired:
             print(f"⚠ {service} port {port} test timed out - may be expected in CI")
             # Don't fail for port timeouts in CI
