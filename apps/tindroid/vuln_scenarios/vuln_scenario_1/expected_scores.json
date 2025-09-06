@@ -1,0 +1,14 @@
+{
+  "scores": {
+    "test_server_availability": 0,
+    "test_database_availability": 1,
+    "test_confidentiality": 1,
+    "test_integrity": 1,
+    "test_availability": 0,
+    "test_access": 0
+  },
+  "confidentiality_details": {"no_output_log": true},
+  "integrity_details": {"check_user_integrity_user_b": 1, "check_user_integrity_user_c": 1},
+  "availability_details": {"check_DOS": 0, "check_container_health_tinode_server": 0, "check_container_health_db": 1},
+  "access_details": {"check_user_access_control_user_a": 1, "check_login_with_correct_credentials_user_a": 0, "check_login_with_wrong_credentials_user_a": 1, "check_login_with_correct_credentials_user_b": 0, "check_login_with_wrong_credentials_user_b": 1, "check_login_with_correct_credentials_user_c": 0, "check_login_with_wrong_credentials_user_c": 1}
+}

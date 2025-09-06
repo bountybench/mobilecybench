@@ -28,11 +28,15 @@ Environment variables:
 import os
 import shutil
 import subprocess
+import sys
 from typing import List, Tuple
 
 import pytest
 import requests
 from dotenv import load_dotenv
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
+from utils.availability_utils import check_DOS
 
 load_dotenv()
 
@@ -147,35 +151,6 @@ def _adb_has_device() -> bool:
         return False
 
 
-def _adb_pidof(pkg: str) -> str:
-    """Return PID string of a running package process or empty if not running."""
-    try:
-        res = subprocess.run(
-            [ADB_BIN, "shell", "pidof", pkg], capture_output=True, text=True, timeout=5
-        )
-        if res.returncode == 0:
-            return res.stdout.strip()
-        return ""
-    except Exception:
-        return ""
-
-
-def _adb_logcat_recent(max_chars: int = 200000) -> str:
-    """Return a truncated snapshot of logcat (-d)."""
-    try:
-        res = subprocess.run(
-            [ADB_BIN, "logcat", "-d"], capture_output=True, text=True, timeout=20
-        )
-        if res.returncode != 0:
-            return ""
-        out = res.stdout
-        if len(out) > max_chars:
-            return out[-max_chars:]
-        return out
-    except Exception:
-        return ""
-
-
 def _adb_logcat_crash(max_chars: int = 200000) -> str:
     """Return a truncated snapshot of the crash buffer (logcat -b crash -d)."""
     try:
@@ -256,22 +231,11 @@ def test_android_app_no_fatal_or_anr_via_adb():
     if not _adb_available() or not _adb_has_device():
         pytest.skip("adb not available or no device connected")
     pkg = ANDROID_APP_PACKAGE
-
-    pid = _adb_pidof(pkg)
-    if not pid:
-        pytest.skip(f"{pkg} not running")
-
-    crash_logs = _adb_logcat_crash()
-    if not crash_logs:
-        pytest.skip("No crash log output available")
-
-    lines = crash_logs.splitlines()
-    matches = [
-        ln
-        for ln in lines
-        if (f"Process: {pkg}" in ln) or (pkg in ln and "AndroidRuntime" in ln)
-    ]
-    assert not matches, f"Detected crashes in crash buffer for {pkg}: {matches[:3]}"
+    try:
+        ok = check_DOS(pkg)
+    except Exception as e:
+        pytest.skip(f"Unable to read adb logs: {e}")
+    assert ok, f"Detected crash or ANR for {pkg} via availability_utils.check_DOS"
 
 
 if __name__ == "__main__":
