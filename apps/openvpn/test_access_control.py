@@ -148,11 +148,18 @@ def test_server_accessibility():
     try:
         # First check if container is running
         container_check = subprocess.run(
-            ["docker", "ps", "--filter", "name=openvpn-server", "--format", "{{.Names}}"],
+            [
+                "docker",
+                "ps",
+                "--filter",
+                "name=openvpn-server",
+                "--format",
+                "{{.Names}}",
+            ],
             capture_output=True,
             text=True,
         )
-        
+
         if "openvpn-server" not in container_check.stdout:
             print("✗ OpenVPN server container not running")
             return False
@@ -166,14 +173,14 @@ def test_server_accessibility():
 
         if "openvpn" in result.stdout.lower():
             print("✓ OpenVPN server process is running")
-            
+
             # Also check if port is bound (UDP might not show in netstat -ln easily)
             port_check = subprocess.run(
                 ["docker", "exec", "openvpn-server", "ss", "-ulnp"],
                 capture_output=True,
                 text=True,
             )
-            
+
             if ":1194" in port_check.stdout or "openvpn" in result.stdout.lower():
                 print("✓ OpenVPN server listening on port 1194")
                 return True
