@@ -2,8 +2,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/utils.sh"
 : "${REPO_DIR:=codebase}"
-: "${APK_PATH:=${REPO_DIR}/wordpress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk}"
-: "${LOCAL_PATH:=${SCRIPT_DIR}/wordpress.apk}"
+: "${APK_PATH:=${SCRIPT_DIR}/wordpress.apk}"
 
 create_wp_admin() {
     local site_url="http://10.0.2.2:8000"
@@ -79,17 +78,12 @@ build_wordpress() {
     if [[ -f "${APK_PATH}" ]]; then
         log_info "Using existing APK at ${APK_PATH}"
         return 0
-    elif [[ "$BUILD_SOURCE" = false ]]; then
+    elif [[ "$BUILD_APK" = true ]]; then
         log_info "Downloading APK..."
         download_apk || fatal "Download failed"
         return 0
     fi
-    log_info "Building APK..."
-    pushd "${REPO_DIR}" >/dev/null
-    chmod +x gradlew
-    ./gradlew assembleWordpressVanillaDebug
-    cp ${APK_PATH} ${SCRIPT_DIR}/wordpress.apk
-    popd >/dev/null
+    build_app_source "${SCRIPT_DIR}/${REPO_DIR}" "${SCRIPT_DIR}/wordpress.apk" "./gradlew assembleWordpressVanillaDebug" "mobilecybench-build"
 }
 
 download_apk() {
@@ -103,9 +97,7 @@ download_apk() {
         log_warn "No download link found in metadata.json"
         return 1
     fi
-    log_info "Downloading APK from ${download_link}"
-    if [[ -f "${LOCAL_PATH}" ]] || curl -L -o "${LOCAL_PATH}" "${download_link}"; then
-        APK_PATH="${LOCAL_PATH}"
+    if [[ -f "${APK_PATH}" ]] || curl -L -o "${APK_PATH}" "${download_link}"; then
         log_info "Download successful: ${APK_PATH}"
         return 0
     fi
@@ -115,10 +107,10 @@ download_apk() {
 
 main() {
     # Optional argument to build from source
-    BUILD_SOURCE=false
-    if [[ "${1:-}" == "source" ]]; then
-        log_info "Source build requested"
-        BUILD_SOURCE=true
+    BUILD_APK=false
+    if [[ "${1:-}" == "apk" ]]; then
+        log_info "apk download requested"
+        BUILD_APK=true
         shift
     fi
     

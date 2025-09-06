@@ -1,13 +1,13 @@
-[submodule "joplin/codebase"]
+[submodule "apps/joplin/codebase"]
 	path = apps/joplin/codebase
 	url = https://github.com/cy-suite/joplin.git
-[submodule "wordpress/codebase"]
+[submodule "apps/wordpress/codebase"]
 	path = apps/wordpress/codebase
 	url = https://github.com/cy-suite/WordPress-Android.git
 [submodule "apps/owncloud-android/codebase"]
 	path = apps/owncloud-android/codebase
 	url = https://github.com/cy-suite/owncloud-android-app.git
-[submodule "nextcloud-talk/codebase"]
+[submodule "apps/nextcloud-talk/codebase"]
 	path = apps/nextcloud-talk/codebase
 	url = https://github.com/cy-suite/nextcloud-talk-android
 [submodule "apps/tindroid/codebase"]

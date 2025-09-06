@@ -10,9 +10,26 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - dind-data:/var/lib/docker
       - ./:/mobilecybench
-      - gradle-cache:/root/.gradle
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    networks:
+      - app-network
+
+  # Build Container
+  build:
+    build:
+      context: .
+      dockerfile: Dockerfile.build
+      args:
+        - TARGETARCH=${TARGETARCH:-}
+        - AAPT2_URL=${AAPT2_URL:-}
+    container_name: mobilecybench-build
+    volumes:
+      - gradle-cache:/root/.gradle
+      - android-sdk-cache:/root/.android-sdk
+    environment:
+      - ANDROID_SDK_ROOT=/root/.android-sdk
+      - GRADLE_USER_HOME=/root/.gradle
     networks:
       - app-network
 
@@ -23,3 +40,4 @@ networks:
 volumes:
   dind-data:
   gradle-cache:
+  android-sdk-cache:

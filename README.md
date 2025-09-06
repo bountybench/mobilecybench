@@ -324,39 +324,40 @@ To get started with Docker, follow these installation instructions based on your
 
 ### Quick Start
 
-1. **Run the setup script:**
+1. **Run the setup script (starts bridge server for orchestrator container):**
 
    ```bash
-   bash setup.sh
+   bash setup.sh --sdk=<SDK_VERSION>
    ```
 
-2. **Start the emulator:**
-
-   ```bash
-   ./start_emulator.sh
-   ```
-
-3. **Verify setup:**
+2. **Verify setup (Optional):**
    ```bash
    ./check_device.sh
    ```
 
-That's it! The emulator is ready for testing.
+3. **Start the orchestrator container:**
+
+   ```bash
+   docker compose up -d backend && docker exec -it mobilecybench-backend /bin/bash
+   ```
+
+That's it! You are ready to begin developing in the standardized orchestrator container. Use the helper functions in utils/android.sh for starting and stopping the emulator on host rather than the start_emulator.sh script. 
 
 ### What the Setup Script Does
 
 - Downloads and installs Android SDK Command Line Tools
-- Creates an Android 9.0 (API 28) emulator
+- Creates an Android emulator with given API level (default to 35 with no flags)
 - Sets up environment variables automatically
 - Creates helper scripts for common tasks
+- Starts a small, background host-bridge server to let the orchestrator container control the emulator on the host.
 
-### Helper Scripts
+### Wrapper Functions from mobilecybench/utils/android.sh to run host-side scripts
 
-| Script              | Description                          |
+| Function            | Description                          |
 | ------------------- | ------------------------------------ |
-| `start_emulator.sh` | Start the Android emulator           |
-| `stop_emulator.sh`  | Stop the Android emulator            |
-| `check_device.sh`   | Check if device is ready for testing |
+| `start_emulator`    | Start the Android emulator           |
+| `stop_emulator`     | Stop the Android emulator            |
+| `adb_install_apk /path/to/app.apk`   | Installs given APK in the emulator |
 
 ### Requirements
 
@@ -396,13 +397,13 @@ That's it! The emulator is ready for testing.
 The emulator is configured with:
 
 - **Device:** Pixel 2 profile
-- **Android:** 9.0 (API 28) with Google APIs
+- **Android:** 9.0 (API 35) with Google APIs
 - **RAM:** 2GB
 - **Architecture:** x86_64
 - **GPU:** Hardware acceleration enabled
 
 To modify settings, edit the AVD configuration in:
-`~/.android/avd/MobileBenchmark_API28.avd/config.ini`
+`~/.android/avd/MobileBenchmark_API35.avd/config.ini`
 
 ### Support
 

@@ -3,11 +3,11 @@ FROM python:3.12-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYENV_ROOT=/root/.pyenv
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+ARG TARGETARCH
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-${TARGETARCH}
 ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$JAVA_HOME/bin"
 ENV ANDROID_SDK_ROOT=/root/.android-sdk
 ENV ANDROID_HOME=/root/.android-sdk
-ENV GRADLE_USER_HOME=/root/.gradle
 WORKDIR /mobilecybench
 
 # Install base dependencies
@@ -36,39 +36,6 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; \
     rm -rf /var/lib/apt/lists/*
 
-# Java symlink and aapt2 for arm64
-RUN set -eux; \
-    arch="$(dpkg --print-architecture)"; \
-    if [ "$arch" = "amd64" ]; then \
-      ln -sf /usr/lib/jvm/java-17-openjdk-amd64 /usr/lib/jvm/java-17-openjdk || true; \
-    elif [ "$arch" = "arm64" ]; then \
-      ln -sf /usr/lib/jvm/java-17-openjdk-arm64 /usr/lib/jvm/java-17-openjdk || true; \
-      mkdir -p /tmp/aapt2-download; \
-        cd /tmp/aapt2-download; \
-        if curl -fSL "https://github.com/lzhiyong/android-sdk-tools/releases/download/35.0.2/android-sdk-tools-static-aarch64.zip" -o aapt2.zip; then \
-            echo "Downloaded from Lzhiyong v35.0.2"; \
-            unzip aapt2.zip; \
-            mv build-tools/aapt2 /usr/bin/aapt2; \
-        elif curl -fSL "https://github.com/lzhiyong/android-sdk-tools/releases/download/34.0.3/android-sdk-tools-static-aarch64.zip" -o aapt2.zip; then \
-            echo "Downloaded from Lzhiyong v34.0.3"; \
-            unzip aapt2.zip; \
-            mv build-tools/aapt2 /usr/bin/aapt2; \
-        elif curl -fSL "https://github.com/AndroidIDEOfficial/platform-tools/releases/download/v34.0.4/platform-tools-34.0.4-aarch64.tar.xz" -o aapt2.tar.xz; then \
-            echo "Downloaded from AndroidIDEOfficial v34.0.4"; \
-            tar -xJf aapt2.tar.xz; \
-            find . -name "aapt2" -type f -exec mv {} /usr/bin/aapt2 \; || (echo "Could not find aapt2 in extracted files" && exit 1); \
-        elif curl -fSL "https://github.com/rendiix/termux-aapt/releases/download/termux-sdk-tools-34.0.0/termux-sdk-tools-34.0.0.tar.xz" -o aapt2.tar.xz; then \
-            echo "Downloaded from rendiix termux-sdk-tools-34.0.0"; \
-            tar -xJf aapt2.tar.xz; \
-            find . -name "aapt2" -type f -exec mv {} /usr/bin/aapt2 \; || (echo "Could not find aapt2 in extracted files" && exit 1); \
-        else \
-            echo "ERROR: All aapt2 download attempts failed"; \
-            exit 1; \
-        fi; \
-        chmod +x /usr/bin/aapt2; \
-        rm -rf /tmp/aapt2-download; \
-    fi
-
 # install pyenv (lightweight)
 RUN git clone https://github.com/pyenv/pyenv.git $PYENV_ROOT \
     && mkdir -p $PYENV_ROOT/plugins \
@@ -76,28 +43,6 @@ RUN git clone https://github.com/pyenv/pyenv.git $PYENV_ROOT \
 COPY requirements.txt /mobilecybench/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     bash -lc "python -m pip install --upgrade pip setuptools wheel && pip install -r /mobilecybench/requirements.txt"
-
-# install Android cmdline-tools and core SDK components
-RUN set -eux; \
-    mkdir -p "${ANDROID_SDK_ROOT}/cmdline-tools"; \
-    curl -fSL "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -o /tmp/cmdline-tools.zip; \
-    unzip -q /tmp/cmdline-tools.zip -d /tmp; \
-    mv /tmp/cmdline-tools "${ANDROID_SDK_ROOT}/cmdline-tools/latest"; \
-    rm -f /tmp/cmdline-tools.zip; \
-    PATH="${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools" ; \
-    yes | sdkmanager --licenses >/dev/null 2>&1 || true; \
-    sdkmanager "platform-tools" "platforms;android-35" "build-tools;34.0.0" >/dev/null || true; \
-    if [ -x "${ANDROID_SDK_ROOT}/platform-tools/adb" ]; then ln -sf "${ANDROID_SDK_ROOT}/platform-tools/adb" /usr/bin/adb || true; fi
-
-# Write gradle props
-RUN set -eux; \
-    mkdir -p /root/.gradle; \
-    printf '%s\n' \
-    'org.gradle.caching=true' \
-    'org.gradle.daemon=true' \
-    'org.gradle.parallel=true' \
-    'org.gradle.configureondemand=true' \
-    'android.aapt2FromMavenOverride=/usr/bin/aapt2' > /root/.gradle/gradle.properties
 
 # Install Node and Yarn
 RUN set -eux; \

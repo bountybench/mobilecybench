@@ -17,7 +17,7 @@ perform_login() {
 
     wait_for_output "adb shell dumpsys window windows" "LoginActivity" 60
     adb shell input tap 540 700
-    adb shell input text "10.0.2.2:8000"
+    adb shell input text "$WP_SITE_URL"
     adb shell input keyevent 66
 
     wait_for_output "adb exec-out uiautomator dump /dev/tty" "Username" 60

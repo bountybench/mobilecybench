@@ -1,0 +1,61 @@
+# syntax=docker/dockerfile:1.4
+FROM debian:12-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYENV_ROOT=/root/.pyenv
+ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ENV ANDROID_SDK_ROOT=/root/.android-sdk
+ENV ANDROID_HOME=/root/.android-sdk
+ENV GRADLE_USER_HOME=/root/.gradle
+WORKDIR /mobilecybench
+
+# Packages for Android builds
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    apt-get update; \
+    if [ "$arch" = "amd64" ]; then \
+      dpkg --add-architecture i386; apt-get update; \
+      apt-get install -y --no-install-recommends \
+        ca-certificates curl wget unzip git build-essential \
+        openjdk-17-jdk-headless ca-certificates-java \
+        unzip zip tar gzip dialog lib32stdc++6 lib32z1; \
+    else \
+      apt-get install -y --no-install-recommends \
+        ca-certificates curl wget unzip git build-essential \
+        openjdk-17-jdk-headless ca-certificates-java \
+        unzip zip tar gzip dialog; \
+    fi; \
+    JAVA_HOME="/usr/lib/jvm/java-17-openjdk-${arch}"; \
+    PATH="${PATH}:${JAVA_HOME}/bin"; \
+    mkdir -p "${ANDROID_SDK_ROOT}/cmdline-tools"; \
+    curl -fSL "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -o /tmp/cmdline-tools.zip; \
+    unzip -q /tmp/cmdline-tools.zip -d /tmp; \
+    mv /tmp/cmdline-tools "${ANDROID_SDK_ROOT}/cmdline-tools/latest"; \
+    rm -f /tmp/cmdline-tools.zip; \
+    PATH="${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools"; \
+    yes | sdkmanager --licenses >/dev/null 2>&1 || true; \
+    sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" "platform-tools" "platforms;android-35" "build-tools;35.0.2" >/dev/null || true; \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy and run aapt2 fetcher
+COPY tools/fetch_aapt2.sh /usr/local/bin/fetch_aapt2.sh
+
+# Ensure aapt2 is visible and write gradle props
+RUN set -eux; \
+    chmod +x /usr/local/bin/fetch_aapt2.sh; \
+    /usr/local/bin/fetch_aapt2.sh; \
+    mkdir -p "${ANDROID_SDK_ROOT}/build-tools/35.0.2"; \
+    if [ -x /usr/bin/aapt2 ]; then \
+      ln -sf /usr/bin/aapt2 "${ANDROID_SDK_ROOT}/build-tools/35.0.2/aapt2"; \
+    fi; \
+    mkdir -p /root/.gradle; \
+    printf '%s\n' \
+    'org.gradle.caching=true' \
+    'org.gradle.daemon=true' \
+    'org.gradle.parallel=true' \
+    'org.gradle.configureondemand=true' \
+    'android.aapt2FromMavenOverride=/usr/bin/aapt2' \
+    'org.gradle.jvmargs=-Xms256m -Xmx1024m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8' \
+    > /root/.gradle/gradle.properties
+
+ENTRYPOINT ["bash","-c","trap : TERM INT; sleep infinity & wait"]
