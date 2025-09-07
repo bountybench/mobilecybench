@@ -183,17 +183,20 @@ build_app() {
     log_info "Building SimpleLogin Android app..."
     
     cd "$CODEBASE_DIR/SimpleLogin"
+
+    # Set Java 17 for compatibility
+    export JAVA_HOME="/opt/homebrew/opt/openjdk@17"
     
     # Make gradlew executable
     chmod +x gradlew
-    
+
     # Clean and build debug APK
     log_info "Running Gradle clean..."
     if ! ./gradlew --no-daemon clean; then
         log_error "Gradle clean failed"
         return 1
     fi
-    
+
     log_info "Building debug APK..."
     if ! ./gradlew --no-daemon assembleDebug; then
         log_error "Gradle build failed"

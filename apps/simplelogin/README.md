@@ -98,11 +98,23 @@ The setup script performs these steps:
 
 ### Backend Configuration
 
-The backend is configured via `docker-compose.yml`:
+The backend is configured via `docker-compose.yml` and `config/simplelogin.env`:
 
 - **API Port:** 7777
 - **Database:** PostgreSQL
 - **Email Domain:** simplelogin.local
+- **Image Version:** simplelogin/app:3.4.0 (pinned for stability)
+- **Server Binding:** 0.0.0.0 (Docker-compatible)
+- **Health Check:** GET / (proper endpoint)
+- **Config File:** `/code/simplelogin.env` (mounted from local config)
+
+**Key Environment Variables:**
+
+- `DISABLE_EMAIL_VERIFICATION=1` - Skip email verification for testing
+- `DISABLE_ONBOARDING=1` - Skip user onboarding flow
+- `DISABLE_REGISTRATION=0` - Allow user registration
+- `FLASK_ENV=development` - Development mode
+- `DEBUG=1` - Enable debug logging
 
 ### App Configuration
 
@@ -194,11 +206,29 @@ cat secrets.json
 docker-compose ps
 
 # View logs
-docker-compose logs
+docker-compose logs simplelogin-api --tail 50
 
 # Restart services
 docker-compose restart
+
+# Test API connectivity
+curl -i http://localhost:7777/
+curl -i -X POST http://localhost:7777/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"test@example.com","password":"P@ssw0rd!"}'
+
+# Check if registration is enabled
+docker exec simplelogin-simplelogin-api-1 python -c "
+from app.config import DISABLE_REGISTRATION
+print('DISABLE_REGISTRATION:', DISABLE_REGISTRATION)
+"
 ```
+
+**Common Issues:**
+
+- `connection reset by peer`: Server binding issue (check docker-compose host config)
+- `registration is closed`: Set `DISABLE_REGISTRATION=0` in config
+- `request body cannot be empty`: Use JSON content-type, not form-encoded
 
 ### App Issues
 
@@ -225,17 +255,32 @@ jq '.' secrets.json
 
 ### Authentication
 
-- `POST /api/auth/login` - User login
-- `POST /api/auth/register` - User registration
+- `POST /api/auth/login` - User login (JSON body: `{"email":"...", "password":"..."}`)
+- `POST /api/auth/register` - User registration (JSON body: `{"email":"...", "password":"..."}`)
+- `POST /api/api_key` - Alternative login endpoint (fallback)
 
 ### Aliases
 
-- `GET /api/v2/aliases` - List user aliases
-- `POST /api/alias/random/new` - Create new alias
+- `GET /api/v2/aliases` - List user aliases (requires Bearer token)
+- `POST /api/alias/random/new` - Create new random alias (requires Bearer token)
+- `POST /api/v3/alias/custom/new` - Create custom alias (fallback endpoint)
 
 ### User Management
 
-- `GET /api/user/info` - User information
+- `GET /api/user/info` - User information (requires Bearer token)
+
+**Authentication Flow:**
+
+1. Register: `POST /api/auth/register` with JSON `{"email":"testuser@gmail.com", "password":"..."}`
+2. Login: `POST /api/auth/login` with JSON `{"email":"testuser@gmail.com", "password":"...", "device":"mobilecybench-test"}`
+3. Activate account: `UPDATE users SET activated = true WHERE email = '...'` (for testing)
+4. Extract token from response: `response.api_key` or `response.access_token`
+5. Use token: `Authorization: Bearer <token>` header for protected endpoints
+
+**Content-Type Requirements:**
+
+- Auth endpoints: `application/json` (not form-encoded)
+- All requests expect JSON request/response format
 
 ## Development Notes
 

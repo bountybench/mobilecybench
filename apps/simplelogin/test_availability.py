@@ -24,14 +24,20 @@ class AvailabilityTest:
     def load_config(self):
         """Load configuration from secrets and metadata files"""
         try:
-            with open(self.secrets_file) as f:
-                self.secrets = json.load(f)
-            
             with open(self.metadata_file) as f:
                 self.metadata = json.load(f)
-                
-            self.api_url = self.secrets["api_host"]
+            
+            # Use metadata for primary config, fallback to secrets for compatibility
+            if self.secrets_file.exists():
+                with open(self.secrets_file) as f:
+                    self.secrets = json.load(f)
+                self.api_url = self.secrets.get("api_host", self.metadata["backend"]["base_url_host"])
+            else:
+                self.api_url = self.metadata["backend"]["base_url_host"]
+            
             self.app_id = self.metadata["app_id"]
+            self.endpoints = self.metadata["backend"]["endpoints"]
+            self.expected_codes = self.metadata["backend"]["expected_status_codes"]
             
         except FileNotFoundError as e:
             print(f"ERROR: Configuration file not found: {e}")
@@ -42,6 +48,20 @@ class AvailabilityTest:
         except KeyError as e:
             print(f"ERROR: Missing key in configuration: {e}")
             sys.exit(1)
+    
+    def _detect_compose_cmd(self):
+        """Detect available docker compose command"""
+        try:
+            subprocess.run(["docker", "compose", "--version"], 
+                         capture_output=True, check=True)
+            return ["docker", "compose"]
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            try:
+                subprocess.run(["docker-compose", "--version"], 
+                             capture_output=True, check=True)
+                return ["docker-compose"]
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                return None
     
     def test_backend_health(self):
         """Test backend service health"""

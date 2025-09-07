@@ -1,42 +1,15 @@
 #!/bin/bash
-
-# SimpleLogin CIAA Checks Runner
-# Executes all security tests and generates scores.json
-
-set -euo pipefail
+set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESULTS_FILE="$SCRIPT_DIR/scores.json"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
 check_prerequisites() {
-    log_info "Checking prerequisites for CIAA tests..."
+    echo "Checking prerequisites for CIAA tests..."
     
     # Check Python
     if ! command -v python3 &> /dev/null; then
-        log_error "python3 not found. Please install Python 3."
+        echo "ERROR:" "python3 not found. Please install Python 3."
         return 1
     fi
     
@@ -44,9 +17,9 @@ check_prerequisites() {
     local required_packages=("requests")
     for package in "${required_packages[@]}"; do
         if ! python3 -c "import $package" 2>/dev/null; then
-            log_warning "Installing required Python package: $package"
+            echo "Warning:" "Installing required Python package: $package"
             pip3 install "$package" || {
-                log_error "Failed to install $package"
+                echo "ERROR:" "Failed to install $package"
                 return 1
             }
         fi
@@ -54,11 +27,11 @@ check_prerequisites() {
     
     # Check that setup has been run
     if [[ ! -f "$SCRIPT_DIR/secrets.json" ]]; then
-        log_error "secrets.json not found. Please run setup.sh first."
+        echo "ERROR:" "secrets.json not found. Please run setup.sh first."
         return 1
     fi
     
-    log_success "Prerequisites check passed"
+    echo "Prerequisites check passed"
 }
 
 run_test() {
@@ -66,10 +39,10 @@ run_test() {
     local test_script="$2"
     local test_file="$SCRIPT_DIR/$test_script"
     
-    log_info "Running $test_name test..."
+    echo "Running $test_name test..."
     
     if [[ ! -f "$test_file" ]]; then
-        log_error "Test file not found: $test_file"
+        echo "ERROR:" "Test file not found: $test_file"
         return 1
     fi
     
@@ -86,16 +59,16 @@ run_test() {
     echo "$test_output"
     
     if [[ $test_exit_code -eq 0 ]]; then
-        log_success "$test_name test completed successfully"
+        echo "$test_name test completed successfully"
         return 0
     else
-        log_warning "$test_name test completed with warnings/failures"
+        echo "Warning:" "$test_name test completed with warnings/failures"
         return 1
     fi
 }
 
 collect_results() {
-    log_info "Collecting test results..."
+    echo "Collecting test results..."
     
     local results="{}"
     local total_score=0
@@ -131,7 +104,7 @@ collect_results() {
                 fi
             fi
         else
-            log_warning "Result file not found: $file_path"
+            echo "Warning:" "Result file not found: $file_path"
         fi
     done
     
@@ -154,7 +127,7 @@ collect_results() {
     # Write final results
     echo "$results" | jq '.' > "$RESULTS_FILE"
     
-    log_success "Results collected in $RESULTS_FILE"
+    echo "Results collected in $RESULTS_FILE"
     
     # Display summary
     echo
@@ -170,7 +143,7 @@ collect_results() {
 }
 
 main() {
-    log_info "Starting SimpleLogin CIAA security tests..."
+    echo "Starting SimpleLogin CIAA security tests..."
     
     check_prerequisites
     
@@ -199,13 +172,13 @@ main() {
     done
     
     echo
-    log_info "All tests completed. Collecting results..."
+    echo "All tests completed. Collecting results..."
     
     collect_results
     
-    log_success "CIAA security tests completed!"
-    log_info "Passed: $passed_tests/$total_tests tests"
-    log_info "Results file: $RESULTS_FILE"
+    echo "CIAA security tests completed!"
+    echo "Passed: $passed_tests/$total_tests tests"
+    echo "Results file: $RESULTS_FILE"
     
     # Exit with success if majority of tests passed
     if [[ $passed_tests -ge $((total_tests / 2)) ]]; then

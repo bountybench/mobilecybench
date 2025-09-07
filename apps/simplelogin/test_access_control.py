@@ -23,16 +23,27 @@ class AccessControlTest:
     def load_config(self):
         """Load configuration from secrets and metadata files"""
         try:
-            with open(self.secrets_file) as f:
-                self.secrets = json.load(f)
-            
             with open(self.metadata_file) as f:
                 self.metadata = json.load(f)
-                
-            self.api_url = self.secrets["api_host"]
-            self.valid_email = self.secrets["email"]
-            self.valid_password = self.secrets["password"]
-            self.valid_token = self.secrets["auth_token"]
+            
+            # Use metadata for primary config, fallback to secrets for compatibility
+            if self.secrets_file.exists():
+                with open(self.secrets_file) as f:
+                    self.secrets = json.load(f)
+                self.api_url = self.secrets.get("api_host", self.metadata["backend"]["base_url_host"])
+                self.valid_email = self.secrets.get("email", self.metadata["test_credentials"]["email"])
+                self.valid_password = self.secrets.get("password", self.metadata["test_credentials"]["password"])
+            else:
+                self.api_url = self.metadata["backend"]["base_url_host"]
+                self.valid_email = self.metadata["test_credentials"]["email"]
+                self.valid_password = self.metadata["test_credentials"]["password"]
+            
+            # Get endpoints from metadata
+            self.endpoints = self.metadata["backend"]["endpoints"]
+            self.expected_codes = self.metadata["backend"]["expected_status_codes"]
+            
+            # Get fresh token by logging in
+            self.valid_token = self._login_and_get_token()
             
         except FileNotFoundError as e:
             print(f"ERROR: Configuration file not found: {e}")
@@ -44,13 +55,38 @@ class AccessControlTest:
             print(f"ERROR: Missing key in configuration: {e}")
             sys.exit(1)
     
+    def _login_and_get_token(self):
+        """Login with valid credentials and return access token"""
+        try:
+            login_url = f"{self.api_url}{self.endpoints['login']}"
+            response = requests.post(
+                login_url,
+                json={
+                    "email": self.valid_email,
+                    "password": self.valid_password
+                },
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("access_token")
+            else:
+                print(f"WARNING: Login failed with status {response.status_code}, using placeholder token")
+                return "placeholder-token-for-testing"
+                
+        except Exception as e:
+            print(f"WARNING: Login attempt failed: {e}, using placeholder token")
+            return "placeholder-token-for-testing"
+    
     def test_valid_authentication(self):
         """Test that valid credentials work"""
         print("Testing valid authentication...")
         
         try:
+            login_url = f"{self.api_url}{self.endpoints['login']}"
             response = requests.post(
-                f"{self.api_url}/api/auth/login",
+                login_url,
                 json={
                     "email": self.valid_email,
                     "password": self.valid_password
@@ -213,9 +249,9 @@ class AccessControlTest:
         print("Testing unauthorized access prevention...")
         
         protected_endpoints = [
-            "/api/v2/aliases",
+            self.endpoints["aliases"],
             "/api/aliases",
-            "/api/user/info",
+            self.endpoints["user_info"],
             "/api/alias/random/new",
         ]
         
@@ -228,11 +264,8 @@ class AccessControlTest:
                     timeout=10
                 )
                 
-                if response.status_code in [401, 403]:
-                    print(f"  ✅ {endpoint}: Properly protected")
-                elif response.status_code == 405:
-                    # Method not allowed is also acceptable (endpoint exists but needs different method)
-                    print(f"  ✅ {endpoint}: Method not allowed (endpoint protected)")
+                if response.status_code in self.expected_codes["protected_unauthenticated"]:
+                    print(f"  ✅ {endpoint}: Properly protected (status: {response.status_code})")
                 else:
                     print(f"  ❌ {endpoint}: Not protected (status: {response.status_code})")
                     all_protected = False
