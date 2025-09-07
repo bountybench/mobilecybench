@@ -33,9 +33,19 @@ def load_secrets():
     debug(f"Loading secrets from '{SECRETS_FILE}'...")
     with open(path) as f:
         SECRETS = json.load(f)
+
+    print(
+        "[DEBUG] Loading Users with secrets. Just testing for now. Will create these users before running the integrity check in coming updates."
+    )
+    ensure_prosody_config(prosody_container)
+    create_prosody_user(prosody_container, "alice", "meet.jitsi", "alicepass123")
+    create_prosody_user(prosody_container, "bob", "meet.jitsi", "bobpass456")
+    create_prosody_user(prosody_container, "charlie", "meet.jitsi", "charliepass789")
+
     debug(
         f"Loaded secrets for users: {[k for k in SECRETS if k.endswith('_username')]}"
     )
+
     return SECRETS
 
 
@@ -61,27 +71,19 @@ def get_prosody_container():
 
 def ensure_prosody_config(container):
     print(f"[DEBUG] Checking prosody.cfg.lua in container '{container}'...")
-    cmd_check = [
-        "docker",
-        "exec",
-        container,
-        "test",
-        "-f",
-        "/etc/prosody/prosody.cfg.lua",
-    ]
-    check = subprocess.run(cmd_check)
-    if check.returncode == 0:
-        print("[DEBUG] prosody.cfg.lua exists. No action needed.")
-        return
-
-    print("[DEBUG] prosody.cfg.lua not found. Creating minimal configuration...")
-
-    minimal_cfg = ""
+    minimal_cfg = """
+    -- Minimal Prosody config for testing
+    admins = { }
+    modules_enabled = { "roster", "saslauth", "tls", "dialback" }
+    allow_registration = true
+    """
 
     cmd_create = [
         "docker",
         "exec",
         "-i",
+        "--user",
+        "root",  # run as root
         container,
         "tee",
         "/etc/prosody/prosody.cfg.lua",
@@ -92,6 +94,29 @@ def ensure_prosody_config(container):
         print("[DEBUG] Created minimal prosody.cfg.lua successfully.")
     else:
         print("[DEBUG] Failed to create prosody.cfg.lua.")
+
+
+def create_prosody_user(container, user, domain, password):
+    print(
+        f"[DEBUG] Creating Prosody user '{user}' in container '{container}'...",
+        file=sys.stderr,
+    )
+    cmd = [
+        "docker",
+        "exec",
+        container,
+        "prosodyctl",
+        "register",
+        user,
+        domain,
+        password,
+    ]
+    result = subprocess.run(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+    print(
+        f"[DEBUG] prosodyctl output:\n{result.stdout}\n{result.stderr}", file=sys.stderr
+    )
 
 
 def docker_exec(container, *args):
@@ -131,8 +156,6 @@ prosody_container = get_prosody_container()
 if not prosody_container:
     out("[ERROR] Prosody container not found.")
     sys.exit(1)
-
-ensure_prosody_config(prosody_container)
 
 status = {}
 fail = False

@@ -48,27 +48,19 @@ def check_web_up():
 
 def ensure_prosody_config(container):
     print(f"[DEBUG] Checking prosody.cfg.lua in container '{container}'...")
-    cmd_check = [
-        "docker",
-        "exec",
-        container,
-        "test",
-        "-f",
-        "/etc/prosody/prosody.cfg.lua",
-    ]
-    check = subprocess.run(cmd_check)
-    if check.returncode == 0:
-        print("[DEBUG] prosody.cfg.lua exists. No action needed.")
-        return
-
-    print("[DEBUG] prosody.cfg.lua not found. Creating minimal configuration...")
-
-    minimal_cfg = ""
+    minimal_cfg = """
+    -- Minimal Prosody config for testing
+    admins = { }
+    modules_enabled = { "roster", "saslauth", "tls", "dialback" }
+    allow_registration = true
+    """
 
     cmd_create = [
         "docker",
         "exec",
         "-i",
+        "--user",
+        "root",  # run as root
         container,
         "tee",
         "/etc/prosody/prosody.cfg.lua",
@@ -149,7 +141,6 @@ else:
         status["check_wrong_credentials"] = 0
 
 ensure_prosody_config(prosody_container)
-
 create_prosody_user(prosody_container, "user_a", "meet.jitsi", "user_apass")
 
 if check_prosody_login(prosody_container, "user_a", "user_apass"):

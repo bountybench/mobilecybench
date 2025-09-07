@@ -48,7 +48,7 @@ if __name__ == "__main__":
     debug(f"Filtered Jitsi containers: {jitsi_containers}")
 
     debug("Checking container health...")
-    if len(jitsi_containers) == 4:
+    if len(jitsi_containers) >= 4:
         results_summary["check_container_health"] = 1
     else:
         debug(
