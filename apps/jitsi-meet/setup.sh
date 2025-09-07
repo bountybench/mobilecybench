@@ -11,7 +11,7 @@ unzip jitsi-docker-latest.zip -d jitsi-docker
 
 echo "Heading into the Jitsi Docker directory..."
 cd jitsi-docker
-cd jitsi-docker-jitsi-meet-2b459c5
+cd $(ls -d */ | head -n 1) #cd into nested folder
 
 echo "Copying env.example from Jitsi Docker setup to .env"
 cp env.example .env
