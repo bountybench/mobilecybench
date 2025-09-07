@@ -9,6 +9,9 @@ if [[ -z "${CI:-}" && -z "${GITHUB_ACTIONS:-}" ]]; then
     ../../stop_emulator.sh || true
 fi
 
+echo "Removing config files from the HA app"
+rm -rf config/
+
 echo "Stopping all services..."
 docker compose down -v
 
