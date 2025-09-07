@@ -60,10 +60,7 @@ def get_prosody_container():
 
 
 def ensure_prosody_config(container):
-    """
-    Make sure /etc/prosody/prosody.cfg.lua exists; copy from .dist if missing.
-    """
-    debug(f"Checking prosody.cfg.lua in container '{container}'...")
+    print(f"[DEBUG] Checking prosody.cfg.lua in container '{container}'...")
     cmd_check = [
         "docker",
         "exec",
@@ -73,18 +70,28 @@ def ensure_prosody_config(container):
         "/etc/prosody/prosody.cfg.lua",
     ]
     check = subprocess.run(cmd_check)
-    if check.returncode != 0:
-        debug("prosody.cfg.lua not found. Copying default .dist file...")
-        cmd_copy = [
-            "docker",
-            "exec",
-            container,
-            "cp",
-            "/etc/prosody/prosody.cfg.lua.dist",
-            "/etc/prosody/prosody.cfg.lua",
-        ]
-        subprocess.run(cmd_copy, check=True)
-        debug("Copied prosody.cfg.lua from .dist.")
+    if check.returncode == 0:
+        print("[DEBUG] prosody.cfg.lua exists. No action needed.")
+        return
+
+    print("[DEBUG] prosody.cfg.lua not found. Creating minimal configuration...")
+
+    minimal_cfg = ""
+
+    cmd_create = [
+        "docker",
+        "exec",
+        "-i",
+        container,
+        "tee",
+        "/etc/prosody/prosody.cfg.lua",
+    ]
+    proc = subprocess.Popen(cmd_create, stdin=subprocess.PIPE)
+    proc.communicate(input=minimal_cfg.encode())
+    if proc.returncode == 0:
+        print("[DEBUG] Created minimal prosody.cfg.lua successfully.")
+    else:
+        print("[DEBUG] Failed to create prosody.cfg.lua.")
 
 
 def docker_exec(container, *args):
