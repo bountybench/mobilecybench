@@ -94,17 +94,18 @@ launch_jitsi() {
 main() {
     echo "Jitsi Meet Android Setup"
 
+    echo "Making setup.sh files executable"
+    chmod +x ./setup.sh
+    chmod +x ../../setup.sh
+
     npm uninstall -g react-native-cli @react-native-community/cli || true
 
     cd codebase
-
-
     yarn install
 
     echo "Starting Metro bundler in the background..."
     nohup npx react-native start --reset-cache > metro.log 2>&1 &
     echo "Finished installing packages."
-
 
     cd android
     check_prerequisites
