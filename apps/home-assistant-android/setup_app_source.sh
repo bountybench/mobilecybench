@@ -103,7 +103,7 @@ build_home_assistant() {
     echo "This may take several minutes..."
     git submodule update --init --recursive
     ./gradlew --no-daemon clean
-    ./gradlew --no-daemon -I ../remove_debug_suffix.gradle assembleDebug -Dorg.gradle.jvmargs="-Xmx8g"
+    ./gradlew --no-daemon -I ../remove_debug_suffix.gradle assembleDebug -Dorg.gradle.jvmargs="-Xmx4g"
     echo "Build completed successfully."
 }
 
