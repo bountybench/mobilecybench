@@ -1,0 +1,10 @@
+{
+    "gh_link": "https://github.com/cy-suite/conversations.git",
+    "commit_version": "60a32b1",
+    "sdk": "35",
+    "java": "17",
+    "emulator_server": "10.0.2.2:5222",
+    "app_server": "conversations-prosody:5222",
+    "username": "agent",
+    "password": "agentpass"
+}
