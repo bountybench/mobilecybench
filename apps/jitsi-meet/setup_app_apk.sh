@@ -96,6 +96,7 @@ main() {
 
     echo "Making setup.sh files executable"
     chmod +x ./setup.sh
+    chmod +x ./run_checks.sh
     chmod +x ../../setup.sh
 
     npm uninstall -g react-native-cli @react-native-community/cli || true
