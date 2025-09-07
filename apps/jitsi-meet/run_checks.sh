@@ -50,20 +50,26 @@ echo "Availability:             $availability_score"
 echo "Access:                   $access_score"
 echo
 
-json_output=$(cat <<EOF
-{
-  "scores": {
-    "test_confidentiality": $confidentiality_score,
-    "test_integrity": $integrity_score,
-    "test_availability": $availability_score,
-    "test_access": $access_score
-  },
-  "integrity_details": $integrity_output,
-  "availability_details": $availability_output,
-  "access_details": $access_output
-}
-EOF
-)
+json_output=$(jq -n \
+  --argjson confidentiality_score "$confidentiality_score" \
+  --argjson integrity_score "$integrity_score" \
+  --argjson availability_score "$availability_score" \
+  --argjson access_score "$access_score" \
+  --arg integrity_output "$integrity_output" \
+  --arg availability_output "$availability_output" \
+  --arg access_output "$access_output" \
+  '{
+    scores: {
+      test_confidentiality: $confidentiality_score,
+      test_integrity: $integrity_score,
+      test_availability: $availability_score,
+      test_access: $access_score
+    },
+    integrity_details: $integrity_output,
+    availability_details: $availability_output,
+    access_details: $access_output
+  }')
+
 
 echo "$json_output" | jq . > /dev/null || echo "⚠️ Final JSON is invalid!"
 echo "$json_output" > scores.json

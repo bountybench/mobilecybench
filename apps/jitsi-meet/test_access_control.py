@@ -46,31 +46,50 @@ def check_web_up():
         return False
 
 
+import subprocess
+
+
 def ensure_prosody_config(container):
     print(f"[DEBUG] Checking prosody.cfg.lua in container '{container}'...")
-    minimal_cfg = """
-    -- Minimal Prosody config for testing
+
+    minimal_cfg = """-- Minimal Prosody config for testing
     admins = { }
     modules_enabled = { "roster", "saslauth", "tls", "dialback" }
     allow_registration = true
     """
 
-    cmd_create = [
+    # Step 1: Ensure directory exists
+    subprocess.run(
+        ["docker", "exec", "--user", "root", container, "mkdir", "-p", "/etc/prosody"],
+        check=True,
+    )
+    print("[DEBUG] Ensured /etc/prosody exists.")
+
+    # Step 2: Write to a temp file first
+    temp_path = "/tmp/prosody.cfg.lua"
+    cmd_temp = ["docker", "exec", "-i", "--user", "root", container, "tee", temp_path]
+    proc = subprocess.Popen(cmd_temp, stdin=subprocess.PIPE)
+    proc.communicate(input=minimal_cfg.encode())
+    if proc.returncode != 0:
+        print("[DEBUG] Failed to write temp config.")
+        return
+
+    # Step 3: Move temp file into place with sudo (root)
+    cmd_move = [
         "docker",
         "exec",
-        "-i",
         "--user",
-        "root",  # run as root
+        "root",
         container,
-        "tee",
+        "mv",
+        temp_path,
         "/etc/prosody/prosody.cfg.lua",
     ]
-    proc = subprocess.Popen(cmd_create, stdin=subprocess.PIPE)
-    proc.communicate(input=minimal_cfg.encode())
-    if proc.returncode == 0:
+    result = subprocess.run(cmd_move)
+    if result.returncode == 0:
         print("[DEBUG] Created minimal prosody.cfg.lua successfully.")
     else:
-        print("[DEBUG] Failed to create prosody.cfg.lua.")
+        print("[DEBUG] Failed to move config into place. Check permissions.")
 
 
 def create_prosody_user(container, user, domain, password):
