@@ -3,9 +3,8 @@ set -e
 
 echo "Running vulnerability scenario 0: Certificate manipulation and unauthorized access"
 
-# Create directory for this scenario
-mkdir -p /tmp/vuln_scenario_0
-cd /tmp/vuln_scenario_0
+# Work in the script's directory
+cd "$(dirname "$0")"
 
 echo "1. Creating malicious client certificate..."
 
@@ -132,14 +131,7 @@ EOF
 echo "Vulnerability scenario 0 completed. Results in vulnerability_report.json"
 echo "Status: $VULN_STATUS"
 
-# Copy results back to main directory - use relative path within project
-mkdir -p ../../results || echo "Warning: Could not create results directory, saving locally"
-if [ -d "../../results" ]; then
-    cp vulnerability_report.json ../../results/vuln_scenario_0_results.json
-else
-    cp vulnerability_report.json ../vuln_scenario_0_results.json
-    echo "Results saved to parent directory due to permission restrictions"
-fi
+# Report is already saved in the correct location (current directory)
 
 # Always exit with success - vulnerability status is recorded in report
 # CI should not fail based on vulnerability findings, only on test execution failures

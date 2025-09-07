@@ -3,9 +3,8 @@ set -e
 
 echo "Running vulnerability scenario 1: Denial of Service attacks"
 
-# Create directory for this scenario  
-mkdir -p /tmp/vuln_scenario_1
-cd /tmp/vuln_scenario_1
+# Work in the script's directory
+cd "$(dirname "$0")"
 
 echo "1. Testing OpenVPN server resilience under connection flood..."
 
@@ -168,14 +167,7 @@ EOF
 echo "DoS vulnerability scenario completed. Results in dos_vulnerability_report.json"
 echo "Overall Status: $OVERALL_STATUS (Score: $SECURITY_SCORE/100)"
 
-# Copy results back to main directory - use relative path within project
-mkdir -p ../../results || echo "Warning: Could not create results directory, saving locally"
-if [ -d "../../results" ]; then
-    cp dos_vulnerability_report.json ../../results/vuln_scenario_1_results.json
-else
-    cp dos_vulnerability_report.json ../vuln_scenario_1_results.json
-    echo "Results saved to parent directory due to permission restrictions"
-fi
+# Report is already saved in the correct location (current directory)
 
 # Clean up processes
 killall nc 2>/dev/null || true

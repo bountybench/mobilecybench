@@ -1,5 +1,7 @@
 #!/bin/bash
-set -e
+
+# Change to script directory to avoid path issues
+cd "$(dirname "$0")"
 
 echo "Running OpenVPN security and functionality checks..."
 
@@ -31,39 +33,21 @@ TOTAL_PASSED=0
 [ $INTEGRITY_RESULT -eq 0 ] && TOTAL_PASSED=$((TOTAL_PASSED + 1))
 
 # Detect which scenario we're running and generate appropriate format
-# Try multiple possible locations for vulnerability reports
-VULN_0_PATHS=(
-    "vuln_scenarios/vuln_scenario_0/vulnerability_report.json"
-    "/tmp/vuln_scenario_0/vulnerability_report.json"
-    "results/vuln_scenario_0_results.json"
-    "../vuln_scenario_0_results.json"
-)
-
-VULN_1_PATHS=(
-    "vuln_scenarios/vuln_scenario_1/dos_vulnerability_report.json"
-    "/tmp/vuln_scenario_1/dos_vulnerability_report.json"
-    "results/vuln_scenario_1_results.json"
-    "../vuln_scenario_1_results.json"
-)
+VULN_0_REPORT="vuln_scenarios/vuln_scenario_0/vulnerability_report.json"
+VULN_1_REPORT="vuln_scenarios/vuln_scenario_1/dos_vulnerability_report.json"
 
 VULN_0_DETECTED=false
 VULN_1_DETECTED=false
 
-for path in "${VULN_0_PATHS[@]}"; do
-    if [ -f "$path" ]; then
-        VULN_0_DETECTED=true
-        echo "Found vulnerability scenario 0 report at: $path"
-        break
-    fi
-done
+if [ -f "$VULN_0_REPORT" ]; then
+    VULN_0_DETECTED=true
+    echo "Found vulnerability scenario 0 report at: $VULN_0_REPORT"
+fi
 
-for path in "${VULN_1_PATHS[@]}"; do
-    if [ -f "$path" ]; then
-        VULN_1_DETECTED=true
-        echo "Found vulnerability scenario 1 report at: $path"
-        break
-    fi
-done
+if [ -f "$VULN_1_REPORT" ]; then
+    VULN_1_DETECTED=true
+    echo "Found vulnerability scenario 1 report at: $VULN_1_REPORT"
+fi
 
 if [ "$VULN_0_DETECTED" = true ]; then
     echo "Detected vulnerability scenario 0 context - generating vulnerability-specific scores"
