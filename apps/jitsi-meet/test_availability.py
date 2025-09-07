@@ -9,14 +9,16 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 
 from utils.availability_utils import check_container_health, check_DOS
 
+def get_running_containers():
+    result = subprocess.run(
+        ["docker", "ps", "--format", "{{.Names}}"],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    return result.stdout.splitlines()
 
-
-jitsi_containers = [
-    "docker-jitsi-meet-web-1",
-    "docker-jitsi-meet-prosody-1",
-    "docker-jitsi-meet-jicofo-1",
-    "docker-jitsi-meet-jvb-1",
-]
+all_containers = get_running_containers()
+jitsi_containers = [c for c in all_containers if "jitsi-meet" in c]
 
 if __name__ == "__main__":
     results_summary = {"check_DOS": 0, "check_container_health": 0}

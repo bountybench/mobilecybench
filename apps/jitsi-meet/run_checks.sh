@@ -58,7 +58,7 @@ json_output=$(jq -n \
   --arg conf_score "$confidentiality_score" \
   --arg int_score "$integrity_score" \
   --arg avail_score "$availability_score" \
-  --arg access_score "$access_score" \
+  --arg access_score[] "$access_score" \
   '{
     scores: {
       test_confidentiality: ($conf_score|tonumber),

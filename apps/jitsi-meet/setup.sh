@@ -34,6 +34,6 @@ for container in $(docker ps -q); do
 done
 
 echo "Updating the Jitsi Meet config url"
-docker-compose exec web bash -c "sed -i 's|https://localhost:8443|https://jitsi-meet:8443|' /config/config.js"
+docker compose exec web bash -c "sed -i 's|https://localhost:8443|https://jitsi-meet:8443|' /config/config.js"
 
 echo "Setup complete! Ready to test Jitsi Meet. (https://jitsi-meet:8443)"
