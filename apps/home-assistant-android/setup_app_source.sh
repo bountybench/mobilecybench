@@ -9,6 +9,7 @@ if [ -z "${ANDROID_HOME}" ]; then
     if [ -n "${ANDROID_SDK_ROOT}" ]; then
         ANDROID_HOME="${ANDROID_SDK_ROOT}"
     else
+        # Common fallback locations (GitHub Actions, local installs, custom installs)
         for cand in "/usr/local/lib/android/sdk" "$HOME/Android/Sdk" "$HOME/.android-sdk" "/opt/android-sdk"; do
             if [ -d "$cand" ]; then
                 ANDROID_HOME="$cand"
@@ -18,6 +19,7 @@ if [ -z "${ANDROID_HOME}" ]; then
     fi
 fi
 
+# Final fallback (will likely not exist yet; prerequisite check will handle)
 : "${ANDROID_HOME:=$HOME/.android-sdk}"
 
 
@@ -36,6 +38,7 @@ check_prerequisites() {
         exit 1
     fi
 
+    # Basic sanity check for required tools
     if [ ! -x "$ANDROID_HOME/platform-tools/adb" ]; then
         echo "adb not found under $ANDROID_HOME/platform-tools. Ensure platform-tools are installed (sdkmanager \"platform-tools\")."
     fi
@@ -59,12 +62,6 @@ setup_environment() {
     else
         echo "Could not find Java 17 via known paths. Using system default."
         export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
-    fi
-
-    # Validate JAVA_HOME actually works
-    if [[ ! -x "$JAVA_HOME/bin/java" ]]; then
-        echo "ERROR: JAVA_HOME is set but does not contain a java binary: $JAVA_HOME" >&2
-        exit 1
     fi
     
     # Create local.properties for Home Assistant build
@@ -102,11 +99,11 @@ setup_environment() {
 
 # Build Home Assistant APK
 build_home_assistant() {
-    echo "Building Home Assistant (MinimalRelease variant)..."
+    echo "Building Home Assistant (Minimal variant)..."
     echo "This may take several minutes..."
     git submodule update --init --recursive
     ./gradlew --no-daemon clean
-    ./gradlew --no-daemon assembleMinimalRelease -Dorg.gradle.jvmargs="-Xmx8g"
+    ./gradlew --no-daemon -I ../remove_debug_suffix.gradle assembleDebug -Dorg.gradle.jvmargs="-Xmx8g"
     echo "Build completed successfully."
 }
 
@@ -121,8 +118,7 @@ install_home_assistant() {
         exit 1
     fi
 
-    # Install minimal release APK (matches assembleMinimalRelease)
-    APK_PATH="app/build/outputs/apk/minimal/release/app-minimal-release.apk"
+    APK_PATH="app/build/outputs/apk/minimal/debug/app-minimal-debug.apk"
 
     if [[ ! -f $APK_PATH ]]; then
         echo "ERROR: APK not found at $APK_PATH"
@@ -131,6 +127,7 @@ install_home_assistant() {
         exit 1
     fi
 
+    # Install new APK (expected applicationId: io.homeassistant.companion.android.minimal)
     adb install -r "$APK_PATH"
     echo "Installed Home Assistant successfully."
 }
@@ -138,7 +135,11 @@ install_home_assistant() {
 # Launch Home Assistant
 launch_home_assistant() {
     echo "Launching Home Assistant (from source)..."
-    adb shell pm list packages
+    adb shell pm list packages | grep -q "io.homeassistant.companion.android.minimal$" || {
+        echo "ERROR: Home Assistant package not found on device/emulator."
+        echo "Please ensure the app is installed correctly."
+        exit 1
+    }
     adb shell pm grant io.homeassistant.companion.android.minimal android.permission.POST_NOTIFICATIONS
     adb shell monkey -p io.homeassistant.companion.android.minimal -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
     echo "Home Assistant should now be running on your emulator."

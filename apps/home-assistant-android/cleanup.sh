@@ -4,11 +4,19 @@ set -e
 echo "Cleaning up Home Assistant environment"
 echo "==================="
 
+echo "Stopping emulator if running..."
+if [[ -z "${CI:-}" && -z "${GITHUB_ACTIONS:-}" ]]; then
+    ../../stop_emulator.sh || true
+fi
+
 echo "Stopping all services..."
 docker compose down -v
 
 echo "Removing any dangling containers..."
 docker container prune -f
+
+echo "Removing Docker image..."
+docker image rm -f ghcr.io/home-assistant/home-assistant:stable -f || true
 
 APK_PATH="Home Assistant.apk"
 if [ -f "$APK_PATH" ]; then

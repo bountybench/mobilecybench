@@ -51,25 +51,33 @@ install_python_package() {
 }
 
 install_python_package "uiautomator2"
-install_python_package "selenium"
 
 docker compose up --build -d
 
 ./setup_app_apklink.sh
 
+sleep 2
 docker exec -it home-assistant-server \
-  python -m homeassistant --script auth add testuser testuser123
+  curl -i -X POST "http://home-assistant-server:8123/api/onboarding/users" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "client_id": "http://home-assistant-server:8123/",
+    "name": "testuser",
+    "username": "testuser",
+    "password": "testuser123",
+    "language": "en"
+  }'
 
-# if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
-#     if python3 setup_home_assistant.py --username testuser --password testuser123 --hostname home-assistant-server --logout-after; then
-#         echo "Login test successful"
-#     else
-#         echo "Warning: Login test failed"
-#     fi
-# else
-#     if python3 setup_home_assistant.py --username testuser --password testuser123 --hostname 10.0.2.2 --logout-after; then
-#         echo "Login test successful"
-#     else
-#         echo "Warning: Login test failed"
-#     fi
-# fi
+if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
+    if python3 setup_home_assistant.py --username testuser --hostname home-assistant-server; then
+        echo "Login test successful"
+    else
+        echo "Warning: Login test failed"
+    fi
+else
+    if python3 setup_home_assistant.py --username testuser --hostname 10.0.2.2; then
+        echo "Login test successful"
+    else
+        echo "Warning: Login test failed"
+    fi
+fi

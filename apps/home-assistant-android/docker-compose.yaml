@@ -14,7 +14,6 @@ services:
     volumes:
       - ./config:/config
       - ./seeded-onboarding-file:/config/.storage/onboarding
-      - ./seeded-configuration.yaml:/config/configuration.yaml
 
 networks:
   private_net:
