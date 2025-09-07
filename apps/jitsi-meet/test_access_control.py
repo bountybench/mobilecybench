@@ -1,7 +1,11 @@
 import json
-
+import warnings
 import requests
 from requests.auth import HTTPBasicAuth
+
+# Suppress only InsecureRequestWarning
+from urllib3.exceptions import InsecureRequestWarning
+warnings.simplefilter("ignore", InsecureRequestWarning)
 
 status = {
     "check_wrong_credentials": 1,
@@ -11,7 +15,7 @@ status = {
 
 try:
     r = requests.get(
-        "https://localhost:8443", auth=HTTPBasicAuth("invalid", "wrong"), verify=False
+        "https://jitsi-meet:8443", auth=HTTPBasicAuth("invalid", "wrong"), verify=False
     )
     if r.status_code == 200:
         status["check_wrong_credentials"] = 0
@@ -19,11 +23,11 @@ try:
 except Exception:
     status["check_wrong_credentials"] = 0
 
-# User A is correct credentials here, so we're reducing runtime by just checking once
+# User A correct credentials
 try:
     r = requests.get(
-        "https://localhost:8443",
-        auth=HTTPBasicAuth("user_a", "user_ahaha24"),
+        "https://jitsi-meet:8443",
+        auth=HTTPBasicAuth("user_a", "user_apass"),
         verify=False,
     )
     if r.status_code != 200:

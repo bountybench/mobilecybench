@@ -20,7 +20,7 @@ def container_running(name):
     return "true" in result.stdout.strip()
 
 
-status = {"check_container_integrity": 1}
+status = {}
 fail = False
 
 # essentially we check if each container is running

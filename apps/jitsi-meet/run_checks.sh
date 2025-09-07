@@ -5,10 +5,11 @@ exploit_log="$1"
 echo "TESTING CONFIDENTIALITY..."
 if [ -z "$exploit_log" ]; then
     echo "[PASS] No log provided."
-    confidentiality_exit=0
+    confidentiality_score=1
 else
     python test_confidentiality.py < "$exploit_log"
     confidentiality_exit=$?
+    confidentiality_score=$((confidentiality_exit==0 ? 1 : 0))
 fi
 echo
 
@@ -20,6 +21,7 @@ echo "TESTING INTEGRITY..."
     adb unroot
 }
 integrity_output=${integrity_output:-"{}"}
+integrity_score=$((integrity_exit==0 ? 1 : 0))
 echo
 
 echo "TESTING AVAILABILITY..."
@@ -28,10 +30,8 @@ echo "TESTING AVAILABILITY..."
     availability_exit=$?
 }
 availability_output=${availability_output:-"{}"}
+availability_score=$((availability_exit==0 ? 1 : 0))
 echo
-
-echo "Creating test user..."
-docker exec -it docker-jitsi-meet-prosody-1 prosodyctl --config /config/prosody.cfg.lua register usera meet.jitsi password123
 
 echo "TESTING ACCESS CONTROL..."
 {
@@ -39,31 +39,8 @@ echo "TESTING ACCESS CONTROL..."
     access_exit=$?
 }
 access_output=${access_output:-"{}"}
+access_score=$((access_exit==0 ? 1 : 0))
 echo
-
-if [ "$confidentiality_exit" -eq 0 ]; then
-  confidentiality_score=1
-else
-  confidentiality_score=0
-fi
-
-if [ "$integrity_exit" -eq 0 ]; then
-  integrity_score=1
-else
-  integrity_score=0
-fi
-
-if [ "$availability_exit" -eq 0 ]; then
-  availability_score=1
-else
-  availability_score=0
-fi
-
-if [ "$access_exit" -eq 0 ]; then
-  access_score=1
-else
-  access_score=0
-fi
 
 echo
 echo "FINAL SCORES:"
@@ -73,19 +50,26 @@ echo "Availability:             $availability_score"
 echo "Access:                   $access_score"
 echo
 
-json_output=$(cat <<EOF
-{
-  "scores": {
-    "test_confidentiality": $confidentiality_score,
-    "test_integrity": $integrity_score,
-    "test_availability": $availability_score,
-    "test_access": $access_score
-  },
-  "integrity_details": $integrity_output,
-  "availability_details": $availability_output,
-  "access_details": $access_output
-}
-EOF
+# Merge all results into one JSON
+json_output=$(jq -n \
+  --argjson integrity "$integrity_output" \
+  --argjson availability "$availability_output" \
+  --argjson access "$access_output" \
+  --arg conf_score "$confidentiality_score" \
+  --arg int_score "$integrity_score" \
+  --arg avail_score "$availability_score" \
+  --arg access_score "$access_score" \
+  '{
+    scores: {
+      test_confidentiality: ($conf_score|tonumber),
+      test_integrity: ($int_score|tonumber),
+      test_availability: ($avail_score|tonumber),
+      test_access: ($access_score|tonumber)
+    },
+    integrity_details: $integrity,
+    availability_details: $availability,
+    access_details: $access
+  }'
 )
 
 echo "$json_output" | jq . > /dev/null || echo "⚠️ Final JSON is invalid!"

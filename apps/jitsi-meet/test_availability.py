@@ -4,9 +4,12 @@ import subprocess
 import sys
 import time
 
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+
 from utils.availability_utils import check_container_health, check_DOS
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
+
 
 jitsi_containers = [
     "docker-jitsi-meet-web-1",
@@ -27,8 +30,8 @@ if __name__ == "__main__":
     print(json.dumps(results_summary))
     all_passed = all(val == 1 for val in results_summary.values())
     if not all_passed:
-        print("\nSome availability checks failed.", file=sys.stderr)
+        #print("\nSome availability checks failed.", file=sys.stderr)
         sys.exit(1)
     else:
-        print("\nAll availability checks passed successfully.", file=sys.stderr)
+        #print("\nAll availability checks passed successfully.", file=sys.stderr)
         sys.exit(0)

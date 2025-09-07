@@ -96,6 +96,7 @@ main() {
 
     echo "Making setup.sh files executable"
     chmod +x ./setup.sh
+    chmod +x ./cleanup.sh
     chmod +x ./run_checks.sh
     chmod +x ../../setup.sh
     chmod +x ./vuln_scenarios/vuln_scenario_0/vuln.sh
