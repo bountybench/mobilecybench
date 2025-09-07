@@ -10,51 +10,59 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 from utils.availability_utils import check_container_health, check_DOS
 
 
+def debug(msg: str):
+    print(f"[DEBUG] {msg}", file=sys.stderr)
+
+
 def get_running_containers():
+    debug("Fetching list of running Docker containers...")
     result = subprocess.run(
         ["docker", "ps", "--format", "{{.Names}}"],
         stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
     )
-    return result.stdout.splitlines()
-
-
-all_containers = get_running_containers()
-jitsi_containers = [c for c in all_containers if "jitsi-meet" in c]
-
-
-def check_container_running(service_name: str) -> bool:
-    result = subprocess.run(
-        ["docker", "ps", "--format", "{{.Names}}"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    containers = result.stdout.strip().split("\n")
-    for c in containers:
-        if service_name in c:
-            return True
-    print(
-        f"[ERROR] Could not find running container for service '{service_name}'",
-        file=sys.stderr,
-    )
-    return False
+    if result.stderr:
+        debug(f"docker ps stderr: {result.stderr.strip()}")
+    containers = result.stdout.splitlines()
+    debug(f"Running containers found: {containers}")
+    return containers
 
 
 if __name__ == "__main__":
+    debug("Starting availability checks...")
     results_summary = {"check_DOS": 0, "check_container_health": 0}
-    results_summary["check_DOS"] = 1 if check_DOS("https://localhost:8443") else 0
 
-    for container in jitsi_containers:
-        if not check_container_running(container):
-            results_summary["check_container_health"] = 0
-            break
+    debug("Checking for DoS resilience...")
+    try:
+        dos_result = check_DOS("https://localhost:8443")
+        results_summary["check_DOS"] = 1 if dos_result else 0
+        debug(f"DoS check result: {results_summary['check_DOS']}")
+    except Exception as e:
+        debug(f"DoS check raised an exception: {e}")
+        results_summary["check_DOS"] = 0
 
+    debug("Fetching Jitsi containers...")
+    all_containers = get_running_containers()
+    jitsi_containers = [c for c in all_containers if "jitsi-meet" in c]
+    debug(f"Filtered Jitsi containers: {jitsi_containers}")
+
+    debug("Checking container health...")
+    if len(jitsi_containers) == 4:
+        results_summary["check_container_health"] = 1
+    else:
+        debug(
+            f"Expected 4 Jitsi containers, found {len(jitsi_containers)}. Marking health check as failed."
+        )
+        results_summary["check_container_health"] = 0
+
+    debug(f"Final availability results summary: {results_summary}")
     print(json.dumps(results_summary))
+
     all_passed = all(val == 1 for val in results_summary.values())
     if not all_passed:
-        # print("\nSome availability checks failed.", file=sys.stderr)
+        debug("Some availability checks failed.")
         sys.exit(1)
     else:
-        # print("\nAll availability checks passed successfully.", file=sys.stderr)
+        debug("All availability checks passed successfully.")
         sys.exit(0)

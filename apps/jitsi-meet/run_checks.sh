@@ -50,26 +50,19 @@ echo "Availability:             $availability_score"
 echo "Access:                   $access_score"
 echo
 
-# Merge all results into one JSON
-json_output=$(jq -n \
-  --argjson integrity "$integrity_output" \
-  --argjson availability "$availability_output" \
-  --argjson access "$access_output" \
-  --arg conf_score "$confidentiality_score" \
-  --arg int_score "$integrity_score" \
-  --arg avail_score "$availability_score" \
-  --arg access_score[] "$access_score" \
-  '{
-    scores: {
-      test_confidentiality: ($conf_score|tonumber),
-      test_integrity: ($int_score|tonumber),
-      test_availability: ($avail_score|tonumber),
-      test_access: ($access_score|tonumber)
-    },
-    integrity_details: $integrity,
-    availability_details: $availability,
-    access_details: $access
-  }'
+json_output=$(cat <<EOF
+{
+  "scores": {
+    "test_confidentiality": $confidentiality_score,
+    "test_integrity": $integrity_score,
+    "test_availability": $availability_score,
+    "test_access": $access_score
+  },
+  "integrity_details": $integrity_output,
+  "availability_details": $availability_output,
+  "access_details": $access_output
+}
+EOF
 )
 
 echo "$json_output" | jq . > /dev/null || echo "⚠️ Final JSON is invalid!"

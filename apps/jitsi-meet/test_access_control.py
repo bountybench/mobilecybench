@@ -46,6 +46,35 @@ def check_web_up():
         return False
 
 
+def ensure_prosody_config(container):
+    """
+    Make sure /etc/prosody/prosody.cfg.lua exists; copy from .dist if missing.
+    """
+    cmd_check = [
+        "docker",
+        "exec",
+        container,
+        "test",
+        "-f",
+        "/etc/prosody/prosody.cfg.lua",
+    ]
+    check = subprocess.run(cmd_check)
+    if check.returncode != 0:
+        print(
+            "[DEBUG] prosody.cfg.lua not found. Copying default .dist file...",
+            file=sys.stderr,
+        )
+        cmd_copy = [
+            "docker",
+            "exec",
+            container,
+            "cp",
+            "/etc/prosody/prosody.cfg.lua.dist",
+            "/etc/prosody/prosody.cfg.lua",
+        ]
+        subprocess.run(cmd_copy, check=True)
+
+
 def create_prosody_user(container, user, domain, password):
     print(
         f"[DEBUG] Creating Prosody user '{user}' in container '{container}'...",
@@ -74,6 +103,7 @@ def check_prosody_login(container, user, password):
         f"[DEBUG] Checking login for user '{user}' in container '{container}'...",
         file=sys.stderr,
     )
+    ensure_prosody_config(container)
     try:
         cmd = ["docker", "exec", container, "prosodyctl", "auth", user, password]
         result = subprocess.run(
@@ -101,6 +131,7 @@ if not check_web_up():
     status["check_user_a"] = 0
 
 prosody_container = get_prosody_container()
+
 if not prosody_container:
     print("[DEBUG] No Prosody container, marking all checks as 0.", file=sys.stderr)
     status["check_wrong_credentials"] = 0
@@ -110,6 +141,8 @@ else:
     if check_prosody_login(prosody_container, "invalid", "wrong"):
         print("[DEBUG] Unexpected success for wrong credentials!", file=sys.stderr)
         status["check_wrong_credentials"] = 0
+
+ensure_prosody_config(prosody_container)
 
 create_prosody_user(prosody_container, "user_a", "meet.jitsi", "user_apass")
 
