@@ -38,10 +38,6 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Basic sanity check for required tools
-    if [ ! -x "$ANDROID_HOME/platform-tools/adb" ]; then
-        echo "adb not found under $ANDROID_HOME/platform-tools. Ensure platform-tools are installed (sdkmanager \"platform-tools\")."
-    fi
     echo "Using ANDROID_HOME=$ANDROID_HOME"
     echo "Prerequisites verified."
 }
@@ -103,46 +99,8 @@ build_home_assistant() {
     echo "This may take several minutes..."
     git submodule update --init --recursive
     ./gradlew --no-daemon clean
-    ./gradlew --no-daemon -I ../remove_debug_suffix.gradle assembleMinimalDebug -Dorg.gradle.jvmargs="-Xmx3g"
+    ./gradlew --no-daemon -I ../remove_debug_suffix.gradle app:assembleMinimalDebug -Dorg.gradle.jvmargs="-Xmx3g" -PnoLeakCanary --write-locks
     echo "Build completed successfully."
-}
-
-# Initialize installation of Home Assistant
-install_home_assistant() {
-    echo "Installing Home Assistant APK on connected device/emulator..."
-
-    # Check if emulator is running
-    if ! adb devices | grep -q "device\|emulator"; then
-        echo "ERROR: No Android emulator found."
-        echo "Please start the emulator first."
-        exit 1
-    fi
-
-    APK_PATH="app/build/outputs/apk/minimal/debug/app-minimal-debug.apk"
-
-    if [[ ! -f $APK_PATH ]]; then
-        echo "ERROR: APK not found at $APK_PATH"
-        echo "Available APKs:"
-        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
-        exit 1
-    fi
-
-    # Install new APK (expected applicationId: io.homeassistant.companion.android.minimal)
-    adb install -r "$APK_PATH"
-    echo "Installed Home Assistant successfully."
-}
-
-# Launch Home Assistant
-launch_home_assistant() {
-    echo "Launching Home Assistant (from source)..."
-    adb shell pm list packages | grep -q "io.homeassistant.companion.android.minimal$" || {
-        echo "ERROR: Home Assistant package not found on device/emulator."
-        echo "Please ensure the app is installed correctly."
-        exit 1
-    }
-    adb shell pm grant io.homeassistant.companion.android.minimal android.permission.POST_NOTIFICATIONS
-    adb shell monkey -p io.homeassistant.companion.android.minimal -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
-    echo "Home Assistant should now be running on your emulator."
 }
 
 perform_cleanup() {
@@ -173,8 +131,6 @@ main() {
     check_prerequisites
     setup_environment
     build_home_assistant
-    install_home_assistant
-    launch_home_assistant
     perform_cleanup
 
     echo "Setup complete! Home Assistant is ready for testing."
