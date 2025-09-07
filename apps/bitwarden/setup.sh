@@ -5,14 +5,14 @@ BITWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MOBILECYBENCH_ROOT="$(cd "$BITWARDEN_DIR/../.." && pwd)"
 PKG_NAME="com.x8bit.bitwarden.dev"
 
-export UI_TARGET_PACKAGE="com.x8bit.bitwarden.dev"
+export UI_TARGET_PACKAGE="$PKG_NAME"
 
 echo === RUNNING setup.sh ===
 
-# Install Python requirements
-echo "[INFO] Installing Python requirements with python3..."
-pip install -r "${BITWARDEN_DIR}/requirements.txt"
-echo "[INFO] Python requirements installed."
+# Ensure Bitwarden uses clean uiautomator2 deps
+echo "[INFO] Ensuring Bitwarden uses clean uiautomator2 deps..."
+python3 -m pip uninstall -y adbutils apkutils || true
+python3 -m pip install --force-reinstall uiautomator2==3.4.0
 
 # Run setup_app.sh to install Bitwarden app
 echo "[INFO] Running setup_app.sh to install Bitwarden app..."
