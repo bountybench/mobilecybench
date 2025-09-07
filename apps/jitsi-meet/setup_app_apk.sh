@@ -98,6 +98,8 @@ main() {
     chmod +x ./setup.sh
     chmod +x ./run_checks.sh
     chmod +x ../../setup.sh
+    chmod +x ./vuln_scenarios/vuln_scenario_0/vuln.sh
+    chmod +x ./vuln_scenarios/vuln_scenario_1/vuln.sh
 
     npm uninstall -g react-native-cli @react-native-community/cli || true
 
