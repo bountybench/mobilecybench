@@ -14,7 +14,10 @@ status = {
 }
 
 JITSI_URL = "https://localhost:8443"
-PROSODY_CONTAINER = "prosody"  # will match something like "jitsi-docker-jitsi-meet-XXXX-prosody-1"
+PROSODY_CONTAINER = (
+    "prosody"  # will match something like "jitsi-docker-jitsi-meet-XXXX-prosody-1"
+)
+
 
 def get_prosody_container():
     """Find the running Prosody container name dynamically."""
@@ -29,6 +32,7 @@ def get_prosody_container():
             return c
     return None
 
+
 def check_web_up():
     try:
         r = requests.get(JITSI_URL, verify=False, timeout=5)
@@ -36,24 +40,32 @@ def check_web_up():
     except Exception:
         return False
 
+
 def create_prosody_user(container, user, domain, password):
     cmd = [
-        "docker", "exec", container,
-        "prosodyctl", "register", user, domain, password
+        "docker",
+        "exec",
+        container,
+        "prosodyctl",
+        "register",
+        user,
+        domain,
+        password,
     ]
     subprocess.run(cmd, check=False)
+
 
 def check_prosody_login(container, user, password):
     """Use prosodyctl inside the container to check credentials."""
     try:
-        cmd = [
-            "docker", "exec", container,
-            "prosodyctl", "auth", user, password
-        ]
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        cmd = ["docker", "exec", container, "prosodyctl", "auth", user, password]
+        result = subprocess.run(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
         return "Authentication succeeded" in result.stdout
     except Exception:
         return False
+
 
 if not check_web_up():
     status["check_wrong_credentials"] = 0

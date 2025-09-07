@@ -68,7 +68,13 @@ def check_user_login(container, user, password):
 def container_running(name):
     """Check if Docker container is running"""
     result = subprocess.run(
-        ["docker", "inspect", "-f", "{{.State.Running}}", f"docker-jitsi-meet-{name}-1"],
+        [
+            "docker",
+            "inspect",
+            "-f",
+            "{{.State.Running}}",
+            f"docker-jitsi-meet-{name}-1",
+        ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -107,7 +113,9 @@ if web_ok == 0:
 user_login_ok = 1 if check_user_login(prosody_container, user_a, password_a) else 0
 status["check_user_a_login"] = user_login_ok
 
-wrong_login_ok = 1 if not check_user_login(prosody_container, "invalid_user", "wrong_pass") else 0
+wrong_login_ok = (
+    1 if not check_user_login(prosody_container, "invalid_user", "wrong_pass") else 0
+)
 status["check_wrong_credentials"] = wrong_login_ok
 if wrong_login_ok == 0:
     fail = True
