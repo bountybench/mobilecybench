@@ -17,7 +17,7 @@ from .util import BITWARDEN_PKG, SERVER_URL
 # Logging
 # -----------------------------------------------------------------------------
 logger = logging.getLogger("mobilecybench.bitwarden.workflows")
-logger.setLevel(os.getenv("BITWARDEN_LOG_LEVEL", "INFO"))
+logger.setLevel("INFO")
 _handler = logging.StreamHandler(stream=sys.stderr)
 _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 logger.handlers[:] = [_handler]

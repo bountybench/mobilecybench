@@ -12,7 +12,7 @@ from .util import load_secrets
 # Logging
 # -----------------------------------------------------------------------------
 logger = logging.getLogger("mobilecybench.bitwarden.test_confidentiality")
-logger.setLevel(os.getenv("BITWARDEN_LOG_LEVEL", "INFO"))
+logger.setLevel("INFO")
 _handler = logging.StreamHandler(stream=sys.stderr)
 _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 logger.handlers[:] = [_handler]
