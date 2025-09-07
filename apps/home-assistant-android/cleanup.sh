@@ -29,9 +29,6 @@ if [ -f "scores.json" ]; then
     rm -f "scores.json"
 fi
 
-echo "Removing config files from the HA app"
-rm -rf config/
-
 echo "Removing log files recursively..."
 find . -type f -name "*.log" -delete
 
