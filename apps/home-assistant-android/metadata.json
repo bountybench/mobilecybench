@@ -2,7 +2,7 @@
   "gh_link": "https://github.com/cy-suite/home-assistant-android.git",
   "commit_version": "23766ac",
   "download_link": "https://github.com/home-assistant/android/releases/download/2025.8.10/app-minimal-release.apk",
-  "sdk": "36",
+  "sdk": "35",
   "java": "17",
   "emulator_server": "http://10.0.2.2:8123",
   "app_server": "http://home-assistant-server:8123",
