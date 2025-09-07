@@ -99,17 +99,33 @@ main() {
     install_home_assistant
     launch_home_assistant
 
-    sleep 2
-    docker exec -it home-assistant-server \
-    curl -i -X POST "http://home-assistant-server:8123/api/onboarding/users" \
-    -H "Content-Type: application/json" \
-    -d '{
-        "client_id": "http://home-assistant-server:8123/",
-        "name": "testuser",
-        "username": "testuser",
-        "password": "testuser123",
-        "language": "en"
-    }'
+        sleep 2
+        # Use TTY only when running interactively; GitHub Actions lacks a TTY and -it will fail.
+        if [ -t 1 ]; then
+                DOCKER_TTY_FLAGS="-it"
+        else
+                DOCKER_TTY_FLAGS=""
+        fi
+
+        echo "Submitting onboarding user via Home Assistant API (CI friendly)..."
+        docker exec $DOCKER_TTY_FLAGS home-assistant-server \
+            curl -s -o /tmp/onboard_resp.txt -w "%{http_code}\n" -X POST "http://home-assistant-server:8123/api/onboarding/users" \
+            -H "Content-Type: application/json" \
+            -d '{
+                "client_id": "http://home-assistant-server:8123/",
+                "name": "testuser",
+                "username": "testuser",
+                "password": "testuser123",
+                "language": "en"
+            }' | {
+                read code; \
+                echo "Onboarding API HTTP status: $code"; \
+                if [ "$code" != "200" ] && [ "$code" != "201" ]; then
+                        echo "Onboarding request failed (status $code)" >&2
+                        echo "Response body:" >&2
+                        docker exec $DOCKER_TTY_FLAGS home-assistant-server cat /tmp/onboard_resp.txt || true
+                fi
+            }
 
     if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
         if python3 setup_home_assistant.py --username testuser --hostname home-assistant-server; then
