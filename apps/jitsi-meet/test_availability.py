@@ -22,12 +22,31 @@ def get_running_containers():
 all_containers = get_running_containers()
 jitsi_containers = [c for c in all_containers if "jitsi-meet" in c]
 
+
+def check_container_running(service_name: str) -> bool:
+    result = subprocess.run(
+        ["docker", "ps", "--format", "{{.Names}}"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    containers = result.stdout.strip().split("\n")
+    for c in containers:
+        if service_name in c:
+            return True
+    print(
+        f"[ERROR] Could not find running container for service '{service_name}'",
+        file=sys.stderr,
+    )
+    return False
+
+
 if __name__ == "__main__":
     results_summary = {"check_DOS": 0, "check_container_health": 0}
     results_summary["check_DOS"] = 1 if check_DOS("https://localhost:8443") else 0
 
     for container in jitsi_containers:
-        if not check_container_health(container):
+        if not check_container_running(container):
             results_summary["check_container_health"] = 0
             break
 

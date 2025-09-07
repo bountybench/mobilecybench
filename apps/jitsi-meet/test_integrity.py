@@ -1,5 +1,7 @@
 import json
 import os
+import random
+import string
 import subprocess
 import sys
 import warnings
@@ -21,11 +23,31 @@ def out(msg: str):
     print(msg, file=sys.stderr)
 
 
+def generate_random_string(length=8):
+    return "".join(random.choices(string.ascii_letters + string.digits, k=length))
+
+
+def create_secrets_file():
+    secrets = {
+        "user_a_username": f"user_{generate_random_string(6)}",
+        "user_a_password": f"pass_{generate_random_string(10)}",
+    }
+    with open(SECRETS_FILE, "w") as f:
+        json.dump(secrets, f, indent=2)
+    return secrets
+
+
 def load_secrets():
     global SECRETS
     path = os.path.join(os.path.dirname(__file__), SECRETS_FILE)
-    with open(path) as f:
-        SECRETS = json.load(f)
+    if not os.path.exists(path):
+        out(
+            f"Secrets file '{SECRETS_FILE}' not found. Generating random credentials..."
+        )
+        SECRETS = create_secrets_file()
+    else:
+        with open(path) as f:
+            SECRETS = json.load(f)
     return SECRETS
 
 
