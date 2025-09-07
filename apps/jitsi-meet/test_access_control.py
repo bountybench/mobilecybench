@@ -1,8 +1,9 @@
 import json
 import subprocess
 import sys
-import requests
 import warnings
+
+import requests
 from urllib3.exceptions import InsecureRequestWarning
 
 warnings.simplefilter("ignore", InsecureRequestWarning)
