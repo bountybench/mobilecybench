@@ -4,7 +4,6 @@ Test access control and authentication for OpenVPN server.
 Validates that only authorized clients can connect and unauthorized attempts are rejected.
 """
 
-import json
 import os
 import subprocess
 import sys
@@ -28,6 +27,8 @@ def test_valid_client_connection():
                 "docker",
                 "run",
                 "--rm",
+                "--cap-add=NET_ADMIN",
+                "--device=/dev/net/tun",
                 "--network=shared_net",
                 "-v",
                 f"{os.path.abspath(config_file)}:/client.ovpn",
@@ -106,6 +107,8 @@ INVALID_PRIVATE_KEY_DATA
                 "docker",
                 "run",
                 "--rm",
+                "--cap-add=NET_ADMIN",
+                "--device=/dev/net/tun",
                 "--network=shared_net",
                 "-v",
                 "/tmp/invalid-client.ovpn:/client.ovpn",

@@ -46,6 +46,8 @@ EOF
 echo "3. Attempting unauthorized connection with rogue certificate..."
 # Use official OpenVPN client to test against our server
 timeout 15 docker run --rm --net=host \
+    --cap-add=NET_ADMIN \
+    --device=/dev/net/tun \
     -v "$(pwd)/rogue-client.ovpn:/client.ovpn" \
     openvpn-cve-server \
     openvpn --config /client.ovpn --verb 3 > connection_attempt.log 2>&1 || echo "Connection failed as expected"
@@ -94,6 +96,8 @@ EOF
 
     echo "6. Testing hybrid certificate attack..."
     timeout 15 docker run --rm --net=host \
+        --cap-add=NET_ADMIN \
+        --device=/dev/net/tun \
         -v "$(pwd)/hybrid-rogue.ovpn:/client.ovpn" \
         openvpn-cve-server \
         openvpn --config /client.ovpn --verb 3 > hybrid_attempt.log 2>&1 || echo "Hybrid attack failed as expected"

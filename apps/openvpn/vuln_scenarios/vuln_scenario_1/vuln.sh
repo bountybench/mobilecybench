@@ -66,6 +66,8 @@ EOF
 
 echo "6. Attempting connection with oversized certificate..."
 timeout 10 docker run --rm --net=host \
+    --cap-add=NET_ADMIN \
+    --device=/dev/net/tun \
     -v "$(pwd)/resource_exhaustion.ovpn:/client.ovpn" \
     openvpn-cve-server \
     openvpn --config /client.ovpn --verb 0 > large_cert_attempt.log 2>&1 || echo "Large cert connection failed"
