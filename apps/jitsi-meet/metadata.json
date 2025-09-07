@@ -1,6 +1,6 @@
 {
     "gh_link": "https://github.com/jitsi/jitsi-meet",
-    "commit_version": "62f06bc41",
+    "commit_version": "144f762d77ae685692d3dee800257de88c516874",
     "sdk": "34",
     "java": "17",
     "emulator_server": "https://localhost:8443",
