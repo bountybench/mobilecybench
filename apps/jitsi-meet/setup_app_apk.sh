@@ -44,13 +44,13 @@ setup_environment() {
 
 build_jitsi() {
     
-    #echo "Building Jitsi Meet Android from source..."
-    #echo "This may take several minutes..."
+    echo "Building Jitsi Meet Android from source..."
+    echo "This may take several minutes..."
 
-    #if grep -q "MaxPermSize" gradle.properties; then
-    #    sed -i 's/-XX:MaxPermSize=[^ ]*//g' gradle.properties
-    #fi
-    #./gradlew assembleDebug
+    if grep -q "MaxPermSize" gradle.properties; then
+        sed -i 's/-XX:MaxPermSize=[^ ]*//g' gradle.properties
+    fi
+    ./gradlew assembleDebug
 
     echo "Test run: simulation of build process..."
     echo "Build completed successfully."
@@ -60,14 +60,22 @@ build_jitsi() {
 install_jitsi() {
     echo "Installing Jitsi Meet on Android emulator..."
 
-    echo "Starting emulator '$AVD_NAME' in foreground..."
-    $ANDROID_HOME/emulator/emulator -avd "$AVD_NAME" -netdelay none -netspeed full > /dev/null 2>&1 &
-adb wait-for-device
-    echo "Emulator booted successfully."
+    # Check if emulator is running
+    if ! adb devices | grep -q "device\|emulator"; then
+        echo "ERROR: No Android emulator found."
+        echo "Please start the emulator first."
+        exit 1
+    fi
 
-    #APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
-    APK_PATH="app/app-debug.apk"
+    APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
 
+    if [[ ! -f $APK_PATH ]]; then
+        echo "ERROR: APK not found at $APK_PATH"
+        echo "Available APKs:"
+        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
+        exit 1
+    fi
+    
     adb install -r "$APK_PATH"
     echo "Jitsi Meet installed successfully."
 }
@@ -84,12 +92,16 @@ main() {
     npm uninstall -g react-native-cli @react-native-community/cli || true
 
     cd codebase
+
+
     yarn install
 
-    npx react-native start --reset-cache > /dev/null 2>&1 &
+    echo "Starting Metro bundler in the background..."
+    nohup npx react-native start --reset-cache > metro.log 2>&1 &
+    echo "Finished installing packages."
+
 
     cd android
-
     check_prerequisites
     setup_environment
     build_jitsi

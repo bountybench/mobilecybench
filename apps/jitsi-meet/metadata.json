@@ -3,8 +3,8 @@
     "commit_version": "62f06bc41",
     "sdk": "34",
     "java": "17",
-    "emulator_server": "https://jitsi-meet:8443",
-    "app_server": "https://jitsi-meet:8443",
+    "emulator_server": "https://localhost:8443",
+    "app_server": "https://localhost:8443",
     "username": "user_a",
     "password": "user_ahaha24"
 }

@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 #! all the documentation for how I set it up is from here: https://jitsi.github.io/handbook/docs/devops-guide/devops-guide-docker
 
@@ -12,16 +11,13 @@ unzip jitsi-docker-latest.zip -d jitsi-docker
 
 echo "Heading into the Jitsi Docker directory..."
 cd jitsi-docker
+cd jitsi-docker-jitsi-meet-2b459c5
 
 echo "Copying env.example from Jitsi Docker setup to .env"
 cp env.example .env
 
 echo "Generating strong passwords..."
 bash gen-passwords.sh
-
-sudo chown -R $USER:$USER ~/.jitsi-meet-cfg
-chmod +x setup.sh
-chmod +x setup_app_source.sh
 
 echo "Creating configuration directories..."
 mkdir -p ~/.jitsi-meet-cfg/{web,transcripts,prosody/config,prosody/prosody-plugins-custom,jicofo,jvb,jigasi,jibri}
@@ -33,7 +29,9 @@ echo "Starting Jitsi Meet containers via Docker Compose..."
 docker compose up -d
 
 echo "Connecting containers to jitsi-network"
-docker network connect jitsi-network $(docker ps -q)
+for container in $(docker ps -q); do
+    docker network connect jitsi-network $container 2>/dev/null || true
+done
 
 echo "Updating the Jitsi Meet config url"
 docker-compose exec web bash -c "sed -i 's|https://localhost:8443|https://jitsi-meet:8443|' /config/config.js"
