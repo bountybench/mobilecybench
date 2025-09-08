@@ -63,8 +63,7 @@ class MobileCybenchRunner:
         if cwd is None:
             cwd = self.project_root
             
-        logger.info(f"Running command: {command}")
-        logger.info(f"Working directory: {cwd}")
+        logger.info(f"Running: {command}")
         
         try:
             result = subprocess.run(
@@ -76,14 +75,13 @@ class MobileCybenchRunner:
                 check=False
             )
             
-            logger.info(f"Exit code: {result.returncode}")
-            if result.stdout:
-                logger.info(f"STDOUT:\n{result.stdout}")
-            if result.stderr:
-                logger.info(f"STDERR:\n{result.stderr}")
+            logger.info(f"Command completed (exit code: {result.returncode})")
+            # Only log STDERR as warning if it's an actual error (non-zero exit code)
+            if result.stderr and result.returncode != 0:
+                logger.warning(f"STDERR: {result.stderr}")
                 
             if check and result.returncode != 0:
-                logger.error(f"Command failed with exit code {result.returncode}")
+                logger.error(f"Command failed: {command}")
                 self._exit_with_error(f"Command failed: {command}")
                 
             return result
@@ -99,8 +97,7 @@ class MobileCybenchRunner:
         if cwd is None:
             cwd = self.project_root
             
-        logger.info(f"Running command with live output: {command}")
-        logger.info(f"Working directory: {cwd}")
+        logger.info(f"Running with live output: {command}")
         print(f"[RUNNING] {command}")
         
         try:
@@ -116,7 +113,6 @@ class MobileCybenchRunner:
             )
             
             # Read output line by line and display in real-time
-            output_lines = []
             while True:
                 output = process.stdout.readline()
                 if output == '' and process.poll() is not None:
@@ -124,17 +120,15 @@ class MobileCybenchRunner:
                 if output:
                     output = output.strip()
                     print(f"  {output}")  # Show to user with indentation
-                    logger.info(f"OUTPUT: {output}")  # Log it
-                    output_lines.append(output)
             
             # Wait for process to complete
             return_code = process.poll()
             
-            logger.info(f"Command completed with exit code: {return_code}")
             print(f"[COMPLETED] Exit code: {return_code}")
+            logger.info(f"Command completed with exit code: {return_code}")
             
             if check and return_code != 0:
-                logger.error(f"Command failed with exit code {return_code}")
+                logger.error(f"Command failed: {command}")
                 self._exit_with_error(f"Command failed: {command}")
                 
             return return_code
@@ -229,42 +223,267 @@ class MobileCybenchRunner:
         logger.info("App setup completed")
 
     def setup_agent(self):
-        """Configure agent environment"""
-        # TODO
+        """Configure agent environment and start services"""
+        print("\n" + "=" * 60)
+        print("SETTING UP AGENT ENVIRONMENT")
+        print("=" * 60)
+        logger.info("Setting up agent environment...")
         
+        self._setup_env_file()
+        self._start_containers()
+        self._copy_codebase_to_kali()
+        
+        logger.info("Agent environment setup completed")
+        print("✓ Agent environment setup completed")
 
-    def start_services(self):
-        """Start MCP server and Kali container"""
-        # TODO
+    def _setup_env_file(self):
+        """Handle .env file creation/update for OpenAI API key"""
+        print("\nSetting up environment file...")
         
+        env_file = self.agent_dir / ".env"
+        start_dir = f"/tmp/{self.app_name}_app"
+        api_key = None
+        
+        # Load existing .env file if it exists
+        if env_file.exists():
+            print(f"Found existing .env file at: {env_file}")
+            logger.info(f"Loading existing .env file: {env_file}")
+            
+            try:
+                with open(env_file, "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("OPENAI_API_KEY="):
+                            api_key = line.split("=", 1)[1]
+                            break
+                            
+                if api_key:
+                    print(f"✓ Found existing OpenAI API key")
+                    logger.info("Existing OpenAI API key found")
+                    
+            except Exception as e:
+                logger.warning(f"Error reading existing .env file: {e}")
+                print(f"Warning: Could not read existing .env file: {e}")
+        
+        # Prompt for OpenAI API key if not found
+        if not api_key:
+            api_key = input("Enter your OpenAI API key: ").strip()
+            if not api_key:
+                self._exit_with_error("OpenAI API key is required")
+        
+        # Create/update .env file
+        print(f"Creating/updating .env file at: {env_file}")
+        with open(env_file, "w") as f:
+            f.write(f"OPENAI_API_KEY={api_key}\n")
+            f.write(f"START_DIR={start_dir}\n")
+            
+        logger.info(f"Created/updated .env file: {env_file}")
+        logger.info(f"START_DIR set to: {start_dir}")
+        print(f"✓ Environment configured with START_DIR: {start_dir}")
+
+    def _start_containers(self):
+        """Start MCP server and Kali container"""
+        print("\nStarting containers...")
+        logger.info("Starting MCP server and Kali container...")
+        
+        # Set environment variable for docker-compose
+        env = os.environ.copy()
+        start_dir = f"/tmp/{self.app_name}_app"
+        env["START_DIR"] = start_dir
+        
+        print(f"Setting START_DIR environment variable: {start_dir}")
+        logger.info(f"Environment variable START_DIR set to: {start_dir}")
+        
+        # Start services using docker-compose
+        print("Starting containers with docker-compose...")
+        
+        result = subprocess.run(
+            ["docker", "compose", "up", "-d"],
+            cwd=self.agent_dir,
+            env=env,
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode != 0:
+            logger.error(f"Docker-compose failed: {result.stderr}")
+            print(f"ERROR: Docker-compose failed")
+            print(f"STDERR: {result.stderr}")
+            self._exit_with_error("Failed to start containers")
+            
+        print("✓ Containers started successfully")
+        logger.info("Containers started successfully")
+        
+        print("Waiting for containers to initialize...")
+        logger.info("Waiting for containers to initialize...")
+        time.sleep(5)
+        
+        # Check container status
+        print("Checking container status...")
+        result = subprocess.run(
+            ["docker", "compose", "ps"],
+            cwd=self.agent_dir,
+            capture_output=True,
+            text=True
+        )
+        
+        print("Container Status:")
+        print(result.stdout)
+        logger.info(f"Container status:\n{result.stdout}")
+        
+        # Verify specific containers are running
+        if "mcp-server" in result.stdout and "kali-container" in result.stdout:
+            print("✓ Both MCP server and Kali container are running")
+            logger.info("Both MCP server and Kali container confirmed running")
+        else:
+            logger.warning("Some containers may not be running properly")
+            print("⚠ Warning: Some containers may not be running properly")
+
+    def _copy_codebase_to_kali(self):
+        """Copy app codebase to Kali container"""
+        print("\nCopying app codebase to Kali container...")
+        logger.info("Copying app codebase to Kali container...")
+        
+        source_path = self.app_dir / "codebase"
+        container_name = "kali-container"
+        target_path = f"/tmp/{self.app_name}_app"
+        
+        # Check if source codebase exists
+        if not source_path.exists():
+            print(f"⚠ Warning: Codebase directory not found at {source_path}")
+            logger.warning(f"Codebase directory not found: {source_path}")
+            return
+        
+        print(f"Source: {source_path}")
+        print(f"Target: {container_name}:{target_path}")
+        logger.info(f"Copying from {source_path} to {container_name}:{target_path}")
+        
+        try:
+            # Create target directory in container
+            result = subprocess.run(
+                ["docker", "exec", container_name, "mkdir", "-p", target_path],
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode != 0:
+                logger.warning(f"Could not create directory in container: {result.stderr}")
+                print(f"⚠ Warning: Could not create directory in container")
+                return
+            
+            # Copy files to container
+            result = subprocess.run(
+                ["docker", "cp", f"{source_path}/.", f"{container_name}:{target_path}/"],
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode != 0:
+                logger.error(f"Failed to copy codebase: {result.stderr}")
+                print(f"ERROR: Failed to copy codebase to container")
+                print(f"STDERR: {result.stderr}")
+            else:
+                print(f"✓ Codebase copied successfully to {target_path}")
+                logger.info(f"Codebase copied successfully to {target_path}")
+                
+        except Exception as e:
+            logger.warning(f"Exception during codebase copy: {e}")
+            print(f"⚠ Warning: Exception during codebase copy: {e}")
 
     def run_agent(self):
         """Run the custom agent - custom_agent.py"""
-        # TODO
+        print("\n" + "=" * 60)
+        print("RUNNING CUSTOM AGENT")
+        print("=" * 60)
+        logger.info("Starting custom agent execution...")
+        
+        try:
+            # Import the CustomAgent class
+            from agent.custom_agent import CustomAgent
+            
+            # Create agent instance with dry_run mode for infrastructure testing
+            # Set dry_run=False for actual AI execution
+            print("Initializing custom agent...")
+            logger.info("Creating CustomAgent instance")
+            
+            agent = CustomAgent(
+                model="gpt-5-2025-08-07",
+                max_iterations=1,
+                max_output_tokens=8192,
+                screenshot_enabled=True,
+                app_name=self.app_name,
+                dry_run=True,  # Set to False for actual AI execution
+            )
+            
+            print("Running agent...")
+            logger.info("Executing agent.run()")
+            
+            # This can take a while for actual LLM calls
+            result = agent.run()
+            
+            # Log and display results
+            logger.info("Agent execution completed")
+            logger.info(f"Agent result: {result}")
+            
+            print("\n" + "=" * 60)
+            print("AGENT EXECUTION RESULTS")
+            print("=" * 60)
+            print(f"Status: {result.get('status', 'Unknown')}")
+            print(f"Turns: {result.get('turns', 0)}")
+            print(f"Log file: {result.get('log_file', 'None')}")
+            
+            if result.get('final_message'):
+                print("Final Message:")
+                print(f"  {result['final_message']}")
+            
+            print("=" * 60)
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error running custom agent: {e}")
+            print(f"ERROR: Failed to run custom agent: {e}")
+            return {
+                "status": f"error: {str(e)}",
+                "turns": 0,
+                "final_message": None,
+                "log_file": None,
+            }
 
-    def run_evaluation(self):
+    def run_probes_checks(self):
         """Run the evaluation checks"""
-        logger.info("Running evaluation...")
+        print("\n" + "=" * 60)
+        print("RUNNING PROBE CHECKS")
+        print("=" * 60)
+        logger.info("Running probe checks...")
         
         # Run the checks
         result = self.run_command("./run_checks.sh", cwd=self.app_dir, check=False)
         
-        # Output results
-        print("\n" + "=" * 80)
-        print("EVALUATION RESULTS")
-        print("=" * 80)
-        print(result.stdout)
-        if result.stderr:
-            print("STDERR:")
-            print(result.stderr)
-        print(f"Exit code: {result.returncode}")
-        print("=" * 80)
+        # Show results (for this script, STDERR contains progress info, not errors)
+        if result.stdout.strip():
+            print(result.stdout)
+        if result.stderr.strip():
+            print(result.stderr)  # Don't label as STDERR since it's just progress info
         
-        # Log results
-        logger.info("Evaluation completed")
-        logger.info(f"Exit code: {result.returncode}")
-        logger.info(f"Results:\n{result.stdout}")
+        print(f"✓ Probe checks completed (exit code: {result.returncode})")
         
+        # Check for scores.json file
+        scores_file = self.app_dir / "scores.json"
+        if scores_file.exists():
+            try:
+                with open(scores_file, 'r') as f:
+                    scores_content = f.read()
+                logger.info(f"Scores found: {scores_content}")
+
+            except Exception as e:
+                print(f"Error reading scores.json: {e}")
+                logger.error(f"Error reading scores.json: {e}")
+        else:
+            print("No scores.json file was created")
+            logger.info("No scores.json file found")
+        
+        logger.info(f"Probe checks completed with exit code: {result.returncode}")
         return result.returncode == 0
 
     def cleanup(self):
@@ -289,38 +508,33 @@ class MobileCybenchRunner:
             self.validate_input()
             self.setup_emulator()
             self.setup_app()
-            
-            # Setup agent
-            self.setup_agent()
-            
-            # # Start services
-            # # Run agent
-            # Run evaluation -> output success
-            
-            success = True
-            # Log completion
-            logger.info("=" * 80)
-            logger.info(f"Runner execution completed")
-            logger.info(f"App: {self.app_name}")
-            logger.info(f"Success: {success}")
-            logger.info(f"Log file: {self.log_file}")
-            logger.info("=" * 80)
-            logger.info(f"Runner execution completed!")
-            logger.info(f"Success: {success}")
-            logger.info(f"Full log available at: {self.log_file}")
 
-            return 0 if success else 1
+            self.setup_agent()
+            self.run_agent()
+
+            self.run_probes_checks()
+            
+            print("\n" + "=" * 60)
+            print("PIPELINE COMPLETED SUCCESSFULLY")
+            print("=" * 60)
+            print(f"App: {self.app_name}")
+            print(f"Log file: {self.log_file}")
+            
+            logger.info("Pipeline completed successfully")
+            return 0
             
         except KeyboardInterrupt:
+            print("\n⚠ Runner interrupted by user")
             logger.info("Runner interrupted by user")
-            print("\nRunner interrupted by user")
             return 1
         except Exception as e:
+            print(f"\n❌ Unexpected error: {e}")
+            print(f"Full log available at: {self.log_file}")
             logger.error(f"Unexpected error: {e}")
-            print(f"Unexpected error: {e}")
             return 1
         finally:
-            self.cleanup()
+            pass
+            # self.cleanup()
 
 
 def main():
