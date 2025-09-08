@@ -1,0 +1,11 @@
+{
+  "scores": {
+    "test_confidentiality": 0,
+    "test_integrity": 1,
+    "test_availability": 1,
+    "test_access": 0
+  },
+  "integrity_details": {"container_health": {"success": true, "message": "Container conversations-prosody is healthy"}, "xmpp_port": {"success": true, "message": "XMPP C2S port 5222 is accessible"}, "prosody_config": {"success": true, "message": "Prosody configuration appears intact"}},
+  "availability_details": {"xmpp_c2s_port_accessible": true, "xmpp_s2s_port_accessible": true, "prosody_container_running": true, "android_app_no_crashes": true},
+  "access_details": {"admin_privileges": 0, "user_restrictions": 0, "invalid_credentials": 1, "user_isolation": 1, "admin_auth": 0}
+}
