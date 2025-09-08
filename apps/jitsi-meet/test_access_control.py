@@ -129,7 +129,6 @@ def check_prosody_login(container, user, password):
             "exec",
             container,
             "prosodyctl",
-            "check",
             "auth",
             f"{user}@meet.jitsi",
             password,
