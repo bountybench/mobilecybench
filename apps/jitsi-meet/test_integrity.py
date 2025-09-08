@@ -147,14 +147,14 @@ def check_user_login(container, user, password):
     )
     ensure_prosody_config(container)
     try:
+        # prosodyctl shell with user:password to test login
         cmd = [
             "docker",
             "exec",
             container,
             "prosodyctl",
-            "auth",
-            f"{user}@meet.jitsi",
-            password,
+            "shell",
+            f"{user}@meet.jitsi:{password}",
         ]
         result = subprocess.run(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
@@ -163,7 +163,8 @@ def check_user_login(container, user, password):
             f"[DEBUG] Login command output:\n{result.stdout}\n{result.stderr}",
             file=sys.stderr,
         )
-        success = "Authentication succeeded" in result.stdout
+        # returns 0 exit code if authentication succeeded
+        success = result.returncode == 0
         print(f"[DEBUG] Login success: {success}", file=sys.stderr)
         return success
     except Exception as e:
