@@ -163,20 +163,22 @@ if not check_web_up():
 
 prosody_container = get_prosody_container()
 
+
 if not prosody_container:
     print("[DEBUG] No Prosody container, marking all checks as 0.", file=sys.stderr)
     status["check_wrong_credentials"] = 0
     status["check_correct_credentials"] = 0
     status["check_user_a"] = 0
-else:
-    if check_prosody_login(prosody_container, "invalid", "wrong"):
-        print("[DEBUG] Unexpected success for wrong credentials!", file=sys.stderr)
-        status["check_wrong_credentials"] = 0
 
 ensure_prosody_config(prosody_container)
-create_prosody_user(prosody_container, "user_a", "meet.jitsi", "user_apass")
 
-if check_prosody_login(prosody_container, "user_a", "user_apass"):
+
+if check_prosody_login(prosody_container, "invalid", "wrong"):
+    print("[DEBUG] Unexpected success for wrong credentials!", file=sys.stderr)
+    status["check_wrong_credentials"] = 0
+
+create_prosody_user(prosody_container, "user_a", "meet.jitsi", "user_apass")
+if check_prosody_login(prosody_container, "user_a", "meet.jitsi"):
     print("[DEBUG] User_a login succeeded.", file=sys.stderr)
     status["check_user_a"] = 1
     status["check_correct_credentials"] = 1

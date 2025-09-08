@@ -5,7 +5,7 @@ import sys
 import warnings
 
 import requests
-import slixmpp
+
 from urllib3.exceptions import InsecureRequestWarning
 
 warnings.simplefilter("ignore", InsecureRequestWarning)
@@ -217,8 +217,7 @@ for key in SECRETS:
     if key.endswith("_username"):
         user_key = key.split("_username")[0]
         username = SECRETS[f"{user_key}_username"]
-        password = SECRETS.get(f"{user_key}_password", "")
-        login_ok = 1 if check_user_login(prosody_container, username, password) else 0
+        login_ok = 1 if check_user_login(prosody_container, username, "meet.jitsi") else 0
         status[f"check_{user_key}_login"] = login_ok
         if login_ok == 0:
             fail = True
