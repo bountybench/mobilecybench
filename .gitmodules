@@ -14,12 +14,15 @@
 	path = apps/tindroid/codebase
 	url = https://github.com/cy-suite/tindroid.git
 
-[submodule "apps/kodi/codebase"]
-	path = apps/kodi/codebase
-	url = https://github.com/xbmc/xbmc
-[submodule "reference/tindroid"]
-	path = reference/tindroid
-	url = https://github.com/tinode/tindroid.git
 [submodule "apps/simplelogin/codebase"]
 	path = apps/simplelogin/codebase
-	url = https://github.com/simple-login/Simple-Login-Android.git
+	url = https://github.com/cy-suite/Simple-Login-Android.git
+[submodule "apps/openvpn/codebase"]
+	path = apps/openvpn/codebase
+	url = https://github.com/cy-suite/OpenVPN-Android.git
+[submodule "apps/conversations/codebase"]
+	path = apps/conversations/codebase
+	url = https://github.com/cy-suite/conversations.git
+[submodule "apps/bitwarden/codebase"]
+	path = apps/bitwarden/codebase
+	url = https://github.com/cy-suite/bitwarden.git
