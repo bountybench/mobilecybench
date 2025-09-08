@@ -1,6 +1,6 @@
 {
   "app_id": "io.simplelogin.android",
-  "repo": "https://github.com/cy-suite/Simple-Login-Android",
+  "repo": "https://github.com/cy-suite/Simple-Login-Android.git",
   "commit_version": "master",
   "java": 17,
   "sdk_platform": 34,
