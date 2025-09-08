@@ -124,7 +124,16 @@ def check_prosody_login(container, user, password):
     )
     ensure_prosody_config(container)
     try:
-        cmd = ["docker", "exec", container, "prosodyctl", "auth", user, password]
+        cmd = [
+            "docker",
+            "exec",
+            container,
+            "prosodyctl",
+            "check",
+            "auth",
+            f"{user}@meet.jitsi",
+            password,
+        ]
         result = subprocess.run(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )

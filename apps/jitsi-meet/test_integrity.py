@@ -141,14 +141,34 @@ def docker_exec(container, *args):
 
 
 def check_user_login(container, user, password):
+    print(
+        f"[DEBUG] Checking login for user '{user}' in container '{container}'...",
+        file=sys.stderr,
+    )
+    ensure_prosody_config(container)
     try:
-        debug(f"Checking login for user '{user}'...")
-        result = docker_exec(container, "prosodyctl", "auth", user, password)
-        success = "Authentication succeeded" in result
-        debug(f"Login success: {success}")
+        cmd = [
+            "docker",
+            "exec",
+            container,
+            "prosodyctl",
+            "check",
+            "auth",
+            f"{user}@meet.jitsi",
+            password,
+        ]
+        result = subprocess.run(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        print(
+            f"[DEBUG] Login command output:\n{result.stdout}\n{result.stderr}",
+            file=sys.stderr,
+        )
+        success = "Authentication succeeded" in result.stdout
+        print(f"[DEBUG] Login success: {success}", file=sys.stderr)
         return success
     except Exception as e:
-        debug(f"Login check for user '{user}' failed: {e}")
+        print(f"[DEBUG] Login check failed: {e}", file=sys.stderr)
         return False
 
 
@@ -173,9 +193,9 @@ if not prosody_container:
     sys.exit(1)
 
 ensure_prosody_config(prosody_container)
-create_prosody_user(prosody_container, "alice", "localhost", "alicepass123")
-create_prosody_user(prosody_container, "bob", "localhost", "bobpass456")
-create_prosody_user(prosody_container, "charlie", "localhost", "charliepass789")
+create_prosody_user(prosody_container, "alice", "meet.jitsi", "alicepass123")
+create_prosody_user(prosody_container, "bob", "meet.jitsi", "bobpass456")
+create_prosody_user(prosody_container, "charlie", "meet.jitsi", "charliepass789")
 
 status = {}
 fail = False
