@@ -69,11 +69,20 @@ def ensure_prosody_config(container):
     print(f"[DEBUG] Checking prosody.cfg.lua in container '{container}'...")
 
     minimal_cfg = """-- Minimal Prosody config for testing
-    admins = { }
-    modules_enabled = { "roster", "saslauth", "tls", "dialback" }
-    allow_registration = true
-    VirtualHost "meet.jitsi"
-        enabled = true
+        admins = { }
+
+        modules_enabled = {
+            "roster";
+            "saslauth";
+            "tls";
+            "dialback";
+            "admin_shell";
+        }
+
+        allow_registration = true
+
+        VirtualHost "meet.jitsi"
+            enabled = true
     """
 
     # Step 1: Ensure directory exists
