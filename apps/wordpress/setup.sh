@@ -3,7 +3,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/utils.sh"
 
-: "${AVD_NAME:=Pixel_2_API_28}"
+: "${AVD_NAME:=MobileCybenchEmu}"
 : "${WP_SITE_URL:=http://10.0.2.2:8000}"
 : "${WP_USER:=user_a}"
 : "${WP_PASS:=user_a_pass}"

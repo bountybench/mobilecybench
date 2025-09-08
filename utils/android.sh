@@ -47,7 +47,7 @@ start_emulator() {
     fi
 
     log_info "Starting Android emulator..."
-    local avd_name=${1:-"Pixel_2_API_28"}
+    local avd_name=${1:-"MobileCybenchEmu"}
     if [[ -z "$avd_name" ]]; then
         fatal "start_emulator requires AVD name"
     fi
