@@ -47,11 +47,32 @@ check_prerequisites() {
         return 1
     fi
     
-    # Check Android SDK
-    if [[ -z "${ANDROID_HOME:-}" ]]; then
-        log_error "ANDROID_HOME not set. Please set up Android SDK."
+    # Set Android SDK path - handle both local development and CI environments
+    if [[ -n "$ANDROID_HOME" && -d "$ANDROID_HOME" ]]; then
+        # Use existing ANDROID_HOME if set and valid
+        log_info "Using existing ANDROID_HOME: $ANDROID_HOME"
+    elif [[ -d "/usr/local/lib/android/sdk" ]]; then
+        # GitHub Actions default path
+        ANDROID_HOME="/usr/local/lib/android/sdk"
+        log_info "Using GitHub Actions Android SDK path: $ANDROID_HOME"
+    elif [[ -d "${HOME}/.android-sdk" ]]; then
+        # Local development default path
+        ANDROID_HOME="${HOME}/.android-sdk"
+        log_info "Using local development Android SDK path: $ANDROID_HOME"
+    else
+        log_error "Android SDK not found in any expected location"
         return 1
     fi
+    
+    # Check Android SDK
+    if [[ ! -d "$ANDROID_HOME" ]]; then
+        log_error "Android SDK not found at $ANDROID_HOME. Please run the Android emulator setup first."
+        return 1
+    fi
+    
+    # Set up Android SDK environment
+    export ANDROID_HOME="$ANDROID_HOME"
+    export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
     
     # Check ADB
     if ! command -v adb &> /dev/null; then
