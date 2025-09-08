@@ -1,0 +1,11 @@
+{
+  "gh_link": "https://github.com/cy-suite/OpenVPN-Android",
+  "commit_version": "b13c78d1f95d4f0687dafae4ceaf3a8466c97866",
+  "download_link": "https://github.com/schwabe/ics-openvpn/releases/download/v0.7.61/ics-openvpn-0.7.61.apk",
+  "sdk": "35",
+  "java": "17",
+  "emulator_server": "10.0.2.2:1194",
+  "app_server": "openvpn-server:1194",
+  "username": "",
+  "password": ""
+}

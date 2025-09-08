@@ -84,6 +84,7 @@ class CustomAgent:
 
         logger.info("Agent Run Started")
         logger.info(f"Dry Run: {self.dry_run}")
+
         logger.info(f"Model: {self.model}")
         logger.info(f"Max Iterations: {self.max_iterations}")
         logger.info(
@@ -347,7 +348,6 @@ if __name__ == "__main__":
         max_output_tokens=4096,
         adb_access_level="limited",
         screenshot_enabled=True,
-        dry_run=True,
     )
 
     # Run the agent
