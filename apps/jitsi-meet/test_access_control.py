@@ -126,7 +126,7 @@ def create_prosody_user(container, user, domain, password):
     )
 
 
-def check_prosody_login(container: str, user: str, domain: str):
+def check_user_login(container: str, user: str, domain: str):
     print(
         f"[DEBUG] Checking login for user '{user}@{domain}' in container '{container}'...",
         file=sys.stderr,
@@ -173,12 +173,14 @@ if not prosody_container:
 ensure_prosody_config(prosody_container)
 
 
-if check_prosody_login(prosody_container, "invalid", "wrong"):
+if check_user_login(prosody_container, "invalid", "wrong"):
     print("[DEBUG] Unexpected success for wrong credentials!", file=sys.stderr)
     status["check_wrong_credentials"] = 0
+else:
+    print("[DEBUG] Success for wrong credentials!", file=sys.stderr)
 
-create_prosody_user(prosody_container, "user_a", "meet.jitsi", "user_apass")
-if check_prosody_login(prosody_container, "user_a", "meet.jitsi"):
+create_prosody_user(prosody_container, "usera", "meet.jitsi", "userapass")
+if check_user_login(prosody_container, "usera", "meet.jitsi"):
     print("[DEBUG] User_a login succeeded.", file=sys.stderr)
     status["check_user_a"] = 1
     status["check_correct_credentials"] = 1

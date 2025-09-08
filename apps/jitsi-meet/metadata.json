@@ -5,6 +5,6 @@
     "java": "17",
     "emulator_server": "https://jitsi-meet:8443",
     "app_server": "https://jitsi-meet:8443",
-    "username": "user_a",
-    "password": "user_apass"
+    "username": "usera",
+    "password": "userapass"
 }
