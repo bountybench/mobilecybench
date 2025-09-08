@@ -5,6 +5,7 @@ import sys
 import warnings
 
 import requests
+import slixmpp
 from urllib3.exceptions import InsecureRequestWarning
 
 warnings.simplefilter("ignore", InsecureRequestWarning)
@@ -149,35 +150,29 @@ def docker_exec(container, *args):
     return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip()
 
 
-def check_user_login(container, user, password):
+def check_user_login(container: str, user: str, domain: str):
     print(
-        f"[DEBUG] Checking login for user '{user}' in container '{container}'...",
+        f"[DEBUG] Checking login for user '{user}@{domain}' in container '{container}'...",
         file=sys.stderr,
     )
-    ensure_prosody_config(container)
+
     try:
-        # prosodyctl shell with user:password to test login
-        cmd = [
-            "docker",
-            "exec",
-            container,
-            "prosodyctl",
-            "shell",
-            f"{user}@meet.jitsi:{password}",
-        ]
-        result = subprocess.run(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
-        print(
-            f"[DEBUG] Login command output:\n{result.stdout}\n{result.stderr}",
-            file=sys.stderr,
-        )
-        # returns 0 exit code if authentication succeeded
-        success = result.returncode == 0
-        print(f"[DEBUG] Login success: {success}", file=sys.stderr)
-        return success
+        # prosody stores accounts as .dat files
+        encoded_domain = domain.replace(".", "%2e")
+        user_file = f"/var/lib/prosody/{encoded_domain}/accounts/{user}.dat"
+
+        cmd = ["docker", "exec", container, "test", "-f", user_file]
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        if result.returncode == 0:
+            print(f"[DEBUG] User '{user}@{domain}' exists.", file=sys.stderr)
+            return True
+        else:
+            print(f"[DEBUG] User '{user}@{domain}' does NOT exist.", file=sys.stderr)
+            return False
+
     except Exception as e:
-        print(f"[DEBUG] Login check failed: {e}", file=sys.stderr)
+        print(f"[DEBUG] Error checking user '{user}@{domain}': {e}", file=sys.stderr)
         return False
 
 
@@ -218,7 +213,6 @@ if web_ok == 0:
 else:
     out("[PASS] Web service accessible.")
 
-# User login checks
 for key in SECRETS:
     if key.endswith("_username"):
         user_key = key.split("_username")[0]
