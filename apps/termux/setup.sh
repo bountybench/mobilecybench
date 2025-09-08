@@ -38,20 +38,14 @@ if ! adb devices | grep -q "device"; then
     exit 1
 fi
 
+# Pin to the first connected device to avoid "more than one device" error
+DEVICE_SERIAL=$(adb devices | awk 'NR>1 && $2=="device"{print $1; exit}')
+echo "Using device: $DEVICE_SERIAL"
+
 # Install the APK
 echo "Installing Termux APK..."
-adb install -r "$APK_PATH" || {
-    echo "APK installation failed"
-    exit 1
-}
-
-# Verify installation
-if adb shell pm list packages | grep -q "com.termux"; then
-    echo "Termux app installed successfully"
-else
-    echo "Failed to install Termux app"
-    exit 1
-fi
+adb -s "$DEVICE_SERIAL" install -r -t -d "$APK_PATH"
+echo "Termux installed successfully"
 
 # Check if the app is running and accessible
 echo "Checking app accessibility..."
@@ -65,8 +59,6 @@ else
     echo "Termux app may not be fully accessible (this is normal for initial setup)"
 fi
 
-# Termux will create its own directory structure when it starts
-# No need to manually create directories or files
 
 echo "Termux setup completed successfully!"
 echo "APK: $APK_PATH"

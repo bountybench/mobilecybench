@@ -19,9 +19,9 @@ check_prerequisites() {
     # Check Java 17
     if ! command -v java >/dev/null 2>&1; then
         echo "ERROR: Java not found. Please install Java 17."
-        exit 1
-    fi
-    
+    exit 1
+fi
+
     # Verify Java version (AGP 8.0+ requires Java 17+)
     java_version=$(java -version 2>&1 | head -n1 | cut -d'"' -f2 | cut -d'.' -f1)
     if [[ "$java_version" -lt 17 ]]; then
@@ -252,21 +252,11 @@ patch_gradle_config() {
         fi
     done
     
-    # Add ABI filter to build only for arm64-v8a (matches emulator)
-    echo "Adding ABI filter for arm64-v8a compatibility..."
-    if ! grep -q "abiFilters" app/build.gradle; then
-        # Add abiFilters to the defaultConfig block
-        sed -i.bak '/defaultConfig {/a\
-        ndk {\
-            abiFilters "arm64-v8a"\
-        }\
-' app/build.gradle
-    fi
-    
-    # Fix splits configuration to only include arm64-v8a
-    echo "Fixing splits configuration for arm64-v8a only..."
-    if grep -q "include 'x86', 'x86_64', 'armeabi-v7a', 'arm64-v8a'" app/build.gradle; then
-        sed -i.bak "s/include 'x86', 'x86_64', 'armeabi-v7a', 'arm64-v8a'/include 'arm64-v8a'/" app/build.gradle
+    # Remove any hard-coded ABI filters to allow dynamic ABI selection
+    echo "Removing hard-coded ABI filters to allow dynamic selection..."
+    if grep -q "abiFilters" app/build.gradle; then
+        # Remove any existing abiFilters
+        sed -i.bak '/abiFilters/d' app/build.gradle
     fi
     
     # Add packaging options to fix native library extraction
@@ -299,23 +289,61 @@ echo "Cleaning build cache and rebuilding..."
 # rm -rf ~/.gradle/caches ~/.gradle/daemon
 ./gradlew clean
 
-# Build APK using host environment (like other apps)
-echo "Building APK using host environment..."
+# Build APKs for all architectures (splits + universal)
+echo "Building APKs for all architectures..."
 if ! ./gradlew assembleDebug --no-daemon --max-workers=1; then
     echo "ERROR: Gradle build failed"
     exit 1
 fi
 
-# Find and copy APK
-APK=$(find . -path "*/build/outputs/apk/debug/*.apk" -type f | head -n1)
-if [ -z "$APK" ]; then
-    echo "ERROR: No APK produced"
-    exit 1
+# Detect device ABI and select appropriate APK
+echo "Detecting device ABI..."
+DEVICE_ABI=""
+if command -v adb >/dev/null 2>&1 && adb devices | grep -q "device"; then
+    DEVICE_ABI=$(adb shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r' || echo "")
+    if [ -n "$DEVICE_ABI" ]; then
+        echo "Detected device ABI: $DEVICE_ABI"
+    else
+        echo "Could not detect device ABI, will use universal APK"
+    fi
+else
+    echo "No device connected, will use universal APK"
+fi
+
+# Select the appropriate APK based on device ABI
+if [ -n "$DEVICE_ABI" ]; then
+    # Look for device-specific APK first
+    DEVICE_APK=$(find . -path "*/build/outputs/apk/debug/*${DEVICE_ABI}*debug*.apk" -type f | head -n1)
+    if [ -n "$DEVICE_APK" ]; then
+        APK="$DEVICE_APK"
+        echo "Using device-specific APK: $(basename "$APK")"
+    else
+        echo "Device-specific APK not found, falling back to universal APK"
+        DEVICE_ABI=""  # Force universal APK fallback
+    fi
+fi
+
+# Fallback to universal APK if no device-specific APK found
+if [ -z "$DEVICE_ABI" ]; then
+    UNIVERSAL_APK=$(find . -path "*/build/outputs/apk/debug/*universal*debug*.apk" -type f | head -n1)
+    if [ -n "$UNIVERSAL_APK" ]; then
+        APK="$UNIVERSAL_APK"
+        echo "Using universal APK: $(basename "$APK")"
+    else
+        # Last resort: any APK
+        APK=$(find . -path "*/build/outputs/apk/debug/*.apk" -type f | head -n1)
+        if [ -z "$APK" ]; then
+            echo "ERROR: No APK produced"
+            exit 1
+        fi
+        echo "Using fallback APK: $(basename "$APK")"
+    fi
 fi
 
 cp "$APK" ../termux-debug.apk
 echo "APK built successfully: termux-debug.apk"
 echo "APK size: $(du -h ../termux-debug.apk | cut -f1)"
+echo "APK type: $(basename "$APK")"
 
 cd ..
 
