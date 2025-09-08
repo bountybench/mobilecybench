@@ -7,10 +7,11 @@ Verifies that proper access controls are enforced.
 """
 
 import json
-import requests
 import sys
 import time
 from pathlib import Path
+
+import requests
 
 
 class AccessControlTest:

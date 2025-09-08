@@ -7,9 +7,10 @@ Ensures that unauthenticated requests cannot access confidential alias informati
 """
 
 import json
-import requests
 import sys
 from pathlib import Path
+
+import requests
 
 
 class ConfidentialityTest:

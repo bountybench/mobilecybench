@@ -8,8 +8,9 @@ import argparse
 import json
 import subprocess
 import sys
-import requests
 from pathlib import Path
+
+import requests
 
 
 def parse_args():

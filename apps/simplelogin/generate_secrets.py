@@ -4,10 +4,10 @@ SimpleLogin secrets generator for MobileCybench testing.
 Creates deterministic test credentials and API tokens without requiring live authentication.
 """
 
-import json
-import hashlib
-import secrets
 import argparse
+import hashlib
+import json
+import secrets
 from pathlib import Path
 
 

@@ -7,11 +7,12 @@ Verifies system health and basic functionality.
 """
 
 import json
-import requests
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+import requests
 
 
 class AvailabilityTest:

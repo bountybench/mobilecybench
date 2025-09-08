@@ -7,10 +7,11 @@ Verifies data consistency and detects unauthorized modifications.
 """
 
 import json
-import requests
 import sys
 import time
 from pathlib import Path
+
+import requests
 
 
 class IntegrityTest:
