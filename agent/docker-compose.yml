@@ -34,6 +34,7 @@ services:
       - kali-container
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
+      - START_DIR=${START_DIR:-/root}
 
 networks:
   shared_net:
