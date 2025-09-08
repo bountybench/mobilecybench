@@ -205,8 +205,23 @@ build_app() {
     
     cd "$CODEBASE_DIR/SimpleLogin"
 
-    # Set Java 17 for compatibility
-    export JAVA_HOME="/opt/homebrew/opt/openjdk@17"
+    # Set Java 17 - use existing JAVA_HOME if available, otherwise detect
+    if [[ -n "$JAVA_HOME" && -d "$JAVA_HOME" ]]; then
+        log_info "Using existing JAVA_HOME: $JAVA_HOME"
+    elif [[ -d "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ]]; then
+        # macOS Homebrew path
+        export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+        log_info "Using macOS Homebrew JAVA_HOME: $JAVA_HOME"
+    elif [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
+        # Linux path
+        export JAVA_HOME="/usr/lib/jvm/java-17-openjdk"
+        log_info "Using Linux JAVA_HOME: $JAVA_HOME"
+    else
+        log_warning "Could not find Java 17 via known paths. Using system default."
+        export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
+    fi
+    
+    export PATH="$JAVA_HOME/bin:$PATH"
     
     # Make gradlew executable
     chmod +x gradlew
