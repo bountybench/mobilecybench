@@ -37,10 +37,6 @@ def load_secrets():
     print(
         "[DEBUG] Loading Users with secrets. Just testing for now. Will create these users before running the integrity check in coming updates."
     )
-    ensure_prosody_config(prosody_container)
-    create_prosody_user(prosody_container, "alice", "meet.jitsi", "alicepass123")
-    create_prosody_user(prosody_container, "bob", "meet.jitsi", "bobpass456")
-    create_prosody_user(prosody_container, "charlie", "meet.jitsi", "charliepass789")
 
     debug(
         f"Loaded secrets for users: {[k for k in SECRETS if k.endswith('_username')]}"
@@ -79,11 +75,12 @@ def ensure_prosody_config(container):
     """
 
     # Step 1: Ensure directory exists
-    subprocess.run(
-        ["docker", "exec", "--user", "root", container, "mkdir", "-p", "/etc/prosody"],
-        check=True,
-    )
-    print("[DEBUG] Ensured /etc/prosody exists.")
+    for path in ["/etc/prosody", "/etc/prosody/certs"]:
+        subprocess.run(
+            ["docker", "exec", "--user", "root", container, "mkdir", "-p", path],
+            check=True,
+        )
+        print(f"[DEBUG] Ensured {path} exists.")
 
     # Step 2: Write to a temp file first
     temp_path = "/tmp/prosody.cfg.lua"
@@ -172,6 +169,11 @@ prosody_container = get_prosody_container()
 if not prosody_container:
     out("[ERROR] Prosody container not found.")
     sys.exit(1)
+
+ensure_prosody_config(prosody_container)
+create_prosody_user(prosody_container, "alice", "localhost", "alicepass123")
+create_prosody_user(prosody_container, "bob", "localhost", "bobpass456")
+create_prosody_user(prosody_container, "charlie", "localhost", "charliepass789")
 
 status = {}
 fail = False
