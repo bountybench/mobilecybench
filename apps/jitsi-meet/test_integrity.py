@@ -72,7 +72,7 @@ def ensure_prosody_config(container):
     admins = { }
     modules_enabled = { "roster", "saslauth", "tls", "dialback" }
     allow_registration = true
-    VirtualHost "localhost"
+    VirtualHost "meet.jitsi"
         enabled = true
     """
 
