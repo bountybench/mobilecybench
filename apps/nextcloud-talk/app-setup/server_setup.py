@@ -25,6 +25,7 @@ USER_B_FILE_NAME = os.getenv("USER_B_FILE_NAME")
 
 BASE_URL = "http://localhost:8080"
 
+
 def wait_for_server(max_retries=10, delay=10):
     """Wait for Nextcloud server to be ready"""
     for attempt in range(max_retries):
@@ -39,9 +40,10 @@ def wait_for_server(max_retries=10, delay=10):
         if attempt < max_retries - 1:
             print(f"Waiting for server... (attempt {attempt + 1}/{max_retries})")
             time.sleep(delay)
-    
+
     print("Server failed to become ready")
     return False
+
 
 if not wait_for_server():
     print("ERROR: Nextcloud server is not ready")
@@ -52,6 +54,7 @@ payload = {
     "adminlogin": ADMIN_USERNAME,
     "adminpass": ADMIN_PASSWORD,
 }
+
 
 def initialize_nextcloud(max_retries=5):
     """Initialize Nextcloud with retry logic"""
@@ -65,9 +68,10 @@ def initialize_nextcloud(max_retries=5):
             print(f"Initialization attempt {attempt + 1} failed: {e}")
             if attempt < max_retries - 1:
                 time.sleep(5)
-    
+
     print("ERROR: Failed to initialize Nextcloud")
     exit(1)
+
 
 initialize_nextcloud()
 
@@ -99,14 +103,17 @@ def create_user_with_retry(user_data, user_name, max_retries=3):
             auth=admin_auth,
         )
         print(f"Initializing {user_name} (attempt {attempt + 1}): ", response.content)
-        
-        if response.status_code == 200 and "failure" not in response.content.decode("utf-8"):
+
+        if response.status_code == 200 and "failure" not in response.content.decode(
+            "utf-8"
+        ):
             return response
         elif attempt < max_retries - 1:
             print(f"Retrying {user_name} creation in 5 seconds...")
             time.sleep(5)
-    
+
     return response
+
 
 create_user_with_retry(user_a_data, "User A")
 create_user_with_retry(user_b_data, "User B")
@@ -125,11 +132,12 @@ print(result)
 # Wait for spreed app to be fully loaded
 time.sleep(5)
 
+
 # Create nextcloud talk room between user b and admin
 def create_chat_room(max_retries=5):
     """Create chat room with retry logic"""
     data = {"roomType": 1, "invite": "admin"}
-    
+
     for attempt in range(max_retries):
         try:
             response = requests.post(
@@ -137,10 +145,10 @@ def create_chat_room(max_retries=5):
                 headers=headers,
                 auth=user_b_auth,
                 data=data,
-                timeout=10
+                timeout=10,
             )
             print(response.content)
-            
+
             if response.status_code == 201:
                 response_json = json.loads(response.content.decode("utf-8"))
                 CHAT_TOKEN = response_json["ocs"]["data"]["token"]
@@ -151,21 +159,23 @@ def create_chat_room(max_retries=5):
             print("Response content:", response.content.decode("utf-8"))
         except requests.exceptions.RequestException as e:
             print(f"Request failed for chat room creation (attempt {attempt + 1}): {e}")
-        
+
         if attempt < max_retries - 1:
             print(f"Retrying chat room creation in 5 seconds...")
             time.sleep(5)
-    
+
     print("ERROR: Failed to create chat room after all attempts")
     exit(1)
 
+
 CHAT_TOKEN = create_chat_room()
+
 
 # send message in private chat from User B to admin
 def send_message_with_retry(max_retries=3):
     """Send message with retry logic"""
     data = {"message": USER_B_MESSAGE}
-    
+
     for attempt in range(max_retries):
         try:
             response = requests.post(
@@ -173,7 +183,7 @@ def send_message_with_retry(max_retries=3):
                 headers=headers,
                 data=data,
                 auth=user_b_auth,
-                timeout=10
+                timeout=10,
             )
             if response.status_code in [200, 201]:
                 return response
@@ -181,16 +191,18 @@ def send_message_with_retry(max_retries=3):
             print(f"Message send failed (attempt {attempt + 1}): {e}")
             if attempt < max_retries - 1:
                 time.sleep(2)
-    
+
     print("WARNING: Failed to send message after all attempts")
 
+
 send_message_with_retry()
+
 
 # store file for the admin account with secret name and secret file value
 def upload_file_with_retry(url, content, auth, max_retries=3):
     """Upload file with retry logic"""
     headers_text_file = {"Content-Type": "text/plain"}
-    
+
     for attempt in range(max_retries):
         try:
             response = requests.put(
@@ -198,7 +210,7 @@ def upload_file_with_retry(url, content, auth, max_retries=3):
                 headers=headers_text_file,
                 data=content.encode("utf-8"),
                 auth=auth,
-                timeout=10
+                timeout=10,
             )
             if response.status_code in [200, 201, 204]:
                 return response
@@ -206,14 +218,15 @@ def upload_file_with_retry(url, content, auth, max_retries=3):
             print(f"File upload failed (attempt {attempt + 1}): {e}")
             if attempt < max_retries - 1:
                 time.sleep(2)
-    
+
     print(f"WARNING: Failed to upload file to {url} after all attempts")
     return None
+
 
 admin_file_response = upload_file_with_retry(
     f"{BASE_URL}/remote.php/dav/files/{ADMIN_USERNAME}/{ADMIN_FILE_NAME}.txt",
     ADMIN_FILE_CONTENTS,
-    admin_auth
+    admin_auth,
 )
 if admin_file_response:
     print("Admin file uploaded:", admin_file_response.status_code)
@@ -221,7 +234,7 @@ if admin_file_response:
 user_b_file_response = upload_file_with_retry(
     f"{BASE_URL}/remote.php/dav/files/{USER_B_USERNAME}/{USER_B_FILE_NAME}.txt",
     USER_B_FILE_CONTENTS,
-    user_b_auth
+    user_b_auth,
 )
 if user_b_file_response:
     print("User B file uploaded:", user_b_file_response.status_code)
