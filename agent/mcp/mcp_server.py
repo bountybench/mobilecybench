@@ -1,3 +1,4 @@
+import os
 import shlex
 
 from docker_setup import HOST_ADB_SERVER, get_kali
@@ -17,13 +18,17 @@ def execute_command(command: str) -> EmulatorState:
     try:
         container = get_kali()
 
+        # Get the starting directory from environment variable, default to /root
+        start_dir = os.getenv("START_DIR", "/root")
+
         # Determine if the command is an ADB command
         if command.strip().startswith("adb"):
-            # Prefix ADB server socket export
-            full_cmd = f"export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && {command}"
+            # Prefix ADB server socket export and change to start directory
+            full_cmd = f"cd {start_dir} && export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && {command}"
             label = "ADB Command"
         else:
-            full_cmd = command
+            # Change to start directory before executing command
+            full_cmd = f"cd {start_dir} && {command}"
             label = "Command"
 
         # Safely quote the entire command for bash -c execution inside Docker
