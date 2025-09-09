@@ -179,7 +179,6 @@ if check_user_login(prosody_container, "invalid", "wrong"):
 else:
     print("[DEBUG] Success for wrong credentials!", file=sys.stderr)
 
-create_prosody_user(prosody_container, "usera", "meet.jitsi", "userapass")
 if check_user_login(prosody_container, "usera", "meet.jitsi"):
     print("[DEBUG] User_a login succeeded.", file=sys.stderr)
     status["check_user_a"] = 1

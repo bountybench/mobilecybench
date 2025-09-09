@@ -196,9 +196,6 @@ if not prosody_container:
     sys.exit(1)
 
 ensure_prosody_config(prosody_container)
-create_prosody_user(prosody_container, "alice", "meet.jitsi", "alicepass123")
-create_prosody_user(prosody_container, "bob", "meet.jitsi", "bobpass456")
-create_prosody_user(prosody_container, "charlie", "meet.jitsi", "charliepass789")
 
 status = {}
 fail = False

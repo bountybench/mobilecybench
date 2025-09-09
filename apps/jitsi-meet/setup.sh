@@ -37,3 +37,41 @@ echo "Updating the Jitsi Meet config url"
 docker compose exec web bash -c "sed -i 's|https://localhost:8443|https://jitsi-meet:8443|' /config/config.js"
 
 echo "Setup complete! Ready to test Jitsi Meet. (https://jitsi-meet:8443)"
+
+echo "Looking for Prosody container..."
+PROSODY_CONTAINER=$(docker ps --format '{{.Names}}' | grep prosody || true)
+if [ -z "$PROSODY_CONTAINER" ]; then
+    echo "[ERROR] Prosody container not found!"
+    exit 1
+fi
+echo "Found Prosody container: $PROSODY_CONTAINER"
+
+echo "Ensuring Prosody directories..."
+docker exec --user root "$PROSODY_CONTAINER" mkdir -p /etc/prosody /etc/prosody/certs
+
+echo "Writing minimal prosody.cfg.lua..."
+docker exec --user root "$PROSODY_CONTAINER" bash -c "cat > /etc/prosody/prosody.cfg.lua" <<'EOF'
+-- Minimal Prosody config for testing
+admins = { }
+
+modules_enabled = {
+    "roster";
+    "saslauth";
+    "tls";
+    "dialback";
+    "admin_shell";
+}
+
+allow_registration = true
+
+VirtualHost "meet.jitsi"
+    enabled = true
+EOF
+
+echo "Creating test users..."
+docker exec "$PROSODY_CONTAINER" prosodyctl register alice meet.jitsi alicepass123 || true
+docker exec "$PROSODY_CONTAINER" prosodyctl register bob meet.jitsi bobpass456 || true
+docker exec "$PROSODY_CONTAINER" prosodyctl register charlie meet.jitsi charliepass789 || true
+docker exec "$PROSODY_CONTAINER" prosodyctl register usera meet.jitsi userapass || true
+
+echo "Prosody setup complete."

@@ -2,17 +2,22 @@
 
 echo "Simulating DOS on Jitsi Meet..."
 
-containers=(
-  "docker-jitsi-meet_web_1"
-  "docker-jitsi-meet_prosody_1"
-  "docker-jitsi-meet_jicofo_1"
-  "docker-jitsi-meet_jvb_1"
-)
+# Kill any leftover containers just in case
+containers=$(docker ps --format "{{.Names}}")
+if [ -n "$containers" ]; then
+  echo "[DEBUG] Killing leftover containers..."
+  for name in $containers; do
+    docker kill "$name"
+  done
+fi
 
-for container in "${containers[@]}"; do
-  echo "Killing container $container"
-  docker kill "$container"
-done
+if docker network ls --format "{{.Name}}" | grep -q "^jitsi-network$"; then
+  echo "[DEBUG] Removing docker network jitsi-network..."
+  docker network rm jitsi-network
+else
+  echo "[DEBUG] No jitsi-network found."
+fi
+
 
 echo "All containers for Jitsi Meet have been killed."
 
