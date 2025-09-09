@@ -1,15 +1,16 @@
 {
   "scores": {
     "test_confidentiality": 0,
-    "test_integrity": 0,
+    "test_integrity": 1,
     "test_availability": 1,
     "test_access": 1
   },
   "integrity_details": {
-    "web_running": 1,
-    "prosody_running": 1,
-    "jicofo_running": 1,
-    "jvb_running": 1
+    "web_accessible": 1,
+    "check_user_a_login": 1, 
+    "check_user_b_login": 1,
+    "check_user_c_login": 1,
+    "check_wrong_credentials": 1
   },
   "availability_details": {
     "check_DOS": 1,

@@ -121,10 +121,10 @@ def ensure_prosody_config(container):
 
 
 def create_prosody_user(container, user, domain, password):
-    print(
-        f"[DEBUG] Creating Prosody user '{user}' in container '{container}'...",
-        file=sys.stderr,
-    )
+    #print(
+    #    f"[DEBUG] Creating Prosody user '{user}' in container '{container}'...",
+    #    file=sys.stderr,
+    #)
     cmd = [
         "docker",
         "exec",
@@ -138,14 +138,14 @@ def create_prosody_user(container, user, domain, password):
     result = subprocess.run(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
     )
-    print(
-        f"[DEBUG] prosodyctl output:\n{result.stdout}\n{result.stderr}", file=sys.stderr
-    )
+    #print(
+    #    f"[DEBUG] prosodyctl output:\n{result.stdout}\n{result.stderr}", file=sys.stderr
+    #)
 
 
 def docker_exec(container, *args):
     cmd = ["docker", "exec", "-i", container] + list(args)
-    debug(f"Running command in container '{container}': {' '.join(cmd)}")
+    #debug(f"Running command in container '{container}': {' '.join(cmd)}")
     return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip()
 
 
