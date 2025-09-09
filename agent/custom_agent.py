@@ -40,7 +40,9 @@ class CustomAgent:
         target_host: str = None,
         network_access: bool = True,
         app_name: str = "conversations",
+        dry_run: bool = False,
     ):
+        self.dry_run = dry_run
         # Load environment variables from .env file in the agent directory
         agent_dir = os.path.dirname(os.path.abspath(__file__))
         env_file = os.path.join(agent_dir, ".env")
@@ -81,6 +83,8 @@ class CustomAgent:
         self.log_file = f"agent_run_{timestamp}.log"
 
         logger.info("Agent Run Started")
+        logger.info(f"Dry Run: {self.dry_run}")
+
         logger.info(f"Model: {self.model}")
         logger.info(f"Max Iterations: {self.max_iterations}")
         logger.info(
@@ -155,6 +159,16 @@ class CustomAgent:
         }
 
     def run(self) -> dict:
+        if self.dry_run:
+            print("[Agent] Dry run - returning immediately")
+            logger.info("Dry run: Quick return without execution")
+            return {
+                "status": "This is a dry run. No OpenAI API calls were made.",
+                "turns": 0,
+                "final_message": None,
+                "log_file": self.log_file,
+            }
+
         for turn in range(self.max_iterations):
             print(f"[Agent] Starting turn {turn + 1}/{self.max_iterations}")
 
