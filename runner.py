@@ -23,6 +23,9 @@ project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
 from utils.logger import logger
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 class CommandExecutor:
@@ -58,7 +61,7 @@ class CommandExecutor:
         try:
             if live_output:
                 return self._run_with_live_output(args, cwd, check, env)
-            
+
             result = subprocess.run(
                 args,
                 cwd=cwd,
@@ -74,7 +77,9 @@ class CommandExecutor:
                 logger.warning(f"STDERR:\n{result.stderr.strip()}")
 
             if check and result.returncode != 0:
-                raise subprocess.CalledProcessError(result.returncode, args, result.stdout, result.stderr)
+                raise subprocess.CalledProcessError(
+                    result.returncode, args, result.stdout, result.stderr
+                )
 
             return result
 
@@ -86,26 +91,33 @@ class CommandExecutor:
             logger.error(f"STDERR: {e.stderr.strip() if e.stderr else 'N/A'}")
             raise
         except Exception as e:
-            logger.error(f"An unexpected error occurred while running command `{command}`: {e}")
+            logger.error(
+                f"An unexpected error occurred while running command `{command}`: {e}"
+            )
             raise
 
     def start_background_process(
-        self, command: str, cwd: Optional[Path] = None, env: Optional[Dict[str, str]] = None
+        self,
+        command: str,
+        cwd: Optional[Path] = None,
+        env: Optional[Dict[str, str]] = None,
     ) -> subprocess.Popen:
         """
         Starts a background process without waiting for it to complete.
-        
+
         Args:
             command: The command string to execute.
             cwd: The working directory for the command.
             env: Optional environment variables for the subprocess.
-            
+
         Returns:
             A Popen object for the background process.
         """
         args = shlex.split(command)
-        logger.info(f"Starting background process: `{' '.join(args)}` in `{cwd or '.'}`")
-        
+        logger.info(
+            f"Starting background process: `{' '.join(args)}` in `{cwd or '.'}`"
+        )
+
         try:
             process = subprocess.Popen(
                 args,
@@ -121,16 +133,22 @@ class CommandExecutor:
             logger.error(f"Command not found: {args[0]}")
             raise
         except Exception as e:
-            logger.error(f"An unexpected error occurred while starting background process `{command}`: {e}")
+            logger.error(
+                f"An unexpected error occurred while starting background process `{command}`: {e}"
+            )
             raise
 
     def _run_with_live_output(
-        self, args: List[str], cwd: Optional[Path], check: bool, env: Optional[Dict[str, str]]
+        self,
+        args: List[str],
+        cwd: Optional[Path],
+        check: bool,
+        env: Optional[Dict[str, str]],
     ) -> subprocess.CompletedProcess:
         """Helper to stream output in real-time."""
         stdout_lines = []
         stderr_lines = []
-        
+
         process = subprocess.Popen(
             args,
             cwd=cwd,
@@ -158,22 +176,22 @@ class CommandExecutor:
                 else:
                     logger.warning(line.strip())
                     stderr_lines.append(line)
-        
+
         stdout, stderr = process.communicate()
         if stdout:
             for line in stdout.splitlines():
                 logger.info(line.strip())
-                stdout_lines.append(line + '\n')
+                stdout_lines.append(line + "\n")
         if stderr:
             for line in stderr.splitlines():
                 logger.warning(line.strip())
-                stderr_lines.append(line + '\n')
+                stderr_lines.append(line + "\n")
 
         if check and process.returncode != 0:
             raise subprocess.CalledProcessError(
                 process.returncode, args, "".join(stdout_lines), "".join(stderr_lines)
             )
-            
+
         return subprocess.CompletedProcess(
             args=args,
             returncode=process.returncode,
@@ -204,6 +222,7 @@ class MobileCybenchRunner:
 
     def validate_input(self):
         """Validate app name and required files"""
+        # TODO: Implement API key validation
         logger.info("Validating input...")
 
         # Check if app directory exists
@@ -272,7 +291,7 @@ class MobileCybenchRunner:
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to check emulator status: {e}")
 
-        # Setup/build app
+        # Setup app (setup backend, install apk, etc.)
         logger.info("=" * 60)
         logger.info("BUILDING AND INSTALLING APP")
         logger.info("=" * 60)
@@ -306,42 +325,24 @@ class MobileCybenchRunner:
         start_dir = f"/tmp/{self.app_name}_app"
         api_key = None
 
-        # Load existing .env file if it exists
+        # Load existing .env
         if env_file.exists():
-            logger.info(f"Found existing .env file at: {env_file}")
-            logger.info(f"Loading existing .env file: {env_file}")
+            logger.info(f"Loading existing environment from {env_file}")
+            load_dotenv(dotenv_path=env_file, override=False)
+        else:
+            logger.error(
+                f"No existing .env file found at {env_file}. Please create one with OPENAI_API_KEY."
+            )
+            self._exit_with_error("Missing .env file with OPENAI_API_KEY")
 
-            try:
-                with open(env_file, "r") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line.startswith("OPENAI_API_KEY="):
-                            api_key = line.split("=", 1)[1]
-                            break
-
-                if api_key:
-                    logger.info("✓ Found existing OpenAI API key")
-                    logger.info("Existing OpenAI API key found")
-
-            except Exception as e:
-                logger.warning(f"Error reading existing .env file: {e}")
-                logger.warning(f"Warning: Could not read existing .env file: {e}")
-
-        # Prompt for OpenAI API key if not found
+        api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            api_key = input("Enter your OpenAI API key: ").strip()
-            if not api_key:
-                self._exit_with_error("OpenAI API key is required")
+            logger.error("OPENAI_API_KEY not found in environment or .env; exiting.")
+            self._exit_with_error("OPENAI_API_KEY missing")
+        else:
+            logger.info("✓ Using OPENAI_API_KEY from environment/.env (no prompt mode)")
 
-        # Create/update .env file
-        logger.info(f"Creating/updating .env file at: {env_file}")
-        with open(env_file, "w") as f:
-            f.write(f"OPENAI_API_KEY={api_key}\n")
-            f.write(f"START_DIR={start_dir}\n")
-
-        logger.info(f"Created/updated .env file: {env_file}")
-        logger.info(f"START_DIR set to: {start_dir}")
-        logger.info(f"✓ Environment configured with START_DIR: {start_dir}")
+        os.environ["OPENAI_API_KEY"] = api_key
 
     def _start_containers(self):
         """Start MCP server and Kali container"""
@@ -355,14 +356,14 @@ class MobileCybenchRunner:
 
         logger.info(f"Setting START_DIR environment variable: {start_dir}")
         logger.info(f"Environment variable START_DIR set to: {start_dir}")
-
-        # Start services using docker-compose
-        logger.info("Starting containers with docker-compose...")
+        logger.info("Starting containers with docker compose...")
 
         try:
             self.cmd.run("docker compose up -d", cwd=self.agent_dir, env=env)
         except subprocess.CalledProcessError as e:
-            logger.error(f"Docker-compose failed: {e.stderr if hasattr(e, 'stderr') else e}")
+            logger.error(
+                f"Docker-compose failed: {e.stderr if hasattr(e, 'stderr') else e}"
+            )
             self._exit_with_error("Failed to start containers")
 
         logger.info("✓ Containers started successfully")
@@ -371,6 +372,8 @@ class MobileCybenchRunner:
         logger.info("Waiting for containers to initialize...")
         logger.info("Waiting for containers to initialize...")
         time.sleep(5)
+        # TODO: Implement a more robust check to ensure services are up and running
+        # Container healt
 
         # Check container status
         logger.info("Checking container status...")
@@ -401,8 +404,8 @@ class MobileCybenchRunner:
         source_path = self.app_dir / "codebase"
         container_name = "kali-container"
         target_path = f"/tmp/{self.app_name}_app"
+        # TODO: Make target path to be the directory that the agent has access to
 
-        # Check if source codebase exists
         if not source_path.exists():
             logger.warning(f"⚠ Warning: Codebase directory not found at {source_path}")
             logger.warning(f"Codebase directory not found: {source_path}")
@@ -423,7 +426,9 @@ class MobileCybenchRunner:
 
             # Copy files to container
             try:
-                self.cmd.run(f"docker cp {source_path}/. {container_name}:{target_path}/")
+                self.cmd.run(
+                    f"docker cp {source_path}/. {container_name}:{target_path}/"
+                )
                 logger.info(f"✓ Codebase copied successfully to {target_path}")
                 logger.info(f"Codebase copied successfully to {target_path}")
             except subprocess.CalledProcessError as e:
@@ -509,12 +514,14 @@ class MobileCybenchRunner:
             result = e
 
         # Show results (for this script, STDERR contains progress info, not errors)
-        if hasattr(result, 'stdout') and result.stdout and result.stdout.strip():
+        if hasattr(result, "stdout") and result.stdout and result.stdout.strip():
             logger.info(result.stdout)
-        if hasattr(result, 'stderr') and result.stderr and result.stderr.strip():
-            logger.info(result.stderr)  # Don't label as STDERR since it's just progress info
+        if hasattr(result, "stderr") and result.stderr and result.stderr.strip():
+            logger.info(
+                result.stderr
+            )  # Don't label as STDERR since it's just progress info
 
-        return_code = getattr(result, 'returncode', 1)
+        return_code = getattr(result, "returncode", 1)
         logger.info(f"✓ Probe checks completed (exit code: {return_code})")
 
         # Check for scores.json file
