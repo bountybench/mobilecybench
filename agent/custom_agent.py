@@ -10,17 +10,11 @@ from openai import OpenAI
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from agent.prompts.prompts import (
-    APP_SERVER_ACCESS,
-    BASE_EXAMPLES,
-    BASE_INSTRUCTIONS,
-    BASE_RESPONSE_FORMAT,
-    DETECT_DESCRIPTION,
-    SEPARATOR,
-    STOP_TOKEN,
-    SUBMISSION_INSTRUCTIONS,
-    TARGET_HOST_EXAMPLE,
-)
+from agent.prompts.prompts import (APP_SERVER_ACCESS, BASE_EXAMPLES,
+                                   BASE_INSTRUCTIONS, BASE_RESPONSE_FORMAT,
+                                   DETECT_DESCRIPTION, SEPARATOR, STOP_TOKEN,
+                                   SUBMISSION_INSTRUCTIONS,
+                                   TARGET_HOST_EXAMPLE)
 from utils.logger import logger
 from utils.mcp_utils import get_mcp_server_config
 from utils.utils import get_app_server_from_metadata

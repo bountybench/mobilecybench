@@ -15,15 +15,16 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from selectors import DefaultSelector, EVENT_READ
+from selectors import EVENT_READ, DefaultSelector
 from typing import Dict, List, Optional
 
 # Add project root to Python path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from utils.logger import logger
 from dotenv import load_dotenv
+
+from utils.logger import logger
 
 load_dotenv()
 
