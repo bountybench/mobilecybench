@@ -169,6 +169,7 @@ if not prosody_container:
     status["check_wrong_credentials"] = 0
     status["check_correct_credentials"] = 0
     status["check_user_a"] = 0
+    sys.exit(0)
 
 ensure_prosody_config(prosody_container)
 

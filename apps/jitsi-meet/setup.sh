@@ -49,9 +49,10 @@ echo "Found Prosody container: $PROSODY_CONTAINER"
 echo "Ensuring Prosody directories..."
 docker exec --user root "$PROSODY_CONTAINER" mkdir -p /etc/prosody /etc/prosody/certs
 
-echo "Writing minimal prosody.cfg.lua..."
+echo "Writing minimal prosody.cfg.lua safely..."
 
-docker exec --user root "$PROSODY_CONTAINER" sh -c 'cat > /etc/prosody/prosody.cfg.lua' <<'EOF'
+docker exec -i --user root "$PROSODY_CONTAINER" tee /tmp/prosody.cfg.lua > /dev/null <<'EOF'
+-- Minimal Prosody config for testing
 admins = { }
 
 modules_enabled = {
@@ -65,8 +66,21 @@ modules_enabled = {
 allow_registration = true
 
 VirtualHost "meet.jitsi"
+    enabled = true
 EOF
 
+docker exec --user root "$PROSODY_CONTAINER" mv /tmp/prosody.cfg.lua /etc/prosody/prosody.cfg.lua
+
+echo "[DEBUG] Contents of prosody.cfg.lua inside container:"
+docker exec --user root "$PROSODY_CONTAINER" cat /etc/prosody/prosody.cfg.lua
+
+docker exec "$PROSODY_CONTAINER" prosodyctl restart || true
+
+
+echo "[DEBUG] Contents of prosody.cfg.lua inside container:"
+docker exec --user root "$PROSODY_CONTAINER" cat /etc/prosody/prosody.cfg.lua
+
+docker exec "$PROSODY_CONTAINER" prosodyctl restart
 
 echo "Creating test users..."
 docker exec "$PROSODY_CONTAINER" prosodyctl register alice meet.jitsi alicepass123 || true
