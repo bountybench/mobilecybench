@@ -11,7 +11,8 @@ from utils.availability_utils import check_container_health, check_DOS
 
 
 def debug(msg: str):
-    print(f"[DEBUG] {msg}", file=sys.stderr)
+    # print(f"[DEBUG] {msg}", file=sys.stderr)
+    pass
 
 
 def get_running_containers():

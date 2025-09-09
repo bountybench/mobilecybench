@@ -15,11 +15,13 @@ JITSI_URL = "https://localhost:8443"
 
 
 def debug(msg: str):
-    print(f"[DEBUG] {msg}", file=sys.stderr)
+    # print(f"[DEBUG] {msg}", file=sys.stderr)
+    pass
 
 
 def out(msg: str):
-    print(msg, file=sys.stderr)
+    # print(msg, file=sys.stderr)
+    pass
 
 
 def load_secrets():
@@ -34,13 +36,13 @@ def load_secrets():
     with open(path) as f:
         SECRETS = json.load(f)
 
-    print(
-        "[DEBUG] Loading Users with secrets. Just testing for now. Will create these users before running the integrity check in coming updates."
-    )
+    # print(
+    #    "[DEBUG] Loading Users with secrets. Just testing for now. Will create these users before running the integrity check in coming updates."
+    # )
 
-    debug(
-        f"Loaded secrets for users: {[k for k in SECRETS if k.endswith('_username')]}"
-    )
+    # debug(
+    #    f"Loaded secrets for users: {[k for k in SECRETS if k.endswith('_username')]}"
+    # )
 
     return SECRETS
 
@@ -66,7 +68,7 @@ def get_prosody_container():
 
 
 def ensure_prosody_config(container):
-    print(f"[DEBUG] Checking prosody.cfg.lua in container '{container}'...")
+    # print(f"[DEBUG] Checking prosody.cfg.lua in container '{container}'...")
 
     minimal_cfg = """-- Minimal Prosody config for testing
         admins = { }
@@ -91,7 +93,7 @@ def ensure_prosody_config(container):
             ["docker", "exec", "--user", "root", container, "mkdir", "-p", path],
             check=True,
         )
-        print(f"[DEBUG] Ensured {path} exists.")
+        # print(f"[DEBUG] Ensured {path} exists.")
 
     # Step 2: Write to a temp file first
     temp_path = "/tmp/prosody.cfg.lua"
@@ -99,7 +101,7 @@ def ensure_prosody_config(container):
     proc = subprocess.Popen(cmd_temp, stdin=subprocess.PIPE)
     proc.communicate(input=minimal_cfg.encode())
     if proc.returncode != 0:
-        print("[DEBUG] Failed to write temp config.")
+        # print("[DEBUG] Failed to write temp config.")
         return
 
     # Step 3: Move temp file into place with sudo (root)
@@ -114,10 +116,6 @@ def ensure_prosody_config(container):
         "/etc/prosody/prosody.cfg.lua",
     ]
     result = subprocess.run(cmd_move)
-    if result.returncode == 0:
-        print("[DEBUG] Created minimal prosody.cfg.lua successfully.")
-    else:
-        print("[DEBUG] Failed to move config into place. Check permissions.")
 
 
 def create_prosody_user(container, user, domain, password):
@@ -150,10 +148,10 @@ def docker_exec(container, *args):
 
 
 def check_user_login(container: str, user: str, domain: str):
-    print(
-        f"[DEBUG] Checking login for user '{user}@{domain}' in container '{container}'...",
-        file=sys.stderr,
-    )
+    # print(
+    #    f"[DEBUG] Checking login for user '{user}@{domain}' in container '{container}'...",
+    #    file=sys.stderr,
+    # )
 
     try:
         # prosody stores accounts as .dat files
@@ -164,14 +162,14 @@ def check_user_login(container: str, user: str, domain: str):
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         if result.returncode == 0:
-            print(f"[DEBUG] User '{user}@{domain}' exists.", file=sys.stderr)
+            # print(f"[DEBUG] User '{user}@{domain}' exists.", file=sys.stderr)
             return True
         else:
-            print(f"[DEBUG] User '{user}@{domain}' does NOT exist.", file=sys.stderr)
+            # print(f"[DEBUG] User '{user}@{domain}' does NOT exist.", file=sys.stderr)
             return False
 
     except Exception as e:
-        print(f"[DEBUG] Error checking user '{user}@{domain}': {e}", file=sys.stderr)
+        # print(f"[DEBUG] Error checking user '{user}@{domain}': {e}", file=sys.stderr)
         return False
 
 

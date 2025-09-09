@@ -26,10 +26,10 @@ def main():
     ]
 
     if check_leak_indicators(log, exclude_keys + leak_indicators):
-        print("[FAIL] Confidential data leaked.")
+        # print("[FAIL] Confidential data leaked.")
         sys.exit(1)
     else:
-        print("[PASS] No confidential data leaked.")
+        # print("[PASS] No confidential data leaked.")
         sys.exit(0)
 
 
