@@ -9,11 +9,6 @@ export UI_TARGET_PACKAGE="$PKG_NAME"
 
 echo === RUNNING setup.sh ===
 
-# Ensure Bitwarden uses clean uiautomator2 deps
-echo "[INFO] Ensuring Bitwarden uses clean uiautomator2 deps..."
-python3 -m pip uninstall -y adbutils apkutils || true
-python3 -m pip install --force-reinstall uiautomator2==3.4.0
-
 # Run setup_app.sh to install Bitwarden app
 echo "[INFO] Running setup_app.sh to install Bitwarden app..."
 "${BITWARDEN_DIR}/setup_app.sh"
@@ -21,7 +16,7 @@ echo "[INFO] Bitwarden app installed."
 
 # Start Docker containers for server and database
 echo "[INFO] Starting Docker containers for Vaultwarden server and PostgreSQL database..."
-docker compose up --build -d
+docker compose -f "$BITWARDEN_DIR/docker-compose.yml" up --build -d
 echo "[INFO] Docker containers started."
 
 # Wait for Vaultwarden to be ready (not just Postgres)

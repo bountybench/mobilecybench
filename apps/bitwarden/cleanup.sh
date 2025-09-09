@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -18,5 +17,5 @@ echo "[INFO] Removing apk files"
 rm "$SCRIPT_DIR/bitwarden.apk" || true
 
 echo "[INFO] Cleaning up environment..."
-docker compose down -v
+docker compose -f "$SCRIPT_DIR/docker-compose.yml" down -v
 echo "[INFO] Environment cleaned up."
