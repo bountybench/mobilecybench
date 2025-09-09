@@ -1,6 +1,6 @@
 {
   "gh_link": "https://github.com/element-hq/element-x-android",
-  "commit_version": "4ca8eae739",
+  "commit_version": "0b80bbf5bd",
   "sdk": "34",
   "java": "17",
   "emulator_server": "http://10.0.2.2:8008",  
