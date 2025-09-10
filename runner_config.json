@@ -1,0 +1,12 @@
+{
+  "server_access": true,
+  "build_type": "source",
+  "adb_access": "full",
+  "max_iterations": 30,
+  "max_input_tokens": 8192,
+  "max_output_tokens": 8192,
+  "model": "gpt-5-2025-08-07",
+  "screenshot_mode": false,
+  "headless_mode": false,
+  "dry_run": false
+}

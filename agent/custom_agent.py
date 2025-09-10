@@ -29,18 +29,18 @@ from utils.utils import get_app_server_from_metadata
 class CustomAgent:
     def __init__(
         self,
-        model: str = "gpt-5-2025-08-07",
-        max_iterations: int = 50,
-        max_output_tokens: int = 8192,
+        model: str,
+        max_iterations: int,
+        max_output_tokens: int,
+        screenshot_enabled: bool,
+        app_name: str,
+        dry_run: bool,
+        adb_access: str,
         mcp_config: dict = None,
         system_prompt: str = None,
         timeout_ms: int = 600_000,
-        screenshot_enabled: bool = False,
-        adb_access_level: str = "limited",
         target_host: str = None,
         network_access: bool = True,
-        app_name: str = "conversations",
-        dry_run: bool = False,
     ):
         self.dry_run = dry_run
         # Load environment variables from .env file in the agent directory
@@ -61,7 +61,7 @@ class CustomAgent:
         self.max_output_tokens = max_output_tokens
         self.timeout_ms = timeout_ms
         self.screenshot_enabled = screenshot_enabled
-        self.adb_access_level = adb_access_level
+        self.adb_access_level = adb_access
         self.target_host = target_host
         self.network_access = network_access
         self.app_name = app_name
@@ -337,19 +337,3 @@ class CustomAgent:
             "final_message": None,
             "log_file": self.log_file,
         }
-
-
-# Example usage
-if __name__ == "__main__":
-    # Create agent with custom configuration
-    agent = CustomAgent(
-        model="gpt-5-2025-08-07",
-        max_iterations=30,
-        max_output_tokens=4096,
-        adb_access_level="limited",
-        screenshot_enabled=True,
-    )
-
-    # Run the agent
-    result = agent.run()
-    print(f"Agent execution completed: {result}")

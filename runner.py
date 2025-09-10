@@ -202,8 +202,9 @@ class CommandExecutor:
 
 
 class MobileCybenchRunner:
-    def __init__(self, app_name: str):
+    def __init__(self, app_name: str, config: dict):
         self.app_name = app_name
+        self.config = config
         self.project_root = project_root
         self.app_dir = self.project_root / "apps" / app_name
         self.agent_dir = self.project_root / "agent"
@@ -212,6 +213,17 @@ class MobileCybenchRunner:
         logger.info("=" * 80)
         logger.info(f"MobileCybench Runner Started")
         logger.info(f"App: {app_name}")
+        logger.info(f"Configuration:")
+        logger.info(f"  Server Access: {config['server_access']}")
+        logger.info(f"  Build Type: {config['build_type']}")
+        logger.info(f"  ADB Access: {config['adb_access']}")
+        logger.info(f"  Max Iterations: {config['max_iterations']}")
+        logger.info(f"  Max Input Tokens: {config['max_input_tokens']}")
+        logger.info(f"  Max Output Tokens: {config['max_output_tokens']}")
+        logger.info(f"  Model: {config['model']}")
+        logger.info(f"  Screenshot Mode: {config['screenshot_mode']}")
+        logger.info(f"  Headless Mode: {config['headless_mode']}")
+        logger.info(f"  Dry Run: {config['dry_run']}")
         logger.info(f"Timestamp: {datetime.datetime.now()}")
         logger.info("=" * 80)
 
@@ -457,12 +469,12 @@ class MobileCybenchRunner:
             logger.info("Creating CustomAgent instance")
 
             agent = CustomAgent(
-                model="gpt-5-2025-08-07",
-                max_iterations=1,
-                max_output_tokens=8192,
-                screenshot_enabled=True,
+                model=self.config["model"],
+                max_iterations=self.config["max_iterations"],
+                max_output_tokens=self.config["max_output_tokens"],
+                screenshot_enabled=self.config["screenshot_mode"],
                 app_name=self.app_name,
-                dry_run=True,  # Set to False for actual AI execution
+                dry_run=self.config["dry_run"],
             )
 
             logger.info("Running agent...")
@@ -591,6 +603,77 @@ class MobileCybenchRunner:
             # self.cleanup()
 
 
+def load_config(config_path: Path) -> dict:
+    """Load and validate configuration from JSON file"""
+    if not config_path.exists():
+        logger.error(f"Config file not found: {config_path}")
+        sys.exit(1)
+
+    try:
+        with open(config_path, "r") as f:
+            config = json.load(f)
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in config file: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Error reading config file: {e}")
+        sys.exit(1)
+
+    # Validate required fields
+    required_fields = [
+        "server_access",
+        "build_type",
+        "adb_access",
+        "max_iterations",
+        "max_input_tokens",
+        "max_output_tokens",
+        "model",
+        "screenshot_mode",
+        "headless_mode",
+        "dry_run",
+    ]
+
+    missing_fields = [field for field in required_fields if field not in config]
+    if missing_fields:
+        logger.error(f"Missing required config fields: {missing_fields}")
+        sys.exit(1)
+
+    # Validate field values
+    valid_choices = {
+        "build_type": ["source", "apk"],
+        "adb_access": ["none", "limited", "full"],
+    }
+
+    for field, choices in valid_choices.items():
+        if config[field] not in choices:
+            logger.error(
+                f"Invalid value for {field}: {config[field]}. Must be one of: {choices}"
+            )
+            sys.exit(1)
+
+    # Validate boolean fields
+    bool_fields = ["server_access", "screenshot_mode", "headless_mode", "dry_run"]
+    for field in bool_fields:
+        if not isinstance(config[field], bool):
+            logger.error(f"Field {field} must be a boolean (true/false)")
+            sys.exit(1)
+
+    # Validate integer fields
+    int_fields = ["max_iterations", "max_input_tokens", "max_output_tokens"]
+    for field in int_fields:
+        if not isinstance(config[field], int) or config[field] <= 0:
+            logger.error(f"Field {field} must be a positive integer")
+            sys.exit(1)
+
+    # Validate model field
+    if not isinstance(config["model"], str) or not config["model"].strip():
+        logger.error("Field 'model' must be a non-empty string")
+        sys.exit(1)
+
+    logger.info("Configuration validation passed")
+    return config
+
+
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(
@@ -599,11 +682,27 @@ def main():
     parser.add_argument(
         "app_name", help="Name of the app to test (must exist in apps/ directory)"
     )
+    parser.add_argument(
+        "config_file",
+        nargs="?",
+        default="runner_config.json",
+        help="Path to JSON configuration file (default: runner_config.json)",
+    )
 
     args = parser.parse_args()
 
+    # Load configuration from file
+    # If relative path, make it relative to the script directory
+    config_file = args.config_file
+    if not os.path.isabs(config_file):
+        config_path = project_root / config_file
+    else:
+        config_path = Path(config_file)
+
+    config = load_config(config_path)
+
     # Create and run the runner
-    runner = MobileCybenchRunner(args.app_name)
+    runner = MobileCybenchRunner(args.app_name, config)
     return runner.run()
 
 
