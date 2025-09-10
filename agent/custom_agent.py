@@ -23,7 +23,6 @@ from agent.prompts.prompts import (
 )
 from utils.logger import logger
 from utils.mcp_utils import get_mcp_server_config
-from utils.utils import get_app_server_from_metadata
 
 
 class CustomAgent:
@@ -31,15 +30,17 @@ class CustomAgent:
         self,
         model: str,
         max_iterations: int,
-        max_output_tokens: int,
+        max_model_response_tokens: int,
+        max_kali_message_tokens: int,
+        # TODO need to enforce this before sending off requests
+        max_context_length: int,
         screenshot_enabled: bool,
         app_name: str,
         dry_run: bool,
-        adb_access: str,
         mcp_config: dict = None,
         system_prompt: str = None,
         timeout_ms: int = 600_000,
-        target_host: str = None,
+        app_server: str = None,
         network_access: bool = True,
     ):
         self.dry_run = dry_run
@@ -58,11 +59,12 @@ class CustomAgent:
         self.client = OpenAI()
         self.model = model
         self.max_iterations = max_iterations
-        self.max_output_tokens = max_output_tokens
+        self.max_model_response_tokens = max_model_response_tokens
+        self.max_kali_message_tokens = max_kali_message_tokens
+        self.max_context_length = max_context_length
         self.timeout_ms = timeout_ms
         self.screenshot_enabled = screenshot_enabled
-        self.adb_access_level = adb_access
-        self.target_host = target_host
+        self.app_server = app_server
         self.network_access = network_access
         self.app_name = app_name
 
@@ -71,7 +73,7 @@ class CustomAgent:
 
         # Set up system prompt
         self.system_prompt = system_prompt or self._get_default_system_prompt(
-            target_host, network_access, app_name
+            app_server, network_access, app_name
         )
 
         # Initialize agent state
@@ -94,7 +96,7 @@ class CustomAgent:
 
     def _get_default_system_prompt(
         self,
-        target_host: str = None,
+        app_server: str = None,
         network_access: bool = False,
         app_name: str = None,
     ) -> dict:
@@ -102,13 +104,11 @@ class CustomAgent:
             DETECT_DESCRIPTION,
         ]
 
-        # Add app server information if network access is enabled and app_name is provided
-        if network_access and app_name:
-            app_server = get_app_server_from_metadata(app_name)
-            if app_server:
-                prompt_parts.extend(
-                    [SEPARATOR, APP_SERVER_ACCESS.format(app_server=app_server)]
-                )
+        # Add app server information if network access is enabled and app_server is provided
+        if network_access and app_server:
+            prompt_parts.extend(
+                [SEPARATOR, APP_SERVER_ACCESS.format(app_server=app_server)]
+            )
 
         prompt_parts.extend(
             [
@@ -122,12 +122,12 @@ class CustomAgent:
         )
 
         # Add target host example if provided
-        if target_host:
+        if app_server:
             prompt_parts.extend(
                 [
                     SEPARATOR,
                     TARGET_HOST_EXAMPLE.format(
-                        resolved_host=target_host, stop_token=STOP_TOKEN
+                        resolved_host=app_server, stop_token=STOP_TOKEN
                     ),
                 ]
             )
@@ -221,7 +221,7 @@ class CustomAgent:
                 model=self.model,
                 input=input_text.strip(),
                 tools=[self.mcp_config],
-                max_output_tokens=self.max_output_tokens,
+                max_output_tokens=self.max_model_response_tokens,
             )
             print(f"[Agent] API call completed")
 
@@ -268,7 +268,7 @@ class CustomAgent:
                         output = getattr(output_item, "output", "")
                         error = getattr(output_item, "error", None)
 
-                        print(f"[Agent] MCP call: {name} -> {str(output)[:100]}...")
+                        print(f"[Agent] MCP call: {name} -> {str(output)}...")
 
                         logger.info(f"MCP Call: {name}")
                         logger.info(f"  Arguments: {arguments}")
@@ -310,6 +310,7 @@ class CustomAgent:
                     # Execute command in Kali environment
                     result = self.run_command_in_kali(msg["command"])
                     kali_response = json.dumps(result)
+                    # TODO - trim kali response to max_kali_message_tokens before adding to conversation history
                     self.add_message("user", f"Kali result:\n{kali_response}")
                 else:
                     # If not a JSON command, treat as regular response

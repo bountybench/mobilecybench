@@ -25,6 +25,7 @@ sys.path.insert(0, str(project_root))
 from dotenv import load_dotenv
 
 from utils.logger import logger
+from utils.utils import get_app_metadata
 
 load_dotenv()
 
@@ -218,8 +219,11 @@ class MobileCybenchRunner:
         logger.info(f"  Build Type: {config['build_type']}")
         logger.info(f"  ADB Access: {config['adb_access']}")
         logger.info(f"  Max Iterations: {config['max_iterations']}")
-        logger.info(f"  Max Input Tokens: {config['max_input_tokens']}")
-        logger.info(f"  Max Output Tokens: {config['max_output_tokens']}")
+        logger.info(f"  Max Kali Message Tokens: {config['max_kali_message_tokens']}")
+        logger.info(
+            f"  Max Model Response Tokens: {config['max_model_response_tokens']}"
+        )
+        logger.info(f"  Max Context Length: {config['max_context_length']}")
         logger.info(f"  Model: {config['model']}")
         logger.info(f"  Screenshot Mode: {config['screenshot_mode']}")
         logger.info(f"  Headless Mode: {config['headless_mode']}")
@@ -242,16 +246,10 @@ class MobileCybenchRunner:
         if not self.app_dir.exists():
             self._exit_with_error(f"App directory not found: {self.app_dir}")
 
-        # Check for metadata.json
-        metadata_file = self.app_dir / "metadata.json"
-        if not metadata_file.exists():
-            self._exit_with_error(f"metadata.json not found: {metadata_file}")
-
-        # Validate metadata.json structure
+        # Validate metadata.json using get_app_metadata
         try:
-            with open(metadata_file) as f:
-                metadata = json.load(f)
-            logger.info(f"Metadata loaded: {metadata}")
+            self.metadata = get_app_metadata(self.app_name)
+            logger.info(f"Metadata loaded: {self.metadata}")
         except Exception as e:
             self._exit_with_error(f"Invalid metadata.json: {e}")
 
@@ -471,10 +469,13 @@ class MobileCybenchRunner:
             agent = CustomAgent(
                 model=self.config["model"],
                 max_iterations=self.config["max_iterations"],
-                max_output_tokens=self.config["max_output_tokens"],
+                max_model_response_tokens=self.config["max_model_response_tokens"],
+                max_kali_message_tokens=self.config["max_kali_message_tokens"],
+                max_context_length=self.config["max_context_length"],
                 screenshot_enabled=self.config["screenshot_mode"],
                 app_name=self.app_name,
                 dry_run=self.config["dry_run"],
+                app_server=self.metadata.get("app_server", None),
             )
 
             logger.info("Running agent...")
@@ -623,10 +624,12 @@ def load_config(config_path: Path) -> dict:
     required_fields = [
         "server_access",
         "build_type",
+        # TODO - implement adb allowlist based on this
         "adb_access",
         "max_iterations",
-        "max_input_tokens",
-        "max_output_tokens",
+        "max_kali_message_tokens",
+        "max_model_response_tokens",
+        "max_context_length",
         "model",
         "screenshot_mode",
         "headless_mode",
@@ -659,7 +662,12 @@ def load_config(config_path: Path) -> dict:
             sys.exit(1)
 
     # Validate integer fields
-    int_fields = ["max_iterations", "max_input_tokens", "max_output_tokens"]
+    int_fields = [
+        "max_iterations",
+        "max_kali_message_tokens",
+        "max_model_response_tokens",
+        "max_context_length",
+    ]
     for field in int_fields:
         if not isinstance(config[field], int) or config[field] <= 0:
             logger.error(f"Field {field} must be a positive integer")
