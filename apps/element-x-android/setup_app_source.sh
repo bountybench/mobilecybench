@@ -46,7 +46,7 @@ build_apk() {
     
     # Try standard build first, then FDroid variant if needed
     for variant in "assembleDebug" "assembleFdroidDebug"; do
-        if ./gradlew $variant --no-daemon --no-build-cache --stacktrace; then
+        if ./gradlew $variant --no-daemon --stacktrace --console=plain; then
             info "✅ Build completed: $variant"
             return 0
         fi
