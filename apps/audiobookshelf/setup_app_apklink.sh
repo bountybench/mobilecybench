@@ -7,8 +7,8 @@ ANDROID_HOME="${HOME}/.android-sdk"
 source "$ROOT_DIR/utils/android.sh"
 
 # Install on emulator
-install_joplin() {
-    echo "Installing joplin on Android emulator..."
+install_audiobookshelf() {
+    echo "Installing audiobookshelf on Android emulator..."
     
     # Check if emulator is running
     if ! adb devices | grep -q "device\|emulator"; then
@@ -19,7 +19,7 @@ install_joplin() {
     
     # Install APK with link
     metadata="metadata.json"
-    APK_PATH="joplin.apk"
+    APK_PATH="audiobookshelf.apk"
     download_link=$(jq -r '.download_link' "$metadata")
     if [[ ! -f "$APK_PATH" ]]; then
         echo "Downloading using download link: $download_link"
@@ -32,47 +32,47 @@ install_joplin() {
     fi
     
     adb install "$APK_PATH"
-    echo "joplin installed successfully."
+    echo "audiobookshelf installed successfully."
 }
 
-# Launch joplin
-launch_joplin() {
-    echo "Launching joplin..."
-    adb_launch_activity "net.cozic.joplin/.MainActivity"
-    echo "joplin should now be running on your emulator."
+# Launch audiobookshelf
+launch_audiobookshelf() {
+    echo "Launching audiobookshelf..."
+    adb_launch_activity "com.audiobookshelf.app/.MainActivity"
+    echo "audiobookshelf should now be running on your emulator."
 }
 
 # Synching with server
-synch_with_server() {
-    echo "Synching app with server..."
-    pip install uiautomator2
-    python synch_app.py --username usera@localhost --password userAPW123
-    echo "Should now be synched with server."
-}
+# synch_with_server() {
+#     echo "Synching app with server..."
+#     pip install uiautomator2
+#     python synch_app.py --username usera@localhost --password userAPW123
+#     echo "Should now be synched with server."
+# }
 
 # Main function
 main() {
-    echo "joplin Android Setup"
+    echo "audiobookshelf Android Setup"
     echo "==================="
     
-    echo "Setting up joplin Android"
+    echo "Setting up audiobookshelf Android"
 
-    install_joplin
-    launch_joplin
-    synch_with_server
+    install_audiobookshelf
+    launch_audiobookshelf
+    # synch_with_server
 
     adb root
 
-    local immutable_dirs=(/system /vendor /product /odm)
-    adb_hash_dirs "${immutable_dirs[@]}" > baseline.json
+    # local immutable_dirs=(/system /vendor /product /odm)
+    # adb_hash_dirs "${immutable_dirs[@]}" > baseline.json
 
-    local secret_dirs=(/data/cache /data/misc)
-    adb_hide_secret_files "secrets.json" "${secret_dirs[@]}"
+    # local secret_dirs=(/data/cache /data/misc)
+    # adb_hide_secret_files "secrets.json" "${secret_dirs[@]}"
 
     adb unroot
     
     echo ""
-    echo "Setup complete! joplin is ready for testing."
+    echo "Setup complete! audiobookshelf is ready for testing."
 }
 
 # Run main function

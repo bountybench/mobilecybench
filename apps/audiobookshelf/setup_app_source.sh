@@ -25,9 +25,9 @@ patch() {
 check_prerequisites() {
     echo "Checking prerequisites..."
     
-    # Check Java 17
+    # Check Java 21
     if ! command -v java >/dev/null 2>&1; then
-        echo "ERROR: Java not found. Please install Java 17."
+        echo "ERROR: Java not found. Please install Java 21."
         exit 1
     fi
 
@@ -49,15 +49,15 @@ check_prerequisites() {
 setup_environment() {
     echo "Setting up build environment..."
     
-    # Set Java 17
-    if [[ -d "/opt/homebrew/opt/openjdk@17" ]]; then
-        export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-    elif [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
-        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+    # Set Java 21
+    if [[ -d "/opt/homebrew/opt/openjdk@21" ]]; then
+        export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+    elif [[ -d "/usr/lib/jvm/java-21-openjdk" ]]; then
+        export JAVA_HOME=/usr/lib/jvm/java-21-openjdk
     elif command -v /usr/libexec/java_home &>/dev/null; then
-        export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
-    elif [[ -d "/c/Program Files/Java/jdk-17" ]]; then
-        export JAVA_HOME="/c/Program Files/Java/jdk-17"
+        export JAVA_HOME="$(/usr/libexec/java_home -v 21)"
+    elif [[ -d "/c/Program Files/Java/jdk-21" ]]; then
+        export JAVA_HOME="/c/Program Files/Java/jdk-21"
     else
         export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
     fi
@@ -108,6 +108,62 @@ build_audiobookshelf() {
         rm -f "$temp_out" "$temp_err"
         exit $exit_code
     fi
+
+    sign_apk
+}
+
+# Sign the release APK with debug keystore
+sign_apk() {
+    echo "Signing release APK..."
+
+    KEYSTORE_FILE="$HOME/.android/debug.keystore"
+    
+    # Check if the debug keystore exists, and create it if it doesn't.
+    if [ ! -f "$KEYSTORE_FILE" ]; then
+        echo "Debug keystore not found. Generating a new one..."
+        mkdir -p "$HOME/.android/"
+        keytool -genkey -v -keystore "$KEYSTORE_FILE" \
+                -alias androiddebugkey -keyalg RSA -keysize 2048 \
+                -validity 10000 -storepass android -keypass android \
+                -dname "CN=Android Debug, O=Android, C=US"
+        echo "Debug keystore generated at $KEYSTORE_FILE"
+    fi
+    
+    APK_UNSIGNED=$(find app/build/outputs/apk/release/ -name "*-release-unsigned.apk" -type f 2>/dev/null | head -1)
+    
+    if [[ -z "$APK_UNSIGNED" ]]; then
+        echo "No unsigned APK found to sign"
+    fi
+    
+    echo "Signing APK: $APK_UNSIGNED"
+    
+    # Use apksigner instead of deprecated jarsigner
+    if [[ -z "$ANDROID_HOME" ]]; then
+        fail "ANDROID_HOME not set, cannot find apksigner"
+    fi
+    
+    APKSIGNER="$ANDROID_HOME/build-tools/*/apksigner"
+    # Fix path for Windows MinGW users
+    if [[ "$OSTYPE" == "msys" ]]; then
+        {
+            APKSIGNER="$ANDROID_HOME/build-tools/*/apksigner.bat"
+        }
+    fi
+    APKSIGNER=$(ls $APKSIGNER 2>/dev/null | head -1)
+    
+    if [[ ! -f "$APKSIGNER" ]]; then
+        echo "apksigner not found, falling back to jarsigner"
+        jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA256 -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android "$APK_UNSIGNED" androiddebugkey
+    else
+        echo "Using apksigner: $APKSIGNER"
+        "$APKSIGNER" sign --ks "$HOME/.android/debug.keystore" --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --v2-signing-enabled true "$APK_UNSIGNED"
+    fi
+    
+    APK_SIGNED="${APK_UNSIGNED/-unsigned.apk/.apk}"
+    echo $APK_SIGNED
+    mv "$APK_UNSIGNED" "$APK_SIGNED"
+    
+    echo "Signed APK: $APK_SIGNED"
 }
 
 clear() {
