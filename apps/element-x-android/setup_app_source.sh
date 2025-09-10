@@ -58,6 +58,7 @@ build_apk() {
         "--max-workers=4"
         "-Porg.gradle.jvmargs=-Xmx8g"
         "-Pkotlin.incremental=true"
+        "-Pandroid.injected.build.abi=arm64-v8a"
         "-x" "lint"
         "-x" "lintDebug"
         "-x" "detekt"
@@ -66,37 +67,24 @@ build_apk() {
         "-x" "testDebugUnitTest"
     )
     
-    # Try only fastest variant first with 12 minute timeout
+    # Build only FDroid debug variant (fastest single variant)
     if command -v gtimeout >/dev/null 2>&1; then
-        TIMEOUT_CMD="gtimeout 720"
+        TIMEOUT_CMD="gtimeout 1200"
     elif command -v timeout >/dev/null 2>&1; then
-        TIMEOUT_CMD="timeout 720"
+        TIMEOUT_CMD="timeout 1200"
     else
         TIMEOUT_CMD=""
     fi
     
-    if $TIMEOUT_CMD ./gradlew assembleDebug "${BUILD_ARGS[@]}"; then
-        info "✅ Build completed: assembleDebug"
-        return 0
-    fi
-    
-    warn "Standard build failed, trying FDroid variant..."
+    info "Building FDroid debug variant only (fastest option)..."
     if $TIMEOUT_CMD ./gradlew assembleFdroidDebug "${BUILD_ARGS[@]}"; then
         info "✅ Build completed: assembleFdroidDebug"
         return 0
     fi
     
-    error "All build variants failed within time limit"
+    error "FDroid debug build failed within time limit"
 }
 
-find_apk() {
-    # Find any debug APK in build outputs
-    APK_PATH=$(find app/build/outputs/apk -name "*debug*.apk" -type f 2>/dev/null | head -1)
-    [[ -n "$APK_PATH" ]] || error "No APK found after build"
-    
-    info "✅ APK: $APK_PATH"
-    export APK_PATH
-}
 
 main() {
     info "Building Element X Android APK"
@@ -108,10 +96,8 @@ main() {
     check_prerequisites
     setup_environment
     build_apk
-    find_apk
     
     info "✅ Build completed successfully!"
-    info "APK: $APK_PATH"
 }
 
 main "$@"
