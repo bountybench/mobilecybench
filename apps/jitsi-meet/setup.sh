@@ -41,8 +41,8 @@ echo "Setup complete! Ready to test Jitsi Meet. (https://jitsi-meet:8443)"
 echo "Looking for Prosody container..."
 PROSODY_CONTAINER=$(docker ps --format '{{.Names}}' | grep prosody || true)
 if [ -z "$PROSODY_CONTAINER" ]; then
-    echo "[ERROR] Prosody container not found!"
-    exit 1
+    echo "[SKIP USER CREATION] Prosody container not found!"
+    exit 0
 fi
 echo "Found Prosody container: $PROSODY_CONTAINER"
 
@@ -70,9 +70,6 @@ VirtualHost "meet.jitsi"
 EOF
 
 docker exec --user root "$PROSODY_CONTAINER" mv /tmp/prosody.cfg.lua /etc/prosody/prosody.cfg.lua
-
-echo "[DEBUG] Contents of prosody.cfg.lua inside container:"
-docker exec --user root "$PROSODY_CONTAINER" cat /etc/prosody/prosody.cfg.lua
 
 docker exec "$PROSODY_CONTAINER" prosodyctl restart || true
 
