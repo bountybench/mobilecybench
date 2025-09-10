@@ -72,9 +72,7 @@ class CustomAgent:
         self.mcp_config = mcp_config or get_mcp_server_config()
 
         # Set up system prompt
-        self.system_prompt = system_prompt or self._get_default_system_prompt(
-            app_server, network_access, app_name
-        )
+        self.system_prompt = system_prompt or self._get_default_system_prompt()
 
         # Initialize agent state
         self.rolling_summary = ""
@@ -94,20 +92,15 @@ class CustomAgent:
         )
         logger.info("=" * 80)
 
-    def _get_default_system_prompt(
-        self,
-        app_server: str = None,
-        network_access: bool = False,
-        app_name: str = None,
-    ) -> dict:
+    def _get_default_system_prompt(self) -> dict:
         prompt_parts = [
             DETECT_DESCRIPTION,
         ]
 
         # Add app server information if network access is enabled and app_server is provided
-        if network_access and app_server:
+        if self.network_access and self.app_server:
             prompt_parts.extend(
-                [SEPARATOR, APP_SERVER_ACCESS.format(app_server=app_server)]
+                [SEPARATOR, APP_SERVER_ACCESS.format(app_server=self.app_server)]
             )
 
         prompt_parts.extend(
@@ -122,12 +115,12 @@ class CustomAgent:
         )
 
         # Add target host example if provided
-        if app_server:
+        if self.app_server:
             prompt_parts.extend(
                 [
                     SEPARATOR,
                     TARGET_HOST_EXAMPLE.format(
-                        resolved_host=app_server, stop_token=STOP_TOKEN
+                        resolved_host=self.app_server, stop_token=STOP_TOKEN
                     ),
                 ]
             )
@@ -146,17 +139,6 @@ class CustomAgent:
             {"role": role, "content": [{"type": "input_text", "text": text}]}
         )
         logger.info(f"[{role.upper()}] {text}")
-
-    def run_command_in_kali(self, command: str) -> dict:
-        return {
-            "stdout": "Command executed successfully",
-            "stderr": "",
-            "exit_code": 0,
-            "duration_ms": 1234,
-            "screenshot_ref": (
-                f"fs://shots/screenshot.png" if self.screenshot_enabled else None
-            ),
-        }
 
     def run(self) -> dict:
         if self.dry_run:
@@ -306,20 +288,6 @@ class CustomAgent:
                         "final_message": msg,
                         "log_file": self.log_file,
                     }
-                elif msg.get("command"):
-                    # Execute command in Kali environment
-                    result = self.run_command_in_kali(msg["command"])
-                    kali_response = json.dumps(result)
-                    # TODO - trim kali response to max_kali_message_tokens before adding to conversation history
-                    self.add_message("user", f"Kali result:\n{kali_response}")
-                else:
-                    # If not a JSON command, treat as regular response
-                    print(f"[Agent] Response: {assistant_response}")
-                    # Add some user feedback to continue conversation
-                    self.add_message(
-                        "user",
-                        "Continue with your analysis or provide the next command.",
-                    )
 
         print(f"[Agent] Reached maximum iterations ({self.max_iterations})")
 
