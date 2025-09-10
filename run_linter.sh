@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,11 +32,13 @@ done < <(
 
 # Filter to only paths that currently exist on disk
 FILES_TO_LINT=()
-for f in "${CANDIDATES[@]}"; do
-  if [ -n "$f" ] && [ -e "$f" ]; then
-    FILES_TO_LINT+=("$f")
-  fi
-done
+if [ ${#CANDIDATES[@]} -gt 0 ]; then
+  for f in "${CANDIDATES[@]}"; do
+    if [ -n "$f" ] && [ -e "$f" ]; then
+      FILES_TO_LINT+=("$f")
+    fi
+  done
+fi
 
 if [ ${#FILES_TO_LINT[@]} -gt 0 ]; then
     echo "Python files to lint:"
@@ -43,12 +46,18 @@ if [ ${#FILES_TO_LINT[@]} -gt 0 ]; then
     echo ""
 
     echo "Linting with ruff (style, errors, imports) and applying fixes..."
-    ruff check --select E,F,I --ignore E203 --line-length 120 --fix "${FILES_TO_LINT[@]}"
+    if ! ruff check --select E,F,I --ignore E203 --line-length 120 --fix "${FILES_TO_LINT[@]}"; then
+        echo "❌ Ruff found unfixable issues - please review and fix manually"
+        exit 1
+    fi
 
     echo "Running black to format after ruff fixes..."
-    black "${FILES_TO_LINT[@]}"
+    if ! black "${FILES_TO_LINT[@]}"; then
+        echo "❌ Black formatting failed"
+        exit 1
+    fi
 
-    echo "Formatting completed!"
+    echo "✅ All linting and formatting completed successfully!"
 else
     echo "No changed Python files to lint (excluding codebase paths)"
 fi
