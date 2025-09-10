@@ -74,7 +74,7 @@ install_and_launch_app() {
     [[ -n "$APK_PATH" ]] || error "No APK found. Run setup_app_source.sh first"
     
     info "Installing: $(basename "$APK_PATH")"
-    adb install -r "$APK_PATH" || error "APK installation failed"
+    adb install -r -t "$APK_PATH" || error "APK installation failed"
     
     # Clear app data and launch fresh
     info "Clearing Element X app data for fresh start..."
