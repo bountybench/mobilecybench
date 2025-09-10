@@ -21,4 +21,7 @@ chmod +x setup_app_source.sh
 
 echo "App is set up."
 
+# Give +x permission ahead of time to cleanup.sh so cleanup.sh can be run without any issues
+chmod +x cleanup.sh
+
 echo "Done."
