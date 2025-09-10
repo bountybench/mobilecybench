@@ -3,6 +3,8 @@ services:
         image: ghcr.io/advplyr/audiobookshelf:2.29.0
         ports:
             - 13378:80
+        networks:
+            - private_net
         # volumes:
         #     - </path/to/audiobooks>:/audiobooks
         #     - </path/to/podcasts>:/podcasts
@@ -58,7 +60,7 @@ services:
 #         environment:
 #             - POSTGRES_DB=${POSTGRES_DATABASE}
 
-# networks:
-#     shared_net:
-#         external: true
-#     private_net:
+networks:
+    shared_net:
+        external: true
+    private_net:

@@ -3,8 +3,8 @@
     "commit_version": "v0.10.0-beta",
     "sdk": "35",
     "java": "21",
-    "emulator_server": "http://10.0.2.2:22300",
-    "app_server": "http://joplin-app:22300",
+    "emulator_server": "http://10.0.2.2:13378",
+    "app_server": "http://joplin-app:13378",
     "username": "usera@localhost",
     "password": "userAPW123"
 }
