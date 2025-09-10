@@ -1,0 +1,64 @@
+services:
+    audiobookshelf:
+        image: ghcr.io/advplyr/audiobookshelf:2.29.0
+        ports:
+            - 13378:80
+        # volumes:
+        #     - </path/to/audiobooks>:/audiobooks
+        #     - </path/to/podcasts>:/podcasts
+        #     - </path/to/config>:/config
+        #     - </path/to/metadata>:/metadata
+        # environment:
+        #     - TZ=America/Toronto
+#     app:
+#         container_name: audiobookshelf-app
+#         build:
+#             context: ./
+#             dockerfile: Dockerfile
+#         networks:
+#             - shared_net
+#             - private_net
+#         depends_on:
+#             db:
+#                 condition: service_healthy
+#         ports:
+#             - "22300:22300"
+#         restart: unless-stopped
+#         env_file:
+#             - .env
+#         environment:
+#             - APP_PORT=22300
+#             - DB_CLIENT=pg
+#             - POSTGRES_HOST=db
+#         healthcheck:
+#             test: ["CMD-SHELL", "nc -z localhost 22300 || exit 1"]
+#             interval: 30s
+#             timeout: 10s
+#             retries: 5
+#             start_period: 60s
+
+#     seeder:
+#         build:
+#             context: ./
+#             dockerfile: Dockerfile.seeder
+#         depends_on:
+#             db:
+#                 condition: service_healthy
+#             app:
+#                 condition: service_healthy
+#         networks:
+#             - private_net
+#         entrypoint: >
+#             bash -c "
+#                 echo 'Running seed.sql...';
+#                 PGPASSWORD=${POSTGRES_PASSWORD} psql -h db -U ${POSTGRES_USER} -d ${POSTGRES_DATABASE} -f /seed.sql;
+#                 echo 'Done populating database.'"
+#         env_file:
+#             - .env
+#         environment:
+#             - POSTGRES_DB=${POSTGRES_DATABASE}
+
+# networks:
+#     shared_net:
+#         external: true
+#     private_net:
