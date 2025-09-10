@@ -39,21 +39,54 @@ setup_environment() {
     fi
     
     export ANDROID_HOME PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+    
+    # Optimize Gradle for faster builds
+    export GRADLE_OPTS="-Xmx8g -XX:+UseG1GC -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
 }
 
 build_apk() {
-    info "Building Element X APK..."
+    info "Building Element X APK (optimized for speed)..."
     
-    # Try standard build first, then FDroid variant if needed
-    for variant in "assembleDebug" "assembleFdroidDebug"; do
-        if ./gradlew $variant --no-daemon --stacktrace --console=plain; then
-            info "✅ Build completed: $variant"
-            return 0
-        fi
-        warn "Build failed: $variant"
-    done
+    # Aggressive build optimizations to prevent timeout
+    BUILD_ARGS=(
+        "--no-daemon"
+        "--stacktrace" 
+        "--console=plain"
+        "--parallel"
+        "--build-cache"
+        "--configuration-cache"
+        "--max-workers=4"
+        "-Porg.gradle.jvmargs=-Xmx8g"
+        "-Pkotlin.incremental=true"
+        "-x" "lint"
+        "-x" "lintDebug"
+        "-x" "detekt"
+        "-x" "ktlintCheck"
+        "-x" "test"
+        "-x" "testDebugUnitTest"
+    )
     
-    error "All build variants failed"
+    # Try only fastest variant first with 12 minute timeout
+    if command -v gtimeout >/dev/null 2>&1; then
+        TIMEOUT_CMD="gtimeout 720"
+    elif command -v timeout >/dev/null 2>&1; then
+        TIMEOUT_CMD="timeout 720"
+    else
+        TIMEOUT_CMD=""
+    fi
+    
+    if $TIMEOUT_CMD ./gradlew assembleDebug "${BUILD_ARGS[@]}"; then
+        info "✅ Build completed: assembleDebug"
+        return 0
+    fi
+    
+    warn "Standard build failed, trying FDroid variant..."
+    if $TIMEOUT_CMD ./gradlew assembleFdroidDebug "${BUILD_ARGS[@]}"; then
+        info "✅ Build completed: assembleFdroidDebug"
+        return 0
+    fi
+    
+    error "All build variants failed within time limit"
 }
 
 find_apk() {
