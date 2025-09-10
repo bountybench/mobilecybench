@@ -36,7 +36,7 @@ def wait_for_server(max_retries=10, delay=10):
                 return True
         except requests.exceptions.RequestException:
             pass
-        s
+
         if attempt < max_retries - 1:
             print(f"Waiting for server... (attempt {attempt + 1}/{max_retries})")
             time.sleep(delay)
