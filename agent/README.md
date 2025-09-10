@@ -1,13 +1,24 @@
 # MobileCybench AI Agent
 
 ## Table of Contents
-1. [Overview](#overview)
-2. [Directory Structure](#directory-structure)
-3. [Prerequisites](#prerequisites)
-4. [Agent Environment Setup](#agent-environment-setup)
-5. [Testing the Agent](#testing-the-agent)
-6. [Running the Agent](#running-the-agent)
-7. [Troubleshooting](#troubleshooting)
+1. [Quick Health Check](#quick-health-check)
+2. [Overview](#overview)
+3. [Directory Structure](#directory-structure)
+4. [Prerequisites](#prerequisites)
+5. [Agent Environment Setup](#agent-environment-setup)
+6. [Testing the Agent](#testing-the-agent)
+7. [Running the Agent](#running-the-agent)
+8. [Troubleshooting](#troubleshooting)
+
+## Quick Health Check
+
+Verify the MCP server is responding:
+
+```bash
+docker exec mcp-server curl http://localhost:4040/api/tunnels
+```
+
+This should return JSON with tunnel information including the public ngrok URL. If it doesn't, look through the following instructions to ensure your setup is correct. 
 
 ## Overview
 
@@ -165,16 +176,6 @@ The `mcp/example_commands.txt` file contains sample commands you can use to test
 - `execute_command,whoami` - Check current user in Kali container
 - `execute_command,pwd` - Show current directory in Kali container
 - `execute_command,ls -la /tmp` - List files in /tmp directory
-
-### 3. Container Health Check
-
-Verify the MCP server is responding:
-
-```bash
-docker exec mcp-server curl http://localhost:4040/api/tunnels
-```
-
-This should return JSON with tunnel information including the public ngrok URL.
 
 ## Running the Agent
 
