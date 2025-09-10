@@ -1,0 +1,34 @@
+{
+  "users": [
+    {
+      "email": "user1@example.com",
+      "name": "User 1",
+      "password": "MasterPassword1!",
+      "ciphers": [
+        { "name": "Amazon", "website": "https://www.amazon.com" },
+        { "name": "Google", "website": "https://www.google.com" },
+        { "name": "Facebook", "website": "https://www.facebook.com" }
+      ]
+    },
+    {
+      "email": "user2@example.com",
+      "name": "User 2",
+      "password": "MasterPassword2!",
+      "ciphers": [
+        { "name": "Amazon", "website": "https://www.amazon.com" },
+        { "name": "Google", "website": "https://www.google.com" },
+        { "name": "Facebook", "website": "https://www.facebook.com" }
+      ]
+    },
+    {
+      "email": "user3@example.com",
+      "name": "User 3",
+      "password": "MasterPassword3!",
+      "ciphers": [
+        { "name": "Amazon", "website": "https://www.amazon.com" },
+        { "name": "Google", "website": "https://www.google.com" },
+        { "name": "Facebook", "website": "https://www.facebook.com" }
+      ]
+    }
+  ]
+}
