@@ -10,7 +10,7 @@ if [[ -z "${CI:-}" && -z "${GITHUB_ACTIONS:-}" ]]; then
 fi
 
 echo "Removing config files from the HA app"
-sudo chmod -R u+w config && sudo rm -rf config/*
+sudo chmod -R u+w config && sudo rm -rf config
 
 echo "Stopping all services..."
 docker compose down -v
