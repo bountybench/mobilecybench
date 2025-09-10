@@ -25,3 +25,6 @@ url = https://github.com/cy-suite/conversations.git
 [submodule "apps/bitwarden/codebase"]
 	path = apps/bitwarden/codebase
 	url = https://github.com/cy-suite/bitwarden.git
+[submodule "apps/termux/codebase"]
+	path = apps/termux/codebase
+	url = https://github.com/cy-suite/termux.git
