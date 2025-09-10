@@ -138,7 +138,27 @@ main() {
 
     root_dir="$(pwd)"
 
+    # Apply local SDK patch (sdk34.patch) from repo root if present and not yet applied
+    apply_sdk34_patch() {
+        local PATCH_FILE="$SCRIPT_DIR/sdk34.patch"
+        if [[ -f "$PATCH_FILE" ]]; then
+            echo "Applying SDK 34 patch..."
+            if git -C "$SCRIPT_DIR" apply --check "$PATCH_FILE" >/dev/null 2>&1; then
+                if git -C "$SCRIPT_DIR" apply "$PATCH_FILE"; then
+                    echo "SDK 34 patch applied."
+                else
+                    echo "Failed to apply SDK 34 patch (git apply error)."
+                fi
+            else
+                echo "SDK 34 patch already applied or not cleanly applicable. Skipping."
+            fi
+        else
+            echo "No sdk34.patch file at $PATCH_FILE (nothing to apply)."
+        fi
+    }
+
     if [[ -d "codebase/packages/app-mobile" ]]; then
+        apply_sdk34_patch
         echo "Navigating to codebase/packages/app-mobile directory..."
         cd codebase/packages/app-mobile
     else
