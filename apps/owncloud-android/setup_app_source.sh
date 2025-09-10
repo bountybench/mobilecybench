@@ -73,9 +73,9 @@ build_owncloud() {
     sign_apk
 }
 
-# Sign the release APK with debug keystore
+# Sign the release APK with debug keystore using modern APK signing
 sign_apk() {
-    info "Signing release APK (debug keystore)..."
+    info "Signing release APK (debug keystore with v2+ signature scheme)..."
 
     KEYSTORE_FILE="$HOME/.android/debug.keystore"
     
@@ -99,116 +99,45 @@ sign_apk() {
     
     APK_SIGNED="${APK_UNSIGNED/-unsigned.apk/.apk}"
     
-    jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android "$APK_UNSIGNED" androiddebugkey
+    # Use apksigner for SDK 30+ compatibility (supports v2+ signature schemes)
+    local apksigner_path="$ANDROID_HOME/build-tools"
+    local apksigner_tool=""
     
-    mv "$APK_UNSIGNED" "$APK_SIGNED"
-    
-    info "Signed APK: $APK_SIGNED"
-}
-
-check_installed_version() {
-    # Check if emulator is running
-    if ! adb devices | grep -q "device\|emulator"; then
-        error "No Android emulator found. Please start the emulator first."
-    fi
-    
-    # Check if ownCloud is installed
-    INSTALLED_PACKAGES=$(adb shell pm list packages | grep owncloud || true)
-    
-    if [[ -z "$INSTALLED_PACKAGES" ]]; then
-        warn "ownCloud not installed on the device. Install before checking version."
-        return 1
-    fi
-    
-    info "Installed ownCloud packages:\n$INSTALLED_PACKAGES"
-    
-    # Get version information for release version if available
-    if echo "$INSTALLED_PACKAGES" | grep -q "com.owncloud.android"; then
-        echo ""
-        echo "Release version details:"
-        VERSION_INFO=$(adb shell dumpsys package com.owncloud.android | grep -E "versionCode|versionName")
-        echo "$VERSION_INFO"
-        
-        # Check APK path and compare with built version
-        echo ""
-        echo "Checking for built APK files..."
-        
-        # Find the actual built APK dynamically
-        BUILT_APK=$(find owncloudApp/build/outputs/apk/original/release/ -name "*-original-release.apk" -type f 2>/dev/null | head -1)
-        
-        if [[ -n "$BUILT_APK" ]]; then
-            echo "Found built APK: $BUILT_APK"
-            BUILT_APK_SIZE=$(stat -f%z "$BUILT_APK" 2>/dev/null || echo "Unknown")
-            echo "Built APK size: $BUILT_APK_SIZE bytes"
-        else
-            echo "No built APK found in owncloudApp/build/outputs/apk/original/release/"
-            echo "Available APK files:"
-            find owncloudApp/build/outputs -name "*.apk" -type f 2>/dev/null | head -5
+    # Find the latest build-tools version that has apksigner
+    if [[ -d "$apksigner_path" ]]; then
+        local latest_build_tools
+        latest_build_tools=$(ls -1 "$apksigner_path" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1)
+        if [[ -n "$latest_build_tools" && -f "$apksigner_path/$latest_build_tools/apksigner" ]]; then
+            apksigner_tool="$apksigner_path/$latest_build_tools/apksigner"
+            info "Using apksigner from build-tools $latest_build_tools"
         fi
     fi
     
-    # Check installation time
-    echo ""
-    echo "Installation details:"
-    if echo "$INSTALLED_PACKAGES" | grep -q "com.owncloud.android"; then
-        INSTALL_TIME=$(adb shell dumpsys package com.owncloud.android | grep -E "firstInstallTime|lastUpdateTime")
-        echo "Release version:"
-        echo "$INSTALL_TIME"
-    fi
-    
-    echo ""
-    echo "Version check completed."
-}
-
-install_owncloud() {
-    info "Installing ownCloud on Android emulator..."
-    
-    # Check if emulator is running
-    if ! adb devices | grep -q "device\|emulator"; then
-        error "No Android emulator found. Please start the emulator first."
-    fi
-    
-    # Find the built APK
-    echo "Looking for built APK..."
-    APK_PATH=$(find owncloudApp/build/outputs/apk/original/release/ -name "*-original-release.apk" -type f 2>/dev/null | head -1)
-    
-    if [[ -z "$APK_PATH" ]]; then
-        warn "No original release APK found. Listing available APKs (first 10):"
-        find owncloudApp/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
-        error "Cannot proceed without APK."
-    fi
-    
-    info "Found APK: $APK_PATH"
-    info "Uninstalling previous versions if present"
-    adb uninstall com.owncloud.android 2>/dev/null || true
-    adb uninstall com.owncloud.android.debug 2>/dev/null || true
-    adb install "$APK_PATH"
-    info "ownCloud installed successfully."
-}
-
-launch_owncloud() {
-    info "Launching ownCloud..."
-    
-    # Launch the app
-    if adb shell pm list packages | grep -q "com.owncloud.android" && ! adb shell pm list packages | grep -q "com.owncloud.android.debug"; then
-        info "Launching release version"
-        adb shell am start -n com.owncloud.android/com.owncloud.android.ui.activity.SplashActivity
-        PACKAGE_NAME="com.owncloud.android"
-    elif adb shell pm list packages | grep -q "com.owncloud.android.debug"; then
-        info "Launching debug version"
-        adb shell am start -n com.owncloud.android.debug/com.owncloud.android.ui.activity.SplashActivity
-        PACKAGE_NAME="com.owncloud.android.debug"
+    if [[ -n "$apksigner_tool" && -x "$apksigner_tool" ]]; then
+        info "Signing with apksigner (v1+v2 schemes for SDK 30+ compatibility)"
+        "$apksigner_tool" sign \
+            --ks "$KEYSTORE_FILE" \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --out "$APK_SIGNED" \
+            "$APK_UNSIGNED"
     else
-        error "No ownCloud package found"
+        error "apksigner not found. Required for SDK 30+ compatibility. Please ensure Android build-tools are properly installed."
     fi
     
-    sleep 1
+    info "Signed APK: $APK_SIGNED"
     
-    # Verify the app is running
-    if adb shell dumpsys window | grep -q "mCurrentFocus.*$PACKAGE_NAME"; then
-        info "ownCloud launched successfully"
-    else
-        warn "ownCloud may not have launched properly (focus not detected)."
+    # Verify the signature
+    if [[ -n "$apksigner_tool" && -x "$apksigner_tool" ]]; then
+        info "Verifying APK signature..."
+        if "$apksigner_tool" verify "$APK_SIGNED"; then
+            info "APK signature verification successful"
+        else
+            warn "APK signature verification failed"
+        fi
     fi
 }
 
@@ -216,21 +145,6 @@ launch_owncloud() {
 main() {
     info "ownCloud Android Setup"
     echo "====================="
-    
-    if [[ "$1" == "check-version" ]]; then
-        info "Checking installed ownCloud version"
-        
-        # Navigate to owncloud codebase directory for version check
-        CODEBASE_DIR="$SCRIPT_DIR/codebase"
-        if [[ -d "$CODEBASE_DIR" ]]; then
-            cd "$CODEBASE_DIR"
-        fi
-        
-        check_installed_version
-        exit 0
-    fi
-    
-    info "Setting up ownCloud Android from current git checkout"
     
     CODEBASE_DIR="$SCRIPT_DIR/codebase"
     if [[ ! -d "$CODEBASE_DIR" ]]; then
@@ -246,16 +160,11 @@ main() {
     check_prerequisites
     setup_environment
     build_owncloud
-    install_owncloud
-    launch_owncloud
     
     echo ""
     echo "=========================================="
-    info "Setup complete! ownCloud is ready for testing."
+    info "OwnCloud Build complete! ownCloud is ready to be installed"
     echo "=========================================="
-    echo ""
-    echo "./setup_app.sh check-version                    # Check installed version"
-    echo "Main Activity: com.owncloud.android.ui.activity.SplashActivity"
     echo ""
 }
 

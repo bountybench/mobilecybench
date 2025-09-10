@@ -16,3 +16,15 @@
 [submodule "apps/zulip/codebase"]
 	path = apps/zulip/codebase
 	url = https://github.com/cy-suite/zulip-flutter
+[submodule "apps/openvpn/codebase"]
+	path = apps/openvpn/codebase
+	url = https://github.com/cy-suite/OpenVPN-Android.git
+[submodule "apps/conversations/codebase"]
+	path = apps/conversations/codebase
+	url = https://github.com/cy-suite/conversations.git
+[submodule "apps/bitwarden/codebase"]
+	path = apps/bitwarden/codebase
+	url = https://github.com/cy-suite/bitwarden.git
+[submodule "apps/termux/codebase"]
+	path = apps/termux/codebase
+	url = https://github.com/cy-suite/termux.git
