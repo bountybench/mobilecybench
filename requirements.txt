@@ -1,5 +1,5 @@
 adbutils==2.9.4
-apkutils==1.5.9
+apkutils==2.0.2
 annotated-types==0.5.0
 anyio==3.7.1
 build==1.2.1
