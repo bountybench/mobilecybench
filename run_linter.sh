@@ -9,7 +9,7 @@ echo "Running linter from directory: $(pwd)"
 # Install linting dependencies
 echo "Installing linting dependencies..."
 python -m pip install --upgrade pip
-pip install "black==24.10.0" "isort==5.13.2"
+pip install "black==24.10.0" "ruff==0.13.0"
 
 # Get changed Python files (modified, staged, untracked), excluding deleted and "codebase" paths
 echo "Finding changed Python files (excluding codebase paths)..."
@@ -42,11 +42,11 @@ if [ ${#FILES_TO_LINT[@]} -gt 0 ]; then
     printf '%s\n' "${FILES_TO_LINT[@]}"
     echo ""
 
-    echo "Running black to fix formatting..."
-    black "${FILES_TO_LINT[@]}"
+    echo "Linting with ruff (style, errors, imports) and applying fixes..."
+    ruff check --select E,F,I --ignore E203 --line-length 120 --fix "${FILES_TO_LINT[@]}"
 
-    echo "Running isort to fix imports..."
-    isort --profile black "${FILES_TO_LINT[@]}"
+    echo "Running black to format after ruff fixes..."
+    black "${FILES_TO_LINT[@]}"
 
     echo "Formatting completed!"
 else
