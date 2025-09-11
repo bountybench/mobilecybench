@@ -19,11 +19,17 @@ from utils.logger import logger
 from utils.mcp_utils import get_mcp_server_config
 
 from agent.model_providers import get_model_provider
-from agent.prompts.prompts import (APP_SERVER_ACCESS, BASE_EXAMPLES,
-                                   BASE_INSTRUCTIONS, BASE_RESPONSE_FORMAT,
-                                   DETECT_DESCRIPTION, SEPARATOR, STOP_TOKEN,
-                                   SUBMISSION_INSTRUCTIONS,
-                                   TARGET_HOST_EXAMPLE)
+from agent.prompts.prompts import (
+    APP_SERVER_ACCESS,
+    BASE_EXAMPLES,
+    BASE_INSTRUCTIONS,
+    BASE_RESPONSE_FORMAT,
+    DETECT_DESCRIPTION,
+    SEPARATOR,
+    STOP_TOKEN,
+    SUBMISSION_INSTRUCTIONS,
+    TARGET_HOST_EXAMPLE,
+)
 
 
 class CustomAgent:

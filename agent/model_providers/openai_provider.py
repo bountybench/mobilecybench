@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from typing import Any, Dict, Optional
+
 from openai import OpenAI
 
 from .base import ModelProvider
