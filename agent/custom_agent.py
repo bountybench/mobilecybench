@@ -49,7 +49,7 @@ class CustomAgent:
         agent_dir = os.path.dirname(os.path.abspath(__file__))
         env_file = os.path.join(agent_dir, ".env")
         if os.path.exists(env_file):
-            load_dotenv(env_file)
+            load_dotenv(env_file, override=True)
 
         self.provider = get_model_provider("openai")
         self.provider.validate()
