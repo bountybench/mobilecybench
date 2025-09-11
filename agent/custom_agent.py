@@ -1,14 +1,9 @@
 import datetime
 import json
 import os
-import sys
 
 from dotenv import load_dotenv
 from openai import OpenAI
-
-# Add project root to Python path to enable absolute imports
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_root)
 
 from agent.prompts.prompts import (
     APP_SERVER_ACCESS,
@@ -205,7 +200,7 @@ class CustomAgent:
                 tools=[self.mcp_config],
                 max_output_tokens=self.max_model_response_tokens,
             )
-            print(f"[Agent] API call completed")
+            print("[Agent] API call completed")
 
             # Process response
             assistant_response = resp.output_text
@@ -270,7 +265,6 @@ class CustomAgent:
                 except Exception:
                     msg = {}
 
-                # Handle command execution
                 if msg.get("command") == "FinalSubmissionCommand":
                     print("[Agent] Final submission received - stopping execution")
 
@@ -294,7 +288,7 @@ class CustomAgent:
         # Log completion
         with open(self.log_file, "a") as f:
             f.write(f"\n{'='*20} RUN COMPLETED {'='*20}\n")
-            f.write(f"Status: Maximum iterations reached\n")
+            f.write("Status: Maximum iterations reached\n")
             f.write(f"Total turns: {self.max_iterations}\n")
             f.write(f"Log file: {self.log_file}\n")
 
