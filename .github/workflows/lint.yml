@@ -33,10 +33,10 @@ jobs:
           pip install "black==24.10.0" "isort==5.13.2"
           MODIFIED_PY_FILES=$(git diff --name-only --diff-filter=d origin/main HEAD | grep ".py$" || echo "")
           if [ -n "$MODIFIED_PY_FILES" ]; then
+            echo "Running isort on modified files..."
+            echo "$MODIFIED_PY_FILES" | xargs isort --check
             echo "Running black on modified files..."
             echo "$MODIFIED_PY_FILES" | xargs black --check
-            echo "Running isort on modified files..."
-            echo "$MODIFIED_PY_FILES" | xargs isort --check --profile black
           else
             echo "No modified Python files to lint"
           fi
