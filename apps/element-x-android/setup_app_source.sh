@@ -102,6 +102,9 @@ build_element_x() {
         --parallel \
         --build-cache \
         --configuration-cache \
+        -Dorg.gradle.jvmargs="-Xmx4g -XX:+UseParallelGC -XX:MaxMetaspaceSize=1g" \
+        -Pkotlin.incremental=true \
+        -Pkotlin.compiler.execution.strategy=in-process \
         -Pandroid.injected.build.abi="$arch" \
         -PabiFilters="$arch" \
         -x test \
@@ -109,7 +112,10 @@ build_element_x() {
         -x detekt \
         -x ktlintCheck \
         -x testDebugUnitTest \
-        -x lintDebug
+        -x lintDebug \
+        -x compileDebugUnitTestSources \
+        -x generateDebugUnitTestSources \
+        -x processDebugUnitTestManifest
     
     info "Build completed successfully."
 }
