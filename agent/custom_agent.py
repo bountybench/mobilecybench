@@ -3,7 +3,6 @@ import json
 import os
 
 from dotenv import load_dotenv
-from openai import OpenAI
 
 from agent.prompts.prompts import (
     APP_SERVER_ACCESS,
@@ -18,6 +17,13 @@ from agent.prompts.prompts import (
 )
 from utils.logger import logger
 from utils.mcp_utils import get_mcp_server_config
+
+from agent.model_providers import get_model_provider
+from agent.prompts.prompts import (APP_SERVER_ACCESS, BASE_EXAMPLES,
+                                   BASE_INSTRUCTIONS, BASE_RESPONSE_FORMAT,
+                                   DETECT_DESCRIPTION, SEPARATOR, STOP_TOKEN,
+                                   SUBMISSION_INSTRUCTIONS,
+                                   TARGET_HOST_EXAMPLE)
 
 
 class CustomAgent:
@@ -45,13 +51,8 @@ class CustomAgent:
         if os.path.exists(env_file):
             load_dotenv(env_file)
 
-        # Check for required OpenAI API key
-        if not os.getenv("OPENAI_API_KEY"):
-            raise ValueError(
-                "OPENAI_API_KEY environment variable is required but not set"
-            )
-
-        self.client = OpenAI()
+        self.provider = get_model_provider("openai")
+        self.provider.validate()
         self.model = model
         self.max_iterations = max_iterations
         self.max_model_response_tokens = max_model_response_tokens
@@ -194,11 +195,12 @@ class CustomAgent:
             logger.info(input_text.strip())
             logger.info("-" * 40)
 
-            resp = self.client.responses.create(
+            resp = self.provider.call(
                 model=self.model,
-                input=input_text.strip(),
+                input_text=input_text.strip(),
                 tools=[self.mcp_config],
                 max_output_tokens=self.max_model_response_tokens,
+                timeout_ms=self.timeout_ms,
             )
             print("[Agent] API call completed")
 
