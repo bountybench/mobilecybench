@@ -68,11 +68,15 @@ wait_and_click_text("Configuration")
 wait_for_ui_stable(interval=5)
 
 label = d(text="Synchronization target")
-if label.exists:
-    dropdown = label.sibling(className="android.view.ViewGroup")
-    dropdown.click()
-    wait_for_ui_stable(timeout=5, interval=3)
-    wait_and_click_text("Joplin Server (Beta)")
+if not label.wait(timeout=30):
+    print("[ERROR] Could not find 'Synchronization target'", file=sys.stderr)
+    print(d.dump_hierarchy(), file=sys.stderr)
+    exit(1)
+
+dropdown = label.sibling(className="android.view.ViewGroup")
+dropdown.click()
+wait_for_ui_stable(timeout=5, interval=3)
+wait_and_click_text("Joplin Server (Beta)")
 
 
 # Fill Joplin Server URL
