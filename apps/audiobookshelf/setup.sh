@@ -5,15 +5,6 @@ set -e
 ABS_URL="http://localhost:13378"
 ADMIN_USERNAME="admin"
 ADMIN_PASSWORD="DG*76ao%DC*&^<Ouidht"
-LIBRARY_NAME="My Audiobooks"
-LIBRARY_PATH="/audiobooks" # This MUST be the path inside the container
-
-# pip install uiautomator2
-# pip install psycopg2-binary
-# pip install bcrypt
-
-# echo "Generating uuids..."
-# python generate_uuid.py
 
 echo "Running Docker compose..."
 docker compose up --build -d

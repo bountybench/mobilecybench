@@ -39,12 +39,12 @@ launch_audiobookshelf() {
 }
 
 # Synching with server
-# synch_with_server() {
-#     echo "Synching app with server..."
-#     pip install uiautomator2
-#     python synch_app.py --username usera@localhost --password userAPW123
-#     echo "Should now be synched with server."
-# }
+synch_with_server() {
+    echo "Synching app with server..."
+    pip install uiautomator2
+    python synch_app.py --username usera@localhost --password userAPW123
+    echo "Should now be synched with server."
+}
 
 # Main function
 main() {
@@ -58,24 +58,7 @@ main() {
     install_audiobookshelf
     launch_audiobookshelf
     cd "$root_dir"
-    # synch_with_server
-
-    for i in {1..3}; do
-        adb wait-for-device
-        if adb root; then
-            break
-        fi
-        echo "Retrying adb root..."
-        sleep 5
-    done
-
-    # local immutable_dirs=(/system /vendor /product /odm)
-    # adb_hash_dirs "${immutable_dirs[@]}" > baseline.json
-
-    # local secret_dirs=(/data/cache /data/misc)
-    # adb_hide_secret_files "secrets.json" "${secret_dirs[@]}"
-
-    adb unroot
+    synch_with_server
     
     echo ""
     echo "Setup complete! audiobookshelf is ready for testing."
