@@ -69,9 +69,17 @@ install_and_launch_app() {
         return 1
     fi
     
-    # Find APK
-    APK_PATH=$(find "$SCRIPT_DIR/codebase" -name "*universal*.apk" -o -name "*debug*.apk" | head -1)
-    [[ -n "$APK_PATH" ]] || error "No APK found. Run setup_app_source.sh first"
+    # Detect device architecture
+    DEVICE_ARCH=$(adb shell getprop ro.product.cpu.abi | tr -d '\r\n')
+    info "Detected device architecture: $DEVICE_ARCH"
+    
+    # Find correct APK - prefer device architecture, fallback to universal
+    APK_PATH=$(find "$SCRIPT_DIR/codebase" -name "*-$DEVICE_ARCH-debug.apk" | head -1)
+    if [[ -z "$APK_PATH" ]]; then
+        info "No $DEVICE_ARCH APK found, trying universal APK"
+        APK_PATH=$(find "$SCRIPT_DIR/codebase" -name "*universal*debug.apk" | head -1)
+    fi
+    [[ -n "$APK_PATH" ]] || error "No suitable APK found. Run setup_app_source.sh first"
     
     info "Installing: $(basename "$APK_PATH")"
     adb install -r -t "$APK_PATH" || error "APK installation failed"
