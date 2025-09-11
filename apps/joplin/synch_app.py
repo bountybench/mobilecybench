@@ -65,7 +65,7 @@ def wait_for_ui_stable(timeout=60, interval=0.5):
 wait_for_ui_stable(timeout=120, interval=1)
 wait_and_click_desc("Sidebar, Show/hide the sidebar")
 wait_and_click_text("Configuration")
-wait_for_ui_stable(interval=1)
+wait_for_ui_stable(interval=5)
 
 label = d(text="Synchronization target")
 if label.exists:
@@ -83,6 +83,9 @@ if label.exists:
     wait_for_ui_stable(timeout=5)
     edit.set_text("http://10.0.2.2:22300")  # Direct text input instead of send_keys()
     d.press("enter")
+else:
+    print("[ERROR] Could not find Joplin Server URL label", file=sys.stderr)
+    exit(1)
 wait_for_ui_stable(timeout=5)
 
 # Fill Joplin Server email
@@ -93,6 +96,9 @@ if label.exists:
     wait_for_ui_stable(timeout=5)
     edit.set_text(username)  # Direct text input instead of send_keys()
     d.press("enter")
+else:
+    print("[ERROR] Could not find Joplin Server email label", file=sys.stderr)
+    exit(1)
 wait_for_ui_stable(timeout=5)
 
 # Fill Joplin Server password
@@ -103,6 +109,9 @@ if label.exists:
     wait_for_ui_stable(timeout=5)
     edit.set_text(password)  # Direct text input instead of send_keys()
     d.press("enter")
+else:
+    print("[ERROR] Could not find Joplin Server password label", file=sys.stderr)
+    exit(1)
 wait_for_ui_stable(timeout=5, interval=1)
 
 wait_and_click_text("CHECK SYNCHRONIZATION CONFIGURATION")
