@@ -436,31 +436,45 @@ That's it! The emulator is ready for testing.
 
 ## MCP Interaction
 
-First, obtain an ngrok token by going to https://ngrok.com, signing up, and then create an ngrok.yml file at `agent/mcp/ngrok.yml` with your token. Your file should look like: 
+The AI agent is located in the `agent/` directory.
 
-    version: 2
-    authtoken: {YOUR_AUTHTOKEN_HERE}
-    tunnels:
-      web:
-        proto: http
-        addr: 8000
+### Quick Setup
 
+1. **Configure ngrok token:**
+   - Go to https://ngrok.com and sign up
+   - **Create** `agent/mcp/ngrok.yml` from template (not tracked by git for security):
+   ```bash
+   # Copy the template to create your ngrok.yml file
+   cp agent/mcp/ngrok.yml.template agent/mcp/ngrok.yml
+   
+   # Edit the file and replace YOUR_NGROK_AUTHTOKEN_HERE with your actual token
+   nano agent/mcp/ngrok.yml
+   ```
 
-Then, run the following commands to start the emulator, mcp, and kali containers: 
+2. **Start the system:**
+   ```bash
+   ./setup.sh
+   ./start_emulator.sh
+   cd agent/
+   docker-compose up --build -d
+   ```
 
+3. **Set up Python environment:**
+   ```bash
+   # From project root
+   source venv/bin/activate
+   pip install -r requirements.txt
+   export OPENAI_API_KEY="your-api-key-here"
+   ```
 
-    ./setup.sh
-    ./start_emulator.sh
-    docker-compose up --build
+4. **Test the agent:**
+   ```bash
+   python test_ai_interaction.py
+   ```
 
+### Detailed Setup
 
-Next, activate the virtual environment and isntall required dependencies:
-
-    source venv/bin/activate
-    pip install -r requirements.txt
-
-The agent will be able to access the kali container as well as your android emulator with its set of possible tools. 
-
-Finally, you can start interacting with the agent via running 
-
-    python test_ai_interaction.py 
+For comprehensive setup instructions, see the [Agent README](agent/README.md) which includes:
+- Detailed directory structure explanation
+- Step-by-step setup instructions
+- Testing procedures using example commands

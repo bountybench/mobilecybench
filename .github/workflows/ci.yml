@@ -84,8 +84,8 @@ jobs:
 
           sdk=$(jq -r '.sdk' $metadata)
           if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
-              echo "${ERROR} Could not extract SDK from $metadata. Use default (28)."
-              sdk=28
+              echo "ERROR: Could not extract SDK from $metadata."
+              exit 1
           else 
               echo "SDK: $sdk"
           fi

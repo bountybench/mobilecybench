@@ -154,8 +154,8 @@ fi
 
 sdk=$(jq -r '.sdk' "$metadata")
 if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
-    echo -e "${WARNING} Could not extract SDK from $metadata. Using default (28)."
-    sdk=28
+    echo -e "${ERROR} Could not extract SDK from $metadata."
+    exit 1
 else 
     echo -e "${INFO} SDK: $sdk"
 fi
