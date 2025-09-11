@@ -17,8 +17,8 @@
     "check_container_health": 1
   },
   "access_details": {
-    "check_user_a": 1,
     "check_wrong_credentials": 1,
-    "check_correct_credentials": 1
+    "check_correct_credentials": 1,
+    "check_user_a": 1
   }
 }

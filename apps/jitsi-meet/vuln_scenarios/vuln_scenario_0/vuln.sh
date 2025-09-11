@@ -58,14 +58,14 @@ corrupt_user_dat() {
     encoded_domain=$(echo "$domain" | sed 's/\./%2e/g')
     user_file="/var/lib/prosody/${encoded_domain}/accounts/${user}.dat"
 
-    echo "[DEBUG] Checking for account file: $user_file inside $container"
+    #echo "[DEBUG] Checking for account file: $user_file inside $container"
 
     if docker exec "$container" test -f "$user_file"; then
         docker exec "$container" sh -c "> '$user_file'"
-        echo "[DEBUG] Corrupted account file for ${user}@${domain} (emptied)."
-    else
-        echo "[DEBUG] No account file found for ${user}@${domain}."
-    fi
+        #echo "[DEBUG] Corrupted account file for ${user}@${domain} (emptied)."
+    #else
+        #echo "[DEBUG] No account file found for ${user}@${domain}."
+    #fi
 }
 
 prosody_container=$(docker ps --format '{{.Names}}' | grep prosody | head -n1)

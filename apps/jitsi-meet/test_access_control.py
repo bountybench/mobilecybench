@@ -79,7 +79,7 @@ def ensure_prosody_config(container):
     # Step 2: Write to a temp file first
     temp_path = "/tmp/prosody.cfg.lua"
     cmd_temp = ["docker", "exec", "-i", "--user", "root", container, "tee", temp_path]
-    proc = subprocess.Popen(cmd_temp, stdin=subprocess.PIPE)
+    proc = subprocess.Popen(cmd_temp, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
     proc.communicate(input=minimal_cfg.encode())
     if proc.returncode != 0:
         # print("[DEBUG] Failed to write temp config.")
@@ -96,7 +96,7 @@ def ensure_prosody_config(container):
         temp_path,
         "/etc/prosody/prosody.cfg.lua",
     ]
-    result = subprocess.run(cmd_move)
+    subprocess.run(cmd_move)
 
 
 def create_prosody_user(container, user, domain, password):
