@@ -65,7 +65,7 @@ corrupt_user_dat() {
         #echo "[DEBUG] Corrupted account file for ${user}@${domain} (emptied)."
     #else
         #echo "[DEBUG] No account file found for ${user}@${domain}."
-    #fi
+    fi
 }
 
 prosody_container=$(docker ps --format '{{.Names}}' | grep prosody | head -n1)
