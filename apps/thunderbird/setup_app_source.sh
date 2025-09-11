@@ -50,16 +50,19 @@ setup_environment() {
   echo "Environment configured."
 }
 
-build_from_source() { 
-  # echo "Building from source..."
-  # ./gradlew --no-daemon clean assembleDebug \
-  #   -Dorg.gradle.jvmargs="-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8"
-  # echo "Build completed successfully."
-
+build_from_source() {  
   echo "Building Thunderbird from source..."
-  ./gradlew --no-daemon --build-cache --parallel \
+  # ./gradlew --no-daemon clean --parallel \
+  #   :app-thunderbird:assembleFullDebug \
+  #   -Dorg.gradle.jvmargs="-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8"
+
+  # hopefully CI safe approach 
+  ./gradlew \
     :app-thunderbird:assembleFullDebug \
-    -Dorg.gradle.jvmargs="-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8"
+    -Dorg.gradle.jvmargs="-Dfile.encoding=UTF-8 -Xms512m -Xmx3g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError -XX:+UseG1GC" \
+    -Dkotlin.daemon.jvm.options="-Dfile.encoding=UTF-8,-Xms256m,-Xmx2g,-XX:+UseG1GC" \
+    -Dorg.gradle.workers.max=2 \
+    --stacktrace --build-cache
   echo "Build completed successfully."
 }
 
@@ -99,7 +102,8 @@ synch_with_server() {
 
 launch_thunderbird() {
   echo "Launching Thunderbird..."
-  adb shell monkey -p net.thunderbird.android -c android.intent.category.LAUNCHER 1 
+  # adb shell monkey -p net.thunderbird.android -c android.intent.category.LAUNCHER 1 
+  adb shell monkey -p net.thunderbird.android.debug -c android.intent.category.LAUNCHER 1 
 }
 
 main() {
@@ -109,8 +113,8 @@ main() {
   setup_environment
   build_from_source
   install_thunderbird
-  synch_with_server
   launch_thunderbird
+  synch_with_server
   echo "Setup complete!"
 }
 
