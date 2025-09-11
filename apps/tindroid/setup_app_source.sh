@@ -3,34 +3,67 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ANDROID_HOME="${HOME}/.android-sdk"
+
+LOG_PREFIX="[setup_app_source]"
+LOG_FILE="${SCRIPT_DIR}/setup_app_source.log"
+# Duplicate outputs to console and log file
+exec > >(tee -a "$LOG_FILE") 2>&1
+info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
+warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
+error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
+
+# Set Android SDK path - handle both local development and CI environments
+if [[ -n "$ANDROID_HOME" && -d "$ANDROID_HOME" ]]; then
+    # Use existing ANDROID_HOME if set and valid
+    info "Using existing ANDROID_HOME: $ANDROID_HOME"
+elif [[ -d "/usr/local/lib/android/sdk" ]]; then
+    # GitHub Actions default path
+    ANDROID_HOME="/usr/local/lib/android/sdk"
+    info "Using GitHub Actions Android SDK path: $ANDROID_HOME"
+elif [[ -d "${HOME}/.android-sdk" ]]; then
+    # Local development default path
+    ANDROID_HOME="${HOME}/.android-sdk"
+    info "Using local development Android SDK path: $ANDROID_HOME"
+else
+    error "Android SDK not found in any expected location"
+fi
 
 # Check prerequisites
 check_prerequisites() {
-    echo "Checking prerequisites..."
+    info "Checking prerequisites (Java and Android SDK)..."
     
-    # Check Java 17
+    # Check Java
     if ! command -v java >/dev/null 2>&1; then
-        echo "ERROR: Java not found. Please install Java 17."
-        exit 1
+        error "Java not found. Please install Java 17."
     fi
     
     # Check Android SDK
     if [[ ! -d "$ANDROID_HOME" ]]; then
-        echo "ERROR: Android SDK not found at $ANDROID_HOME"
-        echo "Please run the Android emulator setup first."
-        exit 1
+        error "Android SDK not found at $ANDROID_HOME. Please run the Android emulator setup first."
     fi
     
-    echo "Prerequisites verified."
+    info "Prerequisites verified."
 }
 
-# Setup environment
 setup_environment() {
-    echo "Setting up build environment..."
+    info "Setting up build environment..."
     
-    # Set Java 17
-    export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+    # Set Java 17 - use existing JAVA_HOME if available, otherwise fallback to macOS path
+    if [[ -n "$JAVA_HOME" && -d "$JAVA_HOME" ]]; then
+        info "Using existing JAVA_HOME: $JAVA_HOME"
+    elif [[ -d "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ]]; then
+        # macOS Homebrew path
+        export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+        info "Using macOS Homebrew JAVA_HOME: $JAVA_HOME"
+    elif [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
+        # Linux path
+        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+        info "Using Linux JAVA_HOME: $JAVA_HOME"
+    else
+        warn "Could not find Java 17 via known paths. Using system default."
+        export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
+    fi
+    
     export PATH="$JAVA_HOME/bin:$PATH"
     
     # Set Android SDK
@@ -47,7 +80,7 @@ storePassword=android
 keyAlias=androiddebugkey
 keyPassword=android" >> keystore.properties
     else
-    echo "storeFile=debug.keystore
+        echo "storeFile=debug.keystore
 storePassword=android
 keyAlias=androiddebugkey
 keyPassword=android" > keystore.properties
@@ -57,102 +90,55 @@ keyPassword=android" > keystore.properties
     # The Tindroid app requires Firebase services for all build variants.
     # Copy google-services.json from the Tindroid root directory to app/google-services.json inside the codebase directory.
     if [ ! -f ../google-services.json ]; then
-        echo "ERROR: google-services.json not found in the Tindroid root directory."
-        echo "Please copy a valid google-services.json file to the Tindroid root directory."
-        exit 1
+        error "google-services.json not found in the Tindroid root directory. Please copy a valid google-services.json file to the Tindroid root directory."
     else
         cp "../google-services.json" "app/google-services.json"
     fi
     
-    echo "Environment configured."
+    info "Environment configured."
 }
 
 # Build Tindroid APK
 build_tindroid() {
-    echo "Building Tindroid Android from source..."
-    echo "This will take several minutes..."
+    # Check if APK already exists
+    APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+    if [[ -f "$APK_PATH" ]]; then
+        info "APK already exists at $APK_PATH - skipping build"
+        return 0
+    fi
+    
+    info "Building Tindroid Android from source (this may take several minutes)..."
     
     # Build with Gradle and override JVM args to fix Java 8+ compatibility
     ./gradlew assembleDebug -Dorg.gradle.jvmargs="-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8"
     
-    echo "Build completed successfully."
+    info "Build completed successfully."
 }
 
-# Install on emulator
-install_tindroid() {
-    echo "Installing Tindroid on Android emulator..."
-    
-    # Check if emulator is running
-    if ! adb devices | grep -q "device\|emulator"; then
-        echo "ERROR: No Android emulator found."
-        echo "Please start the emulator first."
-        exit 1
-    fi
-    
-    # Install universal APK with correct path
-    APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
-    
-    if [[ ! -f $APK_PATH ]]; then
-        echo "ERROR: APK not found at $APK_PATH"
-        echo "Available APKs:"
-        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
-        exit 1
-    fi
-    
-    adb install "$APK_PATH"
-    echo "Tindroid installed successfully."
-}
-
-# Setup connection to local Tinode server
-setup_local_server_connection() {
-    echo "Configuring connection to local Tinode server..."
-    
-    # Verify local Tinode server is accessible
-    # By default, Tindroid debug build will connect to Tinode server at 10.0.2.2:6060 (emulator)
-    echo "Checking local Tinode server accessibility..."
-    if curl -s http://localhost:6060 >/dev/null 2>&1; then
-        echo "✅ Local Tinode server is running and accessible"
-    else
-        echo "⚠️  Warning: Local Tinode server may not be accessible at localhost:6060"
-        echo "   Make sure your Tinode server is running: docker ps"
-    fi
-}
-
-# Launch Tindroid
-launch_tindroid() {
-    echo "Launching Tindroid..."
-    adb shell am start -n co.tinode.tindroidx/co.tinode.tindroid.InitRouterActivity
-    echo "Tindroid should now be running on your emulator."
-    echo ""
-    echo "If connecting to local server, use: 10.0.2.2:6060 (emulator) or 192.168.4.41:6060 (device)"
-}
-
-# Main function
 main() {
-    echo "Tindroid Android Setup"
-    echo "==================="
+    info "Tindroid Android Setup"
+    echo "====================="
     
-    # Navigate to codebase directory
+    CODEBASE_DIR="$SCRIPT_DIR/codebase"
+    if [[ ! -d "$CODEBASE_DIR" ]]; then
+        error "Tindroid codebase directory not found at $CODEBASE_DIR"
+    fi
+    
+    cd "$CODEBASE_DIR"
+    
     if [[ ! -f "gradlew" ]]; then
-        if [[ -d "codebase" ]]; then
-            echo "Navigating to codebase directory..."
-            cd codebase
-        else
-                    echo "ERROR: Not in Tindroid Android directory and codebase/ not found."
-        echo "Please run this script from the project root or Tindroid codebase directory."
-            exit 1
-        fi
+        error "gradlew not found in codebase directory."
     fi
     
     check_prerequisites
     setup_environment
     build_tindroid
-    install_tindroid
-    setup_local_server_connection
-    launch_tindroid
     
     echo ""
-    echo "Setup complete! Tindroid is ready for testing."
+    echo "=========================================="
+    info "Tindroid Build complete! Tindroid is ready to be installed"
+    echo "=========================================="
+    echo ""
 }
 
 # Run main function
