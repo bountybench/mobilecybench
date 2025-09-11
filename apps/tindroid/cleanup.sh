@@ -44,5 +44,8 @@ fi
 echo "Removing log files recursively..."
 find . -type f -name "*.log" -delete
 
+echo "Removing virtual environment..."
+rm -rf ./venv
+
 echo "Cleanup complete!" 
 echo "==================="

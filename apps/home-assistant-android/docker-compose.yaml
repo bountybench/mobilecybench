@@ -1,0 +1,22 @@
+services:
+  home-assistant-server:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: home-assistant-server
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8123 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    volumes:
+      - ./config:/config
+      - ./seeded-onboarding-file:/config/.storage/onboarding
+
+networks:
+  private_net:
+    driver: bridge
+    internal: true
+  shared_net:
