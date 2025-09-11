@@ -12,7 +12,7 @@ index 4c70c36b2..dcfddb7c4 100644
  
 -        compileSdkVersion = 31
 -        targetSdkVersion = 31
-+        compileSdkVersion = 33
++        compileSdkVersion = 34
 +        targetSdkVersion = 34
  
          if (System.properties['os.arch'] == "aarch64") {
