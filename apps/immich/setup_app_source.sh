@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the Immich Flutter app from source (no emulator).
-# Schema role: CI step before emulator is started.
+# Intended for Linux CI/agents. Idempotently installs FVM + Flutter if missing.
 
 set -euo pipefail
 IFS=$'\n\t'
@@ -10,95 +10,162 @@ CODEBASE_DIR="$SCRIPT_DIR/codebase/mobile"
 LOG_PREFIX="[setup_app_source]"
 LOG_FILE="${SCRIPT_DIR}/setup_app_source.log"
 
-# Duplicate output to console and log
-exec > >(tee -a "$LOG_FILE") 2>&1
+# Optional: INSTALL_ANDROID=true to attempt Android SDK bootstrap (best-effort)
+INSTALL_ANDROID="${INSTALL_ANDROID:-false}"
 
+# ---- logging ----
+exec > >(tee -a "$LOG_FILE") 2>&1
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
 fail(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
 command_exists(){ command -v "$1" >/dev/null 2>&1; }
 
-check_prerequisites() {
-    info "Checking prerequisites..."
+# ---- Bootstrap FVM + Flutter (Linux) ----
+bootstrap_fvm_and_flutter() {
+  info "Bootstrapping FVM and Flutter toolchain (Linux)..."
 
-    # Flutter via FVM
-    if command_exists fvm; then
-        info "FVM found: $(fvm --version)"
-    elif command_exists flutter; then
-        warn "FVM not found, using system Flutter: $(flutter --version)"
-    else
-        fail "Flutter/FVM not found. Install Flutter via FVM."
-    fi
+  # Where 'dart pub global' installs FVM
+  export PATH="$HOME/.pub-cache/bin:$PATH"
 
-    # Dart
+  if ! command_exists fvm; then
     if ! command_exists dart; then
-        fail "Dart SDK not found (should come with Flutter)."
+      # Install a local Flutter SDK to obtain Dart
+      info "Dart not found; installing Flutter SDK (stable) locally under ~/.flutter ..."
+      mkdir -p "$HOME/.flutter"
+      if [ ! -d "$HOME/.flutter/flutter" ]; then
+        # Download stable channel tarball
+        curl -sSL https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_stable.tar.xz \
+          | tar -xJf - -C "$HOME/.flutter"
+      fi
+      export PATH="$HOME/.flutter/flutter/bin:$PATH"
+      command_exists dart || fail "Dart still not found after Flutter install."
     fi
 
-    info "Prerequisites verified."
+    info "Installing FVM via 'dart pub global activate fvm'..."
+    dart pub global activate fvm >/dev/null
+    export PATH="$HOME/.pub-cache/bin:$PATH"
+    command_exists fvm || fail "FVM not on PATH after install."
+  else
+    info "FVM present: $(fvm --version)"
+  fi
+
+  # Ensure project Flutter via FVM
+  if [ ! -d "$CODEBASE_DIR" ]; then
+    fail "Immich codebase not found at $CODEBASE_DIR"
+  fi
+
+  pushd "$CODEBASE_DIR" >/dev/null
+  if [ -f ".fvm/fvm_config.json" ]; then
+    info "Using pinned Flutter from .fvm/fvm_config.json"
+    fvm install
+    fvm use
+  else
+    info "No .fvm config; using stable channel"
+    fvm install stable
+    fvm use stable
+  fi
+  fvm flutter --version
+  fvm flutter doctor -v || true
+  popd >/dev/null
+
+  info "FVM + Flutter bootstrap complete."
 }
 
+# ---- Optional Android SDK (Linux best-effort) ----
+maybe_install_android_sdk() {
+  [ "$INSTALL_ANDROID" = "true" ] || { info "Skipping Android SDK install (INSTALL_ANDROID=false)."; return 0; }
+
+  info "Attempting Android SDK bootstrap (Linux)..."
+  if command_exists sdkmanager; then
+    info "sdkmanager present."
+  else
+    export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$HOME/android-sdk}"
+    mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+    if [ ! -d "$ANDROID_SDK_ROOT/cmdline-tools/latest" ]; then
+      info "Installing Android cmdline-tools..."
+      tmpzip="$(mktemp -t cmdline-tools-XXXXX.zip)"
+      curl -sSL "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -o "$tmpzip"
+      mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+      unzip -q "$tmpzip" -d "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+      rm -f "$tmpzip"
+    fi
+    export PATH="$PATH:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin"
+  fi
+
+  if command_exists sdkmanager; then
+    yes | sdkmanager --licenses >/dev/null 2>&1 || true
+    sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" || \
+      warn "sdkmanager package install failed; ensure network access and cmdline-tools are valid."
+    info "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-unset}"
+  else
+    warn "sdkmanager still not found; APK build may fail without Android SDK."
+  fi
+}
+
+# ---- Verify prerequisites after bootstrap ----
+check_prerequisites() {
+  info "Verifying prerequisites..."
+  command_exists fvm || fail "FVM not found after bootstrap."
+  info "FVM: $(fvm --version)"
+  command_exists dart || fail "Dart SDK not found after bootstrap."
+  info "Dart: $(dart --version 2>&1 | head -n1)"
+  info "Prerequisites verified."
+}
+
+# ---- Prepare project ----
 setup_environment() {
-    info "Setting up build environment..."
+  info "Setting up build environment..."
+  cd "$CODEBASE_DIR"
 
-    cd "$CODEBASE_DIR"
+  info "Fetching Flutter dependencies..."
+  fvm flutter pub get
 
-    # Run pub get
-    info "Fetching Flutter dependencies..."
-    if command_exists fvm; then
-        fvm flutter pub get
+  info "Generating translation/localization files..."
+  if make translation; then
+    info "Translations generated with make."
+  else
+    warn "make translation failed; trying 'fvm flutter gen-l10n'..."
+    if fvm flutter gen-l10n; then
+      info "Translations generated via flutter gen-l10n."
     else
-        flutter pub get
+      warn "gen-l10n failed; attempting easy_localization fallback..."
+      dart run easy_localization:generate -S ../i18n -O lib/generated || true
+      dart run bin/generate_keys.dart || true
+      info "Fallback translation generation attempted."
     fi
+  fi
 
-    # Generate translations
-    info "Generating translation files..."
-    if make translation; then
-        info "✅ Translations generated with make."
-    else
-        warn "⚠️  make translation failed; running fallback Dart commands..."
-        dart run easy_localization:generate -S ../i18n -O lib/generated
-        dart run bin/generate_keys.dart
-        info "✅ Translations generated via fallback."
-    fi
-
-    info "Environment setup complete."
+  info "Environment setup complete."
 }
 
+# ---- Build APK ----
 build_immich() {
-    info "Building Immich APK..."
+  info "Building Immich APK (release)..."
+  fvm flutter build apk --release
 
-    if command_exists fvm; then
-        fvm flutter build apk --release
-    else
-        flutter build apk --release
-    fi
-
-    APK_PATH="$CODEBASE_DIR/build/app/outputs/flutter-apk/app-release.apk"
-    if [[ -f "$APK_PATH" ]]; then
-        info "✅ Build complete: $APK_PATH"
-    else
-        fail "❌ APK not found after build."
-    fi
+  local apk_path="$CODEBASE_DIR/build/app/outputs/flutter-apk/app-release.apk"
+  if [[ -f "$apk_path" ]]; then
+    info "✅ Build complete: $apk_path"
+  else
+    fail "APK not found after build."
+  fi
 }
 
 main() {
-    info "Immich Android Source Build"
-    echo "============================"
+  info "Immich Android Source Build"
+  echo "============================"
 
-    if [[ ! -d "$CODEBASE_DIR" ]]; then
-        fail "Immich codebase not found at $CODEBASE_DIR"
-    fi
+  bootstrap_fvm_and_flutter
+  maybe_install_android_sdk
+  check_prerequisites
+  setup_environment
+  build_immich
 
-    check_prerequisites
-    setup_environment
-    build_immich
-
-    echo ""
-    echo "=========================================="
-    info "Immich Build complete! APK is ready."
-    echo "=========================================="
-    echo ""
+  echo ""
+  echo "=========================================="
+  info "Immich Build complete! APK is ready."
+  echo "=========================================="
+  echo ""
 }
 
 main "$@"
