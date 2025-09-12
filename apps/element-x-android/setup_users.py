@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import json
 import time
 
 import requests
@@ -79,7 +78,7 @@ def create_room(name, access_token):
             print(f"✅ Created room: {name} ({room_id})")
             return room_id
         return None
-    except:
+    except Exception:
         return None
 
 
@@ -92,7 +91,7 @@ def get_access_token(username, password):
         )
         if response.status_code == 200:
             return response.json()["access_token"]
-    except:
+    except Exception:
         pass
     return None
 

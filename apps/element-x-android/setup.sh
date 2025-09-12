@@ -73,11 +73,21 @@ install_and_launch_app() {
     DEVICE_ARCH=$(adb shell getprop ro.product.cpu.abi | tr -d '\r\n')
     info "Detected device architecture: $DEVICE_ARCH"
     
-    # Find correct APK - prefer device architecture, fallback to universal
-    APK_PATH=$(find "$SCRIPT_DIR/codebase" -name "*-$DEVICE_ARCH-debug.apk" | head -1)
+    # Find correct APK - check dist directory first, then codebase build outputs
+    APK_PATH=$(find "$SCRIPT_DIR/dist" -name "*-$DEVICE_ARCH-debug.apk" | head -1)
+    if [[ -z "$APK_PATH" ]]; then
+        APK_PATH=$(find "$SCRIPT_DIR/codebase" -name "*-$DEVICE_ARCH-debug.apk" | head -1)
+    fi
     if [[ -z "$APK_PATH" ]]; then
         info "No $DEVICE_ARCH APK found, trying universal APK"
+        APK_PATH=$(find "$SCRIPT_DIR/dist" -name "*universal*debug.apk" | head -1)
+    fi
+    if [[ -z "$APK_PATH" ]]; then
         APK_PATH=$(find "$SCRIPT_DIR/codebase" -name "*universal*debug.apk" | head -1)
+    fi
+    if [[ -z "$APK_PATH" ]]; then
+        # Fallback to fdroid debug APK built by setup_app_source.sh
+        APK_PATH=$(find "$SCRIPT_DIR/codebase" -name "app-fdroid-debug.apk" | head -1)
     fi
     [[ -n "$APK_PATH" ]] || error "No suitable APK found. Run setup_app_source.sh first"
     

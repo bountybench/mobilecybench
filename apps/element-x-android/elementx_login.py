@@ -92,7 +92,7 @@ def main():
                             text = text_elements[i].get_text()
                             if text and len(text.strip()) > 0:
                                 visible_texts.append(text.strip())
-                        except:
+                        except Exception:
                             pass
                     print(f"🔍 Visible texts: {visible_texts[:5]}", file=sys.stderr)
                 except Exception as e:
@@ -191,7 +191,8 @@ def main():
                                     )  # Assume clickable for images
 
                                     print(
-                                        f"🔍 Trying {elem_type}[{i}]: bounds={element_bounds}, desc='{content_desc}', clickable={is_clickable}",
+                                        f"🔍 Trying {elem_type}[{i}]: bounds={element_bounds}, "
+                                        f"desc='{content_desc}', clickable={is_clickable}",
                                         file=sys.stderr,
                                     )
                                     element.click()
@@ -252,7 +253,8 @@ def main():
                                 class_name = element_info.get("className", "")
 
                                 print(
-                                    f"🔍 Clickable element {i}: class={class_name}, bounds={element_bounds}, desc='{content_desc}'",
+                                    f"🔍 Clickable element {i}: class={class_name}, "
+                                    f"bounds={element_bounds}, desc='{content_desc}'",
                                     file=sys.stderr,
                                 )
 
@@ -465,7 +467,7 @@ def main():
                                     text = text_elements[i].get_text()
                                     if text and len(text.strip()) > 0:
                                         visible_texts.append(text.strip())
-                                except:
+                                except Exception:
                                     pass
                             print(f"🔍 Visible texts: {visible_texts}", file=sys.stderr)
                         except Exception as e:
