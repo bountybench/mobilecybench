@@ -40,6 +40,12 @@ bootstrap_prereqs() {
     info "npm present: $(npm --version)"
   fi
 
+  # install pnpm globally so pnpx is available (pnpm provides the pnpx shim)
+  if ! command -v pnpx >/dev/null 2>&1; then
+    info "Installing pnpm globally (provides pnpx)..."
+    sudo npm i -g pnpm@8
+  fi
+
   # --- FVM + Flutter (your existing logic) ---
   export PATH="$HOME/.pub-cache/bin:$PATH"
 
