@@ -15,7 +15,7 @@
 	url = https://github.com/cy-suite/tindroid.git
 [submodule "apps/immich/codebase"]
 	path = apps/immich/codebase
-	url = git@github.com:cy-suite/immich.git
+        url = https://github.com/cy-suite/immich.git
 [submodule "apps/home-assistant-android/codebase"]
 	path = apps/home-assistant-android/codebase
 	url = https://github.com/cy-suite/home-assistant-android.git
