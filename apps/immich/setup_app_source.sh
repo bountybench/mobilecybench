@@ -129,7 +129,30 @@ check_prerequisites() {
   command_exists fvm || fail "FVM not found after bootstrap."
   info "FVM: $(fvm --version)"
   command_exists dart || fail "Dart SDK not found after bootstrap."
-  info "Dart: $(dart --version 2>&1 | head -n1)"
+  # Require Dart >= 3.8.0 for immich_mobile
+  REQUIRED_DART="3.8.0"
+
+  # Get the Dart version provided by your FVM Flutter
+  CURRENT_DART="$(fvm dart --version 2>/dev/null | awk 'NR==1{print $4}')"
+
+  # If fvm dart not available yet, fall back to system dart for the check (will likely be old)
+  if [ -z "$CURRENT_DART" ]; then
+    CURRENT_DART="$(dart --version 2>/dev/null | awk 'NR==1{print $4}')"
+  fi
+
+  # Compare versions using sort -V
+  version_ge() { printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n1 | grep -qx "$1"; }
+
+  if [ -z "$CURRENT_DART" ] || ! version_ge "$CURRENT_DART" "$REQUIRED_DART"; then
+    info "Dart $CURRENT_DART is below requirement ($REQUIRED_DART). Installing newer Flutter via FVM..."
+    # Pick a Flutter that bundles Dart >= 3.8.0 (3.27.x is safe)
+    FLUTTER_VERSION="${FLUTTER_VERSION:-3.27.3}"
+    ( cd "$CODEBASE_DIR" && fvm install "$FLUTTER_VERSION" && fvm use "$FLUTTER_VERSION" )
+    CURRENT_DART="$(fvm dart --version 2>/dev/null | awk 'NR==1{print $4}')"
+  fi
+
+  info "Flutter: $(fvm flutter --version | head -n1)"
+  info "Dart:    $(fvm dart --version 2>&1 | head -n1)"
   info "Prerequisites verified."
 }
 
