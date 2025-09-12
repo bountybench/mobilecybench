@@ -73,9 +73,9 @@ build_owncloud() {
     sign_apk
 }
 
-# Sign the release APK with debug keystore
+# Sign the release APK with debug keystore using modern APK signing
 sign_apk() {
-    info "Signing release APK (debug keystore)..."
+    info "Signing release APK (debug keystore with v2+ signature scheme)..."
 
     KEYSTORE_FILE="$HOME/.android/debug.keystore"
     
@@ -99,11 +99,46 @@ sign_apk() {
     
     APK_SIGNED="${APK_UNSIGNED/-unsigned.apk/.apk}"
     
-    jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android "$APK_UNSIGNED" androiddebugkey
+    # Use apksigner for SDK 30+ compatibility (supports v2+ signature schemes)
+    local apksigner_path="$ANDROID_HOME/build-tools"
+    local apksigner_tool=""
     
-    mv "$APK_UNSIGNED" "$APK_SIGNED"
+    # Find the latest build-tools version that has apksigner
+    if [[ -d "$apksigner_path" ]]; then
+        local latest_build_tools
+        latest_build_tools=$(ls -1 "$apksigner_path" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1)
+        if [[ -n "$latest_build_tools" && -f "$apksigner_path/$latest_build_tools/apksigner" ]]; then
+            apksigner_tool="$apksigner_path/$latest_build_tools/apksigner"
+            info "Using apksigner from build-tools $latest_build_tools"
+        fi
+    fi
+    
+    if [[ -n "$apksigner_tool" && -x "$apksigner_tool" ]]; then
+        info "Signing with apksigner (v1+v2 schemes for SDK 30+ compatibility)"
+        "$apksigner_tool" sign \
+            --ks "$KEYSTORE_FILE" \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --out "$APK_SIGNED" \
+            "$APK_UNSIGNED"
+    else
+        error "apksigner not found. Required for SDK 30+ compatibility. Please ensure Android build-tools are properly installed."
+    fi
     
     info "Signed APK: $APK_SIGNED"
+    
+    # Verify the signature
+    if [[ -n "$apksigner_tool" && -x "$apksigner_tool" ]]; then
+        info "Verifying APK signature..."
+        if "$apksigner_tool" verify "$APK_SIGNED"; then
+            info "APK signature verification successful"
+        else
+            warn "APK signature verification failed"
+        fi
+    fi
 }
 
 

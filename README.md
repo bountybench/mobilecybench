@@ -13,8 +13,15 @@
     2.4 [Detailed example: ownCloud](#24-detailed-example-owncloud)
 
 3. [CI Validation](#3-ci-validation)
+
+    3.1 [Simple CI](#31-simple-ci)
+
+    3.2 [Full CI](#32-full-ci)
+
+    3.3 [CI Trigger and Local Testing](#33-ci-trigger-and-local-testing)
+
 4. [Setting Up Docker](#4-setup-docker-desktop-app)
-6. [Local Development Setup](#5-local-development-setup)
+5. [Local Development Setup](#5-local-development-setup)
 
 
 ## 1. Adding Target Android App Repo
@@ -69,9 +76,9 @@ mobilecybench/
     - The workflow will automatically check out the commit as specified in the ```metadata.json``` file, you should manually do this during testing.
     - Write your scripts assuming the codebase has been checked out to the correct commit, **do not** check out the commit within the scripts.
 - ```metadata.json```: 
-    - ```commit_version```: The version of the repo (e.g. `21.2.0`). Used for `git checkout <commit>`. 
-    - ```sdk```: The SDK version needed to build and run the Android app. Unless necessary, let's use newer sdk versions (34+). 
-    - ```java```: The Java version needed to build and run the Android app.
+    - ```commit_version```: The version of the repo (e.g. `60a32b1`). Used for `git checkout <commit>`. 
+    - ```sdk```: The SDK version your app is primarily tested and optimized for (see `targetSdk` in `build.gradle`)
+    - ```java```: Version of java needed to compile the app (often found in `build.gradle)
     - ```emulator_server```: The address of any server the task requires, using the Android emulator’s special IP (10.0.2.2) to reach services running on the host machine’s localhost. Leave blank (empty string) if not required.
     - ```app_server```:  The address of any server the task requires, using the container hostname (e.g. joplin-app) to reach services running inside the Docker network. Leave blank (empty string) if not required.
     - ```username```: The username of the account the agent will use to login. Leave blank (empty string) if not required.
@@ -81,7 +88,7 @@ mobilecybench/
     - This may mean adding additional files to the root of the ```env_dir``` such as a ```Dockerfile``` or creating a database. 
     - Must exist to pass schema. If no setup is required, leave the file empty except for the hashtag (`#!/bin/bash`).
 - ```setup_app_source.sh```: 
-    - Builds the app from source and does not rely on emulator 
+    - Builds the app from source into an apk file
     - Is run in CI before emulator is started
 - ```run_checks.sh```: 
     - Entrypoint for various probes measuring confidentiality, integrity, availability, and access control violations.
@@ -257,14 +264,47 @@ See [ownCloud](/apps/owncloud-android/):
 - ```cleanup.sh```: Cleans up any files created and tears down server. 
 
 ## 3. CI Validation:
-### 3.1 Minimum File Tree Structure
-We expect the following minimum file tree structure:
+
+CI runs in two modes:
+- **Simple CI**: Builds APK and verifies it can be installed on the emulator
+- **Full CI**: Runs all comprehensive tests including vulnerability scenarios
+
+The mode is determined by the presence of `run_checks.sh` in the app directory. If `run_checks.sh` exists, full CI runs; otherwise, simple CI runs.
+
+### 3.1 Simple CI
+
+Simple CI only requires the basic files to build and install the app:
+
+**Required Files:**
 ```
 mobilecybench/
 │
 ├── apps/
     ├── env_dir/
-    │   ├── codebase/
+    │   ├── codebase/ (submodule)
+    |   ├── metadata.json
+    │   ├── setup.sh
+    │   ├── setup_app_source.sh
+```
+
+**Process:**
+1. File Tree Schema: Confirms the directory structure includes the minimum required files
+2. App Build and Install: 
+   - Runs `./setup_app_source.sh` to check out the specified commit version
+   - Runs `./setup.sh` to build and install the APK on the emulator
+   - Verifies successful installation
+
+### 3.2 Full CI
+
+Full CI includes all vulnerability testing capabilities:
+
+**Required File Tree Structure:**
+```
+mobilecybench/
+│
+├── apps/
+    ├── env_dir/
+    │   ├── codebase/ (submodule)
     |   ├── metadata.json
     │   ├── setup.sh
     │   ├── setup_app_source.sh
@@ -281,14 +321,9 @@ mobilecybench/
     |   |   |       └── ...
     |
 ```
-### 3.2 CI Trigger and Local Testing
-- CI is triggered when you open a PR and for each subsequent push to the origin/branch. 
-- To test and validate that your code will pass CI locally, use the provided `run_ci_local.sh` script:
-```
-./run_ci_local.sh apps/<env_dir>
-```
-### 3.3 CI Test Process
-Both the GitHub CI and local CI perform the following tests:
+
+**Process:**
+Both GitHub CI and local CI perform the following tests:
 1. File Tree Schema:
     - Confirms that the directory structure includes at least the minimum required file tree.
 Additional setup also occurs for the test environment, including checking out the `commit_version` of the codebase, running ```./setup_app_source.sh```, and starting the emulators. Then, CI tests:
@@ -310,6 +345,13 @@ Additional setup also occurs for the test environment, including checking out th
         - ```vuln_scenarios/vuln_scenario_1/vuln.sh```
     - Runs checks: ```./run_checks.sh```
     - Compares produced scores.json to expected ```vuln_scenarios/vuln_scenario_1/expected_scores.json``` (expected to pass if ```scores.json == expected_scores.json```)
+
+### 3.3 CI Trigger and Local Testing
+- CI is triggered when you open a PR and for each subsequent push to the origin/branch
+- To test and validate that your code will pass CI locally, use the provided `run_ci_local.sh` script:
+```
+./run_ci_local.sh apps/<env_dir>
+```
 
 ## 4. Setup Docker Desktop App. 
 You need to install the Docker Desktop App. 
@@ -343,12 +385,13 @@ To get started with Docker, follow these installation instructions based on your
 
 That's it! The emulator is ready for testing.
 
-### What the Setup Script Does
-
-- Downloads and installs Android SDK Command Line Tools
-- Creates an Android 9.0 (API 28) emulator
-- Sets up environment variables automatically
-- Creates helper scripts for common tasks
+**Notes:**
+- If you need a different SDK version, for example SDK version 34, run:
+    ```bash
+    # ./setup.sh will default to sdk version 35
+    ./setup.sh --sdk 34 --system-image google_apis
+    ```
+- After starting the emulator with `./start_emulator.sh`, run `./check_device.sh` to verify that the emulator is using the correct Android SDK version.
 
 ### Helper Scripts
 
@@ -391,54 +434,47 @@ That's it! The emulator is ready for testing.
 └── setup.log             # Setup log file
 ```
 
-### Advanced Configuration
-
-The emulator is configured with:
-
-- **Device:** Pixel 2 profile
-- **Android:** 9.0 (API 28) with Google APIs
-- **RAM:** 2GB
-- **Architecture:** x86_64
-- **GPU:** Hardware acceleration enabled
-
-To modify settings, edit the AVD configuration in:
-`~/.android/avd/MobileBenchmark_API28.avd/config.ini`
-
-### Support
-
-If you encounter issues:
-
-1. Check `setup.log` for error details
-2. Ensure system requirements are met
-3. Try running setup script again
-
 ## MCP Interaction
 
-First, obtain an ngrok token by going to https://ngrok.com, signing up, and then copying the ngrok token to mcp/ngrok.yml next to the authtoken: field. Your file should look like: 
+The AI agent is located in the `agent/` directory.
 
-    version: 2
-    authtoken: {YOUR_AUTHTOKEN_HERE}
-    tunnels:
-    web:
-        proto: http
-        addr: 8000
+### Quick Setup
 
+1. **Configure ngrok token:**
+   - Go to https://ngrok.com and sign up
+   - **Create** `agent/mcp/ngrok.yml` from template (not tracked by git for security):
+   ```bash
+   # Copy the template to create your ngrok.yml file
+   cp agent/mcp/ngrok.yml.template agent/mcp/ngrok.yml
+   
+   # Edit the file and replace YOUR_NGROK_AUTHTOKEN_HERE with your actual token
+   nano agent/mcp/ngrok.yml
+   ```
 
-Then, run the following commands to start the emulator, mcp, and kali containers: 
+2. **Start the system:**
+   ```bash
+   ./setup.sh
+   ./start_emulator.sh
+   cd agent/
+   docker-compose up --build -d
+   ```
 
+3. **Set up Python environment:**
+   ```bash
+   # From project root
+   source venv/bin/activate
+   pip install -r requirements.txt
+   export OPENAI_API_KEY="your-api-key-here"
+   ```
 
-    ./setup.sh
-    ./start_emulator.sh
-    docker-compose up --build
+4. **Test the agent:**
+   ```bash
+   python test_ai_interaction.py
+   ```
 
+### Detailed Setup
 
-Next, activate the virtual environment and isntall required dependencies:
-
-    source venv/bin/activate
-    pip install -r requirements.txt
-
-The agent will be able to access the kali container as well as your android emulator with its set of possible tools. 
-
-Finally, you can start interacting with the agent via running 
-
-    python test_ai_interaction.py 
+For comprehensive setup instructions, see the [Agent README](agent/README.md) which includes:
+- Detailed directory structure explanation
+- Step-by-step setup instructions
+- Testing procedures using example commands

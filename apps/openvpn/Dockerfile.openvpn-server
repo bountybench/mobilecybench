@@ -1,0 +1,94 @@
+# Official OpenVPN Server for Android Client CVE Testing
+# Uses official OpenVPN source for authentic vulnerability testing
+FROM ubuntu:22.04
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    openvpn \
+    easy-rsa \
+    openssl \
+    curl \
+    iptables \
+    tcpdump \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create OpenVPN directory structure
+RUN mkdir -p /etc/openvpn/server /etc/openvpn/client /var/log/openvpn
+
+# Copy easy-rsa
+RUN cp -r /usr/share/easy-rsa /etc/openvpn/
+WORKDIR /etc/openvpn/easy-rsa
+
+# Initialize PKI and create certificates
+RUN ./easyrsa init-pki && \
+    echo "ChangeMe" | ./easyrsa build-ca nopass && \
+    echo "ChangeMe" | ./easyrsa gen-req server nopass && \
+    echo "yes" | ./easyrsa sign-req server server && \
+    ./easyrsa gen-dh && \
+    ./easyrsa gen-crl
+
+# Generate client certificates for testing
+RUN echo "ChangeMe" | ./easyrsa gen-req android-client nopass && \
+    echo "yes" | ./easyrsa sign-req client android-client && \
+    echo "ChangeMe" | ./easyrsa gen-req test-user-1 nopass && \
+    echo "yes" | ./easyrsa sign-req client test-user-1 && \
+    echo "ChangeMe" | ./easyrsa gen-req test-user-2 nopass && \
+    echo "yes" | ./easyrsa sign-req client test-user-2
+
+# Create OpenVPN server configuration
+RUN echo "port 1194\n\
+proto udp\n\
+dev tun\n\
+ca /etc/openvpn/easy-rsa/pki/ca.crt\n\
+cert /etc/openvpn/easy-rsa/pki/issued/server.crt\n\
+key /etc/openvpn/easy-rsa/pki/private/server.key\n\
+dh /etc/openvpn/easy-rsa/pki/dh.pem\n\
+crl-verify /etc/openvpn/easy-rsa/pki/crl.pem\n\
+server 10.8.0.0 255.255.255.0\n\
+ifconfig-pool-persist /var/log/openvpn/ipp.txt\n\
+push \"redirect-gateway def1 bypass-dhcp\"\n\
+push \"dhcp-option DNS 8.8.8.8\"\n\
+push \"dhcp-option DNS 8.8.4.4\"\n\
+client-config-dir /etc/openvpn/ccd\n\
+keepalive 10 60\n\
+cipher AES-256-GCM\n\
+auth SHA256\n\
+tls-version-min 1.2\n\
+user nobody\n\
+group nogroup\n\
+persist-key\n\
+persist-tun\n\
+status /var/log/openvpn/openvpn-status.log\n\
+log-append /var/log/openvpn/openvpn.log\n\
+verb 3\n\
+explicit-exit-notify 1" > /etc/openvpn/server/server.conf
+
+# Create client config directory
+RUN mkdir -p /etc/openvpn/ccd
+
+# Create startup script
+RUN echo "#!/bin/bash\n\
+mkdir -p /dev/net\n\
+mknod /dev/net/tun c 10 200\n\
+chmod 600 /dev/net/tun\n\
+\n\
+# Enable IP forwarding\n\
+echo 1 > /proc/sys/net/ipv4/ip_forward\n\
+\n\
+# Configure iptables for NAT\n\
+iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE\n\
+iptables -A INPUT -i tun0 -j ACCEPT\n\
+iptables -A FORWARD -i tun0 -j ACCEPT\n\
+iptables -A FORWARD -i tun0 -o eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT\n\
+iptables -A FORWARD -i eth0 -o tun0 -m state --state RELATED,ESTABLISHED -j ACCEPT\n\
+\n\
+# Start OpenVPN server\n\
+exec openvpn --config /etc/openvpn/server/server.conf" > /usr/local/bin/start-openvpn.sh
+
+RUN chmod +x /usr/local/bin/start-openvpn.sh
+
+# Expose OpenVPN port
+EXPOSE 1194/udp
+
+# Start OpenVPN
+CMD ["/usr/local/bin/start-openvpn.sh"]
