@@ -24,22 +24,37 @@ command_exists(){ command -v "$1" >/dev/null 2>&1; }
 bootstrap_fvm_and_flutter() {
   info "Bootstrapping FVM and Flutter toolchain (Linux)..."
 
-  # Where 'dart pub global' installs FVM
+  # Where `dart pub global` installs FVM
   export PATH="$HOME/.pub-cache/bin:$PATH"
 
   if ! command_exists fvm; then
     if ! command_exists dart; then
-      # Install a local Flutter SDK to obtain Dart
       info "Dart not found; installing Flutter SDK (stable) locally under ~/.flutter ..."
-      mkdir -p "$HOME/.flutter"
-      if [ ! -d "$HOME/.flutter/flutter" ]; then
-        # Download stable channel tarball
-        curl -sSL https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_stable.tar.xz \
-          | tar -xJf - -C "$HOME/.flutter"
+      FLUTTER_VERSION="${FLUTTER_VERSION:-3.24.0}"
+      BASE_URL="https://storage.googleapis.com/flutter_infra_release/releases/stable/linux"
+      TARBALL="flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
+      DEST="$HOME/.flutter"
+      TMP="$(mktemp -t flutter-${FLUTTER_VERSION}-XXXXXXXX.tar.xz)"
+
+      # deps
+      command -v curl >/dev/null 2>&1 || fail "curl not found"
+      command -v tar  >/dev/null 2>&1 || fail "tar not found"
+      command -v xz   >/dev/null 2>&1 || command -v xzcat >/dev/null 2>&1 || warn "xz utils not found; tar -xJf may fail"
+
+      mkdir -p "$DEST"
+      if [ ! -d "$DEST/flutter" ]; then
+        curl -fL "${BASE_URL}/${TARBALL}" -o "$TMP"
+        tar -xJf "$TMP" -C "$DEST"
+        rm -f "$TMP"
       fi
-      export PATH="$HOME/.flutter/flutter/bin:$PATH"
-      command_exists dart || fail "Dart still not found after Flutter install."
+
+      export PATH="$DEST/flutter/bin:$PATH"
+      command_exists flutter || fail "Flutter not found after install"
+      flutter --version
     fi
+
+    # Now Dart should be available (bundled with Flutter)
+    command_exists dart || fail "Dart still not found after Flutter install"
 
     info "Installing FVM via 'dart pub global activate fvm'..."
     dart pub global activate fvm >/dev/null
@@ -50,9 +65,7 @@ bootstrap_fvm_and_flutter() {
   fi
 
   # Ensure project Flutter via FVM
-  if [ ! -d "$CODEBASE_DIR" ]; then
-    fail "Immich codebase not found at $CODEBASE_DIR"
-  fi
+  [ -d "$CODEBASE_DIR" ] || fail "Immich codebase not found at $CODEBASE_DIR"
 
   pushd "$CODEBASE_DIR" >/dev/null
   if [ -f ".fvm/fvm_config.json" ]; then
