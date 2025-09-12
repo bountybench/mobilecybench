@@ -21,4 +21,4 @@ after_android_dir.txt
 ssh_key
 .DS_Store
 .env
-!apps/**/.env
+!apps/**/.env.DS_Store
