@@ -14,7 +14,7 @@ LOG_FILE="${SCRIPT_DIR}/setup_app_source.log"
 INSTALL_ANDROID="${INSTALL_ANDROID:-false}"
 
 # Use Flutter version that includes Dart >= 3.8.0
-FLUTTER_VERSION="${FLUTTER_VERSION:-3.27.3}"
+FLUTTER_VERSION="${FLUTTER_VERSION:-3.32.0}"
 
 # ---- logging ----
 exec > >(tee -a "$LOG_FILE") 2>&1
