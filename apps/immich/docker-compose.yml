@@ -1,17 +1,21 @@
 services:
-  immich-server:
-    container_name: immich_server
-    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
-    command: [ "start.sh", "immich" ]
+  database:
+    container_name: immich_postgres
+    image: tensorchord/pgvecto-rs:pg14-v0.2.0
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: immich
     volumes:
-      - ./immich-data:/usr/src/app/upload
-    env_file:
-      - .env
-    ports:
-      - "2283:2283"
-    depends_on:
-      - database
-      - redis
+      # Live database cluster (named volume — not in git)
+      - pgdata:/var/lib/postgresql/data
+      # First-run init/restore scripts (from your repo)
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
     restart: always
     networks:
       - immich_network
@@ -19,23 +23,41 @@ services:
   redis:
     container_name: immich_redis
     image: redis:6.2-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
     restart: always
     networks:
       - immich_network
 
-  database:
-    container_name: immich_postgres
-    # This is the corrected image with the required vector extension
-    image: tensorchord/pgvecto-rs:pg14-v0.2.0
-    environment:
-      POSTGRES_PASSWORD: 'postgres'
-      POSTGRES_USER: 'postgres'
-      POSTGRES_DB: 'immich'
+  immich-server:
+    container_name: immich_server
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
+    command: ["start.sh", "immich"]
+    env_file:
+      - .env
     volumes:
-      - ./immich-data/db:/var/lib/postgresql/data
+      # Immich media/uploads (keep as bind so you can access files)
+      - ./immich-data:/usr/src/app/upload
+    ports:
+      - "2283:2283"
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: always
     networks:
       - immich_network
+
+volumes:
+  pgdata:
+  redisdata:
 
 networks:
   immich_network:
