@@ -21,10 +21,26 @@ fail(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
 command_exists(){ command -v "$1" >/dev/null 2>&1; }
 
 # ---- Bootstrap FVM + Flutter (Linux) ----
-bootstrap_fvm_and_flutter() {
-  info "Bootstrapping FVM and Flutter toolchain (Linux)..."
+bootstrap_prereqs() {
+  info "Bootstrapping prerequisites (Flutter/FVM + npm)..."
 
-  # Where `dart pub global` installs FVM
+  # --- npm / Node.js ---
+  if ! command_exists npm; then
+    info "npm not found; attempting to install Node.js LTS..."
+    if command_exists apt-get; then
+      curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+      sudo apt-get install -y nodejs
+    elif command_exists yum; then
+      curl -fsSL https://rpm.nodesource.com/setup_lts.x | sudo bash -
+      sudo yum install -y nodejs
+    else
+      warn "Package manager not supported; please install Node.js/npm manually."
+    fi
+  else
+    info "npm present: $(npm --version)"
+  fi
+
+  # --- FVM + Flutter (your existing logic) ---
   export PATH="$HOME/.pub-cache/bin:$PATH"
 
   if ! command_exists fvm; then
@@ -36,36 +52,22 @@ bootstrap_fvm_and_flutter() {
       DEST="$HOME/.flutter"
       TMP="$(mktemp -t flutter-${FLUTTER_VERSION}-XXXXXXXX.tar.xz)"
 
-      # deps
-      command -v curl >/dev/null 2>&1 || fail "curl not found"
-      command -v tar  >/dev/null 2>&1 || fail "tar not found"
-      command -v xz   >/dev/null 2>&1 || command -v xzcat >/dev/null 2>&1 || warn "xz utils not found; tar -xJf may fail"
-
       mkdir -p "$DEST"
       if [ ! -d "$DEST/flutter" ]; then
         curl -fL "${BASE_URL}/${TARBALL}" -o "$TMP"
         tar -xJf "$TMP" -C "$DEST"
         rm -f "$TMP"
       fi
-
       export PATH="$DEST/flutter/bin:$PATH"
-      command_exists flutter || fail "Flutter not found after install"
       flutter --version
     fi
 
-    # Now Dart should be available (bundled with Flutter)
-    command_exists dart || fail "Dart still not found after Flutter install"
-
-    info "Installing FVM via 'dart pub global activate fvm'..."
     dart pub global activate fvm >/dev/null
     export PATH="$HOME/.pub-cache/bin:$PATH"
     command_exists fvm || fail "FVM not on PATH after install."
   else
     info "FVM present: $(fvm --version)"
   fi
-
-  # Ensure project Flutter via FVM
-  [ -d "$CODEBASE_DIR" ] || fail "Immich codebase not found at $CODEBASE_DIR"
 
   pushd "$CODEBASE_DIR" >/dev/null
   if [ -f ".fvm/fvm_config.json" ]; then
@@ -81,7 +83,7 @@ bootstrap_fvm_and_flutter() {
   fvm flutter doctor -v || true
   popd >/dev/null
 
-  info "FVM + Flutter bootstrap complete."
+  info "Bootstrap complete (npm + Flutter/FVM)."
 }
 
 # ---- Optional Android SDK (Linux best-effort) ----
@@ -168,7 +170,7 @@ main() {
   info "Immich Android Source Build"
   echo "============================"
 
-  bootstrap_fvm_and_flutter
+  bootstrap_prereqs
   maybe_install_android_sdk
   check_prerequisites
   setup_environment
