@@ -1,9 +1,7 @@
 services:
   # Kali Linux Container
   kali-container:
-    build:
-      context: ./kali
-      dockerfile: Dockerfile
+    image: cybench/mobilecybench:large
     container_name: kali-container
     networks:
       - shared_net
