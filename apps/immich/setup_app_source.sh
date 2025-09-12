@@ -13,6 +13,9 @@ LOG_FILE="${SCRIPT_DIR}/setup_app_source.log"
 # Optional: INSTALL_ANDROID=true to attempt Android SDK bootstrap (best-effort)
 INSTALL_ANDROID="${INSTALL_ANDROID:-false}"
 
+# Use Flutter version that includes Dart >= 3.8.0
+FLUTTER_VERSION="${FLUTTER_VERSION:-3.27.3}"
+
 # ---- logging ----
 exec > >(tee -a "$LOG_FILE") 2>&1
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
@@ -43,16 +46,15 @@ bootstrap_prereqs() {
   # install pnpm globally so pnpx is available (pnpm provides the pnpx shim)
   if ! command -v pnpx >/dev/null 2>&1; then
     info "Installing pnpm globally (provides pnpx)..."
-    sudo npm i -g pnpm@8
+    npm i -g pnpm@8
   fi
 
-  # --- FVM + Flutter (your existing logic) ---
+  # --- FVM + Flutter ---
   export PATH="$HOME/.pub-cache/bin:$PATH"
 
   if ! command_exists fvm; then
     if ! command_exists dart; then
-      info "Dart not found; installing Flutter SDK (stable) locally under ~/.flutter ..."
-      FLUTTER_VERSION="${FLUTTER_VERSION:-3.24.0}"
+      info "Dart not found; installing Flutter SDK ($FLUTTER_VERSION) locally under ~/.flutter ..."
       BASE_URL="https://storage.googleapis.com/flutter_infra_release/releases/stable/linux"
       TARBALL="flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
       DEST="$HOME/.flutter"
@@ -75,16 +77,19 @@ bootstrap_prereqs() {
     info "FVM present: $(fvm --version)"
   fi
 
+  # Ensure we're in the right directory
+  mkdir -p "$CODEBASE_DIR"
   pushd "$CODEBASE_DIR" >/dev/null
-  if [ -f ".fvm/fvm_config.json" ]; then
-    info "Using pinned Flutter from .fvm/fvm_config.json"
-    fvm install
-    fvm use
-  else
-    info "No .fvm config; using stable channel"
-    fvm install stable
-    fvm use stable
-  fi
+  
+  # Always install the required Flutter version for Immich
+  info "Installing Flutter $FLUTTER_VERSION for Immich compatibility..."
+  fvm install "$FLUTTER_VERSION"
+  fvm use "$FLUTTER_VERSION"
+  
+  # Verify the Dart version
+  CURRENT_DART="$(fvm dart --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)"
+  info "Using Dart version: $CURRENT_DART"
+  
   fvm flutter --version
   fvm flutter doctor -v || true
   popd >/dev/null
@@ -128,31 +133,28 @@ check_prerequisites() {
   info "Verifying prerequisites..."
   command_exists fvm || fail "FVM not found after bootstrap."
   info "FVM: $(fvm --version)"
-  command_exists dart || fail "Dart SDK not found after bootstrap."
-  # Require Dart >= 3.8.0 for immich_mobile
+  
+  cd "$CODEBASE_DIR"
+  
+  # Check Dart version from FVM Flutter
+  CURRENT_DART="$(fvm dart --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)"
   REQUIRED_DART="3.8.0"
 
-  # Get the Dart version provided by your FVM Flutter
-  CURRENT_DART="$(fvm dart --version 2>/dev/null | awk 'NR==1{print $4}')"
+  # Version comparison function
+  version_ge() { 
+    printf '%s\n%s\n' "$1" "$2" | sort -V -C 2>/dev/null
+  }
 
-  # If fvm dart not available yet, fall back to system dart for the check (will likely be old)
   if [ -z "$CURRENT_DART" ]; then
-    CURRENT_DART="$(dart --version 2>/dev/null | awk 'NR==1{print $4}')"
+    fail "Could not determine Dart version"
   fi
 
-  # Compare versions using sort -V
-  version_ge() { printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n1 | grep -qx "$1"; }
-
-  if [ -z "$CURRENT_DART" ] || ! version_ge "$CURRENT_DART" "$REQUIRED_DART"; then
-    info "Dart $CURRENT_DART is below requirement ($REQUIRED_DART). Installing newer Flutter via FVM..."
-    # Pick a Flutter that bundles Dart >= 3.8.0 (3.27.x is safe)
-    FLUTTER_VERSION="${FLUTTER_VERSION:-3.27.3}"
-    ( cd "$CODEBASE_DIR" && fvm install "$FLUTTER_VERSION" && fvm use "$FLUTTER_VERSION" )
-    CURRENT_DART="$(fvm dart --version 2>/dev/null | awk 'NR==1{print $4}')"
+  if ! version_ge "$CURRENT_DART" "$REQUIRED_DART"; then
+    fail "Dart $CURRENT_DART is below requirement ($REQUIRED_DART)"
   fi
 
   info "Flutter: $(fvm flutter --version | head -n1)"
-  info "Dart:    $(fvm dart --version 2>&1 | head -n1)"
+  info "Dart:    $CURRENT_DART (>= $REQUIRED_DART required)"
   info "Prerequisites verified."
 }
 
@@ -162,6 +164,10 @@ setup_environment() {
   cd "$CODEBASE_DIR"
 
   info "Fetching Flutter dependencies..."
+  # Set environment variables for CI
+  export PUB_CACHE="$HOME/.pub-cache"
+  export FLUTTER_ROOT="$HOME/.fvm/versions/$FLUTTER_VERSION"
+  
   fvm flutter pub get
 
   info "Generating translation/localization files..."
@@ -173,8 +179,8 @@ setup_environment() {
       info "Translations generated via flutter gen-l10n."
     else
       warn "gen-l10n failed; attempting easy_localization fallback..."
-      dart run easy_localization:generate -S ../i18n -O lib/generated || true
-      dart run bin/generate_keys.dart || true
+      fvm dart run easy_localization:generate -S ../i18n -O lib/generated || true
+      fvm dart run bin/generate_keys.dart || true
       info "Fallback translation generation attempted."
     fi
   fi
@@ -185,6 +191,7 @@ setup_environment() {
 # ---- Build APK ----
 build_immich() {
   info "Building Immich APK (release)..."
+  cd "$CODEBASE_DIR"
   fvm flutter build apk --release
 
   local apk_path="$CODEBASE_DIR/build/app/outputs/flutter-apk/app-release.apk"
