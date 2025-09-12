@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  openvpn-server:
+    image: openvpn-cve-server:latest
+    container_name: openvpn-server
+    command: /usr/local/bin/start-openvpn.sh
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    ports:
+      - "1194:1194/udp"
+      - "8080:8080"
+    volumes:
+      - openvpn-data:/etc/openvpn
+    networks:
+      - shared_net
+    restart: unless-stopped
+
+volumes:
+  openvpn-data:
+
+networks:
+  shared_net:
+    external: true

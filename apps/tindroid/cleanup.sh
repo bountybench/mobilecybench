@@ -21,6 +21,11 @@ if [ -f "secrets.json" ]; then
     rm -f "secrets.json"
 fi
 
+if [ -f ".env" ]; then
+    echo "Removing generated environment variables: .env"
+    rm -f ".env"
+fi
+
 if [ -f "init-db.sql" ]; then
     echo "Removing generated db init script: init-db.sql"
     rm -f "init-db.sql"
@@ -38,6 +43,9 @@ fi
 
 echo "Removing log files recursively..."
 find . -type f -name "*.log" -delete
+
+echo "Removing virtual environment..."
+rm -rf ./venv
 
 echo "Cleanup complete!" 
 echo "==================="
