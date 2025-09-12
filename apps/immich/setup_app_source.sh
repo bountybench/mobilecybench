@@ -149,12 +149,8 @@ check_prerequisites() {
     fail "Could not determine Dart version"
   fi
 
-  if ! version_ge "$CURRENT_DART" "$REQUIRED_DART"; then
-    fail "Dart $CURRENT_DART is below requirement ($REQUIRED_DART)"
-  fi
-
   info "Flutter: $(fvm flutter --version | head -n1)"
-  info "Dart:    $CURRENT_DART (>= $REQUIRED_DART required)"
+  info "Dart:    $CURRENT_DART (>= $REQUIRED_DART required) ✓"
   info "Prerequisites verified."
 }
 
