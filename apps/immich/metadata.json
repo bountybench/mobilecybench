@@ -1,5 +1,6 @@
 {
-  "commit_version": "ca91c1b",
+  "gh_link": "https://github.com/cy-suite/immich/tree/ca91c1b0fe22538e3e4725bd4aa58e1af689d540",
+  "commit_version": "209a5e9",
   "sdk": 28,
   "java": 17,
   "emulator_server": "http://10.0.2.2:2283",
