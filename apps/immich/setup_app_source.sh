@@ -164,7 +164,11 @@ setup_environment() {
   export PUB_CACHE="$HOME/.pub-cache"
   export FLUTTER_ROOT="$HOME/.fvm/versions/$FLUTTER_VERSION"
   
-  fvm flutter pub get
+  # Set Dart/Flutter memory limits for CI
+  export DART_VM_OPTIONS="--old_gen_heap_size=2048"
+  
+  # Configure pub get with CI-friendly settings
+  fvm flutter pub get --no-precompile
 
   info "Generating translation/localization files..."
   if make translation; then
