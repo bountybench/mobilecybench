@@ -106,7 +106,7 @@ check_server_ready() {
 }
 
 checkout_commit() {
-    pwd
+    echo "Current directory: $(pwd)"
     if [[ -f "metadata.json" ]]; then
         commit=$(jq -r '.["commit_version"]' "metadata.json")
         
@@ -154,8 +154,8 @@ fi
 
 sdk=$(jq -r '.sdk' "$metadata")
 if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
-    echo -e "${WARNING} Could not extract SDK from $metadata. Using default (28)."
-    sdk=28
+    echo -e "${ERROR} Could not extract SDK from $metadata."
+    exit 1
 else 
     echo -e "${INFO} SDK: $sdk"
 fi
@@ -174,7 +174,7 @@ run_test_check() {
     cd "$DIR"
 
     echo -e "${INFO} Running setup..."
-    ./setup.sh
+    { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
     adb logcat -c
 
     if [ -n "$vuln_scenario" ]; then
@@ -228,7 +228,7 @@ print_header "$CYAN" "SETTING UP APP FROM SOURCE"
 checkout_commit "$DIR"
 
 # Check if run_checks.sh exists to determine test strategy and required scripts
-if [ -f "$DIR/run_checks.sh" ]; then
+if [ -f "run_checks.sh" ]; then
     echo -e "${INFO} run_checks.sh found - running full vulnerability scenario tests"
     HAS_RUN_CHECKS=true
     required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
@@ -245,7 +245,8 @@ for script in "${required_scripts[@]}"; do
         exit 1
     fi
 done
-./setup_app_source.sh
+
+{ ./setup_app_source.sh; } || { echo -e "${ERROR} setup_app_source.sh failed"; exit 1; }
 cd "$ROOT_DIR"
 
 # Start emulator (assuming you have a start_emulator.sh script)
@@ -286,7 +287,7 @@ else
     echo -e "${INFO} Packages before setup: $packages_before"
     
     echo -e "${INFO} Running setup..."
-    ./setup.sh
+    { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
     adb logcat -c
     
     # Check packages after setup

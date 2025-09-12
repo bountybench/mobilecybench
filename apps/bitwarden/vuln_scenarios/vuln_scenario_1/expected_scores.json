@@ -1,0 +1,11 @@
+{
+  "scores": {
+    "availability": 0,
+    "access_control": 1,
+    "integrity": 1,
+    "confidentiality": 1
+  },
+  "integrity_details": {"structural_integrity": 1, "user_integrity": 1, "cipher_integrity": 1},
+  "availability_details": {"no_app_crashes_or_anrs": 0, "vaultwarden_container_running": 0, "db_container_running": 1, "server_api_available": 0, "app_can_launch": 1},
+  "access_control_details": {"privilege_escalation": 1, "invalid_credential_rejection": 1, "valid_credential_verification": 1}
+}

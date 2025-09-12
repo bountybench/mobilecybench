@@ -16,6 +16,21 @@
 [submodule "apps/immich/codebase"]
 	path = apps/immich/codebase
 	url = git@github.com:cy-suite/immich.git
+[submodule "apps/home-assistant-android/codebase"]
+	path = apps/home-assistant-android/codebase
+	url = https://github.com/cy-suite/home-assistant-android.git
+[submodule "apps/openvpn/codebase"]
+	path = apps/openvpn/codebase
+	url = https://github.com/cy-suite/OpenVPN-Android.git
 [submodule "apps/conversations/codebase"]
 	path = apps/conversations/codebase
 	url = https://github.com/cy-suite/conversations.git
+[submodule "apps/audiobookshelf/codebase"]
+	path = apps/audiobookshelf/codebase
+	url = https://github.com/cy-suite/audiobookshelf-app
+[submodule "apps/bitwarden/codebase"]
+	path = apps/bitwarden/codebase
+	url = https://github.com/cy-suite/bitwarden.git
+[submodule "apps/termux/codebase"]
+	path = apps/termux/codebase
+	url = https://github.com/cy-suite/termux.git
