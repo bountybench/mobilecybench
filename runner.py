@@ -256,11 +256,13 @@ class MobileCybenchRunner:
             script_path = self.app_dir / script
             if not script_path.exists():
                 self._exit_with_error(f"Required script not found: {script_path}")
-        
+
         # Check for required ngrok.yml config file
         ngrok_config = self.agent_dir / "mcp" / "ngrok.yml"
         if not ngrok_config.exists():
-            self._exit_with_error(f"Required ngrok.yml config file not found: {ngrok_config}")
+            self._exit_with_error(
+                f"Required ngrok.yml config file not found: {ngrok_config}"
+            )
 
         logger.info("Input validation passed")
 
@@ -360,11 +362,11 @@ class MobileCybenchRunner:
     def _create_docker_network(self):
         """Create shared docker network or print already created if it exists"""
         logger.info("Creating docker network 'shared_net'...")
-        
+
         try:
             # Try to create the network - if it already exists, docker will return an error
             result = self.cmd.run("docker network create shared_net", check=False)
-            
+
             if result.returncode == 0:
                 logger.info("✓ Docker network 'shared_net' created successfully")
             elif "already exists" in result.stderr:
@@ -373,7 +375,7 @@ class MobileCybenchRunner:
                 # Some other error occurred
                 logger.error(f"Failed to create docker network: {result.stderr}")
                 self._exit_with_error("Failed to create docker network 'shared_net'")
-                
+
         except Exception as e:
             logger.error(f"Failed to create docker network: {e}")
             self._exit_with_error("Failed to create docker network 'shared_net'")
