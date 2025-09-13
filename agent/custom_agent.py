@@ -16,6 +16,7 @@ from agent.prompts.prompts import (
     TARGET_HOST_EXAMPLE,
 )
 from utils.logger import logger, logger_manager
+from utils.token_tracker import TokenTracker
 from utils.mcp_utils import get_mcp_server_config
 from utils.token_tracker import TokenTracker
 
@@ -70,6 +71,9 @@ class CustomAgent:
 
         # Use shared logger's file name for consistency
         self.log_file = logger_manager.get_log_file_name()
+
+        # Initialize token tracker (writes per-call JSONL by default)
+        self.token_tracker = TokenTracker()
 
         logger.info("Agent Run Started")
         logger.info(f"Dry Run: {self.dry_run}")
