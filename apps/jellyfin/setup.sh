@@ -159,52 +159,52 @@ launch_jellyfin() {
     fi
 }
 
-# setup_prosody_server(){
-#   info "Setting up Prosody XMPP server with TLS certificates"
+setup_jellyfin_server(){
+  info "Setting up Jellyfin media server"
 
-#   # Check if docker and docker compose are available
-#   if ! command_exists docker; then
-#     warn "Docker not found, skipping server setup"
-#     return 0
-#   fi
+  # Check if docker and docker compose are available
+  if ! command_exists docker; then
+    warn "Docker not found, skipping server setup"
+    return 0
+  fi
 
-#   # Build and start Prosody server (certificates pre-generated in image)
-#   info "Building and starting Prosody server..."
-#   docker compose up -d --build prosody
+  # Start Jellyfin server
+  info "Starting Jellyfin server..."
+  docker compose up -d jellyfin
 
-#   # Wait for container to be ready
-#   info "Waiting for container to start..."
-#   sleep 5
+  # Wait for container to be ready
+  info "Waiting for container to start..."
+  sleep 10
 
-#   # Wait for prosody to be fully ready to accept commands
-#   info "Waiting for prosody to be ready for user management..."
-#   for i in {1..30}; do
-#     if docker exec jellyfin-prosody prosodyctl status >/dev/null 2>&1; then
-#       info "Prosody is ready for user management"
-#       break
-#     fi
-#     if [ $i -eq 30 ]; then
-#       warn "Prosody may not be fully ready, proceeding anyway..."
-#     fi
-#     sleep 2
-#   done
+  # Wait for jellyfin to be fully ready
+  info "Waiting for Jellyfin to be ready..."
+  for i in {1..30}; do
+    if curl -f http://localhost:8096/health >/dev/null 2>&1; then
+      info "Jellyfin is ready"
+      break
+    fi
+    if [ $i -eq 30 ]; then
+      warn "Jellyfin may not be fully ready, proceeding anyway..."
+    fi
+    sleep 2
+  done
 
-#   # Also wait for Docker health check to show healthy
-#   info "Waiting for container health check to show healthy..."
-#   for i in {1..15}; do
-#     health_status=$(docker inspect --format='{{.State.Health.Status}}' jellyfin-prosody 2>/dev/null || echo "no-health")
-#     if [ "$health_status" = "healthy" ]; then
-#       info "Container health check shows healthy"
-#       break
-#     fi
-#     if [ $i -eq 15 ]; then
-#       warn "Container health check still not healthy, but proceeding..."
-#     fi
-#     sleep 2
-#   done
+  # Also wait for Docker health check to show healthy
+  info "Waiting for container health check to show healthy..."
+  for i in {1..15}; do
+    health_status=$(docker inspect --format='{{.State.Health.Status}}' jellyfin-server 2>/dev/null || echo "no-health")
+    if [ "$health_status" = "healthy" ]; then
+      info "Container health check shows healthy"
+      break
+    fi
+    if [ $i -eq 15 ]; then
+      warn "Container health check still not healthy, but proceeding..."
+    fi
+    sleep 2
+  done
 
-#   info "Prosody server ready at 10.0.2.2:5222 with TLS enabled"
-# }
+  info "Jellyfin server ready at http://localhost:8096"
+}
 
 # setup_xmpp_users(){
 #   info "Setting up XMPP test users"
@@ -278,8 +278,7 @@ summary(){
 main(){
   parse_args "$@"
   ensure_prereqs
-#   setup_prosody_server
-#   setup_xmpp_users
+  setup_jellyfin_server
   build_app
   install_and_launch_app
   summary
