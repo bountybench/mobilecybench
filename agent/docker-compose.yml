@@ -36,4 +36,4 @@ services:
 
 networks:
   shared_net:
-    driver: bridge
+    external: true
