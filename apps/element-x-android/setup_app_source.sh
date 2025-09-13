@@ -1,219 +1,185 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+# Build Element X from source and EXPORT APKs into dist/ (no install, Gradle 9/AGP 8.3+ safe)
+set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 LOG_PREFIX="[setup_app_source]"
 LOG_FILE="${SCRIPT_DIR}/setup_app_source.log"
-# Duplicate outputs to console and log file
+CODEBASE_DIR="$SCRIPT_DIR/codebase"
+DIST_DIR="$SCRIPT_DIR/dist"
+
 exec > >(tee -a "$LOG_FILE") 2>&1
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
 error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
+trap 'rc=$?; echo "[ERROR] setup_app_source.sh failed at line $LINENO (exit $rc)"; exit $rc' ERR
 
 check_prerequisites() {
-    info "Checking prerequisites (Java and Android SDK)..."
-    
-    # Check Java
-    if ! command -v java >/dev/null 2>&1; then
-        error "Java not found. Please install Java 17."
-    fi
+  info "Checking prerequisites (Java 17 + Android SDK path)..."
+  command -v java >/dev/null 2>&1 || error "Java not found. Install Java 17."
+  [[ -d "$CODEBASE_DIR" ]] || error "Codebase not found: $CODEBASE_DIR"
+  [[ -f "$CODEBASE_DIR/gradlew" ]] || error "gradlew missing in $CODEBASE_DIR"
 
-    # More robust check for the Android SDK path
-    if [ -n "$ANDROID_HOME" ] && [ -d "$ANDROID_HOME" ]; then
-        info "Using Android SDK from pre-set ANDROID_HOME: $ANDROID_HOME"
-    elif [ -d "${HOME}/.android-sdk" ]; then
-        # Fallback to the default path if ANDROID_HOME isn't set
-        ANDROID_HOME="${HOME}/.android-sdk"
-        info "Found Android SDK at default location: $ANDROID_HOME"
-    else
-        error "Android SDK not found. Please set the ANDROID_HOME environment variable."
+  # Expect SDK already provisioned (we do not install here)
+  if [[ -z "${ANDROID_HOME:-}" && -z "${ANDROID_SDK_ROOT:-}" ]]; then
+    if [[ -d "${HOME}/.android-sdk" ]]; then
+      export ANDROID_HOME="${HOME}/.android-sdk"
+    elif [[ -d "/usr/local/lib/android/sdk" ]]; then
+      export ANDROID_HOME="/usr/local/lib/android/sdk"
     fi
-    
-    # Check Android SDK
-    if [[ ! -d "$ANDROID_HOME" ]]; then
-        error "Android SDK not found at $ANDROID_HOME. Please run the Android emulator setup first."
-    fi
-    
-    info "Prerequisites verified."
+  fi
+  export ANDROID_SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+  if [[ -n "${ANDROID_SDK_ROOT:-}" ]]; then
+    info "Using ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+  else
+    warn "ANDROID_SDK_ROOT not set; Gradle will attempt to locate SDK."
+  fi
 }
 
 setup_environment() {
-    info "Setting up optimized build environment..."
-    
-    # Set Java 17
-    if [[ -d "/opt/homebrew/opt/openjdk@17" ]]; then
-        export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-    elif [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
-        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
-    else
-        warn "Could not find Java 17 via known paths. Using system default."
-        export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
-    fi
-    
-    export PATH="$JAVA_HOME/bin:$PATH"
-    
-    # Set Android SDK
-    export ANDROID_HOME="$ANDROID_HOME"
-    export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-    
-    # Performance optimizations - aggressive memory and CPU settings
-    export GRADLE_OPTS="-Xmx8g -XX:+UseG1GC -XX:+UseStringDeduplication -XX:MaxGCPauseMillis=100 -XX:+UseCompressedOops"
-    export JAVA_TOOL_OPTIONS="-XX:+TieredCompilation -XX:TieredStopAtLevel=1"
-    
-    # Increase file descriptor limit for faster I/O
-    ulimit -n 65536 2>/dev/null || ulimit -n 10240 2>/dev/null || true
-    
-    # Create local.properties for Element X build
-    echo "sdk.dir=$ANDROID_HOME" > "$SCRIPT_DIR/codebase/local.properties"
-    
-    info "Environment configured with performance optimizations."
+  info "Configuring CI-friendly build environment..."
+
+  # JAVA_HOME
+  if [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
+    export JAVA_HOME="/usr/lib/jvm/java-17-openjdk"
+  elif [[ -d "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ]]; then
+    export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+  else
+    export JAVA_HOME="$(java -XshowSettings:properties -version 2>&1 | awk -F'= ' '/java.home/ {print $2}')"
+  fi
+  export PATH="$JAVA_HOME/bin:$PATH"
+
+  # Modest memory & workers for GitHub runners (Gradle 9 OK)
+  export GRADLE_OPTS="-Xmx2g -XX:+UseG1GC -XX:+UseStringDeduplication"
+  export org_gradle_daemon="false"
+  export org_gradle_caching="true"
+  export org_gradle_configuration_cache="true"
+  export org_gradle_workers_max="2"
+  # Avoid VFS watching memory overhead in CI
+  export org_gradle_unsafe_watch_fs="false"
+
+  # Point AGP to SDK (no install)
+  if [[ -n "${ANDROID_SDK_ROOT:-}" ]]; then
+    echo "sdk.dir=${ANDROID_SDK_ROOT}" > "$CODEBASE_DIR/local.properties"
+    export PATH="$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+  fi
+
+  # Ensure gradle.properties has safe CI defaults (idempotent)
+  GP="$CODEBASE_DIR/gradle.properties"; touch "$GP"
+  grep -q '^org.gradle.jvmargs=' "$GP" || echo "org.gradle.jvmargs=-Xmx2g -XX:+UseG1GC -XX:+UseStringDeduplication" >> "$GP"
+  grep -q '^org.gradle.workers.max=' "$GP" || echo "org.gradle.workers.max=2" >> "$GP"
+  grep -q '^org.gradle.daemon=' "$GP" || echo "org.gradle.daemon=false" >> "$GP"
+  grep -q '^org.gradle.caching=' "$GP" || echo "org.gradle.caching=true" >> "$GP"
+  grep -q '^org.gradle.configuration-cache=' "$GP" || echo "org.gradle.configuration-cache=true" >> "$GP"
+  grep -q '^kotlin.compiler.execution.strategy=' "$GP" || echo "kotlin.compiler.execution.strategy=in-process" >> "$GP"
+  grep -q '^kotlin.daemon.useFallbackStrategy=' "$GP" || echo "kotlin.daemon.useFallbackStrategy=false" >> "$GP"
+
+  # >>> Gradle 9 / AGP 8.3+ compatibility (remove deprecated dexing flag)
+  # Remove any 'android.enableDexingArtifactTransform' from all likely locations
+  sanitize_gradle_properties "$GP"
+  # Also check common parent/root and user gradle.properties if present (best-effort)
+  for p in "$SCRIPT_DIR/gradle.properties" "$SCRIPT_DIR/../gradle.properties" "$SCRIPT_DIR/../../gradle.properties" "$HOME/.gradle/gradle.properties"; do
+    [[ -f "$p" ]] && sanitize_gradle_properties "$p" || true
+  done
+  # Add the recommended replacement (harmless if unused)
+  ensure_line "$GP" "android.useFullClasspathForDexingTransform=true"
+  # <<<
+
+  chmod +x "$CODEBASE_DIR/gradlew" || true
+  mkdir -p "$DIST_DIR"
+  find "$DIST_DIR" -maxdepth 1 -type f -name "*debug.apk" -delete 2>/dev/null || true
+
+  info "Environment configured."
 }
 
-get_emulator_arch() {
-    # Detect emulator architecture early for native library optimization
-    local detected_arch=""
-    
-    if command -v adb >/dev/null 2>&1 && adb get-state >/dev/null 2>&1; then
-        detected_arch=$(adb shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r\n' || echo "")
-    fi
-    
-    # Fallback to host architecture if no device connected
-    if [[ -z "$detected_arch" ]]; then
-        local host_arch=$(uname -m)
-        case "$host_arch" in
-            "arm64"|"aarch64") detected_arch="arm64-v8a" ;;
-            "x86_64"|"amd64") detected_arch="x86_64" ;;
-            "i386"|"i686") detected_arch="x86" ;;
-            *) detected_arch="arm64-v8a" ;;
-        esac
-        info "No device connected, using host architecture: $detected_arch"
-    else
-        info "Detected device architecture: $detected_arch"
-    fi
-    
-    echo "$detected_arch"
+sanitize_gradle_properties() {
+  local file="$1"
+  # If the file contains the deprecated option, comment it out
+  if grep -q '^[[:space:]]*android\.enableDexingArtifactTransform' "$file"; then
+    info "Removing deprecated 'android.enableDexingArtifactTransform' from $file"
+    awk '!match($0, /^[[:space:]]*android\.enableDexingArtifactTransform[[:space:]]*=/)' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+  fi
 }
 
-clean_build_artifacts() {
-    # Remove only unnecessary build artifacts to save storage
-    info "Cleaning build artifacts to save storage..."
-    
-    # Stop any running Gradle daemons
-    ./gradlew --stop >/dev/null 2>&1 || true
-    
-    # Clean up old APKs except fdroid debug
-    find . -path "*/build/outputs/apk" -name "*.apk" -not -path "*/fdroid/debug/*" -delete 2>/dev/null || true
-    
-    # Clean up intermediate files that consume storage
-    find . -path "*/build/intermediates/dex*" -type d -exec rm -rf {} + 2>/dev/null || true
-    find . -path "*/build/intermediates/transforms" -type d -exec rm -rf {} + 2>/dev/null || true
-    find . -path "*/build/tmp" -type d -exec rm -rf {} + 2>/dev/null || true
-    find . -path "*/build/kotlin/sessions" -type d -exec rm -rf {} + 2>/dev/null || true
-    
-    # Clean up test build outputs
-    find . -path "*/build/outputs/apk/*/test/*" -delete 2>/dev/null || true
-    find . -path "*/build/intermediates/*/test*" -type d -exec rm -rf {} + 2>/dev/null || true
-    
-    # Clean up gradle cache to save memory - more aggressive cleanup
-    rm -rf ~/.gradle/caches/transforms-* 2>/dev/null || true
-    rm -rf ~/.gradle/caches/*/kotlin-dsl 2>/dev/null || true
-    rm -rf ~/.gradle/caches/*/scripts 2>/dev/null || true
-    rm -rf ~/.gradle/caches/*/executionHistory 2>/dev/null || true
-    
-    # Clean up local build cache files over 100MB
-    find . -path "*/build/*" -type f -size +100M -delete 2>/dev/null || true
+ensure_line() {
+  local file="$1" line="$2"
+  grep -q -F "$line" "$file" 2>/dev/null || echo "$line" >> "$file"
+}
+
+lightweight_cleanup() {
+  info "Lightweight cleanup (preserving Gradle caches)..."
+  pushd "$CODEBASE_DIR" >/dev/null
+  ./gradlew --stop >/dev/null 2>&1 || true
+  # Do NOT touch ~/.gradle or .gradle caches
+  find . -path "*/build/tmp" -type d -mtime +3 -prune -exec rm -rf {} + 2>/dev/null || true
+  popd >/dev/null
 }
 
 build_element_x() {
-    local arch
-    arch=$(get_emulator_arch)
-    
-    # Check if APK already exists and is recent
-    APK_PATH="app/build/outputs/apk/fdroid/debug/app-fdroid-debug.apk"
-    if [[ -f "$APK_PATH" ]]; then
-        # Check if APK is newer than source changes
-        local last_commit_time=$(git log -1 --format="%ct" 2>/dev/null || echo "0")
-        local apk_time=$(stat -f "%m" "$APK_PATH" 2>/dev/null || stat -c "%Y" "$APK_PATH" 2>/dev/null || echo "0")
-        
-        if [[ "$apk_time" -gt "$last_commit_time" ]]; then
-            info "APK already exists and is up-to-date at $APK_PATH - skipping build"
-            return 0
-        else
-            info "APK exists but source has changed - rebuilding"
-        fi
-    fi
-    
-    # Clean before build
-    clean_build_artifacts
-    
-    info "Building Element X from source (optimized for $arch architecture)..."
-    
-    # Build with Gradle 9.0 compatible optimizations (removed deprecated features)
-    ./gradlew assembleFdroidDebug \
-        --no-daemon \
-        --stacktrace \
-        --console=plain \
-        --parallel \
-        --build-cache \
-        --configuration-cache \
-        --warning-mode=all \
-        --max-workers=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "4") \
-        -Dorg.gradle.jvmargs="-Xmx8g -XX:+UseG1GC -XX:MaxMetaspaceSize=2g -XX:+DisableExplicitGC -XX:+UseStringDeduplication -XX:+UseCompressedOops" \
-        -Dorg.gradle.parallel=true \
-        -Dorg.gradle.caching=true \
-        -Dkotlin.incremental=true \
-        -Pandroid.injected.build.abi="$arch" \
-        -x test \
-        -x testClasses \
-        -x connectedCheck \
-        -x deviceCheck \
-        -x detekt \
-        -x ktlintCheck \
-        -x ktlintFormat \
-        -x compileGplayReleaseKotlin \
-        -x compileFdroidReleaseKotlin \
-        -x compileReleaseKotlin \
-        -x assembleGplayDebug \
-        -x assembleGplayRelease \
-        -x assembleFdroidRelease \
-        -x assembleRelease \
-        -x bundleDebug \
-        -x bundleRelease \
-        -x bundleGplayDebug \
-        -x bundleGplayRelease \
-        -x bundleFdroidRelease
-    
-    # Post-build cleanup to save storage
-    clean_build_artifacts
-    
-    info "Build completed successfully with storage optimization."
+  info "Building Element X (assembleFdroidDebug)..."
+  pushd "$CODEBASE_DIR" >/dev/null
+
+  ./gradlew :app:assembleFdroidDebug \
+    --stacktrace \
+    --console=plain \
+    --configuration-cache \
+    -Dorg.gradle.workers.max=2 \
+    -Dkotlin.incremental=true \
+    -x test -x testClasses -x connectedCheck -x deviceCheck \
+    -x detekt -x ktlintCheck -x ktlintFormat
+
+  popd >/dev/null
+  info "Build finished."
+}
+
+export_artifacts() {
+  info "Exporting APKs to $DIST_DIR ..."
+  local outdir="$CODEBASE_DIR/app/build/outputs/apk/fdroid/debug"
+  local found=0
+
+  if [[ -d "$outdir" ]]; then
+    while IFS= read -r -d '' apk; do
+      cp -f "$apk" "$DIST_DIR/"
+      found=1
+    done < <(find "$outdir" -maxdepth 1 -type f -name "*.apk" -print0 2>/dev/null || true)
+  fi
+
+  if [[ $found -eq 0 ]]; then
+    while IFS= read -r -d '' apk; do
+      cp -f "$apk" "$DIST_DIR/"
+      found=1
+    done < <(find "$CODEBASE_DIR" -path "*/build/outputs/apk/*/debug/*.apk" -print0 2>/dev/null || true)
+  fi
+
+  [[ $found -gt 0 ]] || error "No debug APKs found. Check Gradle logs."
+
+  if ! ls "$DIST_DIR"/*universal*debug.apk >/dev/null 2>&1; then
+    first_apk="$(ls -1 "$DIST_DIR"/*debug.apk | head -n1)"
+    cp -f "$first_apk" "$DIST_DIR/elementx-universal-debug.apk"
+  fi
+
+  info "Exported APKs:"
+  (cd "$DIST_DIR" && ls -lh *debug.apk 2>/dev/null || true)
+  command -v shasum >/dev/null 2>&1 && shasum -a 256 "$DIST_DIR"/*debug.apk 2>/dev/null || true
 }
 
 main() {
-    info "Element X Android Setup"
-    echo "========================"
-    
-    CODEBASE_DIR="$SCRIPT_DIR/codebase"
-    if [[ ! -d "$CODEBASE_DIR" ]]; then
-        error "Element X codebase directory not found at $CODEBASE_DIR"
-    fi
-    
-    cd "$CODEBASE_DIR"
-    
-    if [[ ! -f "gradlew" ]]; then
-        error "gradlew not found in codebase directory."
-    fi
-    
-    check_prerequisites
-    setup_environment
-    build_element_x
-    
-    echo ""
-    echo "=========================================="
-    info "Element X APK build completed successfully!"
-    echo "=========================================="
-    echo ""
+  info "Element X Android Setup (build-only)"
+  echo "===================================="
+
+  check_prerequisites
+  setup_environment
+  lightweight_cleanup
+  build_element_x
+  export_artifacts
+  lightweight_cleanup
+
+  echo ""
+  echo "=========================================="
+  info "✅ APK(s) ready in: $DIST_DIR"
+  info "Next step: run your setup.sh to install/launch."
+  echo "=========================================="
+  echo ""
 }
 
 main "$@"
