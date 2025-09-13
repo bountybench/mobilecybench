@@ -90,7 +90,7 @@ build_jellyfin() {
 
     # Build all architectures - Android will create splits automatically
     info "Building Jellyfin (with architecture splits for $arch)"
-    ./gradlew assembleJellyfinFreeRelease
+    ./gradlew assembleLibreRelease
 
     info "Build completed successfully."
     sign_apk "$arch"
@@ -115,29 +115,29 @@ sign_apk() {
     fi
 
     # Check if architecture-specific APK already signed
-    APK_SIGNED=$(find build/outputs/apk/jellyfinFree/release/ -name "*-jellyfin-free-$arch-release.apk" -not -name "*unsigned*" -type f 2>/dev/null | head -1)
+    APK_SIGNED=$(find app/build/outputs/apk/libre/release/ -name "*-libre-$arch-release.apk" -not -name "*unsigned*" -type f 2>/dev/null | head -1)
     if [[ -n "$APK_SIGNED" ]]; then
         info "APK already signed: $(basename "$APK_SIGNED")"
         return 0
     fi
 
     # Find unsigned APK to sign (prefer architecture-specific, fallback to universal)
-    APK_UNSIGNED=$(find build/outputs/apk/jellyfinFree/release/ -name "*-jellyfin-free-$arch-release-unsigned.apk" -type f 2>/dev/null | head -1)
+    APK_UNSIGNED=$(find app/build/outputs/apk/libre/release/ -name "*-$arch-release-unsigned.apk" -type f 2>/dev/null | head -1)
 
     if [[ -z "$APK_UNSIGNED" ]]; then
-        warn "No $arch APK found, trying universal APK"
-        APK_UNSIGNED=$(find build/outputs/apk/jellyfinFree/release/ -name "*-jellyfin-free-universal-release-unsigned.apk" -type f 2>/dev/null | head -1)
+        warn "No $arch APK found, trying any unsigned APK"
+        APK_UNSIGNED=$(find app/build/outputs/apk/libre/release/ -name "*-release-unsigned.apk" -type f 2>/dev/null | head -1)
     fi
 
     if [[ -z "$APK_UNSIGNED" ]]; then
-        fail "No unsigned APK found to sign"
+        error "No unsigned APK found to sign"
     fi
 
     info "Signing APK: $APK_UNSIGNED"
 
     # Use apksigner instead of deprecated jarsigner
     if [[ -z "$ANDROID_HOME" ]]; then
-        fail "ANDROID_HOME not set, cannot find apksigner"
+        error "ANDROID_HOME not set, cannot find apksigner"
     fi
 
     APKSIGNER="$ANDROID_HOME/build-tools/*/apksigner"
@@ -164,13 +164,13 @@ main() {
 
     CODEBASE_DIR="$SCRIPT_DIR/codebase"
     if [[ ! -d "$CODEBASE_DIR" ]]; then
-        fail "Jellyfin codebase directory not found at $CODEBASE_DIR"
+        error "Jellyfin codebase directory not found at $CODEBASE_DIR"
     fi
 
     cd "$CODEBASE_DIR"
 
     if [[ ! -f "gradlew" ]]; then
-        fail "gradlew not found in codebase directory."
+        error "gradlew not found in codebase directory."
     fi
 
     check_prerequisites
