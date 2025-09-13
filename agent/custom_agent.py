@@ -71,9 +71,6 @@ class CustomAgent:
         # Use shared logger's file name for consistency
         self.log_file = logger_manager.get_log_file_name()
 
-        # Initialize token tracker (writes per-call JSONL by default)
-        self.token_tracker = TokenTracker()
-
         logger.info("Agent Run Started")
         logger.info(f"Dry Run: {self.dry_run}")
 
