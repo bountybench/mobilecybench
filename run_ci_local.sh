@@ -225,7 +225,8 @@ run_test_check() {
 
 cd "$DIR"
 print_header "$CYAN" "SETTING UP APP FROM SOURCE"
-checkout_commit "$DIR"
+# Skip this step if you want to persist your apk
+# checkout_commit "$DIR"
 
 # Check if run_checks.sh exists to determine test strategy and required scripts
 if [ -f "run_checks.sh" ]; then
