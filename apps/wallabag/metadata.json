@@ -1,7 +1,6 @@
 {
-  "gh_link": "https://github.com/wallabag/wallabag-android",
+  "gh_link": "https://github.com/cy-suite/wallabag.git",
   "commit_version": "cd4de9a7d530b3ec642dd60de2952d878c103462",
-  "download_link": "https://github.com/wallabag/wallabag-android/releases/download/v2.6.4/wallabag-android-v2.6.4.apk",
   "sdk": "34",
   "java": "21",
   "emulator_server": "10.0.2.2:8080",
