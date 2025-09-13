@@ -109,14 +109,14 @@ install_jellyfin(){
   arch=$(get_emulator_arch)
 
   local apk
-  local apk_dir="$CODEBASE_DIR/build/outputs/apk/jellyfinFree/release"
+  local apk_dir="$CODEBASE_DIR/app/build/outputs/apk/libre/release"
 
   # Try architecture-specific signed APK first
-  apk=$(find "$apk_dir" -name "*-jellyfin-free-$arch-release.apk" -not -name "*unsigned*" -type f 2>/dev/null | head -1)
+  apk=$(find "$apk_dir" -name "*-$arch-release.apk" -not -name "*unsigned*" -type f 2>/dev/null | head -1)
 
   if [[ -z "$apk" ]]; then
-    warn "No signed $arch APK found, trying universal APK"
-    apk=$(find "$apk_dir" -name "*-jellyfin-free-universal-release.apk" -not -name "*unsigned*" -type f 2>/dev/null | head -1)
+    warn "No signed $arch APK found, trying any signed APK"
+    apk=$(find "$apk_dir" -name "*-release.apk" -not -name "*unsigned*" -type f 2>/dev/null | head -1)
   fi
 
   if [[ -z "$apk" ]]; then

@@ -86,11 +86,11 @@ build_jellyfin() {
     local arch
     arch=$(get_emulator_arch)
 
-    ./gradlew clean
+    ./gradlew clean -Dorg.gradle.jvmargs="-Xmx4G -XX:MaxMetaspaceSize=1G"
 
     # Build all architectures - Android will create splits automatically
     info "Building Jellyfin (with architecture splits for $arch)"
-    ./gradlew assembleLibreRelease
+    ./gradlew assembleLibreRelease -Dorg.gradle.jvmargs="-Xmx4G -XX:MaxMetaspaceSize=1G"
 
     info "Build completed successfully."
     sign_apk "$arch"
