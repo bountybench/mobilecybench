@@ -7,6 +7,7 @@ analysis.
 
 TODO: - Extend support for other API response formats. Currently only OpenAI-like responses are handled.
 """
+
 from __future__ import annotations
 
 import json
@@ -36,6 +37,7 @@ class TokenUsage:
         - cache_input_tokens: Number of input tokens served from cache.
         - cost_usd: Total cost in USD for this call, rounded to 10 decimal places.
     """
+
     model: str
     request_id: Optional[str]
     created_at: str
@@ -152,7 +154,7 @@ class TokenTracker:
         self.total_cache_input_tokens = 0
         self.total_cost_usd = 0.0
         self.call_count = 0
-    
+
     def _update_totals(self, record: TokenUsage) -> None:
         """Update running totals with data from a new usage record."""
         self.total_input_tokens += record.input_tokens
