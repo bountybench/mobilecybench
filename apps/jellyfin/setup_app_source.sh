@@ -12,15 +12,74 @@ warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
 error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
 
 apply_update_patch() {
-    # apply jellyfin-gradle-update.patch here
+    info "Applying gradle update patch..."
+    if [[ -f "$SCRIPT_DIR/jellyfin-gradle-update.patch" ]]; then
+        # Apply patch from parent directory to codebase
+        if patch -p0 < "$SCRIPT_DIR/jellyfin-gradle-update.patch"; then
+            info "Patch applied successfully"
+        else
+            error "Failed to apply patch"
+        fi
+    else
+        error "Patch file not found: $SCRIPT_DIR/jellyfin-gradle-update.patch"
+    fi
+}
+
+ensure_java_compatibility() {
+    info "Ensuring Java compatibility for Jellyfin build"
+
+    # Check if we have a compatible Java version (8, 11, or 17)
+    local java_version=""
+    if command -v java >/dev/null 2>&1; then
+        java_version=$(java -version 2>&1 | head -n 1 | sed 's/.*version "\([^"]*\)".*/\1/' | cut -d. -f1-2)
+        info "Current Java version: $java_version"
+    fi
+
+    # Check if current Java is compatible (version 8, 11, or 17)
+    case "$java_version" in
+        "1.8"|"8"|"11"|"17")
+            info "Java $java_version is compatible"
+            return 0
+            ;;
+        *)
+            warn "Java $java_version is not compatible. Need Java 8, 11, or 17."
+            ;;
+    esac
+
+    # Try to install Java 11 using system package managers
+    info "Installing Java 11..."
+
+    if command -v brew >/dev/null 2>&1; then
+        info "Installing Java 11 via Homebrew..."
+        brew install --quiet openjdk@11 || warn "Homebrew Java 11 installation failed"
+    elif command -v port >/dev/null 2>&1; then
+        info "Installing Java 11 via MacPorts..."
+        sudo port install openjdk11 || warn "MacPorts Java 11 installation failed"
+    elif command -v apt-get >/dev/null 2>&1; then
+        info "Installing Java 11 via apt-get..."
+        sudo apt-get update && sudo apt-get install -y openjdk-11-jdk || warn "apt-get Java 11 installation failed"
+    elif command -v yum >/dev/null 2>&1; then
+        info "Installing Java 11 via yum..."
+        sudo yum install -y java-11-openjdk-devel || warn "yum Java 11 installation failed"
+    elif command -v dnf >/dev/null 2>&1; then
+        info "Installing Java 11 via dnf..."
+        sudo dnf install -y java-11-openjdk-devel || warn "dnf Java 11 installation failed"
+    else
+        error "No supported package manager found. Please install Java 11 manually."
+    fi
+
+    info "Java installation completed"
 }
 
 check_prerequisites() {
     info "Checking prerequisites (Java and Android SDK)..."
 
-    # Check Java
+    # Ensure compatible Java version is installed
+    ensure_java_compatibility
+
+    # Check Java again after potential installation
     if ! command -v java >/dev/null 2>&1; then
-        error "Java not found. Please install Java 17."
+        error "Java not found even after installation attempt. Please install Java 8, 11, or 17 manually."
     fi
 
     # More robust check for the Android SDK path.
@@ -46,13 +105,43 @@ check_prerequisites() {
 setup_environment() {
     info "Setting up build environment..."
 
-    # Set Java 17
-    if [[ -d "/opt/homebrew/opt/openjdk@17" ]]; then
-        export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-    elif [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
-        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
-    else
-        warn "Could not find Java 17 via known paths. Using system default."
+    # Try to find compatible Java version (Java 8, 11, or 17)
+    JAVA_CANDIDATES=(
+        "/opt/homebrew/opt/openjdk@11/libexec/openjdk.jdk/Contents/Home"
+        "/opt/homebrew/opt/openjdk@8/libexec/openjdk.jdk/Contents/Home"
+        "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+        "/usr/lib/jvm/java-11-openjdk"
+        "/usr/lib/jvm/java-8-openjdk"
+        "/usr/lib/jvm/java-17-openjdk"
+        "/opt/local/Library/Java/JavaVirtualMachines/jdk-11-azul-zulu.jdk/Contents/Home"
+        "/opt/local/Library/Java/JavaVirtualMachines/jdk-8-azul-zulu.jdk/Contents/Home"
+        "/opt/local/Library/Java/JavaVirtualMachines/jdk-17-azul-zulu.jdk/Contents/Home"
+        "/opt/local/Library/Java/JavaVirtualMachines/openjdk11/Contents/Home"
+        "/opt/local/Library/Java/JavaVirtualMachines/openjdk8/Contents/Home"
+    )
+
+    # Also check /usr/libexec/java_home for macOS
+    if command -v /usr/libexec/java_home >/dev/null 2>&1; then
+        # Try to get Java 11 first, then 8, then 17
+        for version in 11 8 17; do
+            if java_home=$(/usr/libexec/java_home -v $version 2>/dev/null); then
+                JAVA_CANDIDATES=("$java_home" "${JAVA_CANDIDATES[@]}")
+                break
+            fi
+        done
+    fi
+
+    JAVA_HOME=""
+    for candidate in "${JAVA_CANDIDATES[@]}"; do
+        if [[ -d "$candidate" ]]; then
+            export JAVA_HOME="$candidate"
+            info "Using Java from: $JAVA_HOME"
+            break
+        fi
+    done
+
+    if [[ -z "$JAVA_HOME" ]]; then
+        warn "Could not find Java 8, 11, or 17. Using system default which may not work."
         export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
     fi
 
@@ -163,7 +252,17 @@ sign_apk() {
 
 
 cleanup_update_patch() {
-    # cleanup jellyfin-gradle-update.patch here
+    info "Cleaning up gradle patch..."
+    # Revert the patch by applying it in reverse
+    if [[ -f "$SCRIPT_DIR/jellyfin-gradle-update.patch" ]]; then
+        if patch -R -p0 < "$SCRIPT_DIR/jellyfin-gradle-update.patch"; then
+            info "Patch reverted successfully"
+        else
+            warn "Failed to revert patch - codebase may have modifications"
+        fi
+    else
+        warn "Patch file not found for cleanup"
+    fi
 }
 
 
