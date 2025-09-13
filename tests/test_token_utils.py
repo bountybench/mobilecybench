@@ -105,7 +105,6 @@ def test_get_pricing_for_model_with_date_suffix():
 ##########################################
 class _Usage:
     """Mock usage object similar to OpenAI response."""
-
     def __init__(self, input_tokens=0, output_tokens=0):
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
@@ -118,7 +117,6 @@ class _Resp:
         self.id = rid
         self.usage = usage
 
-
 class _InputDetails:
     def __init__(self, cached_tokens: int):
         self.cached_tokens = cached_tokens
@@ -126,7 +124,6 @@ class _InputDetails:
 
 class _UsageWithDetails(_Usage):
     """Mock usage object with input_tokens_details similar to OpenAI response."""
-
     def __init__(self, input_tokens, output_tokens, cached_tokens):
         super().__init__(input_tokens=input_tokens, output_tokens=output_tokens)
         self.input_tokens_details = _InputDetails(cached_tokens)
