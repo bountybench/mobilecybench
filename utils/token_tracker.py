@@ -4,6 +4,8 @@ This module defines a TokenTracker class that can record token usage from
 OpenAI-like response objects, compute costs based on a pricing map, and maintain
 aggregated totals. It supports logging usage records to a JSONL file for detailed
 analysis.
+
+TODO: - Extend support for other API response formats. Currently only OpenAI-like responses are handled.
 """
 from __future__ import annotations
 
