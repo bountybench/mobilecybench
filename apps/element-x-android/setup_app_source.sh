@@ -56,7 +56,7 @@ setup_environment() {
   export PATH="$JAVA_HOME/bin:$PATH"
 
   # SUPER CONSERVATIVE: 2G heap, small metaspace, single worker, no daemon, no parallel, no config cache
-  export GRADLE_OPTS="-Xmx3072m -XX:MaxMetaspaceSize=512m -XX:+UseG1GC -XX:+UseStringDeduplication -XX:G1HeapRegionSize=16m -Dfile.encoding=UTF-8"
+  export GRADLE_OPTS="-Xmx2048m -XX:MaxMetaspaceSize=384m -XX:+UseG1GC -XX:+UseStringDeduplication -XX:G1HeapRegionSize=16m -XX:+DisableExplicitGC -XX:+UseCompressedOops -Dfile.encoding=UTF-8 -Djava.awt.headless=true"
   export org_gradle_daemon="false"
   export org_gradle_parallel="true"
   export org_gradle_workers_max="2"
@@ -119,8 +119,10 @@ build_element_x() {
     -Dkotlin.compiler.execution.strategy=in-process \
     -Dkotlin.daemon.useFallbackStrategy=false \
     -Dkotlin.incremental.multiplatform=true \
-    -x test -x testClasses -x connectedCheck -x deviceCheck \
-    -x detekt -x ktlintCheck -x ktlintFormat
+    -Dkotlin.daemon.jvm.options="-Xmx512m" \
+    -Dorg.gradle.jvmargs="-XX:+UseParallelGC" \
+    -Dorg.gradle.unsafe.configuration-cache-problems=warn \
+    -x test -x testClasses -x connectedCheck -x deviceCheck
 
   popd >/dev/null
   info "Build finished."
