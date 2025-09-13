@@ -2,7 +2,6 @@
 
 This module provides functionality to load token pricing data from a JSON file,
 retrieve pricing information for specific models, and compute costs based on token usage.
-
 """
 
 from __future__ import annotations
