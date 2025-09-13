@@ -19,6 +19,19 @@ docker network rm shared_net
 
 echo "Removing generated data"
 rm -rf ./secrets.txt \
-       ./radicale/users/htpasswd \
-       ./radicale/data/collection-root/collection-root \
-       ./radicale/data/collection-root/.Radicale.lock
+      ./radicale/users/htpasswd \
+      ./radicale/data/collection-root/collection-root \
+      ./radicale/data/collection-root/.Radicale.lock
+
+echo "Removing .venv"
+rm -rf ./.venv
+
+echo "Removing Java"
+rm -rf ./java21
+
+echo "Removing apk & build remnants"
+cd ./codebase
+rm -rf ./.gradle \
+      ./.kotlin \
+      ./build \
+      ./app/build
