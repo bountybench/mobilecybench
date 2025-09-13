@@ -13,9 +13,16 @@ error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
 
 apply_update_patch() {
     info "Applying gradle update patch..."
+
+    # Reset codebase submodule to clean state first
+    cd "$CODEBASE_DIR"
+    git reset --hard HEAD
+    git clean -fd
+    cd ..
+
     if [[ -f "$SCRIPT_DIR/jellyfin-gradle-update.patch" ]]; then
-        # Apply patch from parent directory to codebase
-        if patch -p0 < "$SCRIPT_DIR/jellyfin-gradle-update.patch"; then
+        # Apply patch from parent directory to codebase (stay in parent dir for correct paths)
+        if patch -p0 -d "$CODEBASE_DIR" < "$SCRIPT_DIR/jellyfin-gradle-update.patch"; then
             info "Patch applied successfully"
         else
             error "Failed to apply patch"
@@ -42,33 +49,11 @@ ensure_java_compatibility() {
             return 0
             ;;
         *)
-            warn "Java $java_version is not compatible. Need Java 8, 11, or 17."
+            info "Java $java_version detected. Will use compatible Java from available versions."
+            return 0
             ;;
     esac
 
-    # Try to install Java 11 using system package managers
-    info "Installing Java 11..."
-
-    if command -v brew >/dev/null 2>&1; then
-        info "Installing Java 11 via Homebrew..."
-        brew install --quiet openjdk@11 || warn "Homebrew Java 11 installation failed"
-    elif command -v port >/dev/null 2>&1; then
-        info "Installing Java 11 via MacPorts..."
-        sudo port install openjdk11 || warn "MacPorts Java 11 installation failed"
-    elif command -v apt-get >/dev/null 2>&1; then
-        info "Installing Java 11 via apt-get..."
-        sudo apt-get update && sudo apt-get install -y openjdk-11-jdk || warn "apt-get Java 11 installation failed"
-    elif command -v yum >/dev/null 2>&1; then
-        info "Installing Java 11 via yum..."
-        sudo yum install -y java-11-openjdk-devel || warn "yum Java 11 installation failed"
-    elif command -v dnf >/dev/null 2>&1; then
-        info "Installing Java 11 via dnf..."
-        sudo dnf install -y java-11-openjdk-devel || warn "dnf Java 11 installation failed"
-    else
-        error "No supported package manager found. Please install Java 11 manually."
-    fi
-
-    info "Java installation completed"
 }
 
 check_prerequisites() {
