@@ -59,7 +59,7 @@ setup_environment() {
   export GRADLE_OPTS="-Xmx2048m -XX:MaxMetaspaceSize=384m -XX:+UseG1GC -XX:+UseStringDeduplication -XX:G1HeapRegionSize=16m -XX:+DisableExplicitGC -XX:+UseCompressedOops -Dfile.encoding=UTF-8 -Djava.awt.headless=true"
   export org_gradle_daemon="false"
   export org_gradle_parallel="true"
-  export org_gradle_workers_max="2"
+  export org_gradle_workers_max="1"
   export org_gradle_caching="true"            # cache is fine; doesn't spike RAM
   export org_gradle_configuration_cache="true"  # enables faster subsequent builds
   export org_gradle_unsafe_watch_fs="false"
@@ -86,7 +86,7 @@ setup_environment() {
   # Helpful visibility in CI logs
   info "Java: $(java -version 2>&1 | head -n1)"
   info "GRADLE_OPTS=$GRADLE_OPTS"
-  info "Workers: 2, Parallel: on, Daemon: off, ConfigCache: on"
+  info "Workers: 1, Parallel: on, Daemon: off, ConfigCache: on"
 }
 
 lightweight_cleanup() {
@@ -98,7 +98,7 @@ lightweight_cleanup() {
 }
 
 build_element_x() {
-  info "Building Element X (assembleFdroidDebug) with 2 workers..."
+  info "Building Element X (assembleFdroidDebug) with 1 worker..."
   pushd "$CODEBASE_DIR" >/dev/null
 
   # Extra hard caps via command line, matching manager guidance
@@ -107,10 +107,10 @@ build_element_x() {
     --console=plain \
     --no-daemon \
     --parallel \
-    --max-workers=2 \
+    --max-workers=1 \
     --build-cache \
     --configuration-cache \
-    -Dorg.gradle.workers.max=2 \
+    -Dorg.gradle.workers.max=1 \
     -Dorg.gradle.parallel=true \
     -Dorg.gradle.caching=true \
     -Dorg.gradle.configuration-cache=true \
@@ -178,5 +178,4 @@ main() {
 }
 
 main "$@"
-
 
