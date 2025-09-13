@@ -56,12 +56,12 @@ setup_environment() {
   export PATH="$JAVA_HOME/bin:$PATH"
 
   # SUPER CONSERVATIVE: 2G heap, small metaspace, single worker, no daemon, no parallel, no config cache
-  export GRADLE_OPTS="-Xmx2048m -XX:MaxMetaspaceSize=384m -XX:+UseG1GC -XX:+UseStringDeduplication -Dfile.encoding=UTF-8"
+  export GRADLE_OPTS="-Xmx3072m -XX:MaxMetaspaceSize=512m -XX:+UseG1GC -XX:+UseStringDeduplication -XX:G1HeapRegionSize=16m -Dfile.encoding=UTF-8"
   export org_gradle_daemon="false"
-  export org_gradle_parallel="false"
-  export org_gradle_workers_max="1"
+  export org_gradle_parallel="true"
+  export org_gradle_workers_max="2"
   export org_gradle_caching="true"            # cache is fine; doesn't spike RAM
-  export org_gradle_configuration_cache="false" # disable to keep memory flatter
+  export org_gradle_configuration_cache="true"  # enables faster subsequent builds
   export org_gradle_unsafe_watch_fs="false"
 
   # Kotlin in-process → no extra daemon JVM
@@ -69,15 +69,8 @@ setup_environment() {
   echo "sdk.dir=${ANDROID_SDK_ROOT:-}" > "$CODEBASE_DIR/local.properties"
   export PATH="$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
 
-  # Idempotent props
-  grep -q '^org.gradle.jvmargs=' "$GP" || echo "org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=384m -XX:+UseG1GC -XX:+UseStringDeduplication -Dfile.encoding=UTF-8" >> "$GP"
-  grep -q '^org.gradle.workers.max=' "$GP" || echo "org.gradle.workers.max=1" >> "$GP"
-  grep -q '^org.gradle.daemon=' "$GP" || echo "org.gradle.daemon=false" >> "$GP"
-  grep -q '^org.gradle.parallel=' "$GP" || echo "org.gradle.parallel=false" >> "$GP"
-  grep -q '^org.gradle.caching=' "$GP" || echo "org.gradle.caching=true" >> "$GP"
-  grep -q '^org.gradle.configuration-cache=' "$GP" || echo "org.gradle.configuration-cache=false" >> "$GP"
-  grep -q '^kotlin.compiler.execution.strategy=' "$GP" || echo "kotlin.compiler.execution.strategy=in-process" >> "$GP"
-  grep -q '^kotlin.daemon.useFallbackStrategy=' "$GP" || echo "kotlin.daemon.useFallbackStrategy=false" >> "$GP"
+  # Only modify local.properties (not tracked by git)
+  touch "$GP"  # Ensure gradle.properties exists but don't modify it
 
   # Gradle 9 / AGP 8.3+ safety: strip deprecated dexing flag anywhere it might lurk
   sanitize_gradle_properties "$GP"
@@ -93,7 +86,7 @@ setup_environment() {
   # Helpful visibility in CI logs
   info "Java: $(java -version 2>&1 | head -n1)"
   info "GRADLE_OPTS=$GRADLE_OPTS"
-  info "Workers: 1, Parallel: off, Daemon: off, ConfigCache: off"
+  info "Workers: 2, Parallel: on, Daemon: off, ConfigCache: on"
 }
 
 lightweight_cleanup() {
@@ -105,7 +98,7 @@ lightweight_cleanup() {
 }
 
 build_element_x() {
-  info "Building Element X (assembleFdroidDebug) with single worker..."
+  info "Building Element X (assembleFdroidDebug) with 2 workers..."
   pushd "$CODEBASE_DIR" >/dev/null
 
   # Extra hard caps via command line, matching manager guidance
@@ -113,10 +106,19 @@ build_element_x() {
     --stacktrace \
     --console=plain \
     --no-daemon \
-    --no-parallel \
-    --max-workers=1 \
-    -Dorg.gradle.workers.max=1 \
+    --parallel \
+    --max-workers=2 \
+    --build-cache \
+    --configuration-cache \
+    -Dorg.gradle.workers.max=2 \
+    -Dorg.gradle.parallel=true \
+    -Dorg.gradle.caching=true \
+    -Dorg.gradle.configuration-cache=true \
+    -Dorg.gradle.vfs.watch=true \
     -Dkotlin.incremental=true \
+    -Dkotlin.compiler.execution.strategy=in-process \
+    -Dkotlin.daemon.useFallbackStrategy=false \
+    -Dkotlin.incremental.multiplatform=true \
     -x test -x testClasses -x connectedCheck -x deviceCheck \
     -x detekt -x ktlintCheck -x ktlintFormat
 
@@ -174,3 +176,5 @@ main() {
 }
 
 main "$@"
+
+
