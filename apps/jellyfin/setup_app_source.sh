@@ -11,6 +11,10 @@ info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
 error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
 
+apply_update_patch() {
+    # apply jellyfin-gradle-update.patch here
+}
+
 check_prerequisites() {
     info "Checking prerequisites (Java and Android SDK)..."
 
@@ -158,6 +162,11 @@ sign_apk() {
 }
 
 
+cleanup_update_patch() {
+    # cleanup jellyfin-gradle-update.patch here
+}
+
+
 main() {
     info "Jellyfin Android Setup"
     echo "============================"
@@ -173,9 +182,11 @@ main() {
         fail "gradlew not found in codebase directory."
     fi
 
+    apply_update_patch
     check_prerequisites
     setup_environment
     build_Jellyfin
+    cleanup_update_patch
 
     echo ""
     echo "=========================================="
