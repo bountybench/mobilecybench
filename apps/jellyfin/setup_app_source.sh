@@ -11,60 +11,12 @@ info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
 error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
 
-apply_update_patch() {
-    info "Applying gradle update patch..."
-
-    # Reset codebase submodule to clean state first
-    cd "$CODEBASE_DIR"
-    git reset --hard HEAD
-    git clean -fd
-    cd ..
-
-    if [[ -f "$SCRIPT_DIR/jellyfin-gradle-update.patch" ]]; then
-        # Apply patch from parent directory to codebase (stay in parent dir for correct paths)
-        if patch -p0 -d "$CODEBASE_DIR" < "$SCRIPT_DIR/jellyfin-gradle-update.patch"; then
-            info "Patch applied successfully"
-        else
-            error "Failed to apply patch"
-        fi
-    else
-        error "Patch file not found: $SCRIPT_DIR/jellyfin-gradle-update.patch"
-    fi
-}
-
-ensure_java_compatibility() {
-    info "Ensuring Java compatibility for Jellyfin build"
-
-    # Check if we have a compatible Java version (8, 11, or 17)
-    local java_version=""
-    if command -v java >/dev/null 2>&1; then
-        java_version=$(java -version 2>&1 | head -n 1 | sed 's/.*version "\([^"]*\)".*/\1/' | cut -d. -f1-2)
-        info "Current Java version: $java_version"
-    fi
-
-    # Check if current Java is compatible (version 8, 11, or 17)
-    case "$java_version" in
-        "1.8"|"8"|"11"|"17")
-            info "Java $java_version is compatible"
-            return 0
-            ;;
-        *)
-            info "Java $java_version detected. Will use compatible Java from available versions."
-            return 0
-            ;;
-    esac
-
-}
-
 check_prerequisites() {
     info "Checking prerequisites (Java and Android SDK)..."
 
-    # Ensure compatible Java version is installed
-    ensure_java_compatibility
-
-    # Check Java again after potential installation
+    # Check Java
     if ! command -v java >/dev/null 2>&1; then
-        error "Java not found even after installation attempt. Please install Java 8, 11, or 17 manually."
+        error "Java not found. Please install Java 17."
     fi
 
     # More robust check for the Android SDK path.
@@ -90,43 +42,13 @@ check_prerequisites() {
 setup_environment() {
     info "Setting up build environment..."
 
-    # Try to find compatible Java version (Java 8, 11, or 17)
-    JAVA_CANDIDATES=(
-        "/opt/homebrew/opt/openjdk@11/libexec/openjdk.jdk/Contents/Home"
-        "/opt/homebrew/opt/openjdk@8/libexec/openjdk.jdk/Contents/Home"
-        "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
-        "/usr/lib/jvm/java-11-openjdk"
-        "/usr/lib/jvm/java-8-openjdk"
-        "/usr/lib/jvm/java-17-openjdk"
-        "/opt/local/Library/Java/JavaVirtualMachines/jdk-11-azul-zulu.jdk/Contents/Home"
-        "/opt/local/Library/Java/JavaVirtualMachines/jdk-8-azul-zulu.jdk/Contents/Home"
-        "/opt/local/Library/Java/JavaVirtualMachines/jdk-17-azul-zulu.jdk/Contents/Home"
-        "/opt/local/Library/Java/JavaVirtualMachines/openjdk11/Contents/Home"
-        "/opt/local/Library/Java/JavaVirtualMachines/openjdk8/Contents/Home"
-    )
-
-    # Also check /usr/libexec/java_home for macOS
-    if command -v /usr/libexec/java_home >/dev/null 2>&1; then
-        # Try to get Java 11 first, then 8, then 17
-        for version in 11 8 17; do
-            if java_home=$(/usr/libexec/java_home -v $version 2>/dev/null); then
-                JAVA_CANDIDATES=("$java_home" "${JAVA_CANDIDATES[@]}")
-                break
-            fi
-        done
-    fi
-
-    JAVA_HOME=""
-    for candidate in "${JAVA_CANDIDATES[@]}"; do
-        if [[ -d "$candidate" ]]; then
-            export JAVA_HOME="$candidate"
-            info "Using Java from: $JAVA_HOME"
-            break
-        fi
-    done
-
-    if [[ -z "$JAVA_HOME" ]]; then
-        warn "Could not find Java 8, 11, or 17. Using system default which may not work."
+    # Set Java 17
+    if [[ -d "/opt/homebrew/opt/openjdk@17" ]]; then
+        export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+    elif [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
+        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+    else
+        warn "Could not find Java 17 via known paths. Using system default."
         export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
     fi
 
@@ -158,7 +80,7 @@ get_emulator_arch() {
     echo "universal"
 }
 
-build_Jellyfin() {
+build_jellyfin() {
     info "Building Jellyfin from source (this may take several minutes)..."
 
     local arch
@@ -193,18 +115,18 @@ sign_apk() {
     fi
 
     # Check if architecture-specific APK already signed
-    APK_SIGNED=$(find build/outputs/apk/JellyfinFree/release/ -name "*-Jellyfin-free-$arch-release.apk" -not -name "*unsigned*" -type f 2>/dev/null | head -1)
+    APK_SIGNED=$(find build/outputs/apk/jellyfinFree/release/ -name "*-jellyfin-free-$arch-release.apk" -not -name "*unsigned*" -type f 2>/dev/null | head -1)
     if [[ -n "$APK_SIGNED" ]]; then
         info "APK already signed: $(basename "$APK_SIGNED")"
         return 0
     fi
 
     # Find unsigned APK to sign (prefer architecture-specific, fallback to universal)
-    APK_UNSIGNED=$(find build/outputs/apk/JellyfinFree/release/ -name "*-Jellyfin-free-$arch-release-unsigned.apk" -type f 2>/dev/null | head -1)
+    APK_UNSIGNED=$(find build/outputs/apk/jellyfinFree/release/ -name "*-jellyfin-free-$arch-release-unsigned.apk" -type f 2>/dev/null | head -1)
 
     if [[ -z "$APK_UNSIGNED" ]]; then
         warn "No $arch APK found, trying universal APK"
-        APK_UNSIGNED=$(find build/outputs/apk/JellyfinFree/release/ -name "*-Jellyfin-free-universal-release-unsigned.apk" -type f 2>/dev/null | head -1)
+        APK_UNSIGNED=$(find build/outputs/apk/jellyfinFree/release/ -name "*-jellyfin-free-universal-release-unsigned.apk" -type f 2>/dev/null | head -1)
     fi
 
     if [[ -z "$APK_UNSIGNED" ]]; then
@@ -236,21 +158,6 @@ sign_apk() {
 }
 
 
-cleanup_update_patch() {
-    info "Cleaning up gradle patch..."
-    # Revert the patch by applying it in reverse
-    if [[ -f "$SCRIPT_DIR/jellyfin-gradle-update.patch" ]]; then
-        if patch -R -p0 < "$SCRIPT_DIR/jellyfin-gradle-update.patch"; then
-            info "Patch reverted successfully"
-        else
-            warn "Failed to revert patch - codebase may have modifications"
-        fi
-    else
-        warn "Patch file not found for cleanup"
-    fi
-}
-
-
 main() {
     info "Jellyfin Android Setup"
     echo "============================"
@@ -266,11 +173,9 @@ main() {
         fail "gradlew not found in codebase directory."
     fi
 
-    apply_update_patch
     check_prerequisites
     setup_environment
-    build_Jellyfin
-    cleanup_update_patch
+    build_jellyfin
 
     echo ""
     echo "=========================================="
