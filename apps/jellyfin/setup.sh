@@ -206,60 +206,48 @@ setup_jellyfin_server(){
   info "Jellyfin server ready at http://localhost:8096"
 }
 
-# setup_xmpp_users(){
-#   info "Setting up XMPP test users"
+setup_jellyfin_admin_user(){
+  info "Setting up Jellyfin admin user"
 
-#   local container_name="jellyfin-prosody"
-#   local domain="10.0.2.2"
+  local jellyfin_url="http://localhost:8096"
+  local admin_username="admin"
+  local admin_password="adminpass"
 
-#   # Check if Prosody container is running
-#   if ! docker ps --filter "name=$container_name" --filter "status=running" -q | grep -q .; then
-#     warn "Prosody container not running, skipping user setup"
-#     return 0
-#   fi
+  # Wait for Jellyfin to be fully ready for API calls
+  info "Waiting for Jellyfin API to be ready..."
+  for i in {1..30}; do
+    if curl -f "$jellyfin_url/System/Info/Public" >/dev/null 2>&1; then
+      info "Jellyfin API is ready"
+      break
+    fi
+    if [ $i -eq 30 ]; then
+      warn "Jellyfin API may not be ready, proceeding anyway..."
+    fi
+    sleep 2
+  done
 
-#   # Create admin user
-#   info "Creating admin user: admin@$domain"
-#   if docker exec "$container_name" prosodyctl register admin "$domain" "adminpass"; then
-#     info "Admin user created successfully"
-#   else
-#     warn "Failed to create admin user (may already exist)"
-#   fi
+  # Check if initial setup is needed
+  info "Checking if initial setup is required..."
+  startup_response=$(curl -s "$jellyfin_url/Startup/Configuration" 2>/dev/null || echo "")
 
-#   # Create test users
-#   info "Creating test user: testuser@$domain"
-#   if docker exec "$container_name" prosodyctl register testuser "$domain" "testpass"; then
-#     info "Test user created successfully"
-#   else
-#     warn "Failed to create test user (may already exist)"
-#   fi
+  if echo "$startup_response" | grep -q '"UICulture"'; then
+    info "Creating admin user: $admin_username"
 
-#   info "Creating regular user: user1@$domain"
-#   if docker exec "$container_name" prosodyctl register user1 "$domain" "user1pass"; then
-#     info "Regular user1 created successfully"
-#   else
-#     warn "Failed to create user1 (may already exist)"
-#   fi
+    # Create the initial admin user
+    curl -X POST "$jellyfin_url/Startup/User" \
+      -H "Content-Type: application/json" \
+      -d "{\"Name\":\"$admin_username\",\"Password\":\"$admin_password\"}" \
+      >/dev/null 2>&1
 
-#   info "Creating regular user: user2@$domain"  
-#   if docker exec "$container_name" prosodyctl register user2 "$domain" "user2pass"; then
-#     info "Regular user2 created successfully"
-#   else
-#     warn "Failed to create user2 (may already exist)"
-#   fi
+    # Complete the startup wizard
+    curl -X POST "$jellyfin_url/Startup/Complete" >/dev/null 2>&1
 
-#   # Verify users were created
-#   info "Verifying user creation..."
-#   if docker exec "$container_name" prosodyctl shell --help >/dev/null 2>&1; then
-#     info "User setup verification complete"
-#   fi
-
-#   info "XMPP users configured:"
-#   info "  - admin@$domain (password: adminpass)"
-#   info "  - testuser@$domain (password: testpass)" 
-#   info "  - user1@$domain (password: user1pass)"
-#   info "  - user2@$domain (password: user2pass)"
-# }
+    info "Jellyfin admin user created successfully"
+    info "Admin credentials: $admin_username / $admin_password"
+  else
+    info "Jellyfin already configured or startup wizard not available"
+  fi
+}
 
 install_and_launch_app(){
   if ! command_exists adb; then
@@ -279,6 +267,7 @@ main(){
   parse_args "$@"
   ensure_prereqs
   setup_jellyfin_server
+  setup_jellyfin_admin_user
   build_app
   install_and_launch_app
   summary
