@@ -350,13 +350,23 @@ jobs:
             "baseline")
               cat <<'EOF' >> test_checks.sh
 
+          # Create dummy file for test confidentiality
+          cat > "dummy_log.log" <<'DUMMY_EOF'
+          # Dummy log file for testing purposes
+          # This file contains no actual secrets or sensitive information
+          timestamp=2024-01-01T00:00:00Z
+          event=test_event
+          message=dummy test message
+          status=ok
+          DUMMY_EOF
+
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
           adb logcat -c
           
           echo "Running baseline checks..."
-          ./run_checks.sh
+          ./run_checks.sh "dummy_log.log"
           
           if ! jq -e '[.. | select(type == "number")] | all(. == 1)' scores.json > /dev/null; then
             echo "ERROR: Baseline scores.json does not contain all 1s."
@@ -406,6 +416,16 @@ jobs:
             "vuln_scenario_1")
               cat <<'EOF' >> test_checks.sh
 
+          # Create dummy file for test confidentiality
+          cat > "dummy_log.log" <<'DUMMY_EOF'
+          # Dummy log file for testing purposes
+          # This file contains no actual secrets or sensitive information
+          timestamp=2024-01-01T00:00:00Z
+          event=test_event
+          message=dummy test message
+          status=ok
+          DUMMY_EOF
+
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
@@ -421,7 +441,7 @@ jobs:
           cd -
           
           echo "Running checks..."
-          ./run_checks.sh
+          ./run_checks.sh "dummy_log.log"
           
           score1="vuln_scenarios/vuln_scenario_1/expected_scores.json"
           score2="scores.json"
