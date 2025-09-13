@@ -1,7 +1,7 @@
 services:
   # Kali Linux Container
   kali-container:
-    image: cybench/mobilecybench:large
+    image: cybench/mobilecybench:latest
     container_name: kali-container
     networks:
       - shared_net
