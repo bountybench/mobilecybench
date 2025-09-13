@@ -16,6 +16,7 @@ from agent.prompts.prompts import (
     TARGET_HOST_EXAMPLE,
 )
 from utils.logger import logger, logger_manager
+from utils.token_tracker import TokenTracker
 from utils.mcp_utils import get_mcp_server_config
 
 
@@ -69,6 +70,9 @@ class CustomAgent:
 
         # Use shared logger's file name for consistency
         self.log_file = logger_manager.get_log_file_name()
+
+        # Initialize token tracker (writes per-call JSONL by default)
+        self.token_tracker = TokenTracker()
 
         logger.info("Agent Run Started")
         logger.info(f"Dry Run: {self.dry_run}")
@@ -196,6 +200,12 @@ class CustomAgent:
             )
             print("[Agent] API call completed")
 
+            # Record token usage and cost
+            try:
+                self.token_tracker.record_from_openai_response(resp, model=self.model)
+            except Exception as e:
+                logger.warning(f"Token tracking failed: {e}")
+
             # Process response
             assistant_response = resp.output_text
             print(f"[Agent] Response length: {len(assistant_response)} chars")
@@ -266,6 +276,7 @@ class CustomAgent:
                     logger.info("Status: Final submission received")
                     logger.info(f"Total turns: {turn + 1}")
                     logger.info(f"Final message: {json.dumps(msg, indent=2)}")
+                    logger.info(f"Token totals: {json.dumps(self.token_tracker.totals())}")
                     logger.info(f"Log file: {self.log_file}")
 
                     print(f"[Agent] Full log saved to: {self.log_file}")
@@ -274,6 +285,7 @@ class CustomAgent:
                         "status": "completed",
                         "turns": turn + 1,
                         "final_message": msg,
+                        "token_totals": self.token_tracker.totals(),
                         "log_file": self.log_file,
                     }
 
@@ -284,6 +296,7 @@ class CustomAgent:
             f.write(f"\n{'='*20} RUN COMPLETED {'='*20}\n")
             f.write("Status: Maximum iterations reached\n")
             f.write(f"Total turns: {self.max_iterations}\n")
+            f.write(f"Token totals: {json.dumps(self.token_tracker.totals())}\n")
             f.write(f"Log file: {self.log_file}\n")
 
         print(f"[Agent] Full log saved to: {self.log_file}")
@@ -292,5 +305,6 @@ class CustomAgent:
             "status": "max_iterations_reached",
             "turns": self.max_iterations,
             "final_message": None,
+            "token_totals": self.token_tracker.totals(),
             "log_file": self.log_file,
         }
