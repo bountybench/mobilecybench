@@ -7,6 +7,7 @@ analysis.
 
 TODO: - Extend support for other API response formats. Currently only OpenAI-like responses are handled.
 """
+
 from __future__ import annotations
 
 import json
@@ -36,6 +37,7 @@ class TokenUsage:
         - cache_input_tokens: Number of input tokens served from cache.
         - cost_usd: Total cost in USD for this call, rounded to 10 decimal places.
     """
+
     model: str
     request_id: Optional[str]
     created_at: str
@@ -75,8 +77,6 @@ def _extract_token_count(u: Any, key: str, default: int = 0) -> int:
     except Exception:
         pass
     return default
-
-
 
 
 def _extract_usage_openai_like(resp: Any) -> Tuple[int, int, int, Optional[str]]:
@@ -154,7 +154,7 @@ class TokenTracker:
         self.total_cache_input_tokens = 0
         self.total_cost_usd = 0.0
         self.call_count = 0
-    
+
     def _update_totals(self, record: TokenUsage) -> None:
         """Update running totals with data from a new usage record."""
         self.total_input_tokens += record.input_tokens
@@ -175,7 +175,7 @@ class TokenTracker:
 
         Returns:
             A TokenUsage record with detailed usage and cost information.
-        
+
         Raises:
             No exceptions are raised. Invalid responses are handled gracefully
             with zero token counts and appropriate warnings logged.
@@ -232,7 +232,7 @@ class TokenTracker:
 
     def totals(self) -> Dict[str, Any]:
         """Get aggregated totals of token usage and costs.
-        
+
         Returns:
             A Dictionary with keys:
                 - calls: Total number of API calls recorded.
@@ -248,4 +248,3 @@ class TokenTracker:
             "cache_input_tokens": self.total_cache_input_tokens,
             "cost_usd": round(self.total_cost_usd, 10),
         }
-    

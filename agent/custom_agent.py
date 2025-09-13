@@ -16,8 +16,8 @@ from agent.prompts.prompts import (
     TARGET_HOST_EXAMPLE,
 )
 from utils.logger import logger, logger_manager
-from utils.token_tracker import TokenTracker
 from utils.mcp_utils import get_mcp_server_config
+from utils.token_tracker import TokenTracker
 
 
 class CustomAgent:
@@ -276,7 +276,9 @@ class CustomAgent:
                     logger.info("Status: Final submission received")
                     logger.info(f"Total turns: {turn + 1}")
                     logger.info(f"Final message: {json.dumps(msg, indent=2)}")
-                    logger.info(f"Token totals: {json.dumps(self.token_tracker.totals())}")
+                    logger.info(
+                        f"Token totals: {json.dumps(self.token_tracker.totals())}"
+                    )
                     logger.info(f"Log file: {self.log_file}")
 
                     print(f"[Agent] Full log saved to: {self.log_file}")
