@@ -16,7 +16,6 @@ from agent.prompts.prompts import (
     TARGET_HOST_EXAMPLE,
 )
 from utils.logger import logger, logger_manager
-from utils.token_tracker import TokenTracker
 from utils.mcp_utils import get_mcp_server_config
 from utils.token_tracker import TokenTracker
 
