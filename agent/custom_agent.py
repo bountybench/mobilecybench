@@ -1,4 +1,3 @@
-import datetime
 import json
 import os
 
@@ -16,7 +15,7 @@ from agent.prompts.prompts import (
     SUBMISSION_INSTRUCTIONS,
     TARGET_HOST_EXAMPLE,
 )
-from utils.logger import logger
+from utils.logger import logger, logger_manager
 from utils.mcp_utils import get_mcp_server_config
 
 
@@ -68,9 +67,8 @@ class CustomAgent:
         self.rolling_summary = ""
         self.history_items = [self.system_prompt]
 
-        # Set up logging
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.log_file = f"agent_run_{timestamp}.log"
+        # Use shared logger's file name for consistency
+        self.log_file = logger_manager.get_log_file_name()
 
         logger.info("Agent Run Started")
         logger.info(f"Dry Run: {self.dry_run}")
