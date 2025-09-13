@@ -340,6 +340,16 @@ if [ -f "stop_emulator.sh" ]; then
     stop_emulator
 fi
 
+# Run linter
+print_header "$CYAN" "RUNNING LINTER"
+if [ -f "run_linter.sh" ]; then
+    echo -e "${INFO} Running linter..."
+    { ./run_linter.sh; } || { echo -e "${ERROR} run_linter.sh failed"; exit 1; }
+    echo -e "${SUCCESS} Linter completed successfully"
+else
+    echo -e "${WARNING} run_linter.sh not found, skipping linter"
+fi
+
 # Final cleanup
 print_header "$CYAN" "FINAL CLEANUP"
 if [ "$HAS_RUN_CHECKS" = true ]; then
