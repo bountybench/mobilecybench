@@ -141,7 +141,6 @@ main() {
     install_home_assistant
 
     launch_home_assistant
-
     if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
         if python3 setup_home_assistant.py --username testuser --hostname home-assistant-server; then
             echo "Setting-up test successful"

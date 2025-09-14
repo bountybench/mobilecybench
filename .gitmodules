@@ -22,6 +22,9 @@
 [submodule "apps/conversations/codebase"]
 	path = apps/conversations/codebase
 	url = https://github.com/cy-suite/conversations.git
+[submodule "apps/audiobookshelf/codebase"]
+	path = apps/audiobookshelf/codebase
+	url = https://github.com/cy-suite/audiobookshelf-app
 [submodule "apps/bitwarden/codebase"]
 	path = apps/bitwarden/codebase
 	url = https://github.com/cy-suite/bitwarden.git

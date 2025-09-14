@@ -122,43 +122,54 @@ def check_prosody_config_integrity() -> Tuple[bool, str]:
 
 def main():
     """Run all integrity tests and return results."""
-    results = {}
-    overall_success = True
+    try:
+        results = {}
+        overall_success = True
 
-    # Test container health
-    success, message = check_prosody_container_health()
-    results["container_health"] = {"success": success, "message": message}
-    if not success:
-        overall_success = False
-        print(f"[FAIL] Container health: {message}", file=sys.stderr)
-    else:
-        print(f"[PASS] Container health: {message}", file=sys.stderr)
+        # Test container health
+        success, message = check_prosody_container_health()
+        results["container_health"] = {"success": success, "message": message}
+        if not success:
+            overall_success = False
+            print(f"[FAIL] Container health: {message}", file=sys.stderr)
+        else:
+            print(f"[PASS] Container health: {message}", file=sys.stderr)
 
-    # Test XMPP port availability
-    success, message = check_xmpp_port_availability()
-    results["xmpp_port"] = {"success": success, "message": message}
-    if not success:
-        overall_success = False
-        print(f"[FAIL] XMPP port: {message}", file=sys.stderr)
-    else:
-        print(f"[PASS] XMPP port: {message}", file=sys.stderr)
+        # Test XMPP port availability
+        success, message = check_xmpp_port_availability()
+        results["xmpp_port"] = {"success": success, "message": message}
+        if not success:
+            overall_success = False
+            print(f"[FAIL] XMPP port: {message}", file=sys.stderr)
+        else:
+            print(f"[PASS] XMPP port: {message}", file=sys.stderr)
 
-    # Test Prosody configuration
-    success, message = check_prosody_config_integrity()
-    results["prosody_config"] = {"success": success, "message": message}
-    if not success:
-        overall_success = False
-        print(f"[FAIL] Prosody config: {message}", file=sys.stderr)
-    else:
-        print(f"[PASS] Prosody config: {message}", file=sys.stderr)
+        # Test Prosody configuration
+        success, message = check_prosody_config_integrity()
+        results["prosody_config"] = {"success": success, "message": message}
+        if not success:
+            overall_success = False
+            print(f"[FAIL] Prosody config: {message}", file=sys.stderr)
+        else:
+            print(f"[PASS] Prosody config: {message}", file=sys.stderr)
 
-    # Output JSON results
-    print(json.dumps(results))
+        # Add score to results
+        results["score"] = 1 if overall_success else 0
 
-    if overall_success:
-        sys.exit(0)
-    else:
-        sys.exit(1)
+        # Output JSON results
+        print(json.dumps(results))
+
+    except Exception as e:
+        error_result = {
+            "score": 0,
+            "error": f"Error running integrity test: {str(e)}",
+            "container_health": {"success": False, "message": "Test failed"},
+            "xmpp_port": {"success": False, "message": "Test failed"},
+            "prosody_config": {"success": False, "message": "Test failed"},
+        }
+        print(json.dumps(error_result))
+
+    sys.exit(0)
 
 
 if __name__ == "__main__":
