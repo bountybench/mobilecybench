@@ -71,6 +71,8 @@ setup_environment() {
 
   # Disable licensee plugin for faster builds
   export ORG_GRADLE_PROJECT_licensee_skip=true
+  export ORG_GRADLE_PROJECT_licensee_enable=false
+  export LICENSEE_SKIP=true
 
   # local.properties: set sdk.dir if missing
   if [ -n "${ANDROID_SDK_ROOT:-}" ]; then
@@ -146,6 +148,8 @@ build_element_x() {
     -Dkotlin.daemon.jvmargs="${KOTLIN_DAEMON_JVMARGS}" \
     -Dorg.gradle.vfs.watch=true \
     -Dorg.gradle.project.licensee.skip=true \
+    -Dorg.gradle.project.licensee.enable=false \
+    -Dlicensee.skip=true \
     $ABI_PROPS \
     -x test -x testClasses -x connectedCheck -x deviceCheck -x lint -x lintDebug
   rc=$?
@@ -166,8 +170,9 @@ build_element_x() {
       -Dkotlin.compiler.execution.strategy=in-process \
       -Dkotlin.daemon.useFallbackStrategy=false \
       -Dkotlin.daemon.jvmargs="${KOTLIN_DAEMON_JVMARGS}" \
-      -Plicense.skip=true \
-      -Plicense.disable=true \
+      -Dorg.gradle.project.licensee.skip=true \
+      -Dorg.gradle.project.licensee.enable=false \
+      -Dlicensee.skip=true \
       $ABI_PROPS \
       -x test -x testClasses -x connectedCheck -x deviceCheck -x lint -x lintDebug
   fi
