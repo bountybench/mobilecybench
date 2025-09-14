@@ -5,8 +5,10 @@ COPY packages.list /tmp/packages.list
 # Install new Kali GPG key as per https://www.kali.org/blog/new-kali-archive-signing-key/
 RUN wget https://archive.kali.org/archive-keyring.gpg -O /usr/share/keyrings/kali-archive-keyring.gpg
 
+RUN apt-get update
+
 # Install common tools, Python 3.12, Docker, and Android tools
-RUN apt-get update && apt-get install -y \
+RUN apt-get install -y \
     build-essential \
     zlib1g-dev \
     libncurses5-dev \

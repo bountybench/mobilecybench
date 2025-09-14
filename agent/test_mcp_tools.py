@@ -17,7 +17,8 @@ def get_ngrok_url():
             data = json.loads(result.stdout)
             return data["tunnels"][0]["public_url"]
         return None
-    except:
+    except Exception as e:
+        print(f"❌ Error: {e}")
         return None
 
 
@@ -50,7 +51,8 @@ def call_mcp_server(method, params=None):
                 if line.startswith("data: "):
                     return json.loads(line[6:])
         return None
-    except:
+    except Exception as e:
+        print(f"❌ Error: {e}")
         return None
 
 
