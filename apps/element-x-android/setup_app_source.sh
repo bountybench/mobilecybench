@@ -69,6 +69,9 @@ setup_environment() {
   export GRADLE_OPTS="$JVM_HEAP -XX:MaxMetaspaceSize=${META_MB}m -Dfile.encoding=UTF-8 -Djava.awt.headless=true"
   KOTLIN_DAEMON_JVMARGS="${KOTLIN_HEAP} -XX:MaxMetaspaceSize=${META_MB}m -XX:-UseParallelGC"  # NOTE: spaces, not commas
 
+  # Disable licensee plugin for faster builds
+  export ORG_GRADLE_PROJECT_licensee_skip=true
+
   # local.properties: set sdk.dir if missing
   if [ -n "${ANDROID_SDK_ROOT:-}" ]; then
     if [ ! -f "$CODEBASE_DIR/local.properties" ] || ! grep -q '^sdk.dir=' "$CODEBASE_DIR/local.properties" 2>/dev/null; then
@@ -142,6 +145,7 @@ build_element_x() {
     -Dkotlin.incremental.useClasspathSnapshot=true \
     -Dkotlin.daemon.jvmargs="${KOTLIN_DAEMON_JVMARGS}" \
     -Dorg.gradle.vfs.watch=true \
+    -Dorg.gradle.project.licensee.skip=true \
     $ABI_PROPS \
     -x test -x testClasses -x connectedCheck -x deviceCheck -x lint -x lintDebug
   rc=$?
@@ -162,6 +166,8 @@ build_element_x() {
       -Dkotlin.compiler.execution.strategy=in-process \
       -Dkotlin.daemon.useFallbackStrategy=false \
       -Dkotlin.daemon.jvmargs="${KOTLIN_DAEMON_JVMARGS}" \
+      -Plicense.skip=true \
+      -Plicense.disable=true \
       $ABI_PROPS \
       -x test -x testClasses -x connectedCheck -x deviceCheck -x lint -x lintDebug
   fi
