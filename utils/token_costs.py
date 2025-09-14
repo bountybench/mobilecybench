@@ -3,13 +3,13 @@
 This module provides functionality to load token pricing data from a JSON file,
 retrieve pricing information for specific models, and compute costs based on token usage.
 
-TODO: Support prefix matching for model names in pricing lookups.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from typing import Dict, Optional
 
@@ -101,6 +101,25 @@ def load_pricing(path: Optional[str] = None) -> Dict[str, ModelPricing]:
         return {}
 
 
+def _strip_date_suffix(model: str) -> str:
+    """Strip date suffix from model name if present.
+
+    Args:
+        model: Model name that may contain a date suffix like "-2025-08-07".
+
+    Returns:
+        Model name without date suffix.
+
+    Examples:
+        "gpt-5-2025-08-07" -> "gpt-5"
+        "gpt-5-mini-2025-08-07" -> "gpt-5-mini"
+        "gpt-4" -> "gpt-4" (unchanged)
+    """
+    # Pattern matches "-YYYY-MM-DD" at the end of the string
+    date_pattern = r"-\d{4}-\d{2}-\d{2}$"
+    return re.sub(date_pattern, "", model)
+
+
 def get_pricing_for_model(
     model: str,
     pricing_map: Optional[Dict[str, ModelPricing]] = None,
@@ -118,18 +137,30 @@ def get_pricing_for_model(
         pipeline failures.
 
     Note:
-        For now, only exact model names are supported (no prefix matching).
-        If unknown and `warn` is True, a warning is logged. Returns a ModelPricing
-        with all zeros to avoid breaking the pipeline.
-        TODO: support prefix matching in future. (e.g. "gpt-5" matches "gpt-5-2025-__-__")
+        First tries exact model name match, then tries with date suffix stripped.
+        For example, "gpt-5-2025-08-07" will first try exact match, then fall back
+        to "gpt-5" pricing. If still unknown and `warn` is True, a warning is logged.
+        Returns ModelPricing with all zeros to avoid breaking the pipeline.
     """
     pm = pricing_map if pricing_map is not None else load_pricing()
+
+    # Try exact match first
     pricing = pm.get(model)
-    if pricing is None:
-        if warn:
-            logger.warning(f"Token pricing unknown for model '{model}'; using zeros.")
-        return ModelPricing()  # all pricing zeros
-    return pricing
+    if pricing is not None:
+        return pricing
+
+    # Try with date suffix stripped
+    base_model = _strip_date_suffix(model)
+    if base_model != model:
+        pricing = pm.get(base_model)
+        if pricing is not None:
+            logger.debug(f"Using pricing for '{base_model}' for model '{model}'")
+            return pricing
+
+    # No pricing found
+    if warn:
+        logger.warning(f"Token pricing unknown for model '{model}'; using zeros.")
+    return ModelPricing()  # all pricing zeros
 
 
 def compute_cost_usd(
@@ -149,9 +180,6 @@ def compute_cost_usd(
 
     Returns:
         - Cost in USD as a float. (non-negative)
-
-    Note:
-        TODO: check the logic here matches actual provider billing
     """
     it = max(int(input_tokens or 0), 0)
     ot = max(int(output_tokens or 0), 0)
