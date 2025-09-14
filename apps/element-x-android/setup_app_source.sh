@@ -12,15 +12,18 @@ warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*" >&2; }
 error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
 
 # --- Helpers (BSD/macOS safe) ---
-cpus() {
-  if command -v sysctl >/dev/null 2>&1; then sysctl -n hw.ncpu 2>/dev/null || echo 2; else echo 2; fi
-}
-total_mem_mb() {
-  if command -v sysctl >/dev/null 2>&1; then
-    echo $(( $(sysctl -n hw.memsize 2>/dev/null || echo 2147483648) / 1024 / 1024 ))
-  else
-    echo 2048
-  fi
+cpus(){ command -v sysctl >/dev/null 2>&1 && sysctl -n hw.ncpu 2>/dev/null || echo 2; }
+total_mem_mb(){ command -v sysctl >/dev/null 2>&1 && echo $(( $(sysctl -n hw.memsize 2>/dev/null || echo 2147483648) / 1024 / 1024 )) || echo 2048; }
+
+pick_build_task() {
+  cd "$CODEBASE_DIR"
+  # Try your preferred task first; then fallbacks
+  for t in :app:assembleFdroidDebug :app:assembleDebug assembleFdroidDebug assembleDebug; do
+    ./gradlew -m "$t" --quiet >/dev/null 2>&1 && { echo "$t"; cd - >/dev/null; return 0; }
+  done
+  cd - >/dev/null
+  echo ""
+  return 1
 }
 
 # --- 1) Checks ---
@@ -40,18 +43,14 @@ check_prerequisites() {
 
   # Android SDK detection (mac paths first)
   if [ -z "${ANDROID_HOME:-}" ] && [ -z "${ANDROID_SDK_ROOT:-}" ]; then
-    if   [ -d "${HOME}/Library/Android/sdk" ]; then ANDROID_HOME="${HOME}/Library/Android/sdk"
-    elif [ -d "${HOME}/.android-sdk" ]; then ANDROID_HOME="${HOME}/.android-sdk"
-    elif [ -d "/usr/local/share/android-sdk" ]; then ANDROID_HOME="/usr/local/share/android-sdk"
-    elif [ -d "/usr/local/lib/android/sdk" ]; then ANDROID_HOME="/usr/local/lib/android/sdk"
-    fi
+    for d in "$HOME/Library/Android/sdk" "$HOME/.android-sdk" "/usr/local/share/android-sdk" "/usr/local/lib/android/sdk"; do
+      [ -d "$d" ] && ANDROID_HOME="$d" && break
+    done
     export ANDROID_HOME="${ANDROID_HOME:-}"
   fi
   export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
 
-  if [ -z "${ANDROID_SDK_ROOT:-}" ]; then
-    warn "ANDROID_SDK_ROOT not set; proceeding (AGP may bootstrap)."
-  fi
+  [ -n "${ANDROID_SDK_ROOT:-}" ] || warn "ANDROID_SDK_ROOT not set; proceeding (AGP may bootstrap)."
 
   chmod +x "$CODEBASE_DIR/gradlew" 2>/dev/null || true
   mkdir -p "$DIST_DIR"
@@ -62,16 +61,13 @@ setup_environment() {
   info "Configuring build environment…"
 
   MEM_MB="$(total_mem_mb)"
-  if [ "$MEM_MB" -ge 16384 ]; then
-    JVM_HEAP="-Xmx4096m"; KOTLIN_HEAP="-Xmx1536m"; META_MB=512
-  elif [ "$MEM_MB" -ge 8192 ]; then
-    JVM_HEAP="-Xmx3072m"; KOTLIN_HEAP="-Xmx1024m"; META_MB=384
-  else
-    JVM_HEAP="-Xmx2048m"; KOTLIN_HEAP="-Xmx768m";  META_MB=384
+  if   [ "$MEM_MB" -ge 16384 ]; then JVM_HEAP="-Xmx4096m"; KOTLIN_HEAP="-Xmx1536m"; META_MB=512
+  elif [ "$MEM_MB" -ge 8192  ]; then JVM_HEAP="-Xmx3072m"; KOTLIN_HEAP="-Xmx1024m"; META_MB=384
+  else                               JVM_HEAP="-Xmx2048m"; KOTLIN_HEAP="-Xmx768m";  META_MB=384
   fi
 
   export GRADLE_OPTS="$JVM_HEAP -XX:MaxMetaspaceSize=${META_MB}m -Dfile.encoding=UTF-8 -Djava.awt.headless=true"
-  KOTLIN_DAEMON_JVMARGS="${KOTLIN_HEAP} -XX:MaxMetaspaceSize=${META_MB}m -XX:-UseParallelGC"
+  KOTLIN_DAEMON_JVMARGS="${KOTLIN_HEAP} -XX:MaxMetaspaceSize=${META_MB}m -XX:-UseParallelGC"  # NOTE: spaces, not commas
 
   # local.properties: set sdk.dir if missing
   if [ -n "${ANDROID_SDK_ROOT:-}" ]; then
@@ -86,11 +82,7 @@ setup_environment() {
   BE="# <<< chatgpt-optimized END"
   if [ -f "$GP" ] && grep -q "$BS" "$GP" 2>/dev/null; then
     tmpf="$GP.tmp.$$"
-    awk -v s="$BS" -v e="$BE" '
-      $0==s {skip=1; next}
-      $0==e {skip=0; next}
-      skip!=1 {print}
-    ' "$GP" > "$tmpf" && mv "$tmpf" "$GP"
+    awk -v s="$BS" -v e="$BE" '$0==s{skip=1;next} $0==e{skip=0;next} !skip{print}' "$GP" > "$tmpf" && mv "$tmpf" "$GP"
   fi
 
   {
@@ -101,13 +93,13 @@ setup_environment() {
     echo "org.gradle.caching=true"
     echo "org.gradle.configuration-cache=true"
     echo "org.gradle.daemon=true"
+    echo "org.gradle.vfs.watch=true"
     echo
     echo "android.useAndroidX=true"
     echo "android.nonTransitiveRClass=true"
     echo
     echo "kotlin.incremental=true"
     echo "kotlin.incremental.useClasspathSnapshot=true"
-    # IMPORTANT: space-separated, no commas
     echo "kotlin.daemon.jvmargs=${KOTLIN_DAEMON_JVMARGS}"
     echo
     echo "systemProp.org.gradle.internal.http.connectionTimeout=60000"
@@ -115,35 +107,32 @@ setup_environment() {
     echo "$BE"
   } >> "$GP"
 
-  # Remove experimental lint override if present (it slows resolution)
+  # Remove experimental lint override if present (prevents slow snapshot resolves)
   if [ -f "$GP" ] && grep -q '^android\.experimental\.lint\.version=' "$GP" 2>/dev/null; then
-    tmpf="$GP.tmp.$$"
-    grep -v '^android\.experimental\.lint\.version=' "$GP" > "$tmpf" && mv "$tmpf" "$GP"
+    tmpf="$GP.tmp.$$"; grep -v '^android\.experimental\.lint\.version=' "$GP" > "$tmpf" && mv "$tmpf" "$GP"
     info "Removed experimental lint override from gradle.properties"
   fi
 }
 
 # --- 3) Build ---
 build_element_x() {
-  info "Starting optimized build…"
+  info "Selecting build task…"
+  TASK="$(pick_build_task)"
+  [ -n "$TASK" ] || error "No suitable assemble*Debug task found. Try VARIANT=Debug or check './gradlew tasks --all'."
 
+  info "Starting optimized build: $TASK"
   MAX_WORKERS="$(cpus)"
   CI_MODE="${CI:-false}"
   CONSOLE_FLAG="--console=rich"
 
-  # Optional ABI limiting for faster packaging: export TARGET_ABI=arm64-v8a or x86_64
-  if [ -n "${TARGET_ABI:-}" ]; then
-    info "Limiting ABI to ${TARGET_ABI}"
-    ABI_PROP="-Dorg.gradle.project.android.injected.ndk.abiFilters=${TARGET_ABI}"
-  else
-    ABI_PROP=""
-  fi
+  # ABI pin for emulator speed (arm64-v8a). If you ever need x86_64: TARGET_ABI=x86_64
+  ABI="${TARGET_ABI:-arm64-v8a}"
+  ABI_PROPS="-Dorg.gradle.project.android.injected.ndk.abiFilters=${ABI} -Pandroid.injected.build.abi=${ABI}"
 
   cd "$CODEBASE_DIR"
 
-  # First attempt: daemon + config cache (fastest on mac)
   set +e
-  ./gradlew :app:assembleFdroidDebug \
+  ./gradlew "$TASK" \
     $CONSOLE_FLAG \
     --build-cache \
     $( [ "$CI_MODE" = "true" ] && echo --no-daemon --no-configuration-cache || echo --daemon --configuration-cache ) \
@@ -152,14 +141,14 @@ build_element_x() {
     -Dorg.gradle.workers.max="$MAX_WORKERS" \
     -Dkotlin.incremental=true \
     -Dkotlin.daemon.jvmargs="${KOTLIN_DAEMON_JVMARGS}" \
-    $ABI_PROP \
+    $ABI_PROPS \
     -x test -x testClasses -x connectedCheck -x deviceCheck -x lint -x lintDebug
   rc=$?
   set -e
 
   if [ $rc -ne 0 ]; then
-    warn "Daemon build failed (rc=$rc); retrying with in-process Kotlin compiler…"
-    ./gradlew :app:assembleFdroidDebug \
+    warn "Daemon build failed (rc=$rc); retrying with in-process Kotlin…"
+    ./gradlew "$TASK" \
       --no-daemon \
       --no-configuration-cache \
       --build-cache \
@@ -171,25 +160,30 @@ build_element_x() {
       -Dkotlin.compiler.execution.strategy=in-process \
       -Dkotlin.daemon.useFallbackStrategy=false \
       -Dkotlin.daemon.jvmargs="${KOTLIN_DAEMON_JVMARGS}" \
-      $ABI_PROP \
+      $ABI_PROPS \
       -x test -x testClasses -x connectedCheck -x deviceCheck -x lint -x lintDebug
   fi
 
   cd - >/dev/null
 }
 
-# --- 4) Export ---
+# --- 4) Export (robust) ---
 export_artifacts() {
   info "Exporting APK…"
-  newest_apk=""
-  # shellcheck disable=SC2010
-  newest_apk="$(ls -t "$CODEBASE_DIR"/app/build/outputs/apk/*/debug/*.apk 2>/dev/null | head -n 1 || true)"
-  if [ -z "$newest_apk" ]; then
-    newest_apk="$(find "$CODEBASE_DIR" -type f -path "*/build/outputs/apk/*/debug/*.apk" -print 2>/dev/null | xargs ls -t 2>/dev/null | head -n 1 || true)"
-  fi
-  [ -n "$newest_apk" ] || error "No debug APK found in build outputs."
-  cp -f "$newest_apk" "$DIST_DIR/elementx-universal-debug.apk"
-  info "APK ready: $DIST_DIR/elementx-universal-debug.apk"
+
+  # 1) Find APK in outputs or intermediates directories
+  apk="$(find "$CODEBASE_DIR" -type f \( -path "*/build/outputs/apk/*/debug/*.apk" -o -path "*/build/intermediates/apk/*/debug/*.apk" \) -print 2>/dev/null | head -n 1 || true)"
+
+  [ -n "$apk" ] || {
+    warn "No APK found. Searching common locations:"
+    find "$CODEBASE_DIR" -type f -name "*.apk" -print 2>/dev/null | head -5 | sed 's/^/[found] /' || true
+    error "No debug APK found."
+  }
+
+  mkdir -p "$DIST_DIR"
+  out="$DIST_DIR/elementx-arm64v8a-debug.apk"
+  cp -f "$apk" "$out"
+  info "APK ready: $out"
 }
 
 # --- 5) Optional cleanup ---
@@ -207,7 +201,7 @@ main() {
   build_element_x
   export_artifacts
   lightweight_cleanup
-  info "✅ Done: $DIST_DIR/elementx-universal-debug.apk"
+  info "✅ Done: $DIST_DIR/elementx-arm64v8a-debug.apk"
 }
 
 main "$@"
