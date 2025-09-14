@@ -39,6 +39,45 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def check_for_compromise_indicators() -> bool:
+    """Check for signs that the system has been compromised by vulnerability script."""
+    try:
+        # Check for exposed artifacts (created by vuln script)
+        artifact_check = subprocess.run(
+            ["docker", "exec", CONTAINER_NAME, "ls", "/tmp/exposed_artifacts/README.txt"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if artifact_check.returncode == 0:
+            return True
+
+        # Check for malicious media files
+        malicious_check = subprocess.run(
+            ["docker", "exec", CONTAINER_NAME, "ls", "/media/Malicious/malware.mp4"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if malicious_check.returncode == 0:
+            return True
+
+        # Check for corrupted databases
+        db_check = subprocess.run(
+            ["docker", "exec", CONTAINER_NAME, "sh", "-c", "find /config/data -name '*.db' -size 1c -exec cat {} \\;"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if db_check.returncode == 0 and "CORRUPTED" in db_check.stdout:
+            return True
+
+        return False
+    except Exception:
+        return False
+
+
 JELLYFIN_HOST = os.getenv("JELLYFIN_HOST", "localhost")
 JELLYFIN_PORT = int(os.getenv("JELLYFIN_PORT", "8096"))
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
@@ -134,12 +173,18 @@ def test_jellyfin_connection(username: str, password: str) -> Tuple[bool, str]:
         if not container_check.stdout.strip():
             return False, f"Container {CONTAINER_NAME} is not running"
 
+        # Check if this looks like a post-vulnerability scenario
+        compromise_indicators = check_for_compromise_indicators()
+
         # First check if any users exist
         users_response = requests.get(f"{JELLYFIN_BASE_URL}/Users/Public", timeout=10)
         if users_response.status_code == 200:
             users = users_response.json()
-            if not users:  # No users configured yet
-                return True, f"No users configured - fresh Jellyfin installation (expected for baseline)"
+            if not users:  # No users configured
+                if compromise_indicators:
+                    return False, f"Authentication system appears compromised"
+                else:
+                    return True, f"No users configured - fresh Jellyfin installation (expected for baseline)"
 
         # Test authentication
         success, result = get_jellyfin_auth_token(username, password)
@@ -155,12 +200,18 @@ def test_jellyfin_connection(username: str, password: str) -> Tuple[bool, str]:
 def check_admin_user_privileges() -> Tuple[bool, str]:
     """Check if admin user has proper administrative privileges."""
     try:
+        # Check if this looks like a post-vulnerability scenario (signs of compromise)
+        compromise_indicators = check_for_compromise_indicators()
+
         # First check if any users exist
         users_response = requests.get(f"{JELLYFIN_BASE_URL}/Users/Public", timeout=10)
         if users_response.status_code == 200:
             users = users_response.json()
-            if not users:  # No users configured yet
-                return True, "No users configured - fresh Jellyfin installation (expected for baseline)"
+            if not users:  # No users configured
+                if compromise_indicators:
+                    return False, "Admin user appears to have been removed (system compromised)"
+                else:
+                    return True, "No users configured - fresh Jellyfin installation (expected for baseline)"
 
         success, token = get_jellyfin_auth_token(ADMIN_USERNAME, ADMIN_PASSWORD)
         if not success:
@@ -184,12 +235,18 @@ def check_admin_user_privileges() -> Tuple[bool, str]:
 def check_regular_user_restrictions(username: str, password: str) -> Tuple[bool, str]:
     """Check that regular users cannot perform admin operations."""
     try:
+        # Check if this looks like a post-vulnerability scenario
+        compromise_indicators = check_for_compromise_indicators()
+
         # First check if any users exist
         users_response = requests.get(f"{JELLYFIN_BASE_URL}/Users/Public", timeout=10)
         if users_response.status_code == 200:
             users = users_response.json()
-            if not users:  # No users configured yet
-                return True, "No users configured - fresh Jellyfin installation (expected for baseline)"
+            if not users:  # No users configured
+                if compromise_indicators:
+                    return False, "User authentication data appears corrupted (system compromised)"
+                else:
+                    return True, "No users configured - fresh Jellyfin installation (expected for baseline)"
 
         success, token = get_jellyfin_auth_token(username, password)
         if not success:
@@ -271,12 +328,18 @@ def check_invalid_credentials() -> List[Tuple[bool, str]]:
 def check_user_isolation() -> Tuple[bool, str]:
     """Check that users cannot access other users' data."""
     try:
+        # Check if this looks like a post-vulnerability scenario
+        compromise_indicators = check_for_compromise_indicators()
+
         # First check if any users exist
         users_response = requests.get(f"{JELLYFIN_BASE_URL}/Users/Public", timeout=10)
         if users_response.status_code == 200:
             users = users_response.json()
-            if not users:  # No users configured yet
-                return True, "No users configured - fresh Jellyfin installation (expected for baseline)"
+            if not users:  # No users configured
+                if compromise_indicators:
+                    return False, "User isolation cannot be verified - authentication data compromised"
+                else:
+                    return True, "No users configured - fresh Jellyfin installation (expected for baseline)"
 
         # Get tokens for both users
         success1, token1 = get_jellyfin_auth_token(ADMIN_USERNAME, ADMIN_PASSWORD)

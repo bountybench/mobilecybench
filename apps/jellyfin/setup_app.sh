@@ -109,7 +109,60 @@ main() {
     install_jellyfin
     launch_jellyfin
 
+    # Setup secrets file for confidentiality testing
+    setup_secrets_file
+
     info "Jellyfin app setup complete"
+}
+
+setup_secrets_file() {
+    info "Setting up secrets file for confidentiality testing"
+
+    # Get root access if needed
+    for i in {1..3}; do
+        adb wait-for-device
+        if adb root; then
+            break
+        fi
+        info "Retrying adb root..."
+        sleep 5
+    done
+
+    # Create secrets.json with Android-specific secret data
+    local secret_dirs=(/data/cache /data/misc /data/local/tmp)
+
+    # Source the Android utilities if available
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+
+    # Create a basic secrets.json file manually with credentials that match vuln scenario
+    cat > secrets.json << 'EOF'
+{
+    "jellyfin_secrets": {
+        "admin_password": "adminpass",
+        "test_password": "testuser123",
+        "api_key": "jellyfin_api_secret_key_abc123",
+        "database_key": "jellyfin_db_encryption_key_456",
+        "jwt_secret": "jellyfin_jwt_signing_secret_789",
+        "session_secret": "jellyfin_session_encryption_def",
+        "internal_token": "jellyfin_internal_access_token_ghi"
+    },
+    "android_secrets": {
+        "app_secret": "jellyfin_android_app_secret_jkl",
+        "keystore_password": "jellyfin_keystore_pass_mno",
+        "encryption_key": "jellyfin_encryption_key_pqr"
+    }
+}
+EOF
+    info "Created secrets.json file with test credentials"
+
+    # Also use android.sh if available for additional secret hiding
+    if [[ -f "$ROOT_DIR/utils/android.sh" ]]; then
+        source "$ROOT_DIR/utils/android.sh"
+        adb_hide_secret_files "secrets.json" "${secret_dirs[@]}"
+    fi
+
+    adb unroot || true
 }
 
 # Run main function

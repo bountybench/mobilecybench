@@ -120,10 +120,124 @@ def check_jellyfin_api_integrity() -> Tuple[bool, str]:
 
 
 def check_jellyfin_config_integrity() -> Tuple[bool, str]:
-    """Check if Jellyfin configuration is intact by examining container logs."""
+    """Check if Jellyfin configuration is intact by examining container and file system."""
     try:
+        # Check for exposed artifacts (sign of compromise) first
+        artifact_check = subprocess.run(
+            ["docker", "exec", CONTAINER_NAME, "ls", "/tmp/exposed_artifacts/README.txt"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+
+        if artifact_check.returncode == 0:
+            return False, "Internal artifacts exposed - system compromised"
+
+        # Check for vuln_scenario_1 specific attacks
+        # These checks should only trigger if actual corruption is present
+
+        # 1. Check for corrupted database files with specific content
+        db_corruption_check = subprocess.run(
+            ["docker", "exec", CONTAINER_NAME, "sh", "-c", "find /config/data -name '*.db' -exec cat {} \\; 2>/dev/null | grep -E '(CORRUPTED_DATABASE_CONTENT|INVALID_SQL_DATA)'"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if db_corruption_check.returncode == 0 and db_corruption_check.stdout.strip():
+            return False, "Database files contain corrupted content"
+
+        # 2. Check for malicious media files created by vuln_scenario_1
+        malicious_media_check = subprocess.run(
+            ["docker", "exec", CONTAINER_NAME, "ls", "/media/Corrupted_Movies/malware.mp4"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if malicious_media_check.returncode == 0:
+            return False, "Malicious media files detected"
+
+        # 3. Check for fake admin user created by attack
+        fake_admin_check = subprocess.run(
+            ["docker", "exec", CONTAINER_NAME, "ls", "/config/data/users/fake_admin/policy.json"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if fake_admin_check.returncode == 0:
+            return False, "Fake admin user directories detected"
+
+        # 4. Check for corrupted system configuration
+        system_config_check = subprocess.run(
+            ["docker", "exec", CONTAINER_NAME, "sh", "-c", "grep -q 'MaliciousConfig' /config/system.xml 2>/dev/null"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if system_config_check.returncode == 0:
+            return False, "System configuration contains malicious content"
+
+        # 5. Check for malicious encoding profiles
+        encoding_check = subprocess.run(
+            ["docker", "exec", CONTAINER_NAME, "ls", "/config/encoding/malicious_profile.xml"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if encoding_check.returncode == 0:
+            return False, "Malicious encoding profiles detected"
+
+        # 6. Check for corrupted network configuration
+        network_config_check = subprocess.run(
+            ["docker", "exec", CONTAINER_NAME, "sh", "-c", "grep -q 'MaliciousRedirect' /config/network.xml 2>/dev/null"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if network_config_check.returncode == 0:
+            return False, "Network configuration contains malicious redirects"
+
+        # Only check for user directory corruption if there are signs of compromise
+        # In fresh install, empty user directory is expected
+        compromise_indicators = False
+
+        # Check for malicious media files (sign of attack) - legacy check for vuln_scenario_0
+        malicious_check = subprocess.run(
+            ["docker", "exec", CONTAINER_NAME, "ls", "/media/Malicious/malware.mp4"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if malicious_check.returncode == 0:
+            compromise_indicators = True
+
+        # Check for corrupted databases - legacy check
+        db_check = subprocess.run(
+            ["docker", "exec", CONTAINER_NAME, "sh", "-c", "find /config/data -name '*.db' -size 1c -exec cat {} \\;"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if db_check.returncode == 0 and "CORRUPTED" in db_check.stdout:
+            return False, "Database files appear corrupted"
+
+        # Only check user directory if we have other signs of compromise
+        if compromise_indicators:
+            file_check = subprocess.run(
+                ["docker", "exec", CONTAINER_NAME, "sh", "-c", "ls -la /config/data/users/ 2>/dev/null | wc -l"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+            if file_check.returncode == 0:
+                user_count = int(file_check.stdout.strip())
+                if user_count <= 2:  # Should be more than just "." and ".." if users exist
+                    return False, "User directory appears empty after compromise"
+
+
+        # Check container logs for startup
         result = subprocess.run(
-            ["docker", "logs", "--tail", "50", CONTAINER_NAME],
+            ["docker", "logs", CONTAINER_NAME],
             capture_output=True,
             text=True,
             timeout=10,
@@ -140,7 +254,11 @@ def check_jellyfin_config_integrity() -> Tuple[bool, str]:
                 "running on port",
                 "web interface",
                 "http://",
-                "startup wizard"
+                "startup wizard",
+                "jellyfin version",
+                "loading assemblies",
+                "bind addresses",
+                "filtered interface addresses"
             ]):
                 # Check for configuration errors
                 if "error" in logs or "failed" in logs or "exception" in logs:

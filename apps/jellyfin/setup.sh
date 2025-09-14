@@ -75,6 +75,10 @@ setup_jellyfin_server(){
     return 0
   fi
 
+  # Clean up any existing containers and volumes to ensure fresh state
+  info "Cleaning up any existing Jellyfin containers and volumes..."
+  docker compose down --volumes --remove-orphans 2>/dev/null || true
+
   # Start Jellyfin server
   info "Starting Jellyfin server..."
   docker compose up -d jellyfin
