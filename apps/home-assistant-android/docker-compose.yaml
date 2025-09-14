@@ -13,7 +13,6 @@ services:
       start_period: 60s
     volumes:
       - ./config:/config
-      - ./seeded-onboarding-file:/config/.storage/onboarding
 
 networks:
   private_net:
