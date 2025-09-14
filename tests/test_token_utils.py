@@ -1,12 +1,8 @@
-import os
-import sys
-
 import pytest
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from utils.token_costs import (
     ModelPricing,
+    _strip_date_suffix,
     compute_cost_usd,
     get_pricing_for_model,
     load_pricing,
@@ -17,18 +13,6 @@ from utils.token_tracker import TokenTracker
 ##########################################
 #           Token Pricing Tests          #
 ##########################################
-@pytest.mark.pricing
-def test_pricing_exact_lookup_and_units():
-    """Test exact model name lookup and correct pricing values."""
-    pm = load_pricing()
-    assert "gpt-5-2025-08-07" in pm
-    p = get_pricing_for_model("gpt-5-2025-08-07", pricing_map=pm, warn=False)
-    assert isinstance(p, ModelPricing)
-    assert p.input == 1.25
-    assert p.output == 10.0
-    assert p.cache_input == 0.125
-
-
 @pytest.mark.pricing
 def test_unknown_model_warns_and_defaults_zero():
     """Unknown model should log a warning and return zero pricing."""
@@ -65,6 +49,55 @@ def test_compute_cost_with_cache_read_only():
     scale = 1_000_000.0
     expected_cost = (1500 / scale) * 5.0 + (1000 / scale) * 15.0 + (500 / scale) * 0.5
     assert cost == pytest.approx(expected_cost, rel=1e-9)
+
+
+@pytest.mark.pricing
+def test_strip_date_suffix():
+    """Test date suffix stripping from model names."""
+    # Test with date suffix
+    assert _strip_date_suffix("gpt-5-2025-08-07") == "gpt-5"
+    assert _strip_date_suffix("gpt-5-mini-2025-08-07") == "gpt-5-mini"
+    assert _strip_date_suffix("gpt-5-nano-2025-08-07") == "gpt-5-nano"
+
+    # Test without date suffix (should remain unchanged)
+    assert _strip_date_suffix("gpt-5") == "gpt-5"
+    assert _strip_date_suffix("gpt-4") == "gpt-4"
+
+    # Test with partial date patterns (should not match, not a typical format)
+    # OpenAI model naming patterns: https://github.com/openai/openai-python/blob/a52463c9/src/openai/types/shared_params/chat_model.py
+    assert _strip_date_suffix("gpt-5-2025") == "gpt-5-2025"
+    assert _strip_date_suffix("gpt-5-25-08-07") == "gpt-5-25-08-07"
+
+
+@pytest.mark.pricing
+def test_get_pricing_for_model_with_date_suffix():
+    """Test model pricing lookup with date suffix fallback."""
+    pricing_map = {
+        "gpt-5": ModelPricing(input=1.25, output=10.0, cache_input=0.125),
+        "gpt-5-mini": ModelPricing(input=0.25, output=2.0, cache_input=0.025),
+    }
+
+    # Test exact match
+    p = get_pricing_for_model("gpt-5", pricing_map=pricing_map, warn=False)
+    assert p.input == 1.25 and p.output == 10.0 and p.cache_input == 0.125
+
+    # Test date suffix fallback
+    p = get_pricing_for_model("gpt-5-2025-08-07", pricing_map=pricing_map, warn=False)
+    assert p.input == 1.25 and p.output == 10.0 and p.cache_input == 0.125
+
+    p = get_pricing_for_model(
+        "gpt-5-mini-2025-08-07", pricing_map=pricing_map, warn=False
+    )
+    assert p.input == 0.25 and p.output == 2.0 and p.cache_input == 0.025
+
+    # Test unknown model with date suffix (should default to zeros)
+    p = get_pricing_for_model(
+        "unknown-model-2025-08-07", pricing_map=pricing_map, warn=False
+    )
+    assert p.input == 0.0 and p.output == 0.0 and p.cache_input == 0.0
+
+    p = get_pricing_for_model("unknown-model", pricing_map=pricing_map, warn=False)
+    assert p.input == 0.0 and p.output == 0.0 and p.cache_input == 0.0
 
 
 ##########################################
