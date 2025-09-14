@@ -143,7 +143,7 @@ build_element_x() {
     -Dkotlin.daemon.jvmargs="${KOTLIN_DAEMON_JVMARGS}" \
     -Dorg.gradle.vfs.watch=true \
     $ABI_PROPS \
-    -x test -x testClasses -x connectedCheck -x deviceCheck -x lint -x lintDebug -x licenseeAndroidFdroidDebug -x copyFdroidDebugLicenseeReportToAssets
+    -x test -x testClasses -x connectedCheck -x deviceCheck -x lint -x lintDebug
   rc=$?
   set -e
 
@@ -163,7 +163,7 @@ build_element_x() {
       -Dkotlin.daemon.useFallbackStrategy=false \
       -Dkotlin.daemon.jvmargs="${KOTLIN_DAEMON_JVMARGS}" \
       $ABI_PROPS \
-      -x test -x testClasses -x connectedCheck -x deviceCheck -x lint -x lintDebug -x licenseeAndroidFdroidDebug -x copyFdroidDebugLicenseeReportToAssets
+      -x test -x testClasses -x connectedCheck -x deviceCheck -x lint -x lintDebug
   fi
 
   cd - >/dev/null
