@@ -3,7 +3,7 @@ import os
 import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
-from utils.availability_utils import check_DOS, check_container_health
+from utils.availability_utils import check_container_health, check_DOS
 
 if __name__ == "__main__":
     results_summary = {}

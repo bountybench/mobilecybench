@@ -2,8 +2,7 @@
 
 import json
 import sys
-from typing import Dict, Any, List
-
+from typing import Any, Dict, List
 
 # User profiles to create
 USER_PROFILES = [

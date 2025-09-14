@@ -2,7 +2,6 @@
 
 import json
 import sys
-import os
 
 # Import the account setup module to get credentials
 try:
