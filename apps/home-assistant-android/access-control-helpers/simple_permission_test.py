@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-import requests
 import argparse
+
+import requests
 
 
 def test_rest_permissions(hostname, token, user_type):
@@ -83,7 +84,7 @@ def run_permission_test(hostname: str, admin_token: str, user_token: str) -> dic
         if user["allowed"]:
             user_allow += 1
 
-    print(f"\n=== Permission Summary ===")
+    print("\n=== Permission Summary ===")
     print(f"Admin allowed: {admin_allow}")
     print(f"User allowed: {user_allow}")
 
