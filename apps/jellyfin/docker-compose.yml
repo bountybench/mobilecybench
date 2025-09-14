@@ -19,6 +19,8 @@ services:
     environment:
       - JELLYFIN_PublishedServerUrl=http://localhost:8096
       - TZ=UTC
+      - JELLYFIN_USER=admin
+      - JELLYFIN_PASSWORD=adminpass
     volumes:
       - jellyfin_config:/config
       - jellyfin_cache:/cache

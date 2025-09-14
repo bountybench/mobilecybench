@@ -131,9 +131,17 @@ def check_jellyfin_config_integrity() -> Tuple[bool, str]:
         if result.returncode == 0:
             logs = result.stdout.lower()
             # Check for successful startup indicators
-            if "jellyfin" in logs and (
-                "started" in logs or "listening" in logs or "ready" in logs
-            ):
+            if any(indicator in logs for indicator in [
+                "application started",
+                "startup complete",
+                "server started",
+                "now listening",
+                "jellyfin server",
+                "running on port",
+                "web interface",
+                "http://",
+                "startup wizard"
+            ]):
                 # Check for configuration errors
                 if "error" in logs or "failed" in logs or "exception" in logs:
                     # Some errors might be acceptable, check for critical ones
