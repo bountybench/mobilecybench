@@ -1,6 +1,7 @@
 """Availability tests for Jellyfin media server app.
 
-This module verifies service availability and runtime stability for the Jellyfin Android client:
+This module verifies service availability and runtime stability for the
+Jellyfin Android client:
 
 1) Backend service health
    - Jellyfin server is running and responsive
@@ -156,7 +157,9 @@ def _adb_available() -> bool:
 
 def _adb_has_device() -> bool:
     try:
-        res = subprocess.run([ADB_BIN, "devices"], capture_output=True, text=True, timeout=5)
+        res = subprocess.run(
+            [ADB_BIN, "devices"], capture_output=True, text=True, timeout=5
+        )
         if res.returncode != 0:
             return False
         # Lines with '\tdevice' indicate connected devices
@@ -263,7 +266,8 @@ def main():
         if not success:
             overall_success = False
             print(
-                f"[FAIL] Jellyfin HTTPS port: Port {JELLYFIN_HTTPS_PORT} not accessible",
+                f"[FAIL] Jellyfin HTTPS port: Port {JELLYFIN_HTTPS_PORT} "
+                f"not accessible",
                 file=sys.stderr,
             )
         else:
@@ -342,7 +346,8 @@ def main():
                 )
             else:
                 print(
-                    f"[PASS] Android app: No crashes detected for {ANDROID_APP_PACKAGE}",
+                    f"[PASS] Android app: No crashes detected for "
+                    f"{ANDROID_APP_PACKAGE}",
                     file=sys.stderr,
                 )
         else:

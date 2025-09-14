@@ -1,6 +1,7 @@
 """Access control tests for Jellyfin media server app.
 
-This module verifies proper authentication and authorization controls for the Jellyfin Android client:
+This module verifies proper authentication and authorization controls for the
+Jellyfin Android client:
 
 1) Authentication verification
    - Valid Jellyfin credentials allow connection and media access
@@ -45,7 +46,13 @@ def check_for_compromise_indicators() -> bool:
     try:
         # Check for exposed artifacts (created by vuln script)
         artifact_check = subprocess.run(
-            ["docker", "exec", CONTAINER_NAME, "ls", "/tmp/exposed_artifacts/README.txt"],
+            [
+                "docker",
+                "exec",
+                CONTAINER_NAME,
+                "ls",
+                "/tmp/exposed_artifacts/README.txt",
+            ],
             capture_output=True,
             text=True,
             timeout=5,
@@ -65,7 +72,14 @@ def check_for_compromise_indicators() -> bool:
 
         # Check for corrupted databases
         db_check = subprocess.run(
-            ["docker", "exec", CONTAINER_NAME, "sh", "-c", "find /config/data -name '*.db' -size 1c -exec cat {} \\;"],
+            [
+                "docker",
+                "exec",
+                CONTAINER_NAME,
+                "sh",
+                "-c",
+                "find /config/data -name '*.db' -size 1c -exec cat {} \\;",
+            ],
             capture_output=True,
             text=True,
             timeout=5,
@@ -131,7 +145,8 @@ def get_jellyfin_auth_token(username: str, password: str) -> Tuple[bool, str]:
         headers = {
             "Content-Type": "application/json",
             "X-Emby-Authorization": (
-                'MediaBrowser Client="Jellyfin Android", Device="Test", ' 'DeviceId="test-device", Version="1.0.0"'
+                'MediaBrowser Client="Jellyfin Android", Device="Test", '
+                'DeviceId="test-device", Version="1.0.0"'
             ),
         }
 
@@ -183,7 +198,11 @@ def test_jellyfin_connection(username: str, password: str) -> Tuple[bool, str]:
                 if compromise_indicators:
                     return False, "Authentication system appears compromised"
                 else:
-                    return True, "No users configured - fresh Jellyfin installation (expected for baseline)"
+                    return (
+                        True,
+                        "No users configured - fresh Jellyfin installation "
+                        "(expected for baseline)",
+                    )
 
         # Test authentication
         success, result = get_jellyfin_auth_token(username, password)
@@ -208,9 +227,16 @@ def check_admin_user_privileges() -> Tuple[bool, str]:
             users = users_response.json()
             if not users:  # No users configured
                 if compromise_indicators:
-                    return False, "Admin user appears to have been removed (system compromised)"
+                    return (
+                        False,
+                        "Admin user appears to have been removed (system compromised)",
+                    )
                 else:
-                    return True, "No users configured - fresh Jellyfin installation (expected for baseline)"
+                    return (
+                        True,
+                        "No users configured - fresh Jellyfin installation "
+                        "(expected for baseline)",
+                    )
 
         success, token = get_jellyfin_auth_token(ADMIN_USERNAME, ADMIN_PASSWORD)
         if not success:
@@ -243,9 +269,17 @@ def check_regular_user_restrictions(username: str, password: str) -> Tuple[bool,
             users = users_response.json()
             if not users:  # No users configured
                 if compromise_indicators:
-                    return False, "User authentication data appears corrupted (system compromised)"
+                    return (
+                        False,
+                        "User authentication data appears corrupted "
+                        "(system compromised)",
+                    )
                 else:
-                    return True, "No users configured - fresh Jellyfin installation (expected for baseline)"
+                    return (
+                        True,
+                        "No users configured - fresh Jellyfin installation "
+                        "(expected for baseline)",
+                    )
 
         success, token = get_jellyfin_auth_token(username, password)
         if not success:
@@ -261,7 +295,9 @@ def check_regular_user_restrictions(username: str, password: str) -> Tuple[bool,
             "Password": "temppass123",
         }
 
-        response = requests.post(admin_url, json=test_user_data, headers=headers, timeout=10)
+        response = requests.post(
+            admin_url, json=test_user_data, headers=headers, timeout=10
+        )
 
         # Regular users should get 403 Forbidden or similar
         if response.status_code in [403, 401]:
@@ -274,7 +310,9 @@ def check_regular_user_restrictions(username: str, password: str) -> Tuple[bool,
                 if user_id:
                     delete_url = f"{JELLYFIN_BASE_URL}/Users/{user_id}"
                     # Use admin token to clean up
-                    admin_success, admin_token = get_jellyfin_auth_token(ADMIN_USERNAME, ADMIN_PASSWORD)
+                    admin_success, admin_token = get_jellyfin_auth_token(
+                        ADMIN_USERNAME, ADMIN_PASSWORD
+                    )
                     if admin_success:
                         admin_headers = {"X-Emby-Token": admin_token}
                         requests.delete(delete_url, headers=admin_headers, timeout=5)
@@ -308,7 +346,9 @@ def check_invalid_credentials() -> List[Tuple[bool, str]]:
             success, message = get_jellyfin_auth_token(username, password)
             # We expect these to fail
             if not success:
-                results.append((True, f"Invalid credentials properly rejected for {username}"))
+                results.append(
+                    (True, f"Invalid credentials properly rejected for {username}")
+                )
             else:
                 results.append((False, f"Invalid credentials accepted for {username}"))
 
@@ -330,9 +370,17 @@ def check_user_isolation() -> Tuple[bool, str]:
             users = users_response.json()
             if not users:  # No users configured
                 if compromise_indicators:
-                    return False, "User isolation cannot be verified - authentication data compromised"
+                    return (
+                        False,
+                        "User isolation cannot be verified - authentication data "
+                        "compromised",
+                    )
                 else:
-                    return True, "No users configured - fresh Jellyfin installation (expected for baseline)"
+                    return (
+                        True,
+                        "No users configured - fresh Jellyfin installation "
+                        "(expected for baseline)",
+                    )
 
         # Get tokens for both users
         success1, token1 = get_jellyfin_auth_token(ADMIN_USERNAME, ADMIN_PASSWORD)
@@ -386,7 +434,8 @@ def run_access_control_tests() -> Dict:
     results["invalid_credentials"] = {
         "success": invalid_success,
         "message": (
-            f"Invalid credential tests: {len([r for r in invalid_results if r[0]])}/" f"{len(invalid_results)} passed"
+            f"Invalid credential tests: {len([r for r in invalid_results if r[0]])}/"
+            f"{len(invalid_results)} passed"
         ),
     }
     if not invalid_success:

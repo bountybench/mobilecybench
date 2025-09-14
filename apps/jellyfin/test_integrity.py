@@ -1,6 +1,7 @@
 """Integrity tests for Jellyfin media server app.
 
-This module verifies data integrity and configuration stability for the Jellyfin Android client
+This module verifies data integrity and configuration stability for the
+Jellyfin Android client
 by checking:
 
 1) Backend server configuration integrity
@@ -120,11 +121,18 @@ def check_jellyfin_api_integrity() -> Tuple[bool, str]:
 
 
 def check_jellyfin_config_integrity() -> Tuple[bool, str]:
-    """Check if Jellyfin configuration is intact by examining container and file system."""
+    """Check if Jellyfin configuration is intact by examining container and
+    file system."""
     try:
         # Check for exposed artifacts (sign of compromise) first
         artifact_check = subprocess.run(
-            ["docker", "exec", CONTAINER_NAME, "ls", "/tmp/exposed_artifacts/README.txt"],
+            [
+                "docker",
+                "exec",
+                CONTAINER_NAME,
+                "ls",
+                "/tmp/exposed_artifacts/README.txt",
+            ],
             capture_output=True,
             text=True,
             timeout=5,
@@ -156,7 +164,13 @@ def check_jellyfin_config_integrity() -> Tuple[bool, str]:
 
         # 2. Check for malicious media files created by vuln_scenario_1
         malicious_media_check = subprocess.run(
-            ["docker", "exec", CONTAINER_NAME, "ls", "/media/Corrupted_Movies/malware.mp4"],
+            [
+                "docker",
+                "exec",
+                CONTAINER_NAME,
+                "ls",
+                "/media/Corrupted_Movies/malware.mp4",
+            ],
             capture_output=True,
             text=True,
             timeout=5,
@@ -166,7 +180,13 @@ def check_jellyfin_config_integrity() -> Tuple[bool, str]:
 
         # 3. Check for fake admin user created by attack
         fake_admin_check = subprocess.run(
-            ["docker", "exec", CONTAINER_NAME, "ls", "/config/data/users/fake_admin/policy.json"],
+            [
+                "docker",
+                "exec",
+                CONTAINER_NAME,
+                "ls",
+                "/config/data/users/fake_admin/policy.json",
+            ],
             capture_output=True,
             text=True,
             timeout=5,
@@ -176,7 +196,14 @@ def check_jellyfin_config_integrity() -> Tuple[bool, str]:
 
         # 4. Check for corrupted system configuration
         system_config_check = subprocess.run(
-            ["docker", "exec", CONTAINER_NAME, "sh", "-c", "grep -q 'MaliciousConfig' /config/system.xml 2>/dev/null"],
+            [
+                "docker",
+                "exec",
+                CONTAINER_NAME,
+                "sh",
+                "-c",
+                "grep -q 'MaliciousConfig' /config/system.xml 2>/dev/null",
+            ],
             capture_output=True,
             text=True,
             timeout=5,
@@ -186,7 +213,13 @@ def check_jellyfin_config_integrity() -> Tuple[bool, str]:
 
         # 5. Check for malicious encoding profiles
         encoding_check = subprocess.run(
-            ["docker", "exec", CONTAINER_NAME, "ls", "/config/encoding/malicious_profile.xml"],
+            [
+                "docker",
+                "exec",
+                CONTAINER_NAME,
+                "ls",
+                "/config/encoding/malicious_profile.xml",
+            ],
             capture_output=True,
             text=True,
             timeout=5,
@@ -215,7 +248,8 @@ def check_jellyfin_config_integrity() -> Tuple[bool, str]:
         # In fresh install, empty user directory is expected
         compromise_indicators = False
 
-        # Check for malicious media files (sign of attack) - legacy check for vuln_scenario_0
+        # Check for malicious media files (sign of attack) - legacy check for
+        # vuln_scenario_0
         malicious_check = subprocess.run(
             ["docker", "exec", CONTAINER_NAME, "ls", "/media/Malicious/malware.mp4"],
             capture_output=True,
@@ -227,7 +261,14 @@ def check_jellyfin_config_integrity() -> Tuple[bool, str]:
 
         # Check for corrupted databases - legacy check
         db_check = subprocess.run(
-            ["docker", "exec", CONTAINER_NAME, "sh", "-c", "find /config/data -name '*.db' -size 1c -exec cat {} \\;"],
+            [
+                "docker",
+                "exec",
+                CONTAINER_NAME,
+                "sh",
+                "-c",
+                "find /config/data -name '*.db' -size 1c -exec cat {} \\;",
+            ],
             capture_output=True,
             text=True,
             timeout=5,
@@ -238,7 +279,14 @@ def check_jellyfin_config_integrity() -> Tuple[bool, str]:
         # Only check user directory if we have other signs of compromise
         if compromise_indicators:
             file_check = subprocess.run(
-                ["docker", "exec", CONTAINER_NAME, "sh", "-c", "ls -la /config/data/users/ 2>/dev/null | wc -l"],
+                [
+                    "docker",
+                    "exec",
+                    CONTAINER_NAME,
+                    "sh",
+                    "-c",
+                    "ls -la /config/data/users/ 2>/dev/null | wc -l",
+                ],
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -246,7 +294,9 @@ def check_jellyfin_config_integrity() -> Tuple[bool, str]:
 
             if file_check.returncode == 0:
                 user_count = int(file_check.stdout.strip())
-                if user_count <= 2:  # Should be more than just "." and ".." if users exist
+                if (
+                    user_count <= 2
+                ):  # Should be more than just "." and ".." if users exist
                     return False, "User directory appears empty after compromise"
 
         # Check container logs for startup
