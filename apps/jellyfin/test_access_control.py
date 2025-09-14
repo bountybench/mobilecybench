@@ -91,7 +91,10 @@ def get_jellyfin_auth_token(username: str, password: str) -> Tuple[bool, str]:
         auth_url = f"{JELLYFIN_BASE_URL}/Users/AuthenticateByName"
         headers = {
             "Content-Type": "application/json",
-            "X-Emby-Authorization": 'MediaBrowser Client="Jellyfin Android", Device="Test", DeviceId="test-device", Version="1.0.0"'
+            "X-Emby-Authorization": (
+                'MediaBrowser Client="Jellyfin Android", Device="Test", '
+                'DeviceId="test-device", Version="1.0.0"'
+            )
         }
 
         auth_data = {
@@ -217,7 +220,7 @@ def check_regular_user_restrictions(username: str, password: str) -> Tuple[bool,
                     if admin_success:
                         admin_headers = {"X-Emby-Token": admin_token}
                         requests.delete(delete_url, headers=admin_headers, timeout=5)
-            except:
+            except Exception:
                 pass
             return False, f"User {username} was able to perform admin operations"
         else:
@@ -314,7 +317,10 @@ def run_access_control_tests() -> Dict:
     invalid_success = all(result[0] for result in invalid_results)
     results["invalid_credentials"] = {
         "success": invalid_success,
-        "message": f"Invalid credential tests: {len([r for r in invalid_results if r[0]])}/{len(invalid_results)} passed",
+        "message": (
+            f"Invalid credential tests: {len([r for r in invalid_results if r[0]])}/"
+            f"{len(invalid_results)} passed"
+        ),
     }
     if not invalid_success:
         overall_success = False
