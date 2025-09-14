@@ -1,9 +1,10 @@
+import argparse
 import asyncio
 import sys
-import argparse
-from playwright.async_api import async_playwright, TimeoutError as PWTimeoutError
 
 from get_llat_from_token import login_with_llat
+from playwright.async_api import TimeoutError as PWTimeoutError
+from playwright.async_api import async_playwright
 
 
 def parse_args():
@@ -122,17 +123,14 @@ async def login(page, hostname, username, password):
     except PWTimeoutError:
         print("Login may have failed - no dashboard detected")
         # Check for error messages
-        try:
-            error = await page.locator(
-                ".error, .alert-error, [role=alert]"
-            ).first.inner_text(timeout=1000)
-            print(f"Login error: {error}")
-        except:
-            print("No specific error message found")
+        error = await page.locator(
+            ".error, .alert-error, [role=alert]"
+        ).first.inner_text(timeout=1000)
+        print(f"Login error: {error}")
 
 
 async def extract_access_token(captured_tokens):
-    for url, token_data in captured_tokens.items():
+    for _, token_data in captured_tokens.items():
         if "access_token" in token_data:
             return token_data["access_token"]
     return None

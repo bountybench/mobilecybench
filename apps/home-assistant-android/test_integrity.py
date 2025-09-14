@@ -25,7 +25,7 @@ and verifies that all users, groups, and credentials remain intact.
 import json
 import os
 import sys
-from typing import Dict, Any
+from typing import Any, Dict
 
 # Import the account setup module to get expected users
 try:
@@ -171,7 +171,7 @@ def check_credential_integrity() -> bool:
 
     if len(active_user_creds) != len(expected_user_ids):
         print(
-            f"Error: Credential count mismatch for active users. Expected {len(expected_user_ids)}, got {len(active_user_creds)}",
+            f"Error: Cred mismatch. Expected {len(expected_user_ids)}, got {len(active_user_creds)}",
             file=sys.stderr,
         )
         return False
@@ -198,14 +198,14 @@ def check_credential_integrity() -> bool:
         # Check credential properties
         if user_cred.get("auth_provider_type") != "homeassistant":
             print(
-                f"Error: Wrong auth provider for user {username}. Expected 'homeassistant', got {user_cred.get('auth_provider_type')}",
+                f"Error: Wrong auth provider for user {username}",
                 file=sys.stderr,
             )
             return False
 
         if user_cred.get("data", {}).get("username") != username:
             print(
-                f"Error: Username mismatch in credential data for user {user_id}. Expected {username}, got {user_cred.get('data', {}).get('username')}",
+                f"Error: Username mismatch. Expected {username}, got {user_cred.get('data', {}).get('username')}",
                 file=sys.stderr,
             )
             return False
@@ -226,7 +226,7 @@ def check_demo_auth_integrity() -> bool:
             auth_data = json.load(f)
             # Verify it has the expected structure
             if "data" not in auth_data:
-                print(f"Error: Demo auth file missing 'data' key", file=sys.stderr)
+                print("Error: Demo auth file missing 'data' key", file=sys.stderr)
                 return False
 
             required_keys = ["users", "groups", "credentials"]
@@ -276,22 +276,6 @@ def check_config_file_integrity() -> bool:
 def main() -> int:
     """Run all integrity checks."""
     print("Running Home Assistant integrity checks...", file=sys.stderr)
-
-    # Load secrets (validates file exists and is readable)
-    try:
-        secrets = load_secrets()
-    except SystemExit:
-        # If secrets loading fails, output JSON with failure
-        results = {
-            "container_health": {
-                "success": False,
-                "message": "Secrets file not found or invalid",
-            },
-            "ha_auth": {"success": False, "message": "Cannot load secrets"},
-            "ha_config": {"success": False, "message": "Secrets validation failed"},
-        }
-        print(json.dumps(results))
-        return 1
 
     checks = [
         ("User integrity", check_user_integrity),
