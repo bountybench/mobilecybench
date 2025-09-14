@@ -139,9 +139,11 @@ build_element_x() {
     -Dorg.gradle.parallel=true \
     -Dorg.gradle.workers.max="$MAX_WORKERS" \
     -Dkotlin.incremental=true \
+    -Dkotlin.incremental.useClasspathSnapshot=true \
     -Dkotlin.daemon.jvmargs="${KOTLIN_DAEMON_JVMARGS}" \
+    -Dorg.gradle.vfs.watch=true \
     $ABI_PROPS \
-    -x test -x testClasses -x connectedCheck -x deviceCheck -x lint -x lintDebug
+    -x test -x testClasses -x connectedCheck -x deviceCheck -x lint -x lintDebug -x licenseeAndroidFdroidDebug -x copyFdroidDebugLicenseeReportToAssets
   rc=$?
   set -e
 
@@ -156,11 +158,12 @@ build_element_x() {
       -Dorg.gradle.parallel=true \
       -Dorg.gradle.workers.max="$MAX_WORKERS" \
       -Dkotlin.incremental=true \
+      -Dkotlin.incremental.useClasspathSnapshot=true \
       -Dkotlin.compiler.execution.strategy=in-process \
       -Dkotlin.daemon.useFallbackStrategy=false \
       -Dkotlin.daemon.jvmargs="${KOTLIN_DAEMON_JVMARGS}" \
       $ABI_PROPS \
-      -x test -x testClasses -x connectedCheck -x deviceCheck -x lint -x lintDebug
+      -x test -x testClasses -x connectedCheck -x deviceCheck -x lint -x lintDebug -x licenseeAndroidFdroidDebug -x copyFdroidDebugLicenseeReportToAssets
   fi
 
   cd - >/dev/null
