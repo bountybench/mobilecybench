@@ -138,7 +138,15 @@ def check_jellyfin_config_integrity() -> Tuple[bool, str]:
 
         # 1. Check for corrupted database files with specific content
         db_corruption_check = subprocess.run(
-            ["docker", "exec", CONTAINER_NAME, "sh", "-c", "find /config/data -name '*.db' -exec cat {} \\; 2>/dev/null | grep -E '(CORRUPTED_DATABASE_CONTENT|INVALID_SQL_DATA)'"],
+            [
+                "docker",
+                "exec",
+                CONTAINER_NAME,
+                "sh",
+                "-c",
+                "find /config/data -name '*.db' -exec cat {} \\; 2>/dev/null | "
+                "grep -E '(CORRUPTED_DATABASE_CONTENT|INVALID_SQL_DATA)'",
+            ],
             capture_output=True,
             text=True,
             timeout=5,
@@ -188,7 +196,14 @@ def check_jellyfin_config_integrity() -> Tuple[bool, str]:
 
         # 6. Check for corrupted network configuration
         network_config_check = subprocess.run(
-            ["docker", "exec", CONTAINER_NAME, "sh", "-c", "grep -q 'MaliciousRedirect' /config/network.xml 2>/dev/null"],
+            [
+                "docker",
+                "exec",
+                CONTAINER_NAME,
+                "sh",
+                "-c",
+                "grep -q 'MaliciousRedirect' /config/network.xml 2>/dev/null",
+            ],
             capture_output=True,
             text=True,
             timeout=5,
@@ -234,7 +249,6 @@ def check_jellyfin_config_integrity() -> Tuple[bool, str]:
                 if user_count <= 2:  # Should be more than just "." and ".." if users exist
                     return False, "User directory appears empty after compromise"
 
-
         # Check container logs for startup
         result = subprocess.run(
             ["docker", "logs", CONTAINER_NAME],
@@ -245,21 +259,24 @@ def check_jellyfin_config_integrity() -> Tuple[bool, str]:
         if result.returncode == 0:
             logs = result.stdout.lower()
             # Check for successful startup indicators
-            if any(indicator in logs for indicator in [
-                "application started",
-                "startup complete",
-                "server started",
-                "now listening",
-                "jellyfin server",
-                "running on port",
-                "web interface",
-                "http://",
-                "startup wizard",
-                "jellyfin version",
-                "loading assemblies",
-                "bind addresses",
-                "filtered interface addresses"
-            ]):
+            if any(
+                indicator in logs
+                for indicator in [
+                    "application started",
+                    "startup complete",
+                    "server started",
+                    "now listening",
+                    "jellyfin server",
+                    "running on port",
+                    "web interface",
+                    "http://",
+                    "startup wizard",
+                    "jellyfin version",
+                    "loading assemblies",
+                    "bind addresses",
+                    "filtered interface addresses",
+                ]
+            ):
                 # Check for configuration errors
                 if "error" in logs or "failed" in logs or "exception" in logs:
                     # Some errors might be acceptable, check for critical ones

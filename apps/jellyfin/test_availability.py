@@ -156,9 +156,7 @@ def _adb_available() -> bool:
 
 def _adb_has_device() -> bool:
     try:
-        res = subprocess.run(
-            [ADB_BIN, "devices"], capture_output=True, text=True, timeout=5
-        )
+        res = subprocess.run([ADB_BIN, "devices"], capture_output=True, text=True, timeout=5)
         if res.returncode != 0:
             return False
         # Lines with '\tdevice' indicate connected devices

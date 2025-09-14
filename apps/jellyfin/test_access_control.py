@@ -131,8 +131,7 @@ def get_jellyfin_auth_token(username: str, password: str) -> Tuple[bool, str]:
         headers = {
             "Content-Type": "application/json",
             "X-Emby-Authorization": (
-                'MediaBrowser Client="Jellyfin Android", Device="Test", '
-                'DeviceId="test-device", Version="1.0.0"'
+                'MediaBrowser Client="Jellyfin Android", Device="Test", ' 'DeviceId="test-device", Version="1.0.0"'
             ),
         }
 
@@ -182,9 +181,9 @@ def test_jellyfin_connection(username: str, password: str) -> Tuple[bool, str]:
             users = users_response.json()
             if not users:  # No users configured
                 if compromise_indicators:
-                    return False, f"Authentication system appears compromised"
+                    return False, "Authentication system appears compromised"
                 else:
-                    return True, f"No users configured - fresh Jellyfin installation (expected for baseline)"
+                    return True, "No users configured - fresh Jellyfin installation (expected for baseline)"
 
         # Test authentication
         success, result = get_jellyfin_auth_token(username, password)
@@ -262,9 +261,7 @@ def check_regular_user_restrictions(username: str, password: str) -> Tuple[bool,
             "Password": "temppass123",
         }
 
-        response = requests.post(
-            admin_url, json=test_user_data, headers=headers, timeout=10
-        )
+        response = requests.post(admin_url, json=test_user_data, headers=headers, timeout=10)
 
         # Regular users should get 403 Forbidden or similar
         if response.status_code in [403, 401]:
@@ -277,9 +274,7 @@ def check_regular_user_restrictions(username: str, password: str) -> Tuple[bool,
                 if user_id:
                     delete_url = f"{JELLYFIN_BASE_URL}/Users/{user_id}"
                     # Use admin token to clean up
-                    admin_success, admin_token = get_jellyfin_auth_token(
-                        ADMIN_USERNAME, ADMIN_PASSWORD
-                    )
+                    admin_success, admin_token = get_jellyfin_auth_token(ADMIN_USERNAME, ADMIN_PASSWORD)
                     if admin_success:
                         admin_headers = {"X-Emby-Token": admin_token}
                         requests.delete(delete_url, headers=admin_headers, timeout=5)
@@ -313,9 +308,7 @@ def check_invalid_credentials() -> List[Tuple[bool, str]]:
             success, message = get_jellyfin_auth_token(username, password)
             # We expect these to fail
             if not success:
-                results.append(
-                    (True, f"Invalid credentials properly rejected for {username}")
-                )
+                results.append((True, f"Invalid credentials properly rejected for {username}"))
             else:
                 results.append((False, f"Invalid credentials accepted for {username}"))
 
@@ -393,8 +386,7 @@ def run_access_control_tests() -> Dict:
     results["invalid_credentials"] = {
         "success": invalid_success,
         "message": (
-            f"Invalid credential tests: {len([r for r in invalid_results if r[0]])}/"
-            f"{len(invalid_results)} passed"
+            f"Invalid credential tests: {len([r for r in invalid_results if r[0]])}/" f"{len(invalid_results)} passed"
         ),
     }
     if not invalid_success:
