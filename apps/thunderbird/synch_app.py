@@ -352,6 +352,8 @@ def main():
     tap_if_exists(text="Next")
     wait_for_ui_stable()
 
+    tap_if_exists(text="Next")
+    wait_for_ui_stable()
     # Skip if presented
     wait_for_ui_stable(15)
     tap_if_exists(text="Skip")

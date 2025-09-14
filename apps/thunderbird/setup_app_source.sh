@@ -52,18 +52,52 @@ setup_environment() {
 
 build_from_source() {  
   echo "Building Thunderbird from source..."
-  # ./gradlew --no-daemon clean --parallel \
-  #   :app-thunderbird:assembleFullDebug \
-  #   -Dorg.gradle.jvmargs="-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8"
 
-  # hopefully CI safe approach 
+  # ensure work for both GNU and BSD sed
+  _sed_ip() { 
+    if sed --version >/dev/null 2>&1; then
+      sed -i.bak "$1" "$2"
+    else
+      sed -i .bak "$1" "$2"
+    fi
+  }
+
+  # Patch gradle.properties for low memory usage
+  if [[ -f "gradle.properties" ]]; then
+    echo "Patching gradle.properties..."
+    
+    # Set JVM args
+    if grep -q '^org.gradle.jvmargs=' gradle.properties; then
+      _sed_ip 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Dfile.encoding=UTF-8/' gradle.properties
+    else
+      echo 'org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Dfile.encoding=UTF-8' >> gradle.properties
+    fi
+
+    # Disable parallel builds
+    if grep -q '^org.gradle.parallel=' gradle.properties; then
+      _sed_ip 's/^org.gradle.parallel=.*/org.gradle.parallel=false/' gradle.properties
+    else
+      echo 'org.gradle.parallel=false' >> gradle.properties
+    fi
+  fi
+
+  # Build the app
+  # --no-build-cache  \ # this and next 2 are to build without cache
+  # --rerun-tasks \
+  # -Dorg.gradle.caching=false \
   ./gradlew \
-    :app-thunderbird:assembleFullDebug \
-    -Dorg.gradle.jvmargs="-Dfile.encoding=UTF-8 -Xms512m -Xmx3g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError -XX:+UseG1GC" \
-    -Dkotlin.daemon.jvm.options="-Dfile.encoding=UTF-8,-Xms256m,-Xmx2g,-XX:+UseG1GC" \
-    -Dorg.gradle.workers.max=2 \
-    --stacktrace --build-cache
+    --no-daemon \
+    --max-workers=1 \
+    -Dorg.gradle.parallel=false \
+    -Dorg.gradle.jvmargs="-Xmx2048m -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Dfile.encoding=UTF-8" \
+    clean :app-thunderbird:assembleFullDebug
+
   echo "Build completed successfully."
+
+  # Clear intermediates to free space
+  echo "Clearing intermediates to free up space..."
+  rm -rf */build/intermediates 2>/dev/null || true
+  rm -rf */build/tmp 2>/dev/null || true
 }
 
 install_thunderbird() { 
