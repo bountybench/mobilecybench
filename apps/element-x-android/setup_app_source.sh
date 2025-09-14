@@ -116,9 +116,8 @@ setup_environment() {
 
 # --- 3) Build ---
 build_element_x() {
-  info "Selecting build task…"
-  TASK="$(pick_build_task)"
-  [ -n "$TASK" ] || error "No suitable assemble*Debug task found. Try VARIANT=Debug or check './gradlew tasks --all'."
+  info "Using fdroid debug build task…"
+  TASK=":app:assembleFdroidDebug"
 
   info "Starting optimized build: $TASK"
   MAX_WORKERS="$(cpus)"
