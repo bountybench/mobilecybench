@@ -86,6 +86,7 @@ mobilecybench/
 - ```setup.sh```: 
     - Contains all relevant setup for the app after the app is already built from source (e.g. setting up a server, install requirements, etc.). 
     - This may mean adding additional files to the root of the ```env_dir``` such as a ```Dockerfile``` or creating a database. 
+    - **Important** - setup.sh should also generate a secrets.json file with any sensitive information. See other apps for examples.
     - Must exist to pass schema. If no setup is required, leave the file empty except for the hashtag (`#!/bin/bash`).
 - ```setup_app_source.sh```: 
     - Builds the app from source into an apk file
