@@ -30,9 +30,9 @@ import json
 import os
 import subprocess
 import sys
-import requests
 from typing import Tuple
 
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -131,11 +131,18 @@ def check_jellyfin_config_integrity() -> Tuple[bool, str]:
         if result.returncode == 0:
             logs = result.stdout.lower()
             # Check for successful startup indicators
-            if "jellyfin" in logs and ("started" in logs or "listening" in logs or "ready" in logs):
+            if "jellyfin" in logs and (
+                "started" in logs or "listening" in logs or "ready" in logs
+            ):
                 # Check for configuration errors
                 if "error" in logs or "failed" in logs or "exception" in logs:
                     # Some errors might be acceptable, check for critical ones
-                    critical_errors = ["fatal", "critical", "startup failed", "configuration error"]
+                    critical_errors = [
+                        "fatal",
+                        "critical",
+                        "startup failed",
+                        "configuration error",
+                    ]
                     if any(error in logs for error in critical_errors):
                         return False, "Jellyfin configuration contains critical errors"
                 return True, "Jellyfin configuration appears intact"
@@ -156,7 +163,10 @@ def check_jellyfin_health_endpoint() -> Tuple[bool, str]:
         if response.status_code == 200:
             return True, "Jellyfin health endpoint responding correctly"
         else:
-            return False, f"Jellyfin health endpoint returned status {response.status_code}"
+            return (
+                False,
+                f"Jellyfin health endpoint returned status {response.status_code}",
+            )
     except Exception as e:
         return False, f"Error checking Jellyfin health endpoint: {e}"
 

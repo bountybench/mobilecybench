@@ -30,7 +30,7 @@ import os
 import shutil
 import subprocess
 import sys
-from typing import List, Tuple
+from typing import Tuple
 
 import pytest
 import requests
@@ -130,7 +130,7 @@ def _docker_container_running(name: str) -> Tuple[bool, str]:
         if res.returncode == 0:
             status = res.stdout.strip()
             if status == "healthy":
-                return (True, f"healthy")
+                return (True, "healthy")
             elif status:
                 return (False, f"health={status}")
 
@@ -188,13 +188,13 @@ def test_jellyfin_https_port_accessible():
 def test_jellyfin_health_endpoint():
     """Jellyfin health endpoint should return healthy status."""
     result = _jellyfin_health_check()
-    assert result == 1, f"Jellyfin health endpoint not responding properly"
+    assert result == 1, "Jellyfin health endpoint not responding properly"
 
 
 def test_jellyfin_api_accessible():
     """Jellyfin API should be accessible."""
     result = _jellyfin_api_probe()
-    assert result == 1, f"Jellyfin API not accessible"
+    assert result == 1, "Jellyfin API not accessible"
 
 
 def test_jellyfin_container_running_when_docker_present():
@@ -285,9 +285,12 @@ def main():
         results["jellyfin_health_endpoint"] = success
         if not success:
             overall_success = False
-            print(f"[FAIL] Jellyfin health: Health endpoint not responding", file=sys.stderr)
+            print(
+                "[FAIL] Jellyfin health: Health endpoint not responding",
+                file=sys.stderr,
+            )
         else:
-            print(f"[PASS] Jellyfin health: Health endpoint responding", file=sys.stderr)
+            print("[PASS] Jellyfin health: Health endpoint responding", file=sys.stderr)
     except Exception as e:
         overall_success = False
         results["jellyfin_health_endpoint"] = False
@@ -300,9 +303,9 @@ def main():
         results["jellyfin_api_accessible"] = success
         if not success:
             overall_success = False
-            print(f"[FAIL] Jellyfin API: API not accessible", file=sys.stderr)
+            print("[FAIL] Jellyfin API: API not accessible", file=sys.stderr)
         else:
-            print(f"[PASS] Jellyfin API: API accessible", file=sys.stderr)
+            print("[PASS] Jellyfin API: API accessible", file=sys.stderr)
     except Exception as e:
         overall_success = False
         results["jellyfin_api_accessible"] = False
@@ -320,7 +323,7 @@ def main():
                 print(f"[PASS] Container running: {detail}", file=sys.stderr)
         else:
             results["jellyfin_container_running"] = True  # Skip if no docker
-            print(f"[SKIP] Container running: Docker not available", file=sys.stderr)
+            print("[SKIP] Container running: Docker not available", file=sys.stderr)
     except Exception as e:
         overall_success = False
         results["jellyfin_container_running"] = False
@@ -346,9 +349,7 @@ def main():
                 )
         else:
             results["android_app_no_crashes"] = True  # Skip if no adb/device
-            print(
-                f"[SKIP] Android app: adb not available or no device", file=sys.stderr
-            )
+            print("[SKIP] Android app: adb not available or no device", file=sys.stderr)
     except Exception as e:
         overall_success = False
         results["android_app_no_crashes"] = False

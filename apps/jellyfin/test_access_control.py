@@ -32,9 +32,9 @@ import os
 import subprocess
 import sys
 import time
-import requests
 from typing import Dict, List, Tuple
 
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -94,20 +94,12 @@ def get_jellyfin_auth_token(username: str, password: str) -> Tuple[bool, str]:
             "X-Emby-Authorization": (
                 'MediaBrowser Client="Jellyfin Android", Device="Test", '
                 'DeviceId="test-device", Version="1.0.0"'
-            )
+            ),
         }
 
-        auth_data = {
-            "Username": username,
-            "Pw": password
-        }
+        auth_data = {"Username": username, "Pw": password}
 
-        response = requests.post(
-            auth_url,
-            json=auth_data,
-            headers=headers,
-            timeout=10
-        )
+        response = requests.post(auth_url, json=auth_data, headers=headers, timeout=10)
 
         if response.status_code == 200:
             result = response.json()
@@ -161,10 +153,7 @@ def check_admin_user_privileges() -> Tuple[bool, str]:
             return False, f"Admin authentication failed: {token}"
 
         # Test admin operation - get system info
-        headers = {
-            "X-Emby-Token": token,
-            "Content-Type": "application/json"
-        }
+        headers = {"X-Emby-Token": token, "Content-Type": "application/json"}
 
         admin_url = f"{JELLYFIN_BASE_URL}/System/Info"
         response = requests.get(admin_url, headers=headers, timeout=10)
@@ -186,23 +175,17 @@ def check_regular_user_restrictions(username: str, password: str) -> Tuple[bool,
             return False, f"User authentication failed: {token}"
 
         # Try to access admin-only endpoint
-        headers = {
-            "X-Emby-Token": token,
-            "Content-Type": "application/json"
-        }
+        headers = {"X-Emby-Token": token, "Content-Type": "application/json"}
 
         # Try to create a user (admin-only operation)
         admin_url = f"{JELLYFIN_BASE_URL}/Users/New"
         test_user_data = {
             "Name": f"temp_user_{int(time.time())}",
-            "Password": "temppass123"
+            "Password": "temppass123",
         }
 
         response = requests.post(
-            admin_url,
-            json=test_user_data,
-            headers=headers,
-            timeout=10
+            admin_url, json=test_user_data, headers=headers, timeout=10
         )
 
         # Regular users should get 403 Forbidden or similar
@@ -216,7 +199,9 @@ def check_regular_user_restrictions(username: str, password: str) -> Tuple[bool,
                 if user_id:
                     delete_url = f"{JELLYFIN_BASE_URL}/Users/{user_id}"
                     # Use admin token to clean up
-                    admin_success, admin_token = get_jellyfin_auth_token(ADMIN_USERNAME, ADMIN_PASSWORD)
+                    admin_success, admin_token = get_jellyfin_auth_token(
+                        ADMIN_USERNAME, ADMIN_PASSWORD
+                    )
                     if admin_success:
                         admin_headers = {"X-Emby-Token": admin_token}
                         requests.delete(delete_url, headers=admin_headers, timeout=5)
@@ -224,7 +209,10 @@ def check_regular_user_restrictions(username: str, password: str) -> Tuple[bool,
                 pass
             return False, f"User {username} was able to perform admin operations"
         else:
-            return False, f"Unexpected response for user restrictions: {response.status_code}"
+            return (
+                False,
+                f"Unexpected response for user restrictions: {response.status_code}",
+            )
 
     except Exception as e:
         return False, f"User restriction check failed: {e}"
@@ -251,14 +239,10 @@ def check_invalid_credentials() -> List[Tuple[bool, str]]:
                     (True, f"Invalid credentials properly rejected for {username}")
                 )
             else:
-                results.append(
-                    (False, f"Invalid credentials accepted for {username}")
-                )
+                results.append((False, f"Invalid credentials accepted for {username}"))
 
         except Exception as e:
-            results.append(
-                (False, f"Credential test failed for {username}: {e}")
-            )
+            results.append((False, f"Credential test failed for {username}: {e}"))
 
     return results
 
@@ -324,10 +308,10 @@ def run_access_control_tests() -> Dict:
     }
     if not invalid_success:
         overall_success = False
-        print(f"[FAIL] Invalid credentials: Some tests failed", file=sys.stderr)
+        print("[FAIL] Invalid credentials: Some tests failed", file=sys.stderr)
     else:
         print(
-            f"[PASS] Invalid credentials: All tests passed",
+            "[PASS] Invalid credentials: All tests passed",
             file=sys.stderr,
         )
 
