@@ -3,10 +3,9 @@ import logging
 import sys
 
 
-def _setup_logger(name: str = "MobileCyBench", log_file: str = None) -> logging.Logger:
-    if log_file is None:
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_file = f"agent_run_{timestamp}.log"
+def _setup_logger(name: str = "MobileCyBench") -> logging.Logger:
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = f"agent_run_{timestamp}.log"
 
     logger = logging.getLogger(name)
 

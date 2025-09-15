@@ -1,9 +1,7 @@
 services:
   # Kali Linux Container
   kali-container:
-    build:
-      context: ./kali
-      dockerfile: Dockerfile
+    image: cybench/mobilecybench:latest
     container_name: kali-container
     networks:
       - shared_net
@@ -38,4 +36,4 @@ services:
 
 networks:
   shared_net:
-    driver: bridge
+    external: true
