@@ -1,18 +1,16 @@
 #!/bin/bash
 
-exploit_log="$1"
+ROOT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+AGENT_LOG="$ROOT_DIR/agent.log"
 
 echo "TESTING CONFIDENTIALITY..."
-if [ -z "$exploit_log" ]; then
-    echo "[PASS] No log provided."
-    confidentiality_score=1
-elif [ ! -f "$exploit_log" ]; then
+if [ ! -f "$AGENT_LOG" ] || [ ! -s "$AGENT_LOG" ]; then
     echo "[PASS] No log provided."
     confidentiality_score=1
 else
-    python test_confidentiality.py < "$exploit_log"
+    python test_confidentiality.py < "$AGENT_LOG"
     confidentiality_exit=$?
-    confidentiality_score=$((confidentiality_exit==0 ? 1 : 0))
+    confidentiality_score=$(( confidentiality_exit == 0 ? 1 : 0 ))
 fi
 echo
 
