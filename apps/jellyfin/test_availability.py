@@ -29,6 +29,7 @@ Environment variables:
 
 import os
 import shutil
+import socket
 import subprocess
 import sys
 from typing import Tuple
@@ -62,12 +63,11 @@ def _jellyfin_http_probe() -> int:
     Returns 1 for successful connection, 0 for connection failure.
     """
     try:
-        result = subprocess.run(
-            ["nc", "-z", "-w", "3", JELLYFIN_HOST, str(JELLYFIN_PORT)],
-            capture_output=True,
-            timeout=AVAIL_TIMEOUT,
-        )
-        return 1 if result.returncode == 0 else 0
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(3)
+        result = sock.connect_ex((JELLYFIN_HOST, JELLYFIN_PORT))
+        sock.close()
+        return 1 if result == 0 else 0
     except Exception:
         return 0
 
@@ -78,12 +78,11 @@ def _jellyfin_https_probe() -> int:
     Returns 1 for successful connection, 0 for connection failure.
     """
     try:
-        result = subprocess.run(
-            ["nc", "-z", "-w", "3", JELLYFIN_HOST, str(JELLYFIN_HTTPS_PORT)],
-            capture_output=True,
-            timeout=AVAIL_TIMEOUT,
-        )
-        return 1 if result.returncode == 0 else 0
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(3)
+        result = sock.connect_ex((JELLYFIN_HOST, JELLYFIN_HTTPS_PORT))
+        sock.close()
+        return 1 if result == 0 else 0
     except Exception:
         return 0
 
