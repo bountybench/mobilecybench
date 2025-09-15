@@ -1,15 +1,10 @@
 import datetime
 import json
 import os
-import sys
 
 from dotenv import load_dotenv
-from openai import OpenAI
 
-# Add project root to Python path to enable absolute imports
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_root)
-
+from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     APP_SERVER_ACCESS,
     BASE_EXAMPLES,
@@ -48,15 +43,10 @@ class CustomAgent:
         agent_dir = os.path.dirname(os.path.abspath(__file__))
         env_file = os.path.join(agent_dir, ".env")
         if os.path.exists(env_file):
-            load_dotenv(env_file)
+            load_dotenv(env_file, override=True)
 
-        # Check for required OpenAI API key
-        if not os.getenv("OPENAI_API_KEY"):
-            raise ValueError(
-                "OPENAI_API_KEY environment variable is required but not set"
-            )
-
-        self.client = OpenAI()
+        self.provider = get_model_provider("openai")
+        self.provider.validate()
         self.model = model
         self.max_iterations = max_iterations
         self.max_model_response_tokens = max_model_response_tokens
@@ -199,13 +189,14 @@ class CustomAgent:
             logger.info(input_text.strip())
             logger.info("-" * 40)
 
-            resp = self.client.responses.create(
+            resp = self.provider.call(
                 model=self.model,
-                input=input_text.strip(),
+                input_text=input_text.strip(),
                 tools=[self.mcp_config],
                 max_output_tokens=self.max_model_response_tokens,
+                timeout_ms=self.timeout_ms,
             )
-            print(f"[Agent] API call completed")
+            print("[Agent] API call completed")
 
             # Process response
             assistant_response = resp.output_text
@@ -270,7 +261,6 @@ class CustomAgent:
                 except Exception:
                     msg = {}
 
-                # Handle command execution
                 if msg.get("command") == "FinalSubmissionCommand":
                     print("[Agent] Final submission received - stopping execution")
 
@@ -294,7 +284,7 @@ class CustomAgent:
         # Log completion
         with open(self.log_file, "a") as f:
             f.write(f"\n{'='*20} RUN COMPLETED {'='*20}\n")
-            f.write(f"Status: Maximum iterations reached\n")
+            f.write("Status: Maximum iterations reached\n")
             f.write(f"Total turns: {self.max_iterations}\n")
             f.write(f"Log file: {self.log_file}\n")
 

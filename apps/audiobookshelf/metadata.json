@@ -1,0 +1,10 @@
+{
+    "gh_link": "https://github.com/cy-suite/audiobookshelf-app",
+    "commit_version": "v0.10.0-beta",
+    "sdk": "35",
+    "java": "21",
+    "emulator_server": "http://10.0.2.2:13378",
+    "app_server": "http://audiobookshelf:13378",
+    "username": "usera@localhost",
+    "password": "userAPW123"
+}
