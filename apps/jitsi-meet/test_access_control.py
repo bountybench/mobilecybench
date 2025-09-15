@@ -41,12 +41,9 @@ def check_web_up():
         r = requests.get(JITSI_URL, verify=False, timeout=5)
         # print(f"[DEBUG] Web response status code: {r.status_code}", file=sys.stderr)
         return r.status_code == 200
-    except Exception as e:
+    except Exception:
         # print(f"[DEBUG] Web check failed: {e}", file=sys.stderr)
         return False
-
-
-import subprocess
 
 
 def ensure_prosody_config(container):
@@ -141,7 +138,7 @@ def check_user_login(container: str, user: str, domain: str):
             # print(f"[DEBUG] User '{user}@{domain}' does NOT exist.", file=sys.stderr)
             return False
 
-    except Exception as e:
+    except Exception:
         # print(f"[DEBUG] Error checking user '{user}@{domain}': {e}", file=sys.stderr)
         return False
 

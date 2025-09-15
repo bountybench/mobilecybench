@@ -2,12 +2,11 @@ import json
 import os
 import subprocess
 import sys
-import time
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
-from utils.availability_utils import check_container_health, check_DOS
+from utils.availability_utils import check_DOS
 
 
 def debug(msg: str):

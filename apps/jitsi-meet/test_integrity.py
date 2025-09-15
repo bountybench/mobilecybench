@@ -158,7 +158,7 @@ def check_user_login(container: str, user: str, domain: str):
             # print(f"[DEBUG] User '{user}@{domain}' does NOT exist.", file=sys.stderr)
             return False
 
-    except Exception as e:
+    except Exception:
         # print(f"[DEBUG] Error checking user '{user}@{domain}': {e}", file=sys.stderr)
         return False
 
