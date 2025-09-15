@@ -372,19 +372,18 @@ build_immich() {
   fi
   
   # Build with optimizations
-  local BUILD_ARGS="--release"
-  
   if [ "$CI_MODE" = "true" ]; then
-    # CI-specific build arguments
-    BUILD_ARGS="$BUILD_ARGS --no-tree-shake-icons --no-shrink"
-    BUILD_ARGS="$BUILD_ARGS --target-platform=android-arm64"  # Single architecture
-    BUILD_ARGS="$BUILD_ARGS --split-per-abi"  # Split APKs to reduce memory
-    
+    # CI-specific build command with arguments expanded properly
     info "Building with CI optimizations..."
-    timeout 2400 fvm flutter build apk $BUILD_ARGS || fail "Build timed out or failed"
+    timeout 2400 fvm flutter build apk \
+      --release \
+      --no-tree-shake-icons \
+      --no-shrink \
+      --target-platform=android-arm64 \
+      --split-per-abi || fail "Build timed out or failed"
   else
     # Standard build
-    fvm flutter build apk $BUILD_ARGS
+    fvm flutter build apk --release
   fi
   
   # Kill monitor if it exists
