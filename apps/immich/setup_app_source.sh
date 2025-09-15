@@ -300,7 +300,7 @@ EOF
   if [ "$CI_MODE" = "true" ]; then
     # Conservative memory settings for CI
     export DART_VM_OPTIONS="--old_gen_heap_size=1024 --optimization_counter_threshold=50000"
-    export GRADLE_OPTS="-Xmx1024m -XX:MaxMetaspaceSize=256m -XX:+UseG1GC"
+    export GRADLE_OPTS="-Xmx1024m -XX:MaxMetaspaceSize=256m -XX:+UseG1GC -Dorg.gradle.daemon=false"
     export _JAVA_OPTIONS="-Xmx1024m"
     export PUB_MAX_WORKERS=2  # Limit parallel pub operations
     
@@ -312,11 +312,14 @@ EOF
         cat >> "android/gradle.properties" << 'EOF'
 
 # CI Optimizations
-org.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=256m -XX:+UseG1GC
+org.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=256m -XX:+UseG1GC -Dorg.gradle.daemon=false
 org.gradle.parallel=false
 org.gradle.daemon=false
 org.gradle.configureondemand=false
+org.gradle.workers.max=1
 android.enableBuildCache=false
+android.enableJetifier=true
+android.useAndroidX=true
 EOF
       fi
       
@@ -324,6 +327,12 @@ EOF
       if grep -q "android.enableR8" "android/gradle.properties"; then
         info "Removing deprecated android.enableR8 option..."
         sed -i '/android\.enableR8/d' "android/gradle.properties"
+      fi
+      
+      # Remove split-per-abi if it exists (can cause hangs with NDK)
+      if grep -q "android.enableSplitApk" "android/gradle.properties"; then
+        info "Removing split APK option..."
+        sed -i '/android\.enableSplitApk/d' "android/gradle.properties"
       fi
     fi
   else
@@ -367,12 +376,32 @@ build_immich() {
     rm -rf build android/app/build android/.gradle 2>/dev/null || true
   fi
   
-  # CI Optimization: Monitor build progress in background
+  # CI Optimization: Pre-download Gradle dependencies to avoid timeouts
+  if [ "$CI_MODE" = "true" ]; then
+    info "Pre-downloading Gradle dependencies..."
+    cd android
+    # Run a simple gradle task to download dependencies
+    timeout 300 ./gradlew dependencies --no-daemon --no-parallel --max-workers=1 2>/dev/null || true
+    cd ..
+  fi
+  
+  # CI Optimization: Monitor build progress in background with more detail
   if [ "$CI_MODE" = "true" ]; then
     (
       while true; do
         sleep 30
         echo "[Build Monitor] $(date '+%H:%M:%S') - Memory: $(free -m | awk 'NR==2{printf "%.1f%%", $3*100/$2}')"
+        # Also check for gradle/dart processes
+        GRADLE_COUNT=$(pgrep -c gradle 2>/dev/null || echo 0)
+        DART_COUNT=$(pgrep -c dart 2>/dev/null || echo 0)
+        if [ $GRADLE_COUNT -gt 0 ] || [ $DART_COUNT -gt 0 ]; then
+          echo "[Build Monitor] Active processes - Gradle: $GRADLE_COUNT, Dart: $DART_COUNT"
+        fi
+        # Check if build is actually progressing by looking at build directory size
+        if [ -d "build" ]; then
+          BUILD_SIZE=$(du -sm build 2>/dev/null | cut -f1)
+          echo "[Build Monitor] Build directory size: ${BUILD_SIZE}MB"
+        fi
       done
     ) &
     MONITOR_PID=$!
@@ -381,14 +410,41 @@ build_immich() {
   
   # Build with optimizations
   if [ "$CI_MODE" = "true" ]; then
-    # CI-specific build command with arguments expanded properly
-    info "Building with CI optimizations..."
-    timeout 2400 fvm flutter build apk \
+    # CI-specific build command with verbose output and shorter timeout
+    info "Building with CI optimizations (timeout: 25 minutes)..."
+    
+    # Set additional environment variables to prevent hangs
+    export GRADLE_OPTS="-Xmx1024m -XX:MaxMetaspaceSize=256m -XX:+UseG1GC -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.workers.max=1 -Dorg.gradle.jvmargs=-Xmx1024m"
+    export FLUTTER_GRADLE_VERBOSE=true
+    
+    # Build with verbose output to see where it hangs
+    timeout 1500 fvm flutter build apk \
       --release \
+      --verbose \
       --no-tree-shake-icons \
-      --no-shrink \
       --target-platform=android-arm64 \
-      --split-per-abi || fail "Build timed out or failed"
+      --dart-define=FLUTTER_BUILD_MODE=release \
+      --dart-define=TREE_SHAKE_ICONS=false || {
+        EXIT_CODE=$?
+        echo "[Build Monitor] Build failed with exit code: $EXIT_CODE"
+        
+        # Capture more diagnostic info on failure
+        echo "[Build Monitor] Last 50 lines of Gradle output:"
+        if [ -f "android/app/build/outputs/logs/manifest-merger-release-report.txt" ]; then
+          tail -50 android/app/build/outputs/logs/manifest-merger-release-report.txt 2>/dev/null || true
+        fi
+        
+        # Check for common hang scenarios
+        if [ $EXIT_CODE -eq 124 ]; then
+          echo "[Build Monitor] Build timed out after 25 minutes"
+          echo "[Build Monitor] This often happens when:"
+          echo "  - NDK download/installation is stuck"
+          echo "  - Gradle is waiting for user input"
+          echo "  - Network issues downloading dependencies"
+        fi
+        
+        fail "Build timed out or failed (exit code: $EXIT_CODE)"
+      }
   else
     # Standard build
     fvm flutter build apk --release
