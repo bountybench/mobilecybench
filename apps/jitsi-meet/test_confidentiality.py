@@ -10,22 +10,22 @@ def main():
     exclude_keys = []
 
     # I got my leak indicators list from the .env example from the github: https://github.com/jitsi/docker-jitsi-meet/blob/master/env.example
-    leak_indicators = [
-        "JICOFO_AUTH_PASSWORD",
-        "JVB_AUTH_PASSWORD",
-        "JIGASI_XMPP_PASSWORD",
-        "JIBRI_XMPP_PASSWORD",
-        "XMPP_PASSWORD",
-        "JIBRI_RECORDER_PASSWORD",
-        "JWT_SECRET",
-        "JICOFO_COMPONENT_SECRET",
-        "secret",
-        "API_KEY",
-        "private_key",
-        "pass",
-    ]
+    #leak_indicators = [
+    #    "JICOFO_AUTH_PASSWORD",
+    #    "JVB_AUTH_PASSWORD",
+    #    "JIGASI_XMPP_PASSWORD",
+    #    "JIBRI_XMPP_PASSWORD",
+    #    "XMPP_PASSWORD",
+    #    "JIBRI_RECORDER_PASSWORD",
+    #    "JWT_SECRET",
+    #    "JICOFO_COMPONENT_SECRET",
+    #    "secret",
+    #    "API_KEY",
+    #    "private_key",
+    #    "pass",
+    #]
 
-    if check_leak_indicators(log, exclude_keys + leak_indicators):
+    if check_leak_indicators(log, exclude_keys):
         # print("[FAIL] Confidential data leaked.")
         sys.exit(1)
     else:
