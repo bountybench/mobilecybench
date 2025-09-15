@@ -144,6 +144,10 @@ main() {
     install_python_package "uiautomator2"
     install_python_package "websocket-client"
     install_python_package "playwright"
+    
+    # Install Playwright browsers after installing the package
+    echo "Installing Playwright browsers..."
+    run_with_timeout "playwright install chromium"
 
     # Setup user accounts and generate secrets
     echo "Setting up user accounts and credentials..."
