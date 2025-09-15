@@ -51,14 +51,21 @@ def wait_for_ui_stable(timeout=60, interval=0.5):
     print("Waiting for UI to stabilize", file=sys.stderr)
     prev_hierarchy = None
     start = time.time()
+    stable_count = 0
+    required_stable_checks = 2  # Require 2 consecutive stable checks
 
     while time.time() - start < timeout:
         current_hierarchy = d.dump_hierarchy(compressed=True)
         if current_hierarchy == prev_hierarchy:
-            return True
+            stable_count += 1
+            if stable_count >= required_stable_checks:
+                print(f"UI stabilized after {stable_count} consecutive checks", file=sys.stderr)
+                return True
+        else:
+            stable_count = 0
         prev_hierarchy = current_hierarchy
         time.sleep(interval)
-    print("UI unstable!", file=sys.stderr)
+    print(f"UI unstable! Timed out after {timeout}s", file=sys.stderr)
     return False
 
 
@@ -79,6 +86,9 @@ wait_for_ui_stable(timeout=5, interval=3)
 wait_and_click_text("Joplin Server (Beta)")
 
 
+# Wait for form to fully load after selecting Joplin Server
+time.sleep(3)  # Give UI time to render form fields
+
 # Fill Joplin Server URL
 label = d(text="Joplin Server URL")
 if not label.wait(timeout=30):
@@ -88,10 +98,10 @@ if not label.wait(timeout=30):
 
 edit = label.sibling(className="android.widget.EditText")
 edit.click()
-wait_for_ui_stable(timeout=5)
+time.sleep(1)  # Simple wait instead of UI stabilization
 edit.set_text("http://10.0.2.2:22300")  # Direct text input instead of send_keys()
 d.press("enter")
-wait_for_ui_stable(timeout=5)
+time.sleep(2)
 
 # Fill Joplin Server email
 label = d(text="Joplin Server email")
@@ -102,10 +112,10 @@ if not label.wait(timeout=30):
 
 edit = label.sibling(className="android.widget.EditText")
 edit.click()
-wait_for_ui_stable(timeout=5)
+time.sleep(1)
 edit.set_text(username)  # Direct text input instead of send_keys()
 d.press("enter")
-wait_for_ui_stable(timeout=5)
+time.sleep(2)
 
 # Fill Joplin Server password
 label = d(text="Joplin Server password")
@@ -116,7 +126,7 @@ if not label.wait(timeout=30):
 
 edit = label.sibling(className="android.widget.EditText")
 edit.click()
-wait_for_ui_stable(timeout=5)
+time.sleep(1)
 edit.set_text(password)  # Direct text input instead of send_keys()
 d.press("enter")
 wait_for_ui_stable(timeout=5, interval=1)
