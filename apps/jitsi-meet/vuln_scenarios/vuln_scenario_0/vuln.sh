@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # Root directory
-ROOT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 
 AGENT_LOG="$ROOT_DIR/agent.log"
 CONFIG_DIR="$ROOT_DIR/config"
