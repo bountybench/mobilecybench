@@ -13,6 +13,14 @@ fi
 echo
 
 echo "TESTING INTEGRITY..."
+# Ensure auth files have proper permissions before integrity tests
+if [ -f ./config/.storage/auth ]; then
+    chmod 644 ./config/.storage/auth
+fi
+if [ -f ./config/.storage/auth_provider.homeassistant ]; then
+    chmod 644 ./config/.storage/auth_provider.homeassistant
+fi
+
 {
     integrity_output=$(python3 test_integrity.py) 
     integrity_exit=$?
@@ -27,28 +35,28 @@ echo "TESTING AVAILABILITY..."
 availability_output=${availability_output:-"{}"}
 
 echo "TESTING ACCESS CONTROL..."
-# Set the correct hostname for Home Assistant based on environment
-# In CI, use localhost since Docker port is mapped to host
-# In local dev, use 10.0.2.2 for Android emulator
-if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
-    export HOME_ASSISTANT_HOST="localhost"
-else
-    export HOME_ASSISTANT_HOST="10.0.2.2"
-fi
+export HOME_ASSISTANT_HOST="localhost"
 
 # Wait for Home Assistant to be ready before running access control tests
 echo "Waiting for Home Assistant server to be ready at $HOME_ASSISTANT_HOST:8123..."
-for i in {1..30}; do
+server_ready=false
+for i in {1..60}; do  # Increased attempts from 30 to 60
     if curl -s -f "http://$HOME_ASSISTANT_HOST:8123" >/dev/null 2>&1; then
         echo "Home Assistant server is ready!"
+        server_ready=true
         break
     fi
-    if [ $i -eq 30 ]; then
-        echo "WARNING: Home Assistant server not responding after 30 attempts"
+    if [ $i -eq 60 ]; then
+        echo "WARNING: Home Assistant server not responding after 60 attempts"
+        echo "Checking container status..."
+        if command -v docker >/dev/null 2>&1; then
+            docker ps | grep home-assistant || echo "Container not found"
+            docker logs home-assistant-server --tail 20 2>/dev/null || echo "Could not get container logs"
+        fi
         echo "Proceeding with tests anyway..."
     fi
-    echo "  Attempt $i/30: waiting for server..."
-    sleep 2
+    echo "  Attempt $i/60: waiting for server..."
+    sleep 3  # Increased sleep from 2 to 3 seconds
 done
 python3 test_access_control.py
 access_control_exit=$?

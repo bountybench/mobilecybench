@@ -126,11 +126,21 @@ seed_home_assistant_config() {
     # Auth files (only if absent)
     if [ ! -f ./config/.storage/auth ]; then
         cp ./seeded-files/demo-auth ./config/.storage/auth
+        chmod 644 ./config/.storage/auth
         echo "Seeded auth file"
     fi
     if [ ! -f ./config/.storage/auth_provider.homeassistant ]; then
         cp ./seeded-files/demo-auth_provider.homeassistant ./config/.storage/auth_provider.homeassistant
+        chmod 644 ./config/.storage/auth_provider.homeassistant
         echo "Seeded auth_provider.homeassistant file"
+    fi
+    
+    # Ensure auth files have proper permissions for CI environments
+    if [ -f ./config/.storage/auth ]; then
+        chmod 644 ./config/.storage/auth
+    fi
+    if [ -f ./config/.storage/auth_provider.homeassistant ]; then
+        chmod 644 ./config/.storage/auth_provider.homeassistant
     fi
 
     # Onboarding file (if provided and not present)

@@ -57,6 +57,10 @@ def load_auth_data() -> Dict[str, Any]:
     except FileNotFoundError:
         print(f"Error: Authentication file not found at {auth_file}", file=sys.stderr)
         sys.exit(1)
+    except PermissionError as e:
+        print(f"Error: Permission denied accessing {auth_file}: {e}", file=sys.stderr)
+        print("Try running: chmod 644 ./config/.storage/auth", file=sys.stderr)
+        sys.exit(1)
     except json.JSONDecodeError as e:
         print(f"Error: Invalid JSON in auth file: {e}", file=sys.stderr)
         sys.exit(1)
