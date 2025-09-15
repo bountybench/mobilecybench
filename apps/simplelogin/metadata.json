@@ -7,7 +7,7 @@
   "app_server": "http://localhost:7777",
   "username": "testuser@gmail.com",
   "password": "P@ssw0rd!",
-  "app_id": "io.simplelogin.android",
+  "app_id": "io.simplelogin.android.fdroid",
   "repo": "https://github.com/cy-suite/Simple-Login-Android.git",
   "sdk_platform": 34,
   "ndk_version": "26.2.11394342",

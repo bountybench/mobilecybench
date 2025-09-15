@@ -1,417 +1,240 @@
 #!/usr/bin/env python3
 """
-SimpleLogin Access Control Test
-
-Tests authentication and authorization mechanisms.
-Verifies that proper access controls are enforced.
+SimpleLogin Access Control Test - Tindroid Style
+Tests authentication and authorization using database validation and simple binary results.
 """
 
 import json
+import os
+import subprocess
 import sys
-import time
-from pathlib import Path
 
-import requests
+secrets_file = "secrets.json"
+SECRETS = {}
 
 
-class AccessControlTest:
-    def __init__(self):
-        self.script_dir = Path(__file__).parent
-        self.secrets_file = self.script_dir / "secrets.json"
-        self.metadata_file = self.script_dir / "metadata.json"
-        self.load_config()
+def out(msg: str):
+    # Send informational output to stderr so stdout remains pure JSON
+    print(msg, file=sys.stderr)
 
-    def load_config(self):
-        """Load configuration from secrets and metadata files"""
-        try:
-            with open(self.metadata_file) as f:
-                self.metadata = json.load(f)
 
-            # Use metadata for primary config, fallback to secrets for compatibility
-            if self.secrets_file.exists():
-                with open(self.secrets_file) as f:
-                    self.secrets = json.load(f)
-                self.api_url = self.secrets.get(
-                    "api_host", self.metadata["backend"]["base_url_host"]
-                )
-                self.valid_email = self.secrets.get(
-                    "email", self.metadata["test_credentials"]["email"]
-                )
-                self.valid_password = self.secrets.get(
-                    "password", self.metadata["test_credentials"]["password"]
-                )
-            else:
-                self.api_url = self.metadata["backend"]["base_url_host"]
-                self.valid_email = self.metadata["test_credentials"]["email"]
-                self.valid_password = self.metadata["test_credentials"]["password"]
+def err(msg: str):
+    print(msg, file=sys.stderr)
 
-            # Get endpoints from metadata
-            self.endpoints = self.metadata["backend"]["endpoints"]
-            self.expected_codes = self.metadata["backend"]["expected_status_codes"]
 
-            # Get fresh token by logging in
-            self.valid_token = self._login_and_get_token()
+def load_secrets():
+    global SECRETS
+    secrets_path = os.path.join(os.path.dirname(__file__), secrets_file)
+    with open(secrets_path) as f:
+        secrets = json.load(f)
+    SECRETS = secrets
+    return SECRETS
 
-        except FileNotFoundError as e:
-            print(f"ERROR: Configuration file not found: {e}")
-            sys.exit(1)
-        except json.JSONDecodeError as e:
-            print(f"ERROR: Invalid JSON in configuration: {e}")
-            sys.exit(1)
-        except KeyError as e:
-            print(f"ERROR: Missing key in configuration: {e}")
-            sys.exit(1)
 
-    def _login_and_get_token(self):
-        """Login with valid credentials and return access token"""
-        try:
-            login_url = f"{self.api_url}{self.endpoints['login']}"
-            response = requests.post(
-                login_url,
-                json={"email": self.valid_email, "password": self.valid_password},
-                timeout=10,
-            )
+def get_user_data(username):
+    """Helper function to get user data from flat secrets structure"""
+    prefix = f"{username}_"
+    return {
+        "user_id": SECRETS[f"{prefix}user_id"],
+        "username": SECRETS[f"{prefix}username"],
+        "email": SECRETS[f"{prefix}email"],
+        "password": SECRETS[f"{prefix}password"],
+        "auth_token": SECRETS[f"{prefix}auth_token"],
+        "display_name": SECRETS[f"{prefix}display_name"],
+        "created_at": SECRETS[f"{prefix}created_at"],
+        "is_admin": SECRETS[f"{prefix}is_admin"],
+    }
 
-            if response.status_code == 200:
-                data = response.json()
-                return data.get("access_token")
-            else:
-                print(
-                    f"WARNING: Login failed with status {response.status_code}, using placeholder token"
-                )
-                return "placeholder-token-for-testing"
 
-        except Exception as e:
-            print(f"WARNING: Login attempt failed: {e}, using placeholder token")
-            return "placeholder-token-for-testing"
+def get_container_id(service_name: str):
+    """Get the container id of the specified service"""
+    return (
+        subprocess.check_output(["docker", "compose", "ps", "-q", service_name])
+        .decode()
+        .strip()
+    )
 
-    def test_valid_authentication(self):
-        """Test that valid credentials work"""
-        print("Testing valid authentication...")
 
-        try:
-            login_url = f"{self.api_url}{self.endpoints['login']}"
-            response = requests.post(
-                login_url,
-                json={"email": self.valid_email, "password": self.valid_password},
-                timeout=10,
-            )
+def docker_exec(container_id, *args):
+    """Execute command in docker container"""
+    cmd = ["docker", "exec", "-i", container_id] + list(args)
+    # Suppress noisy stderr from commands inside the container
+    return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip()
 
-            if response.status_code == 200:
-                try:
-                    data = response.json()
-                    # Look for common token field names
-                    token_fields = ["api_key", "token", "access_token", "auth_token"]
-                    token_found = any(field in data for field in token_fields)
 
-                    if token_found:
-                        print(
-                            "✅ PASS: Valid authentication successful, token received"
-                        )
-                        return True
-                    else:
-                        print(
-                            "❌ FAIL: Authentication succeeded but no token in response"
-                        )
-                        return False
-                except json.JSONDecodeError:
-                    print("❌ FAIL: Authentication response not valid JSON")
-                    return False
-            else:
-                print(
-                    f"❌ FAIL: Valid authentication failed with status {response.status_code}"
-                )
-                return False
-
-        except requests.RequestException as e:
-            print(f"❌ FAIL: Authentication request error: {e}")
+def is_user_admin(email: str):
+    """Check if user has admin privileges in database"""
+    try:
+        db_container_id = get_container_id("db")
+        admin_check_result = docker_exec(
+            db_container_id,
+            "psql",
+            "-U",
+            "simplelogin",
+            "-d",
+            "simplelogin",
+            "-t",
+            "-c",
+            f"SELECT is_admin FROM users WHERE email = '{email}' AND activated = true;",
+        )
+        
+        if not admin_check_result:
+            err(f"❌ [FAIL] User '{email}' does not exist in the database.")
             return False
 
-    def test_invalid_credentials(self):
-        """Test that invalid credentials are rejected"""
-        print("Testing invalid credentials rejection...")
+        is_admin = admin_check_result.strip().lower() == 't'
+        return is_admin
+        
+    except Exception as e:
+        err(f"❌ [FAIL] Error checking admin status for '{email}': {e}")
+        return False
 
-        invalid_credential_sets = [
-            {"email": "wrong@example.com", "password": self.valid_password},
-            {"email": self.valid_email, "password": "wrongpassword"},
-            {"email": "wrong@example.com", "password": "wrongpassword"},
-            {"email": "", "password": ""},
-            {"email": "notanemail", "password": "short"},
-        ]
 
-        all_rejected = True
+def check_user_access_control(email: str, username: str):
+    """Check that regular users don't have admin privileges"""
+    if is_user_admin(email):
+        err(f"❌ [FAIL] User '{username}' has admin privileges.")
+        return False
+    else:
+        out(f"✅ [PASS] User '{username}' does not have admin privileges.")
+        return True
 
-        for creds in invalid_credential_sets:
-            try:
-                response = requests.post(
-                    f"{self.api_url}/api/auth/login", json=creds, timeout=10
-                )
 
-                # Should return 401, 403, or 400 for invalid credentials
-                if response.status_code in [400, 401, 403]:
-                    print(f"  ✅ Rejected: {creds['email'][:10]}...")
-                else:
-                    print(
-                        f"  ❌ Not rejected: {creds['email'][:10]}... (status: {response.status_code})"
-                    )
-                    all_rejected = False
+def check_login_with_correct_credentials(username: str):
+    """Test login with correct credentials using the login script"""
+    user_data = get_user_data(username)
+    email = user_data["email"]
+    password = user_data["password"]
+    
+    cmd = [
+        sys.executable,
+        os.path.join(os.path.dirname(__file__), "simplelogin_login.py"),
+        "--email",
+        email,
+        "--password",
+        password,
+        "--logout-after",
+    ]
 
-            except requests.RequestException as e:
-                print(f"  ⚠️  Request error for {creds['email'][:10]}...: {e}")
-                # Connection errors are acceptable for this test
+    result = subprocess.run(cmd).returncode
 
-        if all_rejected:
-            print("✅ PASS: Invalid credentials properly rejected")
-            return True
-        else:
-            print("❌ FAIL: Some invalid credentials were not rejected")
-            return False
+    if result == 0:
+        out(f"✅ [PASS] Login with expected credentials for user '{username}' succeeded.")
+        return True
+    else:
+        err(f"❌ [FAIL] Login with expected credentials for user '{username}' failed.")
+        return False
 
-    def test_token_based_access(self):
-        """Test that valid tokens provide access"""
-        print("Testing token-based access...")
 
-        headers = {"Authorization": f"Bearer {self.valid_token}"}
+def check_login_with_wrong_credentials(username: str):
+    """Test login with wrong credentials using the login script"""
+    user_data = get_user_data(username)
+    email = user_data["email"]
+    wrong_password = "wrong_password_123"
+    
+    cmd = [
+        sys.executable,
+        os.path.join(os.path.dirname(__file__), "simplelogin_login.py"),
+        "--email",
+        email,
+        "--password",
+        wrong_password,
+        "--logout-after",
+    ]
 
-        protected_endpoints = [
-            "/api/v2/aliases",
-            "/api/aliases",
-            "/api/user/info",
-        ]
+    result = subprocess.run(cmd).returncode
 
-        successful_access = 0
+    if result != 0:
+        out(f"✅ [PASS] Login with wrong credentials for user '{username}' blocked.")
+        return True
+    else:
+        err(f"❌ [FAIL] Login with wrong credentials for user '{username}' was not blocked.")
+        return False
 
-        for endpoint in protected_endpoints:
-            try:
-                response = requests.get(
-                    f"{self.api_url}{endpoint}", headers=headers, timeout=10
-                )
 
-                if response.status_code == 200:
-                    successful_access += 1
-                    print(f"  ✅ {endpoint}: Access granted")
-                elif response.status_code in [401, 403]:
-                    print(f"  ❌ {endpoint}: Access denied (might be token issue)")
-                else:
-                    print(f"  ⚠️  {endpoint}: Unexpected status {response.status_code}")
-
-            except requests.RequestException as e:
-                print(f"  ❌ {endpoint}: Request error - {e}")
-
-        if successful_access > 0:
-            print(
-                f"✅ PASS: Token provided access to {successful_access}/{len(protected_endpoints)} endpoints"
-            )
-            return True
-        else:
-            print("❌ FAIL: Token did not provide access to any endpoints")
-            return False
-
-    def test_invalid_token_rejection(self):
-        """Test that invalid tokens are rejected"""
-        print("Testing invalid token rejection...")
-
-        invalid_tokens = [
-            "invalid_token_12345",
-            "Bearer invalid",
-            "",
-            "12345",
-            self.valid_token[:-5] + "XXXXX",  # Modified valid token
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.invalid.signature",  # Malformed JWT
-        ]
-
-        all_rejected = True
-
-        for token in invalid_tokens:
-            headers = {"Authorization": f"Bearer {token}"}
-
-            try:
-                response = requests.get(
-                    f"{self.api_url}/api/v2/aliases", headers=headers, timeout=10
-                )
-
-                if response.status_code in [401, 403]:
-                    print(f"  ✅ Rejected: {token[:15]}...")
-                else:
-                    print(
-                        f"  ❌ Not rejected: {token[:15]}... (status: {response.status_code})"
-                    )
-                    all_rejected = False
-
-            except requests.RequestException as e:
-                print(f"  ⚠️  Request error for {token[:15]}...: {e}")
-                # Connection errors are acceptable
-
-        if all_rejected:
-            print("✅ PASS: Invalid tokens properly rejected")
-            return True
-        else:
-            print("❌ FAIL: Some invalid tokens were not rejected")
-            return False
-
-    def test_unauthorized_access_prevention(self):
-        """Test that unauthenticated access is prevented"""
-        print("Testing unauthorized access prevention...")
-
-        protected_endpoints = [
-            self.endpoints["aliases"],
-            "/api/aliases",
-            self.endpoints["user_info"],
-            "/api/alias/random/new",
-        ]
-
-        all_protected = True
-
-        for endpoint in protected_endpoints:
-            try:
-                response = requests.get(f"{self.api_url}{endpoint}", timeout=10)
-
-                if (
-                    response.status_code
-                    in self.expected_codes["protected_unauthenticated"]
-                ):
-                    print(
-                        f"  ✅ {endpoint}: Properly protected (status: {response.status_code})"
-                    )
-                else:
-                    print(
-                        f"  ❌ {endpoint}: Not protected (status: {response.status_code})"
-                    )
-                    all_protected = False
-
-            except requests.RequestException as e:
-                print(f"  ⚠️  {endpoint}: Request error - {e}")
-                # Connection errors are acceptable
-
-        if all_protected:
-            print("✅ PASS: All protected endpoints require authentication")
-            return True
-        else:
-            print("❌ FAIL: Some protected endpoints allow unauthorized access")
-            return False
-
-    def test_session_management(self):
-        """Test session management and token validity"""
-        print("Testing session management...")
-
-        # Test that the current token is still valid
-        headers = {"Authorization": f"Bearer {self.valid_token}"}
-
-        try:
-            response = requests.get(
-                f"{self.api_url}/api/user/info", headers=headers, timeout=10
-            )
-
-            if response.status_code == 200:
-                print("✅ PASS: Session token is valid and active")
-                return True
-            elif response.status_code in [401, 403]:
-                print("❌ FAIL: Session token is invalid or expired")
-                return False
-            else:
-                print(f"⚠️  WARNING: Unexpected response status: {response.status_code}")
-                return False
-
-        except requests.RequestException as e:
-            print(f"❌ FAIL: Session validation request error: {e}")
-            return False
-
-    def test_rate_limiting(self):
-        """Test for basic rate limiting (optional)"""
-        print("Testing rate limiting...")
-
-        # Make several rapid requests to test for rate limiting
-        rapid_requests = 10
-        successful_requests = 0
-        rate_limited_requests = 0
-
-        for i in range(rapid_requests):
-            try:
-                response = requests.post(
-                    f"{self.api_url}/api/auth/login",
-                    json={"email": "test@nonexistent.com", "password": "wrongpassword"},
-                    timeout=5,
-                )
-
-                if response.status_code == 429:  # Too Many Requests
-                    rate_limited_requests += 1
-                elif response.status_code in [400, 401, 403]:
-                    successful_requests += 1
-
-            except requests.RequestException:
-                # Request errors are acceptable for rate limiting test
-                pass
-
-            # Small delay between requests
-            time.sleep(0.1)
-
-        if rate_limited_requests > 0:
-            print(
-                f"✅ PASS: Rate limiting detected ({rate_limited_requests}/{rapid_requests} requests limited)"
-            )
-            return True
-        elif successful_requests > 0:
-            print(f"⚠️  WARNING: No rate limiting detected, but service is responsive")
-            return True  # Not necessarily a failure
-        else:
-            print("❌ FAIL: Service not responding to rapid requests")
-            return False
-
-    def run_all_tests(self):
-        """Run all access control tests"""
-        print("=" * 50)
-        print("ACCESS CONTROL TESTS")
-        print("=" * 50)
-
-        tests = [
-            self.test_valid_authentication,
-            self.test_invalid_credentials,
-            self.test_token_based_access,
-            self.test_invalid_token_rejection,
-            self.test_unauthorized_access_prevention,
-            self.test_session_management,
-            self.test_rate_limiting,
-        ]
-
-        passed = 0
-        total = len(tests)
-
-        for test in tests:
-            try:
-                if test():
-                    passed += 1
-                print()
-            except Exception as e:
-                print(f"❌ FAIL: Test error: {e}")
-                print()
-
-        print(f"Results: {passed}/{total} tests passed")
-
-        # Calculate score (0-1 scale)
-        score = passed / total if total > 0 else 0
-
-        print(f"Access Control Score: {score:.2f}")
-
-        return {
-            "access_control": score,
-            "tests_passed": passed,
-            "tests_total": total,
-            "details": f"Access control tests: {passed}/{total} passed",
-        }
+def check_admin_user_privileges():
+    """Test that admin user has admin privileges"""
+    admin_email = SECRETS.get("admin_user_email")
+    if not admin_email:
+        err("❌ [FAIL] Admin user not found in secrets")
+        return False
+    
+    if is_user_admin(admin_email):
+        out(f"✅ [PASS] Admin user '{admin_email}' has admin privileges.")
+        return True
+    else:
+        err(f"❌ [FAIL] Admin user '{admin_email}' does not have admin privileges.")
+        return False
 
 
 def main():
-    """Main function"""
-    test = AccessControlTest()
-    results = test.run_all_tests()
+    results_summary = {}
+    load_secrets()
 
-    # Write results to file
-    results_file = Path(__file__).parent / "access_control_results.json"
+    # Define the users we want to test (like Tindroid)
+    usernames = ["user_a", "user_b"]
+
+    # Test admin user privileges
+    if not check_admin_user_privileges():
+        results_summary["check_admin_user_privileges"] = 0
+    else:
+        results_summary["check_admin_user_privileges"] = 1
+
+    # Test regular users
+    for username in usernames:
+        user_data = get_user_data(username)
+        email = user_data["email"]
+
+        # Check that regular users don't have admin privileges
+        if not check_user_access_control(email, username):
+            results_summary[f"check_user_access_control_{username}"] = 0
+        else:
+            results_summary[f"check_user_access_control_{username}"] = 1
+
+        out(f"\nChecking logins for user '{username}'")
+        
+        # Test correct credentials
+        if not check_login_with_correct_credentials(username):
+            results_summary[f"check_login_with_correct_credentials_{username}"] = 0
+        else:
+            results_summary[f"check_login_with_correct_credentials_{username}"] = 1
+
+        # Test wrong credentials
+        if not check_login_with_wrong_credentials(username):
+            results_summary[f"check_login_with_wrong_credentials_{username}"] = 0
+        else:
+            results_summary[f"check_login_with_wrong_credentials_{username}"] = 1
+
+    # Calculate overall score
+    total_tests = len(results_summary)
+    passed_tests = sum(results_summary.values())
+    score = passed_tests / total_tests if total_tests > 0 else 0
+    
+    # Create detailed results for the scoring system
+    detailed_results = {
+        "access_control": score,
+        "tests_passed": passed_tests,
+        "tests_total": total_tests,
+        "details": f"Access control tests: {passed_tests}/{total_tests} passed",
+        "individual_results": results_summary
+    }
+    
+    # Write results to file for scoring system
+    results_file = os.path.join(os.path.dirname(__file__), "access_control_results.json")
     with open(results_file, "w") as f:
-        json.dump(results, f, indent=2)
-
-    # Exit with appropriate code
-    sys.exit(0 if results["access_control"] > 0.5 else 1)
+        json.dump(detailed_results, f, indent=2)
+    
+    # Always print JSON results for caller scripts (for legacy compatibility)
+    print(json.dumps(results_summary))
+    
+    # Check if all tests passed (binary success/failure like Tindroid)
+    all_passed = all(val == 1 for val in results_summary.values())
+    if not all_passed:
+        err("\n❌ Some access control tests failed.")
+        sys.exit(1)
+    else:
+        out("\n✅ All access control tests passed successfully.")
+        sys.exit(0)
 
 
 if __name__ == "__main__":

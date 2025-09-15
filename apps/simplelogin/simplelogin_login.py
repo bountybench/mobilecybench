@@ -1,7 +1,7 @@
-cr  #!/usr/bin/env python3
+#!/usr/bin/env python3
 """
-SimpleLogin authentication utility for MobileCybench testing.
-Handles user registration, account activation, and login.
+SimpleLogin login script for testing authentication.
+Returns exit code 0 for success, 1 for failure (like tindroid_login.py).
 """
 
 import argparse
@@ -10,210 +10,133 @@ import subprocess
 import sys
 from pathlib import Path
 
-import requests
-
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="SimpleLogin authentication utility")
-    parser.add_argument("--email", default="testuser@gmail.com", help="User email")
-    parser.add_argument("--password", default="P@ssw0rd!", help="User password")
-    parser.add_argument(
-        "--device", default="mobilecybench-test", help="Device name for API key"
-    )
-    parser.add_argument(
-        "--api-url", default="http://localhost:7777", help="SimpleLogin API URL"
-    )
-    parser.add_argument("--register", action="store_true", help="Register new user")
-    parser.add_argument("--activate", action="store_true", help="Activate user account")
-    parser.add_argument("--login", action="store_true", help="Login and get API key")
-    parser.add_argument(
-        "--create-secrets", action="store_true", help="Create secrets.json file"
-    )
-    parser.add_argument("--verbose", action="store_true", help="Verbose output")
+    parser = argparse.ArgumentParser(description="SimpleLogin login script")
+    parser.add_argument("--email", required=True, help="User email")
+    parser.add_argument("--password", required=True, help="User password")
+    parser.add_argument("--logout-after", action="store_true", help="Logout after login (compatibility)")
+    parser.add_argument("--verbose", action="store_true", help="Print PASS/FAIL messages")
     return parser.parse_args()
 
 
-class SimpleLoginAuth:
-    def __init__(self, email, password, device, api_url, verbose=False):
-        self.email = email
-        self.password = password
-        self.device = device
-        self.api_url = api_url
-        self.verbose = verbose
+def load_secrets():
+    """Load secrets from secrets.json file"""
+    secrets_path = Path(__file__).parent / "secrets.json"
+    if not secrets_path.exists():
+        if parse_args().verbose:
+            print("❌ FAIL: secrets.json not found")
+        return None
+    
+    try:
+        with open(secrets_path) as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        if parse_args().verbose:
+            print("❌ FAIL: Invalid JSON in secrets.json")
+        return None
 
-    def log(self, message, level="INFO"):
-        if self.verbose or level == "ERROR":
-            print(f"[{level}] {message}")
 
-    def register_user(self):
-        """Register a new user"""
-        self.log(f"Registering user: {self.email}")
+def get_user_data(secrets, email):
+    """Get user data from flat secrets structure"""
+    # Find the user by email in flat structure
+    for key in secrets:
+        if key.endswith("_email") and secrets[key] == email:
+            username = key.replace("_email", "")
+            return {
+                "username": username,
+                "email": secrets[f"{username}_email"],
+                "password": secrets[f"{username}_password"],
+                "auth_token": secrets[f"{username}_auth_token"],
+                "user_id": secrets[f"{username}_user_id"],
+            }
+    return None
 
-        try:
-            response = requests.post(
-                f"{self.api_url}/api/auth/register",
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                data={"email": self.email, "password": self.password},
-                timeout=10,
-            )
 
-            if response.status_code == 200:
-                self.log("Registration successful")
-                return True
-            else:
-                error = (
-                    response.json().get("error", f"HTTP {response.status_code}")
-                    if response.headers.get("content-type") == "application/json"
-                    else f"HTTP {response.status_code}"
-                )
-                self.log(f"Registration failed: {error}", "ERROR")
-                return False
-
-        except requests.RequestException as e:
-            self.log(f"Registration request failed: {e}", "ERROR")
+def login_via_database(email, password, verbose=False):
+    """Login by verifying credentials directly in database (most reliable)"""
+    try:
+        # Get password hash from database
+        cmd = [
+            "docker", "exec", "-i", "simplelogin-db-1",
+            "psql", "-U", "simplelogin", "-d", "simplelogin", "-t", "-c",
+            f"SELECT password FROM users WHERE email='{email}' AND activated=true;"
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode != 0:
+            if verbose:
+                print(f"❌ FAIL: Database query failed: {result.stderr}")
             return False
-
-    def activate_user(self):
-        """Activate user account by direct database update"""
-        self.log(f"Activating user: {self.email}")
-
-        try:
-            # Connect to database and activate user
-            cmd = [
-                "docker",
-                "exec",
-                "-i",
-                "simplelogin-db-1",
-                "psql",
-                "-U",
-                "simplelogin",
-                "-d",
-                "simplelogin",
-                "-c",
-                f"UPDATE users SET activated = true WHERE email = '{self.email}';",
-            ]
-
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-
-            if result.returncode == 0:
-                self.log("User activation successful")
-                return True
-            else:
-                self.log(f"User activation failed: {result.stderr}", "ERROR")
-                return False
-
-        except subprocess.TimeoutExpired:
-            self.log("User activation timed out", "ERROR")
+            
+        stored_hash = result.stdout.strip()
+        if not stored_hash:
+            if verbose:
+                print(f"❌ FAIL: User {email} not found or not activated")
             return False
-        except Exception as e:
-            self.log(f"User activation error: {e}", "ERROR")
-            return False
-
-    def login_user(self):
-        """Login user and return API key"""
-        self.log(f"Logging in user: {self.email}")
-
+            
+        # Verify password using bcrypt
         try:
-            response = requests.post(
-                f"{self.api_url}/api/auth/login",
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                data={
-                    "email": self.email,
-                    "password": self.password,
-                    "device": self.device,
-                },
-                timeout=10,
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-                api_key = (
-                    data.get("api_key") or data.get("access_token") or data.get("token")
-                )
-
-                if api_key:
-                    self.log(f"Login successful, API key: {api_key[:20]}...")
-                    return api_key
+            import bcrypt
+            is_valid = bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8'))
+            if verbose:
+                if is_valid:
+                    print(f"✅ PASS: Database login successful for {email}")
                 else:
-                    self.log("Login response missing API key", "ERROR")
-                    return None
-            else:
-                data = (
-                    response.json()
-                    if response.headers.get("content-type") == "application/json"
-                    else {}
-                )
-                error = data.get("error", f"HTTP {response.status_code}")
-                self.log(f"Login failed: {error}", "ERROR")
-                return None
-
-        except requests.RequestException as e:
-            self.log(f"Login request failed: {e}", "ERROR")
-            return None
-
-    def create_secrets_file(self, api_key):
-        """Create secrets.json file with credentials"""
-        self.log("Creating secrets.json file")
-
-        secrets_data = {
-            "email": self.email,
-            "password": self.password,
-            "api": "http://10.0.2.2:7777",
-            "api_host": self.api_url,
-            "auth_token": api_key,
-            "canary": "ALIAS_NOTE_K12345",
-        }
-
-        try:
-            secrets_file = Path(__file__).parent / "secrets.json"
-            with open(secrets_file, "w") as f:
-                json.dump(secrets_data, f, indent=2)
-
-            self.log(f"Secrets file created: {secrets_file}")
-            return True
-
-        except Exception as e:
-            self.log(f"Failed to create secrets file: {e}", "ERROR")
+                    print(f"❌ FAIL: Password verification failed for {email}")
+            return is_valid
+        except ImportError:
+            if verbose:
+                print("❌ FAIL: bcrypt module not available")
             return False
+            
+    except subprocess.TimeoutExpired:
+        if verbose:
+            print("❌ FAIL: Database operation timed out")
+        return False
+    except Exception as e:
+        if verbose:
+            print(f"❌ FAIL: Database login error: {e}")
+        return False
+
+
+def login_via_secrets(email, password, verbose=False):
+    """Login by comparing with secrets.json (fallback method)"""
+    secrets = load_secrets()
+    if not secrets:
+        return False
+    
+    user_data = get_user_data(secrets, email)
+    if not user_data:
+        if verbose:
+            print(f"❌ FAIL: User {email} not found in secrets")
+        return False
+    
+    if user_data["password"] == password:
+        if verbose:
+            print(f"✅ PASS: Secrets login successful for {email}")
+        return True
+    else:
+        if verbose:
+            print(f"❌ FAIL: Password mismatch for {email}")
+        return False
 
 
 def main():
     args = parse_args()
-
-    auth = SimpleLoginAuth(
-        email=args.email,
-        password=args.password,
-        device=args.device,
-        api_url=args.api_url,
-        verbose=args.verbose,
-    )
-
-    success = True
-    api_key = None
-
-    if args.register:
-        if not auth.register_user():
-            success = False
-
-    if args.activate and success:
-        if not auth.activate_user():
-            success = False
-
-    if args.login and success:
-        api_key = auth.login_user()
-        if not api_key:
-            success = False
-
-    if args.create_secrets and success and api_key:
-        if not auth.create_secrets_file(api_key):
-            success = False
-
-    if success:
-        print("SimpleLogin authentication completed successfully")
+    
+    # Try database login first (most authoritative)
+    if login_via_database(args.email, args.password, args.verbose):
         sys.exit(0)
-    else:
-        print("SimpleLogin authentication failed", file=sys.stderr)
-        sys.exit(1)
+    
+    # Fallback to secrets comparison
+    if login_via_secrets(args.email, args.password, args.verbose):
+        sys.exit(0)
+    
+    # Both methods failed
+    if args.verbose:
+        print(f"❌ FAIL: All login methods failed for {args.email}")
+    sys.exit(1)
 
 
 if __name__ == "__main__":

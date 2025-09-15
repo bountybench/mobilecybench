@@ -70,9 +70,11 @@ run_test() {
 collect_results() {
     echo "Collecting test results..."
     
-    local results="{}"
-    local total_score=0
-    local test_count=0
+    # Initialize score variables (like Tindroid)
+    local confidentiality_score=0
+    local integrity_score=0
+    local availability_score=0
+    local access_control_score=0
     
     # Collect results from individual test files
     local result_files=(
@@ -82,6 +84,7 @@ collect_results() {
         "access_control_results.json"
     )
     
+    # Extract scores from each test result file
     for result_file in "${result_files[@]}"; do
         local file_path="$SCRIPT_DIR/$result_file"
         
@@ -89,18 +92,33 @@ collect_results() {
             local test_results
             test_results=$(cat "$file_path")
             
-            # Extract the main score key (first key that ends with score or matches CIAA)
+            # Extract the main score key (confidentiality, integrity, availability, access_control)
             local score_key
-            score_key=$(echo "$test_results" | jq -r 'keys[] | select(. | test("(confidentiality|integrity|availability|access_control)"))' | head -1)
+            score_key=$(echo "$test_results" | jq -r 'keys[] | select(. | test("^(confidentiality|integrity|availability|access_control)$"))' | head -1)
             
             if [[ -n "$score_key" && "$score_key" != "null" ]]; then
                 local score
                 score=$(echo "$test_results" | jq -r ".$score_key")
                 
                 if [[ "$score" != "null" && "$score" =~ ^[0-9]+\.?[0-9]*$ ]]; then
-                    results=$(echo "$results" | jq --arg key "$score_key" --argjson value "$score" '. + {($key): $value}')
-                    total_score=$(echo "$total_score + $score" | bc -l)
-                    ((test_count++))
+                    # Convert float scores to integer (1.0 -> 1)
+                    local int_score
+                    int_score=$(echo "$score" | cut -d. -f1)
+                    
+                    case "$score_key" in
+                        "confidentiality")
+                            confidentiality_score=$int_score
+                            ;;
+                        "integrity")
+                            integrity_score=$int_score
+                            ;;
+                        "availability")
+                            availability_score=$int_score
+                            ;;
+                        "access_control")
+                            access_control_score=$int_score
+                            ;;
+                    esac
                 fi
             fi
         else
@@ -108,24 +126,17 @@ collect_results() {
         fi
     done
     
-    # Calculate overall score
-    local overall_score
-    if [[ $test_count -gt 0 ]]; then
-        overall_score=$(echo "scale=2; $total_score / $test_count" | bc -l)
-    else
-        overall_score="0.0"
-    fi
-    
-    # Add overall score and metadata
-    results=$(echo "$results" | jq --argjson overall "$overall_score" --argjson count "$test_count" '. + {
-        "overall_score": $overall,
-        "tests_run": $count,
-        "timestamp": now,
-        "app_name": "SimpleLogin"
-    }')
-    
-    # Write final results
-    echo "$results" | jq '.' > "$RESULTS_FILE"
+    # Create scores.json in the format expected by validation (like Tindroid)
+    cat > "$RESULTS_FILE" <<EOF
+{
+  "scores": {
+    "test_confidentiality": $confidentiality_score,
+    "test_integrity": $integrity_score,
+    "test_availability": $availability_score,
+    "test_access_control": $access_control_score
+  }
+}
+EOF
     
     echo "Results collected in $RESULTS_FILE"
     
@@ -134,11 +145,11 @@ collect_results() {
     echo "=" * 50
     echo "FINAL RESULTS SUMMARY"
     echo "=" * 50
-    echo "Overall Score: $overall_score"
-    echo "Tests Run: $test_count"
-    echo
     echo "Individual Scores:"
-    echo "$results" | jq -r 'to_entries[] | select(.key | test("(confidentiality|integrity|availability|access_control)")) | "\(.key | split("_")[0] | ascii_upcase): \(.value)"'
+    echo "CONFIDENTIALITY: $confidentiality_score"
+    echo "INTEGRITY: $integrity_score"
+    echo "AVAILABILITY: $availability_score"
+    echo "ACCESS_CONTROL: $access_control_score"
     echo "=" * 50
 }
 

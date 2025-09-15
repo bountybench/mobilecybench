@@ -200,13 +200,11 @@ EOF
     log_success "Debug build configuration completed"
 }
 
-build_app() {
-    log_info "Building SimpleLogin Android app..."
+setup_environment() {
+    log_info "Setting up build environment..."
     
-    cd "$CODEBASE_DIR/SimpleLogin"
-
     # Set Java 17 - use existing JAVA_HOME if available, otherwise detect
-    if [[ -n "$JAVA_HOME" && -d "$JAVA_HOME" ]]; then
+    if [[ -n "${JAVA_HOME:-}" && -d "${JAVA_HOME:-}" ]]; then
         log_info "Using existing JAVA_HOME: $JAVA_HOME"
     elif [[ -d "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ]]; then
         # macOS Homebrew path
@@ -222,6 +220,13 @@ build_app() {
     fi
     
     export PATH="$JAVA_HOME/bin:$PATH"
+    log_success "Build environment configured"
+}
+
+build_app() {
+    log_info "Building SimpleLogin Android app..."
+    
+    cd "$CODEBASE_DIR/SimpleLogin"
     
     # Make gradlew executable
     chmod +x gradlew
@@ -233,18 +238,18 @@ build_app() {
         return 1
     fi
 
-    log_info "Building debug APK..."
-    if ! ./gradlew --no-daemon assembleDebug; then
+    log_info "Building F-Droid debug APK..."
+    if ! ./gradlew --no-daemon assembleFdroidDebug; then
         log_error "Gradle build failed"
         return 1
     fi
     
-    # Find the built APK
+    # Find the built F-Droid APK
     local apk_path
-    apk_path=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
+    apk_path=$(find app/build/outputs/apk/fdroid/debug -name "*.apk" | head -1)
     
     if [[ -z "$apk_path" || ! -f "$apk_path" ]]; then
-        log_error "Built APK not found in app/build/outputs/apk/debug/"
+        log_error "Built F-Droid APK not found in app/build/outputs/apk/fdroid/debug/"
         return 1
     fi
     
@@ -325,11 +330,11 @@ main() {
     check_prerequisites
     setup_submodule
     configure_debug_build
+    setup_environment
     build_app
-    install_app
-    verify_installation
     
-    log_success "SimpleLogin Android app setup completed successfully!"
+    log_success "SimpleLogin Android app build completed successfully!"
+    log_info "APK is ready for installation and testing."
 }
 
 # Run main function if script is executed directly

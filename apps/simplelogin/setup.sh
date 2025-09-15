@@ -155,9 +155,32 @@ seed_test_data() {
 build_and_install_app() {
     echo "Building and installing SimpleLogin app..."
     
-    # Run the app source setup script
+    # Run the app source setup script to build APK
     if ! bash "$SCRIPT_DIR/setup_app_source.sh"; then
-        echo "ERROR:" "App build and installation failed"
+        echo "ERROR:" "App build failed"
+        return 1
+    fi
+    
+    # Find and install the built APK
+    local apk_path="$SCRIPT_DIR/codebase/SimpleLogin/app/build/outputs/apk/fdroid/debug/app-fdroid-debug.apk"
+    
+    if [[ ! -f "$apk_path" ]]; then
+        echo "ERROR:" "Built APK not found at $apk_path"
+        return 1
+    fi
+    
+    echo "Installing APK: $apk_path"
+    
+    # Get app ID for uninstall
+    local app_id
+    app_id=$(jq -r '.app_id' "$METADATA_FILE")
+    
+    # Uninstall any existing version
+    adb uninstall "$app_id" >/dev/null 2>&1 || true
+    
+    # Install the APK
+    if ! adb install "$apk_path"; then
+        echo "ERROR:" "APK installation failed"
         return 1
     fi
     
