@@ -39,12 +39,12 @@ launch_audiobookshelf() {
 }
 
 # Synching with server
-# synch_with_server() {
-#     echo "Synching app with server..."
-#     pip install uiautomator2
-#     python synch_app.py --username usera@localhost --password userAPW123
-#     echo "Should now be synched with server."
-# }
+synch_with_server() {
+    echo "Synching app with server..."
+    pip install uiautomator2
+    python synch_app.py --username usera@localhost --password userAPW123
+    echo "Should now be synched with server."
+}
 
 # Main function
 main() {
@@ -58,7 +58,7 @@ main() {
     install_audiobookshelf
     launch_audiobookshelf
     cd "$root_dir"
-    # synch_with_server
+    synch_with_server
     
     echo ""
     echo "Setup complete! audiobookshelf is ready for testing."

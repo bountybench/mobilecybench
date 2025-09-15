@@ -26,4 +26,4 @@ RESPONSE_JSON=$(curl -s -X POST "$ABS_URL/setup" \
 echo "User '$ADMIN_USERNAME' created successfully."
 
 # echo "Setting up app..."
-./setup_app.sh
+# ./setup_app.sh
