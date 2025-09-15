@@ -317,9 +317,14 @@ org.gradle.parallel=false
 org.gradle.daemon=false
 org.gradle.configureondemand=false
 org.gradle.workers.max=1
-android.enableBuildCache=false
+org.gradle.caching=true
+org.gradle.vfs.watch=false
+android.enableBuildCache=true
+android.buildCacheDir=build-cache
 android.enableJetifier=true
 android.useAndroidX=true
+android.nonTransitiveRClass=false
+android.nonFinalResIds=false
 EOF
       fi
       
@@ -329,10 +334,14 @@ EOF
         sed -i '/android\.enableR8/d' "android/gradle.properties"
       fi
       
-      # Remove split-per-abi if it exists (can cause hangs with NDK)
-      if grep -q "android.enableSplitApk" "android/gradle.properties"; then
-        info "Removing split APK option..."
-        sed -i '/android\.enableSplitApk/d' "android/gradle.properties"
+      # Create local.properties with NDK path to avoid auto-download
+      if [ ! -f "android/local.properties" ]; then
+        info "Creating local.properties to skip NDK auto-download..."
+        cat > "android/local.properties" << EOF
+sdk.dir=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+flutter.sdk=$HOME/.fvm/versions/$FLUTTER_VERSION
+ndk.dir=${ANDROID_HOME:-/usr/local/lib/android/sdk}/ndk/23.1.7779620
+EOF
       fi
     fi
   else
@@ -374,15 +383,9 @@ build_immich() {
     info "Cleaning previous build artifacts..."
     fvm flutter clean 2>/dev/null || true
     rm -rf build android/app/build android/.gradle 2>/dev/null || true
-  fi
-  
-  # CI Optimization: Pre-download Gradle dependencies to avoid timeouts
-  if [ "$CI_MODE" = "true" ]; then
-    info "Pre-downloading Gradle dependencies..."
-    cd android
-    # Run a simple gradle task to download dependencies
-    timeout 300 ./gradlew dependencies --no-daemon --no-parallel --max-workers=1 2>/dev/null || true
-    cd ..
+    
+    # Create build cache directory
+    mkdir -p android/build-cache
   fi
   
   # CI Optimization: Monitor build progress in background with more detail
@@ -391,15 +394,15 @@ build_immich() {
       while true; do
         sleep 30
         echo "[Build Monitor] $(date '+%H:%M:%S') - Memory: $(free -m | awk 'NR==2{printf "%.1f%%", $3*100/$2}')"
-        # Also check for gradle/dart processes
-        GRADLE_COUNT=$(pgrep -c gradle 2>/dev/null || echo 0)
-        DART_COUNT=$(pgrep -c dart 2>/dev/null || echo 0)
-        if [ $GRADLE_COUNT -gt 0 ] || [ $DART_COUNT -gt 0 ]; then
+        # Fix: Properly handle process counts
+        GRADLE_COUNT=$(pgrep -c gradle 2>/dev/null || echo "0")
+        DART_COUNT=$(pgrep -c dart 2>/dev/null || echo "0")
+        if [ "$GRADLE_COUNT" -gt 0 ] || [ "$DART_COUNT" -gt 0 ]; then
           echo "[Build Monitor] Active processes - Gradle: $GRADLE_COUNT, Dart: $DART_COUNT"
         fi
         # Check if build is actually progressing by looking at build directory size
         if [ -d "build" ]; then
-          BUILD_SIZE=$(du -sm build 2>/dev/null | cut -f1)
+          BUILD_SIZE=$(du -sm build 2>/dev/null | cut -f1 || echo "0")
           echo "[Build Monitor] Build directory size: ${BUILD_SIZE}MB"
         fi
       done
@@ -410,40 +413,31 @@ build_immich() {
   
   # Build with optimizations
   if [ "$CI_MODE" = "true" ]; then
-    # CI-specific build command with verbose output and shorter timeout
-    info "Building with CI optimizations (timeout: 25 minutes)..."
+    # CI-specific build command - simplified to avoid hangs
+    info "Building with CI optimizations (timeout: 20 minutes)..."
     
     # Set additional environment variables to prevent hangs
-    export GRADLE_OPTS="-Xmx1024m -XX:MaxMetaspaceSize=256m -XX:+UseG1GC -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.workers.max=1 -Dorg.gradle.jvmargs=-Xmx1024m"
-    export FLUTTER_GRADLE_VERBOSE=true
+    export GRADLE_OPTS="-Xmx1024m -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.workers.max=1 -Dorg.gradle.caching=true"
     
-    # Build with verbose output to see where it hangs
-    timeout 1500 fvm flutter build apk \
+    # Try building without verbose first (verbose can cause hangs)
+    timeout 1200 fvm flutter build apk \
       --release \
-      --verbose \
-      --no-tree-shake-icons \
       --target-platform=android-arm64 \
-      --dart-define=FLUTTER_BUILD_MODE=release \
-      --dart-define=TREE_SHAKE_ICONS=false || {
+      --no-tree-shake-icons || {
         EXIT_CODE=$?
         echo "[Build Monitor] Build failed with exit code: $EXIT_CODE"
         
-        # Capture more diagnostic info on failure
-        echo "[Build Monitor] Last 50 lines of Gradle output:"
-        if [ -f "android/app/build/outputs/logs/manifest-merger-release-report.txt" ]; then
-          tail -50 android/app/build/outputs/logs/manifest-merger-release-report.txt 2>/dev/null || true
-        fi
-        
-        # Check for common hang scenarios
         if [ $EXIT_CODE -eq 124 ]; then
-          echo "[Build Monitor] Build timed out after 25 minutes"
-          echo "[Build Monitor] This often happens when:"
-          echo "  - NDK download/installation is stuck"
-          echo "  - Gradle is waiting for user input"
-          echo "  - Network issues downloading dependencies"
+          echo "[Build Monitor] Build timed out after 20 minutes"
+          
+          # Try a simpler build as fallback
+          info "Attempting simplified build without optimizations..."
+          timeout 600 fvm flutter build apk --release --target-platform=android-arm64 || {
+            fail "Simplified build also failed"
+          }
+        else
+          fail "Build failed (exit code: $EXIT_CODE)"
         fi
-        
-        fail "Build timed out or failed (exit code: $EXIT_CODE)"
       }
   else
     # Standard build
