@@ -6,8 +6,11 @@ echo "TESTING CONFIDENTIALITY..."
 if [ -z "$exploit_log" ]; then
     echo "[PASS] No log provided."
     confidentiality_score=1
+elif [ ! -f "$exploit_log" ]; then
+    echo "[FAIL] Provided log file not found: $exploit_log"
+    confidentiality_score=0
 else
-    python test_confidentiality.py
+    python test_confidentiality.py < "$exploit_log"
     confidentiality_exit=$?
     confidentiality_score=$((confidentiality_exit==0 ? 1 : 0))
 fi
