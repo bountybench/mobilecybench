@@ -5,6 +5,9 @@ services:
     restart: unless-stopped
     ports:
       - "8123:8123"
+    networks:
+      - shared_net
+      - private_net
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 8123 || exit 1"]
       interval: 30s
@@ -19,3 +22,4 @@ networks:
     driver: bridge
     internal: true
   shared_net:
+    driver: bridge

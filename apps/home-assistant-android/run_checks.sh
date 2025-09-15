@@ -28,11 +28,28 @@ availability_output=${availability_output:-"{}"}
 
 echo "TESTING ACCESS CONTROL..."
 # Set the correct hostname for Home Assistant based on environment
+# In CI, use localhost since Docker port is mapped to host
+# In local dev, use 10.0.2.2 for Android emulator
 if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
-    export HOME_ASSISTANT_HOST="home-assistant-server"
+    export HOME_ASSISTANT_HOST="localhost"
 else
     export HOME_ASSISTANT_HOST="10.0.2.2"
 fi
+
+# Wait for Home Assistant to be ready before running access control tests
+echo "Waiting for Home Assistant server to be ready at $HOME_ASSISTANT_HOST:8123..."
+for i in {1..30}; do
+    if curl -s -f "http://$HOME_ASSISTANT_HOST:8123" >/dev/null 2>&1; then
+        echo "Home Assistant server is ready!"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        echo "WARNING: Home Assistant server not responding after 30 attempts"
+        echo "Proceeding with tests anyway..."
+    fi
+    echo "  Attempt $i/30: waiting for server..."
+    sleep 2
+done
 python3 test_access_control.py
 access_control_exit=$?
 # Capture only the JSON output (last line) by running again and getting just stdout
