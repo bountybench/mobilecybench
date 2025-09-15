@@ -307,16 +307,24 @@ EOF
     # Create optimized gradle.properties if building Android
     if [ -f "android/gradle.properties" ]; then
       info "Optimizing Gradle for CI..."
-      cat >> "android/gradle.properties" << 'EOF'
+      # First, check if CI optimizations already added to avoid duplicates
+      if ! grep -q "# CI Optimizations" "android/gradle.properties"; then
+        cat >> "android/gradle.properties" << 'EOF'
 
 # CI Optimizations
 org.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=256m -XX:+UseG1GC
 org.gradle.parallel=false
 org.gradle.daemon=false
 org.gradle.configureondemand=false
-android.enableR8=false
 android.enableBuildCache=false
 EOF
+      fi
+      
+      # Remove deprecated R8 option if it exists
+      if grep -q "android.enableR8" "android/gradle.properties"; then
+        info "Removing deprecated android.enableR8 option..."
+        sed -i '/android\.enableR8/d' "android/gradle.properties"
+      fi
     fi
   else
     # Standard memory settings
