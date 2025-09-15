@@ -18,16 +18,13 @@ from pathlib import Path
 from selectors import EVENT_READ, DefaultSelector
 from typing import Dict, List, Optional
 
-# Add project root to Python path
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
-
 from dotenv import load_dotenv
 
 from utils.logger import logger
 from utils.utils import get_app_metadata
 
 load_dotenv()
+project_root = Path(__file__).parent
 
 
 class CommandExecutor:
@@ -212,9 +209,9 @@ class MobileCybenchRunner:
         self.cmd = CommandExecutor()
 
         logger.info("=" * 80)
-        logger.info(f"MobileCybench Runner Started")
+        logger.info("MobileCybench Runner Started")
         logger.info(f"App: {app_name}")
-        logger.info(f"Configuration:")
+        logger.info("Configuration:")
         logger.info(f"  Server Access: {config['server_access']}")
         logger.info(f"  Build Type: {config['build_type']}")
         logger.info(f"  ADB Access: {config['adb_access']}")
@@ -260,6 +257,13 @@ class MobileCybenchRunner:
             if not script_path.exists():
                 self._exit_with_error(f"Required script not found: {script_path}")
 
+        # Check for required ngrok.yml config file
+        ngrok_config = self.agent_dir / "mcp" / "ngrok.yml"
+        if not ngrok_config.exists():
+            self._exit_with_error(
+                f"Required ngrok.yml config file not found: {ngrok_config}"
+            )
+
         logger.info("Input validation passed")
 
     def setup_emulator(self):
@@ -273,7 +277,7 @@ class MobileCybenchRunner:
         # Start emulator (runs in background - continuous output like docker without detached mode)
         logger.info("Starting emulator in background...")
         # Use --yes to auto-confirm starting another emulator if already running
-        emulator_process = self.cmd.start_background_process(
+        self.cmd.start_background_process(
             "bash ./start_emulator.sh --yes",
             cwd=self.project_root,
         )
@@ -322,6 +326,7 @@ class MobileCybenchRunner:
         logger.info("Setting up agent environment...")
 
         self._setup_env_file()
+        self._create_docker_network()
         self._start_containers()
         self._copy_codebase_to_kali()
 
@@ -333,7 +338,6 @@ class MobileCybenchRunner:
         logger.info("Setting up environment file...")
 
         env_file = self.agent_dir / ".env"
-        start_dir = f"/tmp/{self.app_name}_app"
         api_key = None
 
         # Load existing .env
@@ -354,6 +358,27 @@ class MobileCybenchRunner:
             logger.info("✓ Using OPENAI_API_KEY from environment/.env (no prompt mode)")
 
         os.environ["OPENAI_API_KEY"] = api_key
+
+    def _create_docker_network(self):
+        """Create shared docker network or print already created if it exists"""
+        logger.info("Creating docker network 'shared_net'...")
+
+        try:
+            # Try to create the network - if it already exists, docker will return an error
+            result = self.cmd.run("docker network create shared_net", check=False)
+
+            if result.returncode == 0:
+                logger.info("✓ Docker network 'shared_net' created successfully")
+            elif "already exists" in result.stderr:
+                logger.info("✓ Docker network 'shared_net' already exists")
+            else:
+                # Some other error occurred
+                logger.error(f"Failed to create docker network: {result.stderr}")
+                self._exit_with_error("Failed to create docker network 'shared_net'")
+
+        except Exception as e:
+            logger.error(f"Failed to create docker network: {e}")
+            self._exit_with_error("Failed to create docker network 'shared_net'")
 
     def _start_containers(self):
         """Start MCP server and Kali container"""

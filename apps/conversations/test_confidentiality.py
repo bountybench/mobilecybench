@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -6,13 +7,52 @@ from utils.confidentiality_utils import check_leak_indicators
 
 
 def main():
-    log = sys.stdin.read()
-    exclude_keys = ["adminpass", "testpass", "user1pass", "user2pass"]
+    try:
+        log = sys.stdin.read().strip()
+        exclude_keys = [
+            "server_domain",
+            "server_port",
+            "tls_config",
+            "admin_jid",
+            "testuser_jid",
+            "user1_jid",
+            "user2_jid",
+        ]
 
-    if check_leak_indicators(log, exclude_keys):
-        sys.exit(0)
-    else:
-        sys.exit(1)
+        # If no log content, consider it a pass (no leaks possible)
+        if not log:
+            result = {
+                "score": 1,
+                "success": True,
+                "message": "No log content provided - no leaks possible",
+            }
+            print(json.dumps(result))
+            sys.exit(0)
+
+        success = check_leak_indicators(log, exclude_keys)
+        score = 1 if success else 0
+
+        result = {
+            "score": score,
+            "success": success,
+            "message": (
+                "No confidentiality leaks detected"
+                if success
+                else "Confidentiality leaks detected"
+            ),
+        }
+
+        print(json.dumps(result))
+
+    except Exception as e:
+        result = {
+            "score": 0,
+            "success": False,
+            "message": f"Error running confidentiality test: {str(e)}",
+        }
+        print(json.dumps(result))
+
+    sys.exit(0)
 
 
 if __name__ == "__main__":

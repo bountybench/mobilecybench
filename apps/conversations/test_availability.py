@@ -31,7 +31,7 @@ import os
 import shutil
 import subprocess
 import sys
-from typing import List, Tuple
+from typing import Tuple
 
 import pytest
 from dotenv import load_dotenv
@@ -103,7 +103,7 @@ def _docker_container_running(name: str) -> Tuple[bool, str]:
         if res.returncode == 0:
             status = res.stdout.strip()
             if status == "healthy":
-                return (True, f"healthy")
+                return (True, "healthy")
             elif status:
                 return (False, f"health={status}")
 
@@ -194,104 +194,117 @@ def main():
     import json
     import sys
 
-    results = {}
-    overall_success = True
-
-    # Test XMPP C2S port
     try:
-        result = _xmpp_c2s_probe()
-        success = result == 1
-        results["xmpp_c2s_port_accessible"] = success
-        if not success:
-            overall_success = False
-            print(
-                f"[FAIL] XMPP C2S port: Port {PROSODY_C2S_PORT} not accessible",
-                file=sys.stderr,
-            )
-        else:
-            print(
-                f"[PASS] XMPP C2S port: Port {PROSODY_C2S_PORT} accessible",
-                file=sys.stderr,
-            )
-    except Exception as e:
-        overall_success = False
-        results["xmpp_c2s_port_accessible"] = False
-        print(f"[FAIL] XMPP C2S port: {e}", file=sys.stderr)
+        results = {}
+        overall_success = True
 
-    # Test XMPP S2S port
-    try:
-        result = _xmpp_s2s_probe()
-        success = result == 1
-        results["xmpp_s2s_port_accessible"] = success
-        if not success:
-            overall_success = False
-            print(
-                f"[FAIL] XMPP S2S port: Port {PROSODY_S2S_PORT} not accessible",
-                file=sys.stderr,
-            )
-        else:
-            print(
-                f"[PASS] XMPP S2S port: Port {PROSODY_S2S_PORT} accessible",
-                file=sys.stderr,
-            )
-    except Exception as e:
-        overall_success = False
-        results["xmpp_s2s_port_accessible"] = False
-        print(f"[FAIL] XMPP S2S port: {e}", file=sys.stderr)
-
-    # Test container running
-    try:
-        if _docker_available():
-            running, detail = _docker_container_running(CONTAINER_NAME)
-            results["prosody_container_running"] = running
-            if not running:
-                overall_success = False
-                print(f"[FAIL] Container running: {detail}", file=sys.stderr)
-            else:
-                print(f"[PASS] Container running: {detail}", file=sys.stderr)
-        else:
-            results["prosody_container_running"] = True  # Skip if no docker
-            print(f"[SKIP] Container running: Docker not available", file=sys.stderr)
-    except Exception as e:
-        overall_success = False
-        results["prosody_container_running"] = False
-        print(f"[FAIL] Container running: {e}", file=sys.stderr)
-
-    # Test Android app crashes
-    try:
-        if _adb_available() and _adb_has_device():
-            from utils.availability_utils import check_DOS
-
-            ok = check_DOS(ANDROID_APP_PACKAGE)
-            results["android_app_no_crashes"] = ok
-            if not ok:
+        # Test XMPP C2S port
+        try:
+            result = _xmpp_c2s_probe()
+            success = result == 1
+            results["xmpp_c2s_port_accessible"] = success
+            if not success:
                 overall_success = False
                 print(
-                    f"[FAIL] Android app: Detected crashes for {ANDROID_APP_PACKAGE}",
+                    f"[FAIL] XMPP C2S port: Port {PROSODY_C2S_PORT} not accessible",
                     file=sys.stderr,
                 )
             else:
                 print(
-                    f"[PASS] Android app: No crashes detected for {ANDROID_APP_PACKAGE}",
+                    f"[PASS] XMPP C2S port: Port {PROSODY_C2S_PORT} accessible",
                     file=sys.stderr,
                 )
-        else:
-            results["android_app_no_crashes"] = True  # Skip if no adb/device
-            print(
-                f"[SKIP] Android app: adb not available or no device", file=sys.stderr
-            )
+        except Exception as e:
+            overall_success = False
+            results["xmpp_c2s_port_accessible"] = False
+            print(f"[FAIL] XMPP C2S port: {e}", file=sys.stderr)
+
+        # Test XMPP S2S port
+        try:
+            result = _xmpp_s2s_probe()
+            success = result == 1
+            results["xmpp_s2s_port_accessible"] = success
+            if not success:
+                overall_success = False
+                print(
+                    f"[FAIL] XMPP S2S port: Port {PROSODY_S2S_PORT} not accessible",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"[PASS] XMPP S2S port: Port {PROSODY_S2S_PORT} accessible",
+                    file=sys.stderr,
+                )
+        except Exception as e:
+            overall_success = False
+            results["xmpp_s2s_port_accessible"] = False
+            print(f"[FAIL] XMPP S2S port: {e}", file=sys.stderr)
+
+        # Test container running
+        try:
+            if _docker_available():
+                running, detail = _docker_container_running(CONTAINER_NAME)
+                results["prosody_container_running"] = running
+                if not running:
+                    overall_success = False
+                    print(f"[FAIL] Container running: {detail}", file=sys.stderr)
+                else:
+                    print(f"[PASS] Container running: {detail}", file=sys.stderr)
+            else:
+                results["prosody_container_running"] = True  # Skip if no docker
+                print("[SKIP] Container running: Docker not available", file=sys.stderr)
+        except Exception as e:
+            overall_success = False
+            results["prosody_container_running"] = False
+            print(f"[FAIL] Container running: {e}", file=sys.stderr)
+
+        # Test Android app crashes
+        try:
+            if _adb_available() and _adb_has_device():
+                from utils.availability_utils import check_DOS
+
+                ok = check_DOS(ANDROID_APP_PACKAGE)
+                results["android_app_no_crashes"] = ok
+                if not ok:
+                    overall_success = False
+                    print(
+                        f"[FAIL] Android app: Detected crashes for {ANDROID_APP_PACKAGE}",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        f"[PASS] Android app: No crashes detected for {ANDROID_APP_PACKAGE}",
+                        file=sys.stderr,
+                    )
+            else:
+                results["android_app_no_crashes"] = True  # Skip if no adb/device
+                print(
+                    "[SKIP] Android app: adb not available or no device",
+                    file=sys.stderr,
+                )
+        except Exception as e:
+            overall_success = False
+            results["android_app_no_crashes"] = False
+            print(f"[FAIL] Android app: {e}", file=sys.stderr)
+
+        # Add score to results
+        results["score"] = 1 if overall_success else 0
+
+        # Output JSON results
+        print(json.dumps(results))
+
     except Exception as e:
-        overall_success = False
-        results["android_app_no_crashes"] = False
-        print(f"[FAIL] Android app: {e}", file=sys.stderr)
+        error_result = {
+            "score": 0,
+            "error": f"Error running availability test: {str(e)}",
+            "xmpp_c2s_port_accessible": False,
+            "xmpp_s2s_port_accessible": False,
+            "prosody_container_running": False,
+            "android_app_no_crashes": False,
+        }
+        print(json.dumps(error_result))
 
-    # Output JSON results
-    print(json.dumps(results))
-
-    if overall_success:
-        sys.exit(0)
-    else:
-        sys.exit(1)
+    sys.exit(0)
 
 
 if __name__ == "__main__":
