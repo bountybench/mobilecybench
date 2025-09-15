@@ -1,7 +1,6 @@
 #!/bin/bash
 
-ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-AGENT_LOG="$ROOT_DIR/agent.log"
+AGENT_LOG="agent.log"
 
 echo "TESTING CONFIDENTIALITY..."
 if [ ! -f "$AGENT_LOG" ] || [ ! -s "$AGENT_LOG" ]; then
