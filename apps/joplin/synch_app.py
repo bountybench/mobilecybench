@@ -117,12 +117,32 @@ edit.set_text(username)  # Direct text input instead of send_keys()
 d.press("enter")
 time.sleep(2)
 
-# Fill Joplin Server password
-label = d(text="Joplin Server password")
-if not label.wait(timeout=30):
-    print("[ERROR] Could not find Joplin Server password label", file=sys.stderr)
+# The password field might need scrolling or have different text
+print("Looking for password field...", file=sys.stderr)
+
+# First try scrolling down to make more space
+d.swipe(540, 1600, 540, 800)  # Swipe up to scroll down
+time.sleep(2)
+
+# Try multiple possible password field labels
+password_field = None
+possible_labels = ["Joplin Server password", "Password", "password", "Server password"]
+
+for label_text in possible_labels:
+    print(f"Trying to find: '{label_text}'", file=sys.stderr)
+    label = d(text=label_text)
+    if label.wait(timeout=10):
+        password_field = label
+        print(f"Found password field with text: '{label_text}'", file=sys.stderr)
+        break
+
+if not password_field:
+    print("[ERROR] Could not find any password field with expected labels", file=sys.stderr)
+    print("[DEBUG] Current UI hierarchy:", file=sys.stderr)
     print(d.dump_hierarchy(), file=sys.stderr)
     exit(1)
+
+label = password_field
 
 edit = label.sibling(className="android.widget.EditText")
 edit.click()
