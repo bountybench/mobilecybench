@@ -36,14 +36,6 @@ def load_secrets():
     with open(path) as f:
         SECRETS = json.load(f)
 
-    # print(
-    #    "[DEBUG] Loading Users with secrets. Just testing for now. Will create these users before running the integrity check in coming updates."
-    # )
-
-    # debug(
-    #    f"Loaded secrets for users: {[k for k in SECRETS if k.endswith('_username')]}"
-    # )
-
     return SECRETS
 
 
@@ -133,9 +125,7 @@ def create_prosody_user(container, user, domain, password):
         domain,
         password,
     ]
-    result = subprocess.run(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-    )
+    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     # print(
     #    f"[DEBUG] prosodyctl output:\n{result.stdout}\n{result.stderr}", file=sys.stderr
     # )
