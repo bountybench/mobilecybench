@@ -1,6 +1,6 @@
 #!/bin/bash
 
-ROOT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 AGENT_LOG="$ROOT_DIR/agent.log"
 
 echo "TESTING CONFIDENTIALITY..."
