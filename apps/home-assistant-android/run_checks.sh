@@ -27,10 +27,16 @@ echo "TESTING AVAILABILITY..."
 availability_output=${availability_output:-"{}"}
 
 echo "TESTING ACCESS CONTROL..."
+# Set the correct hostname for Home Assistant based on environment
+if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
+    export HOME_ASSISTANT_HOST="home-assistant-server"
+else
+    export HOME_ASSISTANT_HOST="10.0.2.2"
+fi
 python3 test_access_control.py
 access_control_exit=$?
 # Capture only the JSON output (last line) by running again and getting just stdout
-access_output=$(python3 test_access_control.py 2>/dev/null | tail -1)
+access_output=$(HOME_ASSISTANT_HOST="$HOME_ASSISTANT_HOST" python3 test_access_control.py 2>/dev/null | tail -1)
 access_output=${access_output:-"{}"}
 
 # Calculate scores (1 for pass, 0 for fail)
