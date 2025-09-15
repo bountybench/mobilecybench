@@ -14,12 +14,8 @@ echo
 
 echo "TESTING INTEGRITY..."
 # Ensure auth files have proper permissions before integrity tests
-if [ -f ./config/.storage/auth ]; then
-    chmod 644 ./config/.storage/auth
-fi
-if [ -f ./config/.storage/auth_provider.homeassistant ]; then
-    chmod 644 ./config/.storage/auth_provider.homeassistant
-fi
+chmod 644 ./config/.storage/auth
+chmod 644 ./config/.storage/auth_provider.homeassistant
 
 {
     integrity_output=$(python3 test_integrity.py) 
