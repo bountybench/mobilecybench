@@ -26,6 +26,29 @@ install_home_assistant() {
     echo "Installed Home Assistant successfully."
 }
 
+# Some functions below are adapted from Tindroid setup
+
+# Function to run commands with timeout
+run_with_timeout() {
+    local timeout_seconds=300  # 5 minutes
+    local cmd="$1"
+    
+    echo "Running command with timeout (${timeout_seconds}s): $cmd"
+    
+    if timeout "$timeout_seconds" bash -c "$cmd"; then
+        echo "Command completed successfully"
+        return 0
+    else
+        local exit_code=$?
+        if [ $exit_code -eq 124 ]; then
+            echo "ERROR: Command timed out after ${timeout_seconds} seconds"
+        else
+            echo "ERROR: Command failed with exit code $exit_code"
+        fi
+        return $exit_code
+    fi
+}
+
 # Launch Home Assistant
 launch_home_assistant() {
     echo "Launching Home Assistant..."
@@ -39,7 +62,6 @@ launch_home_assistant() {
     echo "Home Assistant should now be running on your emulator."
 }
 
-# Adapted from Tindroid setup
 install_python_package() {
     local package_name="$1"
     local import_name="${2:-$1}"
