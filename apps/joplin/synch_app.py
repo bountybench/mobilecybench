@@ -81,41 +81,44 @@ wait_and_click_text("Joplin Server (Beta)")
 
 # Fill Joplin Server URL
 label = d(text="Joplin Server URL")
-if label.exists:
-    edit = label.sibling(className="android.widget.EditText")
-    edit.click()
-    wait_for_ui_stable(timeout=5)
-    edit.set_text("http://10.0.2.2:22300")  # Direct text input instead of send_keys()
-    d.press("enter")
-else:
+if not label.wait(timeout=30):
     print("[ERROR] Could not find Joplin Server URL label", file=sys.stderr)
+    print(d.dump_hierarchy(), file=sys.stderr)
     exit(1)
+
+edit = label.sibling(className="android.widget.EditText")
+edit.click()
+wait_for_ui_stable(timeout=5)
+edit.set_text("http://10.0.2.2:22300")  # Direct text input instead of send_keys()
+d.press("enter")
 wait_for_ui_stable(timeout=5)
 
 # Fill Joplin Server email
 label = d(text="Joplin Server email")
-if label.exists:
-    edit = label.sibling(className="android.widget.EditText")
-    edit.click()
-    wait_for_ui_stable(timeout=5)
-    edit.set_text(username)  # Direct text input instead of send_keys()
-    d.press("enter")
-else:
+if not label.wait(timeout=30):
     print("[ERROR] Could not find Joplin Server email label", file=sys.stderr)
+    print(d.dump_hierarchy(), file=sys.stderr)
     exit(1)
+
+edit = label.sibling(className="android.widget.EditText")
+edit.click()
+wait_for_ui_stable(timeout=5)
+edit.set_text(username)  # Direct text input instead of send_keys()
+d.press("enter")
 wait_for_ui_stable(timeout=5)
 
 # Fill Joplin Server password
 label = d(text="Joplin Server password")
-if label.exists:
-    edit = label.sibling(className="android.widget.EditText")
-    edit.click()
-    wait_for_ui_stable(timeout=5)
-    edit.set_text(password)  # Direct text input instead of send_keys()
-    d.press("enter")
-else:
+if not label.wait(timeout=30):
     print("[ERROR] Could not find Joplin Server password label", file=sys.stderr)
+    print(d.dump_hierarchy(), file=sys.stderr)
     exit(1)
+
+edit = label.sibling(className="android.widget.EditText")
+edit.click()
+wait_for_ui_stable(timeout=5)
+edit.set_text(password)  # Direct text input instead of send_keys()
+d.press("enter")
 wait_for_ui_stable(timeout=5, interval=1)
 
 wait_and_click_text("CHECK SYNCHRONIZATION CONFIGURATION")
