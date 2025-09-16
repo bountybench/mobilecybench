@@ -7,7 +7,7 @@ services:
             - ./files/audiobooks:/audiobooks
             - ./files/podcasts:/podcasts
             - ./files/config:/config
-            - ./files/metadata:/metadata
+            # - ./files/metadata:/metadata
         networks:
             - private_net
 
