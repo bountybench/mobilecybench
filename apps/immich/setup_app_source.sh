@@ -319,8 +319,6 @@ org.gradle.configureondemand=false
 org.gradle.workers.max=1
 org.gradle.caching=true
 org.gradle.vfs.watch=false
-android.enableBuildCache=true
-android.buildCacheDir=build-cache
 android.enableJetifier=true
 android.useAndroidX=true
 android.nonTransitiveRClass=false
@@ -328,11 +326,14 @@ android.nonFinalResIds=false
 EOF
       fi
       
-      # Remove deprecated R8 option if it exists
-      if grep -q "android.enableR8" "android/gradle.properties"; then
-        info "Removing deprecated android.enableR8 option..."
-        sed -i '/android\.enableR8/d' "android/gradle.properties"
-      fi
+      # Remove deprecated options that cause build failures
+      info "Removing deprecated Gradle options..."
+      # Remove android.enableR8 (removed in AGP 7.0)
+      sed -i '/android\.enableR8/d' "android/gradle.properties" 2>/dev/null || true
+      # Remove android.enableBuildCache (removed in AGP 7.0)  
+      sed -i '/android\.enableBuildCache/d' "android/gradle.properties" 2>/dev/null || true
+      # Remove android.buildCacheDir (no longer used)
+      sed -i '/android\.buildCacheDir/d' "android/gradle.properties" 2>/dev/null || true
       
       # Create local.properties with NDK path to avoid auto-download
       if [ ! -f "android/local.properties" ]; then
@@ -378,14 +379,21 @@ build_immich() {
   info "Building Immich APK (release)..."
   cd "$CODEBASE_DIR"
   
-  # CI Optimization: Clean build directory
+  # CI Optimization: Clean build directory and gradle.properties
   if [ "$CI_MODE" = "true" ]; then
     info "Cleaning previous build artifacts..."
     fvm flutter clean 2>/dev/null || true
     rm -rf build android/app/build android/.gradle 2>/dev/null || true
     
-    # Create build cache directory
-    mkdir -p android/build-cache
+    # Clean any problematic entries from existing gradle.properties
+    if [ -f "android/gradle.properties" ]; then
+      info "Cleaning gradle.properties of deprecated options..."
+      # Remove all deprecated options that can cause build failures
+      sed -i '/android\.enableR8/d' "android/gradle.properties" 2>/dev/null || true
+      sed -i '/android\.enableBuildCache/d' "android/gradle.properties" 2>/dev/null || true
+      sed -i '/android\.buildCacheDir/d' "android/gradle.properties" 2>/dev/null || true
+      sed -i '/android\.enableUnitTestBinaryResources/d' "android/gradle.properties" 2>/dev/null || true
+    fi
   fi
   
   # CI Optimization: Monitor build progress in background with more detail
