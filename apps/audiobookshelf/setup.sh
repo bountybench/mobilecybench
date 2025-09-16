@@ -15,9 +15,10 @@ until $(curl --output /dev/null --silent --head --fail "$ABS_URL"); do
     printf '.'
     sleep 2
 done
+echo "Server is up!"
 
 # NOTE: Currently unused while the configuration loaded in ./files/ is being used
-# echo "\nServer is up! Creating initial admin user..."
+# echo "Creating initial admin user..."
 
 # # Create the first user and capture the JSON response
 # if curl -H "Content-Type: application/json" --request POST -d "{\"newRoot\": {\"username\": \"$ADMIN_USERNAME\", \"password\": \"$ADMIN_PASSWORD\"}}" --fail "$ABS_URL/init"; then
