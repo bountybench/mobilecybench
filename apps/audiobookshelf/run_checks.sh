@@ -4,10 +4,10 @@ exploit_log="$1"
 # source venv/bin/activate
 #cd test-ciaa
 
-# echo "TESTING ACCESS CONTROL..."
-# python test_access_control.py
-# access_control_exit=$?
-# echo
+echo "TESTING ACCESS CONTROL..."
+python test_access_control.py
+access_control_exit=$?
+echo
 
 echo "TESTING AVAILABILITY..."
 python test_availability.py
