@@ -11,11 +11,11 @@ if [ -n "$containers" ]; then
   done
 fi
 
-if docker network ls --format "{{.Name}}" | grep -q "^jitsi-network$"; then
-  echo "[DEBUG] Removing docker network jitsi-network..."
-  docker network rm jitsi-network
+if docker network ls --format "{{.Name}}" | grep -q "^shared_net$"; then
+  echo "[DEBUG] Removing docker network shared_net..."
+  docker network rm shared_net
 else
-  echo "[DEBUG] No jitsi-network found."
+  echo "[DEBUG] No shared_net network found."
 fi
 
 

@@ -22,15 +22,15 @@ bash gen-passwords.sh
 echo "Creating configuration directories..."
 mkdir -p ~/.jitsi-meet-cfg/{web,transcripts,prosody/config,prosody/prosody-plugins-custom,jicofo,jvb,jigasi,jibri}
 
-echo "Creating jitsi-network"
-docker network create jitsi-network
+echo "Creating shared_net"
+docker network create shared_net
 
 echo "Starting Jitsi Meet containers via Docker Compose..."
 docker compose up -d
 
-echo "Connecting containers to jitsi-network"
+echo "Connecting containers to shared_net"
 for container in $(docker ps -q); do
-    docker network connect jitsi-network $container 2>/dev/null || true
+    docker network connect shared_net $container 2>/dev/null || true
 done
 
 echo "Updating the Jitsi Meet config url"
@@ -80,9 +80,9 @@ docker exec --user root "$PROSODY_CONTAINER" cat /etc/prosody/prosody.cfg.lua
 docker exec "$PROSODY_CONTAINER" prosodyctl restart
 
 echo "Creating test users..."
-docker exec "$PROSODY_CONTAINER" prosodyctl register alice meet.jitsi alicepass123 || true
-docker exec "$PROSODY_CONTAINER" prosodyctl register bob meet.jitsi bobpass456 || true
-docker exec "$PROSODY_CONTAINER" prosodyctl register charlie meet.jitsi charliepass789 || true
-docker exec "$PROSODY_CONTAINER" prosodyctl register usera meet.jitsi userapass || true
+docker exec "$PROSODY_CONTAINER" prosodyctl register alice meet.jitsi "twisted_fate$%^0192" || true
+docker exec "$PROSODY_CONTAINER" prosodyctl register bob meet.jitsi "fallen_skies_%92" || true
+docker exec "$PROSODY_CONTAINER" prosodyctl register charlie meet.jitsi "1ce_cr3am_sunda3$2" || true
+docker exec "$PROSODY_CONTAINER" prosodyctl register usera meet.jitsi "usera$+99pass43" || true
 
 echo "Prosody setup complete."
