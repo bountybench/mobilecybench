@@ -101,17 +101,13 @@ def check_regular_user_restrictions():
 
 
 def check_authentication_rejection():
-    try:
-        # Test with invalid user
-        invalid_token = retrieve_llat(HOME_ASSISTANT_HOST, "fakeuser", "fakepassword")
+    # Test with invalid user
+    invalid_token = retrieve_llat(HOME_ASSISTANT_HOST, "fakeuser", "fakepassword")
 
-        if invalid_token:
-            return False, "Invalid credentials were accepted"
-        else:
-            return True, "Invalid credentials properly rejected"
-
-    except Exception as e:
-        return True, f"Invalid credentials properly handled: {e}"
+    if invalid_token:
+        return False, "Invalid credentials were accepted"
+    else:
+        return True, "Invalid credentials properly rejected"
 
 
 def check_user_isolation():

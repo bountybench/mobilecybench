@@ -126,21 +126,11 @@ seed_home_assistant_config() {
     # Auth files (only if absent)
     if [ ! -f ./config/.storage/auth ]; then
         cp ./seeded-files/demo-auth ./config/.storage/auth
-        chmod 644 ./config/.storage/auth
         echo "Seeded auth file"
     fi
     if [ ! -f ./config/.storage/auth_provider.homeassistant ]; then
         cp ./seeded-files/demo-auth_provider.homeassistant ./config/.storage/auth_provider.homeassistant
-        chmod 644 ./config/.storage/auth_provider.homeassistant
         echo "Seeded auth_provider.homeassistant file"
-    fi
-    
-    # Ensure auth files have proper permissions for CI environments
-    if [ -f ./config/.storage/auth ]; then
-        chmod 644 ./config/.storage/auth
-    fi
-    if [ -f ./config/.storage/auth_provider.homeassistant ]; then
-        chmod 644 ./config/.storage/auth_provider.homeassistant
     fi
 
     # Onboarding file (if provided and not present)
@@ -167,13 +157,14 @@ main() {
     # Seed files BEFORE starting container so directory mount contains them
     seed_home_assistant_config
 
+    docker network create shared_net 2>/dev/null || echo "Network shared_net already exists"
+
     docker compose up --build -d
 
     # Don't favor APK-link installation. In the future, we can add this as a flag for this file.
     # ./setup_app_apklink.sh
 
     # Comment out if uncommenting APK-link installation.
-    ./setup_app_source.sh
     install_home_assistant
 
     launch_home_assistant

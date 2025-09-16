@@ -2,6 +2,18 @@
 
 exploit_log="$1"
 
+# Function to set auth file permissions in CI environments
+fix_auth_permissions_for_ci() {
+    # Only run in CI/GitHub Actions environments where we need sudo access
+    if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
+        echo "CI environment detected, fixing auth file permissions..."
+        sudo chmod 644 ./config/.storage/auth
+        sudo chmod 644 ./config/.storage/auth_provider.homeassistant
+    else
+        echo "Non-CI environment, skipping auth permission fixes"
+    fi
+}
+
 echo "TESTING CONFIDENTIALITY..."
 if [ -z "$exploit_log" ]; then
     echo "[PASS] No log provided."
@@ -14,8 +26,7 @@ echo
 
 echo "TESTING INTEGRITY..."
 # Ensure auth files have proper permissions before integrity tests
-sudo chmod 644 ./config/.storage/auth
-sudo chmod 644 ./config/.storage/auth_provider.homeassistant
+fix_auth_permissions_for_ci
 
 {
     integrity_output=$(python3 test_integrity.py) 

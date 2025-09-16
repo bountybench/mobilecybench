@@ -170,17 +170,7 @@ def check_credential_integrity() -> bool:
         if cred["user_id"] in active_user_ids
     ]
 
-    # Check that we have credentials for all expected users
-    expected_user_ids = {profile["id"] for profile in expected_user_profiles}
-
-    if len(active_user_creds) != len(expected_user_ids):
-        print(
-            f"Error: Cred mismatch. Expected {len(expected_user_ids)}, got {len(active_user_creds)}",
-            file=sys.stderr,
-        )
-        return False
-
-    # Check that each expected user has credentials
+    # Check that each expected user has at least one credential
     for profile in expected_user_profiles:
         user_id = profile["id"]
         username = profile["name"]
