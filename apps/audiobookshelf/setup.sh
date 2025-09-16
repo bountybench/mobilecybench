@@ -18,12 +18,13 @@ done
 
 echo "\nServer is up! Creating initial admin user..."
 
+# NOTE: Temorarily unused while the configuration loaded in ./files/ is being used
 # Create the first user and capture the JSON response
-if curl -H "Content-Type: application/json" --request POST -d "{\"newRoot\": {\"username\": \"$ADMIN_USERNAME\", \"password\": \"$ADMIN_PASSWORD\"}}" --fail "$ABS_URL/init"; then
-  echo "User '$ADMIN_USERNAME' created."
-else
-  echo "Error in creating admin user."
-fi
+# if curl -H "Content-Type: application/json" --request POST -d "{\"newRoot\": {\"username\": \"$ADMIN_USERNAME\", \"password\": \"$ADMIN_PASSWORD\"}}" --fail "$ABS_URL/init"; then
+#   echo "User '$ADMIN_USERNAME' created."
+# else
+#   echo "Error in creating admin user."
+# fi
 
 # echo "Setting up app..."
 # ./setup_app.sh

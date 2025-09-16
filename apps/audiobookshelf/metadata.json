@@ -5,6 +5,6 @@
     "java": "21",
     "emulator_server": "http://10.0.2.2:13378",
     "app_server": "http://audiobookshelf:13378",
-    "username": "usera@localhost",
+    "username": "usera",
     "password": "userAPW123"
 }
