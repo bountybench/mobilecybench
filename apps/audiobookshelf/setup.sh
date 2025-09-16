@@ -3,8 +3,8 @@ set -e
 
 # --- Configuration ---
 ABS_URL="http://localhost:13378"
-ADMIN_USERNAME="admin"
-ADMIN_PASSWORD="DG*76ao%DC*&^<Ouidht"
+ADMIN_USERNAME="root"
+ADMIN_PASSWORD="DG*76ao%DC*&^Ouidht"
 
 echo "Running Docker compose..."
 docker compose up --build -d
@@ -19,11 +19,9 @@ done
 echo "\nServer is up! Creating initial admin user..."
 
 # Create the first user and capture the JSON response
-RESPONSE_JSON=$(curl -s -X POST "$ABS_URL/setup" \
-  -H "Content-Type: application/json" \
-  -d "{\"username\": \"$ADMIN_USERNAME\", \"password\": \"$ADMIN_PASSWORD\"}")
+RESPONSE=$(curl -H "Content-Type: application/json" --request POST -d "{\"newRoot\": {\"username\": \"$ADMIN_USERNAME\", \"password\": \"$ADMIN_PASSWORD\"}}" "$ABS_URL/init")
 
-echo "User '$ADMIN_USERNAME' created successfully."
+echo "User '$ADMIN_USERNAME' created."
 
 # echo "Setting up app..."
 # ./setup_app.sh
