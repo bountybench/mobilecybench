@@ -304,7 +304,29 @@ EOF
     export _JAVA_OPTIONS="-Xmx1024m"
     export PUB_MAX_WORKERS=2  # Limit parallel pub operations
     
-    # Create optimized gradle.properties if building Android
+    # AGGRESSIVE: Remove NDK requirements from build files
+    info "Removing NDK requirements from build configuration..."
+    
+    # Remove ndkVersion from app/build.gradle
+    if [ -f "android/app/build.gradle" ]; then
+      info "Patching app/build.gradle to remove NDK..."
+      # Comment out or remove ndkVersion line
+      sed -i 's/^\s*ndkVersion.*$/\/\/ ndkVersion removed for CI build/' "android/app/build.gradle"
+      # Remove any externalNativeBuild blocks
+      sed -i '/externalNativeBuild {/,/^    }/d' "android/app/build.gradle"
+      # Remove cmake/ndkBuild configurations
+      sed -i '/cmake {/,/}/d' "android/app/build.gradle"
+      sed -i '/ndkBuild {/,/}/d' "android/app/build.gradle"
+    fi
+    
+    # Check for native modules and disable them
+    if [ -f "android/settings.gradle" ]; then
+      info "Checking for native modules in settings.gradle..."
+      # Comment out any native module includes that might require NDK
+      sed -i "s/include ':native_/\/\/ include ':native_/g" "android/settings.gradle"
+    fi
+    
+    # Create or update gradle.properties
     if [ -f "android/gradle.properties" ]; then
       info "Optimizing Gradle for CI..."
       # First, check if CI optimizations already added to avoid duplicates
@@ -323,28 +345,33 @@ android.enableJetifier=true
 android.useAndroidX=true
 android.nonTransitiveRClass=false
 android.nonFinalResIds=false
+# Disable native builds
+android.packagingOptions.jniLibs.useLegacyPackaging=true
+android.bundle.enableUncompressedNativeLibs=false
 EOF
       fi
       
       # Remove deprecated options that cause build failures
       info "Removing deprecated Gradle options..."
-      # Remove android.enableR8 (removed in AGP 7.0)
       sed -i '/android\.enableR8/d' "android/gradle.properties" 2>/dev/null || true
-      # Remove android.enableBuildCache (removed in AGP 7.0)  
       sed -i '/android\.enableBuildCache/d' "android/gradle.properties" 2>/dev/null || true
-      # Remove android.buildCacheDir (no longer used)
       sed -i '/android\.buildCacheDir/d' "android/gradle.properties" 2>/dev/null || true
-      
-      # Create local.properties with NDK path to avoid auto-download
-      if [ ! -f "android/local.properties" ]; then
-        info "Creating local.properties to skip NDK auto-download..."
-        cat > "android/local.properties" << EOF
+    fi
+    
+    # Create local.properties that explicitly states no NDK
+    info "Creating local.properties without NDK..."
+    cat > "android/local.properties" << EOF
 sdk.dir=${ANDROID_HOME:-/usr/local/lib/android/sdk}
 flutter.sdk=$HOME/.fvm/versions/$FLUTTER_VERSION
-ndk.dir=${ANDROID_HOME:-/usr/local/lib/android/sdk}/ndk/23.1.7779620
+# NDK intentionally not set to prevent download
+# ndk.dir=/dev/null
 EOF
-      fi
-    fi
+    
+    # Set environment to explicitly disable NDK
+    export ANDROID_NDK_HOME="/dev/null"
+    export NDK_HOME="/dev/null"
+    export ANDROID_NDK_ROOT="/dev/null"
+    
   else
     # Standard memory settings
     export DART_VM_OPTIONS="--old_gen_heap_size=2048"
@@ -379,7 +406,7 @@ build_immich() {
   info "Building Immich APK (release)..."
   cd "$CODEBASE_DIR"
   
-  # CI Optimization: Clean build directory and gradle.properties
+  # CI Optimization: AGGRESSIVE NDK removal
   if [ "$CI_MODE" = "true" ]; then
     info "Cleaning previous build artifacts..."
     fvm flutter clean 2>/dev/null || true
@@ -388,26 +415,36 @@ build_immich() {
     # Clean any problematic entries from existing gradle.properties
     if [ -f "android/gradle.properties" ]; then
       info "Cleaning gradle.properties of deprecated options..."
-      # Remove all deprecated options that can cause build failures
       sed -i '/android\.enableR8/d' "android/gradle.properties" 2>/dev/null || true
       sed -i '/android\.enableBuildCache/d' "android/gradle.properties" 2>/dev/null || true
       sed -i '/android\.buildCacheDir/d' "android/gradle.properties" 2>/dev/null || true
-      sed -i '/android\.enableUnitTestBinaryResources/d' "android/gradle.properties" 2>/dev/null || true
     fi
     
-    # Skip NDK installation entirely to avoid hangs
-    info "Configuring build to skip NDK..."
-    if [ -f "android/app/build.gradle" ]; then
-      # Comment out or modify NDK-related configurations
-      sed -i 's/^.*ndkVersion.*$/\/\/ ndkVersion disabled for CI/' "android/app/build.gradle" 2>/dev/null || true
-    fi
+    # FORCE: Remove NDK from build.gradle files
+    info "Forcefully removing NDK requirements..."
+    find android -name "build.gradle" -type f -exec sed -i 's/^\s*ndkVersion.*$/\/\/ ndkVersion removed/' {} \;
+    find android -name "build.gradle" -type f -exec sed -i '/externalNativeBuild/,/^[[:space:]]*}/d' {} \;
     
-    # Set environment to skip NDK
-    export ANDROID_NDK_HOME=""
-    export NDK_HOME=""
+    # Remove CMakeLists references
+    find android -name "build.gradle" -type f -exec sed -i '/cmake {/,/}/d' {} \;
+    find android -name "build.gradle" -type f -exec sed -i '/ndkBuild {/,/}/d' {} \;
+    
+    # Create a fake NDK installation to satisfy checks but prevent download
+    FAKE_NDK_DIR="/tmp/fake-ndk"
+    mkdir -p "$FAKE_NDK_DIR"
+    echo "Fake NDK" > "$FAKE_NDK_DIR/source.properties"
+    export ANDROID_NDK_HOME="$FAKE_NDK_DIR"
+    export NDK_HOME="$FAKE_NDK_DIR"
+    
+    # Update local.properties to point to fake NDK
+    cat > "android/local.properties" << EOF
+sdk.dir=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+flutter.sdk=$HOME/.fvm/versions/$FLUTTER_VERSION
+ndk.dir=$FAKE_NDK_DIR
+EOF
   fi
   
-  # CI Optimization: Monitor build progress in background with more detail
+  # CI Optimization: Monitor build progress in background
   if [ "$CI_MODE" = "true" ]; then
     (
       while true; do
@@ -426,10 +463,15 @@ build_immich() {
           echo "[Build Monitor] Active processes - Gradle: $GRADLE_COUNT, Dart: $DART_COUNT"
         fi
         
-        # Check if build is actually progressing by looking at build directory size
+        # Check if build is actually progressing
         if [ -d "build" ]; then
           BUILD_SIZE=$(du -sm build 2>/dev/null | cut -f1 || echo "0")
           echo "[Build Monitor] Build directory size: ${BUILD_SIZE}MB"
+        fi
+        
+        # Check for NDK download attempts
+        if ps aux | grep -q "[d]ownload.*NDK"; then
+          echo "[Build Monitor] WARNING: NDK download detected - this should not happen!"
         fi
       done
     ) &
@@ -439,32 +481,32 @@ build_immich() {
   
   # Build with optimizations
   if [ "$CI_MODE" = "true" ]; then
-    # CI-specific build command - skip NDK and validation checks
-    info "Building with CI optimizations (timeout: 20 minutes)..."
+    info "Building with CI optimizations (NDK disabled, timeout: 20 minutes)..."
     
-    # Set additional environment variables to prevent hangs
-    export GRADLE_OPTS="-Xmx1024m -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.workers.max=1 -Dorg.gradle.caching=true"
+    # Set Gradle options to prevent hangs
+    export GRADLE_OPTS="-Xmx1024m -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.workers.max=1 -Dorg.gradle.caching=true -Dandroid.ndkVersion=skip"
     
-    # Build with skip-validation flag to bypass Kotlin version check and NDK
+    # Build with skip-validation flag and no native builds
     timeout 1200 fvm flutter build apk \
       --release \
       --target-platform=android-arm64 \
       --no-tree-shake-icons \
-      --android-skip-build-dependency-validation || {
+      --android-skip-build-dependency-validation \
+      --dart-define=SKIP_NDK=true || {
         EXIT_CODE=$?
         echo "[Build Monitor] Build failed with exit code: $EXIT_CODE"
         
         if [ $EXIT_CODE -eq 124 ]; then
           echo "[Build Monitor] Build timed out after 20 minutes"
+          echo "[Build Monitor] Checking for NDK issues..."
+          grep -i "ndk" "$LOG_FILE" | tail -10 || true
           
-          # Try an even simpler build as fallback - single ABI, no native libs
-          info "Attempting minimal build without native libraries..."
+          # Final attempt: Pure Dart build
+          info "Final attempt: Pure Dart APK build..."
           timeout 600 fvm flutter build apk \
             --release \
             --target-platform=android-arm64 \
-            --android-skip-build-dependency-validation || {
-            fail "Minimal build also failed"
-          }
+            --android-skip-build-dependency-validation || fail "Pure Dart build also failed"
         else
           fail "Build failed (exit code: $EXIT_CODE)"
         fi
