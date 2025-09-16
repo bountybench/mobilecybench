@@ -8,16 +8,24 @@ source "$ROOT_DIR/utils/android.sh"
 
 # Patch gradle.properties
 patch() {
-    # Patch gradle.properties for low-RAM builds
+    # Patch gradle.properties for memory optimization
     if [[ -f "gradle.properties" ]]; then
-        echo "Patching gradle.properties for low memory usage..."
+        echo "Patching gradle.properties for memory optimization..."
         sed -i.bak \
-            -e 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Dfile.encoding=UTF-8/' \
+            -e 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=1024m -XX:+UseParallelGC -Dfile.encoding=UTF-8/' \
             -e '/^org.gradle.parallel/d' \
             -e '/^android.enableR8/d' \
+            -e '/^kotlin.daemon.jvmargs/d' \
+            -e '/^kotlin.incremental/d' \
             gradle.properties
         # Append if missing
         grep -q '^org.gradle.parallel=false' gradle.properties || echo 'org.gradle.parallel=false' >> gradle.properties
+        # Add Kotlin daemon memory settings and optimizations
+        grep -q '^kotlin.daemon.jvmargs=' gradle.properties || echo 'kotlin.daemon.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=1024m' >> gradle.properties
+        # Disable Kotlin incremental compilation for memory optimization
+        grep -q '^kotlin.incremental=false' gradle.properties || echo 'kotlin.incremental=false' >> gradle.properties
+        # Suppress Java deprecation warnings
+        grep -q '^android.javaCompile.suppressSourceTargetDeprecationWarning=' gradle.properties || echo 'android.javaCompile.suppressSourceTargetDeprecationWarning=true' >> gradle.properties
     fi
 }
 
