@@ -1,16 +1,24 @@
 #!/bin/bash
 set -e
 
+# Function to remove config files with proper permissions in CI environments
+remove_config_files_for_ci() {
+    # Only use sudo in CI/GitHub Actions environments where we need elevated permissions
+    if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
+        echo "CI environment detected, removing config files with sudo..."
+        sudo chmod -R u+w config && sudo rm -rf config
+    else
+        echo "Non-CI environment, removing config files without sudo..."
+        chmod -R u+w config 2>/dev/null || true
+        rm -rf config
+    fi
+}
+
 echo "Cleaning up Home Assistant environment"
 echo "==================="
 
-echo "Stopping emulator if running..."
-if [[ -z "${CI:-}" && -z "${GITHUB_ACTIONS:-}" ]]; then
-    ../../stop_emulator.sh || true
-fi
-
 echo "Removing config files from the HA app"
-sudo chmod -R u+w config && sudo rm -rf config
+remove_config_files_for_ci
 
 echo "Stopping all services..."
 docker compose down -v
@@ -32,12 +40,13 @@ if [ -f "scores.json" ]; then
     rm -f "scores.json"
 fi
 
+if [ -f "secrets.json" ]; then
+    echo "Removing generated secrets: secrets.json"
+    rm -f "secrets.json"
+fi
+
 echo "Removing log files recursively..."
 find . -type f -name "*.log" -delete
-
-echo "Remove changes to the codebase submodule..."
-CODEBASE_DIR="$(dirname "$0")/codebase"
-cd "$CODEBASE_DIR" && git reset --hard && git clean -fdx && cd - > /dev/null
 
 echo "Cleanup complete!" 
 echo "==================="
