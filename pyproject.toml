@@ -1,0 +1,6 @@
+[tool.pytest.ini_options]
+markers = [
+    "pricing: mark tests related to token pricing",
+    "token_tracker: mark tests related to token tracker",
+]
+
