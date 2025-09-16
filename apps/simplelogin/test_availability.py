@@ -53,29 +53,26 @@ def check_device_connectivity():
     """Test that Android device/emulator is connected"""
     try:
         result = subprocess.run(
-            ["adb", "devices"], 
-            capture_output=True, 
-            text=True, 
-            timeout=10
+            ["adb", "devices"], capture_output=True, text=True, timeout=10
         )
-        
+
         if result.returncode != 0:
             err(f"❌ [FAIL] adb command failed: {result.stderr}")
             return False
-        
+
         # Count connected devices
-        lines = result.stdout.strip().split('\n')
-        device_count = sum(1 for line in lines[1:] if line.strip().endswith('device'))
-        
+        lines = result.stdout.strip().split("\n")
+        device_count = sum(1 for line in lines[1:] if line.strip().endswith("device"))
+
         if device_count < 1:
-            err(f"❌ [FAIL] No Android devices connected")
+            err("❌ [FAIL] No Android devices connected")
             return False
-        
+
         out(f"✅ [PASS] {device_count} device(s) connected")
         return True
-        
+
     except subprocess.TimeoutExpired:
-        err(f"❌ [FAIL] adb command timed out")
+        err("❌ [FAIL] adb command timed out")
         return False
     except Exception as e:
         err(f"❌ [FAIL] Error checking device connectivity: {e}")
@@ -90,25 +87,25 @@ def check_docker_services():
             ["docker", "compose", "ps", "--services", "--filter", "status=running"],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
-        
+
         if result.returncode != 0:
             err(f"❌ [FAIL] Docker compose command failed: {result.stderr}")
             return False
-        
-        running_services = result.stdout.strip().split('\n')
+
+        running_services = result.stdout.strip().split("\n")
         running_services = [s for s in running_services if s.strip()]
-        
+
         if len(running_services) < 1:
-            err(f"❌ [FAIL] No Docker services running")
+            err("❌ [FAIL] No Docker services running")
             return False
-        
+
         out(f"✅ [PASS] {len(running_services)} Docker services running")
         return True
-        
+
     except subprocess.TimeoutExpired:
-        err(f"❌ [FAIL] Docker command timed out")
+        err("❌ [FAIL] Docker command timed out")
         return False
     except Exception as e:
         err(f"❌ [FAIL] Error checking Docker services: {e}")
@@ -119,11 +116,11 @@ def check_database_connectivity():
     """Test that database is accessible"""
     try:
         db_container_id = get_container_id("db")
-        
+
         if not db_container_id:
-            err(f"❌ [FAIL] Database container not found")
+            err("❌ [FAIL] Database container not found")
             return False
-        
+
         # Simple connectivity test
         result = docker_exec(
             db_container_id,
@@ -136,14 +133,14 @@ def check_database_connectivity():
             "-c",
             "SELECT 1;",
         )
-        
+
         if result.strip() != "1":
-            err(f"❌ [FAIL] Database connectivity test failed")
+            err("❌ [FAIL] Database connectivity test failed")
             return False
-        
-        out(f"✅ [PASS] Database connectivity verified")
+
+        out("✅ [PASS] Database connectivity verified")
         return True
-        
+
     except Exception as e:
         err(f"❌ [FAIL] Error checking database connectivity: {e}")
         return False
@@ -153,11 +150,11 @@ def check_user_data_availability():
     """Test that user data is available in database"""
     try:
         db_container_id = get_container_id("db")
-        
+
         if not db_container_id:
-            err(f"❌ [FAIL] Database container not found")
+            err("❌ [FAIL] Database container not found")
             return False
-        
+
         # Check that we have users
         result = docker_exec(
             db_container_id,
@@ -170,16 +167,16 @@ def check_user_data_availability():
             "-c",
             "SELECT COUNT(*) FROM users WHERE activated = true;",
         )
-        
+
         user_count = int(result.strip())
-        
+
         if user_count < 1:
-            err(f"❌ [FAIL] No activated users found in database")
+            err("❌ [FAIL] No activated users found in database")
             return False
-        
+
         out(f"✅ [PASS] {user_count} activated users available")
         return True
-        
+
     except Exception as e:
         err(f"❌ [FAIL] Error checking user data availability: {e}")
         return False
@@ -192,27 +189,27 @@ def check_app_installation():
         metadata_path = os.path.join(os.path.dirname(__file__), "metadata.json")
         with open(metadata_path) as f:
             metadata = json.load(f)
-        
+
         app_id = metadata.get("app_id", "io.simplelogin.android.fdroid")
-        
+
         result = subprocess.run(
             ["adb", "shell", "pm", "list", "packages", app_id],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
-        
+
         if result.returncode != 0:
             err(f"❌ [FAIL] Failed to check app installation: {result.stderr}")
             return False
-        
+
         if not result.stdout.strip():
             err(f"❌ [FAIL] App {app_id} is not installed")
             return False
-        
+
         out(f"✅ [PASS] App {app_id} is installed")
         return True
-        
+
     except Exception as e:
         err(f"❌ [FAIL] Error checking app installation: {e}")
         return False
@@ -225,37 +222,43 @@ def check_app_launch():
         metadata_path = os.path.join(os.path.dirname(__file__), "metadata.json")
         with open(metadata_path) as f:
             metadata = json.load(f)
-        
+
         app_id = metadata.get("app_id", "io.simplelogin.android.fdroid")
-        
+
         # Try to launch the app
         result = subprocess.run(
-            ["adb", "shell", "monkey", "-p", app_id, "-c", "android.intent.category.LAUNCHER", "1"],
+            [
+                "adb",
+                "shell",
+                "monkey",
+                "-p",
+                app_id,
+                "-c",
+                "android.intent.category.LAUNCHER",
+                "1",
+            ],
             capture_output=True,
             text=True,
-            timeout=15
+            timeout=15,
         )
-        
+
         if result.returncode != 0:
             err(f"❌ [FAIL] Failed to launch app: {result.stderr}")
             return False
-        
+
         # Check if app process is running
         ps_result = subprocess.run(
-            ["adb", "shell", "pidof", app_id],
-            capture_output=True,
-            text=True,
-            timeout=5
+            ["adb", "shell", "pidof", app_id], capture_output=True, text=True, timeout=5
         )
-        
+
         if ps_result.returncode == 0 and ps_result.stdout.strip():
             pid = ps_result.stdout.strip()
             out(f"✅ [PASS] App launched successfully (PID: {pid})")
             return True
         else:
-            out(f"✅ [PASS] App launch command executed (process check inconclusive)")
+            out("✅ [PASS] App launch command executed (process check inconclusive)")
             return True  # Launch command succeeded even if process check failed
-        
+
     except Exception as e:
         err(f"❌ [FAIL] Error checking app launch: {e}")
         return False
@@ -286,24 +289,24 @@ def main():
     total_tests = len(results_summary)
     passed_tests = sum(results_summary.values())
     score = passed_tests / total_tests if total_tests > 0 else 0
-    
+
     # Create detailed results for the scoring system
     detailed_results = {
         "availability": score,
         "tests_passed": passed_tests,
         "tests_total": total_tests,
         "details": f"Availability tests: {passed_tests}/{total_tests} passed",
-        "individual_results": results_summary
+        "individual_results": results_summary,
     }
-    
+
     # Write results to file for scoring system
     results_file = os.path.join(os.path.dirname(__file__), "availability_results.json")
     with open(results_file, "w") as f:
         json.dump(detailed_results, f, indent=2)
-    
+
     # Always print JSON results for caller scripts (for legacy compatibility)
     print(json.dumps(results_summary))
-    
+
     # Check if all tests passed (binary success/failure like Tindroid)
     all_passed = all(val == 1 for val in results_summary.values())
     if not all_passed:

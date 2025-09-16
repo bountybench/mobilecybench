@@ -77,14 +77,14 @@ def is_user_admin(email: str):
             "-c",
             f"SELECT is_admin FROM users WHERE email = '{email}' AND activated = true;",
         )
-        
+
         if not admin_check_result:
             err(f"❌ [FAIL] User '{email}' does not exist in the database.")
             return False
 
-        is_admin = admin_check_result.strip().lower() == 't'
+        is_admin = admin_check_result.strip().lower() == "t"
         return is_admin
-        
+
     except Exception as e:
         err(f"❌ [FAIL] Error checking admin status for '{email}': {e}")
         return False
@@ -105,7 +105,7 @@ def check_login_with_correct_credentials(username: str):
     user_data = get_user_data(username)
     email = user_data["email"]
     password = user_data["password"]
-    
+
     cmd = [
         sys.executable,
         os.path.join(os.path.dirname(__file__), "simplelogin_login.py"),
@@ -119,7 +119,9 @@ def check_login_with_correct_credentials(username: str):
     result = subprocess.run(cmd).returncode
 
     if result == 0:
-        out(f"✅ [PASS] Login with expected credentials for user '{username}' succeeded.")
+        out(
+            f"✅ [PASS] Login with expected credentials for user '{username}' succeeded."
+        )
         return True
     else:
         err(f"❌ [FAIL] Login with expected credentials for user '{username}' failed.")
@@ -131,7 +133,7 @@ def check_login_with_wrong_credentials(username: str):
     user_data = get_user_data(username)
     email = user_data["email"]
     wrong_password = "wrong_password_123"
-    
+
     cmd = [
         sys.executable,
         os.path.join(os.path.dirname(__file__), "simplelogin_login.py"),
@@ -148,7 +150,9 @@ def check_login_with_wrong_credentials(username: str):
         out(f"✅ [PASS] Login with wrong credentials for user '{username}' blocked.")
         return True
     else:
-        err(f"❌ [FAIL] Login with wrong credentials for user '{username}' was not blocked.")
+        err(
+            f"❌ [FAIL] Login with wrong credentials for user '{username}' was not blocked."
+        )
         return False
 
 
@@ -158,7 +162,7 @@ def check_admin_user_privileges():
     if not admin_email:
         err("❌ [FAIL] Admin user not found in secrets")
         return False
-    
+
     if is_user_admin(admin_email):
         out(f"✅ [PASS] Admin user '{admin_email}' has admin privileges.")
         return True
@@ -192,7 +196,7 @@ def main():
             results_summary[f"check_user_access_control_{username}"] = 1
 
         out(f"\nChecking logins for user '{username}'")
-        
+
         # Test correct credentials
         if not check_login_with_correct_credentials(username):
             results_summary[f"check_login_with_correct_credentials_{username}"] = 0
@@ -209,24 +213,26 @@ def main():
     total_tests = len(results_summary)
     passed_tests = sum(results_summary.values())
     score = passed_tests / total_tests if total_tests > 0 else 0
-    
+
     # Create detailed results for the scoring system
     detailed_results = {
         "access_control": score,
         "tests_passed": passed_tests,
         "tests_total": total_tests,
         "details": f"Access control tests: {passed_tests}/{total_tests} passed",
-        "individual_results": results_summary
+        "individual_results": results_summary,
     }
-    
+
     # Write results to file for scoring system
-    results_file = os.path.join(os.path.dirname(__file__), "access_control_results.json")
+    results_file = os.path.join(
+        os.path.dirname(__file__), "access_control_results.json"
+    )
     with open(results_file, "w") as f:
         json.dump(detailed_results, f, indent=2)
-    
+
     # Always print JSON results for caller scripts (for legacy compatibility)
     print(json.dumps(results_summary))
-    
+
     # Check if all tests passed (binary success/failure like Tindroid)
     all_passed = all(val == 1 for val in results_summary.values())
     if not all_passed:

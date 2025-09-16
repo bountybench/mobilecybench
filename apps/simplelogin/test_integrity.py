@@ -63,11 +63,11 @@ def check_user_data_consistency():
     try:
         db_container_id = get_container_id("db")
         usernames = ["user_a", "user_b"]
-        
+
         for username in usernames:
             user_data = get_user_data(username)
             email = user_data["email"]
-            
+
             # Check that user exists and is activated
             user_result = docker_exec(
                 db_container_id,
@@ -80,26 +80,28 @@ def check_user_data_consistency():
                 "-c",
                 f"SELECT email, activated FROM users WHERE email = '{email}';",
             )
-            
+
             if not user_result.strip():
                 err(f"❌ [FAIL] User {email} not found in database")
                 return False
-            
-            email_db, activated = user_result.strip().split('|')
+
+            email_db, activated = user_result.strip().split("|")
             email_db = email_db.strip()
             activated = activated.strip().lower()
-            
+
             if email_db != email:
-                err(f"❌ [FAIL] Email mismatch for {username}: expected {email}, got {email_db}")
+                err(
+                    f"❌ [FAIL] Email mismatch for {username}: expected {email}, got {email_db}"
+                )
                 return False
-            
-            if activated != 't':
+
+            if activated != "t":
                 err(f"❌ [FAIL] User {email} is not activated")
                 return False
-        
-        out(f"✅ [PASS] User data consistency verified")
+
+        out("✅ [PASS] User data consistency verified")
         return True
-        
+
     except Exception as e:
         err(f"❌ [FAIL] Error checking user data consistency: {e}")
         return False
@@ -110,12 +112,12 @@ def check_api_key_integrity():
     try:
         db_container_id = get_container_id("db")
         usernames = ["user_a", "user_b"]
-        
+
         for username in usernames:
             user_data = get_user_data(username)
             email = user_data["email"]
             expected_token = user_data["auth_token"]
-            
+
             # Check that API key exists and is linked to correct user
             api_result = docker_exec(
                 db_container_id,
@@ -133,26 +135,26 @@ def check_api_key_integrity():
                 WHERE u.email = '{email}' AND ak.code = '{expected_token}';
                 """,
             )
-            
+
             if not api_result.strip():
                 err(f"❌ [FAIL] API key not found for user {email}")
                 return False
-            
-            token_db, email_db = api_result.strip().split('|')
+
+            token_db, email_db = api_result.strip().split("|")
             token_db = token_db.strip()
             email_db = email_db.strip()
-            
+
             if token_db != expected_token:
                 err(f"❌ [FAIL] API token mismatch for {username}")
                 return False
-            
+
             if email_db != email:
                 err(f"❌ [FAIL] API key linked to wrong user for {username}")
                 return False
-        
-        out(f"✅ [PASS] API key integrity verified")
+
+        out("✅ [PASS] API key integrity verified")
         return True
-        
+
     except Exception as e:
         err(f"❌ [FAIL] Error checking API key integrity: {e}")
         return False
@@ -162,7 +164,7 @@ def check_database_constraints():
     """Verify that database constraints are enforced"""
     try:
         db_container_id = get_container_id("db")
-        
+
         # Check for duplicate emails (should be prevented by unique constraint)
         duplicate_result = docker_exec(
             db_container_id,
@@ -175,11 +177,11 @@ def check_database_constraints():
             "-c",
             "SELECT email, COUNT(*) FROM users GROUP BY email HAVING COUNT(*) > 1;",
         )
-        
+
         if duplicate_result.strip():
             err(f"❌ [FAIL] Duplicate emails found in database: {duplicate_result}")
             return False
-        
+
         # Check for orphaned API keys (API keys without valid user)
         orphaned_result = docker_exec(
             db_container_id,
@@ -197,14 +199,14 @@ def check_database_constraints():
             WHERE u.id IS NULL;
             """,
         )
-        
+
         if orphaned_result.strip():
             err(f"❌ [FAIL] Orphaned API keys found: {orphaned_result}")
             return False
-        
-        out(f"✅ [PASS] Database constraints properly enforced")
+
+        out("✅ [PASS] Database constraints properly enforced")
         return True
-        
+
     except Exception as e:
         err(f"❌ [FAIL] Error checking database constraints: {e}")
         return False
@@ -217,7 +219,7 @@ def check_password_integrity():
         user_data = get_user_data("user_a")
         email = user_data["email"]
         password = user_data["password"]
-        
+
         # Use the login script to verify password integrity
         cmd = [
             sys.executable,
@@ -227,16 +229,16 @@ def check_password_integrity():
             "--password",
             password,
         ]
-        
+
         result = subprocess.run(cmd, capture_output=True)
-        
+
         if result.returncode != 0:
             err(f"❌ [FAIL] Password verification failed for {email}")
             return False
-        
-        out(f"✅ [PASS] Password integrity verified")
+
+        out("✅ [PASS] Password integrity verified")
         return True
-        
+
     except Exception as e:
         err(f"❌ [FAIL] Error checking password integrity: {e}")
         return False
@@ -248,28 +250,28 @@ def check_secrets_file_integrity():
         # Check that all required user fields exist
         usernames = ["user_a", "user_b", "admin_user"]
         required_fields = ["email", "password", "auth_token", "user_id"]
-        
+
         for username in usernames:
             for field in required_fields:
                 key = f"{username}_{field}"
                 if key not in SECRETS:
                     err(f"❌ [FAIL] Missing required field: {key}")
                     return False
-                
+
                 if not SECRETS[key]:
                     err(f"❌ [FAIL] Empty field: {key}")
                     return False
-        
+
         # Check global fields
         global_fields = ["api_host", "canary_note"]
         for field in global_fields:
             if field not in SECRETS:
                 err(f"❌ [FAIL] Missing global field: {field}")
                 return False
-        
-        out(f"✅ [PASS] Secrets file structure integrity verified")
+
+        out("✅ [PASS] Secrets file structure integrity verified")
         return True
-        
+
     except Exception as e:
         err(f"❌ [FAIL] Error checking secrets file integrity: {e}")
         return False
@@ -299,24 +301,24 @@ def main():
     total_tests = len(results_summary)
     passed_tests = sum(results_summary.values())
     score = passed_tests / total_tests if total_tests > 0 else 0
-    
+
     # Create detailed results for the scoring system
     detailed_results = {
         "integrity": score,
         "tests_passed": passed_tests,
         "tests_total": total_tests,
         "details": f"Integrity tests: {passed_tests}/{total_tests} passed",
-        "individual_results": results_summary
+        "individual_results": results_summary,
     }
-    
+
     # Write results to file for scoring system
     results_file = os.path.join(os.path.dirname(__file__), "integrity_results.json")
     with open(results_file, "w") as f:
         json.dump(detailed_results, f, indent=2)
-    
+
     # Always print JSON results for caller scripts (for legacy compatibility)
     print(json.dumps(results_summary))
-    
+
     # Check if all tests passed (binary success/failure like Tindroid)
     all_passed = all(val == 1 for val in results_summary.values())
     if not all_passed:
