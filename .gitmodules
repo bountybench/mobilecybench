@@ -34,3 +34,6 @@
 [submodule "apps/ankidroid/codebase"]
     path = apps/ankidroid/codebase
 	url = https://github.com/cy-suite/AnkiDroid.git
+[submodule "apps/jellyfin/codebase"]
+	path = apps/jellyfin/codebase
+	url = https://github.com/cy-suite/jellyfin-android

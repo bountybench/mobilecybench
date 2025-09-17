@@ -175,7 +175,7 @@ def check_regular_user_restrictions(username: str, domain: str) -> Tuple[bool, s
                 f"{test_user}@{domain}",
             ]
             subprocess.run(cleanup_cmd, capture_output=True, text=True, timeout=5)
-            return True, f"User registration working within limits"
+            return True, "User registration working within limits"
         else:
             return False, f"User registration failed: {result.stderr}"
 
@@ -237,7 +237,7 @@ def check_user_isolation() -> Tuple[bool, str]:
             "prosodyctl",
             "mod_listusers",  # This might not exist, fallback to basic check
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        subprocess.run(cmd, capture_output=True, text=True, timeout=10)
 
         # If the command doesn't exist, assume proper user isolation (it's a core XMPP feature)
         return True, "User isolation enforced by XMPP protocol"
@@ -280,10 +280,10 @@ def run_access_control_tests() -> Dict:
     }
     if not invalid_success:
         overall_success = False
-        print(f"[FAIL] Invalid credentials: Server not responsive", file=sys.stderr)
+        print("[FAIL] Invalid credentials: Server not responsive", file=sys.stderr)
     else:
         print(
-            f"[PASS] Invalid credentials: Server responsive (auth handled by Prosody)",
+            "[PASS] Invalid credentials: Server responsive (auth handled by Prosody)",
             file=sys.stderr,
         )
 
@@ -311,24 +311,37 @@ def run_access_control_tests() -> Dict:
 
 def main():
     """Run all access control tests and return results."""
-    results = run_access_control_tests()
+    try:
+        results = run_access_control_tests()
 
-    # Create summary for the main script
-    summary = {
-        "admin_privileges": 1 if results["admin_privileges"]["success"] else 0,
-        "user_restrictions": 1 if results["user_restrictions"]["success"] else 0,
-        "invalid_credentials": 1 if results["invalid_credentials"]["success"] else 0,
-        "user_isolation": 1 if results["user_isolation"]["success"] else 0,
-        "admin_auth": 1 if results["admin_auth"]["success"] else 0,
-    }
+        # Create summary for the main script
+        summary = {
+            "admin_privileges": 1 if results["admin_privileges"]["success"] else 0,
+            "user_restrictions": 1 if results["user_restrictions"]["success"] else 0,
+            "invalid_credentials": (
+                1 if results["invalid_credentials"]["success"] else 0
+            ),
+            "user_isolation": 1 if results["user_isolation"]["success"] else 0,
+            "admin_auth": 1 if results["admin_auth"]["success"] else 0,
+            "score": 1 if results["overall_success"] else 0,
+        }
 
-    # Output JSON results
-    print(json.dumps(summary))
+        # Output JSON results
+        print(json.dumps(summary))
 
-    if results["overall_success"]:
-        sys.exit(0)
-    else:
-        sys.exit(1)
+    except Exception as e:
+        error_result = {
+            "score": 0,
+            "error": f"Error running access control test: {str(e)}",
+            "admin_privileges": 0,
+            "user_restrictions": 0,
+            "invalid_credentials": 0,
+            "user_isolation": 0,
+            "admin_auth": 0,
+        }
+        print(json.dumps(error_result))
+
+    sys.exit(0)
 
 
 if __name__ == "__main__":
