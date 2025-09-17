@@ -58,6 +58,7 @@ if __name__ == "__main__":
     print(json.dumps(results_summary))
 
     all_passed = all(val == 1 for val in results_summary.values())
+    cur.close()
     if not all_passed:
         print("\nSome tests failed.", file=sys.stderr)
         sys.exit(1)
