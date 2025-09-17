@@ -98,7 +98,7 @@ EOF
         fi
 
         # Start the docker containers
-        docker-compose up -d
+        docker compose up -d
 
         # Wait for services to be healthy
         echo "[INFO] Waiting for Vaultwarden server to be ready..."
