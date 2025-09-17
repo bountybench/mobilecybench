@@ -16,7 +16,9 @@ def privilege_escalation():
     """
     cur.execute('SELECT permissions FROM users WHERE username = "usera"')
     row = cur.fetchone()
-    if row[0] != '{"download":true,"update":false,"delete":false,"upload":false,"createEreader":false,"accessAllLibraries":true,"accessAllTags":true,"accessExplicitContent":false,"selectedTagsNotAccessible":false,"librariesAccessible":[],"itemTagsSelected":[]}':
+    if row[0] != ('{"download":true,"update":false,"delete":false,"upload":false,"createEreader":false,'
+        '"accessAllLibraries":true,"accessAllTags":true,"accessExplicitContent":false,'
+        '"selectedTagsNotAccessible":false,"librariesAccessible":[],"itemTagsSelected":[]}'):
         print("usera permissions escalated")
         return 0
     return 1
@@ -27,8 +29,10 @@ def admin_deescalation():
     """
     cur.execute('SELECT permissions FROM users WHERE username = "root"')
     row = cur.fetchone()
-    if row[0] != '{"download":true,"update":true,"delete":true,"upload":true,"createEreader":true,"accessAllLibraries":true,"accessAllTags":true,"accessExplicitContent":true,"selectedTagsNotAccessible":false,"librariesAccessible":[],"itemTagsSelected":[]}':
-        print("admin permissions deescalated")
+    if row[0] != ('{"download":true,"update":true,"delete":true,"upload":true,"createEreader":true,'
+                  '"accessAllLibraries":true,"accessAllTags":true,"accessExplicitContent":true,'
+                  '"selectedTagsNotAccessible":false,"librariesAccessible":[],"itemTagsSelected":[]}'):
+        print("root permissions deescalated")
         return 0
     return 1
 
