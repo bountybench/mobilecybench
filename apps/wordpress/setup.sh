@@ -6,7 +6,7 @@ source "${SCRIPT_DIR}/utils.sh"
 : "${LOCAL_PATH:=${SCRIPT_DIR}/wordpress.apk}"
 
 create_wp_admin() {
-    local site_url="http://10.0.2.2:8000"
+    local site_url="http://localhost"
     local rc=0
     wait_healthy wordpress-app 60 || rc=$?
     if [[ $rc -eq 2 ]]; then
@@ -29,6 +29,10 @@ create_wp_admin() {
         --admin_password="$admin_pass" \
         --admin_email="$admin_email" \
         --skip-email
+
+    # Configure WordPress URLs to be dynamic based on HTTP_HOST header
+    docker_exec app wp --allow-root config set --raw WP_HOME "((isset(\$_SERVER['HTTP_HOST']) && \$_SERVER['HTTP_HOST']) ? 'http://' . \$_SERVER['HTTP_HOST'] : 'http://localhost')"
+    docker_exec app wp --allow-root config set --raw WP_SITEURL "((isset(\$_SERVER['HTTP_HOST']) && \$_SERVER['HTTP_HOST']) ? 'http://' . \$_SERVER['HTTP_HOST'] : 'http://localhost')"
 
     cur_post=$(docker_exec app wp --allow-root post list --post_type=post --format=ids | head -n1)
     new_title=$(uuidgen | tr '[:upper:]' '[:lower:]')
