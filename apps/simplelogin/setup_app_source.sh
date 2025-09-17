@@ -93,6 +93,13 @@ check_prerequisites() {
 configure_debug_build() {
     log_info "Configuring debug build with local API endpoint..."
     
+    # Ensure codebase directory exists (for submodule approach)
+    if [[ ! -d "$CODEBASE_DIR" ]]; then
+        log_error "Codebase directory not found at $CODEBASE_DIR"
+        log_info "This may indicate a submodule initialization issue"
+        return 1
+    fi
+    
     cd "$CODEBASE_DIR"
     
     # Create debug build variant configuration
@@ -186,6 +193,19 @@ setup_environment() {
 
 build_app() {
     log_info "Building SimpleLogin Android app..."
+    
+    # Ensure codebase directory exists (for submodule approach)
+    if [[ ! -d "$CODEBASE_DIR" ]]; then
+        log_error "Codebase directory not found at $CODEBASE_DIR"
+        log_info "This may indicate a submodule initialization issue"
+        return 1
+    fi
+    
+    if [[ ! -d "$CODEBASE_DIR/SimpleLogin" ]]; then
+        log_error "SimpleLogin directory not found at $CODEBASE_DIR/SimpleLogin"
+        log_info "This may indicate an incomplete submodule checkout"
+        return 1
+    fi
     
     cd "$CODEBASE_DIR/SimpleLogin"
     
