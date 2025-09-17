@@ -154,8 +154,8 @@ fi
 
 sdk=$(jq -r '.sdk' "$metadata")
 if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
-    echo -e "${WARNING} Could not extract SDK from $metadata. Using default (28)."
-    sdk=28
+    echo -e "${ERROR} Could not extract SDK from $metadata."
+    exit 1
 else 
     echo -e "${INFO} SDK: $sdk"
 fi
@@ -166,7 +166,7 @@ print_header "$CYAN" "STARTING LOCAL CIA TESTS"
 run_test_check() {
     local test_name="$1"
     local vuln_scenario="$2"
-    local use_log_file="$3"
+    local use_fake_agent_log="$3"
 
     print_header "$CYAN" "RUNNING $test_name"
 
@@ -186,10 +186,10 @@ run_test_check() {
     fi
 
     echo -e "${INFO} Running checks..."
-    if [ "$use_log_file" = "true" ] && [ -n "$vuln_scenario" ]; then
+    if [ "$use_fake_agent_log" = "true" ] && [ -n "$vuln_scenario" ]; then
         ./run_checks.sh "vuln_scenarios/vuln_scenario_$vuln_scenario/fake_agent_log.log"
     else
-        ./run_checks.sh
+        ./run_checks.sh "$ROOT_DIR/dummy_log.log"
     fi
 
     if [ -n "$vuln_scenario" ]; then
@@ -225,6 +225,7 @@ run_test_check() {
 
 cd "$DIR"
 print_header "$CYAN" "SETTING UP APP FROM SOURCE"
+# Skip this step if you want to persist your apk
 checkout_commit "$DIR"
 
 # Check if run_checks.sh exists to determine test strategy and required scripts
@@ -269,6 +270,16 @@ else
 fi
 
 if [ "$HAS_RUN_CHECKS" = true ]; then
+    # Create dummy file for test confidentiality
+    cat > "$ROOT_DIR/dummy_log.log" <<'EOF'
+# Dummy log file for testing purposes
+# This file contains no actual secrets or sensitive information
+timestamp=2024-01-01T00:00:00Z
+event=test_event
+message=dummy test message
+status=ok
+EOF
+
     # Run the three test scenarios
     run_test_check "TEST CHECKS BEFORE VULNERABLE SCENARIOS" "" "false"
     run_test_check "TEST CHECKS AFTER NON-DOS VULNERABLE SCENARIO" "0" "true"
@@ -340,9 +351,24 @@ if [ -f "stop_emulator.sh" ]; then
     stop_emulator
 fi
 
+# Run linter
+print_header "$CYAN" "RUNNING LINTER"
+if [ -f "run_linter.sh" ]; then
+    echo -e "${INFO} Running linter..."
+    { ./run_linter.sh; } || { echo -e "${ERROR} run_linter.sh failed"; exit 1; }
+    echo -e "${SUCCESS} Linter completed successfully"
+else
+    echo -e "${WARNING} run_linter.sh not found, skipping linter"
+fi
+
 # Final cleanup
 print_header "$CYAN" "FINAL CLEANUP"
 if [ "$HAS_RUN_CHECKS" = true ]; then
+    # Clean up dummy log file
+    if [ -f "$ROOT_DIR/dummy_log.log" ]; then
+        rm "$ROOT_DIR/dummy_log.log"
+        echo -e "${INFO} Cleaned up dummy log file"
+    fi
     print_header "$GREEN" "LOCAL CIA TESTS COMPLETED SUCCESSFULLY"
 else
     print_header "$YELLOW" "LOCAL BASIC TESTS COMPLETED - ADD run_checks.sh FOR FULL CI"

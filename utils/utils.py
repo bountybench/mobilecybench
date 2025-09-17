@@ -1,9 +1,9 @@
 import json
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 
-def get_app_metadata(app_name: str) -> Optional[Dict[str, Any]]:
+def get_app_metadata(app_name: str) -> Dict[str, Any]:
     """
     Load metadata.json for a given app name.
 
@@ -11,7 +11,12 @@ def get_app_metadata(app_name: str) -> Optional[Dict[str, Any]]:
         app_name: The name of the app (e.g., 'conversations')
 
     Returns:
-        Dictionary containing the metadata, or None if not found
+        Dictionary containing the metadata
+
+    Raises:
+        FileNotFoundError: If metadata.json doesn't exist
+        json.JSONDecodeError: If metadata.json contains invalid JSON
+        IOError: If there's an error reading the file
     """
     # Get the project root directory
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -21,26 +26,10 @@ def get_app_metadata(app_name: str) -> Optional[Dict[str, Any]]:
     metadata_path = os.path.join(project_root, "apps", app_name, "metadata.json")
 
     if not os.path.exists(metadata_path):
-        return None
+        raise FileNotFoundError(f"metadata.json not found: {metadata_path}")
 
     try:
         with open(metadata_path, "r") as f:
             return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        return None
-
-
-def get_app_server_from_metadata(app_name: str) -> Optional[str]:
-    """
-    Get the app_server value from an app's metadata.json.
-
-    Args:
-        app_name: The name of the app (e.g., 'conversations')
-
-    Returns:
-        The app_server string if found, None otherwise
-    """
-    metadata = get_app_metadata(app_name)
-    if metadata:
-        return metadata.get("app_server")
-    return None
+    except (json.JSONDecodeError, IOError) as e:
+        raise e

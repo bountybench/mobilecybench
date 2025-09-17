@@ -69,10 +69,6 @@ def initialize_ui_automation(
             device = u2.connect()
             logger.info("Connected to device.")
 
-            logger.debug("Configuring device settings...")
-            _configure_device_defaults(device)
-
-            logger.debug("UI automation client is ready.")
             return device
 
         except Exception as e:
@@ -279,19 +275,6 @@ def _preflight_emulator_readiness():
         logger.warning("Readiness preflight failed (exit %s); continuing", e.returncode)
     except Exception as e:
         logger.debug("Preflight readiness skipped: %s", e)
-
-
-def _configure_device_defaults(device: Device):
-    """Apply safe, fast defaults on a connected device."""
-    try:
-        # Set fastinput IME to True to avoid various IME handling logic
-        device.set_fastinput_ime(enable=True)
-    except Exception as e:
-        logger.warning("Failed to set fastinput IME: %s", e)
-    try:
-        device.healthcheck()
-    except Exception as e:
-        logger.warning("Device healthcheck failed: %s", e)
 
 
 # =============================================================================

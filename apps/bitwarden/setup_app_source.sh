@@ -71,7 +71,7 @@ copy_to_project_root() {
 
 # Main function with robust logic
 main() {
-    echo "=== RUNNING build_app.sh ==="
+    echo "=== RUNNING setup_app_source.sh ==="
 
     # Bitwarden specific: create user.properties if missing
     create_user_properties
@@ -103,7 +103,7 @@ main() {
     
     echo ""
     echo "Bitwarden build completed successfully!"
-    echo === FINISHED build_app.sh ===
+    echo === FINISHED setup_app_source.sh ===
 }
 
 main
