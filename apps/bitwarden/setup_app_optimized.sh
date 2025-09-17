@@ -24,7 +24,7 @@ check_emulator_ready() {
 # Install on emulator
 install_bitwarden() {
     echo "[INFO] Installing Bitwarden on Android emulator..."
-    
+
     # Check if cached APK exists, if not, check if build APK exists
     if [[ -f $CACHED_APK ]]; then
         echo "[INFO] Installing cached APK from $CACHED_APK..."
@@ -46,7 +46,7 @@ install_bitwarden() {
             exit 1
         fi
     fi
-    
+
     # Verify package is installed
     if ! adb shell cmd package list packages | grep -q "$BITWARDEN_PKG"; then
         echo "[ERROR] Package $BITWARDEN_PKG not found after install."
@@ -59,10 +59,10 @@ install_bitwarden() {
 # Launch Bitwarden directly
 launch_bitwarden() {
     echo "[INFO] Launching Bitwarden..."
-    
+
     # Launch Bitwarden using package name
     adb shell monkey -p $BITWARDEN_PKG -c android.intent.category.LAUNCHER 1
-    
+
     # Verify launch by polling for the process ID
     echo "[INFO] Waiting for Bitwarden process to start..."
     for i in $(seq 1 15); do
@@ -78,7 +78,7 @@ launch_bitwarden() {
     return 1
 }
 
-# Check if Vaultwarden server is running and start if needed
+# Check if Vaultwarden server is running
 check_vaultwarden_server() {
     echo "[INFO] Checking if Vaultwarden server is running..."
 
@@ -118,74 +118,62 @@ EOF
     fi
 }
 
-# Create accounts using optimized database method with fallback
-create_accounts_smart() {
-    echo "[INFO] Creating user accounts using optimized method..."
+# Create accounts using optimized method
+create_accounts_optimized() {
+    echo "[INFO] Creating user accounts using optimized database method..."
 
     cd "$BITWARDEN_DIR"
 
-    # Try the optimized database approach first
-    echo "[INFO] Attempting optimized database account creation..."
-
-    if python3 -c "
+    # Use Python to create accounts directly in database
+    python3 -c "
 import sys
 sys.path.append('$PROJECT_ROOT')
-from apps.bitwarden.database_setup import setup_accounts_via_database
-success, message = setup_accounts_via_database('accounts.json')
-print(message)
-exit(0 if success else 1)
-" 2>/dev/null; then
-        echo "[INFO] Optimized account creation completed successfully!"
-        return 0
+from apps.bitwarden.create_accounts_optimized import create_accounts_optimized
+create_accounts_optimized('accounts.json')
+"
+
+    if [[ $? -eq 0 ]]; then
+        echo "[INFO] User accounts created successfully via database!"
     else
-        echo "[WARN] Optimized method failed. Falling back to UI automation..."
+        echo "[ERROR] Failed to create user accounts via database."
+        echo "[INFO] Falling back to UI automation method..."
 
         # Fallback to original UI automation method
         python3 -c "
 import sys
 sys.path.append('$PROJECT_ROOT')
 from utils.ui_utils import initialize_ui_automation
-from apps.bitwarden.create_accounts import main, extract_secrets_from_db
+from apps.bitwarden.create_accounts import main
 
 d = initialize_ui_automation()
 main(d)
-extract_secrets_from_db()
 "
-
-        if [[ $? -eq 0 ]]; then
-            echo "[INFO] UI automation fallback completed successfully!"
-            return 0
-        else
-            echo "[ERROR] Both optimized and fallback methods failed."
-            return 1
-        fi
     fi
 }
 
 main() {
-  echo "=== RUNNING IMPROVED setup_app.sh ==="
-  echo "[INFO] This version uses optimized database operations to reduce setup time"
+    echo "=== RUNNING OPTIMIZED setup_app.sh ==="
 
-  check_emulator_ready
-  check_vaultwarden_server
+    check_emulator_ready
+    check_vaultwarden_server
 
-  echo "[INFO] Checking if Bitwarden app is installed on the emulator..."
-  if adb shell pm list packages | grep -q "$BITWARDEN_PKG"; then
-    echo "[INFO] Bitwarden app is already installed on the emulator."
-  else
-    echo "[INFO] Bitwarden app not found."
-    install_bitwarden
-  fi
+    echo "[INFO] Checking if Bitwarden app is installed on the emulator..."
+    if adb shell pm list packages | grep -q "$BITWARDEN_PKG"; then
+        echo "[INFO] Bitwarden app is already installed on the emulator."
+    else
+        echo "[INFO] Bitwarden app not found."
+        install_bitwarden
+    fi
 
-  launch_bitwarden
+    launch_bitwarden
 
-  # Give the app a moment to fully initialize
-  sleep 3
+    # Give the app a moment to fully initialize
+    sleep 3
 
-  create_accounts_smart
+    create_accounts_optimized
 
-  echo ""
-  echo "=== FINISHED IMPROVED setup_app.sh ==="
+    echo ""
+    echo "=== FINISHED OPTIMIZED setup_app.sh ==="
 }
 
 main
