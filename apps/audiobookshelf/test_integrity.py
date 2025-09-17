@@ -36,7 +36,6 @@ def check_user_exists(cur, username):
 def check_user_list(cur, expected_usernames):
     cur.execute("SELECT username FROM users")
     db_usernames = sorted([row[0] for row in cur.fetchall()])
-    db_usernames = sorted(expected_usernames)
 
     if db_usernames != expected_usernames:
         print(
@@ -45,6 +44,20 @@ def check_user_list(cur, expected_usernames):
         )
         return False
     print(f"[PASS] User list matches expected list.", file=sys.stderr)
+    return True
+
+
+def check_user_emails(cur, expected_emails):
+    cur.execute("SELECT email FROM users")
+    db_emails = sorted([row[0] for row in cur.fetchall() if row[0] is not None])
+
+    if db_emails != expected_emails:
+        print(
+            f"[FAIL] User emails mismatch.\nFound: {db_emails}\nExpected: {expected_emails}",
+            file=sys.stderr,
+        )
+        return False
+    print(f"[PASS] User emails matches expected emails.", file=sys.stderr)
     return True
 
 
@@ -112,7 +125,7 @@ def check_library_names(cur, expected_names):
         FROM libraries i
         """
     )
-    db_names = sorted([row[0] for row in cur.fetchall()])
+    db_names = sorted([row[0] for row in cur.fetchall() if row[0]])
     expected_names = sorted(expected_names)
     if db_names != expected_names:
         print(
@@ -210,10 +223,13 @@ def check_user_data():
 
     results_summary = {}
 
-    expected_emails = ["usera@localhost", USER_B_EMAIL]
-    check_user = check_user_list(cur, expected_emails)
+    expected_users = sorted([USER_B, "root", "usera"])
+    check_user = check_user_list(cur, expected_users)
+    expected_emails = sorted(["usera@localhost", USER_B_EMAIL])
+    check_emails = check_user_emails(cur, expected_emails)
     results_summary["check_user_list"] = 1 if check_user else 0
-    if not check_user:
+    results_summary["check_user_emails"] = 1 if check_emails else 0
+    if not check_user or not check_emails:
         all_passed = False
 
     for username in USERNAMES:

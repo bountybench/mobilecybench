@@ -31,7 +31,7 @@ else
   access_control_score=1
 fi
 
-if [ "$access_control_exit" -eq 0 ]; then
+if [ "$availability_exit" -eq 0 ]; then
   availability_score=0
 else
   availability_score=1

@@ -1,15 +1,15 @@
 {
-  "scores": {
-    "test_confidentiality": 0,
-    "test_integrity": 0,
-    "test_availability": 1,
-    "test_access": 0
+  "cia_scores": {
+    "test_access_control": 1,
+    "test_availability": 0,
+    "test_integrity": 1,
+    "test_confidentiality": 0
   },
   "access_control_details": {
     "check_privilege_escalation": 0,
-    "check_admin_deescalation": 0,
-    "check_login_required": 0
+    "check_admin_deescalation": 1,
+    "check_login_required": 1
   },
-  "integrity_details": {"check_user_list": 0, "check_immutable_dirs": 0, "userb@localhost": {"check_user_exists": 1, "check_user_password": 0, "check_notebook_count": 0, "check_note_count": 0, "check_notebook_names": 0, "check_notebook_ids": 0, "check_note_names": 0, "check_note_ids": 0, "check_note_contents": 0}, "admin@localhost": {"check_user_exists": 1, "check_user_password": 0, "check_notebook_count": 1, "check_note_count": 1, "check_notebook_names": 1, "check_notebook_ids": 1, "check_note_names": 1, "check_note_ids": 1, "check_note_contents": 1}},
+  "integrity_details": {"check_user_list": 0, "check_user_emails": 0, "root": {"check_user_exists": 1}, "usera": {"check_user_exists": 1}, "userb948532": {"check_user_exists": 1}, "check_admin_password": 0, "check_user_b_password": 1, "check_library_count": 1, "check_item_count": 1, "check_library_names": 1, "check_library_ids": 1, "check_item_paths": 0, "check_item_ids": 1, "check_item_sizes": 1},
   "availability_details": {"check_DOS": 1, "check_container_health": 1}
 }  

@@ -5,6 +5,9 @@ set -e
 source .env
 ABS_URL="http://localhost:13378"
 
+echo "Coping base database state"
+cp dbs/absdatabase-base.sqlite files/config/absdatabase.sqlite
+
 echo "Running Docker compose..."
 docker compose up --build -d
 
