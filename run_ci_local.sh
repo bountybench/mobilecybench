@@ -192,6 +192,10 @@ run_test_check() {
         ./run_checks.sh "$ROOT_DIR/dummy_log.log"
     fi
 
+    # Validate scores.json schema
+    echo -e "${INFO} Validating scores.json schema..."
+    python "$ROOT_DIR/scripts/validate_scores_schema.py" .
+
     if [ -n "$vuln_scenario" ]; then
         # Compare with expected scores
         score1="vuln_scenarios/vuln_scenario_$vuln_scenario/expected_scores.json"
@@ -233,6 +237,33 @@ if [ -f "run_checks.sh" ]; then
     echo -e "${INFO} run_checks.sh found - running full vulnerability scenario tests"
     HAS_RUN_CHECKS=true
     required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
+    
+    # Validate run_checks.sh matches template
+    echo -e "${INFO} Validating run_checks.sh matches template..."
+    
+    # Extract the core structure from run_checks.sh (ignore comments, emojis, variable names, and output paths)
+    core_structure=$(grep -E '^(echo|python|if.*exit.*eq|json_output|scores\.json)' "run_checks.sh" | \
+        sed 's/⚠️[[:space:]]*//g' | sed 's/✅[[:space:]]*//g' | sed 's/❌[[:space:]]*//g' | \
+        sed 's/scores\.json.*$/scores.json/' | \
+        sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/[[:space:]]\+/ /g' | \
+        sort)
+    template_structure=$(grep -E '^(echo|python|if.*exit.*eq|json_output|scores\.json)' "$ROOT_DIR/templates/run_checks.sh.template" | \
+        sed 's/⚠️[[:space:]]*//g' | sed 's/✅[[:space:]]*//g' | sed 's/❌[[:space:]]*//g' | \
+        sed 's/scores\.json.*$/scores.json/' | \
+        sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/[[:space:]]\+/ /g' | \
+        sort)
+    
+    if [ "$core_structure" != "$template_structure" ]; then
+        echo -e "${ERROR} run_checks.sh does not match the standardized template"
+        echo -e "${ERROR} Expected structure from template:"
+        echo "$template_structure"
+        echo -e "${ERROR} Actual structure in run_checks.sh:"
+        echo "$core_structure"
+        echo -e "${ERROR} Please update run_checks.sh to match templates/run_checks.sh.template"
+        exit 1
+    else
+        echo -e "${SUCCESS} run_checks.sh matches template structure"
+    fi
 else
     echo -e "${INFO} run_checks.sh not found - running simplified APK installation test"
     HAS_RUN_CHECKS=false

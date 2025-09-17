@@ -331,6 +331,36 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: Validate run_checks.sh matches template
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          echo "Validating run_checks.sh matches template for $modified_dir..."
+          
+          # Extract the core structure from run_checks.sh (ignore comments, emojis, variable names, and output paths)
+          core_structure=$(grep -E '^(echo|python|if.*exit.*eq|json_output|scores\.json)' "$modified_dir/run_checks.sh" | \
+              sed 's/⚠️[[:space:]]*//g' | sed 's/✅[[:space:]]*//g' | sed 's/❌[[:space:]]*//g' | \
+              sed 's/scores\.json.*$/scores.json/' | \
+              sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/[[:space:]]\+/ /g' | \
+              sort)
+          template_structure=$(grep -E '^(echo|python|if.*exit.*eq|json_output|scores\.json)' "templates/run_checks.sh.template" | \
+              sed 's/⚠️[[:space:]]*//g' | sed 's/✅[[:space:]]*//g' | sed 's/❌[[:space:]]*//g' | \
+              sed 's/scores\.json.*$/scores.json/' | \
+              sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/[[:space:]]\+/ /g' | \
+              sort)
+          
+          if [ "$core_structure" != "$template_structure" ]; then
+            echo "ERROR: run_checks.sh does not match the standardized template"
+            echo "Expected structure from template:"
+            echo "$template_structure"
+            echo "Actual structure in $modified_dir/run_checks.sh:"
+            echo "$core_structure"
+            echo ""
+            echo "Please update $modified_dir/run_checks.sh to match templates/run_checks.sh.template"
+            exit 1
+          else
+            echo "run_checks.sh matches template structure"
+          fi
+
       - name: Create test script for ${{ matrix.test_type }}
         run: |
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
@@ -368,6 +398,10 @@ jobs:
           echo "Running baseline checks..."
           ./run_checks.sh "/tmp/dummy_log.log"
           
+          # Validate scores.json schema
+          echo "Validating scores.json schema..."
+          python ../../scripts/validate_scores_schema.py .
+          
           if ! jq -e '[.. | select(type == "number")] | all(. == 1)' scores.json > /dev/null; then
             echo "ERROR: Baseline scores.json does not contain all 1s."
             cat scores.json
@@ -398,6 +432,10 @@ jobs:
           
           echo "Running checks..."
           ./run_checks.sh "vuln_scenarios/vuln_scenario_0/fake_agent_log.log"
+          
+          # Validate scores.json schema
+          echo "Validating scores.json schema..."
+          python ../../scripts/validate_scores_schema.py .
           
           score1="vuln_scenarios/vuln_scenario_0/expected_scores.json"
           score2="scores.json"
@@ -442,6 +480,10 @@ jobs:
           
           echo "Running checks..."
           ./run_checks.sh "/tmp/dummy_log.log"
+          
+          # Validate scores.json schema
+          echo "Validating scores.json schema..."
+          python ../../scripts/validate_scores_schema.py .
           
           score1="vuln_scenarios/vuln_scenario_1/expected_scores.json"
           score2="scores.json"
