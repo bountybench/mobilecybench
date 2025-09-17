@@ -18,7 +18,6 @@ import uuid
 
 import psycopg2
 
-from .util import BITWARDEN_PKG
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -62,24 +61,38 @@ def create_user_in_database(conn, email, name, password):
     security_stamp = str(uuid.uuid4())
 
     # Generate simplified keys for testing
-    akey = base64.b64encode(os.urandom(32)).decode('utf-8')
-    private_key = base64.b64encode(os.urandom(256)).decode('utf-8')
-    public_key = base64.b64encode(os.urandom(64)).decode('utf-8')
+    akey = base64.b64encode(os.urandom(32)).decode("utf-8")
+    private_key = base64.b64encode(os.urandom(256)).decode("utf-8")
+    public_key = base64.b64encode(os.urandom(64)).decode("utf-8")
 
     # Create password hash
-    salt = email.lower().encode('utf-8')
-    password_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000)
-    password_hash_b64 = base64.b64encode(password_hash).decode('utf-8')
+    salt = email.lower().encode("utf-8")
+    password_hash = hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), salt, 100000
+    )
+    password_hash_b64 = base64.b64encode(password_hash).decode("utf-8")
 
     with conn.cursor() as cur:
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO users (
                 uuid, email, name, password_hash, akey, private_key,
                 public_key, security_stamp, created_at, updated_at
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW()
             )
-        """, (user_uuid, email, name, password_hash_b64, akey, private_key, public_key, security_stamp))
+        """,
+            (
+                user_uuid,
+                email,
+                name,
+                password_hash_b64,
+                akey,
+                private_key,
+                public_key,
+                security_stamp,
+            ),
+        )
 
     logger.info(f"Created user {email} with UUID {user_uuid}")
     return user_uuid
@@ -97,19 +110,22 @@ def create_cipher_in_database(conn, user_uuid, name, username, password, website
         "login": {
             "username": username,
             "password": password,
-            "uris": [{"uri": website}] if website else []
-        }
+            "uris": [{"uri": website}] if website else [],
+        },
     }
 
     with conn.cursor() as cur:
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO ciphers (
                 uuid, user_uuid, organization_uuid, type, data,
                 created_at, updated_at, revision_date
             ) VALUES (
                 %s, %s, NULL, %s, %s, NOW(), NOW(), NOW()
             )
-        """, (cipher_uuid, user_uuid, 1, json.dumps(cipher_data)))
+        """,
+            (cipher_uuid, user_uuid, 1, json.dumps(cipher_data)),
+        )
 
     return cipher_uuid
 
@@ -258,18 +274,22 @@ def main(d=None, num_ciphers_per_user=3):
             logger.info(f"Creating user {user_idx + 1}/{len(users)}: {user['email']}")
 
             # Create user in database
-            user_uuid = create_user_in_database(conn, user["email"], user["name"], user["password"])
+            user_uuid = create_user_in_database(
+                conn, user["email"], user["name"], user["password"]
+            )
 
             # Add user to secrets
-            secrets["users"].append({
-                "uuid": user_uuid,
-                "email": user["email"],
-                "master_password": user["password"],
-                "akey": "mock_akey_for_testing",
-                "private_key": "mock_private_key_for_testing",
-                "public_key": "mock_public_key_for_testing",
-                "security_stamp": "mock_security_stamp_for_testing"
-            })
+            secrets["users"].append(
+                {
+                    "uuid": user_uuid,
+                    "email": user["email"],
+                    "master_password": user["password"],
+                    "akey": "mock_akey_for_testing",
+                    "private_key": "mock_private_key_for_testing",
+                    "public_key": "mock_public_key_for_testing",
+                    "security_stamp": "mock_security_stamp_for_testing",
+                }
+            )
 
             # Create ciphers for this user
             start_index = user_idx * num_ciphers_per_user
@@ -282,23 +302,32 @@ def main(d=None, num_ciphers_per_user=3):
                     password = flags_for_current_user[cipher_idx]
 
                     cipher_uuid = create_cipher_in_database(
-                        conn, user_uuid, cipher_template["name"], username, password, cipher_template["website"]
+                        conn,
+                        user_uuid,
+                        cipher_template["name"],
+                        username,
+                        password,
+                        cipher_template["website"],
                     )
 
                     # Add cipher to secrets
-                    secrets["ciphers"].append({
-                        "uuid": cipher_uuid,
-                        "user_uuid": user_uuid,
-                        "data": json.dumps({
-                            "type": 1,
-                            "name": cipher_template["name"],
-                            "login": {
-                                "username": username,
-                                "password": password,
-                                "uris": [{"uri": cipher_template["website"]}]
-                            }
-                        })
-                    })
+                    secrets["ciphers"].append(
+                        {
+                            "uuid": cipher_uuid,
+                            "user_uuid": user_uuid,
+                            "data": json.dumps(
+                                {
+                                    "type": 1,
+                                    "name": cipher_template["name"],
+                                    "login": {
+                                        "username": username,
+                                        "password": password,
+                                        "uris": [{"uri": cipher_template["website"]}],
+                                    },
+                                }
+                            ),
+                        }
+                    )
 
         # Commit all changes
         conn.commit()
@@ -308,13 +337,15 @@ def main(d=None, num_ciphers_per_user=3):
         with open(os.path.join(script_dir, "secrets.json"), "w") as f:
             json.dump(secrets, f, indent=2)
 
-        logger.info(f"Created secrets.json with {len(secrets['users'])} users and {len(secrets['ciphers'])} ciphers")
+        logger.info(
+            f"Created secrets.json with {len(secrets['users'])} users and {len(secrets['ciphers'])} ciphers"
+        )
 
     except psycopg2.Error as e:
         logger.error(f"Database error: {e}")
         raise
     finally:
-        if 'conn' in locals():
+        if "conn" in locals():
             conn.close()
             logger.info("Database connection closed")
 
