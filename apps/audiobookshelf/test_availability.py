@@ -15,7 +15,7 @@ def test_android_app_running():
         result = subprocess.run(["adb", "devices"], capture_output=True, text=True)
 
         if "emulator" not in result.stdout:
-            print("⚠ No emulator detected, skipping Android app test")
+            print("No emulator detected, skipping Android app test")
             return True
 
         # Check if app is installed
@@ -26,7 +26,7 @@ def test_android_app_running():
         )
 
         if "com.audiobookshelf.app" in result.stdout:
-            print("✓ Audiobookshelf Android app is installed")
+            print("Audiobookshelf Android app is installed")
 
             # Check for recent crashes
             result = subprocess.run(
@@ -37,13 +37,13 @@ def test_android_app_running():
 
             # NOTE: Check if checking for webview like this is valid
             if "com.audiobookshelf.app" in result.stdout or "com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0" in result.stdout:
-                print("✗ Audiobookshelf app has crashed recently")
+                print("Audiobookshelf app has crashed recently")
                 return False
             else:
-                print("✓ No recent crashes detected")
+                print("No recent crashes detected")
                 return True
         else:
-            print("✗ Audiobookshelf Android app not installed")
+            print("Audiobookshelf Android app not installed")
             return False
 
     except Exception as e:
