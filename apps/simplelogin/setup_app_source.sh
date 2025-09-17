@@ -89,45 +89,6 @@ check_prerequisites() {
     log_success "Prerequisites check passed"
 }
 
-setup_submodule() {
-    log_info "Setting up SimpleLogin Android app submodule..."
-    
-    local repo_url
-    local commit_version
-    
-    # Extract repo and commit from metadata.json
-    repo_url=$(jq -r '.repo' "$METADATA_FILE")
-    commit_version=$(jq -r '.commit_version' "$METADATA_FILE")
-    
-    if [[ "$repo_url" == "null" || "$commit_version" == "null" ]]; then
-        log_error "Invalid metadata.json - missing repo or commit_version"
-        return 1
-    fi
-    
-    # Remove existing codebase if it exists
-    if [[ -d "$CODEBASE_DIR" ]]; then
-        log_info "Removing existing codebase directory"
-        rm -rf "$CODEBASE_DIR"
-    fi
-    
-    # Clone the repository
-    log_info "Cloning repository: $repo_url"
-    if ! git clone "$repo_url" "$CODEBASE_DIR"; then
-        log_error "Failed to clone repository"
-        return 1
-    fi
-    
-    # Checkout specific commit/branch
-    cd "$CODEBASE_DIR"
-    log_info "Checking out: $commit_version"
-    if ! git checkout "$commit_version"; then
-        log_error "Failed to checkout $commit_version"
-        return 1
-    fi
-    
-    cd "$SCRIPT_DIR"
-    log_success "Submodule setup completed"
-}
 
 configure_debug_build() {
     log_info "Configuring debug build with local API endpoint..."
@@ -328,7 +289,6 @@ main() {
     log_info "Starting SimpleLogin Android app setup..."
     
     check_prerequisites
-    setup_submodule
     configure_debug_build
     setup_environment
     build_app
