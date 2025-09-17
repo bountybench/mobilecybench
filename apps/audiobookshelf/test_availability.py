@@ -37,7 +37,8 @@ def test_android_app_running():
 
             # NOTE: Check if checking for webview like this is valid
             if ("com.audiobookshelf.app" in result.stdout or 
-                "com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0" in result.stdout):
+                "com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0"
+                in result.stdout):
                 print("Audiobookshelf app has crashed recently")
                 return False
             else:
