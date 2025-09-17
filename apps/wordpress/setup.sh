@@ -2,7 +2,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/utils.sh"
 : "${REPO_DIR:=codebase}"
-: "${APK_PATH:=${REPO_DIR}/wordpress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk}"
+: "${APK_PATH:=${REPO_DIR}/WordPress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk}"
 : "${LOCAL_PATH:=${SCRIPT_DIR}/wordpress.apk}"
 
 create_wp_admin() {
@@ -88,7 +88,7 @@ build_wordpress() {
     pushd "${REPO_DIR}" >/dev/null
     chmod +x gradlew
     ./gradlew assembleWordpressVanillaDebug
-    cp ${APK_PATH} ${SCRIPT_DIR}/wordpress.apk
+    cp "${APK_PATH}" "${SCRIPT_DIR}/wordpress.apk"
     popd >/dev/null
 }
 

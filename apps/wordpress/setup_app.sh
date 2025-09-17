@@ -42,7 +42,7 @@ verify_login() {
 }
 
 main() {
-    APK_PATH=${1:-codebase/wordpress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk}
+    APK_PATH=${1:-codebase/WordPress/build/outputs/apk/wordpressVanilla/debug/org.wordpress.android-wordpress-vanilla-debug.apk}
     log_info "Android app setup starting..."
     start_emulator "${AVD_NAME}"
     adb shell settings put global window_animation_scale 0
