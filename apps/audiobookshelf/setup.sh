@@ -6,6 +6,7 @@ source .env
 ABS_URL="http://localhost:13378"
 
 echo "Copying base database state"
+mkdir -p files/config
 cp dbs/absdatabase-base.sqlite files/config/absdatabase.sqlite
 
 echo "Running Docker compose..."
