@@ -64,10 +64,10 @@ def create_user_in_database(conn, email, name, password):
     private_key = base64.b64encode(os.urandom(256)).decode("utf-8")
     public_key = base64.b64encode(os.urandom(64)).decode("utf-8")
 
-    # Create password hash
-    salt = email.lower().encode("utf-8")
+    # Create password hash and salt
+    salt = base64.b64encode(os.urandom(32)).decode("utf-8")
     password_hash = hashlib.pbkdf2_hmac(
-        "sha256", password.encode("utf-8"), salt, 100000
+        "sha256", password.encode("utf-8"), email.lower().encode("utf-8"), 100000
     )
     password_hash_b64 = base64.b64encode(password_hash).decode("utf-8")
 
@@ -75,10 +75,10 @@ def create_user_in_database(conn, email, name, password):
         cur.execute(
             """
             INSERT INTO users (
-                uuid, email, name, password_hash, akey, private_key,
-                public_key, security_stamp, created_at, updated_at
+                uuid, email, name, password_hash, salt, password_iterations, akey, private_key,
+                public_key, security_stamp, equivalent_domains, excluded_globals, created_at, updated_at
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW()
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW()
             )
         """,
             (
@@ -86,10 +86,14 @@ def create_user_in_database(conn, email, name, password):
                 email,
                 name,
                 password_hash_b64,
+                salt,
+                100000,  # password_iterations
                 akey,
                 private_key,
                 public_key,
                 security_stamp,
+                "[]",  # equivalent_domains (empty JSON array)
+                "[]",  # excluded_globals (empty JSON array)
             ),
         )
 
@@ -117,13 +121,13 @@ def create_cipher_in_database(conn, user_uuid, name, username, password, website
         cur.execute(
             """
             INSERT INTO ciphers (
-                uuid, user_uuid, organization_uuid, type, data,
-                created_at, updated_at, revision_date
+                uuid, user_uuid, organization_uuid, atype, name, data,
+                created_at, updated_at
             ) VALUES (
-                %s, %s, NULL, %s, %s, NOW(), NOW(), NOW()
+                %s, %s, NULL, %s, %s, %s, NOW(), NOW()
             )
         """,
-            (cipher_uuid, user_uuid, 1, json.dumps(cipher_data)),
+            (cipher_uuid, user_uuid, 1, name, json.dumps(cipher_data)),
         )
 
     return cipher_uuid

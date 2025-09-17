@@ -14,6 +14,7 @@ __pycache__/
 scores.json
 baseline.json
 secrets.json
+flags.json
 public/node_modules
 ngrok.yml
 baseline_android_dir.txt
