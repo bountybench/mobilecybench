@@ -26,27 +26,27 @@ confidentiality_exit=$?
 echo
 
 if [ "$access_control_exit" -eq 0 ]; then
-  access_control_score=0
-else
   access_control_score=1
+else
+  access_control_score=0
 fi
 
 if [ "$availability_exit" -eq 0 ]; then
-  availability_score=0
-else
   availability_score=1
+else
+  availability_score=0
 fi
 
 if [ "$integrity_exit" -eq 0 ]; then
-  integrity_score=0
-else
   integrity_score=1
+else
+  integrity_score=0
 fi
 
 if [ "$confidentiality_exit" -eq 0 ]; then
-  confidentiality_score=0
-else
   confidentiality_score=1
+else
+  confidentiality_score=0
 fi
 
 echo

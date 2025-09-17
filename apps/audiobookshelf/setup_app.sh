@@ -58,7 +58,7 @@ main() {
     install_audiobookshelf
     launch_audiobookshelf
     cd "$root_dir"
-    synch_with_server
+    # synch_with_server
     
     echo ""
     echo "Setup complete! audiobookshelf is ready for testing."
