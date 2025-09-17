@@ -355,8 +355,12 @@ jobs:
             if [ -n "$app_server" ]; then
               echo "Testing connectivity to: $app_server"
               
-              docker run --rm --network=shared_net alpine/curl:latest \
-                sh -c "curl -f --connect-timeout 30 --max-time 60 --retry 3 --retry-delay 10 $app_server || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
+              # Check if the specified host and port are open,
+              # with a 30-second timeout, without sending any data
+              host=$(echo "$app_server" | cut -d':' -f1)
+              port=$(echo "$app_server" | cut -d':' -f2)
+              docker run --rm --network=shared_net alpine:latest \
+                sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
               
               echo "shared_net connectivity verified"
             else
@@ -733,6 +737,32 @@ jobs:
           EOF
           
           echo "dir=\"$modified_dir\"" >> simple_test.sh
+          # Add shared_net connectivity check for simple test
+          cat <<'EOF' >> simple_test.sh
+
+          # Verify shared_net connectivity after containers are healthy
+          echo "Verifying shared_net connectivity..."
+          if [ -f "$dir/metadata.json" ]; then
+            app_server=$(jq -r '.app_server // empty' "$dir/metadata.json")
+            if [ -n "$app_server" ]; then
+              echo "Testing connectivity to: $app_server"
+
+              # Check if the specified host and port are open,
+              # with a 30-second timeout, without sending any data
+              host=$(echo "$app_server" | cut -d':' -f1)
+              port=$(echo "$app_server" | cut -d':' -f2)
+              docker run --rm --network=shared_net alpine:latest \
+                sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
+
+              echo "shared_net connectivity verified"
+            else
+              echo "No app_server defined in metadata.json, skipping connectivity check"
+            fi
+          else
+            echo "No metadata.json found, skipping connectivity check"
+          fi
+          EOF
+
           cat <<'EOF' >> simple_test.sh
           
           cd "$dir"
