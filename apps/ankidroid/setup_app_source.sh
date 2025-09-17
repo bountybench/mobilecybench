@@ -49,7 +49,9 @@ java -version
   -x :AnkiDroid:stripAmazonDebugDebugSymbols
 
 # ---- Copy first debug APK to apps/ankidroid/app.apk ----
-APK_PATH="$(find . -type f -name '*full*debug*.apk' | head -n 1)"
+APK_PATH="$(find . -type f -name '*debug*.apk' \
+  | grep -Ei 'arm64|aarch64|universal' \
+  | head -n 1)"
 [[ -n "${APK_PATH:-}" ]] || { echo "No debug APK found"; exit 1; }
 cp -f "$APK_PATH" ../app.apk
 echo "Built APK at apps/ankidroid/app.apk"
