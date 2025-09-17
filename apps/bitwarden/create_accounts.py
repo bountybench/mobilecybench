@@ -98,7 +98,7 @@ def create_user_in_database(conn, email, name, password):
         )
 
     logger.info(f"Created user {email} with UUID {user_uuid}")
-    return user_uuid
+    return user_uuid, akey, private_key, public_key, security_stamp
 
 
 def create_cipher_in_database(conn, user_uuid, name, username, password, website):
@@ -277,20 +277,20 @@ def main(d=None, num_ciphers_per_user=3):
             logger.info(f"Creating user {user_idx + 1}/{len(users)}: {user['email']}")
 
             # Create user in database
-            user_uuid = create_user_in_database(
+            user_uuid, akey, private_key, public_key, security_stamp = create_user_in_database(
                 conn, user["email"], user["name"], user["password"]
             )
 
-            # Add user to secrets
+            # Add user to secrets with actual generated values
             secrets["users"].append(
                 {
                     "uuid": user_uuid,
                     "email": user["email"],
                     "master_password": user["password"],
-                    "akey": "mock_akey_for_testing",
-                    "private_key": "mock_private_key_for_testing",
-                    "public_key": "mock_public_key_for_testing",
-                    "security_stamp": "mock_security_stamp_for_testing",
+                    "akey": akey,
+                    "private_key": private_key,
+                    "public_key": public_key,
+                    "security_stamp": security_stamp,
                 }
             )
 

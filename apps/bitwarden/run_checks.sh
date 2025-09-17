@@ -64,6 +64,11 @@ echo "Integrity:                $integrity_score"
 echo "Confidentiality:          $confidentiality_score"
 echo
 
+# Ensure output variables contain valid JSON, fallback to empty objects
+integrity_json="${integrity_output:-'{}'}"
+availability_json="${availability_output:-'{}'}"
+access_control_json="${access_control_output:-'{}'}"
+
 json_output=$(cat <<EOF
 {
   "scores": {
@@ -72,9 +77,9 @@ json_output=$(cat <<EOF
     "integrity": $integrity_score,
     "confidentiality": $confidentiality_score
   },
-  "integrity_details": $integrity_output,
-  "availability_details": $availability_output,
-  "access_control_details": $access_control_output
+  "integrity_details": $integrity_json,
+  "availability_details": $availability_json,
+  "access_control_details": $access_control_json
 }
 EOF
 )

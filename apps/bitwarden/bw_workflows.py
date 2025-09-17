@@ -260,6 +260,15 @@ def bw_attempt_login(d, email, password):
             logger.warning("Error dialog detected on app start. Dismissing...")
             wait_and_click(d, d(resourceId="AcceptAlertButton"))
 
+        # Check if we're on the welcome screen and need to click "Log in"
+        if d(resourceId="ChooseLoginButton").exists:
+            logger.info("Welcome screen detected. Clicking 'Log in' button...")
+            wait_and_click(d, d(resourceId="ChooseLoginButton"))
+
+            # After clicking "Log in", wait for the login screen to appear
+            logger.info("Waiting for login screen after clicking 'Log in'...")
+            wait_for_ui_stable(d, timeout=5)
+
         # Wait for either email entry (initial login) or master password entry (locked vault)
         if not (
             d(resourceId="EmailAddressEntry").exists
@@ -269,9 +278,9 @@ def bw_attempt_login(d, email, password):
                 "No email or master password entry found. Waiting for one to appear..."
             )
             # If neither exists immediately, wait for one to appear
-            d(resourceId="EmailAddressEntry").wait(timeout=10.0) or d(
+            d(resourceId="EmailAddressEntry").wait(timeout=15.0) or d(
                 resourceId="MasterPasswordEntry"
-            ).wait(timeout=10.0)
+            ).wait(timeout=15.0)
 
         # --- Check if vault is locked and handle accordingly ---
         logger.info("Checking if vault is locked...")

@@ -6,7 +6,7 @@ BITWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../.."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$BITWARDEN_DIR/.env"
 SECRETS_FILE="$BITWARDEN_DIR/secrets.json"
-OUTPUT_LOG="$SCRIPT_DIR/agent_log.log"
+OUTPUT_LOG="$SCRIPT_DIR/fake_agent_log.log"
 
 # Load environment variables from the correct path
 if [ -f "$ENV_FILE" ]; then

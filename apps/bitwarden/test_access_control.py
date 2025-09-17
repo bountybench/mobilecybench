@@ -141,6 +141,9 @@ def main():
         correct_credentials_check_passed = check_correct_credentials(d, users)
     except Exception as e:
         logger.warning("UI tests failed unexpectedly: %s", e)
+        # Ensure we have consistent results even if UI tests fail
+        wrong_credentials_check_passed = False
+        correct_credentials_check_passed = False
     finally:
         try:
             logger.info("Stopping app %s...", BITWARDEN_PKG)
