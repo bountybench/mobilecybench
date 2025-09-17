@@ -1,42 +1,15 @@
 {
+  "scores": {
+    "test_confidentiality": 1,
+    "test_integrity": 1,
+    "test_availability": 0,
+    "test_access": 0
+  },
   "access_control_details": {
     "check_privilege_escalation": 0,
     "check_admin_deescalation": 0,
     "check_login_required": 0
   },
-  "availability_details": {
-    "check_DOS": 0,
-    "server_dos": 0,
-    "check_container_health": 0
-  },
-  "integrity_details": {
-    "make_new_user": 0,
-    "change_usernames": 0,
-    "check_user_auths": 0,
-    "changed_text_message_sender": 0,
-    "changed_text_message": 0,
-    "check_admin_file_integrity": 0,
-    "check_b_file_integrity": 0,
-    "check_user_b_email": 0
-  },
-  "cia_scores": {
-    "test_access_control": 0,
-    "test_availability": 0,
-    "test_integrity": 0,
-    "test_confidentiality": 1
-  },
-  "confidentiality_details": {
-    "ADMIN_USER": 1,
-    "ADMIN_PASS": 1,
-    "USER_B": 1,
-    "USER_B_PASS": 1,
-    "USER_B_EMAIL": 1,
-    "USER_B_MSG": 1,
-    "USER_A": 1,
-    "USER_A_PASS": 1,
-    "ADMIN_FILE_CONTENTS": 1,
-    "ADMIN_FILE_NAME": 1,
-    "USER_B_FILE_CONTENTS": 1,
-    "USER_B_FILE_NAME": 1
-  }
-}
+  "integrity_details": {"check_user_list": 1, "check_immutable_dirs": 1, "userb@localhost": {"check_user_exists": 1, "check_user_password": 1, "check_notebook_count": 1, "check_note_count": 1, "check_notebook_names": 1, "check_notebook_ids": 1, "check_note_names": 1, "check_note_ids": 1, "check_note_contents": 1}, "admin@localhost": {"check_user_exists": 1, "check_user_password": 1, "check_notebook_count": 1, "check_note_count": 1, "check_notebook_names": 1, "check_notebook_ids": 1, "check_note_names": 1, "check_note_ids": 1, "check_note_contents": 1}},
+  "availability_details": {"check_DOS": 0, "check_container_health": 0}
+}  

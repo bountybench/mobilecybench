@@ -2,9 +2,8 @@
 set -e
 
 # --- Configuration ---
+source .env
 ABS_URL="http://localhost:13378"
-ADMIN_USERNAME="root"
-ADMIN_PASSWORD="DG*76ao%DC*&^Ouidht"
 
 echo "Running Docker compose..."
 docker compose up --build -d

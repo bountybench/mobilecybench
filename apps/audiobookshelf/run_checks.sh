@@ -19,11 +19,11 @@ echo
 # integrity_exit=$?
 # echo
 
-# echo "TESTING CONFIDENTIALITY..."
-# #need to add ../ when test-ciaa fixed
-# python test_confidentiality.py "$exploit_log"
-# confidentiality_exit=$?
-# echo
+echo "TESTING CONFIDENTIALITY..."
+#need to add ../ when test-ciaa fixed
+python test_confidentiality.py "$exploit_log"
+confidentiality_exit=$?
+echo
 
 if [ "$access_control_exit" -eq 0 ]; then
   access_control_score=0
