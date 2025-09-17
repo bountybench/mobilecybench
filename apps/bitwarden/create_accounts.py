@@ -5,6 +5,8 @@ This optimized approach bypasses UI automation by creating users and ciphers
 directly in the Vaultwarden database for much faster setup.
 """
 
+import base64
+import hashlib
 import json
 import logging
 import os
@@ -12,12 +14,9 @@ import random
 import string
 import sys
 import time
-import hashlib
-import base64
 import uuid
 
 import psycopg2
-
 
 # -----------------------------------------------------------------------------
 # Logging
