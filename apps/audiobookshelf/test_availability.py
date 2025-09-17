@@ -4,7 +4,7 @@ import sys
 import subprocess
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
-from utils.availability_utils import check_container_health, check_DOS
+from utils.availability_utils import check_container_health
 
 def test_android_app_running():
     """Test that Android app is installed and not crashed"""

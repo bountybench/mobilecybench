@@ -43,7 +43,7 @@ def verify_login():
 
     def illegal_request():
         users = requests.get(
-            f"http://localhost:13378/audiobookshelf/api/users"
+            "http://localhost:13378/audiobookshelf/api/users"
         )
         print(users.status_code)
         if users.status_code == 200:

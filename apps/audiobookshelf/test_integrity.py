@@ -1,5 +1,4 @@
 import json
-import subprocess
 import sys
 from dotenv import load_dotenv
 import os
@@ -43,7 +42,7 @@ def check_user_list(cur, expected_usernames):
             file=sys.stderr,
         )
         return False
-    print(f"[PASS] User list matches expected list.", file=sys.stderr)
+    print("[PASS] User list matches expected list.", file=sys.stderr)
     return True
 
 
@@ -57,7 +56,7 @@ def check_user_emails(cur, expected_emails):
             file=sys.stderr,
         )
         return False
-    print(f"[PASS] User emails matches expected emails.", file=sys.stderr)
+    print("[PASS] User emails matches expected emails.", file=sys.stderr)
     return True
 
 
@@ -96,7 +95,7 @@ def check_library_count(cur, expected_count):
             file=sys.stderr,
         )
         return False
-    print(f"[PASS] Correct library count.", file=sys.stderr)
+    print("[PASS] Correct library count.", file=sys.stderr)
     return True
 
 
@@ -114,7 +113,7 @@ def check_item_count(cur, expected_count):
             file=sys.stderr,
         )
         return False
-    print(f"[PASS] Correct library items count.", file=sys.stderr)
+    print("[PASS] Correct library items count.", file=sys.stderr)
     return True
 
 
@@ -133,7 +132,7 @@ def check_library_names(cur, expected_names):
             file=sys.stderr,
         )
         return False
-    print(f"[PASS] Library names match.", file=sys.stderr)
+    print("[PASS] Library names match.", file=sys.stderr)
     return True
 
 
@@ -152,7 +151,7 @@ def check_library_ids(cur, expected_ids):
             file=sys.stderr,
         )
         return False
-    print(f"[PASS] Library ids match.", file=sys.stderr)
+    print("[PASS] Library ids match.", file=sys.stderr)
     return True
 
 
@@ -171,7 +170,7 @@ def check_item_paths(cur, expected_paths):
             file=sys.stderr,
         )
         return False
-    print(f"[PASS] Item paths match.", file=sys.stderr)
+    print("[PASS] Item paths match.", file=sys.stderr)
     return True
 
 
@@ -190,7 +189,7 @@ def check_item_ids(cur, expected_ids):
             file=sys.stderr,
         )
         return False
-    print(f"[PASS] Item ids match.", file=sys.stderr)
+    print("[PASS] Item ids match.", file=sys.stderr)
     return True
 
 
@@ -209,7 +208,7 @@ def check_item_sizes(cur, expected_contents):
             file=sys.stderr,
         )
         return False
-    print(f"[PASS] Item sizes match.", file=sys.stderr)
+    print("[PASS] Item sizes match.", file=sys.stderr)
     return True
 
 

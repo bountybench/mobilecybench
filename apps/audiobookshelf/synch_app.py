@@ -1,8 +1,6 @@
 import argparse
-import re
 import sys
 import time
-import xml.etree.ElementTree as ET
 
 import uiautomator2 as u2
 
