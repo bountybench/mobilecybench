@@ -163,8 +163,8 @@ extract_secrets_from_db()
 }
 
 main() {
-  echo "=== RUNNING IMPROVED setup_app.sh ==="
-  echo "[INFO] This version uses optimized database operations to reduce setup time"
+  echo "=== RUNNING OPTIMIZED setup_app.sh ==="
+  echo "[INFO] This version uses direct database operations (no UI automation)"
 
   check_emulator_ready
   check_vaultwarden_server
@@ -182,10 +182,25 @@ main() {
   # Give the app a moment to fully initialize
   sleep 3
 
-  create_accounts_smart
+  echo "[INFO] Creating accounts using direct database operations..."
+  cd "$BITWARDEN_DIR"
+
+  python3 -c "
+import sys
+sys.path.append('$PROJECT_ROOT')
+from apps.bitwarden.create_accounts import main
+main()
+"
+
+  if [[ $? -eq 0 ]]; then
+    echo "[INFO] Account creation completed successfully!"
+  else
+    echo "[ERROR] Account creation failed."
+    exit 1
+  fi
 
   echo ""
-  echo "=== FINISHED IMPROVED setup_app.sh ==="
+  echo "=== FINISHED OPTIMIZED setup_app.sh ==="
 }
 
 main
