@@ -10,6 +10,6 @@
     "check_admin_deescalation": 0,
     "check_login_required": 0
   },
-  "integrity_details": {"check_user_list": 1, "check_immutable_dirs": 1, "userb@localhost": {"check_user_exists": 1, "check_user_password": 1, "check_notebook_count": 1, "check_note_count": 1, "check_notebook_names": 1, "check_notebook_ids": 1, "check_note_names": 1, "check_note_ids": 1, "check_note_contents": 1}, "admin@localhost": {"check_user_exists": 1, "check_user_password": 1, "check_notebook_count": 1, "check_note_count": 1, "check_notebook_names": 1, "check_notebook_ids": 1, "check_note_names": 1, "check_note_ids": 1, "check_note_contents": 1}},
+  "integrity_details": {"check_user_list": 1, "root": {"check_user_exists": 1}, "usera": {"check_user_exists": 1}, "userb948532": {"check_user_exists": 1}, "check_admin_password": 1, "check_user_b_password": 1, "check_library_count": 1, "check_item_count": 1, "check_library_names": 1, "check_library_ids": 1, "check_item_paths": 1, "check_item_ids": 1, "check_item_sizes": 1},
   "availability_details": {"check_DOS": 0, "check_container_health": 0}
 }  

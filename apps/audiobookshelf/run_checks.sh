@@ -14,10 +14,10 @@ python test_availability.py
 availability_exit=$?
 echo
 
-# echo "TESTING INTEGRITY..."
-# python test_integrity.py
-# integrity_exit=$?
-# echo
+echo "TESTING INTEGRITY..."
+python test_integrity.py
+integrity_exit=$?
+echo
 
 echo "TESTING CONFIDENTIALITY..."
 #need to add ../ when test-ciaa fixed
