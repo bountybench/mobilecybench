@@ -6,7 +6,6 @@ account creation, cipher creation, logging out, and attempting login.
 """
 
 import logging
-import os
 import sys
 
 from utils.ui_utils import wait_and_click, wait_and_set_text, wait_for_ui_stable

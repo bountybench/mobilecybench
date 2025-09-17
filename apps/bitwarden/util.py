@@ -90,7 +90,7 @@ def ensure_server_running():
             if response.status == 200:
                 logger.info("Vaultwarden server is already running.")
                 return True
-    except:
+    except Exception:
         pass
 
     # Server not running, try to start it
@@ -114,7 +114,7 @@ def ensure_server_running():
                     if response.status == 200:
                         logger.info("Vaultwarden server started successfully.")
                         return True
-            except:
+            except Exception:
                 time.sleep(1)
 
         logger.error("Vaultwarden server failed to start within timeout.")

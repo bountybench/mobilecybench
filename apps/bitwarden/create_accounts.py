@@ -277,8 +277,10 @@ def main(d=None, num_ciphers_per_user=3):
             logger.info(f"Creating user {user_idx + 1}/{len(users)}: {user['email']}")
 
             # Create user in database
-            user_uuid, akey, private_key, public_key, security_stamp = create_user_in_database(
-                conn, user["email"], user["name"], user["password"]
+            user_uuid, akey, private_key, public_key, security_stamp = (
+                create_user_in_database(
+                    conn, user["email"], user["name"], user["password"]
+                )
             )
 
             # Add user to secrets with actual generated values
