@@ -27,4 +27,4 @@ echo "Server is up!"
 # fi
 
 # echo "Setting up app..."
-# ./setup_app.sh
+./setup_app.sh
