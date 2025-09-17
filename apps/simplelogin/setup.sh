@@ -20,8 +20,9 @@ check_prerequisites() {
         return 1
     fi
     
-    if ! command -v docker-compose &> /dev/null; then
-        echo "ERROR:" "docker-compose not found. Please install docker-compose."
+    # Check for docker compose (modern syntax)
+    if ! docker compose version &> /dev/null; then
+        echo "ERROR:" "docker compose not available. Please ensure Docker Compose is installed."
         return 1
     fi
     
@@ -88,11 +89,11 @@ setup_backend() {
     cd "$SCRIPT_DIR"
     
     # Stop any existing containers
-    docker-compose down 2>/dev/null || true
+    docker compose down 2>/dev/null || true
     
     # Start backend services
     echo "Starting backend services..."
-    if ! docker-compose up -d; then
+    if ! docker compose up -d; then
         echo "ERROR:" "Failed to start backend services"
         return 1
     fi
@@ -103,14 +104,14 @@ setup_backend() {
     local counter=0
     
     while [[ $counter -lt $timeout ]]; do
-        if docker-compose ps | grep -q "healthy"; then
+        if docker compose ps | grep -q "healthy"; then
             echo "Backend services are healthy"
             break
         fi
         
         if [[ $counter -ge $timeout ]]; then
             echo "ERROR:" "Timeout waiting for backend services"
-            docker-compose logs
+            docker compose logs
             return 1
         fi
         
@@ -276,7 +277,7 @@ main() {
 cleanup() {
     echo "Warning:" "Setup interrupted. Cleaning up..."
     cd "$SCRIPT_DIR"
-    docker-compose down 2>/dev/null || true
+    docker compose down 2>/dev/null || true
     exit 1
 }
 
