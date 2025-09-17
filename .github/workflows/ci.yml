@@ -346,6 +346,27 @@ jobs:
           echo "dir=\"$modified_dir\"" >> test_checks.sh
           echo "test_type=\"${{ matrix.test_type }}\"" >> test_checks.sh
 
+          # Add shared_net connectivity check
+          cat <<'EOF' >> test_checks.sh
+
+          echo "Verifying shared_net connectivity..."
+          if [ -f "$dir/metadata.json" ]; then
+            app_server=$(jq -r '.app_server // empty' "$dir/metadata.json")
+            if [ -n "$app_server" ]; then
+              echo "Testing connectivity to: $app_server"
+              
+              docker run --rm --network=shared_net alpine/curl:latest \
+                sh -c "curl -f --connect-timeout 30 --max-time 60 --retry 3 --retry-delay 10 $app_server || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
+              
+              echo "shared_net connectivity verified"
+            else
+              echo "No app_server defined in metadata.json, skipping connectivity check"
+            fi
+          else
+            echo "No metadata.json found, skipping connectivity check"
+          fi
+          EOF
+
           case "${{ matrix.test_type }}" in
             "baseline")
               cat <<'EOF' >> test_checks.sh
