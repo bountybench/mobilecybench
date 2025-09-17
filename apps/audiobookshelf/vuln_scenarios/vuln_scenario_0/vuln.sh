@@ -3,4 +3,4 @@ set -a
 source ../../.env
 set +a
 
-cp dbs/absdatabase-vuln.sqlite files/config/absdatabase.sqlite
+cp ../../dbs/absdatabase-vuln.sqlite ../../files/config/absdatabase.sqlite
