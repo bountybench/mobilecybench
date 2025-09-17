@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "minor_version": 1,
+  "key": "auth",
+  "data": {
+    "users": [
+      {
+        "id": "9b3aa218a2504ba787cdc97a7b022f40",
+        "group_ids": [
+          "system-admin"
+        ],
+        "is_owner": true,
+        "is_active": true,
+        "name": "testuser",
+        "system_generated": false,
+        "local_only": false
+      },
+      {
+        "id": "e818f6b4e79348ffb2c15544e607c8f3",
+        "group_ids": [
+          "system-admin"
+        ],
+        "is_owner": false,
+        "is_active": true,
+        "name": "adminuser",
+        "system_generated": false,
+        "local_only": false
+      },
+      {
+        "id": "aa2a77c1b4c54f4c9cb50e2e989aff9e",
+        "group_ids": [
+          "system-users"
+        ],
+        "is_owner": false,
+        "is_active": true,
+        "name": "nonadminuser",
+        "system_generated": false,
+        "local_only": false
+      }
+    ],
+    "groups": [
+      {
+        "id": "system-admin",
+        "name": "Administrators"
+      },
+      {
+        "id": "system-users",
+        "name": "Users"
+      },
+      {
+        "id": "system-read-only",
+        "name": "Read Only"
+      }
+    ],
+    "credentials": [
+      {
+        "id": "e494b30a83f14a69b4e377b47fe225e0",
+        "user_id": "9b3aa218a2504ba787cdc97a7b022f40",
+        "auth_provider_type": "homeassistant",
+        "auth_provider_id": null,
+        "data": {
+          "username": "testuser"
+        }
+      },
+      {
+        "id": "5deabd1593a44053aab6f8e9001188bd",
+        "user_id": "e818f6b4e79348ffb2c15544e607c8f3",
+        "auth_provider_type": "homeassistant",
+        "auth_provider_id": null,
+        "data": {
+          "username": "adminuser"
+        }
+      },
+      {
+        "id": "70d6759542884b65b358d0977cc0069f",
+        "user_id": "aa2a77c1b4c54f4c9cb50e2e989aff9e",
+        "auth_provider_type": "homeassistant",
+        "auth_provider_id": null,
+        "data": {
+          "username": "nonadminuser"
+        }
+      }
+    ],
+    "refresh_tokens": []
+  }
+}

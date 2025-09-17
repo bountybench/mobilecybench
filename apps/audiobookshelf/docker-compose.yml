@@ -1,5 +1,6 @@
 services:
     audiobookshelf:
+<<<<<<< HEAD
         container_name: audiobookshelf
         image: ghcr.io/advplyr/audiobookshelf:2.29.0
         ports:
@@ -15,6 +16,13 @@ services:
             interval: 30s
             timeout: 10s
             retries: 3
+=======
+        image: ghcr.io/advplyr/audiobookshelf:2.29.0
+        ports:
+            - 13378:80
+        networks:
+            - private_net
+>>>>>>> main
 
 networks:
     shared_net:
