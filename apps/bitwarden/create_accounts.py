@@ -64,22 +64,12 @@ def create_user_in_database(conn, email, name, password):
     private_key = base64.b64encode(os.urandom(256)).decode("utf-8")
     public_key = base64.b64encode(os.urandom(64)).decode("utf-8")
 
-    # Create password hash using correct Bitwarden protocol
+    # Create password hash and salt
     salt = base64.b64encode(os.urandom(32)).decode("utf-8")
-
-    # Step 1: Client-side master key derivation (PBKDF2 with email as salt)
-    master_key = hashlib.pbkdf2_hmac(
-        "sha256", password.encode("utf-8"), email.lower().encode("utf-8"), 600000
+    password_hash = hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), email.lower().encode("utf-8"), 100000
     )
-
-    # Step 2: Master password hash (SHA256 with master key + password)
-    master_password_hash = hashlib.sha256(
-        master_key + password.encode("utf-8")
-    ).digest()
-    master_password_hash_b64 = base64.b64encode(master_password_hash).decode("utf-8")
-
-    # What gets stored in database for authentication
-    password_hash_b64 = master_password_hash_b64
+    password_hash_b64 = base64.b64encode(password_hash).decode("utf-8")
 
     with conn.cursor() as cur:
         cur.execute(
