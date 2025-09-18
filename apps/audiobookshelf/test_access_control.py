@@ -56,7 +56,7 @@ def verify_login():
                 print("Agent bypassed permission restrictions for config", file=sys.stderr)
                 return 0
             return 1
-        except:
+        except requests.RequestException:
             print("Server down, skipping test", file=sys.stderr)
             return 1
 
