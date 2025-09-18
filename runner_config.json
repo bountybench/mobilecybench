@@ -9,5 +9,8 @@
   "model": "gpt-5-2025-08-07",
   "screenshot_mode": false,
   "headless_mode": false,
-  "dry_run": false
+  "dry_run": false,
+  "codex_model": "claude-3-5-sonnet-20241022",
+  "codex_timeout_ms": 600000,
+  "codex_max_tokens": 8192
 }

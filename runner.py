@@ -200,9 +200,10 @@ class CommandExecutor:
 
 
 class MobileCybenchRunner:
-    def __init__(self, app_name: str, config: dict):
+    def __init__(self, app_name: str, config: dict, agent_type: str = "custom"):
         self.app_name = app_name
         self.config = config
+        self.agent_type = agent_type
         self.project_root = project_root
         self.app_dir = self.project_root / "apps" / app_name
         self.agent_dir = self.project_root / "agent"
@@ -211,6 +212,7 @@ class MobileCybenchRunner:
         logger.info("=" * 80)
         logger.info("MobileCybench Runner Started")
         logger.info(f"App: {app_name}")
+        logger.info(f"Agent Type: {agent_type}")
         logger.info("Configuration:")
         logger.info(f"  Server Access: {config['server_access']}")
         logger.info(f"  Build Type: {config['build_type']}")
@@ -476,32 +478,53 @@ class MobileCybenchRunner:
             logger.warning(f"⚠ Warning: Exception during codebase copy: {e}")
 
     def run_agent(self):
-        """Run the custom agent - custom_agent.py"""
+        """Run the AI agent - supports both custom and codex agent types"""
         logger.info("=" * 60)
-        logger.info("RUNNING CUSTOM AGENT")
+        logger.info(f"RUNNING {self.agent_type.upper()} AGENT")
         logger.info("=" * 60)
-        logger.info("Starting custom agent execution...")
+        logger.info(f"Starting {self.agent_type} agent execution...")
 
         try:
-            # Import the CustomAgent class
-            from agent.custom_agent import CustomAgent
+            if self.agent_type == "custom":
+                # Import the CustomAgent class
+                from agent.custom_agent import CustomAgent
 
-            # Create agent instance with dry_run mode for infrastructure testing
-            # Set dry_run=False for actual AI execution
-            logger.info("Initializing custom agent...")
-            logger.info("Creating CustomAgent instance")
+                logger.info("Initializing custom agent...")
+                logger.info("Creating CustomAgent instance")
 
-            agent = CustomAgent(
-                model=self.config["model"],
-                max_iterations=self.config["max_iterations"],
-                max_model_response_tokens=self.config["max_model_response_tokens"],
-                max_kali_message_tokens=self.config["max_kali_message_tokens"],
-                max_context_length=self.config["max_context_length"],
-                screenshot_enabled=self.config["screenshot_mode"],
-                app_name=self.app_name,
-                dry_run=self.config["dry_run"],
-                app_server=self.metadata.get("app_server", None),
-            )
+                agent = CustomAgent(
+                    model=self.config["model"],
+                    max_iterations=self.config["max_iterations"],
+                    max_model_response_tokens=self.config["max_model_response_tokens"],
+                    max_kali_message_tokens=self.config["max_kali_message_tokens"],
+                    max_context_length=self.config["max_context_length"],
+                    screenshot_enabled=self.config["screenshot_mode"],
+                    app_name=self.app_name,
+                    dry_run=self.config["dry_run"],
+                    app_server=self.metadata.get("app_server", None),
+                )
+
+            elif self.agent_type == "codex":
+                # Import the CodexAgent class
+                from agent.codex_agent import CodexAgent
+
+                logger.info("Initializing codex agent...")
+                logger.info("Creating CodexAgent instance")
+
+                agent = CodexAgent(
+                    model=self.config.get("codex_model", self.config["model"]),
+                    max_iterations=self.config["max_iterations"],
+                    max_model_response_tokens=self.config.get("codex_max_tokens", self.config["max_model_response_tokens"]),
+                    max_context_length=self.config["max_context_length"],
+                    screenshot_enabled=self.config.get("screenshot_mode", False),
+                    app_name=self.app_name,
+                    dry_run=self.config["dry_run"],
+                    app_server=self.metadata.get("app_server", None),
+                    timeout_ms=self.config.get("codex_timeout_ms", 600000),
+                )
+
+            else:
+                raise ValueError(f"Unknown agent type: {self.agent_type}")
 
             logger.info("Running agent...")
             logger.info("Executing agent.run()")
@@ -529,8 +552,8 @@ class MobileCybenchRunner:
             return result
 
         except Exception as e:
-            logger.error(f"Error running custom agent: {e}")
-            logger.error(f"ERROR: Failed to run custom agent: {e}")
+            logger.error(f"Error running {self.agent_type} agent: {e}")
+            logger.error(f"ERROR: Failed to run {self.agent_type} agent: {e}")
             return {
                 "status": f"error: {str(e)}",
                 "turns": 0,
@@ -721,6 +744,12 @@ def main():
         default="runner_config.json",
         help="Path to JSON configuration file (default: runner_config.json)",
     )
+    parser.add_argument(
+        "--agent-type",
+        choices=["custom", "codex"],
+        default="custom",
+        help="Type of agent to use: custom (default) or codex",
+    )
 
     args = parser.parse_args()
 
@@ -735,7 +764,7 @@ def main():
     config = load_config(config_path)
 
     # Create and run the runner
-    runner = MobileCybenchRunner(args.app_name, config)
+    runner = MobileCybenchRunner(args.app_name, config, args.agent_type)
     return runner.run()
 
 
