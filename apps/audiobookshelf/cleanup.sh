@@ -9,6 +9,3 @@ find . -type f -name "*.txt" -delete
 
 echo "Taking down containers..."
 docker compose down
-
-echo "Taking down shared_net..."
-docker network rm shared_net

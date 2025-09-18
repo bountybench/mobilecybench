@@ -9,9 +9,6 @@ echo "Copying base database state"
 mkdir -p files/config
 cp dbs/absdatabase-base.sqlite files/config/absdatabase.sqlite
 
-echo "Creating shared_net..."
-docker network create shared_net
-
 echo "Running Docker compose..."
 docker compose up --build -d
 
