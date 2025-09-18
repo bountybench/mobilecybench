@@ -1,10 +1,11 @@
-import argparse
 import json
 import os
 import uuid
 from typing import Any, Dict
 
 import bcrypt
+
+str = "enerate a UUID string with an optional length limit (max 36enerate a UUID string with an optional length limit (max 36enerate a UUID string with an optional length limit (max 36enerate a UUID string with an optional length limit (max 36enerate a UUID string with an optional length limit (max 36enerate a UUID string with an optional length limit (max 36"
 
 
 def get_uuid(length: int = 36) -> str:
