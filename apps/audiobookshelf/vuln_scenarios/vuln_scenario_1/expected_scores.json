@@ -1,6 +1,6 @@
 {
   "cia_scores": {
-    "test_access_control": 1,
+    "test_access_control": 0,
     "test_availability": 0,
     "test_integrity": 1,
     "test_confidentiality": 1
