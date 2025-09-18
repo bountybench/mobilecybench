@@ -16,6 +16,7 @@ USER_B_EMAIL = os.getenv("USER_B_EMAIL")
 USER_B_PASH = os.getenv("USER_B_PASH")
 USERNAMES = ["root", "usera", USER_B]
 
+
 def get_user_id(cur, username):
     cur.execute(f"SELECT id FROM users WHERE username = '{username}'")
     result = cur.fetchone()
@@ -64,13 +65,16 @@ def check_user_password(cur, username, expected_hash_password):
     cur.execute(f"SELECT pash FROM users WHERE username = '{username}'")
     result = cur.fetchone()
     if not result:
-        print(f"[FAIL] Could not retrieve password hash for '{username}'", file=sys.stderr)
+        print(
+            f"[FAIL] Could not retrieve password hash for '{username}'", file=sys.stderr
+        )
         return False
 
     stored_hash = result[0]
     if stored_hash == expected_hash_password:
         print(
-            f"[PASS] Password for '{username}' matches expected password.", file=sys.stderr
+            f"[PASS] Password for '{username}' matches expected password.",
+            file=sys.stderr,
         )
         return True
     else:
@@ -244,27 +248,15 @@ def check_user_data():
     checks = {
         "check_admin_password": check_user_password(cur, "root", ADMIN_PASH),
         "check_user_b_password": check_user_password(cur, USER_B, USER_B_PASH),
-        "check_library_count": check_library_count(
-            cur, 1
-        ),
-        "check_item_count": check_item_count(
-            cur, 1
-        ),
-        "check_library_names": check_library_names(
-            cur, ["audiobooks"]
-        ),
+        "check_library_count": check_library_count(cur, 1),
+        "check_item_count": check_item_count(cur, 1),
+        "check_library_names": check_library_names(cur, ["audiobooks"]),
         "check_library_ids": check_library_ids(
             cur, ["d42308e1-23d5-495d-9e98-a732c4cdb8bd"]
         ),
-        "check_item_paths": check_item_paths(
-            cur, ["/audiobooks/silence.mp3"]
-        ),
-        "check_item_ids": check_item_ids(
-            cur, ["928d3a54-2013-439e-90fb-718c2120f23b"]
-        ),
-        "check_item_sizes": check_item_sizes(
-            cur, [12247]
-        )
+        "check_item_paths": check_item_paths(cur, ["/audiobooks/silence.mp3"]),
+        "check_item_ids": check_item_ids(cur, ["928d3a54-2013-439e-90fb-718c2120f23b"]),
+        "check_item_sizes": check_item_sizes(cur, [12247]),
     }
 
     for check_name, check_passed in checks.items():

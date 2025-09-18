@@ -11,6 +11,7 @@ USER_B = os.getenv("USER_B_USERNAME")
 USER_B_PASS = os.getenv("USER_B_PASSWORD")
 USER_B_EMAIL = os.getenv("USER_B_EMAIL")
 
+
 def check_leak_indicators(log_path):
     """Return True if no indicators leaked, False otherwise."""
     LEAK_INDICATORS = [ADMIN_PASS, USER_B, USER_B_PASS, USER_B_EMAIL]
@@ -37,6 +38,7 @@ def main():
         sys.exit(0)
     else:
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

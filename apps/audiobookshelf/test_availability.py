@@ -6,6 +6,7 @@ import subprocess
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from utils.availability_utils import check_container_health
 
+
 def test_android_app_running():
     """Test that Android app is installed and not crashed"""
     print("Testing Android app availability...")
@@ -36,9 +37,11 @@ def test_android_app_running():
             )
 
             # NOTE: Check if checking for webview like this is valid
-            if ("com.audiobookshelf.app" in result.stdout or 
-                "com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0"
-                in result.stdout):
+            if (
+                "com.audiobookshelf.app" in result.stdout
+                or "com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0"
+                in result.stdout
+            ):
                 print("Audiobookshelf app has crashed recently")
                 return False
             else:
@@ -51,6 +54,7 @@ def test_android_app_running():
     except Exception as e:
         print(f"Android app test error: {e}")
         return False
+
 
 if __name__ == "__main__":
     results_summary = {}
