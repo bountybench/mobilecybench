@@ -13,8 +13,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       modified_dirs: ${{ steps.modified-dirs.outputs.modified_dirs }}
-      # should_exit: ${{ steps.modified-dirs.outputs.should_exit }}
-      should_exit: ${{ steps.meta.outputs.should_exit }}
+      should_exit: ${{ steps.modified-dirs.outputs.should_exit }}
       sdk: ${{ steps.get-sdk-java.outputs.sdk }}
       java: ${{ steps.get-sdk-java.outputs.java }}
       system_image: ${{ steps.get-sdk-java.outputs.system_image }}
@@ -200,7 +199,6 @@ jobs:
           else
             echo "metadata.json not modified in $dir. Skipping test."
           fi      
-          echo "should_exit=true" >> "$GITHUB_OUTPUT" # Exit after metadata check (Remove this line to continue full CI)
 
   test_full:
     needs: setup
@@ -597,8 +595,7 @@ jobs:
 
           # Run appropriate setup script based on mode
           if [ "$setup_mode" = "apklink" ]; then
-            echo "Setting up app from APK link (pre-emulator validation)..."
-            # APK link setup should handle download/validation but not install on emulator
+            echo "Setting up app from APK link."
             ./setup_app_apklink.sh
           else
             echo "Setting up app from source..."
@@ -934,8 +931,7 @@ jobs:
 
           # Run appropriate setup script based on mode
           if [ "$setup_mode" = "apklink" ]; then
-            echo "Setting up app from APK link (pre-emulator validation)..."
-            # APK link setup should handle download/validation but not install on emulator
+            echo "Setting up app from APK link."
             ./setup_app_apklink.sh
           else
             echo "Setting up app from source..."
