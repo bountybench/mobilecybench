@@ -9,6 +9,7 @@ services:
             - ./files/config:/config
         networks:
             - private_net
+            - shared_net
         healthcheck:
             test: ["CMD", "wget", "-q", "--spider", "http://localhost:13378/ping"]
             interval: 5s
