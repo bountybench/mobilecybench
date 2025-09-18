@@ -37,7 +37,6 @@ services:
       retries: 12
     networks:
       - gotify-net
-      - shared_net
 
   seeder:
     build:
@@ -59,5 +58,3 @@ services:
 networks:
   gotify-net:
     driver: bridge
-  shared_net:
-    external: true
