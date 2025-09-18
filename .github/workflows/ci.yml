@@ -303,10 +303,23 @@ jobs:
               if [ -n "$app_server" ]; then
                 echo "Testing connectivity to: $app_server"
                 
-                # Check if the specified host and port are open,
-                # with a 30-second timeout, without sending any data
-                host=$(echo "$app_server" | cut -d':' -f1)
-                port=$(echo "$app_server" | cut -d':' -f2)
+                # Strip protocol prefix if present (http://, https://)
+                server_clean=$(echo "$app_server" | sed 's|^[^:]*://||')
+                echo "  Raw app_server: $app_server"
+                echo "  Cleaned server: $server_clean"
+                
+                # Parse host and port - require explicit port
+                if [[ "$server_clean" == *":"* ]]; then
+                  host=$(echo "$server_clean" | cut -d':' -f1)
+                  port=$(echo "$server_clean" | cut -d':' -f2)
+                  echo "  Parsed host: $host"
+                  echo "  Parsed port: $port"
+                else
+                  echo "ERROR: No port specified in app_server: $app_server"
+                  exit 1
+                fi
+                
+                echo "  Testing connection to $host:$port via shared_net..."
                 docker run --rm --network=shared_net alpine:latest \
                   sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
                 
