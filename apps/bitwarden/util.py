@@ -96,12 +96,16 @@ def ensure_server_running():
     # Server not running, try to start it
     logger.info("Vaultwarden server not running. Attempting to start it...")
     try:
+        # Get the bitwarden directory to run docker compose from
+        bitwarden_dir = os.path.dirname(os.path.abspath(__file__))
+
         # Start the vaultwarden service
         subprocess.run(
             ["docker", "compose", "up", "-d", "vaultwarden"],
             capture_output=True,
             check=True,
             timeout=30,
+            cwd=bitwarden_dir,
         )
 
         # Wait for server to be ready

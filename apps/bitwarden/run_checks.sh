@@ -10,6 +10,18 @@ availability_output=$(python3 -m apps.bitwarden.test_availability)
 availability_exit=$?
 echo
 
+echo "ENSURING SERVER IS RUNNING BEFORE ACCESS CONTROL TEST..."
+# The DoS attack may have killed the server, so restart it
+python3 -c "
+import sys
+sys.path.append('apps/bitwarden')
+from util import ensure_server_running
+if not ensure_server_running():
+    print('Failed to start server for access control test')
+    sys.exit(1)
+"
+server_restart_exit=$?
+
 echo "TESTING ACCESS CONTROL..."
 access_control_output=$(python3 -m apps.bitwarden.test_access_control)
 access_control_exit=$?
