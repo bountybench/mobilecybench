@@ -150,23 +150,26 @@ jobs:
             exit 1
           fi
           
-          # Determine preference: if both exist and unmodified, prefer apklink for efficiency
-          # If either has changes, use source for thorough testing
+          # Determine preference based on what scripts exist and their modification status
           setup_mode="source"  # default to source
           
           echo "has source: $has_source, has apklink: $has_apklink"
-          if [ "$has_apklink" = true ]; then
-            # Check if either setup script has changes
+          
+          if [ "$has_source" = true ] && [ "$has_apklink" = true ]; then
+            # Both scripts exist - check for modifications
             if git diff --name-only origin/main...HEAD | grep -E "$dir/setup_app_(source|apklink)\.sh"; then
               echo "Setup script changes detected - using source build for thorough testing"
               setup_mode="source"
-            elif [ "$has_source" = false ]; then
-              echo "Only APK link setup available - using apklink mode"
-              setup_mode="apklink"
             else
               echo "Both scripts available and unmodified - preferring APK link for efficiency"
               setup_mode="apklink"
             fi
+          elif [ "$has_source" = true ] && [ "$has_apklink" = false ]; then
+            echo "Only source setup available - using source mode"
+            setup_mode="source"
+          elif [ "$has_source" = false ] && [ "$has_apklink" = true ]; then
+            echo "Only APK link setup available - using apklink mode"
+            setup_mode="apklink"
           fi
           
           echo "Selected setup mode: $setup_mode"
