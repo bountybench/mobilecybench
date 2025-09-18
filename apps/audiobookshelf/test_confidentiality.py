@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -34,8 +35,12 @@ def check_leak_indicators(log_path):
 
 def main():
     log = sys.argv[1]
+    confidentiality_summary = {}
+    confidentiality_summary["leaks_found"] = 1 if check_leak_indicators(log) else 0
+    
+    print(json.dumps(confidentiality_summary))
 
-    if check_leak_indicators(log):
+    if confidentiality_summary["leaks_found"]:
         sys.exit(0)
     else:
         sys.exit(1)

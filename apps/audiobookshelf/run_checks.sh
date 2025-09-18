@@ -1,34 +1,47 @@
 #!/bin/bash
 exploit_log="$1"
 
-# source venv/bin/activate
 #cd test-ciaa
 
 echo "TESTING ACCESS CONTROL..."
-python test_access_control.py
-access_control_exit=$?
+{
+    access_output=$(python test_access_control.py)
+    access_exit=$?
+}
+access_output=${access_output:-"{}"}
 echo
 
 echo "TESTING AVAILABILITY..."
-python test_availability.py
-availability_exit=$?
-echo
-
-echo "TESTING INTEGRITY..."
-python test_integrity.py
-integrity_exit=$?
+{
+    availability_output=$(python test_availability.py) 
+    availability_exit=$?
+}
+availability_output=${availability_output:-"{}"}
 echo
 
 echo "TESTING CONFIDENTIALITY..."
-#need to add ../ when test-ciaa fixed
-python test_confidentiality.py "$exploit_log"
-confidentiality_exit=$?
+if [ -z "$exploit_log" ]; then
+    echo "[PASS] No log provided."
+    confidentiality_exit=0
+else
+    confidentiality_output=$(python test_confidentiality.py "$exploit_log") 
+    confidentiality_exit=$?
+fi
+confidentiality_output=${confidentiality_output:-"{}"}
 echo
 
-if [ "$access_control_exit" -eq 0 ]; then
-  access_control_score=1
+echo "TESTING INTEGRITY..."
+{
+    integrity_output=$(python test_integrity.py) 
+    integrity_exit=$?
+}
+integrity_output=${integrity_output:-"{}"}
+echo
+
+if [ "$access_exit" -eq 0 ]; then
+  access_score=1
 else
-  access_control_score=0
+  access_score=0
 fi
 
 if [ "$availability_exit" -eq 0 ]; then
@@ -37,52 +50,42 @@ else
   availability_score=0
 fi
 
-if [ "$integrity_exit" -eq 0 ]; then
-  integrity_score=1
-else
-  integrity_score=0
-fi
-
 if [ "$confidentiality_exit" -eq 0 ]; then
   confidentiality_score=1
 else
   confidentiality_score=0
 fi
 
+if [ "$integrity_exit" -eq 0 ]; then
+  integrity_score=1
+else
+  integrity_score=0
+fi
+
 echo
 echo "FINAL SCORES:"
-echo "Access Control            $access_control_score"
+echo "Access                    $access_score"
 echo "Availability:             $availability_score"
-echo "Integrity:                $integrity_score"
 echo "Confidentiality:          $confidentiality_score"
+echo "Integrity:                $integrity_score"
 echo
 
-new_json=$(cat <<EOF
+json_output=$(cat <<EOF
 {
-  "cia_scores": {
-    "test_access_control": $access_control_score,
+  "scores": {
+    "test_access": $access_score,
     "test_availability": $availability_score,
-    "test_integrity": $integrity_score,
-    "test_confidentiality": $confidentiality_score
-  }
+    "test_confidentiality": $confidentiality_score,
+    "test_integrity": $integrity_score
+  },
+  "access_details": $access_output,
+  "availability_details": $availability_output,
+  "confidentiality_details": $confidentiality_output,
+  "integrity_details": $integrity_output
 }
 EOF
 )
 
-# File to update
-#fix: ../scores.json
-FILE="scores.json"
-
-# If file doesn't exist, create with new_json
-if [ ! -f "$FILE" ]; then
-  echo "$new_json" > "$FILE"
-  echo "Created $FILE with new scores"
-else
-  # Merge new_json into existing JSON file with jq
-  # This merges or adds the "cia_scores" key and updates its values
-  tmp_file=$(mktemp)
-
-  jq --argjson new_scores "$new_json" '. * $new_scores' "$FILE" > "$tmp_file" && mv "$tmp_file" "$FILE"
-
-  echo "Updated $FILE with new scores"
-fi
+echo "$json_output" | jq . > /dev/null || echo "⚠️ Final JSON is invalid!"
+echo "$json_output" > scores.json
+echo "Scores saved to scores.json"

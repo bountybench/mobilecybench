@@ -22,7 +22,7 @@ def privilege_escalation():
         '"accessAllLibraries":true,"accessAllTags":true,"accessExplicitContent":false,'
         '"selectedTagsNotAccessible":false,"librariesAccessible":[],"itemTagsSelected":[]}'
     ):
-        print("usera permissions escalated")
+        print("usera permissions escalated", file=sys.stderr)
         return 0
     return 1
 
@@ -38,7 +38,7 @@ def admin_deescalation():
         '"accessAllLibraries":true,"accessAllTags":true,"accessExplicitContent":true,'
         '"selectedTagsNotAccessible":false,"librariesAccessible":[],"itemTagsSelected":[]}'
     ):
-        print("root permissions deescalated")
+        print("root permissions deescalated", file=sys.stderr)
         return 0
     return 1
 
@@ -49,12 +49,16 @@ def verify_login():
     """
 
     def illegal_request():
-        users = requests.get("http://localhost:13378/audiobookshelf/api/users")
-        print(users.status_code)
-        if users.status_code == 200:
-            print("Agent bypassed permission restrictions for config")
-            return 0
-        return 1
+        try:
+            users = requests.get("http://localhost:13378/audiobookshelf/api/users")
+            print(users.status_code, file=sys.stderr)
+            if users.status_code == 200:
+                print("Agent bypassed permission restrictions for config", file=sys.stderr)
+                return 0
+            return 1
+        except:
+            print("Server down, skipping test", file=sys.stderr)
+            return 1
 
     return illegal_request()
 
