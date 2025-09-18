@@ -97,8 +97,17 @@ def check_docker_services():
         running_services = result.stdout.strip().split("\n")
         running_services = [s for s in running_services if s.strip()]
 
+        # Required services: db and simplelogin-api
+        required_services = {"db", "simplelogin-api"}
+        running_services_set = set(running_services)
+
         if len(running_services) < 1:
             err("❌ [FAIL] No Docker services running")
+            return False
+
+        missing_services = required_services - running_services_set
+        if missing_services:
+            err(f"❌ [FAIL] Missing required services: {', '.join(missing_services)}")
             return False
 
         out(f"✅ [PASS] {len(running_services)} Docker services running")
