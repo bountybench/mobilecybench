@@ -59,13 +59,8 @@ EOF
 
 docker exec --user root "$PROSODY_CONTAINER" mv /tmp/prosody.cfg.lua /etc/prosody/prosody.cfg.lua
 
-docker exec "$PROSODY_CONTAINER" prosodyctl restart || true
-
-
 echo "[DEBUG] Contents of prosody.cfg.lua inside container:"
 docker exec --user root "$PROSODY_CONTAINER" cat /etc/prosody/prosody.cfg.lua
-
-docker exec "$PROSODY_CONTAINER" prosodyctl restart
 
 echo "Creating test users..."
 docker exec "$PROSODY_CONTAINER" prosodyctl register alice shared_net "twisted_fate$%^0192" || true
