@@ -18,6 +18,7 @@ jobs:
       java: ${{ steps.get-sdk-java.outputs.java }}
       system_image: ${{ steps.get-sdk-java.outputs.system_image }}
       has_run_checks: ${{ steps.check-run-checks.outputs.has_run_checks }}
+      setup_mode: ${{ steps.setup-strategy.outputs.setup_mode }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -122,6 +123,53 @@ jobs:
             echo "has_run_checks=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Determine app setup strategy
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        id: setup-strategy
+        run: |
+          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
+          
+          # Check for both setup scripts
+          has_source=false
+          has_apklink=false
+          
+          if [ -f "$dir/setup_app_source.sh" ]; then
+            has_source=true
+            echo "Found setup_app_source.sh"
+          fi
+          
+          if [ -f "$dir/setup_app_apklink.sh" ]; then
+            has_apklink=true
+            echo "Found setup_app_apklink.sh"
+          fi
+          
+          # Validate at least one exists
+          if [ "$has_source" = false ] && [ "$has_apklink" = false ]; then
+            echo "ERROR: Neither setup_app_source.sh nor setup_app_apklink.sh found in $dir"
+            exit 1
+          fi
+          
+          # Determine preference: if both exist and unmodified, prefer apklink for efficiency
+          # If either has changes, use source for thorough testing
+          setup_mode="source"  # default to source
+          
+          if [ "$has_apklink" = true ]; then
+            # Check if either setup script has changes
+            if git diff --name-only origin/main...HEAD | grep -E "$dir/setup_app_(source|apklink)\.sh"; then
+              echo "Setup script changes detected - using source build for thorough testing"
+              setup_mode="source"
+            elif [ "$has_source" = false ]; then
+              echo "Only APK link setup available - using apklink mode"
+              setup_mode="apklink"
+            else
+              echo "Both scripts available and unmodified - preferring APK link for efficiency"
+              setup_mode="apklink"
+            fi
+          fi
+          
+          echo "Selected setup mode: $setup_mode"
+          echo "setup_mode=$setup_mode" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
@@ -146,6 +194,7 @@ jobs:
           else
             echo "metadata.json not modified in $dir. Skipping test."
           fi      
+          echo "should_exit=true" >> "$GITHUB_OUTPUT" # Exit after metadata check (Remove this line to continue full CI)
 
   test_full:
     needs: setup
@@ -502,14 +551,15 @@ jobs:
           
           chmod +x test_checks.sh
 
-      - name: Create build source script
+      - name: Create build script
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
         run: |
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          setup_mode="${{ needs.setup.outputs.setup_mode }}"
 
-          cat << 'EOF' > build_source.sh
+          cat << 'EOF' > build_script.sh
           #!/bin/bash
           set -e
           git config --global --add safe.directory '*'
@@ -517,12 +567,20 @@ jobs:
           source /tmp/shared_functions.sh
           check_server_ready
           EOF
-          echo "dir=\"$modified_dir\"" >> build_source.sh
-          cat <<'EOF' >> build_source.sh
+          echo "dir=\"$modified_dir\"" >> build_script.sh
+          echo "setup_mode=\"$setup_mode\"" >> build_script.sh
+          cat <<'EOF' >> build_script.sh
           cd "$dir"
           checkout_commit "$dir"
 
-          required_scripts=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
+          # Determine required scripts based on setup mode
+          if [ "$setup_mode" = "apklink" ]; then
+            required_scripts=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_apklink.sh")
+          else
+            required_scripts=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
+          fi
+
+          echo "Setup mode: $setup_mode"
           echo "Checking for required scripts..."
           for script in "${required_scripts[@]}"; do
             if [[ ! -f "$script" ]]; then
@@ -531,12 +589,19 @@ jobs:
             fi
           done
 
-          echo "Setting up app from source..."
-          ./setup_app_source.sh
+          # Run appropriate setup script based on mode
+          if [ "$setup_mode" = "apklink" ]; then
+            echo "Setting up app from APK link (pre-emulator validation)..."
+            # APK link setup should handle download/validation but not install on emulator
+            ./setup_app_apklink.sh
+          else
+            echo "Setting up app from source..."
+            ./setup_app_source.sh
+          fi
           EOF
-          chmod +x build_source.sh
+          chmod +x build_script.sh
           free -h
-          ./build_source.sh
+          ./build_script.sh
                 
       - name: Stabilize runner after build
         run: |
@@ -824,26 +889,35 @@ jobs:
           
           chmod +x simple_test.sh
 
-      - name: Create build source script
+      - name: Create build script
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
         run: |
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          setup_mode="${{ needs.setup.outputs.setup_mode }}"
 
-          cat << 'EOF' > build_source.sh
+          cat << 'EOF' > build_script.sh
           #!/bin/bash
           set -e
           git config --global --add safe.directory '*'
           
           source /tmp/shared_functions.sh
           EOF
-          echo "dir=\"$modified_dir\"" >> build_source.sh
-          cat <<'EOF' >> build_source.sh
+          echo "dir=\"$modified_dir\"" >> build_script.sh
+          echo "setup_mode=\"$setup_mode\"" >> build_script.sh
+          cat <<'EOF' >> build_script.sh
           cd "$dir"
           checkout_commit "$dir"
 
-          required_scripts=("setup.sh" "cleanup.sh" "setup_app_source.sh")
+          # Determine required scripts based on setup mode  
+          if [ "$setup_mode" = "apklink" ]; then
+            required_scripts=("setup.sh" "cleanup.sh" "setup_app_apklink.sh")
+          else
+            required_scripts=("setup.sh" "cleanup.sh" "setup_app_source.sh")
+          fi
+
+          echo "Setup mode: $setup_mode"
           echo "Checking for required scripts..."
           for script in "${required_scripts[@]}"; do
             if [[ ! -f "$script" ]]; then
@@ -852,12 +926,19 @@ jobs:
             fi
           done
 
-          echo "Setting up app from source..."
-          ./setup_app_source.sh
+          # Run appropriate setup script based on mode
+          if [ "$setup_mode" = "apklink" ]; then
+            echo "Setting up app from APK link (pre-emulator validation)..."
+            # APK link setup should handle download/validation but not install on emulator
+            ./setup_app_apklink.sh
+          else
+            echo "Setting up app from source..."
+            ./setup_app_source.sh
+          fi
           EOF
-          chmod +x build_source.sh
+          chmod +x build_script.sh
           free -h
-          ./build_source.sh
+          ./build_script.sh
                 
       - name: Stabilize runner after build
         run: |
