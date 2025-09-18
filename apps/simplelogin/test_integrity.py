@@ -216,10 +216,10 @@ def check_unauthorized_user_creation():
     """Check for unauthorized user creation (backdoor users)"""
     try:
         db_container_id = get_container_id("db")
-        
+
         # Check for unauthorized users that shouldn't exist
         unauthorized_emails = ["backdoor@simplelogin.test", "weakpass@simplelogin.test"]
-        
+
         for email in unauthorized_emails:
             # Check if unauthorized user exists
             user_result = docker_exec(
@@ -233,20 +233,23 @@ def check_unauthorized_user_creation():
                 "-c",
                 f"SELECT email, activated, is_admin FROM users WHERE email = '{email}';",
             )
-            
+
             if user_result.strip():
                 # Unauthorized user exists - this is a security failure
                 email_db, activated, is_admin = user_result.strip().split("|")
                 email_db = email_db.strip()
                 activated = activated.strip().lower() == "t"
                 is_admin = is_admin.strip().lower() == "t"
-                
-                err(f"❌ [FAIL] Unauthorized user creation detected: {email_db} (activated: {activated}, admin: {is_admin})")
+
+                err(
+                    f"❌ [FAIL] Unauthorized user creation detected: {email_db} "
+                    f"(activated: {activated}, admin: {is_admin})"
+                )
                 return False
-        
+
         out("✅ [PASS] No unauthorized user creation detected")
         return True
-        
+
     except Exception as e:
         err(f"❌ [FAIL] Error checking for unauthorized user creation: {e}")
         return False

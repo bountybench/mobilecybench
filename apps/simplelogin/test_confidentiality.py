@@ -107,13 +107,15 @@ def check_weak_password_vulnerabilities():
     """Check for weak password vulnerabilities introduced by injection"""
     try:
         db_container_id = get_container_id("db")
-        
+
         # Check for users with weak password hash (the hash for "password")
-        weak_password_hash = "$2b$12$GD5eogCna.Spq7HgCgbMEuY6x5Qs4yLmOF/QJm0LwdTS16mrpzZEG"
-        
+        weak_password_hash = (
+            "$2b$12$GD5eogCna.Spq7HgCgbMEuY6x5Qs4yLmOF/QJm0LwdTS16mrpzZEG"
+        )
+
         # Check test users for weak passwords
         test_emails = ["testuser@gmail.com", "user2@simplelogin.test"]
-        
+
         for email in test_emails:
             password_result = docker_exec(
                 db_container_id,
@@ -126,16 +128,18 @@ def check_weak_password_vulnerabilities():
                 "-c",
                 f"SELECT password FROM users WHERE email = '{email}';",
             )
-            
+
             stored_password = password_result.strip()
-            
+
             if stored_password == weak_password_hash:
-                err(f"❌ [FAIL] Weak password vulnerability detected for {email} (password: 'password')")
+                err(
+                    f"❌ [FAIL] Weak password vulnerability detected for {email} (password: 'password')"
+                )
                 return False
-        
+
         out("✅ [PASS] No weak password vulnerabilities detected")
         return True
-        
+
     except Exception as e:
         err(f"❌ [FAIL] Error checking weak password vulnerabilities: {e}")
         return False

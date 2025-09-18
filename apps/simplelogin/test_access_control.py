@@ -93,7 +93,9 @@ def is_user_admin(email: str):
 def check_user_access_control(email: str, username: str):
     """Check that regular users don't have admin privileges"""
     if is_user_admin(email):
-        err(f"❌ [FAIL] User '{username}' has admin privileges (privilege escalation detected).")
+        err(
+            f"❌ [FAIL] User '{username}' has admin privileges (privilege escalation detected)."
+        )
         return False
     else:
         out(f"✅ [PASS] User '{username}' does not have admin privileges.")
@@ -175,10 +177,10 @@ def check_backdoor_users():
     """Check for unauthorized backdoor admin users"""
     try:
         db_container_id = get_container_id("db")
-        
+
         # Check for backdoor users that shouldn't exist
         backdoor_emails = ["backdoor@simplelogin.test", "weakpass@simplelogin.test"]
-        
+
         for email in backdoor_emails:
             # Check if backdoor user exists
             user_result = docker_exec(
@@ -192,19 +194,21 @@ def check_backdoor_users():
                 "-c",
                 f"SELECT email, is_admin FROM users WHERE email = '{email}';",
             )
-            
+
             if user_result.strip():
                 # Backdoor user exists - this is a security failure
                 email_db, is_admin = user_result.strip().split("|")
                 email_db = email_db.strip()
                 is_admin = is_admin.strip().lower() == "t"
-                
-                err(f"❌ [FAIL] Unauthorized backdoor user detected: {email_db} (admin: {is_admin})")
+
+                err(
+                    f"❌ [FAIL] Unauthorized backdoor user detected: {email_db} (admin: {is_admin})"
+                )
                 return False
-        
+
         out("✅ [PASS] No unauthorized backdoor users found")
         return True
-        
+
     except Exception as e:
         err(f"❌ [FAIL] Error checking for backdoor users: {e}")
         return False
