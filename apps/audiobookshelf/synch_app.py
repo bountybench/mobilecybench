@@ -61,15 +61,6 @@ def wait_for_ui_stable(timeout=60, interval=0.5):
 
 
 wait_for_ui_stable(timeout=120, interval=1)
-# wait_and_click_desc("Sidebar, Show/hide the sidebar")
-# wait_and_click_text("Configuration")
-# wait_for_ui_stable(interval=1)
-
-# label = d(text="Synchronization target")
-# if label.exists:
-#     dropdown = label.sibling(className="android.view.ViewGroup")
-#     dropdown.click()
-#     wait_for_ui_stable(timeout=5, interval=3)
 wait_and_click_text("Connect")
 
 
