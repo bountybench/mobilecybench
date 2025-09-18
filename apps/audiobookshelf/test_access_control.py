@@ -1,6 +1,6 @@
 import json
-import sys
 import sqlite3
+import sys
 
 import requests
 

@@ -1,9 +1,9 @@
 import json
 import os
-from dotenv import load_dotenv
-import sys
 import sqlite3
+import sys
 
+from dotenv import load_dotenv
 
 load_dotenv()
 
