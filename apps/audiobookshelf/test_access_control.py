@@ -1,8 +1,8 @@
 import json
-import sqlite3
 import sys
-
 import requests
+import sqlite3
+
 
 try:
     with sqlite3.connect("files/config/absdatabase.sqlite") as conn:
@@ -18,8 +18,7 @@ def privilege_escalation():
     cur.execute('SELECT permissions FROM users WHERE username = "usera"')
     row = cur.fetchone()
     if row[0] != (
-        '{"download":true,"update":false,"delete":false,"upload":false,"createEreader":false,'
-        '"accessAllLibraries":true,"accessAllTags":true,"accessExplicitContent":false,'
+        '{"download":true,"update":false,"delete":false,"upload":false,"createEreader":false,"accessAllLibraries":true,"accessAllTags":true,"accessExplicitContent":false,'
         '"selectedTagsNotAccessible":false,"librariesAccessible":[],"itemTagsSelected":[]}'
     ):
         print("usera permissions escalated", file=sys.stderr)
