@@ -5,5 +5,6 @@ markers = [
 ]
 
 [tool.ruff.lint]
+select = ["E", "F", "I"]
 ignore = ["E501"]  # let Black handle line length
 

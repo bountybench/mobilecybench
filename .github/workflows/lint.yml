@@ -37,7 +37,7 @@ jobs:
             || echo "")
           if [ -n "$MODIFIED_PY_FILES" ]; then
             echo "Running ruff (E,F,I) with --fix on modified files..."
-            echo "$MODIFIED_PY_FILES" | xargs ruff check --select E,F,I --line-length 120 --fix
+            echo "$MODIFIED_PY_FILES" | xargs ruff check --line-length 120 --fix
             echo "Running black --check on modified files after ruff..."
             echo "$MODIFIED_PY_FILES" | xargs black --check
             # Fail if ruff applied fixes that are not committed
