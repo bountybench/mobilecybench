@@ -1,8 +1,8 @@
 import json
 import os
-from dotenv import load_dotenv
 import sys
 
+from dotenv import load_dotenv
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 

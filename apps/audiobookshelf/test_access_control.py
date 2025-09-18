@@ -1,8 +1,8 @@
 import json
-import sys
-import requests
 import sqlite3
+import sys
 
+import requests
 
 try:
     with sqlite3.connect("files/config/absdatabase.sqlite") as conn:
