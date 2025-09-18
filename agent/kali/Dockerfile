@@ -1,6 +1,6 @@
 FROM cybench/kali-linux-base:latest
 
-# Install common tools, Python 3.12, Docker, and pytest
+# NOT used 
 RUN apt-get update && \
     apt-get install -y \
     docker.io \

@@ -18,15 +18,13 @@ from pathlib import Path
 from selectors import EVENT_READ, DefaultSelector
 from typing import Dict, List, Optional
 
-# Add project root to Python path
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
-
 from dotenv import load_dotenv
 
 from utils.logger import logger
+from utils.utils import get_app_metadata
 
 load_dotenv()
+project_root = Path(__file__).parent
 
 
 class CommandExecutor:
@@ -202,16 +200,31 @@ class CommandExecutor:
 
 
 class MobileCybenchRunner:
-    def __init__(self, app_name: str):
+    def __init__(self, app_name: str, config: dict):
         self.app_name = app_name
+        self.config = config
         self.project_root = project_root
         self.app_dir = self.project_root / "apps" / app_name
         self.agent_dir = self.project_root / "agent"
         self.cmd = CommandExecutor()
 
         logger.info("=" * 80)
-        logger.info(f"MobileCybench Runner Started")
+        logger.info("MobileCybench Runner Started")
         logger.info(f"App: {app_name}")
+        logger.info("Configuration:")
+        logger.info(f"  Server Access: {config['server_access']}")
+        logger.info(f"  Build Type: {config['build_type']}")
+        logger.info(f"  ADB Access: {config['adb_access']}")
+        logger.info(f"  Max Iterations: {config['max_iterations']}")
+        logger.info(f"  Max Kali Message Tokens: {config['max_kali_message_tokens']}")
+        logger.info(
+            f"  Max Model Response Tokens: {config['max_model_response_tokens']}"
+        )
+        logger.info(f"  Max Context Length: {config['max_context_length']}")
+        logger.info(f"  Model: {config['model']}")
+        logger.info(f"  Screenshot Mode: {config['screenshot_mode']}")
+        logger.info(f"  Headless Mode: {config['headless_mode']}")
+        logger.info(f"  Dry Run: {config['dry_run']}")
         logger.info(f"Timestamp: {datetime.datetime.now()}")
         logger.info("=" * 80)
 
@@ -230,16 +243,10 @@ class MobileCybenchRunner:
         if not self.app_dir.exists():
             self._exit_with_error(f"App directory not found: {self.app_dir}")
 
-        # Check for metadata.json
-        metadata_file = self.app_dir / "metadata.json"
-        if not metadata_file.exists():
-            self._exit_with_error(f"metadata.json not found: {metadata_file}")
-
-        # Validate metadata.json structure
+        # Validate metadata.json using get_app_metadata
         try:
-            with open(metadata_file) as f:
-                metadata = json.load(f)
-            logger.info(f"Metadata loaded: {metadata}")
+            self.metadata = get_app_metadata(self.app_name)
+            logger.info(f"Metadata loaded: {self.metadata}")
         except Exception as e:
             self._exit_with_error(f"Invalid metadata.json: {e}")
 
@@ -249,6 +256,13 @@ class MobileCybenchRunner:
             script_path = self.app_dir / script
             if not script_path.exists():
                 self._exit_with_error(f"Required script not found: {script_path}")
+
+        # Check for required ngrok.yml config file
+        ngrok_config = self.agent_dir / "mcp" / "ngrok.yml"
+        if not ngrok_config.exists():
+            self._exit_with_error(
+                f"Required ngrok.yml config file not found: {ngrok_config}"
+            )
 
         logger.info("Input validation passed")
 
@@ -263,7 +277,7 @@ class MobileCybenchRunner:
         # Start emulator (runs in background - continuous output like docker without detached mode)
         logger.info("Starting emulator in background...")
         # Use --yes to auto-confirm starting another emulator if already running
-        emulator_process = self.cmd.start_background_process(
+        self.cmd.start_background_process(
             "bash ./start_emulator.sh --yes",
             cwd=self.project_root,
         )
@@ -312,6 +326,7 @@ class MobileCybenchRunner:
         logger.info("Setting up agent environment...")
 
         self._setup_env_file()
+        self._create_docker_network()
         self._start_containers()
         self._copy_codebase_to_kali()
 
@@ -323,7 +338,6 @@ class MobileCybenchRunner:
         logger.info("Setting up environment file...")
 
         env_file = self.agent_dir / ".env"
-        start_dir = f"/tmp/{self.app_name}_app"
         api_key = None
 
         # Load existing .env
@@ -344,6 +358,27 @@ class MobileCybenchRunner:
             logger.info("✓ Using OPENAI_API_KEY from environment/.env (no prompt mode)")
 
         os.environ["OPENAI_API_KEY"] = api_key
+
+    def _create_docker_network(self):
+        """Create shared docker network or print already created if it exists"""
+        logger.info("Creating docker network 'shared_net'...")
+
+        try:
+            # Try to create the network - if it already exists, docker will return an error
+            result = self.cmd.run("docker network create shared_net", check=False)
+
+            if result.returncode == 0:
+                logger.info("✓ Docker network 'shared_net' created successfully")
+            elif "already exists" in result.stderr:
+                logger.info("✓ Docker network 'shared_net' already exists")
+            else:
+                # Some other error occurred
+                logger.error(f"Failed to create docker network: {result.stderr}")
+                self._exit_with_error("Failed to create docker network 'shared_net'")
+
+        except Exception as e:
+            logger.error(f"Failed to create docker network: {e}")
+            self._exit_with_error("Failed to create docker network 'shared_net'")
 
     def _start_containers(self):
         """Start MCP server and Kali container"""
@@ -457,12 +492,15 @@ class MobileCybenchRunner:
             logger.info("Creating CustomAgent instance")
 
             agent = CustomAgent(
-                model="gpt-5-2025-08-07",
-                max_iterations=1,
-                max_output_tokens=8192,
-                screenshot_enabled=True,
+                model=self.config["model"],
+                max_iterations=self.config["max_iterations"],
+                max_model_response_tokens=self.config["max_model_response_tokens"],
+                max_kali_message_tokens=self.config["max_kali_message_tokens"],
+                max_context_length=self.config["max_context_length"],
+                screenshot_enabled=self.config["screenshot_mode"],
                 app_name=self.app_name,
-                dry_run=True,  # Set to False for actual AI execution
+                dry_run=self.config["dry_run"],
+                app_server=self.metadata.get("app_server", None),
             )
 
             logger.info("Running agent...")
@@ -591,6 +629,84 @@ class MobileCybenchRunner:
             # self.cleanup()
 
 
+def load_config(config_path: Path) -> dict:
+    """Load and validate configuration from JSON file"""
+    if not config_path.exists():
+        logger.error(f"Config file not found: {config_path}")
+        sys.exit(1)
+
+    try:
+        with open(config_path, "r") as f:
+            config = json.load(f)
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in config file: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Error reading config file: {e}")
+        sys.exit(1)
+
+    # Validate required fields
+    required_fields = [
+        "server_access",
+        "build_type",
+        # TODO - implement adb allowlist based on this
+        "adb_access",
+        "max_iterations",
+        "max_kali_message_tokens",
+        "max_model_response_tokens",
+        "max_context_length",
+        "model",
+        "screenshot_mode",
+        "headless_mode",
+        "dry_run",
+    ]
+
+    missing_fields = [field for field in required_fields if field not in config]
+    if missing_fields:
+        logger.error(f"Missing required config fields: {missing_fields}")
+        sys.exit(1)
+
+    # Validate field values
+    valid_choices = {
+        "build_type": ["source", "apk"],
+        "adb_access": ["none", "limited", "full"],
+    }
+
+    for field, choices in valid_choices.items():
+        if config[field] not in choices:
+            logger.error(
+                f"Invalid value for {field}: {config[field]}. Must be one of: {choices}"
+            )
+            sys.exit(1)
+
+    # Validate boolean fields
+    bool_fields = ["server_access", "screenshot_mode", "headless_mode", "dry_run"]
+    for field in bool_fields:
+        if not isinstance(config[field], bool):
+            logger.error(f"Field {field} must be a boolean (true/false)")
+            sys.exit(1)
+
+    # Validate integer fields
+    int_fields = [
+        "max_iterations",
+        "max_kali_message_tokens",
+        "max_model_response_tokens",
+        "max_context_length",
+    ]
+    for field in int_fields:
+        if not isinstance(config[field], int) or config[field] <= 0:
+            logger.error(f"Field {field} must be a positive integer")
+            sys.exit(1)
+
+    # Validate model field
+    if not isinstance(config["model"], str) or not config["model"].strip():
+        logger.error("Field 'model' must be a non-empty string")
+        sys.exit(1)
+
+    logger.info("Configuration validation passed")
+    return config
+
+
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(
@@ -599,11 +715,27 @@ def main():
     parser.add_argument(
         "app_name", help="Name of the app to test (must exist in apps/ directory)"
     )
+    parser.add_argument(
+        "config_file",
+        nargs="?",
+        default="runner_config.json",
+        help="Path to JSON configuration file (default: runner_config.json)",
+    )
 
     args = parser.parse_args()
 
+    # Load configuration from file
+    # If relative path, make it relative to the script directory
+    config_file = args.config_file
+    if not os.path.isabs(config_file):
+        config_path = project_root / config_file
+    else:
+        config_path = Path(config_file)
+
+    config = load_config(config_path)
+
     # Create and run the runner
-    runner = MobileCybenchRunner(args.app_name)
+    runner = MobileCybenchRunner(args.app_name, config)
     return runner.run()
 
 

@@ -1,15 +1,9 @@
-import datetime
 import json
 import os
-import sys
 
 from dotenv import load_dotenv
-from openai import OpenAI
 
-# Add project root to Python path to enable absolute imports
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_root)
-
+from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     APP_SERVER_ACCESS,
     BASE_EXAMPLES,
@@ -21,48 +15,46 @@ from agent.prompts.prompts import (
     SUBMISSION_INSTRUCTIONS,
     TARGET_HOST_EXAMPLE,
 )
-from utils.logger import logger
+from utils.logger import logger, logger_manager
 from utils.mcp_utils import get_mcp_server_config
-from utils.utils import get_app_server_from_metadata
+from utils.token_tracker import TokenTracker
 
 
 class CustomAgent:
     def __init__(
         self,
-        model: str = "gpt-5-2025-08-07",
-        max_iterations: int = 50,
-        max_output_tokens: int = 8192,
+        model: str,
+        max_iterations: int,
+        max_model_response_tokens: int,
+        max_kali_message_tokens: int,
+        # TODO need to enforce this before sending off requests
+        max_context_length: int,
+        screenshot_enabled: bool,
+        app_name: str,
+        dry_run: bool,
         mcp_config: dict = None,
         system_prompt: str = None,
         timeout_ms: int = 600_000,
-        screenshot_enabled: bool = False,
-        adb_access_level: str = "limited",
-        target_host: str = None,
+        app_server: str = None,
         network_access: bool = True,
-        app_name: str = "conversations",
-        dry_run: bool = False,
     ):
         self.dry_run = dry_run
         # Load environment variables from .env file in the agent directory
         agent_dir = os.path.dirname(os.path.abspath(__file__))
         env_file = os.path.join(agent_dir, ".env")
         if os.path.exists(env_file):
-            load_dotenv(env_file)
+            load_dotenv(env_file, override=True)
 
-        # Check for required OpenAI API key
-        if not os.getenv("OPENAI_API_KEY"):
-            raise ValueError(
-                "OPENAI_API_KEY environment variable is required but not set"
-            )
-
-        self.client = OpenAI()
+        self.provider = get_model_provider("openai")
+        self.provider.validate()
         self.model = model
         self.max_iterations = max_iterations
-        self.max_output_tokens = max_output_tokens
+        self.max_model_response_tokens = max_model_response_tokens
+        self.max_kali_message_tokens = max_kali_message_tokens
+        self.max_context_length = max_context_length
         self.timeout_ms = timeout_ms
         self.screenshot_enabled = screenshot_enabled
-        self.adb_access_level = adb_access_level
-        self.target_host = target_host
+        self.app_server = app_server
         self.network_access = network_access
         self.app_name = app_name
 
@@ -70,17 +62,17 @@ class CustomAgent:
         self.mcp_config = mcp_config or get_mcp_server_config()
 
         # Set up system prompt
-        self.system_prompt = system_prompt or self._get_default_system_prompt(
-            target_host, network_access, app_name
-        )
+        self.system_prompt = system_prompt or self._get_default_system_prompt()
 
         # Initialize agent state
         self.rolling_summary = ""
         self.history_items = [self.system_prompt]
 
-        # Set up logging
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.log_file = f"agent_run_{timestamp}.log"
+        # Use shared logger's file name for consistency
+        self.log_file = logger_manager.get_log_file_name()
+
+        # Initialize token tracker (writes per-call JSONL by default)
+        self.token_tracker = TokenTracker()
 
         logger.info("Agent Run Started")
         logger.info(f"Dry Run: {self.dry_run}")
@@ -92,23 +84,16 @@ class CustomAgent:
         )
         logger.info("=" * 80)
 
-    def _get_default_system_prompt(
-        self,
-        target_host: str = None,
-        network_access: bool = False,
-        app_name: str = None,
-    ) -> dict:
+    def _get_default_system_prompt(self) -> dict:
         prompt_parts = [
             DETECT_DESCRIPTION,
         ]
 
-        # Add app server information if network access is enabled and app_name is provided
-        if network_access and app_name:
-            app_server = get_app_server_from_metadata(app_name)
-            if app_server:
-                prompt_parts.extend(
-                    [SEPARATOR, APP_SERVER_ACCESS.format(app_server=app_server)]
-                )
+        # Add app server information if network access is enabled and app_server is provided
+        if self.network_access and self.app_server:
+            prompt_parts.extend(
+                [SEPARATOR, APP_SERVER_ACCESS.format(app_server=self.app_server)]
+            )
 
         prompt_parts.extend(
             [
@@ -122,12 +107,12 @@ class CustomAgent:
         )
 
         # Add target host example if provided
-        if target_host:
+        if self.app_server:
             prompt_parts.extend(
                 [
                     SEPARATOR,
                     TARGET_HOST_EXAMPLE.format(
-                        resolved_host=target_host, stop_token=STOP_TOKEN
+                        resolved_host=self.app_server, stop_token=STOP_TOKEN
                     ),
                 ]
             )
@@ -146,17 +131,6 @@ class CustomAgent:
             {"role": role, "content": [{"type": "input_text", "text": text}]}
         )
         logger.info(f"[{role.upper()}] {text}")
-
-    def run_command_in_kali(self, command: str) -> dict:
-        return {
-            "stdout": "Command executed successfully",
-            "stderr": "",
-            "exit_code": 0,
-            "duration_ms": 1234,
-            "screenshot_ref": (
-                f"fs://shots/screenshot.png" if self.screenshot_enabled else None
-            ),
-        }
 
     def run(self) -> dict:
         if self.dry_run:
@@ -217,13 +191,20 @@ class CustomAgent:
             logger.info(input_text.strip())
             logger.info("-" * 40)
 
-            resp = self.client.responses.create(
+            resp = self.provider.call(
                 model=self.model,
-                input=input_text.strip(),
+                input_text=input_text.strip(),
                 tools=[self.mcp_config],
-                max_output_tokens=self.max_output_tokens,
+                max_output_tokens=self.max_model_response_tokens,
+                timeout_ms=self.timeout_ms,
             )
-            print(f"[Agent] API call completed")
+            print("[Agent] API call completed")
+
+            # Record token usage and cost
+            try:
+                self.token_tracker.record_from_openai_response(resp, model=self.model)
+            except Exception as e:
+                logger.warning(f"Token tracking failed: {e}")
 
             # Process response
             assistant_response = resp.output_text
@@ -268,7 +249,7 @@ class CustomAgent:
                         output = getattr(output_item, "output", "")
                         error = getattr(output_item, "error", None)
 
-                        print(f"[Agent] MCP call: {name} -> {str(output)[:100]}...")
+                        print(f"[Agent] MCP call: {name} -> {str(output)}...")
 
                         logger.info(f"MCP Call: {name}")
                         logger.info(f"  Arguments: {arguments}")
@@ -288,7 +269,6 @@ class CustomAgent:
                 except Exception:
                     msg = {}
 
-                # Handle command execution
                 if msg.get("command") == "FinalSubmissionCommand":
                     print("[Agent] Final submission received - stopping execution")
 
@@ -296,6 +276,9 @@ class CustomAgent:
                     logger.info("Status: Final submission received")
                     logger.info(f"Total turns: {turn + 1}")
                     logger.info(f"Final message: {json.dumps(msg, indent=2)}")
+                    logger.info(
+                        f"Token totals: {json.dumps(self.token_tracker.totals())}"
+                    )
                     logger.info(f"Log file: {self.log_file}")
 
                     print(f"[Agent] Full log saved to: {self.log_file}")
@@ -304,29 +287,18 @@ class CustomAgent:
                         "status": "completed",
                         "turns": turn + 1,
                         "final_message": msg,
+                        "token_totals": self.token_tracker.totals(),
                         "log_file": self.log_file,
                     }
-                elif msg.get("command"):
-                    # Execute command in Kali environment
-                    result = self.run_command_in_kali(msg["command"])
-                    kali_response = json.dumps(result)
-                    self.add_message("user", f"Kali result:\n{kali_response}")
-                else:
-                    # If not a JSON command, treat as regular response
-                    print(f"[Agent] Response: {assistant_response}")
-                    # Add some user feedback to continue conversation
-                    self.add_message(
-                        "user",
-                        "Continue with your analysis or provide the next command.",
-                    )
 
         print(f"[Agent] Reached maximum iterations ({self.max_iterations})")
 
         # Log completion
         with open(self.log_file, "a") as f:
             f.write(f"\n{'='*20} RUN COMPLETED {'='*20}\n")
-            f.write(f"Status: Maximum iterations reached\n")
+            f.write("Status: Maximum iterations reached\n")
             f.write(f"Total turns: {self.max_iterations}\n")
+            f.write(f"Token totals: {json.dumps(self.token_tracker.totals())}\n")
             f.write(f"Log file: {self.log_file}\n")
 
         print(f"[Agent] Full log saved to: {self.log_file}")
@@ -335,21 +307,6 @@ class CustomAgent:
             "status": "max_iterations_reached",
             "turns": self.max_iterations,
             "final_message": None,
+            "token_totals": self.token_tracker.totals(),
             "log_file": self.log_file,
         }
-
-
-# Example usage
-if __name__ == "__main__":
-    # Create agent with custom configuration
-    agent = CustomAgent(
-        model="gpt-5-2025-08-07",
-        max_iterations=30,
-        max_output_tokens=4096,
-        adb_access_level="limited",
-        screenshot_enabled=True,
-    )
-
-    # Run the agent
-    result = agent.run()
-    print(f"Agent execution completed: {result}")
