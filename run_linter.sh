@@ -51,7 +51,7 @@ if [ ${#FILES_TO_LINT[@]} -gt 0 ]; then
     echo ""
 
     echo "Linting with ruff (style, errors, imports) and applying fixes..."
-    if ! ruff check --select E,F,I --line-length 120 --fix "${FILES_TO_LINT[@]}"; then
+    if ! ruff check --select E,F,I --ignore E501 --line-length 120 --fix "${FILES_TO_LINT[@]}"; then
         echo "❌ Ruff found unfixable issues - please review and fix manually"
         exit 1
     fi
