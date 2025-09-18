@@ -281,6 +281,16 @@ done
 { ./setup_app_source.sh; } || { echo -e "${ERROR} setup_app_source.sh failed"; exit 1; }
 cd "$ROOT_DIR"
 
+# Run linter early to fail fast if there are issues
+print_header "$CYAN" "RUNNING LINTER"
+if [ -f "run_linter.sh" ]; then
+    echo -e "${INFO} Running linter..."
+    { ./run_linter.sh; } || { echo -e "${ERROR} run_linter.sh failed"; exit 1; }
+    echo -e "${SUCCESS} Linter completed successfully"
+else
+    echo -e "${WARNING} run_linter.sh not found, skipping linter"
+fi
+
 # Start emulator (assuming you have a start_emulator.sh script)
 if [ -f "start_emulator.sh" ]; then
     print_header "$CYAN" "STARTING EMULATOR"
@@ -380,16 +390,6 @@ fi
 cd $ROOT_DIR
 if [ -f "stop_emulator.sh" ]; then
     stop_emulator
-fi
-
-# Run linter
-print_header "$CYAN" "RUNNING LINTER"
-if [ -f "run_linter.sh" ]; then
-    echo -e "${INFO} Running linter..."
-    { ./run_linter.sh; } || { echo -e "${ERROR} run_linter.sh failed"; exit 1; }
-    echo -e "${SUCCESS} Linter completed successfully"
-else
-    echo -e "${WARNING} run_linter.sh not found, skipping linter"
 fi
 
 # Final cleanup
