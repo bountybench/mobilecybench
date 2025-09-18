@@ -39,8 +39,7 @@ def test_android_app_running():
             # NOTE: Check if checking for webview like this is valid
             if (
                 "com.audiobookshelf.app" in result.stdout
-                or "com.google.android.webview"
-                in result.stdout
+                or "com.google.android.webview" in result.stdout
             ):
                 print("Audiobookshelf app has crashed recently", file=sys.stderr)
                 return False
