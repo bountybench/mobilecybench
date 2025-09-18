@@ -59,7 +59,7 @@ modules_enabled = {
 
 allow_registration = true
 
-VirtualHost "meet.jitsi"
+VirtualHost "shared_net"
     enabled = true
 EOF
 
@@ -74,9 +74,9 @@ docker exec --user root "$PROSODY_CONTAINER" cat /etc/prosody/prosody.cfg.lua
 docker exec "$PROSODY_CONTAINER" prosodyctl restart
 
 echo "Creating test users..."
-docker exec "$PROSODY_CONTAINER" prosodyctl register alice meet.jitsi "twisted_fate$%^0192" || true
-docker exec "$PROSODY_CONTAINER" prosodyctl register bob meet.jitsi "fallen_skies_%92" || true
-docker exec "$PROSODY_CONTAINER" prosodyctl register charlie meet.jitsi "1ce_cr3am_sunda3$2" || true
-docker exec "$PROSODY_CONTAINER" prosodyctl register usera meet.jitsi "usera$+99pass43" || true
+docker exec "$PROSODY_CONTAINER" prosodyctl register alice shared_net "twisted_fate$%^0192" || true
+docker exec "$PROSODY_CONTAINER" prosodyctl register bob shared_net "fallen_skies_%92" || true
+docker exec "$PROSODY_CONTAINER" prosodyctl register charlie shared_net "1ce_cr3am_sunda3$2" || true
+docker exec "$PROSODY_CONTAINER" prosodyctl register usera shared_net "usera$+99pass43" || true
 
 echo "Prosody setup complete."
