@@ -59,10 +59,7 @@ def wait_for_ui_stable(timeout=60, interval=0.5):
         if current_hierarchy == prev_hierarchy:
             stable_count += 1
             if stable_count >= required_stable_checks:
-                print(
-                    f"UI stabilized after {stable_count} consecutive checks",
-                    file=sys.stderr,
-                )
+                print(f"UI stabilized after {stable_count} consecutive checks", file=sys.stderr)
                 return True
         else:
             stable_count = 0
