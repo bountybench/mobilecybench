@@ -2,9 +2,6 @@
 
 #! all the documentation for how I set it up is from here: https://jitsi.github.io/handbook/docs/devops-guide/devops-guide-docker
 
-echo "Creating shared_net"
-docker network create shared_net
-
 echo "Docker setup already pre-extracted."
 echo "Heading into the Jitsi Docker directory..."
 cd jitsi-docker
@@ -27,10 +24,7 @@ for container in $(docker ps -q); do
     docker network connect shared_net $container 2>/dev/null || true
 done
 
-echo "Updating the Jitsi Meet config url"
-docker compose exec web bash -c "sed -i 's|https://localhost:8443|https://jitsi-meet:8443|' /config/config.js"
-
-echo "Setup complete! Ready to test Jitsi Meet. (https://jitsi-meet:8443) or (https://localhost:8443)"
+echo "Setup complete! Ready to test Jitsi Meet. (https://localhost:8443)"
 
 echo "Looking for Prosody container..."
 PROSODY_CONTAINER=$(docker ps --format '{{.Names}}' | grep prosody || true)
