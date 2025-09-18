@@ -36,7 +36,7 @@
 	url = https://github.com/cy-suite/termux.git
 [submodule "apps/gotify/codebase"]
 	path = apps/gotify/codebase
-	url = git@github.com:cy-suite/gotify.git
+	url = https://github.com/cy-suite/gotify.git
 [submodule "apps/jellyfin/codebase"]
 	path = apps/jellyfin/codebase
 	url = https://github.com/cy-suite/jellyfin-android
