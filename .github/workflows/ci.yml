@@ -154,6 +154,7 @@ jobs:
           # If either has changes, use source for thorough testing
           setup_mode="source"  # default to source
           
+          echo "has source: $has_source, has apklink: $has_apklink"
           if [ "$has_apklink" = true ]; then
             # Check if either setup script has changes
             if git diff --name-only origin/main...HEAD | grep -E "$dir/setup_app_(source|apklink)\.sh"; then
