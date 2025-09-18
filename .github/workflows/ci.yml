@@ -295,6 +295,30 @@ jobs:
             fi
           }
 
+          verify_shared_net_connectivity() {
+            # Verify shared_net connectivity after containers are started
+            echo "Verifying shared_net connectivity..."
+            if [ -f "metadata.json" ]; then
+              app_server=$(jq -r '.app_server // empty' "metadata.json")
+              if [ -n "$app_server" ]; then
+                echo "Testing connectivity to: $app_server"
+                
+                # Check if the specified host and port are open,
+                # with a 30-second timeout, without sending any data
+                host=$(echo "$app_server" | cut -d':' -f1)
+                port=$(echo "$app_server" | cut -d':' -f2)
+                docker run --rm --network=shared_net alpine:latest \
+                  sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
+                
+                echo "shared_net connectivity verified"
+              else
+                echo "No app_server defined in metadata.json, skipping connectivity check"
+              fi
+            else
+              echo "No metadata.json found, skipping connectivity check"
+            fi
+          }
+
           EOF
           chmod +x /tmp/shared_functions.sh
 
@@ -364,29 +388,7 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
-          
-          # Verify shared_net connectivity after containers are started
-          echo "Verifying shared_net connectivity..."
-          if [ -f "metadata.json" ]; then
-            app_server=$(jq -r '.app_server // empty' "metadata.json")
-            if [ -n "$app_server" ]; then
-              echo "Testing connectivity to: $app_server"
-              
-              # Check if the specified host and port are open,
-              # with a 30-second timeout, without sending any data
-              host=$(echo "$app_server" | cut -d':' -f1)
-              port=$(echo "$app_server" | cut -d':' -f2)
-              docker run --rm --network=shared_net alpine:latest \
-                sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
-              
-              echo "shared_net connectivity verified"
-            else
-              echo "No app_server defined in metadata.json, skipping connectivity check"
-            fi
-          else
-            echo "No metadata.json found, skipping connectivity check"
-          fi
-          
+          verify_shared_net_connectivity
           adb logcat -c
           
           echo "Running baseline checks..."
@@ -413,29 +415,7 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
-          
-          # Verify shared_net connectivity after containers are started
-          echo "Verifying shared_net connectivity..."
-          if [ -f "metadata.json" ]; then
-            app_server=$(jq -r '.app_server // empty' "metadata.json")
-            if [ -n "$app_server" ]; then
-              echo "Testing connectivity to: $app_server"
-              
-              # Check if the specified host and port are open,
-              # with a 30-second timeout, without sending any data
-              host=$(echo "$app_server" | cut -d':' -f1)
-              port=$(echo "$app_server" | cut -d':' -f2)
-              docker run --rm --network=shared_net alpine:latest \
-                sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
-              
-              echo "shared_net connectivity verified"
-            else
-              echo "No app_server defined in metadata.json, skipping connectivity check"
-            fi
-          else
-            echo "No metadata.json found, skipping connectivity check"
-          fi
-          
+          verify_shared_net_connectivity
           adb logcat -c
           
           echo "Creating vulnerable scenario 0..."
@@ -480,29 +460,7 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
-          
-          # Verify shared_net connectivity after containers are started
-          echo "Verifying shared_net connectivity..."
-          if [ -f "metadata.json" ]; then
-            app_server=$(jq -r '.app_server // empty' "metadata.json")
-            if [ -n "$app_server" ]; then
-              echo "Testing connectivity to: $app_server"
-              
-              # Check if the specified host and port are open,
-              # with a 30-second timeout, without sending any data
-              host=$(echo "$app_server" | cut -d':' -f1)
-              port=$(echo "$app_server" | cut -d':' -f2)
-              docker run --rm --network=shared_net alpine:latest \
-                sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
-              
-              echo "shared_net connectivity verified"
-            else
-              echo "No app_server defined in metadata.json, skipping connectivity check"
-            fi
-          else
-            echo "No metadata.json found, skipping connectivity check"
-          fi
-          
+          verify_shared_net_connectivity
           adb logcat -c
           
           echo "Creating vulnerable scenario 1..."
@@ -793,29 +751,7 @@ jobs:
           
           echo "Running setup..."
           ./setup.sh
-          
-          # Verify shared_net connectivity after containers are started
-          echo "Verifying shared_net connectivity..."
-          if [ -f "metadata.json" ]; then
-            app_server=$(jq -r '.app_server // empty' "metadata.json")
-            if [ -n "$app_server" ]; then
-              echo "Testing connectivity to: $app_server"
-              
-              # Check if the specified host and port are open,
-              # with a 30-second timeout, without sending any data
-              host=$(echo "$app_server" | cut -d':' -f1)
-              port=$(echo "$app_server" | cut -d':' -f2)
-              docker run --rm --network=shared_net alpine:latest \
-                sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
-              
-              echo "shared_net connectivity verified"
-            else
-              echo "No app_server defined in metadata.json, skipping connectivity check"
-            fi
-          else
-            echo "No metadata.json found, skipping connectivity check"
-          fi
-          
+          verify_shared_net_connectivity
           adb logcat -c
           
           # Check packages after setup
