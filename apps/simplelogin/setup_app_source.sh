@@ -308,10 +308,10 @@ verify_installation() {
 main() {
     log_info "Starting SimpleLogin Android app setup..."
     
-    check_prerequisites
-    configure_debug_build
-    setup_environment
-    build_app
+    check_prerequisites || return 1
+    configure_debug_build || return 1
+    setup_environment || return 1
+    build_app || return 1
     
     log_success "SimpleLogin Android app build completed successfully!"
     log_info "APK is ready for installation and testing."

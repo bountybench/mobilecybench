@@ -212,6 +212,46 @@ def check_database_constraints():
         return False
 
 
+def check_unauthorized_user_creation():
+    """Check for unauthorized user creation (backdoor users)"""
+    try:
+        db_container_id = get_container_id("db")
+        
+        # Check for unauthorized users that shouldn't exist
+        unauthorized_emails = ["backdoor@simplelogin.test", "weakpass@simplelogin.test"]
+        
+        for email in unauthorized_emails:
+            # Check if unauthorized user exists
+            user_result = docker_exec(
+                db_container_id,
+                "psql",
+                "-U",
+                "simplelogin",
+                "-d",
+                "simplelogin",
+                "-t",
+                "-c",
+                f"SELECT email, activated, is_admin FROM users WHERE email = '{email}';",
+            )
+            
+            if user_result.strip():
+                # Unauthorized user exists - this is a security failure
+                email_db, activated, is_admin = user_result.strip().split("|")
+                email_db = email_db.strip()
+                activated = activated.strip().lower() == "t"
+                is_admin = is_admin.strip().lower() == "t"
+                
+                err(f"❌ [FAIL] Unauthorized user creation detected: {email_db} (activated: {activated}, admin: {is_admin})")
+                return False
+        
+        out("✅ [PASS] No unauthorized user creation detected")
+        return True
+        
+    except Exception as e:
+        err(f"❌ [FAIL] Error checking for unauthorized user creation: {e}")
+        return False
+
+
 def check_password_integrity():
     """Verify that passwords are properly hashed and verifiable"""
     try:
@@ -286,6 +326,7 @@ def main():
         ("check_user_data_consistency", check_user_data_consistency),
         ("check_api_key_integrity", check_api_key_integrity),
         ("check_database_constraints", check_database_constraints),
+        ("check_unauthorized_user_creation", check_unauthorized_user_creation),
         ("check_password_integrity", check_password_integrity),
         ("check_secrets_file_integrity", check_secrets_file_integrity),
     ]

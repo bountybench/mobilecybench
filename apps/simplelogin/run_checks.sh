@@ -126,7 +126,7 @@ collect_results() {
         fi
     done
     
-    # Create scores.json in the format expected by validation (like Tindroid)
+    # Create scores.json in the format expected by validation (matching Tindroid format)
     cat > "$RESULTS_FILE" <<EOF
 {
   "scores": {

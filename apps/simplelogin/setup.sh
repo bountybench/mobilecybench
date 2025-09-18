@@ -5,6 +5,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 METADATA_FILE="$SCRIPT_DIR/metadata.json"
 SECRETS_FILE="$SCRIPT_DIR/secrets.json"
 
+# Dynamic Docker Compose detection (v1/v2)
+if docker compose version >/dev/null 2>&1; then
+    DC="docker compose"
+else
+    DC="docker-compose"
+fi
+
 echo "Installing required Python packages..."
 pip3 install requests uiautomator2 psycopg2-binary bcrypt 2>/dev/null || {
     echo "Warning: Some packages failed to install, trying individual installation..."
@@ -20,8 +27,8 @@ check_prerequisites() {
         return 1
     fi
     
-    # Check for docker compose (modern syntax)
-    if ! docker compose version &> /dev/null; then
+    # Check for docker compose (either v1 or v2)
+    if ! $DC version &> /dev/null; then
         echo "ERROR:" "docker compose not available. Please ensure Docker Compose is installed."
         return 1
     fi
@@ -88,12 +95,40 @@ setup_backend() {
     
     cd "$SCRIPT_DIR"
     
+    # Ensure Docker is running
+    if ! docker info >/dev/null 2>&1; then
+        echo "Starting Docker..."
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            # macOS
+            open -a Docker
+            echo "Waiting for Docker to start..."
+            local timeout=60
+            local counter=0
+            while [[ $counter -lt $timeout ]]; do
+                if docker info >/dev/null 2>&1; then
+                    echo "Docker is running"
+                    break
+                fi
+                sleep 2
+                ((counter++))
+            done
+            
+            if [[ $counter -eq $timeout ]]; then
+                echo "ERROR: Docker failed to start within 60 seconds"
+                return 1
+            fi
+        else
+            echo "ERROR: Docker is not running. Please start Docker manually."
+            return 1
+        fi
+    fi
+    
     # Stop any existing containers
-    docker compose down 2>/dev/null || true
+    $DC down 2>/dev/null || true
     
     # Start backend services
     echo "Starting backend services..."
-    if ! docker compose up -d; then
+    if ! $DC up -d; then
         echo "ERROR:" "Failed to start backend services"
         return 1
     fi
@@ -104,14 +139,14 @@ setup_backend() {
     local counter=0
     
     while [[ $counter -lt $timeout ]]; do
-        if docker compose ps | grep -q "healthy"; then
+        if $DC ps | grep -q "healthy"; then
             echo "Backend services are healthy"
             break
         fi
         
         if [[ $counter -ge $timeout ]]; then
             echo "ERROR:" "Timeout waiting for backend services"
-            docker compose logs
+            $DC logs
             return 1
         fi
         
@@ -120,11 +155,11 @@ setup_backend() {
         ((counter++))
     done
     
-    # Wait for API HTTP readiness
+    # Wait for API HTTP readiness (expect 302 redirect)
     echo "Waiting for API HTTP readiness..."
     for i in {1..60}; do
-        if curl -fsS "http://localhost:7777/" >/dev/null 2>&1; then
-            echo "API is answering HTTP requests"
+        if curl -fsS -o /dev/null -w "%{http_code}" "http://localhost:7777/" | grep -q "302"; then
+            echo "API is answering HTTP requests (302 redirect)"
             break
         fi
         if [[ $i -eq 60 ]]; then
@@ -156,6 +191,53 @@ seed_test_data() {
 build_and_install_app() {
     echo "Building and installing SimpleLogin app..."
     
+    # Check if app is already installed and up-to-date
+    local app_id
+    app_id=$(jq -r '.app_id' "$METADATA_FILE")
+    
+    # Check if device is connected
+    if ! adb devices | grep -q "device$"; then
+        echo "ERROR:" "No Android device/emulator connected"
+        return 1
+    fi
+    
+    # Check if app is already installed
+    if adb shell pm list packages | grep -q "$app_id"; then
+        echo "App is already installed: $app_id"
+        
+        # Check if APK exists and is newer than installed version
+        local apk_path="$SCRIPT_DIR/codebase/SimpleLogin/app/build/outputs/apk/fdroid/debug/app-fdroid-debug.apk"
+        if [[ -f "$apk_path" ]]; then
+            echo "APK already built, checking if installation is current..."
+            
+            # Get installed version
+            local installed_version
+            installed_version=$(adb shell dumpsys package "$app_id" | grep "versionCode" | head -1 | cut -d'=' -f2 | tr -d ' ' || echo "")
+            
+            # Get APK version (simplified - just check if APK exists and is recent)
+            local apk_age
+            apk_age=$(find "$apk_path" -mtime -1 2>/dev/null && echo "recent" || echo "old")
+            
+            if [[ "$apk_age" == "recent" ]]; then
+                echo "APK is recent and app is installed - skipping rebuild"
+                return 0
+            else
+                echo "APK is outdated - rebuilding..."
+            fi
+        else
+            echo "APK not found - rebuilding..."
+        fi
+    else
+        echo "App not installed - will build and install"
+    fi
+    
+    # Check if codebase directory exists
+    if [[ ! -d "$SCRIPT_DIR/codebase" ]]; then
+        echo "ERROR:" "Codebase directory not found. This may indicate a cleanup issue."
+        echo "Please ensure the submodule is properly initialized."
+        return 1
+    fi
+    
     # Run the app source setup script to build APK
     if ! bash "$SCRIPT_DIR/setup_app_source.sh"; then
         echo "ERROR:" "App build failed"
@@ -171,10 +253,6 @@ build_and_install_app() {
     fi
     
     echo "Installing APK: $apk_path"
-    
-    # Get app ID for uninstall
-    local app_id
-    app_id=$(jq -r '.app_id' "$METADATA_FILE")
     
     # Uninstall any existing version
     adb uninstall "$app_id" >/dev/null 2>&1 || true
@@ -256,8 +334,38 @@ verify_setup() {
     echo "Setup verification completed"
 }
 
+ensure_submodule_ready() {
+    echo "Ensuring submodule is ready..."
+    
+    # Sync and update submodules
+    git submodule sync --recursive
+    git submodule update --init --recursive --checkout codebase
+    
+    # Check if codebase directory exists
+    if [[ ! -d "$SCRIPT_DIR/codebase" ]]; then
+        echo "ERROR:" "Failed to initialize codebase submodule"
+        return 1
+    fi
+    
+    # Get target commit from metadata
+    local target_commit
+    target_commit=$(jq -r '.commit_version' "$METADATA_FILE")
+    
+    if [[ "$target_commit" != "null" && -n "$target_commit" ]]; then
+        echo "Checking out commit: $target_commit"
+        cd "$SCRIPT_DIR/codebase"
+        git checkout "$target_commit"
+        cd "$SCRIPT_DIR"
+    fi
+    
+    echo "Submodule ready at: $SCRIPT_DIR/codebase"
+}
+
 main() {
     echo "Starting SimpleLogin MobileCybench setup..."
+    
+    # Ensure submodule is initialized and at correct commit
+    ensure_submodule_ready
     
     check_prerequisites
     setup_emulator
@@ -277,7 +385,7 @@ main() {
 cleanup() {
     echo "Warning:" "Setup interrupted. Cleaning up..."
     cd "$SCRIPT_DIR"
-    docker compose down 2>/dev/null || true
+    $DC down 2>/dev/null || true
     exit 1
 }
 
