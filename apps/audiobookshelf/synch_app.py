@@ -1,8 +1,8 @@
 import argparse
-import sys
-import time
-
 import uiautomator2 as u2
+import time
+import sys
+
 
 parser = argparse.ArgumentParser(description="Audiobookshelf Server synchronization")
 parser.add_argument("--username", required=True, help="email")
@@ -13,6 +13,11 @@ username = args.username
 password = args.password
 
 d = u2.connect()
+
+
+result: str = ""
+custom_index = 5
+result = result[:custom_index] + "new_value" + result[custom_index + 7 :]
 
 
 def wait_and_click_text(text, timeout=60):
