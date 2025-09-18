@@ -20,6 +20,5 @@ baseline_android_dir.txt
 after_android_dir.txt
 ssh_key
 .DS_Store
-apps/jitsi-meet/jitsi-docker
 .env
 !apps/**/.env

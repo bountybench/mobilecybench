@@ -37,3 +37,9 @@
 [submodule "apps/jellyfin/codebase"]
 	path = apps/jellyfin/codebase
 	url = https://github.com/cy-suite/jellyfin-android
+[submodule "apps/jitsi-meet/apps/jitsi-meet/jitsi-docker"]
+	path = apps/jitsi-meet/apps/jitsi-meet/jitsi-docker
+	url = https://github.com/cy-suite/jitsi-meet-docker.git
+[submodule "apps/jitsi-meet/jitsi-docker"]
+	path = apps/jitsi-meet/jitsi-docker
+	url = https://github.com/cy-suite/jitsi-meet-docker.git
