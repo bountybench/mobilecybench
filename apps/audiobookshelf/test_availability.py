@@ -36,7 +36,9 @@ def test_android_app_running():
                 text=True,
             )
 
-            # NOTE: Check if checking for webview like this is valid
+            print(result, file=sys.stderr)
+
+            # Have to check for webview because it's a webview wrapper
             if (
                 "com.audiobookshelf.app" in result.stdout
                 or "com.google.android.webview" in result.stdout
