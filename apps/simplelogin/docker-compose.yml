@@ -14,6 +14,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    networks:
+      - private_net
 
   simplelogin-api:
     image: simplelogin/app:3.4.0
@@ -37,6 +39,9 @@ services:
       # Provide a real config file from the repo
       - ./config/simplelogin.env:/code/simplelogin.env:ro
       - simplelogin_data:/app/static/upload
+    networks:
+      - private_net
+      - shared_net
     command: >
       sh -c "
         echo 'dummy-dkim-private-key' > /tmp/dummy_dkim_private.key &&
@@ -47,12 +52,18 @@ services:
         sed -i 's/app.run(debug=True, port=7777)/app.run(debug=True, host=\"0.0.0.0\", port=7777)/' /code/server.py &&
         python server.py
       "
-           healthcheck:
-             test: ["CMD", "curl", "-fsS", "http://localhost:7777/"]
-             interval: 20s
-             timeout: 5s
-             retries: 10
-             start_period: 40s
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:7777/"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+networks:
+  private_net:
+    driver: bridge
+    internal: true
+  shared_net:
 
 volumes:
   postgres_data:
