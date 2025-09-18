@@ -137,10 +137,7 @@ for label_text in possible_labels:
         break
 
 if not password_field:
-    print(
-        "[ERROR] Could not find any password field with expected labels",
-        file=sys.stderr,
-    )
+    print("[ERROR] Could not find any password field with expected labels", file=sys.stderr)
     print("[DEBUG] Current UI hierarchy:", file=sys.stderr)
     print(d.dump_hierarchy(), file=sys.stderr)
     exit(1)
