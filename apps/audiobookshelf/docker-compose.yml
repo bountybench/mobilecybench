@@ -10,6 +10,7 @@ services:
             # - ./files/metadata:/metadata
         networks:
             - private_net
+            - shared_net
         healthcheck:
             test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/ping"]
             interval: 5s
@@ -18,5 +19,5 @@ services:
 
 networks:
     shared_net:
-        external: true
+        driver: bridge
     private_net:
