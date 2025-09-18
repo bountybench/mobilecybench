@@ -1,7 +1,7 @@
 import argparse
 import uiautomator2 as u2
-import time
 import sys
+import time
 
 
 parser = argparse.ArgumentParser(description="Audiobookshelf Server synchronization")
@@ -24,6 +24,10 @@ def wait_and_click_text(text, timeout=60):
     if d(text=text).wait(timeout=timeout):
         print(text, file=sys.stderr)
         d(text=text).click_exists(timeout=3)
+
+
+
+        
     else:
         print(
             f"[ERROR] Could not find text: '{text}' within {timeout}s", file=sys.stderr
