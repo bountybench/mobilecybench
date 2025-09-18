@@ -3,7 +3,7 @@
     "test_access_control": 0,
     "test_availability": 1,
     "test_integrity": 0,
-    "test_confidentiality": 1
+    "test_confidentiality": 0
   },
   "access_control_details": {
     "check_privilege_escalation": 0,
