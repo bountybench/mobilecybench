@@ -3,14 +3,12 @@ services:
         container_name: audiobookshelf
         image: ghcr.io/advplyr/audiobookshelf:2.29.0
         ports:
-            - 13378:80
+            - 13378:13378
         volumes:
             - ./files/audiobooks:/audiobooks
             - ./files/config:/config
-            # - ./files/metadata:/metadata
         networks:
             - private_net
-            - shared_net
         healthcheck:
             test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/ping"]
             interval: 5s
@@ -19,5 +17,5 @@ services:
 
 networks:
     shared_net:
-        driver: bridge
+        external: true
     private_net:
