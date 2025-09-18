@@ -295,6 +295,43 @@ jobs:
             fi
           }
 
+          verify_shared_net_connectivity() {
+            # Verify shared_net connectivity after containers are started
+            echo "Verifying shared_net connectivity..."
+            if [ -f "metadata.json" ]; then
+              app_server=$(jq -r '.app_server // empty' "metadata.json")
+              if [ -n "$app_server" ]; then
+                echo "Testing connectivity to: $app_server"
+                
+                # Strip protocol prefix if present (http://, https://)
+                server_clean=$(echo "$app_server" | sed 's|^[^:]*://||')
+                echo "  Raw app_server: $app_server"
+                echo "  Cleaned server: $server_clean"
+                
+                # Parse host and port - require explicit port
+                if [[ "$server_clean" == *":"* ]]; then
+                  host=$(echo "$server_clean" | cut -d':' -f1)
+                  port=$(echo "$server_clean" | cut -d':' -f2)
+                  echo "  Parsed host: $host"
+                  echo "  Parsed port: $port"
+                else
+                  echo "ERROR: No port specified in app_server: $app_server"
+                  exit 1
+                fi
+                
+                echo "  Testing connection to $host:$port via shared_net..."
+                docker run --rm --network=shared_net alpine:latest \
+                  sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
+                
+                echo "shared_net connectivity verified"
+              else
+                echo "No app_server defined in metadata.json, skipping connectivity check"
+              fi
+            else
+              echo "No metadata.json found, skipping connectivity check"
+            fi
+          }
+
           EOF
           chmod +x /tmp/shared_functions.sh
 
@@ -346,6 +383,7 @@ jobs:
           echo "dir=\"$modified_dir\"" >> test_checks.sh
           echo "test_type=\"${{ matrix.test_type }}\"" >> test_checks.sh
 
+
           case "${{ matrix.test_type }}" in
             "baseline")
               cat <<'EOF' >> test_checks.sh
@@ -363,6 +401,7 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
+          verify_shared_net_connectivity
           adb logcat -c
           
           echo "Running baseline checks..."
@@ -389,6 +428,7 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
+          verify_shared_net_connectivity
           adb logcat -c
           
           echo "Creating vulnerable scenario 0..."
@@ -433,6 +473,7 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
+          verify_shared_net_connectivity
           adb logcat -c
           
           echo "Creating vulnerable scenario 1..."
@@ -723,6 +764,7 @@ jobs:
           
           echo "Running setup..."
           ./setup.sh
+          verify_shared_net_connectivity
           adb logcat -c
           
           # Check packages after setup
