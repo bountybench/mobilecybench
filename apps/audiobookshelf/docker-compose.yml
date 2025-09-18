@@ -10,7 +10,7 @@ services:
         networks:
             - private_net
         healthcheck:
-            test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/ping"]
+            test: ["CMD", "wget", "-q", "--spider", "http://localhost:13378/ping"]
             interval: 5s
             timeout: 10s
             retries: 3
