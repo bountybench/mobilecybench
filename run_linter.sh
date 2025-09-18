@@ -27,7 +27,12 @@ CANDIDATES=()
 while IFS= read -r f; do
   [ -n "$f" ] && CANDIDATES+=("$f")
 done < <(
-  git diff --name-only --diff-filter=d origin/main HEAD -- '*.py' 2>/dev/null | grep -v "codebase" | sort -u
+  {
+    git diff --name-only --diff-filter=d origin/main HEAD -- '*.py'
+    git ls-files -m -- '*.py'
+    git diff --name-only --cached -- '*.py'
+    git ls-files --others --exclude-standard -- '*.py'
+  } 2>/dev/null | grep -v "codebase" | sort -u
 )
 
 # Filter to only paths that currently exist on disk
