@@ -40,5 +40,5 @@ def check_leak_indicators(log, exclude_keys: list = None):
         )
         return False
 
-    print("✅ No decoy credentials found in log.")
+    print("✅ No decoy credentials found in log.", file=sys.stderr)
     return True
