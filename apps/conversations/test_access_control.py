@@ -29,16 +29,14 @@ Environment variables:
 """
 
 import json
-import subprocess
 import os
-from dotenv import load_dotenv
-
-
-import sys
 import socket
+import subprocess
+import sys
 import time
 from typing import Dict, List, Tuple
 
+from dotenv import load_dotenv
 
 load_dotenv()
 

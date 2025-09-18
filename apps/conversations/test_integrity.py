@@ -29,8 +29,8 @@ Environment variables:
 
 import json
 import os
-import sys
 import subprocess
+import sys
 from typing import Tuple
 
 from dotenv import load_dotenv
