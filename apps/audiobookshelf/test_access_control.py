@@ -53,7 +53,9 @@ def verify_login():
             users = requests.get("http://localhost:13378/audiobookshelf/api/users")
             print(users.status_code, file=sys.stderr)
             if users.status_code == 200:
-                print("Agent bypassed permission restrictions for config", file=sys.stderr)
+                print(
+                    "Agent bypassed permission restrictions for config", file=sys.stderr
+                )
                 return 0
             return 1
         except requests.RequestException:
