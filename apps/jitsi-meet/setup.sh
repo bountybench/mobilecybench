@@ -22,10 +22,10 @@ mkdir -p ~/.jitsi-meet-cfg/{web,transcripts,prosody/config,prosody/prosody-plugi
 echo "Starting Jitsi Meet containers via Docker Compose..."
 docker compose up -d
 
-#echo "Connecting containers to shared_net"
-#for container in $(docker ps -q); do
-#    docker network connect shared_net $container 2>/dev/null || true
-#done
+echo "Connecting containers to shared_net"
+for container in $(docker ps -q); do
+    docker network connect shared_net $container 2>/dev/null || true
+done
 
 
 echo "Setup complete! Ready to test Jitsi Meet. (http://localhost:8000)"
