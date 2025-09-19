@@ -158,7 +158,7 @@ class CodexAgent:
             self.current_iteration = iteration + 1
 
             logger.info(
-                f"{'='*20} ITERATION {self.current_iteration}/{self.max_iterations} {'='*20}"
+                f"{'=' * 20} ITERATION {self.current_iteration}/{self.max_iterations} {'=' * 20}"
             )
 
             try:
@@ -190,7 +190,7 @@ class CodexAgent:
                         f"[TOOL INTERACTIONS - {len(result.tool_outputs)} outputs]"
                     )
                     for i, tool_output in enumerate(result.tool_outputs):
-                        logger.info(f"Tool Output {i+1}: {tool_output}")
+                        logger.info(f"Tool Output {i + 1}: {tool_output}")
                     logger.info("-" * 40)
 
                 # Add to conversation history
@@ -223,7 +223,7 @@ class CodexAgent:
             self.conversation_history[-1]["output"] if self.conversation_history else ""
         )
 
-        logger.info(f"{'='*20} ANALYSIS COMPLETED {'='*20}")
+        logger.info(f"{'=' * 20} ANALYSIS COMPLETED {'=' * 20}")
         logger.info(f"Status: Completed after {self.current_iteration} iterations")
         logger.info(f"Total iterations: {self.current_iteration}")
         logger.info(f"Log file: {self.log_file}")

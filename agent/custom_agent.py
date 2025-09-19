@@ -146,7 +146,7 @@ class CustomAgent:
         for turn in range(self.max_iterations):
             print(f"[Agent] Starting turn {turn + 1}/{self.max_iterations}")
 
-            logger.info(f"{'='*20} TURN {turn + 1}/{self.max_iterations} {'='*20}")
+            logger.info(f"{'=' * 20} TURN {turn + 1}/{self.max_iterations} {'=' * 20}")
 
             # Create input for the model
             print(
@@ -218,7 +218,7 @@ class CustomAgent:
             if hasattr(resp, "tool_outputs") and resp.tool_outputs:
                 logger.info(f"[TOOL OUTPUTS - {len(resp.tool_outputs)} outputs]")
                 for i, tool_output in enumerate(resp.tool_outputs):
-                    logger.info(f"Tool Output {i+1}:")
+                    logger.info(f"Tool Output {i + 1}:")
                     logger.info(str(tool_output))
                 logger.info("-" * 40)
 
@@ -272,7 +272,7 @@ class CustomAgent:
                 if msg.get("command") == "FinalSubmissionCommand":
                     print("[Agent] Final submission received - stopping execution")
 
-                    logger.info(f"{'='*20} RUN COMPLETED {'='*20}")
+                    logger.info(f"{'=' * 20} RUN COMPLETED {'=' * 20}")
                     logger.info("Status: Final submission received")
                     logger.info(f"Total turns: {turn + 1}")
                     logger.info(f"Final message: {json.dumps(msg, indent=2)}")
@@ -295,7 +295,7 @@ class CustomAgent:
 
         # Log completion
         with open(self.log_file, "a") as f:
-            f.write(f"\n{'='*20} RUN COMPLETED {'='*20}\n")
+            f.write(f"\n{'=' * 20} RUN COMPLETED {'=' * 20}\n")
             f.write("Status: Maximum iterations reached\n")
             f.write(f"Total turns: {self.max_iterations}\n")
             f.write(f"Token totals: {json.dumps(self.token_tracker.totals())}\n")
