@@ -1,0 +1,100 @@
+{
+  "openai": {
+    "currency": "USD",
+    "scale": 1000000,
+    "models": {
+      "gpt-4": {
+        "input": 30.0,
+        "output": 60.0,
+        "cache": 0.0
+      },
+      "gpt-4-turbo": {
+        "input": 10.0,
+        "output": 30.0,
+        "cache": 0.0
+      },
+      "gpt-4o": {
+        "input": 2.5,
+        "output": 10.0,
+        "cache": 1.25
+      },
+      "gpt-4o-mini": {
+        "input": 0.15,
+        "output": 0.6,
+        "cache": 0.075
+      },
+      "gpt-5": {
+        "input": 1.25,
+        "output": 10.0,
+        "cache": 0.125,
+        "reasoning": 15.0
+      },
+      "gpt-5-mini": {
+        "input": 0.25,
+        "output": 2.0,
+        "cache": 0.025,
+        "reasoning": 3.0
+      },
+      "gpt-5-nano": {
+        "input": 0.1,
+        "output": 0.8,
+        "cache": 0.01,
+        "reasoning": 1.2
+      },
+      "o1-preview": {
+        "input": 15.0,
+        "output": 60.0,
+        "reasoning": 60.0
+      },
+      "o1-mini": {
+        "input": 3.0,
+        "output": 12.0,
+        "reasoning": 12.0
+      }
+    }
+  },
+  "anthropic": {
+    "currency": "USD",
+    "scale": 1000000,
+    "models": {
+      "claude-3-haiku": {
+        "input": 0.25,
+        "output": 1.25
+      },
+      "claude-3-sonnet": {
+        "input": 3.0,
+        "output": 15.0
+      },
+      "claude-3-opus": {
+        "input": 15.0,
+        "output": 75.0
+      },
+      "claude-3-5-sonnet": {
+        "input": 3.0,
+        "output": 15.0
+      },
+      "claude-3-5-haiku": {
+        "input": 1.0,
+        "output": 5.0
+      }
+    }
+  },
+  "google": {
+    "currency": "USD",
+    "scale": 1000000,
+    "models": {
+      "gemini-1.5-pro": {
+        "input": 3.5,
+        "output": 10.5
+      },
+      "gemini-1.5-flash": {
+        "input": 0.075,
+        "output": 0.3
+      },
+      "gemini-2.0-flash": {
+        "input": 0.075,
+        "output": 0.3
+      }
+    }
+  }
+}
