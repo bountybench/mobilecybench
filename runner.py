@@ -22,6 +22,18 @@ from dotenv import load_dotenv
 
 from utils.logger import logger
 from utils.utils import get_app_metadata
+import logging
+
+# Create dedicated logger for tool interactions
+tool_logger = logging.getLogger('MobileCyBench.Runner.ToolInteractions')
+if not tool_logger.handlers:
+    # Add file handler for tool interactions
+    file_handler = logging.FileHandler('/tmp/mobile_security_analysis.log')
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    ))
+    tool_logger.addHandler(file_handler)
+    tool_logger.setLevel(logging.INFO)
 
 load_dotenv()
 project_root = Path(__file__).parent
@@ -507,9 +519,16 @@ class MobileCybenchRunner:
             elif self.agent_type == "codex":
                 # Import the CodexAgent class
                 from agent.codex_agent import CodexAgent
+                from utils.mcp_utils import get_mcp_server_config
 
                 logger.info("Initializing codex agent...")
                 logger.info("Creating CodexAgent instance")
+
+                # Create MCP config with app context for proper working directory
+                mcp_config = get_mcp_server_config(
+                    project_root=str(self.project_root),
+                    app_name=self.app_name
+                )
 
                 agent = CodexAgent(
                     model=self.config.get("codex_model", self.config["model"]),
@@ -521,6 +540,7 @@ class MobileCybenchRunner:
                     dry_run=self.config["dry_run"],
                     app_server=self.metadata.get("app_server", None),
                     timeout_ms=self.config.get("codex_timeout_ms", 600000),
+                    mcp_config=mcp_config,
                 )
 
             else:
@@ -536,6 +556,17 @@ class MobileCybenchRunner:
             logger.info("Agent execution completed")
             logger.info(f"Agent result: {result}")
 
+            # Log tool interactions summary for review
+            if hasattr(agent, 'get_tool_interactions_summary'):
+                tool_summary = agent.get_tool_interactions_summary()
+                if tool_summary:
+                    tool_logger.info("=== AGENT EXECUTION TOOL INTERACTIONS SUMMARY ===")
+                    tool_logger.info(f"Total iterations: {result.get('turns', 0)}")
+                    tool_logger.info(f"Agent type: {self.agent_type}")
+                    tool_logger.info(f"App: {self.app_name}")
+                    for interaction in tool_summary:
+                        tool_logger.info(f"Tool interaction: {interaction}")
+
             logger.info("=" * 60)
             logger.info("AGENT EXECUTION RESULTS")
             logger.info("=" * 60)
@@ -548,6 +579,8 @@ class MobileCybenchRunner:
                 logger.info(f"  {result['final_message']}")
 
             logger.info("=" * 60)
+            tool_logger.info(f"=== COMPLETED ANALYSIS FOR {self.app_name} ===")
+            tool_logger.info(f"Results logged to: {result.get('log_file', 'None')}")
 
             return result
 

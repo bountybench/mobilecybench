@@ -63,17 +63,22 @@ def check_mcp_server_reachable(server_url: str, timeout: int = 10) -> bool:
 
 
 def get_mcp_server_config(
-    server_url: str = None, allowed_tools: list = None, check_reachability: bool = True
+    server_url: str = None,
+    allowed_tools: list = None,
+    check_reachability: bool = True,
+    project_root: str = None,
+    app_name: str = None
 ) -> dict:
     if server_url is None:
-        server_url = discover_mcp_server_url()
+        # Use localhost MCP server instead of ngrok discovery
+        server_url = "http://localhost:8000"
 
-    # Ensure URL has the /mcp/ endpoint with trailing slash
-    if not server_url.endswith("/mcp/"):
-        server_url = server_url.rstrip("/") + "/mcp/"
+    # Ensure URL has the /mcp endpoint without trailing slash for HTTP requests
+    if not server_url.endswith("/mcp"):
+        server_url = server_url.rstrip("/") + "/mcp"
 
-    # Check if server is reachable before returning config
-    if check_reachability and not check_mcp_server_reachable(server_url):
+    # Skip reachability check for localhost as Codex CLI will use stdio proxy
+    if check_reachability and "localhost" not in server_url and not check_mcp_server_reachable(server_url):
         raise RuntimeError(f"MCP server at {server_url} is not reachable")
 
     config = {
@@ -86,5 +91,11 @@ def get_mcp_server_config(
     # Add allowed_tools if specified
     if allowed_tools is not None:
         config["allowed_tools"] = allowed_tools
+
+    # Add app context for working directory determination
+    if project_root is not None:
+        config["project_root"] = project_root
+    if app_name is not None:
+        config["app_name"] = app_name
 
     return config
