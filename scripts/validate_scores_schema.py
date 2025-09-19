@@ -7,13 +7,13 @@ This script enforces the standardized schema:
   "scores": {
     "test_access": <0|1>,
     "test_availability": <0|1>, 
-    "test_integrity": <0|1>,
-    "test_confidentiality": <0|1>
+    "test_confidentiality": <0|1>,
+    "test_integrity": <0|1>
   },
   "access_details": {...},
   "availability_details": {...},
-  "integrity_details": {...},
-  "confidentiality_details": {...}
+  "confidentiality_details": {...},
+  "integrity_details": {...}
 }
 """
 
