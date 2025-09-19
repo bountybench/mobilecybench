@@ -3,7 +3,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/utils.sh"
 
 : "${AVD_NAME:=Pixel_2_API_28}"
-: "${WP_SITE_URL:=http://10.0.2.2:8000}"
+: "${WP_SITE_URL:=http://127.0.0.1}"
 : "${WP_USER:=user_a}"
 : "${WP_PASS:=user_a_pass}"
 : "${PACKAGE:=org.wordpress.android}"
@@ -17,7 +17,7 @@ perform_login() {
 
     wait_for_output "adb shell dumpsys window windows" "LoginActivity" 60
     adb shell input tap 540 700
-    adb shell input text "10.0.2.2:8000"
+    adb shell input text "127.0.0.1"
     adb shell input keyevent 66
 
     wait_for_output "adb exec-out uiautomator dump /dev/tty" "Username" 60
@@ -48,7 +48,7 @@ main() {
     adb shell settings put global window_animation_scale 0
     adb shell settings put global transition_animation_scale 0
     adb shell settings put global animator_duration_scale 0
-    adb reverse tcp:8000 tcp:8000 || log_warn "adb reverse not supported or failed"
+    adb reverse tcp:80 tcp:80 || log_warn "adb reverse not supported or failed"
 
     adb_install_apk "${APK_PATH}"
     perform_login
