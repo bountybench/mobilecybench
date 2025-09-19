@@ -142,6 +142,70 @@ verify_shared_net_connectivity() {
     fi
 }
 
+determine_setup_mode() {
+    local dir="$1"
+    local setup_mode="source"  # default to source
+    
+    # Check for both setup scripts
+    local has_source=false
+    local has_apklink=false
+
+    if [ -f "$dir/setup_app_source.sh" ]; then
+        has_source=true
+        echo -e "${INFO} Found setup_app_source.sh" >&2
+    fi
+    
+    if [ -f "$dir/setup_app_apklink.sh" ]; then
+        has_apklink=true
+        echo -e "${INFO} Found setup_app_apklink.sh" >&2
+    fi
+    
+    # Validate at least one exists
+    if [ "$has_source" = false ] && [ "$has_apklink" = false ]; then
+        echo -e "${ERROR} Neither setup_app_source.sh nor setup_app_apklink.sh found in $dir" >&2
+        exit 1
+    fi
+    
+    # Determine preference based on what scripts exist
+    if [ "$has_source" = true ] && [ "$has_apklink" = true ]; then
+        # Both scripts exist - check for modifications
+        # Find the remote that points to bountybench/mobilecybench.git
+        bountybench_remote=""
+        while IFS= read -r line; do
+            remote_name=$(echo "$line" | awk '{print $1}')
+            remote_url=$(echo "$line" | awk '{print $2}')
+            if [[ "$remote_url" == *"bountybench/mobilecybench"* ]]; then
+                bountybench_remote="$remote_name"
+                break
+            fi
+        done < <(git remote -v | grep "(fetch)")
+        
+        if [ -n "$bountybench_remote" ]; then
+            echo -e "${INFO} Found bountybench remote: $bountybench_remote" >&2
+            # Fetch the latest main branch from bountybench remote
+            git fetch "$bountybench_remote" main >/dev/null 2>&1 || true
+            # Check for modifications against bountybench main - only for this specific app
+            if git diff --name-only "$bountybench_remote/main...HEAD" | grep -E "^$dir/setup_app_(source|apklink)\.sh$" >/dev/null 2>&1; then
+                echo -e "${INFO} Setup script changes detected - using source build for thorough testing" >&2
+                setup_mode="source"
+            else
+                echo -e "${INFO} Both scripts available and unmodified - preferring APK link for efficiency" >&2
+                setup_mode="apklink"
+            fi
+        else
+            echo -e "${WARNING} Could not find bountybench remote - falling back to source mode" >&2
+            setup_mode="source"
+        fi
+    elif [ "$has_source" = true ] && [ "$has_apklink" = false ]; then
+        echo -e "${INFO} Only source setup available - using source mode" >&2
+        setup_mode="source"
+    elif [ "$has_source" = false ] && [ "$has_apklink" = true ]; then
+        echo -e "${INFO} Only APK link setup available - using apklink mode" >&2
+        setup_mode="apklink"
+    fi
+    echo "$setup_mode"
+}
+
 checkout_commit() {
     echo "Current directory: $(pwd)"
     if [[ -f "metadata.json" ]]; then
@@ -261,8 +325,17 @@ run_test_check() {
     cd -
 }
 
+# Determine setup mode
+echo -e "${INFO} Determining setup mode for directory: $DIR"
+SETUP_MODE=$(determine_setup_mode "$DIR")
+if [ $? -ne 0 ] || [ -z "$SETUP_MODE" ]; then
+    echo -e "${ERROR} Failed to determine setup mode"
+    exit 1
+fi
+echo -e "${INFO} Selected setup mode: $SETUP_MODE"
+
 cd "$DIR"
-print_header "$CYAN" "SETTING UP APP FROM SOURCE"
+
 # Skip this step if you want to persist your apk
 checkout_commit "$DIR"
 
@@ -270,11 +343,23 @@ checkout_commit "$DIR"
 if [ -f "run_checks.sh" ]; then
     echo -e "${INFO} run_checks.sh found - running full vulnerability scenario tests"
     HAS_RUN_CHECKS=true
-    required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
+    if [ "$SETUP_MODE" = "apklink" ]; then
+        required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_apklink.sh")
+        print_header "$CYAN" "SETTING UP APP FROM APK LINK"
+    else
+        required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
+        print_header "$CYAN" "SETTING UP APP FROM SOURCE"
+    fi
 else
     echo -e "${INFO} run_checks.sh not found - running simplified APK installation test"
     HAS_RUN_CHECKS=false
-    required_scripts=("setup.sh" "cleanup.sh" "setup_app_source.sh")
+    if [ "$SETUP_MODE" = "apklink" ]; then
+        required_scripts=("setup.sh" "cleanup.sh" "setup_app_apklink.sh")
+        print_header "$CYAN" "SETTING UP APP FROM APK LINK"
+    else
+        required_scripts=("setup.sh" "cleanup.sh" "setup_app_source.sh")
+        print_header "$CYAN" "SETTING UP APP FROM SOURCE"
+    fi
 fi
 
 echo -e "${INFO} Checking for required scripts..."
@@ -285,7 +370,14 @@ for script in "${required_scripts[@]}"; do
     fi
 done
 
-{ ./setup_app_source.sh; } || { echo -e "${ERROR} setup_app_source.sh failed"; exit 1; }
+# Run appropriate setup script based on mode
+if [ "$SETUP_MODE" = "apklink" ]; then
+    echo -e "${INFO} Setting up app from APK link."
+    { ./setup_app_apklink.sh; } || { echo -e "${ERROR} setup_app_apklink.sh failed"; exit 1; }
+else
+    echo -e "${INFO} Setting up app from source..."
+    { ./setup_app_source.sh; } || { echo -e "${ERROR} setup_app_source.sh failed"; exit 1; }
+fi
 cd "$ROOT_DIR"
 
 # Create Docker Network
