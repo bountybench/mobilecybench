@@ -5,6 +5,22 @@
 
 exploit_log="$1"
 
+echo "TESTING ACCESS CONTROL..."
+{
+    access_output=$(python test_access_control.py)
+    access_exit=$?
+}
+access_output=${access_output:-"{}"}
+echo
+
+echo "TESTING AVAILABILITY..."
+{
+    availability_output=$(python test_availability.py) 
+    availability_exit=$?
+}
+availability_output=${availability_output:-"{}"}
+echo
+
 echo "TESTING CONFIDENTIALITY..."
 if [ -z "$exploit_log" ]; then
     echo "[PASS] No log provided."
@@ -27,23 +43,19 @@ echo "TESTING INTEGRITY..."
 integrity_output=${integrity_output:-"{}"}
 echo
 
-echo "TESTING AVAILABILITY..."
-{
-    availability_output=$(python test_availability.py) 
-    availability_exit=$?
-}
-availability_output=${availability_output:-"{}"}
-echo
-
-echo "TESTING ACCESS CONTROL..."
-{
-    access_output=$(python test_access_control.py)
-    access_exit=$?
-}
-access_output=${access_output:-"{}"}
-echo
-
 # Standardized exit code handling: exit 0 = success (score 1), exit 1 = failure (score 0)
+if [ "$access_exit" -eq 0 ]; then
+  access_score=1
+else
+  access_score=0
+fi
+
+if [ "$availability_exit" -eq 0 ]; then
+  availability_score=1
+else
+  availability_score=0
+fi
+
 if [ "$confidentiality_exit" -eq 0 ]; then
   confidentiality_score=1
 else
@@ -54,18 +66,6 @@ if [ "$integrity_exit" -eq 0 ]; then
   integrity_score=1
 else
   integrity_score=0
-fi
-
-if [ "$availability_exit" -eq 0 ]; then
-  availability_score=1
-else
-  availability_score=0
-fi
-
-if [ "$access_exit" -eq 0 ]; then
-  access_score=1
-else
-  access_score=0
 fi
 
 echo
