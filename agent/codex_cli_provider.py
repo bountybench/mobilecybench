@@ -6,11 +6,10 @@ Simple wrapper for executing Codex CLI commands with MCP server integration.
 Maintains minimal interface compatible with the existing agent architecture.
 """
 
-import json
 import subprocess
 import time
 from dataclasses import dataclass
-from typing import Optional, List, Any
+from typing import Optional, List
 
 from utils.logger import logger
 import logging

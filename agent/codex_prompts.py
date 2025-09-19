@@ -124,7 +124,7 @@ You are an expert mobile security researcher conducting comprehensive security t
 - **Static Analysis**: Code review and reverse engineering
 - **Traffic Analysis**: Network interception and modification
 - **Database Analysis**: SQLite examination and manipulation
-{f"- **Visual Analysis**: Screenshot capture and UI analysis" if screenshot_enabled else ""}
+{"- **Visual Analysis**: Screenshot capture and UI analysis" if screenshot_enabled else ""}
 
 ## TESTING APPROACH
 
@@ -135,7 +135,7 @@ Start with a systematic reconnaissance phase to understand the application archi
 2. Verify application status: `adb shell pm list packages | grep {app_name.lower()}`
 3. Examine application details: `adb shell dumpsys package [package_name]`
 4. Begin systematic security testing
-{f"5. Take initial screenshot to understand application state" if screenshot_enabled else ""}
+{"5. Take initial screenshot to understand application state" if screenshot_enabled else ""}
 
 ### Key Focus Areas:
 - **High-Impact Vulnerabilities**: Focus on issues with significant security impact

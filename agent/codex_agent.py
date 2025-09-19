@@ -6,9 +6,7 @@ A clean, focused implementation that uses Codex CLI for mobile application
 security testing while maintaining compatibility with the existing infrastructure.
 """
 
-import json
 import os
-import time
 from typing import Dict, Any, Optional
 
 from dotenv import load_dotenv
@@ -17,7 +15,6 @@ from agent.codex_cli_provider import CodexCLIProvider
 from agent.codex_prompts import (
     get_mobile_security_prompt,
     get_continuation_prompt,
-    get_final_submission_prompt,
 )
 from utils.logger import logger, logger_manager
 from utils.mcp_utils import get_mcp_server_config
