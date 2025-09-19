@@ -25,13 +25,13 @@ from utils.utils import get_app_metadata
 import logging
 
 # Create dedicated logger for tool interactions
-tool_logger = logging.getLogger('MobileCyBench.Runner.ToolInteractions')
+tool_logger = logging.getLogger("MobileCyBench.Runner.ToolInteractions")
 if not tool_logger.handlers:
     # Add file handler for tool interactions
-    file_handler = logging.FileHandler('/tmp/mobile_security_analysis.log')
-    file_handler.setFormatter(logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    ))
+    file_handler = logging.FileHandler("/tmp/mobile_security_analysis.log")
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    )
     tool_logger.addHandler(file_handler)
     tool_logger.setLevel(logging.INFO)
 
@@ -526,14 +526,15 @@ class MobileCybenchRunner:
 
                 # Create MCP config with app context for proper working directory
                 mcp_config = get_mcp_server_config(
-                    project_root=str(self.project_root),
-                    app_name=self.app_name
+                    project_root=str(self.project_root), app_name=self.app_name
                 )
 
                 agent = CodexAgent(
                     model=self.config.get("codex_model", self.config["model"]),
                     max_iterations=self.config["max_iterations"],
-                    max_model_response_tokens=self.config.get("codex_max_tokens", self.config["max_model_response_tokens"]),
+                    max_model_response_tokens=self.config.get(
+                        "codex_max_tokens", self.config["max_model_response_tokens"]
+                    ),
                     max_context_length=self.config["max_context_length"],
                     screenshot_enabled=self.config.get("screenshot_mode", False),
                     app_name=self.app_name,
@@ -557,10 +558,12 @@ class MobileCybenchRunner:
             logger.info(f"Agent result: {result}")
 
             # Log tool interactions summary for review
-            if hasattr(agent, 'get_tool_interactions_summary'):
+            if hasattr(agent, "get_tool_interactions_summary"):
                 tool_summary = agent.get_tool_interactions_summary()
                 if tool_summary:
-                    tool_logger.info("=== AGENT EXECUTION TOOL INTERACTIONS SUMMARY ===")
+                    tool_logger.info(
+                        "=== AGENT EXECUTION TOOL INTERACTIONS SUMMARY ==="
+                    )
                     tool_logger.info(f"Total iterations: {result.get('turns', 0)}")
                     tool_logger.info(f"Agent type: {self.agent_type}")
                     tool_logger.info(f"App: {self.app_name}")

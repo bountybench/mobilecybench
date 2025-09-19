@@ -17,14 +17,11 @@ class MCPProxy:
         self.mcp_server_url = mcp_server_url
         self.session = requests.Session()
 
-    def send_request(self, method: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
+    def send_request(
+        self, method: str, params: Dict[str, Any] = None
+    ) -> Dict[str, Any]:
         """Send request to HTTP MCP server and return response."""
-        payload = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": method,
-            "params": params or {}
-        }
+        payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
 
         try:
             response = self.session.post(
@@ -32,35 +29,37 @@ class MCPProxy:
                 json=payload,
                 headers={
                     "Content-Type": "application/json",
-                    "Accept": "application/json, text/event-stream"
+                    "Accept": "application/json, text/event-stream",
                 },
-                timeout=30
+                timeout=30,
             )
             response.raise_for_status()
 
             # Handle event-stream response format from FastMCP
             if "text/event-stream" in response.headers.get("content-type", ""):
                 # Parse event-stream format
-                lines = response.text.strip().split('\n')
+                lines = response.text.strip().split("\n")
                 for line in lines:
-                    if line.startswith('data: '):
+                    if line.startswith("data: "):
                         data_json = line[6:]  # Remove 'data: ' prefix
                         try:
                             return json.loads(data_json)
                         except json.JSONDecodeError:
                             continue
                 # Fallback if no valid JSON found
-                return {"error": {"code": -32603, "message": "Failed to parse event-stream response"}}
+                return {
+                    "error": {
+                        "code": -32603,
+                        "message": "Failed to parse event-stream response",
+                    }
+                }
             else:
                 return response.json()
         except requests.RequestException as e:
             return {
                 "jsonrpc": "2.0",
                 "id": 1,
-                "error": {
-                    "code": -32603,
-                    "message": f"HTTP request failed: {str(e)}"
-                }
+                "error": {"code": -32603, "message": f"HTTP request failed: {str(e)}"},
             }
 
     def handle_stdio(self):
@@ -84,14 +83,12 @@ class MCPProxy:
                         "id": request_id,
                         "result": {
                             "protocolVersion": "2024-11-05",
-                            "capabilities": {
-                                "tools": {}
-                            },
+                            "capabilities": {"tools": {}},
                             "serverInfo": {
                                 "name": "MobileCyberBench MCP Proxy",
-                                "version": "1.0.0"
-                            }
-                        }
+                                "version": "1.0.0",
+                            },
+                        },
                     }
 
                 elif method == "tools/list":
@@ -109,14 +106,14 @@ class MCPProxy:
                                         "properties": {
                                             "command": {
                                                 "type": "string",
-                                                "description": "The command to execute"
+                                                "description": "The command to execute",
                                             }
                                         },
-                                        "required": ["command"]
-                                    }
+                                        "required": ["command"],
+                                    },
                                 }
                             ]
-                        }
+                        },
                     }
 
                 elif method == "tools/call":
@@ -127,21 +124,27 @@ class MCPProxy:
                     if tool_name == "execute_command":
                         command = tool_args.get("command", "")
                         # Make HTTP request to actual MCP server
-                        http_response = self.send_request("tools/call", {
-                            "name": "execute_command",
-                            "arguments": {"command": command}
-                        })
-
+                        http_response = self.send_request(
+                            "tools/call",
+                            {
+                                "name": "execute_command",
+                                "arguments": {"command": command},
+                            },
+                        )
 
                         # Extract the actual command output from FastMCP response
                         if "result" in http_response:
                             result = http_response["result"]
                             # Try to get from structuredContent first (new format)
                             if "structuredContent" in result:
-                                actual_output = result["structuredContent"].get("response", "Command executed")
+                                actual_output = result["structuredContent"].get(
+                                    "response", "Command executed"
+                                )
                             # Fallback to direct response field
                             elif "response" in result:
-                                actual_output = result.get("response", "Command executed")
+                                actual_output = result.get(
+                                    "response", "Command executed"
+                                )
                             else:
                                 actual_output = "Command executed"
                         else:
@@ -152,13 +155,8 @@ class MCPProxy:
                             "jsonrpc": "2.0",
                             "id": request_id,
                             "result": {
-                                "content": [
-                                    {
-                                        "type": "text",
-                                        "text": actual_output
-                                    }
-                                ]
-                            }
+                                "content": [{"type": "text", "text": actual_output}]
+                            },
                         }
                     else:
                         response = {
@@ -166,8 +164,8 @@ class MCPProxy:
                             "id": request_id,
                             "error": {
                                 "code": -32601,
-                                "message": f"Unknown tool: {tool_name}"
-                            }
+                                "message": f"Unknown tool: {tool_name}",
+                            },
                         }
 
                 else:
@@ -176,8 +174,8 @@ class MCPProxy:
                         "id": request_id,
                         "error": {
                             "code": -32601,
-                            "message": f"Unknown method: {method}"
-                        }
+                            "message": f"Unknown method: {method}",
+                        },
                     }
 
                 # Send response back to Codex CLI
@@ -189,11 +187,8 @@ class MCPProxy:
             except Exception as e:
                 error_response = {
                     "jsonrpc": "2.0",
-                    "id": request.get("id", 1) if 'request' in locals() else 1,
-                    "error": {
-                        "code": -32603,
-                        "message": f"Internal error: {str(e)}"
-                    }
+                    "id": request.get("id", 1) if "request" in locals() else 1,
+                    "error": {"code": -32603, "message": f"Internal error: {str(e)}"},
                 }
                 print(json.dumps(error_response))
                 sys.stdout.flush()

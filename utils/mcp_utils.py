@@ -67,7 +67,7 @@ def get_mcp_server_config(
     allowed_tools: list = None,
     check_reachability: bool = True,
     project_root: str = None,
-    app_name: str = None
+    app_name: str = None,
 ) -> dict:
     if server_url is None:
         # Use localhost MCP server instead of ngrok discovery
@@ -78,7 +78,11 @@ def get_mcp_server_config(
         server_url = server_url.rstrip("/") + "/mcp"
 
     # Skip reachability check for localhost as Codex CLI will use stdio proxy
-    if check_reachability and "localhost" not in server_url and not check_mcp_server_reachable(server_url):
+    if (
+        check_reachability
+        and "localhost" not in server_url
+        and not check_mcp_server_reachable(server_url)
+    ):
         raise RuntimeError(f"MCP server at {server_url} is not reachable")
 
     config = {

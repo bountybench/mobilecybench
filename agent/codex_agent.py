@@ -17,7 +17,7 @@ from agent.codex_cli_provider import CodexCLIProvider
 from agent.codex_prompts import (
     get_mobile_security_prompt,
     get_continuation_prompt,
-    get_final_submission_prompt
+    get_final_submission_prompt,
 )
 from utils.logger import logger, logger_manager
 from utils.mcp_utils import get_mcp_server_config
@@ -88,7 +88,9 @@ class CodexAgent:
         # Validate provider unless in dry run mode
         if not dry_run:
             if not self.provider.validate():
-                raise RuntimeError("Codex CLI validation failed. Please ensure Codex CLI is installed and accessible.")
+                raise RuntimeError(
+                    "Codex CLI validation failed. Please ensure Codex CLI is installed and accessible."
+                )
 
         # Initialize state
         self.conversation_history = []
@@ -107,7 +109,9 @@ class CodexAgent:
         logger.info(f"Screenshot Enabled: {screenshot_enabled}")
         logger.info(f"App Server: {app_server or 'None'}")
         logger.info(f"Dry Run: {dry_run}")
-        logger.info(f"MCP Server: {self.mcp_config.get('server_url', 'Not configured')}")
+        logger.info(
+            f"MCP Server: {self.mcp_config.get('server_url', 'Not configured')}"
+        )
         logger.info("=" * 80)
 
     def run(self) -> Dict[str, Any]:
@@ -128,7 +132,7 @@ class CodexAgent:
             initial_prompt = get_mobile_security_prompt(
                 app_name=self.app_name,
                 app_server=self.app_server,
-                screenshot_enabled=self.screenshot_enabled
+                screenshot_enabled=self.screenshot_enabled,
             )
 
             # Execute main analysis loop
@@ -142,7 +146,7 @@ class CodexAgent:
                 "turns": self.current_iteration,
                 "final_message": None,
                 "log_file": self.log_file,
-                "error": str(e)
+                "error": str(e),
             }
 
     def _execute_analysis_loop(self, initial_prompt: str) -> Dict[str, Any]:
@@ -153,7 +157,9 @@ class CodexAgent:
         for iteration in range(self.max_iterations):
             self.current_iteration = iteration + 1
 
-            logger.info(f"{'='*20} ITERATION {self.current_iteration}/{self.max_iterations} {'='*20}")
+            logger.info(
+                f"{'='*20} ITERATION {self.current_iteration}/{self.max_iterations} {'='*20}"
+            )
 
             try:
                 # Log the input prompt
@@ -166,7 +172,7 @@ class CodexAgent:
                     input_text=current_prompt,
                     mcp_config=self.mcp_config,
                     timeout_ms=self.timeout_ms,
-                    max_output_tokens=self.max_model_response_tokens
+                    max_output_tokens=self.max_model_response_tokens,
                 )
 
                 if not result.success:
@@ -180,19 +186,23 @@ class CodexAgent:
 
                 # Log tool interactions if any
                 if result.tool_outputs:
-                    logger.info(f"[TOOL INTERACTIONS - {len(result.tool_outputs)} outputs]")
+                    logger.info(
+                        f"[TOOL INTERACTIONS - {len(result.tool_outputs)} outputs]"
+                    )
                     for i, tool_output in enumerate(result.tool_outputs):
                         logger.info(f"Tool Output {i+1}: {tool_output}")
                     logger.info("-" * 40)
 
                 # Add to conversation history
-                self.conversation_history.append({
-                    "iteration": self.current_iteration,
-                    "input": current_prompt,
-                    "output": result.output_text,
-                    "tool_outputs": result.tool_outputs,
-                    "execution_time": result.execution_time
-                })
+                self.conversation_history.append(
+                    {
+                        "iteration": self.current_iteration,
+                        "input": current_prompt,
+                        "output": result.output_text,
+                        "tool_outputs": result.tool_outputs,
+                        "execution_time": result.execution_time,
+                    }
+                )
 
                 # Check if analysis is complete
                 if self._is_analysis_complete(result.output_text):
@@ -203,11 +213,15 @@ class CodexAgent:
                 current_prompt = get_continuation_prompt()
 
             except Exception as e:
-                logger.error(f"Error in analysis loop iteration {self.current_iteration}: {e}")
+                logger.error(
+                    f"Error in analysis loop iteration {self.current_iteration}: {e}"
+                )
                 break
 
         # Return final results
-        final_message = self.conversation_history[-1]["output"] if self.conversation_history else ""
+        final_message = (
+            self.conversation_history[-1]["output"] if self.conversation_history else ""
+        )
 
         logger.info(f"{'='*20} ANALYSIS COMPLETED {'='*20}")
         logger.info(f"Status: Completed after {self.current_iteration} iterations")
@@ -219,7 +233,7 @@ class CodexAgent:
             "turns": self.current_iteration,
             "final_message": final_message,
             "log_file": self.log_file,
-            "conversation_history": self.conversation_history
+            "conversation_history": self.conversation_history,
         }
 
     def _is_analysis_complete(self, output: str) -> bool:
@@ -238,7 +252,7 @@ class CodexAgent:
             "final report",
             "summary of findings",
             "vulnerability assessment complete",
-            "testing concluded"
+            "testing concluded",
         ]
 
         output_lower = output.lower()
@@ -252,5 +266,5 @@ class CodexAgent:
             "final_message": f"DRY RUN: Codex Agent configured for {self.app_name}",
             "log_file": self.log_file,
             "mcp_config": self.mcp_config,
-            "app_name": self.app_name
+            "app_name": self.app_name,
         }

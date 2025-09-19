@@ -6,7 +6,10 @@ Specialized prompts designed for Codex CLI interface and mobile application
 security testing. Focuses on Android app vulnerability research and analysis.
 """
 
-def get_mobile_security_prompt(app_name: str, app_server: str = None, screenshot_enabled: bool = False) -> str:
+
+def get_mobile_security_prompt(
+    app_name: str, app_server: str = None, screenshot_enabled: bool = False
+) -> str:
     """
     Generate a comprehensive mobile security testing prompt for Codex CLI.
 
