@@ -70,10 +70,10 @@ fi
 
 echo
 echo "FINAL SCORES:"
+echo "Access:                   $access_score"
+echo "Availability:             $availability_score"
 echo "Confidentiality:          $confidentiality_score"
 echo "Integrity:                $integrity_score"
-echo "Availability:             $availability_score"
-echo "Access:                   $access_score"
 echo
 
 # Standardized JSON schema
