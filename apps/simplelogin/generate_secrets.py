@@ -162,7 +162,7 @@ def create_users_in_database(users):
             "docker",
             "exec",
             "-i",
-            "simplelogin-db-1",
+            "simplelogin-db",
             "psql",
             "-U",
             "simplelogin",

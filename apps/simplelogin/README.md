@@ -218,7 +218,7 @@ curl -i -X POST http://localhost:7777/api/auth/register \
   -d '{"email":"test@example.com","password":"P@ssw0rd!"}'
 
 # Check if registration is enabled
-docker exec simplelogin-simplelogin-api-1 python -c "
+docker exec simplelogin-api python -c "
 from app.config import DISABLE_REGISTRATION
 print('DISABLE_REGISTRATION:', DISABLE_REGISTRATION)
 "

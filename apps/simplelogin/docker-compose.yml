@@ -1,5 +1,6 @@
 services:
   db:
+    container_name: simplelogin-db
     image: postgres:13
     environment:
       POSTGRES_DB: simplelogin
@@ -18,6 +19,7 @@ services:
       - private_net
 
   simplelogin-api:
+    container_name: simplelogin-api
     image: simplelogin/app:3.4.0
     depends_on:
       db:
@@ -65,7 +67,6 @@ networks:
     internal: true
   shared_net:
     external: true
-    name: cybench_shared_net
 
 volumes:
   postgres_data:

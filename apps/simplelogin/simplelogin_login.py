@@ -65,7 +65,7 @@ def login_via_database(email, password, verbose=False):
             "docker",
             "exec",
             "-i",
-            "simplelogin-db-1",
+            "simplelogin-db",
             "psql",
             "-U",
             "simplelogin",
