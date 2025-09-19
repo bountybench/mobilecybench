@@ -126,6 +126,10 @@ setup_backend() {
     # Stop any existing containers
     $DC down 2>/dev/null || true
     
+    # Create the shared network for CI connectivity
+    echo "Creating shared network for CI connectivity..."
+    docker network create cybench_shared_net 2>/dev/null || echo "Network already exists"
+    
     # Start backend services
     echo "Starting backend services..."
     if ! $DC up -d; then
@@ -135,11 +139,11 @@ setup_backend() {
     
     # Wait for services to be healthy
     echo "Waiting for backend services to be ready..."
-    local timeout=60
+    local timeout=120
     local counter=0
     
     while [[ $counter -lt $timeout ]]; do
-        if $DC ps | grep -q "healthy"; then
+        if docker inspect -f "{{.State.Health.Status}}" simplelogin-api 2>/dev/null | grep -q "healthy"; then
             echo "Backend services are healthy"
             break
         fi
@@ -151,14 +155,16 @@ setup_backend() {
         fi
         
         echo "Waiting for services... ($counter/$timeout)"
-        sleep 2
+        sleep 3
         ((counter++))
     done
     
-    # Wait for API HTTP readiness (expect 302 redirect)
+    # Wait for API HTTP readiness using service DNS (expect 302 redirect)
     echo "Waiting for API HTTP readiness..."
     for i in {1..60}; do
-        if curl -fsS -o /dev/null -w "%{http_code}" "http://localhost:7777/" | grep -q "302"; then
+        # Test connectivity from a container on the same network using service DNS
+        if docker run --rm --network cybench_shared_net alpine:3.20 \
+            sh -c "apk add --no-progress curl >/dev/null 2>&1 && curl -fsS -o /dev/null -w '%{http_code}' http://simplelogin-api:7777/" 2>/dev/null | grep -q "302"; then
             echo "API is answering HTTP requests (302 redirect)"
             break
         fi

@@ -28,6 +28,10 @@ fi
 echo "Stopping all services..."
 $DC down -v 2>/dev/null || true
 
+# Remove the shared network (optional, but clean)
+echo "Removing shared network..."
+docker network rm cybench_shared_net 2>/dev/null || echo "Network not found or in use"
+
 echo "Removing any dangling containers..."
 docker container prune -f 2>/dev/null || true
 

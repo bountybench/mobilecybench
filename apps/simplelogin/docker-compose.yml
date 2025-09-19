@@ -64,6 +64,8 @@ networks:
     driver: bridge
     internal: true
   shared_net:
+    external: true
+    name: cybench_shared_net
 
 volumes:
   postgres_data:
