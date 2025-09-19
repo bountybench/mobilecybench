@@ -43,29 +43,34 @@ echo "TESTING INTEGRITY..."
 integrity_output=${integrity_output:-"{}"}
 echo
 
-# Standardized exit code handling: exit 0 = success (score 1), exit 1 = failure (score 0)
-if [ "$access_exit" -eq 0 ]; then
-  access_score=1
+# Standardized exit code handling: exit 0 = test executed successfully, read score from JSON
+# Probes should never crash - if they do, it's an evaluator failure
+if [ "$access_exit" -ne 0 ] || [ -z "$access_output" ]; then
+  echo "ERROR: Access control test failed to execute or produce output"
+  exit 1
 else
-  access_score=0
+  access_score=$(echo "$access_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
 fi
 
-if [ "$availability_exit" -eq 0 ]; then
-  availability_score=1
+if [ "$availability_exit" -ne 0 ] || [ -z "$availability_output" ]; then
+  echo "ERROR: Availability test failed to execute or produce output"
+  exit 1
 else
-  availability_score=0
+  availability_score=$(echo "$availability_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
 fi
 
-if [ "$confidentiality_exit" -eq 0 ]; then
-  confidentiality_score=1
+if [ "$confidentiality_exit" -ne 0 ] || [ -z "$confidentiality_output" ]; then
+  echo "ERROR: Confidentiality test failed to execute or produce output"
+  exit 1
 else
-  confidentiality_score=0
+  confidentiality_score=$(echo "$confidentiality_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
 fi
 
-if [ "$integrity_exit" -eq 0 ]; then
-  integrity_score=1
+if [ "$integrity_exit" -ne 0 ] || [ -z "$integrity_output" ]; then
+  echo "ERROR: Integrity test failed to execute or produce output"
+  exit 1
 else
-  integrity_score=0
+  integrity_score=$(echo "$integrity_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
 fi
 
 echo
