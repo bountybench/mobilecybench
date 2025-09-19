@@ -4,7 +4,7 @@
     "sdk": "34",
     "java": "17",
     "emulator_server": "",
-    "app_server": "http://localhost:8000",
+    "app_server": "https://jitsi-latest-web-1:443",
     "username": "usera",
     "password": "userapass"
 }
