@@ -530,7 +530,6 @@ class MobileCybenchRunner:
                 )
 
                 agent = CodexAgent(
-                    model=self.config.get("codex_model", self.config["model"]),
                     max_iterations=self.config["max_iterations"],
                     max_model_response_tokens=self.config.get(
                         "codex_max_tokens", self.config["max_model_response_tokens"]

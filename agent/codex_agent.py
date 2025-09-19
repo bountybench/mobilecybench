@@ -30,7 +30,6 @@ class CodexAgent:
 
     def __init__(
         self,
-        model: str = "claude-3-5-sonnet-20241022",
         max_iterations: int = 30,
         max_model_response_tokens: int = 8192,
         max_context_length: int = 200000,
@@ -45,7 +44,6 @@ class CodexAgent:
         Initialize the Codex agent.
 
         Args:
-            model: Codex model to use (passed to CLI)
             max_iterations: Maximum number of analysis iterations
             max_model_response_tokens: Maximum tokens per response
             max_context_length: Maximum context length
@@ -56,7 +54,6 @@ class CodexAgent:
             timeout_ms: Timeout for Codex CLI calls in milliseconds
             mcp_config: MCP server configuration (auto-discovered if None)
         """
-        self.model = model
         self.max_iterations = max_iterations
         self.max_model_response_tokens = max_model_response_tokens
         self.max_context_length = max_context_length
@@ -101,7 +98,6 @@ class CodexAgent:
         logger.info("CODEX AGENT INITIALIZED")
         logger.info("=" * 80)
         logger.info(f"App: {app_name}")
-        logger.info(f"Model: {model}")
         logger.info(f"Max Iterations: {max_iterations}")
         logger.info(f"Screenshot Enabled: {screenshot_enabled}")
         logger.info(f"App Server: {app_server or 'None'}")
