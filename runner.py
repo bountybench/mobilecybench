@@ -9,6 +9,7 @@ on Android applications using AI agents.
 import argparse
 import datetime
 import json
+import logging
 import os
 import shlex
 import subprocess
@@ -22,7 +23,6 @@ from dotenv import load_dotenv
 
 from utils.logger import logger
 from utils.utils import get_app_metadata
-import logging
 
 # Create dedicated logger for tool interactions
 tool_logger = logging.getLogger("MobileCyBench.Runner.ToolInteractions")

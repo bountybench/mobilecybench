@@ -8,8 +8,9 @@ and our HTTP-based MCP server running on localhost:8000.
 
 import json
 import sys
+from typing import Any, Dict
+
 import requests
-from typing import Dict, Any
 
 
 class MCPProxy:

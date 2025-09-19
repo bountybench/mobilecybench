@@ -7,14 +7,14 @@ security testing while maintaining compatibility with the existing infrastructur
 """
 
 import os
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
 
 from agent.codex_cli_provider import CodexCLIProvider
 from agent.codex_prompts import (
-    get_mobile_security_prompt,
     get_continuation_prompt,
+    get_mobile_security_prompt,
 )
 from utils.logger import logger, logger_manager
 from utils.mcp_utils import get_mcp_server_config

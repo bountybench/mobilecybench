@@ -6,13 +6,13 @@ Simple wrapper for executing Codex CLI commands with MCP server integration.
 Maintains minimal interface compatible with the existing agent architecture.
 """
 
+import logging
 import subprocess
 import time
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import List, Optional
 
 from utils.logger import logger
-import logging
 
 # Create dedicated logger for tool interactions
 tool_logger = logging.getLogger("MobileCyBench.ToolInteractions")
