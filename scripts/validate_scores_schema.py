@@ -50,8 +50,8 @@ def validate_scores_schema(app_dir):
         required_score_keys = [
             "test_access",
             "test_availability",
-            "test_integrity",
             "test_confidentiality",
+            "test_integrity",
         ]
 
         for key in required_score_keys:
