@@ -52,7 +52,7 @@ setup_emulator() {
     echo "Setting up Android emulator..."
     
     # Check if emulator is already running
-    if adb devices | grep -q "emulator.*device"; then
+    if adb devices | grep -q "device\|emulator"; then
         echo "Emulator already running"
         return 0
     fi
@@ -111,7 +111,7 @@ wait_container_healthy() {
             st="$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || true)"
             if [[ "$st" == "running" ]]; then
                 # Try TCP probe from a sibling container on shared_net.
-                if docker run --rm --network cybench_shared_net alpine:3.20 \
+                if docker run --rm --network shared_net alpine:3.20 \
                     sh -c "apk add --no-progress curl >/dev/null 2>&1 && curl -fsS http://simplelogin-api:7777/ >/dev/null" 2>/dev/null; then
                     echo "INFO: API reachable without healthcheck"
                     return 0
@@ -169,7 +169,7 @@ setup_backend() {
     
     # Create the shared network for CI connectivity
     echo "Creating shared network for CI connectivity..."
-    docker network create cybench_shared_net 2>/dev/null || echo "Network already exists"
+    docker network create shared_net 2>/dev/null || echo "Network already exists"
     
     # Start backend services
     echo "Starting backend services..."
@@ -197,7 +197,7 @@ setup_backend() {
     echo "Waiting for API HTTP readiness..."
     for i in {1..60}; do
         # Test connectivity from a container on the same network using service DNS
-        if docker run --rm --network cybench_shared_net alpine:3.20 \
+        if docker run --rm --network shared_net alpine:3.20 \
             sh -c "apk add --no-progress curl >/dev/null 2>&1 && curl -fsS -o /dev/null -w '%{http_code}' http://simplelogin-api:7777/" 2>/dev/null | grep -q "302"; then
             echo "API is answering HTTP requests (302 redirect)"
             break
@@ -236,7 +236,7 @@ build_and_install_app() {
     app_id=$(jq -r '.app_id' "$METADATA_FILE")
     
     # Check if device is connected
-    if ! adb devices | grep -q "device$"; then
+    if ! adb devices | grep -q "device\|emulator"; then
         echo "ERROR:" "No Android device/emulator connected"
         return 1
     fi
@@ -314,7 +314,6 @@ smoke_test() {
     
     # Launch app
     echo "Launching app..."
-    adb shell am start -n "$app_id/.MainActivity" 2>/dev/null || \
     adb shell monkey -p "$app_id" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
     
     # Wait for app to start

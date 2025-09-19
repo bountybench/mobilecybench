@@ -60,9 +60,11 @@ def check_device_connectivity():
             err(f"❌ [FAIL] adb command failed: {result.stderr}")
             return False
 
-        # Count connected devices
+        # Count connected devices (both physical devices and emulators)
         lines = result.stdout.strip().split("\n")
-        device_count = sum(1 for line in lines[1:] if line.strip().endswith("device"))
+        device_count = sum(
+            1 for line in lines[1:] if "device" in line or "emulator" in line
+        )
 
         if device_count < 1:
             err("❌ [FAIL] No Android devices connected")

@@ -54,7 +54,10 @@ simulate_ddos_attack() {
     log_info "Crashing SimpleLogin Android app..."
     ADB_PATH=$(which adb)
     if [[ -n "$ADB_PATH" ]]; then
-        $ADB_PATH shell am force-stop io.simplelogin.android.fdroid
+        # Get app ID from metadata.json
+        local app_id
+        app_id=$(jq -r '.app_id' "$APP_DIR/metadata.json" 2>/dev/null || echo "io.simplelogin.android.fdroid")
+        $ADB_PATH shell am force-stop "$app_id"
         log_error "SimpleLogin Android app crashed - availability compromised"
     else
         log_warning "ADB not found - cannot crash Android app"

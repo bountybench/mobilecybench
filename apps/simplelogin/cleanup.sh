@@ -18,7 +18,7 @@ echo "Uninstalling SimpleLogin app..."
 if [ -f "$METADATA_FILE" ]; then
     APP_ID=$(jq -r '.app_id' "$METADATA_FILE" 2>/dev/null || echo "")
     if [ -n "$APP_ID" ] && command -v adb >/dev/null 2>&1; then
-        if adb devices | grep -q "device$"; then
+        if adb devices | grep -q "device\|emulator"; then
             adb uninstall "$APP_ID" 2>/dev/null || echo "App may not have been installed"
             adb shell "am force-stop $APP_ID" 2>/dev/null || true
         fi
@@ -30,7 +30,7 @@ $DC down -v 2>/dev/null || true
 
 # Remove the shared network (optional, but clean)
 echo "Removing shared network..."
-docker network rm cybench_shared_net 2>/dev/null || echo "Network not found or in use"
+docker network rm shared_net 2>/dev/null || echo "Network not found or in use"
 
 echo "Removing any dangling containers..."
 docker container prune -f 2>/dev/null || true

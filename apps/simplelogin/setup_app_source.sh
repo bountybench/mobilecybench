@@ -244,7 +244,7 @@ install_app() {
     log_info "Installing SimpleLogin app..."
     
     # Check if device is connected
-    if ! adb devices | grep -q "device$"; then
+    if ! adb devices | grep -q "device\|emulator"; then
         log_error "No Android device/emulator connected"
         return 1
     fi
