@@ -2,10 +2,13 @@
 
 #! all the documentation for how I set it up is from here: https://jitsi.github.io/handbook/docs/devops-guide/devops-guide-docker
 
+#git init submodule
+git submodule update --init jitsi-docker
+
 echo "Docker setup already pre-extracted."
 echo "Heading into the Jitsi Docker directory..."
 cd jitsi-docker
-cd $(ls -d */ | head -n 1) #cd into nested folder
+cd jitsi-latest #cd into nested folder
 
 echo "Copying env.example from Jitsi Docker setup to .env"
 cp env.example .env
@@ -19,12 +22,14 @@ mkdir -p ~/.jitsi-meet-cfg/{web,transcripts,prosody/config,prosody/prosody-plugi
 echo "Starting Jitsi Meet containers via Docker Compose..."
 docker compose up -d
 
-echo "Connecting containers to shared_net"
-for container in $(docker ps -q); do
-    docker network connect shared_net $container 2>/dev/null || true
-done
+#echo "Connecting containers to shared_net"
+#for container in $(docker ps -q); do
+#    docker network connect shared_net $container 2>/dev/null || true
+#done
 
-echo "Setup complete! Ready to test Jitsi Meet. (https://localhost:8443)"
+
+echo "Setup complete! Ready to test Jitsi Meet. (http://localhost:8000)"
+
 
 echo "Looking for Prosody container..."
 PROSODY_CONTAINER=$(docker ps --format '{{.Names}}' | grep prosody || true)
