@@ -64,12 +64,27 @@ def create_user_in_database(conn, email, name, password):
     private_key = base64.b64encode(os.urandom(256)).decode("utf-8")
     public_key = base64.b64encode(os.urandom(64)).decode("utf-8")
 
-    # Create password hash and salt
-    salt = base64.b64encode(os.urandom(32)).decode("utf-8")
-    password_hash = hashlib.pbkdf2_hmac(
-        "sha256", password.encode("utf-8"), email.lower().encode("utf-8"), 100000
+    # Create password hash using Bitwarden client protocol
+    # This mimics what the mobile app would send as masterPasswordHash
+
+    # Step 1: Derive master key using PBKDF2
+    master_key = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        email.lower().encode("utf-8"),
+        100000
     )
-    password_hash_b64 = base64.b64encode(password_hash).decode("utf-8")
+
+    # Step 2: Create master password hash (what gets sent to server)
+    master_password_hash = hashlib.sha256(
+        master_key + password.encode("utf-8")
+    ).digest()
+
+    # Step 3: Base64 encode for storage
+    password_hash_b64 = base64.b64encode(master_password_hash).decode("utf-8")
+
+    # Generate salt (though it may not be used in this protocol)
+    salt = base64.b64encode(os.urandom(32)).decode("utf-8")
 
     with conn.cursor() as cur:
         cur.execute(
