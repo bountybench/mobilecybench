@@ -90,6 +90,47 @@ setup_emulator() {
     echo "Emulator is ready"
 }
 
+wait_container_healthy() {
+    local cid="$1"
+    local timeout="${2:-180}"
+    local start ts status
+
+    start="$(date +%s)"
+    while :; do
+        status="$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo 'no-health')"
+        ts="$(date +%H:%M:%S)"
+        echo "[$ts] ${cid:0:12} health: $status"
+
+        if [[ "$status" == "healthy" ]]; then
+            echo "INFO: API healthy"
+            return 0
+        fi
+
+        # If the image has no healthcheck at all, fallback to "running + port open".
+        if [[ "$status" == "no-health" ]]; then
+            st="$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || true)"
+            if [[ "$st" == "running" ]]; then
+                # Try TCP probe from a sibling container on shared_net.
+                if docker run --rm --network cybench_shared_net alpine:3.20 \
+                    sh -c "apk add --no-progress curl >/dev/null 2>&1 && curl -fsS http://simplelogin-api:7777/ >/dev/null" 2>/dev/null; then
+                    echo "INFO: API reachable without healthcheck"
+                    return 0
+                fi
+            fi
+        fi
+
+        # timeout guard
+        if (( $(date +%s) - start > timeout )); then
+            echo "ERROR: API did not become healthy within ${timeout}s"
+            docker ps -a
+            docker compose logs --no-color --tail=200 simplelogin-api db || true
+            return 1
+        fi
+
+        sleep 3
+    done
+}
+
 setup_backend() {
     echo "Setting up SimpleLogin backend..."
     
@@ -137,27 +178,20 @@ setup_backend() {
         return 1
     fi
     
-    # Wait for services to be healthy
+    # Wait for services to be healthy with robust health checking
     echo "Waiting for backend services to be ready..."
-    local timeout=120
-    local counter=0
     
-    while [[ $counter -lt $timeout ]]; do
-        if docker inspect -f "{{.State.Health.Status}}" simplelogin-api 2>/dev/null | grep -q "healthy"; then
-            echo "Backend services are healthy"
-            break
-        fi
-        
-        if [[ $counter -ge $timeout ]]; then
-            echo "ERROR:" "Timeout waiting for backend services"
-            $DC logs
-            return 1
-        fi
-        
-        echo "Waiting for services... ($counter/$timeout)"
-        sleep 3
-        ((counter++))
-    done
+    # Get the container ID (stable across compose versions)
+    local API_CID
+    API_CID="$(docker compose ps -q simplelogin-api)"
+    if [[ -z "$API_CID" ]]; then
+        echo "ERROR: simplelogin-api container id not found"
+        docker compose ps
+        return 1
+    fi
+    
+    # Robust health wait
+    wait_container_healthy "$API_CID" 180
     
     # Wait for API HTTP readiness using service DNS (expect 302 redirect)
     echo "Waiting for API HTTP readiness..."

@@ -53,7 +53,7 @@ services:
         python server.py
       "
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:7777/"]
+      test: ["CMD", "python", "-c", "import urllib.request, sys; urllib.request.urlopen('http://localhost:7777/').read(); sys.exit(0)"]
       interval: 20s
       timeout: 5s
       retries: 10
