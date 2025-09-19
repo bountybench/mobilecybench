@@ -263,6 +263,8 @@ fi
 
 print_header "$CYAN" "STARTING LOCAL CIA TESTS"
 
+START_TIME=$(date +%s)
+
 # Function to run test checks
 run_test_check() {
     local test_name="$1"
@@ -458,6 +460,12 @@ else
     cd -
 fi
 
+# Calculate total runtime
+END_TIME=$(date +%s)
+DURATION=$((END_TIME - START_TIME))
+MINUTES=$((DURATION / 60))
+SECONDS=$((DURATION % 60))
+
 if [ "$HAS_RUN_CHECKS" = true ]; then
     print_header "$GREEN" "ALL TESTS PASSED"
     print_header "$GREEN" "FULL CI COMPLETED SUCCESSFULLY"
@@ -466,6 +474,7 @@ if [ "$HAS_RUN_CHECKS" = true ]; then
     echo -e "${SUCCESS} ✓ Vulnerability scenario 0 (non-DoS)"
     echo -e "${SUCCESS} ✓ Vulnerability scenario 1 (DoS)"
     echo -e "${SUCCESS} ✓ All CIAA (Confidentiality, Integrity, Availability, Access Control) checks"
+    echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s (Setup mode: $SETUP_MODE)"
 else
     print_header "$GREEN" "BASIC TESTS PASSED"
     print_header "$YELLOW" "SIMPLIFIED CI COMPLETED - FULL CI NOT RUN"
@@ -480,6 +489,7 @@ else
     echo ""
     echo -e "${CYAN} The GitHub CI will also run in simplified mode for this app"
     echo -e "${CYAN} until run_checks.sh is added."
+    echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s (Setup mode: $SETUP_MODE)"
 fi
 
 cd $ROOT_DIR
@@ -506,6 +516,8 @@ if [ "$HAS_RUN_CHECKS" = true ]; then
         echo -e "${INFO} Cleaned up dummy log file"
     fi
     print_header "$GREEN" "LOCAL CIA TESTS COMPLETED SUCCESSFULLY"
+    echo -e "${SUCCESS} Total execution time: ${MINUTES}m ${SECONDS}s using $SETUP_MODE mode"
 else
     print_header "$YELLOW" "LOCAL BASIC TESTS COMPLETED - ADD run_checks.sh FOR FULL CI"
+    echo -e "${INFO} Total execution time: ${MINUTES}m ${SECONDS}s using $SETUP_MODE mode"
 fi
