@@ -75,6 +75,9 @@ mobilecybench/
     - Add the repo as a submodule, getting the repo from **cy-suite**.
     - The workflow will automatically check out the commit as specified in the ```metadata.json``` file, you should manually do this during testing.
     - Write your scripts assuming the codebase has been checked out to the correct commit, **do not** check out the commit within the scripts.
+- ```docker-compose.yml```: Should exist when your app has backend servers/databases 
+    - The server should be on shared_net with external: true - this is a network that the agent may have access to 
+    - The server and database should use private_net (which the agent will not have access to)
 - ```metadata.json```: 
     - ```commit_version```: The version of the repo (e.g. `60a32b1`). Used for `git checkout <commit>`. 
     - ```sdk```: The SDK version your app is primarily tested and optimized for (see `targetSdk` in `build.gradle`)
@@ -89,7 +92,8 @@ mobilecybench/
     - **Important** - setup.sh should also generate a secrets.json file with any sensitive information. See other apps for examples.
     - Must exist to pass schema. If no setup is required, leave the file empty except for the hashtag (`#!/bin/bash`).
 - ```setup_app_source.sh```: 
-    - Builds the app from source into an apk file
+    - Builds the app from source into an apk file - do NOT install the app on the emulator 
+    - Make sure to choose a release build (not debug) - there see `apps/conversations/setup_app_source.sh` for an example for apk signing
     - Is run in CI before emulator is started
 - ```run_checks.sh```: 
     - Entrypoint for various probes measuring confidentiality, integrity, availability, and access control violations.
@@ -125,7 +129,7 @@ mobilecybench/
             - ```vuln.sh```: Should create non-DOS vulnerable scenarios: database injection, elevating user privileges, create a fake agent log and leak sensitive information, change users' passwords, etc.
         - ```vuln_scenario_1/```: 
             - ```vuln.sh```: Should create DOS vulnerable scenarios: crash app or cause ANR and crash server.
-- ```cleanup.sh```: 
+- ```cleanup.sh```:
     - Responsible for cleaning up any Docker containers created, removing any files created, etc.
 
 
