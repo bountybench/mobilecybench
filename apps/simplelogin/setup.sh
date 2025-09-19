@@ -167,9 +167,7 @@ setup_backend() {
     # Stop any existing containers
     $DC down 2>/dev/null || true
     
-    # Create the shared network for CI connectivity
-    echo "Creating shared network for CI connectivity..."
-    docker network create shared_net 2>/dev/null || echo "Network already exists"
+    # Note: shared_net is now created by docker-compose automatically
     
     # Start backend services
     echo "Starting backend services..."
