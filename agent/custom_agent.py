@@ -17,6 +17,7 @@ from agent.prompts.prompts import (
 )
 from utils.logger import logger, logger_manager
 from utils.mcp_utils import get_mcp_server_config
+from utils.pricing_providers import PROVIDER_OPENAI
 from utils.token_tracker import TokenTracker
 
 
@@ -202,7 +203,7 @@ class CustomAgent:
 
             # Record token usage and cost
             try:
-                self.token_tracker.record_from_response(resp, model=self.model)
+                self.token_tracker.record_from_response(resp, model=self.model, provider=PROVIDER_OPENAI)
             except Exception as e:
                 logger.warning(f"Token tracking failed: {e}")
 
