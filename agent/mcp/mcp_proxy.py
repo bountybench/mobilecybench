@@ -14,7 +14,7 @@ import requests
 
 
 class MCPProxy:
-    def __init__(self, mcp_server_url: str = "http://localhost:8000/mcp"):
+    def __init__(self, mcp_server_url: str = "http://localhost:8000"):
         self.mcp_server_url = mcp_server_url
         self.session = requests.Session()
 
@@ -200,7 +200,7 @@ def main():
     import os
 
     # Get MCP server URL from environment or use default
-    mcp_url = os.getenv("MCP_SERVER_URL", "http://localhost:8000/mcp")
+    mcp_url = os.getenv("MCP_SERVER_URL", "http://localhost:8000")
 
     proxy = MCPProxy(mcp_url)
     proxy.handle_stdio()

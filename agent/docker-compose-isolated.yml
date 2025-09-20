@@ -1,0 +1,72 @@
+services:
+  # Codex Agent Container - Runs Codex CLI with app source code
+  codex-agent:
+    build:
+      context: ../
+      dockerfile: agent/codex/Dockerfile
+      args:
+        - APP_NAME=${APP_NAME:-termux}
+    container_name: codex-agent
+    networks:
+      - mobilecybench-isolated
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      - mcp-server
+    restart: no
+    # Security: No host volumes mounted for isolation
+    volumes: []
+    # Security: No privileged access
+    privileged: false
+
+  # Kali Linux Container
+  kali-container:
+    image: cybench/mobilecybench:latest
+    container_name: kali-container
+    networks:
+      - mobilecybench-isolated
+    stdin_open: true
+    tty: true
+    command: /bin/bash -c "while true; do sleep 30; done"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - ANDROID_ADB_SERVER_PORT=5037
+    privileged: true  # Required for security tools
+    restart: no
+
+  # MCP Server Container
+  mcp-server:
+    build:
+      context: ./mcp
+      dockerfile: Dockerfile
+    container_name: mcp-server
+    command: python3 mcp_server.py  # Override to skip ngrok
+    networks:
+      - mobilecybench-isolated
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./mcp/ngrok.yml:/app/ngrok.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - kali-container
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - START_DIR=/root
+    restart: no
+
+networks:
+  mobilecybench-isolated:
+    driver: bridge
+    # Isolated network for container-to-container communication only
+    internal: false  # Allow external access for API calls
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+
+# No shared volumes for security isolation
+volumes: {}

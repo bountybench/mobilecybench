@@ -13,13 +13,20 @@
 
 ## Quick Health Check
 
-Verify the MCP server is responding:
+Verify the containerized environment is working:
 
 ```bash
-docker exec mcp-server curl http://localhost:4040/api/tunnels
+# Check if containers are running
+docker ps
+
+# Verify MCP server is responding
+curl http://localhost:8000/mcp
+
+# Test ADB connectivity to emulator
+docker exec mcp-server adb devices
 ```
 
-This should return JSON with tunnel information including the public ngrok URL. If it doesn't, look through the following instructions to ensure your setup is correct. 
+You should see the `codex-agent`, `mcp-server`, and `kali-container` running, MCP server responding with JSON, and your emulator listed as a connected device. 
 
 ## Overview
 
@@ -30,185 +37,186 @@ The MobileCybench AI Agent enables an LM agent to perform security testing of An
 - **Ngrok Tunnel**: Secure external connectivity for AI agent communication
 - **Custom Agent**: AI agent that interacts with Android apps and security tools
 
-## Codex CLI Agent Setup
+## Containerized Codex Agent Setup
 
 ### Current Implementation
 
-The MobileCybench agent now uses **Codex CLI** as the primary AI agent interface. This setup provides a localhost-only secure environment for Android security testing without requiring external tunnels or Docker networking.
+The MobileCybench agent now uses a **containerized Codex CLI architecture** that provides complete isolation and simplified setup for Android security testing. This eliminates the need for manual configuration and provides a secure, reproducible testing environment.
+
+### Architecture Overview
+
+The containerized setup consists of three containers:
+
+- **codex-agent**: Runs Codex CLI with the target app's source code
+- **mcp-server**: Provides MCP (Model Context Protocol) tools for Android testing
+- **kali-container**: Security testing environment with penetration testing tools
+
+All containers communicate via an isolated Docker network without external dependencies.
 
 ### Prerequisites
 
-Before setting up the Codex CLI agent, ensure you have:
+Before running the containerized Codex agent, ensure you have:
 
-- **Codex CLI** installed globally
+- **Docker** installed and running
+- **Python 3.11+**
 - **OpenAI API Key** (contact team if you need one)
-- **Python 3.11+** with virtual environment support
-- **FastMCP server** running on localhost:8000
+- **Android Emulator** running on the host (for dynamic testing)
 
-### Step-by-Step Setup from Fresh Clone
+### Quick Start
 
-#### 1. Install Codex CLI
+#### 1. Set API Key
 
-```bash
-# Install Codex CLI globally
-npm install -g @anthropic/codex
-```
+Set your OpenAI API key as an environment variable:
 
-Verify installation:
-```bash
-codex --version
-```
-
-#### 2. Configure API Key
-
-Create an environment file or set environment variable:
-
-**Option A: Environment file (.env)**
-```bash
-# From the project root directory
-echo "OPENAI_API_KEY=your_actual_api_key_here" > agent/.env
-```
-
-**Option B: Environment variable**
 ```bash
 export OPENAI_API_KEY="sk-your-actual-openai-api-key-here"
 ```
 
-#### 3. Create Codex CLI Configuration
-
-Create the Codex CLI configuration file:
-
+Or create an environment file:
 ```bash
-# Create config directory if it doesn't exist
-mkdir -p ~/.codex
-
-# Create config file
-cat > ~/.codex/config.toml << 'EOF'
-# Codex CLI Configuration for MobileCyberBench Android Security Agent
-# Generated automatically - do not edit manually
-
-# Model & Provider Settings
-model = "codex-mini-latest"
-model_provider = "openai-responses"
-
-[model_providers.openai-responses]
-name = "OpenAI using Responses API"
-base_url = "https://api.openai.com/v1"
-env_key = "OPENAI_API_KEY"
-wire_api = "responses"
-request_max_retries = 3
-stream_max_retries = 5
-stream_idle_timeout_ms = 300000
-
-# Security Configuration
-sandbox_mode = "read-only"
-sandbox_permissions = ["filesystem-read", "process-read"]
-
-# Sandbox Configuration
-[sandbox_read_only]
-network_access = false
-exclude_tmpdir_env_var = false
-exclude_slash_tmp = false
-
-# Shell Environment Policy
-[shell_environment_policy]
-inherit = "core"
-ignore_default_excludes = false
-exclude = ["AWS_*", "AZURE_*", "GCP_*", "*_TOKEN", "*_SECRET", "*_KEY", "*_PASSWORD"]
-
-[shell_environment_policy.set]
-ANDROID_HOME = "/opt/android-sdk"
-SECURITY_MODE = "read-only"
-
-# MCP Servers for Android Security Testing
-[mcp_servers.mobilecybench_tools]
-command = "python3"
-args = ["/home/ubuntu/Downloads/mobilecybench/agent/mcp/mcp_proxy.py"]
-env = { "MCP_SERVER_URL" = "http://localhost:8000/mcp", "START_DIR" = "/tmp/termux_app" }
-startup_timeout_ms = 60000
-EOF
+# From the project root directory
+echo "OPENAI_API_KEY=your_actual_api_key_here" > .env
 ```
 
-**Important**: Update the `args` path in the TOML file to match your actual clone location:
-```bash
-# Replace /home/ubuntu/Downloads/mobilecybench with your actual path
-sed -i 's|/home/ubuntu/Downloads/mobilecybench|'$(pwd)'|g' ~/.codex/config.toml
-```
+#### 2. Run Containerized Agent
 
-#### 4. Start FastMCP Server
-
-The agent requires a FastMCP server running on localhost:8000. Start it from the project root:
+Execute the containerized Codex agent with a single command:
 
 ```bash
 # From project root directory
-cd agent/mcp
-python3 -m fastmcp.server &
+python3 agent/runner_containerized.py --app termux
 ```
 
-Verify the server is running:
+Replace `termux` with any supported app name (e.g., `joplin`, `bitwarden`, `nextcloud-talk`).
+
+#### 3. What Happens Automatically
+
+The containerized runner will automatically:
+
+1. **Build containers** - Creates codex-agent, mcp-server, and kali-container
+2. **Start services** - Launches all containers with proper networking
+3. **Setup app** - Builds the target app APK and installs it on the emulator
+4. **Run analysis** - Executes Codex CLI for comprehensive security testing
+5. **Extract logs** - Saves analysis results to `./logs/` directory
+6. **Cleanup** - Stops and removes containers when finished
+
+### Container Details
+
+#### Codex Agent Container (`codex-agent`)
+- **Purpose**: Runs Codex CLI with app source code
+- **Base**: Ubuntu 22.04 with Node.js 20 and Codex CLI
+- **Security**: No privileged access, no host volumes mounted
+- **Configuration**: Pre-configured TOML for MCP integration
+
+#### MCP Server Container (`mcp-server`)
+- **Purpose**: Provides Android testing tools via MCP protocol
+- **Base**: Python 3.11 with FastMCP and Android tools
+- **Network**: Connects to host emulator via `host.docker.internal:5037`
+- **Tools**: ADB commands, file operations, security utilities
+
+#### Kali Container (`kali-container`)
+- **Purpose**: Security testing environment
+- **Base**: `cybench/mobilecybench:latest` with penetration testing tools
+- **Access**: Available for advanced security tool execution
+- **Privileges**: Privileged access for security tools
+
+### Advanced Usage
+
+#### Custom Configuration
+
+For advanced users, you can modify container behavior:
+
 ```bash
-curl http://localhost:8000/mcp
+# Run with custom iteration limit
+python3 agent/runner_containerized.py --app termux --max-iterations 20
+
+# Run in dry-run mode to see what would be executed
+python3 agent/runner_containerized.py --app termux --dry-run
 ```
 
-#### 5. Test Codex CLI Integration
+#### Manual Container Management
 
-Test that Codex CLI can communicate with the MCP proxy:
+For debugging, you can manually manage containers:
 
 ```bash
-# Test basic Codex CLI functionality
-codex exec "List the files in the current directory"
+# Start containers manually
+APP_NAME=termux docker compose -f agent/docker-compose-isolated.yml up -d
 
-# Test MCP tool integration
-codex exec "Use the execute_command tool to run 'adb devices'"
+# Check container status
+docker ps
+
+# View logs
+docker logs codex-agent
+docker logs mcp-server
+
+# Stop containers
+docker compose -f agent/docker-compose-isolated.yml down
 ```
 
-### Security Notes
+### Security Features
 
-- **API Key Security**: The `~/.codex/config.toml` file contains API key references but not the actual key
-- **Localhost Only**: MCP server runs on localhost:8000 for security
-- **Git Ignore**: API keys in `.env` files are already in `.gitignore`
-- **Minimal Permissions**: Codex CLI runs with read-only sandbox permissions
+- **Complete Isolation**: Containers run without host filesystem access
+- **Network Isolation**: Internal Docker network for container communication
+- **API Key Security**: Environment variables, no hardcoded credentials
+- **Minimal Privileges**: Only mcp-server and kali-container have required privileges
+- **No External Dependencies**: No ngrok or external tunnel requirements
 
-### Required Files Summary
+### Troubleshooting
 
-From a fresh clone, you need to create:
+#### Common Issues
 
-1. **`~/.codex/config.toml`** - Codex CLI configuration (shown above)
-2. **`agent/.env`** - Environment file with OPENAI_API_KEY (optional, can use env var instead)
-3. **FastMCP server running** - Start with `python3 -m fastmcp.server` in `agent/mcp/`
-
-No other special files are required. The existing `mcp_proxy.py` and `codex_cli_provider.py` handle the integration.
-
-### Testing the Setup
-
-Verify your setup works by running:
-
+**Container Build Failures:**
 ```bash
-# From project root
-source venv/bin/activate
-python runner.py termux --agent codex
+# Clean Docker cache and rebuild
+docker system prune -f
+python3 agent/runner_containerized.py --app termux
 ```
 
-This should start the Codex CLI agent and begin Android security testing.
+**ADB Connection Issues:**
+```bash
+# Verify emulator is running
+adb devices
+
+# Check if emulator is accessible from containers
+docker exec mcp-server adb devices
+```
+
+**API Key Issues:**
+```bash
+# Verify API key is set
+echo $OPENAI_API_KEY
+
+# Check container environment
+docker exec codex-agent env | grep OPENAI_API_KEY
+```
+
+### Log Files
+
+Analysis results are automatically saved to:
+
+- `./logs/agent_run_YYYYMMDD_HHMMSS.log` - Complete agent execution log
+- `./logs/mobile_security_analysis.log` - Tool interaction log
 
 ## Directory Structure
 
 ```
 agent/
-├── README.md                    
-├── docker-compose.yml           # Orchestrates MCP server and Kali containers
-├── custom_agent.py              # Main AI agent implementation
-├── setup_env.sh                 # Environment setup script
-├── kali/                        # Kali Linux container configuration
-│   └── Dockerfile              # Kali container build instructions
-└── mcp/                        
-    ├── mcp_server.py           # MCP server implementation
-    ├── direct_tool_executor.py # Tool execution interface
-    ├── ui_connection.py        # UI connection handling
-    ├── docker_setup.py         # Docker setup utilities
+├── README.md                    # This documentation
+├── docker-compose-isolated.yml # Containerized environment orchestration
+├── runner_containerized.py     # Containerized Codex agent runner
+├── codex_agent.py              # Codex CLI integration
+├── codex_cli_provider.py       # Codex CLI provider implementation
+├── codex_prompts.py            # Security testing prompts
+├── codex/                      # Codex CLI container configuration
+│   ├── Dockerfile              # Codex agent container build
+│   └── config.toml             # Pre-configured Codex CLI settings
+└── mcp/                        # MCP server container
+    ├── mcp_server.py           # FastMCP server implementation
+    ├── mcp_proxy.py            # MCP proxy for container communication
+    ├── ui_connection.py        # Android UI interaction handling
+    ├── docker_setup.py         # Docker container utilities
     ├── Dockerfile              # MCP container build instructions
-    ├── ngrok.yml               # Ngrok tunnel configuration
-    └── example_commands.txt    # Example commands for testing
+    └── ngrok.yml               # Legacy ngrok configuration (not used)
 ```
 
 ## Prerequisites
@@ -216,12 +224,15 @@ agent/
 Before setting up the agent environment, ensure you have:
 
 - **Docker Desktop** installed and running
-- **Python 3.11+** with virtual environment support
+- **Python 3.11+**
 - **OpenAI API Key** for AI agent functionality (Reach out to Thomas or Nardos if you need one)
-- **Ngrok Account** and auth token
 - **Android SDK** and emulator setup (handled by main project)
 
-## Agent Environment Setup
+**Note**: The containerized setup eliminates the need for ngrok, manual FastMCP server setup, or complex configuration files.
+
+## Legacy Agent Environment Setup (Host-based)
+
+**Note**: This section is for the legacy host-based setup. The containerized setup (recommended) handles all configuration automatically.
 
 ### 1. Ngrok Configuration
 
@@ -308,7 +319,9 @@ You should see:
 - `kali-container`
 - `mobilecybench-backend` (from main project)
 
-## Testing the Agent
+## Testing the Agent (Legacy Host-based)
+
+**Note**: For containerized testing, simply run `python3 agent/runner_containerized.py --app <app_name>`. This section covers legacy host-based testing.
 
 ### 1. Basic Agent Test
 
@@ -341,25 +354,37 @@ The `mcp/example_commands.txt` file contains sample commands you can use to test
 
 ## Running the Agent
 
-### Full Pipeline Mode
+### Containerized Mode (Recommended)
 
-For complete automated testing with the runner:
+For complete automated testing with the containerized runner:
 
 ```bash
 # From the project root directory
-source venv/bin/activate
-python runner.py <app_name>
+python3 agent/runner_containerized.py --app <app_name>
 ```
 
 Example:
 ```bash
-python runner.py joplin
+python3 agent/runner_containerized.py --app termux
 ```
 
-This runs the complete pipeline:
-1. Sets up Android emulator
-2. Builds and installs the target app
-3. Runs initial security checks
-4. Starts the AI agent
+This runs the complete containerized pipeline:
+1. Builds and starts isolated Docker containers
+2. Sets up target app (builds APK and installs on emulator)
+3. Configures secure container-to-container networking
+4. Starts Codex CLI agent with pre-configured MCP tools
 5. Executes AI-driven security testing
-6. Runs final security validation
+6. Extracts logs and results automatically
+7. Cleans up containers when finished
+
+### Legacy Host-based Mode
+
+For backwards compatibility, the original host-based runner is still available:
+
+```bash
+# From the project root directory
+source venv/bin/activate
+python runner.py <app_name> --agent codex
+```
+
+**Note**: The containerized mode is recommended for better security isolation and simplified setup.

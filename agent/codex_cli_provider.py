@@ -292,11 +292,16 @@ Begin your secure mobile security analysis."""
 
     def _get_app_codebase_directory(self, mcp_config: dict) -> str:
         """Determine the correct app codebase directory for analysis."""
+        import os
 
-        # Method 1: Use project_root and app_name from mcp_config
+        # Method 1: Check for containerized environment app codebase
+        container_codebase = "/app/codebase"
+        if os.path.exists(container_codebase):
+            logger.info(f"Using containerized app codebase directory: {container_codebase}")
+            return container_codebase
+
+        # Method 2: Use project_root and app_name from mcp_config
         if mcp_config and mcp_config.get("project_root") and mcp_config.get("app_name"):
-            import os
-
             codebase_dir = os.path.join(
                 mcp_config["project_root"], "apps", mcp_config["app_name"], "codebase"
             )
@@ -306,9 +311,7 @@ Begin your secure mobile security analysis."""
             else:
                 logger.warning(f"App codebase directory not found: {codebase_dir}")
 
-        # Method 2: Check if current directory looks like an app codebase
-        import os
-
+        # Method 3: Check if current directory looks like an app codebase
         if (
             os.path.exists("AndroidManifest.xml")
             or os.path.exists("build.gradle")
