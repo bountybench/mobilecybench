@@ -55,11 +55,11 @@ services:
         python server.py
       "
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request, sys; urllib.request.urlopen('http://localhost:7777/').read(); sys.exit(0)"]
-      interval: 20s
-      timeout: 5s
-      retries: 10
-      start_period: 40s
+      test: ["CMD-SHELL", "nc -z localhost 7777 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
 networks:
   private_net:

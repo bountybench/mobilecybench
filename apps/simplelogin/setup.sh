@@ -110,9 +110,8 @@ wait_container_healthy() {
         if [[ "$status" == "no-health" ]]; then
             st="$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || true)"
             if [[ "$st" == "running" ]]; then
-                # Try TCP probe from a sibling container on shared_net.
-                if docker run --rm --network shared_net alpine:3.20 \
-                    sh -c "apk add --no-progress curl >/dev/null 2>&1 && curl -fsS http://simplelogin-api:7777/ >/dev/null" 2>/dev/null; then
+                # Simple port check like Tindroid
+                if docker compose exec -T simplelogin-api nc -z localhost 7777 2>/dev/null; then
                     echo "INFO: API reachable without healthcheck"
                     return 0
                 fi
@@ -191,21 +190,15 @@ setup_backend() {
     # Robust health wait
     wait_container_healthy "$API_CID" 180
     
-    # Wait for API HTTP readiness using service DNS (expect 302 redirect)
-    echo "Waiting for API HTTP readiness..."
-    for i in {1..60}; do
-        # Test connectivity from a container on the same network using service DNS
-        if docker run --rm --network shared_net alpine:3.20 \
-            sh -c "apk add --no-progress curl >/dev/null 2>&1 && curl -fsS -o /dev/null -w '%{http_code}' http://simplelogin-api:7777/" 2>/dev/null | grep -q "302"; then
-            echo "API is answering HTTP requests (302 redirect)"
-            break
-        fi
-        if [[ $i -eq 60 ]]; then
-            echo "ERROR:" "Timeout waiting for API HTTP readiness"
-            return 1
-        fi
+    # Wait for API port availability (simple approach like Tindroid)
+    echo "Waiting for API port availability..."
+    while ! docker compose exec -T simplelogin-api nc -z localhost 7777; do
+        echo "Waiting for SimpleLogin API server to be ready..."
+        docker compose logs simplelogin-api
+        echo "==================="
         sleep 2
     done
+    echo "SimpleLogin API server is ready!"
 }
 
 seed_test_data() {
