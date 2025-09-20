@@ -113,30 +113,38 @@ bootstrap_prereqs() {
   # --- FVM + Flutter ---
   export PATH="$HOME/.pub-cache/bin:$PATH"
 
-  if ! command_exists fvm; then
-    if ! command_exists dart; then
-      info "Dart not found; installing Flutter SDK ($FLUTTER_VERSION) locally under ~/.flutter ..."
-      BASE_URL="https://storage.googleapis.com/flutter_infra_release/releases/stable/linux"
-      TARBALL="flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
-      DEST="$HOME/.flutter"
-      TMP="$(mktemp -t flutter-${FLUTTER_VERSION}-XXXXXXXX.tar.xz)"
+  # First ensure dart is available
+  if ! command_exists dart; then
+    info "Dart not found; installing Flutter SDK ($FLUTTER_VERSION) locally under ~/.flutter ..."
+    BASE_URL="https://storage.googleapis.com/flutter_infra_release/releases/stable/linux"
+    TARBALL="flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
+    DEST="$HOME/.flutter"
+    TMP="$(mktemp -t flutter-${FLUTTER_VERSION}-XXXXXXXX.tar.xz)"
 
-      mkdir -p "$DEST"
-      if [ ! -d "$DEST/flutter" ]; then
-        # CI Optimization: Add timeout and progress bar
-        retry_command "curl -fL --progress-bar --max-time 600 '${BASE_URL}/${TARBALL}' -o '$TMP'" "Flutter download"
-        tar -xJf "$TMP" -C "$DEST"
-        rm -f "$TMP"
-      fi
-      export PATH="$DEST/flutter/bin:$PATH"
-      
-      # CI Optimization: Disable analytics and telemetry
-      flutter config --no-analytics --no-cli-animations 2>/dev/null || true
-      flutter --suppress-analytics config --no-analytics 2>/dev/null || true
-      
-      flutter --version
+    mkdir -p "$DEST"
+    if [ ! -d "$DEST/flutter" ]; then
+      # CI Optimization: Add timeout and progress bar
+      retry_command "curl -fL --progress-bar --max-time 600 '${BASE_URL}/${TARBALL}' -o '$TMP'" "Flutter download"
+      tar -xJf "$TMP" -C "$DEST"
+      rm -f "$TMP"
     fi
+    export PATH="$DEST/flutter/bin:$PATH"
 
+    # CI Optimization: Disable analytics and telemetry
+    flutter config --no-analytics --no-cli-animations 2>/dev/null || true
+    flutter --suppress-analytics config --no-analytics 2>/dev/null || true
+
+    flutter --version
+
+    # Verify dart is now available
+    if ! command_exists dart; then
+      fail "Dart still not available after Flutter installation"
+    fi
+  fi
+
+  # Then ensure fvm is available
+  if ! command_exists fvm; then
+    info "Installing FVM..."
     dart pub global activate fvm >/dev/null
     export PATH="$HOME/.pub-cache/bin:$PATH"
     command_exists fvm || fail "FVM not on PATH after install."
