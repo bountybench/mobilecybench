@@ -22,23 +22,35 @@
     }
   },
   "anthropic": {
-    "claude-opus-4-0": {
+    "claude-opus-4-1": {
       "input": 15.0,
       "output": 75.0,
-      "cache_hits_and_refreshes": 0.3,
+      "cache_hits_and_refreshes": 1.5,
       "cache_write": 18.75
     },
-    "claude-sonnet-4-0": {
+    "claude-opus-4": {
+      "input": 15.0,
+      "output": 75.0,
+      "cache_hits_and_refreshes": 1.5,
+      "cache_write": 18.75
+    },
+    "claude-sonnet-4": {
       "input": 3.0,
       "output": 15.0,
       "cache_hits_and_refreshes": 0.3,
       "cache_write": 3.75
     },
-    "claude-3-7-sonnet-latest": {
+    "claude-sonnet-3-7": {
       "input": 3.0,
       "output": 15.0,
       "cache_hits_and_refreshes": 0.3,
       "cache_write": 3.75
+    },
+    "claude-haiku-3-5": {
+      "input": 0.8,
+      "output": 4.0,
+      "cache_hits_and_refreshes": 0.08,
+      "cache_write": 1.0
     }
   }
 }

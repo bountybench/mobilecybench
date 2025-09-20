@@ -21,11 +21,60 @@ from typing import Any, Dict, Optional, Tuple
 from utils.logger import logger
 
 
+# Constants
+TOKENS_PER_MILLION = 1_000_000.0
+
+# Supported providers
+PROVIDER_OPENAI = "openai"
+PROVIDER_ANTHROPIC = "anthropic"
+SUPPORTED_PROVIDERS = [PROVIDER_OPENAI, PROVIDER_ANTHROPIC]
+
+# Pricing field names
+FIELD_INPUT = "input"
+FIELD_OUTPUT = "output"
+FIELD_REASONING = "reasoning"
+
+# OpenAI-specific field names
+FIELD_CACHE_INPUT = "cache_input"
+
+# Anthropic-specific field names  
+FIELD_CACHE_HITS_AND_REFRESHES = "cache_hits_and_refreshes"
+FIELD_CACHE_WRITE = "cache_write"
+
+# Date suffix patterns
+OPENAI_DATE_PATTERN = r"-\d{4}-\d{2}-\d{2}$"
+ANTHROPIC_DATE_PATTERN = r"-\d{8}$"
+
+# Anthropic model name mappings - maps various model names to canonical pricing keys
+ANTHROPIC_MODEL_MAPPINGS = {
+    # Claude Opus 4.1 variations
+    "claude-opus-4-1-20250805": "claude-opus-4-1",
+    
+    # Claude Opus 4 variations  
+    "claude-opus-4-0": "claude-opus-4",
+    "claude-opus-4-20250514": "claude-opus-4", 
+    "claude-4-opus-20250514": "claude-opus-4",
+    
+    # Claude Sonnet 4 variations
+    "claude-sonnet-4-0": "claude-sonnet-4",
+    "claude-sonnet-4-20250514": "claude-sonnet-4",
+    "claude-4-sonnet-20250514": "claude-sonnet-4",
+    
+    # Claude Sonnet 3.7 variations
+    "claude-3-7-sonnet-latest": "claude-sonnet-3-7",
+    "claude-3-7-sonnet-20250219": "claude-sonnet-3-7",
+    
+    # Claude Haiku 3.5 variations
+    "claude-3-5-haiku-latest": "claude-haiku-3-5", 
+    "claude-3-5-haiku-20241022": "claude-haiku-3-5",
+}
+
+
 class UsageExtractor(ABC):
     """Abstract base for extracting usage from provider responses."""
     
     @abstractmethod
-    def extract_usage(self, response: Any) -> UsageMetrics:
+    def extract_usage(self, response: Any) -> 'UsageMetrics':
         """Extract usage metrics from provider response."""
         pass
 
@@ -34,7 +83,7 @@ class PricingCalculator(ABC):
     """Abstract base for calculating costs from usage."""
     
     @abstractmethod
-    def calculate_cost(self, usage: UsageMetrics, pricing: ProviderPricing) -> float:
+    def calculate_cost(self, usage: 'UsageMetrics', pricing: 'ProviderPricing') -> float:
         """Calculate cost in USD from usage metrics and pricing."""
         pass
 
@@ -192,7 +241,7 @@ class OpenAIPricingCalculator(PricingCalculator):
     
     def calculate_cost(self, usage: UsageMetrics, pricing: ProviderPricing) -> float:
         """Calculate cost using OpenAI's pricing model."""
-        scale = 1_000_000.0
+        scale = TOKENS_PER_MILLION
         
         # For OpenAI: billed input = total input - cached input
         billed_input = max(usage.input_tokens - usage.cache_tokens, 0)
@@ -210,7 +259,7 @@ class AnthropicPricingCalculator(PricingCalculator):
     
     def calculate_cost(self, usage: UsageMetrics, pricing: ProviderPricing) -> float:
         """Calculate cost using Anthropic's pricing model."""
-        scale = 1_000_000.0
+        scale = TOKENS_PER_MILLION
         
         # Anthropic bills all input tokens (no cache deduction from input)
         cost_input = (usage.input_tokens / scale) * pricing.input_price
@@ -231,14 +280,12 @@ def _strip_date_suffix(model: str) -> str:
     - -YYYYMMDD (Anthropic style: claude-sonnet-4-20250514)
     """
     # Try OpenAI format first: -YYYY-MM-DD
-    openai_pattern = r"-\d{4}-\d{2}-\d{2}$"
-    result = re.sub(openai_pattern, "", model)
+    result = re.sub(OPENAI_DATE_PATTERN, "", model)
     if result != model:
         return result
     
     # Try Anthropic format: -YYYYMMDD  
-    anthropic_pattern = r"-\d{8}$"
-    result = re.sub(anthropic_pattern, "", model)
+    result = re.sub(ANTHROPIC_DATE_PATTERN, "", model)
     return result
 
 
@@ -249,13 +296,13 @@ class ProviderPricingManager:
         self.pricing_config = self._load_pricing_config(pricing_config_path)
         
         self.extractors = {
-            "openai": OpenAIUsageExtractor(),
-            "anthropic": AnthropicUsageExtractor(),
+            PROVIDER_OPENAI: OpenAIUsageExtractor(),
+            PROVIDER_ANTHROPIC: AnthropicUsageExtractor(),
         }
         
         self.calculators = {
-            "openai": OpenAIPricingCalculator(),
-            "anthropic": AnthropicPricingCalculator(),
+            PROVIDER_OPENAI: OpenAIPricingCalculator(),
+            PROVIDER_ANTHROPIC: AnthropicPricingCalculator(),
         }
     
     def _load_pricing_config(self, path: Optional[str] = None) -> Dict[str, Any]:
@@ -272,90 +319,97 @@ class ProviderPricingManager:
             logger.warning(f"Failed to load pricing config {path}: {e}")
             return {}
     
-    def get_provider_from_model(self, model: str) -> str:
-        """Determine provider from model name."""
-        # Common model prefixes and names
-        if model.startswith(("gpt-", "o1-", "chatgpt-")) or model in ("o3",):
-            return "openai"
-        elif model.startswith(("claude-", "sonnet-", "haiku-", "opus-")):
-            return "anthropic"
-        else:
-            raise ValueError(f"Unknown model '{model}' - cannot determine provider. Supported providers: openai, anthropic")
+    def get_pricing(self, model: str, provider: str) -> ProviderPricing:
+        """Get pricing for a model."""
+        # Validate provider early
+        if provider not in SUPPORTED_PROVIDERS:
+            raise ValueError(f"Unsupported provider '{provider}' for pricing calculation")
+        
+        # Resolve model pricing data
+        provider_models = self.pricing_config.get(provider, {})
+        model_pricing = self._resolve_model_pricing(model, provider, provider_models)
+        
+        # Build provider-specific pricing object
+        return self._build_pricing_for_provider(provider, model_pricing)
     
-    def get_pricing(self, model: str, provider: Optional[str] = None) -> ProviderPricing:
-        """Get pricing for a model, with fallback logic."""
-        if provider is None:
-            provider = self.get_provider_from_model(model)
-        
-        provider_config = self.pricing_config.get(provider, {})
-        # Direct model pricing (current structure in token_pricing.json)
-        models = provider_config
-        
+    def _resolve_model_pricing(self, model: str, provider: str, models: Dict[str, Any]) -> Dict[str, Any]:
+        """Resolve pricing data for a model with fallback logic."""
         # Try exact model match first
         if model in models:
-            model_pricing = models[model]
-        else:
-            # Try with date suffix stripped
-            base_model = _strip_date_suffix(model)
-            if base_model != model and base_model in models:
-                logger.debug(f"Using pricing for '{base_model}' for model '{model}'")
-                model_pricing = models[base_model]
-            else:
-                # Try Anthropic model name variations
-                model_pricing = self._find_anthropic_model_pricing(base_model, models, provider)
-                if model_pricing is None:
-                    logger.warning(f"No pricing found for model '{model}', using zeros")
-                    model_pricing = {}
-                else:
-                    logger.debug(f"Found Anthropic model variation for '{model}'")
+            return models[model]
         
-        # Provider-specific pricing fields
-        if provider == "anthropic":
-            return ProviderPricing(
-                input_price=float(model_pricing.get("input", 0) or 0),
-                output_price=float(model_pricing.get("output", 0) or 0),
-                cache_hits_and_refreshes_price=float(model_pricing.get("cache_hits_and_refreshes", 0) or 0),
-                cache_write_price=float(model_pricing.get("cache_write", 0) or 0),
-                reasoning_price=float(model_pricing.get("reasoning", 0) or 0),
-            )
-        elif provider == "openai":
-            return ProviderPricing(
-                input_price=float(model_pricing.get("input", 0) or 0),
-                output_price=float(model_pricing.get("output", 0) or 0),
-                cache_price=float(model_pricing.get("cache_input", 0) or 0),
-                reasoning_price=float(model_pricing.get("reasoning", 0) or 0),
-            )
+        # Provider-specific resolution
+        if provider == PROVIDER_ANTHROPIC:
+            return self._resolve_anthropic_model(model, models)
+        elif provider == PROVIDER_OPENAI:
+            return self._resolve_openai_model(model, models)
+        
+        # No pricing found
+        logger.warning(f"No pricing found for model '{model}', using zeros")
+        return {}
+    
+    def _resolve_openai_model(self, model: str, models: Dict[str, Any]) -> Dict[str, Any]:
+        """Resolve OpenAI model - just stripping date suffix is enough."""
+        base_model = _strip_date_suffix(model)
+        if base_model != model and base_model in models:
+            logger.debug(f"Using pricing for '{base_model}' for model '{model}'")
+            return models[base_model]
+        return {}
+    
+    def _resolve_anthropic_model(self, model: str, models: Dict[str, Any]) -> Dict[str, Any]:
+        """Resolve Anthropic model - check explicit mappings first, then strip dates."""
+        # Try explicit mapping first (handles complex cases)
+        if model in ANTHROPIC_MODEL_MAPPINGS:
+            canonical_name = ANTHROPIC_MODEL_MAPPINGS[model]
+            if canonical_name in models:
+                logger.debug(f"Using pricing for '{canonical_name}' for model '{model}'")
+                return models[canonical_name]
+        
+        # Try stripping date suffix (handles simpler cases)
+        base_model = _strip_date_suffix(model)
+        if base_model != model and base_model in models:
+            logger.debug(f"Using pricing for '{base_model}' for model '{model}'")
+            return models[base_model]
+        
+        return {}
+    
+    def _build_pricing_for_provider(self, provider: str, model_pricing: Dict[str, Any]) -> ProviderPricing:
+        """Build ProviderPricing object for the specified provider."""
+        if provider == PROVIDER_OPENAI:
+            return self._build_openai_pricing(model_pricing)
+        elif provider == PROVIDER_ANTHROPIC:
+            return self._build_anthropic_pricing(model_pricing)
         else:
+            # Should never reach here due to early validation, but kept for safety
             raise ValueError(f"Unsupported provider '{provider}' for pricing calculation")
     
-    def _find_anthropic_model_pricing(self, base_model: str, models: dict, provider: str) -> Optional[dict]:
-        """Find pricing for Anthropic model variations."""
-        if provider != "anthropic":
-            return None
-            
-        # Common Anthropic model mappings
-        anthropic_mappings = {
-            "claude-sonnet-4": "claude-sonnet-4-0",
-            "claude-opus-4": "claude-opus-4-0", 
-            "claude-3-7-sonnet": "claude-3-7-sonnet-latest",
-        }
-        
-        # Check if we have a mapping for this base model
-        mapped_model = anthropic_mappings.get(base_model)
-        if mapped_model and mapped_model in models:
-            return models[mapped_model]
-            
-        return None
+    def _build_openai_pricing(self, model_pricing: Dict[str, Any]) -> ProviderPricing:
+        """Build pricing object for OpenAI models."""
+        return ProviderPricing(
+            input_price=float(model_pricing.get(FIELD_INPUT, 0) or 0),
+            output_price=float(model_pricing.get(FIELD_OUTPUT, 0) or 0),
+            cache_price=float(model_pricing.get(FIELD_CACHE_INPUT, 0) or 0),
+            reasoning_price=float(model_pricing.get(FIELD_REASONING, 0) or 0),
+        )
+    
+    def _build_anthropic_pricing(self, model_pricing: Dict[str, Any]) -> ProviderPricing:
+        """Build pricing object for Anthropic models."""
+        return ProviderPricing(
+            input_price=float(model_pricing.get(FIELD_INPUT, 0) or 0),
+            output_price=float(model_pricing.get(FIELD_OUTPUT, 0) or 0),
+            cache_hits_and_refreshes_price=float(model_pricing.get(FIELD_CACHE_HITS_AND_REFRESHES, 0) or 0),
+            cache_write_price=float(model_pricing.get(FIELD_CACHE_WRITE, 0) or 0),
+            reasoning_price=float(model_pricing.get(FIELD_REASONING, 0) or 0),
+        )
+    
     
     def extract_usage_and_cost(
         self, 
         response: Any, 
         model: str, 
-        provider: Optional[str] = None
+        provider: str
     ) -> Tuple[UsageMetrics, float]:
         """Extract usage and calculate cost for any provider."""
-        if provider is None:
-            provider = self.get_provider_from_model(model)
         
         # Extract usage metrics
         extractor = self.extractors.get(provider)
@@ -374,13 +428,4 @@ class ProviderPricingManager:
         cost = calculator.calculate_cost(usage, pricing)
         
         return usage, cost
-
-"""
-  Anthropic model variations supported:
-    1. claude-3-7-sonnet-latest → Direct match
-    2. claude-3-7-sonnet-20250219 → Maps to claude-3-7-sonnet-latest
-    3. claude-sonnet-4-20250514 → Maps to claude-sonnet-4-0
-    4. claude-sonnet-4-0 → Direct match
-    5. claude-opus-4-0 → Direct match
-    6. claude-opus-4-20250514 → Maps to claude-opus-4-0
-"""
+        
