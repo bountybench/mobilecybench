@@ -58,10 +58,10 @@ services:
       start_period: 60s
 
 networks:
+  shared_net:
+    external: true
   private_net:
     driver: bridge
-    internal: true
-  shared_net:
 
 volumes:
   postgres_data:
