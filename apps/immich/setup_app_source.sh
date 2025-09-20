@@ -309,10 +309,16 @@ EOF
     # Memory optimization for CI environments with limited resources
     info "CI mode: Applying memory optimizations for resource-constrained environments"
 
-    # Conservative memory settings for CI
+    # Conservative memory settings for CI - use working configuration
     export GRADLE_OPTS="$GRADLE_OPTS -Xmx2g -XX:MaxMetaspaceSize=512m -XX:+UseG1GC -XX:G1HeapRegionSize=16m"
     export KOTLIN_DAEMON_JVMARGS="-Xmx1g -XX:MaxMetaspaceSize=512m"
     export CMAKE_BUILD_PARALLEL_LEVEL=1  # Reduce parallel CMake builds to save memory
+
+    # Additional memory constraints for CMake and NDK operations
+    export CMAKE_GENERATOR="Unix Makefiles"  # Use simpler generator
+    export CMAKE_BUILD_TYPE="Release"
+    export MAKEFLAGS="-j1"  # Single-threaded make
+    export NDK_CCACHE_DIR="/tmp/ccache"  # Use temp directory for ccache
 
     # R8 memory optimization - give R8 more memory for code shrinking
     export R8_HEAP_SIZE="-Xmx5g"
@@ -326,10 +332,11 @@ EOF
         cat >> "android/gradle.properties" << 'EOF'
 
 # Memory optimization for CI environments
-org.gradle.jvmargs=-Xms1024m -Xmx4096m -XX:MaxMetaspaceSize=512m -XX:+UseG1GC -XX:G1HeapRegionSize=16m
+org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -XX:+UseG1GC -XX:G1HeapRegionSize=16m
 org.gradle.parallel=false
 org.gradle.configureondemand=false
 org.gradle.workers.max=1
+org.gradle.daemon=false
 
 # Kotlin compilation memory optimization
 kotlin.daemon.jvm.options=-Xmx1g,-XX:MaxMetaspaceSize=512m
