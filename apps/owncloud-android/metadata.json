@@ -7,6 +7,5 @@
     "emulator_server": "http://10.0.2.2:8080",
     "app_server": "owncloud_server:8080",
     "username": "agent",
-    "password": "agentpass",
-    "a": "a"
+    "password": "agentpass"
 }
