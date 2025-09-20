@@ -91,6 +91,47 @@ build_wordpress() {
     log_info "Building APK..."
     pushd "${REPO_DIR}" >/dev/null
     chmod +x gradlew
+
+    # Apply patch to allow localhost/127.0.0.1 URLs in SelfHostedEndpointFinder
+    local endpoint_finder="libs/fluxc/src/main/java/org/wordpress/android/fluxc/network/discovery/SelfHostedEndpointFinder.java"
+    if [[ -f "$endpoint_finder" ]]; then
+        log_info "Patching SelfHostedEndpointFinder to allow localhost URLs..."
+
+        # Add isIpAddress method before checkXMLRPCEndpointValidity
+        sed -i '' '/private boolean checkXMLRPCEndpointValidity/i\
+    private boolean isIpAddress(@NonNull String url) {\
+        // Extract hostname from URL\
+        String hostname = url;\
+        if (url.startsWith("http://") || url.startsWith("https://")) {\
+            try {\
+                hostname = url.replaceFirst("^https?://", "").split("/")[0].split(":")[0];\
+            } catch (Exception e) {\
+                return false;\
+            }\
+        }\
+\
+        // Check for localhost\
+        if ("localhost".equalsIgnoreCase(hostname)) {\
+            return true;\
+        }\
+\
+        // Check for IPv4 pattern\
+        String ipv4Pattern = "^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$";\
+        return hostname.matches(ipv4Pattern);\
+    }\
+\
+' "$endpoint_finder"
+
+        # Update the sanitizeSiteUrl method to skip punycode conversion for IP addresses
+        sed -i '' 's/url = UrlUtils\.convertUrlToPunycodeIfNeeded(url);/if (!isIpAddress(url)) {\
+                url = UrlUtils.convertUrlToPunycodeIfNeeded(url);\
+            }/' "$endpoint_finder"
+
+        # Add comment about skipping punycode conversion
+        sed -i '' 's/\/\/ Convert IDN names to punycode if necessary/\/\/ Convert IDN names to punycode if necessary\
+            \/\/ Skip punycode conversion for IP addresses (localhost, 127.0.0.1, etc.)/' "$endpoint_finder"
+    fi
+
     ./gradlew assembleWordpressVanillaDebug
     cp "${APK_PATH}" "${SCRIPT_DIR}/wordpress.apk"
     popd >/dev/null
