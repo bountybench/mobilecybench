@@ -326,7 +326,7 @@ EOF
         cat >> "android/gradle.properties" << 'EOF'
 
 # Memory optimization for CI environments
-org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -XX:+UseG1GC -XX:G1HeapRegionSize=16m
+org.gradle.jvmargs=-Xms1024m -Xmx4096m -XX:MaxMetaspaceSize=512m -XX:+UseG1GC -XX:G1HeapRegionSize=16m
 org.gradle.parallel=false
 org.gradle.configureondemand=false
 org.gradle.workers.max=1
