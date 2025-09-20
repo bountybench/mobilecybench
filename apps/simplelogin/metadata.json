@@ -4,7 +4,7 @@
   "sdk": "34",
   "java": "17",
   "emulator_server": "http://10.0.2.2:7777",
-  "app_server": "http://localhost:7777",
+  "app_server": "http://simplelogin-api:7777",
   "username": "testuser@gmail.com",
   "password": "P@ssw0rd!",
   "app_id": "io.simplelogin.android.fdroid",

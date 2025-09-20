@@ -29,11 +29,6 @@ services:
       CONFIG: /code/simplelogin.env
       # Minimal overrides (DB connection)
       DB_URI: postgresql://simplelogin:password@db:5432/simplelogin
-      # Server binding configuration
-      FLASK_RUN_HOST: 0.0.0.0
-      FLASK_RUN_PORT: 7777
-      # Registration control (remove DISABLE_REGISTRATION to enable it)
-      # DISABLE_EMAIL_VERIFICATION not used in this version
       
     ports:
       - "7777:7777"
@@ -45,21 +40,22 @@ services:
       - private_net
       - shared_net
     command: >
-      sh -c "
-        echo 'dummy-dkim-private-key' > /tmp/dummy_dkim_private.key &&
-        echo 'dummy-dkim-public-key' > /tmp/dummy_dkim_public.key &&
-        echo 'dummy-paddle-key' > /tmp/dummy_paddle.key &&
+      sh -lc '
+        set -e
+        echo dummy-dkim-private-key > /tmp/dummy_dkim_private.key &&
+        echo dummy-dkim-public-key  > /tmp/dummy_dkim_public.key &&
+        echo dummy-paddle-key       > /tmp/dummy_paddle.key &&
         flask db upgrade &&
         python init_app.py &&
-        sed -i 's/app.run(debug=True, port=7777)/app.run(debug=True, host=\"0.0.0.0\", port=7777)/' /code/server.py &&
-        python server.py
-      "
+        # Run with a production WSGI server, using the factory
+        exec gunicorn "server:create_app()" --bind 0.0.0.0:7777 --workers 2 --threads 4 --timeout 120
+      '
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 7777 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      test: ["CMD-SHELL", "python -c 'import urllib.request,sys; r=urllib.request.urlopen(\"http://localhost:7777/\", timeout=5); sys.exit(0 if 200<=r.getcode()<400 else 1)'"]
+      interval: 10s
+      timeout: 5s
+      retries: 24
+      start_period: 120s
 
 networks:
   private_net:
