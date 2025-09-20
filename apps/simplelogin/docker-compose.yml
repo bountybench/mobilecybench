@@ -51,9 +51,9 @@ services:
         exec gunicorn "server:create_app()" --bind 0.0.0.0:7777 --workers 2 --threads 4 --timeout 120
       '
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 7777 || exit 1"]
+      test: ["CMD-SHELL", "python -c 'import socket; s=socket.socket(); s.settimeout(5); s.connect((\"localhost\", 7777)); s.close()'"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 5
       start_period: 60s
 
@@ -62,7 +62,8 @@ networks:
     driver: bridge
     internal: true
   shared_net:
-    driver: bridge
+    external: true
+    name: cybench_shared_net
 
 volumes:
   postgres_data:
