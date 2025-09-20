@@ -119,12 +119,14 @@ class OpenAIUsageExtractor(UsageExtractor):
 
 
 class AnthropicUsageExtractor(UsageExtractor):
-    """Extract usage from Anthropic API responses."""
+    """Extract usage from Anthropic API responses.
+    """
     
     def extract_usage(self, response: Any) -> UsageMetrics:
         """Extract usage from Anthropic response format.
         
-        Anthropic format looks like:
+        Reference - https://github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/types/usage.py
+        Example Anthropic format:
         {
             "id": "msg_123",
             "usage": {
