@@ -130,6 +130,15 @@ main() {
     docker_compose_up
     create_wp_admin
     create_wp_users
+
+    # Publish all private posts to make them visible
+    local post_ids=$(docker_exec app wp --allow-root post list --post_status=private --format=ids)
+    if [[ -n "$post_ids" ]]; then
+        for post_id in $post_ids; do
+            docker_exec app wp --allow-root post update "$post_id" --post_status=publish
+        done
+    fi
+
     json_write_file "secrets.json" "credentials"
     check_android_prereqs
     initialize_repository
