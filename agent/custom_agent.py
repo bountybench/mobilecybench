@@ -202,7 +202,7 @@ class CustomAgent:
 
             # Record token usage and cost
             try:
-                self.token_tracker.record_from_openai_response(resp, model=self.model)
+                self.token_tracker.record_from_response(resp, model=self.model)
             except Exception as e:
                 logger.warning(f"Token tracking failed: {e}")
 
