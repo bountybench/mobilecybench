@@ -303,20 +303,47 @@ EOF
     export GRADLE_OPTS="-Xmx1024m -XX:MaxMetaspaceSize=256m -XX:+UseG1GC -Dorg.gradle.daemon=false"
     export _JAVA_OPTIONS="-Xmx1024m"
     export PUB_MAX_WORKERS=2  # Limit parallel pub operations
-    
-    # AGGRESSIVE: Remove NDK requirements from build files
-    info "Removing NDK requirements from build configuration..."
-    
-    # Remove ndkVersion from app/build.gradle
-    if [ -f "android/app/build.gradle" ]; then
-      info "Patching app/build.gradle to remove NDK..."
-      # Comment out or remove ndkVersion line
-      sed -i 's/^\s*ndkVersion.*$/\/\/ ndkVersion removed for CI build/' "android/app/build.gradle"
-      # Remove any externalNativeBuild blocks
-      sed -i '/externalNativeBuild {/,/^    }/d' "android/app/build.gradle"
-      # Remove cmake/ndkBuild configurations
-      sed -i '/cmake {/,/}/d' "android/app/build.gradle"
-      sed -i '/ndkBuild {/,/}/d' "android/app/build.gradle"
+    # Add memory optimizations for CI environments
+    info "Adding memory optimizations for CI environments..."
+
+    if [ -f "android/gradle.properties" ]; then
+      # Add memory optimization settings only
+      if ! grep -q "# Memory optimization for CI" "android/gradle.properties"; then
+        cat >> "android/gradle.properties" << 'EOF'
+
+# Memory optimization for CI environments
+org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -XX:+UseG1GC -XX:G1HeapRegionSize=16m
+org.gradle.parallel=false
+org.gradle.configureondemand=false
+org.gradle.workers.max=1
+
+# Kotlin compilation memory optimization
+kotlin.daemon.jvm.options=-Xmx1g,-XX:MaxMetaspaceSize=512m
+kotlin.incremental=false
+kotlin.parallel.tasks.in.project=false
+EOF
+        info "✅ Added memory optimization settings to gradle.properties"
+      fi
+    fi
+
+    # CMake memory and performance optimizations
+    export CMAKE_BUILD_TYPE=Release
+    export CMAKE_CXX_FLAGS="-O2 -DNDEBUG"
+    export CMAKE_C_FLAGS="-O2 -DNDEBUG"
+    export MAKEFLAGS="-j1"  # Single-threaded make to reduce memory usage
+
+    # Optimize CMakeLists.txt for memory efficiency
+    if [ -f "android/app/CMakeLists.txt" ]; then
+      info "Adding memory optimizations to CMakeLists.txt..."
+      if ! grep -q "# Memory optimizations" "android/app/CMakeLists.txt"; then
+        sed -i '1a\
+# Memory optimizations for CI environments\
+set(CMAKE_BUILD_TYPE Release)\
+set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG -ffunction-sections -fdata-sections")\
+set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "-Wl,--gc-sections")\
+' "android/app/CMakeLists.txt"
+        info "✅ Added memory optimizations to CMakeLists.txt"
+      fi
     fi
     
     # Check for native modules and disable them
