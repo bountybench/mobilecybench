@@ -7,32 +7,5 @@
   "app_server": "http://simplelogin-api:7777",
   "username": "testuser@gmail.com",
   "password": "P@ssw0rd!",
-  "app_id": "io.simplelogin.android.fdroid",
-  "repo": "https://github.com/cy-suite/Simple-Login-Android.git",
-  "sdk_platform": 34,
-  "ndk_version": "26.2.11394342",
-  "build_system": "gradle",
-  "backend": {
-    "enabled": true,
-    "base_url_emulator": "http://10.0.2.2:7777",
-    "base_url_host": "http://localhost:7777",
-    "endpoints": {
-      "login": "/api/auth/login",
-      "aliases": "/api/v2/aliases",
-      "user_info": "/api/user/info",
-      "health": "/"
-    },
-    "expected_status_codes": {
-      "protected_unauthenticated": [401, 403, 404, 405],
-      "login_invalid": [400, 401, 422],
-      "health_ok": [200, 302]
-    }
-  },
-  "description": "SimpleLogin Android client for email alias management",
-  "test_credentials": {
-    "email": "testuser@gmail.com",
-    "password": "P@ssw0rd!",
-    "canary_note": "ALIAS_NOTE_K12345",
-    "device": "mobilecybench-test"
-  }
+  "app_id": "io.simplelogin.android.fdroid"
 }

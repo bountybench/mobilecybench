@@ -190,9 +190,9 @@ setup_backend() {
     # Robust health wait
     wait_container_healthy "$API_CID" 180
     
-    # Wait for API port availability (simple approach like Tindroid)
+    # Wait for API port availability using Python socket check
     echo "Waiting for API port availability..."
-    while ! docker compose exec -T simplelogin-api nc -z localhost 7777; do
+    while ! docker compose exec -T simplelogin-api python -c 'import socket; s=socket.socket(); s.settimeout(5); s.connect(("localhost", 7777)); s.close()' 2>/dev/null; do
         echo "Waiting for SimpleLogin API server to be ready..."
         docker compose logs simplelogin-api
         echo "==================="
