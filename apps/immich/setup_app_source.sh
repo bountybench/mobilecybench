@@ -455,14 +455,8 @@ build_immich() {
       sed -i '/android\.buildCacheDir/d' "android/gradle.properties" 2>/dev/null || true
     fi
     
-    # FORCE: Remove NDK from build.gradle files
-    info "Forcefully removing NDK requirements..."
-    find android -name "build.gradle" -type f -exec sed -i 's/^\s*ndkVersion.*$/\/\/ ndkVersion removed/' {} \;
-    find android -name "build.gradle" -type f -exec sed -i '/externalNativeBuild/,/^[[:space:]]*}/d' {} \;
-    
-    # Remove CMakeLists references
-    find android -name "build.gradle" -type f -exec sed -i '/cmake {/,/}/d' {} \;
-    find android -name "build.gradle" -type f -exec sed -i '/ndkBuild {/,/}/d' {} \;
+    # Memory optimizations only - do not modify build.gradle files
+    info "Applying memory optimizations without modifying build files..."
     
     # Create a fake NDK installation to satisfy checks but prevent download
     FAKE_NDK_DIR="/tmp/fake-ndk"
@@ -514,41 +508,34 @@ EOF
     trap "kill $MONITOR_PID 2>/dev/null || true" EXIT
   fi
   
-  # Build with optimizations
+  # Build with memory optimizations
   if [ "$CI_MODE" = "true" ]; then
-    info "Building with CI optimizations (NDK disabled, timeout: 20 minutes)..."
-    
-    # Set Gradle options to prevent hangs
-    export GRADLE_OPTS="-Xmx1024m -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.workers.max=1 -Dorg.gradle.caching=true -Dandroid.ndkVersion=skip"
-    
-    # Build with skip-validation flag and no native builds
-    timeout 1200 fvm flutter build apk \
-      --release \
-      --target-platform=android-arm64 \
-      --no-tree-shake-icons \
-      --android-skip-build-dependency-validation \
-      --dart-define=SKIP_NDK=true || {
-        EXIT_CODE=$?
-        echo "[Build Monitor] Build failed with exit code: $EXIT_CODE"
-        
-        if [ $EXIT_CODE -eq 124 ]; then
-          echo "[Build Monitor] Build timed out after 20 minutes"
-          echo "[Build Monitor] Checking for NDK issues..."
-          grep -i "ndk" "$LOG_FILE" | tail -10 || true
-          
-          # Final attempt: Pure Dart build
-          info "Final attempt: Pure Dart APK build..."
-          timeout 600 fvm flutter build apk \
-            --release \
-            --target-platform=android-arm64 \
-            --android-skip-build-dependency-validation || fail "Pure Dart build also failed"
-        else
-          fail "Build failed (exit code: $EXIT_CODE)"
-        fi
-      }
+    info "Building with memory optimizations for CI environment..."
+    # Single-threaded build with memory optimizations
+    timeout 5400 fvm flutter build apk --release --target-platform android-arm64 --split-per-abi || {
+      EXIT_CODE=$?
+      echo "Build failed with exit code: $EXIT_CODE"
+
+      if [ $EXIT_CODE -eq 124 ]; then
+        echo "Build timed out after 90 minutes"
+        fail "Build timeout - check for hanging processes"
+      else
+        fail "Build failed (exit code: $EXIT_CODE)"
+      fi
+    }
   else
-    # Standard build
-    fvm flutter build apk --release
+    # Standard build for non-CI environments
+    timeout 5400 fvm flutter build apk --release || {
+      EXIT_CODE=$?
+      echo "Build failed with exit code: $EXIT_CODE"
+
+      if [ $EXIT_CODE -eq 124 ]; then
+        echo "Build timed out after 90 minutes"
+        fail "Build timeout - check for hanging processes"
+      else
+        fail "Build failed (exit code: $EXIT_CODE)"
+      fi
+    }
   fi
   
   # Kill monitor if it exists
