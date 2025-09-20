@@ -99,7 +99,7 @@ class TokenTracker:
         self.total_cost_usd += record.cost_usd
         self.call_count += 1
 
-    def record_from_response(self, resp: Any, model: str) -> TokenUsage:
+    def record_from_response(self, resp: Any, model: str, provider: str) -> TokenUsage:
         """Record token usage from any provider API response.
 
         Extracts token usage data from the response, calculates cost using
@@ -108,6 +108,7 @@ class TokenTracker:
         Args:
             resp: The response object from an API call (OpenAI, Anthropic, etc.).
             model: The model name used for the API call.
+            provider: The provider name (e.g., "openai", "anthropic").
 
         Returns:
             A TokenUsage record with detailed usage and cost information.
@@ -116,11 +117,11 @@ class TokenTracker:
             with zero token counts and appropriate warnings logged.
         Example:
             >>> tracker = TokenTracker()
-            >>> record = tracker.record_from_response(api_response, "claude-sonnet-4-0")
+            >>> record = tracker.record_from_response(api_response, "claude-sonnet-4-0", "anthropic")
             >>> print(f"Cost: ${record.cost_usd:.4f}")
         """
         # Extract usage and calculate cost using provider-specific logic
-        usage_metrics, cost = self._pricing_manager.extract_usage_and_cost(resp, model)
+        usage_metrics, cost = self._pricing_manager.extract_usage_and_cost(resp, model, provider)
 
         record = TokenUsage(
             model=model,
