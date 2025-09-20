@@ -304,13 +304,16 @@ EOF
   export PUB_CACHE="$HOME/.pub-cache"
   export FLUTTER_ROOT="$HOME/.fvm/versions/$FLUTTER_VERSION"
   
-  # CI Optimization: Adjust memory limits based on CI mode
+  # CI mode fixes - only essential memory optimizations
   if [ "$CI_MODE" = "true" ]; then
+    # Memory optimization for CI environments with limited resources
+    info "CI mode: Applying memory optimizations for resource-constrained environments"
+
     # Conservative memory settings for CI
-    export DART_VM_OPTIONS="--old_gen_heap_size=1024 --optimization_counter_threshold=50000"
-    export GRADLE_OPTS="-Xmx1024m -XX:MaxMetaspaceSize=256m -XX:+UseG1GC -Dorg.gradle.daemon=false"
-    export _JAVA_OPTIONS="-Xmx1024m"
-    export PUB_MAX_WORKERS=2  # Limit parallel pub operations
+    export GRADLE_OPTS="$GRADLE_OPTS -Xmx2g -XX:MaxMetaspaceSize=512m -XX:+UseG1GC -XX:G1HeapRegionSize=16m"
+    export KOTLIN_DAEMON_JVMARGS="-Xmx1g -XX:MaxMetaspaceSize=512m"
+    export CMAKE_BUILD_PARALLEL_LEVEL=1  # Reduce parallel CMake builds to save memory
+
     # Add memory optimizations for CI environments
     info "Adding memory optimizations for CI environments..."
 
@@ -340,76 +343,33 @@ EOF
     export CMAKE_C_FLAGS="-O2 -DNDEBUG"
     export MAKEFLAGS="-j1"  # Single-threaded make to reduce memory usage
 
-    # Optimize CMakeLists.txt for memory efficiency
-    if [ -f "android/app/CMakeLists.txt" ]; then
-      info "Adding memory optimizations to CMakeLists.txt..."
-      if ! grep -q "# Memory optimizations" "android/app/CMakeLists.txt"; then
-        sed -i '1a\
-# Memory optimizations for CI environments\
-set(CMAKE_BUILD_TYPE Release)\
-set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG -ffunction-sections -fdata-sections")\
-set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "-Wl,--gc-sections")\
-' "android/app/CMakeLists.txt"
-        info "✅ Added memory optimizations to CMakeLists.txt"
-      fi
-    fi
-    
-    # Check for native modules and disable them
-    if [ -f "android/settings.gradle" ]; then
-      info "Checking for native modules in settings.gradle..."
-      # Comment out any native module includes that might require NDK
-      sed -i "s/include ':native_/\/\/ include ':native_/g" "android/settings.gradle"
-    fi
-    
-    # Create or update gradle.properties
+    # Only remove deprecated options that cause build failures
     if [ -f "android/gradle.properties" ]; then
-      info "Optimizing Gradle for CI..."
-      # First, check if CI optimizations already added to avoid duplicates
-      if ! grep -q "# CI Optimizations" "android/gradle.properties"; then
-        cat >> "android/gradle.properties" << 'EOF'
-
-# CI Optimizations
-org.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=256m -XX:+UseG1GC -Dorg.gradle.daemon=false
-org.gradle.parallel=false
-org.gradle.daemon=false
-org.gradle.configureondemand=false
-org.gradle.workers.max=1
-org.gradle.caching=true
-org.gradle.vfs.watch=false
-android.enableJetifier=true
-android.useAndroidX=true
-android.nonTransitiveRClass=false
-android.nonFinalResIds=false
-# Disable native builds
-android.packagingOptions.jniLibs.useLegacyPackaging=true
-android.bundle.enableUncompressedNativeLibs=false
-EOF
-      fi
-      
-      # Remove deprecated options that cause build failures
       info "Removing deprecated Gradle options..."
       sed -i '/android\.enableR8/d' "android/gradle.properties" 2>/dev/null || true
       sed -i '/android\.enableBuildCache/d' "android/gradle.properties" 2>/dev/null || true
       sed -i '/android\.buildCacheDir/d' "android/gradle.properties" 2>/dev/null || true
+      sed -i '/android\.bundle\.enableUncompressedNativeLibs/d' "android/gradle.properties" 2>/dev/null || true
+      sed -i '/android\.packagingOptions\.jniLibs\.useLegacyPackaging/d' "android/gradle.properties" 2>/dev/null || true
     fi
-    
-    # Create local.properties that explicitly states no NDK
-    info "Creating local.properties without NDK..."
+
+    # Create local.properties - let Gradle handle NDK automatically
+    info "Creating local.properties..."
+    SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+
+    info "SDK_ROOT: $SDK_ROOT"
+    if [ -n "${ANDROID_NDK_HOME:-}" ]; then
+      info "ANDROID_NDK_HOME found: $ANDROID_NDK_HOME"
+    fi
+
+    # Simple local.properties without forcing NDK path - let Gradle handle it
     cat > "android/local.properties" << EOF
-sdk.dir=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+sdk.dir=$SDK_ROOT
 flutter.sdk=$HOME/.fvm/versions/$FLUTTER_VERSION
-# NDK intentionally not set to prevent download
-# ndk.dir=/dev/null
 EOF
-    
-    # Set environment to explicitly disable NDK
-    export ANDROID_NDK_HOME="/dev/null"
-    export NDK_HOME="/dev/null"
-    export ANDROID_NDK_ROOT="/dev/null"
-    
-  else
-    # Standard memory settings
-    export DART_VM_OPTIONS="--old_gen_heap_size=2048"
+
+    info "✅ Created local.properties (NDK will be handled automatically by Gradle)"
+
   fi
   
   # Configure pub get with CI-friendly settings and retry
@@ -441,71 +401,10 @@ build_immich() {
   info "Building Immich APK (release)..."
   cd "$CODEBASE_DIR"
   
-  # CI Optimization: AGGRESSIVE NDK removal
+  # Clean build artifacts for fresh start
   if [ "$CI_MODE" = "true" ]; then
     info "Cleaning previous build artifacts..."
     fvm flutter clean 2>/dev/null || true
-    rm -rf build android/app/build android/.gradle 2>/dev/null || true
-    
-    # Clean any problematic entries from existing gradle.properties
-    if [ -f "android/gradle.properties" ]; then
-      info "Cleaning gradle.properties of deprecated options..."
-      sed -i '/android\.enableR8/d' "android/gradle.properties" 2>/dev/null || true
-      sed -i '/android\.enableBuildCache/d' "android/gradle.properties" 2>/dev/null || true
-      sed -i '/android\.buildCacheDir/d' "android/gradle.properties" 2>/dev/null || true
-    fi
-    
-    # Memory optimizations only - do not modify build.gradle files
-    info "Applying memory optimizations without modifying build files..."
-    
-    # Create a fake NDK installation to satisfy checks but prevent download
-    FAKE_NDK_DIR="/tmp/fake-ndk"
-    mkdir -p "$FAKE_NDK_DIR"
-    echo "Fake NDK" > "$FAKE_NDK_DIR/source.properties"
-    export ANDROID_NDK_HOME="$FAKE_NDK_DIR"
-    export NDK_HOME="$FAKE_NDK_DIR"
-    
-    # Update local.properties to point to fake NDK
-    cat > "android/local.properties" << EOF
-sdk.dir=${ANDROID_HOME:-/usr/local/lib/android/sdk}
-flutter.sdk=$HOME/.fvm/versions/$FLUTTER_VERSION
-ndk.dir=$FAKE_NDK_DIR
-EOF
-  fi
-  
-  # CI Optimization: Monitor build progress in background
-  if [ "$CI_MODE" = "true" ]; then
-    (
-      while true; do
-        sleep 30
-        echo "[Build Monitor] $(date '+%H:%M:%S') - Memory: $(free -m | awk 'NR==2{printf "%.1f%%", $3*100/$2}')"
-        # Fix: Properly handle process counts - ensure we get single numbers
-        GRADLE_COUNT=$(pgrep -c gradle 2>/dev/null | head -1 || echo "0")
-        DART_COUNT=$(pgrep -c dart 2>/dev/null | head -1 || echo "0")
-        # Ensure the values are clean integers
-        GRADLE_COUNT=${GRADLE_COUNT//[^0-9]/}
-        DART_COUNT=${DART_COUNT//[^0-9]/}
-        [ -z "$GRADLE_COUNT" ] && GRADLE_COUNT="0"
-        [ -z "$DART_COUNT" ] && DART_COUNT="0"
-        
-        if [ "$GRADLE_COUNT" != "0" ] || [ "$DART_COUNT" != "0" ]; then
-          echo "[Build Monitor] Active processes - Gradle: $GRADLE_COUNT, Dart: $DART_COUNT"
-        fi
-        
-        # Check if build is actually progressing
-        if [ -d "build" ]; then
-          BUILD_SIZE=$(du -sm build 2>/dev/null | cut -f1 || echo "0")
-          echo "[Build Monitor] Build directory size: ${BUILD_SIZE}MB"
-        fi
-        
-        # Check for NDK download attempts
-        if ps aux | grep -q "[d]ownload.*NDK"; then
-          echo "[Build Monitor] WARNING: NDK download detected - this should not happen!"
-        fi
-      done
-    ) &
-    MONITOR_PID=$!
-    trap "kill $MONITOR_PID 2>/dev/null || true" EXIT
   fi
   
   # Build with memory optimizations
@@ -537,9 +436,6 @@ EOF
       fi
     }
   fi
-  
-  # Kill monitor if it exists
-  [ -n "${MONITOR_PID:-}" ] && kill $MONITOR_PID 2>/dev/null || true
 
   # Check for APK in multiple possible locations
   local apk_paths=(
@@ -582,13 +478,7 @@ trap cleanup_on_exit EXIT
 main() {
   info "Immich Android Source Build"
   echo "============================"
-  
-  # CI Optimization: Detect and enable CI mode
-  if [ -n "${GITHUB_ACTIONS:-}" ] || [ -n "${CI:-}" ] || [ -n "${JENKINS_HOME:-}" ]; then
-    CI_MODE="true"
-    info "CI environment detected - enabling optimizations"
-  fi
-  
+
   if [ "$CI_MODE" = "true" ]; then
     info "Running with CI optimizations enabled"
     info "Initial system state:"

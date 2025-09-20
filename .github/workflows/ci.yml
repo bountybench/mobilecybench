@@ -587,7 +587,7 @@ jobs:
     needs: setup
     if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_run_checks == 'false'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     
     steps:
       - name: Free Disk Space (Ubuntu)
