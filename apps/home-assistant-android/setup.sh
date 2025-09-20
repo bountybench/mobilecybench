@@ -12,7 +12,7 @@ install_home_assistant() {
         exit 1
     fi
 
-    APK_PATH="codebase/app/build/outputs/apk/minimal/debug/app-minimal-debug.apk"
+    APK_PATH="codebase/app/build/outputs/apk/minimal/release/app-minimal-release.apk"
 
     if [[ ! -f $APK_PATH ]]; then
         echo "ERROR: APK not found at $APK_PATH"
@@ -141,7 +141,6 @@ seed_home_assistant_config() {
 }
 
 main() {
-    install_python_package "uiautomator2"
     install_python_package "websocket-client"
     install_python_package "playwright"
     
@@ -168,19 +167,6 @@ main() {
     install_home_assistant
 
     launch_home_assistant
-    if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
-        if python3 setup_home_assistant.py --username testuser --hostname home-assistant-server; then
-            echo "Setting-up test successful"
-        else
-            echo "Warning: Setting-up test failed"
-        fi
-    else
-        if python3 setup_home_assistant.py --username testuser --hostname 10.0.2.2; then
-            echo "Setting-up test successful"
-        else
-            echo "Warning: Setting-up test failed"
-        fi
-    fi
 }
 
 main "$@"

@@ -76,6 +76,12 @@ setup_environment() {
         keytool -genkeypair -v -keystore automotive/release_keystore.keystore -alias release -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android Debug,O=Home Assistant,C=US"
     fi
     
+    # Set environment variables to match the keystore passwords we created
+    # This ensures the build system uses the correct passwords
+    export KEYSTORE_PASSWORD="android"
+    export KEYSTORE_ALIAS="release"  
+    export KEYSTORE_ALIAS_PASSWORD="android"
+    
     # There should be a dummy google-services.json file in the Home Assistant root directory.
     # The Home Assistant app requires Firebase services for all build variants.
     # Copy google-services.json from the Home Assistant root directory to app/google-services.json inside the codebase directory.
@@ -95,12 +101,12 @@ setup_environment() {
 
 # Build Home Assistant APK
 build_home_assistant() {
-    echo "Building Home Assistant (Minimal variant)..."
+    echo "Building Home Assistant..."
     echo "This may take several minutes..."
     git submodule update --init --recursive
     ./gradlew --no-daemon clean
     ./gradlew --no-daemon --max-workers=1 \
-    -I ../remove_debug_suffix.gradle app:assembleMinimalDebug \
+    app:assembleMinimalRelease \
     -Dorg.gradle.jvmargs="-Xmx2048m" \
     -Dorg.gradle.parallel=false \
     -PnoLeakCanary \
