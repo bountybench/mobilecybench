@@ -315,7 +315,7 @@ EOF
     export CMAKE_BUILD_PARALLEL_LEVEL=1  # Reduce parallel CMake builds to save memory
 
     # R8 memory optimization - give R8 more memory for code shrinking
-    export R8_HEAP_SIZE="-Xmx3g"
+    export R8_HEAP_SIZE="-Xmx5g"
 
     # Add memory optimizations for CI environments
     info "Adding memory optimizations for CI environments..."
@@ -337,7 +337,8 @@ kotlin.incremental=false
 kotlin.parallel.tasks.in.project=false
 
 # R8 memory optimization for code shrinking
-android.r8.maxMemory=3g
+android.r8.maxMemory=5g
+android.enableR8.fullMode=false
 EOF
         info "✅ Added memory optimization settings to gradle.properties"
       fi
