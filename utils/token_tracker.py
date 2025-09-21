@@ -70,18 +70,14 @@ class TokenTracker:
         self,
         *,
         pricing_path: Optional[str] = None,
-        jsonl_path: Optional[str] = None,
     ) -> None:
         """Initialize the TokenTracker.
         Args:
             - pricing_path: optional path to a JSON file with model pricing data.
                 * If None, uses default location from pricing_providers module.
-            - jsonl_path: Optional path to a JSONL file to append detailed usage records.
-                * If None, defaults to "token_usage.jsonl" in the current directory.
-                * If set to an empty string, no file will be written.
         """
         self._pricing_manager = ProviderPricingManager(pricing_path)
-        self._jsonl_path = jsonl_path if jsonl_path else "token_usage.jsonl"
+        self._jsonl_path = "token_usage.jsonl"
 
         self.total_input_tokens = 0
         self.total_output_tokens = 0
