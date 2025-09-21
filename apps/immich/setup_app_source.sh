@@ -351,6 +351,20 @@ EOF
       fi
     fi
 
+    # Add memory optimizations to CMakeLists.txt
+    info "Adding memory optimizations to CMakeLists.txt..."
+    if [ -f "android/app/CMakeLists.txt" ]; then
+      if ! grep -q "# Memory optimization settings for CI" "android/app/CMakeLists.txt"; then
+        # Backup original file
+        cp "android/app/CMakeLists.txt" "android/app/CMakeLists.txt.backup"
+
+        # Insert memory optimizations after cmake_minimum_required
+        sed -i '/cmake_minimum_required/a\\n# Memory optimization settings for CI environments\nset(CMAKE_BUILD_TYPE "Release")\nset(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O2 -DNDEBUG")\nset(CMAKE_VERBOSE_MAKEFILE OFF)\nset(CMAKE_BUILD_PARALLEL_LEVEL 1)' "android/app/CMakeLists.txt"
+
+        info "✅ Added memory optimizations to CMakeLists.txt"
+      fi
+    fi
+
     # CMake memory and performance optimizations
     export CMAKE_BUILD_TYPE=Release
     export CMAKE_CXX_FLAGS="-O2 -DNDEBUG"
