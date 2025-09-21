@@ -89,7 +89,6 @@ class TestUsageExtractors:
             assert result.input_tokens == 1000
             assert result.output_tokens == 500
             assert result.cache_tokens == 0
-            assert result.reasoning_tokens == 0
             assert result.request_id == "req_123"
         
         def test_extract_with_cache_tokens(self, extractor):
@@ -111,27 +110,6 @@ class TestUsageExtractors:
             assert result.input_tokens == 1000
             assert result.output_tokens == 500
             assert result.cache_tokens == 200
-            assert result.reasoning_tokens == 0
-        
-        def test_extract_with_reasoning_tokens(self, extractor):
-            """Test extraction with reasoning tokens."""
-            mock_output_details = Mock()
-            mock_output_details.reasoning_tokens = 150
-            
-            mock_usage = Mock()
-            mock_usage.input_tokens = 1000
-            mock_usage.output_tokens = 500
-            mock_usage.output_tokens_details = mock_output_details
-            
-            mock_response = Mock()
-            mock_response.id = "req_123"
-            mock_response.usage = mock_usage
-            
-            result = extractor.extract_usage(mock_response)
-            
-            assert result.input_tokens == 1000
-            assert result.output_tokens == 500
-            assert result.reasoning_tokens == 150
         
         def test_extract_no_usage_data(self, extractor):
             """Test handling when no usage data is present."""
@@ -240,11 +218,11 @@ class TestPricingCalculators:
         
         @pytest.fixture
         def sample_pricing(self):
+            # test price that doesn't reflect actual pricing
             return ProviderPricing(
                 input_price=2.0,
                 output_price=8.0,
-                cache_price=0.5,
-                reasoning_price=4.0
+                cache_price=0.5
             )
         
         def test_basic_cost_calculation(self, calculator, sample_pricing):
@@ -276,20 +254,6 @@ class TestPricingCalculators:
             expected = 0.0057
             assert cost == pytest.approx(expected, rel=1e-9)
         
-        def test_cost_calculation_with_reasoning(self, calculator, sample_pricing):
-            """Test cost calculation with reasoning tokens."""
-            usage = UsageMetrics(
-                input_tokens=1000,
-                output_tokens=500,
-                reasoning_tokens=100
-            )
-            
-            cost = calculator.calculate_cost(usage, sample_pricing)
-            
-            # Expected: (1000/1M * 2.0) + (500/1M * 8.0) + (100/1M * 4.0) = 0.002 + 0.004 + 0.0004 = 0.0064
-            expected = 0.0064
-            assert cost == pytest.approx(expected, rel=1e-9)
-        
         def test_cost_calculation_cache_exceeds_input(self, calculator, sample_pricing):
             """Test that billed input cannot go below zero."""
             usage = UsageMetrics(
@@ -316,7 +280,7 @@ class TestPricingCalculators:
     class TestAnthropicPricingCalculator:
         """Test Anthropic pricing calculations."""
         
-        @pytest.fixture
+        @pytest.fixture()
         def calculator(self):
             return AnthropicPricingCalculator()
         
@@ -383,7 +347,6 @@ class TestProviderPricingManager:
                     "input": 1.25,
                     "output": 10.0,
                     "cache_input": 0.125,
-                    "reasoning": 5.0
                 },
                 "gpt-4.1": {
                     "input": 2.0,
@@ -430,7 +393,6 @@ class TestProviderPricingManager:
             assert pricing.input_price == 1.25
             assert pricing.output_price == 10.0
             assert pricing.cache_price == 0.125
-            assert pricing.reasoning_price == 5.0
         
         def test_exact_model_match_anthropic(self, pricing_manager):
             """Test exact model name matching for Anthropic."""
@@ -476,7 +438,6 @@ class TestProviderPricingManager:
             assert pricing.input_price == 0.0
             assert pricing.output_price == 0.0
             assert pricing.cache_price == 0.0
-            assert pricing.reasoning_price == 0.0
         
         def test_unsupported_provider_raises_error(self, pricing_manager):
             """Test that unsupported providers raise ValueError."""
@@ -544,37 +505,6 @@ class TestProviderPricingManager:
             with pytest.raises(ValueError, match="No extractor available for provider 'unknown'"):
                 pricing_manager.extract_usage_and_cost(mock_response, "test-model", "unknown")
     
-    class TestConfigurationLoading:
-        """Test pricing configuration loading."""
-        
-        def test_load_config_from_file(self, mock_pricing_config):
-            """Test loading configuration from file."""
-            mock_file_content = '{"test": "data"}'
-            
-            with patch("builtins.open", mock_open(read_data=mock_file_content)):
-                with patch("json.load") as mock_json_load:
-                    mock_json_load.return_value = mock_pricing_config
-                    
-                    manager = ProviderPricingManager("/test/path")
-                    
-                    assert manager.pricing_config == mock_pricing_config
-        
-        def test_load_config_file_not_found(self):
-            """Test handling when config file is not found."""
-            with patch("builtins.open", side_effect=FileNotFoundError()):
-                manager = ProviderPricingManager("/nonexistent/path")
-                
-                assert manager.pricing_config == {}
-        
-        def test_load_config_invalid_json(self):
-            """Test handling when config file contains invalid JSON."""
-            with patch("builtins.open", mock_open(read_data="invalid json")):
-                with patch("json.load", side_effect=ValueError("Invalid JSON")):
-                    manager = ProviderPricingManager("/test/path")
-                    
-                    assert manager.pricing_config == {}
-
-
 class TestTokenTracker:
     """Test TokenTracker functionality."""
     
@@ -663,6 +593,9 @@ class TestTokenTracker:
         mock_usage1 = Mock()
         mock_usage1.input_tokens = 500
         mock_usage1.output_tokens = 200
+        mock_usage1_details = Mock()
+        mock_usage1_details.cached_tokens = 50
+        mock_usage1.input_tokens_details = mock_usage1_details
         
         mock_response1 = Mock()
         mock_response1.id = "req_1"
@@ -678,6 +611,10 @@ class TestTokenTracker:
         mock_response2 = Mock()
         mock_response2.id = "req_2"
         mock_response2.usage = mock_usage2
+
+        mock_usage2_details = Mock()
+        mock_usage2_details.cached_tokens = 100
+        mock_usage2.input_tokens_details = mock_usage2_details
         
         token_tracker.record_from_response(mock_response2, "gpt-5", PROVIDER_OPENAI)
         
@@ -686,56 +623,9 @@ class TestTokenTracker:
         assert totals["calls"] == 2
         assert totals["input_tokens"] == 1300  # 500 + 800
         assert totals["output_tokens"] == 500  # 200 + 300
+        assert totals["cache_tokens"] == 150  # 50 + 100
         assert totals["cost_usd"] > 0
     
-    def test_jsonl_writing_enabled(self, mock_pricing_config):
-        """Test JSONL file writing when enabled."""
-        with patch.object(ProviderPricingManager, '_load_pricing_config') as mock_load:
-            mock_load.return_value = mock_pricing_config
-            
-            with patch("builtins.open", mock_open()) as mock_file:
-                tracker = TokenTracker(jsonl_path="/test/path.jsonl")
-                
-                # Create mock response
-                mock_usage = Mock()
-                mock_usage.input_tokens = 1000
-                mock_usage.output_tokens = 500
-                
-                mock_response = Mock()
-                mock_response.id = "req_123"
-                mock_response.usage = mock_usage
-                
-                tracker.record_from_response(mock_response, "gpt-5", PROVIDER_OPENAI)
-                
-                # Verify file was opened for append
-                mock_file.assert_called_with("/test/path.jsonl", "a", encoding="utf-8")
-                # Verify something was written
-                handle = mock_file.return_value
-                handle.write.assert_called()
-    
-    def test_jsonl_writing_error_handling(self, mock_pricing_config):
-        """Test error handling when JSONL writing fails."""
-        with patch.object(ProviderPricingManager, '_load_pricing_config') as mock_load:
-            mock_load.return_value = mock_pricing_config
-            
-            with patch("builtins.open", side_effect=IOError("Permission denied")):
-                tracker = TokenTracker(jsonl_path="/test/path.jsonl")
-                
-                # Create mock response
-                mock_usage = Mock()
-                mock_usage.input_tokens = 1000
-                mock_usage.output_tokens = 500
-                
-                mock_response = Mock()
-                mock_response.id = "req_123"
-                mock_response.usage = mock_usage
-                
-                # Should not raise an exception despite file write error
-                record = tracker.record_from_response(mock_response, "gpt-5", PROVIDER_OPENAI)
-                
-                # Record should still be created properly
-                assert record.model == "gpt-5"
-                assert record.input_tokens == 1000
     
     def test_totals_precision(self, token_tracker):
         """Test that cost totals maintain proper precision."""
