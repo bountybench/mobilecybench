@@ -1,0 +1,7 @@
+FROM postgres:15
+
+# Copy the seed SQL file to root instead of init directory
+COPY seed.sql /seed.sql
+
+# Install postgresql client tools (already included in postgres image)
+# The container will run psql command to seed the database after Gotify initializes
