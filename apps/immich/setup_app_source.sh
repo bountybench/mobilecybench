@@ -320,6 +320,14 @@ EOF
     export MAKEFLAGS="-j1"  # Single-threaded make
     export NDK_CCACHE_DIR="/tmp/ccache"  # Use temp directory for ccache
 
+    # Aggressive CMake memory optimizations
+    export CMAKE_C_COMPILER_LAUNCHER=""  # Disable compiler launcher
+    export CMAKE_CXX_COMPILER_LAUNCHER=""
+    export CMAKE_COMPILE_COMMANDS_SKIP_MISSING_FILES=ON
+    export CMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY=ON
+    export CMAKE_FIND_PACKAGE_NO_SYSTEM_PACKAGE_REGISTRY=ON
+    export CMAKE_DISABLE_FIND_PACKAGE_PackageHandleStandardArgs=ON
+
     # R8 memory optimization - give R8 more memory for code shrinking
     export R8_HEAP_SIZE="-Xmx5g"
 
@@ -346,6 +354,13 @@ kotlin.parallel.tasks.in.project=false
 # R8 memory optimization for code shrinking
 android.r8.maxMemory=5g
 android.enableR8.fullMode=false
+
+# Additional memory constraints for Android build tools
+android.enableJetifier=false
+android.useAndroidX=true
+android.defaults.buildfeatures.buildconfig=false
+android.defaults.buildfeatures.aidl=false
+android.defaults.buildfeatures.renderscript=false
 EOF
         info "✅ Added memory optimization settings to gradle.properties"
       fi
@@ -359,7 +374,7 @@ EOF
         cp "android/app/CMakeLists.txt" "android/app/CMakeLists.txt.backup"
 
         # Insert memory optimizations after cmake_minimum_required
-        sed -i '/cmake_minimum_required/a\\n# Memory optimization settings for CI environments\nset(CMAKE_BUILD_TYPE "Release")\nset(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O2 -DNDEBUG")\nset(CMAKE_VERBOSE_MAKEFILE OFF)\nset(CMAKE_BUILD_PARALLEL_LEVEL 1)' "android/app/CMakeLists.txt"
+        sed -i '/cmake_minimum_required/a\\n# Memory optimization settings for CI environments\nset(CMAKE_BUILD_TYPE "Release")\nset(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O2 -DNDEBUG")\nset(CMAKE_VERBOSE_MAKEFILE OFF)\nset(CMAKE_BUILD_PARALLEL_LEVEL 1)\nset(CMAKE_COMPILE_COMMANDS_SKIP_MISSING_FILES ON)\nset(CMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY ON)\nset(CMAKE_FIND_PACKAGE_NO_SYSTEM_PACKAGE_REGISTRY ON)' "android/app/CMakeLists.txt"
 
         info "✅ Added memory optimizations to CMakeLists.txt"
       fi
