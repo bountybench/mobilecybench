@@ -41,9 +41,9 @@ FIELD_CACHE_INPUT = "cache_input"
 FIELD_CACHE_HITS_AND_REFRESHES = "cache_hits_and_refreshes"
 FIELD_CACHE_WRITE = "cache_write"
 
-# Date suffix patterns
-OPENAI_DATE_PATTERN = r"-\d{4}-\d{2}-\d{2}$"
-ANTHROPIC_DATE_PATTERN = r"-\d{8}$"
+# Date suffix patterns - pre-compiled for performance
+OPENAI_DATE_PATTERN = re.compile(r"-\d{4}-\d{2}-\d{2}$")
+ANTHROPIC_DATE_PATTERN = re.compile(r"-\d{8}$")
 
 # Anthropic model name mappings - maps various model names to canonical pricing keys
 ANTHROPIC_MODEL_MAPPINGS = {
@@ -280,12 +280,12 @@ def _strip_date_suffix(model: str) -> str:
     - -YYYYMMDD (Anthropic style: claude-sonnet-4-20250514)
     """
     # Try OpenAI format first: -YYYY-MM-DD
-    result = re.sub(OPENAI_DATE_PATTERN, "", model)
+    result = OPENAI_DATE_PATTERN.sub("", model)
     if result != model:
         return result
     
     # Try Anthropic format: -YYYYMMDD  
-    result = re.sub(ANTHROPIC_DATE_PATTERN, "", model)
+    result = ANTHROPIC_DATE_PATTERN.sub("", model)
     return result
 
 
