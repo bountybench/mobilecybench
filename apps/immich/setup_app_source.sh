@@ -388,13 +388,14 @@ EOF
     info "Adding lintOptions to build.gradle..."
     if [ -f "android/app/build.gradle" ]; then
       if ! grep -q "lintOptions" "android/app/build.gradle"; then
-        # Add lintOptions block before the closing brace of android block
-        sed -i '/^}/i \
+        # Add lintOptions block within the android block, before its closing brace
+        sed -i '/^android {/,/^}/ { /^}/i \
 \
   lintOptions {\
     checkReleaseBuilds false\
     abortOnError false\
-  }' "android/app/build.gradle"
+  }
+}' "android/app/build.gradle"
 
         info "✅ Added lintOptions to build.gradle"
       fi
