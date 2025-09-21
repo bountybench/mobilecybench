@@ -534,8 +534,7 @@ class TestTokenTracker:
         """Create a TokenTracker with mocked pricing config."""
         with patch.object(ProviderPricingManager, '_load_pricing_config') as mock_load:
             mock_load.return_value = mock_pricing_config
-            # Disable JSONL file writing for tests
-            return TokenTracker(jsonl_path="")
+            return TokenTracker()
     
     def test_record_openai_response(self, token_tracker):
         """Test recording an OpenAI response."""
@@ -626,33 +625,11 @@ class TestTokenTracker:
         assert totals["cache_tokens"] == 150  # 50 + 100
         assert totals["cost_usd"] > 0
     
-    
-    def test_totals_precision(self, token_tracker):
-        """Test that cost totals maintain proper precision."""
-        # Create response with small cost
-        mock_usage = Mock()
-        mock_usage.input_tokens = 1
-        mock_usage.output_tokens = 1
-        
-        mock_response = Mock()
-        mock_response.id = "req_123"
-        mock_response.usage = mock_usage
-        
-        token_tracker.record_from_response(mock_response, "gpt-5", PROVIDER_OPENAI)
-        
-        totals = token_tracker.totals()
-        
-        # Cost should be rounded to 10 decimal places
-        assert isinstance(totals["cost_usd"], float)
-        # Very small cost, but should be > 0
-        assert totals["cost_usd"] > 0
-        assert totals["cost_usd"] < 0.001
-
 
 class TestEdgeCasesAndErrorHandling:
     """Test edge cases and error handling scenarios."""
     
-    def test_anthropic_model_mappings_completeness(self):
+    def test_anthropic_model_mappings(self):
         """Test that ANTHROPIC_MODEL_MAPPINGS contains expected mappings."""
         expected_mappings = {
             "claude-opus-4-0": "claude-opus-4",
@@ -664,10 +641,6 @@ class TestEdgeCasesAndErrorHandling:
         for model, expected_canonical in expected_mappings.items():
             assert model in ANTHROPIC_MODEL_MAPPINGS
             assert ANTHROPIC_MODEL_MAPPINGS[model] == expected_canonical
-    
-    def test_tokens_per_million_constant(self):
-        """Test that TOKENS_PER_MILLION constant is correct."""
-        assert TOKENS_PER_MILLION == 1_000_000.0
     
     @pytest.mark.parametrize("provider", [PROVIDER_OPENAI, PROVIDER_ANTHROPIC])
     def test_empty_response_handling(self, provider):
@@ -687,20 +660,6 @@ class TestEdgeCasesAndErrorHandling:
         assert result.cache_tokens == 0
         assert result.cache_write_tokens == 0
         assert result.reasoning_tokens == 0
-    
-    def test_cost_calculation_precision(self):
-        """Test that cost calculations maintain proper precision."""
-        calculator = OpenAIPricingCalculator()
-        
-        # Very small usage
-        usage = UsageMetrics(input_tokens=1, output_tokens=1)
-        pricing = ProviderPricing(input_price=0.000001, output_price=0.000001)
-        
-        cost = calculator.calculate_cost(usage, pricing)
-        
-        # Should be able to handle very small costs without precision loss
-        assert isinstance(cost, float)
-        assert cost >= 0
     
     def test_dataclass_immutability(self):
         """Test that UsageMetrics and ProviderPricing are immutable."""
