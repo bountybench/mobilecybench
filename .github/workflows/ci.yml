@@ -18,7 +18,7 @@ jobs:
       java: ${{ steps.get-sdk-java.outputs.java }}
       system_image: ${{ steps.get-sdk-java.outputs.system_image }}
       has_run_checks: ${{ steps.check-run-checks.outputs.has_run_checks }}
-      setup_mode: ${{ steps.setup-strategy.outputs.setup_mode }}
+      setup_modes: ${{ steps.setup-strategy.outputs.setup_modes }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -149,30 +149,40 @@ jobs:
             exit 1
           fi
           
-          # Determine preference based on what scripts exist and their modification status
-          setup_mode="source"  # default to source
-          
+          # Determine which setup modes to test based on script existence and modifications
           echo "has source: $has_source, has apklink: $has_apklink"
           
+          # Check which specific scripts were modified
+          source_modified=$(git diff --name-only origin/main...HEAD | grep -q "$dir/setup_app_source.sh" && echo "true" || echo "false")
+          apklink_modified=$(git diff --name-only origin/main...HEAD | grep -q "$dir/setup_app_apklink.sh" && echo "true" || echo "false")
+          
+          echo "source modified: $source_modified, apklink modified: $apklink_modified"
+          
           if [ "$has_source" = true ] && [ "$has_apklink" = true ]; then
-            # Both scripts exist - check for modifications
-            if git diff --name-only origin/main...HEAD | grep -E "$dir/setup_app_(source|apklink)\.sh"; then
-              echo "Setup script changes detected - using source build for thorough testing"
-              setup_mode="source"
+            # Both scripts exist - determine modes based on modifications
+            if [ "$source_modified" = "true" ] && [ "$apklink_modified" = "true" ]; then
+              echo "Both setup scripts modified - testing both modes"
+              setup_modes='["source", "apklink"]'
+            elif [ "$source_modified" = "true" ]; then
+              echo "Source script modified - using source mode"
+              setup_modes='["source"]'
+            elif [ "$apklink_modified" = "true" ]; then
+              echo "APK link script modified - using apklink mode"
+              setup_modes='["apklink"]'
             else
               echo "Both scripts available and unmodified - preferring APK link for efficiency"
-              setup_mode="apklink"
+              setup_modes='["apklink"]'
             fi
           elif [ "$has_source" = true ] && [ "$has_apklink" = false ]; then
             echo "Only source setup available - using source mode"
-            setup_mode="source"
+            setup_modes='["source"]'
           elif [ "$has_source" = false ] && [ "$has_apklink" = true ]; then
             echo "Only APK link setup available - using apklink mode"
-            setup_mode="apklink"
+            setup_modes='["apklink"]'
           fi
           
-          echo "Selected setup mode: $setup_mode"
-          echo "setup_mode=$setup_mode" >> "$GITHUB_OUTPUT"
+          echo "Selected setup modes: $setup_modes"
+          echo "setup_modes=$setup_modes" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -207,6 +217,7 @@ jobs:
     strategy:
       matrix:
         test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
+        setup_mode: ${{ fromJson(needs.setup.outputs.setup_modes) }}
       fail-fast: false  
       max-parallel: 3 
     
@@ -560,7 +571,7 @@ jobs:
           GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
         run: |
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
-          setup_mode="${{ needs.setup.outputs.setup_mode }}"
+          setup_mode="${{ matrix.setup_mode }}"
 
           cat << 'EOF' > build_script.sh
           #!/bin/bash
@@ -716,6 +727,11 @@ jobs:
     if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_run_checks == 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      matrix:
+        setup_mode: ${{ fromJson(needs.setup.outputs.setup_modes) }}
+      fail-fast: false  
+      max-parallel: 3
     
     steps:
       - name: Free Disk Space (Ubuntu)
@@ -897,7 +913,7 @@ jobs:
           GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
         run: |
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
-          setup_mode="${{ needs.setup.outputs.setup_mode }}"
+          setup_mode="${{ matrix.setup_mode }}"
 
           cat << 'EOF' > build_script.sh
           #!/bin/bash
