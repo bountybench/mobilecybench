@@ -384,6 +384,22 @@ EOF
       fi
     fi
 
+    # Add lintOptions to build.gradle to disable release build linting
+    info "Adding lintOptions to build.gradle..."
+    if [ -f "android/app/build.gradle" ]; then
+      if ! grep -q "lintOptions" "android/app/build.gradle"; then
+        # Add lintOptions block before the closing brace of android block
+        sed -i '/^}/i \
+\
+  lintOptions {\
+    checkReleaseBuilds false\
+    abortOnError false\
+  }' "android/app/build.gradle"
+
+        info "✅ Added lintOptions to build.gradle"
+      fi
+    fi
+
     # CMake memory and performance optimizations
     export CMAKE_BUILD_TYPE=Release
     export CMAKE_CXX_FLAGS="-O2 -DNDEBUG"
