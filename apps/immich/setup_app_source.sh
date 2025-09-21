@@ -309,10 +309,13 @@ EOF
     # Memory optimization for CI environments with limited resources
     info "CI mode: Applying memory optimizations for resource-constrained environments"
 
-    # Conservative memory settings for CI with adequate metaspace
-    export GRADLE_OPTS="$GRADLE_OPTS -Xmx1536m -XX:MaxMetaspaceSize=768m -XX:+UseG1GC -XX:G1HeapRegionSize=8m -XX:MaxGCPauseMillis=100"
-    export KOTLIN_DAEMON_JVMARGS="-Xmx768m -XX:MaxMetaspaceSize=512m"
+    # Working memory-first optimization with G1GC - proven to work (1min -> 29min progress)
+    export GRADLE_OPTS="$GRADLE_OPTS -Xmx2g -XX:MaxMetaspaceSize=512m -XX:+UseG1GC -XX:G1HeapRegionSize=16m"
+    export KOTLIN_DAEMON_JVMARGS="-Xmx1g -XX:MaxMetaspaceSize=512m"
     export CMAKE_BUILD_PARALLEL_LEVEL=1  # Reduce parallel CMake builds to save memory
+
+    # Prevent Kotlin daemon restarts and hanging
+    export KOTLIN_DAEMON_REUSE_STRATEGY="REQUIRE_NEW"
 
     # Additional memory constraints for CMake and NDK operations
     export CMAKE_GENERATOR="Unix Makefiles"  # Use simpler generator
@@ -340,13 +343,13 @@ EOF
         cat >> "android/gradle.properties" << 'EOF'
 
 # Memory optimization for CI environments
-org.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m -XX:+UseG1GC -XX:G1HeapRegionSize=8m
+org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -XX:+UseG1GC -XX:G1HeapRegionSize=16m
 org.gradle.parallel=false
 org.gradle.configureondemand=false
 org.gradle.workers.max=1
 org.gradle.daemon=false
 
-# Kotlin compilation memory optimization
+# Kotlin compilation memory optimization - working configuration
 kotlin.daemon.jvm.options=-Xmx1g,-XX:MaxMetaspaceSize=512m
 kotlin.incremental=false
 kotlin.parallel.tasks.in.project=false
