@@ -142,9 +142,8 @@ verify_shared_net_connectivity() {
     fi
 }
 
-determine_setup_mode() {
+determine_setup_modes() {
     local dir="$1"
-    local setup_mode="source"  # default to source
     
     # Check for both setup scripts
     local has_source=false
@@ -166,44 +165,66 @@ determine_setup_mode() {
         exit 1
     fi
     
-    # Determine preference based on what scripts exist
+    echo "has source: $has_source, has apklink: $has_apklink" >&2
+    
+    # Check which specific scripts were modified
+    local source_modified=false
+    local apklink_modified=false
+    
+    # Find the remote that points to bountybench/mobilecybench.git or origin
+    local base_remote="origin"
+    while IFS= read -r line; do
+        remote_name=$(echo "$line" | awk '{print $1}')
+        remote_url=$(echo "$line" | awk '{print $2}')
+        if [[ "$remote_url" == *"bountybench/mobilecybench"* ]]; then
+            base_remote="$remote_name"
+            break
+        fi
+    done < <(git remote -v | grep "(fetch)")
+    
+    echo -e "${INFO} Using base remote: $base_remote" >&2
+    
+    # Fetch the latest main branch
+    git fetch "$base_remote" main >/dev/null 2>&1 || true
+    
+    # Check which specific scripts were modified
+    if git diff --name-only "$base_remote/main...HEAD" | grep -q "^$dir/setup_app_source.sh$"; then
+        source_modified=true
+    fi
+    
+    if git diff --name-only "$base_remote/main...HEAD" | grep -q "^$dir/setup_app_apklink.sh$"; then
+        apklink_modified=true
+    fi
+    
+    echo "source modified: $source_modified, apklink modified: $apklink_modified" >&2
+    
+    # Determine which setup modes to test based on script existence and modifications
+    local setup_modes=""
+    
     if [ "$has_source" = true ] && [ "$has_apklink" = true ]; then
-        # Both scripts exist - check for modifications
-        # Find the remote that points to bountybench/mobilecybench.git
-        bountybench_remote=""
-        while IFS= read -r line; do
-            remote_name=$(echo "$line" | awk '{print $1}')
-            remote_url=$(echo "$line" | awk '{print $2}')
-            if [[ "$remote_url" == *"bountybench/mobilecybench"* ]]; then
-                bountybench_remote="$remote_name"
-                break
-            fi
-        done < <(git remote -v | grep "(fetch)")
-        
-        if [ -n "$bountybench_remote" ]; then
-            echo -e "${INFO} Found bountybench remote: $bountybench_remote" >&2
-            # Fetch the latest main branch from bountybench remote
-            git fetch "$bountybench_remote" main >/dev/null 2>&1 || true
-            # Check for modifications against bountybench main - only for this specific app
-            if git diff --name-only "$bountybench_remote/main...HEAD" | grep -E "^$dir/setup_app_(source|apklink)\.sh$" >/dev/null 2>&1; then
-                echo -e "${INFO} Setup script changes detected - using source build for thorough testing" >&2
-                setup_mode="source"
-            else
-                echo -e "${INFO} Both scripts available and unmodified - preferring APK link for efficiency" >&2
-                setup_mode="apklink"
-            fi
+        # Both scripts exist - determine modes based on modifications
+        if [ "$source_modified" = true ] && [ "$apklink_modified" = true ]; then
+            echo -e "${INFO} Both setup scripts modified - testing both modes" >&2
+            setup_modes="source apklink"
+        elif [ "$source_modified" = true ]; then
+            echo -e "${INFO} Source script modified - using source mode" >&2
+            setup_modes="source"
+        elif [ "$apklink_modified" = true ]; then
+            echo -e "${INFO} APK link script modified - using apklink mode" >&2
+            setup_modes="apklink"
         else
-            echo -e "${WARNING} Could not find bountybench remote - falling back to source mode" >&2
-            setup_mode="source"
+            echo -e "${INFO} Both scripts available and unmodified - preferring APK link for efficiency" >&2
+            setup_modes="apklink"
         fi
     elif [ "$has_source" = true ] && [ "$has_apklink" = false ]; then
         echo -e "${INFO} Only source setup available - using source mode" >&2
-        setup_mode="source"
+        setup_modes="source"
     elif [ "$has_source" = false ] && [ "$has_apklink" = true ]; then
         echo -e "${INFO} Only APK link setup available - using apklink mode" >&2
-        setup_mode="apklink"
+        setup_modes="apklink"
     fi
-    echo "$setup_mode"
+    
+    echo "$setup_modes"
 }
 
 checkout_commit() {
@@ -327,58 +348,140 @@ run_test_check() {
     cd -
 }
 
-# Determine setup mode
-echo -e "${INFO} Determining setup mode for directory: $DIR"
-SETUP_MODE=$(determine_setup_mode "$DIR")
-if [ $? -ne 0 ] || [ -z "$SETUP_MODE" ]; then
-    echo -e "${ERROR} Failed to determine setup mode"
+# Function to run tests for a specific setup mode
+run_tests_for_setup_mode() {
+    local setup_mode="$1"
+    local dir="$2"
+    
+    print_header "$CYAN" "TESTING WITH SETUP MODE: $setup_mode"
+    
+    cd "$ROOT_DIR/$dir"
+    
+    # Skip this step if you want to persist your apk
+    checkout_commit "$dir"
+    
+    # Check if run_checks.sh exists to determine test strategy and required scripts
+    if [ -f "run_checks.sh" ]; then
+        echo -e "${INFO} run_checks.sh found - running full vulnerability scenario tests"
+        local has_run_checks=true
+        if [ "$setup_mode" = "apklink" ]; then
+            required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_apklink.sh")
+            print_header "$CYAN" "SETTING UP APP FROM APK LINK"
+        else
+            required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
+            print_header "$CYAN" "SETTING UP APP FROM SOURCE"
+        fi
+    else
+        echo -e "${INFO} run_checks.sh not found - running simplified APK installation test"
+        local has_run_checks=false
+        if [ "$setup_mode" = "apklink" ]; then
+            required_scripts=("setup.sh" "cleanup.sh" "setup_app_apklink.sh")
+            print_header "$CYAN" "SETTING UP APP FROM APK LINK"
+        else
+            required_scripts=("setup.sh" "cleanup.sh" "setup_app_source.sh")
+            print_header "$CYAN" "SETTING UP APP FROM SOURCE"
+        fi
+    fi
+    
+    echo -e "${INFO} Checking for required scripts..."
+    for script in "${required_scripts[@]}"; do
+        if [[ ! -f "$script" ]]; then
+            echo -e "${ERROR} Required script '$script' not found."
+            exit 1
+        fi
+    done
+    
+    # Run appropriate setup script based on mode
+    if [ "$setup_mode" = "apklink" ]; then
+        echo -e "${INFO} Setting up app from APK link."
+        { ./setup_app_apklink.sh; } || { echo -e "${ERROR} setup_app_apklink.sh failed"; exit 1; }
+    else
+        echo -e "${INFO} Setting up app from source..."
+        { ./setup_app_source.sh; } || { echo -e "${ERROR} setup_app_source.sh failed"; exit 1; }
+    fi
+    
+    cd "$ROOT_DIR"
+    
+    if [ "$has_run_checks" = true ]; then
+        # Create dummy file for test confidentiality
+        cat > "$ROOT_DIR/dummy_log.log" <<'EOF'
+# Dummy log file for testing purposes
+# This file contains no actual secrets or sensitive information
+timestamp=2024-01-01T00:00:00Z
+event=test_event
+message=dummy test message
+status=ok
+EOF
+
+        # Run the three test scenarios
+        run_test_check "TEST CHECKS BEFORE VULNERABLE SCENARIOS" "" "false"
+        run_test_check "TEST CHECKS AFTER NON-DOS VULNERABLE SCENARIO" "0" "true"
+        run_test_check "TEST CHECKS AFTER DOS VULNERABLE SCENARIO" "1" "false"
+    else
+        # Run simplified test
+        print_header "$CYAN" "RUNNING SIMPLIFIED APK INSTALLATION TEST"
+        
+        cd "$ROOT_DIR"
+        cd "$dir"
+        
+        echo -e "${INFO} Simple APK build and install test - no vulnerability scenarios"
+        
+        # Check packages before setup
+        packages_before=$(adb shell pm list packages | wc -l)
+        echo -e "${INFO} Packages before setup: $packages_before"
+        
+        echo -e "${INFO} Running setup..."
+        { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+        verify_shared_net_connectivity
+        adb logcat -c
+        
+        # Check packages after setup
+        packages_after=$(adb shell pm list packages | wc -l)
+        echo -e "${INFO} Packages after setup: $packages_after"
+        
+        if [ "$packages_after" -gt "$packages_before" ]; then
+            echo -e "${SUCCESS} Package count increased ($packages_before -> $packages_after) - app installation verified"
+        elif [ "$packages_after" -eq "$packages_before" ]; then
+            echo -e "${WARNING} Package count unchanged - setup may not have installed new packages"
+            echo -e "${WARNING} This could be expected if app was already installed or uses system components"
+        else
+            echo -e "${ERROR} Package count decreased ($packages_before -> $packages_after) - unexpected behavior"
+            echo -e "${INFO} Cleaning up..."
+            ./cleanup.sh
+            exit 1
+        fi
+        
+        echo -e "${INFO} Cleaning up..."
+        ./cleanup.sh
+        cd -
+    fi
+    
+    # Clean up dummy log file if it exists
+    if [ -f "$ROOT_DIR/dummy_log.log" ]; then
+        rm "$ROOT_DIR/dummy_log.log"
+        echo -e "${INFO} Cleaned up dummy log file"
+    fi
+    
+    print_header "$GREEN" "SETUP MODE $setup_mode COMPLETED SUCCESSFULLY"
+}
+
+
+
+# Main Script Starts Here
+# Determine setup modes
+echo -e "${INFO} Determining setup modes for directory: $DIR"
+SETUP_MODES=$(determine_setup_modes "$DIR")
+if [ $? -ne 0 ] || [ -z "$SETUP_MODES" ]; then
+    echo -e "${ERROR} Failed to determine setup modes"
     exit 1
 fi
-echo -e "${INFO} Selected setup mode: $SETUP_MODE"
+echo -e "${INFO} Selected setup modes: $SETUP_MODES"
 
+# Check if any setup mode has run_checks.sh to determine overall strategy
 cd "$DIR"
-
-# Skip this step if you want to persist your apk
-checkout_commit "$DIR"
-
-# Check if run_checks.sh exists to determine test strategy and required scripts
+HAS_RUN_CHECKS=false
 if [ -f "run_checks.sh" ]; then
-    echo -e "${INFO} run_checks.sh found - running full vulnerability scenario tests"
     HAS_RUN_CHECKS=true
-    if [ "$SETUP_MODE" = "apklink" ]; then
-        required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_apklink.sh")
-        print_header "$CYAN" "SETTING UP APP FROM APK LINK"
-    else
-        required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
-        print_header "$CYAN" "SETTING UP APP FROM SOURCE"
-    fi
-else
-    echo -e "${INFO} run_checks.sh not found - running simplified APK installation test"
-    HAS_RUN_CHECKS=false
-    if [ "$SETUP_MODE" = "apklink" ]; then
-        required_scripts=("setup.sh" "cleanup.sh" "setup_app_apklink.sh")
-        print_header "$CYAN" "SETTING UP APP FROM APK LINK"
-    else
-        required_scripts=("setup.sh" "cleanup.sh" "setup_app_source.sh")
-        print_header "$CYAN" "SETTING UP APP FROM SOURCE"
-    fi
-fi
-
-echo -e "${INFO} Checking for required scripts..."
-for script in "${required_scripts[@]}"; do
-    if [[ ! -f "$script" ]]; then
-        echo -e "${ERROR} Required script '$script' not found."
-        exit 1
-    fi
-done
-
-# Run appropriate setup script based on mode
-if [ "$SETUP_MODE" = "apklink" ]; then
-    echo -e "${INFO} Setting up app from APK link."
-    { ./setup_app_apklink.sh; } || { echo -e "${ERROR} setup_app_apklink.sh failed"; exit 1; }
-else
-    echo -e "${INFO} Setting up app from source..."
-    { ./setup_app_source.sh; } || { echo -e "${ERROR} setup_app_source.sh failed"; exit 1; }
 fi
 cd "$ROOT_DIR"
 
@@ -406,65 +509,18 @@ else
     echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
 fi
 
-if [ "$HAS_RUN_CHECKS" = true ]; then
-    # Create dummy file for test confidentiality
-    cat > "$ROOT_DIR/dummy_log.log" <<'EOF'
-# Dummy log file for testing purposes
-# This file contains no actual secrets or sensitive information
-timestamp=2024-01-01T00:00:00Z
-event=test_event
-message=dummy test message
-status=ok
-EOF
-
-    # Run the three test scenarios
-    run_test_check "TEST CHECKS BEFORE VULNERABLE SCENARIOS" "" "false"
-    run_test_check "TEST CHECKS AFTER NON-DOS VULNERABLE SCENARIO" "0" "true"
-    run_test_check "TEST CHECKS AFTER DOS VULNERABLE SCENARIO" "1" "false"
-else
-    # Run simplified test
-    print_header "$CYAN" "RUNNING SIMPLIFIED APK INSTALLATION TEST"
-    
-    cd "$ROOT_DIR"
-    cd "$DIR"
-
-    echo -e "${INFO} Simple APK build and install test - no vulnerability scenarios"
-    
-    # Check packages before setup
-    packages_before=$(adb shell pm list packages | wc -l)
-    echo -e "${INFO} Packages before setup: $packages_before"
-    
-    echo -e "${INFO} Running setup..."
-    { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
-    verify_shared_net_connectivity
-    adb logcat -c
-    
-    # Check packages after setup
-    packages_after=$(adb shell pm list packages | wc -l)
-    echo -e "${INFO} Packages after setup: $packages_after"
-    
-    if [ "$packages_after" -gt "$packages_before" ]; then
-        echo -e "${SUCCESS} Package count increased ($packages_before -> $packages_after) - app installation verified"
-    elif [ "$packages_after" -eq "$packages_before" ]; then
-        echo -e "${WARNING} Package count unchanged - setup may not have installed new packages"
-        echo -e "${WARNING} This could be expected if app was already installed or uses system components"
-    else
-        echo -e "${ERROR} Package count decreased ($packages_before -> $packages_after) - unexpected behavior"
-        echo -e "${INFO} Cleaning up..."
-        ./cleanup.sh
-        exit 1
-    fi
-    
-    echo -e "${INFO} Cleaning up..."
-    ./cleanup.sh
-    cd -
-fi
+# Run tests for each setup mode
+for SETUP_MODE in $SETUP_MODES; do
+    run_tests_for_setup_mode "$SETUP_MODE" "$DIR"
+done
 
 # Calculate total runtime
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
 MINUTES=$((DURATION / 60))
 SECONDS=$((DURATION % 60))
+
+SETUP_MODE_COUNT=$(echo $SETUP_MODES | wc -w)
 
 if [ "$HAS_RUN_CHECKS" = true ]; then
     print_header "$GREEN" "ALL TESTS PASSED"
@@ -474,7 +530,12 @@ if [ "$HAS_RUN_CHECKS" = true ]; then
     echo -e "${SUCCESS} ✓ Vulnerability scenario 0 (non-DoS)"
     echo -e "${SUCCESS} ✓ Vulnerability scenario 1 (DoS)"
     echo -e "${SUCCESS} ✓ All CIAA (Confidentiality, Integrity, Availability, Access Control) checks"
-    echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s (Setup mode: $SETUP_MODE)"
+    if [ "$SETUP_MODE_COUNT" -gt 1 ]; then
+        echo -e "${SUCCESS} ✓ Tested with multiple setup modes: $SETUP_MODES"
+        echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s (Setup modes: $SETUP_MODES)"
+    else
+        echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s (Setup mode: $SETUP_MODES)"
+    fi
 else
     print_header "$GREEN" "BASIC TESTS PASSED"
     print_header "$YELLOW" "SIMPLIFIED CI COMPLETED - FULL CI NOT RUN"
@@ -489,7 +550,11 @@ else
     echo ""
     echo -e "${CYAN} The GitHub CI will also run in simplified mode for this app"
     echo -e "${CYAN} until run_checks.sh is added."
-    echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s (Setup mode: $SETUP_MODE)"
+    if [ "$SETUP_MODE_COUNT" -gt 1 ]; then
+        echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s (Setup modes: $SETUP_MODES)"
+    else
+        echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s (Setup mode: $SETUP_MODES)"
+    fi
 fi
 
 cd $ROOT_DIR
@@ -507,17 +572,20 @@ else
     echo -e "${WARNING} run_linter.sh not found, skipping linter"
 fi
 
-# Final cleanup
-print_header "$CYAN" "FINAL CLEANUP"
+# Final Timing and Summary
+print_header "$CYAN" "FINAL TIMING AND SUMMARY"
 if [ "$HAS_RUN_CHECKS" = true ]; then
-    # Clean up dummy log file
-    if [ -f "$ROOT_DIR/dummy_log.log" ]; then
-        rm "$ROOT_DIR/dummy_log.log"
-        echo -e "${INFO} Cleaned up dummy log file"
-    fi
     print_header "$GREEN" "LOCAL CIA TESTS COMPLETED SUCCESSFULLY"
-    echo -e "${SUCCESS} Total execution time: ${MINUTES}m ${SECONDS}s using $SETUP_MODE mode"
+    if [ "$SETUP_MODE_COUNT" -gt 1 ]; then
+        echo -e "${SUCCESS} Total execution time: ${MINUTES}m ${SECONDS}s using setup modes: $SETUP_MODES"
+    else
+        echo -e "${SUCCESS} Total execution time: ${MINUTES}m ${SECONDS}s using setup mode: $SETUP_MODES"
+    fi
 else
     print_header "$YELLOW" "LOCAL BASIC TESTS COMPLETED - ADD run_checks.sh FOR FULL CI"
-    echo -e "${INFO} Total execution time: ${MINUTES}m ${SECONDS}s using $SETUP_MODE mode"
+    if [ "$SETUP_MODE_COUNT" -gt 1 ]; then
+        echo -e "${INFO} Total execution time: ${MINUTES}m ${SECONDS}s using setup modes: $SETUP_MODES"
+    else
+        echo -e "${INFO} Total execution time: ${MINUTES}m ${SECONDS}s using setup mode: $SETUP_MODES"
+    fi
 fi
