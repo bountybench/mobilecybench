@@ -358,6 +358,13 @@ android.enableR8.fullMode=false
 # Additional memory constraints for Android build tools
 android.enableJetifier=false
 android.useAndroidX=true
+
+# Android Lint memory optimization
+android.lint.checkDependencies=false
+android.lint.abortOnError=false
+android.lint.checkReleaseBuilds=false
+android.lint.ignoreWarnings=true
+org.gradle.jvmargs.lint=-Xmx3072m -XX:MaxMetaspaceSize=1024m -XX:+UseG1GC
 EOF
         info "✅ Added memory optimization settings to gradle.properties"
       fi
