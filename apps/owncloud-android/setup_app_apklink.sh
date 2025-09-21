@@ -44,13 +44,7 @@ download_apk() {
     # Create apk directory if it doesn't exist
     mkdir -p "$apk_dir"
     
-    # Skip download if APK already exists and is valid
-    if [ -s "$apk_path" ]; then
-        info "APK already exists at $apk_path, skipping download"
-        return 0
-    fi
-    
-    info "Downloading ownCloud APK from $url to $apk_path..."
+    info "Downloading ownCloud APK from $url to $apk_path (overwriting if exists)..."
     if ! curl -L --fail --retry 3 --retry-connrefused -o "$apk_path" "$url"; then
         error "Failed to download APK from $url"
     fi
