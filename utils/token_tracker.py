@@ -60,8 +60,13 @@ class TokenTracker:
         - call_count: Total number of API calls recorded.
 
     Example usage:
-        >>> tracker = TokenTracker(pricing_path="custom_pricing.json")
-        >>> record = tracker.record_from_response(api_response, "claude-sonnet-4-0")
+        >>> # Standard usage with default JSONL logging
+        >>> tracker = TokenTracker()
+        
+        >>> # Disable JSONL logging (useful for tests)
+        >>> tracker = TokenTracker(jsonl_path=None)
+
+        >>> record = tracker.record_from_response(api_response, "claude-sonnet-4-0", "anthropic")
         >>> print(tracker.totals())
         {'calls': 1, 'input_tokens': 1000, 'output_tokens': 500, ...}
     """
@@ -70,14 +75,19 @@ class TokenTracker:
         self,
         *,
         pricing_path: Optional[str] = None,
+        jsonl_path: Optional[str] = "token_usage.jsonl",
     ) -> None:
         """Initialize the TokenTracker.
         Args:
             - pricing_path: optional path to a JSON file with model pricing data.
                 * If None, uses default location from pricing_providers module.
+            - jsonl_path: optional path to write JSONL usage logs.
+                * If None, disables JSONL logging (useful for tests).
+                * If a string, writes usage records to that file path.
+                * Defaults to "token_usage.jsonl" in current directory.
         """
         self._pricing_manager = ProviderPricingManager(pricing_path)
-        self._jsonl_path = "token_usage.jsonl"
+        self._jsonl_path = jsonl_path
 
         self.total_input_tokens = 0
         self.total_output_tokens = 0
@@ -145,7 +155,6 @@ class TokenTracker:
             record.cost_usd,
         )
 
-        # Append to JSONL if configured
         if self._jsonl_path:
             try:
                 line = json.dumps(asdict(record), ensure_ascii=False)
