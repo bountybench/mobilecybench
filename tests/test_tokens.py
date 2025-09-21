@@ -534,7 +534,7 @@ class TestTokenTracker:
         """Create a TokenTracker with mocked pricing config."""
         with patch.object(ProviderPricingManager, '_load_pricing_config') as mock_load:
             mock_load.return_value = mock_pricing_config
-            return TokenTracker()
+            return TokenTracker(jsonl_path=None)
     
     def test_record_openai_response(self, token_tracker):
         """Test recording an OpenAI response."""
