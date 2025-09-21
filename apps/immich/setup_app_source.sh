@@ -309,9 +309,9 @@ EOF
     # Memory optimization for CI environments with limited resources
     info "CI mode: Applying memory optimizations for resource-constrained environments"
 
-    # Ultra-conservative memory settings for CI - prevent exit code 143
-    export GRADLE_OPTS="$GRADLE_OPTS -Xmx1536m -XX:MaxMetaspaceSize=384m -XX:+UseG1GC -XX:G1HeapRegionSize=8m -XX:MaxGCPauseMillis=100"
-    export KOTLIN_DAEMON_JVMARGS="-Xmx768m -XX:MaxMetaspaceSize=256m"
+    # Conservative memory settings for CI with adequate metaspace
+    export GRADLE_OPTS="$GRADLE_OPTS -Xmx1536m -XX:MaxMetaspaceSize=768m -XX:+UseG1GC -XX:G1HeapRegionSize=8m -XX:MaxGCPauseMillis=100"
+    export KOTLIN_DAEMON_JVMARGS="-Xmx768m -XX:MaxMetaspaceSize=512m"
     export CMAKE_BUILD_PARALLEL_LEVEL=1  # Reduce parallel CMake builds to save memory
 
     # Additional memory constraints for CMake and NDK operations
@@ -340,7 +340,7 @@ EOF
         cat >> "android/gradle.properties" << 'EOF'
 
 # Memory optimization for CI environments
-org.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=384m -XX:+UseG1GC -XX:G1HeapRegionSize=8m
+org.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m -XX:+UseG1GC -XX:G1HeapRegionSize=8m
 org.gradle.parallel=false
 org.gradle.configureondemand=false
 org.gradle.workers.max=1
