@@ -587,12 +587,7 @@ jobs:
           cd "$dir"
           checkout_commit "$dir"
 
-          # Determine required scripts based on setup mode
-          if [ "$setup_mode" = "apklink" ]; then
-            required_scripts=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
-          else
-            required_scripts=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
-          fi
+          required_scripts=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
 
           echo "Setup mode: $setup_mode"
           echo "Checking for required scripts..."
@@ -928,11 +923,7 @@ jobs:
           cd "$dir"
           checkout_commit "$dir"
 
-          # Determine required scripts based on setup mode  
-          if [ "$setup_mode" = "apklink" ]; then
-            required_scripts=("setup.sh" "cleanup.sh")
-          else
-            required_scripts=("setup.sh" "cleanup.sh")
+          required_scripts=("setup.sh" "cleanup.sh")
           fi
 
           echo "Setup mode: $setup_mode"
