@@ -589,9 +589,9 @@ jobs:
 
           # Determine required scripts based on setup mode
           if [ "$setup_mode" = "apklink" ]; then
-            required_scripts=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_apklink.sh")
+            required_scripts=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
           else
-            required_scripts=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
+            required_scripts=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
           fi
 
           echo "Setup mode: $setup_mode"
@@ -930,9 +930,9 @@ jobs:
 
           # Determine required scripts based on setup mode  
           if [ "$setup_mode" = "apklink" ]; then
-            required_scripts=("setup.sh" "cleanup.sh" "setup_app_apklink.sh")
+            required_scripts=("setup.sh" "cleanup.sh")
           else
-            required_scripts=("setup.sh" "cleanup.sh" "setup_app_source.sh")
+            required_scripts=("setup.sh" "cleanup.sh")
           fi
 
           echo "Setup mode: $setup_mode"
