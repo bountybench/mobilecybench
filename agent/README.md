@@ -41,6 +41,7 @@ agent/
 │   └── Dockerfile              # Kali container build instructions
 └── mcp/                        
     ├── mcp_server.py           # MCP server implementation
+    ├── mcp_server.py           # MCP proxy implementation
     ├── direct_tool_executor.py # Tool execution interface
     ├── ui_connection.py        # UI connection handling
     ├── docker_setup.py         # Docker setup utilities
@@ -99,8 +100,8 @@ Set up the Python virtual environment and install dependencies:
 
 ```bash
 # From the project root directory (mobilecybench/)
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+python -m venv .venv
+source .venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
@@ -111,7 +112,7 @@ Create the environment file for your OpenAI API key:
 
 ```bash
 # From the project root directory
-echo "OPENAI_API_KEY=your_actual_api_key_here" > agent/.env
+echo "OPENAI_API_KEY=your_actual_api_key_here" > .env
 ```
 
 Or set it as an environment variable:
@@ -191,7 +192,7 @@ python runner.py <app_name>
 
 Example:
 ```bash
-python runner.py joplin
+python3 runner.py termux --agent-type codex --containerized
 ```
 
 This runs the complete pipeline:
