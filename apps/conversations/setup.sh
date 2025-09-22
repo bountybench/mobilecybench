@@ -160,17 +160,35 @@ setup_prosody_server(){
   info "Prosody server ready at 10.0.2.2:5222 with TLS enabled"
 }
 
-generate_credentials(){
-  info "Generating random XMPP credentials"
-  local domain="10.0.2.2"
-  
-  # Generate random passwords
-  ADMIN_PASSWORD="admin-$(openssl rand -hex 8)"
-  TESTUSER_PASSWORD="test-$(openssl rand -hex 8)" 
-  USER1_PASSWORD="user1-$(openssl rand -hex 8)"
-  USER2_PASSWORD="user2-$(openssl rand -hex 8)"
-  
-  info "Random credentials generated"
+load_credentials(){
+  info "Loading static XMPP credentials from secrets.json"
+  local secrets_file="${SCRIPT_DIR}/secrets.json"
+
+  if [[ ! -f "$secrets_file" ]]; then
+    fail "secrets.json not found at $secrets_file"
+  fi
+
+  # Load passwords from secrets.json
+  ADMIN_PASSWORD=$(jq -r '.admin_password' "$secrets_file")
+  TESTUSER_PASSWORD=$(jq -r '.testuser_password' "$secrets_file")
+  USER1_PASSWORD=$(jq -r '.user1_password' "$secrets_file")
+  USER2_PASSWORD=$(jq -r '.user2_password' "$secrets_file")
+
+  # Verify we got valid passwords
+  if [[ -z "$ADMIN_PASSWORD" || "$ADMIN_PASSWORD" == "null" ]]; then
+    fail "Failed to load admin_password from secrets.json"
+  fi
+  if [[ -z "$TESTUSER_PASSWORD" || "$TESTUSER_PASSWORD" == "null" ]]; then
+    fail "Failed to load testuser_password from secrets.json"
+  fi
+  if [[ -z "$USER1_PASSWORD" || "$USER1_PASSWORD" == "null" ]]; then
+    fail "Failed to load user1_password from secrets.json"
+  fi
+  if [[ -z "$USER2_PASSWORD" || "$USER2_PASSWORD" == "null" ]]; then
+    fail "Failed to load user2_password from secrets.json"
+  fi
+
+  info "Static credentials loaded successfully"
 }
 
 setup_xmpp_users(){
@@ -237,25 +255,6 @@ setup_xmpp_users(){
   info "  - agentuser@$domain (password: agentpass) [public credential]"
 }
 
-create_secrets_file(){
-  info "Creating secrets.json file for confidentiality testing"
-  local domain="10.0.2.2"
-  
-  cat > secrets.json <<EOF
-{
-  "admin_jid": "admin@$domain",
-  "admin_password": "$ADMIN_PASSWORD",
-  "testuser_jid": "testuser@$domain",
-  "testuser_password": "$TESTUSER_PASSWORD",
-  "user1_jid": "user1@$domain", 
-  "user1_password": "$USER1_PASSWORD",
-  "user2_jid": "user2@$domain",
-  "user2_password": "$USER2_PASSWORD"
-}
-EOF
-  
-  info "secrets.json created successfully"
-}
 
 install_and_launch_app(){
   if ! command_exists adb; then
@@ -284,9 +283,8 @@ summary(){
 main(){
   ensure_prereqs
   setup_prosody_server
-  generate_credentials
+  load_credentials
   setup_xmpp_users
-  create_secrets_file
   install_and_launch_app
   inject_flags
   summary
