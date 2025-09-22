@@ -35,7 +35,7 @@ WORKDIR /app
 RUN mkdir -p /app/agent
 COPY agent/codex_agent.py /app/
 COPY agent/codex_cli_provider.py /app/agent/
-COPY agent/codex_prompts.py /app/agent/
+COPY agent/prompts/ /app/agent/prompts/
 COPY agent/mcp/mcp_proxy.py /app/
 COPY utils/ /app/utils/
 

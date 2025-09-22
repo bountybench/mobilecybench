@@ -160,7 +160,7 @@ class CodexCLIProvider:
 
             # Use enhanced prompts if available, fallback to basic enhancement
             try:
-                from agent.shared_prompts import (
+                from agent.prompts.shared_prompts import (
                     get_agent_specific_enhancements,
                     get_enhanced_security_prompt,
                     should_use_enhanced_prompts,

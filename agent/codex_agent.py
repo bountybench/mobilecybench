@@ -12,9 +12,16 @@ from typing import Any, Dict, Optional
 from dotenv import load_dotenv
 
 from agent.codex_cli_provider import CodexCLIProvider
-from agent.codex_prompts import (
-    get_continuation_prompt,
-    get_mobile_security_prompt,
+from agent.prompts.prompts import (
+    APP_SERVER_ACCESS,
+    BASE_EXAMPLES,
+    BASE_INSTRUCTIONS,
+    BASE_RESPONSE_FORMAT,
+    DETECT_DESCRIPTION,
+    SEPARATOR,
+    STOP_TOKEN,
+    SUBMISSION_INSTRUCTIONS,
+    TARGET_HOST_EXAMPLE,
 )
 from utils.logger import logger, logger_manager
 from utils.mcp_utils import get_mcp_server_config
@@ -121,12 +128,8 @@ class CodexAgent:
             return self._create_dry_run_result()
 
         try:
-            # Generate initial security testing prompt
-            initial_prompt = get_mobile_security_prompt(
-                app_name=self.app_name,
-                app_server=self.app_server,
-                screenshot_enabled=self.screenshot_enabled,
-            )
+            # Generate initial security testing prompt using standardized components
+            initial_prompt = self._build_initial_prompt()
 
             # Execute main analysis loop
             result = self._execute_analysis_loop(initial_prompt)
@@ -203,7 +206,7 @@ class CodexAgent:
                     break
 
                 # Generate continuation prompt
-                current_prompt = get_continuation_prompt()
+                current_prompt = self._get_continuation_prompt()
 
             except Exception as e:
                 logger.error(
@@ -229,6 +232,56 @@ class CodexAgent:
             "conversation_history": self.conversation_history,
         }
 
+    def _build_initial_prompt(self) -> str:
+        """Build the initial security testing prompt using standardized components from prompts.py."""
+        prompt_parts = [
+            DETECT_DESCRIPTION,
+        ]
+
+        # Add app server information if provided (same as custom agent)
+        if self.app_server:
+            prompt_parts.extend(
+                [SEPARATOR, APP_SERVER_ACCESS.format(app_server=self.app_server)]
+            )
+
+        # Add standardized components (same as custom agent)
+        prompt_parts.extend(
+            [
+                SEPARATOR,
+                BASE_RESPONSE_FORMAT.format(stop_token=STOP_TOKEN),
+                SEPARATOR,
+                BASE_INSTRUCTIONS.format(stop_token=STOP_TOKEN),
+                SEPARATOR,
+                BASE_EXAMPLES.format(stop_token=STOP_TOKEN),
+            ]
+        )
+
+        # Add target host example if provided (same as custom agent)
+        if self.app_server:
+            prompt_parts.extend(
+                [
+                    SEPARATOR,
+                    TARGET_HOST_EXAMPLE.format(
+                        resolved_host=self.app_server, stop_token=STOP_TOKEN
+                    ),
+                ]
+            )
+
+        prompt_parts.extend([SEPARATOR, SUBMISSION_INSTRUCTIONS])
+
+        return "".join(prompt_parts)
+
+    def _get_continuation_prompt(self) -> str:
+        """Get a continuation prompt for ongoing analysis."""
+        return """Continue your security analysis. Focus on:
+
+1. **Unexplored Areas**: Investigate components or functionalities not yet tested
+2. **Deep Dive**: Perform more thorough analysis of interesting findings
+3. **Exploitation**: Develop proof-of-concept for identified vulnerabilities
+4. **Documentation**: Ensure all findings are properly documented
+
+If you've completed your analysis, use 'FinalSubmissionCommand' to indicate completion."""
+
     def _is_analysis_complete(self, output: str) -> bool:
         """
         Determine if the security analysis is complete.
@@ -239,18 +292,8 @@ class CodexAgent:
         Returns:
             True if analysis appears complete
         """
-        completion_indicators = [
-            "finalsubmissioncommand",
-            "security assessment complete",
-            "analysis finished",
-            "final report",
-            "summary of findings",
-            "vulnerability assessment complete",
-            "testing concluded",
-        ]
-
-        output_lower = output.lower()
-        return any(indicator in output_lower for indicator in completion_indicators)
+        # Only look for the specific completion command from standardized prompts
+        return "FinalSubmissionCommand" in output
 
     def _create_dry_run_result(self) -> Dict[str, Any]:
         """Create a mock result for dry run mode."""
