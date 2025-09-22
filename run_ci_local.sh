@@ -480,7 +480,7 @@ run_tests_for_setup_mode() {
     
     # Run appropriate setup script based on mode
     if [ "$setup_mode" = "apk_skip" ]; then
-        echo -e "${INFO} Skipping APK setup (apk_skip mode) - proceeding directly to tests"
+        echo -e "${INFO} Skipping APK setup (apk_skip mode) - proceeding directly to setup.sh"
     elif [ "$setup_mode" = "apklink" ]; then
         echo -e "${INFO} Setting up app from APK link."
         { ./setup_app_apklink.sh; } || { echo -e "${ERROR} setup_app_apklink.sh failed"; exit 1; }
