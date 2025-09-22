@@ -30,18 +30,25 @@ You should see the `codex-agent`, `mcp-server`, and `kali-container` running, MC
 
 ## Overview
 
-The MobileCybench AI Agent enables an LM agent to perform security testing of Android applications. It consists of multiple Docker containers that work together to provide:
+MobileCybench provides multiple AI agent options for performing security testing of Android applications. Students can choose from different agent implementations that suit their research needs:
+
+- **Custom Agent**: Python-based AI agent with flexible LLM model support
+- **Codex Agent**: Containerized agent using Codex CLI for streamlined analysis
+- **Containerized Architecture**: Both agents support isolated Docker container execution
+
+The platform consists of multiple Docker containers that work together to provide:
 
 - **MCP Server**: Model Context Protocol server for tool execution
 - **Kali Container**: Security testing environment with penetration testing tools
-- **Ngrok Tunnel**: Secure external connectivity for AI agent communication
-- **Custom Agent**: AI agent that interacts with Android apps and security tools
+- **Agent Containers**: Configurable AI agents that interact with Android apps and security tools
 
 ## Containerized Codex Agent Setup
 
-### Current Implementation
+### Agent Implementation Options
 
-The MobileCybench agent now uses a **containerized Codex CLI architecture** that provides complete isolation and simplified setup for Android security testing. This eliminates the need for manual configuration and provides a secure, reproducible testing environment.
+MobileCybench supports multiple agent implementations. The **Codex Agent** uses a containerized Codex CLI architecture that provides complete isolation and simplified setup for Android security testing. This eliminates the need for manual configuration and provides a secure, reproducible testing environment.
+
+Students can also choose the **Custom Agent** for more flexible LLM model support and custom testing approaches.
 
 ### Architecture Overview
 
@@ -78,13 +85,26 @@ Or create an environment file:
 echo "OPENAI_API_KEY=your_actual_api_key_here" > .env
 ```
 
-#### 2. Run Containerized Agent
+#### 2. Run Agent (Multiple Options Available)
 
-Execute the containerized Codex agent with a single command:
+Execute agents using the unified runner with different options:
 
+**Option A: Containerized Codex Agent**
 ```bash
 # From project root directory
-python3 agent/runner_containerized.py --app termux
+python3 runner.py --app termux --agent-type codex --containerized
+```
+
+**Option B: Containerized Custom Agent**
+```bash
+# From project root directory
+python3 runner.py --app termux --agent-type custom --containerized
+```
+
+**Option C: Host-based Custom Agent (Legacy)**
+```bash
+# From project root directory
+python3 runner.py termux runner_config.json --agent-type custom
 ```
 
 Replace `termux` with any supported app name (e.g., `joplin`, `bitwarden`, `nextcloud-talk`).

@@ -21,6 +21,5 @@ after_android_dir.txt
 ssh_key
 .DS_Store
 .env
-agent/.env
 !apps/**/.env
 token_usage.jsonl

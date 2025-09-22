@@ -240,6 +240,7 @@ class CodexAgent:
             True if analysis appears complete
         """
         completion_indicators = [
+            "finalsubmissioncommand",
             "security assessment complete",
             "analysis finished",
             "final report",

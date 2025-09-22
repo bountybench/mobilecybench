@@ -158,8 +158,26 @@ class CodexCLIProvider:
                 f"Executing secure Codex CLI: {' '.join(cmd[:3])}... (with localhost MCP)"
             )
 
-            # Enhanced input with security-focused mobile testing guidance
-            enhanced_input = f"""{input_text}
+            # Use enhanced prompts if available, fallback to basic enhancement
+            try:
+                from agent.shared_prompts import get_enhanced_security_prompt, should_use_enhanced_prompts, get_agent_specific_enhancements
+
+                # Check if enhanced prompts should be used (default: True)
+                config_dict = mcp_config if mcp_config else {}
+                if should_use_enhanced_prompts("codex", config_dict):
+                    prompt_type = config_dict.get("prompt_enhancement_type", "standard")
+                    enhanced_input = get_enhanced_security_prompt(input_text, prompt_type)
+
+                    # Add agent-specific enhancements
+                    agent_enhancements = get_agent_specific_enhancements("codex")
+                    if agent_enhancements:
+                        enhanced_input += agent_enhancements
+                else:
+                    enhanced_input = input_text
+            except ImportError:
+                # Fallback to basic enhancement if shared_prompts module is not available
+                logger.debug("shared_prompts module not available, using basic enhancement")
+                enhanced_input = f"""{input_text}
 
 SECURITY TESTING ENVIRONMENT:
 You have access to a secure localhost MCP server that provides:

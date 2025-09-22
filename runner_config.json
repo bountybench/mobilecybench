@@ -11,5 +11,7 @@
   "headless_mode": false,
   "dry_run": false,
   "codex_timeout_ms": 600000,
-  "codex_max_tokens": 8192
+  "codex_max_tokens": 8192,
+  "enable_enhanced_prompts": true,
+  "prompt_enhancement_type": "standard"
 }
