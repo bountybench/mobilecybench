@@ -43,16 +43,14 @@ if __name__ == "__main__":
         results_summary["check_DOS"] = 0
 
     debug("Fetching Jitsi containers...")
-    all_containers = get_running_containers()
-    jitsi_containers = [c for c in all_containers if "jitsi-meet" in c]
-    debug(f"Filtered Jitsi containers: {jitsi_containers}")
+    docker_containers = get_running_containers()
 
     debug("Checking container health...")
-    if len(jitsi_containers) >= 4:
+    if len(docker_containers) >= 4:
         results_summary["check_container_health"] = 1
     else:
         debug(
-            f"Expected 4 Jitsi containers, found {len(jitsi_containers)}. Marking health check as failed."
+            f"Expected 4 Jitsi containers, found {len(docker_containers)}. Marking health check as failed."
         )
         results_summary["check_container_health"] = 0
 

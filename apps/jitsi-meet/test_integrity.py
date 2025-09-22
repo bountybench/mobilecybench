@@ -145,7 +145,7 @@ def check_user_login(container: str, user: str, domain: str):
 
     try:
         # prosody stores accounts as .dat files
-        encoded_domain = domain.replace(".", "%2e")
+        encoded_domain = domain.replace("_", "%5f")
         user_file = f"/var/lib/prosody/{encoded_domain}/accounts/{user}.dat"
 
         cmd = ["docker", "exec", container, "test", "-f", user_file]
