@@ -12,7 +12,6 @@ import json
 import logging
 import os
 import shlex
-import signal
 import subprocess
 import sys
 import time
@@ -329,7 +328,9 @@ class ContainerizedCodexRunner:
         """Ensure the Docker network exists for container communication."""
         logger.info("Ensuring Docker network exists...")
 
-        network_name = "mobilecybench-isolated" if self.agent_type == "codex" else "shared_net"
+        network_name = (
+            "mobilecybench-isolated" if self.agent_type == "codex" else "shared_net"
+        )
 
         try:
             # Check if network exists
@@ -349,7 +350,14 @@ class ContainerizedCodexRunner:
                     )
                 else:
                     subprocess.run(
-                        ["docker", "network", "create", "--driver", "bridge", network_name],
+                        [
+                            "docker",
+                            "network",
+                            "create",
+                            "--driver",
+                            "bridge",
+                            network_name,
+                        ],
                         check=True,
                         capture_output=True,
                     )
@@ -365,34 +373,49 @@ class ContainerizedCodexRunner:
         logger.info("Starting containerized environment...")
 
         env = os.environ.copy()
-        env.update({
-            "APP_NAME": self.app_name,
-            "OPENAI_API_KEY": self.openai_api_key,
-        })
+        env.update(
+            {
+                "APP_NAME": self.app_name,
+                "OPENAI_API_KEY": self.openai_api_key,
+            }
+        )
 
         # Configure environment based on agent type
         if self.agent_type == "codex":
-            env.update({
-                "NETWORK_NAME": "mobilecybench-isolated",
-                "KALI_PRIVILEGED": "true",
-                "MCP_COMMAND": "python3 mcp_server.py",  # Skip ngrok for codex
-            })
+            env.update(
+                {
+                    "NETWORK_NAME": "mobilecybench-isolated",
+                    "KALI_PRIVILEGED": "true",
+                    "MCP_COMMAND": "python3 mcp_server.py",  # Skip ngrok for codex
+                }
+            )
             cmd = [
-                "docker", "compose",
-                "-f", str(self.docker_compose_file),
-                "--profile", "codex",
-                "up", "-d", "--build"
+                "docker",
+                "compose",
+                "-f",
+                str(self.docker_compose_file),
+                "--profile",
+                "codex",
+                "up",
+                "-d",
+                "--build",
             ]
         else:
-            env.update({
-                "NETWORK_NAME": "shared_net",
-                "KALI_PRIVILEGED": "false",
-                "START_DIR": f"/tmp/{self.app_name}_app",
-            })
+            env.update(
+                {
+                    "NETWORK_NAME": "shared_net",
+                    "KALI_PRIVILEGED": "false",
+                    "START_DIR": f"/tmp/{self.app_name}_app",
+                }
+            )
             cmd = [
-                "docker", "compose",
-                "-f", str(self.docker_compose_file),
-                "up", "-d", "--build"
+                "docker",
+                "compose",
+                "-f",
+                str(self.docker_compose_file),
+                "up",
+                "-d",
+                "--build",
             ]
 
         logger.info(f"Command: {' '.join(cmd)}")
@@ -440,7 +463,13 @@ class ContainerizedCodexRunner:
         while time.time() - start_time < timeout:
             try:
                 result = subprocess.run(
-                    ["docker", "inspect", "--format", "{{.State.Status}}", container_name],
+                    [
+                        "docker",
+                        "inspect",
+                        "--format",
+                        "{{.State.Status}}",
+                        container_name,
+                    ],
                     capture_output=True,
                     text=True,
                     check=True,
@@ -458,7 +487,9 @@ class ContainerizedCodexRunner:
 
             time.sleep(2)
 
-        raise TimeoutError(f"Container {container_name} did not become ready within {timeout}s")
+        raise TimeoutError(
+            f"Container {container_name} did not become ready within {timeout}s"
+        )
 
     def _setup_app(self):
         """Setup the mobile app: build and install APK."""
@@ -469,7 +500,9 @@ class ContainerizedCodexRunner:
         # Check if setup.sh exists for this app
         setup_script = app_dir / "setup.sh"
         if not setup_script.exists():
-            logger.warning(f"No setup.sh found for app {self.app_name}, skipping app setup")
+            logger.warning(
+                f"No setup.sh found for app {self.app_name}, skipping app setup"
+            )
             return
 
         # Check if emulator is accessible from host
@@ -488,7 +521,11 @@ class ContainerizedCodexRunner:
 
             logger.info("✓ Android emulator detected on host")
 
-        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError) as e:
+        except (
+            subprocess.TimeoutExpired,
+            subprocess.CalledProcessError,
+            FileNotFoundError,
+        ) as e:
             logger.warning(f"Could not check emulator status: {e}")
             return
 
@@ -532,9 +569,7 @@ class ContainerizedCodexRunner:
         """Execute the Codex agent inside the container."""
         try:
             # Follow container logs
-            cmd = [
-                "docker", "logs", "-f", self.codex_container_name
-            ]
+            cmd = ["docker", "logs", "-f", self.codex_container_name]
 
             logger.info("Following Codex agent execution...")
             process = subprocess.Popen(
@@ -561,19 +596,31 @@ class ContainerizedCodexRunner:
                             parts = line.split("Log file:")
                             if len(parts) > 1:
                                 self.agent_log_file = parts[1].strip()
-                                logger.debug(f"Captured agent log file: {self.agent_log_file}")
+                                logger.debug(
+                                    f"Captured agent log file: {self.agent_log_file}"
+                                )
 
                 # Wait for process completion
-                return_code = process.wait()
+                process.wait()
 
                 # Get container exit code
                 container_result = subprocess.run(
-                    ["docker", "inspect", "--format", "{{.State.ExitCode}}", self.codex_container_name],
+                    [
+                        "docker",
+                        "inspect",
+                        "--format",
+                        "{{.State.ExitCode}}",
+                        self.codex_container_name,
+                    ],
                     capture_output=True,
                     text=True,
                 )
 
-                container_exit_code = int(container_result.stdout.strip()) if container_result.returncode == 0 else -1
+                container_exit_code = (
+                    int(container_result.stdout.strip())
+                    if container_result.returncode == 0
+                    else -1
+                )
 
                 return {
                     "status": "completed" if container_exit_code == 0 else "failed",
@@ -651,7 +698,11 @@ class ContainerizedCodexRunner:
         os.makedirs("./logs", exist_ok=True)
 
         # Extract tool interaction log from appropriate container
-        container_name = self.codex_container_name if self.agent_type == "codex" else self.mcp_container_name
+        container_name = (
+            self.codex_container_name
+            if self.agent_type == "codex"
+            else self.mcp_container_name
+        )
 
         try:
             log_file = "/tmp/mobile_security_analysis.log"
@@ -676,17 +727,26 @@ class ContainerizedCodexRunner:
                     container_log_path = f"/app/{self.agent_log_file}"
                     host_path = f"./logs/{self.agent_log_file}"
 
-                    cmd = ["docker", "cp", f"{self.codex_container_name}:{container_log_path}", host_path]
+                    cmd = [
+                        "docker",
+                        "cp",
+                        f"{self.codex_container_name}:{container_log_path}",
+                        host_path,
+                    ]
                     result = subprocess.run(cmd, capture_output=True, text=True)
 
                     if result.returncode == 0:
                         logger.info(f"✓ Extracted log: {host_path}")
                         return  # Successfully extracted, no need to search
                     else:
-                        logger.debug(f"Agent log file {container_log_path} not found in container")
+                        logger.debug(
+                            f"Agent log file {container_log_path} not found in container"
+                        )
 
                 except Exception as e:
-                    logger.debug(f"Could not extract agent log {self.agent_log_file}: {e}")
+                    logger.debug(
+                        f"Could not extract agent log {self.agent_log_file}: {e}"
+                    )
 
             # If no filename captured or extraction failed, search for agent logs
             # This is especially important for manual termination scenarios
@@ -694,17 +754,34 @@ class ContainerizedCodexRunner:
                 logger.info("Searching for agent run logs in container...")
 
                 # List all log files in /app directory
-                list_cmd = ["docker", "exec", self.codex_container_name, "find", "/app", "-name", "agent_run_*.log", "-type", "f"]
-                list_result = subprocess.run(list_cmd, capture_output=True, text=True, timeout=10)
+                list_cmd = [
+                    "docker",
+                    "exec",
+                    self.codex_container_name,
+                    "find",
+                    "/app",
+                    "-name",
+                    "agent_run_*.log",
+                    "-type",
+                    "f",
+                ]
+                list_result = subprocess.run(
+                    list_cmd, capture_output=True, text=True, timeout=10
+                )
 
                 if list_result.returncode == 0 and list_result.stdout.strip():
-                    log_files = list_result.stdout.strip().split('\n')
+                    log_files = list_result.stdout.strip().split("\n")
                     # Extract the most recent log file
                     for container_log_path in log_files:
                         log_filename = os.path.basename(container_log_path)
                         host_path = f"./logs/{log_filename}"
 
-                        cmd = ["docker", "cp", f"{self.codex_container_name}:{container_log_path}", host_path]
+                        cmd = [
+                            "docker",
+                            "cp",
+                            f"{self.codex_container_name}:{container_log_path}",
+                            host_path,
+                        ]
                         result = subprocess.run(cmd, capture_output=True, text=True)
 
                         if result.returncode == 0:
@@ -724,17 +801,39 @@ class ContainerizedCodexRunner:
                 logger.info("Searching for any available agent logs...")
 
                 # Try to extract any logs from /tmp that might be agent-related
-                list_cmd = ["docker", "exec", self.mcp_container_name, "find", "/tmp", "-name", "*agent*.log", "-o", "-name", "*run*.log", "-type", "f"]
-                list_result = subprocess.run(list_cmd, capture_output=True, text=True, timeout=10)
+                list_cmd = [
+                    "docker",
+                    "exec",
+                    self.mcp_container_name,
+                    "find",
+                    "/tmp",
+                    "-name",
+                    "*agent*.log",
+                    "-o",
+                    "-name",
+                    "*run*.log",
+                    "-type",
+                    "f",
+                ]
+                list_result = subprocess.run(
+                    list_cmd, capture_output=True, text=True, timeout=10
+                )
 
                 if list_result.returncode == 0 and list_result.stdout.strip():
-                    log_files = list_result.stdout.strip().split('\n')
+                    log_files = list_result.stdout.strip().split("\n")
                     for container_log_path in log_files:
-                        if container_log_path != "/tmp/mobile_security_analysis.log":  # Skip already extracted
+                        if (
+                            container_log_path != "/tmp/mobile_security_analysis.log"
+                        ):  # Skip already extracted
                             log_filename = os.path.basename(container_log_path)
                             host_path = f"./logs/{log_filename}"
 
-                            cmd = ["docker", "cp", f"{self.mcp_container_name}:{container_log_path}", host_path]
+                            cmd = [
+                                "docker",
+                                "cp",
+                                f"{self.mcp_container_name}:{container_log_path}",
+                                host_path,
+                            ]
                             result = subprocess.run(cmd, capture_output=True, text=True)
 
                             if result.returncode == 0:
@@ -757,16 +856,23 @@ class ContainerizedCodexRunner:
         try:
             if self.agent_type == "codex":
                 cmd = [
-                    "docker", "compose",
-                    "-f", str(self.docker_compose_file),
-                    "--profile", "codex",
-                    "down", "-v"
+                    "docker",
+                    "compose",
+                    "-f",
+                    str(self.docker_compose_file),
+                    "--profile",
+                    "codex",
+                    "down",
+                    "-v",
                 ]
             else:
                 cmd = [
-                    "docker", "compose",
-                    "-f", str(self.docker_compose_file),
-                    "down", "-v"
+                    "docker",
+                    "compose",
+                    "-f",
+                    str(self.docker_compose_file),
+                    "down",
+                    "-v",
                 ]
 
             subprocess.run(
@@ -789,7 +895,7 @@ class ContainerizedCodexRunner:
         logger.info(f"DRY RUN: Would execute containerized {self.agent_type} agent")
         logger.info(f"  App: {self.app_name}")
         logger.info(f"  Agent Type: {self.agent_type}")
-        logger.info(f"  Security: Isolated environment")
+        logger.info("  Security: Isolated environment")
 
         return {
             "status": "dry_run_completed",
@@ -1409,7 +1515,9 @@ def main():
         # Get API key from environment
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            logger.error("OPENAI_API_KEY environment variable is required for containerized mode")
+            logger.error(
+                "OPENAI_API_KEY environment variable is required for containerized mode"
+            )
             sys.exit(1)
 
         # Create and run containerized agent

@@ -12,21 +12,22 @@ This is specifically designed for the containerized architecture where:
 """
 
 import json
-import sys
-import os
-from typing import Any, Dict
-import requests
 import logging
+import os
+import sys
+from typing import Any, Dict
+
+import requests
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class ContainerMCPProxy:
     def __init__(self, mcp_server_url: str = None):
         self.mcp_server_url = mcp_server_url or os.getenv(
-            "MCP_SERVER_URL",
-            "http://kali-security:8000/mcp"
+            "MCP_SERVER_URL", "http://kali-security:8000/mcp"
         )
         self.session = requests.Session()
 
@@ -35,14 +36,11 @@ class ContainerMCPProxy:
 
         logger.info(f"MCP Proxy initialized for {self.mcp_server_url}")
 
-    def send_request(self, method: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
+    def send_request(
+        self, method: str, params: Dict[str, Any] = None
+    ) -> Dict[str, Any]:
         """Send request to Kali container's HTTP MCP server and return response."""
-        payload = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": method,
-            "params": params or {}
-        }
+        payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
 
         try:
             logger.debug(f"Sending MCP request: {method}")
@@ -83,7 +81,7 @@ class ContainerMCPProxy:
             logger.error(f"Failed to connect to MCP server: {e}")
             return {
                 "error": f"Cannot connect to Kali security container at {self.mcp_server_url}. "
-                        f"Ensure kali-security container is running and accessible."
+                f"Ensure kali-security container is running and accessible."
             }
         except requests.exceptions.Timeout as e:
             logger.error(f"MCP request timed out: {e}")
@@ -115,8 +113,8 @@ class ContainerMCPProxy:
                     logger.error(f"Invalid JSON in request: {e}")
                     error_response = {
                         "jsonrpc": "2.0",
-                        "id": request.get("id", 1) if 'request' in locals() else 1,
-                        "error": {"code": -32700, "message": "Parse error"}
+                        "id": request.get("id", 1) if "request" in locals() else 1,
+                        "error": {"code": -32700, "message": "Parse error"},
                     }
                     json.dump(error_response, sys.stdout)
                     sys.stdout.write("\n")
@@ -128,6 +126,7 @@ class ContainerMCPProxy:
             logger.error(f"MCP proxy error: {e}")
             sys.exit(1)
 
+
 def main():
     """Main entry point for MCP proxy."""
     proxy = ContainerMCPProxy()
@@ -136,7 +135,9 @@ def main():
     try:
         test_response = proxy.send_request("initialize")
         if "error" in test_response:
-            logger.warning(f"MCP server connection test failed: {test_response['error']}")
+            logger.warning(
+                f"MCP server connection test failed: {test_response['error']}"
+            )
         else:
             logger.info("Successfully connected to Kali security container MCP server")
     except Exception as e:
@@ -144,6 +145,7 @@ def main():
 
     # Start handling stdio protocol
     proxy.handle_stdio_protocol()
+
 
 if __name__ == "__main__":
     main()

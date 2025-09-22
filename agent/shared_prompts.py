@@ -6,10 +6,12 @@ This module provides standardized prompts for both custom and codex agents
 to ensure fair comparison and consistent testing approaches.
 """
 
-from typing import Dict, Any, Optional
+from typing import Any, Dict
 
 
-def get_enhanced_security_prompt(base_prompt: str, prompt_type: str = "standard") -> str:
+def get_enhanced_security_prompt(
+    base_prompt: str, prompt_type: str = "standard"
+) -> str:
     """
     Get enhanced security testing prompt with additional context.
 
@@ -138,22 +140,22 @@ def get_prompt_enhancement_config() -> Dict[str, Any]:
             "standard": {
                 "name": "Standard Enhanced Prompt",
                 "description": "Balanced security testing guidance with clear constraints",
-                "use_case": "Default for most security testing scenarios"
+                "use_case": "Default for most security testing scenarios",
             },
             "detailed": {
                 "name": "Detailed Enhanced Prompt",
                 "description": "Comprehensive security testing guidance with extensive context",
-                "use_case": "Complex security assessments requiring detailed methodology"
+                "use_case": "Complex security assessments requiring detailed methodology",
             },
             "minimal": {
                 "name": "Minimal Enhanced Prompt",
                 "description": "Basic security testing context with minimal additional guidance",
-                "use_case": "Simple testing scenarios or when agent should have more autonomy"
-            }
+                "use_case": "Simple testing scenarios or when agent should have more autonomy",
+            },
         },
         "default_type": "standard",
         "custom_agent_compatible": True,
-        "codex_agent_compatible": True
+        "codex_agent_compatible": True,
     }
 
 
