@@ -145,7 +145,7 @@ verify_shared_net_connectivity() {
 }
 
 # Validate directory structure and required scripts
-validate_setup_scripts() {
+validate_setup_app_scripts() {
     local dir="$1"
     
     if [ ! -d "$dir" ]; then
@@ -209,7 +209,7 @@ filter_modes_by_flags() {
                 ;;
             "apk_skip")
                 filtered_modes="$filtered_modes $mode"
-                echo -e "${INFO} Using apk_skip mode - no APK operations will be performed" >&2
+                echo -e "${INFO} Using apk_skip mode - will re-use existing APK if available" >&2
                 ;;
         esac
     done
@@ -221,8 +221,8 @@ filter_modes_by_flags() {
 # Main function to determine setup modes
 determine_setup_modes() {
     local dir="$1"
-    
-    if ! validate_setup_scripts "$dir"; then
+
+    if ! validate_setup_app_scripts "$dir"; then
         exit 1
     fi
     
@@ -447,8 +447,8 @@ run_test_check() {
     cd -
 }
 
-# Function to run tests for a specific setup mode
-run_tests_for_setup_mode() {
+# Function to run tests for a specific mode
+run_tests_for_mode() {
     local setup_mode="$1"
     local dir="$2"
     
@@ -599,7 +599,7 @@ fi
 
 # Run tests for each setup mode
 for SETUP_MODE in $SETUP_MODES; do
-    run_tests_for_setup_mode "$SETUP_MODE" "$DIR"
+    run_tests_for_mode "$SETUP_MODE" "$DIR"
 done
 
 # Calculate total runtime
@@ -664,16 +664,10 @@ fi
 print_header "$CYAN" "FINAL TIMING AND SUMMARY"
 if [ "$HAS_RUN_CHECKS" = true ]; then
     print_header "$GREEN" "LOCAL CIA TESTS COMPLETED SUCCESSFULLY"
-    if [ "$SETUP_MODE_COUNT" -gt 1 ]; then
-        echo -e "${SUCCESS} Total execution time: ${MINUTES}m ${SECONDS}s using setup modes: $SETUP_MODES"
-    else
-        echo -e "${SUCCESS} Total execution time: ${MINUTES}m ${SECONDS}s using setup mode: $SETUP_MODES"
-    fi
+    prefix="${SUCCESS}"
 else
     print_header "$YELLOW" "LOCAL BASIC TESTS COMPLETED - ADD run_checks.sh FOR FULL CI"
-    if [ "$SETUP_MODE_COUNT" -gt 1 ]; then
-        echo -e "${INFO} Total execution time: ${MINUTES}m ${SECONDS}s using setup modes: $SETUP_MODES"
-    else
-        echo -e "${INFO} Total execution time: ${MINUTES}m ${SECONDS}s using setup mode: $SETUP_MODES"
-    fi
+    prefix="${INFO}"
 fi
+
+echo -e "${prefix} Total execution time: ${MINUTES}m ${SECONDS}s using modes: $SETUP_MODES"
