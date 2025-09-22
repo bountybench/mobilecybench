@@ -169,13 +169,19 @@ discover_available_modes() {
     local dir="$1"
     local modes=""
     
-    if [ -f "$dir/setup_app_source.sh" ]; then
-        modes="$modes source"
-        echo -e "${INFO} Found setup_app_source.sh (build mode)" >&2
-    fi
-    if [ -f "$dir/setup_app_apklink.sh" ]; then
-        modes="$modes apklink"
-        echo -e "${INFO} Found setup_app_apklink.sh (download mode)" >&2
+    # If --skip-apk is specified, only offer apk_skip mode
+    if [ "$SKIP_APK" = true ]; then
+        modes="apk_skip"
+        echo -e "${INFO} --skip-apk specified - using apk_skip mode" >&2
+    else
+        if [ -f "$dir/setup_app_source.sh" ]; then
+            modes="$modes source"
+            echo -e "${INFO} Found setup_app_source.sh (build mode)" >&2
+        fi
+        if [ -f "$dir/setup_app_apklink.sh" ]; then
+            modes="$modes apklink"
+            echo -e "${INFO} Found setup_app_apklink.sh (download mode)" >&2
+        fi
     fi
 
     echo "$modes"
@@ -200,6 +206,10 @@ filter_modes_by_flags() {
                 else
                     echo -e "${INFO} Skipping download mode (apklink) due to --skip-download flag" >&2
                 fi
+                ;;
+            "apk_skip")
+                filtered_modes="$filtered_modes $mode"
+                echo -e "${INFO} Using apk_skip mode - no APK operations will be performed" >&2
                 ;;
         esac
     done
@@ -276,6 +286,7 @@ checkout_commit() {
 # Parse command line arguments
 SKIP_BUILD=false
 SKIP_DOWNLOAD=false
+SKIP_APK=false
 
 show_usage() {
     echo "Usage: $0 <dir> [options]"
@@ -286,12 +297,14 @@ show_usage() {
     echo "Options:"
     echo "  --skip-build      Skip build mode (source setup)"
     echo "  --skip-download   Skip download mode (apklink setup)"
+    echo "  --skip-apk        Skip APK operations. Install from existing APK."
     echo "  -h, --help        Show this help message"
     echo ""
     echo "Examples:"
     echo "  $0 apps/joplin                    # Run both build and download modes"
     echo "  $0 apps/joplin --skip-build      # Run only download mode"
     echo "  $0 apps/joplin --skip-download   # Run only build mode"
+    echo "  $0 apps/joplin --skip-apk        # Skip APK operations. Install from existing APK."
     echo ""
     echo "By default, both build mode (source) and download mode (apklink) are run"
     echo "when both setup scripts are available."
@@ -305,6 +318,12 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --skip-download)
+            SKIP_DOWNLOAD=true
+            shift
+            ;;
+        --skip-apk)
+            SKIP_APK=true
+            SKIP_BUILD=true
             SKIP_DOWNLOAD=true
             shift
             ;;
@@ -339,8 +358,8 @@ if [ -z "$DIR" ]; then
 fi
 
 # Validate flag combination
-if [ "$SKIP_BUILD" = true ] && [ "$SKIP_DOWNLOAD" = true ]; then
-    echo "Error: Cannot skip both build and download modes"
+if [ "$SKIP_BUILD" = true ] && [ "$SKIP_DOWNLOAD" = true ] && [ "$SKIP_APK" != true ]; then
+    echo "Error: Cannot skip both build and download modes (use --skip-apk to skip all APK operations)"
     echo ""
     show_usage
     exit 1
@@ -444,23 +463,11 @@ run_tests_for_setup_mode() {
     if [ -f "run_checks.sh" ]; then
         echo -e "${INFO} run_checks.sh found - running full vulnerability scenario tests"
         local has_run_checks=true
-        if [ "$setup_mode" = "apklink" ]; then
-            required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_apklink.sh")
-            print_header "$CYAN" "SETTING UP APP FROM APK LINK"
-        else
-            required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
-            print_header "$CYAN" "SETTING UP APP FROM SOURCE"
-        fi
+        required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
     else
         echo -e "${INFO} run_checks.sh not found - running simplified APK installation test"
         local has_run_checks=false
-        if [ "$setup_mode" = "apklink" ]; then
-            required_scripts=("setup.sh" "cleanup.sh" "setup_app_apklink.sh")
-            print_header "$CYAN" "SETTING UP APP FROM APK LINK"
-        else
-            required_scripts=("setup.sh" "cleanup.sh" "setup_app_source.sh")
-            print_header "$CYAN" "SETTING UP APP FROM SOURCE"
-        fi
+        required_scripts=("setup.sh" "cleanup.sh")
     fi
     
     echo -e "${INFO} Checking for required scripts..."
@@ -472,7 +479,9 @@ run_tests_for_setup_mode() {
     done
     
     # Run appropriate setup script based on mode
-    if [ "$setup_mode" = "apklink" ]; then
+    if [ "$setup_mode" = "apk_skip" ]; then
+        echo -e "${INFO} Skipping APK setup (apk_skip mode) - proceeding directly to tests"
+    elif [ "$setup_mode" = "apklink" ]; then
         echo -e "${INFO} Setting up app from APK link."
         { ./setup_app_apklink.sh; } || { echo -e "${ERROR} setup_app_apklink.sh failed"; exit 1; }
     else
