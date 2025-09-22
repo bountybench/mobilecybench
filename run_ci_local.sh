@@ -18,6 +18,8 @@ source "${ROOT_DIR}/utils/android.sh"
 source "${ROOT_DIR}/utils/wait.sh"
 set +e
 
+DIR=""
+
 print_header() {
     local color="$1"
     local message="$2"
@@ -142,89 +144,102 @@ verify_shared_net_connectivity() {
     fi
 }
 
+# Validate directory structure and required scripts
+validate_setup_scripts() {
+    local dir="$1"
+    
+    if [ ! -d "$dir" ]; then
+        echo -e "${ERROR} Directory '$dir' does not exist" >&2
+        return 1
+    fi
+    
+    local source_script="$dir/setup_app_source.sh"
+    local apklink_script="$dir/setup_app_apklink.sh"
+    if [ ! -f "$source_script" ] && [ ! -f "$apklink_script" ]; then
+        # fail if neither script exists
+        echo -e "${ERROR} No setup scripts found in $dir" >&2
+        echo -e "${ERROR} Expected: setup_app_source.sh or setup_app_apklink.sh" >&2
+        return 1
+    fi
+    return 0
+}
+
+
+discover_available_modes() {
+    local dir="$1"
+    local modes=""
+    
+    if [ -f "$dir/setup_app_source.sh" ]; then
+        modes="$modes source"
+        echo -e "${INFO} Found setup_app_source.sh (build mode)" >&2
+    fi
+    if [ -f "$dir/setup_app_apklink.sh" ]; then
+        modes="$modes apklink"
+        echo -e "${INFO} Found setup_app_apklink.sh (download mode)" >&2
+    fi
+
+    echo "$modes"
+}
+
+filter_modes_by_flags() {
+    local available_modes="$1"
+    local filtered_modes=""
+    
+    for mode in $available_modes; do
+        case "$mode" in
+            "source")
+                if [ "$SKIP_BUILD" != true ]; then
+                    filtered_modes="$filtered_modes $mode"
+                else
+                    echo -e "${INFO} Skipping build mode (source) due to --skip-build flag" >&2
+                fi
+                ;;
+            "apklink")
+                if [ "$SKIP_DOWNLOAD" != true ]; then
+                    filtered_modes="$filtered_modes $mode"
+                else
+                    echo -e "${INFO} Skipping download mode (apklink) due to --skip-download flag" >&2
+                fi
+                ;;
+        esac
+    done
+    
+    # Trim leading/trailing spaces
+    echo "$filtered_modes" | sed 's/^ *//;s/ *$//'
+}
+
+# Main function to determine setup modes
 determine_setup_modes() {
     local dir="$1"
     
-    # Check for both setup scripts
-    local has_source=false
-    local has_apklink=false
-
-    if [ -f "$dir/setup_app_source.sh" ]; then
-        has_source=true
-        echo -e "${INFO} Found setup_app_source.sh" >&2
-    fi
-    
-    if [ -f "$dir/setup_app_apklink.sh" ]; then
-        has_apklink=true
-        echo -e "${INFO} Found setup_app_apklink.sh" >&2
-    fi
-    
-    # Validate at least one exists
-    if [ "$has_source" = false ] && [ "$has_apklink" = false ]; then
-        echo -e "${ERROR} Neither setup_app_source.sh nor setup_app_apklink.sh found in $dir" >&2
+    if ! validate_setup_scripts "$dir"; then
         exit 1
     fi
     
-    echo "has source: $has_source, has apklink: $has_apklink" >&2
+    local available_modes
+    available_modes=$(discover_available_modes "$dir")
+    echo -e "${INFO} Available setup modes: $available_modes" >&2
     
-    # Check which specific scripts were modified
-    local source_modified=false
-    local apklink_modified=false
-    
-    # Find the remote that points to bountybench/mobilecybench.git or origin
-    local base_remote="origin"
-    while IFS= read -r line; do
-        remote_name=$(echo "$line" | awk '{print $1}')
-        remote_url=$(echo "$line" | awk '{print $2}')
-        if [[ "$remote_url" == *"bountybench/mobilecybench"* ]]; then
-            base_remote="$remote_name"
-            break
-        fi
-    done < <(git remote -v | grep "(fetch)")
-    
-    echo -e "${INFO} Using base remote: $base_remote" >&2
-    
-    # Fetch the latest main branch
-    git fetch "$base_remote" main >/dev/null 2>&1 || true
-    
-    # Check which specific scripts were modified
-    if git diff --name-only "$base_remote/main...HEAD" | grep -q "^$dir/setup_app_source.sh$"; then
-        source_modified=true
+    local selected_modes
+    selected_modes=$(filter_modes_by_flags "$available_modes")
+
+    # will fail if no mode is left after user filter
+    if [ -z "$selected_modes" ]; then
+        echo -e "${ERROR} No setup modes available after applying filters" >&2
+        echo -e "${ERROR} Available modes were: $available_modes" >&2
+        echo -e "${ERROR} Try removing --skip-* flags or ensure required scripts exist" >&2
+        exit 1
     fi
     
-    if git diff --name-only "$base_remote/main...HEAD" | grep -q "^$dir/setup_app_apklink.sh$"; then
-        apklink_modified=true
+    local mode_count
+    mode_count=$(echo "$selected_modes" | wc -w)
+    if [ "$mode_count" -eq 1 ]; then
+        echo -e "${INFO} Selected setup mode: $selected_modes" >&2
+    else
+        echo -e "${INFO} Selected setup modes: $selected_modes (running both by default)" >&2
     fi
     
-    echo "source modified: $source_modified, apklink modified: $apklink_modified" >&2
-    
-    # Determine which setup modes to test based on script existence and modifications
-    local setup_modes=""
-    
-    if [ "$has_source" = true ] && [ "$has_apklink" = true ]; then
-        # Both scripts exist - determine modes based on modifications
-        if [ "$source_modified" = true ] && [ "$apklink_modified" = true ]; then
-            echo -e "${INFO} Both setup scripts modified - testing both modes" >&2
-            setup_modes="source apklink"
-        elif [ "$source_modified" = true ]; then
-            echo -e "${INFO} Source script modified - using source mode" >&2
-            setup_modes="source"
-        elif [ "$apklink_modified" = true ]; then
-            echo -e "${INFO} APK link script modified - using apklink mode" >&2
-            setup_modes="apklink"
-        else
-            echo -e "${INFO} Both scripts available and unmodified - preferring APK link for efficiency" >&2
-            setup_modes="apklink"
-        fi
-    elif [ "$has_source" = true ] && [ "$has_apklink" = false ]; then
-        echo -e "${INFO} Only source setup available - using source mode" >&2
-        setup_modes="source"
-    elif [ "$has_source" = false ] && [ "$has_apklink" = true ]; then
-        echo -e "${INFO} Only APK link setup available - using apklink mode" >&2
-        setup_modes="apklink"
-    fi
-    
-    echo "$setup_modes"
+    echo "$selected_modes"
 }
 
 checkout_commit() {
@@ -258,13 +273,78 @@ checkout_commit() {
     fi
 }
 
-# Check if argument was provided
-if [ -z "$1" ]; then
-    echo "Usage: $0 <dir>"
-    echo "Example: $0 apps/joplin"
+# Parse command line arguments
+SKIP_BUILD=false
+SKIP_DOWNLOAD=false
+
+show_usage() {
+    echo "Usage: $0 <dir> [options]"
+    echo ""
+    echo "Arguments:"
+    echo "  <dir>             Directory to test (e.g., apps/joplin)"
+    echo ""
+    echo "Options:"
+    echo "  --skip-build      Skip build mode (source setup)"
+    echo "  --skip-download   Skip download mode (apklink setup)"
+    echo "  -h, --help        Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0 apps/joplin                    # Run both build and download modes"
+    echo "  $0 apps/joplin --skip-build      # Run only download mode"
+    echo "  $0 apps/joplin --skip-download   # Run only build mode"
+    echo ""
+    echo "By default, both build mode (source) and download mode (apklink) are run"
+    echo "when both setup scripts are available."
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --skip-build)
+            SKIP_BUILD=true
+            shift
+            ;;
+        --skip-download)
+            SKIP_DOWNLOAD=true
+            shift
+            ;;
+        -h|--help)
+            show_usage
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            show_usage
+            exit 1
+            ;;
+        *)
+            if [ -z "$DIR" ]; then
+                DIR="$1"
+            else
+                echo "Multiple directories specified. Only one directory allowed."
+                show_usage
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Check if directory was provided
+if [ -z "$DIR" ]; then
+    echo "Error: Directory argument is required"
+    echo ""
+    show_usage
     exit 1
 fi
-DIR="$1"
+
+# Validate flag combination
+if [ "$SKIP_BUILD" = true ] && [ "$SKIP_DOWNLOAD" = true ]; then
+    echo "Error: Cannot skip both build and download modes"
+    echo ""
+    show_usage
+    exit 1
+fi
 
 # Get API level from metadata
 print_header "$CYAN" "GETTING SDK INFORMATION"
@@ -475,7 +555,6 @@ if [ $? -ne 0 ] || [ -z "$SETUP_MODES" ]; then
     echo -e "${ERROR} Failed to determine setup modes"
     exit 1
 fi
-echo -e "${INFO} Selected setup modes: $SETUP_MODES"
 
 # Check if any setup mode has run_checks.sh to determine overall strategy
 cd "$DIR"
