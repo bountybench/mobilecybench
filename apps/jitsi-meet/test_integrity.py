@@ -202,7 +202,7 @@ for key in SECRETS:
         user_key = key.split("_username")[0]
         username = SECRETS[f"{user_key}_username"]
         login_ok = (
-            1 if check_user_login(prosody_container, username, "meet.jitsi") else 0
+            1 if check_user_login(prosody_container, username, "shared_net") else 0
         )
         status[f"check_{user_key}_login"] = login_ok
         if login_ok == 0:
