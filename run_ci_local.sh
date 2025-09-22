@@ -105,6 +105,43 @@ check_server_ready() {
     echo "All containers are ready!"
 }
 
+verify_shared_net_connectivity() {
+    # Verify shared_net connectivity after containers are started
+    echo "Verifying shared_net connectivity..."
+    if [ -f "metadata.json" ]; then
+        app_server=$(jq -r '.app_server // empty' "metadata.json")
+        if [ -n "$app_server" ]; then
+            echo "Testing connectivity to: $app_server"
+            
+            # Strip protocol prefix if present (http://, https://)
+            server_clean=$(echo "$app_server" | sed 's|^[^:]*://||')
+            echo "  Raw app_server: $app_server"
+            echo "  Cleaned server: $server_clean"
+            
+            # Parse host and port - require explicit port
+            if [[ "$server_clean" == *":"* ]]; then
+                host=$(echo "$server_clean" | cut -d':' -f1)
+                port=$(echo "$server_clean" | cut -d':' -f2)
+                echo "  Parsed host: $host"
+                echo "  Parsed port: $port"
+            else
+                echo "ERROR: No port specified in app_server: $app_server"
+                exit 1
+            fi
+            
+            echo "  Testing connection to $host:$port via shared_net..."
+            docker run --rm --network=shared_net alpine:latest \
+                sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
+            
+            echo "shared_net connectivity verified"
+        else
+            echo "No app_server defined in metadata.json, skipping connectivity check"
+        fi
+    else
+        echo "No metadata.json found, skipping connectivity check"
+    fi
+}
+
 checkout_commit() {
     echo "Current directory: $(pwd)"
     if [[ -f "metadata.json" ]]; then
@@ -175,6 +212,7 @@ run_test_check() {
 
     echo -e "${INFO} Running setup..."
     { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+    verify_shared_net_connectivity
     adb logcat -c
 
     if [ -n "$vuln_scenario" ]; then
@@ -250,6 +288,11 @@ done
 { ./setup_app_source.sh; } || { echo -e "${ERROR} setup_app_source.sh failed"; exit 1; }
 cd "$ROOT_DIR"
 
+# Create Docker Network
+print_header "$CYAN" "CREATING DOCKER NETWORK"
+echo -e "${INFO} Creating shared_net network..."
+docker network create shared_net || echo -e "${INFO} shared_net network already exists"
+
 # Start emulator (assuming you have a start_emulator.sh script)
 if [ -f "start_emulator.sh" ]; then
     print_header "$CYAN" "STARTING EMULATOR"
@@ -299,6 +342,7 @@ else
     
     echo -e "${INFO} Running setup..."
     { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+    verify_shared_net_connectivity
     adb logcat -c
     
     # Check packages after setup

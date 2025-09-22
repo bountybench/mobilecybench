@@ -5,18 +5,21 @@ services:
     restart: unless-stopped
     ports:
       - "8123:8123"
+    networks:
+      - shared_net
+      - private_net
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 8123 || exit 1"]
-      interval: 30s
+      test: ["CMD-SHELL", "curl -f http://localhost:8123/ || exit 1"]
+      interval: 15s
       timeout: 10s
-      retries: 5
-      start_period: 60s
+      retries: 10
+      start_period: 120s
     volumes:
       - ./config:/config
-      - ./seeded-onboarding-file:/config/.storage/onboarding
 
 networks:
   private_net:
     driver: bridge
     internal: true
   shared_net:
+    external: true

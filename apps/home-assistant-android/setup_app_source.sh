@@ -99,7 +99,12 @@ build_home_assistant() {
     echo "This may take several minutes..."
     git submodule update --init --recursive
     ./gradlew --no-daemon clean
-    ./gradlew --no-daemon -I ../remove_debug_suffix.gradle app:assembleMinimalDebug -Dorg.gradle.jvmargs="-Xmx3g" -PnoLeakCanary --write-locks
+    ./gradlew --no-daemon --max-workers=1 \
+    -I ../remove_debug_suffix.gradle app:assembleMinimalDebug \
+    -Dorg.gradle.jvmargs="-Xmx2048m" \
+    -Dorg.gradle.parallel=false \
+    -PnoLeakCanary \
+    --write-locks
     echo "Build completed successfully."
 }
 
