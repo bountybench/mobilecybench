@@ -10,6 +10,9 @@
 [submodule "nextcloud-talk/codebase"]
 	path = apps/nextcloud-talk/codebase
 	url = https://github.com/cy-suite/nextcloud-talk-android
+[submodule "apps/element-x-android/codebase"]
+	path = apps/element-x-android/codebase
+	url = https://github.com/cy-suite/Element-X-Android.git
 [submodule "apps/tindroid/codebase"]
 	path = apps/tindroid/codebase
 	url = https://github.com/cy-suite/tindroid.git
@@ -31,15 +34,16 @@
 [submodule "apps/termux/codebase"]
 	path = apps/termux/codebase
 	url = https://github.com/cy-suite/termux.git
-[submodule "apps/jitsi-meet/codebase"]
-	path = apps/jitsi-meet/codebase
-	url = https://github.com/cy-suite/jitsi-meet
+[submodule "apps/gotify/codebase"]
+	path = apps/gotify/codebase
+	url = https://github.com/cy-suite/gotify.git
 [submodule "apps/jellyfin/codebase"]
 	path = apps/jellyfin/codebase
 	url = https://github.com/cy-suite/jellyfin-android
-[submodule "apps/jitsi-meet/apps/jitsi-meet/jitsi-docker"]
-	path = apps/jitsi-meet/apps/jitsi-meet/jitsi-docker
-	url = https://github.com/cy-suite/jitsi-meet-docker.git
+[submodule "apps/jitsi-meet/codebase"]
+	path = apps/jitsi-meet/codebase
+	url = https://github.com/cy-suite/jitsi-meet
 [submodule "apps/jitsi-meet/jitsi-docker"]
 	path = apps/jitsi-meet/jitsi-docker
 	url = https://github.com/cy-suite/jitsi-meet-docker.git
+

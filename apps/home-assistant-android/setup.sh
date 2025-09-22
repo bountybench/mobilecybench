@@ -26,9 +26,32 @@ install_home_assistant() {
     echo "Installed Home Assistant successfully."
 }
 
+# Some functions below are adapted from Tindroid setup
+
+# Function to run commands with timeout
+run_with_timeout() {
+    local timeout_seconds=300  # 5 minutes
+    local cmd="$1"
+    
+    echo "Running command with timeout (${timeout_seconds}s): $cmd"
+    
+    if timeout "$timeout_seconds" bash -c "$cmd"; then
+        echo "Command completed successfully"
+        return 0
+    else
+        local exit_code=$?
+        if [ $exit_code -eq 124 ]; then
+            echo "ERROR: Command timed out after ${timeout_seconds} seconds"
+        else
+            echo "ERROR: Command failed with exit code $exit_code"
+        fi
+        return $exit_code
+    fi
+}
+
 # Launch Home Assistant
 launch_home_assistant() {
-    echo "Launching Home Assistant (from source)..."
+    echo "Launching Home Assistant..."
     adb shell pm list packages | grep -q "io.homeassistant.companion.android.minimal$" || {
         echo "ERROR: Home Assistant package not found on device/emulator."
         echo "Please ensure the app is installed correctly."
@@ -39,7 +62,6 @@ launch_home_assistant() {
     echo "Home Assistant should now be running on your emulator."
 }
 
-# Adapted from Tindroid setup
 install_python_package() {
     local package_name="$1"
     local import_name="${2:-$1}"
@@ -80,44 +102,72 @@ install_python_package() {
     fi
 }
 
+seed_home_assistant_config() {
+    echo "Seeding Home Assistant config (if needed)..."
+    mkdir -p ./config/.storage
+
+    # Seed configuration.yaml if missing or empty
+    if [ ! -s ./config/configuration.yaml ]; then
+        cp ./seeded-files/demo-configuration.yaml ./config/configuration.yaml
+        echo "Seeded configuration.yaml from seeded-files/demo-configuration.yaml"
+    else
+        echo "configuration.yaml already exists and is non-empty; skipping seed"
+    fi
+
+    # Create empty included files if they don't exist
+    # These are referenced by configuration.yaml with !include directives
+    for file in automations.yaml scripts.yaml scenes.yaml; do
+        if [ ! -f "./config/$file" ]; then
+            echo "[]" > "./config/$file"
+            echo "Created empty $file"
+        fi
+    done
+
+    # Auth files (only if absent)
+    if [ ! -f ./config/.storage/auth ]; then
+        cp ./seeded-files/demo-auth ./config/.storage/auth
+        echo "Seeded auth file"
+    fi
+    if [ ! -f ./config/.storage/auth_provider.homeassistant ]; then
+        cp ./seeded-files/demo-auth_provider.homeassistant ./config/.storage/auth_provider.homeassistant
+        echo "Seeded auth_provider.homeassistant file"
+    fi
+
+    # Onboarding file (if provided and not present)
+    if [ -f ./seeded-files/seeded-onboarding-file ] && [ ! -f ./config/.storage/onboarding ]; then
+        cp ./seeded-files/seeded-onboarding-file ./config/.storage/onboarding
+        echo "Seeded onboarding file"
+    fi
+}
+
 main() {
     install_python_package "uiautomator2"
+    install_python_package "websocket-client"
+    install_python_package "playwright"
+    
+    # Install Playwright browsers after installing the package
+    echo "Installing Playwright browsers..."
+    run_with_timeout "playwright install chromium"
+
+    # Setup user accounts and generate secrets
+    echo "Setting up user accounts and credentials..."
+    python3 setup_accounts.py
+    python3 generate_secrets.py
+
+    # Seed files BEFORE starting container so directory mount contains them
+    seed_home_assistant_config
+
+    docker network create shared_net 2>/dev/null || echo "Network shared_net already exists"
 
     docker compose up --build -d
 
     # Don't favor APK-link installation. In the future, we can add this as a flag for this file.
     # ./setup_app_apklink.sh
 
+    # Comment out if uncommenting APK-link installation.
     install_home_assistant
+
     launch_home_assistant
-
-        sleep 2
-        if [ -t 1 ]; then
-                DOCKER_TTY_FLAGS="-it"
-        else
-                DOCKER_TTY_FLAGS=""
-        fi
-
-        echo "Submitting onboarding user via Home Assistant API (CI friendly)..."
-        docker exec $DOCKER_TTY_FLAGS home-assistant-server \
-            curl -s -o /tmp/onboard_resp.txt -w "%{http_code}\n" -X POST "http://home-assistant-server:8123/api/onboarding/users" \
-            -H "Content-Type: application/json" \
-            -d '{
-                "client_id": "http://home-assistant-server:8123/",
-                "name": "testuser",
-                "username": "testuser",
-                "password": "testuser123",
-                "language": "en"
-            }' | {
-                read code; \
-                echo "Onboarding API HTTP status: $code"; \
-                if [ "$code" != "200" ] && [ "$code" != "201" ]; then
-                        echo "Onboarding request failed (status $code)" >&2
-                        echo "Response body:" >&2
-                        docker exec $DOCKER_TTY_FLAGS home-assistant-server cat /tmp/onboard_resp.txt || true
-                fi
-            }
-
     if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
         if python3 setup_home_assistant.py --username testuser --hostname home-assistant-server; then
             echo "Setting-up test successful"
