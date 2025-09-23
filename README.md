@@ -75,6 +75,9 @@ mobilecybench/
     - Add the repo as a submodule, getting the repo from **cy-suite**.
     - The workflow will automatically check out the commit as specified in the ```metadata.json``` file, you should manually do this during testing.
     - Write your scripts assuming the codebase has been checked out to the correct commit, **do not** check out the commit within the scripts.
+- ```docker-compose.yml```: Should exist when your app has backend servers/databases 
+    - The server should be on shared_net with external: true - this is a network that the agent may have access to 
+    - The server and database should use private_net (which the agent will not have access to)
 - ```metadata.json```: 
     - ```commit_version```: The version of the repo (e.g. `60a32b1`). Used for `git checkout <commit>`. 
     - ```sdk```: The SDK version your app is primarily tested and optimized for (see `targetSdk` in `build.gradle`)
@@ -86,9 +89,11 @@ mobilecybench/
 - ```setup.sh```: 
     - Contains all relevant setup for the app after the app is already built from source (e.g. setting up a server, install requirements, etc.). 
     - This may mean adding additional files to the root of the ```env_dir``` such as a ```Dockerfile``` or creating a database. 
+    - **Important** - setup.sh should also generate a secrets.json file with any sensitive information. See other apps for examples.
     - Must exist to pass schema. If no setup is required, leave the file empty except for the hashtag (`#!/bin/bash`).
 - ```setup_app_source.sh```: 
-    - Builds the app from source into an apk file
+    - Builds the app from source into an apk file - do NOT install the app on the emulator 
+    - Make sure to choose a release build (not debug) - there see `apps/conversations/setup_app_source.sh` for an example for apk signing
     - Is run in CI before emulator is started
 - ```run_checks.sh```: 
     - Entrypoint for various probes measuring confidentiality, integrity, availability, and access control violations.
@@ -124,7 +129,7 @@ mobilecybench/
             - ```vuln.sh```: Should create non-DOS vulnerable scenarios: database injection, elevating user privileges, create a fake agent log and leak sensitive information, change users' passwords, etc.
         - ```vuln_scenario_1/```: 
             - ```vuln.sh```: Should create DOS vulnerable scenarios: crash app or cause ANR and crash server.
-- ```cleanup.sh```: 
+- ```cleanup.sh```:
     - Responsible for cleaning up any Docker containers created, removing any files created, etc.
 
 
@@ -436,31 +441,45 @@ That's it! The emulator is ready for testing.
 
 ## MCP Interaction
 
-First, obtain an ngrok token by going to https://ngrok.com, signing up, and then create an ngrok.yml file at `agent/mcp/ngrok.yml` with your token. Your file should look like: 
+The AI agent is located in the `agent/` directory.
 
-    version: 2
-    authtoken: {YOUR_AUTHTOKEN_HERE}
-    tunnels:
-      web:
-        proto: http
-        addr: 8000
+### Quick Setup
 
+1. **Configure ngrok token:**
+   - Go to https://ngrok.com and sign up
+   - **Create** `agent/mcp/ngrok.yml` from template (not tracked by git for security):
+   ```bash
+   # Copy the template to create your ngrok.yml file
+   cp agent/mcp/ngrok.yml.template agent/mcp/ngrok.yml
+   
+   # Edit the file and replace YOUR_NGROK_AUTHTOKEN_HERE with your actual token
+   nano agent/mcp/ngrok.yml
+   ```
 
-Then, run the following commands to start the emulator, mcp, and kali containers: 
+2. **Start the system:**
+   ```bash
+   ./setup.sh
+   ./start_emulator.sh
+   cd agent/
+   docker-compose up --build -d
+   ```
 
+3. **Set up Python environment:**
+   ```bash
+   # From project root
+   source venv/bin/activate
+   pip install -r requirements.txt
+   export OPENAI_API_KEY="your-api-key-here"
+   ```
 
-    ./setup.sh
-    ./start_emulator.sh
-    docker-compose up --build
+4. **Test the agent:**
+   ```bash
+   python test_ai_interaction.py
+   ```
 
+### Detailed Setup
 
-Next, activate the virtual environment and isntall required dependencies:
-
-    source venv/bin/activate
-    pip install -r requirements.txt
-
-The agent will be able to access the kali container as well as your android emulator with its set of possible tools. 
-
-Finally, you can start interacting with the agent via running 
-
-    python test_ai_interaction.py 
+For comprehensive setup instructions, see the [Agent README](agent/README.md) which includes:
+- Detailed directory structure explanation
+- Step-by-step setup instructions
+- Testing procedures using example commands

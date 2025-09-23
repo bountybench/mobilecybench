@@ -1,70 +1,67 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANDROID_HOME="${HOME}/.android-sdk"
-
 LOG_PREFIX="[setup_app_apklink]"
 LOG_FILE="${SCRIPT_DIR}/setup_app_apklink.log"
+
 # Duplicate outputs to console and log file
 exec > >(tee -a "$LOG_FILE") 2>&1
-info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
-warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
-error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
 
-DEFAULT_DOWNLOAD_LINK="https://github.com/owncloud/android/releases/download/oc-android-2.21.2/owncloud_2.21.2-original-release.apk"
+info() { printf '%s %s\n' "$LOG_PREFIX" "$*"; }
+warn() { printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
+error() { printf '%s[error] %s\n' "$LOG_PREFIX" "$*" >&2; exit 1; }
 
-install_owncloud() {
-    local download_link="$1"
-    if [[ -z "$download_link" ]]; then
-        download_link="$DEFAULT_DOWNLOAD_LINK"
+# Get download link from metadata.json
+get_download_link() {
+    local meta_file="${SCRIPT_DIR}/metadata.json"
+    
+    if [ ! -f "$meta_file" ]; then
+        error "metadata.json not found at $meta_file"
     fi
-    # Check if emulator is running
-    if ! adb devices | grep -q "device\|emulator"; then
-        error "No Android emulator found. Please start the emulator first."
+    if ! command -v jq >/dev/null 2>&1; then
+        error "jq is required but not installed"
     fi
-    # Uninstall previous ownCloud versions if installed
-    info "Checking for installed ownCloud packages..."
-    INSTALLED_PACKAGES=$(adb shell pm list packages | grep owncloud || true)
-    if [[ -n "$INSTALLED_PACKAGES" ]]; then
-        info "Uninstalling previous ownCloud packages..."
-        adb uninstall com.owncloud.android 2>/dev/null || true
-        adb uninstall com.owncloud.android.debug 2>/dev/null || true
+    
+    local link
+    link=$(jq -er '.download_link // empty' "$meta_file") || {
+        error "download_link not found in $meta_file"
+    }
+    if [ -z "$link" ]; then
+        error "download_link is empty in $meta_file"
     fi
-    APK_PATH="owncloud.apk"
-    info "Downloading ownCloud APK from: $download_link"
-    curl -L -o "$APK_PATH" "$download_link"
-    if [[ ! -f $APK_PATH ]]; then
-        error "APK not found at $APK_PATH after download"
-    fi
-    adb install "$APK_PATH"
-    info "ownCloud installed successfully."
+    
+    printf '%s\n' "$link"
 }
 
-launch_owncloud() {
-    info "Launching ownCloud..."
-    adb shell am start -n com.owncloud.android/com.owncloud.android.ui.activity.SplashActivity
-    info "ownCloud launched on emulator."
-}
-
-print_installed_version() {
-    info "Checking installed ownCloud version..."
-    VERSION_INFO=$(adb shell dumpsys package com.owncloud.android | grep -E "versionCode|versionName" || true)
-    if [[ -n "$VERSION_INFO" ]]; then
-        info "Version info:\n$VERSION_INFO"
-    else
-        warn "Could not retrieve version info."
+# Download APK to SCRIPT_DIR/apk/owncloud-android.apk
+download_apk() {
+    local url="$1"
+    local apk_dir="${SCRIPT_DIR}/apk"
+    local apk_path="${apk_dir}/owncloud-android.apk"
+    
+    # Create apk directory if it doesn't exist
+    mkdir -p "$apk_dir"
+    
+    info "Downloading ownCloud APK from $url to $apk_path (overwriting if exists)..."
+    if ! curl -L --fail --retry 3 --retry-connrefused -o "$apk_path" "$url"; then
+        error "Failed to download APK from $url"
     fi
+    if [ ! -s "$apk_path" ]; then
+        error "Downloaded APK is empty or invalid: $apk_path"
+    fi
+    info "Successfully downloaded APK: $apk_path"
 }
 
+# Main function
 main() {
-    info "ownCloud Android Setup with APK Link"
-    info "Setting up ownCloud Android"
-    local apk_link="$1"
-    install_owncloud "$apk_link"
-    launch_owncloud
-    print_installed_version
-    info "Setup complete! ownCloud is ready for testing."
+    info "Starting ownCloud APK download via metadata.json"
+    
+    local url
+    url=$(get_download_link)
+    download_apk "$url"
+    info "ownCloud APK download completed successfully"
 }
 
 main "$@"
