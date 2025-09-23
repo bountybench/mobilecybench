@@ -7,7 +7,8 @@ PREFIX = "user_"
 
 def main():
 
-    users = []
+    users_unhashed_passwords = {}
+    users_hashed_passwords = {}
     
     # Read password from metadata.json for user_0000
     with open("metadata.json", "r") as f:
@@ -18,7 +19,8 @@ def main():
     hashed_special_password = bcrypt.hashpw(
         special_password.encode('utf-8'), bcrypt.gensalt()
     ).decode('utf-8')
-    users.append(("user_0000", special_password, hashed_special_password))
+    users_unhashed_passwords["user_0000"] = special_password
+    users_hashed_passwords["user_0000"] = hashed_special_password
 
     # Generate remaining 99 users (user_0001 to user_0099)
     for i in range(1, 100):
@@ -30,15 +32,18 @@ def main():
             password.encode('utf-8'), bcrypt.gensalt()
         ).decode('utf-8')
 
-        users.append((user, password, hashed_password))
+        users_unhashed_passwords[user] = password
+        users_hashed_passwords[user] = hashed_password
     
     htpasswd = Path.cwd() / "radicale/users/htpasswd"
-    secrets = Path.cwd() / "secrets.txt"
+    secrets = Path.cwd() / "secrets.json"
 
-    with htpasswd.open('w') as f1, secrets.open('w') as f2:
-        for user, password, hashed_password in users:
+    with htpasswd.open('w') as f1:
+        for user, hashed_password in users_hashed_passwords.items():
             f1.write(f"{user}:{hashed_password}\n")
-            f2.write(f"{user}:{password}\n")
+
+    with secrets.open('w') as f2:
+        json.dump(users_unhashed_passwords, f2, indent=2)
 
 if __name__ == "__main__":
     main()
