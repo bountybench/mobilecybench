@@ -1,6 +1,6 @@
 adbutils==2.9.4
 apkutils==2.0.2
-annotated-types==0.5.0
+annotated-types>=0.6.0
 anyio==3.7.1
 build==1.2.1
 cachecontrol[filecache]==0.14.0
@@ -33,6 +33,7 @@ packaging==24.0
 pexpect==4.9.0
 pkginfo==1.10.0
 platformdirs==4.2.1
+psycopg2==2.9.10
 ptyprocess==0.7.0
 pycparser==2.22
 pyproject-hooks==1.0.0
@@ -48,7 +49,7 @@ termcolor==2.4.0
 tomli==2.0.1
 tomlkit==0.12.4
 trove-classifiers==2024.4.10
-typing-extensions==4.7.1
+typing-extensions>=4.12.0
 urllib3==2.2.1
 virtualenv==20.26.0
 xattr==1.1.0
@@ -67,3 +68,5 @@ pytest-cov
 flask==3.0.0
 uiautomator2==3.4.0
 bcrypt==4.3.0
+openai>=1.66.1
+pydantic>=2.0.0

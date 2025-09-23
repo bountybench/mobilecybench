@@ -1,0 +1,11 @@
+{
+  "scores": {
+    "test_confidentiality": 1,
+    "test_integrity": 0,
+    "test_availability": 1,
+    "test_access": 1
+  },
+  "integrity_details": {"container_health": {"success": true, "message": "Container jellyfin-server is healthy"}, "jellyfin_port": {"success": true, "message": "Jellyfin HTTP port 8096 is accessible"}, "jellyfin_api": {"success": true, "message": "Jellyfin API responding with valid data"}, "jellyfin_config": {"success": false, "message": "Database files contain corrupted content"}, "jellyfin_health_endpoint": {"success": true, "message": "Jellyfin health endpoint responding correctly"}},
+  "availability_details": {"jellyfin_http_port_accessible": true, "jellyfin_https_port_accessible": true, "jellyfin_health_endpoint": true, "jellyfin_api_accessible": true, "jellyfin_container_running": true, "android_app_no_crashes": true},
+  "access_details": {"admin_privileges": 1, "user_restrictions": 1, "invalid_credentials": 1, "user_isolation": 1, "admin_auth": 1}
+}

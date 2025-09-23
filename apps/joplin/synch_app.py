@@ -51,58 +51,104 @@ def wait_for_ui_stable(timeout=60, interval=0.5):
     print("Waiting for UI to stabilize", file=sys.stderr)
     prev_hierarchy = None
     start = time.time()
+    stable_count = 0
+    required_stable_checks = 2  # Require 2 consecutive stable checks
 
     while time.time() - start < timeout:
         current_hierarchy = d.dump_hierarchy(compressed=True)
         if current_hierarchy == prev_hierarchy:
-            return True
+            stable_count += 1
+            if stable_count >= required_stable_checks:
+                print(f"UI stabilized after {stable_count} consecutive checks", file=sys.stderr)
+                return True
+        else:
+            stable_count = 0
         prev_hierarchy = current_hierarchy
         time.sleep(interval)
-    print("UI unstable!", file=sys.stderr)
+    print(f"UI unstable! Timed out after {timeout}s", file=sys.stderr)
     return False
 
 
 wait_for_ui_stable(timeout=120, interval=1)
 wait_and_click_desc("Sidebar, Show/hide the sidebar")
 wait_and_click_text("Configuration")
-wait_for_ui_stable(interval=1)
+wait_for_ui_stable(interval=5)
 
 label = d(text="Synchronization target")
-if label.exists:
-    dropdown = label.sibling(className="android.view.ViewGroup")
-    dropdown.click()
-    wait_for_ui_stable(timeout=5, interval=3)
-    wait_and_click_text("Joplin Server (Beta)")
+if not label.wait(timeout=30):
+    print("[ERROR] Could not find 'Synchronization target'", file=sys.stderr)
+    print(d.dump_hierarchy(), file=sys.stderr)
+    exit(1)
 
+dropdown = label.sibling(className="android.view.ViewGroup")
+dropdown.click()
+wait_for_ui_stable(timeout=5, interval=3)
+wait_and_click_text("Joplin Server (Beta)")
+
+
+# Wait for form to fully load after selecting Joplin Server
+time.sleep(3)  # Give UI time to render form fields
 
 # Fill Joplin Server URL
 label = d(text="Joplin Server URL")
-if label.exists:
-    edit = label.sibling(className="android.widget.EditText")
-    edit.click()
-    wait_for_ui_stable(timeout=5)
-    edit.set_text("http://10.0.2.2:22300")  # Direct text input instead of send_keys()
-    d.press("enter")
-wait_for_ui_stable(timeout=5)
+if not label.wait(timeout=30):
+    print("[ERROR] Could not find Joplin Server URL label", file=sys.stderr)
+    print(d.dump_hierarchy(), file=sys.stderr)
+    exit(1)
+
+edit = label.sibling(className="android.widget.EditText")
+edit.click()
+time.sleep(1)  # Simple wait instead of UI stabilization
+edit.set_text("http://10.0.2.2:22300")  # Direct text input instead of send_keys()
+d.press("enter")
+time.sleep(2)
 
 # Fill Joplin Server email
 label = d(text="Joplin Server email")
-if label.exists:
-    edit = label.sibling(className="android.widget.EditText")
-    edit.click()
-    wait_for_ui_stable(timeout=5)
-    edit.set_text(username)  # Direct text input instead of send_keys()
-    d.press("enter")
-wait_for_ui_stable(timeout=5)
+if not label.wait(timeout=30):
+    print("[ERROR] Could not find Joplin Server email label", file=sys.stderr)
+    print(d.dump_hierarchy(), file=sys.stderr)
+    exit(1)
 
-# Fill Joplin Server password
-label = d(text="Joplin Server password")
-if label.exists:
-    edit = label.sibling(className="android.widget.EditText")
-    edit.click()
-    wait_for_ui_stable(timeout=5)
-    edit.set_text(password)  # Direct text input instead of send_keys()
-    d.press("enter")
+edit = label.sibling(className="android.widget.EditText")
+edit.click()
+time.sleep(1)
+edit.set_text(username)  # Direct text input instead of send_keys()
+d.press("enter")
+time.sleep(2)
+
+# The password field might need scrolling or have different text
+print("Looking for password field...", file=sys.stderr)
+
+# First try scrolling down to make more space
+d.swipe(540, 1600, 540, 800)  # Swipe up to scroll down
+time.sleep(2)
+
+# Try multiple possible password field labels
+password_field = None
+possible_labels = ["Joplin Server password", "Password", "password", "Server password"]
+
+for label_text in possible_labels:
+    print(f"Trying to find: '{label_text}'", file=sys.stderr)
+    label = d(text=label_text)
+    if label.wait(timeout=10):
+        password_field = label
+        print(f"Found password field with text: '{label_text}'", file=sys.stderr)
+        break
+
+if not password_field:
+    print("[ERROR] Could not find any password field with expected labels", file=sys.stderr)
+    print("[DEBUG] Current UI hierarchy:", file=sys.stderr)
+    print(d.dump_hierarchy(), file=sys.stderr)
+    exit(1)
+
+label = password_field
+
+edit = label.sibling(className="android.widget.EditText")
+edit.click()
+time.sleep(1)
+edit.set_text(password)  # Direct text input instead of send_keys()
+d.press("enter")
 wait_for_ui_stable(timeout=5, interval=1)
 
 wait_and_click_text("CHECK SYNCHRONIZATION CONFIGURATION")

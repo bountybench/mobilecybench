@@ -252,8 +252,11 @@ def main():
                 print("[ERROR] Logout attempt failed.") if args.verbose else None
         sys.exit(0)
 
-    print("[ERROR] Could not positively confirm login from UI; treating as failure.")
-    print(hierarchy)
+    if args.verbose:
+        print(
+            "[ERROR] Could not positively confirm login from UI; treating as failure."
+        )
+        print(d.dump_hierarchy())
     sys.exit(1)
 
 
