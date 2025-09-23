@@ -18,7 +18,7 @@ docker compose down
 docker network rm shared_net
 
 echo "Removing generated data"
-rm -rf ./secrets.txt \
+rm -rf ./secrets.json \
       ./radicale/users/htpasswd \
       ./radicale/data/collection-root/collection-root \
       ./radicale/data/collection-root/.Radicale.lock
@@ -28,6 +28,9 @@ rm -rf ./.venv
 
 echo "Removing Java"
 rm -rf ./java21
+
+echo "Removing Keys"
+rm -rf ./keys
 
 echo "Removing apk & build remnants"
 cd ./codebase

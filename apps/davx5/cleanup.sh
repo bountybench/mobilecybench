@@ -18,7 +18,7 @@ docker compose down
 docker network rm shared_net
 
 echo "Removing generated data"
-rm -rf ./secrets.txt \
+rm -rf ./secrets.json \
        ./radicale/users/htpasswd \
        ./radicale/data/collection-root/collection-root \
        ./radicale/data/collection-root/.Radicale.lock

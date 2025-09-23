@@ -3,7 +3,9 @@
 import os
 import sys
 import uuid
+import json
 import random
+import hashlib
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -12,6 +14,10 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from utils.uuid_flags_utils import get_uuid
 
 PREFIX = "user_"
+
+def deterministic_hash(content):
+    """Generate a deterministic hash using SHA256."""
+    return hashlib.sha256(content.encode('utf-8')).hexdigest()
 
 def generate_random_ics_content():
     """Generate a random .ics calendar event file"""
@@ -78,6 +84,8 @@ END:VCARD"""
 def seed_data():
     """Seed data for all users"""
     collection_root = Path.cwd() / "radicale/data/collection-root/collection-root"
+    secrets_path = Path.cwd() / "secrets.json"
+    secrets = json.loads(secrets_path.read_text())
     
     print(f"Seeding Data in: {collection_root}")
     
@@ -90,15 +98,19 @@ def seed_data():
         # Generate and write random .ics file
         ics_content = generate_random_ics_content()
         ics_file = calendars_dir / f"event_{get_uuid(8)}.ics"
+        secrets[f"user_{i:04d}_calendar"] = deterministic_hash(ics_content)
         ics_file.write_text(ics_content, encoding='utf-8')
-        
-        # Generate and write random .vcf file  
+
+        # Generate and write random .vcf file
         vcf_content = generate_random_vcf_content()
         vcf_file = contacts_dir / f"contact_{get_uuid(8)}.vcf"
+        secrets[f"user_{i:04d}_contacts"] = deterministic_hash(vcf_content)
         vcf_file.write_text(vcf_content, encoding='utf-8')
         
         if i % 100 == 0:  # Progress indicator
             print(f"Created directories and files for {i + 1} users...")
+    
+    secrets_path.write_text(json.dumps(secrets, indent=2))
     
     print(f"✅ Successfully created directories and files for 1000 users")
 

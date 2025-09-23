@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
-APK_PATH="${SCRIPT_DIR}/codebase/app/build/outputs/apk/ose/release/davx5-ose-4.4.11-ose-release.apk"
+APK_PATH="${SCRIPT_DIR}/apk/davx5.apk"
 VENV_DIR="${SCRIPT_DIR}/.venv"
 
 cd "${SCRIPT_DIR}"
@@ -31,9 +31,8 @@ setup_backend() {
     echo "Running docker compose..."
     docker compose up -d --wait
 
-    while read -r line; do
-        username="${line%%:*}"
-        password="${line#*:}"
+    while IFS= read -r username; do
+        password=$(jq -r ".[\"$username\"]" ./secrets.json)
 
         curl -u ${username}:${password} \
         -X MKCOL http://localhost:5232/${username}/calendar \
@@ -45,24 +44,21 @@ setup_backend() {
         -H "Content-Type: application/xml; charset=utf-8" \
         --data-binary '<?xml version="1.0" encoding="utf-8"?><D:mkcol xmlns:D="DAV:" xmlns:CR="urn:ietf:params:xml:ns:carddav"><D:set><D:prop><D:resourcetype><D:collection/><CR:addressbook/></D:resourcetype></D:prop></D:set></D:mkcol>'
 
-    done < ./secrets.txt
+    done < <(jq -r 'keys[]' ./secrets.json)
 
     echo "Seeding data..."
-
-    # docker cp "${SCRIPT_DIR}/seed_data.py" radicale:/tmp/
-    # docker exec radicale python3 /tmp/seed_data.py
 
     python3 "${SCRIPT_DIR}/seed_data.py"
 }
 
-boot_emulator() {
-    echo "Starting emulator..."
-    "${ROOT_DIR}/start_emulator.sh"
+# boot_emulator() {
+#     echo "Starting emulator..."
+#     "${ROOT_DIR}/start_emulator.sh"
 
-    echo "Waiting for Android system to fully boot..."
-    adb shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done'
-    echo "Android system ready!"
-}
+#     echo "Waiting for Android system to fully boot..."
+#     adb shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done'
+#     echo "Android system ready!"
+# }
 
 install_davx5() {
     adb install -r -g "$APK_PATH"
@@ -90,8 +86,8 @@ launch_davx5() {
 main() {
     setup_venv
     setup_backend
-    ./setup_app_source.sh
-    boot_emulator
+    ./setup_app_source.sh # or use ./setup_app_apklink.sh for no gradle build
+    # boot_emulator
     install_davx5
     launch_davx5
 }

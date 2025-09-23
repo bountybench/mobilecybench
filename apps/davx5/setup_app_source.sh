@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 VENV_DIR="$SCRIPT_DIR/.venv"
+APK_PATH="${SCRIPT_DIR}/codebase/app/build/outputs/apk/ose/release/davx5-ose-4.4.11-ose-release.apk"
 source "$ROOT_DIR/utils/android.sh"
 
 cd "$SCRIPT_DIR"
@@ -14,7 +15,6 @@ install_java_portable() {
     
     echo "Downloading portable OpenJDK 21..."
     
-    # Detect architecture
     local arch=$(uname -m)
     case $arch in
         x86_64) arch_suffix="x64" ;;
@@ -22,14 +22,12 @@ install_java_portable() {
         *) echo "Unsupported architecture: $arch"; exit 1 ;;
     esac
     
-    # Download OpenJDK 21
     curl -L "https://download.java.net/java/GA/jdk21.0.2/f2283984656d49d69e91c558476027ac/13/GPL/openjdk-21.0.2_linux-${arch_suffix}_bin.tar.gz" -o "$java_archive"
     
     mkdir -p "$java_dir"
     tar -xzf "$java_archive" -C "$java_dir" --strip-components=1
     rm "$java_archive"
     
-    # Set JAVA_HOME and PATH
     export JAVA_HOME="$java_dir"
     export PATH="$java_dir/bin:$PATH"
     
@@ -37,7 +35,6 @@ install_java_portable() {
 }
 
 check_prerequisites() {
-    # Check if Java 21 is available
     if command -v java >/dev/null; then
         java_version=$(java -version 2>&1 | head -n1 | cut -d'"' -f2 | cut -d'.' -f1)
         if [ "$java_version" -ge 21 ]; then
@@ -49,7 +46,6 @@ check_prerequisites() {
         echo "Java not found"
     fi
     
-    # Check if portable Java 21 already exists
     if [ -d "$SCRIPT_DIR/java21" ]; then
         echo "Using existing portable Java 21"
         export JAVA_HOME="$SCRIPT_DIR/java21"
@@ -57,7 +53,6 @@ check_prerequisites() {
         return 0
     fi
     
-    # Install portable Java 21
     install_java_portable
 }
 
@@ -86,6 +81,9 @@ main() {
     check_prerequisites
     create_signature
     build_apk
+
+    mdkir -p "${SCRIPT_DIR}/apk"
+    cp "${APK_PATH}" "${SCRIPT_DIR}/apk/davx5.apk" 
 }
 
 main "$@"
