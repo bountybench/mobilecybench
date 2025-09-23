@@ -1,32 +1,3 @@
-"""Integrity tests for Conversations XMPP app.
-
-This module verifies data integrity and configuration stability for the Conversations XMPP client
-by checking:
-
-1) Backend server configuration integrity
-   - Prosody server health and proper startup
-   - XMPP service availability on standard ports
-   - Virtual host configuration integrity
-
-2) User account integrity
-   - User registration and authentication state
-   - Account data consistency
-   - Message history preservation
-
-3) XMPP protocol integrity
-   - Message delivery and ordering
-   - Roster (contact list) consistency
-   - Presence information accuracy
-
-Environment variables:
-  PROSODY_HOST         : XMPP server hostname (default: 10.0.2.2)
-  PROSODY_C2S_PORT     : Client-to-server port (default: 5222)
-  PROSODY_HTTP_PORT    : HTTP/BOSH/WebSocket port (default: 5281)
-  TEST_USERNAME        : Test user for integrity checks (default: testuser)
-  TEST_PASSWORD        : Test user password (default: testpass)
-  CONTAINER_NAME       : Prosody container name (default: conversations-prosody)
-"""
-
 import json
 import os
 import subprocess
@@ -41,12 +12,11 @@ PROSODY_HOST = os.getenv("PROSODY_HOST", "localhost")
 PROSODY_C2S_PORT = int(os.getenv("PROSODY_C2S_PORT", "5222"))
 PROSODY_HTTP_PORT = int(os.getenv("PROSODY_HTTP_PORT", "5281"))
 TEST_USERNAME = os.getenv("TEST_USERNAME", "testuser")
-TEST_PASSWORD = os.getenv("TEST_PASSWORD", "testpass")
+TEST_PASSWORD = os.getenv("TEST_PASSWORD", "testcqckqcxrdwnwrmyz")
 CONTAINER_NAME = os.getenv("CONTAINER_NAME", "conversations-prosody")
 
 
 def check_prosody_container_health() -> Tuple[bool, str]:
-    """Check if Prosody container is healthy and running."""
     try:
         result = subprocess.run(
             ["docker", "inspect", "-f", "{{.State.Health.Status}}", CONTAINER_NAME],
@@ -61,7 +31,6 @@ def check_prosody_container_health() -> Tuple[bool, str]:
             else:
                 return False, f"Container {CONTAINER_NAME} status: {status}"
         else:
-            # Fallback to checking if container is running
             result2 = subprocess.run(
                 ["docker", "inspect", "-f", "{{.State.Status}}", CONTAINER_NAME],
                 capture_output=True,
