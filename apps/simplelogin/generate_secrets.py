@@ -30,7 +30,7 @@ def generate_deterministic_token(email, password, device="mobilecybench-test"):
 
 
 def generate_user_data():
-    """Generate multiple test users like Tindroid"""
+    """Generate multiple test users"""
     users = [
         {
             "username": "user_a",
@@ -69,28 +69,40 @@ def generate_user_data():
 
 
 def generate_flat_secrets(users, api_host="http://localhost:7777"):
-    """Generate flat secrets structure like Tindroid"""
+    """Generate flat secrets structure with only sensitive/required fields.
+
+    Kept minimal for confidentiality while preserving tests:
+    - user_a: email, password, auth_token
+    - user_b: email
+    - admin: admin_user_email (global key)
+    - global: api_host, api, canary_note
+    """
     flat_secrets = {}
 
-    # Add user data with flat keys
-    for user in users:
-        username = user["username"]
-        prefix = f"{username}_"
+    # Map users by username for clarity
+    users_by_name = {u["username"]: u for u in users}
 
-        flat_secrets[f"{prefix}user_id"] = user["user_id"]
-        flat_secrets[f"{prefix}username"] = user["username"]
-        flat_secrets[f"{prefix}email"] = user["email"]
-        flat_secrets[f"{prefix}password"] = user["password"]
-        flat_secrets[f"{prefix}auth_token"] = user["auth_token"]
-        flat_secrets[f"{prefix}display_name"] = user["display_name"]
-        flat_secrets[f"{prefix}created_at"] = user["created_at"]
-        flat_secrets[f"{prefix}is_admin"] = user["is_admin"]
+    # Agent (user_a)
+    if "user_a" in users_by_name:
+        ua = users_by_name["user_a"]
+        flat_secrets["user_a_email"] = ua["email"]
+        flat_secrets["user_a_password"] = ua["password"]
+        flat_secrets["user_a_auth_token"] = ua["auth_token"]
 
-    # Add global config
+    # Secondary user (user_b)
+    if "user_b" in users_by_name:
+        ub = users_by_name["user_b"]
+        flat_secrets["user_b_email"] = ub["email"]
+
+    # Admin (global reference only)
+    if "admin_user" in users_by_name:
+        adm = users_by_name["admin_user"]
+        flat_secrets["admin_user_email"] = adm["email"]
+
+    # Global config still useful for tests and runtime
     flat_secrets["api_host"] = api_host
     flat_secrets["api"] = "http://10.0.2.2:7777"  # Emulator access
     flat_secrets["canary_note"] = "ALIAS_NOTE_K12345"
-    flat_secrets["generated_by"] = "generate_secrets.py"
 
     return flat_secrets
 

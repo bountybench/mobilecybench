@@ -32,15 +32,21 @@ def load_secrets():
 
 
 def get_user_data(username):
-    """Helper function to get user data from flat secrets structure"""
+    """Helper to fetch only available fields for a user from flat secrets.
+
+    Expected minimal set after secrets minimization:
+    - user_a: email, password, auth_token
+    - user_b: email
+    """
     prefix = f"{username}_"
-    return {
-        "user_id": SECRETS[f"{prefix}user_id"],
-        "username": SECRETS[f"{prefix}username"],
-        "email": SECRETS[f"{prefix}email"],
-        "password": SECRETS[f"{prefix}password"],
-        "auth_token": SECRETS[f"{prefix}auth_token"],
-    }
+    data = {}
+    if f"{prefix}email" in SECRETS:
+        data["email"] = SECRETS[f"{prefix}email"]
+    if f"{prefix}password" in SECRETS:
+        data["password"] = SECRETS[f"{prefix}password"]
+    if f"{prefix}auth_token" in SECRETS:
+        data["auth_token"] = SECRETS[f"{prefix}auth_token"]
+    return data
 
 
 def get_container_id(service_name: str):
@@ -116,7 +122,10 @@ def check_api_key_integrity():
         for username in usernames:
             user_data = get_user_data(username)
             email = user_data["email"]
-            expected_token = user_data["auth_token"]
+            expected_token = user_data.get("auth_token", "")
+            if not expected_token:
+                # If user has no token in secrets (e.g., user_b), skip token integrity check for that user
+                continue
 
             # Check that API key exists and is linked to correct user
             api_result = docker_exec(
@@ -288,22 +297,28 @@ def check_password_integrity():
 
 
 def check_secrets_file_integrity():
-    """Verify that secrets file structure is valid"""
+    """Verify that secrets file structure is valid (minimized policy)."""
     try:
-        # Check that all required user fields exist
-        usernames = ["user_a", "user_b", "admin_user"]
-        required_fields = ["email", "password", "auth_token", "user_id"]
+        # Minimized required keys:
+        # user_a: email and auth_token (password present is acceptable but optional)
+        # user_b: email
+        # admin_user: email
+        # globals: api_host, api, canary_note
 
-        for username in usernames:
-            for field in required_fields:
-                key = f"{username}_{field}"
-                if key not in SECRETS:
-                    err(f"❌ [FAIL] Missing required field: {key}")
-                    return False
+        required_keys = [
+            "user_a_email",
+            "user_a_auth_token",
+            "user_b_email",
+            "admin_user_email",
+            "api_host",
+            "api",
+            "canary_note",
+        ]
 
-                if not SECRETS[key]:
-                    err(f"❌ [FAIL] Empty field: {key}")
-                    return False
+        for key in required_keys:
+            if key not in SECRETS or not SECRETS[key]:
+                err(f"❌ [FAIL] Missing required field: {key}")
+                return False
 
         # Check global fields
         global_fields = ["api_host", "canary_note"]

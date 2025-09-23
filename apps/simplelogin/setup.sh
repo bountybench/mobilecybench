@@ -5,12 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 METADATA_FILE="$SCRIPT_DIR/metadata.json"
 SECRETS_FILE="$SCRIPT_DIR/secrets.json"
 
-# Dynamic Docker Compose detection (v1/v2)
-if docker compose version >/dev/null 2>&1; then
-    DC="docker compose"
-else
-    DC="docker-compose"
-fi
+# Use modern Docker Compose v2
+DC="docker compose"
 
 echo "Installing required Python packages..."
 pip3 install requests uiautomator2 psycopg2-binary bcrypt 2>/dev/null || {
@@ -27,7 +23,7 @@ check_prerequisites() {
         return 1
     fi
     
-    # Check for docker compose (either v1 or v2)
+    # Check for docker compose
     if ! $DC version &> /dev/null; then
         echo "ERROR:" "docker compose not available. Please ensure Docker Compose is installed."
         return 1
@@ -110,7 +106,6 @@ wait_container_healthy() {
         if [[ "$status" == "no-health" ]]; then
             st="$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || true)"
             if [[ "$st" == "running" ]]; then
-                # Simple port check like Tindroid
                 if docker compose exec -T simplelogin-api nc -z localhost 7777 2>/dev/null; then
                     echo "INFO: API reachable without healthcheck"
                     return 0
@@ -239,22 +234,8 @@ build_and_install_app() {
         # Check if APK exists and is newer than installed version
         local apk_path="$SCRIPT_DIR/codebase/SimpleLogin/app/build/outputs/apk/fdroid/debug/app-fdroid-debug.apk"
         if [[ -f "$apk_path" ]]; then
-            echo "APK already built, checking if installation is current..."
-            
-            # Get installed version
-            local installed_version
-            installed_version=$(adb shell dumpsys package "$app_id" | grep "versionCode" | head -1 | cut -d'=' -f2 | tr -d ' ' || echo "")
-            
-            # Get APK version (simplified - just check if APK exists and is recent)
-            local apk_age
-            apk_age=$(find "$apk_path" -mtime -1 2>/dev/null && echo "recent" || echo "old")
-            
-            if [[ "$apk_age" == "recent" ]]; then
-                echo "APK is recent and app is installed - skipping rebuild"
-                return 0
-            else
-                echo "APK is outdated - rebuilding..."
-            fi
+            echo "APK already built - skipping rebuild"
+            return 0
         else
             echo "APK not found - rebuilding..."
         fi
@@ -275,8 +256,14 @@ build_and_install_app() {
         return 1
     fi
     
-    # Find and install the built APK
-    local apk_path="$SCRIPT_DIR/codebase/SimpleLogin/app/build/outputs/apk/fdroid/debug/app-fdroid-debug.apk"
+    # Get APK path from build process
+    local apk_path
+    if [[ -f "$SCRIPT_DIR/apk_path.txt" ]]; then
+        apk_path=$(cat "$SCRIPT_DIR/apk_path.txt")
+    else
+        echo "ERROR:" "APK path not found. Did the build succeed?"
+        return 1
+    fi
     
     if [[ ! -f "$apk_path" ]]; then
         echo "ERROR:" "Built APK not found at $apk_path"
@@ -364,6 +351,137 @@ verify_setup() {
     echo "Setup verification completed"
 }
 
+# Configure API URL without source edits.
+# Primary path: use adb root (available on most emulator images) to write SharedPreferences.
+# Hard gate: verify API_URL presence after write.
+configure_api_url() {
+    echo "Configuring API URL via device preferences..."
+    local app_id
+    app_id=$(jq -r '.app_id' "$METADATA_FILE")
+    local api_url
+    api_url=$(jq -r '.emulator_server' "$METADATA_FILE")
+    # Fallback if empty in metadata
+    if [[ -z "$api_url" || "$api_url" == "null" ]]; then
+        api_url="http://10.0.2.2:7777"
+    fi
+
+    # Ensure device ready
+    adb wait-for-device
+
+    # Try adb root (preferred, deterministic on emulator)
+    if adb root >/dev/null 2>&1; then
+        local pref_dir="/data/data/$app_id/shared_prefs"
+        local pref_file="io.simplelogin.android.xml"
+        # Write minimal prefs with API_URL only (non-destructive for runtime)
+        adb shell "mkdir -p $pref_dir && cat > $pref_dir/$pref_file" <<EOF
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+  <string name="API_URL">$api_url</string>
+  <boolean name="FORCE_DARK_MODE" value="false" />
+  <boolean name="SHOULD_LOCALLY_AUTHENTICATE" value="false" />
+</map>
+EOF
+        # Best-effort permissions; UID varies, chmod is sufficient for app to read
+        adb shell "chmod 600 $pref_dir/$pref_file" >/dev/null 2>&1 || true
+        adb shell am force-stop "$app_id" || true
+
+        # Hard verification gate: ensure key present
+        if adb shell run-as "$app_id" grep -q "API_URL" "$pref_dir/$pref_file"; then
+            echo "API URL pref set to $api_url"
+            return 0
+        else
+            echo "ERROR: API_URL not found after write"
+            return 1
+        fi
+    else
+        echo "adb root not available; skip device-side write (UI automation required)"
+        return 1
+    fi
+}
+
+# UI automation: set API URL via on-screen controls (no source edits, F-Droid package).
+# Gate A: action completes (we could detect by presence of key or proceeding to next step without errors).
+# Gate B: force-stop app to reload prefs.
+configure_api_url_ui() {
+    echo "Configuring API URL via UI automation (uiautomator2)..."
+    local app_id api_url
+    app_id=$(jq -r '.app_id' "$METADATA_FILE")
+    api_url=$(jq -r '.emulator_server' "$METADATA_FILE")
+    if [[ -z "$api_url" || "$api_url" == "null" ]]; then
+        api_url="http://10.0.2.2:7777"
+    fi
+    # Ensure uiautomator2 dependency is present
+    pip3 show uiautomator2 >/dev/null 2>&1 || pip3 install --quiet uiautomator2 || true
+    # Run the Python UI automation script
+    if python3 "$SCRIPT_DIR/uiauto_set_api_url.py" --url "$api_url" --pkg "$app_id"; then
+        # Gate B: force-stop to reload
+        adb shell am force-stop "$app_id" || true
+        # Gate A verify (best-effort)
+        local pref_dir="/data/data/$app_id/shared_prefs"
+        if adb shell run-as "$app_id" grep -q "API_URL" "$pref_dir/io.simplelogin.android.xml" 2>/dev/null; then
+            echo "UI automation set API_URL successfully"
+            return 0
+        fi
+        echo "Warning: UI succeeded but could not confirm API_URL key; proceeding"
+        return 0
+    fi
+    echo "UI automation failed"
+    return 1
+}
+
+# Wrapper: prefer UI automation; fallback to adb-root based seeding when available.
+configure_api_url_any() {
+    if configure_api_url_ui; then
+        echo "Configured API URL via UI automation"
+        return 0
+    fi
+    echo "UI automation failed or not available; trying adb-root fast path"
+    if configure_api_url; then
+        echo "Configured API URL via adb-root fast path"
+        return 0
+    fi
+    echo "ERROR: Could not configure API URL via UI or adb-root"
+    return 1
+}
+
+# Best-effort check for cleartext policy; if disabled, recommend HTTPS backend.
+check_cleartext_policy() {
+    echo "Checking app cleartext traffic policy (best-effort)..."
+    local app_id
+    app_id=$(jq -r '.app_id' "$METADATA_FILE")
+    # Try to detect via dumpsys (may not expose flag reliably). Non-fatal.
+    if adb shell dumpsys package "$app_id" | grep -iq "usesCleartextTraffic=false"; then
+        echo "Warning: App may disallow cleartext HTTP. Consider using HTTPS for emulator_server."
+    else
+        echo "Cleartext policy not found or allowed; proceeding."
+    fi
+}
+
+# Best-effort runtime verification that app attempts to talk to configured backend.
+verify_network_to_backend() {
+    echo "Verifying network to backend (best-effort)..."
+    local app_id
+    app_id=$(jq -r '.app_id' "$METADATA_FILE")
+    local api_url
+    api_url=$(jq -r '.emulator_server' "$METADATA_FILE")
+    if [[ -z "$api_url" || "$api_url" == "null" ]]; then
+        api_url="http://10.0.2.2:7777"
+    fi
+    local host_port
+    host_port=$(echo "$api_url" | sed -E 's#^[a-zA-Z]+://([^/]+).*#\1#')
+
+    # Clear existing logs, launch app, wait briefly, then scan logcat for host/port hints.
+    adb logcat -c || true
+    adb shell monkey -p "$app_id" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+    sleep 3
+    if adb logcat -d | grep -E "${host_port//./\\.}" >/dev/null 2>&1; then
+        echo "Detected references to $host_port in logcat; network likely configured."
+        return 0
+    fi
+    echo "Warning: Could not confirm app network to $host_port via logcat (non-fatal)."
+    return 0
+}
+
 ensure_submodule_ready() {
     echo "Ensuring submodule is ready..."
     
@@ -401,7 +519,10 @@ main() {
     setup_emulator
     setup_backend
     seed_test_data
-    build_and_install_app
+  build_and_install_app
+  configure_api_url_any || { echo "ERROR: Failed to configure API URL"; exit 1; }
+  check_cleartext_policy || true
+  verify_network_to_backend || true
     smoke_test
     verify_setup
     

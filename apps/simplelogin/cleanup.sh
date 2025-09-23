@@ -7,12 +7,8 @@ echo "==================="
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 METADATA_FILE="$SCRIPT_DIR/metadata.json"
 
-# Dynamic Docker Compose detection (v1/v2)
-if docker compose version >/dev/null 2>&1; then
-    DC="docker compose"
-else
-    DC="docker-compose"
-fi
+# Use modern Docker Compose v2
+DC="docker compose"
 
 echo "Uninstalling SimpleLogin app..."
 if [ -f "$METADATA_FILE" ]; then
@@ -59,6 +55,10 @@ rm -f *_results.json 2>/dev/null || true
 echo "Removing log files..."
 find . -type f -name "*.log" -delete 2>/dev/null || true
 find . -type f -name "*.tmp" -delete 2>/dev/null || true
+
+echo "Removing UI dump files..."
+rm -f "ui.xml" 2>/dev/null || true
+find . -name "*.xml" -not -path "./codebase/*" -delete 2>/dev/null || true
 
 # Only remove codebase if explicitly requested (for full reset)
 if [[ "${NUKE_SOURCE:-0}" == "1" ]] && [ -d "codebase" ]; then

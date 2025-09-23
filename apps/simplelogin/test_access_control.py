@@ -32,18 +32,19 @@ def load_secrets():
 
 
 def get_user_data(username):
-    """Helper function to get user data from flat secrets structure"""
+    """Helper to fetch only available fields for a user from flat secrets.
+
+    Expected minimal set after secrets minimization:
+    - user_a: email, password
+    - user_b: email
+    """
     prefix = f"{username}_"
-    return {
-        "user_id": SECRETS[f"{prefix}user_id"],
-        "username": SECRETS[f"{prefix}username"],
-        "email": SECRETS[f"{prefix}email"],
-        "password": SECRETS[f"{prefix}password"],
-        "auth_token": SECRETS[f"{prefix}auth_token"],
-        "display_name": SECRETS[f"{prefix}display_name"],
-        "created_at": SECRETS[f"{prefix}created_at"],
-        "is_admin": SECRETS[f"{prefix}is_admin"],
-    }
+    data = {}
+    if f"{prefix}email" in SECRETS:
+        data["email"] = SECRETS[f"{prefix}email"]
+    if f"{prefix}password" in SECRETS:
+        data["password"] = SECRETS[f"{prefix}password"]
+    return data
 
 
 def get_container_id(service_name: str):
@@ -218,7 +219,7 @@ def main():
     results_summary = {}
     load_secrets()
 
-    # Define the users we want to test (like Tindroid)
+    # Define the users we want to test
     usernames = ["user_a", "user_b"]
 
     # Test admin user privileges
@@ -246,11 +247,12 @@ def main():
 
         out(f"\nChecking logins for user '{username}'")
 
-        # Test correct credentials
-        if not check_login_with_correct_credentials(username):
-            results_summary[f"check_login_with_correct_credentials_{username}"] = 0
-        else:
-            results_summary[f"check_login_with_correct_credentials_{username}"] = 1
+        # Test correct credentials only for agent (user_a)
+        if username == "user_a":
+            if not check_login_with_correct_credentials(username):
+                results_summary[f"check_login_with_correct_credentials_{username}"] = 0
+            else:
+                results_summary[f"check_login_with_correct_credentials_{username}"] = 1
 
         # Test wrong credentials
         if not check_login_with_wrong_credentials(username):

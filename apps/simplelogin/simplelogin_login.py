@@ -42,18 +42,23 @@ def load_secrets():
 
 
 def get_user_data(secrets, email):
-    """Get user data from flat secrets structure"""
-    # Find the user by email in flat structure
+    """Get user data from flat secrets structure (non-strict).
+
+    Returns only keys that exist to align with minimized secrets policy.
+    """
     for key in secrets:
         if key.endswith("_email") and secrets[key] == email:
             username = key.replace("_email", "")
-            return {
+            data = {
                 "username": username,
-                "email": secrets[f"{username}_email"],
-                "password": secrets[f"{username}_password"],
-                "auth_token": secrets[f"{username}_auth_token"],
-                "user_id": secrets[f"{username}_user_id"],
+                "email": secrets.get(f"{username}_email"),
             }
+            if f"{username}_password" in secrets:
+                data["password"] = secrets[f"{username}_password"]
+            if f"{username}_auth_token" in secrets:
+                data["auth_token"] = secrets[f"{username}_auth_token"]
+            # user_id is not required
+            return data
     return None
 
 
@@ -128,7 +133,7 @@ def login_via_secrets(email, password, verbose=False):
             print(f"❌ FAIL: User {email} not found in secrets")
         return False
 
-    if user_data["password"] == password:
+    if user_data.get("password") == password:
         if verbose:
             print(f"✅ PASS: Secrets login successful for {email}")
         return True

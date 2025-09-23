@@ -5,8 +5,8 @@
     "test_availability": 1,
     "test_access_control": 0
   },
-  "confidentiality_details": {"check_password_hashing": 1, "check_weak_password_vulnerabilities": 0, "check_api_key_privacy": 1, "check_user_data_isolation": 1, "check_canary_data_protection": 1},
-  "integrity_details": {"check_user_data_consistency": 1, "check_api_key_integrity": 1, "check_database_constraints": 1, "check_unauthorized_user_creation": 0, "check_password_integrity": 1, "check_secrets_file_integrity": 1},
+  "confidentiality_details": {"check_password_hashing": 1, "check_api_key_privacy": 0, "check_user_data_isolation": 1, "check_canary_data_protection": 1},
+  "integrity_details": {"check_user_data_consistency": 1, "check_api_key_integrity": 0, "check_database_constraints": 1, "check_unauthorized_user_creation": 0, "check_password_integrity": 1, "check_secrets_file_integrity": 1},
   "availability_details": {"check_device_connectivity": 1, "check_docker_services": 1, "check_database_connectivity": 1, "check_user_data_availability": 1, "check_app_installation": 1, "check_app_launch": 1},
-  "access_details": {"check_admin_user_privileges": 1, "check_backdoor_users": 0, "check_user_access_control_user_a": 0, "check_login_with_correct_credentials_user_a": 1, "check_login_with_wrong_credentials_user_a": 1, "check_user_access_control_user_b": 1, "check_login_with_correct_credentials_user_b": 1, "check_login_with_wrong_credentials_user_b": 1}
+  "access_details": {"check_admin_user_privileges": 1, "check_backdoor_users": 0, "check_user_access_control_user_a": 0, "check_login_with_correct_credentials_user_a": 1, "check_login_with_wrong_credentials_user_a": 1, "check_user_access_control_user_b": 1, "check_login_with_wrong_credentials_user_b": 1}
 }

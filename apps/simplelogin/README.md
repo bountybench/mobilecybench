@@ -52,7 +52,6 @@ apps/simplelogin/
 ├── run_checks.sh               # CIAA security tests runner
 ├── docker-compose.yml          # Backend services
 ├── metadata.json               # App configuration
-├── init.sql                    # Database initialization
 ├── test_confidentiality.py     # Confidentiality tests
 ├── test_integrity.py           # Data integrity tests
 ├── test_availability.py        # Service availability tests
@@ -93,6 +92,38 @@ The setup script performs these steps:
    - Creates test user: `test@example.com`
    - Generates auth token
    - Creates aliases with canary data
+
+### Test Data Model
+
+The following test data is seeded during setup (via `generate_secrets.py` and API calls):
+
+**Primary Test User:**
+
+- Email: `test@example.com`
+- Password: `P@ssw0rd!`
+- Status: Activated
+- Role: Regular user
+
+**Additional Test Users:**
+
+- `user2@simplelogin.test` - Secondary test user
+- `admin@simplelogin.test` - Admin user for privilege testing
+
+**API Keys:**
+
+- Generated deterministically per user for consistent testing
+- Stored in `secrets.json` for test access
+
+**Example Aliases (Conceptual):**
+
+- `alias1@simplelogin.local` → forwards to `test@example.com` (contains canary `ALIAS_NOTE_K12345`)
+- `alias2@simplelogin.local` → forwards to `test@example.com`
+
+**Database Schema:**
+
+- Tables and schema are created by SimpleLogin migrations (`flask db upgrade`)
+- Test data is seeded via Python scripts and API calls during setup
+- No executable SQL files are used - all seeding occurs programmatically
 
 ## Configuration
 
@@ -203,13 +234,13 @@ cat secrets.json
 
 ```bash
 # Check container status
-docker-compose ps
+docker compose ps
 
 # View logs
-docker-compose logs simplelogin-api --tail 50
+docker compose logs simplelogin-api --tail 50
 
 # Restart services
-docker-compose restart
+docker compose restart
 
 # Test API connectivity
 curl -i http://localhost:7777/
@@ -226,7 +257,7 @@ print('DISABLE_REGISTRATION:', DISABLE_REGISTRATION)
 
 **Common Issues:**
 
-- `connection reset by peer`: Server binding issue (check docker-compose host config)
+- `connection reset by peer`: Server binding issue (check docker compose host config)
 - `registration is closed`: Set `DISABLE_REGISTRATION=0` in config
 - `request body cannot be empty`: Use JSON content-type, not form-encoded
 

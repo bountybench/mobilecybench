@@ -235,52 +235,14 @@ build_app() {
     fi
     
     log_success "APK built successfully: $apk_path"
-    echo "$apk_path" > "$SCRIPT_DIR/apk_path.txt"
+    # Make path absolute for use from setup.sh
+    local absolute_apk_path
+    absolute_apk_path="$(pwd)/$apk_path"
+    echo "$absolute_apk_path" > "$SCRIPT_DIR/apk_path.txt"
     
     cd "$SCRIPT_DIR"
 }
 
-install_app() {
-    log_info "Installing SimpleLogin app..."
-    
-    # Check if device is connected
-    if ! adb devices | grep -q "device\|emulator"; then
-        log_error "No Android device/emulator connected"
-        return 1
-    fi
-    
-    # Wait for device to be ready
-    adb wait-for-device
-    
-    # Get APK path
-    local apk_path
-    if [[ -f "$SCRIPT_DIR/apk_path.txt" ]]; then
-        apk_path=$(cat "$SCRIPT_DIR/apk_path.txt")
-    else
-        log_error "APK path not found. Did the build succeed?"
-        return 1
-    fi
-    
-    # Install APK
-    log_info "Installing APK: $apk_path"
-    if ! adb install -r "$apk_path"; then
-        log_error "APK installation failed"
-        return 1
-    fi
-    
-    # Verify installation
-    local app_id
-    app_id=$(jq -r '.app_id' "$METADATA_FILE")
-    
-    if adb shell pm list packages | grep -q "$app_id"; then
-        local version
-        version=$(adb shell dumpsys package "$app_id" | grep "versionName" | head -1 | cut -d'=' -f2)
-        log_success "App installed successfully: $app_id version $version"
-    else
-        log_error "App installation verification failed"
-        return 1
-    fi
-}
 
 verify_installation() {
     log_info "Verifying app installation..."
@@ -309,7 +271,7 @@ main() {
     log_info "Starting SimpleLogin Android app setup..."
     
     check_prerequisites || return 1
-    configure_debug_build || return 1
+    # Use stock app without source modifications for real-world fidelity
     setup_environment || return 1
     build_app || return 1
     
