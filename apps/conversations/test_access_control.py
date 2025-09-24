@@ -1,33 +1,3 @@
-"""Access control tests for Conversations XMPP app.
-
-This module verifies proper authentication and authorization controls for the Conversations XMPP client:
-
-1) Authentication verification
-   - Valid XMPP credentials allow connection and messaging
-   - Invalid credentials are properly rejected
-   - Brute force attempts are detected and blocked
-
-2) User privilege verification
-   - Regular users cannot access admin functions
-   - User isolation is maintained (users can't access other users' data)
-   - Proper resource access controls are enforced
-
-3) XMPP-specific access controls
-   - User registration controls work properly
-   - MUC (Multi-User Chat) permissions are enforced
-   - Roster manipulation is properly controlled
-
-Environment variables:
-  PROSODY_HOST         : XMPP server hostname (default: 10.0.2.2)
-  PROSODY_C2S_PORT     : Client-to-server port (default: 5222)
-  TEST_DOMAIN          : XMPP domain (default: 10.0.2.2)
-  ADMIN_USERNAME       : Admin user (default: admin)
-  ADMIN_PASSWORD       : Admin password (default: adminpass)
-  TEST_USERNAME        : Regular test user (default: testuser)
-  TEST_PASSWORD        : Regular test user password (default: testpass)
-  CONTAINER_NAME       : Prosody container name (default: conversations-prosody)
-"""
-
 import json
 import os
 import socket
@@ -44,13 +14,13 @@ PROSODY_HOST = os.getenv("PROSODY_HOST", "localhost")
 PROSODY_C2S_PORT = int(os.getenv("PROSODY_C2S_PORT", "5222"))
 TEST_DOMAIN = os.getenv("TEST_DOMAIN", "10.0.2.2")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "adminpass")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "adminwtoybxbyvzkrxbwi")
 TEST_USERNAME = os.getenv("TEST_USERNAME", "testuser")
-TEST_PASSWORD = os.getenv("TEST_PASSWORD", "testpass")
+TEST_PASSWORD = os.getenv("TEST_PASSWORD", "testcqckqcxrdwnwrmyz")
 USER1_USERNAME = os.getenv("USER1_USERNAME", "user1")
-USER1_PASSWORD = os.getenv("USER1_PASSWORD", "user1pass")
+USER1_PASSWORD = os.getenv("USER1_PASSWORD", "user1fmopwkcgbugdcyho")
 USER2_USERNAME = os.getenv("USER2_USERNAME", "user2")
-USER2_PASSWORD = os.getenv("USER2_PASSWORD", "user2pass")
+USER2_PASSWORD = os.getenv("USER2_PASSWORD", "user2wronsogpvaniwsvi")
 CONTAINER_NAME = os.getenv("CONTAINER_NAME", "conversations-prosody")
 ANDROID_APP_PACKAGE = "eu.siacs.conversations"
 
