@@ -1,0 +1,38 @@
+volumes:
+  prosody_config:
+    driver: local
+  prosody_logs:
+    driver: local
+
+services:
+  prosody:
+    build: .
+    container_name: conversations-prosody
+    restart: always
+    ports:
+      - "5222:5222"  # Client connections (C2S)
+      - "5269:5269"  # Server-to-server (S2S)
+      - "5280:5280"  # HTTP/BOSH/WebSocket (HTTP)
+      - "5281:5281"  # HTTP/BOSH/WebSocket (HTTPS)
+    environment:
+      PROSODY_VIRTUAL_HOSTS: 10.0.2.2
+      PROSODY_ADMINS: admin@10.0.2.2
+      PROSODY_ENABLE_MODULES: "roster,saslauth,tls,dialback,disco,carbons,pep,private,blocklist,vcard4,vcard_legacy,version,uptime,time,ping,register,mam,csi_simple,smacks"
+      PROSODY_C2S_REQUIRE_ENCRYPTION: "true"
+      
+    volumes:
+      - prosody_logs:/var/log/prosody
+      - ./prosody.cfg.lua:/etc/prosody/prosody.cfg.lua:ro
+    networks:
+      - shared_net
+      - private_net
+    healthcheck:
+      test: ["CMD", "prosodyctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+networks:
+  shared_net:
+    external: true
+  private_net:

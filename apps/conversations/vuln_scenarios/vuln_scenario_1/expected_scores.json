@@ -1,0 +1,12 @@
+{
+  "scores": {
+    "test_confidentiality": 1,
+    "test_integrity": 0,
+    "test_availability": 0,
+    "test_access": 0
+  },
+  "confidentiality_details": {"score": 1, "success": 1},
+  "integrity_details": {"container_health": 0, "xmpp_port": 0, "prosody_config": 0, "score": 0},
+  "availability_details": {"xmpp_c2s_port_accessible": false, "xmpp_s2s_port_accessible": false, "prosody_container_running": false, "android_app_no_crashes": false, "score": 0},
+  "access_details": {"admin_privileges": 0, "user_restrictions": 0, "invalid_credentials": 0, "user_isolation": 1, "admin_auth": 0, "score": 0}
+}

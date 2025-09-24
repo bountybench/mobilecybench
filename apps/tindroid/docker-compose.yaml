@@ -52,3 +52,4 @@ networks:
     driver: bridge
     internal: true
   shared_net:
+    external: true

@@ -17,6 +17,8 @@ jobs:
       sdk: ${{ steps.get-sdk-java.outputs.sdk }}
       java: ${{ steps.get-sdk-java.outputs.java }}
       system_image: ${{ steps.get-sdk-java.outputs.system_image }}
+      has_run_checks: ${{ steps.check-run-checks.outputs.has_run_checks }}
+      setup_modes: ${{ steps.setup-strategy.outputs.setup_modes }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -83,8 +85,8 @@ jobs:
 
           sdk=$(jq -r '.sdk' $metadata)
           if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
-              echo "${ERROR} Could not extract SDK from $metadata. Use default (28)."
-              sdk=28
+              echo "ERROR: Could not extract SDK from $metadata."
+              exit 1
           else 
               echo "SDK: $sdk"
           fi
@@ -107,6 +109,80 @@ jobs:
           echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
           echo "java=$java" >> "$GITHUB_OUTPUT"
           echo "system_image=$system_image" >> "$GITHUB_OUTPUT"
+
+      - name: Check if run_checks.sh exists
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        id: check-run-checks
+        run: |
+          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
+          if [ -f "$dir/run_checks.sh" ]; then
+            echo "run_checks.sh found in $dir"
+            echo "has_run_checks=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_checks.sh not found in $dir - will run simplified CI"
+            echo "has_run_checks=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine app setup strategy
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        id: setup-strategy
+        run: |
+          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
+          
+          # Check for both setup scripts
+          has_source=false
+          has_apklink=false
+          
+          if [ -f "$dir/setup_app_source.sh" ]; then
+            has_source=true
+            echo "Found setup_app_source.sh"
+          fi
+          
+          if [ -f "$dir/setup_app_apklink.sh" ]; then
+            has_apklink=true
+            echo "Found setup_app_apklink.sh"
+          fi
+          
+          # Validate at least one exists
+          if [ "$has_source" = false ] && [ "$has_apklink" = false ]; then
+            echo "ERROR: Neither setup_app_source.sh nor setup_app_apklink.sh found in $dir"
+            exit 1
+          fi
+          
+          # Determine which setup modes to test based on script existence and modifications
+          echo "has source: $has_source, has apklink: $has_apklink"
+          
+          # Check which specific scripts were modified
+          source_modified=$(git diff --name-only origin/main...HEAD | grep -q "$dir/setup_app_source.sh" && echo "true" || echo "false")
+          apklink_modified=$(git diff --name-only origin/main...HEAD | grep -q "$dir/setup_app_apklink.sh" && echo "true" || echo "false")
+          
+          echo "source modified: $source_modified, apklink modified: $apklink_modified"
+          
+          if [ "$has_source" = true ] && [ "$has_apklink" = true ]; then
+            # Both scripts exist - determine modes based on modifications
+            if [ "$source_modified" = "true" ] && [ "$apklink_modified" = "true" ]; then
+              echo "Both setup scripts modified - testing both modes"
+              setup_modes='["source", "apklink"]'
+            elif [ "$source_modified" = "true" ]; then
+              echo "Source script modified - using source mode"
+              setup_modes='["source"]'
+            elif [ "$apklink_modified" = "true" ]; then
+              echo "APK link script modified - using apklink mode"
+              setup_modes='["apklink"]'
+            else
+              echo "Both scripts available and unmodified - preferring APK link for efficiency"
+              setup_modes='["apklink"]'
+            fi
+          elif [ "$has_source" = true ] && [ "$has_apklink" = false ]; then
+            echo "Only source setup available - using source mode"
+            setup_modes='["source"]'
+          elif [ "$has_source" = false ] && [ "$has_apklink" = true ]; then
+            echo "Only APK link setup available - using apklink mode"
+            setup_modes='["apklink"]'
+          fi
+          
+          echo "Selected setup modes: $setup_modes"
+          echo "setup_modes=$setup_modes" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -133,14 +209,15 @@ jobs:
             echo "metadata.json not modified in $dir. Skipping test."
           fi      
 
-  test:
+  test_full:
     needs: setup
-    if: needs.setup.outputs.should_exit != 'true'
+    if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_run_checks == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     strategy:
       matrix:
         test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
+        setup_mode: ${{ fromJson(needs.setup.outputs.setup_modes) }}
       fail-fast: false  
       max-parallel: 3 
     
@@ -281,6 +358,43 @@ jobs:
             fi
           }
 
+          verify_shared_net_connectivity() {
+            # Verify shared_net connectivity after containers are started
+            echo "Verifying shared_net connectivity..."
+            if [ -f "metadata.json" ]; then
+              app_server=$(jq -r '.app_server // empty' "metadata.json")
+              if [ -n "$app_server" ]; then
+                echo "Testing connectivity to: $app_server"
+                
+                # Strip protocol prefix if present (http://, https://)
+                server_clean=$(echo "$app_server" | sed 's|^[^:]*://||')
+                echo "  Raw app_server: $app_server"
+                echo "  Cleaned server: $server_clean"
+                
+                # Parse host and port - require explicit port
+                if [[ "$server_clean" == *":"* ]]; then
+                  host=$(echo "$server_clean" | cut -d':' -f1)
+                  port=$(echo "$server_clean" | cut -d':' -f2)
+                  echo "  Parsed host: $host"
+                  echo "  Parsed port: $port"
+                else
+                  echo "ERROR: No port specified in app_server: $app_server"
+                  exit 1
+                fi
+                
+                echo "  Testing connection to $host:$port via shared_net..."
+                docker run --rm --network=shared_net alpine:latest \
+                  sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
+                
+                echo "shared_net connectivity verified"
+              else
+                echo "No app_server defined in metadata.json, skipping connectivity check"
+              fi
+            else
+              echo "No metadata.json found, skipping connectivity check"
+            fi
+          }
+
           EOF
           chmod +x /tmp/shared_functions.sh
 
@@ -332,17 +446,29 @@ jobs:
           echo "dir=\"$modified_dir\"" >> test_checks.sh
           echo "test_type=\"${{ matrix.test_type }}\"" >> test_checks.sh
 
+
           case "${{ matrix.test_type }}" in
             "baseline")
               cat <<'EOF' >> test_checks.sh
 
+          # Create dummy file for test confidentiality
+          cat > "/tmp/dummy_log.log" <<'DUMMY_EOF'
+          # Dummy log file for testing purposes
+          # This file contains no actual secrets or sensitive information
+          timestamp=2024-01-01T00:00:00Z
+          event=test_event
+          message=dummy test message
+          status=ok
+          DUMMY_EOF
+
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
+          verify_shared_net_connectivity
           adb logcat -c
           
           echo "Running baseline checks..."
-          ./run_checks.sh
+          ./run_checks.sh "/tmp/dummy_log.log"
           
           if ! jq -e '[.. | select(type == "number")] | all(. == 1)' scores.json > /dev/null; then
             echo "ERROR: Baseline scores.json does not contain all 1s."
@@ -365,6 +491,7 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
+          verify_shared_net_connectivity
           adb logcat -c
           
           echo "Creating vulnerable scenario 0..."
@@ -392,6 +519,16 @@ jobs:
             "vuln_scenario_1")
               cat <<'EOF' >> test_checks.sh
 
+          # Create dummy file for test confidentiality
+          cat > "/tmp/dummy_log.log" <<'DUMMY_EOF'
+          # Dummy log file for testing purposes
+          # This file contains no actual secrets or sensitive information
+          timestamp=2024-01-01T00:00:00Z
+          event=test_event
+          message=dummy test message
+          status=ok
+          DUMMY_EOF
+
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
@@ -399,6 +536,7 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
+          verify_shared_net_connectivity
           adb logcat -c
           
           echo "Creating vulnerable scenario 1..."
@@ -407,7 +545,7 @@ jobs:
           cd -
           
           echo "Running checks..."
-          ./run_checks.sh
+          ./run_checks.sh "/tmp/dummy_log.log"
           
           score1="vuln_scenarios/vuln_scenario_1/expected_scores.json"
           score2="scores.json"
@@ -427,11 +565,15 @@ jobs:
           
           chmod +x test_checks.sh
 
-      - name: Create build source script
+      - name: Create build script
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
         run: |
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          setup_mode="${{ matrix.setup_mode }}"
 
-          cat << 'EOF' > build_source.sh
+          cat << 'EOF' > build_script.sh
           #!/bin/bash
           set -e
           git config --global --add safe.directory '*'
@@ -439,26 +581,35 @@ jobs:
           source /tmp/shared_functions.sh
           check_server_ready
           EOF
-          echo "dir=\"$modified_dir\"" >> build_source.sh
-          cat <<'EOF' >> build_source.sh
+          echo "dir=\"$modified_dir\"" >> build_script.sh
+          echo "setup_mode=\"$setup_mode\"" >> build_script.sh
+          cat <<'EOF' >> build_script.sh
           cd "$dir"
           checkout_commit "$dir"
 
-          required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
-          echo "Checking for required scripts..."
-          for script in "${required_scripts[@]}"; do
+          required_files=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
+
+          echo "Setup mode: $setup_mode"
+          echo "Checking for required files..."
+          for script in "${required_files[@]}"; do
             if [[ ! -f "$script" ]]; then
               echo "ERROR: Required script '$script' not found."
               exit 1
             fi
           done
 
-          echo "Setting up app from source..."
-          ./setup_app_source.sh
+          # Run appropriate setup script based on mode
+          if [ "$setup_mode" = "apklink" ]; then
+            echo "Setting up app from APK link."
+            ./setup_app_apklink.sh
+          else
+            echo "Setting up app from source..."
+            ./setup_app_source.sh
+          fi
           EOF
-          chmod +x build_source.sh
+          chmod +x build_script.sh
           free -h
-          ./build_source.sh
+          ./build_script.sh
                 
       - name: Stabilize runner after build
         run: |
@@ -525,8 +676,6 @@ jobs:
 
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
@@ -538,19 +687,11 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none -writable-system
           disable-animations: true
           script: |
-            adb root
-            SDK_VERSION=${{ needs.setup.outputs.sdk }}; if [ "$SDK_VERSION" -gt 28 ]; then adb shell avbctl disable-verification; else adb disable-verity; fi
-            adb reboot
-            adb wait-for-device
-            adb root
-            adb remount
-            adb shell mount | grep -E "(system|vendor|product)"
+            utils/android_emulator_ready.sh --remount
             ./test_checks.sh
 
       - name: Run emulator test with action (baseline and vuln_scenario_1)
         if: matrix.test_type != 'vuln_scenario_0'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
@@ -562,6 +703,328 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
           disable-animations: true
           script: ./test_checks.sh
+
+      - name: Display disk space after tests
+        if: always()
+        run: df -h
+
+      - name: Docker Cleanup after tests
+        if: always()
+        run: |
+          docker system prune -af
+
+      - name: Display disk space after cleanup
+        if: always()
+        run: df -h
+
+  test_simple:
+    needs: setup
+    if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_run_checks == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        setup_mode: ${{ fromJson(needs.setup.outputs.setup_modes) }}
+      fail-fast: false  
+      max-parallel: 3
+    
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Disable Git ownership check
+        run: git config --global --add safe.directory '*'
+
+      - name: Create shared functions
+        run: |
+          cat << 'EOF' > /tmp/shared_functions.sh
+          checkout_commit() {
+            pwd
+            if [[ -f "metadata.json" ]]; then
+              commit=$(jq -r '.["commit_version"]' "metadata.json")
+              
+              if [[ -n "$commit" ]]; then
+                echo "Found commit: $commit"
+
+                git submodule update --init codebase
+                echo "Cleaning repository to remove all changes and untracked files..."
+
+                cd "codebase" || exit 1
+
+                echo "Cleaning up the codebase"
+                git reset --hard HEAD
+                sudo git clean -fdx
+
+                # Update the submodule and checkout the commit
+                git checkout "$commit"
+
+                cd - || exit 1
+              else
+                echo "No commit version found in metadata.json"
+                exit 1
+              fi
+            else
+              echo "No metadata.json file found"
+              exit 1
+            fi
+          }
+
+          verify_shared_net_connectivity() {
+            # Verify shared_net connectivity after containers are started
+            echo "Verifying shared_net connectivity..."
+            if [ -f "metadata.json" ]; then
+              app_server=$(jq -r '.app_server // empty' "metadata.json")
+              if [ -n "$app_server" ]; then
+                echo "Testing connectivity to: $app_server"
+                
+                # Strip protocol prefix if present (http://, https://)
+                server_clean=$(echo "$app_server" | sed 's|^[^:]*://||')
+                echo "  Raw app_server: $app_server"
+                echo "  Cleaned server: $server_clean"
+                
+                # Parse host and port - require explicit port
+                if [[ "$server_clean" == *":"* ]]; then
+                  host=$(echo "$server_clean" | cut -d':' -f1)
+                  port=$(echo "$server_clean" | cut -d':' -f2)
+                  echo "  Parsed host: $host"
+                  echo "  Parsed port: $port"
+                else
+                  echo "ERROR: No port specified in app_server: $app_server"
+                  exit 1
+                fi
+                
+                echo "  Testing connection to $host:$port via shared_net..."
+                docker run --rm --network=shared_net alpine:latest \
+                  sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
+                
+                echo "shared_net connectivity verified"
+              else
+                echo "No app_server defined in metadata.json, skipping connectivity check"
+              fi
+            else
+              echo "No metadata.json found, skipping connectivity check"
+            fi
+          }
+          EOF
+          chmod +x /tmp/shared_functions.sh
+
+          modified_dirs=${{ needs.setup.outputs.modified_dirs }}
+          echo "Initialize submodule for $modified_dirs"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$modified_dirs"
+          
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: "${{ needs.setup.outputs.java }}"
+          cache: gradle
+            
+      - name: Setup Python 3.12 environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpulse0
+          python -m pip install --upgrade pip -q
+          pip install -r requirements.txt -q
+          export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
+
+      - name: Create Docker Network
+        run: docker network create shared_net || true
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Create simple test script
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          
+          cat << 'EOF' > simple_test.sh
+          #!/bin/bash
+          set -e
+          source /tmp/shared_functions.sh
+          adb devices
+          EOF
+          
+          echo "dir=\"$modified_dir\"" >> simple_test.sh
+          cat <<'EOF' >> simple_test.sh
+          
+          cd "$dir"
+          echo "Simple APK build and install test - no vulnerability scenarios"
+          
+          # Check packages before setup
+          packages_before=$(adb shell pm list packages | wc -l)
+          echo "Packages before setup: $packages_before"
+          
+          echo "Running setup..."
+          ./setup.sh
+          verify_shared_net_connectivity
+          adb logcat -c
+          
+          # Check packages after setup
+          packages_after=$(adb shell pm list packages | wc -l)
+          echo "Packages after setup: $packages_after"
+          
+          if [ "$packages_after" -gt "$packages_before" ]; then
+            echo "SUCCESS: Package count increased ($packages_before -> $packages_after) - app installation verified"
+          elif [ "$packages_after" -eq "$packages_before" ]; then
+            echo "WARNING: Package count unchanged - setup may not have installed new packages"
+            echo "This could be expected if app was already installed or uses system components"
+          else
+            echo "ERROR: Package count decreased ($packages_before -> $packages_after) - unexpected behavior"
+            exit 1
+          fi
+          
+          echo "Cleaning up..."
+          ./cleanup.sh
+          EOF
+          
+          chmod +x simple_test.sh
+
+      - name: Create build script
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          setup_mode="${{ matrix.setup_mode }}"
+
+          cat << 'EOF' > build_script.sh
+          #!/bin/bash
+          set -e
+          git config --global --add safe.directory '*'
+          
+          source /tmp/shared_functions.sh
+          EOF
+          echo "dir=\"$modified_dir\"" >> build_script.sh
+          echo "setup_mode=\"$setup_mode\"" >> build_script.sh
+          cat <<'EOF' >> build_script.sh
+          cd "$dir"
+          checkout_commit "$dir"
+
+          required_scripts=("setup.sh" "cleanup.sh")
+          fi
+
+          echo "Setup mode: $setup_mode"
+          echo "Checking for required scripts..."
+          for script in "${required_scripts[@]}"; do
+            if [[ ! -f "$script" ]]; then
+              echo "ERROR: Required script '$script' not found."
+              exit 1
+            fi
+          done
+
+          # Run appropriate setup script based on mode
+          if [ "$setup_mode" = "apklink" ]; then
+            echo "Setting up app from APK link."
+            ./setup_app_apklink.sh
+          else
+            echo "Setting up app from source..."
+            ./setup_app_source.sh
+          fi
+          EOF
+          chmod +x build_script.sh
+          free -h
+          ./build_script.sh
+                
+      - name: Stabilize runner after build
+        run: |
+          echo "Memory usage immediately after build:"
+          free -h
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir" || true
+          
+          (cd codebase && ./gradlew --stop) || true
+          pkill -f GradleDaemon || true
+          pkill -f kotlin.daemon.KotlinCompileDaemon || true
+          jps -v | grep -E 'GradleDaemon|Kotlin' || true
+          echo "Memory usage after stopping Gradle daemons:"
+          free -h
+          set -euo pipefail
+          THRESHOLD=4096 # 4GB
+          MAX_TRIES=24  # 2 minutes at 5s interval
+          TRIES=0
+          INTERVAL=5
+          echo "Waiting for available memory to exceed ${THRESHOLD}MB..."
+          while ((TRIES < MAX_TRIES)); do
+            AVAILABLE_MEM=$(awk '/MemAvailable/ { printf "%d", $2/1024 }' /proc/meminfo)
+            echo "Current available memory on attempt ${TRIES}/${MAX_TRIES}: ${AVAILABLE_MEM}MB"
+            if (( AVAILABLE_MEM > THRESHOLD )); then
+              echo "Memory threshold of ${THRESHOLD}MB crossed. Continuing..."
+              break
+            fi
+            echo "Retrying in ${INTERVAL} seconds..."
+            (( ++TRIES ))
+            sleep "${INTERVAL}"
+          done
+          if (( TRIES >= MAX_TRIES )); then
+            echo "Timeout waiting for memory to exceed ${THRESHOLD}MB"; 
+            exit 1
+          fi
+          echo "Final memory usage:"
+          free -h
+
+      - name: Pre-emulator Resource Check
+        run: |
+          echo "=== Pre-Emulator Resource Check ==="
+          
+          # Check if CPU usage is acceptable
+          CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//' | cut -d'.' -f1)
+          if [ "$CPU_USAGE" -gt 25 ]; then
+            echo "WARNING: CPU usage too high ($CPU_USAGE%). Emulator may hang."
+            echo "Top processes:"
+            ps aux --sort=-%cpu | head -10
+            
+            # Try to kill more processes
+            sudo pkill -f chrome || true
+            sudo pkill -f firefox || true
+            sleep 10
+          fi
+          
+          # Check memory
+          AVAILABLE_MEM=$(free -m | awk 'NR==2{printf "%.0f", $7/1024}')
+          if [ "$AVAILABLE_MEM" -lt 2 ]; then
+            echo "WARNING: Low available memory (${AVAILABLE_MEM}GB)"
+            free -h
+          fi
+          
+          echo "System ready for emulator. CPU: ${CPU_USAGE}%, Available Memory: ${AVAILABLE_MEM}GB"
+
+      - name: Run emulator simple test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ needs.setup.outputs.sdk }}
+          arch: x86_64
+          target: ${{ needs.setup.outputs.system_image }} 
+          profile: pixel_2
+          ram-size: 2048    
+          force-avd-creation: true
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
+          disable-animations: true
+          script: |
+            utils/android_emulator_ready.sh
+            ./simple_test.sh
 
       - name: Display disk space after tests
         if: always()

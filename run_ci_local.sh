@@ -18,6 +18,8 @@ source "${ROOT_DIR}/utils/android.sh"
 source "${ROOT_DIR}/utils/wait.sh"
 set +e
 
+DIR=""
+
 print_header() {
     local color="$1"
     local message="$2"
@@ -105,8 +107,153 @@ check_server_ready() {
     echo "All containers are ready!"
 }
 
+verify_shared_net_connectivity() {
+    # Verify shared_net connectivity after containers are started
+    echo "Verifying shared_net connectivity..."
+    if [ -f "metadata.json" ]; then
+        app_server=$(jq -r '.app_server // empty' "metadata.json")
+        if [ -n "$app_server" ]; then
+            echo "Testing connectivity to: $app_server"
+            
+            # Strip protocol prefix if present (http://, https://)
+            server_clean=$(echo "$app_server" | sed 's|^[^:]*://||')
+            echo "  Raw app_server: $app_server"
+            echo "  Cleaned server: $server_clean"
+            
+            # Parse host and port - require explicit port
+            if [[ "$server_clean" == *":"* ]]; then
+                host=$(echo "$server_clean" | cut -d':' -f1)
+                port=$(echo "$server_clean" | cut -d':' -f2)
+                echo "  Parsed host: $host"
+                echo "  Parsed port: $port"
+            else
+                echo "ERROR: No port specified in app_server: $app_server"
+                exit 1
+            fi
+            
+            echo "  Testing connection to $host:$port via shared_net..."
+            docker run --rm --network=shared_net alpine:latest \
+                sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
+            
+            echo "shared_net connectivity verified"
+        else
+            echo "No app_server defined in metadata.json, skipping connectivity check"
+        fi
+    else
+        echo "No metadata.json found, skipping connectivity check"
+    fi
+}
+
+# Validate directory structure and required scripts
+validate_setup_app_scripts() {
+    local dir="$1"
+    
+    if [ ! -d "$dir" ]; then
+        echo -e "${ERROR} Directory '$dir' does not exist" >&2
+        return 1
+    fi
+    
+    local source_script="$dir/setup_app_source.sh"
+    local apklink_script="$dir/setup_app_apklink.sh"
+    if [ ! -f "$source_script" ] && [ ! -f "$apklink_script" ]; then
+        # fail if neither script exists
+        echo -e "${ERROR} No setup scripts found in $dir" >&2
+        echo -e "${ERROR} Expected: setup_app_source.sh or setup_app_apklink.sh" >&2
+        return 1
+    fi
+    return 0
+}
+
+
+discover_available_modes() {
+    local dir="$1"
+    local modes=""
+    
+    # If --skip-apk is specified, only offer apk_skip mode
+    if [ "$SKIP_APK" = true ]; then
+        modes="apk_skip"
+        echo -e "${INFO} --skip-apk specified - using apk_skip mode" >&2
+    else
+        if [ -f "$dir/setup_app_source.sh" ]; then
+            modes="$modes source"
+            echo -e "${INFO} Found setup_app_source.sh (build mode)" >&2
+        fi
+        if [ -f "$dir/setup_app_apklink.sh" ]; then
+            modes="$modes apklink"
+            echo -e "${INFO} Found setup_app_apklink.sh (download mode)" >&2
+        fi
+    fi
+
+    echo "$modes"
+}
+
+filter_modes_by_flags() {
+    local available_modes="$1"
+    local filtered_modes=""
+    
+    for mode in $available_modes; do
+        case "$mode" in
+            "source")
+                if [ "$SKIP_BUILD" != true ]; then
+                    filtered_modes="$filtered_modes $mode"
+                else
+                    echo -e "${INFO} Skipping build mode (source) due to --skip-build flag" >&2
+                fi
+                ;;
+            "apklink")
+                if [ "$SKIP_DOWNLOAD" != true ]; then
+                    filtered_modes="$filtered_modes $mode"
+                else
+                    echo -e "${INFO} Skipping download mode (apklink) due to --skip-download flag" >&2
+                fi
+                ;;
+            "apk_skip")
+                filtered_modes="$filtered_modes $mode"
+                echo -e "${INFO} Using apk_skip mode - will re-use existing APK if available" >&2
+                ;;
+        esac
+    done
+    
+    # Trim leading/trailing spaces
+    echo "$filtered_modes" | sed 's/^ *//;s/ *$//'
+}
+
+# Main function to determine setup modes
+determine_setup_modes() {
+    local dir="$1"
+
+    if ! validate_setup_app_scripts "$dir"; then
+        exit 1
+    fi
+    
+    local available_modes
+    available_modes=$(discover_available_modes "$dir")
+    echo -e "${INFO} Available setup modes: $available_modes" >&2
+    
+    local selected_modes
+    selected_modes=$(filter_modes_by_flags "$available_modes")
+
+    # will fail if no mode is left after user filter
+    if [ -z "$selected_modes" ]; then
+        echo -e "${ERROR} No setup modes available after applying filters" >&2
+        echo -e "${ERROR} Available modes were: $available_modes" >&2
+        echo -e "${ERROR} Try removing --skip-* flags or ensure required scripts exist" >&2
+        exit 1
+    fi
+    
+    local mode_count
+    mode_count=$(echo "$selected_modes" | wc -w)
+    if [ "$mode_count" -eq 1 ]; then
+        echo -e "${INFO} Selected setup mode: $selected_modes" >&2
+    else
+        echo -e "${INFO} Selected setup modes: $selected_modes (running both by default)" >&2
+    fi
+    
+    echo "$selected_modes"
+}
+
 checkout_commit() {
-    pwd
+    echo "Current directory: $(pwd)"
     if [[ -f "metadata.json" ]]; then
         commit=$(jq -r '.["commit_version"]' "metadata.json")
         
@@ -136,13 +283,87 @@ checkout_commit() {
     fi
 }
 
-# Check if argument was provided
-if [ -z "$1" ]; then
-    echo "Usage: $0 <dir>"
-    echo "Example: $0 apps/joplin"
+# Parse command line arguments
+SKIP_BUILD=false
+SKIP_DOWNLOAD=false
+SKIP_APK=false
+
+show_usage() {
+    echo "Usage: $0 <dir> [options]"
+    echo ""
+    echo "Arguments:"
+    echo "  <dir>             Directory to test (e.g., apps/joplin)"
+    echo ""
+    echo "Options:"
+    echo "  --skip-build      Skip build mode (source setup)"
+    echo "  --skip-download   Skip download mode (apklink setup)"
+    echo "  --skip-apk        Skip APK operations. Install from existing APK."
+    echo "  -h, --help        Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0 apps/joplin                    # Run both build and download modes"
+    echo "  $0 apps/joplin --skip-build      # Run only download mode"
+    echo "  $0 apps/joplin --skip-download   # Run only build mode"
+    echo "  $0 apps/joplin --skip-apk        # Skip APK operations. Install from existing APK."
+    echo ""
+    echo "By default, both build mode (source) and download mode (apklink) are run"
+    echo "when both setup scripts are available."
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --skip-build)
+            SKIP_BUILD=true
+            shift
+            ;;
+        --skip-download)
+            SKIP_DOWNLOAD=true
+            shift
+            ;;
+        --skip-apk)
+            SKIP_APK=true
+            SKIP_BUILD=true
+            SKIP_DOWNLOAD=true
+            shift
+            ;;
+        -h|--help)
+            show_usage
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            show_usage
+            exit 1
+            ;;
+        *)
+            if [ -z "$DIR" ]; then
+                DIR="$1"
+            else
+                echo "Multiple directories specified. Only one directory allowed."
+                show_usage
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Check if directory was provided
+if [ -z "$DIR" ]; then
+    echo "Error: Directory argument is required"
+    echo ""
+    show_usage
     exit 1
 fi
-DIR="$1"
+
+# Validate flag combination
+if [ "$SKIP_BUILD" = true ] && [ "$SKIP_DOWNLOAD" = true ] && [ "$SKIP_APK" != true ]; then
+    echo "Error: Cannot skip both build and download modes (use --skip-apk to skip all APK operations)"
+    echo ""
+    show_usage
+    exit 1
+fi
 
 # Get API level from metadata
 print_header "$CYAN" "GETTING SDK INFORMATION"
@@ -154,19 +375,21 @@ fi
 
 sdk=$(jq -r '.sdk' "$metadata")
 if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
-    echo -e "${WARNING} Could not extract SDK from $metadata. Using default (28)."
-    sdk=28
+    echo -e "${ERROR} Could not extract SDK from $metadata."
+    exit 1
 else 
     echo -e "${INFO} SDK: $sdk"
 fi
 
 print_header "$CYAN" "STARTING LOCAL CIA TESTS"
 
+START_TIME=$(date +%s)
+
 # Function to run test checks
 run_test_check() {
     local test_name="$1"
     local vuln_scenario="$2"
-    local use_log_file="$3"
+    local use_fake_agent_log="$3"
 
     print_header "$CYAN" "RUNNING $test_name"
 
@@ -174,7 +397,8 @@ run_test_check() {
     cd "$DIR"
 
     echo -e "${INFO} Running setup..."
-    ./setup.sh
+    { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+    verify_shared_net_connectivity
     adb logcat -c
 
     if [ -n "$vuln_scenario" ]; then
@@ -186,10 +410,10 @@ run_test_check() {
     fi
 
     echo -e "${INFO} Running checks..."
-    if [ "$use_log_file" = "true" ] && [ -n "$vuln_scenario" ]; then
+    if [ "$use_fake_agent_log" = "true" ] && [ -n "$vuln_scenario" ]; then
         ./run_checks.sh "vuln_scenarios/vuln_scenario_$vuln_scenario/fake_agent_log.log"
     else
-        ./run_checks.sh
+        ./run_checks.sh "$ROOT_DIR/dummy_log.log"
     fi
 
     if [ -n "$vuln_scenario" ]; then
@@ -223,19 +447,136 @@ run_test_check() {
     cd -
 }
 
-cd "$DIR"
-print_header "$CYAN" "SETTING UP APP FROM SOURCE"
-checkout_commit "$DIR"
-required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
-echo -e "${INFO} Checking for required scripts..."
-for script in "${required_scripts[@]}"; do
-    if [[ ! -f "$script" ]]; then
-        echo -e "${ERROR} Required script '$script' not found."
-        exit 1
+# Function to run tests for a specific mode
+run_tests_for_mode() {
+    local setup_mode="$1"
+    local dir="$2"
+    
+    print_header "$CYAN" "TESTING WITH SETUP MODE: $setup_mode"
+    
+    cd "$ROOT_DIR/$dir"
+    
+    # Skip this step if you want to persist your apk
+    checkout_commit "$dir"
+    
+    # Check if run_checks.sh exists to determine test strategy and required scripts
+    if [ -f "run_checks.sh" ]; then
+        echo -e "${INFO} run_checks.sh found - running full vulnerability scenario tests"
+        local has_run_checks=true
+        required_files=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
+    else
+        echo -e "${INFO} run_checks.sh not found - running simplified APK installation test"
+        local has_run_checks=false
+        required_files=("setup.sh" "cleanup.sh")
     fi
-done
-./setup_app_source.sh
+    
+    echo -e "${INFO} Checking for required scripts..."
+    for script in "${required_files[@]}"; do
+        if [[ ! -f "$script" ]]; then
+            echo -e "${ERROR} Required script '$script' not found."
+            exit 1
+        fi
+    done
+    
+    # Run appropriate setup script based on mode
+    if [ "$setup_mode" = "apk_skip" ]; then
+        echo -e "${INFO} Skipping APK setup (apk_skip mode) - proceeding directly to setup.sh"
+    elif [ "$setup_mode" = "apklink" ]; then
+        echo -e "${INFO} Setting up app from APK link."
+        { ./setup_app_apklink.sh; } || { echo -e "${ERROR} setup_app_apklink.sh failed"; exit 1; }
+    else
+        echo -e "${INFO} Setting up app from source..."
+        { ./setup_app_source.sh; } || { echo -e "${ERROR} setup_app_source.sh failed"; exit 1; }
+    fi
+    
+    cd "$ROOT_DIR"
+    
+    if [ "$has_run_checks" = true ]; then
+        # Create dummy file for test confidentiality
+        cat > "$ROOT_DIR/dummy_log.log" <<'EOF'
+# Dummy log file for testing purposes
+# This file contains no actual secrets or sensitive information
+timestamp=2024-01-01T00:00:00Z
+event=test_event
+message=dummy test message
+status=ok
+EOF
+
+        # Run the three test scenarios
+        run_test_check "TEST CHECKS BEFORE VULNERABLE SCENARIOS" "" "false"
+        run_test_check "TEST CHECKS AFTER NON-DOS VULNERABLE SCENARIO" "0" "true"
+        run_test_check "TEST CHECKS AFTER DOS VULNERABLE SCENARIO" "1" "false"
+    else
+        # Run simplified test
+        print_header "$CYAN" "RUNNING SIMPLIFIED APK INSTALLATION TEST"
+        
+        cd "$ROOT_DIR"
+        cd "$dir"
+        
+        echo -e "${INFO} Simple APK build and install test - no vulnerability scenarios"
+        
+        # Check packages before setup
+        packages_before=$(adb shell pm list packages | wc -l)
+        echo -e "${INFO} Packages before setup: $packages_before"
+        
+        echo -e "${INFO} Running setup..."
+        { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+        verify_shared_net_connectivity
+        adb logcat -c
+        
+        # Check packages after setup
+        packages_after=$(adb shell pm list packages | wc -l)
+        echo -e "${INFO} Packages after setup: $packages_after"
+        
+        if [ "$packages_after" -gt "$packages_before" ]; then
+            echo -e "${SUCCESS} Package count increased ($packages_before -> $packages_after) - app installation verified"
+        elif [ "$packages_after" -eq "$packages_before" ]; then
+            echo -e "${WARNING} Package count unchanged - setup may not have installed new packages"
+            echo -e "${WARNING} This could be expected if app was already installed or uses system components"
+        else
+            echo -e "${ERROR} Package count decreased ($packages_before -> $packages_after) - unexpected behavior"
+            echo -e "${INFO} Cleaning up..."
+            ./cleanup.sh
+            exit 1
+        fi
+        
+        echo -e "${INFO} Cleaning up..."
+        ./cleanup.sh
+        cd -
+    fi
+    
+    # Clean up dummy log file if it exists
+    if [ -f "$ROOT_DIR/dummy_log.log" ]; then
+        rm "$ROOT_DIR/dummy_log.log"
+        echo -e "${INFO} Cleaned up dummy log file"
+    fi
+    
+    print_header "$GREEN" "SETUP MODE $setup_mode COMPLETED SUCCESSFULLY"
+}
+
+
+
+# Main Script Starts Here
+# Determine setup modes
+echo -e "${INFO} Determining setup modes for directory: $DIR"
+SETUP_MODES=$(determine_setup_modes "$DIR")
+if [ $? -ne 0 ] || [ -z "$SETUP_MODES" ]; then
+    echo -e "${ERROR} Failed to determine setup modes"
+    exit 1
+fi
+
+# Check if any setup mode has run_checks.sh to determine overall strategy
+cd "$DIR"
+HAS_RUN_CHECKS=false
+if [ -f "run_checks.sh" ]; then
+    HAS_RUN_CHECKS=true
+fi
 cd "$ROOT_DIR"
+
+# Create Docker Network
+print_header "$CYAN" "CREATING DOCKER NETWORK"
+echo -e "${INFO} Creating shared_net network..."
+docker network create shared_net || echo -e "${INFO} shared_net network already exists"
 
 # Start emulator (assuming you have a start_emulator.sh script)
 if [ -f "start_emulator.sh" ]; then
@@ -256,18 +597,77 @@ else
     echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
 fi
 
-# Run the three test scenarios
-run_test_check "TEST CHECKS BEFORE VULNERABLE SCENARIOS" "" "false"
-run_test_check "TEST CHECKS AFTER NON-DOS VULNERABLE SCENARIO" "0" "true"
-run_test_check "TEST CHECKS AFTER DOS VULNERABLE SCENARIO" "1" "false"
+# Run tests for each setup mode
+for SETUP_MODE in $SETUP_MODES; do
+    run_tests_for_mode "$SETUP_MODE" "$DIR"
+done
 
-print_header "$GREEN" "ALL TESTS PASSED"
+# Calculate total runtime
+END_TIME=$(date +%s)
+DURATION=$((END_TIME - START_TIME))
+MINUTES=$((DURATION / 60))
+SECONDS=$((DURATION % 60))
+
+SETUP_MODE_COUNT=$(echo $SETUP_MODES | wc -w)
+
+if [ "$HAS_RUN_CHECKS" = true ]; then
+    print_header "$GREEN" "ALL TESTS PASSED"
+    print_header "$GREEN" "FULL CI COMPLETED SUCCESSFULLY"
+    echo -e "${SUCCESS} Complete vulnerability testing performed:"
+    echo -e "${SUCCESS} ✓ Baseline scenario"  
+    echo -e "${SUCCESS} ✓ Vulnerability scenario 0 (non-DoS)"
+    echo -e "${SUCCESS} ✓ Vulnerability scenario 1 (DoS)"
+    echo -e "${SUCCESS} ✓ All CIAA (Confidentiality, Integrity, Availability, Access Control) checks"
+    if [ "$SETUP_MODE_COUNT" -gt 1 ]; then
+        echo -e "${SUCCESS} ✓ Tested with multiple setup modes: $SETUP_MODES"
+        echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s (Setup modes: $SETUP_MODES)"
+    else
+        echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s (Setup mode: $SETUP_MODES)"
+    fi
+else
+    print_header "$GREEN" "BASIC TESTS PASSED"
+    print_header "$YELLOW" "SIMPLIFIED CI COMPLETED - FULL CI NOT RUN"
+    echo ""
+    echo -e "${WARNING} ⚠️  IMPORTANT: Only basic APK installation testing was performed"
+    echo -e "${WARNING} ⚠️  Full vulnerability scenario testing was NOT run"
+    echo ""  
+    echo -e "${INFO} To enable full CI testing, this app needs:"
+    echo -e "${INFO} • run_checks.sh script"
+    echo -e "${INFO} • Vulnerability scenario implementations"
+    echo -e "${INFO} • Full CIAA security test coverage"
+    echo ""
+    echo -e "${CYAN} The GitHub CI will also run in simplified mode for this app"
+    echo -e "${CYAN} until run_checks.sh is added."
+    if [ "$SETUP_MODE_COUNT" -gt 1 ]; then
+        echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s (Setup modes: $SETUP_MODES)"
+    else
+        echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s (Setup mode: $SETUP_MODES)"
+    fi
+fi
 
 cd $ROOT_DIR
 if [ -f "stop_emulator.sh" ]; then
     stop_emulator
 fi
 
-# Final cleanup
-print_header "$CYAN" "FINAL CLEANUP"
-print_header "$GREEN" "LOCAL CIA TESTS COMPLETED SUCCESSFULLY"
+# Run linter
+print_header "$CYAN" "RUNNING LINTER"
+if [ -f "run_linter.sh" ]; then
+    echo -e "${INFO} Running linter..."
+    { ./run_linter.sh; } || { echo -e "${ERROR} run_linter.sh failed"; exit 1; }
+    echo -e "${SUCCESS} Linter completed successfully"
+else
+    echo -e "${WARNING} run_linter.sh not found, skipping linter"
+fi
+
+# Final Timing and Summary
+print_header "$CYAN" "FINAL TIMING AND SUMMARY"
+if [ "$HAS_RUN_CHECKS" = true ]; then
+    print_header "$GREEN" "LOCAL CIA TESTS COMPLETED SUCCESSFULLY"
+    prefix="${SUCCESS}"
+else
+    print_header "$YELLOW" "LOCAL BASIC TESTS COMPLETED - ADD run_checks.sh FOR FULL CI"
+    prefix="${INFO}"
+fi
+
+echo -e "${prefix} Total execution time: ${MINUTES}m ${SECONDS}s using modes: $SETUP_MODES"
