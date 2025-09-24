@@ -587,11 +587,11 @@ jobs:
           cd "$dir"
           checkout_commit "$dir"
 
-          required_scripts=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
+          required_files=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
 
           echo "Setup mode: $setup_mode"
-          echo "Checking for required scripts..."
-          for script in "${required_scripts[@]}"; do
+          echo "Checking for required files..."
+          for script in "${required_files[@]}"; do
             if [[ ! -f "$script" ]]; then
               echo "ERROR: Required script '$script' not found."
               exit 1

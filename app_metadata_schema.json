@@ -38,12 +38,17 @@
     "password": {
       "type": "string",
       "description": "The password of the account that is logged into the app."
+    },
+    "package_name": {
+      "type": "string",
+      "description": "Package name of the Android app."
     }
   },
   "required": [
     "gh_link",
     "commit_version",
     "sdk",
-    "java"
+    "java",
+    "package_name"
   ]
 }

@@ -67,16 +67,16 @@ get_emulator_arch() {
     # Detect emulator architecture
     if command -v adb >/dev/null 2>&1 && adb get-state >/dev/null 2>&1; then
         local arch
-        arch=$(adb shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r\n' || echo "")
+        arch=$(adb shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r\n\t ' || echo "")
         if [[ -n "$arch" ]]; then
-            info "Detected emulator architecture: $arch"
+            info "Detected emulator architecture: $arch" >&2
             echo "$arch"
             return 0
         fi
     fi
-    
+
     # Default to universal if can't detect
-    warn "Could not detect emulator architecture, building universal APK"
+    warn "Could not detect emulator architecture, building universal APK" >&2
     echo "universal"
 }
 
@@ -85,13 +85,13 @@ build_conversations() {
 
     local arch
     arch=$(get_emulator_arch)
-    
+
     ./gradlew clean
-    
+
     # Build all architectures - Android will create splits automatically
     info "Building Conversations (with architecture splits for $arch)"
     ./gradlew assembleConversationsFreeRelease
-    
+
     info "Build completed successfully."
     sign_apk "$arch"
 }
@@ -115,29 +115,32 @@ sign_apk() {
     fi
 
     # Check if architecture-specific APK already signed
-    APK_SIGNED=$(find build/outputs/apk/conversationsFree/release/ -name "*-conversations-free-$arch-release.apk" -not -name "*unsigned*" -type f 2>/dev/null | head -1)
+    APK_SIGNED=$(find build/outputs/apk/conversationsFree/release/ -name "*conversations-free*$arch*release.apk" -not -name "*unsigned*" -type f 2>/dev/null | head -1)
     if [[ -n "$APK_SIGNED" ]]; then
         info "APK already signed: $(basename "$APK_SIGNED")"
         return 0
     fi
-    
+
     # Find unsigned APK to sign (prefer architecture-specific, fallback to universal)
-    APK_UNSIGNED=$(find build/outputs/apk/conversationsFree/release/ -name "*-conversations-free-$arch-release-unsigned.apk" -type f 2>/dev/null | head -1)
-    
+    info "Looking for APK with pattern: *conversations-free*$arch*release-unsigned.apk"
+    APK_UNSIGNED=$(find build/outputs/apk/conversationsFree/release/ -name "*conversations-free*$arch*release-unsigned.apk" -type f 2>/dev/null | head -1)
+
     if [[ -z "$APK_UNSIGNED" ]]; then
         warn "No $arch APK found, trying universal APK"
-        APK_UNSIGNED=$(find build/outputs/apk/conversationsFree/release/ -name "*-conversations-free-universal-release-unsigned.apk" -type f 2>/dev/null | head -1)
+        APK_UNSIGNED=$(find build/outputs/apk/conversationsFree/release/ -name "*conversations-free*universal*release-unsigned.apk" -type f 2>/dev/null | head -1)
+    else
+        info "Found architecture-specific APK: $APK_UNSIGNED"
     fi
     
     if [[ -z "$APK_UNSIGNED" ]]; then
-        fail "No unsigned APK found to sign"
+        error "No unsigned APK found to sign"
     fi
     
     info "Signing APK: $APK_UNSIGNED"
     
     # Use apksigner instead of deprecated jarsigner
     if [[ -z "$ANDROID_HOME" ]]; then
-        fail "ANDROID_HOME not set, cannot find apksigner"
+        error "ANDROID_HOME not set, cannot find apksigner"
     fi
     
     APKSIGNER="$ANDROID_HOME/build-tools/*/apksigner"
@@ -153,8 +156,15 @@ sign_apk() {
     
     APK_SIGNED="${APK_UNSIGNED/-unsigned.apk/.apk}"
     mv "$APK_UNSIGNED" "$APK_SIGNED"
-    
+
+    # Copy signed APK to standard location
+    APK_DIR="$SCRIPT_DIR/apk"
+    mkdir -p "$APK_DIR"
+    APK_NAME=$(basename "$APK_SIGNED")
+    cp "$APK_SIGNED" "$APK_DIR/$APK_NAME"
+
     info "Signed APK: $APK_SIGNED"
+    info "Copied to: $APK_DIR/$APK_NAME"
 }
 
 
@@ -164,13 +174,13 @@ main() {
     
     CODEBASE_DIR="$SCRIPT_DIR/codebase"
     if [[ ! -d "$CODEBASE_DIR" ]]; then
-        fail "Conversations codebase directory not found at $CODEBASE_DIR"
+        error "Conversations codebase directory not found at $CODEBASE_DIR"
     fi
     
     cd "$CODEBASE_DIR"
     
     if [[ ! -f "gradlew" ]]; then
-        fail "gradlew not found in codebase directory."
+        error "gradlew not found in codebase directory."
     fi
     
     check_prerequisites
