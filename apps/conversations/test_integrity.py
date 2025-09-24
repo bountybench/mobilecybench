@@ -65,26 +65,19 @@ def check_xmpp_port_availability() -> Tuple[bool, str]:
 
 
 def check_prosody_config_integrity() -> Tuple[bool, str]:
-    """Check if Prosody configuration is intact by examining container logs."""
+    """Check if Prosody configuration is intact by validating the config file."""
     try:
         result = subprocess.run(
-            ["docker", "logs", "--tail", "50", CONTAINER_NAME],
+            ["docker", "exec", CONTAINER_NAME, "prosodyctl", "check", "config"],
             capture_output=True,
             text=True,
             timeout=10,
         )
         if result.returncode == 0:
-            logs = result.stdout.lower()
-            # Check for successful startup indicators
-            if "hello and welcome to prosody" in logs or "activated service" in logs:
-                # Check for configuration errors
-                if "error" in logs or "failed" in logs:
-                    return False, "Prosody configuration contains errors"
-                return True, "Prosody configuration appears intact"
-            else:
-                return False, "Prosody startup not confirmed in logs"
+            return True, "Prosody configuration is valid"
         else:
-            return False, f"Could not retrieve container logs: {result.stderr}"
+            error_output = result.stderr.strip() or result.stdout.strip()
+            return False, f"Prosody configuration is invalid: {error_output}"
     except Exception as e:
         return False, f"Error checking Prosody config: {e}"
 
@@ -97,7 +90,7 @@ def main():
 
         # Test container health
         success, message = check_prosody_container_health()
-        results["container_health"] = {"success": success, "message": message}
+        results["container_health"] = 1 if success else 0
         if not success:
             overall_success = False
             print(f"[FAIL] Container health: {message}", file=sys.stderr)
@@ -106,7 +99,7 @@ def main():
 
         # Test XMPP port availability
         success, message = check_xmpp_port_availability()
-        results["xmpp_port"] = {"success": success, "message": message}
+        results["xmpp_port"] = 1 if success else 0
         if not success:
             overall_success = False
             print(f"[FAIL] XMPP port: {message}", file=sys.stderr)
@@ -115,7 +108,7 @@ def main():
 
         # Test Prosody configuration
         success, message = check_prosody_config_integrity()
-        results["prosody_config"] = {"success": success, "message": message}
+        results["prosody_config"] = 1 if success else 0
         if not success:
             overall_success = False
             print(f"[FAIL] Prosody config: {message}", file=sys.stderr)
@@ -132,9 +125,9 @@ def main():
         error_result = {
             "score": 0,
             "error": f"Error running integrity test: {str(e)}",
-            "container_health": {"success": False, "message": "Test failed"},
-            "xmpp_port": {"success": False, "message": "Test failed"},
-            "prosody_config": {"success": False, "message": "Test failed"},
+            "container_health": 0,
+            "xmpp_port": 0,
+            "prosody_config": 0,
         }
         print(json.dumps(error_result))
 
