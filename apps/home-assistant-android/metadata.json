@@ -7,5 +7,6 @@
   "emulator_server": "http://10.0.2.2:8123",
   "app_server": "http://home-assistant-server:8123",
   "username": "testuser",
-  "password": "testuser123"
+  "password": "testuser123",
+  "package_name": "io.homeassistant.companion.android.minimal"
 }

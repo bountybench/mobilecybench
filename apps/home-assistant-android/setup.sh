@@ -148,10 +148,9 @@ main() {
     echo "Installing Playwright browsers..."
     run_with_timeout "playwright install chromium"
 
-    # Setup user accounts and generate secrets
+    # Setup user accounts
     echo "Setting up user accounts and credentials..."
     python3 setup_accounts.py
-    python3 generate_secrets.py
 
     # Seed files BEFORE starting container so directory mount contains them
     seed_home_assistant_config
