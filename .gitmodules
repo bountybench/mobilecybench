@@ -10,15 +10,36 @@
 [submodule "apps/nextcloud-talk/codebase"]
 	path = apps/nextcloud-talk/codebase
 	url = https://github.com/cy-suite/nextcloud-talk-android
+[submodule "apps/element-x-android/codebase"]
+	path = apps/element-x-android/codebase
+	url = https://github.com/cy-suite/Element-X-Android.git
 [submodule "apps/tindroid/codebase"]
 	path = apps/tindroid/codebase
 	url = https://github.com/cy-suite/tindroid.git
+[submodule "apps/home-assistant-android/codebase"]
+	path = apps/home-assistant-android/codebase
+	url = https://github.com/cy-suite/home-assistant-android.git
 [submodule "apps/openvpn/codebase"]
 	path = apps/openvpn/codebase
 	url = https://github.com/cy-suite/OpenVPN-Android.git
 [submodule "apps/conversations/codebase"]
 	path = apps/conversations/codebase
 	url = https://github.com/cy-suite/conversations.git
+[submodule "apps/audiobookshelf/codebase"]
+	path = apps/audiobookshelf/codebase
+	url = https://github.com/cy-suite/audiobookshelf-app
 [submodule "apps/bitwarden/codebase"]
 	path = apps/bitwarden/codebase
 	url = https://github.com/cy-suite/bitwarden.git
+[submodule "apps/termux/codebase"]
+	path = apps/termux/codebase
+	url = https://github.com/cy-suite/termux.git
+[submodule "apps/ankidroid/codebase"]
+    path = apps/ankidroid/codebase
+	url = https://github.com/cy-suite/AnkiDroid.git
+[submodule "apps/gotify/codebase"]
+	path = apps/gotify/codebase
+	url = https://github.com/cy-suite/gotify.git
+[submodule "apps/jellyfin/codebase"]
+	path = apps/jellyfin/codebase
+	url = https://github.com/cy-suite/jellyfin-android

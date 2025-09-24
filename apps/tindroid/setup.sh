@@ -114,45 +114,24 @@ log_error() {
     fail "$1"
 }
 
-# Helper function to install Python packages with proper environment detection
-install_python_package() {
-    local package_name="$1"
-    local import_name="${2:-$1}"
+# Setup Python virtual environment
+setup_python_env() {
+    echo "Setting up Python virtual environment..."
     
-    echo "Checking if $package_name is available..."
-    
-    # Check if we're in a CI environment (GitHub Actions, etc.)
-    if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
-        echo "Detected CI environment, using system Python and pip"
-        # In CI, packages should already be installed from requirements.txt
-        if python3 -c "import $import_name" 2>/dev/null; then
-            echo "$package_name is already available"
-            return 0
-        else
-            echo "Installing $package_name for CI environment..."
-            run_with_timeout "pip install $package_name"
-            return $?
-        fi
-    else
-        # Not in CI - check for virtual environment or proceed with system pip
-        if [[ "$(which pip)" == *".venv"* ]]; then
-            echo "Using .venv's pip"
-            pip install "$package_name"
-            return $?
-        else
-            echo "This script needs to install $package_name."
-            echo "You're not using a virtual environment."
-            read -p "Proceed with installing $package_name using the current pip located at $(which pip)? (y/n): " choice
-            if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
-                echo "Proceeding with installation..."
-                pip install "$package_name"
-                return $?
-            else
-                echo "Aborting. Please set up your .venv and rerun this script."
-                return 1
-            fi
-        fi
+    # Create virtual environment if it doesn't exist
+    if [ ! -d "./venv" ]; then
+        echo "Creating virtual environment..."
+        python3 -m venv ./venv
     fi
+    
+    # Activate virtual environment
+    source ./venv/bin/activate
+    
+    # Install requirements
+    echo "Installing Python packages from requirements.txt..."
+    pip install -r requirements.txt
+    
+    echo "Python environment setup complete!"
 }
 
 setup_env() {
@@ -306,19 +285,9 @@ main(){
     info "APK URL: $APK_URL"
   fi
 
-  # Install required Python packages at the start
-  log_info "=== Installing required Python packages ==="
-  if install_python_package "bcrypt"; then
-      log_success "bcrypt package is available"
-  else
-      log_error "Failed to install bcrypt"
-  fi
-
-  if install_python_package "uiautomator2"; then
-      log_success "uiautomator2 package is available"
-  else
-      log_error "Failed to install uiautomator2"
-  fi
+  # Setup Python virtual environment and install packages
+  log_info "=== Setting up Python environment ==="
+  setup_python_env
 
   log_info "=== Generating secrets ==="
   if python3 generate_secrets.py; then

@@ -1,0 +1,19 @@
+diff --git a/packages/app-mobile/android/build.gradle b/packages/app-mobile/android/build.gradle
+index 4c70c36b2..dcfddb7c4 100644
+--- a/packages/app-mobile/android/build.gradle
++++ b/packages/app-mobile/android/build.gradle
+@@ -2,11 +2,11 @@
+ 
+ buildscript {
+     ext {
+-        buildToolsVersion = "31.0.0"
++        buildToolsVersion = "34.0.0"
+         minSdkVersion = 21
+ 
+-        compileSdkVersion = 31
+-        targetSdkVersion = 31
++        compileSdkVersion = 34
++        targetSdkVersion = 34
+ 
+         if (System.properties['os.arch'] == "aarch64") {
+             // For M1 Users we need to use the NDK 24 which added support for aarch64
