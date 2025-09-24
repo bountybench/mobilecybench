@@ -7,13 +7,10 @@
 #   4. Create / reuse Python virtual environment via uv
 #   5. Ensure Python deps (requests, python-dotenv) present if not declared already
 #   6. Run seeder (produces baseline manifest)
-#   7. Install Android app 
-#        - By default: build from source and install (setup_app_source.sh)
-#        - With --fast or FAST=1: install via APK link (setup_app_apklink.sh)
+#   7. Install Android app from: ./apk/<app-name>.apk (must exist before running)
 #   8. Verify Frida Gadget listens on port 27042 (owned by com.owncloud.android)
 # Usage:
-#   ./setup.sh [--fast] [--apk-url URL]
-#   FAST=1 ./setup.sh                    # Fast path (APK link)
+#   ./setup.sh
 #   SEED_OUTPUT=my_manifest.json ./setup.sh
 set -euo pipefail
 IFS=$'\n\t'
@@ -21,10 +18,7 @@ IFS=$'\n\t'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)"
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
 SEED_SCRIPT="${SCRIPT_DIR}/owncloud_setup.py"
-APK_LINK_SCRIPT="${SCRIPT_DIR}/setup_app_apklink.sh"
-APP_SOURCE_SCRIPT="${SCRIPT_DIR}/setup_app_source.sh"
 VENV_DIR="${SCRIPT_DIR}/.venv"
-CODEBASE_DIR="${SCRIPT_DIR}/codebase"
 DEFAULT_OUTPUT="baseline_manifest.json"
 SEED_OUTPUT=${SEED_OUTPUT:-$DEFAULT_OUTPUT}
 HEALTH_TIMEOUT=${HEALTH_TIMEOUT:-180}
@@ -35,42 +29,13 @@ TARGET_PACKAGE="com.owncloud.android"
 TARGET_DIR="/data/data/${TARGET_PACKAGE}"
 ANDROID_BASELINE_FILE="${SCRIPT_DIR}/baseline_android_dir.txt"
 
-# Defaults and CLI flags
-INSTALL_MODE="source"   # source | apk
-APK_URL="${APK_URL:-}"
+# Defaults
 FRIDA_PORT=${FRIDA_PORT:-27042}
 
 parse_args(){
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --fast|-f)
-        INSTALL_MODE="apk"
-        shift
-        ;;
-      --apk-url)
-        APK_URL="${2:-}"
-        if [[ -z "$APK_URL" ]]; then fail "--apk-url requires a value"; fi
-        shift 2
-        ;;
-      --help|-h)
-        cat <<EOF
-Usage: ./setup.sh [--fast] [--apk-url URL]
-  --fast, -f      Use APK link install instead of building from source
-  --apk-url URL   Custom APK URL for fast mode (overrides default)
-
-Environment:
-  FAST=1          Same as --fast
-
-EOF
-        exit 0
-        ;;
-      *)
-        warn "Unknown argument: $1 (ignored)"
-        shift
-        ;;
-    esac
-  done
-  if [[ "${FAST:-0}" == "1" ]]; then INSTALL_MODE="apk"; fi
+  if [[ $# -gt 0 ]]; then
+    warn "Arguments are no longer supported. Ignoring: $*"
+  fi
 }
 
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
@@ -169,24 +134,25 @@ run_seeder(){
 }
 
 install_owncloud(){
-  info "Installing ownCloud on Android device from source-built artifact"
+  info "Installing ownCloud on Android device from local APK folder"
   adb wait-for-device
   if ! adb get-state >/dev/null 2>&1; then
-    fail "No adb device detected; ensure emulator is running"
+    fail "No adb device detected; ensure an emulator/device is running"
   fi
 
-  if [[ ! -d "$CODEBASE_DIR" ]]; then
-    fail "Codebase not found at $CODEBASE_DIR"
+  local apk_dir apk
+  apk_dir="${SCRIPT_DIR}/apk"
+  if [[ ! -d "$apk_dir" ]]; then
+    fail "APK folder not found at $apk_dir. Place your app-name.apk there and re-run."
   fi
 
-  local apk
-  apk=$(find "$CODEBASE_DIR/owncloudApp/build/outputs/apk/original/release/" -name "*-original-release.apk" -type f 2>/dev/null | head -1)
-
+  # Pick the newest .apk in the folder (though ideally there should only be one)
+  apk=$(ls -1t "$apk_dir"/*.apk 2>/dev/null | head -n 1 || true)
   if [[ -z "$apk" ]]; then
-    fail "Could not find built APK. IMPORTANT: Run $APP_SOURCE_SCRIPT before launching the emulator."
+    fail "No .apk found in $apk_dir. Place your app-name.apk there and re-run."
   fi
 
-  info "Found APK: $(basename "$apk")"
+  info "Using APK: $(basename "$apk")"
 
   # Uninstall existing versions
   info "Uninstalling previous packages (if installed)"
@@ -194,22 +160,22 @@ install_owncloud(){
   adb uninstall com.owncloud.android.debug >/dev/null 2>&1 || true
 
   info "Installing APK: $apk"
-  
+
   # Add debugging information for CI troubleshooting
   info "Device info for debugging:"
   info "- SDK level: $(adb shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r' || echo 'unknown')"
   info "- CPU ABI: $(adb shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r' || echo 'unknown')"
   info "- Device model: $(adb shell getprop ro.product.model 2>/dev/null | tr -d '\r' || echo 'unknown')"
-  
+
   # Check APK info if aapt is available
   if command -v aapt >/dev/null 2>&1; then
     info "APK info: $(aapt dump badging "$apk" 2>/dev/null | grep -E '(package:|native-code:)' | head -2 || echo 'aapt info unavailable')"
   fi
-  
+
   # Try installation with verbose output for debugging
   info "Attempting installation with detailed error output..."
   local install_output
-  if install_output=$(adb install "$apk" 2>&1); then
+  if install_output=$(adb install -r "$apk" 2>&1); then
     info "OwnCloud installed successfully"
     info "Install output: $install_output"
   else
@@ -247,28 +213,8 @@ install_app(){
   if ! command_exists adb; then
     fail "adb not found; cannot install Android app"
   fi
-  case "$INSTALL_MODE" in
-    source)
-      # Expect APK to be already built by setup_app_source.sh (pre-emulator)
-      install_owncloud
-      launch_owncloud
-      ;;
-    apk)
-      if [[ -x "$APK_LINK_SCRIPT" ]]; then
-        info "Installing app via APK link (--fast)"
-        if [[ -n "$APK_URL" ]]; then
-          "$APK_LINK_SCRIPT" "$APK_URL" || fail "APK link install script failed"
-        else
-          "$APK_LINK_SCRIPT" || fail "APK link install script failed"
-        fi
-      else
-        fail "APK link script missing or not executable: $APK_LINK_SCRIPT"
-      fi
-      ;;
-    *)
-      fail "Unknown INSTALL_MODE=$INSTALL_MODE"
-      ;;
-  esac
+  install_owncloud
+  launch_owncloud
   # Basic verification
   sleep 2
   if adb shell pm list packages | grep -q "com.owncloud.android"; then

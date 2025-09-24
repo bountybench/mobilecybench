@@ -4,3 +4,7 @@ markers = [
     "token_tracker: mark tests related to token tracker",
 ]
 
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]  # let Black handle line length
+

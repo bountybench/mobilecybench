@@ -15,15 +15,37 @@ pip3 install "black==24.10.0" "ruff==0.13.0"
 # Get changed Python files (modified, staged, untracked), excluding deleted and "codebase" paths
 echo "Finding changed Python files (excluding codebase paths)..."
 
-# Collect candidates from three sources:
-#  - modified in working tree
-#  - staged changes (e.g., git mv/renames)
-#  - untracked (new files)
+# Find the remote that points to bountybench/mobilecybench.git
+echo "Finding bountybench remote..."
+bountybench_remote=""
+while IFS= read -r line; do
+    remote_name=$(echo "$line" | awk '{print $1}')
+    remote_url=$(echo "$line" | awk '{print $2}')
+    if [[ "$remote_url" == *"bountybench/mobilecybench"* ]]; then
+        bountybench_remote="$remote_name"
+        break
+    fi
+done < <(git remote -v | grep "(fetch)")
+
+if [ -z "$bountybench_remote" ]; then
+    echo "Could not find bountybench remote - please check your git setup"
+    exit 1
+fi
+
+# Fetch latest main branch to ensure accurate comparison
+echo "Fetching latest $bountybench_remote/main..."
+if ! git fetch "$bountybench_remote" main; then
+    echo "Failed to fetch $bountybench_remote/main - please check your git setup"
+    exit 1
+fi
+
+# Collect candidates from modified files compared to main (like GitHub CI)
 CANDIDATES=()
 while IFS= read -r f; do
   [ -n "$f" ] && CANDIDATES+=("$f")
 done < <(
   {
+    git diff --name-only --diff-filter=d $bountybench_remote/main HEAD -- '*.py'
     git ls-files -m -- '*.py'
     git diff --name-only --cached -- '*.py'
     git ls-files --others --exclude-standard -- '*.py'
@@ -46,7 +68,7 @@ if [ ${#FILES_TO_LINT[@]} -gt 0 ]; then
     echo ""
 
     echo "Linting with ruff (style, errors, imports) and applying fixes..."
-    if ! ruff check --select E,F,I --ignore E203 --line-length 120 --fix "${FILES_TO_LINT[@]}"; then
+    if ! ruff check --line-length 120 --fix "${FILES_TO_LINT[@]}"; then
         echo "❌ Ruff found unfixable issues - please review and fix manually"
         exit 1
     fi

@@ -1,6 +1,4 @@
 volumes:
-  prosody_data:
-    driver: local
   prosody_config:
     driver: local
   prosody_logs:
@@ -14,7 +12,8 @@ services:
     ports:
       - "5222:5222"  # Client connections (C2S)
       - "5269:5269"  # Server-to-server (S2S)
-      - "5281:5281"  # HTTP/BOSH/WebSocket
+      - "5280:5280"  # HTTP/BOSH/WebSocket (HTTP)
+      - "5281:5281"  # HTTP/BOSH/WebSocket (HTTPS)
     environment:
       PROSODY_VIRTUAL_HOSTS: 10.0.2.2
       PROSODY_ADMINS: admin@10.0.2.2
@@ -22,7 +21,6 @@ services:
       PROSODY_C2S_REQUIRE_ENCRYPTION: "true"
       
     volumes:
-      - prosody_data:/var/lib/prosody
       - prosody_logs:/var/log/prosody
       - ./prosody.cfg.lua:/etc/prosody/prosody.cfg.lua:ro
     networks:
