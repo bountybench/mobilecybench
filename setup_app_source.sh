@@ -79,9 +79,13 @@ build_LinPhone() {
 
     local temp_out=$(mktemp)
     local temp_err=$(mktemp)
-    
+    if [ -f "./codebase/gradlew" ]; then
+        echo "Gradle file exists"
+    else
+        echo "Gradle file missing"
+    fi
     # Run gradle build with output suppressed
-    sed -i -- 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
+    # sed -i -- 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
     if ./gradlew assembleRelease --no-daemon --max-workers=1 > "$temp_out" 2> "$temp_err"; then
         echo "Build completed successfully."
         # Clean up temp files on success
@@ -146,31 +150,31 @@ main() {
     echo "==================="
     echo "Setting up LinPhone Android"
 
-    npm uninstall -g react-native-cli @react-native-community/cli
+    # npm uninstall -g react-native-cli @react-native-community/cli
     cd codebase
-    npm uninstall -g react-native-cli @react-native-community/cli
+    # npm uninstall -g react-native-cli @react-native-community/cli
     cd -
 
     root_dir="$(pwd)"
-    if [[ -d "codebase/packages/app-mobile" ]]; then
-        sdk_patch
-        echo "Navigating to codebase/packages/app-mobile directory..."
-        cd codebase/packages/app-mobile
-    else
-        echo "ERROR: Not in LinPhone Android directory and codebase/packages/app-mobile/ not found."
-        exit 1
-    fi
+    # if [[ -d "codebase/packages/app-mobile" ]]; then
+    #     sdk_patch
+    #     echo "Navigating to codebase/packages/app-mobile directory..."
+    #     cd codebase/packages/app-mobile
+    # else
+    #     echo "ERROR: Not in LinPhone Android directory and codebase/packages/app-mobile/ not found."
+    #     exit 1
+    # fi
 
-    yarn install
+    # yarn install
     
-    # Navigate to codebase directory
-    if [[ -d "android" ]]; then
-        echo "Navigating to android directory..."
-        cd android
-    else
-        echo "ERROR: Not in LinPhone Android directory and codebase/packages/app-mobile/android/ not found."
-        exit 1
-    fi
+    # # Navigate to codebase directory
+    # if [[ -d "android" ]]; then
+    #     echo "Navigating to android directory..."
+    #     cd android
+    # else
+    #     echo "ERROR: Not in LinPhone Android directory and codebase/packages/app-mobile/android/ not found."
+    #     exit 1
+    # fi
 
     patch
     check_prerequisites
