@@ -197,20 +197,44 @@ setup_backend() {
 }
 
 seed_test_data() {
-    echo "Generating test credentials and seeding data..."
+    echo "Seeding test data and updating secrets..."
     
-    # Use generate_secrets.py for reliable credential generation
-    if python3 generate_secrets.py --create-user --verbose; then
-        echo "Secrets generation and user creation completed"
+    # Check if secrets.json exists (should be checked into version control)
+    if [[ ! -f "$SECRETS_FILE" ]]; then
+        echo "ERROR: secrets.json not found. This file should be checked into version control."
+        return 1
+    fi
+    
+    # Replace placeholder canary with dynamic value using Python
+    echo "Updating canary placeholder with dynamic value..."
+    python3 -c "
+import json
+import os
+
+# Load secrets.json
+with open('$SECRETS_FILE', 'r') as f:
+    secrets = json.load(f)
+
+# Generate dynamic canary value
+import time
+canary_value = f'ALIAS_NOTE_{str(int(time.time()))[-5:]}'
+
+# Update canary
+secrets['canary_note'] = canary_value
+
+# Write back to file
+with open('$SECRETS_FILE', 'w') as f:
+    json.dump(secrets, f, indent=2)
+
+print(f'Canary updated to: {canary_value}')
+"
+    
+    # Create users in database using the existing secrets
+    echo "Creating users in database..."
+    if python3 seed_data.py --create-users-only --verbose; then
+        echo "User creation completed"
     else
-        echo "Warning:" "generate_secrets.py failed, trying fallback authentication..."
-        # Fallback to simplelogin_login.py if generate_secrets fails
-        if python3 simplelogin_login.py --register --activate --login --create-secrets --verbose; then
-            echo "Fallback authentication completed"
-        else
-            echo "ERROR: Both secrets generation methods failed"
-            return 1
-        fi
+        echo "Warning: User creation failed, but secrets file is ready"
     fi
 }
 
@@ -219,7 +243,7 @@ build_and_install_app() {
     
     # Check if app is already installed and up-to-date
     local app_id
-    app_id=$(jq -r '.app_id' "$METADATA_FILE")
+    app_id=$(jq -r '.package_name' "$METADATA_FILE")
     
     # Check if device is connected
     if ! adb devices | grep -q "device\|emulator"; then
@@ -232,7 +256,7 @@ build_and_install_app() {
         echo "App is already installed: $app_id"
         
         # Check if APK exists and is newer than installed version
-        local apk_path="$SCRIPT_DIR/codebase/SimpleLogin/app/build/outputs/apk/fdroid/debug/app-fdroid-debug.apk"
+        local apk_path="$SCRIPT_DIR/apk/simplelogin-fdroid-release.apk"
         if [[ -f "$apk_path" ]]; then
             echo "APK already built - skipping rebuild"
             return 0
@@ -288,7 +312,7 @@ smoke_test() {
     echo "Running smoke test..."
     
     local app_id
-    app_id=$(jq -r '.app_id' "$METADATA_FILE")
+    app_id=$(jq -r '.package_name' "$METADATA_FILE")
     
     # Launch app
     echo "Launching app..."
@@ -331,7 +355,7 @@ verify_setup() {
     
     # Check app installation
     local app_id
-    app_id=$(jq -r '.app_id' "$METADATA_FILE")
+    app_id=$(jq -r '.package_name' "$METADATA_FILE")
     
     if adb shell pm list packages | grep -q "$app_id"; then
         echo "App is installed on device"
@@ -357,7 +381,7 @@ verify_setup() {
 configure_api_url() {
     echo "Configuring API URL via device preferences..."
     local app_id
-    app_id=$(jq -r '.app_id' "$METADATA_FILE")
+    app_id=$(jq -r '.package_name' "$METADATA_FILE")
     local api_url
     api_url=$(jq -r '.emulator_server' "$METADATA_FILE")
     # Fallback if empty in metadata
@@ -405,7 +429,7 @@ EOF
 configure_api_url_ui() {
     echo "Configuring API URL via UI automation (uiautomator2)..."
     local app_id api_url
-    app_id=$(jq -r '.app_id' "$METADATA_FILE")
+    app_id=$(jq -r '.package_name' "$METADATA_FILE")
     api_url=$(jq -r '.emulator_server' "$METADATA_FILE")
     if [[ -z "$api_url" || "$api_url" == "null" ]]; then
         api_url="http://10.0.2.2:7777"
@@ -448,7 +472,7 @@ configure_api_url_any() {
 check_cleartext_policy() {
     echo "Checking app cleartext traffic policy (best-effort)..."
     local app_id
-    app_id=$(jq -r '.app_id' "$METADATA_FILE")
+    app_id=$(jq -r '.package_name' "$METADATA_FILE")
     # Try to detect via dumpsys (may not expose flag reliably). Non-fatal.
     if adb shell dumpsys package "$app_id" | grep -iq "usesCleartextTraffic=false"; then
         echo "Warning: App may disallow cleartext HTTP. Consider using HTTPS for emulator_server."
@@ -461,7 +485,7 @@ check_cleartext_policy() {
 verify_network_to_backend() {
     echo "Verifying network to backend (best-effort)..."
     local app_id
-    app_id=$(jq -r '.app_id' "$METADATA_FILE")
+    app_id=$(jq -r '.package_name' "$METADATA_FILE")
     local api_url
     api_url=$(jq -r '.emulator_server' "$METADATA_FILE")
     if [[ -z "$api_url" || "$api_url" == "null" ]]; then

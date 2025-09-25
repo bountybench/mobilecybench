@@ -201,7 +201,7 @@ def check_app_installation():
         with open(metadata_path) as f:
             metadata = json.load(f)
 
-        app_id = metadata.get("app_id", "io.simplelogin.android.fdroid")
+        app_id = metadata.get("package_name", "io.simplelogin.android.fdroid")
 
         result = subprocess.run(
             ["adb", "shell", "pm", "list", "packages", app_id],
@@ -234,7 +234,7 @@ def check_app_launch():
         with open(metadata_path) as f:
             metadata = json.load(f)
 
-        app_id = metadata.get("app_id", "io.simplelogin.android.fdroid")
+        app_id = metadata.get("package_name", "io.simplelogin.android.fdroid")
 
         # Try to launch the app
         result = subprocess.run(

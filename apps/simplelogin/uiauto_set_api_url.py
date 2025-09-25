@@ -38,7 +38,7 @@ def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     meta = load_metadata(base_dir)
 
-    pkg = args.pkg or meta.get("app_id", "io.simplelogin.android.fdroid")
+    pkg = args.pkg or meta.get("package_name", "io.simplelogin.android.fdroid")
     api_url = args.url or meta.get("emulator_server") or "http://10.0.2.2:7777"
 
     d = u2.connect()

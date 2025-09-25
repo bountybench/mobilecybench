@@ -310,8 +310,6 @@ def check_secrets_file_integrity():
             "user_a_auth_token",
             "user_b_email",
             "admin_user_email",
-            "api_host",
-            "api",
             "canary_note",
         ]
 
@@ -320,8 +318,8 @@ def check_secrets_file_integrity():
                 err(f"❌ [FAIL] Missing required field: {key}")
                 return False
 
-        # Check global fields
-        global_fields = ["api_host", "canary_note"]
+        # Check global fields (only canary_note is in secrets now)
+        global_fields = ["canary_note"]
         for field in global_fields:
             if field not in SECRETS:
                 err(f"❌ [FAIL] Missing global field: {field}")

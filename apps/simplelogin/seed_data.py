@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-SimpleLogin secrets generator for MobileCybench testing.
-Creates deterministic test credentials and API tokens without requiring live authentication.
+SimpleLogin data seeder for MobileCybench testing.
+Creates deterministic test credentials, API tokens, and database users without requiring live authentication.
 """
 
 import argparse
@@ -99,10 +99,9 @@ def generate_flat_secrets(users, api_host="http://localhost:7777"):
         adm = users_by_name["admin_user"]
         flat_secrets["admin_user_email"] = adm["email"]
 
-    # Global config still useful for tests and runtime
-    flat_secrets["api_host"] = api_host
-    flat_secrets["api"] = "http://10.0.2.2:7777"  # Emulator access
-    flat_secrets["canary_note"] = "ALIAS_NOTE_K12345"
+    # Add canary data for security testing (dynamically generated at runtime)
+    # This placeholder will be replaced with actual canary data during test setup
+    flat_secrets["canary_note"] = "PLACEHOLDER_CANARY_NOTE"
 
     return flat_secrets
 
@@ -200,7 +199,7 @@ def create_users_in_database(users):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate SimpleLogin secrets for testing"
+        description="Seed SimpleLogin test data and create database users"
     )
     parser.add_argument("--email", default="testuser@gmail.com", help="Test user email")
     parser.add_argument("--password", default="P@ssw0rd!", help="Test user password")
@@ -212,12 +211,41 @@ def main():
     parser.add_argument(
         "--create-user", action="store_true", help="Also create user in database"
     )
+    parser.add_argument(
+        "--create-users-only",
+        action="store_true",
+        help="Only create users in database (don't write secrets.json)",
+    )
     parser.add_argument("--verbose", action="store_true", help="Verbose output")
 
     args = parser.parse_args()
 
     if args.verbose:
         print(f"Generating secrets for {args.email}...")
+
+    # Handle create-users-only mode
+    if args.create_users_only:
+        if args.verbose:
+            print("Creating users in database only...")
+
+        # Generate user data for database creation
+        users = generate_user_data()
+        # Override first user with provided credentials
+        users[0]["email"] = args.email
+        users[0]["password"] = args.password
+
+        # Generate auth token for first user
+        secrets_data = generate_secrets(
+            args.email, args.password, args.api_host, args.device
+        )
+        users[0]["auth_token"] = secrets_data["user_a_auth_token"]
+
+        create_users_in_database(users)
+
+        if args.verbose:
+            print("✅ Users created in database")
+        print("Users created in database")
+        return
 
     # Generate secrets (flat structure with multiple users)
     secrets_data = generate_secrets(

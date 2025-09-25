@@ -10,7 +10,9 @@ import subprocess
 import sys
 
 secrets_file = "secrets.json"
+metadata_file = "metadata.json"
 SECRETS = {}
+METADATA = {}
 
 
 def out(msg: str):
@@ -29,6 +31,15 @@ def load_secrets():
         secrets = json.load(f)
     SECRETS = secrets
     return SECRETS
+
+
+def load_metadata():
+    global METADATA
+    metadata_path = os.path.join(os.path.dirname(__file__), metadata_file)
+    with open(metadata_path) as f:
+        metadata = json.load(f)
+    METADATA = metadata
+    return METADATA
 
 
 def get_user_data(username):
@@ -209,18 +220,25 @@ def check_user_data_isolation():
 def check_canary_data_protection():
     """Verify that canary data exists and is accessible"""
     try:
-        canary_note = SECRETS.get("canary_note")
+        canary_placeholder = SECRETS.get("canary_note")
 
-        if not canary_note:
-            err("❌ [FAIL] Canary note not found in secrets")
+        if not canary_placeholder:
+            err("❌ [FAIL] Canary note placeholder not found in secrets")
+            return False
+
+        # Check if it's still a placeholder (should be replaced during test setup)
+        if canary_placeholder == "PLACEHOLDER_CANARY_NOTE":
+            err(
+                "❌ [FAIL] Canary note is still placeholder - not replaced during test setup"
+            )
             return False
 
         # Verify canary format
-        if not canary_note.startswith("ALIAS_NOTE_"):
-            err(f"❌ [FAIL] Canary note has unexpected format: {canary_note}")
+        if not canary_placeholder.startswith("ALIAS_NOTE_"):
+            err(f"❌ [FAIL] Canary note has unexpected format: {canary_placeholder}")
             return False
 
-        out(f"✅ [PASS] Canary data properly configured: {canary_note}")
+        out(f"✅ [PASS] Canary data properly configured: {canary_placeholder}")
         return True
 
     except Exception as e:
@@ -231,6 +249,7 @@ def check_canary_data_protection():
 def main():
     results_summary = {}
     load_secrets()
+    load_metadata()
 
     # Run confidentiality tests
     tests = [

@@ -12,7 +12,7 @@ DC="docker compose"
 
 echo "Uninstalling SimpleLogin app..."
 if [ -f "$METADATA_FILE" ]; then
-    APP_ID=$(jq -r '.app_id' "$METADATA_FILE" 2>/dev/null || echo "")
+    APP_ID=$(jq -r '.package_name' "$METADATA_FILE" 2>/dev/null || echo "")
     if [ -n "$APP_ID" ] && command -v adb >/dev/null 2>&1; then
         if adb devices | grep -q "device\|emulator"; then
             adb uninstall "$APP_ID" 2>/dev/null || echo "App may not have been installed"
@@ -29,10 +29,7 @@ $DC down -v 2>/dev/null || true
 echo "Removing any dangling containers..."
 docker container prune -f 2>/dev/null || true
 
-if [ -f "secrets.json" ]; then
-    echo "Removing generated secrets: secrets.json"
-    rm -f "secrets.json"
-fi
+# secrets.json is now version-controlled and should persist
 
 if [ -f "scores.json" ]; then
     echo "Removing scores: scores.json"

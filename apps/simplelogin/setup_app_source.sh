@@ -90,83 +90,6 @@ check_prerequisites() {
 }
 
 
-configure_debug_build() {
-    log_info "Configuring debug build with local API endpoint..."
-    
-    # Ensure codebase directory exists (for submodule approach)
-    if [[ ! -d "$CODEBASE_DIR" ]]; then
-        log_error "Codebase directory not found at $CODEBASE_DIR"
-        log_info "This may indicate a submodule initialization issue"
-        return 1
-    fi
-    
-    cd "$CODEBASE_DIR"
-    
-    # Create debug build variant configuration
-    # SimpleLogin project structure: SimpleLogin/app/ is the main module
-    local debug_config_dir="SimpleLogin/app/src/debug"
-    mkdir -p "$debug_config_dir/res/xml"
-    
-    # Create network security config for debug builds
-    cat > "$debug_config_dir/res/xml/network_security_config.xml" << 'EOF'
-<?xml version="1.0" encoding="utf-8"?>
-<network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">10.0.2.2</domain>
-        <domain includeSubdomains="true">localhost</domain>
-        <domain includeSubdomains="true">127.0.0.1</domain>
-    </domain-config>
-</network-security-config>
-EOF
-    
-    # Look for API endpoint configuration files and update them
-    # These are common locations where API endpoints might be configured
-    local config_files=(
-        "SimpleLogin/app/src/main/java/io/simplelogin/android/utils/Constants.kt"
-        "SimpleLogin/app/src/main/java/io/simplelogin/android/utils/Constants.java"
-        "SimpleLogin/app/src/main/java/io/simplelogin/android/BuildConfig.java"
-        "SimpleLogin/app/src/debug/java/io/simplelogin/android/utils/Constants.kt"
-        "SimpleLogin/app/src/debug/java/io/simplelogin/android/utils/Constants.java"
-    )
-    
-    # SimpleLogin uses SLSharedPreferences for API URL configuration
-    # We'll create a debug override for the default API URL
-    mkdir -p "SimpleLogin/app/src/debug/java/io/simplelogin/android/utils"
-    cat > "SimpleLogin/app/src/debug/java/io/simplelogin/android/utils/SLSharedPreferencesDebug.kt" << 'EOF'
-package io.simplelogin.android.utils
-
-import android.content.Context
-
-object SLSharedPreferencesDebug {
-    private const val DEFAULT_DEBUG_API_URL = "http://10.0.2.2:7777"
-    
-    fun setupDebugApiUrl(context: Context) {
-        // Set default API URL for debug builds to local development server
-        val currentUrl = SLSharedPreferences.getApiUrl(context)
-        if (currentUrl == "https://app.simplelogin.io") {
-            SLSharedPreferences.setApiUrl(context, DEFAULT_DEBUG_API_URL)
-        }
-    }
-}
-EOF
-    
-    # Update build.gradle to include network security config
-    local build_gradle="SimpleLogin/app/build.gradle"
-    if [[ -f "$build_gradle" ]]; then
-        # Add network security config to debug build type
-        if ! grep -q "networkSecurityConfig" "$build_gradle"; then
-            sed -i.bak '/buildTypes {/,/}/ {
-                /debug {/,/}/ {
-                    /debug {/a\
-            networkSecurityConfig "@xml/network_security_config"
-                }
-            }' "$build_gradle"
-        fi
-    fi
-    
-    cd "$SCRIPT_DIR"
-    log_success "Debug build configuration completed"
-}
 
 setup_environment() {
     log_info "Setting up build environment..."
@@ -212,33 +135,44 @@ build_app() {
     # Make gradlew executable
     chmod +x gradlew
 
-    # Clean and build debug APK
+    # Configure release build to use debug signing for testing
+    log_info "Configuring release build to use debug signing..."
+    sed -i.bak 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
+
+    # Clean and build release APK
     log_info "Running Gradle clean..."
     if ! ./gradlew --no-daemon clean; then
         log_error "Gradle clean failed"
         return 1
     fi
 
-    log_info "Building F-Droid debug APK..."
-    if ! ./gradlew --no-daemon assembleFdroidDebug; then
+    log_info "Building F-Droid release APK..."
+    if ! ./gradlew --no-daemon assembleFdroidRelease; then
         log_error "Gradle build failed"
         return 1
     fi
     
     # Find the built F-Droid APK
     local apk_path
-    apk_path=$(find app/build/outputs/apk/fdroid/debug -name "*.apk" | head -1)
+    apk_path=$(find app/build/outputs/apk/fdroid/release -name "*.apk" | head -1)
     
     if [[ -z "$apk_path" || ! -f "$apk_path" ]]; then
-        log_error "Built F-Droid APK not found in app/build/outputs/apk/fdroid/debug/"
+        log_error "Built F-Droid APK not found in app/build/outputs/apk/fdroid/release/"
         return 1
     fi
     
     log_success "APK built successfully: $apk_path"
-    # Make path absolute for use from setup.sh
-    local absolute_apk_path
-    absolute_apk_path="$(pwd)/$apk_path"
-    echo "$absolute_apk_path" > "$SCRIPT_DIR/apk_path.txt"
+    
+    # Create apk directory if it doesn't exist
+    mkdir -p "$SCRIPT_DIR/apk"
+    
+    # Copy APK to standard location
+    local apk_filename="simplelogin-fdroid-release.apk"
+    local apk_dest="$SCRIPT_DIR/apk/$apk_filename"
+    cp "$apk_path" "$apk_dest"
+    
+    log_success "APK copied to: $apk_dest"
+    echo "$apk_dest" > "$SCRIPT_DIR/apk_path.txt"
     
     cd "$SCRIPT_DIR"
 }
@@ -248,7 +182,7 @@ verify_installation() {
     log_info "Verifying app installation..."
     
     local app_id
-    app_id=$(jq -r '.app_id' "$METADATA_FILE")
+    app_id=$(jq -r '.package_name' "$METADATA_FILE")
     
     # Check if app is installed
     if ! adb shell pm list packages | grep -q "$app_id"; then
