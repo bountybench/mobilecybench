@@ -924,7 +924,6 @@ jobs:
           checkout_commit "$dir"
 
           required_scripts=("setup.sh" "cleanup.sh")
-          fi
 
           echo "Setup mode: $setup_mode"
           echo "Checking for required scripts..."
