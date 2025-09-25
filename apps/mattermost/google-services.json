@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "853351146445",
+    "project_id": "mattermost-push-dev",
+    "storage_bucket": "mattermost-push-dev.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:853351146445:android:f1c25d569224e373d8da84",
+        "android_client_info": {
+          "package_name": "com.mattermost.rnbeta"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCNIchYOuLXCVUf8HyKVuItfL_SnL_bWR4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,78 @@
+#!/bin/bash
+set -e
+
+SDK_ROOT="$HOME/Android/Sdk"
+CMDLINE_TOOLS="$SDK_ROOT/cmdline-tools"
+TOOLS_VERSION="latest"
+PROJECT_ROOT="$PWD/codebase"
+PARENT=$PWD
+
+rm -rf "$HOME/Android"
+rm -rf "$PROJECT_ROOT"
+
+
+# Create directories
+mkdir -p "$CMDLINE_TOOLS"
+
+# Download command-line tools
+echo "Downloading Android command-line tools..."
+curl -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+
+# Extract and move to proper location
+unzip -o -q cmdline-tools.zip -d "$CMDLINE_TOOLS"
+
+rm -rf "$CMDLINE_TOOLS/$TOOLS_VERSION"
+
+mv -f "$CMDLINE_TOOLS/cmdline-tools" "$CMDLINE_TOOLS/$TOOLS_VERSION"
+rm cmdline-tools.zip
+
+# Set environment variables
+export ANDROID_HOME="$SDK_ROOT"
+export PATH="$ANDROID_HOME/cmdline-tools/$TOOLS_VERSION/bin:$ANDROID_HOME/platform-tools:$PATH"
+
+# Install required components
+echo "Installing SDK components..."
+yes | sdkmanager --sdk_root="$ANDROID_HOME" \
+  "platform-tools" \
+  "platforms;android-34" \
+  "build-tools;34.0.0"
+
+# Optional: verify installation
+echo "Installed SDK components:"
+sdkmanager --list | grep -E 'platform-tools|build-tools|platforms'
+
+echo "✅ Android SDK setup complete."
+
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+source ~/.nvm/nvm.sh
+
+cd codebase
+git config user.email "your.email@example.com"
+nvm install
+nvm use
+npm install
+
+npm install @react-native-community/cli --save-dev
+cd android
+echo "sdk.dir=${SDK_ROOT}" > local.properties
+sudo apt-get -qq install openjdk-17-jdk -y
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+sed -i 's/compileSdkVersion[[:space:]]\+[0-9]\+/compileSdkVersion 34/' "$PROJECT_ROOT/node_modules/@voximplant/react-native-foreground-service/android/build.gradle"
+
+[ -f "$PROJECT_ROOT/android/app/src/main/res/values/colors.xml" ] && grep -q "name=\"red\"" "$PROJECT_ROOT/android/app/src/main/res/values/colors.xml" || sed -i '/<\/resources>/i\    <color name="red">#FF0000</color>' "$PROJECT_ROOT/android/app/src/main/res/values/colors.xml"
+echo "MATTERMOST_RELEASE_STORE_FILE=$PARENT/qilsklo.keystore" > $HOME/.gradle/gradle.properties
+echo "MATTERMOST_RELEASE_KEY_ALIAS=qilsklo" >> $HOME/.gradle/gradle.properties
+echo "MATTERMOST_RELEASE_PASSWORD=qilsklo" >> $HOME/.gradle/gradle.properties
+export APP_NAME="Mattermost Beta"
+export MAIN_APP_IDENTIFIER="com.mattermost.rnbeta"
+export SUPPLY_PACKAGE_NAME=$MAIN_APP_IDENTIFIER
+export SUPPLY_JSON_KEY="$PARENT/google-services.json"
+
+npx react-native run-android --active-arch-only
+sudo apt-get -qq install ruby-bundler -y
+sudo chown -R $(whoami):$(whoami) /var/lib/gems/3.2.0
+bundle update fastlane
+echo "gem 'fastlane'" >> $PROJECT_ROOT/Gemfile
+#npm run build:android
+./gradlew assembleDebug
+
