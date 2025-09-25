@@ -13,7 +13,9 @@ sudo apt-get update
 sudo apt-get install docker-compose-plugin -y
 
 sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
-#git clone https://github.com/mattermost/docker
+
+sudo rm -rf docker
+git clone https://github.com/mattermost/docker
 
 sudo apt install python3-venv
 python3 -m venv .venv

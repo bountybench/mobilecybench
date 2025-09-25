@@ -40,3 +40,6 @@
 [submodule "apps/jellyfin/codebase"]
 	path = apps/jellyfin/codebase
 	url = https://github.com/cy-suite/jellyfin-android
+[submodule "apps/mattermost/mattermost"]
+	path = apps/mattermost/codebase
+	url = git@github.com:cy-suite/mattermost.git
