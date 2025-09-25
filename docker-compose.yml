@@ -1,0 +1,56 @@
+version: "3.9"
+
+services:
+  account_db:
+    image: postgres:16
+    container_name: account_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: flexisip
+      POSTGRES_PASSWORD: flexipass
+      POSTGRES_DB: flexisip_accounts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flexisip -d flexisip_accounts"]
+      interval: 5s
+      retries: 30
+    networks:
+      - sip_net
+
+  account_manager:
+    image: belledonne/flexisip-account-manager:latest
+    container_name: account_manager
+    restart: unless-stopped
+    depends_on:
+      account_db:
+        condition: service_healthy
+    environment:
+      DB_TYPE: postgres
+      DB_HOST: account_db
+      DB_PORT: 5432
+      DB_NAME: flexisip_accounts
+      DB_USER: flexisip
+      DB_PASSWORD: flexipass
+      DOMAIN: linphone.local
+    ports:
+      - "8080:8080"   # REST API exposed on host → emulator: 10.0.2.2:8080
+    networks:
+      - sip_net
+
+  flexisip:
+    image: belledonne/flexisip:latest
+    container_name: flexisip
+    restart: unless-stopped
+    depends_on:
+      - account_manager
+    volumes:
+      - ./flexisip.conf:/etc/flexisip/flexisip.conf:ro
+    ports:
+      - "5060:5060/udp"   # SIP over UDP
+      - "5060:5060/tcp"   # SIP over TCP
+      - "5061:5061/tcp"   # SIP over TLS
+    networks:
+      - sip_net
+
+networks:
+  sip_net:
+    driver: bridge
