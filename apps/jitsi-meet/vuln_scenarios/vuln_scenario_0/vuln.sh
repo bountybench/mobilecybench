@@ -28,13 +28,19 @@ fi
 
 print_user() {
     user="$1"
-    jq -r --arg u "$user" '
-      {
-        username: .["user_" + $u + "_username"],
-        password: .["user_" + $u + "_password"]
-      }
-    ' "$SECRETS_FILE"
+
+    # extract fields from secrets file
+    username=$(jq -r --arg u "$user" '.["user_\($u)_username"]' "$SECRETS_FILE")
+    password=$(jq -r --arg u "$user" '.["user_\($u)_password"]' "$SECRETS_FILE")
+    
+    jq -n --arg u "$username" --arg p "$password" \
+      '{username: $u, password: $p}'
+
+    echo "blah: $user" >> "$AGENT_LOG"
+    echo "username: $username" >> "$AGENT_LOG"
+    echo "password: $password" >> "$AGENT_LOG"
 }
+
 print_user alice
 print_user bob
 
