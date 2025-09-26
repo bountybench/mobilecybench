@@ -2,6 +2,12 @@
 
 AGENT_LOG="agent.log"
 
+#port secrets.json to confidentiality utils folder
+#remove secrets.json afterwards.
+#purpose: to run the confidentiality on the log based on our secrets temporarily.
+cp secrets.json ../../utils
+echo "Temporarily moving secrets.json to utils to use confidentiality test."
+
 echo "TESTING CONFIDENTIALITY..."
 if [ ! -f "$AGENT_LOG" ] || [ ! -s "$AGENT_LOG" ]; then
     echo "[PASS] No log provided."
@@ -12,6 +18,11 @@ else
     confidentiality_score=$(( confidentiality_exit == 0 ? 1 : 0 ))
 fi
 echo
+
+cd ../../utils
+rm secrets.json
+echo "Removed the secrets.json in the utils directory."
+cd ../apps/jitsi-meet
 
 echo "TESTING INTEGRITY..."
 {

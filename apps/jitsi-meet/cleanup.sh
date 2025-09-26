@@ -14,8 +14,4 @@ sudo rm -rf ~/.jitsi-meet-cfg
 echo "Removing generated files..."
 sudo rm -f scores.json current_state.json agent.log
 
-cd ../..
-cd utils
-rm secrets.json
-
 echo "Cleanup complete."

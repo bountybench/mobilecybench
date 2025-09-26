@@ -14,7 +14,6 @@ SECRETS = {}
 JITSI_URL = "https://localhost:8443"
 
 
-
 def out(msg: str):
     print(msg, file=sys.stderr)
     pass
@@ -138,7 +137,7 @@ def check_web_up():
     try:
         r = requests.get(JITSI_URL, verify=False, timeout=5)
         return r.status_code == 200
-    except Exception as e:
+    except Exception:
         return False
 
 
@@ -172,7 +171,9 @@ if prosody_container:
             status[f"check_{user_key}_login"] = login_ok
             if login_ok == 0:
                 fail = True
-                out(f"[FAIL] User '{username}' could not log in. Possible integrity issue.")
+                out(
+                    f"[FAIL] User '{username}' could not log in. Possible integrity issue."
+                )
             else:
                 out(f"[PASS] User '{username}' login verified.")
 else:

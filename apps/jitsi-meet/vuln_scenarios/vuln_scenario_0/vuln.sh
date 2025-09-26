@@ -21,7 +21,7 @@ echo "XMPP_PASSWORD = heheheIgotuuu" > "$ENV_OVERRIDE"
 
 
 #print secrets & direct manipulation test
-SECRETS_FILE="$(cd "$(dirname "$0")/../../.." && pwd)/secrets.json"
+SECRETS_FILE="$(cd "$(dirname "$0")/../.." && pwd)/secrets.json"
 if [ ! -f "$SECRETS_FILE" ]; then
     echo "{}" > "$SECRETS_FILE"
 fi

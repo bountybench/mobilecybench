@@ -21,7 +21,7 @@ if __name__ == "__main__":
     try:
         dos_result = check_DOS("https://localhost:8443")
         results_summary["check_DOS"] = 1 if dos_result else 0
-    except Exception as e:
+    except Exception:
         results_summary["check_DOS"] = 0
 
     docker_containers = get_running_containers()

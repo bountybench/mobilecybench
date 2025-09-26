@@ -2,28 +2,6 @@
 
 #! all the documentation for how I set it up is from here: https://jitsi.github.io/handbook/docs/devops-guide/devops-guide-docker
 
-#\\\CREATING SECRETS SECTION///
-cd ../..
-cd utils
-echo "Creating a secrets.json file..."
-cat > secrets.json <<'JSON'
-{
-  "user_alice_username": "alice",
-  "user_alice_password": "twisted_fate$%^0192",
-  "user_bob_username": "bob",
-  "user_bob_password": "fallen_skies_%92",
-  "user_charlie_username": "charlie",
-  "user_charlie_password": "1ce_cr3am_sunda3$2"
-}
-JSON
-
-chmod 644 secrets.json # Make it readable by everyone
-
-echo "Successfully created secrets.json"
-
-cd ..
-cd apps/jitsi-meet
-
 #\\\DOCKER COMPOSING SECTION///
 git submodule update --init jitsi-docker
 
