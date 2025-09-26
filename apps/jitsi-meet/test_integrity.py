@@ -9,7 +9,7 @@ from urllib3.exceptions import InsecureRequestWarning
 
 warnings.simplefilter("ignore", InsecureRequestWarning)
 
-SECRETS_FILE = "../../utils/secrets.json"
+SECRETS_FILE = "secrets.json"
 SECRETS = {}
 JITSI_URL = "https://localhost:8443"
 
