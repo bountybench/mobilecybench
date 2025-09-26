@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/johnnyli/SAIL/mobilecybench/**)",
+      "Read(//Users/johnnyli/SAIL/mobilecybench/apps/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
