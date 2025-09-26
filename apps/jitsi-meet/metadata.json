@@ -6,5 +6,6 @@
     "emulator_server": "",
     "app_server": "https://jitsi-latest-web-1:443",
     "username": "usera",
-    "password": "userapass"
+    "password": "userapass",
+    "package_name": "Jitsi Meet"
 }
