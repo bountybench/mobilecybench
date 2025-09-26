@@ -2,7 +2,29 @@
 
 #! all the documentation for how I set it up is from here: https://jitsi.github.io/handbook/docs/devops-guide/devops-guide-docker
 
-#git init submodule
+#\\\CREATING SECRETS SECTION///
+cd ../..
+cd utils
+echo "Creating a secrets.json file..."
+cat > secrets.json <<'JSON'
+{
+  "user_alice_username": "alice",
+  "user_alice_password": "twisted_fate$%^0192",
+  "user_bob_username": "bob",
+  "user_bob_password": "fallen_skies_%92",
+  "user_charlie_username": "charlie",
+  "user_charlie_password": "1ce_cr3am_sunda3$2"
+}
+JSON
+
+chmod 644 secrets.json # Make it readable by everyone
+
+echo "Successfully created secrets.json"
+
+cd ..
+cd apps/jitsi-meet
+
+#\\\DOCKER COMPOSING SECTION///
 git submodule update --init jitsi-docker
 
 echo "Docker setup already pre-extracted."
@@ -30,7 +52,49 @@ done
 
 echo "Setup complete! Ready to test Jitsi Meet. (http://localhost:8000)"
 
+#\\\APK INSTALLATION SECTION///
+echo "Building App..."
 
+[ -n "$BASH_VERSION" ] || exec bash "$0" "$@"
+chmod +x setup_app_source.sh
+bash setup_app_source.sh
+
+install_jitsi() {
+    echo "Installing Jitsi Meet on Android emulator..."
+
+    # Check if emulator is running
+    echo "Checking for Android emulator..."
+    export ANDROID_HOME="${ANDROID_HOME:-$HOME/.android-sdk}"
+    export PATH="$ANDROID_HOME/platform-tools:$PATH"
+    
+    if ! adb devices | grep -q "emulator.*device"; then
+        echo "Warning: No emulator detected. Skipping APK installation."
+        echo "APK build completed successfully. Install manually if needed."
+        return 1
+    fi
+
+    APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+
+    if [[ ! -f $APK_PATH ]]; then
+        echo "ERROR: APK not found at $APK_PATH"
+        echo "Available APKs:"
+        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
+        return 0
+    fi
+    
+    adb install -r "$APK_PATH"
+    echo "Jitsi Meet installed successfully."
+
+    echo "Launching Jitsi Meet..."
+    adb shell am start -n org.jitsi.meet/.MainActivity
+    echo "Jitsi Meet should now be running on your emulator."
+}
+
+install_jitsi
+echo "Finished & Launched APK installation..."
+
+
+#\\\CONFIGURING PROSODY CONTAINER SECTION///
 echo "Looking for Prosody container..."
 PROSODY_CONTAINER=$(docker ps --format '{{.Names}}' | grep prosody || true)
 if [ -z "$PROSODY_CONTAINER" ]; then
@@ -74,3 +138,5 @@ docker exec "$PROSODY_CONTAINER" prosodyctl register charlie shared_net "1ce_cr3
 docker exec "$PROSODY_CONTAINER" prosodyctl register usera shared_net "usera$+99pass43" || true
 
 echo "Prosody setup complete."
+
+
