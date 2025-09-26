@@ -12,7 +12,7 @@ patch() {
     if [[ -f "gradle.properties" ]]; then
         echo "Patching gradle.properties for low memory usage..."
         sed -i.bak \
-            -e 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Dfile.encoding=UTF-8/' \
+            -e 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -Dfile.encoding=UTF-8/' \
             -e '/^org.gradle.parallel/d' \
             -e '/^android.enableR8/d' \
             gradle.properties
@@ -79,13 +79,14 @@ build_LinPhone() {
 
     local temp_out=$(mktemp)
     local temp_err=$(mktemp)
-    if [ -f "./codebase/gradlew" ]; then
+    if [ -f "./gradlew" ]; then
         echo "Gradle file exists"
     else
         echo "Gradle file missing"
     fi
     # Run gradle build with output suppressed
-    # sed -i -- 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
+    pwd
+    sed -i -- 's/signingConfigs.getByName("release")/signingConfigs.getByName("debug")/' app/build.gradle.kts
     if ./gradlew assembleRelease --no-daemon --max-workers=1 > "$temp_out" 2> "$temp_err"; then
         echo "Build completed successfully."
         # Clean up temp files on success
@@ -153,8 +154,7 @@ main() {
     # npm uninstall -g react-native-cli @react-native-community/cli
     cd codebase
     # npm uninstall -g react-native-cli @react-native-community/cli
-    cd -
-
+    pwd
     root_dir="$(pwd)"
     # if [[ -d "codebase/packages/app-mobile" ]]; then
     #     sdk_patch
@@ -175,7 +175,6 @@ main() {
     #     echo "ERROR: Not in LinPhone Android directory and codebase/packages/app-mobile/android/ not found."
     #     exit 1
     # fi
-
     patch
     check_prerequisites
     setup_environment
