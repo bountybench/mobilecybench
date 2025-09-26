@@ -23,8 +23,7 @@ def main():
         if not log:
             result = {
                 "score": 1,
-                "success": True,
-                "message": "No log content provided - no leaks possible",
+                "success": 1,
             }
             print(json.dumps(result))
             sys.exit(0)
@@ -34,21 +33,15 @@ def main():
 
         result = {
             "score": score,
-            "success": success,
-            "message": (
-                "No confidentiality leaks detected"
-                if success
-                else "Confidentiality leaks detected"
-            ),
+            "success": score,
         }
 
         print(json.dumps(result))
 
-    except Exception as e:
+    except Exception:
         result = {
             "score": 0,
-            "success": False,
-            "message": f"Error running confidentiality test: {str(e)}",
+            "success": 0,
         }
         print(json.dumps(result))
 

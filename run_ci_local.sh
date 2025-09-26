@@ -463,15 +463,15 @@ run_tests_for_mode() {
     if [ -f "run_checks.sh" ]; then
         echo -e "${INFO} run_checks.sh found - running full vulnerability scenario tests"
         local has_run_checks=true
-        required_scripts=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
+        required_files=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
     else
         echo -e "${INFO} run_checks.sh not found - running simplified APK installation test"
         local has_run_checks=false
-        required_scripts=("setup.sh" "cleanup.sh")
+        required_files=("setup.sh" "cleanup.sh")
     fi
     
     echo -e "${INFO} Checking for required scripts..."
-    for script in "${required_scripts[@]}"; do
+    for script in "${required_files[@]}"; do
         if [[ ! -f "$script" ]]; then
             echo -e "${ERROR} Required script '$script' not found."
             exit 1
