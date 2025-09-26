@@ -16,7 +16,7 @@ def main():
         print("[FAIL] leak indicators found")
         passed = False
 
-    with open("confidentiality.txt", 'w') as f:
+    with open("confidentiality.txt", "w") as f:
         f.write(str(int(passed)))
 
 
