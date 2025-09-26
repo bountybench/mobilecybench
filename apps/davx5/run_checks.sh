@@ -7,7 +7,7 @@ if [ -z "$exploit_log" ]; then
     echo "[PASS] No log provided."
     confidentiality_score=1
 else
-    python test_confidentiality.py < "$exploit_log"
+    python3 test_confidentiality.py < "$exploit_log"
     confidentiality_score=$(cat confidentiality.txt 2>/dev/null || echo "1")
 fi
 echo

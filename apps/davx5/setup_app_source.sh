@@ -82,7 +82,7 @@ main() {
     create_signature
     build_apk
 
-    mdkir -p "${SCRIPT_DIR}/apk"
+    mkdir -p "${SCRIPT_DIR}/apk"
     cp "${APK_PATH}" "${SCRIPT_DIR}/apk/davx5.apk" 
 }
 

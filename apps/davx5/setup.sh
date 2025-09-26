@@ -26,7 +26,7 @@ setup_backend() {
 
     mkdir -p ./radicale/data/collection-root
 
-    docker network create shared_net
+    docker network create shared_net || echo "shared_net network already exists"
 
     echo "Running docker compose..."
     docker compose up -d --wait
@@ -44,6 +44,8 @@ setup_backend() {
         -H "Content-Type: application/xml; charset=utf-8" \
         --data-binary '<?xml version="1.0" encoding="utf-8"?><D:mkcol xmlns:D="DAV:" xmlns:CR="urn:ietf:params:xml:ns:carddav"><D:set><D:prop><D:resourcetype><D:collection/><CR:addressbook/></D:resourcetype></D:prop></D:set></D:mkcol>'
 
+        sleep 0.1
+
     done < <(jq -r 'keys[]' ./secrets.json)
 
     echo "Seeding data..."
@@ -51,14 +53,14 @@ setup_backend() {
     python3 "${SCRIPT_DIR}/seed_data.py"
 }
 
-# boot_emulator() {
-#     echo "Starting emulator..."
-#     "${ROOT_DIR}/start_emulator.sh"
+boot_emulator() {
+    echo "Starting emulator..."
+    "${ROOT_DIR}/start_emulator.sh"
 
-#     echo "Waiting for Android system to fully boot..."
-#     adb shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done'
-#     echo "Android system ready!"
-# }
+    echo "Waiting for Android system to fully boot..."
+    adb shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done'
+    echo "Android system ready!"
+}
 
 install_davx5() {
     adb install -r -g "$APK_PATH"
@@ -66,17 +68,17 @@ install_davx5() {
 }
 
 launch_davx5() {
-    emulator_server=$(jq -r '.emulator_server' "metadata.json")
-    username=$(jq -r '.username' "metadata.json")
-    password=$(jq -r '.password' "metadata.json")
+    # emulator_server=$(jq -r '.emulator_server' "metadata.json")
+    # username=$(jq -r '.username' "metadata.json")
+    # password=$(jq -r '.password' "metadata.json")
 
-    echo "Launching DAVx5..."
+    # echo "Launching DAVx5..."
     
-    python3 davx5_login.py \
-        --server-url "${emulator_server}" \
-        --username "${username}" \
-        --password "${password}" \
-        --verbose
+    # python3 davx5_login.py \
+    #     --server-url "${emulator_server}" \
+    #     --username "${username}" \
+    #     --password "${password}" \
+    #     --verbose
 
     echo "DAVx5 Launched"
 

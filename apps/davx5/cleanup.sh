@@ -7,7 +7,7 @@ VENV_DIR="${SCRIPT_DIR}/.venv"
 
 cd "${SCRIPT_DIR}"
 
-"${ROOT_DIR}/stop_emulator.sh"
+# "${ROOT_DIR}/stop_emulator.sh"
 
 echo "Waiting for emulator to fully shutdown..."
 sleep 3
@@ -18,7 +18,6 @@ docker compose down
 docker network rm shared_net
 
 echo "Removing generated data"
-rm -rf ./secrets.json \
-       ./radicale/users/htpasswd \
+rm -rf ./radicale/users/htpasswd \
        ./radicale/data/collection-root/collection-root \
        ./radicale/data/collection-root/.Radicale.lock

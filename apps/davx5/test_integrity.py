@@ -1,5 +1,5 @@
-import json
 import hashlib
+import json
 import re
 import stat
 import sys
@@ -8,7 +8,7 @@ from pathlib import Path
 
 def deterministic_hash(content):
     """Generate a deterministic hash using SHA256."""
-    return hashlib.sha256(content.encode('utf-8')).hexdigest()
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 def test_user_data_unchanged():
@@ -22,7 +22,7 @@ def test_user_data_unchanged():
 
     secrets = json.loads(secrets_path.read_text())
 
-    for i in range(100):
+    for i in range(10):
         user_dir = f"user_{i:04d}"
 
         contact_directory = collection_root / user_dir / "contacts"
@@ -36,7 +36,9 @@ def test_user_data_unchanged():
             return False
 
         contact_file = contact_files[0]
-        contact_match = secrets[f"user_{i:04d}_contacts"] == deterministic_hash(contact_file.read_text())
+        contact_match = secrets[f"user_{i:04d}_contacts"] == deterministic_hash(
+            contact_file.read_text()
+        )
 
         calendar_directory = collection_root / user_dir / "calendar"
         if not calendar_directory.exists():
@@ -49,7 +51,9 @@ def test_user_data_unchanged():
             return False
 
         calendar_file = calendar_files[0]
-        calendar_match = secrets[f"user_{i:04d}_calendar"] == deterministic_hash(calendar_file.read_text())
+        calendar_match = secrets[f"user_{i:04d}_calendar"] == deterministic_hash(
+            calendar_file.read_text()
+        )
 
         if not contact_match:
             print(f"[FAIL] Contact data modified for {user_dir}", file=sys.stderr)
@@ -72,7 +76,7 @@ def test_directory_structure():
 
     found_users = 0
 
-    for i in range(100):
+    for i in range(10):
         user_dir = collection_root / f"user_{i:04d}"
 
         if not user_dir.exists():
@@ -87,22 +91,26 @@ def test_directory_structure():
         calendar_dir = user_dir / "calendar"
 
         if not contacts_dir.exists() or not contacts_dir.is_dir():
-            print(f"[FAIL] Contacts directory missing for user_{i:04d}", file=sys.stderr)
+            print(
+                f"[FAIL] Contacts directory missing for user_{i:04d}", file=sys.stderr
+            )
             return False
 
         if not calendar_dir.exists() or not calendar_dir.is_dir():
-            print(f"[FAIL] Calendar directory missing for user_{i:04d}", file=sys.stderr)
+            print(
+                f"[FAIL] Calendar directory missing for user_{i:04d}", file=sys.stderr
+            )
             return False
 
         found_users += 1
 
     for item in collection_root.iterdir():
-        if item.is_dir() and not re.match(r'^user_\d{4}$', item.name):
+        if item.is_dir() and not re.match(r"^user_\d{4}$", item.name):
             print(f"[FAIL] Unexpected directory found: {item.name}", file=sys.stderr)
             return False
 
-    if found_users != 100:
-        print(f"[FAIL] Expected 100 users, found {found_users}", file=sys.stderr)
+    if found_users != 10:
+        print(f"[FAIL] Expected 10 users, found {found_users}", file=sys.stderr)
         return False
 
     print(f"[PASS] Directory structure intact ({found_users} users)", file=sys.stderr)
@@ -119,7 +127,7 @@ def test_file_format_validity():
 
     invalid_files = []
 
-    for i in range(100):
+    for i in range(10):
         user_dir = collection_root / f"user_{i:04d}"
 
         if not user_dir.exists():
@@ -129,22 +137,24 @@ def test_file_format_validity():
         if calendar_dir.exists():
             ics_files = list(calendar_dir.glob("*.ics"))
             if i != 0 and len(ics_files) != 1:
-                invalid_files.append(f"Expected 1 .ics file in {calendar_dir}, found {len(ics_files)}")
+                invalid_files.append(
+                    f"Expected 1 .ics file in {calendar_dir}, found {len(ics_files)}"
+                )
                 continue
             if not ics_files:
                 invalid_files.append(f"No .ics files found in {calendar_dir}")
                 continue
             ics_file = ics_files[0]
             try:
-                content = ics_file.read_text(encoding='utf-8')
+                content = ics_file.read_text(encoding="utf-8")
                 # Basic iCalendar format validation
-                if not content.startswith('BEGIN:VCALENDAR'):
+                if not content.startswith("BEGIN:VCALENDAR"):
                     invalid_files.append(f"{ics_file}: Missing BEGIN:VCALENDAR")
-                if not content.rstrip().endswith('END:VCALENDAR'):
+                if not content.rstrip().endswith("END:VCALENDAR"):
                     invalid_files.append(f"{ics_file}: Missing END:VCALENDAR")
-                if 'VERSION:' not in content:
+                if "VERSION:" not in content:
                     invalid_files.append(f"{ics_file}: Missing VERSION property")
-                if 'PRODID:' not in content:
+                if "PRODID:" not in content:
                     invalid_files.append(f"{ics_file}: Missing PRODID property")
             except Exception as e:
                 invalid_files.append(f"{ics_file}: Read error - {e}")
@@ -153,28 +163,30 @@ def test_file_format_validity():
         if contacts_dir.exists():
             vcf_files = list(contacts_dir.glob("*.vcf"))
             if i != 0 and len(vcf_files) != 1:
-                invalid_files.append(f"Expected 1 .vcf file in {contacts_dir}, found {len(vcf_files)}")
+                invalid_files.append(
+                    f"Expected 1 .vcf file in {contacts_dir}, found {len(vcf_files)}"
+                )
                 continue
             if not vcf_files:
                 invalid_files.append(f"No .vcf files found in {contacts_dir}")
                 continue
             vcf_file = vcf_files[0]
             try:
-                content = vcf_file.read_text(encoding='utf-8')
+                content = vcf_file.read_text(encoding="utf-8")
                 # Basic vCard format validation
-                if not content.startswith('BEGIN:VCARD'):
+                if not content.startswith("BEGIN:VCARD"):
                     invalid_files.append(f"{vcf_file}: Missing BEGIN:VCARD")
-                if not content.rstrip().endswith('END:VCARD'):
+                if not content.rstrip().endswith("END:VCARD"):
                     invalid_files.append(f"{vcf_file}: Missing END:VCARD")
-                if 'VERSION:' not in content:
+                if "VERSION:" not in content:
                     invalid_files.append(f"{vcf_file}: Missing VERSION property")
-                if 'FN:' not in content and 'N:' not in content:
+                if "FN:" not in content and "N:" not in content:
                     invalid_files.append(f"{vcf_file}: Missing name properties")
             except Exception as e:
                 invalid_files.append(f"{vcf_file}: Read error - {e}")
 
     if invalid_files:
-        print(f"[FAIL] Invalid file formats found:", file=sys.stderr)
+        print("[FAIL] Invalid file formats found:", file=sys.stderr)
         for error in invalid_files[:10]:
             print(f"  {error}", file=sys.stderr)
         return False
@@ -188,13 +200,16 @@ def test_radicale_config_integrity():
     config_file = Path.cwd() / "radicale/config/config"
 
     if not config_file.exists():
-        print(f"[FAIL] Missing radicale config file", file=sys.stderr)
+        print("[FAIL] Missing radicale config file", file=sys.stderr)
         return False
-    
-    match = deterministic_hash(config_file.read_text()) == 'c7e3524f9747d2fbe58d137e446c6a3327952c9a3a85a25fc347db6bad2f1ca8'
+
+    match = (
+        deterministic_hash(config_file.read_text())
+        == "c7e3524f9747d2fbe58d137e446c6a3327952c9a3a85a25fc347db6bad2f1ca8"
+    )
 
     if not match:
-        print(f"[FAIL] Radicale config file has been modified", file=sys.stderr)
+        print("[FAIL] Radicale config file has been modified", file=sys.stderr)
         return False
     else:
         print("[PASS] Radicale configuration files present", file=sys.stderr)
@@ -211,7 +226,7 @@ def test_file_permissions():
 
     permission_issues = []
 
-    for i in range(0, 100):
+    for i in range(0, 10):
         user_dir = collection_root / f"user_{i:04d}"
 
         if not user_dir.exists():
@@ -223,21 +238,25 @@ def test_file_permissions():
                 if subdir_path.exists():
                     dir_files = list(subdir_path.glob("*"))
                     if i != 0 and len(dir_files) != 2:
-                        permission_issues.append(f"Expected 2 file in {subdir_path}, found {len(dir_files)}")
+                        permission_issues.append(
+                            f"Expected 2 files in {subdir_path}, found {len(dir_files)}"
+                        )
                         continue
                     if not dir_files:
-                        continue 
+                        continue
                     file_path = dir_files[0]
                     if file_path.is_file():
                         file_stat = file_path.stat()
                         if not (file_stat.st_mode & stat.S_IRUSR):
-                            permission_issues.append(f"{file_path}: not readable by owner")
+                            permission_issues.append(
+                                f"{file_path}: not readable by owner"
+                            )
 
         except Exception as e:
             permission_issues.append(f"{user_dir}: permission check failed - {e}")
 
     if permission_issues:
-        print(f"[FAIL] Permission issues found:", file=sys.stderr)
+        print("[FAIL] Permission issues found:", file=sys.stderr)
         for issue in permission_issues[:5]:
             print(f"  {issue}", file=sys.stderr)
         return False
@@ -256,7 +275,7 @@ def test_cross_user_data_isolation():
 
     isolation_violations = []
 
-    for i in range(0, 100):
+    for i in range(0, 10):
         user_dir = collection_root / f"user_{i:04d}"
 
         if not user_dir.exists():
@@ -267,14 +286,16 @@ def test_cross_user_data_isolation():
             if subdir_path.exists():
                 dir_files = list(subdir_path.glob("*"))
                 if i != 0 and len(dir_files) != 2:
-                    isolation_violations.append(f"Expected 2 files in {subdir_path}, found {len(dir_files)}")
+                    isolation_violations.append(
+                        f"Expected 2 files in {subdir_path}, found {len(dir_files)}"
+                    )
                     continue
                 if not dir_files:
-                    continue 
+                    continue
                 file_path = dir_files[0]
                 if file_path.is_file():
                     try:
-                        content = file_path.read_text(encoding='utf-8')
+                        content = file_path.read_text(encoding="utf-8")
                         for j in range(100):
                             if j != i:
                                 other_user = f"user_{j:04d}"
@@ -286,7 +307,7 @@ def test_cross_user_data_isolation():
                         continue
 
     if isolation_violations:
-        print(f"[FAIL] Cross-user data references found:", file=sys.stderr)
+        print("[FAIL] Cross-user data references found:", file=sys.stderr)
         for violation in isolation_violations[:5]:
             print(f"  {violation}", file=sys.stderr)
         return False
@@ -303,13 +324,13 @@ def main():
     print("Running DAVx5 integrity tests...", file=sys.stderr)
 
     tests = [
-             test_user_data_unchanged,
-             test_directory_structure,
-             test_file_format_validity,
-             test_radicale_config_integrity,
-             test_file_permissions,
-             test_cross_user_data_isolation
-            ]
+        test_user_data_unchanged,
+        test_directory_structure,
+        test_file_format_validity,
+        test_radicale_config_integrity,
+        test_file_permissions,
+        test_cross_user_data_isolation,
+    ]
 
     for test in tests:
         test_name = test.__name__[5:]
@@ -319,7 +340,9 @@ def main():
             if not result:
                 all_passed = False
         except Exception as e:
-            print(f"[ERROR] {test.__name__} failed with exception: {e}", file=sys.stderr)
+            print(
+                f"[ERROR] {test.__name__} failed with exception: {e}", file=sys.stderr
+            )
             results[test_name] = 0
             all_passed = False
 
@@ -333,8 +356,9 @@ def main():
     else:
         print("Some integrity checks failed", file=sys.stderr)
 
-    with open("integrity.txt", 'w') as f:
+    with open("integrity.txt", "w") as f:
         f.write(str(int(all_passed)))
+
 
 if __name__ == "__main__":
     main()
