@@ -8,7 +8,15 @@ VENV_DIR="${SCRIPT_DIR}/.venv"
 cd "${SCRIPT_DIR}"
 
 echo "Stopping Radicale container"
+
+if ! docker ps --format '{{.Names}}' | grep -q '^radicale$'; then
+    echo "Radicale container not running, starting temporarily..."
+    docker compose up -d radicale
+    sleep 2
+fi
+
 docker exec radicale chown -R $(id -u):$(id -g) /data/collection-root || true
+
 docker compose down
 
 docker network rm shared_net
