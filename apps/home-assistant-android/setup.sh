@@ -140,6 +140,45 @@ seed_home_assistant_config() {
     fi
 }
 
+wait_for_container_healthy() {
+    local container_name="home-assistant-server"
+    local max_wait_time=600
+    local check_interval=10
+    local elapsed_time=0
+    
+    echo "Waiting for container '$container_name' to be healthy..."
+    
+    while [ $elapsed_time -lt $max_wait_time ]; do
+        if docker ps --format "table {{.Names}}\t{{.Status}}" | grep -q "$container_name"; then
+            local health_status=$(docker inspect --format='{{.State.Health.Status}}' "$container_name" 2>/dev/null || echo "no-healthcheck")
+            case "$health_status" in
+                "healthy")
+                    echo "Container '$container_name' is now healthy!"
+                    return 0
+                    ;;
+                "unhealthy")
+                    echo "[ERROR] Container '$container_name' is unhealthy."
+                    exit 1
+                    ;;
+                "starting"|"no-healthcheck")
+                    echo "Container health status: $health_status (waiting...)"
+                    ;;
+                *)
+                    echo "Container health status: $health_status (waiting...)"
+                    ;;
+            esac
+        else
+            echo "Container '$container_name' not found, checking if it's starting..."
+        fi
+        
+        sleep $check_interval
+        elapsed_time=$((elapsed_time + check_interval))
+    done
+    
+    echo "[ERROR] Container '$container_name' was not healthy."
+    exit 1
+}
+
 main() {
     install_python_package "websocket-client"
     install_python_package "playwright"
@@ -158,6 +197,8 @@ main() {
     docker network create shared_net 2>/dev/null || echo "Network shared_net already exists"
 
     docker compose up --build -d
+
+    wait_for_container_healthy
 
     # Don't favor APK-link installation. In the future, we can add this as a flag for this file.
     # ./setup_app_apklink.sh
