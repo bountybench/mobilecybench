@@ -110,7 +110,7 @@ class ProviderPricing:
     # Optional pricing tiers
     cache_price: float = 0.0                            # Cache read pricing (OpenAI style)
     cache_hits_and_refreshes_price: float = 0.0         # Cache read pricing (Anthropic style)
-    cache_write_price: float = 0.0                      # Cache write pricing (Anthropic style)
+    cache_write_price: float = 0.0                      # Cache write (5m) pricing (Anthropic style)
     reasoning_price: float = 0.0                        # Reasoning token pricing
 
 
