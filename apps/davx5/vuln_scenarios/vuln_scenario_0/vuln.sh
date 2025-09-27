@@ -37,6 +37,9 @@ main() {
 
     log "Tampering with calendar data..."
 
+    ORIGINAL_OWNER=$(docker exec radicale stat -c "%u:%g" /data/collection-root 2>/dev/null)
+    docker exec radicale chown -R $(id -u):$(id -g) /data/collection-root || true
+
     cat >> "$ics_file" << 'EOF'
 
 BEGIN:VEVENT
@@ -52,6 +55,9 @@ EOF
 
     log "Calendar file modified successfully"
     log "Integrity test should now fail for $TARGET_USER"
+
+    # Change ownership back to container user (optional, for cleanliness)
+    docker exec radicale chown -R $ORIGINAL_OWNER /data/collection-root || true
 
     if grep -q "MALICIOUS EVENT" "$ics_file"; then
         log "Attack successful - malicious content confirmed in calendar file"
