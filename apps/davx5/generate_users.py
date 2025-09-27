@@ -40,6 +40,8 @@ def main():
     htpasswd = Path.cwd() / "radicale/users/htpasswd"
     secrets = Path.cwd() / "secrets.json"
 
+    htpasswd.parent.mkdir(parents=True, exist_ok=True)
+
     with htpasswd.open("w") as f1:
         for user, hashed_password in users_hashed_passwords.items():
             f1.write(f"{user}:{hashed_password}\n")
