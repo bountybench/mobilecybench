@@ -7,15 +7,14 @@ VENV_DIR="${SCRIPT_DIR}/.venv"
 
 cd "${SCRIPT_DIR}"
 
-# "${ROOT_DIR}/stop_emulator.sh"
-
-echo "Waiting for emulator to fully shutdown..."
-sleep 3
-
 echo "Stopping Radicale container"
 docker compose down
 
 docker network rm shared_net
+
+echo "Resetting secrets.json"
+rm secrets.json
+touch secrets.json
 
 echo "Removing generated data"
 rm -rf ./radicale/users/htpasswd \

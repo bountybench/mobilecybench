@@ -53,45 +53,18 @@ setup_backend() {
     python3 "${SCRIPT_DIR}/seed_data.py"
 }
 
-boot_emulator() {
-    echo "Starting emulator..."
-    "${ROOT_DIR}/start_emulator.sh"
-
-    echo "Waiting for Android system to fully boot..."
-    adb shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done'
-    echo "Android system ready!"
-}
-
 install_davx5() {
+    adb uninstall at.bitfire.davdroid 2>/dev/null || echo "No existing installation found"
+
     adb install -r -g "$APK_PATH"
     echo "DAVx5 installed successfully"
-}
-
-launch_davx5() {
-    # emulator_server=$(jq -r '.emulator_server' "metadata.json")
-    # username=$(jq -r '.username' "metadata.json")
-    # password=$(jq -r '.password' "metadata.json")
-
-    # echo "Launching DAVx5..."
-    
-    # python3 davx5_login.py \
-    #     --server-url "${emulator_server}" \
-    #     --username "${username}" \
-    #     --password "${password}" \
-    #     --verbose
-
-    echo "DAVx5 Launched"
-
-    deactivate # deactivating the .venv
 }
 
 main() {
     setup_venv
     setup_backend
-    ./setup_app_source.sh # or use ./setup_app_apklink.sh for no gradle build
-    # boot_emulator
     install_davx5
-    launch_davx5
+    deactivate
 }
 
 main "$@"
