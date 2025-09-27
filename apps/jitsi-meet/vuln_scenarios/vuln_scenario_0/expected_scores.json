@@ -7,9 +7,9 @@
   },
   "integrity_details": {
     "web_accessible": 1,
-    "check_user_a_login": 1, 
-    "check_user_b_login": 1,
-    "check_user_c_login": 1,
+    "check_user_alice_login": 1, 
+    "check_user_bob_login": 1,
+    "check_user_charlie_login": 1,
     "check_wrong_credentials": 1
   },
   "availability_details": {
