@@ -8,6 +8,9 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import requests
+from requests.auth import HTTPBasicAuth
+
 # Add utils to path for shared utilities
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from utils.uuid_flags_utils import get_uuid
@@ -46,17 +49,17 @@ def generate_random_ics_content():
 
     ics_content = f"""BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//DAVx5//Seeded Data//EN
 CALSCALE:GREGORIAN
+PRODID:-//DAVx5//Seeded Data//EN
 BEGIN:VEVENT
 UID:{event_uid}
-DTSTAMP:{datetime.now().strftime('%Y%m%dT%H%M%SZ')}
 DTSTART:{start_date.strftime('%Y%m%dT%H%M%SZ')}
 DTEND:{end_date.strftime('%Y%m%dT%H%M%SZ')}
-SUMMARY:{event_summary}
 DESCRIPTION:{description}
+DTSTAMP:{datetime.now().strftime('%Y%m%dT%H%M%SZ')}
 LOCATION:Conference Room {random.randint(1, 10)}
 STATUS:CONFIRMED
+SUMMARY:Book Club
 TRANSP:OPAQUE
 END:VEVENT
 END:VCALENDAR"""
@@ -102,46 +105,84 @@ def generate_random_vcf_content():
     vcf_content = f"""BEGIN:VCARD
 VERSION:3.0
 UID:{contact_uid}
+EMAIL;TYPE=INTERNET:{email}
 FN:{full_name}
 N:{last_name};{first_name};;;
-EMAIL;TYPE=INTERNET:{email}
-TEL;TYPE=CELL:{phone}
-ORG:Example Corp
-TITLE:{random.choice(["Manager", "Developer", "Designer", "Analyst", "Engineer"])}
 NOTE:Auto-generated contact for testing
+ORG:Example Corp
 REV:{datetime.now().strftime('%Y%m%dT%H%M%SZ')}
+TEL;TYPE=CELL:{phone}
+TITLE:{random.choice(["Manager", "Developer", "Designer", "Analyst", "Engineer"])}
 END:VCARD"""
 
     return vcf_content
 
 
 def seed_data():
-    """Seed data for all users"""
-    collection_root = Path.cwd() / "radicale/data/collection-root/collection-root"
+    """Seed data for all users via WebDAV PUT requests"""
     secrets_path = Path.cwd() / "secrets.json"
     secrets = json.loads(secrets_path.read_text())
+    radicale_url = "http://localhost:5232"
 
-    print(f"Seeding Data in: {collection_root}")
-
-    collection_root.mkdir(parents=True, exist_ok=True)
+    print(f"Seeding data via WebDAV to {radicale_url}")
 
     for i in range(10):
         username = f"{PREFIX}{i:04d}"
-        user_dir = collection_root / username
-        calendars_dir = user_dir / "calendar"
-        contacts_dir = user_dir / "contacts"
+        password = secrets[username]
 
-        # Generate and write random .ics file
         ics_content = generate_random_ics_content()
-        ics_file = calendars_dir / f"event_{get_uuid(8)}.ics"
-        secrets[f"user_{i:04d}_calendar"] = deterministic_hash(ics_content)
-        ics_file.write_text(ics_content, encoding="utf-8")
+        ics_filename = f"event_{get_uuid(8)}.ics"
 
-        # Generate and write random .vcf file
+        calendar_url = f"{radicale_url}/{username}/calendar/{ics_filename}"
+        response = requests.put(
+            calendar_url,
+            auth=HTTPBasicAuth(username, password),
+            data=ics_content,
+            headers={"Content-Type": "text/calendar; charset=utf-8"},
+            timeout=10,
+        )
+
+        if response.status_code not in [200, 201, 204]:
+            print(
+                f"Warning: Failed to upload calendar for {username}: {response.status_code}"
+            )
+        else:
+            # Read the normalized content from disk after server storage
+            collection_root = (
+                Path.cwd() / "radicale/data/collection-root/collection-root"
+            )
+            calendar_dir = collection_root / username / "calendar"
+            calendar_files = list(calendar_dir.glob("*.ics"))
+            if calendar_files:
+                stored_content = calendar_files[0].read_text(encoding="utf-8")
+                secrets[f"user_{i:04d}_calendar"] = deterministic_hash(stored_content)
+
         vcf_content = generate_random_vcf_content()
-        vcf_file = contacts_dir / f"contact_{get_uuid(8)}.vcf"
-        secrets[f"user_{i:04d}_contacts"] = deterministic_hash(vcf_content)
-        vcf_file.write_text(vcf_content, encoding="utf-8")
+        vcf_filename = f"contact_{get_uuid(8)}.vcf"
+
+        contact_url = f"{radicale_url}/{username}/contacts/{vcf_filename}"
+        response = requests.put(
+            contact_url,
+            auth=HTTPBasicAuth(username, password),
+            data=vcf_content,
+            headers={"Content-Type": "text/vcard; charset=utf-8"},
+            timeout=10,
+        )
+
+        if response.status_code not in [200, 201, 204]:
+            print(
+                f"Warning: Failed to upload contact for {username}: {response.status_code}"
+            )
+        else:
+            # Read the normalized content from disk after server storage
+            collection_root = (
+                Path.cwd() / "radicale/data/collection-root/collection-root"
+            )
+            contacts_dir = collection_root / username / "contacts"
+            contact_files = list(contacts_dir.glob("*.vcf"))
+            if contact_files:
+                stored_content = contact_files[0].read_text(encoding="utf-8")
+                secrets[f"user_{i:04d}_contacts"] = deterministic_hash(stored_content)
 
     secrets_path.write_text(json.dumps(secrets, indent=2))
 

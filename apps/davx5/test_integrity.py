@@ -237,9 +237,9 @@ def test_file_permissions():
                 subdir_path = user_dir / subdir
                 if subdir_path.exists():
                     dir_files = list(subdir_path.glob("*"))
-                    if i != 0 and len(dir_files) != 2:
+                    if i != 0 and len(dir_files) != 3:
                         permission_issues.append(
-                            f"Expected 2 files in {subdir_path}, found {len(dir_files)}"
+                            f"Expected 3 files/directories in {subdir_path}, found {len(dir_files)}"
                         )
                         continue
                     if not dir_files:
@@ -285,9 +285,9 @@ def test_cross_user_data_isolation():
             subdir_path = user_dir / subdir
             if subdir_path.exists():
                 dir_files = list(subdir_path.glob("*"))
-                if i != 0 and len(dir_files) != 2:
+                if i != 0 and len(dir_files) != 3:
                     isolation_violations.append(
-                        f"Expected 2 files in {subdir_path}, found {len(dir_files)}"
+                        f"Expected 3 files/directories in {subdir_path}, found {len(dir_files)}"
                     )
                     continue
                 if not dir_files:
@@ -296,7 +296,7 @@ def test_cross_user_data_isolation():
                 if file_path.is_file():
                     try:
                         content = file_path.read_text(encoding="utf-8")
-                        for j in range(100):
+                        for j in range(10):
                             if j != i:
                                 other_user = f"user_{j:04d}"
                                 if other_user in content:
