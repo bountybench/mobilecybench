@@ -6,6 +6,6 @@
     "java": "17",
     "emulator_server": "http://10.0.2.2:22300",
     "app_server": "",
-    "username": "", 
-    "password": ""
+    "username": "",
+    "password": "",
 }
