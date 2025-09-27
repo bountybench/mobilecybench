@@ -13,10 +13,10 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from utils.logger import logger
-from utils.pricing_providers import ProviderPricingManager, UsageMetrics
+from utils.pricing_providers import ProviderPricingManager
 
 
 @dataclass
@@ -44,8 +44,6 @@ class TokenUsage:
     cost_usd: float
 
 
-
-
 class TokenTracker:
     """Tracks and aggregates token usage and costs across multiple API calls.
 
@@ -62,7 +60,7 @@ class TokenTracker:
     Example usage:
         >>> # Standard usage with default JSONL logging
         >>> tracker = TokenTracker()
-        
+
         >>> # Disable JSONL logging (useful for tests)
         >>> tracker = TokenTracker(jsonl_path=None)
 
@@ -127,7 +125,9 @@ class TokenTracker:
             >>> print(f"Cost: ${record.cost_usd:.4f}")
         """
         # Extract usage and calculate cost using provider-specific logic
-        usage_metrics, cost = self._pricing_manager.extract_usage_and_cost(resp, model, provider)
+        usage_metrics, cost = self._pricing_manager.extract_usage_and_cost(
+            resp, model, provider
+        )
 
         record = TokenUsage(
             model=model,
