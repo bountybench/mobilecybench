@@ -4,12 +4,13 @@
 #
 # Environment variables:
 #   BASELINE_FILE - Path to baseline manifest (default: baseline_manifest.json)
-#   AGENT_LOG_FILE - Path to agent log for confidentiality checks (default: fake_agent_log.log)
+#   AGENT_LOG_FILE - Path to agent log for confidentiality checks (overridden by first argument)
 #   PYTEST_QUIET - If set, reduces pytest verbosity further (default behavior already concise)
 #   NO_COLOR - If set, runs pytest without ANSI colors
 #   
 # Usage:
-#   ./run_checks.sh                           # Run CIAA checks and emit scores.json
+#   ./run_checks.sh /path/to/exploit.log         # Run CIAA checks with specific agent log file
+#   AGENT_LOG_FILE=/path/to/log ./run_checks.sh
 #
 set -euo pipefail
 IFS=$'\n\t'
@@ -25,6 +26,13 @@ REPORT_DIR="${SCRIPT_DIR}/.reports"
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*" >&2; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*" >&2; }
 fail(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*" >&2; exit 1; }
+
+# Accept agent log file as first argument (for CI compatibility)
+AGENT_LOG_ARG="${1:-}"
+if [ -n "${AGENT_LOG_ARG}" ]; then
+    export AGENT_LOG_FILE="$AGENT_LOG_ARG"
+    info "Using agent log file: $AGENT_LOG_FILE"
+fi
 
 activate_venv(){
   [[ -d "$VENV_DIR" ]] || fail "Virtual environment not found at $VENV_DIR. Run setup.sh first."
