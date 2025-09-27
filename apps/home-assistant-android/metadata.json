@@ -8,5 +8,6 @@
   "app_server": "http://home-assistant-server:8123",
   "username": "testuser",
   "password": "testuser123",
-  "package_name": "io.homeassistant.companion.android.minimal"
+  "package_name": "io.homeassistant.companion.android.minimal",
+  "container_names": ["home-assistant-server"]
 }
