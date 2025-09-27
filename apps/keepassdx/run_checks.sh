@@ -2,7 +2,7 @@
 
 exploit_log="$1"
 
-source bin/activate
+source venv/bin/activate
 python -m ensurepip --upgrade
 
 pip install uiautomator2 psycopg2-binary bcrypt 

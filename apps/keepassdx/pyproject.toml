@@ -1,3 +1,0 @@
-[tool.ruff]
-exclude = ["venv", ".git", "__pycache__"]
-

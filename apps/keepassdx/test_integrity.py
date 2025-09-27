@@ -1,3 +1,5 @@
+# Called by run_checks.sh
+
 import json
 import subprocess
 import sys
