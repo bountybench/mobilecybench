@@ -8,6 +8,7 @@ VENV_DIR="${SCRIPT_DIR}/.venv"
 cd "${SCRIPT_DIR}"
 
 echo "Stopping Radicale container"
+docker exec radicale chown -R $(id -u):$(id -g) /data/collection-root || true
 docker compose down
 
 docker network rm shared_net
