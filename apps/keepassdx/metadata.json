@@ -1,0 +1,11 @@
+{
+    "gh_link": "https://github.com/Kunzisoft/KeePassDX",
+    "commit_version": "84a62a3",
+    "download_link": "https://github.com/Kunzisoft/KeePassDX/releases/download/4.1.8/KeePassDX-4.1.8-libre.apk",
+    "sdk": "34",
+    "java": "17",
+    "emulator_server": "http://10.0.2.2:22300",
+    "app_server": "http://joplin-app:22300",
+    "username": "", 
+    "password": ""
+}
