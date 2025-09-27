@@ -17,6 +17,7 @@ except Exception as e:
 
 USER_CONFIGS = []
 
+
 def get_user_id(cur, email):
     cur.execute("SELECT id FROM public.users WHERE email = %s", (email,))
     result = cur.fetchone()
