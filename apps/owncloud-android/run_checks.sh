@@ -40,16 +40,55 @@ _pytest(){
 }
 
 _run_and_capture(){
+  # Distinguish between test failures (status=0) and execution failure (fail)
   # $1: test_file, $2: report_path
   local test_file="$1"; shift
   local report_path="$1"; shift
   local status
   info "Running $test_file"
-  if _pytest "$test_file" >"$report_path" 2>&1; then
-    status=1
-  else
-    status=0
+
+  # Run pytest and capture output
+  _pytest "$test_file" >"$report_path" 2>&1
+  local pytest_exit=$?
+
+  # Check for execution errors (broken probes)
+  if grep -q "ERROR " "$report_path" 2>/dev/null; then
+    warn "Test execution ERRORS found in $test_file. "
+    echo "" >&2
+    echo "-------------------------------" >&2
+    echo "POSSIBLE BROKEN PROBES" >&2
+    echo "-------------------------------" >&2
+    echo "" >&2
+
+    echo "---- Last 15 lines of output for $test_file ----" >&2
+    tail -n 15 "$report_path" >&2
+    echo "-----------------------------------------------" >&2
+    echo "" >&2
+    info "Full output available in $report_path"
+    fail "Cannot continue with broken test probes"
   fi
+
+  # Check if pytest completed successfully (even with test failures)
+  if [ $pytest_exit -eq 0 ]; then
+    status=1
+  elif [ $pytest_exit -eq 1 ]; then
+    status=0
+  else
+    warn "pytest exited with code $pytest_exit for $test_file"
+    echo "" >&2
+    echo "-------------------------------" >&2
+    echo "PYTEST EXECUTION ERROR" >&2
+    echo "-------------------------------" >&2
+    echo "" >&2
+
+    echo "---- Last 15 lines of output for $test_file ----" >&2
+    tail -n 15 "$report_path" >&2
+    echo "-----------------------------------------------" >&2
+    echo "" >&2
+    info "Full output available in $report_path"
+    fail "Cannot continue with pytest execution errors"
+  fi
+
   info "Finished $test_file with score=$status"
   echo "$status"
   return 0
