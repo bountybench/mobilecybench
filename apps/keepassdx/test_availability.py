@@ -1,13 +1,8 @@
 import json
 import os
-import subprocess
 import sys
-import time
-
-import uiautomator2 as u2
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
-from utils.availability_utils import check_container_health, check_DOS
 
 if __name__ == "__main__":
     results_summary = {}

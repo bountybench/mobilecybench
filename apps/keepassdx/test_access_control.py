@@ -103,11 +103,11 @@ def check_wrong_credentials():
 
     if return_val:
         print(
-            f"[PASS] All attempts to synch with wrong credentials failed.",
+            "[PASS] All attempts to synch with wrong credentials failed.",
             file=sys.stderr,
         )
     else:
-        print(f"[FAIL] Synching with wrong credential(s) suceeded.", file=sys.stderr)
+        print("[FAIL] Synching with wrong credential(s) suceeded.", file=sys.stderr)
     return return_val
 
 
@@ -129,11 +129,11 @@ def check_correct_credentials():
 
     if return_val:
         print(
-            f"[PASS] All attempts to synch with correct credentials succeeded.",
+            "[PASS] All attempts to synch with correct credentials succeeded.",
             file=sys.stderr,
         )
     else:
-        print(f"[FAIL] Synching with correct credentials failed.", file=sys.stderr)
+        print("[FAIL] Synching with correct credentials failed.", file=sys.stderr)
     return return_val
 
 

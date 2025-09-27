@@ -1,7 +1,9 @@
 #!/bin/bash
 
 set -e
-# Not much to do here, most stuff is in run_checks.sh
-
+# create venv for py
+sudo apt install python3-venv
+python3 -m venv .
+source ./bin/activate
 
 exit 0

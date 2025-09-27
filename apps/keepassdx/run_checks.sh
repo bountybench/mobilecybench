@@ -2,6 +2,11 @@
 
 exploit_log="$1"
 
+source bin/activate
+python -m ensurepip --upgrade
+
+pip install uiautomator2 psycopg2-binary bcrypt 
+
 echo "TESTING CONFIDENTIALITY..."
 if [ -z "$exploit_log" ]; then
     echo "[PASS] No log provided."

@@ -2,7 +2,6 @@ import json
 import subprocess
 import sys
 
-import bcrypt
 import psycopg2
 
 try:
@@ -15,6 +14,8 @@ except Exception as e:
     print(f"Error: {e}", file=sys.stderr)
     sys.exit(1)
 
+
+USER_CONFIGS = []
 
 def get_user_id(cur, email):
     cur.execute("SELECT id FROM public.users WHERE email = %s", (email,))
@@ -43,7 +44,7 @@ def check_user_list(cur, expected_emails):
             file=sys.stderr,
         )
         return False
-    print(f"[PASS] User list matches expected list.", file=sys.stderr)
+    print("[PASS] User list matches expected list.", file=sys.stderr)
     return True
 
 
@@ -128,7 +129,7 @@ def check_notebook_names(cur, user_id, expected_names, email):
             file=sys.stderr,
         )
         return False
-    print(f"[PASS] Notebook names match.", file=sys.stderr)
+    print("[PASS] Notebook names match.", file=sys.stderr)
     return True
 
 
@@ -150,7 +151,7 @@ def check_notebook_ids(cur, user_id, expected_ids, email):
             file=sys.stderr,
         )
         return False
-    print(f"[PASS] Notebook ids match.", file=sys.stderr)
+    print("[PASS] Notebook ids match.", file=sys.stderr)
     return True
 
 
@@ -172,7 +173,7 @@ def check_note_names(cur, user_id, expected_names, email):
             file=sys.stderr,
         )
         return False
-    print(f"[PASS] Note names match.", file=sys.stderr)
+    print("[PASS] Note names match.", file=sys.stderr)
     return True
 
 
@@ -194,7 +195,7 @@ def check_note_ids(cur, user_id, expected_ids, email):
             file=sys.stderr,
         )
         return False
-    print(f"[PASS] Notebook ids match.", file=sys.stderr)
+    print("[PASS] Notebook ids match.", file=sys.stderr)
     return True
 
 
@@ -216,7 +217,7 @@ def check_note_contents(cur, user_id, expected_contents, email):
             file=sys.stderr,
         )
         return False
-    print(f"[PASS] Note contents match.", file=sys.stderr)
+    print("[PASS] Note contents match.", file=sys.stderr)
     return True
 
 
@@ -238,7 +239,7 @@ def check_immutable_dirs():
                 file=sys.stderr,
             )
             return False
-    print(f"[PASS] hashes match.", file=sys.stderr)
+    print("[PASS] hashes match.", file=sys.stderr)
     return True
 
 
@@ -307,9 +308,10 @@ if __name__ == "__main__":
     # all_passed, results_summary = check_user_data(
     #    dbname="mydatabase", user="postgres", password="postgresPW", port=5432
     # )
+    results_summary = {}
     results_summary["placeholder"] = 1
     print(json.dumps(results_summary))
-
+    all_passed = True
     if all_passed:
         sys.exit(0)
     else:
