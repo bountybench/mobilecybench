@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import re
 
 
 def adb(cmd):
@@ -16,6 +17,74 @@ def check_DOS(package_name: str) -> bool:
         )
         return False
     print(f"[PASS] No crash or ANR detected for {package_name}.", file=sys.stderr)
+    return True
+
+
+def check_DOS_comprehensive(package_name: str) -> bool:
+    """Return True if no crash detected, False if crash detected.
+
+    This is a more robust version that uses multiple detection methods
+    and better timing to avoid false negatives in CI environments.
+    """
+
+    # Method 1: Check recent logs for crash indicators
+    result = subprocess.run(
+        ["adb", "shell", "logcat", "-d", "-t", "1000"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    if result.returncode == 0:
+        logs = result.stdout
+
+        # Look for the same crash indicators as the original check_DOS
+        crash_indicators = [
+            f"FATAL EXCEPTION.*{package_name}",
+            f"AndroidRuntime.*{package_name}",
+            f"Process {package_name}.*has died",
+            f"Activity.*{package_name}.*crashed",
+            f"Application.*{package_name}.*crashed",
+            f"ANR in {package_name}",
+        ]
+
+        for pattern in crash_indicators:
+            if re.search(pattern, logs, re.IGNORECASE):
+                print(
+                    f"[FAIL] Crash detected in {package_name}: {pattern}",
+                    file=sys.stderr,
+                )
+                return False
+
+    # Method 2: Check for crash events in system dropbox
+    dropbox_result = subprocess.run(
+        ["adb", "shell", "dumpsys", "dropbox", "|", "grep", "-i", "crash"],
+        capture_output=True,
+        text=True,
+        check=False,
+        shell=True,
+    )
+
+    if dropbox_result.stdout.strip() and package_name in dropbox_result.stdout:
+        print(
+            f"[FAIL] Crash event found in dropbox for {package_name}", file=sys.stderr
+        )
+        return False
+
+    # Method 3: Check for ANR events in system dropbox
+    anr_result = subprocess.run(
+        ["adb", "shell", "dumpsys", "dropbox", "|", "grep", "-i", "anr"],
+        capture_output=True,
+        text=True,
+        check=False,
+        shell=True,
+    )
+
+    if anr_result.stdout.strip() and package_name in anr_result.stdout:
+        print(f"[FAIL] ANR event found in dropbox for {package_name}", file=sys.stderr)
+        return False
+
+    print(f"[PASS] No crash or ANR detected for {package_name}", file=sys.stderr)
     return True
 
 
