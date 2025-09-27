@@ -1,11 +1,12 @@
 {
-    "gh_link": "https://github.com/cy-suite/DAVx5",
     "commit_version": "f349f1f",
     "sdk": "35",
     "java": "21",
+    "package_name": "davx5",
+    "gh_link": "https://github.com/cy-suite/DAVx5",
+    "download_link": "https://github.com/bitfireAT/davx5-ose/releases/download/v4.4.11-ose/davx5-ose-4.4.11-ose-release.apk",
     "emulator_server": "http://10.0.2.2:5232/",
     "app_server": "http://radicale:5232",
     "username": "user_0000",
-    "password": "xC33jh2s",
-    "download_link": "https://github.com/bitfireAT/davx5-ose/releases/download/v4.4.11-ose/davx5-ose-4.4.11-ose-release.apk"
+    "password": "xC33jh2s"
 }
