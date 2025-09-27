@@ -123,6 +123,8 @@ def seed_data():
 
     print(f"Seeding Data in: {collection_root}")
 
+    collection_root.mkdir(parents=True, exist_ok=True)
+
     for i in range(10):
         username = f"{PREFIX}{i:04d}"
         user_dir = collection_root / username
