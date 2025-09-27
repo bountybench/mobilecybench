@@ -16,9 +16,9 @@
       "cache_input": 0.5
     },
     "o3": {
-      "input": 3.5,
-      "output": 14.0,
-      "cache_input": 0.875
+      "input": 2.0,
+      "output": 8.0,
+      "cache_input": 0.5
     }
   },
   "anthropic": {
