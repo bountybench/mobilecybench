@@ -24,7 +24,7 @@ def get_metadata():
         metadata = json.load(f)
 
     if not metadata:
-        print(f"Metadata not found. Exiting with error code 2.")
+        print("Metadata not found. Exiting with error code 2.")
         sys.exit(2)
 
     return metadata
