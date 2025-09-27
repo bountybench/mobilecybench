@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=wallabag
+      - POSTGRES_PASSWORD=wallabag
+      - POSTGRES_DB=wallabag
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:alpine
+
+  wallabag:
+    image: wallabag/wallabag
+    ports:
+      - "8080:80"
+    environment:
+      - SYMFONY__ENV__DATABASE_DRIVER=pdo_pgsql
+      - SYMFONY__ENV__DATABASE_HOST=db
+      - SYMFONY__ENV__DATABASE_PORT=5432
+      - SYMFONY__ENV__DATABASE_NAME=wallabag
+      - SYMFONY__ENV__DATABASE_USER=wallabag
+      - SYMFONY__ENV__DATABASE_PASSWORD=wallabag
+      - SYMFONY__ENV__DOMAIN_NAME=http://localhost:8080
+      - SYMFONY__ENV__REDIS_HOST=redis
+    depends_on:
+      - db
+      - redis
+
+volumes:
+  db-data:
