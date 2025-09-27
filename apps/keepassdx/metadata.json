@@ -7,5 +7,6 @@
     "emulator_server": "",
     "app_server": "",
     "username": "",
-    "password": ""
+    "password": "",
+    "package_name": "com.kunzisoft.keepassdx"
 }
