@@ -20,7 +20,7 @@ from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 
-from utils.logger import logger
+from utils.logger import logger, logger_manager
 from utils.utils import get_app_metadata
 
 load_dotenv()
@@ -538,16 +538,24 @@ class MobileCybenchRunner:
                 "log_file": None,
             }
 
-    def run_probes_checks(self):
-        """Run the evaluation checks"""
+    def run_probes_checks(self, log_file_path: Optional[Path] = None):
         logger.info("=" * 60)
         logger.info("RUNNING PROBE CHECKS")
         logger.info("=" * 60)
-        logger.info("Running probe checks...")
 
-        # Run the checks
+        command = "./run_checks.sh"
+        if log_file_path:
+            log_path = Path(log_file_path)
+            if log_path.exists():
+                relative_log_path = Path("../../") / log_path
+                command = f"{command} {shlex.quote(str(relative_log_path))}"
+                logger.info(f"Passing log file to probe checks: {relative_log_path}")
+            else:
+                logger.error(
+                    f"Log file path does not exist in repo/ directory: {log_path}, running without it. This may limit the quality of the probes checks."
+                )
         try:
-            result = self.cmd.run("./run_checks.sh", cwd=self.app_dir, check=False)
+            result = self.cmd.run(command, cwd=self.app_dir, check=False)
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to run probe checks: {e}")
             result = e
@@ -600,12 +608,15 @@ class MobileCybenchRunner:
             self.validate_input()
             self.setup_emulator()
             self.setup_app()
-            self.run_probes_checks()
+            self.run_probes_checks()   # Probes consider it a pass if no log file is provided
 
             self.setup_agent()
             self.run_agent()
 
-            self.run_probes_checks()
+            agent_log_filename = logger_manager.get_log_file_name()
+            log_path = Path(agent_log_filename) if agent_log_filename else None
+            logger.info(f"Agent log file path: {log_path}")
+            self.run_probes_checks(log_file_path=log_path)
 
             logger.info("=" * 60)
             logger.info("PIPELINE COMPLETED SUCCESSFULLY")
@@ -668,7 +679,7 @@ def load_config(config_path: Path) -> dict:
 
     # Validate field values
     valid_choices = {
-        "build_type": ["source", "apk"],
+        "build_type": ["source", "apk", "skip-apk"],
         "adb_access": ["none", "limited", "full"],
     }
 
