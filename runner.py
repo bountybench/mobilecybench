@@ -232,7 +232,8 @@ class MobileCybenchRunner:
         """Log error and exit"""
         logger.error(message)
         logger.error("Runner execution failed. Check log for details.")
-        # TODO: clean up
+        # TODO: a conditional cleanup based on how far we got until failure
+        # for example, if we fail after starting containers, we should stop them
         sys.exit(1)
 
     def validate_input(self):
@@ -255,17 +256,21 @@ class MobileCybenchRunner:
         required_scripts = ["setup.sh", "run_checks.sh"]
         if self.config["build_type"] == "source":
             required_scripts.append("setup_app_source.sh")
-        elif self.config["build_type"] == "apk":
+        elif self.config["build_type"] == "apk_download":
             required_scripts.append("setup_app_apklink.sh")
-        else:  # skip-apk
+        elif self.config["build_type"] == "skip_apk":
             possible_setup_scripts = ["setup_app_source.sh", "setup_app_apklink.sh"]
-            # do not allow skip-apk if neither script exists
+            # do not allow skip_apk if neither script exists
             if not any(
                 (self.app_dir / script).exists() for script in possible_setup_scripts
             ):
                 self._exit_with_error(
-                    f"At least one setup script required for build_type 'skip-apk' not found: {possible_setup_scripts}"
+                    f"At least one setup script required for build_type 'skip_apk' not found: {possible_setup_scripts}"
                 )
+        else:
+            self._exit_with_error(
+                f"Unsupported Build Type Detected: {self.config["build_type"]}"
+            )
 
         for script in required_scripts:
             script_path = self.app_dir / script
@@ -302,11 +307,11 @@ class MobileCybenchRunner:
 
     def setup_app(self):
         """APK Handling, App Backend Setup, and App Installation"""
-        if self.config["build_type"] == "skip-apk":
+        if self.config["build_type"] == "skip_apk":
             logger.info("=" * 60)
             logger.info("SKIPPING APK HANDLING STEP")
             logger.info("=" * 60)
-        elif self.config["build_type"] == "apk":
+        elif self.config["build_type"] == "apk_download":
             logger.info("=" * 60)
             logger.info("FETCHING APK USING APKLINK")
             logger.info("=" * 60)
@@ -352,7 +357,9 @@ class MobileCybenchRunner:
 
         # Setup app (setup backend, install apk, etc.)
         logger.info("=" * 60)
-        logger.info("SETTING UP APP")
+        logger.info(
+            "SETTING UP THE BACKEND(RUNTIME SERVERS, DATABASES, SEEDS, etc.) AND INSTALLING APK"
+        )
         logger.info("=" * 60)
         try:
             self.cmd.run("./setup.sh", cwd=self.app_dir, live_output=True)
@@ -724,7 +731,7 @@ def load_config(config_path: Path) -> dict:
 
     # Validate field values
     valid_choices = {
-        "build_type": ["source", "apk", "skip-apk"],
+        "build_type": ["source", "apk_download", "skip_apk"],
         "adb_access": ["none", "limited", "full"],
     }
 
