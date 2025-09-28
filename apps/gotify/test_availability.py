@@ -38,7 +38,7 @@ except ImportError:
 
             # No container found at all - assume this is a clean environment
             return True
-        except:
+        except Exception:
             return False
 
 def check_for_dos_indicators():
@@ -63,7 +63,7 @@ def check_for_dos_indicators():
                     return False
                 else:
                     print(f"Found {dos_artifact_path} but no DoS indicators in content", file=sys.stderr)
-            except:
+            except Exception:
                 # If we can't read the file, assume it's not a DoS indicator
                 pass
 
@@ -74,7 +74,7 @@ def check_for_dos_indicators():
             if curl_count.returncode == 0 and int(curl_count.stdout.strip()) > 10:
                 print(f"DoS detected: {curl_count.stdout.strip()} active curl processes", file=sys.stderr)
                 return False
-        except:
+        except Exception:
             pass
 
         # Test current response times and failure rates
@@ -91,7 +91,7 @@ def check_for_dos_indicators():
                     response_times.append(end_time - start_time)
                 else:
                     failed_requests += 1
-            except:
+            except Exception:
                 failed_requests += 1
 
         # DoS detection thresholds - only flag as DoS if service is partially available but degraded
@@ -125,7 +125,7 @@ def test_gotify_service():
         if response.status_code == 200:
             print("Gotify HTTP service is responsive", file=sys.stderr)
             return True
-    except:
+    except Exception:
         pass
 
     try:

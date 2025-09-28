@@ -121,7 +121,7 @@ def verify_login():
                             auth_success = True
                             print(f"Successfully authenticated to {endpoint} via basic auth on {base_url}", file=sys.stderr)
                             break
-                    except:
+                    except Exception:
                         continue
 
             if not auth_success:

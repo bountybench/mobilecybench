@@ -50,7 +50,7 @@ def check_container_health(container_name: str) -> bool:
                         file=sys.stderr,
                     )
                     return False
-            except:
+            except Exception:
                 pass
 
         # Scenario 0 or clean environment - container being down might be expected
