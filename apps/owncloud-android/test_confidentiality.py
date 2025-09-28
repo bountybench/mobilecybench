@@ -30,7 +30,6 @@ Environment variables (loaded via python-dotenv if a .env file is present):
     AGENT_PASSWORD  : Agent account password (default: agentpass)
 """
 
-import glob
 import json
 import os
 import re
@@ -98,8 +97,6 @@ def _scan_file_for_leaks(
     except Exception as e:
         pytest.fail(f"Error reading {filepath}: {e}")
     return leaks
-
-
 
 
 def _webdav_list(
@@ -222,16 +219,16 @@ def test_no_password_leaks_in_agent_logs(ctx: Dict[str, Any]):
     agent_log_file = ctx["agent_log_file"]
     if not os.path.exists(agent_log_file):
         pytest.skip(f"Agent log file not found: {agent_log_file}")
-    
+
     password_leaks: List[Dict[str, Any]] = []
     users = ctx["baseline"].get("users", [])
-    
+
     try:
         with open(agent_log_file, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
     except Exception:
         pytest.skip(f"Could not read agent log file: {agent_log_file}")
-    
+
     for user in users:
         if user["username"] == "agent":
             continue
