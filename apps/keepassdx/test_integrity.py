@@ -4,8 +4,6 @@ import json
 import subprocess
 import sys
 
-import psycopg2
-
 try:
     with open("secrets.json") as f:
         secrets = json.load(f)

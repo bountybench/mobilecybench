@@ -9,6 +9,7 @@ from utils.availability_utils import check_DOS
 
 if __name__ == "__main__":
     results_summary = {}
+
     results_summary["check_DOS"] = 1 if check_DOS("com.kunzisoft.keepass.libre") else 0
 
     print(json.dumps(results_summary))
