@@ -41,6 +41,7 @@ def check_immutable_dirs():
     print("[PASS] hashes match.", file=sys.stderr)
     return True
 
+
 if __name__ == "__main__":
     # all_passed, results_summary = check_user_data(
     #    dbname="mydatabase", user="postgres", password="postgresPW", port=5432

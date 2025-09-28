@@ -14,7 +14,14 @@ except Exception as e:
 
 def launch_app():
     result = subprocess.run(
-        ["adb", "shell", "am", "start", "-n", "net.cozic.joplin/.MainActivity"],
+        [
+            "adb",
+            "shell",
+            "am",
+            "start",
+            "-n",
+            "com.kunzisoft.keepassdx.libre/.MainActivity",
+        ],
         capture_output=True,
         text=True,
     )
@@ -26,12 +33,14 @@ def launch_app():
         print("Could not launch app", file=sys.stderr)
         return False
 
-# I need to check whether the db_valid.kbx is accessible 
+
+# I need to check whether the db_valid.kbx is accessible
 # through the app by entering the right password.
+
 
 if __name__ == "__main__":
     results_summary = {}
-    
+
     results_summary["placeholder"] = 1
     print(json.dumps(results_summary))
 
