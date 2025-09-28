@@ -6,13 +6,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_PREFIX="[setup]"
 ENV_FILE="$SCRIPT_DIR/.env"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
-APP_SOURCE_SCRIPT="$SCRIPT_DIR/setup_app_source.sh"
 CODEBASE_DIR="$SCRIPT_DIR/codebase"
 TARGET_PACKAGE="com.github.gotify"
 
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*" >&2; }
 error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
+
+# Clean up any stale artifacts from previous runs
+pre_setup_cleanup() {
+  rm -f /tmp/unauth_response.txt 2>/dev/null || true
+  pkill -f "curl.*localhost:8080" 2>/dev/null || true
+}
 
 # --- Check prerequisites ---
 check_prerequisites() {
@@ -134,20 +139,20 @@ wait_for_services() {
 check_existing_apk() {
   info "Checking for existing APK..."
 
-  # Check if APK exists in dist directory (built by setup_app_source.sh)
-  if [ -f "$SCRIPT_DIR/dist/app.apk" ]; then
-    info "Found APK: $SCRIPT_DIR/dist/app.apk"
+  # Check if APK exists in apk directory (built by setup_app_source.sh)
+  if [ -f "$SCRIPT_DIR/apk/gotify.apk" ]; then
+    info "Found APK: $SCRIPT_DIR/apk/gotify.apk"
     return 0
   fi
 
-  error "No APK found at $SCRIPT_DIR/dist/app.apk. Please run setup_app_source.sh first to build the APK."
+  error "No APK found at $SCRIPT_DIR/apk/gotify.apk. Please run setup_app_source.sh first to build the APK."
 }
 
 # --- Install APK on emulator ---
 install_android_app() {
   info "Installing Gotify APK on Android emulator..."
 
-  APK_PATH="$SCRIPT_DIR/dist/app.apk"
+  APK_PATH="$SCRIPT_DIR/apk/gotify.apk"
 
   if [ ! -f "$APK_PATH" ]; then
     error "APK not found at $APK_PATH"
@@ -230,6 +235,7 @@ main() {
   # Set trap for error diagnostics
   trap show_diagnostics ERR
 
+  pre_setup_cleanup
   check_prerequisites
   cleanup_existing
   create_env_file
