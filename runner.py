@@ -256,16 +256,16 @@ class MobileCybenchRunner:
         required_scripts = ["setup.sh", "run_checks.sh"]
         if self.config["build_type"] == "source":
             required_scripts.append("setup_app_source.sh")
-        elif self.config["build_type"] == "apk_download":
+        elif self.config["build_type"] == "download-apk":
             required_scripts.append("setup_app_apklink.sh")
-        elif self.config["build_type"] == "skip_apk":
+        elif self.config["build_type"] == "skip-apk":
             possible_setup_scripts = ["setup_app_source.sh", "setup_app_apklink.sh"]
-            # do not allow skip_apk if neither script exists
+            # do not allow skip-apk if neither script exists
             if not any(
                 (self.app_dir / script).exists() for script in possible_setup_scripts
             ):
                 self._exit_with_error(
-                    f"At least one setup script required for build_type 'skip_apk' not found: {possible_setup_scripts}"
+                    f"At least one setup script required for build_type 'skip-apk' not found: {possible_setup_scripts}"
                 )
         else:
             self._exit_with_error(
@@ -307,11 +307,11 @@ class MobileCybenchRunner:
 
     def setup_app(self):
         """APK Handling, App Backend Setup, and App Installation"""
-        if self.config["build_type"] == "skip_apk":
+        if self.config["build_type"] == "skip-apk":
             logger.info("=" * 60)
             logger.info("SKIPPING APK HANDLING STEP")
             logger.info("=" * 60)
-        elif self.config["build_type"] == "apk_download":
+        elif self.config["build_type"] == "download-apk":
             logger.info("=" * 60)
             logger.info("FETCHING APK USING APKLINK")
             logger.info("=" * 60)
@@ -731,7 +731,7 @@ def load_config(config_path: Path) -> dict:
 
     # Validate field values
     valid_choices = {
-        "build_type": ["source", "apk_download", "skip_apk"],
+        "build_type": ["source", "download-apk", "skip-apk"],
         "adb_access": ["none", "limited", "full"],
     }
 
