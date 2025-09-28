@@ -170,15 +170,13 @@ def wait_for_server() -> None:
         time.sleep(2)
 
 
-def create_user(username: str, password: str) -> bool:
+def create_user(username: str, password: str, admin_pass: str) -> bool:
     """Idempotently create a user via OCS provisioning API.
 
     Returns:
         bool: True if newly created, False if already existed.
     """
     url = f"{OWNCLOUD_URL}/ocs/v1.php/cloud/users"
-    credentials = load_credentials()
-    admin_pass = credentials["admin_password"]
     resp = SESSION.post(
         url,
         auth=(ADMIN_USER, admin_pass),
@@ -375,14 +373,12 @@ def _xml_text(el: Optional[ET.Element]) -> Optional[str]:
     return el.text if el is not None else None
 
 
-def fetch_group_members(group: str) -> Optional[List[str]]:
+def fetch_group_members(group: str, admin_pass: str) -> Optional[List[str]]:
     """Return list of usernames in given group (admin credentials required).
     Tries JSON then XML; returns None on failure.
     """
     url = f"{OWNCLOUD_URL}/ocs/v1.php/cloud/groups/{group}"  # Provisioning API group members
     try:
-        credentials = load_credentials()
-        admin_pass = credentials["admin_password"]
         resp = SESSION.get(
             url, auth=(ADMIN_USER, admin_pass), headers=OCS_HEADERS, timeout=10
         )
@@ -485,7 +481,7 @@ def seed_all(
             "size": f["size"],
         }
     # Attempt to fetch admin group members (may include 'admin' platform user)
-    admin_members = fetch_group_members("admin") or []
+    admin_members = fetch_group_members("admin", admin_pass) or []
     groups = ["admin"]
     group_members = {"admin": admin_members}
     # Derive roles strictly from admin group membership (agent is not privileged).
@@ -546,7 +542,7 @@ def main() -> None:
 
     wait_for_server()
     for u in users:
-        create_user(u["username"], u["password"])
+        create_user(u["username"], u["password"], admin_pass)
     data = seed_all(users, share_def, admin_pass)
     write_json(OUTPUT_FILE, data)
     log("Seeding complete")
