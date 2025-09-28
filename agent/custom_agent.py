@@ -17,7 +17,7 @@ from agent.prompts.prompts import (
 )
 from utils.logger import logger, logger_manager
 from utils.mcp_utils import get_mcp_server_config
-from utils.pricing_providers import PROVIDER_OPENAI
+from utils.pricing_providers import PROVIDER_OPENAI, PROVIDER_ANTHROPIC
 from utils.token_tracker import TokenTracker
 
 
@@ -38,6 +38,7 @@ class CustomAgent:
         timeout_ms: int = 600_000,
         app_server: str = None,
         network_access: bool = True,
+        provider: str = "openai",
     ):
         self.dry_run = dry_run
         # Load environment variables from .env file in the agent directory
@@ -46,7 +47,8 @@ class CustomAgent:
         if os.path.exists(env_file):
             load_dotenv(env_file, override=True)
 
-        self.provider = get_model_provider("openai")
+        self.provider_name = provider.lower()
+        self.provider = get_model_provider(self.provider_name)
         self.provider.validate()
         self.model = model
         self.max_iterations = max_iterations
@@ -84,6 +86,19 @@ class CustomAgent:
             f"MCP Server: {self.mcp_config.get('server_url', 'Not configured')}"
         )
         logger.info("=" * 80)
+
+    def _get_provider_for_pricing(self) -> str:
+        """Map provider names to pricing provider constants."""
+        if self.provider_name == "openai":
+            return PROVIDER_OPENAI
+        elif self.provider_name == "claude":
+            return PROVIDER_ANTHROPIC
+        elif self.provider_name == "gemini":
+            # For now, we'll use OpenAI as fallback for Gemini pricing
+            # since Google doesn't seem to be in the pricing constants yet
+            return PROVIDER_OPENAI
+        else:
+            return PROVIDER_OPENAI  # Default fallback
 
     def _get_default_system_prompt(self) -> dict:
         prompt_parts = [
@@ -138,7 +153,7 @@ class CustomAgent:
             print("[Agent] Dry run - returning immediately")
             logger.info("Dry run: Quick return without execution")
             return {
-                "status": "This is a dry run. No OpenAI API calls were made.",
+                "status": f"This is a dry run. No {self.provider_name.upper()} API calls were made.",
                 "turns": 0,
                 "final_message": None,
                 "log_file": self.log_file,
@@ -171,7 +186,7 @@ class CustomAgent:
                 )
 
             # Make API call
-            print(f"[Agent] Making OpenAI API call with model {self.model}")
+            print(f"[Agent] Making {self.provider_name.upper()} API call with model {self.model}")
             print(
                 f"[Agent] MCP config: {self.mcp_config.get('server_url', 'No server_url')}"
             )
@@ -203,8 +218,9 @@ class CustomAgent:
 
             # Record token usage and cost
             try:
+                provider_for_pricing = self._get_provider_for_pricing()
                 self.token_tracker.record_from_response(
-                    resp, model=self.model, provider=PROVIDER_OPENAI
+                    resp, model=self.model, provider=provider_for_pricing
                 )
             except Exception as e:
                 logger.warning(f"Token tracking failed: {e}")
