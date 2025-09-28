@@ -16,20 +16,29 @@ class GeminiResponse:
         self.output_text = gemini_response.text if hasattr(gemini_response, 'text') else ""
         self.tool_outputs = []  # Gemini handles tools differently
         self.output = []  # For MCP interactions
-        # Gemini doesn't have usage statistics in the same format
-        # We'll create a mock usage object for compatibility
-        self.usage = self._create_mock_usage()
+        # Extract usage statistics from Gemini response
+        self.usage = self._create_usage_from_response(gemini_response)
         self.id = None  # Gemini responses don't have IDs like OpenAI
 
-    def _create_mock_usage(self):
-        """Create a mock usage object for compatibility."""
-        class MockUsage:
-            def __init__(self):
-                self.input_tokens = 0
-                self.output_tokens = 0
-                self.total_tokens = 0
+    def _create_usage_from_response(self, gemini_response):
+        """Extract real usage data from Gemini response."""
+        class GeminiUsage:
+            def __init__(self, input_tokens=0, output_tokens=0, total_tokens=0):
+                self.input_tokens = input_tokens
+                self.output_tokens = output_tokens
+                self.total_tokens = total_tokens
 
-        return MockUsage()
+        # Try to extract real usage data
+        if hasattr(gemini_response, 'usage_metadata'):
+            usage = gemini_response.usage_metadata
+            input_tokens = getattr(usage, 'prompt_token_count', 0)
+            output_tokens = getattr(usage, 'candidates_token_count', 0)
+            total_tokens = getattr(usage, 'total_token_count', input_tokens + output_tokens)
+
+            return GeminiUsage(input_tokens, output_tokens, total_tokens)
+
+        # Fallback to mock if usage data not available
+        return GeminiUsage(0, 0, 0)
 
 
 class GeminiProvider(ModelProvider):

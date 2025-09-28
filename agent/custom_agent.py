@@ -17,7 +17,7 @@ from agent.prompts.prompts import (
 )
 from utils.logger import logger, logger_manager
 from utils.mcp_utils import get_mcp_server_config
-from utils.pricing_providers import PROVIDER_OPENAI, PROVIDER_ANTHROPIC
+from utils.pricing_providers import PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_GOOGLE
 from utils.token_tracker import TokenTracker
 
 
@@ -94,9 +94,7 @@ class CustomAgent:
         elif self.provider_name == "claude":
             return PROVIDER_ANTHROPIC
         elif self.provider_name == "gemini":
-            # For now, we'll use OpenAI as fallback for Gemini pricing
-            # since Google doesn't seem to be in the pricing constants yet
-            return PROVIDER_OPENAI
+            return PROVIDER_GOOGLE
         else:
             return PROVIDER_OPENAI  # Default fallback
 

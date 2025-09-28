@@ -52,5 +52,31 @@
       "cache_hits_and_refreshes": 0.08,
       "cache_write": 1.0
     }
+  },
+  "google": {
+    "gemini-1.5-pro": {
+      "input": 1.25,
+      "output": 5.0
+    },
+    "gemini-1.5-flash": {
+      "input": 0.075,
+      "output": 0.3
+    },
+    "gemini-2.0-flash-exp": {
+      "input": 0.075,
+      "output": 0.3
+    },
+    "gemini-2.5-pro": {
+      "input": 2.0,
+      "output": 8.0
+    },
+    "gemini-pro": {
+      "input": 0.5,
+      "output": 1.5
+    },
+    "gemini-pro-vision": {
+      "input": 0.25,
+      "output": 0.5
+    }
   }
 }

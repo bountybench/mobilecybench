@@ -26,7 +26,8 @@ TOKENS_PER_MILLION = 1_000_000.0
 # Supported providers
 PROVIDER_OPENAI = "openai"
 PROVIDER_ANTHROPIC = "anthropic"
-SUPPORTED_PROVIDERS = [PROVIDER_OPENAI, PROVIDER_ANTHROPIC]
+PROVIDER_GOOGLE = "google"
+SUPPORTED_PROVIDERS = [PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_GOOGLE]
 
 # Pricing field names
 FIELD_INPUT = "input"
@@ -164,6 +165,36 @@ class OpenAIUsageExtractor(UsageExtractor):
         return 0
 
 
+class GoogleUsageExtractor(UsageExtractor):
+    """Extract usage from Google Gemini API responses."""
+
+    def extract_usage(self, response: Any) -> UsageMetrics:
+        """Extract usage from Google Gemini response format."""
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            logger.warning("No usage data found in Google response")
+            return UsageMetrics()
+
+        return UsageMetrics(
+            input_tokens=self._extract_core_tokens(usage, "input_tokens"),
+            output_tokens=self._extract_core_tokens(usage, "output_tokens"),
+            cache_tokens=0,  # Google doesn't expose cache tokens separately
+            cache_write_tokens=0,
+            reasoning_tokens=0,  # Google doesn't expose reasoning tokens separately
+            request_id=None,  # Google responses don't have request IDs
+        )
+
+    def _extract_core_tokens(self, usage: Any, field: str) -> int:
+        """Extract basic input/output token counts."""
+        try:
+            if hasattr(usage, field):
+                val = getattr(usage, field)
+                return max(int(val or 0), 0)
+        except (ValueError, TypeError):
+            pass
+        return 0
+
+
 class AnthropicUsageExtractor(UsageExtractor):
     """Extract usage from Anthropic API responses."""
 
@@ -271,6 +302,20 @@ class AnthropicPricingCalculator(PricingCalculator):
         return float(cost_input + cost_output + cost_cache_read + cost_cache_write)
 
 
+class GooglePricingCalculator(PricingCalculator):
+    """Google Gemini-specific cost calculation."""
+
+    def calculate_cost(self, usage: UsageMetrics, pricing: ProviderPricing) -> float:
+        """Calculate cost using Google's pricing model."""
+        scale = TOKENS_PER_MILLION
+
+        # Google bills all input tokens (simple pricing model)
+        cost_input = (usage.input_tokens / scale) * pricing.input_price
+        cost_output = (usage.output_tokens / scale) * pricing.output_price
+
+        return float(cost_input + cost_output)
+
+
 def _strip_date_suffix(model: str) -> str:
     """Strip date suffix from model name if present.
 
@@ -297,11 +342,13 @@ class ProviderPricingManager:
         self.extractors = {
             PROVIDER_OPENAI: OpenAIUsageExtractor(),
             PROVIDER_ANTHROPIC: AnthropicUsageExtractor(),
+            PROVIDER_GOOGLE: GoogleUsageExtractor(),
         }
 
         self.calculators = {
             PROVIDER_OPENAI: OpenAIPricingCalculator(),
             PROVIDER_ANTHROPIC: AnthropicPricingCalculator(),
+            PROVIDER_GOOGLE: GooglePricingCalculator(),
         }
 
     def _load_pricing_config(self, path: Optional[str] = None) -> Dict[str, Any]:
@@ -347,6 +394,8 @@ class ProviderPricingManager:
             return self._resolve_anthropic_model(model, models)
         elif provider == PROVIDER_OPENAI:
             return self._resolve_openai_model(model, models)
+        elif provider == PROVIDER_GOOGLE:
+            return self._resolve_google_model(model, models)
 
         # No pricing found
         logger.warning(f"No pricing found for model '{model}', using zeros")
@@ -383,6 +432,17 @@ class ProviderPricingManager:
 
         return {}
 
+    def _resolve_google_model(
+        self, model: str, models: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Resolve Google/Gemini model names."""
+        # Try stripping date suffix for consistency
+        base_model = _strip_date_suffix(model)
+        if base_model != model and base_model in models:
+            logger.debug(f"Using pricing for '{base_model}' for model '{model}'")
+            return models[base_model]
+        return {}
+
     def _build_pricing_for_provider(
         self, provider: str, model_pricing: Dict[str, Any]
     ) -> ProviderPricing:
@@ -391,6 +451,8 @@ class ProviderPricingManager:
             return self._build_openai_pricing(model_pricing)
         elif provider == PROVIDER_ANTHROPIC:
             return self._build_anthropic_pricing(model_pricing)
+        elif provider == PROVIDER_GOOGLE:
+            return self._build_google_pricing(model_pricing)
         else:
             # Should never reach here due to early validation, but kept for safety
             raise ValueError(
@@ -417,6 +479,18 @@ class ProviderPricingManager:
                 model_pricing.get(FIELD_CACHE_HITS_AND_REFRESHES, 0) or 0
             ),
             cache_write_price=float(model_pricing.get(FIELD_CACHE_WRITE, 0) or 0),
+            reasoning_price=float(model_pricing.get(FIELD_REASONING, 0) or 0),
+        )
+
+    def _build_google_pricing(self, model_pricing: Dict[str, Any]) -> ProviderPricing:
+        """Build pricing object for Google models."""
+        return ProviderPricing(
+            input_price=float(model_pricing.get(FIELD_INPUT, 0) or 0),
+            output_price=float(model_pricing.get(FIELD_OUTPUT, 0) or 0),
+            # Google doesn't have cache pricing currently
+            cache_price=0.0,
+            cache_hits_and_refreshes_price=0.0,
+            cache_write_price=0.0,
             reasoning_price=float(model_pricing.get(FIELD_REASONING, 0) or 0),
         )
 
