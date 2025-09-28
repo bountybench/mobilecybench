@@ -178,29 +178,6 @@ build_app() {
 }
 
 
-verify_installation() {
-    log_info "Verifying app installation..."
-    
-    local app_id
-    app_id=$(jq -r '.package_name' "$METADATA_FILE")
-    
-    # Check if app is installed
-    if ! adb shell pm list packages | grep -q "$app_id"; then
-        log_error "App not found on device"
-        return 1
-    fi
-    
-    # Try to launch the app
-    log_info "Attempting to launch app..."
-    if adb shell monkey -p "$app_id" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1; then
-        log_success "App launched successfully"
-    else
-        log_warning "App launch test failed, but this might be normal"
-    fi
-    
-    log_success "Installation verification completed"
-}
-
 main() {
     log_info "Starting SimpleLogin Android app setup..."
     

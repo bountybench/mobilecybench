@@ -29,18 +29,6 @@ $DC down -v 2>/dev/null || true
 echo "Removing any dangling containers..."
 docker container prune -f 2>/dev/null || true
 
-# secrets.json is now version-controlled and should persist
-
-if [ -f "scores.json" ]; then
-    echo "Removing scores: scores.json"
-    rm -f "scores.json"
-fi
-
-if [ -f "apk_path.txt" ]; then
-    echo "Removing APK path file: apk_path.txt"
-    rm -f "apk_path.txt"
-fi
-
 if [ -f "integrity_baseline.json" ]; then
     echo "Removing integrity baseline: integrity_baseline.json"
     rm -f "integrity_baseline.json"

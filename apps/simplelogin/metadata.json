@@ -7,7 +7,5 @@
   "app_server": "http://simplelogin-api:7777",
   "username": "testuser@gmail.com",
   "password": "P@ssw0rd!",
-  "package_name": "io.simplelogin.android.fdroid",
-  "api_host": "http://localhost:7777",
-  "api": "http://10.0.2.2:7777"
+  "package_name": "io.simplelogin.android.fdroid"
 }

@@ -267,30 +267,11 @@ build_and_install_app() {
         echo "App not installed - will build and install"
     fi
     
-    # Check if codebase directory exists
-    if [[ ! -d "$SCRIPT_DIR/codebase" ]]; then
-        echo "ERROR:" "Codebase directory not found. This may indicate a cleanup issue."
-        echo "Please ensure the submodule is properly initialized."
-        return 1
-    fi
-    
-    # Run the app source setup script to build APK
-    if ! bash "$SCRIPT_DIR/setup_app_source.sh"; then
-        echo "ERROR:" "App build failed"
-        return 1
-    fi
-    
-    # Get APK path from build process
-    local apk_path
-    if [[ -f "$SCRIPT_DIR/apk_path.txt" ]]; then
-        apk_path=$(cat "$SCRIPT_DIR/apk_path.txt")
-    else
-        echo "ERROR:" "APK path not found. Did the build succeed?"
-        return 1
-    fi
-    
+    # Check if APK exists (should be built by setup_app_source.sh first)
+    local apk_path="$SCRIPT_DIR/apk/simplelogin-fdroid-release.apk"
     if [[ ! -f "$apk_path" ]]; then
-        echo "ERROR:" "Built APK not found at $apk_path"
+        echo "ERROR:" "APK not found at $apk_path"
+        echo "Please run setup_app_source.sh first to build the APK."
         return 1
     fi
     
@@ -543,10 +524,10 @@ main() {
     setup_emulator
     setup_backend
     seed_test_data
-  build_and_install_app
-  configure_api_url_any || { echo "ERROR: Failed to configure API URL"; exit 1; }
-  check_cleartext_policy || true
-  verify_network_to_backend || true
+    build_and_install_app
+    configure_api_url_any || { echo "ERROR: Failed to configure API URL"; exit 1; }
+    check_cleartext_policy || true
+    verify_network_to_backend || true
     smoke_test
     verify_setup
     
