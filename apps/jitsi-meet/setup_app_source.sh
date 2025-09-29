@@ -31,9 +31,6 @@ check_prerequisites() {
 setup_environment() {
     echo "Setting up build environment..."
 
-    export JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64
-    export PATH="$JAVA_HOME/bin:$PATH"
-
     export ANDROID_HOME="$ANDROID_HOME"
     export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 
@@ -71,15 +68,18 @@ main() {
     npm uninstall -g react-native-cli @react-native-community/cli || true
 
     cd codebase
-    yarn install
+    
+    #This is required to avoid running into the "Metro Bundler can't read undefined properties" error
+    export NODE_OPTIONS=--openssl-legacy-provider
 
-    echo "Starting Metro bundler in the background..."
-    nohup npx react-native start --reset-cache > metro.log 2>&1 &
+    yarn install
+    yarn add -D cross-env
     echo "Finished installing packages."
 
     cd android
     check_prerequisites
     setup_environment
+    build_jitsi
 
     echo ""
     echo "Setup complete! Jitsi Meet Android is ready to launch."

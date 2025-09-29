@@ -31,19 +31,12 @@ done
 echo "Setup complete! Ready to test Jitsi Meet. (http://localhost:8000)"
 
 #\\\APK INSTALLATION SECTION///
-echo "Building App..."
-
-[ -n "$BASH_VERSION" ] || exec bash "$0" "$@"
-chmod +x setup_app_source.sh
-bash setup_app_source.sh
 
 install_jitsi() {
     echo "Installing Jitsi Meet on Android emulator..."
 
     # Check if emulator is running
     echo "Checking for Android emulator..."
-    export ANDROID_HOME="${ANDROID_HOME:-$HOME/.android-sdk}"
-    export PATH="$ANDROID_HOME/platform-tools:$PATH"
     
     if ! adb devices | grep -q "emulator.*device"; then
         echo "Warning: No emulator detected. Skipping APK installation."
@@ -51,6 +44,9 @@ install_jitsi() {
         return 1
     fi
 
+    cd ../..
+    cd codebase
+    cd android
     APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
 
     if [[ ! -f $APK_PATH ]]; then
@@ -59,11 +55,21 @@ install_jitsi() {
         find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
         return 0
     fi
+
+    echo "Starting Metro bundler in the background..."
+    nohup npx react-native start --reset-cache > metro.log 2>&1 &
+    echo "Waiting for Metro bundler to start..."
+    until nc -z localhost 8081; do
+        sleep 2
+    done
+
+    echo "Metro bundler is running on port 8081."
     
     adb install -r "$APK_PATH"
     echo "Jitsi Meet installed successfully."
 
     echo "Launching Jitsi Meet..."
+    adb shell appops set org.jitsi.meet SYSTEM_ALERT_WINDOW allow #Ignore any popup windows asking for display over other apps
     adb shell am start -n org.jitsi.meet/.MainActivity
     echo "Jitsi Meet should now be running on your emulator."
 }

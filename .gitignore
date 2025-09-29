@@ -22,3 +22,5 @@ ssh_key
 .env
 !apps/**/.env
 token_usage.jsonl
+node_modules
+yarn.lock
