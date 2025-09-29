@@ -40,7 +40,7 @@ def check_container_health(container_name: str) -> bool:
         dos_artifact_path = "/tmp/unauth_response.txt"
         if os.path.exists(dos_artifact_path):
             try:
-                with open(dos_artifact_path, 'r') as f:
+                with open(dos_artifact_path, "r") as f:
                     content = f.read().strip()
                 # Only consider it a DoS context if it contains explicit DoS indicators
                 if "DoS attack launched" in content or "attack" in content.lower():

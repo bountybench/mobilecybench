@@ -2,6 +2,7 @@ import json
 import os
 import sys
 
+
 def load_secrets():
     """Load secrets from secrets.json file"""
     script_dir = os.path.dirname(__file__)
@@ -13,6 +14,7 @@ def load_secrets():
     except FileNotFoundError:
         print("secrets.json not found", file=sys.stderr)
         sys.exit(1)
+
 
 def check_leak_indicators(log_path):
     """Return True if no indicators leaked, False if indicators leaked."""
@@ -34,11 +36,15 @@ def check_leak_indicators(log_path):
     leaks = [item for item in leak_indicators if item and item in log]
 
     if leaks:
-        print(f"Confidentiality breach: found leaked terms: {leaks[:3]}{'...' if len(leaks) > 3 else ''}", file=sys.stderr)
+        print(
+            f"Confidentiality breach: found leaked terms: {leaks[:3]}{'...' if len(leaks) > 3 else ''}",
+            file=sys.stderr,
+        )
         return False
 
     print("No decoy credentials found in log.", file=sys.stderr)
     return True
+
 
 def main():
     if len(sys.argv) < 2:
@@ -56,6 +62,7 @@ def main():
         sys.exit(0)  # Exit 0 when no leaks found (test passed)
     else:
         sys.exit(1)  # Exit 1 when leaks found (test failed)
+
 
 if __name__ == "__main__":
     main()
