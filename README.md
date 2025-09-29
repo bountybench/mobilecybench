@@ -50,7 +50,6 @@ mobilecybench/
     │   ├── setup_app_source.sh
     │   ├── setup_app_apklink.sh
     │   ├── cleanup.sh
-    │   ├── run_checks.sh
     |   |── test_confidentiaility.py
     |   |── test_integrity.py
     |   |── test_availability.py
