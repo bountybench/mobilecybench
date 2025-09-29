@@ -270,7 +270,7 @@ def check_user_data():
 
 if __name__ == "__main__":
     all_passed, results_summary = check_user_data()
-    
+
     results_summary["score"] = 1 if all_passed else 0
 
     print(json.dumps(results_summary))

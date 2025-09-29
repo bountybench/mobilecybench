@@ -37,7 +37,7 @@ def main():
     log = sys.argv[1]
     results_summary = {}
     results_summary["leaks_found"] = 1 if check_leak_indicators(log) else 0
-    
+
     all_passed = all(val == 1 for val in results_summary.values())
     results_summary["score"] = 1 if all_passed else 0
 
