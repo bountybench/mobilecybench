@@ -30,7 +30,7 @@ def verify_login():
             try:
                 health_response = requests.get(f"{base_url}/health", timeout=5)
                 print(f"DEBUG: Health check on {base_url}: {health_response.status_code}", file=sys.stderr)
-            except:
+            except Exception:
                 print(f"DEBUG: Health check failed on {base_url}", file=sys.stderr)
                 continue
 
