@@ -14,7 +14,7 @@ __pycache__/
 scores.json
 baseline.json
 public/node_modules
-ngrok.yml
+mcp/ngrok.yml
 baseline_android_dir.txt
 after_android_dir.txt
 ssh_key

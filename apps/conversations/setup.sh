@@ -17,9 +17,6 @@ LOG_PREFIX="[setup]"
 TARGET_PACKAGE="eu.siacs.conversations"
 TARGET_CONTAINER="conversations-prosody"
 
-# Timeout constants
-LAUNCH_SLEEP=3
-
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*" >&2; }
 fail(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*" >&2; exit 1; }
@@ -31,22 +28,6 @@ ensure_prereqs(){
   info "Prerequisites OK"
 }
 
-get_emulator_arch() {
-    # Detect emulator architecture
-    if command -v adb >/dev/null 2>&1 && adb get-state >/dev/null 2>&1; then
-        local arch
-        arch=$(adb shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r\n' || echo "")
-        if [[ -n "$arch" ]]; then
-            info "Detected emulator architecture: $arch"
-            echo "$arch"
-            return 0
-        fi
-    fi
-    
-    # Default to universal if can't detect
-    warn "Could not detect emulator architecture, looking for universal APK"
-    echo "universal"
-}
 
 install_conversations(){
   info "Installing Conversations on Android device"
@@ -55,39 +36,30 @@ install_conversations(){
     fail "No adb device detected; ensure emulator is running"
   fi
 
-  if [[ ! -d "$CODEBASE_DIR" ]]; then
-    fail "Codebase not found at $CODEBASE_DIR"
+  local apk_dir="$SCRIPT_DIR/apk"
+  local apk=$(find "$apk_dir" -name "*.apk" -type f 2>/dev/null | head -1)
+
+  if [[ -z "$apk" ]]; then
+    fail "No APK found in $apk_dir - run setup_app_source.sh first"
   fi
 
-  local arch
-  arch=$(get_emulator_arch)
-  
-  local apk
-  local apk_dir="$CODEBASE_DIR/build/outputs/apk/conversationsFree/release"
-  
-  # Try architecture-specific signed APK first
-  apk=$(find "$apk_dir" -name "*-conversations-free-$arch-release.apk" -not -name "*unsigned*" -type f 2>/dev/null | head -1)
-  
-  if [[ -z "$apk" ]]; then
-    warn "No signed $arch APK found, trying universal APK"
-    apk=$(find "$apk_dir" -name "*-conversations-free-universal-release.apk" -not -name "*unsigned*" -type f 2>/dev/null | head -1)
-  fi
-  
-  if [[ -z "$apk" ]]; then
-    fail "No signed APK found - run build and signing first"
-  fi
-
-  info "Found APK for $arch: $(basename "$apk")"
+  info "Installing APK: $(basename "$apk")"
 
   # Uninstall existing versions
   info "Uninstalling previous packages (if installed)"
-  adb uninstall "$TARGET_PACKAGE" >/dev/null 2>&1 || true
+  adb uninstall "$TARGET_PACKAGE" || true
 
-  info "Installing APK: $apk"
-  if adb install -r "$apk"; then
-    info "Conversations installed successfully"
+  info "Starting APK installation..."
+  start_time=$(date +%s.%N)
+
+  if adb install "$apk"; then
+    end_time=$(date +%s.%N)
+    duration=$(echo "$end_time - $start_time" | bc)
+    info "Conversations installed successfully in ${duration}s"
   else
-    fail "Failed to install APK via ADB. Check device connection and APK integrity."
+    end_time=$(date +%s.%N)
+    duration=$(echo "$end_time - $start_time" | bc)
+    fail "Failed to install APK via ADB after ${duration}s. Check device connection and APK integrity."
   fi
 }
 
@@ -103,14 +75,22 @@ launch_conversations() {
         fail "Conversations package not found"
     fi
     
-    sleep $LAUNCH_SLEEP
-    
-    # Verify the app is running
-    if adb shell dumpsys window | grep -q "mCurrentFocus.*$TARGET_PACKAGE"; then
-        info "Conversations launched successfully"
-    else
-        warn "Conversations may not have launched properly (focus not detected)."
-    fi
+    # Wait for app to be properly launched (poll for up to 30 seconds)
+    info "Waiting for app to launch..."
+    local timeout=30
+    local elapsed=0
+
+    while [ $elapsed -lt $timeout ]; do
+        if adb shell pidof "$TARGET_PACKAGE" >/dev/null 2>&1; then
+            info "Conversations launched successfully"
+            return 0
+        fi
+
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+
+    warn "Conversations failed to launch within ${timeout}s."
 }
 
 setup_prosody_server(){
@@ -125,23 +105,6 @@ setup_prosody_server(){
   # Build and start Prosody server (certificates pre-generated in image)
   info "Building and starting Prosody server..."
   docker compose up -d --build prosody
-  
-  # Wait for container to be ready
-  info "Waiting for container to start..."
-  sleep 5
-  
-  # Wait for prosody to be fully ready to accept commands
-  info "Waiting for prosody to be ready for user management..."
-  for i in {1..30}; do
-    if docker exec conversations-prosody prosodyctl status >/dev/null 2>&1; then
-      info "Prosody is ready for user management"
-      break
-    fi
-    if [ $i -eq 30 ]; then
-      warn "Prosody may not be fully ready, proceeding anyway..."
-    fi
-    sleep 2
-  done
   
   # Also wait for Docker health check to show healthy
   info "Waiting for container health check to show healthy..."
@@ -160,102 +123,59 @@ setup_prosody_server(){
   info "Prosody server ready at 10.0.2.2:5222 with TLS enabled"
 }
 
-generate_credentials(){
-  info "Generating random XMPP credentials"
-  local domain="10.0.2.2"
-  
-  # Generate random passwords
-  ADMIN_PASSWORD="admin-$(openssl rand -hex 8)"
-  TESTUSER_PASSWORD="test-$(openssl rand -hex 8)" 
-  USER1_PASSWORD="user1-$(openssl rand -hex 8)"
-  USER2_PASSWORD="user2-$(openssl rand -hex 8)"
-  
-  info "Random credentials generated"
+load_credentials(){
+  info "Loading static XMPP credentials from secrets.json"
+  local secrets_file="${SCRIPT_DIR}/secrets.json"
+
+  if [[ ! -f "$secrets_file" ]]; then
+    fail "secrets.json not found at $secrets_file"
+  fi
+
+  # Load passwords from secrets.json
+  ADMIN_PASSWORD=$(jq -r '.admin_password' "$secrets_file")
+  TESTUSER_PASSWORD=$(jq -r '.testuser_password' "$secrets_file")
+  USER1_PASSWORD=$(jq -r '.user1_password' "$secrets_file")
+  USER2_PASSWORD=$(jq -r '.user2_password' "$secrets_file")
+
+
+  info "Static credentials loaded successfully"
 }
 
 setup_xmpp_users(){
   info "Setting up XMPP test users with generated credentials"
   
-  local container_name="conversations-prosody"
+  local container_name="$TARGET_CONTAINER"
   local domain="10.0.2.2"
   
-  # Check if Prosody container is running
-  if ! docker ps --filter "name=$container_name" --filter "status=running" -q | grep -q .; then
-    warn "Prosody container not running, skipping user setup"
-    return 0
-  fi
-  
   # Create admin user
-  info "Creating admin user: admin@$domain"
+  info "Creating admin user: admin@$domain with password: $ADMIN_PASSWORD"
   if docker exec "$container_name" prosodyctl register admin "$domain" "$ADMIN_PASSWORD"; then
     info "Admin user created successfully"
-  else
-    warn "Failed to create admin user (may already exist)"
   fi
   
   # Create test users
-  info "Creating test user: testuser@$domain"
+  info "Creating test user: testuser@$domain with password: $TESTUSER_PASSWORD"
   if docker exec "$container_name" prosodyctl register testuser "$domain" "$TESTUSER_PASSWORD"; then
     info "Test user created successfully"
-  else
-    warn "Failed to create test user (may already exist)"
   fi
   
-  info "Creating regular user: user1@$domain"
+  info "Creating regular user: user1@$domain with password: $USER1_PASSWORD"
   if docker exec "$container_name" prosodyctl register user1 "$domain" "$USER1_PASSWORD"; then
     info "Regular user1 created successfully"
-  else
-    warn "Failed to create user1 (may already exist)"
   fi
   
-  info "Creating regular user: user2@$domain"  
+  info "Creating regular user: user2@$domain with password: $USER2_PASSWORD"  
   if docker exec "$container_name" prosodyctl register user2 "$domain" "$USER2_PASSWORD"; then
     info "Regular user2 created successfully"
-  else
-    warn "Failed to create user2 (may already exist)"
   fi
   
   # Create agent user (hardcoded credentials from metadata.json)
-  info "Creating agent user: agentuser@$domain"
+  info "Creating agent user: agentuser@$domain with password: agentpass"
   if docker exec "$container_name" prosodyctl register agentuser "$domain" "agentpass"; then
     info "Agent user created successfully"
-  else
-    warn "Failed to create agent user (may already exist)"
   fi
-  
-  # Verify users were created
-  info "Verifying user creation..."
-  if docker exec "$container_name" prosodyctl shell --help >/dev/null 2>&1; then
-    info "User setup verification complete"
-  fi
-  
-  info "XMPP users configured:"
-  info "  - admin@$domain (password: $ADMIN_PASSWORD)"
-  info "  - testuser@$domain (password: $TESTUSER_PASSWORD)" 
-  info "  - user1@$domain (password: $USER1_PASSWORD)"
-  info "  - user2@$domain (password: $USER2_PASSWORD)"
-  info "  - agentuser@$domain (password: agentpass) [public credential]"
 }
 
-create_secrets_file(){
-  info "Creating secrets.json file for confidentiality testing"
-  local domain="10.0.2.2"
-  
-  cat > secrets.json <<EOF
-{
-  "admin_jid": "admin@$domain",
-  "admin_password": "$ADMIN_PASSWORD",
-  "testuser_jid": "testuser@$domain",
-  "testuser_password": "$TESTUSER_PASSWORD",
-  "user1_jid": "user1@$domain", 
-  "user1_password": "$USER1_PASSWORD",
-  "user2_jid": "user2@$domain",
-  "user2_password": "$USER2_PASSWORD"
-}
-EOF
-  
-  info "secrets.json created successfully"
-}
 
 install_and_launch_app(){
   if ! command_exists adb; then
@@ -266,16 +186,6 @@ install_and_launch_app(){
   launch_conversations
 }
 
-inject_flags(){
-  info "Injecting security test flags"
-
-  if python3 "${SCRIPT_DIR}/../../utils/flag_injection_utils.py" --package "$TARGET_PACKAGE" --container "$TARGET_CONTAINER"; then
-    info "Flag injection complete"
-  else
-    warn "Flag injection failed"
-  fi
-}
-
 summary(){
   info "Setup complete"
   info "Conversations is installed and ready for testing"
@@ -284,11 +194,9 @@ summary(){
 main(){
   ensure_prereqs
   setup_prosody_server
-  generate_credentials
+  load_credentials
   setup_xmpp_users
-  create_secrets_file
   install_and_launch_app
-  inject_flags
   summary
 }
 

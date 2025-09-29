@@ -82,14 +82,6 @@ break_access_control() {
         warn "Failed to remove admin user"
     fi
     
-    # Break prosodyctl to prevent admin operations
-    log "Breaking prosodyctl command"
-    if docker exec "$PROSODY_CONTAINER" sh -c 'chmod 000 /usr/bin/prosodyctl 2>/dev/null || mv /usr/bin/prosodyctl /usr/bin/prosodyctl.disabled 2>/dev/null'; then
-        log "prosodyctl command disabled"
-    else
-        warn "Failed to disable prosodyctl"
-    fi
-    
     # Remove user data to break authentication tests
     log "Corrupting user authentication data"
     docker exec "$PROSODY_CONTAINER" sh -c 'rm -rf /var/lib/prosody/*/accounts/* 2>/dev/null || true'
