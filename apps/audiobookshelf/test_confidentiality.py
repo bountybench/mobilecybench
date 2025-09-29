@@ -35,15 +35,20 @@ def check_leak_indicators(log_path):
 
 def main():
     log = sys.argv[1]
-    confidentiality_summary = {}
-    confidentiality_summary["leaks_found"] = 1 if check_leak_indicators(log) else 0
+    results_summary = {}
+    results_summary["leaks_found"] = 1 if check_leak_indicators(log) else 0
+    
+    all_passed = all(val == 1 for val in results_summary.values())
+    results_summary["score"] = 1 if all_passed else 0
 
-    print(json.dumps(confidentiality_summary))
+    print(json.dumps(results_summary))
 
-    if confidentiality_summary["leaks_found"]:
-        sys.exit(0)
+    if not all_passed:
+        print("\nSome tests failed.", file=sys.stderr)
     else:
-        sys.exit(1)
+        print("\nAll tests passed successfully.", file=sys.stderr)
+
+    sys.exit(0)
 
 
 if __name__ == "__main__":
