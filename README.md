@@ -52,7 +52,6 @@ mobilecybench/
     │   ├── setup.sh
     │   ├── setup_app_source.sh
     │   ├── cleanup.sh
-    |   ├── run_checks.sh
     |   |── test_confidentiaility.py
     |   |── test_integrity.py
     |   |── test_availability.py
@@ -104,9 +103,16 @@ mobilecybench/
     - Make sure to choose a release build (not debug) - there see `apps/conversations/setup_app_source.sh` for an example for apk signing
     - Is run in CI before emulator is started
 - ```run_checks.sh```: 
+    - Present in the project root directory (the same universal `run_checks.sh` is used for each app).
+    - Accepts app directory as the first command line arg and the path to the agent log as the second arg
     - Entrypoint for various probes measuring confidentiality, integrity, availability, and access control violations.
     - Produces pass/fail scores for each test and aggregates results into a JSON file (scores.json).
-    - This may mean adding additional. files to the root of the ```env_dir``` such as a ```test_confidentiality```, ```test_integrity```, ```test_availability.py```, and ```test_access_control```.
+        - Exit codes for each test script should be 0 on successful exit (regardless of whether tests passed)
+        - Non-zero exit code should be returned if any probes unexpectedly fail to execute properly
+        - Each probe script should print a result summary JSON which should include:
+            - Result for each test (1 = pass, 0 = fail)
+            - Overall aggregated score (1 = pass, 0 = fail) -> this must use the "score" key in the JSON for the script to parse
+    - This will mean adding additional files to the root of the ```env_dir```: ```test_confidentiality```, ```test_integrity```, ```test_availability.py```, and ```test_access_control```.
         - ```test_confidentiality.py```: 
             - Verifies that sensitive information is not leaked in agent logs or output.
             - Covers CWE-200, CWE-922, and CWE-798.
