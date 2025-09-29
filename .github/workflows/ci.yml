@@ -18,6 +18,7 @@ jobs:
       java: ${{ steps.get-sdk-java.outputs.java }}
       system_image: ${{ steps.get-sdk-java.outputs.system_image }}
       has_run_checks: ${{ steps.check-run-checks.outputs.has_run_checks }}
+      setup_modes: ${{ steps.setup-strategy.outputs.setup_modes }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -122,6 +123,67 @@ jobs:
             echo "has_run_checks=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Determine app setup strategy
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        id: setup-strategy
+        run: |
+          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
+          
+          # Check for both setup scripts
+          has_source=false
+          has_apklink=false
+          
+          if [ -f "$dir/setup_app_source.sh" ]; then
+            has_source=true
+            echo "Found setup_app_source.sh"
+          fi
+          
+          if [ -f "$dir/setup_app_apklink.sh" ]; then
+            has_apklink=true
+            echo "Found setup_app_apklink.sh"
+          fi
+          
+          # Validate at least one exists
+          if [ "$has_source" = false ] && [ "$has_apklink" = false ]; then
+            echo "ERROR: Neither setup_app_source.sh nor setup_app_apklink.sh found in $dir"
+            exit 1
+          fi
+          
+          # Determine which setup modes to test based on script existence and modifications
+          echo "has source: $has_source, has apklink: $has_apklink"
+          
+          # Check which specific scripts were modified
+          source_modified=$(git diff --name-only origin/main...HEAD | grep -q "$dir/setup_app_source.sh" && echo "true" || echo "false")
+          apklink_modified=$(git diff --name-only origin/main...HEAD | grep -q "$dir/setup_app_apklink.sh" && echo "true" || echo "false")
+          
+          echo "source modified: $source_modified, apklink modified: $apklink_modified"
+          
+          if [ "$has_source" = true ] && [ "$has_apklink" = true ]; then
+            # Both scripts exist - determine modes based on modifications
+            if [ "$source_modified" = "true" ] && [ "$apklink_modified" = "true" ]; then
+              echo "Both setup scripts modified - testing both modes"
+              setup_modes='["source", "apklink"]'
+            elif [ "$source_modified" = "true" ]; then
+              echo "Source script modified - using source mode"
+              setup_modes='["source"]'
+            elif [ "$apklink_modified" = "true" ]; then
+              echo "APK link script modified - using apklink mode"
+              setup_modes='["apklink"]'
+            else
+              echo "Both scripts available and unmodified - preferring APK link for efficiency"
+              setup_modes='["apklink"]'
+            fi
+          elif [ "$has_source" = true ] && [ "$has_apklink" = false ]; then
+            echo "Only source setup available - using source mode"
+            setup_modes='["source"]'
+          elif [ "$has_source" = false ] && [ "$has_apklink" = true ]; then
+            echo "Only APK link setup available - using apklink mode"
+            setup_modes='["apklink"]'
+          fi
+          
+          echo "Selected setup modes: $setup_modes"
+          echo "setup_modes=$setup_modes" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
@@ -155,6 +217,7 @@ jobs:
     strategy:
       matrix:
         test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
+        setup_mode: ${{ fromJson(needs.setup.outputs.setup_modes) }}
       fail-fast: false  
       max-parallel: 3 
     
@@ -295,6 +358,43 @@ jobs:
             fi
           }
 
+          verify_shared_net_connectivity() {
+            # Verify shared_net connectivity after containers are started
+            echo "Verifying shared_net connectivity..."
+            if [ -f "metadata.json" ]; then
+              app_server=$(jq -r '.app_server // empty' "metadata.json")
+              if [ -n "$app_server" ]; then
+                echo "Testing connectivity to: $app_server"
+                
+                # Strip protocol prefix if present (http://, https://)
+                server_clean=$(echo "$app_server" | sed 's|^[^:]*://||')
+                echo "  Raw app_server: $app_server"
+                echo "  Cleaned server: $server_clean"
+                
+                # Parse host and port - require explicit port
+                if [[ "$server_clean" == *":"* ]]; then
+                  host=$(echo "$server_clean" | cut -d':' -f1)
+                  port=$(echo "$server_clean" | cut -d':' -f2)
+                  echo "  Parsed host: $host"
+                  echo "  Parsed port: $port"
+                else
+                  echo "ERROR: No port specified in app_server: $app_server"
+                  exit 1
+                fi
+                
+                echo "  Testing connection to $host:$port via shared_net..."
+                docker run --rm --network=shared_net alpine:latest \
+                  sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
+                
+                echo "shared_net connectivity verified"
+              else
+                echo "No app_server defined in metadata.json, skipping connectivity check"
+              fi
+            else
+              echo "No metadata.json found, skipping connectivity check"
+            fi
+          }
+
           EOF
           chmod +x /tmp/shared_functions.sh
 
@@ -346,6 +446,7 @@ jobs:
           echo "dir=\"$modified_dir\"" >> test_checks.sh
           echo "test_type=\"${{ matrix.test_type }}\"" >> test_checks.sh
 
+
           case "${{ matrix.test_type }}" in
             "baseline")
               cat <<'EOF' >> test_checks.sh
@@ -363,6 +464,7 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
+          verify_shared_net_connectivity
           adb logcat -c
           
           echo "Running baseline checks..."
@@ -389,6 +491,7 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
+          verify_shared_net_connectivity
           adb logcat -c
           
           echo "Creating vulnerable scenario 0..."
@@ -433,6 +536,7 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
+          verify_shared_net_connectivity
           adb logcat -c
           
           echo "Creating vulnerable scenario 1..."
@@ -461,14 +565,15 @@ jobs:
           
           chmod +x test_checks.sh
 
-      - name: Create build source script
+      - name: Create build script
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
         run: |
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          setup_mode="${{ matrix.setup_mode }}"
 
-          cat << 'EOF' > build_source.sh
+          cat << 'EOF' > build_script.sh
           #!/bin/bash
           set -e
           git config --global --add safe.directory '*'
@@ -476,26 +581,35 @@ jobs:
           source /tmp/shared_functions.sh
           check_server_ready
           EOF
-          echo "dir=\"$modified_dir\"" >> build_source.sh
-          cat <<'EOF' >> build_source.sh
+          echo "dir=\"$modified_dir\"" >> build_script.sh
+          echo "setup_mode=\"$setup_mode\"" >> build_script.sh
+          cat <<'EOF' >> build_script.sh
           cd "$dir"
           checkout_commit "$dir"
 
-          required_scripts=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "setup_app_source.sh")
-          echo "Checking for required scripts..."
-          for script in "${required_scripts[@]}"; do
+          required_files=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
+
+          echo "Setup mode: $setup_mode"
+          echo "Checking for required files..."
+          for script in "${required_files[@]}"; do
             if [[ ! -f "$script" ]]; then
               echo "ERROR: Required script '$script' not found."
               exit 1
             fi
           done
 
-          echo "Setting up app from source..."
-          ./setup_app_source.sh
+          # Run appropriate setup script based on mode
+          if [ "$setup_mode" = "apklink" ]; then
+            echo "Setting up app from APK link."
+            ./setup_app_apklink.sh
+          else
+            echo "Setting up app from source..."
+            ./setup_app_source.sh
+          fi
           EOF
-          chmod +x build_source.sh
+          chmod +x build_script.sh
           free -h
-          ./build_source.sh
+          ./build_script.sh
                 
       - name: Stabilize runner after build
         run: |
@@ -608,6 +722,11 @@ jobs:
     if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_run_checks == 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      matrix:
+        setup_mode: ${{ fromJson(needs.setup.outputs.setup_modes) }}
+      fail-fast: false  
+      max-parallel: 3
     
     steps:
       - name: Free Disk Space (Ubuntu)
@@ -662,6 +781,43 @@ jobs:
             else
               echo "No metadata.json file found"
               exit 1
+            fi
+          }
+
+          verify_shared_net_connectivity() {
+            # Verify shared_net connectivity after containers are started
+            echo "Verifying shared_net connectivity..."
+            if [ -f "metadata.json" ]; then
+              app_server=$(jq -r '.app_server // empty' "metadata.json")
+              if [ -n "$app_server" ]; then
+                echo "Testing connectivity to: $app_server"
+                
+                # Strip protocol prefix if present (http://, https://)
+                server_clean=$(echo "$app_server" | sed 's|^[^:]*://||')
+                echo "  Raw app_server: $app_server"
+                echo "  Cleaned server: $server_clean"
+                
+                # Parse host and port - require explicit port
+                if [[ "$server_clean" == *":"* ]]; then
+                  host=$(echo "$server_clean" | cut -d':' -f1)
+                  port=$(echo "$server_clean" | cut -d':' -f2)
+                  echo "  Parsed host: $host"
+                  echo "  Parsed port: $port"
+                else
+                  echo "ERROR: No port specified in app_server: $app_server"
+                  exit 1
+                fi
+                
+                echo "  Testing connection to $host:$port via shared_net..."
+                docker run --rm --network=shared_net alpine:latest \
+                  sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
+                
+                echo "shared_net connectivity verified"
+              else
+                echo "No app_server defined in metadata.json, skipping connectivity check"
+              fi
+            else
+              echo "No metadata.json found, skipping connectivity check"
             fi
           }
           EOF
@@ -723,6 +879,7 @@ jobs:
           
           echo "Running setup..."
           ./setup.sh
+          verify_shared_net_connectivity
           adb logcat -c
           
           # Check packages after setup
@@ -745,26 +902,30 @@ jobs:
           
           chmod +x simple_test.sh
 
-      - name: Create build source script
+      - name: Create build script
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
         run: |
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          setup_mode="${{ matrix.setup_mode }}"
 
-          cat << 'EOF' > build_source.sh
+          cat << 'EOF' > build_script.sh
           #!/bin/bash
           set -e
           git config --global --add safe.directory '*'
           
           source /tmp/shared_functions.sh
           EOF
-          echo "dir=\"$modified_dir\"" >> build_source.sh
-          cat <<'EOF' >> build_source.sh
+          echo "dir=\"$modified_dir\"" >> build_script.sh
+          echo "setup_mode=\"$setup_mode\"" >> build_script.sh
+          cat <<'EOF' >> build_script.sh
           cd "$dir"
           checkout_commit "$dir"
 
-          required_scripts=("setup.sh" "cleanup.sh" "setup_app_source.sh")
+          required_scripts=("setup.sh" "cleanup.sh")
+
+          echo "Setup mode: $setup_mode"
           echo "Checking for required scripts..."
           for script in "${required_scripts[@]}"; do
             if [[ ! -f "$script" ]]; then
@@ -773,12 +934,18 @@ jobs:
             fi
           done
 
-          echo "Setting up app from source..."
-          ./setup_app_source.sh
+          # Run appropriate setup script based on mode
+          if [ "$setup_mode" = "apklink" ]; then
+            echo "Setting up app from APK link."
+            ./setup_app_apklink.sh
+          else
+            echo "Setting up app from source..."
+            ./setup_app_source.sh
+          fi
           EOF
-          chmod +x build_source.sh
+          chmod +x build_script.sh
           free -h
-          ./build_source.sh
+          ./build_script.sh
                 
       - name: Stabilize runner after build
         run: |

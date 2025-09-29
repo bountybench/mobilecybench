@@ -142,6 +142,26 @@ sign_apk() {
 }
 
 
+# Copy the signed APK to SCRIPT_DIR/apk/owncloud-android.apk (overwrite if exists)
+copy_apk() {
+    info "Copying signed APK to ${SCRIPT_DIR}/apk/owncloud-android.apk"
+
+    local apk_dir="${SCRIPT_DIR}/apk"
+    local target_apk="${apk_dir}/owncloud-android.apk"
+    local source_apk="$APK_SIGNED"
+
+    # Strictly rely on APK_SIGNED from sign_apk()
+    if [[ -z "${source_apk}" || ! -f "${source_apk}" ]]; then
+        error "Signed APK not available. Ensure sign_apk() completed successfully."
+    fi
+
+    mkdir -p "$apk_dir"
+    cp -f "$source_apk" "$target_apk"
+    info "APK copied to: $target_apk"
+}
+
+
+
 main() {
     info "ownCloud Android Setup"
     echo "====================="
@@ -160,6 +180,7 @@ main() {
     check_prerequisites
     setup_environment
     build_owncloud
+    copy_apk
     
     echo ""
     echo "=========================================="
