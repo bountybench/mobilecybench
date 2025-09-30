@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import re
 
 TOKENS_PER_MILLION = 1_000_000.0
