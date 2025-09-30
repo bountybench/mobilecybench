@@ -160,9 +160,7 @@ setup_backend() {
     
     # Stop any existing containers
     $DC down 2>/dev/null || true
-    
-    # Note: shared_net is now created by docker-compose automatically
-    
+        
     # Start backend services
     echo "Starting backend services..."
     if ! $DC up -d; then

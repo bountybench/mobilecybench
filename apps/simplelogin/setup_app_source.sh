@@ -177,7 +177,6 @@ build_app() {
     cd "$SCRIPT_DIR"
 }
 
-
 main() {
     log_info "Starting SimpleLogin Android app setup..."
     

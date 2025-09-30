@@ -4,27 +4,10 @@ set -e
 echo "Cleaning up SimpleLogin environment"
 echo "==================="
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-METADATA_FILE="$SCRIPT_DIR/metadata.json"
-
-# Use modern Docker Compose v2
 DC="docker compose"
-
-echo "Uninstalling SimpleLogin app..."
-if [ -f "$METADATA_FILE" ]; then
-    APP_ID=$(jq -r '.package_name' "$METADATA_FILE" 2>/dev/null || echo "")
-    if [ -n "$APP_ID" ] && command -v adb >/dev/null 2>&1; then
-        if adb devices | grep -q "device\|emulator"; then
-            adb uninstall "$APP_ID" 2>/dev/null || echo "App may not have been installed"
-            adb shell "am force-stop $APP_ID" 2>/dev/null || true
-        fi
-    fi
-fi
 
 echo "Stopping all services..."
 $DC down -v 2>/dev/null || true
-
-# Note: shared_net is now managed by docker-compose automatically
 
 echo "Removing any dangling containers..."
 docker container prune -f 2>/dev/null || true
@@ -39,19 +22,6 @@ rm -f *_results.json 2>/dev/null || true
 
 echo "Removing log files..."
 find . -type f -name "*.log" -delete 2>/dev/null || true
-find . -type f -name "*.tmp" -delete 2>/dev/null || true
-
-echo "Removing UI dump files..."
-rm -f "ui.xml" 2>/dev/null || true
-find . -name "*.xml" -not -path "./codebase/*" -delete 2>/dev/null || true
-
-# Only remove codebase if explicitly requested (for full reset)
-if [[ "${NUKE_SOURCE:-0}" == "1" ]] && [ -d "codebase" ]; then
-    echo "Removing codebase directory (NUKE_SOURCE=1)..."
-    rm -rf "codebase"
-else
-    echo "Keeping codebase directory for subsequent scenarios"
-fi
 
 echo "Cleanup complete!"
 echo "==================="
