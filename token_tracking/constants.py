@@ -7,15 +7,16 @@ PROVIDER_OPENAI = "openai"
 PROVIDER_ANTHROPIC = "anthropic"
 SUPPORTED_PROVIDERS = [PROVIDER_OPENAI, PROVIDER_ANTHROPIC]
 
-FIELD_INPUT = "input"
-FIELD_OUTPUT = "output"
-FIELD_REASONING = "reasoning"
+# field names for pricing components
+INPUT_PRICE_FIELD = "input"
+OUTPUT_PRICE_FIELD = "output"
+REASONING_PRICE_FIELD = "reasoning"
 
-FIELD_CACHE_INPUT = "cache_input"
+CACHE_INPUT_PRICE_FIELD = "cache_input"
 
 # Anthropic style cache fields
-FIELD_CACHE_HITS_AND_REFRESHES = "cache_hits_and_refreshes"
-FIELD_CACHE_WRITE = "cache_write"
+CACHE_HITS_AND_REFREeSHES_PRICE_FIELD = "cache_hits_and_refreshes"
+CACHE_WRITE_PRICE_FIELD = "cache_write"
 
 OPENAI_DATE_PATTERN = re.compile(r"-\d{4}-\d{2}-\d{2}$")
 ANTHROPIC_DATE_PATTERN = re.compile(r"-\d{8}$")
