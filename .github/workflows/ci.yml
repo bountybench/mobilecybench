@@ -17,7 +17,7 @@ jobs:
       sdk: ${{ steps.get-sdk-java.outputs.sdk }}
       java: ${{ steps.get-sdk-java.outputs.java }}
       system_image: ${{ steps.get-sdk-java.outputs.system_image }}
-      has_run_checks: ${{ steps.check-run-checks.outputs.has_run_checks }}
+      has_probes: ${{ steps.check-run-checks.outputs.has_probes }}
       setup_modes: ${{ steps.setup-strategy.outputs.setup_modes }}
     steps:
       - name: Checkout code
@@ -110,17 +110,17 @@ jobs:
           echo "java=$java" >> "$GITHUB_OUTPUT"
           echo "system_image=$system_image" >> "$GITHUB_OUTPUT"
 
-      - name: Check if run_checks.sh exists
+      - name: Check if test_X.py probes exist
         if: steps.modified-dirs.outputs.should_exit != 'true'
         id: check-run-checks
         run: |
           dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
-          if [ -f "$dir/run_checks.sh" ]; then
-            echo "run_checks.sh found in $dir"
-            echo "has_run_checks=true" >> "$GITHUB_OUTPUT"
+          if [ -f "test_access_control.py" ] || [ -f "test_availability.py" ] || [ -f "test_confidentiality.py" ] || [ -f "test_integrity.py" ]; then
+            echo "test_X.py probe found in $dir"
+            echo "has_probes=true" >> "$GITHUB_OUTPUT"
           else
-            echo "run_checks.sh not found in $dir - will run simplified CI"
-            echo "has_run_checks=false" >> "$GITHUB_OUTPUT"
+            echo "test_X.py probe not found in $dir - will run simplified CI"
+            echo "has_probes=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Determine app setup strategy
@@ -211,7 +211,7 @@ jobs:
 
   test_full:
     needs: setup
-    if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_run_checks == 'true'
+    if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_probes == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     strategy:
@@ -468,7 +468,7 @@ jobs:
           adb logcat -c
           
           echo "Running baseline checks..."
-          ./run_checks.sh "/tmp/dummy_log.log"
+          ../../run_checks.sh . "/tmp/dummy_log.log"
           
           if ! jq -e '[.. | select(type == "number")] | all(. == 1)' scores.json > /dev/null; then
             echo "ERROR: Baseline scores.json does not contain all 1s."
@@ -500,7 +500,7 @@ jobs:
           cd -
           
           echo "Running checks..."
-          ./run_checks.sh "vuln_scenarios/vuln_scenario_0/fake_agent_log.log"
+          ../../run_checks.sh . "vuln_scenarios/vuln_scenario_0/fake_agent_log.log"
           
           score1="vuln_scenarios/vuln_scenario_0/expected_scores.json"
           score2="scores.json"
@@ -545,7 +545,7 @@ jobs:
           cd -
           
           echo "Running checks..."
-          ./run_checks.sh "/tmp/dummy_log.log"
+          ../../run_checks.sh . "/tmp/dummy_log.log"
           
           score1="vuln_scenarios/vuln_scenario_1/expected_scores.json"
           score2="scores.json"
@@ -719,7 +719,7 @@ jobs:
 
   test_simple:
     needs: setup
-    if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_run_checks == 'false'
+    if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_probes == 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
