@@ -38,11 +38,11 @@ echo "[Wallabag] Waiting for Wallabag container to be healthy..."
 MAX_WAIT=60
 WAITED=0
 while true; do
-    STATUS=$(docker inspect --format='{{.State.Health.Status}}' wallabag-wallabag-1 2>/dev/null || echo "unknown")
+    STATUS=$(docker inspect --format='{{.State.Health.Status}}' wallabag 2>/dev/null || echo "unknown")
     [ "$STATUS" == "healthy" ] && break
     [ "$WAITED" -ge "$MAX_WAIT" ] && {
       echo "Wallabag container not healthy after $MAX_WAIT seconds."
-      docker logs wallabag-wallabag-1 --tail 50
+      docker logs wallabag --tail 50
       exit 1
     }
     sleep 3
@@ -50,13 +50,13 @@ while true; do
 done
 
 # Run wallabag install command inside container
-docker exec wallabag-wallabag-1 bin/console wallabag:install --env=prod -n || true
+docker exec wallabag bin/console wallabag:install --env=prod -n || true
 
 # Clear cache and fix permissions inside container
-docker exec wallabag-wallabag-1 rm -rf /var/www/wallabag/var/cache/prod
-docker exec wallabag-wallabag-1 php bin/console cache:clear --env=prod
-docker exec wallabag-wallabag-1 chown -R nobody:nogroup /var/www/wallabag/var
-docker exec wallabag-wallabag-1 chmod -R 770 /var/www/wallabag/var
+docker exec wallabag rm -rf /var/www/wallabag/var/cache/prod
+docker exec wallabag php bin/console cache:clear --env=prod
+docker exec wallabag chown -R nobody:nogroup /var/www/wallabag/var
+docker exec wallabag chmod -R 770 /var/www/wallabag/var
 
 # Restart Wallabag container to apply changes
 docker compose restart wallabag
@@ -64,11 +64,11 @@ docker compose restart wallabag
 # Wait again for healthy status after restart
 WAITED=0
 while true; do
-    STATUS=$(docker inspect --format='{{.State.Health.Status}}' wallabag-wallabag-1 2>/dev/null || echo "unknown")
+    STATUS=$(docker inspect --format='{{.State.Health.Status}}' wallabag 2>/dev/null || echo "unknown")
     [ "$STATUS" == "healthy" ] && break
     [ "$WAITED" -ge "$MAX_WAIT" ] && {
       echo "Wallabag container not healthy after restart $MAX_WAIT seconds."
-      docker logs wallabag-wallabag-1 --tail 50
+      docker logs wallabag --tail 50
       exit 1
     }
     sleep 3
@@ -136,7 +136,7 @@ fi
 echo "Using AVD: $AVD_NAME"
 
 echo "[Wallabag] Starting emulator..."
-$EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -verbose &
+$EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -verbose -netdelay none -netspeed full &
 
 echo "Waiting for emulator in adb devices (timeout 180s)..."
 TIMEOUT=180
@@ -155,6 +155,17 @@ while true; do
     fi
     sleep 5
 done
+
+if nc -zv wallabag 80 2>&1 | grep -q succeeded; then
+  echo "Wallabag reachable via Docker network: wallabag:80"
+elif nc -zv localhost 8080 2>&1 | grep -q succeeded; then
+  echo "Wallabag reachable on host: localhost:8080"
+elif nc -zv 10.0.2.2 8080 2>&1 | grep -q succeeded; then
+  echo "Wallabag reachable from emulator: 10.0.2.2:8080"
+else
+  echo "ERROR: Cannot reach app server in any mode!"
+  exit 1
+fi
 
 echo "Emulator connected, waiting 60 more seconds for boot completion..."
 sleep 60

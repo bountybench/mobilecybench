@@ -7,14 +7,20 @@ services:
       - POSTGRES_DB=wallabag
     volumes:
       - db-data:/var/lib/postgresql/data
+    networks:
+      - shared_net
 
   redis:
     image: redis:alpine
+    networks:
+      - shared_net
 
   wallabag:
+    container_name: wallabag
     image: wallabag/wallabag
     ports:
       - "8080:80"
+      - "80:80"
     environment:
       - SYMFONY__ENV__DATABASE_DRIVER=pdo_pgsql
       - SYMFONY__ENV__DATABASE_HOST=db
@@ -24,9 +30,19 @@ services:
       - SYMFONY__ENV__DATABASE_PASSWORD=wallabag
       - SYMFONY__ENV__DOMAIN_NAME=http://localhost:8080
       - SYMFONY__ENV__REDIS_HOST=redis
+      - APACHE_RUN_USER=www-data
+      - APACHE_RUN_GROUP=www-data
+      - APACHE_SERVER_NAME=localhost
+      - SERVER_BIND=0.0.0.0
     depends_on:
       - db
       - redis
+    networks:
+      - shared_net
+
+networks:
+  shared_net:
+    driver: bridge
 
 volumes:
   db-data:
