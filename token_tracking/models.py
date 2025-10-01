@@ -23,7 +23,8 @@ class ProviderPricing:
     Note: All prices are defaulted to 0.
         - cache_price is for OpenAI.
         - cache_hits_and_refreshes_price and cache_write_price are for Anthropic.
-        - currently, cache_write_price (5 minutes) price is used.
+        - Currently, cache_write_price (5 minutes) price is used.
+        - TODO: Anthropic CacheCreation - 1h or 5min price selection logic.
     """
 
     input_price: float = 0.0
