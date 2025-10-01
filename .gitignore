@@ -22,4 +22,5 @@ ssh_key
 .env
 !apps/**/.env
 token_usage.jsonl
+<<<<<<< HEAD
 *.egg-info
