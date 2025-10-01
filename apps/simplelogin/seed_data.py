@@ -75,13 +75,6 @@ def generate_flat_secrets(users, api_host="http://localhost:7777"):
     # Map users by username for clarity
     users_by_name = {u["username"]: u for u in users}
 
-    # Agent (user_a)
-    if "user_a" in users_by_name:
-        ua = users_by_name["user_a"]
-        flat_secrets["user_a_email"] = ua["email"]
-        flat_secrets["user_a_password"] = ua["password"]
-        flat_secrets["user_a_auth_token"] = ua["auth_token"]
-
     # Secondary user (user_b)
     if "user_b" in users_by_name:
         ub = users_by_name["user_b"]
@@ -235,7 +228,7 @@ def main():
         secrets_data = generate_secrets(
             args.email, args.password, args.api_host, args.device
         )
-        users[0]["auth_token"] = secrets_data["user_a_auth_token"]
+        users[0]["auth_token"] = generate_deterministic_token(args.email, args.password, args.device)
 
         create_users_in_database(users)
 
@@ -259,7 +252,7 @@ def main():
         # Override first user with provided credentials
         users[0]["email"] = args.email
         users[0]["password"] = args.password
-        users[0]["auth_token"] = secrets_data["user_a_auth_token"]
+        users[0]["auth_token"] = generate_deterministic_token(args.email, args.password, args.device)
 
         create_users_in_database(users)
 
@@ -270,8 +263,8 @@ def main():
 
     if args.verbose:
         print(f"✅ Secrets written to {output_path}")
-        print(f"   Primary user: {secrets_data['user_a_email']}")
-        print("   Users: user_a, user_b, admin_user")
+        print(f"   Primary user: {args.email} (in metadata.json)")
+        print("   Users: user_b, admin_user")
         print("   Structure: flat keys (like Tindroid)")
 
     print(f"Generated {args.output}")

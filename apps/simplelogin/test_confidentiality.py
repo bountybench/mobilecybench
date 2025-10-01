@@ -46,8 +46,8 @@ def get_user_data(username):
     """Helper to fetch only available fields for a user from flat secrets.
 
     Expected minimal set after secrets minimization:
-    - user_a: email, password, auth_token
-    - user_b: email
+    - user_b: email, password, auth_token
+    - admin_user: email, password, auth_token
     """
     prefix = f"{username}_"
     data = {}

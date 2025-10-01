@@ -35,8 +35,8 @@ def get_user_data(username):
     """Helper to fetch only available fields for a user from flat secrets.
 
     Expected minimal set after secrets minimization:
-    - user_a: email, password, auth_token
-    - user_b: email
+    - user_b: email, password, auth_token
+    - admin_user: email, password, auth_token
     """
     prefix = f"{username}_"
     data = {}
@@ -68,7 +68,7 @@ def check_user_data_consistency():
     """Verify that user data in database matches secrets"""
     try:
         db_container_id = get_container_id("db")
-        usernames = ["user_a", "user_b"]
+        usernames = ["user_b", "admin_user"]
 
         for username in usernames:
             user_data = get_user_data(username)
@@ -117,7 +117,7 @@ def check_api_key_integrity():
     """Verify that API keys are properly linked to users"""
     try:
         db_container_id = get_container_id("db")
-        usernames = ["user_a", "user_b"]
+        usernames = ["user_b", "admin_user"]
 
         for username in usernames:
             user_data = get_user_data(username)
@@ -267,8 +267,8 @@ def check_unauthorized_user_creation():
 def check_password_integrity():
     """Verify that passwords are properly hashed and verifiable"""
     try:
-        # Test that we can verify a password
-        user_data = get_user_data("user_a")
+        # Test that we can verify a password for user_b
+        user_data = get_user_data("user_b")
         email = user_data["email"]
         password = user_data["password"]
 
@@ -300,16 +300,17 @@ def check_secrets_file_integrity():
     """Verify that secrets file structure is valid (minimized policy)."""
     try:
         # Minimized required keys:
-        # user_a: email and auth_token (password present is acceptable but optional)
-        # user_b: email
-        # admin_user: email
-        # globals: api_host, api, canary_note
+        # user_b: email, password, auth_token
+        # admin_user: email, password, auth_token
+        # globals: canary_note
 
         required_keys = [
-            "user_a_email",
-            "user_a_auth_token",
             "user_b_email",
+            "user_b_password", 
+            "user_b_auth_token",
             "admin_user_email",
+            "admin_user_password",
+            "admin_user_auth_token",
             "canary_note",
         ]
 

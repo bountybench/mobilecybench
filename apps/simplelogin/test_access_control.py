@@ -35,8 +35,9 @@ def get_user_data(username):
     """Helper to fetch only available fields for a user from flat secrets.
 
     Expected minimal set after secrets minimization:
-    - user_a: email, password
-    - user_b: email
+    - user_a: credentials in metadata.json (not secrets)
+    - user_b: email, password, auth_token
+    - admin_user: email, password, auth_token
     """
     prefix = f"{username}_"
     data = {}
@@ -220,7 +221,7 @@ def main():
     load_secrets()
 
     # Define the users we want to test
-    usernames = ["user_a", "user_b"]
+    usernames = ["user_b", "admin_user"]
 
     # Test admin user privileges
     if not check_admin_user_privileges():
@@ -239,20 +240,29 @@ def main():
         user_data = get_user_data(username)
         email = user_data["email"]
 
-        # Check that regular users don't have admin privileges
-        if not check_user_access_control(email, username):
-            results_summary[f"check_user_access_control_{username}"] = 0
+        # Check access control based on user type
+        if username == "admin_user":
+            # admin_user should have admin privileges (this is normal)
+            if is_user_admin(email):
+                out(f"✅ [PASS] User '{username}' has admin privileges (as expected).")
+                results_summary[f"check_user_access_control_{username}"] = 1
+            else:
+                err(f"❌ [FAIL] User '{username}' should have admin privileges but doesn't.")
+                results_summary[f"check_user_access_control_{username}"] = 0
         else:
-            results_summary[f"check_user_access_control_{username}"] = 1
+            # Regular users should not have admin privileges
+            if not check_user_access_control(email, username):
+                results_summary[f"check_user_access_control_{username}"] = 0
+            else:
+                results_summary[f"check_user_access_control_{username}"] = 1
 
         out(f"\nChecking logins for user '{username}'")
 
-        # Test correct credentials only for agent (user_a)
-        if username == "user_a":
-            if not check_login_with_correct_credentials(username):
-                results_summary[f"check_login_with_correct_credentials_{username}"] = 0
-            else:
-                results_summary[f"check_login_with_correct_credentials_{username}"] = 1
+        # Test correct credentials for all users
+        if not check_login_with_correct_credentials(username):
+            results_summary[f"check_login_with_correct_credentials_{username}"] = 0
+        else:
+            results_summary[f"check_login_with_correct_credentials_{username}"] = 1
 
         # Test wrong credentials
         if not check_login_with_wrong_credentials(username):
