@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -13,10 +12,14 @@ from ..constants import (
     CACHE_WRITE_PRICE_FIELD,
     INPUT_PRICE_FIELD,
     OUTPUT_PRICE_FIELD,
-    REASONING_PRICE_FIELD,
     PROVIDER_ANTHROPIC,
     PROVIDER_OPENAI,
-    SUPPORTED_PROVIDERS,
+    REASONING_PRICE_FIELD,
+)
+from ..exceptions import (
+    CalculatorNotConfiguredError,
+    ExtractorNotConfiguredError,
+    ModelPricingNotFoundError,
 )
 from ..models import ProviderPricing, UsageMetrics
 from ..utils import logger, strip_date_suffix
@@ -24,30 +27,18 @@ from .anthropic import AnthropicPricingCalculator, AnthropicUsageExtractor
 from .openai import OpenAIPricingCalculator, OpenAIUsageExtractor
 
 
-class ModelPricingNotFoundError(Exception):
-    """Raised when no pricing information is found for a given model.
-
-    Continue with all prices set to $0.0. Token Count is still tracked.
-    """
-    pass
-
-class UnsupportedProviderError(Exception):
-    """Raised when an unsupported provider is specified.
-
-    Bubble up to caller to handle. Entire token tracking should be skipped.
-    """
-    pass
-
 class ProviderPricingManager:
-    def __init__(self, pricing_config_path: Optional[str] = None):
+    def __init__(self, pricing_config_path: str):
         self.pricing_config = self.__load_pricing_config(pricing_config_path)
         self.extractors: Dict[str, UsageExtractor] = {
             PROVIDER_OPENAI: OpenAIUsageExtractor(),
             PROVIDER_ANTHROPIC: AnthropicUsageExtractor(),
+            # TODO: other providers
         }
         self.calculators: Dict[str, PricingCalculator] = {
             PROVIDER_OPENAI: OpenAIPricingCalculator(),
             PROVIDER_ANTHROPIC: AnthropicPricingCalculator(),
+            # TODO: other providers
         }
 
     # Public Methods
@@ -56,55 +47,50 @@ class ProviderPricingManager:
     ) -> Tuple[UsageMetrics, float]:
         extractor = self.extractors.get(provider)
         if extractor is None:
-            raise ValueError(f"No extractor available for provider '{provider}'."
-                             f"Make sure extractor for {provider} is implemented and initialized properly.")
-        usage = extractor.extract_usage(response)
+            raise ExtractorNotConfiguredError(
+                f"No usage extractor configured for provider '{provider}'"
+            )
+
+        usage = extractor.extract_usage(response)   # can raise UsageNotFoundError
 
         try:
-            pricing = self.__get_pricing(model, provider)
-        except UnsupportedProviderError as e:
-            logger.warning(f"{e}. Bubbling up to caller to skip token tracking.")
-            raise e
+            calculator = self.calculators.get(provider)
+            if calculator is None:
+                raise CalculatorNotConfiguredError(
+                    f"No pricing calculator configured for provider '{provider}'"
+                )
+            pricing = self.__get_pricing(model, provider) 
+            cost = calculator.calculate_cost(usage, pricing)
 
-        calculator = self.calculators.get(provider)
-        if calculator is None:
-            raise ValueError(f"No calculator available for provider '{provider}'."
-                             f"Make sure calculator for {provider} is implemented and initialized properly.")
+        # failure in pricing or calculation is non-critical - continue token tracking
+        except (ModelPricingNotFoundError, CalculatorNotConfiguredError) as e:
+            logger.warning(f"Pricing calculation failed: {e}. Using $0.00 cost")
+            cost = 0.0
+        except Exception as e:
+            logger.warning(f"Unexpected error in cost calculation: {e}. Using $0.00 cost")
+            cost = 0.0
 
-        cost = calculator.calculate_cost(usage, pricing)
         return usage, cost
 
-    
     # Helper Methods
-    def __load_pricing_config(self, path: Optional[str] = None) -> Dict[str, Any]:
-        if path is None:
-            path = os.path.join(os.path.dirname(__file__), "..", "data", "pricing.json")
+    def __load_pricing_config(self, path: str) -> Dict[str, Any]:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except (OSError, IOError, json.JSONDecodeError) as e:
-            logger.warning(f"Failed to load pricing config {path}: {e}")
-            logger.warning("Token cost calculations will result in $0.0 because of load_pricing_config failure.")
+            logger.warning(f"Failed to load pricing config from {path}: {e}. Using $0.00 for all costs")
             return {}
 
     def __get_pricing(self, model: str, provider: str) -> ProviderPricing:
-        if provider not in SUPPORTED_PROVIDERS:
-            raise UnsupportedProviderError(
-                f"Unsupported provider '{provider}' for pricing calculation. Currently supported: {SUPPORTED_PROVIDERS}"
-            )
         provider_models_pricing = self.pricing_config.get(provider, {})
-        try:
-            model_pricing = self.__resolve_model_pricing(model, provider, provider_models_pricing)
-        except ModelPricingNotFoundError as e:
-            logger.warning(f"{e}. All token prices set to $0.0.")
-            return ProviderPricing()
-        
+        model_pricing = self.__resolve_model_pricing(
+            model, provider, provider_models_pricing
+        )
         return self.__build_pricing_for_provider(provider, model_pricing)
 
     def __resolve_model_pricing(
         self, model: str, provider: str, models: Dict[str, Any]
     ) -> Dict[str, Any]:
-        # exact key match
         if model in models:
             return models[model]
 
@@ -114,16 +100,14 @@ class ProviderPricingManager:
         elif provider == PROVIDER_OPENAI:
             resolved = self.__resolve_openai_model(model, models)
         # TODO: other providers
-        else: # should not reach here
-            raise UnsupportedProviderError(
-                f"Unsupported provider '{provider}'"
-            )
+        else:
+            # should never be reached due to earlier validation
+            raise AssertionError(f"Unexpected provider '{provider}' - validation should have caught this")
 
         if resolved:
             return resolved
         raise ModelPricingNotFoundError(
-            f"No pricing found for model '{model}' from provider '{provider}'."
-            f"Attempted date suffix stripping and model mappings."
+            f"No pricing found for model '{model}' from provider '{provider}'"
         )
 
     def __resolve_openai_model(
@@ -163,10 +147,9 @@ class ProviderPricingManager:
         elif provider == PROVIDER_ANTHROPIC:
             return self.__build_anthropic_pricing(model_pricing)
         # TODO: other providers
-        else:  # should not reach here
-            raise UnsupportedProviderError(
-                f"Unsupported provider '{provider}'"
-            )
+        
+        # should never be reached due to earlier validation
+        raise AssertionError(f"Unexpected provider '{provider}' - validation should have caught this")
 
     def __build_openai_pricing(self, model_pricing: Dict[str, Any]) -> ProviderPricing:
         return ProviderPricing(

@@ -7,6 +7,7 @@ from typing import Any, Optional
 
 from ..base import PricingCalculator, UsageExtractor
 from ..constants import TOKENS_PER_MILLION
+from ..exceptions import UsageNotFoundError
 from ..models import ProviderPricing, UsageMetrics
 from ..utils import logger
 
@@ -15,8 +16,7 @@ class OpenAIUsageExtractor(UsageExtractor):
     def extract_usage(self, response: Any) -> UsageMetrics:
         usage = getattr(response, "usage", None)
         if usage is None:
-            logger.warning("No usage data found in OpenAI response. All token counts set to 0.")
-            return UsageMetrics()
+            raise UsageNotFoundError("No usage data found in OpenAI response")
 
         return UsageMetrics(
             input_tokens=self.__extract_core_tokens(usage, "input_tokens"),
@@ -36,7 +36,9 @@ class OpenAIUsageExtractor(UsageExtractor):
             val = getattr(usage, field, 0)
             return max(int(val or 0), 0)
         except (ValueError, TypeError, AttributeError):
-            logger.warning(f"Error extracting {field} from OpenAI usage. Defaulting to 0.")
+            logger.warning(
+                f"Error extracting {field} from OpenAI usage. Defaulting to 0."
+            )
             return 0
 
     def __extract_cache_tokens(self, usage: Any) -> int:
@@ -45,12 +47,10 @@ class OpenAIUsageExtractor(UsageExtractor):
             try:
                 val = getattr(input_details, "cached_tokens", 0)
                 return max(int(val or 0), 0)
-            except AttributeError:
-                logger.warning("No cached_tokens field in OpenAI usage details. Defaulting to 0.")
-                pass
-            except (ValueError, TypeError):
-                logger.warning("Error extracting cached tokens from OpenAI usage details. Defaulting to 0.")
-                pass
+            except (ValueError, TypeError, AttributeError):
+                logger.warning(
+                    "Error extracting cached tokens from OpenAI usage details. Defaulting to 0."
+                )
         return 0
 
     def __extract_reasoning_tokens(self, usage: Any) -> int:
@@ -59,12 +59,10 @@ class OpenAIUsageExtractor(UsageExtractor):
             try:
                 val = getattr(output_details, "reasoning_tokens", 0)
                 return max(int(val or 0), 0)
-            except AttributeError:
-                logger.warning("No reasoning_tokens field in OpenAI usage details. Will default to 0.")
-                pass
-            except (ValueError, TypeError):
-                logger.warning("Error extracting reasoning tokens from OpenAI usage details.")
-                pass
+            except (ValueError, TypeError, AttributeError):
+                logger.warning(
+                    "Error extracting reasoning tokens from OpenAI usage details. Defaulting to 0."
+                )
         return 0
 
 
@@ -80,4 +78,3 @@ class OpenAIPricingCalculator(PricingCalculator):
         cost_reasoning = (usage.reasoning_tokens / scale) * pricing.reasoning_price
 
         return float(cost_input + cost_output + cost_cache + cost_reasoning)
-        

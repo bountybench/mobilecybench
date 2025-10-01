@@ -1,12 +1,24 @@
+from .exceptions import (
+    CalculatorNotConfiguredError,
+    ExtractorNotConfiguredError,
+    ModelPricingNotFoundError,
+    TokenTrackingError,
+    UnsupportedProviderError,
+    UsageNotFoundError,
+)
 from .models import TokenUsage, UsageMetrics
 from .providers import ProviderPricingManager
 from .tracker import TokenTracker
 
-__version__ = "0.1.0"
-
 __all__ = [
     "TokenTracker",
-    "ProviderPricingManager", 
+    "ProviderPricingManager",
     "TokenUsage",
     "UsageMetrics",
+    "UnsupportedProviderError",
+    "ModelPricingNotFoundError",
+    "UsageNotFoundError",
+    "ExtractorNotConfiguredError",
+    "CalculatorNotConfiguredError",
+    "TokenTrackingError",
 ]

@@ -1,7 +1,7 @@
 import re
 
 TOKENS_PER_MILLION = 1_000_000.0
-COST_PRECISION = 10
+COST_PRECISION = 4
 
 PROVIDER_OPENAI = "openai"
 PROVIDER_ANTHROPIC = "anthropic"
@@ -16,7 +16,7 @@ CACHE_INPUT_PRICE_FIELD = "cache_input"
 
 # Anthropic style cache fields
 # TODO: Anthropic CacheCreation - 1h or 5min price selection logic.
-CACHE_HITS_AND_REFREeSHES_PRICE_FIELD = "cache_hits_and_refreshes"
+CACHE_HITS_AND_REFRESHES_PRICE_FIELD = "cache_hits_and_refreshes"
 CACHE_WRITE_PRICE_FIELD = "cache_write"
 
 OPENAI_DATE_PATTERN = re.compile(r"-\d{4}-\d{2}-\d{2}$")

@@ -8,6 +8,7 @@ class UsageMetrics:
 
     Note: All tokens are defaulted to 0.
     """
+
     input_tokens: int = 0
     output_tokens: int = 0
     cache_tokens: int = 0
@@ -19,7 +20,7 @@ class UsageMetrics:
 @dataclass(frozen=True)
 class ProviderPricing:
     """Data class for provider pricing information.
-    
+
     Note: All prices are defaulted to 0.
         - cache_price is for OpenAI.
         - cache_hits_and_refreshes_price and cache_write_price are for Anthropic.
