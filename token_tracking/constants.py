@@ -15,6 +15,7 @@ REASONING_PRICE_FIELD = "reasoning"
 CACHE_INPUT_PRICE_FIELD = "cache_input"
 
 # Anthropic style cache fields
+# TODO: Anthropic CacheCreation - 1h or 5min price selection logic.
 CACHE_HITS_AND_REFREeSHES_PRICE_FIELD = "cache_hits_and_refreshes"
 CACHE_WRITE_PRICE_FIELD = "cache_write"
 
