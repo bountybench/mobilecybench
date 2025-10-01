@@ -228,7 +228,9 @@ def main():
         secrets_data = generate_secrets(
             args.email, args.password, args.api_host, args.device
         )
-        users[0]["auth_token"] = generate_deterministic_token(args.email, args.password, args.device)
+        users[0]["auth_token"] = generate_deterministic_token(
+            args.email, args.password, args.device
+        )
 
         create_users_in_database(users)
 
@@ -252,7 +254,9 @@ def main():
         # Override first user with provided credentials
         users[0]["email"] = args.email
         users[0]["password"] = args.password
-        users[0]["auth_token"] = generate_deterministic_token(args.email, args.password, args.device)
+        users[0]["auth_token"] = generate_deterministic_token(
+            args.email, args.password, args.device
+        )
 
         create_users_in_database(users)
 

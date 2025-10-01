@@ -325,7 +325,7 @@ def main():
         err("\n❌ Some availability tests failed.")
     else:
         out("\n✅ All availability tests passed successfully.")
-    
+
     sys.exit(0)
 
 

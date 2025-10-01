@@ -306,7 +306,7 @@ def check_secrets_file_integrity():
 
         required_keys = [
             "user_b_email",
-            "user_b_password", 
+            "user_b_password",
             "user_b_auth_token",
             "admin_user_email",
             "admin_user_password",
@@ -384,7 +384,7 @@ def main():
         err("\n❌ Some integrity tests failed.")
     else:
         out("\n✅ All integrity tests passed successfully.")
-    
+
     sys.exit(0)
 
 

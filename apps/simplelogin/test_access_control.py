@@ -247,7 +247,9 @@ def main():
                 out(f"✅ [PASS] User '{username}' has admin privileges (as expected).")
                 results_summary[f"check_user_access_control_{username}"] = 1
             else:
-                err(f"❌ [FAIL] User '{username}' should have admin privileges but doesn't.")
+                err(
+                    f"❌ [FAIL] User '{username}' should have admin privileges but doesn't."
+                )
                 results_summary[f"check_user_access_control_{username}"] = 0
         else:
             # Regular users should not have admin privileges
@@ -301,7 +303,7 @@ def main():
         err("\n❌ Some access control tests failed.")
     else:
         out("\n✅ All access control tests passed successfully.")
-    
+
     sys.exit(0)
 
 
