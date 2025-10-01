@@ -15,10 +15,15 @@ from agent.prompts.prompts import (
     SUBMISSION_INSTRUCTIONS,
     TARGET_HOST_EXAMPLE,
 )
+from token_tracking import (
+    ExtractorNotConfiguredError,
+    TokenTracker,
+    UnsupportedProviderError,
+    UsageNotFoundError,
+)
+from token_tracking.constants import PROVIDER_OPENAI
 from utils.logger import logger, logger_manager
 from utils.mcp_utils import get_mcp_server_config
-from utils.pricing_providers import PROVIDER_OPENAI
-from utils.token_tracker import TokenTracker
 
 
 class CustomAgent:
@@ -206,8 +211,14 @@ class CustomAgent:
                 self.token_tracker.record_from_response(
                     resp, model=self.model, provider=PROVIDER_OPENAI
                 )
+            except (
+                UnsupportedProviderError,
+                UsageNotFoundError,
+                ExtractorNotConfiguredError,
+            ) as e:
+                logger.warning(f"Token tracking error warning: {e}")
             except Exception as e:
-                logger.warning(f"Token tracking failed: {e}")
+                logger.error(f"Unexpected error in token tracking: {e}")
 
             # Process response
             assistant_response = resp.output_text
@@ -279,9 +290,6 @@ class CustomAgent:
                     logger.info("Status: Final submission received")
                     logger.info(f"Total turns: {turn + 1}")
                     logger.info(f"Final message: {json.dumps(msg, indent=2)}")
-                    logger.info(
-                        f"Token totals: {json.dumps(self.token_tracker.totals())}"
-                    )
                     logger.info(f"Log file: {self.log_file}")
 
                     print(f"[Agent] Full log saved to: {self.log_file}")
@@ -290,19 +298,28 @@ class CustomAgent:
                         "status": "completed",
                         "turns": turn + 1,
                         "final_message": msg,
-                        "token_totals": self.token_tracker.totals(),
+                        "token_totals": self.token_tracker.cumulative_tokens_info(),
                         "log_file": self.log_file,
                     }
 
         print(f"[Agent] Reached maximum iterations ({self.max_iterations})")
 
         # Log completion
-        with open(self.log_file, "a") as f:
-            f.write(f"\n{'='*20} RUN COMPLETED {'='*20}\n")
-            f.write("Status: Maximum iterations reached\n")
-            f.write(f"Total turns: {self.max_iterations}\n")
-            f.write(f"Token totals: {json.dumps(self.token_tracker.totals())}\n")
-            f.write(f"Log file: {self.log_file}\n")
+        logger.info(f"{'='*20} RUN COMPLETED {'='*20}")
+        logger.info("Status: Maximum iterations reached")
+        logger.info(f"Total turns: {self.max_iterations}")
+
+        # token and cost summary
+        token_info = self.token_tracker.cumulative_tokens_info()
+        logger.info("TOKEN USAGE SUMMARY:")
+        logger.info(f"  API Calls: {token_info['calls']}")
+        logger.info(f"  Input Tokens: {token_info['input_tokens']:,}")
+        logger.info(f"  Output Tokens: {token_info['output_tokens']:,}")
+        logger.info(f"  Cache Tokens: {token_info['cache_tokens']:,}")
+        logger.info(f"  Cache Write Tokens: {token_info['cache_write_tokens']:,}")
+        logger.info(f"  Total Cost: ${token_info['cost_usd']:.4f}")
+
+        logger.info(f"Log file: {self.log_file}")
 
         print(f"[Agent] Full log saved to: {self.log_file}")
 
@@ -310,6 +327,6 @@ class CustomAgent:
             "status": "max_iterations_reached",
             "turns": self.max_iterations,
             "final_message": None,
-            "token_totals": self.token_tracker.totals(),
+            "token_totals": self.token_tracker.cumulative_tokens_info(),
             "log_file": self.log_file,
         }
