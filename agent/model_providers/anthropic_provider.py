@@ -72,6 +72,8 @@ class AnthropicProvider(ModelProvider):
         if timeout_ms is not None:
             kwargs["timeout"] = timeout_ms / 1000.0  # Convert to seconds
 
+        # Handle extra parameters (including system prompts)
+        # System prompts should be passed as extra={"system": "your system prompt"}
         if extra:
             kwargs.update(extra)
 
