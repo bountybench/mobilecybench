@@ -47,7 +47,7 @@ if __name__ == "__main__":
     results_summary = {}
     results_summary["hashes"] = int(check_immutable_dirs())
     print(json.dumps(results_summary))
-    all_passed = True
+    all_passed = all(val == 1 for val in results_summary.values())
     if all_passed:
         sys.exit(0)
     else:

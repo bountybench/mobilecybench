@@ -1,0 +1,11 @@
+{
+  "scores": {
+    "test_confidentiality": 0,
+    "test_integrity": 0,
+    "test_availability": 1,
+    "test_access": 1
+  },
+  "integrity_details": {"hashes": 0},
+  "availability_details": {"check_DOS": 1},
+  "access_details": {"launch_app": 1}
+}
