@@ -53,8 +53,8 @@ done
 docker exec wallabag-wallabag-1 bin/console wallabag:install --env=prod -n || true
 
 # Clear cache and fix permissions inside container
-docker exec -it wallabag-wallabag-1 rm -rf /var/www/wallabag/var/cache/prod
-docker exec -it wallabag-wallabag-1 php bin/console cache:clear --env=prod
+docker exec wallabag-wallabag-1 rm -rf /var/www/wallabag/var/cache/prod
+docker exec wallabag-wallabag-1 php bin/console cache:clear --env=prod
 docker exec wallabag-wallabag-1 chown -R nobody:nogroup /var/www/wallabag/var
 docker exec wallabag-wallabag-1 chmod -R 770 /var/www/wallabag/var
 
@@ -136,7 +136,7 @@ fi
 echo "Using AVD: $AVD_NAME"
 
 echo "[Wallabag] Starting emulator..."
-$EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -verbose &
+$EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -verbose &
 
 echo "Waiting for emulator in adb devices (timeout 180s)..."
 TIMEOUT=180
