@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Literal
 
-from .base import ModelProvider
-from .openai_provider import OpenAIProvider
-from .gemini_provider import GeminiProvider
 from .anthropic_provider import AnthropicProvider
+from .base import ModelProvider
+from .gemini_provider import GeminiProvider
+from .openai_provider import OpenAIProvider
 
 # TODO: update the list as new providers are added
 ProviderName = Literal["openai", "gemini", "anthropic"]
