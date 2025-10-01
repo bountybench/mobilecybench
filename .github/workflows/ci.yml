@@ -115,7 +115,7 @@ jobs:
         id: check-run-checks
         run: |
           dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
-          if [ -f "test_access_control.py" ] || [ -f "test_availability.py" ] || [ -f "test_confidentiality.py" ] || [ -f "test_integrity.py" ]; then
+          if [ -f "$dir/test_access_control.py" ] || [ -f "$dir/test_availability.py" ] || [ -f "$dir/test_confidentiality.py" ] || [ -f "$dir/test_integrity.py" ]; then
             echo "test_X.py probe found in $dir"
             echo "has_probes=true" >> "$GITHUB_OUTPUT"
           else
@@ -924,7 +924,6 @@ jobs:
           checkout_commit "$dir"
 
           required_scripts=("setup.sh" "cleanup.sh")
-          fi
 
           echo "Setup mode: $setup_mode"
           echo "Checking for required scripts..."

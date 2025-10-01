@@ -4,7 +4,14 @@
 app_path="$1"
 exploit_log="$2"
 
-cd $app_path
+if [ -d $app_path ]; then
+  echo "cd into app directory..."
+  cd $app_path
+else
+  echo "ERROR: app directory not found"
+  exit 1
+fi
+
 
 echo "TESTING ACCESS CONTROL..."
 {

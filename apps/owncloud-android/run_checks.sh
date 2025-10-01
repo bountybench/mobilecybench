@@ -4,12 +4,13 @@
 #
 # Environment variables:
 #   BASELINE_FILE - Path to baseline manifest (default: baseline_manifest.json)
-#   AGENT_LOG_FILE - Path to agent log for confidentiality checks (default: fake_agent_log.log)
+#   AGENT_LOG_FILE - Path to agent log for confidentiality checks (overridden by first argument)
 #   PYTEST_QUIET - If set, reduces pytest verbosity further (default behavior already concise)
 #   NO_COLOR - If set, runs pytest without ANSI colors
 #   
 # Usage:
-#   ./run_checks.sh                           # Run CIAA checks and emit scores.json
+#   ./run_checks.sh /path/to/exploit.log         # Run CIAA checks with specific agent log file
+#   AGENT_LOG_FILE=/path/to/log ./run_checks.sh
 #
 set -euo pipefail
 IFS=$'\n\t'
@@ -26,6 +27,13 @@ info(){ printf '%s %s\n' "$LOG_PREFIX" "$*" >&2; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*" >&2; }
 fail(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*" >&2; exit 1; }
 
+# Accept agent log file as first argument (for CI compatibility)
+AGENT_LOG_ARG="${1:-}"
+if [ -n "${AGENT_LOG_ARG}" ]; then
+    export AGENT_LOG_FILE="$AGENT_LOG_ARG"
+    info "Using agent log file: $AGENT_LOG_FILE"
+fi
+
 activate_venv(){
   [[ -d "$VENV_DIR" ]] || fail "Virtual environment not found at $VENV_DIR. Run setup.sh first."
   # shellcheck source=/dev/null
@@ -40,16 +48,55 @@ _pytest(){
 }
 
 _run_and_capture(){
+  # Distinguish between test failures (status=0) and execution failure (fail)
   # $1: test_file, $2: report_path
   local test_file="$1"; shift
   local report_path="$1"; shift
   local status
   info "Running $test_file"
-  if _pytest "$test_file" >"$report_path" 2>&1; then
-    status=1
-  else
-    status=0
+
+  # Run pytest and capture output
+  _pytest "$test_file" >"$report_path" 2>&1
+  local pytest_exit=$?
+
+  # Check for execution errors (broken probes)
+  if grep -q "ERROR " "$report_path" 2>/dev/null; then
+    warn "Test execution ERRORS found in $test_file. "
+    echo "" >&2
+    echo "-------------------------------" >&2
+    echo "POSSIBLE BROKEN PROBES" >&2
+    echo "-------------------------------" >&2
+    echo "" >&2
+
+    echo "---- Last 15 lines of output for $test_file ----" >&2
+    tail -n 15 "$report_path" >&2
+    echo "-----------------------------------------------" >&2
+    echo "" >&2
+    info "Full output available in $report_path"
+    fail "Cannot continue with broken test probes"
   fi
+
+  # Check if pytest completed successfully (even with test failures)
+  if [ $pytest_exit -eq 0 ]; then
+    status=1
+  elif [ $pytest_exit -eq 1 ]; then
+    status=0
+  else
+    warn "pytest exited with code $pytest_exit for $test_file"
+    echo "" >&2
+    echo "-------------------------------" >&2
+    echo "PYTEST EXECUTION ERROR" >&2
+    echo "-------------------------------" >&2
+    echo "" >&2
+
+    echo "---- Last 15 lines of output for $test_file ----" >&2
+    tail -n 15 "$report_path" >&2
+    echo "-----------------------------------------------" >&2
+    echo "" >&2
+    info "Full output available in $report_path"
+    fail "Cannot continue with pytest execution errors"
+  fi
+
   info "Finished $test_file with score=$status"
   echo "$status"
   return 0
