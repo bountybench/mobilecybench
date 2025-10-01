@@ -4,7 +4,7 @@
   "sdk": "34",
   "java": "21",
   "emulator_server": "10.0.2.2:8080",
-  "app_server": "wallabag-server:8080",
+  "app_server": "http://10.0.2.2:8080",
   "username": "wallabag",
   "password": "wallabag",
   "package_name": "fr.gaulupeau.apps.Poche"
