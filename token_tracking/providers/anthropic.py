@@ -5,11 +5,12 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from utils.logger import logger
+
 from ..base import PricingCalculator, UsageExtractor
 from ..constants import TOKENS_PER_MILLION
 from ..exceptions import UsageNotFoundError
 from ..models import ProviderPricing, UsageMetrics
-from ..utils import logger
 
 
 class AnthropicUsageExtractor(UsageExtractor):

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Optional, Tuple
 
+from utils.logger import logger
+
 from ..base import PricingCalculator, UsageExtractor
 from ..constants import (
     ANTHROPIC_MODEL_MAPPINGS,
@@ -21,7 +23,7 @@ from ..exceptions import (
     ModelPricingNotFoundError,
 )
 from ..models import ProviderPricing, UsageMetrics
-from ..utils import logger, strip_date_suffix
+from ..utils import strip_date_suffix
 from .anthropic import AnthropicPricingCalculator, AnthropicUsageExtractor
 from .openai import OpenAIPricingCalculator, OpenAIUsageExtractor
 

@@ -6,11 +6,12 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from utils.logger import logger
+
 from .constants import COST_PRECISION, SUPPORTED_PROVIDERS
 from .exceptions import UnsupportedProviderError
 from .models import TokenUsage, UsageMetrics
 from .providers import ProviderPricingManager
-from .utils import logger
 
 
 class TokenTracker:
