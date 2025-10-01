@@ -12,12 +12,13 @@ install_home_assistant() {
         exit 1
     fi
 
-    APK_PATH="codebase/app/build/outputs/apk/minimal/release/app-minimal-release.apk"
+    APK_PATH="apk/home-assistant-minimal-release.apk"
 
     if [[ ! -f $APK_PATH ]]; then
         echo "ERROR: APK not found at $APK_PATH"
         echo "Available APKs:"
-        find codebase/app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
+        find apk -name "*.apk" -type f 2>/dev/null | head -10
+        echo "If no APKs found, run setup_app_source.sh first to build the APK."
         exit 1
     fi
 
@@ -142,7 +143,7 @@ seed_home_assistant_config() {
 
 wait_for_container_healthy() {
     local container_name="home-assistant-server"
-    local max_wait_time=600
+    local max_wait_time=120
     local check_interval=10
     local elapsed_time=0
     

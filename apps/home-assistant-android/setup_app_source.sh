@@ -114,6 +114,28 @@ build_home_assistant() {
     echo "Build completed successfully."
 }
 
+# Export built APK to apk directory
+export_apk() {
+    echo "Exporting APK to apk directory..."
+    
+    apk="app/build/outputs/apk/minimal/release/app-minimal-release.apk"
+    
+    if [ ! -f "$apk" ]; then
+        echo "ERROR: APK not found at $apk"
+        echo "Available APKs:"
+        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
+        exit 1
+    fi
+    
+    APK_DIR="../apk"
+    mkdir -p "$APK_DIR"
+    
+    out="$APK_DIR/home-assistant-minimal-release.apk"
+    cp -f "$apk" "$out"
+    
+    echo "APK exported to: $out"
+}
+
 perform_cleanup() {
     echo "Clearing cache..."
     
@@ -142,9 +164,10 @@ main() {
     check_prerequisites
     setup_environment
     build_home_assistant
+    export_apk
     perform_cleanup
 
-    echo "Setup complete! Home Assistant is ready for testing."
+    echo "Setup complete! Home Assistant APK is ready at ../apk/app-minimal-release.apk"
 }
 
 # Run main
