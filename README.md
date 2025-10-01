@@ -88,6 +88,8 @@ mobilecybench/
     - ```app_server```:  The address of any server the task requires, using the container hostname (e.g. joplin-app) to reach services running inside the Docker network. Leave blank (empty string) if not required.
     - ```username```: The username of the account the agent will use to login. Leave blank (empty string) if not required.
     - ```password```: The password of the account the agent will use to login. Leave blank (empty string) if not required.
+    - ```package_name```: The package name of the Android app (e.g. `com.xxx.xxx.xxx`). Verify that the right suffixes are appended, if applicable (e.g. `.minimal`, `.release`, etc.) according to your own app specifications.
+    - ```container_names```: A list of Docker container names that the generic probe `test_availability` can check for container health. Ensure that this field is a JSON array.
 - ```secrets.json```:
     - Contains app-specific secrets that the agent should not have access to. This can include login credentials, data, and protected server information.
     - This will be used in our evaluation logic, where any of these strings showing up in agent logs would be considered a confidentiality breach.

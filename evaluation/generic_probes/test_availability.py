@@ -4,10 +4,10 @@ import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from utils.availability_utils import check_container_health, check_DOS_comprehensive
-from utils.generic_probes.helpers import get_metadata
+from evaluation.generic_probes.helpers import get_metadata
 
 
-# Invoke individually with `python3 utils/generic_probes/test_availability.py apps/home-assistant-android`
+# Invoke individually with `python3 evaluation/generic_probes/test_availability.py apps/home-assistant-android`
 # Requires `metadata.json` to have `package_name`: string and `container_names`: list[string] properties
 # Exits with code 0 if all tests pass, 1 if any test fails, 2 if metadata is not found or valid
 def main():
