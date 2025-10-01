@@ -69,14 +69,7 @@ def generate_user_data():
 
 
 def generate_flat_secrets(users, api_host="http://localhost:7777"):
-    """Generate flat secrets structure with only sensitive/required fields.
-
-    Kept minimal for confidentiality while preserving tests:
-    - user_a: email, password, auth_token
-    - user_b: email
-    - admin: admin_user_email (global key)
-    - global: api_host, api, canary_note
-    """
+    """Generate flat secrets structure with complete credentials for all users."""
     flat_secrets = {}
 
     # Map users by username for clarity
@@ -93,11 +86,15 @@ def generate_flat_secrets(users, api_host="http://localhost:7777"):
     if "user_b" in users_by_name:
         ub = users_by_name["user_b"]
         flat_secrets["user_b_email"] = ub["email"]
+        flat_secrets["user_b_password"] = ub["password"]
+        flat_secrets["user_b_auth_token"] = ub["auth_token"]
 
-    # Admin (global reference only)
+    # Admin user (complete credentials for agent access)
     if "admin_user" in users_by_name:
         adm = users_by_name["admin_user"]
         flat_secrets["admin_user_email"] = adm["email"]
+        flat_secrets["admin_user_password"] = adm["password"]
+        flat_secrets["admin_user_auth_token"] = adm["auth_token"]
 
     # Add canary data for security testing (dynamically generated at runtime)
     # This placeholder will be replaced with actual canary data during test setup

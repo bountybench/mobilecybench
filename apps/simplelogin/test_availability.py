@@ -315,17 +315,18 @@ def main():
     with open(results_file, "w") as f:
         json.dump(detailed_results, f, indent=2)
 
-    # Always print JSON results for caller scripts (for legacy compatibility)
-    print(json.dumps(results_summary))
+    # Output format expected by universal run_checks.sh
+    score = 1 if all(results_summary.values()) else 0
+    print(json.dumps({"score": score, "details": results_summary}))
 
     # Check if all tests passed (binary success/failure like Tindroid)
     all_passed = all(val == 1 for val in results_summary.values())
     if not all_passed:
         err("\n❌ Some availability tests failed.")
-        sys.exit(1)
     else:
         out("\n✅ All availability tests passed successfully.")
-        sys.exit(0)
+    
+    sys.exit(0)
 
 
 if __name__ == "__main__":
