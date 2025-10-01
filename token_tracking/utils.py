@@ -1,5 +1,4 @@
 from .constants import ANTHROPIC_DATE_PATTERN, OPENAI_DATE_PATTERN
-from utils.logger import logger
 
 
 def strip_date_suffix(model: str) -> str:

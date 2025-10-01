@@ -21,8 +21,10 @@ class TokenTracker:
         jsonl_path: Optional[str] = "token_usage.jsonl",
     ) -> None:
         if pricing_path is None:
-            pricing_path = os.path.join(os.path.dirname(__file__), "data", "pricing.json")
-        
+            pricing_path = os.path.join(
+                os.path.dirname(__file__), "data", "pricing.json"
+            )
+
         self._pricing_manager = ProviderPricingManager(pricing_path)
         self._jsonl_path = jsonl_path
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from typing import Any, Dict, Optional, Tuple
 
 from ..base import PricingCalculator, UsageExtractor
@@ -51,7 +50,7 @@ class ProviderPricingManager:
                 f"No usage extractor configured for provider '{provider}'"
             )
 
-        usage = extractor.extract_usage(response)   # can raise UsageNotFoundError
+        usage = extractor.extract_usage(response)  # can raise UsageNotFoundError
 
         try:
             calculator = self.calculators.get(provider)
@@ -59,7 +58,7 @@ class ProviderPricingManager:
                 raise CalculatorNotConfiguredError(
                     f"No pricing calculator configured for provider '{provider}'"
                 )
-            pricing = self.__get_pricing(model, provider) 
+            pricing = self.__get_pricing(model, provider)
             cost = calculator.calculate_cost(usage, pricing)
 
         # failure in pricing or calculation is non-critical - continue token tracking
@@ -67,7 +66,9 @@ class ProviderPricingManager:
             logger.warning(f"Pricing calculation failed: {e}. Using $0.00 cost")
             cost = 0.0
         except Exception as e:
-            logger.warning(f"Unexpected error in cost calculation: {e}. Using $0.00 cost")
+            logger.warning(
+                f"Unexpected error in cost calculation: {e}. Using $0.00 cost"
+            )
             cost = 0.0
 
         return usage, cost
@@ -78,7 +79,9 @@ class ProviderPricingManager:
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except (OSError, IOError, json.JSONDecodeError) as e:
-            logger.warning(f"Failed to load pricing config from {path}: {e}. Using $0.00 for all costs")
+            logger.warning(
+                f"Failed to load pricing config from {path}: {e}. Using $0.00 for all costs"
+            )
             return {}
 
     def __get_pricing(self, model: str, provider: str) -> ProviderPricing:
@@ -102,7 +105,9 @@ class ProviderPricingManager:
         # TODO: other providers
         else:
             # should never be reached due to earlier validation
-            raise AssertionError(f"Unexpected provider '{provider}' - validation should have caught this")
+            raise AssertionError(
+                f"Unexpected provider '{provider}' - validation should have caught this"
+            )
 
         if resolved:
             return resolved
@@ -147,9 +152,11 @@ class ProviderPricingManager:
         elif provider == PROVIDER_ANTHROPIC:
             return self.__build_anthropic_pricing(model_pricing)
         # TODO: other providers
-        
+
         # should never be reached due to earlier validation
-        raise AssertionError(f"Unexpected provider '{provider}' - validation should have caught this")
+        raise AssertionError(
+            f"Unexpected provider '{provider}' - validation should have caught this"
+        )
 
     def __build_openai_pricing(self, model_pricing: Dict[str, Any]) -> ProviderPricing:
         return ProviderPricing(

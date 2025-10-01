@@ -15,7 +15,7 @@ class ModelPricingNotFoundError(TokenTrackingError):
 
 class UnsupportedProviderError(TokenTrackingError):
     """Raised when an unsupported provider is specified.
-    
+
     Critical error - entire token tracking should be skipped.
     """
 
@@ -24,7 +24,7 @@ class UnsupportedProviderError(TokenTrackingError):
 
 class UsageNotFoundError(TokenTrackingError):
     """Raised when there is no usage field from a response.
-    
+
     Critical error - entire token tracking should be skipped.
     """
 
@@ -33,7 +33,7 @@ class UsageNotFoundError(TokenTrackingError):
 
 class ExtractorNotConfiguredError(TokenTrackingError):
     """Raised when no extractor is configured for a provider.
-    
+
     Critical error - entire token tracking should be skipped.
     """
 
