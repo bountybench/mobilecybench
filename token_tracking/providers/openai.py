@@ -1,3 +1,6 @@
+# OpenAI Response Usage Reference:
+# https://github.com/openai/openai-python/blob/main/src/openai/types/responses/response_usage.py
+
 from __future__ import annotations
 
 from typing import Any, Optional

@@ -1,3 +1,6 @@
+# Anthropic Response Usage Reference:
+# https://github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/types/usage.py
+
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -38,6 +41,7 @@ class AnthropicUsageExtractor(UsageExtractor):
             return 0
 
     def __extract_cache_read_tokens(self, usage: Any) -> int:
+        # TODO: Anthropic CacheCreation - 1h, 5min price selection logic.
         try:
             val = getattr(usage, "cache_read_input_tokens", 0)
             return max(int(val or 0), 0)
