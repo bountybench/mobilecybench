@@ -22,7 +22,9 @@ class GeminiProvider(ModelProvider):
 
     def _client_or_init(self, timeout_ms: Optional[int] = None) -> genai.Client:
         # Reinitialize client if timeout changes
-        if self._client is None or (timeout_ms is not None and timeout_ms != self._timeout_ms):
+        if self._client is None or (
+            timeout_ms is not None and timeout_ms != self._timeout_ms
+        ):
             api_key = os.getenv("GEMINI_API_KEY")
             http_options = None
             if timeout_ms is not None:
@@ -35,10 +37,7 @@ class GeminiProvider(ModelProvider):
         """Attempt a minimal API call to verify the key works."""
         client = self._client_or_init()
         # Test with a simple generate_content call using stable model
-        client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents="Hi"
-        )
+        client.models.generate_content(model="gemini-2.5-flash", contents="Hi")
 
     def validate(self) -> None:
         api_key = os.getenv("GEMINI_API_KEY")
@@ -80,11 +79,13 @@ class GeminiProvider(ModelProvider):
             for tool in tools:
                 if "function" in tool:
                     func_def = tool["function"]
-                    function_declarations.append({
-                        "name": func_def.get("name"),
-                        "description": func_def.get("description", ""),
-                        "parameters": func_def.get("parameters", {})
-                    })
+                    function_declarations.append(
+                        {
+                            "name": func_def.get("name"),
+                            "description": func_def.get("description", ""),
+                            "parameters": func_def.get("parameters", {}),
+                        }
+                    )
 
             if function_declarations:
                 tool_config = types.Tool(function_declarations=function_declarations)
@@ -115,17 +116,20 @@ class GeminiProvider(ModelProvider):
             def output_text(self) -> str:
                 try:
                     # Safely extract text from response
-                    if hasattr(self._response, 'text') and self._response.text:
+                    if hasattr(self._response, "text") and self._response.text:
                         return self._response.text
                     # Fallback to candidates if text property fails
-                    if hasattr(self._response, 'candidates') and self._response.candidates:
+                    if (
+                        hasattr(self._response, "candidates")
+                        and self._response.candidates
+                    ):
                         candidate = self._response.candidates[0]
-                        if hasattr(candidate, 'content') and candidate.content:
+                        if hasattr(candidate, "content") and candidate.content:
                             text_parts = []
                             for part in candidate.content.parts:
-                                if hasattr(part, 'text') and part.text:
+                                if hasattr(part, "text") and part.text:
                                     text_parts.append(part.text)
-                            return ''.join(text_parts)
+                            return "".join(text_parts)
                 except Exception:
                     pass
                 return ""
@@ -134,16 +138,28 @@ class GeminiProvider(ModelProvider):
             def tool_outputs(self) -> list:
                 tool_calls = []
                 try:
-                    if hasattr(self._response, 'candidates') and self._response.candidates:
+                    if (
+                        hasattr(self._response, "candidates")
+                        and self._response.candidates
+                    ):
                         candidate = self._response.candidates[0]
-                        if hasattr(candidate, 'content') and candidate.content:
+                        if hasattr(candidate, "content") and candidate.content:
                             for part in candidate.content.parts:
-                                if hasattr(part, 'function_call') and part.function_call:
+                                if (
+                                    hasattr(part, "function_call")
+                                    and part.function_call
+                                ):
                                     func_call = part.function_call
-                                    tool_calls.append({
-                                        'name': func_call.name,
-                                        'input': dict(func_call.args) if hasattr(func_call, 'args') else {}
-                                    })
+                                    tool_calls.append(
+                                        {
+                                            "name": func_call.name,
+                                            "input": (
+                                                dict(func_call.args)
+                                                if hasattr(func_call, "args")
+                                                else {}
+                                            ),
+                                        }
+                                    )
                 except Exception:
                     pass
                 return tool_calls

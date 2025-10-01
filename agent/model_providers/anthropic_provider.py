@@ -30,7 +30,7 @@ class AnthropicProvider(ModelProvider):
         client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=10,
-            messages=[{"role": "user", "content": "Hi"}]
+            messages=[{"role": "user", "content": "Hi"}],
         )
 
     def validate(self) -> None:
@@ -89,10 +89,11 @@ class AnthropicProvider(ModelProvider):
                 if self._response.content and len(self._response.content) > 0:
                     # Handle text content blocks
                     text_blocks = [
-                        block.text for block in self._response.content
-                        if hasattr(block, 'text')
+                        block.text
+                        for block in self._response.content
+                        if hasattr(block, "text")
                     ]
-                    return ''.join(text_blocks)
+                    return "".join(text_blocks)
                 return ""
 
             @property
@@ -100,12 +101,14 @@ class AnthropicProvider(ModelProvider):
                 tool_calls = []
                 if self._response.content:
                     for block in self._response.content:
-                        if hasattr(block, 'type') and block.type == 'tool_use':
-                            tool_calls.append({
-                                'id': block.id,
-                                'name': block.name,
-                                'input': block.input
-                            })
+                        if hasattr(block, "type") and block.type == "tool_use":
+                            tool_calls.append(
+                                {
+                                    "id": block.id,
+                                    "name": block.name,
+                                    "input": block.input,
+                                }
+                            )
                 return tool_calls
 
             @property
