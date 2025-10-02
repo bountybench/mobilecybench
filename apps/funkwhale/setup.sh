@@ -261,6 +261,7 @@ with open('docker-compose.yml', 'w') as f:
     f.write(content)
 PYTHON_EOF
 
+
     # Configure environment for testing
     info "Configuring environment for MobileCybench testing..."
 
