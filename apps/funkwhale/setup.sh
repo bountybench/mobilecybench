@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# Environment + baseline setup script for Funkwhale tests.
-# Steps:
-#   1. Build Android APK from source
-#   2. Install Android app on connected device/emulator
-#   3. Set up Funkwhale server (if needed)
-#   4. Launch the app and verify installation
 
 set -euo pipefail
 IFS=$'\n\t'
@@ -153,7 +147,7 @@ install_app(){
             warn "Installation attempt $attempt failed"
             if [ $attempt -lt $retries ]; then
                 info "Retrying in 5 seconds..."
-                sleep 5
+                sleep $LAUNCH_SLEEP
             fi
         fi
         attempt=$((attempt + 1))
@@ -166,7 +160,7 @@ verify_installation(){
     info "Verifying app installation"
 
     # Wait a moment for package manager to update
-    sleep 2
+    sleep $LAUNCH_SLEEP
 
     # Check if release version is installed
     if adb shell pm list packages | grep -q "$TARGET_PACKAGE"; then
@@ -339,7 +333,7 @@ EOF
         if [ $attempt -eq $retries ]; then
             fail "Database failed to become ready after $retries attempts"
         fi
-        sleep 1
+        sleep $LAUNCH_SLEEP
         attempt=$((attempt + 1))
     done
 
@@ -371,7 +365,7 @@ EOF
             warn "API not ready after $retries attempts. Check logs: docker compose logs api"
             return 1
         fi
-        sleep 2
+        sleep $LAUNCH_SLEEP
         attempt=$((attempt + 1))
     done
 }
@@ -403,20 +397,11 @@ create_secrets(){
     # Create secrets file with local server credentials
     cat > "$SCRIPT_DIR/secrets.json" << EOF
 {
-  "server_url": "http://localhost",
-  "emulator_server_url": "http://10.0.2.2",
   "admin_username": "funkwhaleadmin",
   "admin_password": "testpass123",
   "test_username": "testuser",
   "test_password": "testpass123",
-  "api_base": "http://localhost/api/v1/",
-  "notes": {
-    "server_info": "Local Funkwhale development server",
-    "setup_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-    "web_interface": "http://localhost",
-    "admin_interface": "http://localhost/django-admin/",
-    "emulator_access": "Use 10.0.2.2 from Android emulator"
-  }
+  "api_base": "http://10.0.2.2/api/v1/"
 }
 EOF
 

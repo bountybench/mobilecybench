@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# Funkwhale Android APK Build Script for MobileCybench
-# This script builds the Funkwhale Android client app from source
-# Assumes the codebase directory contains the Funkwhale Android client source
-
 set -e  # Exit on any error
 
 # Colors for output
