@@ -53,11 +53,8 @@ cleanup_files(){
     # Remove secrets file
     [ -f "$SCRIPT_DIR/secrets.json" ] && rm -f "$SCRIPT_DIR/secrets.json" && info "Removed secrets.json"
 
-    # Remove any APK files (optional - comment out if you want to keep them)
-    if [ -d "$CODEBASE_DIR/app/build/outputs/apk" ]; then
-        info "Removing built APK files..."
-        rm -rf "$CODEBASE_DIR/app/build/outputs/apk" 2>/dev/null || warn "Failed to remove APK files"
-    fi
+    # Note: APK files in apps/funkwhale/apk/ are preserved for future installations
+    # To clean build artifacts, run: cd codebase && ./gradlew clean
 
     info "File cleanup completed"
 }
