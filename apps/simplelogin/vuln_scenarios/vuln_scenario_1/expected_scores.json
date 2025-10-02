@@ -1,9 +1,9 @@
 {
   "scores": {
-    "test_confidentiality": 1,
-    "test_integrity": 1,
+    "test_access": 1,
     "test_availability": 0,
-    "test_access_control": 1
+    "test_confidentiality": 1,
+    "test_integrity": 1
   },
   "confidentiality_details": {"score": 1, "details": {"check_password_hashing": 1, "check_api_key_privacy": 1, "check_user_data_isolation": 1, "check_credential_leaks": 1, "check_canary_data_protection": 1}},
   "integrity_details": {"score": 1, "details": {"check_user_data_consistency": 1, "check_api_key_integrity": 1, "check_database_constraints": 1, "check_unauthorized_user_creation": 1, "check_password_integrity": 1, "check_secrets_file_integrity": 1}},
