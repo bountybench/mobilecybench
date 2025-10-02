@@ -2,31 +2,15 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 APK_PATH="${SCRIPT_DIR}/apk/davx5.apk"
-VENV_DIR="${SCRIPT_DIR}/.venv"
 
 cd "${SCRIPT_DIR}"
-
-setup_venv() {
-    if [[ ! -d "${VENV_DIR}" ]]; then
-        echo "Creating Python virtual environment..."
-        python3 -m venv "${VENV_DIR}"
-    fi
-
-    source "${VENV_DIR}/bin/activate"
-
-    echo "Installing Python dependencies..."
-    pip install uiautomator2 bcrypt
-}
 
 setup_backend() {
     echo "Generating users..."
     python3 "${SCRIPT_DIR}/generate_users.py"
 
     mkdir -p ./radicale/data/collection-root
-
-    docker network create shared_net || echo "shared_net network already exists"
 
     echo "Running docker compose..."
     docker compose up -d --wait
@@ -61,10 +45,8 @@ install_davx5() {
 }
 
 main() {
-    setup_venv
     setup_backend
     install_davx5
-    deactivate
 }
 
 main "$@"
