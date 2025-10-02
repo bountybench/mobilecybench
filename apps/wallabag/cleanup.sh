@@ -6,15 +6,8 @@ echo "Cleaning up Wallabag testing environment..."
 # Stop and remove Docker containers
 echo "Stopping Docker containers..."
 docker-compose down -v 2>/dev/null || echo "No compose services to stop"
-<<<<<<< HEAD
 docker stop wallabag-db-1 2>/dev/null || echo "No wallabag-db-1 container to stop"
 docker rm wallabag-db-1 2>/dev/null || echo "No wallabag-db-1 container to remove"
-=======
-docker stop wallabag-server 2>/dev/null || echo "No wallabag-server container to stop"
-docker rm wallabag-server 2>/dev/null || echo "No wallabag-server container to remove"
-docker stop wallabag-db 2>/dev/null || echo "No wallabag-db container to stop"
-docker rm wallabag-db 2>/dev/null || echo "No wallabag-db container to remove"
->>>>>>> 04f03a6c (custom repo for codebase and reduced redundancy)
 
 # Clean up generated files
 echo "Cleaning up generated files..."
