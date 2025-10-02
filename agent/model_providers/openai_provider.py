@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from openai import OpenAI
 
@@ -57,8 +57,8 @@ class OpenAIProvider(ModelProvider):
         self,
         *,
         model: str,
-        input_messages: Optional[list] = None,
-        conversation_id: str = None,
+        input_messages: Optional[Union[str, list]] = None,
+        conversation_id: Optional[str] = None,
         tools: Optional[list] = None,
         max_output_tokens: Optional[int] = None,
         timeout_ms: Optional[int] = None,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 
 class ModelProvider(ABC):
@@ -23,7 +23,7 @@ class ModelProvider(ABC):
         self,
         *,
         model: str,
-        input_messages: Optional[list] = None,
+        input_messages: Optional[Union[str, list]] = None,
         conversation_id: Optional[str] = None,
         tools: Optional[list] = None,
         max_output_tokens: Optional[int] = None,
@@ -36,7 +36,7 @@ class ModelProvider(ABC):
 
         Args:
             model: Model identifier
-            input_messages: List of message objects
+            input_messages: String or list of message objects for model input
             conversation_id: Conversation ID for context
             tools: List of tools available to the model
             max_output_tokens: Maximum tokens in response
