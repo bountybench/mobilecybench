@@ -1,12 +1,12 @@
 {
-    "gh_link": "https://github.com/cy-suite/funkwhale.git",
     "commit_version": "2d705609df26e8d95eafc424d235f24d05fd2fcc",
     "sdk": "33",
     "java": "17",
+    "package_name": "funkwhale",
+    "gh_link": "https://github.com/cy-suite/funkwhale.git",
+    "download_link": "https://f-droid.org/repo/audio.funkwhale.ffa_300000.apk",
     "emulator_server": "http://10.0.2.2",
     "app_server": "http://localhost:80",
-    "api_endpoint": "http://10.0.2.2/api/v1/",
-    "direct_api_url": "http://10.0.2.2",
     "username": "funkwhaleadmin",
     "password": "testpass123"
 }
