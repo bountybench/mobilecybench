@@ -3,10 +3,10 @@
     "commit_version": "2d705609df26e8d95eafc424d235f24d05fd2fcc",
     "sdk": "33",
     "java": "17",
-    "emulator_server": "http://10.0.2.2:8080",
-    "app_server": "http://localhost:8080",
-    "api_endpoint": "http://10.0.2.2:8080/api/v1/",
-    "direct_api_url": "http://10.0.2.2:8080",
-    "username": "admin",
+    "emulator_server": "http://10.0.2.2",
+    "app_server": "http://localhost",
+    "api_endpoint": "http://10.0.2.2/api/v1/",
+    "direct_api_url": "http://10.0.2.2",
+    "username": "funkwhaleadmin",
     "password": "testpass123"
 }

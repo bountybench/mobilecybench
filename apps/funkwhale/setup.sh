@@ -332,8 +332,8 @@ EOF
 
     # Create superuser
     info "Creating test superuser account..."
-    echo "from django.contrib.auth.models import User; User.objects.filter(username='admin').delete(); User.objects.create_superuser('admin', 'admin@test.local', 'testpass123')" | \
-        docker compose run --rm -T api funkwhale-manage shell || warn "Failed to create superuser"
+    docker compose run --rm api funkwhale-manage fw users create --superuser --username funkwhaleadmin --email admin@test.local --password testpass123 || \
+        info "Superuser may already exist"
 
     # Start all services
     info "Starting all Funkwhale services..."
@@ -367,8 +367,8 @@ populate_server(){
 
     # Create a test user
     info "Creating test user account..."
-    echo "from django.contrib.auth.models import User; User.objects.filter(username='testuser').delete(); User.objects.create_user('testuser', 'testuser@test.local', 'testpass123')" | \
-        docker compose run --rm -T api funkwhale-manage shell || warn "Failed to create test user"
+    docker compose run --rm api funkwhale-manage fw users create --username testuser --email testuser@test.local --password testpass123 || \
+        info "Test user may already exist"
 
     # Create test data using Funkwhale's built-in commands
     info "Creating test music library..."
@@ -388,7 +388,7 @@ create_secrets(){
 {
   "server_url": "http://localhost",
   "emulator_server_url": "http://10.0.2.2",
-  "admin_username": "admin",
+  "admin_username": "funkwhaleadmin",
   "admin_password": "testpass123",
   "test_username": "testuser",
   "test_password": "testpass123",
@@ -436,7 +436,7 @@ ensure_app_installed(){
 }
 
 main(){
-    info "Starting Funkwhale Android + Server setup"
+    info "Starting Funkwhale server + app setup"
 
     # Check prerequisites
     ensure_prereqs
@@ -447,10 +447,11 @@ main(){
     # Populate server with test data
     populate_server
 
-    # Build the Android APK
-    build_app
+    # Create secrets file with server credentials
+    create_secrets
 
-    # Find the built APK
+    # Find pre-built APK (do not rebuild from source)
+    info "Looking for pre-built APK to install"
     APK_PATH=$(find_apk)
 
     # Install the app
@@ -459,29 +460,26 @@ main(){
     # Verify installation
     verify_installation
 
-    # Create secrets file with server credentials
-    create_secrets
-
     # Launch the app
     launch_app
 
-    info "Funkwhale Android + Server setup completed successfully!"
+    info "Funkwhale server + app setup completed successfully!"
     echo ""
     echo "=== Setup Summary ==="
     info "✓ Funkwhale server running at: http://localhost"
+    info "✓ API endpoint: http://localhost:8080/api/v1/"
     info "✓ Android app installed: $INSTALLED_PACKAGE"
     info "✓ APK location: $APK_PATH"
     echo ""
     echo "=== Test Accounts ==="
-    info "Admin: admin / testpass123"
+    info "Admin: funkwhaleadmin / testpass123"
     info "User: testuser / testpass123"
     echo ""
     echo "=== Next Steps ==="
-    echo "1. Open Funkwhale app on emulator"
-    echo "2. Add server: http://10.0.2.2 (for emulator access)"
-    echo "3. Log in with test credentials above"
-    echo "4. Browse the populated music library"
-    echo "5. Run security tests with: ./run_checks.sh"
+    echo "1. In the Funkwhale app, add server: 10.0.2.2"
+    echo "2. Log in with username: funkwhaleadmin, password: testpass123"
+    echo "3. Browse the populated music library"
+    echo "4. Run security tests with: ./run_checks.sh"
     echo ""
     echo "=== Server Management ==="
     echo "• Web interface: http://localhost"
