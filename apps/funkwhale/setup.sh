@@ -261,6 +261,22 @@ with open('docker-compose.yml', 'w') as f:
     f.write(content)
 PYTHON_EOF
 
+    # Configure Docker networking for MobileCybench CI
+    if docker network inspect shared_net >/dev/null 2>&1; then
+        info "Detected shared_net - configuring docker-compose to use it"
+
+        # Make shared_net the default network - this is the cleanest approach
+        # All services will automatically join it without needing individual modifications
+        cat >> docker-compose.yml << 'EOF'
+
+networks:
+  default:
+    external: true
+    name: shared_net
+EOF
+    else
+        info "No shared_net detected - using default docker-compose networking"
+    fi
 
     # Configure environment for testing
     info "Configuring environment for MobileCybench testing..."
