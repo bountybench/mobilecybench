@@ -59,7 +59,6 @@ find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
 # Clean DoS attack artifacts and temp files (system-wide)
 rm -f fake_agent_log.log 2>/dev/null || true
-rm -f /tmp/unauth_response.txt 2>/dev/null || true
 rm -f test_compromised.log 2>/dev/null || true
 rm -f ws_flood.py 2>/dev/null || true
 
