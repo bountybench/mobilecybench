@@ -17,11 +17,20 @@ class OpenAIProvider(ModelProvider):
     def __init__(self) -> None:
         # Client is initialized lazily to avoid issues if validation fails
         self._client: Optional[OpenAI] = None
+        self._validated: bool = False
 
     def _client_or_init(self) -> OpenAI:
         if self._client is None:
             self._client = OpenAI()
         return self._client
+
+    @property
+    def client(self) -> OpenAI:
+        if not self._validated:
+            raise RuntimeError(
+                "OpenAI provider not validated. Call validate() before accessing client."
+            )
+        return self._client_or_init()
 
     def _test_api_key_connectivity(self) -> None:
         """Attempt a minimal API call to verify the key works."""
@@ -38,6 +47,7 @@ class OpenAIProvider(ModelProvider):
             )
         try:
             self._test_api_key_connectivity()
+            self._validated = True
         except Exception as e:
             raise ValueError(
                 f"Failed to validate OpenAI API key: {e}. Please ensure your API key is valid."
@@ -47,7 +57,8 @@ class OpenAIProvider(ModelProvider):
         self,
         *,
         model: str,
-        input_text: str,
+        input_messages: Optional[list] = None,
+        conversation_id: str = None,
         tools: Optional[list] = None,
         max_output_tokens: Optional[int] = None,
         timeout_ms: Optional[int] = None,
@@ -56,8 +67,16 @@ class OpenAIProvider(ModelProvider):
         client = self._client_or_init()
         kwargs: Dict[str, Any] = {
             "model": model,
-            "input": input_text,
         }
+
+        if conversation_id:
+            kwargs["conversation"] = {"id": conversation_id}
+            kwargs["input"] = input_messages or []
+        elif input_messages:
+            kwargs["input"] = input_messages
+        else:
+            raise ValueError("Must provide either input_messages or conversation_id")
+
         if tools is not None:
             kwargs["tools"] = tools
         if max_output_tokens is not None:

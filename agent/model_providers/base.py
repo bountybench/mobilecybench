@@ -23,7 +23,8 @@ class ModelProvider(ABC):
         self,
         *,
         model: str,
-        input_text: str,
+        input_messages: Optional[list] = None,
+        conversation_id: Optional[str] = None,
         tools: Optional[list] = None,
         max_output_tokens: Optional[int] = None,
         timeout_ms: Optional[int] = None,
@@ -33,9 +34,12 @@ class ModelProvider(ABC):
     ) -> Any:
         """Perform a model invocation and return a provider-native response.
 
-        The response expose attributes used by the agent:
-        For current OpenAI implementation, these are:
-        - `output_text` (str)
-        - `tool_outputs` (list)
-        - `output` (list) with MCP interaction records
+        Args:
+            model: Model identifier
+            input_messages: List of message objects
+            conversation_id: Conversation ID for context
+            tools: List of tools available to the model
+            max_output_tokens: Maximum tokens in response
+            timeout_ms: Request timeout
+            extra: Provider-specific parameters
         """
