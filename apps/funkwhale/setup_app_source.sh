@@ -492,8 +492,8 @@ show_next_steps() {
     # Copy APKs to standardized location
     print_status "Copying APKs to apps/funkwhale/apk/ directory..."
 
-    # Create apk directory in script's parent directory (apps/funkwhale/apk/)
-    APK_DIR="$(dirname "$SCRIPT_DIR")/apk"
+    # Create apk directory in script's directory (apps/funkwhale/apk/)
+    APK_DIR="$SCRIPT_DIR/apk"
     mkdir -p "$APK_DIR"
 
     # Find and copy all built APK files
@@ -519,27 +519,6 @@ show_next_steps() {
         APK_SIZE=$(du -h "$apk" | cut -f1)
         echo "  $apk ($APK_SIZE)"
     done
-    echo ""
-
-    echo -e "${YELLOW}Next steps for MobileCybench testing:${NC}"
-    echo "1. APK files are ready in apps/funkwhale/apk/ directory"
-    echo "2. Use ./setup.sh to set up server and install APK on emulator"
-    echo "3. Configure server settings in metadata.json if needed"
-    echo "4. Run security tests with: ./run_checks.sh"
-    echo ""
-
-    echo -e "${YELLOW}For manual testing:${NC}"
-    echo "1. Start emulator: ./start_emulator.sh (from main directory)"
-    echo "2. Install APK: adb install apps/funkwhale/apk/<apk_name>"
-    echo "3. Configure Funkwhale server connection in the app"
-    echo ""
-
-    echo -e "${YELLOW}Security testing focus areas:${NC}"
-    echo "- API authentication and token handling"
-    echo "- Audio file upload/download security"
-    echo "- Local data storage (databases, files)"
-    echo "- Network communication security"
-    echo "- User permission handling"
 }
 
 # Main execution
