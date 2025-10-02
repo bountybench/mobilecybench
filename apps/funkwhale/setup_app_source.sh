@@ -111,6 +111,7 @@ install_java17() {
     print_status "Java 17 not found. Installing..."
 
     if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS installation
         if command_exists brew; then
             print_status "Installing OpenJDK 17 via Homebrew..."
             brew install openjdk@17
@@ -132,7 +133,43 @@ install_java17() {
             echo "  /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
             return 1
         fi
+    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        # Linux installation
+        if command_exists apt-get; then
+            # Ubuntu/Debian
+            print_status "Installing OpenJDK 17 via apt-get..."
+            sudo apt-get update -qq
+            sudo apt-get install -y openjdk-17-jdk
+
+            export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
+            if [ ! -d "$JAVA_HOME" ]; then
+                # Try alternative path
+                export JAVA_HOME="/usr/lib/jvm/java-17-openjdk"
+            fi
+            if [ ! -d "$JAVA_HOME" ]; then
+                # Find it automatically
+                export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
+            fi
+
+            export PATH="$JAVA_HOME/bin:$PATH"
+            print_success "Java 17 installed and configured"
+            return 0
+        elif command_exists yum; then
+            # CentOS/RHEL
+            print_status "Installing OpenJDK 17 via yum..."
+            sudo yum install -y java-17-openjdk-devel
+
+            export JAVA_HOME="/usr/lib/jvm/java-17-openjdk"
+            export PATH="$JAVA_HOME/bin:$PATH"
+            print_success "Java 17 installed and configured"
+            return 0
+        else
+            print_error "No supported package manager found (apt-get or yum)"
+            print_error "Please install Java 17 manually for your system"
+            return 1
+        fi
     else
+        print_error "Unsupported OS: $OSTYPE"
         print_error "Please install Java 17 manually for your system"
         return 1
     fi
