@@ -54,4 +54,4 @@
 	url = https://github.com/cy-suite/wallabag.git
 [submodule "apps/wallabag/codebase"]
 	path = apps/wallabag/codebase
-	url = https://github.com/wallabag/android-app.git
+	url = https://github.com/cy-suite/wallabag.git
