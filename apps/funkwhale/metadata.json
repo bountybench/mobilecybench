@@ -4,7 +4,7 @@
     "sdk": "33",
     "java": "17",
     "emulator_server": "http://10.0.2.2",
-    "app_server": "http://localhost",
+    "app_server": "http://localhost:80",
     "api_endpoint": "http://10.0.2.2/api/v1/",
     "direct_api_url": "http://10.0.2.2",
     "username": "funkwhaleadmin",
