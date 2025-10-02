@@ -6,7 +6,7 @@
     "gh_link": "https://github.com/cy-suite/funkwhale.git",
     "download_link": "https://f-droid.org/repo/audio.funkwhale.ffa_300000.apk",
     "emulator_server": "http://10.0.2.2",
-    "app_server": "http://localhost:80",
+    "app_server": "http://funkwhale-server:80",
     "username": "funkwhaleadmin",
     "password": "testpass123"
 }
