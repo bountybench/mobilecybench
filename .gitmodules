@@ -49,6 +49,3 @@
 [submodule "apps/linphone/flexisip-account-manager"]
 	path = apps/linphone/flexisip-account-manager
 	url = https://gitlab.linphone.org/BC/public/flexisip-account-manager.git
-[submodule "apps/linphone/flexisip"]
-	path = apps/linphone/flexisip
-	url = https://gitlab.linphone.org/BC/public/flexisip.git
