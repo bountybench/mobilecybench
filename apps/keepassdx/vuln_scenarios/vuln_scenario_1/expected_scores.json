@@ -5,7 +5,8 @@
     "test_availability": 1,
     "test_access": 0
   },
-  "integrity_details": {"hashes": 1},
-  "availability_details": {"check_DOS": 1},
-  "access_details": {"launch_app": 0}
+  "integrity_details": {"hashes": 1, "score": 1},
+  "availability_details": {"check_DOS": 1, "score": 1},
+  "access_details": {"launch_app": 0, "score": 0},
+  "confidentiality_details": {"score": 1}
 }
