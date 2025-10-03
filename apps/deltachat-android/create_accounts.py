@@ -73,7 +73,7 @@ def main():
     logger.info("Starting DeltaChat account creation...")
     
     try:
-        accounts = create_accounts_json()
+        create_accounts_json()
         
         create_secrets_json()
         
