@@ -1,0 +1,32 @@
+services:
+  greenmail:
+    image: greenmail/standalone:2.0.1
+    container_name: deltachat-greenmail
+    restart: always
+    ports:
+      - "1025:3025"   # SMTP
+      - "1143:3143"   # IMAP
+      - "8025:8080"   # Web UI
+    environment:
+      - GREENMAIL_OPTS=-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=user1@deltachat.test:password123,user2@deltachat.test:password123,user3@deltachat.test:password123 -Dgreenmail.auth.disabled=false -Dgreenmail.verbose
+    networks:
+      - shared_net
+      - private_net
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "3025"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  mail_data:
+    driver: local
+  mail_state:
+    driver: local
+  mail_logs:
+    driver: local
+
+networks:
+  shared_net:
+    external: true
+  private_net:
