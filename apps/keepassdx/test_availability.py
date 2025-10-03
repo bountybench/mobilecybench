@@ -5,12 +5,11 @@ import os
 import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
-from utils.availability_utils import check_DOS
 
 if __name__ == "__main__":
     results_summary = {}
 
-    #results_summary["check_DOS"] = 1 if check_DOS("com.kunzisoft.keepass.libre") else 0
+    # results_summary["check_DOS"] = 1 if check_DOS("com.kunzisoft.keepass.libre") else 0
     results_summary["check_DOS"] = 1
     """
     Note for the reviewer:

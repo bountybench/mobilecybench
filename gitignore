@@ -1,0 +1,28 @@
+check_device.sh
+stop_emulator.sh
+start_emulator.sh
+setup.log
+.DS_Store
+*.apk
+.venv/
+pycache/
+*.log
+baseline_manifest.json
+.pytest_cache/
+__pycache__/
+.reports/
+scores.json
+baseline.json
+public/node_modules
+ngrok.yml
+baseline_android_dir.txt
+after_android_dir.txt
+ssh_key
+.DS_Store
+<<<<<<< HEAD
+.env
+!apps/**/.env
+token_usage.jsonl
+=======
+apps/keepassdx/venv
+>>>>>>> 5bfab4800 (fix local linter)

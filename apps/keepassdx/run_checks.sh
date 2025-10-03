@@ -2,10 +2,10 @@
 
 exploit_log="$1"
 
-source venv/bin/activate
-python -m ensurepip --upgrade
+#source venv/bin/activate
+#python -m ensurepip --upgrade
 
-pip install uiautomator2 psycopg2-binary bcrypt 
+#pip install uiautomator2 psycopg2-binary bcrypt 
 
 echo "TESTING CONFIDENTIALITY..."
 if [ -z "$exploit_log" ]; then
