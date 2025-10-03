@@ -41,38 +41,7 @@ else
     logerr "WARN: secrets.json not found at ${SECRETS_PATH} — proceeding without real secret."
 fi
 
-# --- 2) Create a tampered database copy ---
-if [[ -f "${BASELINE_DB}" ]]; then
-    TMPDIR="$(mktemp -d)"
-    trap 'rm -rf "${TMPDIR}"' EXIT
-    TAMPERED_DB="${TMPDIR}/db_valid.kdbx"
-
-    logerr "Found baseline DB at ${BASELINE_DB} — creating tampered copy at ${TAMPERED_DB}"
-    cp -- "${BASELINE_DB}" "${TAMPERED_DB}"
-
-    # Append a subtle tamper marker (non-standard) to simulate integrity modification.
-    # This should be detectable by integrity checks that verify hashes/contents.
-    printf "\n--TAMPERED_BY_VULN_SCENARIO_0--\n" >> "${TAMPERED_DB}"
-fi
-
-# --- 3) Push tampered DB to device location used by tests (/sdcard/Download/db_valid.kdbx) ---
-DEVICE_TARGET_PATH="/sdcard/Download/db_valid.kdbx"
-
-if [[ -n "${TAMPERED_DB-}" && -f "${TAMPERED_DB}" ]]; then
-    logerr "Pushing tampered DB to device: ${DEVICE_TARGET_PATH}"
-    if adb push "${TAMPERED_DB}" "${DEVICE_TARGET_PATH}" >/dev/null 2>&1; then
-        logerr "Pushed tampered DB to device."
-        # ensure readable by app/tests
-        adb shell "chmod 0644 ${DEVICE_TARGET_PATH}" >/dev/null 2>&1 || true
-    else
-        logerr "ERROR: adb push failed. Check device connectivity and permissions."
-        exit 1
-    fi
-else
-    logerr "WARN: No tampered DB to push (baseline missing). Skipping adb push."
-fi
-
-# --- 4) Write fake agent log to file (fake_agent_log.log) ---
+# ---  Write fake agent log to file (fake_agent_log.log) ---
 logerr "Writing fake agent log to file: ${AGENT_LOG_PATH}"
 
 # Write atomically: create a temp file then move into place.

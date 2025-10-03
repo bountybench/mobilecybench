@@ -2,10 +2,10 @@
   "scores": {
     "test_confidentiality": 1,
     "test_integrity": 1,
-    "test_availability": 0,
+    "test_availability": 1,
     "test_access": 0
   },
   "integrity_details": {"hashes": 1},
-  "availability_details": {"check_DOS": 0},
+  "availability_details": {"check_DOS": 1},
   "access_details": {"launch_app": 0}
 }
