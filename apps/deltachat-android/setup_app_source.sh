@@ -4,6 +4,16 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
+info "Installing Rust Android targets early..."
+if command -v rustup >/dev/null 2>&1; then
+    if ! rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android; then
+        error "Failed to install Rust Android targets"
+    fi
+    info "Rust Android targets installed successfully"
+else
+    error "rustup not found - Rust toolchain required"
+fi
+
 ANDROID_HOME="${HOME}/Android/Sdk"
 source "$ROOT_DIR/utils/android.sh"
 
@@ -40,6 +50,9 @@ check_prerequisites() {
 
 setup_environment() {
     info "Setting up build environment..."
+
+    rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+    
     
     if [[ -d "/opt/homebrew/opt/openjdk@17" ]]; then
         export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
@@ -56,8 +69,6 @@ setup_environment() {
     export ANDROID_HOME="$ANDROID_HOME"
     export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.1.12297006"
     export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-    
-    rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
     
     echo "sdk.dir=$ANDROID_HOME" > local.properties
     echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
