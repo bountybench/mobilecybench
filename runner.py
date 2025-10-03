@@ -20,7 +20,7 @@ from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 
-from utils.logger import logger
+from utils.logger import logger, logger_manager
 from utils.utils import get_app_metadata
 
 load_dotenv()
@@ -232,6 +232,8 @@ class MobileCybenchRunner:
         """Log error and exit"""
         logger.error(message)
         logger.error("Runner execution failed. Check log for details.")
+        # TODO: a conditional cleanup based on how far we got until failure
+        # for example, if we fail after starting containers, we should stop them
         sys.exit(1)
 
     def validate_input(self):
@@ -251,7 +253,25 @@ class MobileCybenchRunner:
             self._exit_with_error(f"Invalid metadata.json: {e}")
 
         # Check for required scripts
-        required_scripts = ["setup_app_source.sh", "setup.sh", "run_checks.sh"]
+        required_scripts = ["setup.sh", "run_checks.sh"]
+        if self.config["build_type"] == "source":
+            required_scripts.append("setup_app_source.sh")
+        elif self.config["build_type"] == "download-apk":
+            required_scripts.append("setup_app_apklink.sh")
+        elif self.config["build_type"] == "skip-apk":
+            possible_setup_scripts = ["setup_app_source.sh", "setup_app_apklink.sh"]
+            # do not allow skip-apk if neither script exists
+            if not any(
+                (self.app_dir / script).exists() for script in possible_setup_scripts
+            ):
+                self._exit_with_error(
+                    f"At least one setup script required for build_type 'skip-apk' not found: {possible_setup_scripts}"
+                )
+        else:
+            self._exit_with_error(
+                f"Unsupported Build Type Detected: {self.config["build_type"]}"
+            )
+
         for script in required_scripts:
             script_path = self.app_dir / script
             if not script_path.exists():
@@ -282,25 +302,54 @@ class MobileCybenchRunner:
             cwd=self.project_root,
         )
         logger.info(
-            "Emulator setup started, waiting for it to be ready while building the app..."
+            "Emulator setup started, waiting for it to be ready while setting up the app..."
         )
 
     def setup_app(self):
-        """Build and install the app"""
-        logger.info("Building the app from source")
-        logger.info("=" * 60)
-        logger.info("SETTING UP APP SOURCE")
-        logger.info("=" * 60)
-        try:
-            self.cmd.run("./setup_app_source.sh", cwd=self.app_dir, live_output=True)
-        except subprocess.CalledProcessError as e:
-            self._exit_with_error(f"Failed to setup app source: {e}")
+        """APK Handling, App Backend Setup, and App Installation"""
+        if self.config["build_type"] == "skip-apk":
+            logger.info("=" * 60)
+            logger.info("SKIPPING APK HANDLING STEP")
+            logger.info("=" * 60)
+        elif self.config["build_type"] == "download-apk":
+            logger.info("=" * 60)
+            logger.info("FETCHING APK USING APKLINK")
+            logger.info("=" * 60)
+            try:
+                self.cmd.run(
+                    "./setup_app_apklink.sh", cwd=self.app_dir, live_output=True
+                )
+            except subprocess.CalledProcessError as e:
+                self._exit_with_error(
+                    f"Failed to setup app APK with setup_app_apklink.sh: {e}"
+                )
+        else:  # source
+            logger.info("=" * 60)
+            logger.info("BUILDING APK FROM SOURCE")
+            logger.info("=" * 60)
+            try:
+                self.cmd.run(
+                    "./setup_app_source.sh", cwd=self.app_dir, live_output=True
+                )
+            except subprocess.CalledProcessError as e:
+                self._exit_with_error(
+                    f"Failed to setup app source with setup_app_source.sh: {e}"
+                )
 
-        # Check emulator is ready (this will wait until device is ready)
         logger.info("=" * 60)
         logger.info("CHECKING EMULATOR STATUS")
         logger.info("=" * 60)
-        logger.info("Checking emulator status...")
+        logger.info("Waiting for emulator to finish booting...")
+        try:
+            self.cmd.run(
+                'bash -lc "source utils/wait.sh && wait_for_device_boot 300"',
+                cwd=self.project_root,
+                live_output=True,
+            )
+        except subprocess.CalledProcessError as e:
+            self._exit_with_error(f"Failed to wait for emulator boot: {e}")
+
+        logger.info("Emulator booted. Running ./check_device.sh to verify...")
         try:
             self.cmd.run("./check_device.sh", cwd=self.project_root, live_output=True)
         except subprocess.CalledProcessError as e:
@@ -308,13 +357,14 @@ class MobileCybenchRunner:
 
         # Setup app (setup backend, install apk, etc.)
         logger.info("=" * 60)
-        logger.info("BUILDING AND INSTALLING APP")
+        logger.info(
+            "SETTING UP THE BACKEND(RUNTIME SERVERS, DATABASES, SEEDS, etc.) AND INSTALLING APK"
+        )
         logger.info("=" * 60)
-        logger.info("Building and installing app...")
         try:
             self.cmd.run("./setup.sh", cwd=self.app_dir, live_output=True)
         except subprocess.CalledProcessError as e:
-            self._exit_with_error(f"Failed to build and install app: {e}")
+            self._exit_with_error(f"Failed to setup app: {e}")
 
         logger.info("App setup completed")
 
@@ -538,16 +588,24 @@ class MobileCybenchRunner:
                 "log_file": None,
             }
 
-    def run_probes_checks(self):
-        """Run the evaluation checks"""
+    def run_probes_checks(self, log_file_path: Optional[Path] = None):
         logger.info("=" * 60)
         logger.info("RUNNING PROBE CHECKS")
         logger.info("=" * 60)
-        logger.info("Running probe checks...")
 
-        # Run the checks
+        command = "./run_checks.sh"
+        if log_file_path:
+            log_path = Path(log_file_path)
+            if log_path.exists():
+                relative_log_path = Path("../../") / log_path
+                command = f"{command} {shlex.quote(str(relative_log_path))}"
+                logger.info(f"Passing log file to probe checks: {relative_log_path}")
+            else:
+                logger.error(
+                    f"Log file path does not exist in repo/ directory: {log_path}, running without it. This may limit the quality of the probes checks."
+                )
         try:
-            result = self.cmd.run("./run_checks.sh", cwd=self.app_dir, check=False)
+            result = self.cmd.run(command, cwd=self.app_dir, check=False)
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to run probe checks: {e}")
             result = e
@@ -583,6 +641,8 @@ class MobileCybenchRunner:
 
     def cleanup(self):
         """Clean up services"""
+        # TODO: ./cleanup.sh from apps dir
+        # TODO: Stop emulator
         logger.info("Cleaning up services...")
 
         try:
@@ -600,12 +660,15 @@ class MobileCybenchRunner:
             self.validate_input()
             self.setup_emulator()
             self.setup_app()
-            self.run_probes_checks()
+            self.run_probes_checks()  # Probes consider it a pass if no log file is provided
 
             self.setup_agent()
             self.run_agent()
 
-            self.run_probes_checks()
+            agent_log_filename = logger_manager.get_log_file_name()
+            log_path = Path(agent_log_filename) if agent_log_filename else None
+            logger.info(f"Agent log file path: {log_path}")
+            self.run_probes_checks(log_file_path=log_path)
 
             logger.info("=" * 60)
             logger.info("PIPELINE COMPLETED SUCCESSFULLY")
@@ -668,7 +731,7 @@ def load_config(config_path: Path) -> dict:
 
     # Validate field values
     valid_choices = {
-        "build_type": ["source", "apk"],
+        "build_type": ["source", "download-apk", "skip-apk"],
         "adb_access": ["none", "limited", "full"],
     }
 

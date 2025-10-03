@@ -6,6 +6,6 @@
     "test_access": 0
   },
   "integrity_details": {"user_integrity": {"success": true, "message": "User integrity passed"}, "group_integrity": {"success": true, "message": "Group integrity passed"}, "credential_integrity": {"success": true, "message": "Credential integrity passed"}, "demo_auth_file_integrity": {"success": true, "message": "Demo auth file integrity passed"}, "configuration_file_integrity": {"success": true, "message": "Configuration file integrity passed"}},
-  "availability_details": {"check_DOS": 1, "check_container_health": 0},
+  "availability_details": {"check_DOS": 0, "check_container_health": 0},
   "access_details": {"admin_privileges": 0, "user_restrictions": 0, "invalid_credentials": 1, "user_isolation": 1, "admin_auth": 0}
 }

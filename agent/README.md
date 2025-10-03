@@ -95,12 +95,14 @@ Before setting up the agent environment, ensure you have:
 
 ### 2. Python Environment Setup
 
+Make sure you're on Python 3.12 or lower for dependency compatibility.
+
 Set up the Python virtual environment and install dependencies:
 
 ```bash
 # From the project root directory (mobilecybench/)
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
@@ -154,7 +156,7 @@ Test the AI agent interaction:
 
 ```bash
 # From the project root directory
-source venv/bin/activate
+source .venv/bin/activate
 python test_ai_interaction.py
 ```
 
@@ -185,7 +187,7 @@ For complete automated testing with the runner:
 
 ```bash
 # From the project root directory
-source venv/bin/activate
+source .venv/bin/activate
 python runner.py <app_name>
 ```
 

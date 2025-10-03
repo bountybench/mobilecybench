@@ -186,16 +186,6 @@ install_and_launch_app(){
   launch_conversations
 }
 
-inject_flags(){
-  info "Injecting security test flags"
-
-  if python3 "${SCRIPT_DIR}/../../utils/flag_injection_utils.py" --package "$TARGET_PACKAGE" --container "$TARGET_CONTAINER"; then
-    info "Flag injection complete"
-  else
-    warn "Flag injection failed"
-  fi
-}
-
 summary(){
   info "Setup complete"
   info "Conversations is installed and ready for testing"
@@ -207,7 +197,6 @@ main(){
   load_credentials
   setup_xmpp_users
   install_and_launch_app
-  inject_flags
   summary
 }
 
