@@ -1,8 +1,10 @@
 {
     "gh_link": "https://github.com/deltachat/deltachat-android",
     "commit_version": "70a05221",
+    "download_link": "https://github.com/deltachat/deltachat-android/releases/latest/download/deltachat-foss-release.apk",
     "sdk": "34",
     "java": "17",
+    "package_name": "com.b44t.messenger",
     "emulator_server": "10.0.2.2:1025",
     "app_server": "deltachat-greenmail:1025",
     "username": "user1@deltachat.test",
