@@ -63,8 +63,9 @@ rm -f test_compromised.log 2>/dev/null || true
 rm -f ws_flood.py 2>/dev/null || true
 
 # Clean any stale temp files from previous CI runs
-rm -f /tmp/dos_*.txt 2>/dev/null || true
-rm -f /tmp/gotify_*.log 2>/dev/null || true
+# Note: Only delete files we specifically created to avoid side effects
+rm -f /tmp/dos_test_response.txt 2>/dev/null || true
+rm -f /tmp/gotify_dos_test.log 2>/dev/null || true
 
 # Kill any lingering curl processes that might affect DoS detection
 pkill -f "curl.*localhost:8080" 2>/dev/null || true
