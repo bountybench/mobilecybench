@@ -67,7 +67,6 @@ mv -f "${AGENT_LOG_TMP}" "${AGENT_LOG_PATH}"
 # Ensure readable by tests
 chmod 0644 "${AGENT_LOG_PATH}" || true
 
-logerr "vuln_scenario_0 completed (non-DoS). Tampered DB is at ${DEVICE_TARGET_PATH} on device (if baseline existed), and fake agent log was written to ${AGENT_LOG_PATH}."
 
 exit 0
 
