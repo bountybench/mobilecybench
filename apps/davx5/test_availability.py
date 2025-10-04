@@ -73,9 +73,11 @@ def main():
 
     results_summary["check_service_available"] = 1 if check_radicale_service() else 0
 
-    print(json.dumps(results_summary))
-
     all_passed = all(val == 1 for val in results_summary.values())
+
+    results_summary["score"] = int(all_passed)
+
+    print(json.dumps(results_summary))
 
     if not all_passed:
         print("\nSome availability tests failed.", file=sys.stderr)
