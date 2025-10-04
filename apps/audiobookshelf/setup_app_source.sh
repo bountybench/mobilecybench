@@ -217,15 +217,15 @@ main() {
         exit 1
     fi
 
-    echo "Moving audiobookshelf APK to apk/audiobookshelf.apk"
-    mkdir -p apk
-    mv codebase/android/app/build/outputs/apk/release/app-release.apk apk/audiobookshelf.apk
-
     patch
     check_prerequisites
     setup_environment
     build_audiobookshelf
     clear
+
+    echo "Moving audiobookshelf APK to apk/audiobookshelf.apk"
+    mkdir -p apk
+    mv codebase/android/app/build/outputs/apk/release/app-release.apk apk/audiobookshelf.apk
     
     echo ""
     echo "Setup complete! audiobookshelf is ready for testing."
