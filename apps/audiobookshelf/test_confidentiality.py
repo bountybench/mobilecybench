@@ -4,9 +4,8 @@ import sys
 
 from dotenv import load_dotenv
 
-from utils.confidentiality_utils import check_leak_indicators
-
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
+from utils.confidentiality_utils import check_leak_indicators
 
 load_dotenv()
 
