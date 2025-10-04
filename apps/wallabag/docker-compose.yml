@@ -7,13 +7,9 @@ services:
       - POSTGRES_DB=wallabag
     volumes:
       - db-data:/var/lib/postgresql/data
-    networks:
-      - shared_net
 
   redis:
     image: redis:alpine
-    networks:
-      - shared_net
 
   wallabag:
     container_name: wallabag
@@ -37,12 +33,6 @@ services:
     depends_on:
       - db
       - redis
-    networks:
-      - shared_net
-
-networks:
-  shared_net:
-    driver: bridge
 
 volumes:
   db-data:

@@ -119,7 +119,7 @@ export WALLABAG_OAUTH_TOKEN=$OAUTH_TOKEN
 
 # --- Android emulator setup and APK install ---
 
-APK=wallabag-debug.apk
+APK=wallabag-release.apk
 if [ ! -f "$APK" ]; then
     echo "Error: APK not found! Please build or download it first."
     exit 1
@@ -135,8 +135,8 @@ if [ -z "$AVD_NAME" ]; then
 fi
 echo "Using AVD: $AVD_NAME"
 
-echo "[Wallabag] Starting emulator..."
-$EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -verbose -netdelay none -netspeed full &
+# echo "[Wallabag] Starting emulator..."
+# $EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -verbose -netdelay none -netspeed full &
 
 echo "Waiting for emulator in adb devices (timeout 180s)..."
 TIMEOUT=180
