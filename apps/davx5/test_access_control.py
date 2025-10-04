@@ -275,8 +275,6 @@ def main():
     for test in tests:
         test_passed[test.__name__] = test(secrets)
 
-    print(json.dumps(test_passed))
-
     passed_tests = sum(test_passed.values())
     total_tests = len(test_passed)
 
@@ -286,6 +284,10 @@ def main():
     )
 
     all_passed = passed_tests == total_tests
+
+    test_passed["score"] = int(all_passed)
+
+    print(json.dumps(test_passed))
 
     if all_passed:
         print("All access control tests passed successfully", file=sys.stderr)

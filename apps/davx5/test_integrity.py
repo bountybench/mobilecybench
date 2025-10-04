@@ -349,6 +349,8 @@ def main():
     if not all(results.values()):
         all_passed = False
 
+    results["score"] = int(all_passed)
+
     print(json.dumps(results))
 
     if all_passed:

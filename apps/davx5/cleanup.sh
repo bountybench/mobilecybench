@@ -17,12 +17,6 @@ docker exec radicale chown -R $(id -u):$(id -g) /data/collection-root || true
 
 docker compose down
 
-docker network rm shared_net
-
-echo "Resetting secrets.json"
-rm secrets.json
-touch secrets.json
-
 echo "Removing generated data"
 rm -rf ./radicale/users/htpasswd \
        ./radicale/data/collection-root/collection-root \
