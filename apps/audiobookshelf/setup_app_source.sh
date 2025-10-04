@@ -224,8 +224,8 @@ main() {
     clear
 
     echo "Moving audiobookshelf APK to apk/audiobookshelf.apk"
-    mkdir -p apk
-    mv codebase/android/app/build/outputs/apk/release/app-release.apk apk/audiobookshelf.apk
+    mkdir -p ../../apk
+    mv app/build/outputs/apk/release/app-release.apk ../../apk/audiobookshelf.apk
     
     echo ""
     echo "Setup complete! audiobookshelf is ready for testing."
