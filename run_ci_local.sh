@@ -489,6 +489,24 @@ run_tests_for_mode() {
         { ./setup_app_source.sh; } || { echo -e "${ERROR} setup_app_source.sh failed"; exit 1; }
     fi
     
+    # Validate APK structure
+    echo -e "${INFO} Validating APK structure..."
+    APK_DIR="$ROOT_DIR/$dir/apk"
+    if [ ! -d "$APK_DIR" ]; then
+        echo -e "${ERROR} APK directory not found at $APK_DIR"
+        echo -e "${ERROR} APKs must be placed in ${dir}/apk/"
+        exit 1
+    fi
+
+    APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+    if [ "$APK_COUNT" -eq 0 ]; then
+        echo -e "${ERROR} No APK found in $APK_DIR/"
+        echo -e "${ERROR} setup_app_source.sh or setup_app_apklink.sh must place APKs in ${dir}/apk/"
+        exit 1
+    fi
+
+    echo -e "${SUCCESS} APK structure validated - found $APK_COUNT APK(s) in $APK_DIR/"
+
     cd "$ROOT_DIR"
     
     if [ "$has_probes" = true ]; then
