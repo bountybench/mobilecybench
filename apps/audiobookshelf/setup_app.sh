@@ -18,12 +18,12 @@ install_audiobookshelf() {
     fi
     
     # Install universal APK with correct path
-    APK_PATH="apk/audiobookshelf.apk"
+    APK_PATH="../../apk/audiobookshelf.apk"
     
     if [[ ! -f $APK_PATH ]]; then
         echo "ERROR: APK not found at $APK_PATH"
         echo "Available APKs:"
-        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
+        find ../../apk -name "*.apk" -type f 2>/dev/null | head -10
         exit 1
     fi
     
