@@ -18,7 +18,9 @@
 
     3.3 [CI Trigger and Local Testing](#33-ci-trigger-and-local-testing)
 
-4. [Local Development Setup](#5-local-development-setup)
+4. [Local Development Setup](#4-local-development-setup)
+
+5. [Orchestrator Container (For Scale)](#5-orchestrator-container-for-scale)
 
 
 ## 1. Adding Target Android App Repo
@@ -371,4 +373,96 @@ Quick note on `--skip-apk` flag.
 - Make scripts executable: `chmod +x *.sh`
 
 ### Agent Setup
-See the [Agent README](agent/README.md) 
+See the [Agent README](agent/README.md)
+
+## 5. Orchestrator Container (For Scale)
+
+For running experiments at scale with a consistent runtime environment, MobileCybench provides an Orchestrator container. This approach is inspired by BountyBench but with key improvements:
+
+### Key Features
+
+- **Live Code Mounting**: Codebase is mounted (not copied), so code changes don't require rebuilds
+- **Pre-installed Dependencies**: Android SDK, emulator, build tools, and Python packages ready to go
+- **Docker-in-Docker**: Runs its own Docker daemon - all app backends run INSIDE the orchestrator
+- **Hardware Acceleration**: KVM support for faster emulator performance
+- **Multi-SDK Support**: Multiple Android SDK versions pre-installed
+
+### Quick Start
+
+```bash
+# 1. Build the orchestrator image
+./docker/build_orchestrator.sh
+
+# 2. Start the orchestrator container
+./docker/start_orchestrator.sh
+
+# 3. Run an experiment
+./docker/run_experiment.sh <app_name>
+
+# Example:
+./docker/run_experiment.sh owncloud-android
+```
+
+### Manual Usage
+
+```bash
+# Exec into the running container
+docker exec -it mobilecybench-orchestrator bash
+
+# Inside the container, run experiments as usual:
+./setup.sh owncloud-android              # Set up emulator AVD
+./start_emulator.sh                      # Start Android emulator
+cd apps/owncloud-android && ./setup.sh   # Start app backend servers + install APK
+cd /mobilecybench
+python3 runner.py owncloud-android runner_config.json
+```
+
+**Note on App Backend Servers:** Each app's `setup.sh` script automatically starts its backend server cluster (databases, app servers, etc.) using the Docker daemon running INSIDE the orchestrator container. The backend containers run nested inside the orchestrator (true Docker-in-Docker), providing complete isolation from the host system.
+
+### Benefits for Experimentation
+
+1. **Consistency**: Same environment across all machines and CI/CD
+2. **Isolation**: Each experiment runs in its own container
+3. **Scalability**: Run multiple experiments in parallel
+4. **Reproducibility**: Docker image captures exact dependency versions
+5. **No Rebuild Required**: Code changes are immediately reflected
+
+### Prerequisites
+
+- Docker and Docker Compose installed
+- Linux host with KVM support (for hardware acceleration)
+  - Check: `kvm-ok` or `lsmod | grep kvm`
+  - Enable: `sudo usermod -aG kvm $USER` (then logout/login)
+- At least 8GB RAM available
+- At least 20GB disk space
+
+### Architecture
+
+The orchestrator container includes:
+- Ubuntu 22.04 base
+- Android SDK (versions 34 & 35)
+- Java 17
+- Python 3 with all requirements
+- Docker daemon (runs inside container)
+- ADB and emulator tools
+
+All code is mounted from host at `/mobilecybench`, allowing instant reflection of code changes without rebuilding the container. The orchestrator runs its own Docker daemon inside, so all app backend containers are nested within the orchestrator.
+
+### Advanced Usage
+
+See the detailed [Orchestrator README](docker/README.md) for:
+- Running experiments in parallel
+- CI/CD integration
+- Custom SDK versions
+- Resource limits
+- Troubleshooting
+
+### Comparison: Local vs Orchestrator
+
+| Aspect | Local Setup | Orchestrator |
+|--------|-------------|--------------|
+| Setup Time | Manual installation | Pre-built image |
+| Consistency | Varies by machine | Guaranteed consistent |
+| Parallelization | Limited | Easy scaling |
+| CI/CD | Complex | Simple integration |
+| Code Changes | Immediate | Immediate (via mount) | 

@@ -1,0 +1,195 @@
+# MobileCybench Orchestrator Container
+# This container provides a consistent runtime environment for running experiments at scale
+# Based on Ubuntu 22.04 with Android SDK, emulator, and all necessary dependencies
+# Runs Docker-in-Docker to manage app backend containers
+
+FROM ubuntu:22.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Set timezone
+ENV TZ=UTC
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    # Build essentials
+    build-essential \
+    git \
+    curl \
+    wget \
+    unzip \
+    zip \
+    # Python and pip
+    python3 \
+    python3-pip \
+    python3-venv \
+    python3-dev \
+    # PostgreSQL development libraries (for psycopg2)
+    libpq-dev \
+    # Java (required for Android SDK)
+    openjdk-17-jdk \
+    # Libraries for Android emulator
+    libc6 \
+    libstdc++6 \
+    libgcc-s1 \
+    libncurses5 \
+    libpulse0 \
+    libasound2 \
+    libx11-6 \
+    libxext6 \
+    libxrender1 \
+    libxtst6 \
+    libxi6 \
+    libgl1-mesa-glx \
+    libgl1-mesa-dri \
+    libglu1-mesa \
+    # Additional tools
+    adb \
+    openssl \
+    ca-certificates \
+    software-properties-common \
+    apt-transport-https \
+    gnupg \
+    lsb-release \
+    # Docker (for Docker-in-Docker to run app backends)
+    docker.io \
+    docker-compose \
+    containerd \
+    iptables \
+    supervisor \
+    # Network tools
+    net-tools \
+    iputils-ping \
+    netcat \
+    # Process management
+    procps \
+    psmisc \
+    # Utilities
+    tree \
+    vim \
+    nano \
+    jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up Python environment
+RUN python3 -m pip install --upgrade pip setuptools wheel
+
+# Set environment variables for Android SDK
+ENV ANDROID_HOME=/opt/android-sdk
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+ENV PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/emulator:${ANDROID_HOME}/tools:${ANDROID_HOME}/tools/bin:${PATH}"
+
+# Detect and set JAVA_HOME dynamically based on architecture
+RUN JAVA_HOME_PATH=$(dirname $(dirname $(readlink -f $(which java)))) && \
+    echo "Detected Java at: $JAVA_HOME_PATH" && \
+    echo "export JAVA_HOME=$JAVA_HOME_PATH" >> /etc/profile.d/java.sh && \
+    echo "export PATH=\$JAVA_HOME/bin:\$PATH" >> /etc/profile.d/java.sh && \
+    chmod +x /etc/profile.d/java.sh && \
+    ln -sf $JAVA_HOME_PATH /usr/lib/jvm/default-java
+
+# Set JAVA_HOME to the detected path
+# Note: This creates a symlink at /usr/lib/jvm/default-java that points to the correct Java installation
+ENV JAVA_HOME=/usr/lib/jvm/default-java
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+# Verify Java is working
+RUN java -version && echo "JAVA_HOME is: $JAVA_HOME"
+
+# Create Android SDK directory
+RUN mkdir -p ${ANDROID_HOME}
+
+# Download and install Android Command Line Tools
+RUN cd ${ANDROID_HOME} && \
+    wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip && \
+    unzip -q commandlinetools-linux-11076708_latest.zip && \
+    mkdir -p cmdline-tools/latest && \
+    mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || true && \
+    rm commandlinetools-linux-11076708_latest.zip
+
+# Accept Android SDK licenses
+RUN yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+# Install Android SDK packages (supporting multiple SDK versions for different apps)
+# Note: Installing arm64-v8a system images (for Apple Silicon / ARM hosts)
+# For x86_64 hosts, replace arm64-v8a with x86_64
+# Install platform-tools and build-tools first
+RUN ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
+    "platform-tools" \
+    "platforms;android-34" \
+    "platforms;android-35" \
+    "build-tools;34.0.0" \
+    "build-tools;35.0.0" \
+    && echo "Platform tools installed"
+
+# Install emulator (required for system images)
+RUN ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "emulator" || echo "Emulator package not available"
+
+# Install system images (may not be available for ARM, which is fine)
+RUN ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
+    "system-images;android-34;google_apis;arm64-v8a" \
+    "system-images;android-35;google_apis;arm64-v8a" \
+    || echo "ARM system images not available, skipping"
+
+# Install KVM acceleration support (for better emulator performance)
+# Note: This requires the host to have KVM support and the container to be run with --device /dev/kvm
+RUN apt-get update && apt-get install -y \
+    qemu-kvm \
+    libvirt-daemon-system \
+    libvirt-clients \
+    bridge-utils \
+    cpu-checker \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create work directory
+WORKDIR /mobilecybench
+
+# Copy requirements.txt first for layer caching
+COPY requirements.txt /mobilecybench/
+
+# Install Python packages
+# Use --ignore-installed for packages that conflict with system packages
+RUN pip3 install --break-system-packages --ignore-installed blinker -r requirements.txt
+
+# Set up git configuration (needed for submodule operations)
+RUN git config --global user.email "orchestrator@mobilecybench.local" && \
+    git config --global user.name "MobileCybench Orchestrator"
+
+# Create directories for mounting
+RUN mkdir -p /mobilecybench/apps \
+    /mobilecybench/agent \
+    /mobilecybench/utils \
+    /mobilecybench/tools \
+    /mobilecybench/logs \
+    /mobilecybench/results
+
+# Set up Docker-in-Docker
+# Create directory for Docker data
+RUN mkdir -p /var/lib/docker
+
+# Configure Docker daemon for DinD
+RUN mkdir -p /etc/docker && \
+    echo '{\n\
+  "storage-driver": "overlay2",\n\
+  "log-driver": "json-file",\n\
+  "log-opts": {\n\
+    "max-size": "10m",\n\
+    "max-file": "3"\n\
+  }\n\
+}' > /etc/docker/daemon.json
+
+# Expose ports for debugging and services
+# 5037: ADB server
+# 5554-5585: Emulator console/adb ports
+EXPOSE 5037 5554 5555
+
+# Set up entrypoint script
+COPY docker/orchestrator-entrypoint.sh /usr/local/bin/orchestrator-entrypoint.sh
+RUN chmod +x /usr/local/bin/orchestrator-entrypoint.sh
+
+# Health check - verify Docker daemon is running
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD docker info > /dev/null 2>&1 || exit 1
+
+ENTRYPOINT ["/usr/local/bin/orchestrator-entrypoint.sh"]
+CMD ["/bin/bash"]
