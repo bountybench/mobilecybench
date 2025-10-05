@@ -1,5 +1,4 @@
 import json
-import os
 import sys
 
 from utils.availability_utils import check_container_health
