@@ -4,10 +4,11 @@ FROM python:3.12-bookworm
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYENV_ROOT=/root/.pyenv
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
-ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$JAVA_HOME/bin"
 ENV ANDROID_SDK_ROOT=/root/.android-sdk
 ENV ANDROID_HOME=/root/.android-sdk
 ENV GRADLE_USER_HOME=/root/.gradle
+ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/emulator:${ANDROID_HOME}/tools:${ANDROID_HOME}/tools/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$JAVA_HOME/bin"
+ENV DISPLAY=:0
 WORKDIR /mobilecybench
 
 # Install base dependencies
@@ -24,6 +25,8 @@ RUN set -eux; \
       libxshmfence-dev libdbus-glib-1-2 openssh-client \
       qemu-user-static binfmt-support htop lsof \
       pass gnupg \
+      qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils cpu-checker \
+      x11-utils x11-xserver-utils dbus-x11 \
     ; \
     mkdir -p /root/.cache/pip /var/lib/docker; \
     rm -rf /var/lib/apt/lists/*
@@ -63,7 +66,9 @@ RUN set -eux; \
     rm -f /tmp/cmdline-tools.zip; \
     PATH="${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools" ; \
     yes | sdkmanager --licenses >/dev/null 2>&1 || true; \
-    sdkmanager "platform-tools" "platforms;android-35" "build-tools;34.0.0" >/dev/null || true; \
+    sdkmanager "platform-tools" "platforms;android-34" "platforms;android-35" "build-tools;34.0.0" "build-tools;35.0.0" >/dev/null || true; \
+    sdkmanager "emulator" || echo "Emulator package not available"; \
+    sdkmanager "system-images;android-34;google_apis;x86_64" || echo "x86_64 system images not available"; \
     if [ -x "${ANDROID_SDK_ROOT}/platform-tools/adb" ]; then ln -sf "${ANDROID_SDK_ROOT}/platform-tools/adb" /usr/bin/adb || true; fi
 
 # Write gradle props
@@ -93,11 +98,24 @@ COPY tools/dockerd_entrypoint.sh /usr/local/bin/dockerd_entrypoint.sh
 COPY tools/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY tools/setup_submodules.sh /usr/local/bin/setup_submodules.sh
 COPY tools/bridge_shim.py /usr/local/bin/adb
+COPY docker/start-xvfb.sh /usr/local/bin/start-xvfb.sh
+COPY docker/start-vnc.sh /usr/local/bin/start-vnc.sh
+COPY docker/start-emulator-headless.sh /usr/local/bin/start-emulator-headless.sh
 RUN chmod +x /usr/local/bin/dockerd_entrypoint.sh /usr/local/bin/entrypoint.sh \
-    /usr/local/bin/setup_submodules.sh /usr/local/bin/adb
+    /usr/local/bin/setup_submodules.sh /usr/local/bin/adb \
+    /usr/local/bin/start-xvfb.sh /usr/local/bin/start-vnc.sh \
+    /usr/local/bin/start-emulator-headless.sh
+
+# Create directories for results and logs
+RUN mkdir -p /mobilecybench/results /mobilecybench/logs
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s \
   CMD docker info >/dev/null 2>&1 || exit 1
-EXPOSE 7999
+# Expose backend port and emulator/debugging ports
+# 7999: Backend API
+# 5037: ADB server
+# 5554-5555: Emulator console/adb
+# 5900: VNC server
+EXPOSE 7999 5037 5554 5555 5900
 ENTRYPOINT ["dockerd_entrypoint.sh"]
 CMD ["/usr/local/bin/entrypoint.sh"]

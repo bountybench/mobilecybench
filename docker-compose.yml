@@ -1,27 +1,54 @@
 services:
-  # Orchestrator Container
+  # Combined Backend + Orchestrator Container (using Docker-in-Docker)
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
     container_name: mobilecybench-backend
     privileged: true
+    # Security options for better emulator compatibility
+    security_opt:
+      - seccomp:unconfined
     volumes:
       - dind-data:/var/lib/docker
-      - ./:/mobilecybench
+      - ./:/mobilecybench:rw
       - gradle-cache:/root/.gradle
-      - ./logs:/mobilecybench/logs
+      - ./logs:/mobilecybench/logs:rw
+      - ./results:/mobilecybench/results:rw
       # Please uncomment the following lines if you need to mount SSH keys for the backend service
       # - ${HOME}/.ssh/id_rsa_mobilecybench-backend:/root/.ssh/id_rsa:ro
       # - ${HOME}/.ssh/id_rsa_mobilecybench-backend.pub:/root/.ssh/id_rsa.pub:ro
     environment:
+      - ANDROID_HOME=/root/.android-sdk
+      - ANDROID_SDK_ROOT=/root/.android-sdk
+      - JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+      - DISPLAY=${DISPLAY:-:0}
+      - TZ=UTC
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
       - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
       - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
+    ports:
+      - "7999:7999"    # Backend API
+      - "5037:5037"    # ADB server
+      - "5554:5554"    # Emulator console
+      - "5555:5555"    # Emulator ADB
+      - "5900:5900"    # VNC server
     networks:
       - app-network
+    # Keep container running
+    stdin_open: true
+    tty: true
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
 
 networks:
   app-network:

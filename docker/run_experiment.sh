@@ -1,6 +1,6 @@
 #!/bin/bash
-# Run an experiment from within the orchestrator container
-# This script should be executed INSIDE the mobilecybench-orchestrator container
+# Run an experiment from within the backend container
+# This script should be executed INSIDE the mobilecybench-backend container
 # Usage: ./docker/run_experiment.sh <app_name> [config_file]
 
 set -e
@@ -12,7 +12,7 @@ if [ $# -lt 1 ]; then
     echo "  $0 owncloud-android"
     echo "  $0 owncloud-android custom_config.json"
     echo ""
-    echo "Note: Run this script from INSIDE the orchestrator container"
+    echo "Note: Run this script from INSIDE the backend container"
     exit 1
 fi
 
@@ -25,9 +25,9 @@ echo "Config file: $CONFIG_FILE"
 echo "============================================"
 echo ""
 
-# Verify we're inside the orchestrator container
+# Verify we're inside the backend container
 if [ ! -f "/mobilecybench/setup.sh" ]; then
-    echo "Error: This script must be run from inside the orchestrator container"
+    echo "Error: This script must be run from inside the backend container"
     echo "Expected to find /mobilecybench/setup.sh"
     exit 1
 fi
