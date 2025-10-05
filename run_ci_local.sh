@@ -583,6 +583,9 @@ if [ $? -ne 0 ] || [ -z "$SETUP_MODES" ]; then
     exit 1
 fi
 
+# Install mobilecybench utils
+pip install -e .
+
 # Check if any setup mode has test_X.py to determine overall strategy
 cd "$DIR"
 HAS_PROBES=false
