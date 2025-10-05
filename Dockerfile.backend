@@ -23,6 +23,7 @@ RUN set -eux; \
       php-cli uuid-runtime xvfb x11vnc fluxbox wmctrl libpulse-dev \
       libxshmfence-dev libdbus-glib-1-2 openssh-client \
       qemu-user-static binfmt-support htop lsof \
+      pass gnupg \
     ; \
     mkdir -p /root/.cache/pip /var/lib/docker; \
     rm -rf /var/lib/apt/lists/*
@@ -36,37 +37,13 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; \
     rm -rf /var/lib/apt/lists/*
 
-# Java symlink and aapt2 for arm64
+# Java symlink for architecture
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     if [ "$arch" = "amd64" ]; then \
       ln -sf /usr/lib/jvm/java-17-openjdk-amd64 /usr/lib/jvm/java-17-openjdk || true; \
     elif [ "$arch" = "arm64" ]; then \
       ln -sf /usr/lib/jvm/java-17-openjdk-arm64 /usr/lib/jvm/java-17-openjdk || true; \
-      mkdir -p /tmp/aapt2-download; \
-        cd /tmp/aapt2-download; \
-        if curl -fSL "https://github.com/lzhiyong/android-sdk-tools/releases/download/35.0.2/android-sdk-tools-static-aarch64.zip" -o aapt2.zip; then \
-            echo "Downloaded from Lzhiyong v35.0.2"; \
-            unzip aapt2.zip; \
-            mv build-tools/aapt2 /usr/bin/aapt2; \
-        elif curl -fSL "https://github.com/lzhiyong/android-sdk-tools/releases/download/34.0.3/android-sdk-tools-static-aarch64.zip" -o aapt2.zip; then \
-            echo "Downloaded from Lzhiyong v34.0.3"; \
-            unzip aapt2.zip; \
-            mv build-tools/aapt2 /usr/bin/aapt2; \
-        elif curl -fSL "https://github.com/AndroidIDEOfficial/platform-tools/releases/download/v34.0.4/platform-tools-34.0.4-aarch64.tar.xz" -o aapt2.tar.xz; then \
-            echo "Downloaded from AndroidIDEOfficial v34.0.4"; \
-            tar -xJf aapt2.tar.xz; \
-            find . -name "aapt2" -type f -exec mv {} /usr/bin/aapt2 \; || (echo "Could not find aapt2 in extracted files" && exit 1); \
-        elif curl -fSL "https://github.com/rendiix/termux-aapt/releases/download/termux-sdk-tools-34.0.0/termux-sdk-tools-34.0.0.tar.xz" -o aapt2.tar.xz; then \
-            echo "Downloaded from rendiix termux-sdk-tools-34.0.0"; \
-            tar -xJf aapt2.tar.xz; \
-            find . -name "aapt2" -type f -exec mv {} /usr/bin/aapt2 \; || (echo "Could not find aapt2 in extracted files" && exit 1); \
-        else \
-            echo "ERROR: All aapt2 download attempts failed"; \
-            exit 1; \
-        fi; \
-        chmod +x /usr/bin/aapt2; \
-        rm -rf /tmp/aapt2-download; \
     fi
 
 # install pyenv (lightweight)
@@ -96,8 +73,7 @@ RUN set -eux; \
     'org.gradle.caching=true' \
     'org.gradle.daemon=true' \
     'org.gradle.parallel=true' \
-    'org.gradle.configureondemand=true' \
-    'android.aapt2FromMavenOverride=/usr/bin/aapt2' > /root/.gradle/gradle.properties
+    'org.gradle.configureondemand=true' > /root/.gradle/gradle.properties
 
 # Install Node and Yarn
 RUN set -eux; \
@@ -107,6 +83,10 @@ RUN set -eux; \
     corepack enable; \
     corepack prepare yarn@stable --activate; \
     rm -rf /var/lib/apt/lists/*
+
+# Configures git; Necessary for git commands to work in the container
+RUN git config --global user.email "temp@example.com" \
+    && git config --global user.name "Temp"
 
 # copy entrypoint scripts and install bridge shim as /usr/local/bin/adb
 COPY tools/dockerd_entrypoint.sh /usr/local/bin/dockerd_entrypoint.sh

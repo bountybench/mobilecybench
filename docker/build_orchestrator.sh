@@ -20,7 +20,7 @@ fi
 
 # Build the orchestrator image
 echo "Building orchestrator image..."
-docker build -f Dockerfile.orchestrator -t mobilecybench-orchestrator:latest .
+docker build --no-cache -f Dockerfile.orchestrator -t mobilecybench-orchestrator:latest .
 
 # Check if shared_net network exists, create if not
 if ! docker network inspect shared_net >/dev/null 2>&1; then

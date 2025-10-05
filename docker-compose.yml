@@ -7,12 +7,19 @@ services:
     container_name: mobilecybench-backend
     privileged: true
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - dind-data:/var/lib/docker
       - ./:/mobilecybench
       - gradle-cache:/root/.gradle
+      - ./logs:/mobilecybench/logs
+      # Please uncomment the following lines if you need to mount SSH keys for the backend service
+      # - ${HOME}/.ssh/id_rsa_mobilecybench-backend:/root/.ssh/id_rsa:ro
+      # - ${HOME}/.ssh/id_rsa_mobilecybench-backend.pub:/root/.ssh/id_rsa.pub:ro
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
     networks:
       - app-network
 
@@ -22,4 +29,5 @@ networks:
 
 volumes:
   dind-data:
+    external: true
   gradle-cache:
