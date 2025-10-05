@@ -468,6 +468,9 @@ jobs:
           ./setup.sh
           verify_shared_net_connectivity
           adb logcat -c
+
+          echo "Injecting flags..."
+          ../../inject_flags.sh
           
           echo "Running baseline checks..."
           ../../run_checks.sh . "/tmp/dummy_log.log"
@@ -902,6 +905,9 @@ jobs:
           ./setup.sh
           verify_shared_net_connectivity
           adb logcat -c
+
+          echo "Injecting flags..."
+          ../../inject_flags.sh
           
           # Check packages after setup
           packages_after=$(adb shell pm list packages | wc -l)
