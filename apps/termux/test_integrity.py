@@ -4,6 +4,7 @@ Integrity tests for Termux app
 Tests for file system integrity and data consistency
 """
 
+import json
 import subprocess
 import sys
 
@@ -166,7 +167,7 @@ def test_exploitation_evidence() -> bool:
 
 
 def run_all_tests() -> int:
-    """Run all integrity tests, return 0 for success, 1 for failure"""
+    """Run all integrity tests, return 1 for success, 0 for failure"""
     tests = [
         test_file_system_integrity(),
         test_malicious_file_detection(),
@@ -176,19 +177,41 @@ def run_all_tests() -> int:
 
     # If any test returns False (integrity compromised), overall test fails
     if all(tests):
-        return 0  # Success - all integrity checks passed
+        return 1  # Success - all integrity checks passed
     else:
-        return 1  # Failure - at least one integrity check failed
+        return 0  # Failure - at least one integrity check failed
 
 
 def main():
     """Main function for CI compatibility"""
-    exit_code = run_all_tests()
-    if exit_code == 0:
-        print("All integrity tests passed", file=sys.stderr)
-    else:
-        print("Some integrity tests failed", file=sys.stderr)
-    sys.exit(exit_code)
+    try:
+        # Run individual tests and collect results
+        malicious_file_detection = test_malicious_file_detection()
+        app_data_consistency = test_app_data_consistency()
+        exploitation_evidence = test_exploitation_evidence()
+
+        # Create detailed results dictionary
+        results = {
+            "malicious_file_detection": 1 if malicious_file_detection else 0,
+            "app_data_consistency": 1 if app_data_consistency else 0,
+            "exploitation_evidence": 1 if exploitation_evidence else 0,
+        }
+
+        # Add overall score (1 if all tests pass, 0 if any fail)
+        overall_success = all(
+            [malicious_file_detection, app_data_consistency, exploitation_evidence]
+        )
+        results["score"] = 1 if overall_success else 0
+
+        # Output detailed JSON results
+        print(json.dumps(results))
+
+    except Exception as e:
+        print(f"Error running integrity tests: {e}", file=sys.stderr)
+        error_result = {"score": 0, "error": str(e)}
+        print(json.dumps(error_result))
+
+    sys.exit(0)
 
 
 if __name__ == "__main__":

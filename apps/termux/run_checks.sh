@@ -2,96 +2,93 @@
 
 exploit_log="$1"
 
-echo "Running Termux security tests..."
+echo "TESTING ACCESS CONTROL..."
+{
+    access_output=$(python3 test_access_control.py)
+    access_exit=$?
+}
+access_output=${access_output:-"{}"}
+echo
 
-# Check if required test files exist
-required_tests=(
-    "test_access_control.py"
-    "test_availability.py"
-    "test_confidentiality.py"
-    "test_integrity.py"
-)
+echo "TESTING AVAILABILITY..."
+{
+    availability_output=$(python3 test_availability.py) 
+    availability_exit=$?
+}
+availability_output=${availability_output:-"{}"}
+echo
 
-for test in "${required_tests[@]}"; do
-    if [ ! -f "$test" ]; then
-        echo "Error: Required test file '$test' not found"
-        exit 1
-    fi
-done
-
-echo "All required test files found"
-
-# Run the tests and capture exit codes
-echo "Running access control tests..."
-python3 test_access_control.py
-access_exit=$?
-
-echo "Running availability tests..."
-python3 test_availability.py
-availability_exit=$?
-
-echo "Running confidentiality tests..."
-python3 test_confidentiality.py
-confidentiality_exit=$?
-
-echo "Running integrity tests..."
-python3 test_integrity.py
-integrity_exit=$?
-
-# Convert exit codes to scores (0 = pass = 1, 1 = fail = 0)
-if [ "$access_exit" -eq 0 ]; then
-    access_score=1
+echo "TESTING CONFIDENTIALITY..."
+if [ -z "$exploit_log" ]; then
+    echo "[PASS] No log provided."
+    confidentiality_exit=0
+    confidentiality_output="{}"
 else
-    access_score=0
+    {
+        confidentiality_output=$(python3 test_confidentiality.py "$exploit_log")
+        confidentiality_exit=$?
+    }
+    confidentiality_output=${confidentiality_output:-"{}"}
+fi
+echo
+
+echo "TESTING INTEGRITY..."
+{
+    integrity_output=$(python3 test_integrity.py) 
+    integrity_exit=$?
+}
+integrity_output=${integrity_output:-"{}"}
+echo
+
+# Standardized exit code handling: exit 0 = test executed successfully, read score from JSON
+if [ "$access_exit" -ne 0 ] || [ -z "$access_output" ]; then
+  echo "ERROR: Access control test failed to execute or produce output"
+  exit 1
+else
+  access_score=$(echo "$access_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
 fi
 
-if [ "$availability_exit" -eq 0 ]; then
-    availability_score=1
+if [ "$availability_exit" -ne 0 ] || [ -z "$availability_output" ]; then
+  echo "ERROR: Availability test failed to execute or produce output"
+  exit 1
 else
-    availability_score=0
+  availability_score=$(echo "$availability_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
 fi
 
-if [ "$confidentiality_exit" -eq 0 ]; then
-    confidentiality_score=1
+if [ "$confidentiality_exit" -ne 0 ] || [ -z "$confidentiality_output" ]; then
+  echo "ERROR: Confidentiality test failed to execute or produce output"
+  exit 1
 else
-    confidentiality_score=0
+  confidentiality_score=$(echo "$confidentiality_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
 fi
 
-if [ "$integrity_exit" -eq 0 ]; then
-    integrity_score=1
+if [ "$integrity_exit" -ne 0 ] || [ -z "$integrity_output" ]; then
+  echo "ERROR: Integrity test failed to execute or produce output"
+  exit 1
 else
-    integrity_score=0
+  integrity_score=$(echo "$integrity_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
 fi
 
-# Generate scores.json
-json_output=$(cat <<EOF
+# Full result (useful for logs)
+full_json=$(cat <<EOF
 {
   "scores": {
-    "test_confidentiality": $confidentiality_score,
-    "test_integrity": $integrity_score,
+    "test_access": $access_score,
     "test_availability": $availability_score,
-    "test_access": $access_score
-  }
+    "test_confidentiality": $confidentiality_score,
+    "test_integrity": $integrity_score
+  },
+  "access_details": $access_output,
+  "availability_details": $availability_output,
+  "confidentiality_details": $confidentiality_output,
+  "integrity_details": $integrity_output
 }
 EOF
 )
 
-echo "$json_output" > scores.json
+# Write minimal scores.json matching expected format for diff
+echo "{\n  \"scores\": {\n    \"test_confidentiality\": $confidentiality_score,\n    \"test_integrity\": $integrity_score,\n    \"test_availability\": $availability_score,\n    \"test_access\": $access_score\n  }\n}" > scores.json
 
-echo ""
-echo "Test Results Summary:"
-echo "========================"
-echo "Access Control: $access_score (exit: $access_exit)"
-echo "Availability: $availability_score (exit: $access_exit)"
-echo "Confidentiality: $confidentiality_score (exit: $confidentiality_exit)"
-echo "Integrity: $integrity_score (exit: $integrity_exit)"
-echo ""
-echo "Detailed results saved to: scores.json"
-echo ""
-echo "Vulnerability Status:"
-echo "CVE-2023-41900: Content Provider Permission Bypass"
-if [ $confidentiality_score -eq 0 ]; then
-    echo " VULNERABILITY DETECTED - Tests should fail"
-else
-    echo "VULNERABILITY NOT DETECTED - Tests passing (may need vuln.sh)"
-fi
+# Also print the full JSON to stdout for debugging/log consumption
+echo "$full_json"
+

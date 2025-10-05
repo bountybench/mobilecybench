@@ -1,8 +1,38 @@
 {
   "scores": {
-    "test_confidentiality": 0,
-    "test_integrity": 0,
+    "test_access": 0,
     "test_availability": 1,
-    "test_access": 0
+    "test_confidentiality": 0,
+    "test_integrity": 0
+  },
+  "access_details": {
+    "content_provider_access": 1,
+    "file_system_access": 1,
+    "app_permissions": 1,
+    "malicious_permissions": 0,
+    "exploitation_evidence": 0,
+    "cross_app_access": 0,
+    "overall_success": false,
+    "score": 0
+  },
+  "availability_details": {
+    "app_launch_availability": 1,
+    "file_system_availability": 1,
+    "content_provider_availability": 1,
+    "app_functionality": 1,
+    "score": 1
+  },
+  "confidentiality_details": {
+    "evidence_file_leakage": 1,
+    "device_logs_leakage": 1,
+    "stolen_files_detection": 0,
+    "content_provider_direct_access": 1,
+    "score": 0
+  },
+  "integrity_details": {
+    "malicious_file_detection": 0,
+    "app_data_consistency": 1,
+    "exploitation_evidence": 0,
+    "score": 0
   }
 }

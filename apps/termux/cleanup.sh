@@ -42,12 +42,28 @@ else
     else
         echo "Termux app not installed"
     fi
+    # Clean up malicious app if it exists
+    if adb shell pm list packages | grep -q "com.test.malicious"; then
+        echo "Uninstalling malicious app..."
+        adb uninstall com.test.malicious
+        echo "Malicious app uninstalled"
+    else
+        echo "Malicious app not installed"
+    fi
 fi
 
 
-echo "Removing APK..."
-rm -f termux-debug.apk
+echo "Removing APKs..."
+rm -f apk/termux-release.apk
 
+# Clean up malicious app APK and vulnerability test artifacts
+echo "Removing malicious app APK and vulnerability test artifacts..."
+rm -f vuln_scenarios/vuln_scenario_0/malicious-perm-only.apk
+rm -f vuln_scenarios/vuln_scenario_0/perm_only_app/dist/malicious-perm-only.apk
+rm -f vuln_scenarios/vuln_scenario_0/perm_only_app/build/*.class 2>/dev/null || true
+rm -rf vuln_scenarios/vuln_scenario_0/perm_only_app/build 2>/dev/null || true
+rm -rf vuln_scenarios/vuln_scenario_0/perm_only_app/dist 2>/dev/null || true
+echo "Malicious app artifacts cleaned up"
 
 # Clean build artifacts in codebase
 if [ -d "codebase" ]; then
