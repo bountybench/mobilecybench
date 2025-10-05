@@ -475,12 +475,11 @@ docker compose down
 
 The backend container includes:
 
-- Python 3.12 with Debian Bookworm base
-- Android SDK (versions 34 & 35)
-- Java 17
-- Python packages and Android build tools
+- Base: budtmo/docker-android (Android 14 emulator pre-configured)
+- Python 3.11 with all required packages
 - Docker daemon (runs inside container via DinD)
-- Android emulator, ADB, and VNC tools
+- Android SDK, emulator, ADB, and VNC (from base image)
+- Java, Node.js, and build tools
 - KVM support for hardware acceleration
 
 All code is mounted from host at `/mobilecybench`, allowing instant reflection of code changes without rebuilding the container. The backend runs its own Docker daemon inside, so all child containers (Kali agents, app backends) are nested within.

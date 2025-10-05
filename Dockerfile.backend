@@ -1,121 +1,86 @@
 # syntax=docker/dockerfile:1.4
-FROM python:3.12-bookworm
+# Use budtmo/docker-android as base - it includes Android SDK, emulator, Java, VNC
+FROM budtmo/docker-android:emulator_14.0
 
+USER root
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYENV_ROOT=/root/.pyenv
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
-ENV ANDROID_SDK_ROOT=/root/.android-sdk
-ENV ANDROID_HOME=/root/.android-sdk
 ENV GRADLE_USER_HOME=/root/.gradle
-ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/emulator:${ANDROID_HOME}/tools:${ANDROID_HOME}/tools/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$JAVA_HOME/bin"
-ENV DISPLAY=:0
+ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:$PATH"
 WORKDIR /mobilecybench
 
-# Install base dependencies
-RUN set -eux; \
-    apt-get update; \
+# Install essential build tools
+RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      ca-certificates curl gnupg lsb-release wget unzip git build-essential \
-      openjdk-17-jdk-headless ca-certificates-java \
-      gcc make libffi-dev libssl-dev libxml2-dev libxslt1-dev zlib1g-dev \
-      netcat-openbsd tree jq libbz2-dev libreadline-dev libsqlite3-dev liblzma-dev \
-      sudo procps iproute2 iputils-ping apt-transport-https \
-      libglu1-mesa-dev libpulse0 libxcursor1 libxrandr2 libxinerama1 libxi6 \
-      php-cli uuid-runtime xvfb x11vnc fluxbox wmctrl libpulse-dev \
-      libxshmfence-dev libdbus-glib-1-2 openssh-client \
-      qemu-user-static binfmt-support htop lsof \
-      pass gnupg \
-      qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils cpu-checker \
-      x11-utils x11-xserver-utils dbus-x11 \
-    ; \
-    mkdir -p /root/.cache/pip /var/lib/docker; \
+      software-properties-common \
+      ca-certificates \
+      curl \
+      gnupg \
+      wget \
+      git \
+      build-essential \
+      libffi-dev \
+      libssl-dev \
+      libpq-dev \
+      netcat-openbsd \
+      procps \
+      sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python 3.11 from deadsnakes PPA
+RUN add-apt-repository ppa:deadsnakes/ppa -y && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+      python3.11 \
+      python3.11-dev \
+      python3.11-venv \
+      python3-pip \
+    && rm -rf /var/lib/apt/lists/* && \
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
+    update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+
+# Install Docker for DinD
+RUN mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+      docker-ce \
+      docker-ce-cli \
+      containerd.io \
+      docker-buildx-plugin \
+      docker-compose-plugin \
+    && rm -rf /var/lib/apt/lists/* && \
+    mkdir -p /var/lib/docker
+
+# Install Node.js 20
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Docker
-RUN set -eux; \
-    mkdir -p /etc/apt/keyrings; \
-    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg; \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; \
-    rm -rf /var/lib/apt/lists/*
+# Configure git
+RUN git config --global user.email "temp@example.com" && \
+    git config --global user.name "Temp"
 
-# Java symlink for architecture
-RUN set -eux; \
-    arch="$(dpkg --print-architecture)"; \
-    if [ "$arch" = "amd64" ]; then \
-      ln -sf /usr/lib/jvm/java-17-openjdk-amd64 /usr/lib/jvm/java-17-openjdk || true; \
-    elif [ "$arch" = "arm64" ]; then \
-      ln -sf /usr/lib/jvm/java-17-openjdk-arm64 /usr/lib/jvm/java-17-openjdk || true; \
-    fi
-
-# install pyenv (lightweight)
-RUN git clone https://github.com/pyenv/pyenv.git $PYENV_ROOT \
-    && mkdir -p $PYENV_ROOT/plugins \
-    && git clone https://github.com/pyenv/pyenv-virtualenv.git $PYENV_ROOT/plugins/pyenv-virtualenv
+# Install Python dependencies
 COPY requirements.txt /mobilecybench/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
-    bash -lc "python -m pip install --upgrade pip setuptools wheel && pip install -r /mobilecybench/requirements.txt"
+    python3 -m pip install --break-system-packages --ignore-installed --upgrade pip setuptools wheel && \
+    pip install --break-system-packages -r /mobilecybench/requirements.txt
 
-# install Android cmdline-tools and core SDK components
-RUN set -eux; \
-    mkdir -p "${ANDROID_SDK_ROOT}/cmdline-tools"; \
-    curl -fSL "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -o /tmp/cmdline-tools.zip; \
-    unzip -q /tmp/cmdline-tools.zip -d /tmp; \
-    mv /tmp/cmdline-tools "${ANDROID_SDK_ROOT}/cmdline-tools/latest"; \
-    rm -f /tmp/cmdline-tools.zip; \
-    PATH="${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools" ; \
-    yes | sdkmanager --licenses >/dev/null 2>&1 || true; \
-    sdkmanager "platform-tools" "platforms;android-34" "platforms;android-35" "build-tools;34.0.0" "build-tools;35.0.0" >/dev/null || true; \
-    sdkmanager "emulator" || echo "Emulator package not available"; \
-    sdkmanager "system-images;android-34;google_apis;x86_64" || echo "x86_64 system images not available"; \
-    if [ -x "${ANDROID_SDK_ROOT}/platform-tools/adb" ]; then ln -sf "${ANDROID_SDK_ROOT}/platform-tools/adb" /usr/bin/adb || true; fi
-
-# Write gradle props
-RUN set -eux; \
-    mkdir -p /root/.gradle; \
-    printf '%s\n' \
-    'org.gradle.caching=true' \
-    'org.gradle.daemon=true' \
-    'org.gradle.parallel=true' \
-    'org.gradle.configureondemand=true' > /root/.gradle/gradle.properties
-
-# Install Node and Yarn
-RUN set -eux; \
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends nodejs; \
-    corepack enable; \
-    corepack prepare yarn@stable --activate; \
-    rm -rf /var/lib/apt/lists/*
-
-# Configures git; Necessary for git commands to work in the container
-RUN git config --global user.email "temp@example.com" \
-    && git config --global user.name "Temp"
-
-# copy entrypoint scripts and install bridge shim as /usr/local/bin/adb
+# Copy scripts
 COPY tools/dockerd_entrypoint.sh /usr/local/bin/dockerd_entrypoint.sh
 COPY tools/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY tools/setup_submodules.sh /usr/local/bin/setup_submodules.sh
-COPY tools/bridge_shim.py /usr/local/bin/adb
-COPY docker/start-xvfb.sh /usr/local/bin/start-xvfb.sh
-COPY docker/start-vnc.sh /usr/local/bin/start-vnc.sh
-COPY docker/start-emulator-headless.sh /usr/local/bin/start-emulator-headless.sh
-RUN chmod +x /usr/local/bin/dockerd_entrypoint.sh /usr/local/bin/entrypoint.sh \
-    /usr/local/bin/setup_submodules.sh /usr/local/bin/adb \
-    /usr/local/bin/start-xvfb.sh /usr/local/bin/start-vnc.sh \
-    /usr/local/bin/start-emulator-headless.sh
+RUN chmod +x /usr/local/bin/dockerd_entrypoint.sh /usr/local/bin/entrypoint.sh /usr/local/bin/setup_submodules.sh
 
-# Create directories for results and logs
-RUN mkdir -p /mobilecybench/results /mobilecybench/logs
+# Create directories
+RUN mkdir -p /mobilecybench/results /mobilecybench/logs /root/.gradle
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s \
   CMD docker info >/dev/null 2>&1 || exit 1
-# Expose backend port and emulator/debugging ports
-# 7999: Backend API
-# 5037: ADB server
-# 5554-5555: Emulator console/adb
-# 5900: VNC server
+
 EXPOSE 7999 5037 5554 5555 5900
+
 ENTRYPOINT ["dockerd_entrypoint.sh"]
 CMD ["/usr/local/bin/entrypoint.sh"]
