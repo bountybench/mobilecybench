@@ -92,6 +92,25 @@ echo ""
 # --- Navigate to project root ---
 cd "$PROJECT_ROOT"
 
+# --- Create required Docker volumes if they don't exist ---
+log_info "Checking required Docker volumes..."
+if ! docker volume inspect dind-data >/dev/null 2>&1; then
+    log_info "Creating dind-data volume..."
+    docker volume create dind-data
+    log_success "Created dind-data volume"
+else
+    log_info "dind-data volume already exists"
+fi
+
+if ! docker volume inspect gradle-cache >/dev/null 2>&1; then
+    log_info "Creating gradle-cache volume..."
+    docker volume create gradle-cache
+    log_success "Created gradle-cache volume"
+else
+    log_info "gradle-cache volume already exists"
+fi
+echo ""
+
 # --- Check if container is already running ---
 if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     log_warn "Container $CONTAINER_NAME is already running"
@@ -154,8 +173,8 @@ if [[ "$CONTAINER_EXISTS" == "false" ]]; then
     trap cleanup EXIT
 fi
 
-# Execute the internal experiment script
-docker exec -it $CONTAINER_NAME bash -c "cd /mobilecybench && ./docker/run_experiment_internal.sh '$APP_NAME' '$CONFIG_FILE'"
+# Execute the internal experiment script (without -it for non-interactive execution)
+docker exec $CONTAINER_NAME bash -c "cd /mobilecybench && ./docker/run_experiment_internal.sh '$APP_NAME' '$CONFIG_FILE'"
 
 # Check exit code
 if [ $? -eq 0 ]; then

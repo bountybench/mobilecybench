@@ -19,19 +19,25 @@ else
   log_info "No SSH key at /root/.ssh/id_rsa – skipping."
 fi
 
-# GPG Key Setup for Docker credential store
-gpg --batch --passphrase '' \
-    --quick-gen-key "Docker Helper (machine)" default default 0 && \
-FPR=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr:/ {print $10; exit}') && \
-pass init "$FPR" && \
-curl -fsSL "$(curl -s https://api.github.com/repos/docker/docker-credential-helpers/releases/latest \
-               | grep browser_download_url \
-               | grep 'docker-credential-pass.*linux-'$(dpkg --print-architecture) \
-               | cut -d '"' -f 4)" \
-     -o /usr/local/bin/docker-credential-pass && \
-chmod +x /usr/local/bin/docker-credential-pass && \
-mkdir -p /root/.docker && \
-echo '{"credsStore":"pass"}' > /root/.docker/config.json
+# GPG Key Setup for Docker credential store (optional - skip if pass not available)
+if command -v pass >/dev/null 2>&1; then
+    log_info "Setting up Docker credential store with pass..."
+    gpg --batch --passphrase '' \
+        --quick-gen-key "Docker Helper (machine)" default default 0 && \
+    FPR=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr:/ {print $10; exit}') && \
+    pass init "$FPR" && \
+    curl -fsSL "$(curl -s https://api.github.com/repos/docker/docker-credential-helpers/releases/latest \
+                   | grep browser_download_url \
+                   | grep 'docker-credential-pass.*linux-'$(dpkg --print-architecture) \
+                   | cut -d '"' -f 4)" \
+         -o /usr/local/bin/docker-credential-pass && \
+    chmod +x /usr/local/bin/docker-credential-pass && \
+    mkdir -p /root/.docker && \
+    echo '{"credsStore":"pass"}' > /root/.docker/config.json
+    log_info "Docker credential store configured."
+else
+    log_info "pass command not found - skipping Docker credential store setup."
+fi
 
 check_dockerd() {
     docker info > /dev/null 2>&1
@@ -42,17 +48,47 @@ log_info "Checking if Docker daemon is already running..."
 if check_dockerd; then
     log_info "Docker daemon is already running"
 else
-    log_info "Starting Docker daemon..."
-    dockerd > /var/log/dockerd.log 2>&1 &
+    log_info "Configuring iptables to use legacy mode (for macOS compatibility)..."
+    # Use iptables-legacy to avoid nftables issues on macOS/ARM64
+    update-alternatives --set iptables /usr/sbin/iptables-legacy 2>/dev/null || true
+    update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy 2>/dev/null || true
 
-    log_info "Waiting for Docker daemon to come up..."
-    timeout 30 sh -c "while (! docker info > /dev/null 2>&1); do sleep 1; done"
-    if [ $? -ne 0 ]; then
-        log_error "Docker daemon failed to start within 30 seconds."
-        cat /var/log/dockerd.log
+    log_info "Starting Docker daemon..."
+    # Disable iptables to work around kernel module issues in Docker-in-Docker on macOS
+    dockerd --iptables=false --ip-masq=false > /var/log/dockerd.log 2>&1 &
+    DOCKERD_PID=$!
+    log_info "Docker daemon started with PID: $DOCKERD_PID"
+
+    log_info "Waiting for Docker daemon to come up (max 60 seconds)..."
+    ELAPSED=0
+    while [ $ELAPSED -lt 60 ]; do
+        if docker info > /dev/null 2>&1; then
+            log_info "Docker daemon is ready!"
+            break
+        fi
+
+        # Check if dockerd process is still running
+        if ! kill -0 $DOCKERD_PID 2>/dev/null; then
+            log_error "Docker daemon process died!"
+            log_error "Last 50 lines of dockerd log:"
+            tail -50 /var/log/dockerd.log
+            exit 1
+        fi
+
+        echo -n "."
+        sleep 2
+        ELAPSED=$((ELAPSED + 2))
+    done
+    echo ""
+
+    if [ $ELAPSED -ge 60 ]; then
+        log_error "Docker daemon failed to become ready within 60 seconds."
+        log_error "dockerd is still running but not responding. Last 50 lines of log:"
+        tail -50 /var/log/dockerd.log
         exit 1
     fi
-    log_info "Docker daemon is running."
+
+    log_info "Docker daemon is running and ready."
 fi
 
 log_info "Starting main process: $*"

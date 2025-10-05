@@ -269,7 +269,7 @@ class MobileCybenchRunner:
                 )
         else:
             self._exit_with_error(
-                f"Unsupported Build Type Detected: {self.config["build_type"]}"
+                f"Unsupported Build Type Detected: {self.config['build_type']}"
             )
 
         for script in required_scripts:

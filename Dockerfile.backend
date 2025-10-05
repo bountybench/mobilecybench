@@ -25,6 +25,7 @@ RUN apt-get update && \
       netcat-openbsd \
       procps \
       sudo \
+      pass \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python 3.11 from deadsnakes PPA

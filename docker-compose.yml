@@ -21,7 +21,7 @@ services:
     environment:
       - ANDROID_HOME=/root/.android-sdk
       - ANDROID_SDK_ROOT=/root/.android-sdk
-      - JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+      - JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
       - DISPLAY=${DISPLAY:-:0}
       - TZ=UTC
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
