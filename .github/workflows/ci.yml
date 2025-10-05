@@ -187,8 +187,6 @@ jobs:
       - name: Install dependencies
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libpulse0
           python -m pip install --upgrade pip -q
           pip install -r requirements.txt -q
           pip install -e .
@@ -343,8 +341,7 @@ jobs:
       matrix:
         test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
         setup_mode: ${{ fromJson(needs.setup.outputs.setup_modes) }}
-      fail-fast: false  
-      max-parallel: 3 
+      fail-fast: false
     
     steps:
       - name: Checkout code
@@ -790,8 +787,7 @@ jobs:
     strategy:
       matrix:
         setup_mode: ${{ fromJson(needs.setup.outputs.setup_modes) }}
-      fail-fast: false  
-      max-parallel: 3
+      fail-fast: false
     
     steps:
       - name: Checkout code
