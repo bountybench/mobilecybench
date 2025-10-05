@@ -6,10 +6,6 @@ from docker_setup import HOST_ADB_SERVER, get_kali
 from fastmcp import FastMCP
 from ui_connection import EmulatorState, get_ui_state
 
-# Simple logging setup
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
-logger = logging.getLogger(__name__)
-
 mcp = FastMCP(name="Mobile Cyber MCP", stateless_http=True)
 
 
