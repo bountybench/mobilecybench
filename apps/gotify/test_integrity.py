@@ -85,7 +85,9 @@ def check_database_integrity():
             violations.append(f"Expected {expected_users} users, found {user_count}")
 
         if admin_count != expected_admins:
-            violations.append(f"Expected {expected_admins} admin users, found {admin_count}")
+            violations.append(
+                f"Expected {expected_admins} admin users, found {admin_count}"
+            )
 
         if violations:
             print(f"Integrity violations: {'; '.join(violations)}", file=sys.stderr)
