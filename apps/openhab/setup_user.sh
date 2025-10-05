@@ -7,7 +7,26 @@ KARAF_READY_TIMEOUT=${KARAF_READY_TIMEOUT:-120}
 # KARAF options
 KARAF_PASSWORD=${KARAF_PASSWORD:-}
 KARAF_SSH_KEY=${KARAF_SSH_KEY:-}
-HARDCODED_TEST_USER=${HARDCODED_TEST_USER:-"testuser:testpassword:user"}
+
+# Get user credentials from environment (set by setup.sh)
+ADMINUSER_PASSWORD=${ADMINUSER_PASSWORD:-}
+NONADMINUSER_PASSWORD=${NONADMINUSER_PASSWORD:-}
+
+# Function to read secrets from JSON file if not already loaded
+read_secrets() {
+  local secrets_file="$SCRIPT_DIR/secrets.json"
+  if [ -f "$secrets_file" ] && command -v jq >/dev/null 2>&1; then
+    # Only read if not already set by parent script
+    if [ -z "$ADMINUSER_PASSWORD" ]; then
+      ADMINUSER_PASSWORD=$(jq -r '.adminuser_password' "$secrets_file" 2>/dev/null || echo "")
+    fi
+    if [ -z "$NONADMINUSER_PASSWORD" ]; then
+      NONADMINUSER_PASSWORD=$(jq -r '.nonadminuser_password' "$secrets_file" 2>/dev/null || echo "")
+    fi
+  else
+    LOG "Warning: secrets.json not found or jq not available, using default users"
+  fi
+}
 
 # helpers
 LOG()  { printf "%s\n" "$*" >&2; }
@@ -129,12 +148,9 @@ karaf_exec() {
 }
 
 create_test_users() {
-  # minimal: expect HARDCODED_TEST_USER=username:password:group
-  e="$HARDCODED_TEST_USER"
-  IFS=':' read -r username password group <<< "$e"
-  [ -n "$username" ] || { LOG "No test user configured; skipping"; return 0; }
-  LOG "Attempting to create test user '$username' (group=${group:-user}) via karaf"
+  # Create multiple users from secrets or use the hardcoded test user as fallback
   LOG "create_test_users: KARAF_SSH_KEY=${KARAF_SSH_KEY:-<none>} KARAF_PASSWORD=${KARAF_PASSWORD:+<set>}"
+  
   # wait for karaf port to be available (simple loop with timeout)
   start=$(date +%s); timeout=${KARAF_TCP_TIMEOUT}
   tcp_check_count=0
@@ -154,10 +170,7 @@ create_test_users() {
   done
   LOG "create_test_users: karaf SSH port is available after $tcp_check_count attempts"
 
-  # Wait until Karaf actually accepts commands over SSH. It's common for the
-  # TCP port to be open while the SSH service (or the OpenHAB Karaf shell) is
-  # still initializing. Attempt a harmless karaf command in a loop until it
-  # returns successfully or we hit a timeout.
+  # Wait until Karaf actually accepts commands over SSH
   start_ready=$(date +%s); ready_timeout=${KARAF_READY_TIMEOUT}
   check_count=0
   LOG "create_test_users: waiting for karaf to become responsive..."
@@ -173,8 +186,6 @@ create_test_users() {
       break
     fi
     
-    # If there are transient connection errors or auth problems, keep retrying
-    # for a while as the service finishes starting up.
     if [ $(( $(date +%s) - start_ready )) -ge $ready_timeout ]; then
       LOG "create_test_users: karaf not responsive after $check_count attempts; output saved to /tmp/karaf_users_list_out"
       ERR "Timed out waiting for karaf to become responsive (>${ready_timeout}s). See /tmp/karaf_users_list_out"
@@ -189,31 +200,57 @@ create_test_users() {
     read -t "$delay" -N 1 < /dev/null 2>/dev/null || true
   done
 
-  # Directly attempt to add the user (best-effort) with retries and
-  # detection for common transient SSH errors. We no longer query the
-  # existing user list before adding.
+  # Create users based on available credentials
+  local users_created=0
+  
+  # Create adminuser  
+  if [ -n "$ADMINUSER_PASSWORD" ]; then
+    create_user "adminuser" "$ADMINUSER_PASSWORD" "administrator"
+    users_created=$((users_created + 1))
+  fi
+  
+  # Create nonadminuser
+  if [ -n "$NONADMINUSER_PASSWORD" ]; then
+    create_user "nonadminuser" "$NONADMINUSER_PASSWORD" "user"
+    users_created=$((users_created + 1))
+  fi
+  
+  # Log warning if no users were created
+  if [ $users_created -eq 0 ]; then
+    LOG "Warning: No user credentials found in secrets.json - no users created"
+  fi
+}
+
+create_user() {
+  local username="$1"
+  local password="$2" 
+  local group="$3"
+  
+  LOG "Attempting to create user '$username' (group=${group}) via karaf"
+  
+  # Directly attempt to add the user with retries
   max_attempts=5
   attempt=0
   add_ok=1
   while [ $attempt -lt $max_attempts ]; do
     attempt=$((attempt+1))
-    LOG "create_test_users: running 'openhab:users add' (attempt $attempt/$max_attempts)"
-    if karaf_exec "openhab:users add $username $password ${group:-user};" >/tmp/karaf_users_add_out 2>&1; then
+    LOG "create_user: running 'openhab:users add' for $username (attempt $attempt/$max_attempts)"
+    if karaf_exec "openhab:users add $username $password $group;" >/tmp/karaf_users_add_out_$username 2>&1; then
       LOG "Added user '$username'"
       add_ok=0
       break
     fi
     rc=$?
-    LOG "create_test_users: 'openhab:users add' failed (rc=$rc). Output saved to /tmp/karaf_users_add_out"
+    LOG "create_user: 'openhab:users add' failed for $username (rc=$rc). Output saved to /tmp/karaf_users_add_out_$username"
     # If output mentions 'already exists', treat as success
-    if grep -qi "already exists" /tmp/karaf_users_add_out 2>/dev/null; then
+    if grep -qi "already exists" /tmp/karaf_users_add_out_$username 2>/dev/null; then
       LOG "User '$username' already exists (detected from karaf output)"
       add_ok=0
       break
     fi
     # If it's a transient network/connection reset, retry after adaptive delay
-    if grep -qiE "connection reset|connection refused|broken pipe|timed out" /tmp/karaf_users_add_out 2>/dev/null; then
-      LOG "create_test_users: transient SSH error detected; will retry"
+    if grep -qiE "connection reset|connection refused|broken pipe|timed out" /tmp/karaf_users_add_out_$username 2>/dev/null; then
+      LOG "create_user: transient SSH error detected for $username; will retry"
       # Use adaptive backoff: 0.5s first attempt, 1s second, 2s thereafter
       local backoff_delay="0.5"
       if [ $attempt -eq 2 ]; then
@@ -229,10 +266,10 @@ create_test_users() {
   done
 
   if [ $add_ok -ne 0 ]; then
-    LOG "create_test_users: Failed to add user after $max_attempts attempts; see /tmp/karaf_users_add_out"
-    LOG "--- BEGIN /tmp/karaf_users_add_out ---"
-    sed -n '1,200p' /tmp/karaf_users_add_out 2>/dev/null || true
-    LOG "---  END  /tmp/karaf_users_add_out ---"
+    LOG "create_user: Failed to add user '$username' after $max_attempts attempts; see /tmp/karaf_users_add_out_$username"
+    LOG "--- BEGIN /tmp/karaf_users_add_out_$username ---"
+    sed -n '1,200p' /tmp/karaf_users_add_out_$username 2>/dev/null || true
+    LOG "---  END  /tmp/karaf_users_add_out_$username ---"
     return 1
   fi
 }
@@ -241,6 +278,9 @@ create_test_users() {
 
 main() {
   LOG "Running setup_user.sh for OpenHAB Karaf SSH and user setup"
+
+  # Read secrets from JSON file if not already loaded by parent script
+  read_secrets
 
   # Ensure we have the required authentication method
   if [ -z "${KARAF_PASSWORD:-}" ]; then

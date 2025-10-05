@@ -11,10 +11,25 @@ LOG() { printf "%s\n" "$*" >&2; }
 ERR() { printf "ERROR: %s\n" "$*" >&2; exit 1; }
 
 
-HARDCODED_TEST_USER="${HARDCODED_TEST_USER:-testuser:testpassword:user}"
-
 KARAF_SSH_KEY=${KARAF_SSH_KEY:-}
 KARAF_PASSWORD=${KARAF_PASSWORD:-}
+
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Function to read secrets from JSON file
+read_secrets() {
+  local secrets_file="$ROOT_DIR/secrets.json"
+  if [ -f "$secrets_file" ] && command -v jq >/dev/null 2>&1; then
+    # Extract user credentials from secrets.json
+    ADMINUSER_PASSWORD=$(jq -r '.adminuser_password' "$secrets_file" 2>/dev/null || echo "")
+    NONADMINUSER_PASSWORD=$(jq -r '.nonadminuser_password' "$secrets_file" 2>/dev/null || echo "")
+  else
+    LOG "Warning: secrets.json not found or jq not available"
+  fi
+}
+
+# Read secrets
+read_secrets
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -80,27 +95,39 @@ karaf_exec_local() {
   return 2
 }
 
-# Attempt to remove the configured HARDCODED_TEST_USER from OpenHAB via karaf.
-remove_test_user() {
-  if [ -z "${HARDCODED_TEST_USER:-}" ]; then
-    LOG "No HARDCODED_TEST_USER configured; nothing to remove."
-    return 0
-  fi
-
-  IFS=':' read -r username password group <<< "$HARDCODED_TEST_USER"
-  username=${username:-}
-  if [ -z "$username" ]; then
-    LOG "Malformed HARDCODED_TEST_USER: '$HARDCODED_TEST_USER'; skipping user removal."
-    return 0
-  fi
-
-  LOG "Attempting to remove test user: $username"
-
+# Attempt to remove test users from OpenHAB via karaf.
+remove_test_users() {
+  # Remove users based on available credentials or use the hardcoded test user as fallback
+  local users_removed=0
+  
   # Check if karaf is reachable first; run a harmless command
   if ! karaf_exec_local "openhab:users list" >/tmp/karaf_users_out 2>&1; then
-    LOG "Karaf not reachable or command failed; cannot remove user '$username'. See /tmp/karaf_users_out for details if available."
+    LOG "Karaf not reachable or command failed; cannot remove users. See /tmp/karaf_users_out for details if available."
     return 2
   fi
+  
+  # Remove adminuser  
+  if [ -n "${ADMINUSER_PASSWORD:-}" ]; then
+    remove_user "adminuser"
+    users_removed=$((users_removed + 1))
+  fi
+  
+  # Remove nonadminuser
+  if [ -n "${NONADMINUSER_PASSWORD:-}" ]; then
+    remove_user "nonadminuser"
+    users_removed=$((users_removed + 1))
+  fi
+  
+  # Log if no users were removed
+  if [ $users_removed -eq 0 ]; then
+    LOG "No user credentials found in secrets.json - no users to remove"
+  fi
+}
+
+remove_user() {
+  local username="$1"
+  
+  LOG "Attempting to remove user: $username"
 
   if ! grep -Fq "$username" /tmp/karaf_users_out; then
     LOG "User '$username' not present according to karaf; nothing to remove."
@@ -108,15 +135,15 @@ remove_test_user() {
   fi
 
   # Run remove command. The command to remove is 'openhab:users remove <username>'
-  if karaf_exec_local "openhab:users remove $username;" >/tmp/karaf_users_remove_out 2>&1; then
+  if karaf_exec_local "openhab:users remove $username;" >/tmp/karaf_users_remove_out_$username 2>&1; then
     LOG "Removed user '$username'"
     return 0
   else
-    if grep -qi "not found" /tmp/karaf_users_remove_out 2>/dev/null; then
+    if grep -qi "not found" /tmp/karaf_users_remove_out_$username 2>/dev/null; then
       LOG "User '$username' was not found by karaf during removal; continuing"
       return 0
     fi
-    LOG "Failed to remove user '$username'. Inspect /tmp/karaf_users_remove_out for details."
+    LOG "Failed to remove user '$username'. Inspect /tmp/karaf_users_remove_out_$username for details."
     return 1
   fi
 }
@@ -211,7 +238,7 @@ if [ -f "$compose_file" ] && command -v docker >/dev/null 2>&1; then
 fi
 
 # Attempt to remove any test user created by setup.sh (best-effort; won't abort on failures)
-if ! remove_test_user; then
+if ! remove_test_users; then
   LOG "Test user removal returned non-zero; continuing with remaining cleanup results." || true
 fi
 

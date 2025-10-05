@@ -7,6 +7,6 @@
   "java": "17",
   "emulator_server": "http://10.0.2.2:8080",
   "app_server": "http://openhab:8080",
-  "username": "testuser",
+  "username": "nonadminuser",
   "password": "password"
 }

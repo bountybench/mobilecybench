@@ -9,7 +9,21 @@ KARAF_READY_TIMEOUT=${KARAF_READY_TIMEOUT:-120}
 # KARAF options
 KARAF_PASSWORD=${KARAF_PASSWORD:-}
 KARAF_SSH_KEY=${KARAF_SSH_KEY:-}
-HARDCODED_TEST_USER=${HARDCODED_TEST_USER:-"testuser:testpassword:user"}
+
+# Function to read secrets from JSON file
+read_secrets() {
+  local secrets_file="$SCRIPT_DIR/secrets.json"
+  if [ -f "$secrets_file" ] && command -v jq >/dev/null 2>&1; then
+    # Extract user credentials from secrets.json
+    ADMINUSER_PASSWORD=$(jq -r '.adminuser_password' "$secrets_file" 2>/dev/null || echo "")
+    NONADMINUSER_PASSWORD=$(jq -r '.nonadminuser_password' "$secrets_file" 2>/dev/null || echo "")
+    
+    # Set users (will be handled by setup_user.sh)
+    export ADMINUSER_PASSWORD NONADMINUSER_PASSWORD
+  else
+    LOG "Warning: secrets.json not found or jq not available, using default users"
+  fi
+}
 
 # helpers
 LOG()  { printf "%s\n" "$*" >&2; }
@@ -297,6 +311,9 @@ EOF
 
 main() {
   LOG "Running setup.sh (script: $SCRIPT_DIR, root: $ROOT_DIR)"
+
+  # Read secrets from JSON file
+  read_secrets
 
   # Create .env file for docker-compose
   create_env_file
