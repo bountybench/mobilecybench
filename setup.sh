@@ -569,7 +569,7 @@ EOF
 
 # Main setup function
 main() {
-    pip install . -e
+    pip install -e .
 
     log "Starting Android Emulator Setup"
     log "SDK version: $SDK_VERSION"
