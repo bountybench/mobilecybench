@@ -22,3 +22,5 @@ ssh_key
 !apps/**/.env
 token_usage.jsonl
 agent/mcp/ngrok.yml
+*.code-workspace
+screenshots/*

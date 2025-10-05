@@ -15,6 +15,7 @@ from agent.prompts.prompts import (
     SUBMISSION_INSTRUCTIONS,
     TARGET_HOST_EXAMPLE,
 )
+from utils.agent_utils import take_screenshot
 from utils.logger import logger, logger_manager
 from utils.mcp_utils import get_mcp_server_config
 from utils.token_tracker import TokenTracker
@@ -163,9 +164,29 @@ class CustomAgent:
 
             # conversation_id handles context
             # can also pass input_messages to add new messages if needed
+            if self.screenshot_enabled:
+                try:
+                    screenshot_result = take_screenshot()
+                    if screenshot_result.get("success"):
+                        screenshot_input = {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "input_image",
+                                    "image_url": f"data:image/png;base64,{screenshot_result.get('image_data', '')}",
+                                }
+                            ],
+                        }
+                        logger.info(
+                            "Screenshot taken successfully. Including screenshot in input messages"
+                        )
+                except Exception as e:
+                    logger.error(f"Error taking screenshot: {e}")
+
             resp = self.provider.call(
                 model=self.model,
                 conversation_id=self.conversation_id,
+                input_messages=[screenshot_input] if screenshot_input else None,
                 tools=[self.mcp_config],
                 max_output_tokens=self.max_model_response_tokens,
                 timeout_ms=self.timeout_ms,
