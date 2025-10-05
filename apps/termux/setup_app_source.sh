@@ -1,6 +1,15 @@
 #!/bin/bash
 set -e
 
+# Cross-platform sed in-place function
+sed_inplace() {
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "$@"
+    else
+        sed -i "$@"
+    fi
+}
+
 echo "Setting up Termux app source code..."
 
 # Check if codebase submodule exists
@@ -67,19 +76,19 @@ patch_gradle_config() {
     # Patch gradle-wrapper.properties to use compatible Gradle version for SDK 35
     if [[ -f "gradle/wrapper/gradle-wrapper.properties" ]]; then
         echo "Updating Gradle version to 8.13 for Java 21 compatibility..."
-        sed -i '' 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip|' gradle/wrapper/gradle-wrapper.properties
+        sed_inplace 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip|' gradle/wrapper/gradle-wrapper.properties
     fi
     
     # Patch build.gradle to use compatible Android Gradle Plugin for Java 21
     if [[ -f "build.gradle" ]]; then
         echo "Updating Android Gradle Plugin to 8.9.3 for Java 21 compatibility..."
-        sed -i '' 's|classpath.*gradle:.*|classpath '\''com.android.tools.build:gradle:8.9.3'\''|' build.gradle
+        sed_inplace 's|classpath.*gradle:.*|classpath '\''com.android.tools.build:gradle:8.9.3'\''|' build.gradle
     fi
     
     # Patch gradle.properties for Java 17 module access and SDK consistency
     if [[ -f "gradle.properties" ]]; then
         echo "Patching gradle.properties for Java 17 compatibility with SDK $sdk_version..."
-        sed -i '' \
+        sed_inplace \
             -e 's|^org.gradle.jvmargs=.*|org.gradle.jvmargs=-Xmx2048M --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED|' \
             -e "s|^targetSdkVersion=.*|targetSdkVersion=$sdk_version|" \
             -e "s|^compileSdkVersion=.*|compileSdkVersion=$sdk_version|" \
@@ -93,33 +102,33 @@ patch_gradle_config() {
         
         # Remove any existing android:exported attributes to avoid duplicates
         echo "Removing any existing android:exported attributes to avoid duplicates..."
-        sed -i '' '/android:exported=/d' app/src/main/AndroidManifest.xml
+        sed_inplace '/android:exported=/d' app/src/main/AndroidManifest.xml
         
         # Add android:exported="true" to TermuxActivity (.app.TermuxActivity)
-        sed -i '' 's|android:name="\.app\.TermuxActivity"|android:name=".app.TermuxActivity"\n            android:exported="true"|' app/src/main/AndroidManifest.xml
+        sed_inplace 's|android:name="\.app\.TermuxActivity"|android:name=".app.TermuxActivity"\n            android:exported="true"|' app/src/main/AndroidManifest.xml
         
         # Add android:exported="true" to TermuxFileReceiverActivity (.filepicker.TermuxFileReceiverActivity)
-        sed -i '' 's|android:name="\.filepicker\.TermuxFileReceiverActivity"|android:name=".filepicker.TermuxFileReceiverActivity"\n            android:exported="true"|' app/src/main/AndroidManifest.xml
+        sed_inplace 's|android:name="\.filepicker\.TermuxFileReceiverActivity"|android:name=".filepicker.TermuxFileReceiverActivity"\n            android:exported="true"|' app/src/main/AndroidManifest.xml
     fi
     
     # Patch Java source code to fix deprecated API calls for SDK 33+
     if [[ -f "app/src/main/java/com/termux/app/activities/HelpActivity.java" ]]; then
         echo "Patching HelpActivity.java to remove deprecated setAppCacheEnabled() call..."
         # Remove the deprecated setAppCacheEnabled() call
-        sed -i '' '/settings\.setAppCacheEnabled(false);/d' app/src/main/java/com/termux/app/activities/HelpActivity.java
+        sed_inplace '/settings\.setAppCacheEnabled(false);/d' app/src/main/java/com/termux/app/activities/HelpActivity.java
     fi
     
     # Patch NDK version for Apple Silicon compatibility and add namespace for AGP 8.0+
     if [[ -f "app/build.gradle" ]]; then
         echo "Patching app/build.gradle to use Apple Silicon compatible NDK version and add namespace..."
         # Update NDK version to one that supports Apple Silicon (NDK r25+)
-        sed -i '' 's|ndkVersion = System.getenv("JITPACK_NDK_VERSION") ?: project.properties.ndkVersion|ndkVersion = "24.0.8215888"|' app/build.gradle
+        sed_inplace 's|ndkVersion = System.getenv("JITPACK_NDK_VERSION") ?: project.properties.ndkVersion|ndkVersion = "24.0.8215888"|' app/build.gradle
         
         # Add namespace for AGP 8.0+ compatibility (required when using AGP 8.0+)
         if ! grep -q "namespace" app/build.gradle; then
             echo "Adding namespace to app/build.gradle for AGP 8.0+ compatibility..."
             # Find the android block and add namespace after it
-            sed -i '' '/^android {/a\
+            sed_inplace '/^android {/a\
     namespace '\''com.termux'\''
 ' app/build.gradle
         fi
@@ -128,7 +137,7 @@ patch_gradle_config() {
     # Remove any ndk.dir override in local.properties that might force old NDK
     if [[ -f "local.properties" ]]; then
         echo "Removing ndk.dir override from local.properties..."
-        sed -i '' '/^ndk\.dir=/d' local.properties
+        sed_inplace '/^ndk\.dir=/d' local.properties
     fi
     
     # Patch AndroidManifest.xml to add android:exported attributes
@@ -142,35 +151,35 @@ patch_gradle_config() {
         # Add android:exported="true" to TermuxActivity (.app.TermuxActivity) - more precise matching
         if grep -q 'android:name="\.app\.TermuxActivity"' app/src/main/AndroidManifest.xml; then
             echo "Adding android:exported to TermuxActivity..."
-            sed -i '' '/android:name="\.app\.TermuxActivity"/a\
+            sed_inplace '/android:name="\.app\.TermuxActivity"/a\
             android:exported="true"' app/src/main/AndroidManifest.xml
         fi
         
         # Add android:exported="true" to TermuxFileReceiverActivity (.filepicker.TermuxFileReceiverActivity) - more precise matching
         if grep -q 'android:name="\.filepicker\.TermuxFileReceiverActivity"' app/src/main/AndroidManifest.xml; then
             echo "Adding android:exported to TermuxFileReceiverActivity..."
-            sed -i '' '/android:name="\.filepicker\.TermuxFileReceiverActivity"/a\
+            sed_inplace '/android:name="\.filepicker\.TermuxFileReceiverActivity"/a\
             android:exported="true"' app/src/main/AndroidManifest.xml
         fi
         
         # Add android:exported="true" to HomeActivity (activity-alias with intent filter)
         if grep -q 'android:name="\.HomeActivity"' app/src/main/AndroidManifest.xml; then
             echo "Adding android:exported to HomeActivity..."
-            sed -i '' '/android:name="\.HomeActivity"/a\
+            sed_inplace '/android:name="\.HomeActivity"/a\
             android:exported="true"' app/src/main/AndroidManifest.xml
         fi
         
         # Add android:foregroundServiceType to TermuxService for Android 14+ (SDK 34+)
         if grep -q 'android:name="\.app\.TermuxService"' app/src/main/AndroidManifest.xml; then
             echo "Adding android:foregroundServiceType to TermuxService..."
-            sed -i '' '/android:name="\.app\.TermuxService"/a\
+            sed_inplace '/android:name="\.app\.TermuxService"/a\
             android:foregroundServiceType="dataSync"' app/src/main/AndroidManifest.xml
         fi
         
         # Add FOREGROUND_SERVICE_DATA_SYNC permission for Android 14+ (SDK 34+)
         if ! grep -q 'android.permission.FOREGROUND_SERVICE_DATA_SYNC' app/src/main/AndroidManifest.xml; then
             echo "Adding FOREGROUND_SERVICE_DATA_SYNC permission..."
-            sed -i '' '/<uses-permission android:name="android.permission.FOREGROUND_SERVICE" \/>/a\
+            sed_inplace '/<uses-permission android:name="android.permission.FOREGROUND_SERVICE" \/>/a\
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" \/>' app/src/main/AndroidManifest.xml
         fi
     fi
@@ -178,7 +187,7 @@ patch_gradle_config() {
     # Patch HelpActivity.java to remove deprecated setAppCacheEnabled() call
     if [[ -f "app/src/main/java/com/termux/app/activities/HelpActivity.java" ]]; then
         echo "Patching HelpActivity.java to remove deprecated setAppCacheEnabled() call..."
-        sed -i '' '/settings\.setAppCacheEnabled(false);/d' app/src/main/java/com/termux/app/activities/HelpActivity.java
+        sed_inplace '/settings\.setAppCacheEnabled(false);/d' app/src/main/java/com/termux/app/activities/HelpActivity.java
     fi
     
     # Fix missing AppCompat style reference in termux-shared
@@ -187,36 +196,36 @@ patch_gradle_config() {
         # First restore the original file to avoid multiple replacements
         git checkout HEAD -- termux-shared/src/main/java/com/termux/shared/interact/MessageDialogUtils.java
         # Replace the problematic style reference with the default theme (simpler approach)
-        sed -i '' 's/R\.style\.Theme_AppCompat_Light_Dialog/0/' termux-shared/src/main/java/com/termux/shared/interact/MessageDialogUtils.java
+        sed_inplace 's/R\.style\.Theme_AppCompat_Light_Dialog/0/' termux-shared/src/main/java/com/termux/shared/interact/MessageDialogUtils.java
     fi
     
     # Fix PendingIntent mutability flags for Android 12+ (SDK 31+)
     if [[ -f "app/src/main/java/com/termux/app/TermuxService.java" ]]; then
         echo "Fixing PendingIntent mutability flags in TermuxService for Android 12+..."
         # Replace PendingIntent.getActivity(this, 0, notificationIntent, 0) with FLAG_IMMUTABLE
-        sed -i '' 's/PendingIntent\.getActivity(this, 0, notificationIntent, 0)/PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/TermuxService.java
+        sed_inplace 's/PendingIntent\.getActivity(this, 0, notificationIntent, 0)/PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/TermuxService.java
         
         # Replace PendingIntent.getService(this, 0, exitIntent, 0) with FLAG_IMMUTABLE
-        sed -i '' 's/PendingIntent\.getService(this, 0, exitIntent, 0)/PendingIntent.getService(this, 0, exitIntent, PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/TermuxService.java
+        sed_inplace 's/PendingIntent\.getService(this, 0, exitIntent, 0)/PendingIntent.getService(this, 0, exitIntent, PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/TermuxService.java
         
         # Replace PendingIntent.getService(this, 0, toggleWakeLockIntent, 0) with FLAG_IMMUTABLE
-        sed -i '' 's/PendingIntent\.getService(this, 0, toggleWakeLockIntent, 0)/PendingIntent.getService(this, 0, toggleWakeLockIntent, PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/TermuxService.java
+        sed_inplace 's/PendingIntent\.getService(this, 0, toggleWakeLockIntent, 0)/PendingIntent.getService(this, 0, toggleWakeLockIntent, PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/TermuxService.java
     fi
     
     # Fix PendingIntent mutability flags in CrashUtils for Android 12+ (SDK 31+)
     if [[ -f "app/src/main/java/com/termux/app/utils/CrashUtils.java" ]]; then
         echo "Fixing PendingIntent mutability flags in CrashUtils for Android 12+..."
         # Replace PendingIntent.getActivity(context, 0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT) with FLAG_IMMUTABLE
-        sed -i '' 's/PendingIntent\.getActivity(context, 0, notificationIntent, PendingIntent\.FLAG_UPDATE_CURRENT)/PendingIntent.getActivity(context, 0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/utils/CrashUtils.java
+        sed_inplace 's/PendingIntent\.getActivity(context, 0, notificationIntent, PendingIntent\.FLAG_UPDATE_CURRENT)/PendingIntent.getActivity(context, 0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/utils/CrashUtils.java
         # Also fix any other PendingIntent.getActivity calls without flags
-        sed -i '' 's/PendingIntent\.getActivity(context, 0, notificationIntent, 0)/PendingIntent.getActivity(context, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/utils/CrashUtils.java
+        sed_inplace 's/PendingIntent\.getActivity(context, 0, notificationIntent, 0)/PendingIntent.getActivity(context, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/utils/CrashUtils.java
     fi
     
     # Fix BroadcastReceiver registration for Android 12+ (SDK 31+)
     if [[ -f "app/src/main/java/com/termux/app/TermuxActivity.java" ]]; then
         echo "Fixing BroadcastReceiver registration for Android 12+..."
         # Replace registerReceiver(mTermuxActivityBroadcastReceiver, intentFilter) with RECEIVER_NOT_EXPORTED
-        sed -i '' 's/registerReceiver(mTermuxActivityBroadcastReceiver, intentFilter)/registerReceiver(mTermuxActivityBroadcastReceiver, intentFilter, Context.RECEIVER_NOT_EXPORTED)/' app/src/main/java/com/termux/app/TermuxActivity.java
+        sed_inplace 's/registerReceiver(mTermuxActivityBroadcastReceiver, intentFilter)/registerReceiver(mTermuxActivityBroadcastReceiver, intentFilter, Context.RECEIVER_NOT_EXPORTED)/' app/src/main/java/com/termux/app/TermuxActivity.java
     fi
     
     # Fix missing drawable reference in app module
@@ -227,7 +236,7 @@ patch_gradle_config() {
             # First restore the original file to avoid multiple replacements
             git checkout HEAD -- "$java_file"
             # Replace R.drawable.ic_error_notification with com.termux.shared.R.drawable.ic_error_notification
-            sed -i '' 's/R\.drawable\.ic_error_notification/com.termux.shared.R.drawable.ic_error_notification/' "$java_file"
+            sed_inplace 's/R\.drawable\.ic_error_notification/com.termux.shared.R.drawable.ic_error_notification/' "$java_file"
         fi
     done
     
@@ -237,7 +246,7 @@ patch_gradle_config() {
     # Add namespace to terminal-emulator
     if [[ -f "terminal-emulator/build.gradle" ]] && ! grep -q "namespace" terminal-emulator/build.gradle; then
         echo "Adding namespace 'com.termux.terminal' to terminal-emulator/build.gradle..."
-        sed -i '' "/^android {/a\\
+        sed_inplace "/^android {/a\\
     namespace 'com.termux.terminal'
 " terminal-emulator/build.gradle
     fi
@@ -245,7 +254,7 @@ patch_gradle_config() {
     # Add namespace to termux-shared
     if [[ -f "termux-shared/build.gradle" ]] && ! grep -q "namespace" termux-shared/build.gradle; then
         echo "Adding namespace 'com.termux.shared' to termux-shared/build.gradle..."
-        sed -i '' "/^android {/a\\
+        sed_inplace "/^android {/a\\
     namespace 'com.termux.shared'
 " termux-shared/build.gradle
     fi
@@ -253,7 +262,7 @@ patch_gradle_config() {
     # Add namespace to terminal-view
     if [[ -f "terminal-view/build.gradle" ]] && ! grep -q "namespace" terminal-view/build.gradle; then
         echo "Adding namespace 'com.termux.view' to terminal-view/build.gradle..."
-        sed -i '' "/^android {/a\\
+        sed_inplace "/^android {/a\\
     namespace 'com.termux.view'
 " terminal-view/build.gradle
     fi
@@ -265,7 +274,7 @@ patch_gradle_config() {
             echo "Fixing $build_file..."
             if grep -q 'classifier "sources"' "$build_file"; then
                 echo "Found classifier in $build_file, replacing..."
-                sed -i '' 's|classifier "sources"|archiveClassifier.set("sources")|' "$build_file"
+                sed_inplace 's|classifier "sources"|archiveClassifier.set("sources")|' "$build_file"
                 echo "Replacement completed for $build_file"
             else
                 echo "No classifier found in $build_file"
@@ -281,7 +290,7 @@ patch_gradle_config() {
         if [[ -f "$build_file" ]]; then
             echo "Removing problematic publishing block from $build_file..."
             # Remove the entire afterEvaluate block that contains publishing
-            sed -i '' '/^afterEvaluate {/,/^}$/d' "$build_file"
+            sed_inplace '/^afterEvaluate {/,/^}$/d' "$build_file"
             echo "Publishing block removed from $build_file"
         fi
     done
@@ -291,7 +300,7 @@ patch_gradle_config() {
     for manifest_file in terminal-emulator/src/main/AndroidManifest.xml termux-shared/src/main/AndroidManifest.xml terminal-view/src/main/AndroidManifest.xml; do
         if [[ -f "$manifest_file" ]]; then
             echo "Removing package attribute from $manifest_file..."
-            sed -i '' 's/ package="[^"]*"//' "$manifest_file"
+            sed_inplace 's/ package="[^"]*"//' "$manifest_file"
         fi
     done
     
@@ -299,14 +308,14 @@ patch_gradle_config() {
     echo "Removing hard-coded ABI filters to allow dynamic selection..."
     if grep -q "abiFilters" app/build.gradle; then
         # Remove any existing abiFilters
-        sed -i '' '/abiFilters/d' app/build.gradle
+        sed_inplace '/abiFilters/d' app/build.gradle
     fi
     
     # Add packaging options to fix native library extraction
     echo "Adding packaging options for native library compatibility..."
     if ! grep -q "packagingOptions" app/build.gradle; then
         # Add packagingOptions to the android block
-        sed -i '' '/^android {/a\
+        sed_inplace '/^android {/a\
     packagingOptions {\
         jniLibs {\
             useLegacyPackaging = true\
