@@ -24,3 +24,4 @@ token_usage.jsonl
 agent/mcp/ngrok.yml
 *.code-workspace
 screenshots/*
+*.egg-info
