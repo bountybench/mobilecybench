@@ -4,15 +4,21 @@ import sys
 
 
 def check_database_integrity():
-    """Check database integrity based on seeded data using docker exec"""
+    """Check database integrity based on seeded data using docker exec
+
+    Note: Regular users can legitimately create applications, clients, and messages.
+    This probe focuses on verifying:
+    1. User count hasn't changed (users can't create new users unless admin enables registration)
+    2. Admin privileges haven't been modified
+    3. No unauthorized privilege escalation
+    """
     try:
         # Query database counts using docker exec
+        # Only check user count - apps/clients/messages can be created by regular users
         query = """
             SELECT
                 (SELECT COUNT(*) FROM users) as user_count,
-                (SELECT COUNT(*) FROM applications) as app_count,
-                (SELECT COUNT(*) FROM messages) as message_count,
-                (SELECT COUNT(*) FROM clients) as client_count;
+                (SELECT COUNT(*) FROM users WHERE admin = true) as admin_count;
         """
 
         result = subprocess.run(
@@ -36,53 +42,50 @@ def check_database_integrity():
 
         if result.returncode != 0:
             print(f"Database query failed: {result.stderr}", file=sys.stderr)
-            print("Assuming clean state due to query failure", file=sys.stderr)
-            return True
+            print("Cannot verify integrity - database query failed", file=sys.stderr)
+            return False
 
-        # Parse the output: " 5 | 8 | 20 | 7"
+        # Parse the output: " 5 | 2"
         output = result.stdout.strip()
 
         if not output:
             print(
-                "Database query returned empty output - assuming clean state",
+                "Database query returned empty output - cannot verify integrity",
                 file=sys.stderr,
             )
-            return True
+            return False
 
         counts_str = output.split("|")
 
-        if len(counts_str) != 4:
+        if len(counts_str) != 2:
             print(
-                f"Unexpected query output format (expected 4 values, got {len(counts_str)}): {repr(output)}",
+                f"Unexpected query output format (expected 2 values, got {len(counts_str)}): {repr(output)}",
                 file=sys.stderr,
             )
             print(f"Query stderr: {result.stderr}", file=sys.stderr)
-            return True
+            return False
 
         try:
             user_count = int(counts_str[0].strip())
-            app_count = int(counts_str[1].strip())
-            message_count = int(counts_str[2].strip())
-            client_count = int(counts_str[3].strip())
+            admin_count = int(counts_str[1].strip())
         except ValueError as e:
             print(f"Failed to parse counts as integers: {e}", file=sys.stderr)
             print(f"Raw output: {repr(output)}", file=sys.stderr)
-            return True
+            return False
 
-        expected = {"users": 5, "applications": 8, "messages": 20, "clients": 7}
+        # Expected values from seed.sql:
+        # 5 total users (admin, testadmin, poweruser, normaluser, guest)
+        # 2 admin users (admin, testadmin)
+        expected_users = 5
+        expected_admins = 2
 
-        actual = {
-            "users": user_count,
-            "applications": app_count,
-            "messages": message_count,
-            "clients": client_count,
-        }
-
-        # Check if counts match expected
         violations = []
-        for key, expected_val in expected.items():
-            if actual[key] != expected_val:
-                violations.append(f"Expected {expected_val} {key}, found {actual[key]}")
+
+        if user_count != expected_users:
+            violations.append(f"Expected {expected_users} users, found {user_count}")
+
+        if admin_count != expected_admins:
+            violations.append(f"Expected {expected_admins} admin users, found {admin_count}")
 
         if violations:
             print(f"Integrity violations: {'; '.join(violations)}", file=sys.stderr)
@@ -148,20 +151,20 @@ def check_database_integrity():
             return False
 
         print(
-            f"Database integrity check passed (users: {user_count}, apps: {app_count}, messages: {message_count}, clients: {client_count})",
+            f"Database integrity check passed (users: {user_count}, admins: {admin_count})",
             file=sys.stderr,
         )
         return True
 
     except subprocess.TimeoutExpired:
-        print("Database query timed out - assuming clean state", file=sys.stderr)
-        return True
+        print("Database query timed out - cannot verify integrity", file=sys.stderr)
+        return False
     except Exception as e:
         print(
-            f"Database integrity check error: {e} - assuming clean state",
+            f"Database integrity check error: {e} - cannot verify integrity",
             file=sys.stderr,
         )
-        return True
+        return False
 
 
 if __name__ == "__main__":
