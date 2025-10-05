@@ -1,0 +1,122 @@
+# syntax=docker/dockerfile:1.4
+# Orchestrator container for running MobileCybench experiments
+# This container manages Docker-in-Docker and executes experiment workflows
+
+FROM python:3.12-bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYENV_ROOT=/root/.pyenv
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$JAVA_HOME/bin"
+ENV ANDROID_SDK_ROOT=/root/.android-sdk
+ENV ANDROID_HOME=/root/.android-sdk
+ENV GRADLE_USER_HOME=/root/.gradle
+WORKDIR /mobilecybench
+
+# Install base dependencies
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      ca-certificates curl gnupg lsb-release wget unzip git build-essential \
+      openjdk-17-jdk-headless ca-certificates-java \
+      gcc make libffi-dev libssl-dev libxml2-dev libxslt1-dev zlib1g-dev \
+      netcat-openbsd tree jq libbz2-dev libreadline-dev libsqlite3-dev liblzma-dev \
+      sudo procps iproute2 iputils-ping apt-transport-https \
+      libglu1-mesa-dev libpulse0 libxcursor1 libxrandr2 libxinerama1 libxi6 \
+      php-cli uuid-runtime xvfb x11vnc fluxbox wmctrl libpulse-dev \
+      libxshmfence-dev libdbus-glib-1-2 openssh-client \
+      qemu-user-static binfmt-support htop lsof pass \
+      qemu-system-x86 qemu-system-arm \
+    ; \
+    mkdir -p /root/.cache/pip /var/lib/docker; \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Docker for Docker-in-Docker capability
+RUN set -eux; \
+    mkdir -p /etc/apt/keyrings; \
+    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg; \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; \
+    rm -rf /var/lib/apt/lists/*
+
+# Fix Java path for different architectures
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    if [ "$arch" = "amd64" ]; then \
+      ln -sf /usr/lib/jvm/java-17-openjdk-amd64 /usr/lib/jvm/java-17-openjdk || true; \
+      echo "export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> /root/.bashrc; \
+    elif [ "$arch" = "arm64" ]; then \
+      ln -sf /usr/lib/jvm/java-17-openjdk-arm64 /usr/lib/jvm/java-17-openjdk || true; \
+      echo "export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64" >> /root/.bashrc; \
+    fi
+
+# Install pyenv (lightweight)
+RUN git clone https://github.com/pyenv/pyenv.git $PYENV_ROOT \
+    && mkdir -p $PYENV_ROOT/plugins \
+    && git clone https://github.com/pyenv/pyenv-virtualenv.git $PYENV_ROOT/plugins/pyenv-virtualenv
+
+# Copy and install Python requirements
+COPY requirements.txt /mobilecybench/requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    bash -lc "python -m pip install --upgrade pip setuptools wheel && pip install -r /mobilecybench/requirements.txt"
+
+# Install Android cmdline-tools and core SDK components
+RUN set -eux; \
+    mkdir -p "${ANDROID_SDK_ROOT}/cmdline-tools"; \
+    curl -fSL "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -o /tmp/cmdline-tools.zip; \
+    unzip -q /tmp/cmdline-tools.zip -d /tmp; \
+    mv /tmp/cmdline-tools "${ANDROID_SDK_ROOT}/cmdline-tools/latest"; \
+    rm -f /tmp/cmdline-tools.zip; \
+    PATH="${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools" ; \
+    yes | sdkmanager --licenses >/dev/null 2>&1 || true; \
+    # Install base SDK components \
+    sdkmanager "platform-tools" "platforms;android-35" "build-tools;34.0.0" >/dev/null || true; \
+    # Only install emulator on x86_64 (not available for ARM64 Linux) \
+    arch="$(dpkg --print-architecture)"; \
+    if [ "$arch" = "amd64" ]; then \
+        sdkmanager "emulator" >/dev/null || true; \
+        echo "Emulator package installed for x86_64"; \
+    else \
+        echo "Note: Android emulator not available for ARM64 Linux - will use host emulator via bridge"; \
+    fi
+
+# Setup gradle properties
+RUN set -eux; \
+    mkdir -p /root/.gradle; \
+    printf '%s\n' \
+    'org.gradle.caching=true' \
+    'org.gradle.daemon=true' \
+    'org.gradle.parallel=true' \
+    'org.gradle.configureondemand=true' > /root/.gradle/gradle.properties
+
+# Install Node.js and Yarn for JavaScript-based apps
+RUN set -eux; \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends nodejs; \
+    corepack enable; \
+    corepack prepare yarn@stable --activate; \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy entrypoint scripts and install bridge shim as ADB
+COPY tools/dockerd_entrypoint.sh /usr/local/bin/dockerd_entrypoint.sh
+COPY tools/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY tools/setup_submodules.sh /usr/local/bin/setup_submodules.sh
+COPY tools/bridge_shim.py /usr/local/bin/adb
+RUN chmod +x /usr/local/bin/dockerd_entrypoint.sh /usr/local/bin/entrypoint.sh \
+    /usr/local/bin/setup_submodules.sh /usr/local/bin/adb
+
+# Create directories for results and logs
+RUN mkdir -p /mobilecybench/results /mobilecybench/logs /root/.gradle
+
+# Health check for Docker daemon
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s \
+  CMD docker info >/dev/null 2>&1 || exit 1
+
+# Expose port for backend API (if needed)
+EXPOSE 7999
+
+# Use dockerd_entrypoint.sh to start Docker daemon, then run experiments
+ENTRYPOINT ["dockerd_entrypoint.sh"]
+CMD ["/usr/local/bin/entrypoint.sh"]

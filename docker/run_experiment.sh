@@ -7,7 +7,7 @@ set -e
 set -o pipefail
 
 # --- Configuration ---
-CONTAINER_NAME="mobilecybench-backend"
+CONTAINER_NAME="mobilecybench-orchestrator"
 COMPOSE_FILE="docker-compose.yml"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -121,16 +121,16 @@ fi
 
 # --- Build the container if needed ---
 if [[ "$CONTAINER_EXISTS" == "false" ]]; then
-    log_info "Building backend container..."
-    docker compose build backend
+    log_info "Building orchestrator container..."
+    docker compose build orchestrator
     log_success "Container built successfully"
     echo ""
 fi
 
 # --- Start the container ---
 if [[ "$CONTAINER_EXISTS" == "false" ]]; then
-    log_info "Starting backend container..."
-    docker compose up -d backend
+    log_info "Starting orchestrator container..."
+    docker compose up -d orchestrator
 
     log_info "Waiting for Docker daemon to start inside container..."
 

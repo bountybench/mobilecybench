@@ -394,16 +394,16 @@ See the [Agent README](agent/README.md)
 
 ## 5. Docker Container Setup (For Scale)
 
-For running experiments at scale with a consistent runtime environment, MobileCybench provides a unified backend container. This approach uses Docker-in-Docker (DinD), similar to BountyBench:
+For running experiments at scale with a consistent runtime environment, MobileCybench provides an **orchestrator-based architecture**, similar to BountyBench but with key improvements:
 
 ### Key Features
 
-- **Unified Architecture**: Single container for both API server and experiment orchestration
-- **Live Code Mounting**: Codebase is mounted (not copied), so code changes don't require rebuilds
+- **Orchestrator Container**: Main container that manages experiment execution with Docker-in-Docker capability
+- **Live Code Mounting**: Codebase is mounted (not copied), so code changes don't require rebuilds - addressing BountyBench's limitation
 - **Pre-installed Dependencies**: Android SDK, emulator, build tools, and Python packages ready to go
-- **Docker-in-Docker**: Runs its own Docker daemon - all child containers run INSIDE the backend
-- **Hardware Acceleration**: KVM support for faster emulator performance
-- **Multi-SDK Support**: Multiple Android SDK versions pre-installed
+- **Docker-in-Docker**: Orchestrator runs its own Docker daemon - all child containers run INSIDE the orchestrator
+- **Complete Isolation**: No access to host Docker daemon for security
+- **Parallel Execution**: Run multiple orchestrator containers for parallel experiments
 
 ### Quick Start (Automated)
 
@@ -421,7 +421,7 @@ Run everything with a single command from the host:
 ```
 
 This script automatically:
-- Builds the backend container (if not already built)
+- Builds the orchestrator container (if not already built)
 - Starts the container with Docker-in-Docker
 - Sets up the emulator and app backend
 - Runs the experiment
@@ -433,12 +433,12 @@ This script automatically:
 For more control, you can manage the container manually:
 
 ```bash
-# 1. Build and start the backend
-docker compose build backend
-docker compose up -d backend
+# 1. Build and start the orchestrator
+docker compose build orchestrator
+docker compose up -d orchestrator
 
 # 2. Exec into the container
-docker exec -it mobilecybench-backend bash
+docker exec -it mobilecybench-orchestrator bash
 
 # 3. Inside the container, run experiments
 cd /mobilecybench
@@ -452,7 +452,7 @@ python3 runner.py owncloud-android runner_config.json
 docker compose down
 ```
 
-**Note on Child Containers:** Each app's `setup.sh` script automatically starts its backend server cluster (databases, app servers, etc.) using the Docker daemon running INSIDE the backend container. All child containers (Kali agents, app backends) run nested inside the backend (true Docker-in-Docker), providing complete isolation from the host system.
+**Note on Child Containers:** Each app's `setup.sh` script automatically starts its backend server cluster (databases, app servers, etc.) using the Docker daemon running INSIDE the orchestrator container. All child containers (Kali agents, app backends) run nested inside the orchestrator (true Docker-in-Docker), providing complete isolation from the host system.
 
 ### Benefits for Experimentation
 
@@ -460,7 +460,14 @@ docker compose down
 2. **Isolation**: Each experiment runs in its own container
 3. **Scalability**: Run multiple experiments in parallel
 4. **Reproducibility**: Docker image captures exact dependency versions
-5. **No Rebuild Required**: Code changes are immediately reflected
+5. **No Rebuild Required**: Code changes are immediately reflected (key improvement over BountyBench)
+
+### Key Improvements Over BountyBench Design
+
+- **Volume Mounting vs. COPY**: Code is mounted as a volume, not copied into the image - eliminating rebuilds on every code change
+- **Separation of Concerns**: Orchestrator handles experiment management, optional backend for simpler use cases
+- **macOS Compatibility**: Docker daemon runs with `--iptables=false` flag for better macOS support
+- **Modern Dependencies**: Python 3.12, Java 17, latest Android SDK for better performance
 
 ### Prerequisites
 
@@ -473,16 +480,20 @@ docker compose down
 
 ### Architecture
 
-The backend container includes:
+The system uses two container types:
 
-- Base: budtmo/docker-android (Android 14 emulator pre-configured)
-- Python 3.11 with all required packages
+**Orchestrator Container** (`Dockerfile.orchestrator`):
+- Python 3.12 base with all experiment dependencies
 - Docker daemon (runs inside container via DinD)
-- Android SDK, emulator, ADB, and VNC (from base image)
-- Java, Node.js, and build tools
-- KVM support for hardware acceleration
+- Android SDK, build tools, Java 17, Node.js 20
+- Manages experiment execution and child containers
 
-All code is mounted from host at `/mobilecybench`, allowing instant reflection of code changes without rebuilding the container. The backend runs its own Docker daemon inside, so all child containers (Kali agents, app backends) are nested within.
+**Backend Container** (`Dockerfile.backend`) - Optional:
+- Base: budtmo/docker-android (Android 14 emulator pre-configured)
+- Simplified container for Android emulator and app services
+- Used when orchestration isn't needed
+
+All code is mounted from host at `/mobilecybench`, allowing instant reflection of code changes without rebuilding the container. The orchestrator runs its own Docker daemon inside, so all child containers (Kali agents, app backends) are nested within.
 
 ### Advanced Usage
 

@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1.4
-# Use budtmo/docker-android as base - it includes Android SDK, emulator, Java, VNC
+# Backend container for Android emulator and app services
+# This container runs the Android emulator and app backends
+# Docker-in-Docker functionality has been moved to Dockerfile.orchestrator
 FROM budtmo/docker-android:emulator_14.0
 
 USER root
@@ -9,7 +11,7 @@ ENV GRADLE_USER_HOME=/root/.gradle
 ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:$PATH"
 WORKDIR /mobilecybench
 
-# Install essential build tools
+# Install essential build tools (without Docker)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       software-properties-common \
@@ -25,7 +27,6 @@ RUN apt-get update && \
       netcat-openbsd \
       procps \
       sudo \
-      pass \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python 3.11 from deadsnakes PPA
@@ -39,20 +40,6 @@ RUN add-apt-repository ppa:deadsnakes/ppa -y && \
     && rm -rf /var/lib/apt/lists/* && \
     update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
     update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
-
-# Install Docker for DinD
-RUN mkdir -p /etc/apt/keyrings && \
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-      docker-ce \
-      docker-ce-cli \
-      containerd.io \
-      docker-buildx-plugin \
-      docker-compose-plugin \
-    && rm -rf /var/lib/apt/lists/* && \
-    mkdir -p /var/lib/docker
 
 # Install Node.js 20
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
@@ -69,19 +56,18 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     python3 -m pip install --break-system-packages --ignore-installed --upgrade pip setuptools wheel && \
     pip install --break-system-packages -r /mobilecybench/requirements.txt
 
-# Copy scripts
-COPY tools/dockerd_entrypoint.sh /usr/local/bin/dockerd_entrypoint.sh
+# Copy scripts (without Docker daemon scripts)
 COPY tools/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY tools/setup_submodules.sh /usr/local/bin/setup_submodules.sh
-RUN chmod +x /usr/local/bin/dockerd_entrypoint.sh /usr/local/bin/entrypoint.sh /usr/local/bin/setup_submodules.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/setup_submodules.sh
 
 # Create directories
 RUN mkdir -p /mobilecybench/results /mobilecybench/logs /root/.gradle
 
+# Health check for the emulator/backend services
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s \
-  CMD docker info >/dev/null 2>&1 || exit 1
+  CMD pgrep -x adb >/dev/null || exit 1
 
 EXPOSE 7999 5037 5554 5555 5900
 
-ENTRYPOINT ["dockerd_entrypoint.sh"]
-CMD ["/usr/local/bin/entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

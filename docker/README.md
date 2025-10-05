@@ -1,20 +1,27 @@
-# MobileCybench Backend Container (Docker-in-Docker)
+# MobileCybench Orchestrator Container (Docker-in-Docker)
 
-The MobileCybench backend container provides a unified runtime environment for both API services and experiment orchestration using Docker-in-Docker (DinD), similar to BountyBench.
+The MobileCybench orchestrator provides a consistent runtime environment for experiment execution at scale using Docker-in-Docker (DinD), similar to BountyBench.
 
 ## Architecture Overview
 
-### Unified Backend Design
+### Container Types
 
-The backend container combines:
+1. **Orchestrator Container** (`Dockerfile.orchestrator`)
+   - Main container for running experiments
+   - Includes Docker-in-Docker capability
+   - Pre-installed dependencies for building apps
+   - Mounts codebase as volume for fast iteration
 
-1. **API Server**: Handles API requests (port 7999)
-2. **Experiment Orchestrator**: Runs Android emulator and spawns child containers
+2. **Backend Container** (`Dockerfile.backend`) - Optional
+   - Simplified container for Android emulator
+   - No Docker-in-Docker capability
+   - Used when orchestration isn't needed
 
-### Docker-in-Docker (DinD)
+### Key Design Principles
 
-- **Internal Docker Daemon**: Runs `dockerd` inside the backend container
-- **Child Containers**: All agent and app backend containers spawn as nested containers
+- **Volume Mounting**: Codebase is mounted (not COPYed) to avoid rebuilds on code changes
+- **Docker-in-Docker**: Orchestrator manages experiment containers internally
+- **Pre-installed Dependencies**: All build tools and SDKs pre-installed for consistency
 - **Complete Isolation**: No access to host Docker daemon
 
 ## Quick Start
@@ -47,14 +54,14 @@ The script automatically:
 For more control:
 
 ```bash
-# 1. Build
-docker compose build backend
+# 1. Build orchestrator
+docker compose build orchestrator
 
-# 2. Start
-docker compose up -d backend
+# 2. Start orchestrator
+docker compose up -d orchestrator
 
 # 3. Run experiment inside container
-docker exec -it mobilecybench-backend bash
+docker exec -it mobilecybench-orchestrator bash
 cd /mobilecybench
 ./setup.sh owncloud-android
 ./start_emulator.sh --yes
@@ -68,7 +75,7 @@ docker compose down
 
 ```
 Host Docker Daemon
-└── mobilecybench-backend (privileged)
+└── mobilecybench-orchestrator (privileged)
     ├── Docker Daemon (running inside)
     ├── Android Emulator
     └── Child Containers (spawned internally)
@@ -78,8 +85,8 @@ Host Docker Daemon
         └── app-server
 ```
 
-**Note**: Run `docker ps` on host → see only `mobilecybench-backend`
-Run `docker ps` inside backend → see all child containers
+**Note**: Run `docker ps` on host → see only `mobilecybench-orchestrator`
+Run `docker ps` inside orchestrator → see all child containers
 
 ## Configuration
 
@@ -112,15 +119,15 @@ GOOGLE_API_KEY=...
 ### Docker Daemon Not Starting
 
 ```bash
-docker logs mobilecybench-backend | grep -i docker
-docker exec mobilecybench-backend docker info
-docker exec mobilecybench-backend tail -f /var/log/dockerd.log
+docker logs mobilecybench-orchestrator | grep -i docker
+docker exec mobilecybench-orchestrator docker info
+docker exec mobilecybench-orchestrator tail -f /var/log/dockerd.log
 ```
 
 ### View Child Containers
 
 ```bash
-docker exec mobilecybench-backend docker ps
+docker exec mobilecybench-orchestrator docker ps
 ```
 
 ### Emulator Performance
@@ -136,15 +143,15 @@ sudo usermod -aG kvm $USER  # then logout/login
 
 ```bash
 # Logs
-docker logs -f mobilecybench-backend
+docker logs -f mobilecybench-orchestrator
 
 # Check internal Docker
-docker exec mobilecybench-backend docker info
-docker exec mobilecybench-backend docker ps
+docker exec mobilecybench-orchestrator docker info
+docker exec mobilecybench-orchestrator docker ps
 
 # Shell access
-docker exec -it mobilecybench-backend bash
+docker exec -it mobilecybench-orchestrator bash
 
 # Stop
-docker compose down backend
+docker compose down orchestrator
 ```

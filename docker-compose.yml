@@ -1,18 +1,23 @@
 services:
-  # Combined Backend + Orchestrator Container (using Docker-in-Docker)
-  backend:
+  # Orchestrator Container for running experiments (using Docker-in-Docker)
+  # This is the main container for running experiments
+  orchestrator:
     build:
       context: .
-      dockerfile: Dockerfile.backend
-    container_name: mobilecybench-backend
+      dockerfile: Dockerfile.orchestrator
+    container_name: mobilecybench-orchestrator
     privileged: true
     # Security options for better emulator compatibility
     security_opt:
       - seccomp:unconfined
     volumes:
-      - dind-data:/var/lib/docker
+      # Mount the codebase as a volume for fast iteration (not COPY)
       - ./:/mobilecybench:rw
+      # Docker-in-Docker data
+      - dind-data:/var/lib/docker
+      # Gradle cache for faster builds
       - gradle-cache:/root/.gradle
+      # Results and logs directories
       - ./logs:/mobilecybench/logs:rw
       - ./results:/mobilecybench/results:rw
       # Please uncomment the following lines if you need to mount SSH keys for the backend service
@@ -21,7 +26,7 @@ services:
     environment:
       - ANDROID_HOME=/root/.android-sdk
       - ANDROID_SDK_ROOT=/root/.android-sdk
-      - JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+      - JAVA_HOME=/usr/lib/jvm/java-17-openjdk
       - DISPLAY=${DISPLAY:-:0}
       - TZ=UTC
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -49,6 +54,35 @@ services:
         reservations:
           cpus: '2'
           memory: 4G
+
+  # Optional: Backend Container for Android emulator and app services
+  # This container can be used if you need a separate backend without orchestration
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: mobilecybench-backend
+    volumes:
+      - ./:/mobilecybench:rw
+      - gradle-cache:/root/.gradle
+      - ./logs:/mobilecybench/logs:rw
+      - ./results:/mobilecybench/results:rw
+    environment:
+      - ANDROID_HOME=/root/.android-sdk
+      - ANDROID_SDK_ROOT=/root/.android-sdk
+      - JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+      - DISPLAY=${DISPLAY:-:0}
+      - TZ=UTC
+    ports:
+      - "7999:7999"    # Backend API
+      - "5037:5037"    # ADB server
+      - "5554:5554"    # Emulator console
+      - "5555:5555"    # Emulator ADB
+      - "5900:5900"    # VNC server
+    networks:
+      - app-network
+    stdin_open: true
+    tty: true
 
 networks:
   app-network:
