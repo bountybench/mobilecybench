@@ -1,9 +1,13 @@
 # MobileCybench Orchestrator Container
 # This container provides a consistent runtime environment for running experiments at scale
 # Based on Ubuntu 22.04 with Android SDK, emulator, and all necessary dependencies
-# Runs Docker-in-Docker to manage app backend containers
+# Uses host Docker socket to manage app backend containers (as sibling containers)
+#
+# IMPORTANT: This uses x86_64 architecture to ensure Android emulator compatibility
+# On ARM64 hosts (Apple Silicon), Docker will use emulation (Rosetta/QEMU)
+# This is necessary because Android emulator binaries are x86_64 only
 
-FROM ubuntu:22.04
+FROM --platform=linux/amd64 ubuntu:22.04
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -52,12 +56,8 @@ RUN apt-get update && apt-get install -y \
     apt-transport-https \
     gnupg \
     lsb-release \
-    # Docker (for Docker-in-Docker to run app backends)
+    # Docker CLI (to interact with host Docker daemon via socket)
     docker.io \
-    docker-compose \
-    containerd \
-    iptables \
-    supervisor \
     # Network tools
     net-tools \
     iputils-ping \
@@ -70,10 +70,24 @@ RUN apt-get update && apt-get install -y \
     vim \
     nano \
     jq \
+    # VNC and X11 for headless emulator (from blog post)
+    x11vnc \
+    xvfb \
+    fluxbox \
+    dbus-x11 \
+    x11-utils \
+    x11-xserver-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Set up Python environment
 RUN python3 -m pip install --upgrade pip setuptools wheel
+
+# Install Node.js (LTS) from official binaries
+RUN curl -fsSL https://nodejs.org/dist/v20.11.0/node-v20.11.0-linux-x64.tar.xz -o /tmp/node.tar.xz && \
+    tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 && \
+    rm /tmp/node.tar.xz && \
+    node --version && \
+    npm --version
 
 # Set environment variables for Android SDK
 ENV ANDROID_HOME=/opt/android-sdk
@@ -125,11 +139,11 @@ RUN ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
 # Install emulator (required for system images)
 RUN ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "emulator" || echo "Emulator package not available"
 
-# Install system images (may not be available for ARM, which is fine)
+# Install x86_64 system images for emulator
+# Note: Using x86_64 images because emulator is x86_64 architecture
 RUN ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
-    "system-images;android-34;google_apis;arm64-v8a" \
-    "system-images;android-35;google_apis;arm64-v8a" \
-    || echo "ARM system images not available, skipping"
+    "system-images;android-34;google_apis;x86_64" \
+    || echo "x86_64 system images not available, skipping"
 
 # Install KVM acceleration support (for better emulator performance)
 # Note: This requires the host to have KVM support and the container to be run with --device /dev/kvm
@@ -163,31 +177,37 @@ RUN mkdir -p /mobilecybench/apps \
     /mobilecybench/logs \
     /mobilecybench/results
 
-# Set up Docker-in-Docker
-# Create directory for Docker data
-RUN mkdir -p /var/lib/docker
+# Install Docker Compose v2 plugin
+# Note: This will communicate with the host Docker daemon via mounted socket
+RUN mkdir -p /usr/local/lib/docker/cli-plugins && \
+    curl -SL "https://github.com/docker/compose/releases/download/v2.24.5/docker-compose-linux-x86_64" -o /usr/local/lib/docker/cli-plugins/docker-compose && \
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose && \
+    # Verify it downloaded correctly
+    test -s /usr/local/lib/docker/cli-plugins/docker-compose || (echo "ERROR: Docker Compose download failed" && exit 1)
 
-# Configure Docker daemon for DinD
-RUN mkdir -p /etc/docker && \
-    echo '{\n\
-  "storage-driver": "overlay2",\n\
-  "log-driver": "json-file",\n\
-  "log-opts": {\n\
-    "max-size": "10m",\n\
-    "max-file": "3"\n\
-  }\n\
-}' > /etc/docker/daemon.json
+# Set up VNC display environment
+ENV DISPLAY=:0
 
 # Expose ports for debugging and services
 # 5037: ADB server
 # 5554-5585: Emulator console/adb ports
-EXPOSE 5037 5554 5555
+# 5900: VNC server
+EXPOSE 5037 5554 5555 5900
 
-# Set up entrypoint script
+# Set up entrypoint and emulator scripts
 COPY docker/orchestrator-entrypoint.sh /usr/local/bin/orchestrator-entrypoint.sh
-RUN chmod +x /usr/local/bin/orchestrator-entrypoint.sh
+COPY docker/start-xvfb.sh /usr/local/bin/start-xvfb.sh
+COPY docker/start-vnc.sh /usr/local/bin/start-vnc.sh
+COPY docker/start-emulator-headless.sh /usr/local/bin/start-emulator-headless.sh
+RUN chmod +x /usr/local/bin/orchestrator-entrypoint.sh \
+    /usr/local/bin/start-xvfb.sh \
+    /usr/local/bin/start-vnc.sh \
+    /usr/local/bin/start-emulator-headless.sh
 
-# Health check - verify Docker daemon is running
+# Note: The codebase will be mounted from the host at runtime via volume mount
+# This allows live code changes without rebuilding the image
+
+# Health check - verify Docker socket connection is working
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD docker info > /dev/null 2>&1 || exit 1
 

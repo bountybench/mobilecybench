@@ -5,30 +5,33 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.orchestrator
+      platforms:
+        - linux/amd64
     image: mobilecybench-orchestrator:latest
     container_name: mobilecybench-orchestrator
+    platform: linux/amd64
 
-    # Privileged mode needed for Docker-in-Docker, KVM, and emulator
+    # Privileged mode needed for KVM acceleration and emulator
     privileged: true
 
-    # Security options for Docker-in-Docker
+    # Security options for better emulator compatibility
     security_opt:
       - seccomp:unconfined
 
-    # Volumes for Docker-in-Docker
+    # Volumes
     volumes:
-      # Mount codebase (READ-WRITE) - this allows live code changes without rebuilding
-      - ./:/mobilecybench:rw
+      # Mount host Docker socket - allows orchestrator to spawn sibling containers
+      # Backend containers (wordpress-db, wordpress-app, etc.) will run as siblings on host
+      # From host: docker ps shows mobilecybench-orchestrator only
+      # From inside: docker ps shows app backend containers only
+      - /var/run/docker.sock:/var/run/docker.sock
 
-      # Docker-in-Docker: Use volume for Docker data (not host socket)
-      - orchestrator-docker-data:/var/lib/docker
+      # Mount codebase (READ-WRITE) for live code changes without rebuilding
+      - ./:/mobilecybench:rw
 
       # Persistent storage for results and logs
       - ./results:/mobilecybench/results:rw
       - ./logs:/mobilecybench/logs:rw
-
-      # Mount /sys/fs/cgroup for Docker-in-Docker (read-write for cgroup management)
-      - /sys/fs/cgroup:/sys/fs/cgroup:rw
 
     # Environment variables
     environment:
@@ -43,8 +46,8 @@ services:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
 
     # Network configuration
-    # Note: With Docker-in-Docker, app backend containers run INSIDE orchestrator
-    # So we don't need shared_net - they communicate via internal Docker network
+    # Orchestrator needs network access to communicate with backend containers
+    # Backend containers are spawned as siblings on host (via socket)
     networks:
       - mobilecybench-net
 
@@ -53,6 +56,7 @@ services:
       - "5037:5037"    # ADB server
       - "5554:5554"    # Emulator console
       - "5555:5555"    # Emulator ADB
+      - "5900:5900"    # VNC server
 
     # Keep container running
     stdin_open: true
@@ -70,11 +74,6 @@ services:
 
     # Working directory
     working_dir: /mobilecybench
-
-volumes:
-  # Persistent volume for Docker-in-Docker data
-  orchestrator-docker-data:
-    driver: local
 
 networks:
   mobilecybench-net:

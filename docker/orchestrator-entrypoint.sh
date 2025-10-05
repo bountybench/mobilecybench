@@ -1,7 +1,7 @@
 #!/bin/bash
 # Orchestrator Container Entrypoint
 # Sets up the environment for running MobileCybench experiments
-# Starts Docker daemon for Docker-in-Docker
+# Verifies connection to host Docker daemon via socket
 
 set -e
 
@@ -9,40 +9,18 @@ echo "============================================"
 echo "MobileCybench Orchestrator Container"
 echo "============================================"
 
-# Start Docker daemon (Docker-in-Docker)
-echo "Starting Docker daemon..."
-
-# Check if dockerd is already running
-if pgrep -x dockerd > /dev/null; then
-    echo "✓ Docker daemon already running"
+# Check Docker connection (using host Docker socket)
+echo "Checking Docker connection to host daemon..."
+if docker info >/dev/null 2>&1; then
+    echo "✓ Connected to host Docker daemon"
+    docker --version
+    echo "Docker containers running on host:"
+    docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
 else
-    # Start dockerd in background
-    # Note: storage-driver is configured in /etc/docker/daemon.json, don't specify it here
-    dockerd \
-        --host=unix:///var/run/docker.sock \
-        --host=tcp://0.0.0.0:2375 \
-        > /var/log/docker.log 2>&1 &
-
-    # Wait for Docker daemon to be ready
-    echo "Waiting for Docker daemon to be ready..."
-    TIMEOUT=30
-    COUNT=0
-    while ! docker info >/dev/null 2>&1; do
-        if [ $COUNT -ge $TIMEOUT ]; then
-            echo "✗ Docker daemon failed to start within ${TIMEOUT} seconds"
-            echo "Check logs: /var/log/docker.log"
-            tail -n 20 /var/log/docker.log
-            exit 1
-        fi
-        sleep 1
-        COUNT=$((COUNT + 1))
-    done
-    echo "✓ Docker daemon started successfully"
+    echo "✗ Failed to connect to Docker daemon"
+    echo "Make sure the container was started with: -v /var/run/docker.sock:/var/run/docker.sock"
+    exit 1
 fi
-
-# Display Docker info
-docker --version
-docker info | head -n 10
 
 # Check Android SDK installation
 echo "Checking Android SDK..."
@@ -96,14 +74,22 @@ java -version 2>&1 | head -n1 || echo "✗ Java not found"
 echo "Checking Python..."
 python3 --version || echo "✗ Python not found"
 
-# Display mounted volumes
+# Display codebase status
 echo ""
-echo "Mounted volumes:"
-ls -la /mobilecybench/ | head -n 20
+echo "Codebase status:"
+echo "Working directory: $(pwd)"
+if [ -d "/mobilecybench" ]; then
+    echo "✓ /mobilecybench directory exists"
+    echo "Key files:"
+    ls -la /mobilecybench/*.sh 2>/dev/null | head -5 || echo "  No shell scripts found"
+else
+    echo "✗ /mobilecybench directory not found"
+fi
 
 echo ""
 echo "============================================"
-echo "Environment ready. Running command: $@"
+echo "Environment ready!"
+echo "To run an experiment: ./docker/run_experiment.sh <app_name>"
 echo "============================================"
 echo ""
 
