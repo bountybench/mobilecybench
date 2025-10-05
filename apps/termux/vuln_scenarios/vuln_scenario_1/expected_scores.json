@@ -19,7 +19,7 @@
     "app_launch_availability": 0, 
     "file_system_availability": 1, 
     "content_provider_availability": 1, 
-    "app_functionality": 1, 
+    "app_functionality": 0, 
     "score": 0
   },
   "confidentiality_details": {
