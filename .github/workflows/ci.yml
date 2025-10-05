@@ -225,7 +225,7 @@ jobs:
           android: false
           dotnet: true
           haskell: true
-          large-packages: true
+          large-packages: false # revert back to true if an app build fails due to disk space
           docker-images: true
           swap-storage: true
 
