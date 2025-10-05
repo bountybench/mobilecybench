@@ -407,7 +407,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: "${{ needs.setup.outputs.java }}"
-          cache: gradle
+          cache: ${{ hashFiles('**/gradle-wrapper.properties', '**/*.gradle*', '**/gradle.properties') != '' && 'gradle' || '' }}
             
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5

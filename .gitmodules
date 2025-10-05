@@ -43,9 +43,6 @@
 [submodule "apps/jellyfin/codebase"]
 	path = apps/jellyfin/codebase
 	url = https://github.com/cy-suite/jellyfin-android
-[submodule "apps/brave/apps/brave/codebase"]
-	path = apps/brave/apps/brave/codebase
-	url = https://github.com/brave/brave-browser.git
 [submodule "apps/brave/codebase"]
 	path = apps/brave/codebase
 	url = https://github.com/cy-suite/brave.git
