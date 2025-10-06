@@ -46,6 +46,3 @@
 [submodule "apps/openhab/codebase"]
 	path = apps/openhab/codebase
 	url = https://github.com/cy-suite/openhab.git
-[submodule "apps/openhab/CODEBASE"]
-	path = apps/openhab/CODEBASE
-	url = https://github.com/cy-suite/openhab.git
