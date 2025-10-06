@@ -49,3 +49,6 @@
 [submodule "apps/keepassdx/codebase"]
 	path = apps/keepassdx/codebase
 	url = https://github.com/Kunzisoft/KeePassDX
+[submodule "apps/openhab/codebase"]
+	path = apps/openhab/codebase
+	url = https://github.com/cy-suite/openhab.git
