@@ -200,11 +200,13 @@ class CommandExecutor:
 
 
 class MobileCybenchRunner:
-    def __init__(self, app_name: str, config: dict):
+    def __init__(self, app_name: str, config: dict, agent_only: bool = False):
         self.app_name = app_name
         self.config = config
+        self.agent_only = agent_only
         self.project_root = project_root
-        self.app_dir = self.project_root / "apps" / app_name
+        if not self.agent_only:
+            self.app_dir = self.project_root / "apps" / app_name
         self.agent_dir = self.project_root / "agent"
         self.cmd = CommandExecutor()
 
@@ -285,6 +287,19 @@ class MobileCybenchRunner:
             )
 
         logger.info("Input validation passed")
+
+    def _validate_agent_only(self):
+        """Validate minimum requirements for agent_only mode"""
+        logger.info("Validating agent_only mode requirements...")
+
+        # Check for required ngrok.yml config file
+        ngrok_config = self.agent_dir / "mcp" / "ngrok.yml"
+        if not ngrok_config.exists():
+            self._exit_with_error(
+                f"Required ngrok.yml config file not found: {ngrok_config}"
+            )
+
+        logger.info("Agent-only validation passed")
 
     def setup_emulator(self):
         """Start and check Android emulator"""
@@ -378,7 +393,8 @@ class MobileCybenchRunner:
         self._setup_env_file()
         self._create_docker_network()
         self._start_containers()
-        self._copy_codebase_to_kali()
+        if not self.agent_only:
+            self._copy_codebase_to_kali()
 
         logger.info("Agent environment setup completed")
         logger.info("✓ Agent environment setup completed")
@@ -437,11 +453,12 @@ class MobileCybenchRunner:
 
         # Set environment variable for docker-compose
         env = os.environ.copy()
-        start_dir = f"/tmp/{self.app_name}_app"
-        env["START_DIR"] = start_dir
+        if not self.agent_only and self.app_name:
+            start_dir = f"/tmp/{self.app_name}_app"
+            env["START_DIR"] = start_dir
+            logger.info(f"Setting START_DIR environment variable: {start_dir}")
+            logger.info(f"Environment variable START_DIR set to: {start_dir}")
 
-        logger.info(f"Setting START_DIR environment variable: {start_dir}")
-        logger.info(f"Environment variable START_DIR set to: {start_dir}")
         logger.info("Starting containers with docker compose...")
 
         try:
@@ -549,8 +566,11 @@ class MobileCybenchRunner:
                 max_context_length=self.config["max_context_length"],
                 screenshot_enabled=self.config["screenshot_mode"],
                 app_name=self.app_name,
+                app_server=getattr(self, "metadata", {}).get(
+                    "app_server", None
+                ),  # default to None if in agent_only mode
                 dry_run=self.config["dry_run"],
-                app_server=self.metadata.get("app_server", None),
+                system_prompt=self.config.get("system_prompt", None),
             )
 
             logger.info("Running agent...")
@@ -657,18 +677,24 @@ class MobileCybenchRunner:
     def run(self):
         """Run the complete pipeline"""
         try:
-            self.validate_input()
-            self.setup_emulator()
-            self.setup_app()
-            self.run_probes_checks()  # Probes consider it a pass if no log file is provided
+            if not self.agent_only:
+                self.validate_input()
+                self.setup_emulator()
+                self.setup_app()
+                self.run_probes_checks()  # Probes consider it a pass if no log file is provided
+            else:
+                # Validate minimum requirements for agent_only mode
+                self._validate_agent_only()
 
             self.setup_agent()
             self.run_agent()
 
-            agent_log_filename = logger_manager.get_log_file_name()
-            log_path = Path(agent_log_filename) if agent_log_filename else None
-            logger.info(f"Agent log file path: {log_path}")
-            self.run_probes_checks(log_file_path=log_path)
+            # Run probe checks after agent execution
+            if not self.agent_only:
+                agent_log_filename = logger_manager.get_log_file_name()
+                log_path = Path(agent_log_filename) if agent_log_filename else None
+                logger.info(f"Agent log file path: {log_path}")
+                self.run_probes_checks(log_file_path=log_path)
 
             logger.info("=" * 60)
             logger.info("PIPELINE COMPLETED SUCCESSFULLY")
@@ -775,9 +801,24 @@ def main():
     parser = argparse.ArgumentParser(
         description="MobileCybench Runner - Orchestrates AI-driven mobile app security testing"
     )
+
+    # Add agent_only as a flag first to check if it's set
     parser.add_argument(
-        "app_name", help="Name of the app to test (must exist in apps/ directory)"
+        "--agent-only",
+        action="store_true",
+        dest="agent_only",
+        help="Run only the agent, skipping emulator setup, app setup, and probes checks",
     )
+
+    # Add app_name as optional (will be validated later if not in agent_only mode)
+    parser.add_argument(
+        "app_name",
+        nargs="?",
+        default=None,
+        help="Name of the app to test (must exist in apps/ directory). Required unless --agent-only is specified.",
+    )
+
+    # Add config_file as optional
     parser.add_argument(
         "config_file",
         nargs="?",
@@ -786,6 +827,10 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Argument validation: app_name is required unless agent-only is True
+    if not args.agent_only and not args.app_name:
+        parser.error("app_name is required unless --agent-only is specified")
 
     # Load configuration from file
     # If relative path, make it relative to the script directory
@@ -798,7 +843,7 @@ def main():
     config = load_config(config_path)
 
     # Create and run the runner
-    runner = MobileCybenchRunner(args.app_name, config)
+    runner = MobileCybenchRunner(args.app_name, config, args.agent_only)
     return runner.run()
 
 

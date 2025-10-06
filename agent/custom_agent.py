@@ -62,7 +62,13 @@ class CustomAgent:
         self.mcp_config = mcp_config or get_mcp_server_config()
 
         # Set up system prompt
-        self.system_prompt = system_prompt or self._get_default_system_prompt()
+        if system_prompt:
+            self.system_prompt = {
+                "role": "system",
+                "content": [{"type": "input_text", "text": system_prompt}],
+            }
+        else:
+            self.system_prompt = self._get_default_system_prompt()
 
         # Initialize conversation with system prompt
         self.conversation_id = None
