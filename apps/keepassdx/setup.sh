@@ -2,7 +2,6 @@
 adb uninstall com.kunzisoft.keepass.libre
 set -e
 # create venv for py
-sudo apt install python3-venv
 python3 -m venv venv
 source venv/bin/activate
 
