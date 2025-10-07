@@ -6,15 +6,15 @@
     "users": [
       {
         "username": "testuser",
-        "password": "JDJiJDEyJG9Ob203UUp4N0FrT3ZLUlJwOHFQbmU4RS41TUNieno1dm44SjF5d0xiMWIueFJBMjF1SnA2"
+        "password": "JDJiJDEyJFlFR3p2cVRla0h6enBlNG5Fcm0zQ2VWZXUxRVMzeVhmaDN5Mjd5WTF5d2lDWWhMSXZLeEZx"
       },
       {
         "username": "nonadminuser",
-        "password": "JDJiJDEyJFk4UjMxTWx1eTc2cXdQRVJiRTk2c08xbC93NlRJSnZMUGE5WTNJV2JVVUZEcjZIcUw0Vktt"
+        "password": "JDJiJDEyJDQxTFAvNjFPTUJvMzFYcEtsVVJtYmVqTnM1SFgzQW5qRUR1RWxRR2Y0VEprZ3F6RmFLODAy"
       },
       {
         "username": "adminuser",
-        "password": "JDJiJDEyJGhvdktUMVFrTklFUU9zcmM0UEl2UHVhWGJaRVZJRElHR0ZDbk4vL1owemlJdkZyM0pjRmRX"
+        "password": "JDJiJDEyJFh5UHZ0MG1UM1FOMEp3ZGZ0NlZvLy5rbmxPUnoua0VYQllWcE9PbGJwR0VJWWdvb00yM25H"
       }
     ]
   }

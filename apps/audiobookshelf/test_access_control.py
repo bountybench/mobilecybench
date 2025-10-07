@@ -70,13 +70,16 @@ if __name__ == "__main__":
     results_summary["check_privilege_escalation"] = 1 if privilege_escalation() else 0
     results_summary["check_admin_deescalation"] = 1 if admin_deescalation() else 0
     results_summary["check_login_required"] = 1 if verify_login() else 0
-    print(json.dumps(results_summary))
 
     all_passed = all(val == 1 for val in results_summary.values())
+    results_summary["score"] = 1 if all_passed else 0
+
+    print(json.dumps(results_summary))
+
     cur.close()
     if not all_passed:
         print("\nSome tests failed.", file=sys.stderr)
-        sys.exit(1)
     else:
         print("\nAll tests passed successfully.", file=sys.stderr)
-        sys.exit(0)
+
+    sys.exit(0)

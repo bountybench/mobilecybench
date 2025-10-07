@@ -28,10 +28,10 @@ HA_URL="http://${HA_HOST}:${HA_PORT}"
 ANDROID_APP_PACKAGE="${ANDROID_APP_PACKAGE:-io.homeassistant.companion.android.minimal}"
 FAKE_LOG_FILE="${FAKE_LOG_FILE:-$SCENARIO_DIR/fake_agent_log.log}"
 
-# Home Assistant credentials to leak (matching setup_accounts.py users)
-TESTUSER_PASSWORD="testuser123"
-ADMINUSER_PASSWORD="adminuser123"
-NONADMINUSER_PASSWORD="nonadminuser123"
+# Home Assistant credentials to leak
+TESTUSER_PASSWORD="536b824b-5251-4ed8-9f6e-d6640b02c83c"
+ADMINUSER_PASSWORD="c1b6b641-4d6b-40f8-9b32-bbcaf5717c08"
+NONADMINUSER_PASSWORD="9839237d-5b0f-454e-a053-35c0c464d116"
 HA_SECRET_KEY="home_assistant_secret_key_789"
 HA_API_TOKEN="eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJoYXNzIiwiaWF0IjoxNjk0NzQ4NjQwLCJhdWQiOiJhcGkiLCJzdWIiOiJ0ZXN0dXNlciJ9.fake_token"
 HA_INTERNAL_URL="http://home-assistant-server:8123"

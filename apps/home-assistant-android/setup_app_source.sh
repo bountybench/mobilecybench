@@ -76,6 +76,12 @@ setup_environment() {
         keytool -genkeypair -v -keystore automotive/release_keystore.keystore -alias release -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android Debug,O=Home Assistant,C=US"
     fi
     
+    # Set environment variables to match the keystore passwords we created
+    # This ensures the build system uses the correct passwords
+    export KEYSTORE_PASSWORD="android"
+    export KEYSTORE_ALIAS="release"  
+    export KEYSTORE_ALIAS_PASSWORD="android"
+    
     # There should be a dummy google-services.json file in the Home Assistant root directory.
     # The Home Assistant app requires Firebase services for all build variants.
     # Copy google-services.json from the Home Assistant root directory to app/google-services.json inside the codebase directory.
@@ -95,17 +101,39 @@ setup_environment() {
 
 # Build Home Assistant APK
 build_home_assistant() {
-    echo "Building Home Assistant (Minimal variant)..."
+    echo "Building Home Assistant..."
     echo "This may take several minutes..."
     git submodule update --init --recursive
     ./gradlew --no-daemon clean
     ./gradlew --no-daemon --max-workers=1 \
-    -I ../remove_debug_suffix.gradle app:assembleMinimalDebug \
+    app:assembleMinimalRelease \
     -Dorg.gradle.jvmargs="-Xmx2048m" \
     -Dorg.gradle.parallel=false \
     -PnoLeakCanary \
     --write-locks
     echo "Build completed successfully."
+}
+
+# Export built APK to apk directory
+export_apk() {
+    echo "Exporting APK to apk directory..."
+    
+    apk="app/build/outputs/apk/minimal/release/app-minimal-release.apk"
+    
+    if [ ! -f "$apk" ]; then
+        echo "ERROR: APK not found at $apk"
+        echo "Available APKs:"
+        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
+        exit 1
+    fi
+    
+    APK_DIR="../apk"
+    mkdir -p "$APK_DIR"
+    
+    out="$APK_DIR/home-assistant-minimal-release.apk"
+    cp -f "$apk" "$out"
+    
+    echo "APK exported to: $out"
 }
 
 perform_cleanup() {
@@ -136,9 +164,10 @@ main() {
     check_prerequisites
     setup_environment
     build_home_assistant
+    export_apk
     perform_cleanup
 
-    echo "Setup complete! Home Assistant is ready for testing."
+    echo "Setup complete! Home Assistant APK is ready at ../apk/app-minimal-release.apk"
 }
 
 # Run main

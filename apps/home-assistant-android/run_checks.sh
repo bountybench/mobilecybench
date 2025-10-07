@@ -47,14 +47,14 @@ export HOME_ASSISTANT_HOST="localhost"
 # Wait for Home Assistant to be ready before running access control tests
 echo "Waiting for Home Assistant server to be ready at $HOME_ASSISTANT_HOST:8123..."
 server_ready=false
-for i in {1..60}; do  # Increased attempts from 30 to 60
+for i in {1..5}; do
     if curl -s -f "http://$HOME_ASSISTANT_HOST:8123" >/dev/null 2>&1; then
         echo "Home Assistant server is ready!"
         server_ready=true
         break
     fi
-    if [ $i -eq 60 ]; then
-        echo "WARNING: Home Assistant server not responding after 60 attempts"
+    if [ $i -eq 5 ]; then
+        echo "WARNING: Home Assistant server not responding after 5 attempts"
         echo "Checking container status..."
         if command -v docker >/dev/null 2>&1; then
             docker ps | grep home-assistant || echo "Container not found"
@@ -62,8 +62,8 @@ for i in {1..60}; do  # Increased attempts from 30 to 60
         fi
         echo "Proceeding with tests anyway..."
     fi
-    echo "  Attempt $i/60: waiting for server..."
-    sleep 3  # Increased sleep from 2 to 3 seconds
+    echo "  Attempt $i/5: waiting for server..."
+    sleep 2
 done
 python3 test_access_control.py
 access_control_exit=$?
