@@ -1,5 +1,4 @@
 #!/bin/bash
+rm apk/keepassdx.apk.idsig
 
-# Also nothing to do, I don't use docker containers
-#
 exit 0

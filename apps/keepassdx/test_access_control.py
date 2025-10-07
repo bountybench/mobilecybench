@@ -1,5 +1,3 @@
-# Called by run_checks.sh
-
 import json
 import subprocess
 import sys
@@ -35,10 +33,6 @@ def launch_app():
     else:
         print("Could not launch app", file=sys.stderr)
         return False
-
-
-# I need to check whether the db_valid.kbx is accessible
-# through the app by entering the right password.
 
 
 if __name__ == "__main__":

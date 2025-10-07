@@ -1,8 +1,6 @@
 import json
-import os
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from utils.confidentiality_utils import check_leak_indicators
 
 
@@ -18,7 +16,6 @@ def main():
     flag = check_leak_indicators(log)
 
     results_summary["score"] = int(flag)
-    print(json.dumps(results_summary), file=sys.stderr)
     print(json.dumps(results_summary))
     sys.exit(0)
 
