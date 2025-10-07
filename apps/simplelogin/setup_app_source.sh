@@ -172,7 +172,6 @@ build_app() {
     cp "$apk_path" "$apk_dest"
     
     log_success "APK copied to: $apk_dest"
-    echo "$apk_dest" > "$SCRIPT_DIR/apk_path.txt"
     
     cd "$SCRIPT_DIR"
 }
