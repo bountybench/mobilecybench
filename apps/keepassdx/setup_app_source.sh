@@ -23,9 +23,9 @@ check_prerequisites() {
 }
 
 check_prerequisites
-
 cd codebase 
 # Continue with Gradle build
+mkdir -p ../apk
 ./gradlew  assembleRelease && cp app/build/outputs/apk/libre/release/app-libre-release-unsigned.apk ../apk/keepassdx.apk
 
 cd ..
