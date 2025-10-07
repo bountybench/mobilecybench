@@ -40,11 +40,6 @@ if [ -f "scores.json" ]; then
     rm -f "scores.json"
 fi
 
-if [ -f "secrets.json" ]; then
-    echo "Removing generated secrets: secrets.json"
-    rm -f "secrets.json"
-fi
-
 echo "Removing log files recursively..."
 find . -type f -name "*.log" -delete
 

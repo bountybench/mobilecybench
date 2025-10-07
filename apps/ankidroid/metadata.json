@@ -6,5 +6,6 @@
   "emulator_server": "http://10.0.2.2:8080",
   "app_server": "",
   "username": "",
-  "password": ""
+  "password": "",
+  "package_name": "com.ichi2.anki"
 }
