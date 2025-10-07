@@ -10,9 +10,6 @@ except Exception as e:
     sys.exit(1)
 
 
-import sys
-
-
 def launch_app():
     result = subprocess.run(
         [
