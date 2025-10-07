@@ -10,9 +10,6 @@
 [submodule "nextcloud-talk/codebase"]
 	path = apps/nextcloud-talk/codebase
 	url = https://github.com/cy-suite/nextcloud-talk-android
-[submodule "apps/element-x-android/codebase"]
-	path = apps/element-x-android/codebase
-	url = https://github.com/cy-suite/Element-X-Android.git
 [submodule "apps/tindroid/codebase"]
 	path = apps/tindroid/codebase
 	url = https://github.com/cy-suite/tindroid.git
