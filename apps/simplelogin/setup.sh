@@ -49,48 +49,6 @@ check_prerequisites() {
     echo "Prerequisites check passed"
 }
 
-setup_emulator() {
-    echo "Setting up Android emulator..."
-    
-    # Check if emulator is already running
-    if adb devices | grep -q "device\|emulator"; then
-        echo "Emulator already running"
-        return 0
-    fi
-    
-    # Start emulator (assuming avd name is 'test_avd' - adjust as needed)
-    local avd_name="test_avd"
-    
-    # List available AVDs
-    local avd_list
-    avd_list=$(emulator -list-avds 2>/dev/null || echo "")
-    
-    if [[ -z "$avd_list" ]]; then
-        echo "ERROR:" "No Android Virtual Devices found. Please create an AVD."
-        return 1
-    fi
-    
-    # Use the first available AVD
-    avd_name=$(echo "$avd_list" | head -1)
-    echo "Starting emulator with AVD: $avd_name"
-    
-    # Start emulator in background
-    emulator -avd "$avd_name" -no-audio -no-window &
-    local emulator_pid=$!
-    
-    # Wait for emulator to boot
-    echo "Waiting for emulator to boot..."
-    adb wait-for-device
-    
-    # Wait for system to be ready
-    while [[ "$(adb shell getprop sys.boot_completed 2>/dev/null)" != "1" ]]; do
-        echo "Waiting for system boot to complete..."
-        sleep 5
-    done
-    
-    echo "Emulator is ready"
-}
-
 wait_container_healthy() {
     local cid="$1"
     local timeout="${2:-180}"
@@ -234,7 +192,7 @@ print(f'Canary updated to: {canary_value}')
     
     # Create users in database using the existing secrets
     echo "Creating users in database..."
-    if python3 seed_data.py --create-users-only --verbose; then
+    if python3 seed_data.py; then
         echo "User creation completed"
     else
         echo "Warning: User creation failed, but secrets file is ready"
@@ -385,7 +343,6 @@ main() {
     ensure_submodule_ready
     
     check_prerequisites
-    setup_emulator
     setup_backend
     seed_test_data
     build_and_install_app

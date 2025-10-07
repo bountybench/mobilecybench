@@ -4,7 +4,6 @@ SimpleLogin data seeder for MobileCybench testing.
 Creates deterministic test credentials, API tokens, and database users without requiring live authentication.
 """
 
-import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -188,90 +187,31 @@ def create_users_in_database(users):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Seed SimpleLogin test data and create database users"
-    )
-    parser.add_argument("--email", default="testuser@gmail.com", help="Test user email")
-    parser.add_argument("--password", default="P@ssw0rd!", help="Test user password")
-    parser.add_argument("--device", default="mobilecybench-test", help="Device name")
-    parser.add_argument(
-        "--api-host", default="http://localhost:7777", help="API host URL"
-    )
-    parser.add_argument("--output", default="secrets.json", help="Output file path")
-    parser.add_argument(
-        "--create-user", action="store_true", help="Also create user in database"
-    )
-    parser.add_argument(
-        "--create-users-only",
-        action="store_true",
-        help="Only create users in database (don't write secrets.json)",
-    )
-    parser.add_argument("--verbose", action="store_true", help="Verbose output")
+    # Hardcoded values since this script is only used by setup.sh
+    email = "testuser@gmail.com"
+    password = "P@ssw0rd!"
+    device = "mobilecybench-test"
+    api_host = "http://localhost:7777"
+    verbose = True  # Always verbose since setup.sh expects it
+    
+    print(f"Generating secrets for {email}...")
+    print("Creating users in database only...")
 
-    args = parser.parse_args()
+    # Generate user data for database creation
+    users = generate_user_data()
+    # Override first user with provided credentials
+    users[0]["email"] = email
+    users[0]["password"] = password
 
-    if args.verbose:
-        print(f"Generating secrets for {args.email}...")
-
-    # Handle create-users-only mode
-    if args.create_users_only:
-        if args.verbose:
-            print("Creating users in database only...")
-
-        # Generate user data for database creation
-        users = generate_user_data()
-        # Override first user with provided credentials
-        users[0]["email"] = args.email
-        users[0]["password"] = args.password
-
-        # Generate auth token for first user
-        secrets_data = generate_secrets(
-            args.email, args.password, args.api_host, args.device
-        )
-        users[0]["auth_token"] = generate_deterministic_token(
-            args.email, args.password, args.device
-        )
-
-        create_users_in_database(users)
-
-        if args.verbose:
-            print("✅ Users created in database")
-        print("Users created in database")
-        return
-
-    # Generate secrets (flat structure with multiple users)
-    secrets_data = generate_secrets(
-        args.email, args.password, args.api_host, args.device
+    # Generate auth token for first user
+    users[0]["auth_token"] = generate_deterministic_token(
+        email, password, device
     )
 
-    # Create users in database if requested
-    if args.create_user:
-        if args.verbose:
-            print("Creating users in database...")
+    create_users_in_database(users)
 
-        # Extract user data from flat secrets for database creation
-        users = generate_user_data()
-        # Override first user with provided credentials
-        users[0]["email"] = args.email
-        users[0]["password"] = args.password
-        users[0]["auth_token"] = generate_deterministic_token(
-            args.email, args.password, args.device
-        )
-
-        create_users_in_database(users)
-
-    # Write secrets file
-    output_path = Path(args.output)
-    with open(output_path, "w") as f:
-        json.dump(secrets_data, f, indent=2)
-
-    if args.verbose:
-        print(f"✅ Secrets written to {output_path}")
-        print(f"   Primary user: {args.email} (in metadata.json)")
-        print("   Users: user_b, admin_user")
-        print("   Structure: flat keys (like Tindroid)")
-
-    print(f"Generated {args.output}")
+    print("✅ Users created in database")
+    print("Users created in database")
 
 
 if __name__ == "__main__":
