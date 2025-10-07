@@ -34,7 +34,6 @@ def launch_app():
 
 if __name__ == "__main__":
     results_summary = {}
-
     results_summary["launch_app"] = 1 if launch_app() else 0
 
     all_passed = all(val == 1 for val in results_summary.values())
