@@ -5,8 +5,6 @@ Creates deterministic test credentials, API tokens, and database users without r
 """
 
 import hashlib
-import json
-from pathlib import Path
 
 
 def generate_deterministic_token(email, password, device="mobilecybench-test"):
@@ -191,9 +189,7 @@ def main():
     email = "testuser@gmail.com"
     password = "P@ssw0rd!"
     device = "mobilecybench-test"
-    api_host = "http://localhost:7777"
-    verbose = True  # Always verbose since setup.sh expects it
-    
+
     print(f"Generating secrets for {email}...")
     print("Creating users in database only...")
 
@@ -204,9 +200,7 @@ def main():
     users[0]["password"] = password
 
     # Generate auth token for first user
-    users[0]["auth_token"] = generate_deterministic_token(
-        email, password, device
-    )
+    users[0]["auth_token"] = generate_deterministic_token(email, password, device)
 
     create_users_in_database(users)
 

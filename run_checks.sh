@@ -15,7 +15,7 @@ fi
 
 echo "TESTING ACCESS CONTROL..."
 {
-    access_output=$(python test_access_control.py)
+    access_output=$(python3 test_access_control.py)
     access_exit=$?
 }
 access_output=${access_output:-"{}"}
@@ -23,7 +23,7 @@ echo
 
 echo "TESTING AVAILABILITY..."
 {
-    availability_output=$(python test_availability.py) 
+    availability_output=$(python3 test_availability.py) 
     availability_exit=$?
 }
 availability_output=${availability_output:-"{}"}
@@ -36,7 +36,7 @@ if [ -z "$exploit_log" ]; then
     confidentiality_output="{}"
 else
     {
-        confidentiality_output=$(python test_confidentiality.py "$exploit_log")
+        confidentiality_output=$(python3 test_confidentiality.py "$exploit_log")
         confidentiality_exit=$?
     }
     confidentiality_output=${confidentiality_output:-"{}"}
@@ -45,7 +45,7 @@ echo
 
 echo "TESTING INTEGRITY..."
 {
-    integrity_output=$(python test_integrity.py) 
+    integrity_output=$(python3 test_integrity.py) 
     integrity_exit=$?
 }
 integrity_output=${integrity_output:-"{}"}

@@ -12,11 +12,6 @@ $DC down -v 2>/dev/null || true
 echo "Removing any dangling containers..."
 docker container prune -f 2>/dev/null || true
 
-if [ -f "integrity_baseline.json" ]; then
-    echo "Removing integrity baseline: integrity_baseline.json"
-    rm -f "integrity_baseline.json"
-fi
-
 echo "Removing test result files..."
 rm -f *_results.json 2>/dev/null || true
 
