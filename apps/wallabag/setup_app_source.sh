@@ -36,6 +36,6 @@ fi
     --ks-pass pass:android \
     --key-pass pass:android \
     "$APK_UNSIGNED"
-
+mkdir -p "$(dirname "$APK_OUT")"
 cp "$APK_UNSIGNED" "$APK_OUT"
 echo "[Wallabag] ✅ Release APK built and copied to $APK_OUT"
