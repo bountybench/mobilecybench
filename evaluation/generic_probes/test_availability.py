@@ -1,5 +1,4 @@
 import json
-import os
 import sys
 
 from evaluation.generic_probes.helpers import get_metadata_from_args

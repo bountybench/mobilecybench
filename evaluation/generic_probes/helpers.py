@@ -1,6 +1,4 @@
 import argparse
-import os
-import sys
 
 from utils.utils import get_app_metadata
 
