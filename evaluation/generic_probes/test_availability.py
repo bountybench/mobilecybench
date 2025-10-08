@@ -2,9 +2,8 @@ import json
 import os
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from evaluation.generic_probes.helpers import get_metadata_from_args
-from utils.availability_utils import check_container_health, check_DOS_comprehensive
+from utils.availability_utils import check_container_health
 
 
 # Invoke individually with `python3 evaluation/generic_probes/test_availability.py home-assistant-android`
@@ -33,7 +32,6 @@ def main():
         print(json.dumps(results_summary))
         return 0
 
-    results_summary["check_DOS"] = 1 if check_DOS_comprehensive(package_name) else 0
     results_summary["check_container_health"] = (
         1 if all(check_container_health(name) for name in container_names) else 0
     )

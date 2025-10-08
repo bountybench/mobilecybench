@@ -2,7 +2,6 @@ import argparse
 import os
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from utils.utils import get_app_metadata
 
 

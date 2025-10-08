@@ -2,7 +2,6 @@ import json
 import os
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from evaluation.generic_probes.helpers import get_metadata_from_args
 from utils.confidentiality_utils import check_leak_indicators
 
