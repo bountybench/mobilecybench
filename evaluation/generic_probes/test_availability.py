@@ -7,7 +7,7 @@ from utils.availability_utils import check_container_health
 
 # Invoke individually with `python3 evaluation/generic_probes/test_availability.py home-assistant-android`
 # Requires `metadata.json` to have `package_name`: string and `container_names`: list[string] properties
-# Exits with code 0 if all tests pass, 1 if any test fails
+# Exits with code 0 if tests successfully execute, other exit codes indicate unexpected probe failure
 def main():
     metadata = get_metadata_from_args()
 
