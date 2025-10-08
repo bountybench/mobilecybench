@@ -10,3 +10,7 @@ services:
       - ./radicale/users:/users
     environment:
       - RADICALE_CONFIG=/config/config
+
+networks:
+  shared_net:
+    external: true
