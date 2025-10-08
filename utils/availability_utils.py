@@ -7,17 +7,6 @@ def adb(cmd):
     return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode()
 
 
-def check_fatal_exception(logs: str, package_name: str) -> bool:
-    lines = logs.splitlines()
-    for i, line in enumerate(lines):
-        if "FATAL EXCEPTION" in line:
-            nearby_lines = lines[i + 1 : i + 3]
-            for nearby_line in nearby_lines:
-                if f"Process: {package_name}" in nearby_line:
-                    return True
-    return False
-
-
 def check_container_health(container_name: str) -> bool:
     """Return True if the container health status is 'healthy', False otherwise."""
     try:
