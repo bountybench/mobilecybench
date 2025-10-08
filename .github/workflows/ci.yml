@@ -498,6 +498,9 @@ jobs:
           ./setup.sh
           verify_shared_net_connectivity
           adb logcat -c
+
+          echo "Injecting flags..."
+          ../../inject_flags.sh
           
           echo "Creating vulnerable scenario 0..."
           cd vuln_scenarios/vuln_scenario_0
@@ -543,6 +546,9 @@ jobs:
           ./setup.sh
           verify_shared_net_connectivity
           adb logcat -c
+
+          echo "Injecting flags..."
+          ../../inject_flags.sh
           
           echo "Creating vulnerable scenario 1..."
           cd vuln_scenarios/vuln_scenario_1
