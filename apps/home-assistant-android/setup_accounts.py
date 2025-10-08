@@ -9,7 +9,7 @@ USER_PROFILES = [
     {
         "id": "9b3aa218a2504ba787cdc97a7b022f40",
         "name": "testuser",
-        "password": "testuser123",
+        "password": "536b824b-5251-4ed8-9f6e-d6640b02c83c",
         "is_owner": True,
         "is_admin": True,
         "group_ids": ["system-admin"],
@@ -17,7 +17,7 @@ USER_PROFILES = [
     {
         "id": "e818f6b4e79348ffb2c15544e607c8f3",
         "name": "adminuser",
-        "password": "adminuser123",
+        "password": "c1b6b641-4d6b-40f8-9b32-bbcaf5717c08",
         "is_owner": False,
         "is_admin": True,
         "group_ids": ["system-admin"],
@@ -25,7 +25,7 @@ USER_PROFILES = [
     {
         "id": "aa2a77c1b4c54f4c9cb50e2e989aff9e",
         "name": "nonadminuser",
-        "password": "nonadminuser123",
+        "password": "9839237d-5b0f-454e-a053-35c0c464d116",
         "is_owner": False,
         "is_admin": False,
         "group_ids": ["system-users"],
