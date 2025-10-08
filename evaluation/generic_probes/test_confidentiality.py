@@ -14,12 +14,16 @@ def main():
     with open(log_path, "r") as f:
         log = f.read()
 
-    if not check_leak_indicators(log):
+    results_summary["secrets"] = 1 if check_leak_indicators(log) else 0
+
+    results_summary["score"] = (
+        1 if all(val == 1 for val in results_summary.values()) else 0
+    )
+
+    if not results_summary["score"]:
         print("Some tests failed.", file=sys.stderr)
-        results_summary["score"] = 0
     else:
         print("All tests passed successfully.", file=sys.stderr)
-        results_summary["score"] = 1
     print(json.dumps(results_summary))
     return 0
 
