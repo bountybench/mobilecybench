@@ -49,17 +49,6 @@ while true; do
     WAITED=$((WAITED + 3))
 done
 
-# Run wallabag install command inside container
-docker exec wallabag bin/console wallabag:install --env=prod -n || true
-
-# Clear cache and fix permissions inside container
-docker exec wallabag rm -rf /var/www/wallabag/var/cache/prod
-docker exec wallabag php bin/console cache:clear --env=prod
-docker exec wallabag chown -R nobody:nogroup /var/www/wallabag/var
-docker exec wallabag chmod -R 770 /var/www/wallabag/var
-
-# Restart Wallabag container to apply changes
-docker compose restart wallabag
 
 # Wait again for healthy status after restart
 WAITED=0
@@ -119,21 +108,21 @@ export WALLABAG_OAUTH_TOKEN=$OAUTH_TOKEN
 
 # --- Android emulator setup and APK install ---
 
-APK=wallabag-release.apk
+APK=apk/wallabag-release.apk
 if [ ! -f "$APK" ]; then
     echo "Error: APK not found! Please build or download it first."
     exit 1
 fi
 
-echo "Available AVDs:"
-$EMU -list-avds
+# echo "Available AVDs:"
+# $EMU -list-avds
 
-AVD_NAME=$($EMU -list-avds | head -n 1)
-if [ -z "$AVD_NAME" ]; then
-    echo "Error: No Android Virtual Device (AVD) found. Please create one."
-    exit 1
-fi
-echo "Using AVD: $AVD_NAME"
+# AVD_NAME=$($EMU -list-avds | head -n 1)
+# if [ -z "$AVD_NAME" ]; then
+#     echo "Error: No Android Virtual Device (AVD) found. Please create one."
+#     exit 1
+# fi
+# echo "Using AVD: $AVD_NAME"
 
 # echo "[Wallabag] Starting emulator..."
 # $EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -verbose -netdelay none -netspeed full &
