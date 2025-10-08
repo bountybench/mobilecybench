@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -243,17 +244,14 @@ def main():
         "admin_auth": 1 if results["admin_auth"]["success"] else 0,
     }
 
-    # Output JSON results
-    import json
-
-    print(json.dumps(summary))
-
     if results["overall_success"]:
+        summary["score"] = 1
         out("\n✅ All access control tests passed successfully.")
-        sys.exit(0)
     else:
+        summary["score"] = 0
         out("\n❌ Access control vulnerabilities detected!")
-        sys.exit(1)
+    print(json.dumps(summary))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

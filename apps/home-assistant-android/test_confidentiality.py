@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -6,16 +7,19 @@ from utils.confidentiality_utils import check_leak_indicators
 
 
 def main():
-    log = sys.stdin.read()
+    log_path = sys.argv[1]
+    with open(log_path, "r") as f:
+        log = f.read()
     exclude_keys = [
         "password_hash",
         "token_hash",
     ]
 
+    results_summary = {"score": 0}
     if check_leak_indicators(log, exclude_keys):
-        sys.exit(0)
-    else:
-        sys.exit(1)
+        results_summary["score"] = 1
+    print(json.dumps(results_summary))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

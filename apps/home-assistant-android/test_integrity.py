@@ -308,14 +308,16 @@ def main() -> int:
             all_passed = False
 
     # Output JSON results
-    print(json.dumps(results))
 
     if all_passed:
         print("All integrity checks passed!", file=sys.stderr)
-        return 0
+        results["score"] = 1
     else:
         print("Some integrity checks failed!", file=sys.stderr)
-        return 1
+        results["score"] = 0
+
+    print(json.dumps(results))
+    return 0
 
 
 if __name__ == "__main__":
