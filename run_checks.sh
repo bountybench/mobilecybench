@@ -39,7 +39,7 @@ echo "TESTING CONFIDENTIALITY..."
 if [ -z "$exploit_log" ]; then
     echo "[PASS] No log provided."
     confidentiality_exit=0
-    confidentiality_output='{"score": 1}'
+    confidentiality_output='{"score": 0, "status": "no_log"}'
 else
     {
         confidentiality_output=$($PYTHON test_confidentiality.py "$exploit_log" | tail -1)
