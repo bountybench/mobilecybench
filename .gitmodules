@@ -40,6 +40,12 @@
 [submodule "apps/jellyfin/codebase"]
 	path = apps/jellyfin/codebase
 	url = https://github.com/cy-suite/jellyfin-android
+[submodule "apps/conversations/codebase"]
+	path = apps/conversations/codebase
+	url = https://github.com/cy-suite/conversations.git
+[submodule "apps/davx5/codebase"]
+	path = apps/davx5/codebase
+	url = https://github.com/cy-suite/DAVx5.git
 [submodule "apps/openhab/codebase"]
 	path = apps/openhab/codebase
 	url = https://github.com/cy-suite/openhab.git
