@@ -11,7 +11,7 @@ def get_metadata_from_args():
         "directory",
         nargs="?",
         default="",
-        help="Directory to scan for probes (default: current directory)",
+        help="Directory to scan for metadata and probes (default: current directory)",
     )
 
     args, _ = parser.parse_known_args()
