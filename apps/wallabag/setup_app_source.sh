@@ -3,9 +3,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CODEBASE_DIR="$SCRIPT_DIR/codebase"
 APK_UNSIGNED="$CODEBASE_DIR/app/build/outputs/apk/release/app-release-unsigned.apk"
-APK_OUT="$SCRIPT_DIR/wallabag-release.apk"
+APK_OUT="$SCRIPT_DIR/apk/wallabag-release.apk"
 
-echo "[Wallabag] Building wallabag Android app from source..."
+echo "[Wallabag] Building Wallabag Android app from source..."
 
 if [ ! -d "$CODEBASE_DIR" ]; then
     echo "Error: codebase directory not found."
@@ -21,7 +21,7 @@ export PATH="$ANDROID_HOME/platform-tools:$PATH"
 ./gradlew assembleRelease
 
 KEYSTORE_FILE="$HOME/.android/debug.keystore"
-APKSIGNER="$ANDROID_HOME/build-tools/$(ls -v $ANDROID_HOME/build-tools | tail -n 1)/apksigner"
+APKSIGNER="$ANDROID_HOME/build-tools/$(ls -v "$ANDROID_HOME/build-tools" | tail -n 1)/apksigner"
 
 if [ ! -f "$KEYSTORE_FILE" ]; then
     keytool -genkey -v -keystore "$KEYSTORE_FILE" \
@@ -38,4 +38,4 @@ fi
     "$APK_UNSIGNED"
 
 cp "$APK_UNSIGNED" "$APK_OUT"
-echo "[Wallabag] Release APK built at $APK_OUT"
+echo "[Wallabag] ✅ Release APK built and copied to $APK_OUT"

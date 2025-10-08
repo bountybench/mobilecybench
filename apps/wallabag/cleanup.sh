@@ -12,7 +12,6 @@ docker rm wallabag-db-1 2>/dev/null || echo "No wallabag-db-1 container to remov
 # Clean up generated files
 echo "Cleaning up generated files..."
 rm -f *.apk || true
-rm -f secrets.json || true
 rm -f scores.json || true
 rm -f *.log || true
 rm -f init-db.sql || true
