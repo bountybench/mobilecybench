@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 SimpleLogin login script for testing authentication.
-Returns exit code 0 for success, 1 for failure (like tindroid_login.py).
+Returns exit code 0 for success, 1 for failure.
 """
 
 import argparse

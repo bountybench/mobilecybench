@@ -133,7 +133,6 @@ main() {
     log_info "Starting SimpleLogin Android app setup..."
     
     check_prerequisites || return 1
-    # Use stock app without source modifications for real-world fidelity
     setup_environment || return 1
     build_app || return 1
     

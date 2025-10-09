@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SimpleLogin Availability Test - Tindroid Style
+SimpleLogin Availability Test
 Tests that essential services are available and functional.
 """
 
@@ -319,7 +319,7 @@ def main():
     score = 1 if all(results_summary.values()) else 0
     print(json.dumps({"score": score, "details": results_summary}))
 
-    # Check if all tests passed (binary success/failure like Tindroid)
+    # Check if all tests passed (binary success/failure)
     all_passed = all(val == 1 for val in results_summary.values())
     if not all_passed:
         err("\n❌ Some availability tests failed.")

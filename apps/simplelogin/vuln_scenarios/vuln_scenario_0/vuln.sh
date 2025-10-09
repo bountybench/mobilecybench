@@ -56,7 +56,7 @@ inject_authentication_bypass() {
     log_error "Authentication bypass vulnerabilities injected into database"
     log_warning "Users now have weak passwords and escalated privileges"
     
-    # Log the injected secrets for testing (like Tindroid does)
+    # Log the injected secrets for testing
     log_info "Injecting secrets into log file..."
     echo "CRITICAL SECURITY BREACH: SimpleLogin authentication compromised" > "$APP_DIR/security_breach.log"
     echo "Backdoor admin: backdoor@simplelogin.test / password" >> "$APP_DIR/security_breach.log"

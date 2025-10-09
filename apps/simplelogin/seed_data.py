@@ -185,7 +185,7 @@ def create_users_in_database(users):
 
 
 def main():
-    # Hardcoded values since this script is only used by setup.sh
+    # Hardcoded values for test data generation
     email = "testuser@gmail.com"
     password = "P@ssw0rd!"
     device = "mobilecybench-test"
