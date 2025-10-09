@@ -6,6 +6,10 @@ import sys
 import requests
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
+<<<<<<< HEAD
+=======
+from utils.availability_utils import check_DOS
+>>>>>>> a12d7271df9e01408a9a9b3d6008cbe8a8dd13fa
 
 
 def check_radicale_running():
@@ -66,6 +70,11 @@ def main():
     """Run all availability tests for DAVx5"""
     results_summary = {}
 
+<<<<<<< HEAD
+=======
+    results_summary["check_DOS"] = 1 if check_DOS("at.bitfire.davdroid") else 0
+
+>>>>>>> a12d7271df9e01408a9a9b3d6008cbe8a8dd13fa
     results_summary["check_container_running"] = 1 if check_radicale_running() else 0
 
     results_summary["check_service_available"] = 1 if check_radicale_service() else 0

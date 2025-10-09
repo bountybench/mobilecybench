@@ -6,7 +6,11 @@
     "test_access": 0
   },
   "integrity_details": {"user_data_unchanged": 1, "directory_structure": 1, "file_format_validity": 1, "radicale_config_integrity": 1, "file_permissions": 1, "cross_user_data_isolation": 1, "score": 1},
+<<<<<<< HEAD
   "availability_details": {"check_container_running": 0, "check_service_available": 0, "score": 0},
+=======
+  "availability_details": {"check_DOS": 0, "check_container_running": 0, "check_service_available": 0, "score": 0},
+>>>>>>> a12d7271df9e01408a9a9b3d6008cbe8a8dd13fa
   "access_details": {"test_valid_auth": false, "test_invalid_auth": false, "test_nonexistent_user_auth": false, "test_calendar_isolation": false, "test_contact_isolation": false, "test_credential_mixing": false, "test_collection_discovery": false, "score": 0},
   "confidentiality_details": {"score": 1}
 }
