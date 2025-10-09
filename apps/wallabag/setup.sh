@@ -1,7 +1,14 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 echo "[Wallabag] MobileCybench setup begin..."
+
+echo "[Wallabag] Environment diagnostics:"
+echo "USER=$(id -un) UID=$(id -u)"
+echo "ANDROID_HOME=${ANDROID_HOME:-not-set}"
+echo "PATH=$PATH"
+echo "java version: $(java -version 2>&1 | head -n 1 || true)"
+
 
 # Check required dependencies
 DEPENDENCIES=(adb docker curl)
@@ -16,6 +23,10 @@ done
 ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 export ANDROID_HOME
 export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+
+# Ensure sdkmanager is available and show version
+echo "Which sdkmanager: $(command -v sdkmanager || echo 'not found')"
+sdkmanager --version 2>/dev/null || echo "sdkmanager not available or failed to run"
 
 EMU="$ANDROID_HOME/emulator/emulator"
 if [ ! -x "$EMU" ]; then
@@ -119,15 +130,47 @@ fi
 echo "Available AVDs:"
 $EMU -list-avds
 
-AVD_NAME=$($EMU -list-avds | head -n 1)
+# Ensure there's an AVD. If none, attempt to create one (logs captured).
+AVD_NAME=$($EMU -list-avds | head -n 1 || true)
 if [ -z "$AVD_NAME" ]; then
-    echo "Error: No Android Virtual Device (AVD) found. Please create one."
+  echo "No AVD found; attempting to create one. Will try to install system-image and create AVD."
+  SDKLOG="$(pwd)/sdkmanager-install.log"
+  echo "sdkmanager output will be in $SDKLOG"
+  # Prefer the google_apis image which is commonly available; avoid google_atd which may be broken in some channels
+  IMAGE_PACKAGE="system-images;android-34;google_apis;x86_64"
+  echo "Installing $IMAGE_PACKAGE (this may take a while)..."
+  # Accept licenses and install with retry
+  for i in 1 2 3; do
+    yes | sdkmanager --licenses >>"$SDKLOG" 2>&1 || true
+    sdkmanager --install "$IMAGE_PACKAGE" >>"$SDKLOG" 2>&1 && break || {
+      echo "sdkmanager install attempt $i failed; see $SDKLOG"
+      sleep 2
+    }
+  done
+
+  AVD_NAME=mcbench_avd
+  AVDLOG="$(pwd)/avdmanager.log"
+  echo "Creating AVD named $AVD_NAME (log $AVDLOG)"
+  # Use avdmanager to create the AVD; accept defaults
+  echo "no" | avdmanager create avd -n "$AVD_NAME" -k "$IMAGE_PACKAGE" -f >>"$AVDLOG" 2>&1 || true
+  echo "AVD create exit code: $?"
+  # Re-list avds
+  AVD_NAME=$($EMU -list-avds | head -n 1 || true)
+  if [ -z "$AVD_NAME" ]; then
+    echo "Failed to create AVD. Check $SDKLOG and $AVDLOG for details."
+    echo "--- sdkmanager log start ---"
+    sed -n '1,200p' "$SDKLOG" || true
+    echo "--- avdmanager log start ---"
+    sed -n '1,200p' "$AVDLOG" || true
     exit 1
+  fi
 fi
 echo "Using AVD: $AVD_NAME"
 
 echo "[Wallabag] Starting emulator..."
-$EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -verbose -netdelay none -netspeed full &
+EMULATOR_LOG="$(pwd)/emulator-launch.log"
+echo "Starting emulator and writing verbose output to $EMULATOR_LOG"
+$EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -verbose -netdelay none -netspeed full >"$EMULATOR_LOG" 2>&1 &
 
 echo "Waiting for emulator in adb devices (timeout 180s)..."
 TIMEOUT=180
