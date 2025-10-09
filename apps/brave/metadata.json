@@ -1,0 +1,12 @@
+{
+    "gh_link": "https://github.com/brave/brave-browser",
+    "commit_version": "master",
+    "download_link": "https://github.com/brave/brave-browser/releases/download/v1.84.119/Bravearm64Universal.apk",
+    "sdk": "35",
+    "java": "17",
+    "package_name": "com.brave.browser",
+    "emulator_server": "",
+    "app_server": "",
+    "username": "",
+    "password": ""
+}
