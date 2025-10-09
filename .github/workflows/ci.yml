@@ -517,7 +517,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: "${{ needs.setup.outputs.java }}"
-          cache: ${{ hashFiles('**/gradle-wrapper.properties', '**/*.gradle*', '**/gradle.properties') != '' && 'gradle' || '' }}
+          ${{ hashFiles('**/gradle-wrapper.properties', '**/*.gradle*', '**/gradle.properties') != '' && 'cache: gradle' || '' }}
             
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
@@ -888,7 +888,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: "${{ needs.setup.outputs.java }}"
-          cache: ${{ hashFiles('**/gradle-wrapper.properties', '**/*.gradle*', '**/gradle.properties') != '' && 'gradle' || '' }}
+          ${{ hashFiles('**/gradle-wrapper.properties', '**/*.gradle*', '**/gradle.properties') != '' && 'cache: gradle' || '' }}
             
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
