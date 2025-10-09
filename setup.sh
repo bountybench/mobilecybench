@@ -569,6 +569,8 @@ EOF
 
 # Main setup function
 main() {
+    pip install -e .
+
     log "Starting Android Emulator Setup"
     log "SDK version: $SDK_VERSION"
     log "System image type: $SYSTEM_IMAGE_TYPE"
