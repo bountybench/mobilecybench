@@ -51,7 +51,7 @@ start_emulator() {
     if check_kvm; then
         EMU_ARGS="$EMU_ARGS -gpu host"
     else
-        EMU_ARGS="$EMU_ARGS -gpu swiftshader_indirect"
+        EMU_ARGS="$EMU_ARGS -gpu swiftshader_indirect -no-accel"
     fi
 
     # Add headless mode settings
