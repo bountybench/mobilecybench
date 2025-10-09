@@ -67,6 +67,8 @@ done
 # --- Web login and client creation ---
 
 # Fetch login page to get CSRF token and save cookies
+echo "Waiting 10s for Wallabag to finish internal initialization..."
+sleep 10
 curl -c cookies.txt -s -L http://localhost:8080/login -o login.html
 CSRF_TOKEN=$(grep 'name="_csrf_token"' login.html | head -1 | sed 's/.*value="\([^"]*\)".*/\1/')
 echo "CSRF token for login: $CSRF_TOKEN"
@@ -114,18 +116,18 @@ if [ ! -f "$APK" ]; then
     exit 1
 fi
 
-# echo "Available AVDs:"
-# $EMU -list-avds
+echo "Available AVDs:"
+$EMU -list-avds
 
-# AVD_NAME=$($EMU -list-avds | head -n 1)
-# if [ -z "$AVD_NAME" ]; then
-#     echo "Error: No Android Virtual Device (AVD) found. Please create one."
-#     exit 1
-# fi
-# echo "Using AVD: $AVD_NAME"
+AVD_NAME=$($EMU -list-avds | head -n 1)
+if [ -z "$AVD_NAME" ]; then
+    echo "Error: No Android Virtual Device (AVD) found. Please create one."
+    exit 1
+fi
+echo "Using AVD: $AVD_NAME"
 
-# echo "[Wallabag] Starting emulator..."
-# $EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -verbose -netdelay none -netspeed full &
+echo "[Wallabag] Starting emulator..."
+$EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -verbose -netdelay none -netspeed full &
 
 echo "Waiting for emulator in adb devices (timeout 180s)..."
 TIMEOUT=180
