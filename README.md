@@ -18,7 +18,7 @@
 
     3.3 [CI Trigger and Local Testing](#33-ci-trigger-and-local-testing)
 
-4. [Local Development Setup](#5-local-development-setup)
+4. [Local Development Setup](#4-local-development-setup)
 
 
 ## 1. Adding Target Android App Repo
