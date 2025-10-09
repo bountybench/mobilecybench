@@ -21,6 +21,15 @@ check_prerequisites() {
         echo "ERROR: Node.js not found. Please install Node.js v24+."
         exit 1
     fi
+    
+    # Check Node.js version compatibility
+    NODE_VERSION=$(node -v | sed 's/v//')
+    NODE_MAJOR=$(echo "$NODE_VERSION" | cut -d. -f1)
+    if [[ $NODE_MAJOR -lt 24 ]]; then
+        echo "WARNING: Node.js $NODE_VERSION detected, but Brave requires v24+."
+        echo "Falling back to APK download instead of source build..."
+        exec "$SCRIPT_DIR/setup_app_apklink.sh"
+    fi
 
     # Check npm
     if ! command -v npm >/dev/null 2>&1; then
