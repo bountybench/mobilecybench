@@ -18,7 +18,7 @@
 
     3.3 [CI Trigger and Local Testing](#33-ci-trigger-and-local-testing)
 
-4. [Local Development Setup](#5-local-development-setup)
+4. [Local Development Setup](#4-local-development-setup)
 
 
 ## 1. Adding Target Android App Repo
@@ -316,8 +316,30 @@ Quick note on `--skip-apk` flag.
 
 ## 4. Local Development Setup
 
-### Quick Start
 
+### Python Virtual Environment Setup
+Before running any scripts, set up a Python virtual environment to isolate dependencies:
+
+1. Create a virtual environment
+    ```bash
+    python3 -m venv .venv
+    ```
+2. Activate the virtual environment
+    ```bash
+    source .venv/bin/activate   # macOS / Linux
+    # or
+    .venv\Scripts\activate      # Windows
+    ```
+> Once activated, your terminal prompt should show (.venv)
+
+3. Install project dependencies
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+---
+
+### Quick Start
 1. **Run the setup script:**
 
    ```bash
