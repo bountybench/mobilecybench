@@ -52,10 +52,13 @@ launch_app() {
     # Wait for device to be ready
     adb wait-for-device
     
-    # Launch the app
+    # Launch the app - try multiple activity names for different Brave versions
     adb shell am start -n "$PACKAGE_NAME/.BraveActivity" 2>/dev/null || \
     adb shell am start -n "$PACKAGE_NAME/com.brave.browser.BraveActivity" 2>/dev/null || \
-    adb shell monkey -p "$PACKAGE_NAME" -c android.intent.category.LAUNCHER 1
+    adb shell am start -n "$PACKAGE_NAME/org.chromium.chrome.browser.ChromeLauncherActivity" 2>/dev/null || \
+    adb shell am start -n "$PACKAGE_NAME/org.chromium.chrome.browser.ChromeTabbedActivity" 2>/dev/null || \
+    adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PACKAGE_NAME" 2>/dev/null || \
+    echo "Failed to launch app with specific activity, trying monkey..." && adb shell monkey -p "$PACKAGE_NAME" -c android.intent.category.LAUNCHER 1
     
     # Wait a bit for app to start
     sleep 3
