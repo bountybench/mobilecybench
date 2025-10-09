@@ -4,6 +4,7 @@ services:
   # Main Orchestrator Container for running experiments
   orchestrator:
     image: mobilecybench-orchestrator:latest
+    platform: linux/amd64  # Explicitly use amd64 for Android emulator compatibility
     container_name: mobilecybench-orchestrator
     privileged: true  # Required for Docker-in-Docker and KVM support
     volumes:

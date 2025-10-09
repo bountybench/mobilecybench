@@ -142,7 +142,7 @@ main() {
     fi
 
     # Check KVM availability
-    check_kvm
+    check_kvm || true
 
     # Start emulator if needed
     if check_emulator_needed; then
