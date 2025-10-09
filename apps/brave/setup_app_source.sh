@@ -61,6 +61,8 @@ build_brave() {
     echo "Building Brave for Android..."
     
     # Install dependencies and sync
+    echo "Installing npm dependencies..."
+    npm install
     echo "Initializing Brave build environment..."
     npm run init
     echo "Syncing Brave for Android..."
