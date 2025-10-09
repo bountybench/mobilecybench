@@ -44,7 +44,7 @@ else
     info "Skipping Docker cleanup (Docker not available)"
 fi
 
-# Clean local directories and files
+# Clean local directories / files
 info "Cleaning local files..."
 rm -rf dist/ 2>/dev/null || true
 # NOTE: Keep apk/ directory structure but may clean contents if needed between tests
