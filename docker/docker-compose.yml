@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # Main Orchestrator Container for running experiments
+  orchestrator:
+    image: mobilecybench-orchestrator:latest
+    container_name: mobilecybench-orchestrator
+    privileged: true  # Required for Docker-in-Docker and KVM support
+    volumes:
+      # Mount the entire codebase for live development (not copied!)
+      - ../:/mobilecybench:rw
+      # Docker socket for DinD support
+      - /var/run/docker.sock:/var/run/docker.sock
+      # DinD data persistence
+      - dind-data:/var/lib/docker
+      # Gradle cache for faster builds
+      - gradle-cache:/root/.gradle
+      # Android SDK persistence
+      - android-sdk:/root/.android-sdk
+      # Android AVD persistence
+      - android-avd:/root/.android
+    environment:
+      # OpenAI API key for agent
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # Emulator configuration
+      - HEADLESS_MODE=${HEADLESS_MODE:-true}
+      - SKIP_EMULATOR=${SKIP_EMULATOR:-false}
+      # Display for GUI apps (when not headless)
+      - DISPLAY=${DISPLAY:-:99}
+      # Android emulator settings
+      - ANDROID_EMULATOR_USE_SYSTEM_LIBS=1
+      - QT_QPA_PLATFORM=offscreen
+    devices:
+      # KVM device for hardware acceleration (if available)
+      - /dev/kvm:/dev/kvm
+    networks:
+      - mobilecybench-network
+    ports:
+      # Backend server port
+      - "7999:7999"
+      # Android emulator console
+      - "5554:5554"
+      # Android emulator ADB
+      - "5555:5555"
+      # VNC server (for debugging GUI)
+      - "5900:5900"
+    # Increase shared memory for emulator
+    shm_size: '2gb'
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+    command: ["tail", "-f", "/dev/null"]  # Keep container running
+
+  # Agent container (Kali) - same as before, uses shared network
+  kali:
+    image: kalilinux/kali-rolling:latest
+    container_name: kali-container
+    privileged: true
+    volumes:
+      # Mount app codebase when needed
+      - ../apps:/tmp/apps:ro
+    environment:
+      - START_DIR=${START_DIR:-/tmp/apps}
+    networks:
+      - mobilecybench-network
+      - shared_net
+    external_links:
+      - mcp-server
+    command: ["tail", "-f", "/dev/null"]
+
+  # MCP Server container - same as before
+  mcp-server:
+    build:
+      context: ../agent/mcp
+      dockerfile: Dockerfile
+    container_name: mcp-server
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    networks:
+      - mobilecybench-network
+      - shared_net
+    ports:
+      - "3000:3000"
+
+networks:
+  mobilecybench-network:
+    driver: bridge
+  shared_net:
+    external: true
+
+volumes:
+  dind-data:
+    driver: local
+  gradle-cache:
+    driver: local
+  android-sdk:
+    driver: local
+  android-avd:
+    driver: local

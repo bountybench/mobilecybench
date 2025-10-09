@@ -1,0 +1,149 @@
+# syntax=docker/dockerfile:1.4
+FROM python:3.12-bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYENV_ROOT=/root/.pyenv
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$JAVA_HOME/bin"
+ENV ANDROID_SDK_ROOT=/root/.android-sdk
+ENV ANDROID_HOME=/root/.android-sdk
+ENV GRADLE_USER_HOME=/root/.gradle
+ENV PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/emulator:$PATH"
+
+WORKDIR /mobilecybench
+
+# Install base dependencies including KVM support for Android emulator
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      # Base tools
+      ca-certificates curl gnupg lsb-release wget unzip git build-essential \
+      # Java
+      openjdk-17-jdk-headless ca-certificates-java \
+      # Python build deps
+      gcc make libffi-dev libssl-dev libxml2-dev libxslt1-dev zlib1g-dev \
+      netcat-openbsd tree jq libbz2-dev libreadline-dev libsqlite3-dev liblzma-dev \
+      # System tools
+      sudo procps iproute2 iputils-ping apt-transport-https \
+      # Android emulator graphics and GUI dependencies
+      libglu1-mesa-dev libpulse0 libxcursor1 libxrandr2 libxinerama1 libxi6 \
+      php-cli uuid-runtime xvfb x11vnc fluxbox wmctrl libpulse-dev \
+      libxshmfence-dev libdbus-glib-1-2 openssh-client \
+      # KVM and QEMU for hardware acceleration
+      qemu-system-x86 qemu-kvm cpu-checker \
+      qemu-user-static binfmt-support htop lsof \
+      # Additional graphics libraries
+      libgl1-mesa-glx libgles2-mesa \
+      # X11 forwarding support
+      x11-utils \
+    ; \
+    mkdir -p /root/.cache/pip /var/lib/docker; \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Docker for DinD support (to run containers inside container)
+RUN set -eux; \
+    mkdir -p /etc/apt/keyrings; \
+    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg; \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; \
+    rm -rf /var/lib/apt/lists/*
+
+# Install pyenv (lightweight) for managing Python versions
+RUN git clone https://github.com/pyenv/pyenv.git $PYENV_ROOT \
+    && mkdir -p $PYENV_ROOT/plugins \
+    && git clone https://github.com/pyenv/pyenv-virtualenv.git $PYENV_ROOT/plugins/pyenv-virtualenv
+
+# Install Python dependencies (will be mounted, but good to have base packages)
+# Note: requirements.txt will be mounted from host, not copied
+RUN --mount=type=cache,target=/root/.cache/pip \
+    bash -lc "python -m pip install --upgrade pip setuptools wheel"
+
+# Install Android SDK Command Line Tools and core SDK components
+RUN set -eux; \
+    mkdir -p "${ANDROID_SDK_ROOT}/cmdline-tools"; \
+    curl -fSL "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -o /tmp/cmdline-tools.zip; \
+    unzip -q /tmp/cmdline-tools.zip -d /tmp; \
+    mv /tmp/cmdline-tools "${ANDROID_SDK_ROOT}/cmdline-tools/latest"; \
+    rm -f /tmp/cmdline-tools.zip; \
+    yes | sdkmanager --licenses >/dev/null 2>&1 || true; \
+    # Install default SDK components for x86_64
+    sdkmanager "platform-tools" "platforms;android-35" "build-tools;34.0.0" "emulator" >/dev/null || true; \
+    # Install x86_64 system images (better Docker support than ARM)
+    sdkmanager "system-images;android-35;google_apis;x86_64" >/dev/null || true; \
+    if [ -x "${ANDROID_SDK_ROOT}/platform-tools/adb" ]; then ln -sf "${ANDROID_SDK_ROOT}/platform-tools/adb" /usr/bin/adb || true; fi
+
+# Configure Gradle for better performance
+RUN set -eux; \
+    mkdir -p /root/.gradle; \
+    printf '%s\n' \
+    'org.gradle.caching=true' \
+    'org.gradle.daemon=true' \
+    'org.gradle.parallel=true' \
+    'org.gradle.configureondemand=true' > /root/.gradle/gradle.properties
+
+# Install Node.js and Yarn (needed for some mobile apps)
+RUN set -eux; \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends nodejs; \
+    corepack enable; \
+    corepack prepare yarn@stable --activate; \
+    rm -rf /var/lib/apt/lists/*
+
+# Create AVD (Android Virtual Device) - will be created at runtime with proper configuration
+RUN set -eux; \
+    echo "no" | avdmanager create avd \
+        -n "MobileCybenchEmu" \
+        -k "system-images;android-35;google_apis;x86_64" \
+        -d "pixel_2" \
+        --force >/dev/null || true; \
+    # Configure AVD for better performance
+    mkdir -p /root/.android/avd/MobileCybenchEmu.avd; \
+    echo 'hw.ramSize=2048' > /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.gpu.enabled=yes' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.gpu.mode=auto' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.keyboard=yes' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'showDeviceFrame=no' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'skin.dynamic=yes' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.accelerometer=yes' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.audioInput=yes' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.battery=yes' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.camera.back=virtualscene' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.camera.front=emulated' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.cpu.arch=x86_64' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.dPad=no' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.gps=yes' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.lcd.density=420' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.lcd.height=1920' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.lcd.width=1080' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.mainKeys=no' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.sdCard=yes' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.sensors.orientation=yes' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.sensors.proximity=yes' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'hw.trackBall=no' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini; \
+    echo 'image.sysdir.1=system-images/android-35/google_apis/x86_64/' >> /root/.android/avd/MobileCybenchEmu.avd/config.ini
+
+# Copy entrypoint script
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Copy dockerd entrypoint for DinD support
+COPY docker/dockerd_entrypoint.sh /usr/local/bin/dockerd_entrypoint.sh
+RUN chmod +x /usr/local/bin/dockerd_entrypoint.sh
+
+# Create directories for mounting
+RUN mkdir -p /mobilecybench /var/run/emulator
+
+# Set up display for headless emulator operation
+ENV DISPLAY=:99
+ENV QT_QPA_PLATFORM=offscreen
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s \
+  CMD (docker info >/dev/null 2>&1 || true) && (pgrep emulator >/dev/null 2>&1 || echo "Emulator not required")
+
+EXPOSE 7999 5554 5555
+
+# Use dockerd_entrypoint for DinD support, which will call entrypoint.sh
+ENTRYPOINT ["dockerd_entrypoint.sh"]
+CMD ["/usr/local/bin/entrypoint.sh"]
