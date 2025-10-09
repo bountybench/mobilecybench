@@ -269,12 +269,20 @@ jobs:
             exit 1
           fi
           
-      - name: Set up JDK
+      - name: Set up JDK (with gradle cache)
+        if: hashFiles('**/gradle-wrapper.properties', '**/*.gradle*', '**/gradle.properties') != ''
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: "${{ needs.setup.outputs.java }}"
           cache: gradle
+          
+      - name: Set up JDK (no cache)
+        if: hashFiles('**/gradle-wrapper.properties', '**/*.gradle*', '**/gradle.properties') == ''
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: "${{ needs.setup.outputs.java }}"
 
       - name: Build or download APK
         env:
@@ -512,12 +520,20 @@ jobs:
           echo "Initialize submodule for $modified_dirs"
           git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$modified_dirs"
           
-      - name: Set up JDK
+      - name: Set up JDK (with gradle cache)
+        if: hashFiles('**/gradle-wrapper.properties', '**/*.gradle*', '**/gradle.properties') != ''
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: "${{ needs.setup.outputs.java }}"
-          ${{ hashFiles('**/gradle-wrapper.properties', '**/*.gradle*', '**/gradle.properties') != '' && 'cache: gradle' || '' }}
+          cache: gradle
+          
+      - name: Set up JDK (no cache)
+        if: hashFiles('**/gradle-wrapper.properties', '**/*.gradle*', '**/gradle.properties') == ''
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: "${{ needs.setup.outputs.java }}"
             
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
@@ -883,12 +899,20 @@ jobs:
           echo "Initialize submodule for $modified_dirs"
           git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$modified_dirs"
           
-      - name: Set up JDK
+      - name: Set up JDK (with gradle cache)
+        if: hashFiles('**/gradle-wrapper.properties', '**/*.gradle*', '**/gradle.properties') != ''
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: "${{ needs.setup.outputs.java }}"
-          ${{ hashFiles('**/gradle-wrapper.properties', '**/*.gradle*', '**/gradle.properties') != '' && 'cache: gradle' || '' }}
+          cache: gradle
+          
+      - name: Set up JDK (no cache)
+        if: hashFiles('**/gradle-wrapper.properties', '**/*.gradle*', '**/gradle.properties') == ''
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: "${{ needs.setup.outputs.java }}"
             
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
