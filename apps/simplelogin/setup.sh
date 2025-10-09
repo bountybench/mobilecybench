@@ -23,68 +23,53 @@ check_prerequisites() {
     echo "Checking prerequisites..."
     
     # Check Docker
-    if ! command -v docker &> /dev/null; then
-        echo "ERROR:" "Docker not found. Please install Docker."
+    command -v docker >/dev/null 2>&1 || {
+        echo "ERROR: Docker not found on PATH"
         return 1
-    fi
+    }
     
-    # Check for docker compose
-    if ! $DC version &> /dev/null; then
-        echo "ERROR:" "docker compose not available. Please ensure Docker Compose is installed."
+    # Check if Docker daemon is running
+    docker info >/dev/null 2>&1 || {
+        echo "ERROR: Docker daemon is not running"
         return 1
-    fi
+    }
     
-    # Check jq
-    if ! command -v jq &> /dev/null; then
-        echo "ERROR:" "jq not found. Please install jq for JSON processing."
+    # Check for docker compose v2 (modern syntax)
+    docker compose version >/dev/null 2>&1 || {
+        echo "ERROR: docker compose v2 not available. Please install Docker Compose v2."
         return 1
-    fi
+    }
     
-    # Check curl
-    if ! command -v curl &> /dev/null; then
-        echo "ERROR:" "curl not found. Please install curl."
+    # Check ADB (used for app installation and testing)
+    command -v adb >/dev/null 2>&1 || {
+        echo "ERROR: adb not found. Please install Android SDK platform-tools."
         return 1
-    fi
+    }
     
     echo "Prerequisites check passed"
 }
 
 wait_container_healthy() {
-    local cid="$1"
+    local container_name="$1"
     local timeout="${2:-180}"
-    local start ts status
-
-    start="$(date +%s)"
-    while :; do
-        status="$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo 'no-health')"
-        ts="$(date +%H:%M:%S)"
-        echo "[$ts] ${cid:0:12} health: $status"
-
+    local start=$(date +%s)
+    
+    echo "Waiting for $container_name to be healthy..."
+    while true; do
+        local status=$(docker inspect --format '{{.State.Health.Status}}' "$container_name" 2>/dev/null || echo "unknown")
         if [[ "$status" == "healthy" ]]; then
-            echo "INFO: API healthy"
+            echo "$container_name is healthy"
             return 0
         fi
-
-        # If the image has no healthcheck at all, fallback to "running + port open".
-        if [[ "$status" == "no-health" ]]; then
-            st="$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || true)"
-            if [[ "$st" == "running" ]]; then
-                if docker compose exec -T simplelogin-api nc -z localhost 7777 2>/dev/null; then
-                    echo "INFO: API reachable without healthcheck"
-                    return 0
-                fi
-            fi
-        fi
-
-        # timeout guard
-        if (( $(date +%s) - start > timeout )); then
-            echo "ERROR: API did not become healthy within ${timeout}s"
-            docker ps -a
-            docker compose logs --no-color --tail=200 simplelogin-api db || true
+        
+        local now=$(date +%s)
+        if (( now - start > timeout )); then
+            echo "ERROR: $container_name did not become healthy within ${timeout}s"
+            docker ps --format 'table {{.Names}}\t{{.Status}}'
             return 1
         fi
-
-        sleep 3
+        
+        sleep 2
     done
 }
 
@@ -93,68 +78,18 @@ setup_backend() {
     
     cd "$SCRIPT_DIR"
     
-    # Ensure Docker is running
-    if ! docker info >/dev/null 2>&1; then
-        echo "Starting Docker..."
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            # macOS
-            open -a Docker
-            echo "Waiting for Docker to start..."
-            local timeout=60
-            local counter=0
-            while [[ $counter -lt $timeout ]]; do
-                if docker info >/dev/null 2>&1; then
-                    echo "Docker is running"
-                    break
-                fi
-                sleep 2
-                ((counter++))
-            done
-            
-            if [[ $counter -eq $timeout ]]; then
-                echo "ERROR: Docker failed to start within 60 seconds"
-                return 1
-            fi
-        else
-            echo "ERROR: Docker is not running. Please start Docker manually."
-            return 1
-        fi
-    fi
-    
     # Stop any existing containers
-    $DC down 2>/dev/null || true
+    docker compose down 2>/dev/null || true
         
     # Start backend services
     echo "Starting backend services..."
-    if ! $DC up -d; then
-        echo "ERROR:" "Failed to start backend services"
+    docker compose up -d || {
+        echo "ERROR: Failed to start backend services"
         return 1
-    fi
+    }
     
-    # Wait for services to be healthy with robust health checking
-    echo "Waiting for backend services to be ready..."
-    
-    # Get the container ID (stable across compose versions)
-    local API_CID
-    API_CID="$(docker compose ps -q simplelogin-api)"
-    if [[ -z "$API_CID" ]]; then
-        echo "ERROR: simplelogin-api container id not found"
-        docker compose ps
-        return 1
-    fi
-    
-    # Robust health wait
-    wait_container_healthy "$API_CID" 180
-    
-    # Wait for API port availability using Python socket check
-    echo "Waiting for API port availability..."
-    while ! docker compose exec -T simplelogin-api python -c 'import socket; s=socket.socket(); s.settimeout(5); s.connect(("localhost", 7777)); s.close()' 2>/dev/null; do
-        echo "Waiting for SimpleLogin API server to be ready..."
-        docker compose logs simplelogin-api
-        echo "==================="
-        sleep 2
-    done
-    echo "SimpleLogin API server is ready!"
+    # Wait for container to be healthy
+    wait_container_healthy "simplelogin-api" 180
 }
 
 seed_test_data() {
@@ -199,39 +134,12 @@ print(f'Canary updated to: {canary_value}')
     fi
 }
 
-build_and_install_app() {
-    echo "Building and installing SimpleLogin app..."
+install_app() {
+    echo "Installing SimpleLogin app..."
     
-    # Check if app is already installed and up-to-date
-    local app_id
-    app_id="$PACKAGE_NAME"
-    
-    # Check if device is connected
-    if ! adb devices | grep -q "device\|emulator"; then
-        echo "ERROR:" "No Android device/emulator connected"
-        return 1
-    fi
-    
-    # Check if app is already installed
-    if adb shell pm list packages | grep -q "$app_id"; then
-        echo "App is already installed: $app_id"
-        
-        # Check if APK exists and is newer than installed version
-        local apk_path="$SCRIPT_DIR/apk/simplelogin-fdroid-release.apk"
-        if [[ -f "$apk_path" ]]; then
-            echo "APK already built - skipping rebuild"
-            return 0
-        else
-            echo "APK not found - rebuilding..."
-        fi
-    else
-        echo "App not installed - will build and install"
-    fi
-    
-    # Check if APK exists (should be built by setup_app_source.sh first)
     local apk_path="$SCRIPT_DIR/apk/simplelogin-fdroid-release.apk"
     if [[ ! -f "$apk_path" ]]; then
-        echo "ERROR:" "APK not found at $apk_path"
+        echo "ERROR: APK not found at $apk_path"
         echo "Please run setup_app_source.sh first to build the APK."
         return 1
     fi
@@ -239,15 +147,15 @@ build_and_install_app() {
     echo "Installing APK: $apk_path"
     
     # Uninstall any existing version
-    adb uninstall "$app_id" >/dev/null 2>&1 || true
+    adb uninstall "$PACKAGE_NAME" >/dev/null 2>&1 || true
     
     # Install the APK
-    if ! adb install "$apk_path"; then
-        echo "ERROR:" "APK installation failed"
+    adb install "$apk_path" || {
+        echo "ERROR: APK installation failed"
         return 1
-    fi
+    }
     
-    echo "App build and installation completed"
+    echo "App installed successfully"
 }
 
 smoke_test() {
@@ -306,46 +214,13 @@ verify_setup() {
     echo "Setup verification completed"
 }
 
-
-
-
-ensure_submodule_ready() {
-    echo "Ensuring submodule is ready..."
-    
-    # Sync and update submodules
-    git submodule sync --recursive
-    git submodule update --init --recursive --checkout codebase
-    
-    # Check if codebase directory exists
-    if [[ ! -d "$SCRIPT_DIR/codebase" ]]; then
-        echo "ERROR:" "Failed to initialize codebase submodule"
-        return 1
-    fi
-    
-    # Get target commit from metadata
-    local target_commit
-    target_commit="$COMMIT_VERSION"
-    
-    if [[ "$target_commit" != "null" && -n "$target_commit" ]]; then
-        echo "Checking out commit: $target_commit"
-        cd "$SCRIPT_DIR/codebase"
-        git checkout "$target_commit"
-        cd "$SCRIPT_DIR"
-    fi
-    
-    echo "Submodule ready at: $SCRIPT_DIR/codebase"
-}
-
 main() {
     echo "Starting SimpleLogin MobileCybench setup..."
-    
-    # Ensure submodule is initialized and at correct commit
-    ensure_submodule_ready
     
     check_prerequisites
     setup_backend
     seed_test_data
-    build_and_install_app
+    install_app
     smoke_test
     verify_setup
     

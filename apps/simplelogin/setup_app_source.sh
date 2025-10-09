@@ -30,6 +30,7 @@ log_warning() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+    exit 1
 }
 
 check_prerequisites() {
@@ -38,13 +39,11 @@ check_prerequisites() {
     # Check if metadata exists
     if [[ ! -f "$METADATA_FILE" ]]; then
         log_error "metadata.json not found at $METADATA_FILE"
-        return 1
     fi
     
     # Check Java
-    if ! command -v java &> /dev/null; then
+    if ! command -v java >/dev/null 2>&1; then
         log_error "Java not found. Please install Java 17 or later."
-        return 1
     fi
     
     # Set Android SDK path - handle both local development and CI environments
@@ -61,29 +60,6 @@ check_prerequisites() {
         log_info "Using local development Android SDK path: $ANDROID_HOME"
     else
         log_error "Android SDK not found in any expected location"
-        return 1
-    fi
-    
-    # Check Android SDK
-    if [[ ! -d "$ANDROID_HOME" ]]; then
-        log_error "Android SDK not found at $ANDROID_HOME. Please run the Android emulator setup first."
-        return 1
-    fi
-    
-    # Set up Android SDK environment
-    export ANDROID_HOME="$ANDROID_HOME"
-    export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-    
-    # Check ADB
-    if ! command -v adb &> /dev/null; then
-        log_error "adb not found. Please install Android SDK platform-tools."
-        return 1
-    fi
-    
-    # Check Git
-    if ! command -v git &> /dev/null; then
-        log_error "git not found. Please install git."
-        return 1
     fi
     
     log_success "Prerequisites check passed"
@@ -94,40 +70,37 @@ check_prerequisites() {
 setup_environment() {
     log_info "Setting up build environment..."
     
-    # Set Java 17 - use existing JAVA_HOME if available, otherwise detect
-    if [[ -n "${JAVA_HOME:-}" && -d "${JAVA_HOME:-}" ]]; then
-        log_info "Using existing JAVA_HOME: $JAVA_HOME"
-    elif [[ -d "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ]]; then
-        # macOS Homebrew path
+    # Set Java 17 - try common paths, fallback to system default
+    if [[ -d "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ]]; then
         export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
-        log_info "Using macOS Homebrew JAVA_HOME: $JAVA_HOME"
     elif [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
-        # Linux path
         export JAVA_HOME="/usr/lib/jvm/java-17-openjdk"
-        log_info "Using Linux JAVA_HOME: $JAVA_HOME"
     else
         log_warning "Could not find Java 17 via known paths. Using system default."
         export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
     fi
     
     export PATH="$JAVA_HOME/bin:$PATH"
+    export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+    
     log_success "Build environment configured"
 }
 
 build_app() {
+    # Check if APK already exists
+    local apk_dest="$SCRIPT_DIR/apk/simplelogin-fdroid-release.apk"
+    if [[ -f "$apk_dest" ]]; then
+        log_info "APK already exists at $apk_dest - skipping build"
+        return 0
+    fi
+    
     log_info "Building SimpleLogin Android app..."
     
-    # Ensure codebase directory exists (for submodule approach)
-    if [[ ! -d "$CODEBASE_DIR" ]]; then
-        log_error "Codebase directory not found at $CODEBASE_DIR"
-        log_info "This may indicate a submodule initialization issue"
-        return 1
-    fi
+    # Ensure submodule is initialized
+    git submodule update --init --recursive
     
     if [[ ! -d "$CODEBASE_DIR/SimpleLogin" ]]; then
         log_error "SimpleLogin directory not found at $CODEBASE_DIR/SimpleLogin"
-        log_info "This may indicate an incomplete submodule checkout"
-        return 1
     fi
     
     cd "$CODEBASE_DIR/SimpleLogin"
@@ -136,42 +109,22 @@ build_app() {
     chmod +x gradlew
 
     # Configure release build to use debug signing for testing
-    log_info "Configuring release build to use debug signing..."
     sed -i.bak 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
 
     # Clean and build release APK
-    log_info "Running Gradle clean..."
-    if ! ./gradlew --no-daemon clean; then
-        log_error "Gradle clean failed"
-        return 1
-    fi
-
-    log_info "Building F-Droid release APK..."
-    if ! ./gradlew --no-daemon assembleFdroidRelease; then
-        log_error "Gradle build failed"
-        return 1
-    fi
+    ./gradlew --no-daemon clean
+    ./gradlew --no-daemon assembleFdroidRelease
     
-    # Find the built F-Droid APK
+    # Find and copy the built APK
     local apk_path
     apk_path=$(find app/build/outputs/apk/fdroid/release -name "*.apk" | head -1)
     
     if [[ -z "$apk_path" || ! -f "$apk_path" ]]; then
         log_error "Built F-Droid APK not found in app/build/outputs/apk/fdroid/release/"
-        return 1
     fi
     
-    log_success "APK built successfully: $apk_path"
-    
-    # Create apk directory if it doesn't exist
     mkdir -p "$SCRIPT_DIR/apk"
-    
-    # Copy APK to standard location
-    local apk_filename="simplelogin-fdroid-release.apk"
-    local apk_dest="$SCRIPT_DIR/apk/$apk_filename"
     cp "$apk_path" "$apk_dest"
-    
-    log_success "APK copied to: $apk_dest"
     
     cd "$SCRIPT_DIR"
 }

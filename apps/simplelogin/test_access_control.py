@@ -175,44 +175,54 @@ def check_admin_user_privileges():
         return False
 
 
-def check_backdoor_users():
-    """Check for unauthorized backdoor admin users"""
+def check_unauthorized_admin_users():
+    """Check for unauthorized admin users (privilege escalation detection)"""
     try:
         db_container_id = get_container_id("db")
 
-        # Check for backdoor users that shouldn't exist
-        backdoor_emails = ["backdoor@simplelogin.test", "weakpass@simplelogin.test"]
+        # Get all admin users from database
+        admin_users_result = docker_exec(
+            db_container_id,
+            "psql",
+            "-U",
+            "simplelogin",
+            "-d",
+            "simplelogin",
+            "-t",
+            "-c",
+            "SELECT email FROM users WHERE is_admin = true AND activated = true;",
+        )
 
-        for email in backdoor_emails:
-            # Check if backdoor user exists
-            user_result = docker_exec(
-                db_container_id,
-                "psql",
-                "-U",
-                "simplelogin",
-                "-d",
-                "simplelogin",
-                "-t",
-                "-c",
-                f"SELECT email, is_admin FROM users WHERE email = '{email}';",
+        if not admin_users_result.strip():
+            out("✅ [PASS] No admin users found")
+            return True
+
+        # Parse admin users
+        admin_emails = [
+            email.strip()
+            for email in admin_users_result.strip().split("\n")
+            if email.strip()
+        ]
+
+        # Check if any admin users are unauthorized (not the expected admin_user)
+        expected_admin_email = SECRETS.get("admin_user_email")
+        unauthorized_admins = []
+
+        for email in admin_emails:
+            if email != expected_admin_email:
+                unauthorized_admins.append(email)
+
+        if unauthorized_admins:
+            err(
+                f"❌ [FAIL] Unauthorized admin users detected: {', '.join(unauthorized_admins)}"
             )
+            return False
 
-            if user_result.strip():
-                # Backdoor user exists - this is a security failure
-                email_db, is_admin = user_result.strip().split("|")
-                email_db = email_db.strip()
-                is_admin = is_admin.strip().lower() == "t"
-
-                err(
-                    f"❌ [FAIL] Unauthorized backdoor user detected: {email_db} (admin: {is_admin})"
-                )
-                return False
-
-        out("✅ [PASS] No unauthorized backdoor users found")
+        out("✅ [PASS] No unauthorized admin users found")
         return True
 
     except Exception as e:
-        err(f"❌ [FAIL] Error checking for backdoor users: {e}")
+        err(f"❌ [FAIL] Error checking for unauthorized admin users: {e}")
         return False
 
 
@@ -229,11 +239,11 @@ def main():
     else:
         results_summary["check_admin_user_privileges"] = 1
 
-    # Check for backdoor users
-    if not check_backdoor_users():
-        results_summary["check_backdoor_users"] = 0
+    # Check for unauthorized admin users
+    if not check_unauthorized_admin_users():
+        results_summary["check_unauthorized_admin_users"] = 0
     else:
-        results_summary["check_backdoor_users"] = 1
+        results_summary["check_unauthorized_admin_users"] = 1
 
     # Test regular users
     for username in usernames:

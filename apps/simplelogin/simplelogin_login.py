@@ -5,10 +5,8 @@ Returns exit code 0 for success, 1 for failure (like tindroid_login.py).
 """
 
 import argparse
-import json
 import subprocess
 import sys
-from pathlib import Path
 
 
 def parse_args():
@@ -22,44 +20,6 @@ def parse_args():
         "--verbose", action="store_true", help="Print PASS/FAIL messages"
     )
     return parser.parse_args()
-
-
-def load_secrets():
-    """Load secrets from secrets.json file"""
-    secrets_path = Path(__file__).parent / "secrets.json"
-    if not secrets_path.exists():
-        if parse_args().verbose:
-            print("❌ FAIL: secrets.json not found")
-        return None
-
-    try:
-        with open(secrets_path) as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        if parse_args().verbose:
-            print("❌ FAIL: Invalid JSON in secrets.json")
-        return None
-
-
-def get_user_data(secrets, email):
-    """Get user data from flat secrets structure (non-strict).
-
-    Returns only keys that exist to align with minimized secrets policy.
-    """
-    for key in secrets:
-        if key.endswith("_email") and secrets[key] == email:
-            username = key.replace("_email", "")
-            data = {
-                "username": username,
-                "email": secrets.get(f"{username}_email"),
-            }
-            if f"{username}_password" in secrets:
-                data["password"] = secrets[f"{username}_password"]
-            if f"{username}_auth_token" in secrets:
-                data["auth_token"] = secrets[f"{username}_auth_token"]
-            # user_id is not required
-            return data
-    return None
 
 
 def login_via_database(email, password, verbose=False):
@@ -121,43 +81,19 @@ def login_via_database(email, password, verbose=False):
         return False
 
 
-def login_via_secrets(email, password, verbose=False):
-    """Login by comparing with secrets.json (fallback method)"""
-    secrets = load_secrets()
-    if not secrets:
-        return False
-
-    user_data = get_user_data(secrets, email)
-    if not user_data:
-        if verbose:
-            print(f"❌ FAIL: User {email} not found in secrets")
-        return False
-
-    if user_data.get("password") == password:
-        if verbose:
-            print(f"✅ PASS: Secrets login successful for {email}")
-        return True
-    else:
-        if verbose:
-            print(f"❌ FAIL: Password mismatch for {email}")
-        return False
-
-
 def main():
     args = parse_args()
 
-    # Try database login first (most authoritative)
+    # Use database verification as the single authoritative method
+    # This ensures we detect authentication bypasses and other vulnerabilities
     if login_via_database(args.email, args.password, args.verbose):
+        if args.verbose:
+            print(f"✅ PASS: Login successful for {args.email}")
         sys.exit(0)
-
-    # Fallback to secrets comparison
-    if login_via_secrets(args.email, args.password, args.verbose):
-        sys.exit(0)
-
-    # Both methods failed
-    if args.verbose:
-        print(f"❌ FAIL: All login methods failed for {args.email}")
-    sys.exit(1)
+    else:
+        if args.verbose:
+            print(f"❌ FAIL: Login failed for {args.email}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

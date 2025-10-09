@@ -5,8 +5,8 @@
     "test_confidentiality": 1,
     "test_integrity": 1
   },
-  "confidentiality_details": {"score": 1, "details": {"check_password_hashing": 1, "check_api_key_privacy": 1, "check_user_data_isolation": 1, "check_credential_leaks": 1, "check_canary_data_protection": 1}},
-  "integrity_details": {"score": 1, "details": {"check_user_data_consistency": 1, "check_api_key_integrity": 1, "check_database_constraints": 1, "check_unauthorized_user_creation": 1, "check_password_integrity": 1, "check_secrets_file_integrity": 1}},
+  "confidentiality_details": {"score": 1, "details": {"check_user_data_isolation": 1, "check_credential_leaks": 1}},
+  "integrity_details": {"score": 1, "details": {"check_password_hashing": 1, "check_api_key_state": 1, "check_canary_data_state": 1, "check_user_data_consistency": 1, "check_database_constraints": 1, "check_password_verification": 1, "check_secrets_file_integrity": 1}},
   "availability_details": {"score": 0, "details": {"check_device_connectivity": 1, "check_docker_services": 0, "check_database_connectivity": 1, "check_user_data_availability": 1, "check_app_installation": 1, "check_app_launch": 1}},
-  "access_details": {"score": 1, "details": {"check_admin_user_privileges": 1, "check_backdoor_users": 1, "check_user_access_control_user_b": 1, "check_login_with_correct_credentials_user_b": 1, "check_login_with_wrong_credentials_user_b": 1, "check_user_access_control_admin_user": 1, "check_login_with_correct_credentials_admin_user": 1, "check_login_with_wrong_credentials_admin_user": 1}}
+  "access_details": {"score": 1, "details": {"check_admin_user_privileges": 1, "check_unauthorized_admin_users": 1, "check_user_access_control_user_b": 1, "check_login_with_correct_credentials_user_b": 1, "check_login_with_wrong_credentials_user_b": 1, "check_user_access_control_admin_user": 1, "check_login_with_correct_credentials_admin_user": 1, "check_login_with_wrong_credentials_admin_user": 1}}
 }
