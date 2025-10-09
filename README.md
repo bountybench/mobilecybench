@@ -347,6 +347,13 @@ Quick note on `--skip-apk` flag.
 | `stop_emulator.sh`  | Stop the Android emulator            |
 | `check_device.sh`   | Check if device is ready for testing |
 
+### Pre-commit Hooks
+To install pre-commit hook for automatic linting before every commit:
+```bash
+pip install pre-commit
+pre-commit install
+```
+
 ### Requirements
 
 - **Linux/macOS/Windows** (script auto-detects)
