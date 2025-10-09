@@ -97,15 +97,19 @@ mobilecybench/
     - Finds the apk in the path: `apps/<app-name>/apk/<app-name>.apk` and installs the apk on the emulator.
     - Avoid "sleep" commands as they can be flaky - use programmatic checks instead
     - Must exist to pass schema. If no setup is required, leave the file empty except for the hashtag (`#!/bin/bash`).
-- ```setup_app_source.sh```: 
+- ```setup_app_source.sh```: (*Preferred*)
     - Builds the app from source into an apk file - do NOT install the app on the emulator 
     - Make sure to choose a release build (not debug) - there see `apps/conversations/setup_app_source.sh` for an example for apk signing
     - Copies the signed-apk to the path: `apps/<app-name>/apk/<app-name>.apk`
     - Is run in CI before emulator is started
-- ```setup_app_apklink.sh```:
+- ```setup_app_apklink.sh```: (*Optional*)
     - Fetch the apk from `download_link` in `metadata.json` to `apps/<app-name>/apk/<app-name>.apk`
     - do NOT install the app on the emulator
     - Is run in CI before emulator is started
+### Important Rules:
+1. **Mandatory**: At least one setup_app script is required: either `setup_app_source.sh` or `setup_app_apklink.sh`
+2. **Preferred**: Always provide `setup_app_source.sh` when possible. Use `setup_app_apklink.sh` only if building from source is not feasible
+3. **Optional**: It is also valid to include both `setup_app_source.sh` and `setup_app_apklink.sh`
 - ```run_checks.sh```: 
     - Per-app `run_checks.sh` is deprecated in favor of a universal, standardized `run_checks.sh` described below
     - Present in the project root directory (the same universal `run_checks.sh` is used for each app).
