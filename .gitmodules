@@ -43,3 +43,6 @@
 [submodule "apps/openhab/codebase"]
 	path = apps/openhab/codebase
 	url = https://github.com/cy-suite/openhab.git
+[submodule "apps/brave/codebase"]
+	path = apps/brave/codebase
+	url = https://github.com/cy-suite/brave.git
