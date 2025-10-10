@@ -141,17 +141,6 @@ seed_home_assistant_config() {
     fi
 }
 
-fix_auth_permissions_for_ci() {
-    # Only run in CI/GitHub Actions environments where we need sudo access
-    if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
-        echo "CI environment detected, fixing auth file permissions..."
-        sudo chmod 644 ./config/.storage/auth
-        sudo chmod 644 ./config/.storage/auth_provider.homeassistant
-    else
-        echo "Non-CI environment, skipping auth permission fixes"
-    fi
-}
-
 wait_for_container_healthy() {
     local container_name="home-assistant-server"
     local max_wait_time=120
@@ -219,7 +208,6 @@ main() {
     install_home_assistant
 
     launch_home_assistant
-    fix_auth_permissions_for_ci
 }
 
 main "$@"

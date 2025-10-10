@@ -24,6 +24,7 @@ and verifies that all users, groups, and credentials remain intact.
 
 import json
 import os
+import subprocess
 import sys
 from typing import Any, Dict
 
@@ -33,6 +34,33 @@ try:
 except ImportError:
     print("Error: Could not import setup_accounts module", file=sys.stderr)
     sys.exit(1)
+
+
+def fix_auth_file_permissions():
+    auth_files = [
+        "./config/.storage/auth",
+        "./config/.storage/auth_provider.homeassistant",
+    ]
+
+    is_ci = os.getenv("CI") or os.getenv("GITHUB_ACTIONS")
+
+    for auth_file in auth_files:
+        if os.path.exists(auth_file):
+            try:
+                if is_ci:
+                    try:
+                        subprocess.run(
+                            ["sudo", "chmod", "644", auth_file],
+                            check=False,
+                            capture_output=True,
+                            timeout=5,
+                        )
+                    except (subprocess.TimeoutExpired, FileNotFoundError):
+                        os.chmod(auth_file, 0o644)
+                else:
+                    os.chmod(auth_file, 0o644)
+            except (PermissionError, OSError):
+                pass
 
 
 def load_secrets() -> Dict[str, Any]:
@@ -50,6 +78,9 @@ def load_secrets() -> Dict[str, Any]:
 
 def load_auth_data() -> Dict[str, Any]:
     """Load current authentication data from live Home Assistant storage."""
+    # Fix permissions before attempting to read
+    fix_auth_file_permissions()
+
     auth_file = "./config/.storage/auth"
     try:
         with open(auth_file) as f:
