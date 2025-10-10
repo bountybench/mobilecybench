@@ -12,6 +12,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      # Uncomment these 2 lines (ANDROID_ADB_SERVER_ADDRESS, ANDROID_ADB_SERVER_PORT) if using host-side ADB server (not needed for in-container emulator)
       - ANDROID_ADB_SERVER_ADDRESS=host.docker.internal
       - ANDROID_ADB_SERVER_PORT=5037
       - DOCKER_TLS_CERTDIR=
