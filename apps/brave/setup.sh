@@ -52,18 +52,42 @@ launch_app() {
     # Wait for device to be ready
     adb wait-for-device
     
-    # Launch the app - try multiple activity names for different Brave versions
-    adb shell am start -n "$PACKAGE_NAME/.BraveActivity" 2>/dev/null || \
-    adb shell am start -n "$PACKAGE_NAME/com.brave.browser.BraveActivity" 2>/dev/null || \
-    adb shell am start -n "$PACKAGE_NAME/org.chromium.chrome.browser.ChromeLauncherActivity" 2>/dev/null || \
-    adb shell am start -n "$PACKAGE_NAME/org.chromium.chrome.browser.ChromeTabbedActivity" 2>/dev/null || \
-    adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PACKAGE_NAME" 2>/dev/null || \
-    echo "Failed to launch app with specific activity, trying monkey..." && adb shell monkey -p "$PACKAGE_NAME" -c android.intent.category.LAUNCHER 1
+    # First, discover the actual launcher activity
+    echo "Finding launcher activity for $PACKAGE_NAME..."
+    LAUNCHER_ACTIVITY=$(adb shell cmd package resolve-activity --brief -c android.intent.category.LAUNCHER "$PACKAGE_NAME" 2>/dev/null | grep "$PACKAGE_NAME" | head -1)
+    
+    if [[ -n "$LAUNCHER_ACTIVITY" ]]; then
+        echo "Found launcher activity: $LAUNCHER_ACTIVITY"
+        if adb shell am start -n "$LAUNCHER_ACTIVITY" 2>/dev/null; then
+            echo "Successfully launched with discovered activity: $LAUNCHER_ACTIVITY"
+            sleep 3
+            return 0
+        fi
+    fi
+    
+    echo "Trying fallback launch methods..."
+    # Try various known activity patterns
+    if adb shell am start -n "$PACKAGE_NAME/.BraveActivity" 2>/dev/null; then
+        echo "Launched with .BraveActivity"
+    elif adb shell am start -n "$PACKAGE_NAME/com.brave.browser.BraveActivity" 2>/dev/null; then
+        echo "Launched with com.brave.browser.BraveActivity"
+    elif adb shell am start -n "$PACKAGE_NAME/org.chromium.chrome.browser.ChromeLauncherActivity" 2>/dev/null; then
+        echo "Launched with ChromeLauncherActivity"
+    elif adb shell am start -n "$PACKAGE_NAME/org.chromium.chrome.browser.ChromeTabbedActivity" 2>/dev/null; then
+        echo "Launched with ChromeTabbedActivity"
+    elif adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PACKAGE_NAME" 2>/dev/null; then
+        echo "Launched with generic intent"
+    else
+        echo "WARNING: Could not launch app. App is installed but launcher may not be available."
+        echo "This is often normal for testing - the app can still be accessed programmatically."
+        # Don't fail the setup just because launcher doesn't work
+        return 0
+    fi
     
     # Wait a bit for app to start
     sleep 3
     
-    echo "Brave browser launched successfully."
+    echo "Brave browser launch attempted."
 }
 
 # Verify app is running

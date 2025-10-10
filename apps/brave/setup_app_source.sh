@@ -70,16 +70,25 @@ build_brave() {
     echo "Building Brave for Android..."
     
     # Install dependencies and sync
-    echo "Installing npm dependencies..."
-    npm install
     echo "Initializing Brave build environment..."
     npm run init
     echo "Syncing Brave for Android..."
     npm run sync -- --target_os=android
     
-    # Build for Android (release build)
+    # Build for Android (release build) - detect architecture
     echo "Building Brave APK..."
-    npm run build -- --target_os=android --target_arch=arm64 --target_android_output_format=apk
+    ARCH=$(uname -m)
+    if [[ "$ARCH" == "x86_64" ]]; then
+        TARGET_ARCH="x64"
+    elif [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then
+        TARGET_ARCH="arm64"
+    else
+        echo "WARNING: Unknown architecture $ARCH, defaulting to x64"
+        TARGET_ARCH="x64"
+    fi
+    
+    echo "Building for architecture: $TARGET_ARCH"
+    npm run build -- --target_os=android --target_arch="$TARGET_ARCH" --target_android_output_format=apk
     
     # Find the built APK
     APK_PATH=$(find src/out -name "*.apk" | head -1)
