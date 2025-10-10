@@ -17,19 +17,27 @@ info "Installing Rust Android targets early..."
 if command -v rustup >/dev/null 2>&1; then
     # Get the specific toolchain version used by DeltaChat
     RUSTUP_TOOLCHAIN="1.86.0"
-    TARGETS="aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android"
+    # Only install the target we'll actually use (arm64-v8a = aarch64-linux-android)
+    TARGETS="aarch64-linux-android"
     
     info "Installing Rust toolchain $RUSTUP_TOOLCHAIN..."
     if ! rustup install "$RUSTUP_TOOLCHAIN"; then
         error "Failed to install Rust toolchain $RUSTUP_TOOLCHAIN"
     fi
     
-    info "Installing Android targets for toolchain $RUSTUP_TOOLCHAIN..."
+    info "Installing Android target $TARGETS for toolchain $RUSTUP_TOOLCHAIN..."
     if ! rustup target add $TARGETS --toolchain "$RUSTUP_TOOLCHAIN"; then
-        error "Failed to install Rust Android targets for toolchain $RUSTUP_TOOLCHAIN"
+        error "Failed to install Rust Android target for toolchain $RUSTUP_TOOLCHAIN"
     fi
     
-    info "Rust Android targets installed successfully for toolchain $RUSTUP_TOOLCHAIN"
+    info "Rust Android target installed successfully for toolchain $RUSTUP_TOOLCHAIN"
+    
+    # Set global Rust optimizations for faster builds
+    export CARGO_INCREMENTAL=1
+    export CARGO_NET_RETRY=10
+    export CARGO_HTTP_TIMEOUT=60
+    export CARGO_HTTP_LOW_SPEED_LIMIT=10
+    info "Rust build optimizations configured"
 else
     error "rustup not found - Rust toolchain required"
 fi
@@ -100,7 +108,18 @@ build_rust_core() {
     
     git submodule update --init --recursive
     
-    ./scripts/ndk-make.sh
+    # Optimize Rust build for CI - use debug mode and single architecture for faster builds
+    info "Using optimized build settings for CI..."
+    
+    # Set Rust build optimizations for faster compilation
+    export CARGO_INCREMENTAL=1
+    export CARGO_NET_RETRY=10
+    export RUSTC_WRAPPER=""
+    
+    # Use debug build for faster compilation (--debug flag)
+    # Build only for arm64-v8a (most common architecture) to save time
+    info "Building for arm64-v8a architecture only (debug mode for speed)..."
+    ./scripts/ndk-make.sh --debug arm64-v8a
     
     info "Rust core build completed."
 }
@@ -108,10 +127,22 @@ build_rust_core() {
 build_deltachat() {
     info "Building DeltaChat Android from source..."
     
+    # Set additional Gradle optimizations for CI
+    export GRADLE_OPTS="$GRADLE_OPTS -Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.configureondemand=true"
+    
     local temp_out=$(mktemp)
     local temp_err=$(mktemp)
     
-    if ./gradlew assembleFossDebug --no-daemon --parallel > "$temp_out" 2> "$temp_err"; then
+    # Use optimized Gradle flags for faster CI builds
+    info "Building with optimized Gradle settings..."
+    if ./gradlew assembleFossDebug \
+        --no-daemon \
+        --parallel \
+        --build-cache \
+        --configure-on-demand \
+        --max-workers=2 \
+        -Dorg.gradle.jvmargs="-Xmx3g -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC" \
+        > "$temp_out" 2> "$temp_err"; then
         info "Build completed successfully."
         rm -f "$temp_out" "$temp_err"
     else
@@ -154,8 +185,23 @@ main() {
     build_rust_core
     build_deltachat
     
+    # Copy APK to expected location
+    info "Copying APK to expected location..."
+    APK_DIR="$SCRIPT_DIR/apk"
+    mkdir -p "$APK_DIR"
+    
+    # Find the built APK and copy it
+    BUILT_APK=$(find . -name "*debug*.apk" -type f | head -1)
+    if [[ -n "$BUILT_APK" ]]; then
+        cp "$BUILT_APK" "$APK_DIR/"
+        info "APK copied to $APK_DIR/"
+        ls -la "$APK_DIR/"
+    else
+        error "No APK found after build"
+    fi
+    
     echo ""
-    echo "Setup complete! DeltaChat is ready for installation."
+    echo "Setup complete! DeltaChat APK is ready for installation."
 }
 
 main "$@"
