@@ -4,6 +4,15 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
+ANDROID_HOME="${HOME}/Android/Sdk"
+source "$ROOT_DIR/utils/android.sh"
+
+LOG_PREFIX="[deltachat_setup_app_source]"
+info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
+warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
+error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
+
+# Install Rust Android targets early, before any other operations
 info "Installing Rust Android targets early..."
 if command -v rustup >/dev/null 2>&1; then
     if ! rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android; then
@@ -13,14 +22,6 @@ if command -v rustup >/dev/null 2>&1; then
 else
     error "rustup not found - Rust toolchain required"
 fi
-
-ANDROID_HOME="${HOME}/Android/Sdk"
-source "$ROOT_DIR/utils/android.sh"
-
-LOG_PREFIX="[deltachat_setup_app_source]"
-info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
-warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
-error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
 
 check_prerequisites() {
     info "Checking prerequisites..."
@@ -50,9 +51,6 @@ check_prerequisites() {
 
 setup_environment() {
     info "Setting up build environment..."
-
-    rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
-    
     
     if [[ -d "/opt/homebrew/opt/openjdk@17" ]]; then
         export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
