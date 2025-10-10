@@ -1,4 +1,4 @@
-FROM cybench/kali-linux-large:latest
+FROM cybench/mobilecybench:latest
 # This will be the agent environment - 
 COPY packages.list /tmp/packages.list
 
@@ -37,11 +37,14 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Node.js and npm
-RUN apt-get update && \
-    apt-get install -y nodejs npm && \
+# Install Node.js 20 (required for @openai/codex)
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Install Codex CLI via npm
+RUN npm install -g @openai/codex
 
 RUN curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && \
     chmod +x /usr/local/bin/docker-compose
@@ -57,3 +60,32 @@ ENV PATH="/venv/bin:$PATH"
 COPY ./tools/entrypoint.sh /usr/local/bin/
 
 RUN /venv/bin/pip install --upgrade pip
+
+# Create Codex CLI config directory and copy configuration
+RUN mkdir -p /root/.codex
+COPY agent/codex/config.toml /root/.codex/config.toml
+
+# Install Python dependencies for Codex agent
+RUN /venv/bin/pip install --no-cache-dir \
+    requests \
+    python-dotenv \
+    fastmcp
+
+# Create proper Python package structure for agent code
+RUN mkdir -p /app/agent/mcp /app/agent/prompts /app/utils
+
+# Copy agent files with correct Python module structure
+COPY agent/codex_agent.py /app/agent/
+COPY agent/codex_cli_provider.py /app/agent/
+COPY agent/prompts/ /app/agent/prompts/
+COPY agent/mcp/mcp_proxy.py /app/agent/mcp/
+COPY utils/ /app/utils/
+
+# Create __init__.py files for proper Python packages
+RUN echo "# Agent package" > /app/agent/__init__.py && \
+    echo "# MCP package" > /app/agent/mcp/__init__.py && \
+    echo "# Prompts package" > /app/agent/prompts/__init__.py && \
+    echo "# Utils package" > /app/utils/__init__.py
+
+# Set environment variables
+ENV PYTHONPATH="/app"

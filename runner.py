@@ -16,7 +16,7 @@ import sys
 import time
 from pathlib import Path
 from selectors import EVENT_READ, DefaultSelector
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 
@@ -305,70 +305,162 @@ class MobileCybenchRunner:
             "Emulator setup started, waiting for it to be ready while setting up the app..."
         )
 
-    def setup_app(self):
-        """APK Handling, App Backend Setup, and App Installation"""
-        if self.config["build_type"] == "skip-apk":
-            logger.info("=" * 60)
-            logger.info("SKIPPING APK HANDLING STEP")
-            logger.info("=" * 60)
-        elif self.config["build_type"] == "download-apk":
-            logger.info("=" * 60)
-            logger.info("FETCHING APK USING APKLINK")
-            logger.info("=" * 60)
-            try:
-                self.cmd.run(
-                    "./setup_app_apklink.sh", cwd=self.app_dir, live_output=True
-                )
-            except subprocess.CalledProcessError as e:
-                self._exit_with_error(
-                    f"Failed to setup app APK with setup_app_apklink.sh: {e}"
-                )
-        else:  # source
-            logger.info("=" * 60)
-            logger.info("BUILDING APK FROM SOURCE")
-            logger.info("=" * 60)
-            try:
-                self.cmd.run(
-                    "./setup_app_source.sh", cwd=self.app_dir, live_output=True
-                )
-            except subprocess.CalledProcessError as e:
-                self._exit_with_error(
-                    f"Failed to setup app source with setup_app_source.sh: {e}"
-                )
+    def setup_app(self, codex_mode=False):
+        """APK Handling, App Backend Setup, and App Installation
 
+        Args:
+            codex_mode: If True, uses lenient error handling for containerized codex mode
+        """
+        # Build APK based on build type (custom mode only - codex skips this)
+        if not codex_mode:
+            if self.config["build_type"] == "skip-apk":
+                logger.info("=" * 60)
+                logger.info("SKIPPING APK HANDLING STEP")
+                logger.info("=" * 60)
+            elif self.config["build_type"] == "download-apk":
+                logger.info("=" * 60)
+                logger.info("FETCHING APK USING APKLINK")
+                logger.info("=" * 60)
+                try:
+                    self.cmd.run(
+                        "./setup_app_apklink.sh", cwd=self.app_dir, live_output=True
+                    )
+                except subprocess.CalledProcessError as e:
+                    self._exit_with_error(
+                        f"Failed to setup app APK with setup_app_apklink.sh: {e}"
+                    )
+            else:  # source
+                logger.info("=" * 60)
+                logger.info("BUILDING APK FROM SOURCE")
+                logger.info("=" * 60)
+                try:
+                    self.cmd.run(
+                        "./setup_app_source.sh", cwd=self.app_dir, live_output=True
+                    )
+                except subprocess.CalledProcessError as e:
+                    self._exit_with_error(
+                        f"Failed to setup app source with setup_app_source.sh: {e}"
+                    )
+
+        # Check emulator status
         logger.info("=" * 60)
         logger.info("CHECKING EMULATOR STATUS")
         logger.info("=" * 60)
-        logger.info("Waiting for emulator to finish booting...")
+
+        # Quick emulator check
         try:
-            self.cmd.run(
-                'bash -lc "source utils/wait.sh && wait_for_device_boot 300"',
-                cwd=self.project_root,
-                live_output=True,
+            result = subprocess.run(
+                ["adb", "devices"],
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
-        except subprocess.CalledProcessError as e:
-            self._exit_with_error(f"Failed to wait for emulator boot: {e}")
 
-        logger.info("Emulator booted. Running ./check_device.sh to verify...")
-        try:
-            self.cmd.run("./check_device.sh", cwd=self.project_root, live_output=True)
-        except subprocess.CalledProcessError as e:
-            self._exit_with_error(f"Failed to check emulator status: {e}")
+            if "device" not in result.stdout:
+                msg = "No Android emulator detected on host"
+                if codex_mode:
+                    logger.warning(msg)
+                    logger.warning("ADB commands may return generic responses")
+                    return  # Codex continues without emulator
+                else:
+                    self._exit_with_error(msg)  # Custom requires emulator
 
-        # Setup app (setup backend, install apk, etc.)
+            logger.info("✓ Android emulator detected on host")
+
+        except (
+            subprocess.TimeoutExpired,
+            subprocess.CalledProcessError,
+            FileNotFoundError,
+        ) as e:
+            msg = f"Could not check emulator status: {e}"
+            if codex_mode:
+                logger.warning(msg)
+                return
+            else:
+                self._exit_with_error(msg)
+
+        # Wait for emulator to fully boot (custom mode only)
+        if not codex_mode:
+            logger.info("Waiting for emulator to finish booting...")
+            try:
+                self.cmd.run(
+                    'bash -lc "source utils/wait.sh && wait_for_device_boot 300"',
+                    cwd=self.project_root,
+                    live_output=True,
+                )
+            except subprocess.CalledProcessError as e:
+                self._exit_with_error(f"Failed to wait for emulator boot: {e}")
+
+            logger.info("Emulator booted. Running ./check_device.sh to verify...")
+            try:
+                self.cmd.run(
+                    "./check_device.sh", cwd=self.project_root, live_output=True
+                )
+            except subprocess.CalledProcessError as e:
+                self._exit_with_error(f"Failed to check emulator status: {e}")
+
+        # Setup app backend and install APK
         logger.info("=" * 60)
-        logger.info(
-            "SETTING UP THE BACKEND(RUNTIME SERVERS, DATABASES, SEEDS, etc.) AND INSTALLING APK"
-        )
+        logger.info("SETTING UP THE BACKEND AND INSTALLING APK")
         logger.info("=" * 60)
+
+        setup_script = self.app_dir / "setup.sh"
+        if not setup_script.exists():
+            msg = f"No setup.sh found for app {self.app_name}"
+            if codex_mode:
+                logger.warning(f"{msg}, skipping app setup")
+                return
+            else:
+                self._exit_with_error(msg)
+
         try:
-            self.cmd.run("./setup.sh", cwd=self.app_dir, live_output=True)
+            logger.info(f"Running app setup script: {setup_script}")
+
+            if codex_mode:
+                # Use subprocess directly with timeout for codex
+                result = subprocess.run(
+                    ["bash", "./setup.sh"],
+                    cwd=self.app_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+
+                if result.returncode == 0:
+                    logger.info("✓ App setup completed successfully")
+                    if result.stdout:
+                        for line in result.stdout.splitlines():
+                            logger.info(f"[SETUP] {line}")
+                else:
+                    logger.error(f"App setup failed with exit code {result.returncode}")
+                    if result.stderr:
+                        for line in result.stderr.splitlines():
+                            logger.error(f"[SETUP ERROR] {line}")
+            else:
+                # Use CommandExecutor with live output for custom
+                self.cmd.run("./setup.sh", cwd=self.app_dir, live_output=True)
+                logger.info("✓ App setup completed successfully")
+
+        except subprocess.TimeoutExpired:
+            msg = "App setup timed out after 5 minutes"
+            if codex_mode:
+                logger.error(msg)
+            else:
+                self._exit_with_error(msg)
         except subprocess.CalledProcessError as e:
-            self._exit_with_error(f"Failed to setup app: {e}")
+            msg = f"Failed to setup app: {e}"
+            if codex_mode:
+                logger.error(msg)
+            else:
+                self._exit_with_error(msg)
+        except Exception as e:
+            msg = f"App setup failed: {e}"
+            if codex_mode:
+                logger.error(msg)
+            else:
+                self._exit_with_error(msg)
 
-        logger.info("App setup completed")
-
-    def setup_agent(self):
+    def setup_agent(self, codex_mode=False):
         """Configure agent environment and start services"""
         logger.info("=" * 60)
         logger.info("SETTING UP AGENT ENVIRONMENT")
@@ -377,7 +469,7 @@ class MobileCybenchRunner:
 
         self._setup_env_file()
         self._create_docker_network()
-        self._start_containers()
+        self._start_containers(codex_mode=codex_mode)
         self._copy_codebase_to_kali()
 
         logger.info("Agent environment setup completed")
@@ -430,56 +522,85 @@ class MobileCybenchRunner:
             logger.error(f"Failed to create docker network: {e}")
             self._exit_with_error("Failed to create docker network 'shared_net'")
 
-    def _start_containers(self):
-        """Start MCP server and Kali container"""
-        logger.info("Starting containers...")
-        logger.info("Starting MCP server and Kali container...")
+    def _start_containers(self, codex_mode: bool = False):
+        """Start the containerized environment.
 
-        # Set environment variable for docker-compose
+        Args:
+            codex_mode: If True, uses codex-specific configuration.
+                    If False, uses custom implementation.
+        """
+        logger.info("Starting containerized environment...")
+
+        # Build environment variables
         env = os.environ.copy()
-        start_dir = f"/tmp/{self.app_name}_app"
-        env["START_DIR"] = start_dir
 
-        logger.info(f"Setting START_DIR environment variable: {start_dir}")
-        logger.info(f"Environment variable START_DIR set to: {start_dir}")
-        logger.info("Starting containers with docker compose...")
-
-        try:
-            self.cmd.run("docker compose up -d", cwd=self.agent_dir, env=env)
-        except subprocess.CalledProcessError as e:
-            logger.error(
-                f"Docker-compose failed: {e.stderr if hasattr(e, 'stderr') else e}"
+        if codex_mode:
+            env.update(
+                {
+                    "APP_NAME": self.app_name,
+                    "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
+                    "AGENT_TYPE": "codex",
+                    "MCP_COMMAND": "python3 mcp_server.py",  # Skip ngrok for codex
+                }
             )
-            self._exit_with_error("Failed to start containers")
+            cmd = f"docker compose -f {self.agent_dir / 'docker-compose.yml'} up -d --build"
+            cwd = self.project_root
+        else:
+            start_dir = f"/tmp/{self.app_name}_app"
+            env["START_DIR"] = start_dir
+            env["AGENT_TYPE"] = "custom"
+            logger.info(f"Setting START_DIR environment variable: {start_dir}")
+            cmd = "docker compose up -d"
+            cwd = self.agent_dir
 
-        logger.info("✓ Containers started successfully")
-        logger.info("Containers started successfully")
+        # Execute docker compose
+        try:
+            result = self.cmd.run(cmd, cwd=cwd, env=env)
+            logger.info("✓ Containers started successfully")
+            if result.stdout:
+                logger.debug(f"Docker compose output: {result.stdout}")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to start containers: {e}")
+            if codex_mode:
+                raise
+            else:
+                self._exit_with_error("Failed to start containers")
 
-        logger.info("Waiting for containers to initialize...")
+        # Container verification
         logger.info("Waiting for containers to initialize...")
         time.sleep(5)
-        # TODO: Implement a more robust check to ensure services are up and running
-        # Container healt
 
-        # Check container status
+        if codex_mode:
+            logger.info("Waiting for codex container setup to complete...")
+            max_wait = 300  # 5 minutes
+            start = time.time()
+
+            while time.time() - start < max_wait:
+                result = self.cmd.run(
+                    "docker exec kali-container test -f /tmp/codex_setup_complete",
+                    check=False,
+                )
+                if result.returncode == 0:
+                    logger.info("✓ Codex setup complete")
+                    break
+                time.sleep(5)
+            else:
+                logger.warning("⚠ Codex setup marker not found after 5 minutes")
+
         logger.info("Checking container status...")
         try:
-            result = self.cmd.run("docker compose ps", cwd=self.agent_dir)
+            result = self.cmd.run("docker ps", cwd=cwd, env=env)
         except subprocess.CalledProcessError as e:
             logger.warning(f"Failed to check container status: {e}")
             result = None
 
         if result:
-            logger.info("Container Status:")
-            logger.info(result.stdout)
             logger.info(f"Container status:\n{result.stdout}")
 
             # Verify specific containers are running
             if "mcp-server" in result.stdout and "kali-container" in result.stdout:
                 logger.info("✓ Both MCP server and Kali container are running")
-                logger.info("Both MCP server and Kali container confirmed running")
             else:
-                logger.warning("Some containers may not be running properly")
                 logger.warning("⚠ Warning: Some containers may not be running properly")
 
     def _copy_codebase_to_kali(self):
@@ -490,7 +611,6 @@ class MobileCybenchRunner:
         source_path = self.app_dir / "codebase"
         container_name = "kali-container"
         target_path = f"/tmp/{self.app_name}_app"
-        # TODO: Make target path to be the directory that the agent has access to
 
         if not source_path.exists():
             logger.warning(f"⚠ Warning: Codebase directory not found at {source_path}")
@@ -692,6 +812,433 @@ class MobileCybenchRunner:
             # self.cleanup()
 
 
+class ContainerizedCodexRunner:
+    """Runner for executing Codex agent in isolated containers."""
+
+    def __init__(
+        self,
+        app_name: str,
+        config: dict,
+    ):
+        """
+        Initialize the containerized runner.
+
+        Args:
+            app_name: Name of the mobile application to test
+            config: Configuration dictionary from load_config()
+        """
+        self.app_name = app_name
+        self.config = config
+        self.project_root = project_root  # Uses the global project_root
+
+        # Extract API key from environment
+        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not self.openai_api_key:
+            logger.error("OPENAI_API_KEY environment variable is required")
+            sys.exit(1)
+
+        # Paths
+        self.docker_compose_file = self.project_root / "agent" / "docker-compose.yml"
+        self.app_codebase_dir = self.project_root / "apps" / app_name / "codebase"
+
+        # Container names
+        self.codex_container_name = "kali-container"
+        self.mcp_container_name = "mcp-server"
+        self.agent_log_file = None
+
+        # Log configuration
+        logger.info("=" * 80)
+        logger.info("ContainerizedCodexRunner Configuration")
+        logger.info(f"App: {app_name}")
+        logger.info(f"Model: {config['model']}")
+        logger.info(f"Max Iterations: {config['max_iterations']}")
+        logger.info(f"Max Model Response Tokens: {config['max_model_response_tokens']}")
+        logger.info(f"Max Kali Message Tokens: {config['max_kali_message_tokens']}")
+        logger.info(f"Max Context Length: {config['max_context_length']}")
+        logger.info(f"Dry Run: {config['dry_run']}")
+        logger.info(f"Build Type: {config['build_type']}")
+        logger.info(f"Screenshot Mode: {config['screenshot_mode']}")
+        logger.info(f"Headless Mode: {config['headless_mode']}")
+        logger.info("=" * 80)
+
+        # Validate setup
+        self._validate_setup()
+
+    def _validate_setup(self):
+        """Validate that required files and directories exist."""
+        if not self.docker_compose_file.exists():
+            raise FileNotFoundError(
+                f"Docker compose file not found: {self.docker_compose_file}"
+            )
+
+        if not self.app_codebase_dir.exists():
+            raise FileNotFoundError(
+                f"App codebase directory not found: {self.app_codebase_dir}"
+            )
+
+        if not self.openai_api_key or not self.openai_api_key.strip():
+            raise ValueError("OPENAI_API_KEY is required but not provided")
+
+        logger.info("✓ Containerized runner setup validated")
+
+    def _execute_codex_container(self) -> Dict[str, Any]:
+        """Execute the Codex agent inside the container."""
+        try:
+            logger.info("Executing Codex agent inside container...")
+
+            # Create a temporary Python script for execution using config values
+            agent_script = f"""#!/usr/bin/env python3
+import sys
+import os
+sys.path.insert(0, '/app')
+
+try:
+    # Import and configure the Codex agent
+    from agent.codex_agent import CodexAgent
+
+    # Create MCP config for container environment
+    mcp_config = {{
+        "server_url": "http://mcp-server:8000/mcp",
+        "app_codebase_dir": "/tmp/{self.app_name}_app",
+        "app_name": "{self.app_name}"
+    }}
+
+    # Create and run agent with config values
+    agent = CodexAgent(
+        max_iterations={self.config['max_iterations']},
+        screenshot_enabled={self.config['screenshot_mode']},
+        app_name="{self.app_name}",
+        dry_run={self.config['dry_run']},
+        app_server=None,
+        timeout_ms=600000,
+        mcp_config=mcp_config,
+    )
+
+    # Execute the agent
+    result = agent.run()
+
+    # Print results for capture
+    print(f"AGENT_RESULT_STATUS: {{result.get('status', 'unknown')}}")
+    print(f"AGENT_RESULT_TURNS: {{result.get('turns', 0)}}")
+    if result.get('log_file'):
+        print(f"AGENT_LOG_FILE: {{result['log_file']}}")
+
+except Exception as e:
+    print(f"AGENT_ERROR: {{str(e)}}")
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+"""
+
+            # Write script to container
+            write_script_cmd = [
+                "docker",
+                "exec",
+                "-i",
+                self.codex_container_name,
+                "bash",
+                "-c",
+                "cat > /app/execute_agent.py && chmod +x /app/execute_agent.py",
+            ]
+
+            logger.info("Writing agent execution script to container...")
+            script_process = subprocess.run(
+                write_script_cmd,
+                input=agent_script,
+                text=True,
+                capture_output=True,
+            )
+
+            if script_process.returncode != 0:
+                logger.error(
+                    f"Failed to write script to container: {script_process.stderr}"
+                )
+                return {
+                    "status": "error",
+                    "message": f"Failed to write script: {script_process.stderr}",
+                    "container_execution": True,
+                }
+
+            # Execute the script inside the container
+            cmd = [
+                "docker",
+                "exec",
+                "-i",
+                self.codex_container_name,
+                "python3",
+                "/app/execute_agent.py",
+            ]
+
+            logger.info(
+                f"Executing: docker exec -i {self.codex_container_name} python3 /app/execute_agent.py"
+            )
+
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                universal_newlines=True,
+                env={"OPENAI_API_KEY": self.openai_api_key},
+            )
+
+            # Stream output in real-time and capture results
+            output_lines = []
+            agent_status = "unknown"
+            agent_turns = 0
+            agent_log_file = None
+
+            try:
+                for line in process.stdout:
+                    line = line.rstrip()
+                    if line:
+                        logger.info(f"[CODEX] {line}")
+                        output_lines.append(line)
+
+                        # Extract agent results from output
+                        if line.startswith("AGENT_RESULT_STATUS:"):
+                            agent_status = line.split(":", 1)[1].strip()
+                        elif line.startswith("AGENT_RESULT_TURNS:"):
+                            try:
+                                agent_turns = int(line.split(":", 1)[1].strip())
+                            except ValueError:
+                                pass
+                        elif line.startswith("AGENT_LOG_FILE:"):
+                            agent_log_file = line.split(":", 1)[1].strip()
+                            self.agent_log_file = agent_log_file
+                        elif line.startswith("AGENT_ERROR:"):
+                            agent_status = "error"
+
+                # Wait for process completion
+                exit_code = process.wait()
+
+                logger.info(
+                    f"Codex agent execution completed with exit code: {exit_code}"
+                )
+
+                return {
+                    "status": agent_status if exit_code == 0 else "failed",
+                    "exit_code": exit_code,
+                    "output": "\n".join(output_lines),
+                    "turns": agent_turns,
+                    "log_file": agent_log_file,
+                    "container_execution": True,
+                }
+
+            except KeyboardInterrupt:
+                logger.info("Terminating Codex agent...")
+                process.terminate()
+                process.wait()
+                raise
+
+        except Exception as e:
+            logger.error(f"Failed to execute Codex agent in container: {e}")
+            return {
+                "status": "error",
+                "message": str(e),
+                "container_execution": True,
+            }
+
+    def run(self) -> Dict[str, Any]:
+        """
+        Execute the containerized agent.
+
+        Returns:
+            Dictionary with execution results and metadata
+        """
+        logger.info("=" * 80)
+        logger.info(
+            "STARTING CONTAINERIZED CODEX AGENT"
+        )  # ✅ Hardcoded since this is always Codex
+        logger.info("=" * 80)
+        logger.info(f"App: {self.app_name}")
+        logger.info(f"Project Root: {self.project_root}")
+        logger.info(
+            f"Max Iterations: {self.config['max_iterations']}"
+        )  # ✅ From config dict
+        logger.info(f"Dry Run: {self.config['dry_run']}")  # ✅ From config dict
+
+        try:
+            mobile_runner = MobileCybenchRunner(self.app_name, self.config)
+            mobile_runner.setup_emulator()
+            mobile_runner.run_probes_checks()
+            mobile_runner.setup_agent(True)
+            mobile_runner.setup_app(True)
+
+            # Execute agent
+            result = self._execute_agent()
+
+            return result
+
+        except KeyboardInterrupt:
+            logger.info("Execution interrupted by user")
+            return {
+                "status": "interrupted",
+                "message": "Execution interrupted by user",
+            }
+        except Exception as e:
+            logger.error(f"Containerized execution failed: {e}")
+            return {
+                "status": "error",
+                "message": str(e),
+            }
+        finally:
+            # Clean up containers
+            self._cleanup_containers()
+
+    def _execute_agent(self) -> Dict[str, Any]:
+        """Execute the agent inside the container or using host-based approach."""
+        logger.info("Executing codex agent...")
+
+        return self._execute_codex_container()
+
+    def _extract_logs(self):
+        """Extract log files from containers before cleanup."""
+        logger.info("Extracting log files from containers...")
+
+        # Ensure logs directory exists
+        os.makedirs("./logs", exist_ok=True)
+
+        # Extract tool interaction log from codex container
+        container_name = self.codex_container_name
+
+        try:
+            log_file = "/tmp/mobile_security_analysis.log"
+            host_path = "./logs/mobile_security_analysis.log"
+
+            cmd = ["docker", "cp", f"{container_name}:{log_file}", host_path]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
+            if result.returncode == 0:
+                logger.info(f"✓ Extracted log: {host_path}")
+            else:
+                logger.debug(f"Log file {log_file} not found in container")
+
+        except Exception as e:
+            logger.debug(f"Could not extract mobile_security_analysis.log: {e}")
+
+        # Try to extract using captured filename first
+        if self.agent_log_file:
+            try:
+                container_log_path = f"/app/{self.agent_log_file}"
+                host_path = f"./logs/{self.agent_log_file}"
+
+                cmd = [
+                    "docker",
+                    "cp",
+                    f"{self.codex_container_name}:{container_log_path}",
+                    host_path,
+                ]
+                result = subprocess.run(cmd, capture_output=True, text=True)
+
+                if result.returncode == 0:
+                    logger.info(f"✓ Extracted log: {host_path}")
+                    return  # Successfully extracted, no need to search
+                else:
+                    logger.debug(
+                        f"Agent log file {container_log_path} not found in container"
+                    )
+
+            except Exception as e:
+                logger.debug(f"Could not extract agent log {self.agent_log_file}: {e}")
+
+        # If no filename captured or extraction failed, search for agent logs
+        # This is especially important for manual termination scenarios
+        try:
+            logger.info("Searching for agent run logs in container...")
+
+            # List all log files in /app directory
+            list_cmd = [
+                "docker",
+                "exec",
+                self.codex_container_name,
+                "find",
+                "/app",
+                "-name",
+                "agent_run_*.log",
+                "-type",
+                "f",
+            ]
+            list_result = subprocess.run(
+                list_cmd, capture_output=True, text=True, timeout=10
+            )
+
+            if list_result.returncode == 0 and list_result.stdout.strip():
+                log_files = list_result.stdout.strip().split("\n")
+                # Extract the most recent log file
+                for container_log_path in log_files:
+                    log_filename = os.path.basename(container_log_path)
+                    host_path = f"./logs/{log_filename}"
+
+                    cmd = [
+                        "docker",
+                        "cp",
+                        f"{self.codex_container_name}:{container_log_path}",
+                        host_path,
+                    ]
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+
+                    if result.returncode == 0:
+                        logger.info(f"✓ Extracted agent log: {host_path}")
+                    else:
+                        logger.debug(f"Failed to extract {container_log_path}")
+            else:
+                logger.debug("No agent_run_*.log files found in container")
+
+        except subprocess.TimeoutExpired:
+            logger.debug("Timed out searching for agent logs")
+        except Exception as e:
+            logger.debug(f"Could not search for agent logs: {e}")
+
+    def _cleanup_containers(self):
+        """Clean up the containerized environment."""
+        # Extract logs before cleanup
+        self._extract_logs()
+
+        logger.info("Cleaning up containers...")
+
+        try:
+            # Both codex and custom now use the same compose file without profiles
+            cmd = [
+                "docker",
+                "compose",
+                "-f",
+                str(self.docker_compose_file),
+                "down",
+                "-v",
+            ]
+
+            subprocess.run(
+                cmd,
+                cwd=self.project_root,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            logger.info("✓ Containers cleaned up")
+
+        except subprocess.TimeoutExpired:
+            logger.warning("Container cleanup timed out")
+        except Exception as e:
+            logger.warning(f"Container cleanup failed: {e}")
+
+    def _create_dry_run_result(self) -> Dict[str, Any]:
+        """Create a mock result for dry run mode."""
+        logger.info("DRY RUN: Would execute containerized codex agent")
+        logger.info(f"  App: {self.app_name}")
+        logger.info("  Agent Type: codex")
+        logger.info("  Security: Isolated environment")
+
+        return {
+            "status": "dry_run_completed",
+            "app_name": self.app_name,
+            "agent_type": "codex",
+            "security_model": "isolated_containers",
+        }
+
+
 def load_config(config_path: Path) -> dict:
     """Load and validate configuration from JSON file"""
     if not config_path.exists():
@@ -784,11 +1331,16 @@ def main():
         default="runner_config.json",
         help="Path to JSON configuration file (default: runner_config.json)",
     )
+    parser.add_argument(
+        "--agent-type",
+        choices=["custom", "codex"],
+        default="custom",
+        help="Type of agent to use: custom (default) or codex",
+    )
 
     args = parser.parse_args()
 
-    # Load configuration from file
-    # If relative path, make it relative to the script directory
+    # Load configuration from file for both agent types
     config_file = args.config_file
     if not os.path.isabs(config_file):
         config_path = project_root / config_file
@@ -797,8 +1349,12 @@ def main():
 
     config = load_config(config_path)
 
-    # Create and run the runner
-    runner = MobileCybenchRunner(args.app_name, config)
+    # Create appropriate runner based on agent type
+    if args.agent_type == "codex":
+        runner = ContainerizedCodexRunner(args.app_name, config)
+    else:
+        runner = MobileCybenchRunner(args.app_name, config)
+
     return runner.run()
 
 

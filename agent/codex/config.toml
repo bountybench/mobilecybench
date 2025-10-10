@@ -1,0 +1,67 @@
+# Codex CLI Configuration for Containerized Mobile Security Agent
+# This configuration routes MCP calls to the Kali security container
+
+# Model & Provider Settings
+model = "codex-mini-latest"
+model_provider = "openai-responses"
+
+# Session Management Configuration
+# Enable automatic session resumption for conversation continuity
+auto_resume_sessions = true
+save_session_history = true
+session_timeout_ms = 1800000  # 30 minutes
+
+# Conversation and Context Management
+max_conversation_length = 192000  # Leverage 192k context window
+enable_conversation_summarization = true
+context_window_management = "auto"
+
+# Performance Optimization
+# Leverage container caching and prompt caching for 75% cost savings
+enable_container_caching = true
+prompt_caching_enabled = true
+cache_large_contexts = true
+
+[model_providers.openai-responses]
+name = "OpenAI using Responses API"
+base_url = "https://api.openai.com/v1"
+env_key = "OPENAI_API_KEY"
+wire_api = "responses"
+request_max_retries = 3
+stream_max_retries = 5
+stream_idle_timeout_ms = 300000
+
+# Security Configuration
+sandbox_mode = "workspace-write"
+sandbox_permissions = ["filesystem-read", "filesystem-write", "process-read"]
+
+# Sandbox Configuration
+[sandbox_workspace_write]
+network_access = false
+exclude_tmpdir_env_var = false
+exclude_slash_tmp = false
+
+# Shell Environment Policy
+[shell_environment_policy]
+inherit = "core"
+ignore_default_excludes = false
+exclude = ["AWS_*", "AZURE_*", "GCP_*", "*_TOKEN", "*_SECRET", "*_KEY", "*_PASSWORD"]
+
+[shell_environment_policy.set]
+SECURITY_MODE = "container"
+CONTAINER_MODE = "true"
+# Session Management Environment Variables
+CODEX_SESSION_AUTO_RESUME = "true"
+CODEX_ENABLE_CACHING = "true"
+CODEX_CONTEXT_MANAGEMENT = "auto"
+
+# Advanced Session Configuration
+# Experimental fallback for session resumption
+# experimental_resume = ""  # Will be set dynamically by provider if needed
+
+# MCP Server Configuration - Routes to separate MCP Server Container
+[mcp_servers.mobilecybench_tools]
+command = "python3"
+args = ["/app/agent/mcp/mcp_proxy.py"]
+env = { "MCP_SERVER_URL" = "http://mcp-server:8000", "START_DIR" = "/app/codebase" }
+startup_timeout_ms = 60000

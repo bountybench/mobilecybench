@@ -1,26 +1,83 @@
 services:
-  # Kali Linux Container
+  # Kali Linux Container (now includes Codex CLI)
   kali-container:
     image: cybench/mobilecybench:latest
     container_name: kali-container
     networks:
-      - shared_net
+      - ${NETWORK_NAME:-shared_net}
     stdin_open: true
     tty: true
-    command: /bin/bash -c "while true; do sleep 30; done"
+    volumes:
+      - ../agent:/tmp/agent_files:ro
+      - ../utils:/tmp/utils_files:ro
+    command: |
+      /bin/bash -c '
+      echo "Kali container starting - agent type: $AGENT_TYPE"
+      case "$AGENT_TYPE" in
+        "codex")
+          echo "Setting up Codex CLI environment..."
+          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+          apt-get install -y nodejs android-tools-adb
+          npm install -g @openai/codex
+          pip3 install python-dotenv fastmcp
+          mkdir -p /app/agent/prompts /app/utils /root/.codex
+          cp -r /tmp/agent_files/* /app/agent/ 2>/dev/null || true
+          cp -r /tmp/utils_files/* /app/utils/ 2>/dev/null || true
+          cp /tmp/agent_files/codex/config.toml /root/.codex/config.toml 2>/dev/null || true
+          echo "# Agent package" > /app/agent/__init__.py
+          echo "# Prompts package" > /app/agent/prompts/__init__.py
+          echo "# Utils package" > /app/utils/__init__.py
+          echo "Codex CLI configuration completed"
+          touch /tmp/codex_setup_complete
+          echo "Codex CLI setup completed - ready marker created"
+          ;;
+        "custom")
+          echo "Setting up Custom agent environment..."
+          pip3 install python-dotenv fastmcp
+          mkdir -p /app/agent/prompts /app/utils
+          cp -r /tmp/agent_files/* /app/agent/ 2>/dev/null || true
+          cp -r /tmp/utils_files/* /app/utils/ 2>/dev/null || true
+          echo "# Agent package" > /app/agent/__init__.py
+          echo "# Prompts package" > /app/agent/prompts/__init__.py
+          echo "# Utils package" > /app/utils/__init__.py
+          echo "Custom agent configuration completed"
+          touch /tmp/setup_complete
+          echo "Custom agent setup completed - ready marker created"
+          ;;
+        *)
+          echo "Unknown agent type: $AGENT_TYPE. Setting up basic environment..."
+          pip3 install python-dotenv fastmcp
+          mkdir -p /app/agent/prompts /app/utils
+          cp -r /tmp/agent_files/* /app/agent/ 2>/dev/null || true
+          cp -r /tmp/utils_files/* /app/utils/ 2>/dev/null || true
+          echo "# Agent package" > /app/agent/__init__.py
+          echo "# Prompts package" > /app/agent/prompts/__init__.py
+          echo "# Utils package" > /app/utils/__init__.py
+          echo "Basic setup completed"
+          touch /tmp/setup_complete
+          echo "Basic setup completed - ready marker created"
+          ;;
+      esac
+      while true; do sleep 30; done
+      '
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       - ANDROID_ADB_SERVER_PORT=5037
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - AGENT_TYPE=${AGENT_TYPE:-unknown}
+    privileged: ${KALI_PRIVILEGED:-false}
+    restart: no
 
-  # MCP Server Container  
+  # MCP Server Container
   mcp-server:
     build:
       context: ./mcp
       dockerfile: Dockerfile
     container_name: mcp-server
+    command: ${MCP_COMMAND:-}
     networks:
-      - shared_net
+      - ${NETWORK_NAME:-shared_net}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./mcp/ngrok.yml:/app/ngrok.yml:ro
@@ -33,7 +90,19 @@ services:
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
       - START_DIR=${START_DIR:-/root}
+    restart: no
 
 networks:
   shared_net:
     external: true
+  mobilecybench-isolated:
+    driver: bridge
+    # Isolated network for container-to-container communication only
+    internal: false  # Allow external access for API calls
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+
+# No shared volumes for security isolation
+volumes: {}
