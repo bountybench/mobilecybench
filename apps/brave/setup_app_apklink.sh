@@ -20,7 +20,7 @@ fi
 
 echo "Download link: $DOWNLOAD_LINK"
 
-# Create apk dir
+# Create apk directory
 mkdir -p "$SCRIPT_DIR/apk"
 
 # Download APK
