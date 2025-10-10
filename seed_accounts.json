@@ -1,0 +1,14 @@
+[
+  {
+    "username": "testuser",
+    "password": "testpass",
+    "domain": "localhost",
+    "type": "user"
+  },
+  {
+    "username": "admin",
+    "password": "strongpassword",
+    "domain": "localhost",
+    "type": "admin"
+  }
+]

@@ -14,15 +14,10 @@ services:
       interval: 5s
       retries: 30
     networks:
-      - sip_net
+      - private_net
 
   flexisip:
-    build:
-      context: ./flexisip  
-      dockerfile: docker/Dockerfile
-      args:
-        njobs: ${NPROC:-4}
-    image: flexisip-local
+    image: leelai/flexisip:latest
     container_name: flexisip
     restart: unless-stopped
     volumes:
@@ -34,9 +29,45 @@ services:
     depends_on:
       account_db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "echo > /dev/tcp/localhost/5060 || exit 1"]
+      interval: 5s
+      retries: 30
     networks:
-      - sip_net
+      - shared_net
+      - private_net
+
+
+  account_manager:
+    build:
+      context: ./
+      dockerfile: account_manager
+    image: php:8.2-apache
+    container_name: account_manager
+    restart: unless-stopped
+    volumes:
+      - ./flexiapi/flexiapi:/var/www/html
+    working_dir: /var/www/html
+    command: >
+      sh -c "
+        composer update
+        composer install --no-dev --no-interaction --optimize-autoloader &&
+        php artisan migrate --force &&
+        apache2-foreground
+      "
+    environment:
+      APP_ENV:
+    depends_on:
+      account_db:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    networks:
+      - shared_net
+      - private_net
+
 
 networks:
-  sip_net:
-    driver: bridge
+  shared_net:
+    external: true
+  private_net:

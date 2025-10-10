@@ -3,8 +3,8 @@
     "commit_version": "0894abf",
     "sdk": "34",
     "java": "17",
-    "emulator_server": "http://10.0.2.2:5060",
-    "app_server": "http://linphone:5060",
+    "emulator_server": "10.0.2.2:5060",
+    "app_server": "flexisip:5060",
     "username": "usera",
     "password": "userAPW123"
 }
