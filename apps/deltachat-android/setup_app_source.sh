@@ -15,10 +15,21 @@ error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
 # Install Rust Android targets early, right after function definitions
 info "Installing Rust Android targets early..."
 if command -v rustup >/dev/null 2>&1; then
-    if ! rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android; then
-        error "Failed to install Rust Android targets"
+    # Get the specific toolchain version used by DeltaChat
+    RUSTUP_TOOLCHAIN="1.86.0"
+    TARGETS="aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android"
+    
+    info "Installing Rust toolchain $RUSTUP_TOOLCHAIN..."
+    if ! rustup install "$RUSTUP_TOOLCHAIN"; then
+        error "Failed to install Rust toolchain $RUSTUP_TOOLCHAIN"
     fi
-    info "Rust Android targets installed successfully"
+    
+    info "Installing Android targets for toolchain $RUSTUP_TOOLCHAIN..."
+    if ! rustup target add $TARGETS --toolchain "$RUSTUP_TOOLCHAIN"; then
+        error "Failed to install Rust Android targets for toolchain $RUSTUP_TOOLCHAIN"
+    fi
+    
+    info "Rust Android targets installed successfully for toolchain $RUSTUP_TOOLCHAIN"
 else
     error "rustup not found - Rust toolchain required"
 fi
