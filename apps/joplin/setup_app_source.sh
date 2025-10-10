@@ -81,7 +81,7 @@ build_joplin() {
     local temp_err=$(mktemp)
     
     # Run gradle build with output suppressed
-    sed -i -- 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
+    sed -i -- 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle.kts
     if ./gradlew assembleRelease --no-daemon --max-workers=1 > "$temp_out" 2> "$temp_err"; then
         echo "Build completed successfully."
         # Clean up temp files on success

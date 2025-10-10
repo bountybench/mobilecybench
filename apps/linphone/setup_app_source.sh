@@ -129,21 +129,6 @@ clear() {
     echo "Clearing completed."
 }
 
-sdk_patch() {
-    local REL_FILE="codebase/packages/app-mobile/android/build.gradle"
-    local FILE_PATH="$SCRIPT_DIR/$REL_FILE"
-    local PATCH_FILE="$SCRIPT_DIR/sdk34.patch"
-    if [[ ! -f "$FILE_PATH" ]]; then
-        echo "SDK patch: target file missing ($FILE_PATH)" >&2; return 1
-    fi
-    if [[ ! -f "$PATCH_FILE" ]]; then
-        echo "SDK patch: patch file not found ($PATCH_FILE)" >&2
-        return 0
-    fi
-    cd codebase/
-    git apply "$PATCH_FILE" && echo "SDK patch applied." || echo "SDK patch already applied or failed."
-    cd -
-}
 
 # Main function
 main() {
@@ -151,30 +136,9 @@ main() {
     echo "==================="
     echo "Setting up LinPhone Android"
 
-    # npm uninstall -g react-native-cli @react-native-community/cli
     cd codebase
-    # npm uninstall -g react-native-cli @react-native-community/cli
-    pwd
     root_dir="$(pwd)"
-    # if [[ -d "codebase/packages/app-mobile" ]]; then
-    #     sdk_patch
-    #     echo "Navigating to codebase/packages/app-mobile directory..."
-    #     cd codebase/packages/app-mobile
-    # else
-    #     echo "ERROR: Not in LinPhone Android directory and codebase/packages/app-mobile/ not found."
-    #     exit 1
-    # fi
 
-    # yarn install
-    
-    # # Navigate to codebase directory
-    # if [[ -d "android" ]]; then
-    #     echo "Navigating to android directory..."
-    #     cd android
-    # else
-    #     echo "ERROR: Not in LinPhone Android directory and codebase/packages/app-mobile/android/ not found."
-    #     exit 1
-    # fi
     patch
     check_prerequisites
     setup_environment

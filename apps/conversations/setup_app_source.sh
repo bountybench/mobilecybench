@@ -113,7 +113,7 @@ sign_apk() {
                 -dname "CN=Android Debug, O=Android, C=US"
         info "Debug keystore generated at $KEYSTORE_FILE"
     fi
-
+    
     # Check if architecture-specific APK already signed
     APK_SIGNED=$(find build/outputs/apk/conversationsFree/release/ -name "*conversations-free*$arch*release.apk" -not -name "*unsigned*" -type f 2>/dev/null | head -1)
     if [[ -n "$APK_SIGNED" ]]; then
@@ -142,8 +142,14 @@ sign_apk() {
     if [[ -z "$ANDROID_HOME" ]]; then
         error "ANDROID_HOME not set, cannot find apksigner"
     fi
-    
+
     APKSIGNER="$ANDROID_HOME/build-tools/*/apksigner"
+    # Fix path for Windows MinGW users
+    if [[ "$OSTYPE" == "msys" ]]; then
+        {
+            APKSIGNER="$ANDROID_HOME/build-tools/*/apksigner.bat"
+        }
+    fi
     APKSIGNER=$(ls $APKSIGNER 2>/dev/null | head -1)
     
     if [[ ! -f "$APKSIGNER" ]]; then
