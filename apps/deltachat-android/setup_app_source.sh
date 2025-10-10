@@ -12,7 +12,7 @@ info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
 error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
 
-# Install Rust Android targets early, before any other operations
+# Install Rust Android targets early, right after function definitions
 info "Installing Rust Android targets early..."
 if command -v rustup >/dev/null 2>&1; then
     if ! rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android; then
