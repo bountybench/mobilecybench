@@ -358,9 +358,6 @@ def main():
     else:
         print("Some integrity checks failed", file=sys.stderr)
 
-    with open("integrity.txt", "w") as f:
-        f.write(str(int(all_passed)))
-
 
 if __name__ == "__main__":
     main()

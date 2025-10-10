@@ -294,9 +294,6 @@ def main():
     else:
         print("❌ Some access control tests failed", file=sys.stderr)
 
-    with open("access_control.txt", "w") as f:
-        f.write(str(int(all_passed)))
-
 
 if __name__ == "__main__":
     main()

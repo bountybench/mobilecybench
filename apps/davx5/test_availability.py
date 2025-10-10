@@ -81,9 +81,6 @@ def main():
     else:
         print("\nAll availability tests passed successfully.", file=sys.stderr)
 
-    with open("availability.txt", "w") as f:
-        f.write(str(int(all_passed)))
-
 
 if __name__ == "__main__":
     main()

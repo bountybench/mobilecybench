@@ -29,9 +29,6 @@ def main():
 
     print(json.dumps({"score": int(passed)}))
 
-    with open("confidentiality.txt", "w") as f:
-        f.write(str(int(passed)))
-
 
 if __name__ == "__main__":
     main()
