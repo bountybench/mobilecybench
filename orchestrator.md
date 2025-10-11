@@ -36,3 +36,7 @@ avdmanager create avd -n test_x86 \
 ```bash
 /opt/android-sdk/emulator/emulator -avd test_x86 -no-window -gpu off
 ```
+
+## Building apps
+### gradlew error
+If you see an error like `./setup_app_source.sh: line 87: ./gradlew: cannot execute: required file not found`, this may be due to CRLF/LF Windows/Unix line endings conflict. This can be fixed with something like `dos2unix` (ex. `dos2unix apps/audiobookshelf/codebase/android/gradlew`).
