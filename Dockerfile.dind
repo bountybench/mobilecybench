@@ -31,7 +31,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     unzip \
     openjdk-17-jdk \
-    openjdk-21-jdk \
     build-essential \
     libpq-dev \
     procps \
@@ -41,18 +40,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Java 21 from Eclipse Temurin
+RUN wget -q https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.5%2B11/OpenJDK21U-jdk_x64_linux_hotspot_21.0.5_11.tar.gz -O /tmp/jdk21.tar.gz && \
+    mkdir -p /usr/lib/jvm/java-21-openjdk-amd64 && \
+    tar -xzf /tmp/jdk21.tar.gz -C /usr/lib/jvm/java-21-openjdk-amd64 --strip-components=1 && \
+    rm /tmp/jdk21.tar.gz
+
 # Node.js
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Java home
-RUN JAVA_PATH=$(readlink -f /usr/bin/java) && \
-    DETECTED_JAVA_HOME=$(dirname $(dirname $JAVA_PATH)) && \
-    ln -sf $DETECTED_JAVA_HOME /opt/java-home
-
-ENV JAVA_HOME=/opt/java-home
+# Java home - set Java 21 as default
+ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 # Android SDK (official Google version; x86_64)
