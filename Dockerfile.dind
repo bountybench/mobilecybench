@@ -38,7 +38,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     bc \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -s /usr/lib/jvm/java-17-openjdk-amd64 /usr/lib/jvm/java-17-openjdk
 
 # Install Java 21 from Eclipse Temurin
 RUN wget -q https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.5%2B11/OpenJDK21U-jdk_x64_linux_hotspot_21.0.5_11.tar.gz -O /tmp/jdk21.tar.gz && \
