@@ -205,8 +205,7 @@ class MobileCybenchRunner:
         self.config = config
         self.agent_only = agent_only
         self.project_root = project_root
-        if not self.agent_only:
-            self.app_dir = self.project_root / "apps" / app_name
+        self.app_dir = self.project_root / "apps" / app_name
         self.agent_dir = self.project_root / "agent"
         self.cmd = CommandExecutor()
 
@@ -256,23 +255,25 @@ class MobileCybenchRunner:
 
         # Check for required scripts
         required_scripts = ["setup.sh", "run_checks.sh"]
-        if self.config["build_type"] == "source":
-            required_scripts.append("setup_app_source.sh")
-        elif self.config["build_type"] == "download-apk":
-            required_scripts.append("setup_app_apklink.sh")
-        elif self.config["build_type"] == "skip-apk":
-            possible_setup_scripts = ["setup_app_source.sh", "setup_app_apklink.sh"]
-            # do not allow skip-apk if neither script exists
-            if not any(
-                (self.app_dir / script).exists() for script in possible_setup_scripts
-            ):
+
+        if not self.agent_only: # Check for build scripts if not in agent_only mode
+            if self.config["build_type"] == "source":
+                required_scripts.append("setup_app_source.sh")
+            elif self.config["build_type"] == "download-apk":
+                required_scripts.append("setup_app_apklink.sh")
+            elif self.config["build_type"] == "skip-apk":
+                possible_setup_scripts = ["setup_app_source.sh", "setup_app_apklink.sh"]
+                # do not allow skip-apk if neither script exists
+                if not any(
+                    (self.app_dir / script).exists() for script in possible_setup_scripts
+                ):
+                    self._exit_with_error(
+                        f"At least one setup script required for build_type 'skip-apk' not found: {possible_setup_scripts}"
+                    )
+            else:
                 self._exit_with_error(
-                    f"At least one setup script required for build_type 'skip-apk' not found: {possible_setup_scripts}"
+                    f"Unsupported Build Type Detected: {self.config["build_type"]}"
                 )
-        else:
-            self._exit_with_error(
-                f"Unsupported Build Type Detected: {self.config["build_type"]}"
-            )
 
         for script in required_scripts:
             script_path = self.app_dir / script
@@ -287,19 +288,6 @@ class MobileCybenchRunner:
             )
 
         logger.info("Input validation passed")
-
-    def _validate_agent_only(self):
-        """Validate minimum requirements for agent_only mode"""
-        logger.info("Validating agent_only mode requirements...")
-
-        # Check for required ngrok.yml config file
-        ngrok_config = self.agent_dir / "mcp" / "ngrok.yml"
-        if not ngrok_config.exists():
-            self._exit_with_error(
-                f"Required ngrok.yml config file not found: {ngrok_config}"
-            )
-
-        logger.info("Agent-only validation passed")
 
     def setup_emulator(self):
         """Start and check Android emulator"""
@@ -393,8 +381,7 @@ class MobileCybenchRunner:
         self._setup_env_file()
         self._create_docker_network()
         self._start_containers()
-        if not self.agent_only:
-            self._copy_codebase_to_kali()
+        self._copy_codebase_to_kali()
 
         logger.info("Agent environment setup completed")
         logger.info("✓ Agent environment setup completed")
@@ -453,11 +440,10 @@ class MobileCybenchRunner:
 
         # Set environment variable for docker-compose
         env = os.environ.copy()
-        if not self.agent_only and self.app_name:
-            start_dir = f"/tmp/{self.app_name}_app"
-            env["START_DIR"] = start_dir
-            logger.info(f"Setting START_DIR environment variable: {start_dir}")
-            logger.info(f"Environment variable START_DIR set to: {start_dir}")
+        start_dir = f"/tmp/{self.app_name}_app"
+        env["START_DIR"] = start_dir
+        logger.info(f"Setting START_DIR environment variable: {start_dir}")
+        logger.info(f"Environment variable START_DIR set to: {start_dir}")
 
         logger.info("Starting containers with docker compose...")
 
@@ -677,24 +663,24 @@ class MobileCybenchRunner:
     def run(self):
         """Run the complete pipeline"""
         try:
+            self.validate_input()
+
             if not self.agent_only:
-                self.validate_input()
                 self.setup_emulator()
                 self.setup_app()
-                self.run_probes_checks()  # Probes consider it a pass if no log file is provided
-            else:
-                # Validate minimum requirements for agent_only mode
-                self._validate_agent_only()
-
+            
+            # Run initial probes check
+            self.run_probes_checks()  # Probes consider it a pass if no log file is provided
+            
+            # Set up and run agent
             self.setup_agent()
             self.run_agent()
 
             # Run probe checks after agent execution
-            if not self.agent_only:
-                agent_log_filename = logger_manager.get_log_file_name()
-                log_path = Path(agent_log_filename) if agent_log_filename else None
-                logger.info(f"Agent log file path: {log_path}")
-                self.run_probes_checks(log_file_path=log_path)
+            agent_log_filename = logger_manager.get_log_file_name()
+            log_path = Path(agent_log_filename) if agent_log_filename else None
+            logger.info(f"Agent log file path: {log_path}")
+            self.run_probes_checks(log_file_path=log_path)
 
             logger.info("=" * 60)
             logger.info("PIPELINE COMPLETED SUCCESSFULLY")
@@ -802,20 +788,19 @@ def main():
         description="MobileCybench Runner - Orchestrates AI-driven mobile app security testing"
     )
 
-    # Add agent_only as a flag first to check if it's set
+    # Add agent_only as a flag
     parser.add_argument(
         "--agent-only",
         action="store_true",
         dest="agent_only",
-        help="Run only the agent, skipping emulator setup, app setup, and probes checks",
+        help="Run only the agent, skipping emulator setup and app setup. Optional.",
     )
 
-    # Add app_name as optional (will be validated later if not in agent_only mode)
+    # Add app_name as a flag
     parser.add_argument(
         "app_name",
-        nargs="?",
-        default=None,
-        help="Name of the app to test (must exist in apps/ directory). Required unless --agent-only is specified.",
+        nargs=1,
+        help="Name of the app to test (must exist in apps/ directory). Required.",
     )
 
     # Add config_file as optional
@@ -827,10 +812,6 @@ def main():
     )
 
     args = parser.parse_args()
-
-    # Argument validation: app_name is required unless agent-only is True
-    if not args.agent_only and not args.app_name:
-        parser.error("app_name is required unless --agent-only is specified")
 
     # Load configuration from file
     # If relative path, make it relative to the script directory
