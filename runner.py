@@ -256,7 +256,7 @@ class MobileCybenchRunner:
         # Check for required scripts
         required_scripts = ["setup.sh", "run_checks.sh"]
 
-        if not self.agent_only: # Check for build scripts if not in agent_only mode
+        if not self.agent_only:  # Check for build scripts if not in agent_only mode
             if self.config["build_type"] == "source":
                 required_scripts.append("setup_app_source.sh")
             elif self.config["build_type"] == "download-apk":
@@ -265,7 +265,8 @@ class MobileCybenchRunner:
                 possible_setup_scripts = ["setup_app_source.sh", "setup_app_apklink.sh"]
                 # do not allow skip-apk if neither script exists
                 if not any(
-                    (self.app_dir / script).exists() for script in possible_setup_scripts
+                    (self.app_dir / script).exists()
+                    for script in possible_setup_scripts
                 ):
                     self._exit_with_error(
                         f"At least one setup script required for build_type 'skip-apk' not found: {possible_setup_scripts}"
@@ -668,10 +669,10 @@ class MobileCybenchRunner:
             if not self.agent_only:
                 self.setup_emulator()
                 self.setup_app()
-            
+
             # Run initial probes check
             self.run_probes_checks()  # Probes consider it a pass if no log file is provided
-            
+
             # Set up and run agent
             self.setup_agent()
             self.run_agent()
