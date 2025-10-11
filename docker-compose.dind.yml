@@ -6,7 +6,7 @@ services:
     container_name: mobilecybench-orchestrator
     privileged: true
     volumes:
-      - .:/app
+      - .:/mobilecybench
       - docker-data:/var/lib/docker
       - gradle-cache:/root/.gradle
     extra_hosts:
