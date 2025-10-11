@@ -273,7 +273,7 @@ class MobileCybenchRunner:
                     )
             else:
                 self._exit_with_error(
-                    f"Unsupported Build Type Detected: {self.config["build_type"]}"
+                    f"Unsupported Build Type Detected: {self.config['build_type']}"
                 )
 
         for script in required_scripts:
@@ -557,7 +557,7 @@ class MobileCybenchRunner:
                     "app_server", None
                 ),  # default to None if in agent_only mode
                 dry_run=self.config["dry_run"],
-                system_prompt=self.config.get("system_prompt", None),
+                system_prompt=self.config.get("custom_system_prompt", None),
             )
 
             logger.info("Running agent...")
