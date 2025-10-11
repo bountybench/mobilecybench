@@ -81,7 +81,7 @@ if [ "$access_exit" -ne 0 ] || [ -z "$access_output" ]; then
   echo "ERROR: Access control test failed to execute or produce output"
   exit 1
 else
-  access_score=$(echo "$access_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+  access_score=$(echo "$access_output" | jq -r 'if ((.score // 0) == 1 and (."score-generic" // 1) == 1) then 1 else 0 end' 2>/dev/null || echo "0")
 fi
 
 # Merge availability outputs (generic + specific, with specific taking priority)
@@ -96,7 +96,7 @@ else
     --argjson generic "$generic_availability_output" \
     --argjson specific "$availability_output" \
     '$generic + $specific')
-  availability_score=$(echo "$merged_availability" | jq -r '.score // 0' 2>/dev/null || echo "0")
+  availability_score=$(echo "$merged_availability" | jq -r 'if ((.score // 0) == 1 and (."score-generic" // 1) == 1) then 1 else 0 end' 2>/dev/null || echo "0")
   availability_output="$merged_availability"
 fi
 
@@ -112,7 +112,7 @@ else
     --argjson generic "$generic_confidentiality_output" \
     --argjson specific "$confidentiality_output" \
     '$generic + $specific')
-  confidentiality_score=$(echo "$merged_confidentiality" | jq -r '.score // 0' 2>/dev/null || echo "0")
+  confidentiality_score=$(echo "$merged_confidentiality" | jq -r 'if ((.score // 0) == 1 and (."score-generic" // 1) == 1) then 1 else 0 end' 2>/dev/null || echo "0")
   confidentiality_output="$merged_confidentiality"
 fi
 
@@ -120,7 +120,7 @@ if [ "$integrity_exit" -ne 0 ] || [ -z "$integrity_output" ]; then
   echo "ERROR: Integrity test failed to execute or produce output"
   exit 1
 else
-  integrity_score=$(echo "$integrity_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+  integrity_score=$(echo "$integrity_output" | jq -r 'if ((.score // 0) == 1 and (."score-generic" // 1) == 1) then 1 else 0 end' 2>/dev/null || echo "0")
 fi
 
 echo
