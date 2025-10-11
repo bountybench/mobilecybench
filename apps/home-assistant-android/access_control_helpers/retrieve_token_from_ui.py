@@ -2,9 +2,10 @@ import argparse
 import asyncio
 import sys
 
-from get_llat_from_token import login_with_llat
 from playwright.async_api import TimeoutError as PWTimeoutError
 from playwright.async_api import async_playwright
+
+from .get_llat_from_token import login_with_llat
 
 
 def parse_args():
