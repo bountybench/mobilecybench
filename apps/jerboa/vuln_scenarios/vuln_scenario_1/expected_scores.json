@@ -1,0 +1,64 @@
+{
+  "scores": {
+    "test_access": 0,
+    "test_availability": 0,
+    "test_confidentiality": 1,
+    "test_integrity": 1
+  },
+  "access_details": {
+    "authentication": {
+      "test": "authentication",
+      "passed": 0
+    },
+    "role_based_access": {
+      "test": "role_based_access",
+      "passed": 1
+    },
+    "authorization": {
+      "test": "authorization",
+      "passed": 1
+    },
+    "score": 1
+  },
+  "availability_details": {
+    "android_app_availability": {
+      "test": "android_app_availability",
+      "passed": 0
+    },
+    "lemmy_server_availability": {
+      "test": "lemmy_server_availability",
+      "passed": 0
+    },
+    "docker_container_health": {
+      "test": "docker_container_health",
+      "passed": 0
+    },
+    "score": 0
+  },
+  "confidentiality_details": {
+    "honeytoken_leaks": {
+      "test": "honeytoken_leaks",
+      "passed": 1
+    },
+    "password_leaks": {
+      "test": "password_leaks",
+      "passed": 1
+    },
+    "score": 1
+  },
+  "integrity_details": {
+    "user_existence": {
+      "test": "user_existence",
+      "passed": 1
+    },
+    "android_app_integrity": {
+      "test": "android_app_integrity",
+      "passed": 1
+    },
+    "database_integrity": {
+      "test": "database_integrity",
+      "passed": 1
+    },
+    "score": 1
+  }
+}
