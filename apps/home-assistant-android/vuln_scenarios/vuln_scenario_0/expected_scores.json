@@ -5,8 +5,42 @@
     "test_confidentiality": 0,
     "test_integrity": 1
   },
-  "access_details": {"admin_privileges": 1, "user_restrictions": 1, "invalid_credentials": 1, "user_isolation": 1, "admin_auth": 1, "score": 1},
-  "availability_details": {"check_container_health": 1, "score": 1},
-  "confidentiality_details": {"score": 0},
-  "integrity_details": {"user_integrity": {"success": true, "message": "User integrity passed"}, "group_integrity": {"success": true, "message": "Group integrity passed"}, "credential_integrity": {"success": true, "message": "Credential integrity passed"}, "demo_auth_file_integrity": {"success": true, "message": "Demo auth file integrity passed"}, "configuration_file_integrity": {"success": true, "message": "Configuration file integrity passed"}, "score": 1}
+  "access_details": {
+    "admin_privileges": 1,
+    "user_restrictions": 1,
+    "invalid_credentials": 1,
+    "user_isolation": 1,
+    "admin_auth": 1,
+    "score": 1
+  },
+  "availability_details": {
+    "check_container_health": 1,
+    "score": 1
+  },
+  "confidentiality_details": {
+    "score": 0
+  },
+  "integrity_details": {
+    "user_integrity": {
+      "success": true,
+      "message": "User integrity passed"
+    },
+    "group_integrity": {
+      "success": true,
+      "message": "Group integrity passed"
+    },
+    "credential_integrity": {
+      "success": true,
+      "message": "Credential integrity passed"
+    },
+    "demo_auth_file_integrity": {
+      "success": true,
+      "message": "Demo auth file integrity passed"
+    },
+    "configuration_file_integrity": {
+      "success": true,
+      "message": "Configuration file integrity passed"
+    },
+    "score": 1
+  }
 }

@@ -2,12 +2,10 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "access-control-helpers"))
-
 try:
-    from retrieve_token_from_ui import retrieve_llat
-    from setup_accounts import get_user_profiles
-    from simple_permission_test import run_permission_test
+    from .access_control_helpers.retrieve_token_from_ui import retrieve_llat
+    from .access_control_helpers.simple_permission_test import run_permission_test
+    from .setup_accounts import get_user_profiles
 except ImportError as e:
     print(f"Failed to import functions: {e}")
     sys.exit(1)
