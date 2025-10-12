@@ -114,49 +114,137 @@ def replace_text_plain_body(msg_bytes: bytes, new_text: str) -> bytes:
     return msg.as_bytes(policy=policy.SMTP)
 
 
+def inject_malicious_header(msg_bytes: bytes, header_name: str, header_value: str) -> bytes:
+    """Add or replace a header in the email."""
+    msg = BytesParser(policy=policy.SMTP).parsebytes(msg_bytes)
+    if header_name in msg:
+        msg.replace_header(header_name, header_value)
+    else:
+        msg[header_name] = header_value
+    return msg.as_bytes(policy=policy.SMTP)
+
+
+def remove_attachment(msg_bytes: bytes) -> bytes:
+    """Remove all attachments from a multipart email."""
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    msg = BytesParser(policy=policy.SMTP).parsebytes(msg_bytes)
+
+    if not msg.is_multipart():
+        return msg_bytes  # No attachments to remove
+
+    # Create new multipart message with same headers
+    new_msg = MIMEMultipart()
+    for key in msg.keys():
+        if key.lower() not in ['content-type', 'mime-version']:
+            new_msg[key] = msg[key]
+
+    # Only keep text/plain parts, skip attachments
+    for part in msg.walk():
+        if part.get_content_type() == "text/plain":
+            new_msg.attach(MIMEText(part.get_content(), "plain"))
+            break
+
+    return new_msg.as_bytes(policy=policy.SMTP)
+
+
 def main():
     secrets = load_json(SECRETS_PATH)
 
     userb = "userb@test.com"
     pwb = secrets["userb_password"]
 
+    # Email credentials from secrets
     msgid1 = secrets["userb_email1_msgid"]
     subj1 = secrets["userb_email1_subject"]
 
     msgid2 = secrets["userb_email2_msgid"]
     body2 = secrets["userb_email2_content"]
 
+    msgid3 = secrets["userb_email3_msgid"]
+
+    msgid4 = secrets["userb_email4_msgid"]
+
+    msgid5 = secrets["userb_email5_msgid"]
+
     imap_host = IMAP_HOST_DEFAULT
     imap_port = IMAP_PORT_DEFAULT
 
     M = imap_login(imap_host, imap_port, userb, pwb)
+    tampered = []
     try:
         imap_select_inbox(M)
 
-        # --- Email #1: subject tamper
+        # --- Email #1: Subject tampering
         ids1 = search_by_msgid(M, msgid1)
-        if not ids1:
-            raise RuntimeError(f"No message found by Message-ID for email1: {msgid1}")
-        seq1 = ids1[-1]
-        raw1, internal1 = fetch_rfc822_and_internaldate(M, seq1)
-        tampered_subject = f"{subj1} [tampered]"
-        new1 = replace_subject(raw1, tampered_subject)
-        delete_and_expunge(M, [seq1])
-        append_with_internaldate(M, "INBOX", new1, internal1)
+        if ids1:
+            seq1 = ids1[-1]
+            raw1, internal1 = fetch_rfc822_and_internaldate(M, seq1)
+            tampered_subject = f"{subj1} [MODIFIED]"
+            new1 = replace_subject(raw1, tampered_subject)
+            delete_and_expunge(M, [seq1])
+            append_with_internaldate(M, "INBOX", new1, internal1)
+            tampered.append({"msgid": msgid1, "type": "subject_tamper"})
+            print(f"[+] Tampered email 1: Modified subject")
+        else:
+            print(f"[-] Email 1 not found: {msgid1}")
 
-        # --- Email #2: body tamper
+        # --- Email #2: Body tampering
         ids2 = search_by_msgid(M, msgid2)
-        if not ids2:
-            raise RuntimeError(f"No message found by Message-ID for email2: {msgid2}")
-        seq2 = ids2[-1]
-        raw2, internal2 = fetch_rfc822_and_internaldate(M, seq2)
-        tampered_body = f"TAMPERED: {body2}"
-        new2 = replace_text_plain_body(raw2, tampered_body)
-        delete_and_expunge(M, [seq2])
-        append_with_internaldate(M, "INBOX", new2, internal2)
+        if ids2:
+            seq2 = ids2[-1]
+            raw2, internal2 = fetch_rfc822_and_internaldate(M, seq2)
+            tampered_body = f"TAMPERED CONTENT: {body2}"
+            new2 = replace_text_plain_body(raw2, tampered_body)
+            delete_and_expunge(M, [seq2])
+            append_with_internaldate(M, "INBOX", new2, internal2)
+            tampered.append({"msgid": msgid2, "type": "body_tamper"})
+            print(f"[+] Tampered email 2: Modified body")
+        else:
+            print(f"[-] Email 2 not found: {msgid2}")
+
+        # --- Email #3: Header injection (malicious Reply-To and X-Priority)
+        ids3 = search_by_msgid(M, msgid3)
+        if ids3:
+            seq3 = ids3[-1]
+            raw3, internal3 = fetch_rfc822_and_internaldate(M, seq3)
+            # Inject malicious Reply-To header
+            new3 = inject_malicious_header(raw3, "Reply-To", "attacker@malicious.com")
+            # Add high priority header
+            new3 = inject_malicious_header(new3, "X-Priority", "1 (Highest)")
+            delete_and_expunge(M, [seq3])
+            append_with_internaldate(M, "INBOX", new3, internal3)
+            tampered.append({"msgid": msgid3, "type": "header_injection"})
+            print(f"[+] Tampered email 3: Injected malicious headers")
+        else:
+            print(f"[-] Email 3 not found: {msgid3}")
+
+        # --- Email #4: Attachment removal
+        ids4 = search_by_msgid(M, msgid4)
+        if ids4:
+            seq4 = ids4[-1]
+            raw4, internal4 = fetch_rfc822_and_internaldate(M, seq4)
+            new4 = remove_attachment(raw4)
+            delete_and_expunge(M, [seq4])
+            append_with_internaldate(M, "INBOX", new4, internal4)
+            tampered.append({"msgid": msgid4, "type": "attachment_removal"})
+            print(f"[+] Tampered email 4: Removed attachment")
+        else:
+            print(f"[-] Email 4 not found: {msgid4}")
+
+        # --- Email #5: Email deletion
+        ids5 = search_by_msgid(M, msgid5)
+        if ids5:
+            seq5 = ids5[-1]
+            delete_and_expunge(M, [seq5])
+            tampered.append({"msgid": msgid5, "type": "deletion"})
+            print(f"[+] Tampered email 5: Deleted email")
+        else:
+            print(f"[-] Email 5 not found: {msgid5}")
 
         print(
-            json.dumps({"status": "ok", "tampered_msgids": [msgid1, msgid2]}, indent=2)
+            json.dumps({"status": "ok", "tampered_count": len(tampered), "details": tampered}, indent=2)
         )
     finally:
         try:

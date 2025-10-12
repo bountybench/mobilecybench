@@ -1,10 +1,7 @@
 #!/bin/bash
 set -e
  
-pip install -q uiautomator2   
-
-echo "Generating uuid..."
-python generate_uuid.py
+pip install -q uiautomator2
 
 echo "Generating ssl..."
 ./generate_ssl.sh
@@ -29,13 +26,15 @@ printf "%s|%s\n" "userb@test.com" "$HASH_USERB" >> dms-config/postfix-accounts.c
 
 echo "Starting docker-mailserver..."
 docker compose up -d
-# docker exec -it thunderbird-mail setup email add "$USERA_EMAIL" "$USERA_PW" || true
-# docker exec -it thunderbird-mail setup email add userb@test.com "$USERB_PW" || true 
 
+echo "Waiting for mail server to be healthy..."
+timeout 60 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 2; done'
+
+echo "Seeding emails (this will reset any tampered emails)..."
+docker compose run --rm seeder
 
 # echo "Attempting to install using pre-built APK..."
 # chmod u+x setup_app_apklink.sh
-# ./setup_app_apklink.sh
 chmod u+x setup_app_source.sh
 ./setup_app_source.sh
 echo "Done."

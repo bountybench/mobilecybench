@@ -1,13 +1,9 @@
-#!/usr/bin/env python3
 import argparse
 import json
 import os
-import re
 import sys
 import time
-import xml.etree.ElementTree as ET
 
-# Note: requires uiautomator2 package - install with: pip install uiautomator2
 import uiautomator2 as u2
 
 # Parse command line arguments
@@ -43,7 +39,7 @@ except Exception as e:
 PKG = "net.thunderbird.android"
 
 # Connect to the device
-print(f"[INFO] Connecting to device", file=sys.stderr)
+print("[INFO] Connecting to device", file=sys.stderr)
 d = u2.connect()
 d.app_start(PKG)
 d.wait_timeout = 15  # Set global timeout to 15 seconds
@@ -206,7 +202,7 @@ def setup_incoming_server():
             password_field.set_text("")
             time.sleep(1)
             d.send_keys(PASS)
-            print(f"[INFO] Typed password using index method", file=sys.stderr)
+            print("[INFO] Typed password using index method", file=sys.stderr)
 
 
 def setup_outgoing_server():
@@ -245,7 +241,7 @@ def setup_outgoing_server():
             password_field.set_text("")
             time.sleep(1)
             d.send_keys(PASS)
-            print(f"[INFO] Typed password using index method", file=sys.stderr)
+            print("[INFO] Typed password using index method", file=sys.stderr)
 
 
 def setup_display_options():
@@ -307,7 +303,7 @@ def main():
 
     # Click Next
     tap_if_exists(text="Next")
-    wait_for_ui_stable(timeout=10)
+    wait_for_ui_stable(timeout=35)
 
     # Handle "Configuration not found" by clicking Next again
     time.sleep(15)  # Wait a bit to see if config not found appears

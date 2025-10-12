@@ -1,5 +1,6 @@
-setup_app_apklink.sh
 dms-config/
-run_checks.sh
-../../.DS_Store 
-codebase 
+../../.DS_Store
+codebase
+apk/
+*.apk 
+_setup_app_apklink.sh
