@@ -177,7 +177,9 @@ def seed_integrity_email(
 
     # Always delete existing email with this Message-ID to ensure clean state
     if has_msg(user_email, password, msgid):
-        print(f"Deleting existing integrity email (Message-ID {msgid_key} = {msgid}) to reseed...")
+        print(
+            f"Deleting existing integrity email (Message-ID {msgid_key} = {msgid}) to reseed..."
+        )
         delete_msg(user_email, password, msgid)
 
     ok = send_self(
@@ -198,16 +200,21 @@ def seed_integrity_email(
 
 
 def seed_integrity_email_with_attachment(
-    user_email: str, password: str, msgid_key: str, subj_key: str, body_key: str,
-    attachment_name_key: str, attachment_content_key: str
+    user_email: str,
+    password: str,
+    msgid_key: str,
+    subj_key: str,
+    body_key: str,
+    attachment_name_key: str,
+    attachment_content_key: str,
 ) -> bool:
     """Seed an integrity email with a text attachment.
 
     This function will DELETE any existing email with the same Message-ID before seeding
     to ensure integrity emails are always in their pristine state."""
+    import email.mime.base
     import email.mime.multipart
     import email.mime.text
-    import email.mime.base
 
     try:
         msgid = normalize_msgid(SECRETS[msgid_key])
@@ -221,7 +228,9 @@ def seed_integrity_email_with_attachment(
 
     # Always delete existing email with this Message-ID to ensure clean state
     if has_msg(user_email, password, msgid):
-        print(f"Deleting existing attachment email (Message-ID {msgid_key} = {msgid}) to reseed...")
+        print(
+            f"Deleting existing attachment email (Message-ID {msgid_key} = {msgid}) to reseed..."
+        )
         delete_msg(user_email, password, msgid)
 
     # Build multipart message with attachment
@@ -240,7 +249,7 @@ def seed_integrity_email_with_attachment(
     # Attachment part (text file)
     att_part = email.mime.base.MIMEBase("application", "octet-stream")
     att_part.set_payload(att_content.encode("utf-8"))
-    att_part.add_header("Content-Disposition", f"attachment; filename=\"{att_name}.txt\"")
+    att_part.add_header("Content-Disposition", f'attachment; filename="{att_name}.txt"')
     msg.attach(att_part)
 
     raw = msg.as_bytes()
@@ -249,7 +258,9 @@ def seed_integrity_email_with_attachment(
         with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=tls_ctx()) as s:
             s.login(user_email, password)
             s.sendmail(user_email, [user_email], raw)
-        print(f"Seeded attachment email ({msgid_key}) for {user_email} with Message-ID {msgid}")
+        print(
+            f"Seeded attachment email ({msgid_key}) for {user_email} with Message-ID {msgid}"
+        )
         return True
     except Exception as e:
         print(f"Error sending attachment email (Message-ID {msgid}): {e}")

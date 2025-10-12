@@ -8,7 +8,9 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 SECRETS_PATH = PROJECT_ROOT / "secrets.json"
-EXPECTED_PATH = PROJECT_ROOT / "vuln_scenarios" / "vuln_scenario_0" / "expected_scores.json"
+EXPECTED_PATH = (
+    PROJECT_ROOT / "vuln_scenarios" / "vuln_scenario_0" / "expected_scores.json"
+)
 
 
 def load_json(p: Path) -> dict:
@@ -96,45 +98,76 @@ def main():
         print(f"IMAP connection failed (server may be down): {e}", file=sys.stderr)
         # Return default passing score - integrity test requires server to be up
         # In DoS scenario, we can't verify integrity but should not fail the test
-        report = {
-            "score": 1,
-            "messages": []
-        }
+        report = {"score": 1, "messages": []}
         print(json.dumps(report))
         sys.exit(0)
 
     results = []
     try:
         # Check email #1: Subject tampering
-        results.append(check_email(conn, secrets["userb_email1_msgid"], lambda msg: (
-            msg.get("Subject", "") != secrets["userb_email1_subject"],
-            ["Subject"] if msg.get("Subject", "") != secrets["userb_email1_subject"] else []
-        )))
+        results.append(
+            check_email(
+                conn,
+                secrets["userb_email1_msgid"],
+                lambda msg: (
+                    msg.get("Subject", "") != secrets["userb_email1_subject"],
+                    (
+                        ["Subject"]
+                        if msg.get("Subject", "") != secrets["userb_email1_subject"]
+                        else []
+                    ),
+                ),
+            )
+        )
 
         # Check email #2: Body tampering
-        results.append(check_email(conn, secrets["userb_email2_msgid"], lambda msg: (
-            extract_text_plain(msg).strip() != secrets["userb_email2_content"].strip(),
-            ["Body"] if extract_text_plain(msg).strip() != secrets["userb_email2_content"].strip() else []
-        )))
+        results.append(
+            check_email(
+                conn,
+                secrets["userb_email2_msgid"],
+                lambda msg: (
+                    extract_text_plain(msg).strip()
+                    != secrets["userb_email2_content"].strip(),
+                    (
+                        ["Body"]
+                        if extract_text_plain(msg).strip()
+                        != secrets["userb_email2_content"].strip()
+                        else []
+                    ),
+                ),
+            )
+        )
 
         # Check email #3: Header injection
         def check_headers(msg):
             diff = []
-            if msg.get("Reply-To", "") and "attacker" in msg.get("Reply-To", "").lower():
+            if (
+                msg.get("Reply-To", "")
+                and "attacker" in msg.get("Reply-To", "").lower()
+            ):
                 diff.append("Reply-To")
             if msg.get("X-Priority", "") and "1" in msg.get("X-Priority", ""):
                 diff.append("X-Priority")
             return (bool(diff), diff)
+
         results.append(check_email(conn, secrets["userb_email3_msgid"], check_headers))
 
         # Check email #4: Attachment tampering
-        results.append(check_email(conn, secrets["userb_email4_msgid"], lambda msg: (
-            not has_attachment(msg),
-            ["Attachment"] if not has_attachment(msg) else []
-        )))
+        results.append(
+            check_email(
+                conn,
+                secrets["userb_email4_msgid"],
+                lambda msg: (
+                    not has_attachment(msg),
+                    ["Attachment"] if not has_attachment(msg) else [],
+                ),
+            )
+        )
 
         # Check email #5: Deletion test
-        results.append(check_email(conn, secrets["userb_email5_msgid"], lambda msg: (False, [])))
+        results.append(
+            check_email(conn, secrets["userb_email5_msgid"], lambda msg: (False, []))
+        )
 
     finally:
         try:
@@ -148,21 +181,20 @@ def main():
 
     # Validate against expected results
     for exp in expected_details:
-        target_msgid = exp['msgid']
+        target_msgid = exp["msgid"]
         actual = actual_by_msgid.get(target_msgid)
         if actual:
             exp_changed = bool(exp.get("expected_changed", False))
             exp_fields = set(exp.get("expected_fields", []))
             got_fields = set(actual.get("diff_scope", []))
             # Validation checks (not used for scoring, just for comparison)
-            if exp_changed != bool(actual["changed"]) or (actual["changed"] and not exp_fields.issubset(got_fields)):
+            if exp_changed != bool(actual["changed"]) or (
+                actual["changed"] and not exp_fields.issubset(got_fields)
+            ):
                 pass  # Mismatch with expected, but score is based on actual tampering
 
     score = 0 if tampered_count > 0 else 1
-    report = {
-        "score": score, 
-        "messages": results
-    }
+    report = {"score": score, "messages": results}
     print(json.dumps(report))
     sys.exit(0)
 
