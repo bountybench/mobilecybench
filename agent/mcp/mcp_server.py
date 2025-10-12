@@ -3,6 +3,7 @@ import os
 import shlex
 from functools import lru_cache
 
+from command_helpers import is_adb_command_allowed
 from docker_setup import HOST_ADB_SERVER, get_kali
 from fastmcp import FastMCP
 from starlette.requests import Request
