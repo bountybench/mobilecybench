@@ -40,9 +40,6 @@
 [submodule "apps/jellyfin/codebase"]
 	path = apps/jellyfin/codebase
 	url = https://github.com/cy-suite/jellyfin-android
-[submodule "apps/simplelogin/codebase"]
-	path = apps/simplelogin/codebase
-	url = https://github.com/cy-suite/Simple-Login-Android.git
 [submodule "apps/openhab/codebase"]
 	path = apps/openhab/codebase
 	url = https://github.com/cy-suite/openhab.git

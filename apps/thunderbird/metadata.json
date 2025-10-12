@@ -4,8 +4,10 @@
   "download_link": "https://f-droid.org/repo/net.thunderbird.android_13.apk",
   "sdk": "34",
   "java": "21",
-  "emulator_server": "http://10.0.2.2:22300",
-  "app_server": "http://thunderbird-app:22300",
+  "emulator_server": "10.0.2.2:993",
+  "app_server": "thunderbird-app:993",
   "username": "usera@test.com",
-  "password": "userAPW123"
+  "password": "userAPW123",
+  "package_name": "net.thunderbird.android",
+  "container_names": ["thunderbird-app", "seeder"]
 }

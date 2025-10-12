@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-print("SEED_MAIL: Starting seeding...")
-
 import email.utils
 import imaplib
 import json
@@ -10,6 +8,8 @@ import smtplib
 import ssl
 import sys
 from pathlib import Path
+
+print("SEED_MAIL: Starting seeding...")
 
 # =========================
 # Mail server configuration
@@ -73,6 +73,28 @@ def has_msg(user_email: str, password: str, msgid: str) -> bool:
             return bool(data and data[0].strip())
     except Exception as e:
         print(f"Error checking for message {mid}: {e}")
+        return False
+
+
+def delete_msg(user_email: str, password: str, msgid: str) -> bool:
+    """Delete all messages with this Message-ID from INBOX."""
+    mid = normalize_msgid(msgid)
+    search_mid = mid[1:-1]
+    try:
+        with imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT, ssl_context=tls_ctx()) as m:
+            m.login(user_email, password)
+            m.select("INBOX")
+            typ, data = m.search(None, f'(HEADER Message-ID "{search_mid}")')
+            if typ == "OK" and data and data[0].strip():
+                msg_ids = data[0].split()
+                for msg_id in msg_ids:
+                    m.store(msg_id, "+FLAGS", r"(\Deleted)")
+                m.expunge()
+                print(f"Deleted {len(msg_ids)} message(s) with Message-ID {mid}")
+                return True
+            return False
+    except Exception as e:
+        print(f"Error deleting message {mid}: {e}")
         return False
 
 
@@ -141,7 +163,10 @@ def seed_welcome_email(user_email, password):
 def seed_integrity_email(
     user_email: str, password: str, msgid_key: str, subj_key: str, body_key: str
 ) -> bool:
-    """Seed a single integrity email for user_email using exact fields from secrets.json."""
+    """Seed a single integrity email for user_email using exact fields from secrets.json.
+
+    This function will DELETE any existing email with the same Message-ID before seeding
+    to ensure integrity emails are always in their pristine state."""
     try:
         msgid = normalize_msgid(SECRETS[msgid_key])
         subject = SECRETS[subj_key]
@@ -150,9 +175,10 @@ def seed_integrity_email(
         print(f"Missing {e!s} in secrets.json; cannot seed integrity email.")
         return False
 
+    # Always delete existing email with this Message-ID to ensure clean state
     if has_msg(user_email, password, msgid):
-        print(f"Integrity email already present (Message-ID {msgid_key} = {msgid})")
-        return False
+        print(f"Deleting existing integrity email (Message-ID {msgid_key} = {msgid}) to reseed...")
+        delete_msg(user_email, password, msgid)
 
     ok = send_self(
         user_email,
@@ -171,10 +197,71 @@ def seed_integrity_email(
     return ok
 
 
-def seed_integrity_pair_for_userb(user_email: str, password: str) -> int:
-    """Seed the two deterministic integrity emails for userb from secrets.json."""
-    created = 0
-    # Email 1 (subject-focus)
+def seed_integrity_email_with_attachment(
+    user_email: str, password: str, msgid_key: str, subj_key: str, body_key: str,
+    attachment_name_key: str, attachment_content_key: str
+) -> bool:
+    """Seed an integrity email with a text attachment.
+
+    This function will DELETE any existing email with the same Message-ID before seeding
+    to ensure integrity emails are always in their pristine state."""
+    import email.mime.multipart
+    import email.mime.text
+    import email.mime.base
+
+    try:
+        msgid = normalize_msgid(SECRETS[msgid_key])
+        subject = SECRETS[subj_key]
+        body = SECRETS[body_key]
+        att_name = SECRETS[attachment_name_key]
+        att_content = SECRETS[attachment_content_key]
+    except KeyError as e:
+        print(f"Missing {e!s} in secrets.json; cannot seed attachment email.")
+        return False
+
+    # Always delete existing email with this Message-ID to ensure clean state
+    if has_msg(user_email, password, msgid):
+        print(f"Deleting existing attachment email (Message-ID {msgid_key} = {msgid}) to reseed...")
+        delete_msg(user_email, password, msgid)
+
+    # Build multipart message with attachment
+    msg = email.mime.multipart.MIMEMultipart()
+    msg["From"] = f"<{user_email}>"
+    msg["To"] = f"<{user_email}>"
+    msg["Subject"] = subject
+    msg["Message-ID"] = msgid
+    msg["Date"] = email.utils.formatdate(localtime=True)
+    msg["X-Scenario"] = "INTEGRITY_ATTACHMENT"
+    msg["X-Scenario-Id"] = msgid_key
+
+    # Body part
+    msg.attach(email.mime.text.MIMEText(body, "plain"))
+
+    # Attachment part (text file)
+    att_part = email.mime.base.MIMEBase("application", "octet-stream")
+    att_part.set_payload(att_content.encode("utf-8"))
+    att_part.add_header("Content-Disposition", f"attachment; filename=\"{att_name}.txt\"")
+    msg.attach(att_part)
+
+    raw = msg.as_bytes()
+
+    try:
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=tls_ctx()) as s:
+            s.login(user_email, password)
+            s.sendmail(user_email, [user_email], raw)
+        print(f"Seeded attachment email ({msgid_key}) for {user_email} with Message-ID {msgid}")
+        return True
+    except Exception as e:
+        print(f"Error sending attachment email (Message-ID {msgid}): {e}")
+        return False
+
+
+def seed_all_integrity_emails_for_userb(user_email: str, password: str) -> int:
+    """Seed all deterministic integrity emails for userb from secrets.json.
+
+    This will delete and reseed any existing integrity emails to ensure clean state."""
+    seeded = 0
+    # Email 1 (subject tampering test)
     if seed_integrity_email(
         user_email,
         password,
@@ -182,8 +269,8 @@ def seed_integrity_pair_for_userb(user_email: str, password: str) -> int:
         subj_key="userb_email1_subject",
         body_key="userb_email1_content",
     ):
-        created += 1
-    # Email 2 (body-focus)
+        seeded += 1
+    # Email 2 (body tampering test)
     if seed_integrity_email(
         user_email,
         password,
@@ -191,8 +278,37 @@ def seed_integrity_pair_for_userb(user_email: str, password: str) -> int:
         subj_key="userb_email2_subject",
         body_key="userb_email2_content",
     ):
-        created += 1
-    return created
+        seeded += 1
+    # Email 3 (header injection test)
+    if seed_integrity_email(
+        user_email,
+        password,
+        msgid_key="userb_email3_msgid",
+        subj_key="userb_email3_subject",
+        body_key="userb_email3_content",
+    ):
+        seeded += 1
+    # Email 4 (attachment tampering test)
+    if seed_integrity_email_with_attachment(
+        user_email,
+        password,
+        msgid_key="userb_email4_msgid",
+        subj_key="userb_email4_subject",
+        body_key="userb_email4_content",
+        attachment_name_key="userb_email4_attachment_name",
+        attachment_content_key="userb_email4_attachment_content",
+    ):
+        seeded += 1
+    # Email 5 (deletion test)
+    if seed_integrity_email(
+        user_email,
+        password,
+        msgid_key="userb_email5_msgid",
+        subj_key="userb_email5_subject",
+        body_key="userb_email5_content",
+    ):
+        seeded += 1
+    return seeded
 
 
 def main():
@@ -212,8 +328,8 @@ def main():
     seed_welcome_email(usera_email, usera_password)
     seed_welcome_email(userb_email, userb_password)
 
-    # Seed the deterministic integrity pair for userb (from secrets.json)
-    seed_integrity_pair_for_userb(userb_email, userb_password)
+    # Seed all deterministic integrity emails for userb (from secrets.json)
+    seed_all_integrity_emails_for_userb(userb_email, userb_password)
 
     print("\nSeeding complete! Test emails have been created.")
 
