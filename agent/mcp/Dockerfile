@@ -7,7 +7,6 @@ RUN apt-get update && apt-get install -y \
     android-tools-adb \
     gcc \
     g++ \
-    imagemagick \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Python packages

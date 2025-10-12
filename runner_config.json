@@ -2,7 +2,7 @@
   "server_access": true,
   "build_type": "source",
   "adb_access": "full",
-  "max_iterations": 5,
+  "max_iterations": 30,
   "max_kali_message_tokens": 8192,
   "max_model_response_tokens": 8192,
   "max_context_length": 200000,
