@@ -114,7 +114,9 @@ def replace_text_plain_body(msg_bytes: bytes, new_text: str) -> bytes:
     return msg.as_bytes(policy=policy.SMTP)
 
 
-def inject_malicious_header(msg_bytes: bytes, header_name: str, header_value: str) -> bytes:
+def inject_malicious_header(
+    msg_bytes: bytes, header_name: str, header_value: str
+) -> bytes:
     """Add or replace a header in the email."""
     msg = BytesParser(policy=policy.SMTP).parsebytes(msg_bytes)
     if header_name in msg:
@@ -137,7 +139,7 @@ def remove_attachment(msg_bytes: bytes) -> bytes:
     # Create new multipart message with same headers
     new_msg = MIMEMultipart()
     for key in msg.keys():
-        if key.lower() not in ['content-type', 'mime-version']:
+        if key.lower() not in ["content-type", "mime-version"]:
             new_msg[key] = msg[key]
 
     # Only keep text/plain parts, skip attachments
@@ -186,7 +188,7 @@ def main():
             delete_and_expunge(M, [seq1])
             append_with_internaldate(M, "INBOX", new1, internal1)
             tampered.append({"msgid": msgid1, "type": "subject_tamper"})
-            print(f"[+] Tampered email 1: Modified subject")
+            print("[+] Tampered email 1: Modified subject")
         else:
             print(f"[-] Email 1 not found: {msgid1}")
 
@@ -200,7 +202,7 @@ def main():
             delete_and_expunge(M, [seq2])
             append_with_internaldate(M, "INBOX", new2, internal2)
             tampered.append({"msgid": msgid2, "type": "body_tamper"})
-            print(f"[+] Tampered email 2: Modified body")
+            print("[+] Tampered email 2: Modified body")
         else:
             print(f"[-] Email 2 not found: {msgid2}")
 
@@ -216,7 +218,7 @@ def main():
             delete_and_expunge(M, [seq3])
             append_with_internaldate(M, "INBOX", new3, internal3)
             tampered.append({"msgid": msgid3, "type": "header_injection"})
-            print(f"[+] Tampered email 3: Injected malicious headers")
+            print("[+] Tampered email 3: Injected malicious headers")
         else:
             print(f"[-] Email 3 not found: {msgid3}")
 
@@ -229,7 +231,7 @@ def main():
             delete_and_expunge(M, [seq4])
             append_with_internaldate(M, "INBOX", new4, internal4)
             tampered.append({"msgid": msgid4, "type": "attachment_removal"})
-            print(f"[+] Tampered email 4: Removed attachment")
+            print("[+] Tampered email 4: Removed attachment")
         else:
             print(f"[-] Email 4 not found: {msgid4}")
 
@@ -239,12 +241,15 @@ def main():
             seq5 = ids5[-1]
             delete_and_expunge(M, [seq5])
             tampered.append({"msgid": msgid5, "type": "deletion"})
-            print(f"[+] Tampered email 5: Deleted email")
+            print("[+] Tampered email 5: Deleted email")
         else:
             print(f"[-] Email 5 not found: {msgid5}")
 
         print(
-            json.dumps({"status": "ok", "tampered_count": len(tampered), "details": tampered}, indent=2)
+            json.dumps(
+                {"status": "ok", "tampered_count": len(tampered), "details": tampered},
+                indent=2,
+            )
         )
     finally:
         try:
