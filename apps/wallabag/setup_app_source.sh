@@ -17,13 +17,26 @@ cd "$CODEBASE_DIR"
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/.android-sdk}"
 export PATH="$ANDROID_HOME/platform-tools:$PATH"
 
+# Check if we're in CI environment and adjust paths
+if [ -n "$GITHUB_ACTIONS" ] || [ -n "$CI" ]; then
+    export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+    export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools:$PATH"
+fi
+
 ./gradlew clean
 ./gradlew assembleRelease
 
 KEYSTORE_FILE="$HOME/.android/debug.keystore"
 APKSIGNER="$ANDROID_HOME/build-tools/$(ls -v "$ANDROID_HOME/build-tools" | tail -n 1)/apksigner"
 
+# Check if the unsigned APK was created
+if [ ! -f "$APK_UNSIGNED" ]; then
+    echo "Error: Unsigned APK not found at $APK_UNSIGNED"
+    exit 1
+fi
+
 if [ ! -f "$KEYSTORE_FILE" ]; then
+    mkdir -p "$(dirname "$KEYSTORE_FILE")"
     keytool -genkey -v -keystore "$KEYSTORE_FILE" \
         -alias androiddebugkey -keyalg RSA -keysize 2048 \
         -validity 10000 -storepass android -keypass android \
