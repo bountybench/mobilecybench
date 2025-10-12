@@ -297,13 +297,9 @@ create_env_file() {
 USER_ID=${user_id}
 GROUP_ID=${group_id}
 
-<<<<<<< HEAD
 # Optional: Cloudflare tunnel token
 # If this is set to a valid token, the cloudflared service will be started
 # Leave empty or unset to disable the cloudflared service
-=======
-# Optional: Cloudflare tunnel token (leave empty if not using)
->>>>>>> 09a6d2b27 (For rebase)
 CLOUDFLARE_TUNNEL_TOKEN=
 EOF
 
@@ -321,7 +317,6 @@ main() {
   # Read secrets from JSON file
   read_secrets
 
-<<<<<<< HEAD
   # Define env_file path for use throughout main function
   local env_file="$SCRIPT_DIR/.env"
 
@@ -330,16 +325,10 @@ main() {
 
   # Create Mosquitto configuration
   "$SCRIPT_DIR/setup_mosquitto.sh"
-=======
-  # Create .env file for docker-compose
-  create_env_file
-
->>>>>>> 09a6d2b27 (For rebase)
   # Start openhab via docker-compose
   if [ -f "$SCRIPT_DIR/docker-compose.yml" ]; then
     if command -v docker >/dev/null 2>&1; then
       LOG "Starting docker compose services..."
-<<<<<<< HEAD
       
       # Check if CLOUDFLARE_TUNNEL_TOKEN is set and not empty
       local compose_profiles=""
@@ -359,12 +348,6 @@ main() {
         docker-compose -f "$SCRIPT_DIR/docker-compose.yml" $compose_profiles up -d
       else
         docker compose -f "$SCRIPT_DIR/docker-compose.yml" $compose_profiles up -d
-=======
-      if command -v docker-compose >/dev/null 2>&1; then
-        docker-compose -f "$SCRIPT_DIR/docker-compose.yml" up -d
-      else
-        docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d
->>>>>>> 09a6d2b27 (For rebase)
       fi
       # Wait for OpenHAB service to be ready before proceeding (increased timeout for Karaf)
       wait_for_docker_service_ready 180

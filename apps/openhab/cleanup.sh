@@ -217,7 +217,6 @@ files_cleanup() {
       rm -rf "$d"
     fi
   done
-<<<<<<< HEAD
 
   # Remove dynamically created mosquitto configuration file and directories
   mosquitto_dir="$ROOT_DIR/mosquitto"
@@ -250,8 +249,6 @@ files_cleanup() {
       }
     fi
   fi
-=======
->>>>>>> 09a6d2b27 (For rebase)
 }
 
 # If Karaf is not reachable locally, try to start the compose stack so we can 

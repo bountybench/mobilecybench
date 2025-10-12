@@ -35,10 +35,7 @@ services:
     volumes:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data
-<<<<<<< HEAD
       - ./mosquitto/log:/mosquitto/log
-=======
->>>>>>> 09a6d2b27 (For rebase)
     networks:
       - openhab_net
 
@@ -52,11 +49,8 @@ services:
       - openhab
     networks:
       - openhab_net
-<<<<<<< HEAD
     profiles:
       - cloudflare
-=======
->>>>>>> 09a6d2b27 (For rebase)
 
 networks:
   openhab_net:
