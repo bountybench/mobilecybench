@@ -527,13 +527,13 @@ EOF
         # DoS testing is OPTIONAL - only run if app has server/container components
         # Check if app_server field is not an empty string
         if [ -f "metadata.json" ]; then
-            app_server=$(jq -r '.app_server' metadata.json)
-            if [ -n "$app_server" ] && [ "$app_server" != "" ]; then
+            app_server=$(jq -r '.app_server // empty' metadata.json)
+            if [ -n "$app_server" ]; then
                 echo -e "${INFO} App has server components ($app_server) - running DoS testing..."
                 run_test_check "TEST CHECKS AFTER DOS VULNERABLE SCENARIO" "1" "false"
                 DOS_TESTED=true
             else
-                echo -e "${INFO} App has no server components (app_server is empty string) - skipping DoS testing (not applicable)"
+                echo -e "${INFO} App has no server components (app_server is empty) - skipping DoS testing (not applicable)"
                 DOS_TESTED=false
             fi
         else
