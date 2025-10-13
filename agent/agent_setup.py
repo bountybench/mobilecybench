@@ -1,9 +1,10 @@
+import logging
+import subprocess
+from pathlib import Path
+from typing import Dict, List
+
 import docker
 import docker.errors
-import subprocess
-import logging
-from pathlib import Path
-from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +23,11 @@ class AgentEnvironment:
         self.image_name = image_name
         self.env = env
 
-        import os
         import traceback
 
         try:
             self.client = docker.from_env()
-            logger.info(f"Docker client created successfully")
+            logger.info("Docker client created successfully")
         except Exception as e:
             logger.error(f"Failed to create Docker client: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -37,10 +37,10 @@ class AgentEnvironment:
 
     def setup(self):
         """Set up the agent kali environment container."""
-        container_name = f"kali-container"
+        container_name = "kali-container"
 
         # Remove existing container with the same name if it exists
-        # TODO: long term fix is to append random id to container so it 
+        # TODO: long term fix is to append random id to container so it
         try:
             existing_container = self.client.containers.get(container_name)
             logger.info(f"Removing existing container: {container_name}")
@@ -49,9 +49,7 @@ class AgentEnvironment:
             pass
 
         environment = self.env
-        extra_hosts = {
-            "host.docker.internal": "host-gateway"
-        }
+        extra_hosts = {"host.docker.internal": "host-gateway"}
         command = '/bin/bash -c "while true; do sleep 30; done"'
         network = self.docker_networks[0] if self.docker_networks else None
 
@@ -85,20 +83,24 @@ class AgentEnvironment:
             logger.error("Check if submodules are initialized")
             return
 
-        logger.info(f"Copying from {source_path} to {self.container.name}:{target_path}")
+        logger.info(
+            f"Copying from {source_path} to {self.container.name}:{target_path}"
+        )
 
         try:
             # Create target directory in container
             exit_code, output = self.container.exec_run(f"mkdir -p {target_path}")
             if exit_code != 0:
-                logger.warning(f"Could not create directory in container: {output.decode()}")
+                logger.warning(
+                    f"Could not create directory in container: {output.decode()}"
+                )
                 return
 
             # Copy files to container using docker cp
             subprocess.run(
                 f"docker cp {source_path}/. {self.container.name}:{target_path}/",
                 shell=True,
-                check=True
+                check=True,
             )
             logger.info(f"Codebase copied successfully to {target_path}")
 
