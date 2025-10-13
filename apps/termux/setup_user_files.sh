@@ -39,7 +39,9 @@ $SSH_KEY
 EOF
 
 # Copy the file to the device using root access
-adb shell "su 0 sh -c 'cat > /data/data/com.termux/files/test_secrets.txt'" < "$TEMP_FILE"
+# Use the first available device to avoid "more than one device" error
+DEVICE_SERIAL=$(adb devices | awk 'NR>1 && $2=="device"{print $1; exit}')
+adb -s "$DEVICE_SERIAL" shell "su 0 sh -c 'cat > /data/data/com.termux/files/test_secrets.txt'" < "$TEMP_FILE"
 
 # Clean up temporary file
 rm -f "$TEMP_FILE"
@@ -47,6 +49,6 @@ rm -f "$TEMP_FILE"
 echo "Test file created in Termux files directory: /data/data/com.termux/files/test_secrets.txt"
 # Verify the file was created
 echo "Verifying test file creation..."
-adb shell "su 0 sh -c 'ls -la /data/data/com.termux/files/test_secrets.txt'" >/dev/null 2>&1
+adb -s "$DEVICE_SERIAL" shell "su 0 sh -c 'ls -la /data/data/com.termux/files/test_secrets.txt'" >/dev/null 2>&1
 
 echo "User file setup completed successfully!"

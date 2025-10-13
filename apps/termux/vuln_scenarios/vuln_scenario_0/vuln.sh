@@ -256,7 +256,7 @@ fi
 LOG_FILE="$SCRIPT_DIR/fake_agent_log.log"
 debug_log "Creating comprehensive vulnerability test log..."
 
-# Try to read the fake agent log created by the malicious app
+# Try to read the stolen data created by the malicious app
 STOLEN_DATA=""
 # Try to read from external storage first (if permissions allow)
 if adb shell ls /sdcard/termux_exploit_log.txt >/dev/null 2>&1; then
@@ -264,15 +264,23 @@ if adb shell ls /sdcard/termux_exploit_log.txt >/dev/null 2>&1; then
     STOLEN_DATA=$(adb shell cat /sdcard/termux_exploit_log.txt 2>/dev/null || echo "")
 fi
 
-# If external storage failed, try to read from app's private directory
+# If external storage failed, try to read stolen files from app's private directory
 if [ -z "$STOLEN_DATA" ]; then
-    debug_log "Trying to read fake agent log from app's private directory..."
-    # We can't directly read from app's private directory, but we can check if it exists
-    if adb shell ls /data/user/0/com.test.malicious/files/termux_exploit_log.txt >/dev/null 2>&1; then
-        debug_log "VULNERABILITY CONFIRMED: Fake agent log exists in app's private directory!"
+    debug_log "Trying to read stolen files from app's private directory..."
+    # Check if any .stolen files exist in the app's private directory
+    if adb shell "su 0 sh -c 'ls /data/user/0/com.test.malicious/files/*.stolen'" >/dev/null 2>&1; then
+        debug_log "VULNERABILITY CONFIRMED: Stolen files found in app's private directory!"
         debug_log "This proves the ContentProvider vulnerability was successfully exploited"
-        # The fake agent log exists - this proves the exploit worked
-        STOLEN_DATA="[VULNERABILITY_CONFIRMED] Malicious app successfully exploited ContentProvider vulnerability and created fake agent log with stolen data. The Termux Files World Readable vulnerability (v0.47-v0.117) allows any app with android.permission.permRead to read ALL files in /data/data/com.termux/files/"
+        
+        # Read all stolen files and include their content
+        STOLEN_DATA="[VULNERABILITY_CONFIRMED] Malicious app successfully exploited ContentProvider vulnerability and stole sensitive data. The Termux Files World Readable vulnerability (v0.47-v0.117) allows any app with android.permission.permRead to read ALL files in /data/data/com.termux/files/\n\n"
+        STOLEN_DATA="$STOLEN_DATA=== STOLEN SENSITIVE DATA ===\n"
+        
+        for stolen_file in $(adb shell "su 0 sh -c 'ls /data/user/0/com.test.malicious/files/*.stolen'" 2>/dev/null | tr -d '\r'); do
+            file_content=$(adb shell "su 0 sh -c 'cat $stolen_file'" 2>/dev/null || echo "ERROR_READING")
+            STOLEN_DATA="$STOLEN_DATA\n=== $stolen_file ===\n$file_content\n"
+        done
+        
         VULNERABILITY_CONFIRMED=true
     fi
 fi
@@ -318,12 +326,6 @@ adb shell rm -f /sdcard/bashrc.txt
 adb shell rm -f /sdcard/stolen_bashrc.txt
 adb shell rm -f /sdcard/temp_bashrc
 adb shell rm -f /sdcard/termux_exploit_log.txt
-
-# Remove generated APKs and build artifacts from perm_only_app
-rm -f malicious-perm-only.apk
-rm -rf perm_only_app/dist/
-rm -rf perm_only_app/build/
-rm -f perm_only_app/debug.keystore
 
 # Keeping logs and evidence files for test validation
 echo "Cleanup completed. Build artifacts removed, logs and evidence files preserved for tests."

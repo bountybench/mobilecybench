@@ -79,6 +79,12 @@ rm -f fake_agent_log.log
 rm -f *.stolen
 find . -name "*.stolen" -delete
 
+# Remove generated APKs and build artifacts from perm_only_app
+rm -f vuln_scenarios/vuln_scenario_0/malicious-perm-only.apk
+rm -rf vuln_scenarios/vuln_scenario_0/perm_only_app/dist/
+rm -rf vuln_scenarios/vuln_scenario_0/perm_only_app/build/
+rm -f vuln_scenarios/vuln_scenario_0/perm_only_app/debug.keystore
+
 # Remove log files recursively 
 echo "Removing log files recursively..."
 find . -type f -name "*.log" -delete

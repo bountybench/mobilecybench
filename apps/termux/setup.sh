@@ -51,25 +51,25 @@ echo "Termux installed successfully"
 
 # Check if the app is running and accessible
 echo "Checking app accessibility..."
-adb shell "am start -n com.termux/.app.TermuxActivity" >/dev/null 2>&1 || true
+adb -s "$DEVICE_SERIAL" shell "am start -n com.termux/.app.TermuxActivity" >/dev/null 2>&1 || true
 sleep 5
 
 # Request storage permission (critical for Termux functionality)
 echo "Requesting storage permission for Termux..."
-adb shell am broadcast -a com.termux.REQUEST_PERMISSIONS >/dev/null 2>&1
+adb -s "$DEVICE_SERIAL" shell am broadcast -a com.termux.REQUEST_PERMISSIONS >/dev/null 2>&1
 sleep 2
 
 # Trigger storage setup
 echo "Setting up storage symlinks..."
-adb shell am start -n com.termux/.app.TermuxActivity --es extraReloadStyle storage >/dev/null 2>&1
+adb -s "$DEVICE_SERIAL" shell am start -n com.termux/.app.TermuxActivity --es extraReloadStyle storage >/dev/null 2>&1                                                                                        
 sleep 5
 
-if adb shell "ps | grep com.termux" | grep -q "com.termux"; then
+if adb -s "$DEVICE_SERIAL" shell "ps | grep com.termux" | grep -q "com.termux"; then
     echo "Termux app is running and accessible"
 else
     echo "Termux app process not running (normal after bootstrap) - testing launch capability..."
     # Test if app can still be launched
-    if adb shell "am start -n com.termux/.app.TermuxActivity" >/dev/null 2>&1; then
+    if adb -s "$DEVICE_SERIAL" shell "am start -n com.termux/.app.TermuxActivity" >/dev/null 2>&1; then
         echo "Termux app is accessible and can be launched"
     else
         echo "Termux app may not be fully accessible (this is normal for initial setup)"
