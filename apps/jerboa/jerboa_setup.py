@@ -3,12 +3,13 @@
 Lemmy instance seeder for Jerboa CIAA tests
 Creates test users, communities, posts, and honeytokens
 """
+import json
 import os
 import sys
-import json
 import time
+from typing import Any, Dict, Optional
+
 import requests
-from typing import Dict, Any, Optional
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SECRETS_FILE = os.path.join(SCRIPT_DIR, "secrets.json")
@@ -239,7 +240,7 @@ def main():
     print("[seeder] Starting Lemmy seeder")
 
     secrets = load_secrets()
-    metadata = load_metadata()
+    # metadata = load_metadata()
 
     # Use localhost when running setup from host machine
     # The app_server URL is for Android app, emulator_server is for emulator access
