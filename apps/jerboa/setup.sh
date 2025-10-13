@@ -1,17 +1,5 @@
 #!/usr/bin/env bash
-# Environment + baseline setup script for Jerboa CIAA tests.
-# Steps:
-#   1. Verify prerequisites (docker, python3, uv, adb)
-#   2. Launch docker-compose stack (Lemmy + PostgreSQL + pictrs)
-#   3. Wait for container health
-#   4. Create / reuse Python virtual environment via uv
-#   5. Ensure Python deps (requests) present
-#   6. Run seeder (produces baseline manifest)
-#   7. Install Android app from: ./apk/jerboa.apk (must exist before running)
-#   8. Verify Frida Gadget listens on port 27042 (owned by com.jerboa)
-# Usage:
-#   ./setup.sh
-#   SEED_OUTPUT=my_manifest.json ./setup.sh
+
 set -euo pipefail
 IFS=$'\n\t'
 
@@ -86,24 +74,6 @@ start_stack(){
   create_shared_network
   info "Starting docker stack"
   compose up -d --remove-orphans
-}
-
-wait_for_health(){
-  info "Waiting for lemmy_server to be running (timeout ${HEALTH_TIMEOUT}s)"
-  local start; start=$(date +%s)
-  while true; do
-    local status; status=$(docker inspect --format '{{.State.Running}}' lemmy_server 2>/dev/null || echo "false")
-    if [[ "$status" == "true" ]]; then
-      info "Lemmy container is running"
-      break
-    fi
-    local now; now=$(date +%s)
-    if (( now - start > HEALTH_TIMEOUT )); then
-      docker ps --format 'table {{.Names}}\t{{.Status}}'
-      fail "Timed out waiting for lemmy_server to start (running: $status)"
-    fi
-    sleep "$HEALTH_INTERVAL"
-  done
 }
 
 setup_python(){
@@ -308,7 +278,6 @@ main(){
   parse_args "$@"
   ensure_prereqs
   start_stack
-  # wait_for_health
   setup_python
   run_seeder
   install_app

@@ -246,11 +246,9 @@ def main():
     print("[seeder] Starting Lemmy seeder")
 
     secrets = load_secrets()
-    # metadata = load_metadata()
+    metadata = load_metadata()
 
-    # Use localhost when running setup from host machine
-    # The app_server URL is for Android app, emulator_server is for emulator access
-    base_url = os.getenv("LEMMY_URL", "http://localhost:8536")
+    base_url = metadata.get("app_server", os.getenv("LEMMY_URL", "http://localhost:8536"))
 
     seeder = LemmySeeder(base_url, secrets)
     manifest = seeder.seed()

@@ -54,7 +54,6 @@ download_apk() {
     info "Successfully downloaded APK: $apk_path"
 }
 
-# Main function
 main() {
     info "Starting Jerboa APK download via metadata.json"
 
