@@ -116,10 +116,10 @@ build_rust_core() {
     export CARGO_NET_RETRY=10
     export RUSTC_WRAPPER=""
     
-    # Use debug build for faster compilation (--debug flag)
+    # Build release version for production use
     # Build only for arm64-v8a (most common architecture) to save time
-    info "Building for arm64-v8a architecture only (debug mode for speed)..."
-    ./scripts/ndk-make.sh --debug arm64-v8a
+    info "Building for arm64-v8a architecture only (release mode)..."
+    ./scripts/ndk-make.sh arm64-v8a
     
     info "Rust core build completed."
 }
@@ -135,7 +135,7 @@ build_deltachat() {
     
     # Use optimized Gradle flags for faster CI builds
     info "Building with optimized Gradle settings..."
-    if ./gradlew assembleFossDebug \
+    if ./gradlew assembleFossRelease \
         --no-daemon \
         --parallel \
         --build-cache \
@@ -185,19 +185,19 @@ main() {
     build_rust_core
     build_deltachat
     
-    # Copy APK to expected location
+    # Copy APK to expected location following new pattern
     info "Copying APK to expected location..."
     APK_DIR="$SCRIPT_DIR/apk"
     mkdir -p "$APK_DIR"
     
-    # Find the built APK and copy it
-    BUILT_APK=$(find . -name "*debug*.apk" -type f | head -1)
+    # Find the built release APK and copy it with standardized name
+    BUILT_APK=$(find . -name "*release*.apk" -type f | head -1)
     if [[ -n "$BUILT_APK" ]]; then
-        cp "$BUILT_APK" "$APK_DIR/"
-        info "APK copied to $APK_DIR/"
+        cp "$BUILT_APK" "$APK_DIR/deltachat-android.apk"
+        info "APK copied to $APK_DIR/deltachat-android.apk"
         ls -la "$APK_DIR/"
     else
-        error "No APK found after build"
+        error "No release APK found after build"
     fi
     
     echo ""

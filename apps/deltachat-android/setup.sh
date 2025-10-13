@@ -26,8 +26,31 @@ else
   echo "[ERROR] Email account creation failed."
 fi
 
-echo "[INFO] Building and installing DeltaChat app from source..."
-"${DELTACHAT_DIR}/setup_app_source.sh"
-echo "[INFO] DeltaChat app built and ready."
+echo "[INFO] Installing DeltaChat app..."
+
+# Verify APK exists (should have been created by setup_app_source.sh or setup_app_apklink.sh)
+APK_FILE="${DELTACHAT_DIR}/apk/deltachat-android.apk"
+if [[ ! -f "$APK_FILE" ]]; then
+    echo "[ERROR] APK not found at $APK_FILE"
+    echo "[ERROR] Run setup_app_source.sh or setup_app_apklink.sh first to prepare the APK"
+    exit 1
+fi
+
+echo "[INFO] APK found at $APK_FILE"
+
+# Verify emulator is running
+if ! adb devices | grep -q "device$"; then
+    echo "[ERROR] No Android emulator detected. Please start the emulator first."
+    exit 1
+fi
+
+# Install the APK
+echo "[INFO] Installing DeltaChat APK..."
+if adb install -r "$APK_FILE"; then
+    echo "[INFO] DeltaChat app installed successfully."
+else
+    echo "[ERROR] Failed to install DeltaChat APK."
+    exit 1
+fi
 
 echo "=== FINISHED DeltaChat setup.sh ==="
