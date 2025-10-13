@@ -8,5 +8,5 @@
     "emulator_server": "10.0.2.2:1025",
     "app_server": "deltachat-greenmail:3025",
     "username": "user1@deltachat.test",
-    "password": "password123"
+    "password": "unguessable_password_7861"
 }

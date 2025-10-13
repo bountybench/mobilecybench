@@ -12,7 +12,6 @@ main() {
     info "DeltaChat Android APK Download"
     echo "==============================="
     
-    # Read download link from metadata.json
     METADATA_FILE="$SCRIPT_DIR/metadata.json"
     if [[ ! -f "$METADATA_FILE" ]]; then
         error "metadata.json not found at $METADATA_FILE"
@@ -25,11 +24,9 @@ main() {
     
     info "Download URL: $DOWNLOAD_URL"
     
-    # Create APK directory
     APK_DIR="$SCRIPT_DIR/apk"
     mkdir -p "$APK_DIR"
     
-    # Download APK with standardized name
     APK_FILE="$APK_DIR/deltachat-android.apk"
     
     info "Downloading APK to $APK_FILE..."
@@ -45,12 +42,10 @@ main() {
         error "Neither curl nor wget found. Cannot download APK."
     fi
     
-    # Verify APK was downloaded
     if [[ ! -f "$APK_FILE" ]]; then
         error "APK file not found after download"
     fi
     
-    # Check file size (should be > 1MB for a valid APK)
     FILE_SIZE=$(stat -c%s "$APK_FILE" 2>/dev/null || stat -f%z "$APK_FILE" 2>/dev/null || echo "0")
     if [[ "$FILE_SIZE" -lt 1048576 ]]; then
         error "Downloaded APK file is too small ($FILE_SIZE bytes). Download may have failed."

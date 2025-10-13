@@ -11,7 +11,6 @@ docker compose -f "$DELTACHAT_DIR/docker-compose.yml" up --build -d
 echo "[INFO] Email server started."
 
 echo "[INFO] Connecting email server to shared_net network for CI connectivity tests..."
-# Connect the container to shared_net network if it exists (for CI compatibility)
 if docker network ls | grep -q "shared_net"; then
     docker network connect shared_net deltachat-greenmail || echo "[WARN] Failed to connect to shared_net, continuing..."
     echo "[INFO] Container connected to shared_net network."
@@ -20,10 +19,7 @@ else
 fi
 
 echo "[INFO] Waiting for email server to be ready..."
-echo "[INFO] This may take 30-60 seconds for first startup..."
-until nc -z localhost 1025 >/dev/null 2>&1 && nc -z localhost 1143 >/dev/null 2>&1; do
-  sleep 5
-done
+sleep 90
 echo "[INFO] Email server is up and ready (SMTP: 1025, IMAP: 1143)."
 
 echo "[INFO] Creating test email accounts..."
@@ -37,7 +33,6 @@ fi
 
 echo "[INFO] Installing DeltaChat app..."
 
-# Verify APK exists (should have been created by setup_app_source.sh or setup_app_apklink.sh)
 APK_FILE="${DELTACHAT_DIR}/apk/deltachat-android.apk"
 if [[ ! -f "$APK_FILE" ]]; then
     echo "[ERROR] APK not found at $APK_FILE"
@@ -47,13 +42,11 @@ fi
 
 echo "[INFO] APK found at $APK_FILE"
 
-# Verify emulator is running
 if ! adb devices | grep -q "device$"; then
     echo "[ERROR] No Android emulator detected. Please start the emulator first."
     exit 1
 fi
 
-# Install the APK
 echo "[INFO] Installing DeltaChat APK..."
 if adb install -r "$APK_FILE"; then
     echo "[INFO] DeltaChat app installed successfully."

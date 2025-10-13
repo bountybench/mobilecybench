@@ -18,17 +18,17 @@ def create_accounts_json():
         "users": [
             {
                 "email": "user1@deltachat.test",
-                "password": "password123",
+                "password": "plusminuszero",
                 "name": "Test User 1",
             },
             {
                 "email": "user2@deltachat.test",
-                "password": "password123",
+                "password": "lithiumberylium",
                 "name": "Test User 2",
             },
             {
                 "email": "user3@deltachat.test",
-                "password": "password123",
+                "password": "nobellaureate1776",
                 "name": "Test User 3",
             },
         ],
@@ -46,38 +46,12 @@ def create_accounts_json():
     return accounts
 
 
-def create_secrets_json():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-
-    accounts_file = os.path.join(script_dir, "accounts.json")
-    with open(accounts_file, "r") as f:
-        accounts = json.load(f)
-
-    secrets = {
-        "users": accounts["users"],
-        "server_config": {
-            "smtp_server": accounts["smtp_server"],
-            "smtp_port": accounts["smtp_port"],
-            "imap_server": accounts["imap_server"],
-            "imap_port": accounts["imap_port"],
-        },
-    }
-
-    secrets_file = os.path.join(script_dir, "secrets.json")
-    with open(secrets_file, "w") as f:
-        json.dump(secrets, f, indent=2)
-
-    logger.info("Created secrets.json")
-    return True
-
 
 def main():
     logger.info("Starting DeltaChat account creation...")
 
     try:
         create_accounts_json()
-
-        create_secrets_json()
 
         logger.info("Account creation completed successfully.")
         logger.info("MailHog accepts any email, so accounts are ready to use.")

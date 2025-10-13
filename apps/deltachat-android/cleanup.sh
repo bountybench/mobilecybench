@@ -9,9 +9,6 @@ rm -f "$SCRIPT_DIR/secrets.json"
 echo "[INFO] Removing evaluating files..."
 rm -f "$SCRIPT_DIR/scores.json"
 
-# Note: APK files are preserved to support --skip-apk flag in local CI
-# echo "[INFO] Removing apk files"
-# rm -rf "$SCRIPT_DIR/apk"
 
 echo "[INFO] Cleaning up environment..."
 docker compose -f "$SCRIPT_DIR/docker-compose.yml" down -v
