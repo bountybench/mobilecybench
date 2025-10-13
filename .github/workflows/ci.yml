@@ -185,29 +185,6 @@ jobs:
           echo "Selected setup modes: $setup_modes"
           echo "setup_modes=$setup_modes" >> "$GITHUB_OUTPUT"
 
-      - name: Check if app has server components
-        if: steps.modified-dirs.outputs.should_exit != 'true'
-        id: check-server-components
-        run: |
-          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
-          metadata="$dir/metadata.json"
-          
-          # Check if app has server components for DoS testing
-          # App has server if app_server field is not an empty string
-          if [ -f "$metadata" ]; then
-            app_server=$(jq -r '.app_server' "$metadata")
-            if [ -n "$app_server" ] && [ "$app_server" != "" ]; then
-              echo "App has server components ($app_server) - DoS testing (vuln_scenario_1) will be included"
-              echo "has_server=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "App has no server components (app_server is empty string) - DoS testing (vuln_scenario_1) will be skipped"
-              echo "has_server=false" >> "$GITHUB_OUTPUT"
-            fi
-          else
-            echo "No metadata.json found - assuming no server components"
-            echo "has_server=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Install test dependencies
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
