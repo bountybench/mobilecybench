@@ -264,7 +264,7 @@ jobs:
     needs: setup
     if: needs.setup.outputs.should_exit != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       matrix:
         setup_mode: ${{ fromJson(needs.setup.outputs.setup_modes) }}
@@ -407,7 +407,7 @@ jobs:
     needs: [setup, handle_apk]
     if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_probes == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 60
     strategy:
       matrix:
         test_type: ${{ fromJson(needs.setup.outputs.has_server == 'true' && '["baseline", "vuln_scenario_0", "vuln_scenario_1"]' || '["baseline", "vuln_scenario_0"]') }}
