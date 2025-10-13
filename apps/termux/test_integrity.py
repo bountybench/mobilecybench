@@ -45,7 +45,7 @@ def test_unauthorized_write_blocked() -> Dict[str, Any]:
     try:
         priv = "/data/data/com.termux"
         ok, out = run_adb_command(
-            f"shell sh -c \"echo int_probe > '{priv}/__int_probe.txt'\" 2>&1"
+            f"shell su 2000 sh -c \"echo int_probe > '{priv}/__int_probe.txt'\" 2>&1"
         )
         if ok and "Permission denied" not in out:
             return {
