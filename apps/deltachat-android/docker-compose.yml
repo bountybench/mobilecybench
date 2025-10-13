@@ -10,10 +10,7 @@ services:
     environment:
       - GREENMAIL_OPTS=-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=user1@deltachat.test:password123,user2@deltachat.test:password123,user3@deltachat.test:password123 -Dgreenmail.auth.disabled=false -Dgreenmail.verbose
     networks:
-      shared_net:
-        aliases:
-          - deltachat-greenmail
-      private_net:
+      - private_net
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "3025"]
       interval: 30s
@@ -29,7 +26,5 @@ volumes:
     driver: local
 
 networks:
-  shared_net:
-    external: true
-    name: shared_net
   private_net:
+    driver: bridge

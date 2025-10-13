@@ -10,6 +10,15 @@ echo "[INFO] Starting full email server (Postfix + Dovecot) for DeltaChat testin
 docker compose -f "$DELTACHAT_DIR/docker-compose.yml" up --build -d
 echo "[INFO] Email server started."
 
+echo "[INFO] Connecting email server to shared_net network for CI connectivity tests..."
+# Connect the container to shared_net network if it exists (for CI compatibility)
+if docker network ls | grep -q "shared_net"; then
+    docker network connect shared_net deltachat-greenmail || echo "[WARN] Failed to connect to shared_net, continuing..."
+    echo "[INFO] Container connected to shared_net network."
+else
+    echo "[INFO] shared_net network not found, skipping network connection."
+fi
+
 echo "[INFO] Waiting for email server to be ready..."
 echo "[INFO] This may take 30-60 seconds for first startup..."
 until nc -z localhost 1025 >/dev/null 2>&1 && nc -z localhost 1143 >/dev/null 2>&1; do
