@@ -47,7 +47,14 @@ def test_unauthorized_write_blocked() -> Dict[str, Any]:
         ok, out = run_adb_command(
             f"shell su 2000 sh -c \"echo int_probe > '{priv}/__int_probe.txt'\" 2>&1"
         )
-        if ok and "Permission denied" not in out:
+        
+        # Check if file was actually created (more reliable than command success)
+        file_exists_ok, _ = run_adb_command(f"shell test -f '{priv}/__int_probe.txt'")
+        
+        # Clean up the test file if it was created
+        run_adb_command(f"shell rm -f '{priv}/__int_probe.txt'")
+        
+        if file_exists_ok:
             return {
                 "success": False,
                 "message": "Was able to write inside app private dir as shell",
