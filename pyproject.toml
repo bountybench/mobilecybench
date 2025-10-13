@@ -8,6 +8,7 @@ version = "0.0.1"
 
 [tool.setuptools.packages.find]
 include = ["utils"]
+exclude = ["apps*", "agent*", ".venv*", ".git*", ".pytest_cache*", ".ruff_cache*", "*.egg-info"]
 
 [tool.pytest.ini_options]
 markers = [
