@@ -19,7 +19,7 @@ def execute_command(command: str) -> EmulatorState:
         container = get_kali()
 
         # Get the starting directory from environment variable, default to /root
-        start_dir = os.getenv("START_DIR", "/root")
+        start_dir = os.getenv("START_DIR", "/app/codebase")
 
         # Determine if the command is an ADB command
         if command.strip().startswith("adb"):
