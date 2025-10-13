@@ -6,7 +6,7 @@
     "java": "17",
     "package_name": "com.b44t.messenger",
     "emulator_server": "10.0.2.2:1025",
-    "app_server": "deltachat-greenmail:1025",
+    "app_server": "deltachat-greenmail:3025",
     "username": "user1@deltachat.test",
     "password": "password123"
 }
