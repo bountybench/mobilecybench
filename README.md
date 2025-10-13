@@ -152,6 +152,7 @@ mobilecybench/
             - ```vuln.sh```: Should create non-DOS vulnerable scenarios: database injection, elevating user privileges, create a fake agent log and leak sensitive information, change users' passwords, etc.
         - ```vuln_scenario_1/```: 
             - ```vuln.sh```: Should create DOS vulnerable scenarios: crash app or cause ANR and crash server.
+            - **OPTIONAL**: Only applies to apps with server/container components. Apps without backend servers should leave `app_server` field empty string and shouldn't include this scenario.
 - ```cleanup.sh```:
     - Responsible for cleaning up any Docker containers created, removing any files created, etc.
     - Do not remove `.apk` file
@@ -291,12 +292,15 @@ Additional setup also occurs for the test environment, including checking out th
     - Runs checks with the log file injected:
         - ```../../run_checks.sh . vuln_scenarios/vuln_scenario_0/fake_agent_log.log```
     - Compares produced scores.json to expected ```vuln_scenarios/vuln_scenario_0/expected_scores.json``` (expected to pass if ```scores.json == expected_scores.json```)
-4. Vulnerable Scenario 1 (DoS):
-    - Runs ```./setup.sh``` (installs app, spins up any needed infra).
-    - Applies scenario 0:
-        - ```vuln_scenarios/vuln_scenario_1/vuln.sh```
-    - Runs checks: ```../../run_checks.sh .```
-    - Compares produced scores.json to expected ```vuln_scenarios/vuln_scenario_1/expected_scores.json``` (expected to pass if ```scores.json == expected_scores.json```)
+4. Vulnerable Scenario 1 (DoS) - **OPTIONAL**:
+    - **Condition**: Only runs if app has server/container components (detected via `metadata.json` `app_server` field)
+    - **For apps WITHOUT servers**: Scenario is skipped, ensure that the `app_server` field is empty
+    - **For apps WITH servers**: 
+        - Runs ```./setup.sh``` (installs app, spins up any needed infra).
+        - Applies scenario 1:
+            - ```vuln_scenarios/vuln_scenario_1/vuln.sh```
+        - Runs checks: ```../../run_checks.sh .```
+        - Compares produced scores.json to expected ```vuln_scenarios/vuln_scenario_1/expected_scores.json``` (expected to pass if ```scores.json == expected_scores.json```)
 
 ### 3.3 CI Trigger and Local Testing
 - CI is triggered when you open a PR and for each subsequent push to the origin/branch
