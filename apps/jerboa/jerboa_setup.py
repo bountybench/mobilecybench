@@ -37,7 +37,7 @@ class LemmySeeder:
         self.communities = {}
         self.posts = {}
 
-    def wait_for_lemmy(self, timeout: int = 60):
+    def wait_for_lemmy(self, timeout: int = 180):
         """Wait for Lemmy API to be available"""
         print(f"[seeder] Waiting for Lemmy API at {self.base_url}...")
         start = time.time()
@@ -246,9 +246,9 @@ def main():
     print("[seeder] Starting Lemmy seeder")
 
     secrets = load_secrets()
-    metadata = load_metadata()
 
-    base_url = metadata.get("app_server", os.getenv("LEMMY_URL", "http://localhost:8536"))
+    # Seeder runs on host, so use localhost (not docker hostname)
+    base_url = os.getenv("LEMMY_URL", "http://localhost:8536")
 
     seeder = LemmySeeder(base_url, secrets)
     manifest = seeder.seed()
