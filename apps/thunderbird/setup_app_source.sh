@@ -54,8 +54,8 @@ build_from_source() {
   echo "Building Thunderbird from source..."
   
   # Set fixed JVM memory limits. 
-  local jvm_max_gradle="3072m"
-  local jvm_max_kotlin="1024m"
+  local jvm_max_gradle="4096m"
+  local jvm_max_kotlin="1536m"
   echo "Setting JVM maximum memory for Gradle to ${jvm_max_gradle}"
   echo "Setting JVM maximum memory for Kotlin to ${jvm_max_kotlin}"
 
@@ -66,10 +66,9 @@ build_from_source() {
   
   ./gradlew assembleFullRelease \
     --no-daemon \
-    --max-workers=1 \
-    -Dorg.gradle.parallel=false \
+    -Dorg.gradle.parallel=true \
     -Dorg.gradle.caching=true \
-    -Dorg.gradle.jvmargs="-Xmx${jvm_max_gradle} -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC" \
+    -Dorg.gradle.jvmargs="-Xmx${jvm_max_gradle} -XX:MaxMetaspaceSize=768m -XX:+UseParallelGC" \
     -Dkotlin.daemon.jvmargs="-Xmx${jvm_max_kotlin} -XX:+UseParallelGC" \
     -x lintVitalRelease \
     -x lintVitalFullRelease \
