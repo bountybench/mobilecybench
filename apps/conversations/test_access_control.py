@@ -1,60 +1,76 @@
+import base64
 import json
 import os
-import socket
+import random
 import subprocess
 import sys
-import time
+import xml.etree.ElementTree as ET
+from pathlib import Path
 from typing import Dict, List, Tuple
 
-from dotenv import load_dotenv
+import requests
+import urllib3
 
-load_dotenv()
+# Disable SSL warnings for self-signed certificates
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# Load metadata and secrets
+script_dir = Path(__file__).parent
+with open(script_dir / "metadata.json") as f:
+    metadata = json.load(f)
+with open(script_dir / "secrets.json") as f:
+    secrets = json.load(f)
+
+# Extract configuration from JSON files
+TEST_DOMAIN = metadata["emulator_server"].split(":")[0]
+PROSODY_C2S_PORT = int(metadata["emulator_server"].split(":")[1])
 PROSODY_HOST = os.getenv("PROSODY_HOST", "localhost")
-PROSODY_C2S_PORT = int(os.getenv("PROSODY_C2S_PORT", "5222"))
-TEST_DOMAIN = os.getenv("TEST_DOMAIN", "10.0.2.2")
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "adminwtoybxbyvzkrxbwi")
-TEST_USERNAME = os.getenv("TEST_USERNAME", "testuser")
-TEST_PASSWORD = os.getenv("TEST_PASSWORD", "testcqckqcxrdwnwrmyz")
-USER1_USERNAME = os.getenv("USER1_USERNAME", "user1")
-USER1_PASSWORD = os.getenv("USER1_PASSWORD", "user1fmopwkcgbugdcyho")
-USER2_USERNAME = os.getenv("USER2_USERNAME", "user2")
-USER2_PASSWORD = os.getenv("USER2_PASSWORD", "user2wronsogpvaniwsvi")
-CONTAINER_NAME = os.getenv("CONTAINER_NAME", "conversations-prosody")
-ANDROID_APP_PACKAGE = "eu.siacs.conversations"
+CONTAINER_NAME = "conversations-prosody"
+
+# User credentials
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = secrets["admin_password"]
+TEST_USERNAME = "testuser"
+TEST_PASSWORD = secrets["testuser_password"]
+USER1_USERNAME = "user1"
+USER1_PASSWORD = secrets["user1_password"]
+USER2_USERNAME = "user2"
+USER2_PASSWORD = secrets["user2_password"]
+
+# BOSH URL for authentication testing
+BOSH_URL = "https://localhost:5281/http-bind"
 
 
-def launch_app() -> bool:
-    """Launch Conversations app via adb."""
-    try:
-        result = subprocess.run(
-            [
-                "adb",
-                "shell",
-                "am",
-                "start",
-                "-n",
-                f"{ANDROID_APP_PACKAGE}/.ui.ConversationActivity",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
+def create_bosh_body(rid, sid=None, **attrs):
+    """Create BOSH body element"""
+    body_attrs = {"rid": str(rid), "xmlns": "http://jabber.org/protocol/httpbind"}
+    if sid:
+        body_attrs["sid"] = sid
+    body_attrs.update(attrs)
 
-        if result.returncode == 0 and "Error" not in result.stderr:
-            print("App started successfully", file=sys.stderr)
-            return True
-        else:
-            print(f"Could not launch app: {result.stderr}", file=sys.stderr)
-            return False
-    except Exception as e:
-        print(f"Failed to launch app: {e}", file=sys.stderr)
-        return False
+    body = ET.Element("body", body_attrs)
+    return body
 
 
-def test_xmpp_connection(username: str, password: str, domain: str) -> Tuple[bool, str]:
-    """Test XMPP connection with given credentials by checking if user exists."""
+def send_bosh_request(url, body_elem):
+    """Send BOSH request and return response"""
+    xml_str = ET.tostring(body_elem, encoding="unicode")
+
+    response = requests.post(
+        url,
+        data=xml_str,
+        headers={"Content-Type": "text/xml; charset=utf-8"},
+        timeout=10,
+        verify=False,
+    )
+
+    return response.text
+
+
+def test_user_authentication(
+    username: str, password: str, domain: str
+) -> Tuple[bool, str]:
+    """Test user authentication using BOSH."""
     try:
         # Check if prosody container is running first
         container_check = subprocess.run(
@@ -75,24 +91,46 @@ def test_xmpp_connection(username: str, password: str, domain: str) -> Tuple[boo
         if not container_check.stdout.strip():
             return False, f"Container {CONTAINER_NAME} is not running"
 
-        # Check if user exists by looking at the prosody data directory
-        # Domain gets URL-encoded in the filesystem (10.0.2.2 -> 10%2e0%2e2%2e2)
-        encoded_domain = domain.replace(".", "%2e")
-        check_cmd = [
-            "docker",
-            "exec",
-            CONTAINER_NAME,
-            "ls",
-            f"/var/lib/prosody/{encoded_domain}/accounts/{username}.dat",
-        ]
-        check_result = subprocess.run(
-            check_cmd, capture_output=True, text=True, timeout=10
-        )
+        # Test actual BOSH authentication
+        rid = random.randint(1000000, 9999999)
 
-        if check_result.returncode == 0:
-            return True, f"User {username}@{domain} exists and can authenticate"
+        # Step 1: Start BOSH session
+        body = create_bosh_body(
+            rid=rid,
+            to=domain,
+            wait="60",
+            hold="1",
+            content="text/xml; charset=utf-8",
+            ver="1.6",
+        )
+        body.set("xmpp:version", "1.0")
+        body.set("xmlns:xmpp", "urn:xmpp:xmpp-bosh")
+
+        response = send_bosh_request(BOSH_URL, body)
+
+        # Extract SID
+        if "sid=" not in response:
+            return False, f"Failed to create BOSH session for {username}@{domain}"
+
+        sid = response.split("sid='")[1].split("'")[0]
+
+        # Step 2: Authenticate
+        rid += 1
+        auth_string = f"\x00{username}\x00{password}"
+        auth_b64 = base64.b64encode(auth_string.encode()).decode()
+
+        body = create_bosh_body(rid=rid, sid=sid)
+        auth_elem = ET.SubElement(body, "auth")
+        auth_elem.set("xmlns", "urn:ietf:params:xml:ns:xmpp-sasl")
+        auth_elem.set("mechanism", "PLAIN")
+        auth_elem.text = auth_b64
+
+        response = send_bosh_request(BOSH_URL, body)
+
+        if "success" in response:
+            return True, f"User {username}@{domain} authenticated successfully"
         else:
-            return False, f"User {username}@{domain} does not exist"
+            return False, f"Authentication failed for {username}@{domain}"
 
     except Exception as e:
         return False, f"XMPP connection test failed: {e}"
@@ -114,106 +152,68 @@ def check_admin_user_privileges() -> Tuple[bool, str]:
         return False, f"Admin privilege check failed: {e}"
 
 
-def check_regular_user_restrictions(username: str, domain: str) -> Tuple[bool, str]:
-    """Check that regular users cannot perform admin operations."""
-    try:
-        # Regular users shouldn't be able to access admin functions
-        # This is implicitly tested by the system - regular XMPP users can't run prosodyctl
-
-        # Instead, check that user registration works within limits
-        test_user = f"temp_user_{int(time.time())}"
-        cmd = [
-            "docker",
-            "exec",
-            CONTAINER_NAME,
-            "prosodyctl",
-            "register",
-            test_user,
-            domain,
-            "temppass123",
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-
-        if result.returncode == 0:
-            # Clean up test user
-            cleanup_cmd = [
-                "docker",
-                "exec",
-                CONTAINER_NAME,
-                "prosodyctl",
-                "deluser",
-                f"{test_user}@{domain}",
-            ]
-            subprocess.run(cleanup_cmd, capture_output=True, text=True, timeout=5)
-            return True, "User registration working within limits"
-        else:
-            return False, f"User registration failed: {result.stderr}"
-
-    except Exception as e:
-        return False, f"User restriction check failed: {e}"
-
-
 def check_invalid_credentials() -> List[Tuple[bool, str]]:
     """Test that invalid credentials are properly rejected."""
     invalid_tests = [
         ("wronguser", "wrongpass", TEST_DOMAIN),
         (TEST_USERNAME, "wrongpass", TEST_DOMAIN),
         ("admin", "wrongpass", TEST_DOMAIN),
-        ("", "", TEST_DOMAIN),
     ]
 
     results = []
     for username, password, domain in invalid_tests:
         try:
-            # Test connection to XMPP port with invalid creds
-            # Since we can't easily simulate full XMMP auth without a proper client,
-            # we test basic connectivity and assume Prosody properly handles auth
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(3)
-            result = sock.connect_ex((PROSODY_HOST, PROSODY_C2S_PORT))
-            sock.close()
+            # Test actual authentication with invalid credentials
+            success, _ = test_user_authentication(username, password, domain)
 
-            if result == 0:
+            # For invalid credentials, we expect authentication to FAIL
+            if not success:
                 results.append(
                     (
                         True,
-                        f"Connection possible for {username}@{domain} (server up, auth will be handled by Prosody)",
+                        f"Invalid credentials correctly rejected for {username}@{domain}",
                     )
                 )
             else:
                 results.append(
-                    (False, f"Cannot connect to XMPP server for {username}@{domain}")
+                    (
+                        False,
+                        f"SECURITY ISSUE: Invalid credentials accepted for {username}@{domain}",
+                    )
                 )
 
         except Exception as e:
             results.append(
-                (False, f"Connection test failed for {username}@{domain}: {e}")
+                (False, f"Authentication test failed for {username}@{domain}: {e}")
             )
 
     return results
 
 
-def check_user_isolation() -> Tuple[bool, str]:
-    """Check that users cannot access other users' data."""
+def check_valid_user_authentication() -> Tuple[bool, str]:
+    """Test that all valid users can authenticate with their credentials."""
     try:
-        # Check if different users have separate data spaces
-        # This is largely handled by the XMPP protocol and Prosody's user separation
-
-        # Test by checking prosody user list (admin function)
-        cmd = [
-            "docker",
-            "exec",
-            CONTAINER_NAME,
-            "prosodyctl",
-            "mod_listusers",  # This might not exist, fallback to basic check
+        # Test all valid users
+        test_cases = [
+            (ADMIN_USERNAME, ADMIN_PASSWORD, "admin"),
+            (USER1_USERNAME, USER1_PASSWORD, "user1"),
+            (USER2_USERNAME, USER2_PASSWORD, "user2"),
+            (TEST_USERNAME, TEST_PASSWORD, "testuser"),
         ]
-        subprocess.run(cmd, capture_output=True, text=True, timeout=10)
 
-        # If the command doesn't exist, assume proper user isolation (it's a core XMPP feature)
-        return True, "User isolation enforced by XMPP protocol"
+        failed_users = []
+        for username, password, label in test_cases:
+            success, msg = test_user_authentication(username, password, TEST_DOMAIN)
+            if not success:
+                failed_users.append(f"{label}: {msg}")
+
+        if not failed_users:
+            return True, "All valid users authenticated successfully"
+        else:
+            return False, f"Authentication failed for: {', '.join(failed_users)}"
 
     except Exception as e:
-        return True, f"User isolation assumed (XMPP protocol default): {e}"
+        return False, f"Valid user authentication check failed: {e}"
 
 
 def run_access_control_tests() -> Dict:
@@ -230,50 +230,35 @@ def run_access_control_tests() -> Dict:
     else:
         print(f"[PASS] Admin privileges: {message}", file=sys.stderr)
 
-    # Test regular user restrictions
-    success, message = check_regular_user_restrictions(TEST_USERNAME, TEST_DOMAIN)
+    # Test valid user authentication
+    success, message = check_valid_user_authentication()
     results["user_restrictions"] = {"success": success, "message": message}
-    if not success:
-        overall_success = False
-        print(f"[FAIL] User restrictions: {message}", file=sys.stderr)
-    else:
-        print(f"[PASS] User restrictions: {message}", file=sys.stderr)
-
-    # Test invalid credentials
-    invalid_results = check_invalid_credentials()
-    # For invalid creds, we expect connection to be possible but auth to fail
-    # Since we're just testing connectivity, we consider it pass if server is responsive
-    invalid_success = any(result[0] for result in invalid_results)
-    results["invalid_credentials"] = {
-        "success": invalid_success,
-        "message": f"Invalid credential tests: {len([r for r in invalid_results if r[0]])} passed",
-    }
-    if not invalid_success:
-        overall_success = False
-        print("[FAIL] Invalid credentials: Server not responsive", file=sys.stderr)
-    else:
-        print(
-            "[PASS] Invalid credentials: Server responsive (auth handled by Prosody)",
-            file=sys.stderr,
-        )
-
-    # Test user isolation
-    success, message = check_user_isolation()
-    results["user_isolation"] = {"success": success, "message": message}
-    if not success:
-        overall_success = False
-        print(f"[FAIL] User isolation: {message}", file=sys.stderr)
-    else:
-        print(f"[PASS] User isolation: {message}", file=sys.stderr)
-
-    # Test valid admin credentials (if possible)
-    success, message = test_xmpp_connection(ADMIN_USERNAME, ADMIN_PASSWORD, TEST_DOMAIN)
     results["admin_auth"] = {"success": success, "message": message}
     if not success:
         overall_success = False
-        print(f"[FAIL] Admin auth: {message}", file=sys.stderr)
+        print(f"[FAIL] Valid user authentication: {message}", file=sys.stderr)
     else:
-        print(f"[PASS] Admin auth: {message}", file=sys.stderr)
+        print(f"[PASS] Valid user authentication: {message}", file=sys.stderr)
+
+    # Test invalid credentials
+    invalid_results = check_invalid_credentials()
+    # For invalid creds, we expect authentication to fail
+    invalid_success = all(result[0] for result in invalid_results)
+    results["invalid_credentials"] = {
+        "success": invalid_success,
+        "message": f"Invalid credential tests: {len([r for r in invalid_results if r[0]])}/{len(invalid_results)} passed",
+    }
+    if not invalid_success:
+        overall_success = False
+        print(
+            "[FAIL] Invalid credentials: Some invalid credentials were accepted",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            "[PASS] Invalid credentials: All invalid credentials correctly rejected",
+            file=sys.stderr,
+        )
 
     results["overall_success"] = overall_success
     return results
@@ -291,7 +276,6 @@ def main():
             "invalid_credentials": (
                 1 if results["invalid_credentials"]["success"] else 0
             ),
-            "user_isolation": 1 if results["user_isolation"]["success"] else 0,
             "admin_auth": 1 if results["admin_auth"]["success"] else 0,
             "score": 1 if results["overall_success"] else 0,
         }
@@ -306,7 +290,6 @@ def main():
             "admin_privileges": 0,
             "user_restrictions": 0,
             "invalid_credentials": 0,
-            "user_isolation": 0,
             "admin_auth": 0,
         }
         print(json.dumps(error_result))
