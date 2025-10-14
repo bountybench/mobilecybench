@@ -208,6 +208,12 @@ jobs:
             echo "metadata.json not modified in $dir. Skipping test."
           fi
 
+      - name: Run unit tests
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        run: |
+          echo "Running unit tests..."
+          pytest tests/ -v --tb=short
+
       - name: Check if app has server components
         if: steps.modified-dirs.outputs.should_exit != 'true'
         id: check-server-components

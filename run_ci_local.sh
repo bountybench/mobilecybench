@@ -691,6 +691,16 @@ if [ -f "stop_emulator.sh" ]; then
     stop_emulator
 fi
 
+# Run unit tests
+print_header "$CYAN" "RUNNING UNIT TESTS"
+echo -e "${INFO} Running unit tests..."
+if pytest tests/ -v --tb=short; then
+    echo -e "${SUCCESS} Unit tests passed"
+else
+    echo -e "${ERROR} Unit tests failed"
+    exit 1
+fi
+
 # Run linter
 print_header "$CYAN" "RUNNING LINTER"
 if [ -f "run_linter.sh" ]; then
