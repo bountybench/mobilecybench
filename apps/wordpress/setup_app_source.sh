@@ -119,7 +119,6 @@ main() {
     create_wp_admin
     create_wp_users
     json_write_file "secrets.json" "credentials"
-    check_android_prereqs
     initialize_repository
     build_wordpress
     log_info "WordPress setup complete"

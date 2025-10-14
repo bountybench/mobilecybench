@@ -7,6 +7,8 @@
     "java": "17",
     "emulator_server": "http://10.0.2.2:8000",
     "app_server": "http://wordpress-app",
+    "package_name": "org.wordpress.android",
+    "container_names":  ["wordpress-db", "wordpress-app"],
     "username": "user_a",
     "password": "user_a_pass"
 }
