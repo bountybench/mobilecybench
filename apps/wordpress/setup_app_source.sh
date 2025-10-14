@@ -2,7 +2,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/utils.sh"
 : "${REPO_DIR:=codebase}"
-: "${APK_PATH:=${SCRIPT_DIR}/wordpress.apk}"
+: "${APK_PATH:=${SCRIPT_DIR}/apk/wordpress.apk}"
 
 create_wp_admin() {
     local site_url="http://10.0.2.2:8000"
@@ -78,12 +78,12 @@ build_wordpress() {
     if [[ -f "${APK_PATH}" ]]; then
         log_info "Using existing APK at ${APK_PATH}"
         return 0
-    elif [[ "$BUILD_APK" = true ]]; then
+    elif [[ "$DOWNLOAD_APK" = true ]]; then
         log_info "Downloading APK..."
         download_apk || fatal "Download failed"
         return 0
     fi
-    build_app_source "${SCRIPT_DIR}/${REPO_DIR}" "${SCRIPT_DIR}/wordpress.apk" "./gradlew assembleWordpressVanillaDebug" "mobilecybench-build"
+    build_app_source "${SCRIPT_DIR}/${REPO_DIR}" "${SCRIPT_DIR}/apk/wordpress.apk" "./gradlew assembleWordPressVanilla" "mobilecybench-build"
 }
 
 download_apk() {
@@ -107,10 +107,10 @@ download_apk() {
 
 main() {
     # Optional argument to download apk from release link
-    BUILD_APK=false
+    DOWNLOAD_APK=false
     if [[ "${1:-}" == "apk" ]]; then
         log_info "apk download requested"
-        BUILD_APK=true
+        DOWNLOAD_APK=true
         shift
     fi
     

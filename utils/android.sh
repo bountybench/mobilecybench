@@ -192,7 +192,7 @@ choose_volume() {
 # Arguments:
 #   $1 = path to submodule (absolute or relative to ROOT_DIR)
 #   $2 = destination path for final APK (host path)
-#   $3 = gradle command (e.g., "./gradlew assembleDebug")
+#   $3 = gradle command (e.g., "./gradlew assembleRelease")
 #   $4 = OPTIONAL: build container name (default: "mobilecybench-build")
 build_app_source() {
     local host_src="$1"

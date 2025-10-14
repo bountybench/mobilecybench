@@ -34,7 +34,7 @@ RUN set -eux; \
     rm -f /tmp/cmdline-tools.zip; \
     PATH="${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools"; \
     yes | sdkmanager --licenses >/dev/null 2>&1 || true; \
-    sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" "platform-tools" "platforms;android-35" "build-tools;35.0.2" >/dev/null || true; \
+    sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" "platform-tools" "platforms;android-35" "build-tools;35.0.2" "build-tools;34.0.0" >/dev/null || true; \
     rm -rf /var/lib/apt/lists/*
 
 # Copy and run aapt2 fetcher
