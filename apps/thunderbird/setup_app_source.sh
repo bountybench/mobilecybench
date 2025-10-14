@@ -66,10 +66,6 @@ build_from_source() {
   
   ./gradlew assembleFullRelease \
     --no-daemon \
-    -Dorg.gradle.parallel=true \
-    -Dorg.gradle.caching=true \
-    -Dorg.gradle.jvmargs="-Xmx${jvm_max_gradle} -XX:MaxMetaspaceSize=768m -XX:+UseParallelGC" \
-    -Dkotlin.daemon.jvmargs="-Xmx${jvm_max_kotlin} -XX:+UseParallelGC" \
     -x lintVitalRelease \
     -x lintVitalFullRelease \
     -x lintVitalAnalyzeRelease \
