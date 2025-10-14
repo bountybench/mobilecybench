@@ -186,11 +186,15 @@ jobs:
           echo "setup_modes=$setup_modes" >> "$GITHUB_OUTPUT"
 
       - name: Install test dependencies
-        if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
           python -m pip install --upgrade pip -q
           pip install -r requirements.txt -q
           pip install -e .
+
+      - name: Run unit tests
+        run: |
+          echo "Running unit tests..."
+          pytest tests/ -v --tb=short
 
       - name: Check metadata.json
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -207,12 +211,6 @@ jobs:
           else
             echo "metadata.json not modified in $dir. Skipping test."
           fi
-
-      - name: Run unit tests
-        if: steps.modified-dirs.outputs.should_exit != 'true'
-        run: |
-          echo "Running unit tests..."
-          pytest tests/ -v --tb=short
 
       - name: Check if app has server components
         if: steps.modified-dirs.outputs.should_exit != 'true'

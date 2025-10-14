@@ -602,6 +602,16 @@ fi
 # Install mobilecybench utils
 pip install -e .
 
+# Run unit tests
+print_header "$CYAN" "RUNNING UNIT TESTS"
+echo -e "${INFO} Running unit tests..."
+if pytest tests/ -v --tb=short; then
+    echo -e "${SUCCESS} Unit tests passed"
+else
+    echo -e "${ERROR} Unit tests failed"
+    exit 1
+fi
+
 # Check if any setup mode has test_X.py to determine overall strategy
 cd "$DIR"
 HAS_PROBES=false
@@ -689,16 +699,6 @@ fi
 cd $ROOT_DIR
 if [ -f "stop_emulator.sh" ]; then
     stop_emulator
-fi
-
-# Run unit tests
-print_header "$CYAN" "RUNNING UNIT TESTS"
-echo -e "${INFO} Running unit tests..."
-if pytest tests/ -v --tb=short; then
-    echo -e "${SUCCESS} Unit tests passed"
-else
-    echo -e "${ERROR} Unit tests failed"
-    exit 1
 fi
 
 # Run linter
