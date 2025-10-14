@@ -20,6 +20,7 @@ from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 
+from agent.agent_setup import AgentEnvironment
 from utils.logger import logger, logger_manager
 from utils.utils import get_app_metadata
 
@@ -212,20 +213,7 @@ class MobileCybenchRunner:
         logger.info("=" * 80)
         logger.info("MobileCybench Runner Started")
         logger.info(f"App: {app_name}")
-        logger.info("Configuration:")
-        logger.info(f"  Server Access: {config['server_access']}")
-        logger.info(f"  Build Type: {config['build_type']}")
-        logger.info(f"  ADB Access: {config['adb_access']}")
-        logger.info(f"  Max Iterations: {config['max_iterations']}")
-        logger.info(f"  Max Kali Message Tokens: {config['max_kali_message_tokens']}")
-        logger.info(
-            f"  Max Model Response Tokens: {config['max_model_response_tokens']}"
-        )
-        logger.info(f"  Max Context Length: {config['max_context_length']}")
-        logger.info(f"  Model: {config['model']}")
-        logger.info(f"  Screenshot Mode: {config['screenshot_mode']}")
-        logger.info(f"  Headless Mode: {config['headless_mode']}")
-        logger.info(f"  Dry Run: {config['dry_run']}")
+        logger.info(f"Configuration: {json.dumps(config, indent=2)}")
         logger.info(f"Timestamp: {datetime.datetime.now()}")
         logger.info("=" * 80)
 
@@ -379,10 +367,22 @@ class MobileCybenchRunner:
         logger.info("=" * 60)
         logger.info("Setting up agent environment...")
 
-        self._setup_env_file()
+        if not self.config["dry_run"]:
+            self._setup_env_file()
         self._create_docker_network()
+
+        # Setup agent kali environment
+        logger.info("Setting up agent Kali environment...")
+        agent_env = AgentEnvironment(
+            app_dir=self.app_dir,
+            docker_networks=["shared_net"],
+            image_name=self.config["agent_image"],
+            env={"ANDROID_ADB_SERVER_PORT": "5037"},
+        )
+        agent_env.setup()
+        self.agent_env = agent_env
+
         self._start_containers()
-        self._copy_codebase_to_kali()
 
         logger.info("Agent environment setup completed")
         logger.info("✓ Agent environment setup completed")
@@ -486,49 +486,6 @@ class MobileCybenchRunner:
                 logger.warning("Some containers may not be running properly")
                 logger.warning("⚠ Warning: Some containers may not be running properly")
 
-    def _copy_codebase_to_kali(self):
-        """Copy app codebase to Kali container"""
-        logger.info("Copying app codebase to Kali container...")
-        logger.info("Copying app codebase to Kali container...")
-
-        source_path = self.app_dir / "codebase"
-        container_name = "kali-container"
-        target_path = f"/tmp/{self.app_name}_app"
-        # TODO: Make target path to be the directory that the agent has access to
-
-        if not source_path.exists():
-            logger.warning(f"⚠ Warning: Codebase directory not found at {source_path}")
-            logger.warning(f"Codebase directory not found: {source_path}")
-            return
-
-        logger.info(f"Source: {source_path}")
-        logger.info(f"Target: {container_name}:{target_path}")
-        logger.info(f"Copying from {source_path} to {container_name}:{target_path}")
-
-        try:
-            # Create target directory in container
-            try:
-                self.cmd.run(f"docker exec {container_name} mkdir -p {target_path}")
-            except subprocess.CalledProcessError as e:
-                logger.warning(f"Could not create directory in container: {e}")
-                logger.warning("⚠ Warning: Could not create directory in container")
-                return
-
-            # Copy files to container
-            try:
-                self.cmd.run(
-                    f"docker cp {source_path}/. {container_name}:{target_path}/"
-                )
-                logger.info(f"✓ Codebase copied successfully to {target_path}")
-                logger.info(f"Codebase copied successfully to {target_path}")
-            except subprocess.CalledProcessError as e:
-                logger.error(f"Failed to copy codebase: {e}")
-                logger.error("ERROR: Failed to copy codebase to container")
-
-        except Exception as e:
-            logger.warning(f"Exception during codebase copy: {e}")
-            logger.warning(f"⚠ Warning: Exception during codebase copy: {e}")
-
     def run_agent(self):
         """Run the custom agent - custom_agent.py"""
         logger.info("=" * 60)
@@ -556,6 +513,8 @@ class MobileCybenchRunner:
                 app_server=getattr(self, "metadata", {}).get(
                     "app_server", None
                 ),  # default to None if in agent_only mode
+                # TODO - create proper dry run mode
+                # https://github.com/bountybench/mobilecybench/issues/322
                 dry_run=self.config["dry_run"],
                 system_prompt=self.config.get("custom_system_prompt", None),
             )
@@ -735,6 +694,7 @@ def load_config(config_path: Path) -> dict:
         "screenshot_mode",
         "headless_mode",
         "dry_run",
+        "agent_image",
     ]
 
     missing_fields = [field for field in required_fields if field not in config]
@@ -779,6 +739,11 @@ def load_config(config_path: Path) -> dict:
         logger.error("Field 'model' must be a non-empty string")
         sys.exit(1)
 
+    # Validate agent_image field
+    if not isinstance(config["agent_image"], str) or not config["agent_image"].strip():
+        logger.error("Field 'agent_image' must be a non-empty string")
+        sys.exit(1)
+
     logger.info("Configuration validation passed")
     return config
 
@@ -797,10 +762,8 @@ def main():
         help="Run only the agent, skipping emulator setup and app setup. Optional.",
     )
 
-    # Add app_name as a flag
     parser.add_argument(
         "app_name",
-        nargs=1,
         help="Name of the app to test (must exist in apps/ directory). Required.",
     )
 
