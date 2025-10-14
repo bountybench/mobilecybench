@@ -378,6 +378,7 @@ class MobileCybenchRunner:
             docker_networks=["shared_net"],
             image_name=self.config["agent_image"],
             env={"ANDROID_ADB_SERVER_PORT": "5037"},
+            commit_id=self.metadata.get("commit_version"),
         )
         agent_env.setup()
         self.agent_env = agent_env
