@@ -35,6 +35,4 @@ docker compose run --rm seeder
 
 # echo "Attempting to install using pre-built APK..."
 # chmod u+x setup_app_apklink.sh
-chmod u+x setup_app_source.sh
-./setup_app_source.sh
 echo "Done."
