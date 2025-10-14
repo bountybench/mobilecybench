@@ -35,6 +35,7 @@ services:
     volumes:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
     networks:
       - openhab_net
 
@@ -48,6 +49,8 @@ services:
       - openhab
     networks:
       - openhab_net
+    profiles:
+      - cloudflare
 
 networks:
   openhab_net:

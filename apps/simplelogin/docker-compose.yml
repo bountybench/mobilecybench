@@ -1,0 +1,68 @@
+services:
+  db:
+    container_name: simplelogin-db
+    image: postgres:13
+    environment:
+      POSTGRES_DB: simplelogin
+      POSTGRES_USER: simplelogin
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U simplelogin -d simplelogin"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - private_net
+
+  simplelogin-api:
+    container_name: simplelogin-api
+    image: simplelogin/app:3.4.0
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Use the config file inside the container
+      CONFIG: /code/simplelogin.env
+      # Minimal overrides (DB connection)
+      DB_URI: postgresql://simplelogin:password@db:5432/simplelogin
+      
+    ports:
+      - "7777:7777"
+    volumes:
+      # Provide a real config file from the repo
+      - ./config/simplelogin.env:/code/simplelogin.env:ro
+      - simplelogin_data:/app/static/upload
+    networks:
+      - private_net
+      - shared_net
+    command: >
+      sh -lc '
+        set -e
+        echo dummy-dkim-private-key > /tmp/dummy_dkim_private.key &&
+        echo dummy-dkim-public-key  > /tmp/dummy_dkim_public.key &&
+        echo dummy-paddle-key       > /tmp/dummy_paddle.key &&
+        flask db upgrade &&
+        python init_app.py &&
+        # Run with a production WSGI server, using the factory
+        exec gunicorn "server:create_app()" --bind 0.0.0.0:7777 --workers 2 --threads 4 --timeout 120
+      '
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import socket; s=socket.socket(); s.settimeout(5); s.connect((\"localhost\", 7777)); s.close()'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+networks:
+  shared_net:
+    external: true
+  private_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  simplelogin_data:

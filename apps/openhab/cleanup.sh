@@ -217,6 +217,38 @@ files_cleanup() {
       rm -rf "$d"
     fi
   done
+
+  # Remove dynamically created mosquitto configuration file and directories
+  mosquitto_dir="$ROOT_DIR/mosquitto"
+  if [ -d "$mosquitto_dir" ]; then
+    LOG "Removing mosquitto directory and all contents: $mosquitto_dir"
+    
+    # Use Docker to remove files with proper permissions if Docker is available
+    if command -v docker >/dev/null 2>&1; then
+      LOG "Using Docker to clean mosquitto files with proper permissions"
+      # Use a more comprehensive Docker cleanup that handles all file permissions
+      docker run --rm \
+        -v "$mosquitto_dir:/cleanup" \
+        --user root \
+        alpine:latest \
+        sh -c "find /cleanup -mindepth 1 -delete 2>/dev/null || rm -rf /cleanup/* /cleanup/.* 2>/dev/null || true" || {
+        LOG "Docker cleanup failed, attempting fallback"
+      }
+      
+      # Remove the empty directory
+      rmdir "$mosquitto_dir" 2>/dev/null || {
+        # If rmdir fails, try rm -rf as final fallback
+        rm -rf "$mosquitto_dir" 2>/dev/null || {
+          LOG "Warning: Could not fully remove mosquitto directory. Manual cleanup may be required."
+        }
+      }
+    else
+      # Fallback to regular rm (may fail with permission errors in CI/CD)
+      rm -rf "$mosquitto_dir" 2>/dev/null || {
+        LOG "Warning: Could not remove mosquitto directory due to permission issues. Docker is recommended for proper cleanup."
+      }
+    fi
+  fi
 }
 
 # If Karaf is not reachable locally, try to start the compose stack so we can 

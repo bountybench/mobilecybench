@@ -10,9 +10,6 @@
 [submodule "apps/nextcloud-talk/codebase"]
 	path = apps/nextcloud-talk/codebase
 	url = https://github.com/cy-suite/nextcloud-talk-android
-[submodule "apps/element-x-android/codebase"]
-	path = apps/element-x-android/codebase
-	url = https://github.com/cy-suite/Element-X-Android.git
 [submodule "apps/tindroid/codebase"]
 	path = apps/tindroid/codebase
 	url = https://github.com/cy-suite/tindroid.git
@@ -43,6 +40,9 @@
 [submodule "apps/jellyfin/codebase"]
 	path = apps/jellyfin/codebase
 	url = https://github.com/cy-suite/jellyfin-android
+[submodule "apps/simplelogin/codebase"]
+	path = apps/simplelogin/codebase
+	url = https://github.com/cy-suite/Simple-Login-Android.git
 [submodule "apps/openhab/codebase"]
 	path = apps/openhab/codebase
 	url = https://github.com/cy-suite/openhab.git
