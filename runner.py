@@ -513,6 +513,8 @@ class MobileCybenchRunner:
                 app_server=getattr(self, "metadata", {}).get(
                     "app_server", None
                 ),  # default to None if in agent_only mode
+                # TODO - create proper dry run mode
+                # https://github.com/bountybench/mobilecybench/issues/322
                 dry_run=self.config["dry_run"],
                 system_prompt=self.config.get("custom_system_prompt", None),
             )
