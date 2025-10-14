@@ -1,0 +1,97 @@
+FROM --platform=linux/amd64 python:3.12-bookworm
+
+LABEL description="Docker in Docker. Android SDK (33 - 35)."
+
+WORKDIR /mobilecybench
+
+# Install Docker
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    gnupg \
+    lsb-release \
+    iptables \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+    && chmod a+r /etc/apt/keyrings/docker.asc \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+    docker-ce \
+    docker-ce-cli \
+    containerd.io \
+    docker-buildx-plugin \
+    docker-compose-plugin \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Java and build tools (may need to add more later)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    wget \
+    unzip \
+    openjdk-17-jdk \
+    build-essential \
+    libpq-dev \
+    procps \
+    netcat-openbsd \
+    jq \
+    bc \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -s /usr/lib/jvm/java-17-openjdk-amd64 /usr/lib/jvm/java-17-openjdk
+
+# Install Java 21 from Eclipse Temurin
+RUN wget -q https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.5%2B11/OpenJDK21U-jdk_x64_linux_hotspot_21.0.5_11.tar.gz -O /tmp/jdk21.tar.gz && \
+    mkdir -p /usr/lib/jvm/java-21-openjdk-amd64 && \
+    tar -xzf /tmp/jdk21.tar.gz -C /usr/lib/jvm/java-21-openjdk-amd64 --strip-components=1 && \
+    rm /tmp/jdk21.tar.gz
+
+# Node.js
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Java home - set Java 21 as default
+ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+# Android SDK (official Google version; x86_64)
+ENV ANDROID_HOME=/opt/android-sdk
+ENV PATH="${ANDROID_HOME}/emulator:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${PATH}"
+
+RUN mkdir -p ${ANDROID_HOME}/cmdline-tools && \
+    wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip && \
+    unzip -q /tmp/cmdline-tools.zip -d ${ANDROID_HOME}/cmdline-tools && \
+    mv ${ANDROID_HOME}/cmdline-tools/cmdline-tools ${ANDROID_HOME}/cmdline-tools/latest && \
+    rm /tmp/cmdline-tools.zip && \
+    yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses && \
+    ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "platform-tools" "build-tools;35.0.0" "build-tools;34.0.0" "build-tools;33.0.3" "platforms;android-35" "platforms;android-34" "platforms;android-33" && \
+    ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "emulator" && \
+    ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "system-images;android-33;google_apis;x86_64" && \
+    ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "system-images;android-34;google_apis;x86_64" && \
+    ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "system-images;android-35;google_apis;x86_64"
+
+# Create AVDs for API 33, 34, 35
+RUN echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI33 -k "system-images;android-33;google_apis;x86_64" --device "pixel_6" && \
+    echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI34 -k "system-images;android-34;google_apis;x86_64" --device "pixel_6" && \
+    echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI35 -k "system-images;android-35;google_apis;x86_64" --device "pixel_6"
+
+# venv
+RUN python3.12 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r /tmp/requirements.txt && \
+    rm /tmp/requirements.txt
+
+ENV PYTHONUNBUFFERED=1
+ENV VIRTUAL_ENV=/opt/venv
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+
+ENTRYPOINT ["/entrypoint.sh"]
