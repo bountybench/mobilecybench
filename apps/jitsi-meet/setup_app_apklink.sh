@@ -62,6 +62,7 @@ download_jitsi_to_local() {
     local APK_URL="https://f-droid.org/F-Droid.apk"
     local DEST_DIR="apk/app-prebuilt.apk"
 
+    mkdir "apk"
     echo "Downloading from: $APK_URL"
     curl -L --fail --retry 3 --retry-connrefused -o "$DEST_DIR" "$APK_URL"
 
