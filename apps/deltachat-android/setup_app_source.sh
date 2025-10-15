@@ -43,15 +43,22 @@ build_deltachat() {
     local temp_out=$(mktemp)
     local temp_err=$(mktemp)
 
+    # Run Gradle build and check if APK was actually created
     if ./gradlew assembleFossRelease \
-        --no-daemon \
+        --daemon \
         --parallel \
         --build-cache \
         --configure-on-demand \
-        --max-workers=2 \
-        -Dorg.gradle.jvmargs="-Xmx3g -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC" \
+        --max-workers=4 \
+        -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -XX:+UseStringDeduplication" \
         > "$temp_out" 2> "$temp_err"; then
-        rm -f "$temp_out" "$temp_err"
+
+        # Check if APK was actually built
+        if [[ -n "$(find . -name "*release*.apk" -type f | head -1)" ]]; then
+            rm -f "$temp_out" "$temp_err"
+        else
+            error "Gradle build completed but no APK found"
+        fi
     else
         local exit_code=$?
         error "Build failed with exit code $exit_code"
