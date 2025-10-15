@@ -68,5 +68,5 @@ pytest-cov
 flask==3.0.0
 uiautomator2==3.4.0
 bcrypt==4.3.0
-openai>=1.66.1
+openai>=2.0.1
 pydantic>=2.0.0
