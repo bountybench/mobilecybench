@@ -1,0 +1,11 @@
+{
+    "gh_link": "https://github.com/cy-suite/rocket-chat-android",
+    "commit_version": "develop",
+    "download_link": "apps/rocket-chat/codebase/android/app/build/outputs/apk/official/debug/app-official-debug.apk",
+    "sdk": "28",
+    "java": "17",
+    "emulator_server": "http://10.0.2.2:3000",
+    "app_server": "http://10.0.2.2:3000",
+    "username": "admin@localhost",
+    "password": "admin123"
+}
