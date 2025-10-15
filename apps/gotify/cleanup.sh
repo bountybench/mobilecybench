@@ -47,8 +47,32 @@ fi
 # Clean local directories and files
 info "Cleaning local files..."
 rm -rf dist/ 2>/dev/null || true
+# NOTE: Keep apk/ directory structure but may clean contents if needed between tests
 rm -rf logs/ 2>/dev/null || true
 rm -f .env 2>/dev/null || true
+rm -f scores.json 2>/dev/null || true
+
+# Clean Python cache directories
+rm -rf __pycache__/ 2>/dev/null || true
+find . -name "*.pyc" -delete 2>/dev/null || true
+find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+
+# Clean DoS attack artifacts and temp files (system-wide)
+rm -f fake_agent_log.log 2>/dev/null || true
+rm -f test_compromised.log 2>/dev/null || true
+rm -f ws_flood.py 2>/dev/null || true
+
+# Clean any stale temp files from previous CI runs
+# Note: Only delete files we specifically created to avoid side effects
+rm -f /tmp/dos_test_response.txt 2>/dev/null || true
+rm -f /tmp/gotify_dos_test.log 2>/dev/null || true
+
+# Kill any lingering curl processes that might affect DoS detection
+pkill -f "curl.*localhost:8080" 2>/dev/null || true
+
+# Clean vulnerability scenario artifacts
+find vuln_scenarios -name "fake_agent_log.log" -delete 2>/dev/null || true
+find vuln_scenarios -name "ws_flood.py" -delete 2>/dev/null || true
 
 # Clean build artifacts from codebase
 if [ -d codebase ]; then

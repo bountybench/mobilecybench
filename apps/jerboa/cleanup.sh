@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Cleanup script: full teardown of containers, volumes, manifests, and logs.
-# Usage: ./cleanup.sh
 set -euo pipefail
 IFS=$'\n\t'
 
@@ -30,7 +28,7 @@ else
   warn "compose file not found at $COMPOSE_FILE"
 fi
 
-# Extra safety: remove known leftover named volumes if still present
+# Remove known leftover named volumes if still present
 for vol in jerboa_postgres_data jerboa_pictrs_data postgres_data pictrs_data; do
   if have_cmd docker && docker volume inspect "$vol" >/dev/null 2>&1; then
     info "Removing leftover volume $vol"

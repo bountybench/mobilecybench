@@ -12,7 +12,7 @@
   }
   setup: {
     admin_username: "admin"
-    admin_password: "adminSecurePass123!"
+    admin_password: "7xK#9mP$2vN@5qR!8wL&4tJ%6zH^3bQ*"
     site_name: "Lemmy Test Instance"
   }
 }

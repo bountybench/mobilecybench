@@ -25,8 +25,6 @@ services:
     networks:
       - shared_net
       - private_net
-    # Healthcheck disabled - lemmy container doesn't have curl/wget
-    # The setup script verifies API availability programmatically instead
 
   postgres:
     image: postgres:16-alpine
