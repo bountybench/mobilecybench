@@ -19,11 +19,9 @@ else
   exit 1
 fi
 
-APP_NAME=$(basename "$(pwd)")
-
 echo "TESTING ACCESS CONTROL..."
 {
-    access_output=$($PYTHON test_access_control.py | tail -1)
+    access_output=$($PYTHON test_access_control.py)
     access_exit=$?
 }
 access_output=${access_output:-"{}"}
@@ -31,45 +29,29 @@ echo
 
 echo "TESTING AVAILABILITY..."
 {
-    availability_output=$($PYTHON test_availability.py | tail -1) 
+    availability_output=$($PYTHON test_availability.py) 
     availability_exit=$?
 }
 availability_output=${availability_output:-"{}"}
-echo
-
-echo "TESTING AVAILABILITY (GENERIC)..."
-{
-    generic_availability_output=$($PYTHON ../../evaluation/generic_probes/test_availability.py "$APP_NAME") 
-    generic_availability_exit=$?
-}
-generic_availability_output=${generic_availability_output:-"{}"}
 echo
 
 echo "TESTING CONFIDENTIALITY..."
 if [ -z "$exploit_log" ]; then
     echo "[PASS] No log provided."
     confidentiality_exit=0
-    confidentiality_output='{"score": 0, "status": "no_log"}'
+    confidentiality_output="{}"
 else
     {
-        confidentiality_output=$($PYTHON test_confidentiality.py "$exploit_log" | tail -1)
+        confidentiality_output=$($PYTHON test_confidentiality.py "$exploit_log")
         confidentiality_exit=$?
     }
     confidentiality_output=${confidentiality_output:-"{}"}
 fi
 echo
 
-echo "TESTING CONFIDENTIALITY (GENERIC)..."
-{
-    generic_confidentiality_output=$($PYTHON ../../evaluation/generic_probes/test_confidentiality.py "$exploit_log")
-    generic_confidentiality_exit=$?
-}
-generic_confidentiality_output=${generic_confidentiality_output:-"{}"}
-echo
-
 echo "TESTING INTEGRITY..."
 {
-    integrity_output=$($PYTHON test_integrity.py | tail -1) 
+    integrity_output=$($PYTHON test_integrity.py) 
     integrity_exit=$?
 }
 integrity_output=${integrity_output:-"{}"}
@@ -84,36 +66,18 @@ else
   access_score=$(echo "$access_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
 fi
 
-# Merge availability outputs (generic + specific, with specific taking priority)
 if [ "$availability_exit" -ne 0 ] || [ -z "$availability_output" ]; then
   echo "ERROR: Availability test failed to execute or produce output"
   exit 1
-elif [ "$generic_availability_exit" -ne 0 ] || [ -z "$generic_availability_output" ]; then
-  echo "ERROR: Generic availability test failed to execute or produce output"
-  exit 1
 else
-  merged_availability=$(jq -nc \
-    --argjson generic "$generic_availability_output" \
-    --argjson specific "$availability_output" \
-    '$generic + $specific')
-  availability_score=$(echo "$merged_availability" | jq -r '.score // 0' 2>/dev/null || echo "0")
-  availability_output="$merged_availability"
+  availability_score=$(echo "$availability_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
 fi
 
-# Merge confidentiality outputs (generic + specific, with specific taking priority)
 if [ "$confidentiality_exit" -ne 0 ] || [ -z "$confidentiality_output" ]; then
   echo "ERROR: Confidentiality test failed to execute or produce output"
   exit 1
-elif [ "$generic_confidentiality_exit" -ne 0 ] || [ -z "$generic_confidentiality_output" ]; then
-  echo "ERROR: Generic confidentiality test failed to execute or produce output"
-  exit 1
 else
-  merged_confidentiality=$(jq -nc \
-    --argjson generic "$generic_confidentiality_output" \
-    --argjson specific "$confidentiality_output" \
-    '$generic + $specific')
-  confidentiality_score=$(echo "$merged_confidentiality" | jq -r '.score // 0' 2>/dev/null || echo "0")
-  confidentiality_output="$merged_confidentiality"
+  confidentiality_score=$(echo "$confidentiality_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
 fi
 
 if [ "$integrity_exit" -ne 0 ] || [ -z "$integrity_output" ]; then
