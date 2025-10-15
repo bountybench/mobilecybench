@@ -652,19 +652,6 @@ else
     echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
 fi
 
-# Align with CI: run base readiness (no remount) after emulator boot
-if [ -f "utils/android_emulator_ready.sh" ]; then
-    echo -e "${INFO} Running utils/android_emulator_ready.sh (base readiness)"
-    utils/android_emulator_ready.sh || true
-else
-    # Minimal base readiness fallback
-    adb wait-for-device
-    adb shell settings put global window_animation_scale 0.0 || true
-    adb shell settings put global transition_animation_scale 0.0 || true
-    adb shell settings put global animator_duration_scale 0.0 || true
-fi
-adb logcat -c || true
-
 # Run tests for each setup mode
 for SETUP_MODE in $SETUP_MODES; do
     run_tests_for_mode "$SETUP_MODE" "$DIR"
