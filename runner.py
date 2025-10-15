@@ -695,6 +695,7 @@ def load_config(config_path: Path) -> dict:
         "headless_mode",
         "dry_run",
         "agent_image",
+        "access_backend"
     ]
 
     missing_fields = [field for field in required_fields if field not in config]
@@ -716,7 +717,7 @@ def load_config(config_path: Path) -> dict:
             sys.exit(1)
 
     # Validate boolean fields
-    bool_fields = ["server_access", "screenshot_mode", "headless_mode", "dry_run"]
+    bool_fields = ["server_access", "screenshot_mode", "headless_mode", "dry_run", "access_backend"]
     for field in bool_fields:
         if not isinstance(config[field], bool):
             logger.error(f"Field {field} must be a boolean (true/false)")
