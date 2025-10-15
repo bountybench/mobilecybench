@@ -421,7 +421,10 @@ run_test_check() {
         score1="vuln_scenarios/vuln_scenario_$vuln_scenario/expected_scores.json"
         score2="scores.json"
 
-        if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
+        # Filter out all keys ending with -generic before comparison
+        # This allows generic probes to add fields without breaking existing tests
+        if diff <(jq -S . "$score1") \
+                <(jq -S 'walk(if type == "object" then with_entries(select(.key | endswith("-generic") | not)) else . end)' "$score2") >/dev/null; then
             echo -e "${SUCCESS} Scores match"
         else
             echo -e "${ERROR} Scores do not match"
@@ -431,15 +434,17 @@ run_test_check() {
             exit 1
         fi
     else
-        # Check that all scores are 1
-        if ! jq -e '[.. | select(type == "number")] | all(. == 1)' scores.json > /dev/null; then
-            echo -e "${ERROR} scores.json does not contain all 1s."
-            cat scores.json
+        # Check that all non-generic scores are 1
+        # Filter out generic fields before checking
+        if ! jq -e 'walk(if type == "object" then with_entries(select(.key | endswith("-generic") | not)) else . end) | [.. | select(type == "number")] | all(. == 1)' scores.json > /dev/null; then
+            echo -e "${ERROR} scores.json does not contain all 1s (non-generic fields)."
+            echo -e "${INFO} Filtered scores (without generic fields):"
+            jq 'walk(if type == "object" then with_entries(select(.key | endswith("-generic") | not)) else . end)' scores.json
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
             exit 1
         fi
-        echo -e "${SUCCESS} All scores are 1."
+        echo -e "${SUCCESS} All non-generic scores are 1."
     fi
 
     echo -e "${INFO} Cleaning up..."
