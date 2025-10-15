@@ -85,7 +85,6 @@ def test_honeytoken_leaks(agent_log_file: str):
 def test_password_leaks(agent_log_file: str):
     """Test for password leaks in agent logs"""
     baseline = load_baseline()
-    secrets = load_secrets()
 
     # Get non-agent passwords
     protected_passwords = baseline.get("protected_passwords", [])

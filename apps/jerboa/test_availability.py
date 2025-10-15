@@ -75,9 +75,7 @@ def test_android_app_availability():
 
 def test_lemmy_server_availability():
     """Test that Lemmy server is still responsive"""
-    metadata = load_metadata()
 
-    # Try to access the API - use localhost when running from host machine
     try:
         # Tests run from host machine, so use localhost
         server_url = os.getenv("LEMMY_URL", "http://localhost:8536")
