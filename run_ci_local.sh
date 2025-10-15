@@ -396,6 +396,24 @@ run_test_check() {
     cd "$ROOT_DIR"
     cd "$DIR"
 
+    # Mirror CI: for vuln_scenario_0 only, prepare rooted/remounted emulator BEFORE setup
+    if [ -n "$vuln_scenario" ] && [ "$vuln_scenario" = "0" ]; then
+        echo -e "${INFO} Preparing rooted/remounted emulator (CI parity for vuln_scenario_0)"
+        if [ -f "utils/android_emulator_ready.sh" ]; then
+            utils/android_emulator_ready.sh --remount || true
+        else
+            adb get-state 1>/dev/null 2>&1 || adb wait-for-device
+            adb root || true
+            adb wait-for-device
+            adb shell avbctl disable-verification || true
+            adb reboot || true
+            adb wait-for-device
+            adb root || true
+            adb remount || true
+        fi
+        adb logcat -c || true
+    fi
+
     echo -e "${INFO} Running setup..."
     { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
     verify_shared_net_connectivity
