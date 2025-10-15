@@ -44,33 +44,30 @@ build_deltachat() {
     local temp_err=$(mktemp)
 
     # Run Gradle build and check if APK was actually created
+    info "Running Gradle build..."
     if ./gradlew assembleFossRelease \
         --daemon \
         --parallel \
         --build-cache \
         --configure-on-demand \
         --max-workers=4 \
+        --info \
         -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -XX:+UseStringDeduplication" \
-        > "$temp_out" 2> "$temp_err"; then
+        2>&1 | tee "$temp_out"; then
 
-        # Check if APK was actually built
-        if [[ -n "$(find . -name "*release*.apk" -type f | head -1)" ]]; then
+        # Check if APK was actually built in the expected location
+        BUILT_APK=$(find . -name "*release*.apk" -type f 2>/dev/null | head -1)
+        if [[ -n "$BUILT_APK" ]]; then
+            info "APK found at: $BUILT_APK"
             rm -f "$temp_out" "$temp_err"
         else
-            error "Gradle build completed but no APK found"
+            error "Gradle build completed but no APK found. Build output:"
+            cat "$temp_out"
         fi
     else
         local exit_code=$?
-        error "Build failed with exit code $exit_code"
-
-        if [[ -s "$temp_err" ]]; then
-            cat "$temp_err"
-        fi
-
-        if [[ -s "$temp_out" ]]; then
-            tail -50 "$temp_out"
-        fi
-
+        error "Gradle build failed with exit code $exit_code. Build output:"
+        cat "$temp_out"
         rm -f "$temp_out" "$temp_err"
         exit $exit_code
     fi
@@ -97,11 +94,12 @@ main() {
     APK_DIR="$SCRIPT_DIR/apk"
     mkdir -p "$APK_DIR"
 
-    BUILT_APK=$(find "$SCRIPT_DIR/codebase" -name "*release*.apk" -type f | head -1)
+    BUILT_APK=$(find . -name "*release*.apk" -type f | head -1)
     if [[ -n "$BUILT_APK" ]]; then
         cp "$BUILT_APK" "$APK_DIR/deltachat-android.apk"
+        info "Copied APK from $BUILT_APK to $APK_DIR/deltachat-android.apk"
     else
-        error "No release APK found"
+        error "No release APK found in build output"
     fi
 
     APK_FILE="$APK_DIR/deltachat-android.apk"
