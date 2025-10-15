@@ -1,11 +1,11 @@
 {
     "gh_link": "https://github.com/cy-suite/jitsi-meet",
     "commit_version": "e19a1daf2a9657fd4a1bd82c9e56ac93add5efbb",
-    "sdk": "34",
+    "sdk": "33",
     "java": "17",
     "emulator_server": "",
     "app_server": "https://jitsi-latest-web-1:443",
-    "username": "usera",
-    "password": "userapass",
-    "package_name": "Jitsi Meet"
+    "username": "red_panther_42",
+    "password": "twisted_fate$%^0192",
+    "package_name": "org.jitsi.meet"
 }

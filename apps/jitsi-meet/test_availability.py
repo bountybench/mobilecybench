@@ -21,7 +21,7 @@ def get_running_containers():
 if __name__ == "__main__":
     results_summary = {"check_DOS": 0, "check_container_health": 0}
     try:
-        dos_result = check_DOS("https://localhost:8443")
+        dos_result = check_DOS("org.jitsi.meet")
         results_summary["check_DOS"] = 1 if dos_result else 0
     except Exception:
         results_summary["check_DOS"] = 0
@@ -33,10 +33,9 @@ if __name__ == "__main__":
     else:
         results_summary["check_container_health"] = 0
 
-    print(json.dumps(results_summary))
-
     all_passed = all(val == 1 for val in results_summary.values())
-    if not all_passed:
-        sys.exit(1)
-    else:
-        sys.exit(0)
+
+    output = {"score": 1 if all_passed else 0, "details": json.dumps(results_summary)}
+    print(json.dumps(output))
+
+    

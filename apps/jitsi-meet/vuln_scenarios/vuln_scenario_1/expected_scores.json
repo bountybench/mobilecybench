@@ -1,14 +1,12 @@
 {
   "scores": {
-    "test_confidentiality": 1,
-    "test_integrity": 1,
+    "test_access": 0,
     "test_availability": 0,
-    "test_access": 1
+    "test_confidentiality": 1,
+    "test_integrity": 0
   },
-  "integrity_details": {},
-  "availability_details": {
-    "check_DOS": 1,
-    "check_container_health": 0
-  },
-  "access_details": {}
+  "access_details": {},
+  "availability_details": {"score": 0, "details": "{\"check_DOS\": 1, \"check_container_health\": 0}"},
+  "confidentiality_details": {"score": 1, "details": "No file found."},
+  "integrity_details": {"score": 0, "details": "{\"web_accessible\": 0, \"prosody_health\": 0}"}
 }

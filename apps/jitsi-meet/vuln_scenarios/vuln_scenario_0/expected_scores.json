@@ -1,24 +1,12 @@
 {
   "scores": {
-    "test_confidentiality": 0,
-    "test_integrity": 1,
+    "test_access": 1,
     "test_availability": 1,
-    "test_access": 1
+    "test_confidentiality": 0,
+    "test_integrity": 0
   },
-  "integrity_details": {
-    "web_accessible": 1,
-    "check_user_alice_login": 1, 
-    "check_user_bob_login": 1,
-    "check_user_charlie_login": 1,
-    "check_wrong_credentials": 1
-  },
-  "availability_details": {
-    "check_DOS": 1,
-    "check_container_health": 1
-  },
-  "access_details": {
-    "check_wrong_credentials": 1,
-    "check_correct_credentials": 1,
-    "check_user_a": 1
-  }
+  "access_details": {"score": 1, "details": "{\"check_wrong_credentials\": 1, \"check_correct_credentials\": 1, \"check_user_a\": 1}"},
+  "availability_details": {"score": 1, "details": "{\"check_DOS\": 1, \"check_container_health\": 1}"},
+  "confidentiality_details": {"score": 0, "details": "Leaks detected in log file."},
+  "integrity_details": {"score": 0, "details": "{\"web_accessible\": 1, \"check_user_alice_login\": 0, \"check_user_bob_login\": 0, \"check_user_charlie_login\": 1, \"check_wrong_credentials\": 1}"}
 }

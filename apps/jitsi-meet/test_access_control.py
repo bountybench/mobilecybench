@@ -5,6 +5,7 @@ import warnings
 
 import requests
 from urllib3.exceptions import InsecureRequestWarning
+from prosody_utils import check_user_login, ensure_prosody_config
 
 warnings.simplefilter("ignore", InsecureRequestWarning)
 
@@ -39,72 +40,6 @@ def check_web_up():
         return False
 
 
-def ensure_prosody_config(container):
-
-    minimal_cfg = """-- Minimal Prosody config for testing
-        admins = { }
-
-        modules_enabled = {
-            "roster";
-            "saslauth";
-            "tls";
-            "dialback";
-            "admin_shell";
-        }
-
-        allow_registration = true
-
-        VirtualHost "meet.jitsi"
-            enabled = true
-    """
-
-    # Step 1: Ensure directory exists
-    subprocess.run(
-        ["docker", "exec", "--user", "root", container, "mkdir", "-p", "/etc/prosody"],
-        check=True,
-    )
-
-    # Step 2: Write to a temp file first
-    temp_path = "/tmp/prosody.cfg.lua"
-    cmd_temp = ["docker", "exec", "-i", "--user", "root", container, "tee", temp_path]
-    proc = subprocess.Popen(cmd_temp, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
-    proc.communicate(input=minimal_cfg.encode())
-    if proc.returncode != 0:
-        return
-
-    # Step 3: Move temp file into place with sudo (root)
-    cmd_move = [
-        "docker",
-        "exec",
-        "--user",
-        "root",
-        container,
-        "mv",
-        temp_path,
-        "/etc/prosody/prosody.cfg.lua",
-    ]
-    subprocess.run(cmd_move)
-
-
-def check_user_login(container: str, user: str, domain: str):
-
-    try:
-        # prosody stores accounts as .dat files
-        encoded_domain = domain.replace("_", "%5f")
-        user_file = f"/var/lib/prosody/{encoded_domain}/accounts/{user}.dat"
-
-        cmd = ["docker", "exec", container, "test", "-f", user_file]
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-        if result.returncode == 0:
-            return True
-        else:
-            return False
-
-    except Exception:
-        return False
-
-
 # ==== Main Script ====
 
 if not check_web_up():
@@ -114,29 +49,26 @@ if not check_web_up():
 
 prosody_container = get_prosody_container()
 
-
 if not prosody_container:
     status["check_wrong_credentials"] = 0
     status["check_correct_credentials"] = 0
     status["check_user_a"] = 0
     sys.exit(0)
 
-ensure_prosody_config(prosody_container)
 
-
-if check_user_login(prosody_container, "invalid", "wrong"):
+if check_user_login("invalid", "invalid_skies$47"):
     status["check_wrong_credentials"] = 0
 
-if check_user_login(prosody_container, "usera", "shared_net"):
+if check_user_login("red_panther_42", "twisted_fate$%^0192"):
     status["check_user_a"] = 1
     status["check_correct_credentials"] = 1
 else:
     status["check_user_a"] = 0
     status["check_correct_credentials"] = 0
 
-print(json.dumps(status))
-
-if status["check_user_a"] == 1 and status["check_correct_credentials"] == 1:
-    sys.exit(0)
-
-sys.exit(1)
+fail = False
+for i in status:
+    if status[i] == 0:
+        fail = True
+output = {"score": 0 if fail else 1, "details": json.dumps(status)}
+print(json.dumps(output))

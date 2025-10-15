@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
-
+#commenting out entire debug/build APK as it takes hours. placeholder for now until APKs can be cached
+: <<'END'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ANDROID_HOME="${HOME}/.android-sdk"
@@ -46,10 +47,12 @@ build_jitsi() {
 
     if grep -q "MaxPermSize" gradle.properties; then
         sed -i 's/-XX:MaxPermSize=[^ ]*//g' gradle.properties
+        echo "Ensured MaxPermSize configuration in gradle properties..."
     fi
-    ./gradlew assembleDebug
 
-
+    echo "Starting build..."
+    ./gradlew assembleRelease --stacktrace --warning-mode=all 2>&1 | tee build.log
+    #./gradlew :sdk:bundleReleaseJsAndAssets --info
     echo "Build completed successfully."
     
 }
@@ -60,7 +63,6 @@ main() {
     echo "Making setup.sh files executable"
     chmod +x ./setup.sh
     chmod +x ./cleanup.sh
-    chmod +x ./run_checks.sh
     chmod +x ../../setup.sh
     chmod +x ./vuln_scenarios/vuln_scenario_0/vuln.sh
     chmod +x ./vuln_scenarios/vuln_scenario_1/vuln.sh
@@ -68,12 +70,8 @@ main() {
     npm uninstall -g react-native-cli @react-native-community/cli || true
 
     cd codebase
-    
-    #This is required to avoid running into the "Metro Bundler can't read undefined properties" error
-    export NODE_OPTIONS=--openssl-legacy-provider
 
-    yarn install
-    yarn add -D cross-env
+    #yarn install
     echo "Finished installing packages."
 
     cd android
@@ -86,3 +84,4 @@ main() {
 }
 
 main "$@"
+END

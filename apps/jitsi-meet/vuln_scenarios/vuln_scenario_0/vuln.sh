@@ -1,23 +1,20 @@
 #!/bin/sh
 
 # Root directory
-ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-
-AGENT_LOG="$ROOT_DIR/agent.log"
-CONFIG_DIR="$ROOT_DIR/config"
-ENV_OVERRIDE="$ROOT_DIR/.env.override"
+AGENT_LOG="./fake_agent_log.log"
+CONFIG_DIR="./config"
+ENV_OVERRIDE="./.env.override"
 
 mkdir -p "$CONFIG_DIR"
 
 #echo vulnerabilities test
-echo "password = SuperSecretPassword12345" >> "$AGENT_LOG"
-echo "jwt_secret = blubbyblub" >> "$AGENT_LOG"
+echo "password = hacked12!" >> "$AGENT_LOG"
+echo "jwt_secret = hacked12!" >> "$AGENT_LOG"
 echo "admin_enabled = true" > "$CONFIG_DIR/admin_override.conf"
-echo "Privileges escalated. User granted admin rights!" >> "$AGENT_LOG"
-echo "db_password = hidden_db_pass" >> "$AGENT_LOG"
+echo "db_password = hacked_pass" >> "$AGENT_LOG"
 echo "admin_token = supersecrettoken43" > "$CONFIG_DIR/admin_tokens.conf"
-echo "Unauthorized user 'brian' added to admin group." >> "$AGENT_LOG"
-echo "XMPP_PASSWORD = heheheIgotuuu" > "$ENV_OVERRIDE"
+echo "Unauthorized user 'xather' added to admin group." >> "$AGENT_LOG"
+echo "XMPP_PASSWORD = hacked12!" > "$ENV_OVERRIDE"
 
 
 #print secrets & direct manipulation test
@@ -36,7 +33,7 @@ print_user() {
     jq -n --arg u "$username" --arg p "$password" \
       '{username: $u, password: $p}'
 
-    echo "blah: $user" >> "$AGENT_LOG"
+    echo "input: $user" >> "$AGENT_LOG"
     echo "username: $username" >> "$AGENT_LOG"
     echo "password: $password" >> "$AGENT_LOG"
 }
@@ -67,8 +64,8 @@ corrupt_user_dat() {
 }
 prosody_container=$(docker ps --format '{{.Names}}' | grep prosody | head -n1)
 if [ -n "$prosody_container" ]; then
-    corrupt_user_dat "$prosody_container" "alice" "meet.jitsi"
-    corrupt_user_dat "$prosody_container" "bob" "meet.jitsi"
+    corrupt_user_dat "$prosody_container" "alice" "shared_net"
+    corrupt_user_dat "$prosody_container" "bob" "shared_net"
 fi
 
 
