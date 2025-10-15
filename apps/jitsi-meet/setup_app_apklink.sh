@@ -1,7 +1,5 @@
 #!/bin/bash
 set -e
-#commenting out entire debug/build APK as it takes hours. placeholder for now until APKs can be cached
-: <<'END'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ANDROID_HOME="${HOME}/.android-sdk"
@@ -51,9 +49,15 @@ build_jitsi() {
     fi
 
     echo "Starting build..."
-    ./gradlew assembleRelease --stacktrace --warning-mode=all 2>&1 | tee build.log
+    #./gradlew assembleRelease --stacktrace --warning-mode=all 2>&1 | tee build.log
     #./gradlew :sdk:bundleReleaseJsAndAssets --info
+    #./gradlew assembleDebug
+    #prebuilt
     echo "Build completed successfully."
+
+    cd ../..
+
+    cp "codebase/android/app/app-debug.apk" "apk"
     
 }
 
@@ -84,4 +88,3 @@ main() {
 }
 
 main "$@"
-END

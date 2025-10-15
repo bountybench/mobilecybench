@@ -44,10 +44,8 @@ install_jitsi() {
     fi
 
     cd ../..
-    cd codebase
-    cd android
     #APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
-    APK_PATH="app/app-debug.apk"
+    APK_PATH="apk/app-debug.apk"
     #APK_PATH="app/build/outputs/apk/release/app-release-unsigned.apk"
 
     if [[ ! -f $APK_PATH ]]; then
@@ -68,7 +66,7 @@ install_jitsi() {
 
 prosody_user_setup(){
     #\\\CONFIGURING PROSODY CONTAINER SECTION///
-    cd ../..
+    
     echo "Looking for Prosody container..."
     PROSODY_CONTAINER=$(docker ps --format '{{.Names}}' | grep prosody || true)
     if [ -z "$PROSODY_CONTAINER" ]; then
