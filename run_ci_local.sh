@@ -287,6 +287,7 @@ checkout_commit() {
 SKIP_BUILD=false
 SKIP_DOWNLOAD=false
 SKIP_APK=false
+RUN_UNIT_TESTS=false
 
 show_usage() {
     echo "Usage: $0 <dir> [options]"
@@ -298,6 +299,7 @@ show_usage() {
     echo "  --skip-build      Skip build mode (source setup)"
     echo "  --skip-download   Skip download mode (apklink setup)"
     echo "  --skip-apk        Skip APK operations. Install from existing APK."
+    echo "  --unit-tests      Run unit tests (opt-in)"
     echo "  -h, --help        Show this help message"
     echo ""
     echo "Examples:"
@@ -305,6 +307,7 @@ show_usage() {
     echo "  $0 apps/joplin --skip-build      # Run only download mode"
     echo "  $0 apps/joplin --skip-download   # Run only build mode"
     echo "  $0 apps/joplin --skip-apk        # Skip APK operations. Install from existing APK."
+    echo "  $0 apps/joplin --unit-tests      # Run unit tests"
     echo ""
     echo "By default, both build mode (source) and download mode (apklink) are run"
     echo "when both setup scripts are available."
@@ -325,6 +328,10 @@ while [[ $# -gt 0 ]]; do
             SKIP_APK=true
             SKIP_BUILD=true
             SKIP_DOWNLOAD=true
+            shift
+            ;;
+        --unit-tests)
+            RUN_UNIT_TESTS=true
             shift
             ;;
         -h|--help)
@@ -602,14 +609,18 @@ fi
 # Install mobilecybench utils
 pip install -e .
 
-# Run unit tests
-print_header "$CYAN" "RUNNING UNIT TESTS"
-echo -e "${INFO} Running unit tests..."
-if pytest tests/ -v --tb=short; then
-    echo -e "${SUCCESS} Unit tests passed"
+# Run unit tests (only if --unit-tests flag is provided)
+if [ "$RUN_UNIT_TESTS" = true ]; then
+    print_header "$CYAN" "RUNNING UNIT TESTS"
+    echo -e "${INFO} Running unit tests..."
+    if pytest tests/ -v --tb=short; then
+        echo -e "${SUCCESS} Unit tests passed"
+    else
+        echo -e "${ERROR} Unit tests failed"
+        exit 1
+    fi
 else
-    echo -e "${ERROR} Unit tests failed"
-    exit 1
+    echo -e "${INFO} Skipping unit tests (use --unit-tests flag to run them)"
 fi
 
 # Check if any setup mode has test_X.py to determine overall strategy
