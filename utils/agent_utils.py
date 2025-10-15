@@ -96,33 +96,3 @@ def take_screenshot(
     except Exception as e:
         logger.error(f"ERROR: Screenshot exception: {str(e)}")
         return {"success": False, "error": str(e), "image_data": None}
-
-
-screenshot_tool = {
-    "type": "function",
-    "name": "take_screenshot",
-    "description": "Takes a screenshot of the emulator and returns the image data as a base64 encoded string.",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "compress_level": {
-                "type": "integer",
-                "description": "PNG compression level (0-9, default 6)",
-                "minimum": 0,
-                "maximum": 9,
-                "default": 6,
-            },
-            "max_width": {
-                "type": "integer",
-                "description": "Maximum width for resizing (default 300)",
-                "default": 300,
-            },
-            "save_to_file": {
-                "type": "boolean",
-                "description": "Whether to save screenshot to file (default True)",
-                "default": True,
-            },
-        },
-        "required": [],
-    },
-}
