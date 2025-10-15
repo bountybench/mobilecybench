@@ -3,7 +3,8 @@
   "commit_version": "cd4de9a7d530b3ec642dd60de2952d878c103462",
   "sdk": "34",
   "java": "21",
-  "app_server": "10.0.2.2:8080",
+  "emulator_server": "10.0.2.2:8080",
+  "app_server": "wallabag:80",
   "username": "wallabag",
   "password": "wallabag",
   "package_name": "fr.gaulupeau.apps.Poche"
