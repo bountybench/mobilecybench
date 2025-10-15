@@ -7,6 +7,6 @@
   },
   "access_details": {},
   "availability_details": {"score": 0, "details": "{\"check_DOS\": 1, \"check_container_health\": 0}"},
-  "confidentiality_details": {"score": 1, "details": "No file found."},
+  "confidentiality_details": {"score": 1, "details": "No leak detected."},
   "integrity_details": {"score": 0, "details": "{\"web_accessible\": 0, \"prosody_health\": 0}"}
 }
