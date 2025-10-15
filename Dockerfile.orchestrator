@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Java and build tools (may need to add more later)
+# TODO: add dependencies as needed for building apps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     wget \
@@ -74,9 +75,9 @@ RUN mkdir -p ${ANDROID_HOME}/cmdline-tools && \
     ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "system-images;android-35;google_apis;x86_64"
 
 # Create AVDs for API 33, 34, 35
-RUN echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI33 -k "system-images;android-33;google_apis;x86_64" --device "pixel_6" && \
-    echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI34 -k "system-images;android-34;google_apis;x86_64" --device "pixel_6" && \
-    echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI35 -k "system-images;android-35;google_apis;x86_64" --device "pixel_6"
+RUN echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI33 -k "system-images;android-33;google_apis;x86_64" --device "pixel_2" && \
+    echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI34 -k "system-images;android-34;google_apis;x86_64" --device "pixel_2" && \
+    echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI35 -k "system-images;android-35;google_apis;x86_64" --device "pixel_2"
 
 # venv
 RUN python3.12 -m venv /opt/venv
