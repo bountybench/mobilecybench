@@ -38,26 +38,40 @@ setup_environment() {
     echo "Environment configured."
 }
 
-build_jitsi() {
+download_jitsi_to_local() {
     
-    echo "Building Jitsi Meet Android from source..."
-    echo "This may take several minutes..."
+    #ALL THE BUILD COMMANDS ARE PLACED HERE AS A PLACEHOLDER FOR THE FUTURE WHEN APKS ARE CACHED
+    #echo "Building Jitsi Meet Android from source..."
+    #echo "This may take several minutes..."
 
-    if grep -q "MaxPermSize" gradle.properties; then
-        sed -i 's/-XX:MaxPermSize=[^ ]*//g' gradle.properties
-        echo "Ensured MaxPermSize configuration in gradle properties..."
-    fi
+    #if grep -q "MaxPermSize" gradle.properties; then
+    #    sed -i 's/-XX:MaxPermSize=[^ ]*//g' gradle.properties
+    #    echo "Ensured MaxPermSize configuration in gradle properties..."
+    #fi
 
-    echo "Starting build..."
+    #echo "Starting build..."
     #./gradlew assembleRelease --stacktrace --warning-mode=all 2>&1 | tee build.log
     #./gradlew :sdk:bundleReleaseJsAndAssets --info
     #./gradlew assembleDebug
     #prebuilt
-    echo "Build completed successfully."
+    #echo "Build completed successfully."
 
     cd ../..
+    ls
+    echo "Downloading prebuilt Jitsi Meet APK..."
+    local APK_URL="https://f-droid.org/F-Droid.apk"
+    local DEST_DIR="apk/app-prebuilt.apk"
 
-    cp "codebase/android/app/app-debug.apk" "apk"
+    echo "Downloading from: $APK_URL"
+    curl -L --fail --retry 3 --retry-connrefused -o "$DEST_DIR" "$APK_URL"
+
+    if [[ ! -f "$DEST_DIR" ]]; then
+        echo "ERROR: Download failed. APK file not found."
+        exit 1
+    fi
+
+    echo "Successfully downloaded prebuilt Jitsi Meet APK:"
+    echo "$DEST_DIR"
     
 }
 
@@ -81,7 +95,7 @@ main() {
     cd android
     check_prerequisites
     setup_environment
-    build_jitsi
+    download_jitsi_to_local
 
     echo ""
     echo "Setup complete! Jitsi Meet Android is ready to launch."
