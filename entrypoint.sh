@@ -31,5 +31,8 @@ if [ -f /app/pyproject.toml ]; then
     cd /app && /opt/venv/bin/pip install --no-cache-dir -e . >/dev/null 2>&1 || true
 fi
 
+echo "Starting ADB server..."
+adb start-server
+
 # Keep container running
 exec "$@"
