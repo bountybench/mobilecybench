@@ -1,10 +1,12 @@
 import json
 import subprocess
-import requests
 import warnings
+
+import requests
 import urllib3
 
-warnings.simplefilter('ignore', urllib3.exceptions.InsecureRequestWarning)
+warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
+
 
 def get_running_containers():
     result = subprocess.run(
@@ -16,6 +18,7 @@ def get_running_containers():
     containers = result.stdout.splitlines()
     return containers
 
+
 def is_url_alive(url, timeout=5):
     try:
         response = requests.get(url, verify=False, timeout=timeout)
@@ -23,9 +26,10 @@ def is_url_alive(url, timeout=5):
     except requests.RequestException:
         return False
 
+
 if __name__ == "__main__":
     results_summary = {"check_DOS": 0, "check_container_health": 0}
-    
+
     # Check if URL is alive
     url = "https://localhost:8443"
     if is_url_alive(url):
