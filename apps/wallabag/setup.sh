@@ -33,10 +33,10 @@ fi
 # Start Docker backend services
 echo "[Wallabag] Starting backend stack (Docker Compose)..."
 # Stop any existing containers first
-docker compose down 2>/dev/null || docker-compose down 2>/dev/null || true
+docker compose down 2>/dev/null || true
 # Force rebuild to ensure we get the latest Dockerfile changes
-docker compose build --no-cache wallabag 2>/dev/null || docker-compose build --no-cache wallabag
-docker compose up -d db redis wallabag 2>/dev/null || docker-compose up -d db redis wallabag
+docker compose build --no-cache wallabag
+docker compose up -d db redis wallabag
 
 # Wait until Postgres is ready inside the container
 echo "[Wallabag] Waiting for database to be ready..."
@@ -200,45 +200,45 @@ if [ -z "$AVD_NAME" ]; then
 fi
 echo "Using AVD: $AVD_NAME"
 
-echo "[Wallabag] Starting emulator..."
+# echo "[Wallabag] Starting emulator..."
 
-# Check if we're in CI and adjust emulator parameters
-if [ -n "$GITHUB_ACTIONS" ] || [ -n "$CI" ]; then
-    echo "[Wallabag] CI environment detected, using headless emulator settings"
-    $EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -no-boot-anim -verbose -netdelay none -netspeed full -gpu swiftshader_indirect -no-metrics -memory 2048 -cores 2 -read-only &
-    EMULATOR_PID=$!
-    sleep 30
+# # Check if we're in CI and adjust emulator parameters
+# if [ -n "$GITHUB_ACTIONS" ] || [ -n "$CI" ]; then
+#     echo "[Wallabag] CI environment detected, using headless emulator settings"
+#     $EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -no-boot-anim -verbose -netdelay none -netspeed full -gpu swiftshader_indirect -no-metrics -memory 2048 -cores 2 -read-only &
+#     EMULATOR_PID=$!
+#     sleep 30
     
-    # Check if emulator process is still alive
-    if ! kill -0 $EMULATOR_PID 2>/dev/null; then
-        echo "[Wallabag] Warning: Emulator process died, trying alternative configuration..."
-        $EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -no-boot-anim -verbose -netdelay none -netspeed full -gpu off -no-metrics -read-only &
-        EMULATOR_PID=$!
-        sleep 15
-    fi
-else
-    $EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -verbose -netdelay none -netspeed full -read-only &
-    EMULATOR_PID=$!
-fi
+#     # Check if emulator process is still alive
+#     if ! kill -0 $EMULATOR_PID 2>/dev/null; then
+#         echo "[Wallabag] Warning: Emulator process died, trying alternative configuration..."
+#         $EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -no-boot-anim -verbose -netdelay none -netspeed full -gpu off -no-metrics -read-only &
+#         EMULATOR_PID=$!
+#         sleep 15
+#     fi
+# else
+#     $EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -verbose -netdelay none -netspeed full -read-only &
+#     EMULATOR_PID=$!
+# fi
 
-echo "Waiting for emulator in adb devices (timeout 180s)..."
-TIMEOUT=180
-START_TIME=$(date +%s)
-while true; do
-    EMULATOR_STATE=$(adb devices | grep emulator | grep device || true)
-    if [ -n "$EMULATOR_STATE" ]; then
-        echo "Emulator detected and ready."
-        break
-    fi
+# echo "Waiting for emulator in adb devices (timeout 180s)..."
+# TIMEOUT=180
+# START_TIME=$(date +%s)
+# while true; do
+#     EMULATOR_STATE=$(adb devices | grep emulator | grep device || true)
+#     if [ -n "$EMULATOR_STATE" ]; then
+#         echo "Emulator detected and ready."
+#         break
+#     fi
     
-    CURRENT_TIME=$(date +%s)
-    ELAPSED=$((CURRENT_TIME - START_TIME))
-    if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
-        echo "Timeout waiting for emulator."
-        exit 1
-    fi
-    sleep 5
-done
+#     CURRENT_TIME=$(date +%s)
+#     ELAPSED=$((CURRENT_TIME - START_TIME))
+#     if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
+#         echo "Timeout waiting for emulator."
+#         exit 1
+#     fi
+#     sleep 5
+# done
 
 echo "[Wallabag] Debug: Testing network connectivity..."
 if nc -zv localhost 8080 2>&1 | grep -q succeeded; then
