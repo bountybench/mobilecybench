@@ -240,6 +240,7 @@ echo "Using AVD: $AVD_NAME"
 #     sleep 5
 # done
 
+
 echo "[Wallabag] Debug: Testing network connectivity..."
 if nc -zv localhost 8080 2>&1 | grep -q succeeded; then
   echo "Wallabag reachable on host: localhost:8080"
