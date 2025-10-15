@@ -9,53 +9,43 @@ warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
 error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
 
 main() {
-    info "DeltaChat Android APK Download"
-    echo "==============================="
-    
     METADATA_FILE="$SCRIPT_DIR/metadata.json"
     if [[ ! -f "$METADATA_FILE" ]]; then
-        error "metadata.json not found at $METADATA_FILE"
+        error "metadata.json not found"
     fi
-    
+
     DOWNLOAD_URL=$(jq -r '.download_link' "$METADATA_FILE")
     if [[ -z "$DOWNLOAD_URL" || "$DOWNLOAD_URL" == "null" ]]; then
-        error "download_link not found in metadata.json"
+        error "download_link not found"
     fi
-    
-    info "Download URL: $DOWNLOAD_URL"
-    
+
     APK_DIR="$SCRIPT_DIR/apk"
     mkdir -p "$APK_DIR"
-    
+
     APK_FILE="$APK_DIR/deltachat-android.apk"
-    
-    info "Downloading APK to $APK_FILE..."
+
     if command -v curl >/dev/null 2>&1; then
         if ! curl -L -o "$APK_FILE" "$DOWNLOAD_URL"; then
-            error "Failed to download APK using curl"
+            error "curl download failed"
         fi
     elif command -v wget >/dev/null 2>&1; then
         if ! wget -O "$APK_FILE" "$DOWNLOAD_URL"; then
-            error "Failed to download APK using wget"
+            error "wget download failed"
         fi
     else
-        error "Neither curl nor wget found. Cannot download APK."
+        error "Neither curl nor wget found"
     fi
-    
+
     if [[ ! -f "$APK_FILE" ]]; then
-        error "APK file not found after download"
+        error "APK file not found"
     fi
-    
+
     FILE_SIZE=$(stat -c%s "$APK_FILE" 2>/dev/null || stat -f%z "$APK_FILE" 2>/dev/null || echo "0")
     if [[ "$FILE_SIZE" -lt 1048576 ]]; then
-        error "Downloaded APK file is too small ($FILE_SIZE bytes). Download may have failed."
+        error "APK too small ($FILE_SIZE bytes)"
     fi
-    
-    info "APK downloaded successfully:"
-    ls -lh "$APK_FILE"
-    
-    echo ""
-    echo "Download complete! DeltaChat APK is ready for installation."
+
+    echo "Download complete! APK ready for installation."
 }
 
 main "$@"

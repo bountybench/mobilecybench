@@ -42,20 +42,13 @@ def create_accounts_json():
     with open(accounts_file, "w") as f:
         json.dump(accounts, f, indent=2)
 
-    logger.info("Created accounts.json with %d test users", len(accounts["users"]))
     return accounts
 
 
 
 def main():
-    logger.info("Starting DeltaChat account creation...")
-
     try:
         create_accounts_json()
-
-        logger.info("Account creation completed successfully.")
-        logger.info("MailHog accepts any email, so accounts are ready to use.")
-
         return True
 
     except Exception as e:
