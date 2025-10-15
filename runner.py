@@ -13,7 +13,6 @@ import os
 import shlex
 import subprocess
 import sys
-import time
 from pathlib import Path
 from selectors import EVENT_READ, DefaultSelector
 from typing import Dict, List, Optional
@@ -21,6 +20,7 @@ from typing import Dict, List, Optional
 from dotenv import load_dotenv
 
 from agent.agent_setup import AgentEnvironment
+from agent.mcp.direct_tool_executor import MCPToolExecutor
 from utils.logger import logger, logger_manager
 from utils.utils import get_app_metadata
 
@@ -434,6 +434,23 @@ class MobileCybenchRunner:
             logger.error(f"Failed to create docker network: {e}")
             self._exit_with_error("Failed to create docker network 'shared_net'")
 
+    def _validate_mcp_server(self):
+        """Validate MCP server is functional by testing command execution"""
+        logger.info("Validating MCP server with 'ls' command...")
+
+        mcp_executor = MCPToolExecutor()
+        result = mcp_executor.call_tool("execute_command", "ls /app")
+        response = (
+            result.get("result", {}).get("structuredContent", {}).get("response", "")
+        )
+
+        if "codebase" not in response:
+            self._exit_with_error(
+                "MCP server validation failed: 'codebase' directory not found"
+            )
+
+        logger.info("✓ MCP server validation passed: 'codebase' directory found")
+
     def _start_containers(self):
         """Start MCP server and Kali container"""
         logger.info("Starting containers...")
@@ -449,24 +466,18 @@ class MobileCybenchRunner:
         logger.info("Starting containers with docker compose...")
 
         try:
-            self.cmd.run("docker compose up -d", cwd=self.agent_dir, env=env)
+            self.cmd.run("docker compose up -d --wait", cwd=self.agent_dir, env=env)
         except subprocess.CalledProcessError as e:
             logger.error(
                 f"Docker-compose failed: {e.stderr if hasattr(e, 'stderr') else e}"
             )
             self._exit_with_error("Failed to start containers")
 
-        logger.info("✓ Containers started successfully")
-        logger.info("Containers started successfully")
-
-        logger.info("Waiting for containers to initialize...")
-        logger.info("Waiting for containers to initialize...")
-        time.sleep(5)
-        # TODO: Implement a more robust check to ensure services are up and running
-        # Container healt
-
-        # Check container status
         logger.info("Checking container status...")
+
+        # Validate MCP server functionality
+        self._validate_mcp_server()
+
         try:
             result = self.cmd.run("docker compose ps", cwd=self.agent_dir)
         except subprocess.CalledProcessError as e:
