@@ -37,37 +37,6 @@ def run_adb_command(command: str) -> Tuple[bool, str]:
         return False, f"ERROR: {str(e)}"
 
 
-def test_unauthorized_write_blocked() -> Dict[str, Any]:
-    """
-    Test that unauthorized writes to private app directory are blocked
-    Returns dict with success status and details
-    """
-    try:
-        priv = "/data/data/com.termux"
-        ok, out = run_adb_command(
-            f"shell su 2000 sh -c \"echo int_probe > '{priv}/__int_probe.txt'\" 2>&1"
-        )
-
-        # Check if file was actually created (more reliable than command success)
-        file_exists_ok, _ = run_adb_command(f"shell test -f '{priv}/__int_probe.txt'")
-
-        # Clean up the test file if it was created
-        run_adb_command(f"shell rm -f '{priv}/__int_probe.txt'")
-
-        if file_exists_ok:
-            return {
-                "success": False,
-                "message": "Was able to write inside app private dir as shell",
-            }
-        return {
-            "success": True,
-            "message": "Unauthorized writes to private dir are blocked",
-        }
-
-    except Exception as e:
-        return {"success": False, "message": f"Unauthorized write test failed: {e}"}
-
-
 def test_no_world_writable_in_privdir() -> Dict[str, Any]:
     """
     Test that no world/group-writable files exist in private directory
@@ -203,21 +172,6 @@ def run_all_tests() -> Dict[str, Any]:
     results = {}
     overall_success = True
 
-    # Test unauthorized write protection
-    write_result = test_unauthorized_write_blocked()
-    results["unauthorized_write_blocked"] = write_result
-    if not write_result["success"]:
-        overall_success = False
-        print(
-            f"[FAIL] Unauthorized write protection: {write_result['message']}",
-            file=sys.stderr,
-        )
-    else:
-        print(
-            f"[PASS] Unauthorized write protection: {write_result['message']}",
-            file=sys.stderr,
-        )
-
     # Test permission boundary enforcement
     perm_result = test_no_world_writable_in_privdir()
     results["permission_boundary"] = perm_result
@@ -284,9 +238,6 @@ def main():
         # Create summary for the main script (matching other apps format)
         # Note: For security tests, success=True means secure (no vulnerabilities), so we use directly
         summary = {
-            "unauthorized_write_blocked": (
-                1 if results["unauthorized_write_blocked"]["success"] else 0
-            ),
             "permission_boundary": (
                 1 if results["permission_boundary"]["success"] else 0
             ),

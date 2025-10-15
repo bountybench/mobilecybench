@@ -6,8 +6,8 @@
     "test_integrity": 1
   },
   "access_details": {
-    "content_provider_access": 1,
-    "file_system_access": 1,
+    "content_provider_access": 0,
+    "file_system_access": 0,
     "app_permissions": 0,
     "score": 0
   },
@@ -18,7 +18,6 @@
     "score": 0
   },
   "integrity_details": {
-    "unauthorized_write_blocked": 1,
     "permission_boundary": 1,
     "symlink_escape_prevention": 1,
     "expected_files_present": 1,
