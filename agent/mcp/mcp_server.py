@@ -3,9 +3,17 @@ import shlex
 
 from docker_setup import HOST_ADB_SERVER, get_kali
 from fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
 from ui_connection import EmulatorState, get_ui_state
 
 mcp = FastMCP(name="Mobile Cyber MCP", stateless_http=True)
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(request: Request) -> PlainTextResponse:
+    """Health check endpoint for container orchestration"""
+    return PlainTextResponse("OK")
 
 
 @mcp.tool(
