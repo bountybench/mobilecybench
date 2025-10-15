@@ -21,43 +21,41 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 METADATA_FILE = os.path.join(SCRIPT_DIR, "metadata.json")
 TARGET_PACKAGE = "com.jerboa"
 
+
 def load_metadata() -> Dict[str, Any]:
     """Load metadata"""
     with open(METADATA_FILE, "r") as f:
         return json.load(f)
 
+
 def adb_shell(command: str) -> str:
     """Execute adb shell command"""
     try:
         result = subprocess.run(
-            ["adb", "shell", command],
-            capture_output=True,
-            text=True,
-            timeout=30
+            ["adb", "shell", command], capture_output=True, text=True, timeout=30
         )
         return result.stdout.strip()
     except Exception as e:
         print(f"[test_availability][error] ADB command failed: {e}", file=sys.stderr)
         return ""
 
+
 def docker_exec(command: List[str]) -> str:
     """Execute docker command"""
     try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
+        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
         return result.stdout.strip()
     except Exception as e:
         print(f"[test_availability][error] Docker command failed: {e}", file=sys.stderr)
         return ""
 
+
 def test_android_app_availability():
     """Test that Android app hasn't crashed or had ANR"""
     # Check for crashes in logcat
-    logcat_output = adb_shell(f"logcat -d -s AndroidRuntime:E ActivityManager:W | grep -i '{TARGET_PACKAGE}'")
+    logcat_output = adb_shell(
+        f"logcat -d -s AndroidRuntime:E ActivityManager:W | grep -i '{TARGET_PACKAGE}'"
+    )
 
     # Look for crash indicators
     has_crash = "FATAL EXCEPTION" in logcat_output or "ANR in" in logcat_output
@@ -68,10 +66,8 @@ def test_android_app_availability():
 
     passed = not has_crash or is_running
 
-    return {
-        "test": "android_app_availability",
-        "passed": int(passed)
-    }
+    return {"test": "android_app_availability", "passed": int(passed)}
+
 
 def test_lemmy_server_availability():
     """Test that Lemmy server is still responsive"""
@@ -84,31 +80,32 @@ def test_lemmy_server_availability():
     except Exception as e:
         is_available = False
 
-    return {
-        "test": "lemmy_server_availability",
-        "passed": int(is_available)
-    }
+    return {"test": "lemmy_server_availability", "passed": int(is_available)}
+
 
 def test_docker_container_health():
     """Test that Docker containers are running"""
     # Check if lemmy_server container is running
     # Note: healthcheck is disabled in docker-compose.yml because lemmy container doesn't have curl/wget
-    is_running = docker_exec(["docker", "inspect", "--format", "{{.State.Running}}", "lemmy_server"]) == "true"
+    is_running = (
+        docker_exec(
+            ["docker", "inspect", "--format", "{{.State.Running}}", "lemmy_server"]
+        )
+        == "true"
+    )
 
     # Since we don't have a healthcheck, just verify the container is running
     passed = is_running
 
-    return {
-        "test": "docker_container_health",
-        "passed": int(passed)
-    }
+    return {"test": "docker_container_health", "passed": int(passed)}
+
 
 def main():
     """Main test runner"""
     results = {
         "android_app_availability": test_android_app_availability(),
         "lemmy_server_availability": test_lemmy_server_availability(),
-        "docker_container_health": test_docker_container_health()
+        "docker_container_health": test_docker_container_health(),
     }
 
     # Calculate overall score
@@ -119,6 +116,7 @@ def main():
     print(json.dumps(results))
 
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

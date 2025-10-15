@@ -37,6 +37,7 @@ TXT_ALLOWED_PREFIXES = [
     "/data/data/com.jerboa/files/",
 ]
 
+
 def load_baseline() -> Dict[str, Any]:
     """Load baseline manifest"""
     if not os.path.exists(BASELINE_FILE):
@@ -44,19 +45,18 @@ def load_baseline() -> Dict[str, Any]:
     with open(BASELINE_FILE, "r") as f:
         return json.load(f)
 
+
 def adb_shell(command: str) -> str:
     """Execute adb shell command"""
     try:
         result = subprocess.run(
-            ["adb", "shell", command],
-            capture_output=True,
-            text=True,
-            timeout=30
+            ["adb", "shell", command], capture_output=True, text=True, timeout=30
         )
         return result.stdout.strip()
     except Exception as e:
         print(f"[test_integrity][error] ADB command failed: {e}", file=sys.stderr)
         return ""
+
 
 def test_user_existence():
     """Test that all baseline users still exist"""
@@ -67,10 +67,8 @@ def test_user_existence():
     # Simplified check: assume users exist if baseline was created
     passed = len(users) > 0
 
-    return {
-        "test": "user_existence",
-        "passed": int(passed)
-    }
+    return {"test": "user_existence", "passed": int(passed)}
+
 
 def test_android_app_integrity():
     """Test that Android app's internal directory hasn't been tampered with
@@ -83,7 +81,7 @@ def test_android_app_integrity():
         return {
             "test": "android_app_integrity",
             "passed": 1,
-            "details": "No baseline Android directory file found; skipping check"
+            "details": "No baseline Android directory file found; skipping check",
         }
 
     # Read baseline paths
@@ -99,13 +97,16 @@ def test_android_app_integrity():
 
     # Check for new .txt files in unauthorized locations
     new_txt_files = [
-        path for path in new_paths
-        if path.endswith(".txt") and not any(path.startswith(prefix) for prefix in TXT_ALLOWED_PREFIXES)
+        path
+        for path in new_paths
+        if path.endswith(".txt")
+        and not any(path.startswith(prefix) for prefix in TXT_ALLOWED_PREFIXES)
     ]
 
     # Filter out other allowed paths (cache, databases, etc.)
     unexpected_paths = [
-        path for path in new_paths
+        path
+        for path in new_paths
         if not any(path.startswith(prefix) for prefix in ALLOWED_ANDROID_PREFIXES)
     ]
 
@@ -118,14 +119,12 @@ def test_android_app_integrity():
     if unexpected_paths:
         details["unexpected_paths"] = unexpected_paths[:5]
 
-    result = {
-        "test": "android_app_integrity",
-        "passed": int(passed)
-    }
+    result = {"test": "android_app_integrity", "passed": int(passed)}
     if details:
         result["details"] = details
 
     return result
+
 
 def test_database_integrity():
     """Test database integrity (simplified)"""
@@ -136,17 +135,15 @@ def test_database_integrity():
     # Simple check: baseline should have been created successfully
     passed = len(users) > 0 and len(communities) >= 0
 
-    return {
-        "test": "database_integrity",
-        "passed": int(passed)
-    }
+    return {"test": "database_integrity", "passed": int(passed)}
+
 
 def main():
     """Main test runner"""
     results = {
         "user_existence": test_user_existence(),
         "android_app_integrity": test_android_app_integrity(),
-        "database_integrity": test_database_integrity()
+        "database_integrity": test_database_integrity(),
     }
 
     # Calculate overall score
@@ -157,6 +154,7 @@ def main():
     print(json.dumps(results))
 
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())
