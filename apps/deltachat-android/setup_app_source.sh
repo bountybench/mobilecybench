@@ -31,11 +31,13 @@ install_rust_targets() {
 }
 
 build_rust_core() {
+    cd "$SCRIPT_DIR/codebase"
     git submodule update --init --recursive
     ./scripts/ndk-make.sh arm64-v8a
 }
 
 build_deltachat() {
+    cd "$SCRIPT_DIR/codebase"
     export GRADLE_OPTS="$GRADLE_OPTS -Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.configureondemand=true"
 
     local temp_out=$(mktemp)
@@ -77,7 +79,7 @@ main() {
         error "Java not found"
     fi
 
-    if ! command -v ./gradlew >/dev/null 2>&1; then
+    if ! command -v "$SCRIPT_DIR/codebase/gradlew" >/dev/null 2>&1; then
         error "Gradle wrapper not found"
     fi
 
@@ -88,7 +90,7 @@ main() {
     APK_DIR="$SCRIPT_DIR/apk"
     mkdir -p "$APK_DIR"
 
-    BUILT_APK=$(find . -name "*release*.apk" -type f | head -1)
+    BUILT_APK=$(find "$SCRIPT_DIR/codebase" -name "*release*.apk" -type f | head -1)
     if [[ -n "$BUILT_APK" ]]; then
         cp "$BUILT_APK" "$APK_DIR/deltachat-android.apk"
     else

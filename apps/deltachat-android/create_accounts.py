@@ -45,7 +45,6 @@ def create_accounts_json():
     return accounts
 
 
-
 def main():
     try:
         create_accounts_json()
