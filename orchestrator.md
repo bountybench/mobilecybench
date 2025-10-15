@@ -14,11 +14,11 @@ docker exec -it mobilecybench-orchestrator bash
 
 ### Inside the Orchestrator container, start the emulator in the background
 ```bash
-emulator -avd MobileCybenchEmulatorAPI33 -no-window -no-audio &
+emulator -avd MobileCybenchEmulatorAPI33 -no-window -no-audio -no-snapshot-save -wipe-data -gpu off -skin 1080x1920 -memory 2048 &
 # or
-emulator -avd MobileCybenchEmulatorAPI34 -no-window -no-audio &
+emulator -avd MobileCybenchEmulatorAPI34 -no-window -no-audio -no-snapshot-save -wipe-data -gpu off -skin 1080x1920 -memory 2048 &
 # or
-emulator -avd MobileCybenchEmulatorAPI35 -no-window -no-audio &
+emulator -avd MobileCybenchEmulatorAPI35 -no-window -no-audio -no-snapshot-save -wipe-data -gpu off -skin 1080x1920 -memory 2048 &
 # note: Bitwarden is on SDK 33; others are on 34 and 35.
 ```
 
