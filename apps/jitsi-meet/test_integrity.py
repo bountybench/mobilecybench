@@ -3,10 +3,13 @@ import os
 import subprocess
 import sys
 import warnings
-import requests
 
+import requests
+from prosody_utils import (
+    check_user_login,  # host Python environment must have 'requests'
+)
 from urllib3.exceptions import InsecureRequestWarning
-from prosody_utils import check_user_login  # host Python environment must have 'requests'
+
 warnings.simplefilter("ignore", InsecureRequestWarning)
 
 SECRETS_FILE = "secrets.json"
@@ -18,6 +21,7 @@ fail = False
 
 # ---------------- Utilities ---------------- #
 
+
 def load_secrets():
     global SECRETS
     path = os.path.join(os.path.dirname(__file__), SECRETS_FILE)
@@ -26,6 +30,7 @@ def load_secrets():
     with open(path) as f:
         SECRETS = json.load(f)
     return SECRETS
+
 
 def get_prosody_container():
     result = subprocess.run(
@@ -40,12 +45,14 @@ def get_prosody_container():
             return name
     return None
 
+
 def check_web_up():
     try:
         r = requests.get(JITSI_URL, verify=False, timeout=5)
         return r.status_code == 200
     except Exception:
         return False
+
 
 # ---------------- Main ---------------- #
 
@@ -79,7 +86,7 @@ for key in SECRETS:
 wrong_login_ok = 1 if not check_user_login("invalid_user", "invalid_skies$47") else 0
 status["check_wrong_credentials"] = wrong_login_ok
 if not fail:
-    fail = wrong_login_ok == 0 #if haven't failed yet, this will be determinant
+    fail = wrong_login_ok == 0  # if haven't failed yet, this will be determinant
 
 output = {"score": 0 if fail else 1, "details": json.dumps(status)}
 print(json.dumps(output))

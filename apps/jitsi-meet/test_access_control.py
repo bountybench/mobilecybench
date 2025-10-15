@@ -4,8 +4,8 @@ import sys
 import warnings
 
 import requests
+from prosody_utils import check_user_login
 from urllib3.exceptions import InsecureRequestWarning
-from prosody_utils import check_user_login, ensure_prosody_config
 
 warnings.simplefilter("ignore", InsecureRequestWarning)
 

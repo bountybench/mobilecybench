@@ -37,5 +37,3 @@ if __name__ == "__main__":
 
     output = {"score": 1 if all_passed else 0, "details": json.dumps(results_summary)}
     print(json.dumps(output))
-
-    
