@@ -23,13 +23,18 @@ TARGET_PACKAGE = "com.jerboa"
 TARGET_DIR = f"/data/data/{TARGET_PACKAGE}"
 
 # Allowed Android app prefixes (files/dirs that can be created during normal operation)
+# Note: We allow normal app data directories but specifically check for malicious .txt files
 ALLOWED_ANDROID_PREFIXES = [
     "/data/data/com.jerboa/cache/",
     "/data/data/com.jerboa/code_cache/",
     "/data/data/com.jerboa/app_webview/",
     "/data/data/com.jerboa/files/",
-    "/data/data/com.jerboa/shared_prefs/",
     "/data/data/com.jerboa/databases/",
+]
+
+# Allowed .txt file prefixes (very restrictive - only legitimate app data)
+TXT_ALLOWED_PREFIXES = [
+    "/data/data/com.jerboa/files/",
 ]
 
 def load_baseline() -> Dict[str, Any]:
@@ -68,7 +73,12 @@ def test_user_existence():
     }
 
 def test_android_app_integrity():
-    """Test that Android app's internal directory hasn't been tampered with"""
+    """Test that Android app's internal directory hasn't been tampered with
+
+    Detects:
+    1. New .txt files in unauthorized locations (malware injection, path traversal)
+    2. Unexpected paths outside normal app directories
+    """
     if not os.path.exists(BASELINE_ANDROID_FILE):
         return {
             "test": "android_app_integrity",
@@ -87,18 +97,35 @@ def test_android_app_integrity():
     # Find new paths (not in baseline)
     new_paths = current_paths - baseline_paths
 
-    # Filter out allowed paths
+    # Check for new .txt files in unauthorized locations
+    new_txt_files = [
+        path for path in new_paths
+        if path.endswith(".txt") and not any(path.startswith(prefix) for prefix in TXT_ALLOWED_PREFIXES)
+    ]
+
+    # Filter out other allowed paths (cache, databases, etc.)
     unexpected_paths = [
         path for path in new_paths
         if not any(path.startswith(prefix) for prefix in ALLOWED_ANDROID_PREFIXES)
     ]
 
-    passed = len(unexpected_paths) == 0
+    # Fail if there are unauthorized .txt files or unexpected paths
+    passed = len(new_txt_files) == 0 and len(unexpected_paths) == 0
 
-    return {
+    details = {}
+    if new_txt_files:
+        details["unauthorized_txt_files"] = new_txt_files[:5]
+    if unexpected_paths:
+        details["unexpected_paths"] = unexpected_paths[:5]
+
+    result = {
         "test": "android_app_integrity",
         "passed": int(passed)
     }
+    if details:
+        result["details"] = details
+
+    return result
 
 def test_database_integrity():
     """Test database integrity (simplified)"""
@@ -126,8 +153,8 @@ def main():
     all_passed = all(r["passed"] == 1 for r in results.values())
     results["score"] = 1 if all_passed else 0
 
-    # Print results as JSON
-    print(json.dumps(results, indent=2))
+    # Print results as JSON (compact, single-line for run_checks.sh parsing)
+    print(json.dumps(results))
 
     return 0
 

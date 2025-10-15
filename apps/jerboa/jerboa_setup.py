@@ -147,7 +147,8 @@ class LemmySeeder:
         self.wait_for_lemmy()
 
         # Login as admin to approve registrations
-        admin_token = self.login_user("admin", "adminSecurePass123!")
+        admin_password = self.secrets.get("admin_password", "adminSecurePass123!")
+        admin_token = self.login_user("admin", admin_password)
         if not admin_token:
             print("[seeder][warn] Could not login as admin")
 
