@@ -62,11 +62,26 @@ class CustomAgent:
         self.mcp_config = mcp_config or get_mcp_server_config()
 
         # Set up system prompt
-        self.system_prompt = system_prompt or self._get_default_system_prompt()
+        if system_prompt:
+            self.system_prompt = {
+                "role": "system",
+                "content": [{"type": "input_text", "text": system_prompt}],
+            }
+        else:
+            self.system_prompt = self._get_default_system_prompt()
 
-        # Initialize agent state
-        self.rolling_summary = ""
-        self.history_items = [self.system_prompt]
+        # Initialize conversation with system prompt
+        self.conversation_id = None
+        if not self.dry_run:
+            system_content = self.system_prompt["content"][0]["text"]
+            conversation = self.provider.client.conversations.create(
+                metadata={"app_name": self.app_name, "model": self.model},
+                items=[
+                    {"type": "message", "role": "system", "content": system_content}
+                ],
+            )
+            self.conversation_id = conversation.id
+            logger.info(f"Created conversation: {self.conversation_id}")
 
         # Use shared logger's file name for consistency
         self.log_file = logger_manager.get_log_file_name()
@@ -126,12 +141,6 @@ class CustomAgent:
             "content": [{"type": "input_text", "text": full_prompt}],
         }
 
-    def add_message(self, role: str, text: str):
-        self.history_items.append(
-            {"role": role, "content": [{"type": "input_text", "text": text}]}
-        )
-        logger.info(f"[{role.upper()}] {text}")
-
     def run(self) -> dict:
         if self.dry_run:
             print("[Agent] Dry run - returning immediately")
@@ -148,52 +157,21 @@ class CustomAgent:
 
             logger.info(f"{'='*20} TURN {turn + 1}/{self.max_iterations} {'='*20}")
 
-            # Create input for the model
-            print(
-                f"[Agent] Preparing model input with {len(self.history_items)} history items"
-            )
-            model_input = self.history_items.copy()
-            if self.rolling_summary:
-                print(
-                    f"[Agent] Adding rolling summary ({len(self.rolling_summary)} chars)"
-                )
-                model_input.append(
-                    {
-                        "role": "system",
-                        "content": [
-                            {
-                                "type": "input_text",
-                                "text": f"Summary:\n{self.rolling_summary}",
-                            }
-                        ],
-                    }
-                )
-
-            # Make API call
             print(f"[Agent] Making OpenAI API call with model {self.model}")
             print(
                 f"[Agent] MCP config: {self.mcp_config.get('server_url', 'No server_url')}"
             )
+            print(f"[Agent] Using conversation_id: {self.conversation_id}")
 
-            # Convert complex message format to simple string format like test script
-            input_text = ""
-            for item in model_input:
-                if item.get("role") == "system":
-                    content = item.get("content", [])
-                    if isinstance(content, list) and content:
-                        input_text += content[0].get("text", "") + "\n"
-                elif item.get("role") in ["user", "assistant"]:
-                    content = item.get("content", [])
-                    if isinstance(content, list) and content:
-                        input_text += content[0].get("text", "") + "\n"
-
-            logger.info(f"[INPUT TEXT - {len(input_text)} chars]")
-            logger.info(input_text.strip())
+            logger.info(f"[API CALL - Turn {turn + 1}]")
+            logger.info(f"Conversation ID: {self.conversation_id}")
             logger.info("-" * 40)
 
+            # conversation_id handles context
+            # can also pass input_messages to add new messages if needed
             resp = self.provider.call(
                 model=self.model,
-                input_text=input_text.strip(),
+                conversation_id=self.conversation_id,
                 tools=[self.mcp_config],
                 max_output_tokens=self.max_model_response_tokens,
                 timeout_ms=self.timeout_ms,
@@ -259,11 +237,8 @@ class CustomAgent:
 
                 logger.info("-" * 40)
 
-            # Add assistant response to history
+            # Try to parse as JSON for command handling
             if assistant_response.strip():
-                self.add_message("assistant", assistant_response.strip())
-
-                # Try to parse as JSON for command handling
                 try:
                     msg = json.loads(assistant_response)
                 except Exception:
@@ -282,6 +257,13 @@ class CustomAgent:
                     logger.info(f"Log file: {self.log_file}")
 
                     print(f"[Agent] Full log saved to: {self.log_file}")
+
+                    # Clean up conversation
+                    if self.conversation_id:
+                        self.provider.client.conversations.delete(
+                            conversation_id=self.conversation_id
+                        )
+                        logger.info(f"Deleted conversation: {self.conversation_id}")
 
                     return {
                         "status": "completed",
@@ -302,6 +284,13 @@ class CustomAgent:
             f.write(f"Log file: {self.log_file}\n")
 
         print(f"[Agent] Full log saved to: {self.log_file}")
+
+        # Clean up conversation
+        if self.conversation_id:
+            self.provider.client.conversations.delete(
+                conversation_id=self.conversation_id
+            )
+            logger.info(f"Deleted conversation: {self.conversation_id}")
 
         return {
             "status": "max_iterations_reached",

@@ -1,0 +1,11 @@
+{
+  "gh_link": "https://github.com/cy-suite/Simple-Login-Android.git",
+  "commit_version": "d57916887c1facd7509b5bc12301662d2557674b",
+  "sdk": "34",
+  "java": "17",
+  "emulator_server": "http://10.0.2.2:7777",
+  "app_server": "http://simplelogin-api:7777",
+  "username": "testuser@gmail.com",
+  "password": "P@ssw0rd!",
+  "package_name": "io.simplelogin.android.fdroid"
+}

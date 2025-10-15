@@ -1,0 +1,12 @@
+{
+  "scores": {
+    "test_access": 0,
+    "test_availability": 1,
+    "test_confidentiality": 0,
+    "test_integrity": 0
+  },
+  "access_details": {"score": 0, "check_login_required": 0, "check_token_auth": 1},
+  "availability_details": {"score": 1, "check_DOS": 1, "check_container_health": 1},
+  "confidentiality_details": {"score": 0, "check_no_leaks": 0},
+  "integrity_details": {"score": 0, "check_database_integrity": 0}
+}

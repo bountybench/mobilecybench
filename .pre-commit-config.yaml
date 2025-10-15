@@ -1,0 +1,9 @@
+repos:
+  # Run linter script
+  - repo: local
+    hooks:
+      - id: linter
+        name: Run linter
+        entry: bash run_linter.sh
+        language: system
+        pass_filenames: false

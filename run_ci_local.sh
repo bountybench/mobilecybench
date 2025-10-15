@@ -396,6 +396,24 @@ run_test_check() {
     cd "$ROOT_DIR"
     cd "$DIR"
 
+    # Mirror CI: for vuln_scenario_0 only, prepare rooted/remounted emulator BEFORE setup
+    if [ -n "$vuln_scenario" ] && [ "$vuln_scenario" = "0" ]; then
+        echo -e "${INFO} Preparing rooted/remounted emulator (CI parity for vuln_scenario_0)"
+        if [ -f "utils/android_emulator_ready.sh" ]; then
+            utils/android_emulator_ready.sh --remount || true
+        else
+            adb get-state 1>/dev/null 2>&1 || adb wait-for-device
+            adb root || true
+            adb wait-for-device
+            adb shell avbctl disable-verification || true
+            adb reboot || true
+            adb wait-for-device
+            adb root || true
+            adb remount || true
+        fi
+        adb logcat -c || true
+    fi
+
     echo -e "${INFO} Running setup..."
     { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
     verify_shared_net_connectivity
@@ -411,9 +429,9 @@ run_test_check() {
 
     echo -e "${INFO} Running checks..."
     if [ "$use_fake_agent_log" = "true" ] && [ -n "$vuln_scenario" ]; then
-        ./run_checks.sh "vuln_scenarios/vuln_scenario_$vuln_scenario/fake_agent_log.log"
+        ../../run_checks.sh . "vuln_scenarios/vuln_scenario_$vuln_scenario/fake_agent_log.log"
     else
-        ./run_checks.sh "$ROOT_DIR/dummy_log.log"
+        ../../run_checks.sh . "$ROOT_DIR/dummy_log.log"
     fi
 
     if [ -n "$vuln_scenario" ]; then
@@ -459,14 +477,14 @@ run_tests_for_mode() {
     # Skip this step if you want to persist your apk
     checkout_commit "$dir"
     
-    # Check if run_checks.sh exists to determine test strategy and required scripts
-    if [ -f "run_checks.sh" ]; then
-        echo -e "${INFO} run_checks.sh found - running full vulnerability scenario tests"
-        local has_run_checks=true
-        required_files=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
+    # Check if test_X.py exists to determine test strategy and required scripts
+    if [ -f "test_access_control.py" ] || [ -f "test_availability.py" ] || [ -f "test_confidentiality.py" ] || [ -f "test_integrity.py" ]; then
+        echo -e "${INFO} test_X.py probe found - running full vulnerability scenario tests"
+        local has_probes=true
+        required_files=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
     else
-        echo -e "${INFO} run_checks.sh not found - running simplified APK installation test"
-        local has_run_checks=false
+        echo -e "${INFO} test_X.py probe not found - running simplified APK installation test"
+        local has_probes=false
         required_files=("setup.sh" "cleanup.sh")
     fi
     
@@ -489,9 +507,27 @@ run_tests_for_mode() {
         { ./setup_app_source.sh; } || { echo -e "${ERROR} setup_app_source.sh failed"; exit 1; }
     fi
     
+    # Validate APK structure
+    echo -e "${INFO} Validating APK structure..."
+    APK_DIR="$ROOT_DIR/$dir/apk"
+    if [ ! -d "$APK_DIR" ]; then
+        echo -e "${ERROR} APK directory not found at $APK_DIR"
+        echo -e "${ERROR} APKs must be placed in ${dir}/apk/"
+        exit 1
+    fi
+
+    APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+    if [ "$APK_COUNT" -eq 0 ]; then
+        echo -e "${ERROR} No APK found in $APK_DIR/"
+        echo -e "${ERROR} setup_app_source.sh or setup_app_apklink.sh must place APKs in ${dir}/apk/"
+        exit 1
+    fi
+
+    echo -e "${SUCCESS} APK structure validated - found $APK_COUNT APK(s) in $APK_DIR/"
+
     cd "$ROOT_DIR"
     
-    if [ "$has_run_checks" = true ]; then
+    if [ "$has_probes" = true ]; then
         # Create dummy file for test confidentiality
         cat > "$ROOT_DIR/dummy_log.log" <<'EOF'
 # Dummy log file for testing purposes
@@ -505,7 +541,23 @@ EOF
         # Run the three test scenarios
         run_test_check "TEST CHECKS BEFORE VULNERABLE SCENARIOS" "" "false"
         run_test_check "TEST CHECKS AFTER NON-DOS VULNERABLE SCENARIO" "0" "true"
-        run_test_check "TEST CHECKS AFTER DOS VULNERABLE SCENARIO" "1" "false"
+        
+        # DoS testing is OPTIONAL - only run if app has server/container components
+        # Check if app_server field is not an empty string
+        if [ -f "metadata.json" ]; then
+            app_server=$(jq -r '.app_server // empty' metadata.json)
+            if [ -n "$app_server" ]; then
+                echo -e "${INFO} App has server components ($app_server) - running DoS testing..."
+                run_test_check "TEST CHECKS AFTER DOS VULNERABLE SCENARIO" "1" "false"
+                DOS_TESTED=true
+            else
+                echo -e "${INFO} App has no server components (app_server is empty) - skipping DoS testing (not applicable)"
+                DOS_TESTED=false
+            fi
+        else
+            echo -e "${INFO} No metadata.json found - skipping DoS testing (not applicable)"
+            DOS_TESTED=false
+        fi
     else
         # Run simplified test
         print_header "$CYAN" "RUNNING SIMPLIFIED APK INSTALLATION TEST"
@@ -565,11 +617,14 @@ if [ $? -ne 0 ] || [ -z "$SETUP_MODES" ]; then
     exit 1
 fi
 
-# Check if any setup mode has run_checks.sh to determine overall strategy
+# Install mobilecybench utils
+pip install -e .
+
+# Check if any setup mode has test_X.py to determine overall strategy
 cd "$DIR"
-HAS_RUN_CHECKS=false
-if [ -f "run_checks.sh" ]; then
-    HAS_RUN_CHECKS=true
+HAS_PROBES=false
+if [ -f "test_access_control.py" ] || [ -f "test_availability.py" ] || [ -f "test_confidentiality.py" ] || [ -f "test_integrity.py" ]; then
+    HAS_PROBES=true
 fi
 cd "$ROOT_DIR"
 
@@ -610,13 +665,17 @@ SECONDS=$((DURATION % 60))
 
 SETUP_MODE_COUNT=$(echo $SETUP_MODES | wc -w)
 
-if [ "$HAS_RUN_CHECKS" = true ]; then
+if [ "$HAS_PROBES" = true ]; then
     print_header "$GREEN" "ALL TESTS PASSED"
     print_header "$GREEN" "FULL CI COMPLETED SUCCESSFULLY"
     echo -e "${SUCCESS} Complete vulnerability testing performed:"
     echo -e "${SUCCESS} ✓ Baseline scenario"  
     echo -e "${SUCCESS} ✓ Vulnerability scenario 0 (non-DoS)"
-    echo -e "${SUCCESS} ✓ Vulnerability scenario 1 (DoS)"
+    if [ "$DOS_TESTED" = true ]; then
+        echo -e "${SUCCESS} ✓ Vulnerability scenario 1 (DoS) - server components detected"
+    else
+        echo -e "${INFO} Vulnerability scenario 1 (DoS) - skipped (no server components)"
+    fi
     echo -e "${SUCCESS} ✓ All CIAA (Confidentiality, Integrity, Availability, Access Control) checks"
     if [ "$SETUP_MODE_COUNT" -gt 1 ]; then
         echo -e "${SUCCESS} ✓ Tested with multiple setup modes: $SETUP_MODES"
@@ -632,12 +691,12 @@ else
     echo -e "${WARNING} ⚠️  Full vulnerability scenario testing was NOT run"
     echo ""  
     echo -e "${INFO} To enable full CI testing, this app needs:"
-    echo -e "${INFO} • run_checks.sh script"
+    echo -e "${INFO} • Any test_access_control.py, test_availability.py, test_confidentiality.py, test_integrity.py probe script"
     echo -e "${INFO} • Vulnerability scenario implementations"
     echo -e "${INFO} • Full CIAA security test coverage"
     echo ""
     echo -e "${CYAN} The GitHub CI will also run in simplified mode for this app"
-    echo -e "${CYAN} until run_checks.sh is added."
+    echo -e "${CYAN} until a test_X.py probe script is added."
     if [ "$SETUP_MODE_COUNT" -gt 1 ]; then
         echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s (Setup modes: $SETUP_MODES)"
     else
@@ -662,11 +721,11 @@ fi
 
 # Final Timing and Summary
 print_header "$CYAN" "FINAL TIMING AND SUMMARY"
-if [ "$HAS_RUN_CHECKS" = true ]; then
+if [ "$HAS_PROBES" = true ]; then
     print_header "$GREEN" "LOCAL CIA TESTS COMPLETED SUCCESSFULLY"
     prefix="${SUCCESS}"
 else
-    print_header "$YELLOW" "LOCAL BASIC TESTS COMPLETED - ADD run_checks.sh FOR FULL CI"
+    print_header "$YELLOW" "LOCAL BASIC TESTS COMPLETED - ADD test_X.py probe script FOR FULL CI"
     prefix="${INFO}"
 fi
 

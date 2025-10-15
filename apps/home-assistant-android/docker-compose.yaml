@@ -9,11 +9,11 @@ services:
       - shared_net
       - private_net
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8123/ || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "nc -z localhost 8123 || exit 1"]
+      interval: 30s
       timeout: 10s
-      retries: 10
-      start_period: 120s
+      retries: 5
+      start_period: 60s
     volumes:
       - ./config:/config
 

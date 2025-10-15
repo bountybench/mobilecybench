@@ -14,7 +14,7 @@ __pycache__/
 scores.json
 baseline.json
 public/node_modules
-mcp/ngrok.yml
+ngrok.yml
 baseline_android_dir.txt
 after_android_dir.txt
 ssh_key
@@ -24,3 +24,4 @@ ssh_key
 token_usage.jsonl
 node_modules
 yarn.lock
+*.egg-info
