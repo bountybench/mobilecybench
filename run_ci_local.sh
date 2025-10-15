@@ -396,6 +396,24 @@ run_test_check() {
     cd "$ROOT_DIR"
     cd "$DIR"
 
+    # Mirror CI: for vuln_scenario_0 only, prepare rooted/remounted emulator BEFORE setup
+    if [ -n "$vuln_scenario" ] && [ "$vuln_scenario" = "0" ]; then
+        echo -e "${INFO} Preparing rooted/remounted emulator (CI parity for vuln_scenario_0)"
+        if [ -f "utils/android_emulator_ready.sh" ]; then
+            utils/android_emulator_ready.sh --remount || true
+        else
+            adb get-state 1>/dev/null 2>&1 || adb wait-for-device
+            adb root || true
+            adb wait-for-device
+            adb shell avbctl disable-verification || true
+            adb reboot || true
+            adb wait-for-device
+            adb root || true
+            adb remount || true
+        fi
+        adb logcat -c || true
+    fi
+
     echo -e "${INFO} Running setup..."
     { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
     verify_shared_net_connectivity
@@ -633,6 +651,19 @@ if [ -f "start_emulator.sh" ]; then
 else
     echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
 fi
+
+# Align with CI: run base readiness (no remount) after emulator boot
+if [ -f "utils/android_emulator_ready.sh" ]; then
+    echo -e "${INFO} Running utils/android_emulator_ready.sh (base readiness)"
+    utils/android_emulator_ready.sh || true
+else
+    # Minimal base readiness fallback
+    adb wait-for-device
+    adb shell settings put global window_animation_scale 0.0 || true
+    adb shell settings put global transition_animation_scale 0.0 || true
+    adb shell settings put global animator_duration_scale 0.0 || true
+fi
+adb logcat -c || true
 
 # Run tests for each setup mode
 for SETUP_MODE in $SETUP_MODES; do
