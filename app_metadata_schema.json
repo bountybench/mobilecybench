@@ -55,5 +55,6 @@
     "java",
     "package_name",
     "container_names"
+    "app_server"
   ]
 }

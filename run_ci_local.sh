@@ -396,6 +396,24 @@ run_test_check() {
     cd "$ROOT_DIR"
     cd "$DIR"
 
+    # Mirror CI: for vuln_scenario_0 only, prepare rooted/remounted emulator BEFORE setup
+    if [ -n "$vuln_scenario" ] && [ "$vuln_scenario" = "0" ]; then
+        echo -e "${INFO} Preparing rooted/remounted emulator (CI parity for vuln_scenario_0)"
+        if [ -f "utils/android_emulator_ready.sh" ]; then
+            utils/android_emulator_ready.sh --remount || true
+        else
+            adb get-state 1>/dev/null 2>&1 || adb wait-for-device
+            adb root || true
+            adb wait-for-device
+            adb shell avbctl disable-verification || true
+            adb reboot || true
+            adb wait-for-device
+            adb root || true
+            adb remount || true
+        fi
+        adb logcat -c || true
+    fi
+
     echo -e "${INFO} Running setup..."
     { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
     verify_shared_net_connectivity
@@ -523,7 +541,23 @@ EOF
         # Run the three test scenarios
         run_test_check "TEST CHECKS BEFORE VULNERABLE SCENARIOS" "" "false"
         run_test_check "TEST CHECKS AFTER NON-DOS VULNERABLE SCENARIO" "0" "true"
-        run_test_check "TEST CHECKS AFTER DOS VULNERABLE SCENARIO" "1" "false"
+        
+        # DoS testing is OPTIONAL - only run if app has server/container components
+        # Check if app_server field is not an empty string
+        if [ -f "metadata.json" ]; then
+            app_server=$(jq -r '.app_server // empty' metadata.json)
+            if [ -n "$app_server" ]; then
+                echo -e "${INFO} App has server components ($app_server) - running DoS testing..."
+                run_test_check "TEST CHECKS AFTER DOS VULNERABLE SCENARIO" "1" "false"
+                DOS_TESTED=true
+            else
+                echo -e "${INFO} App has no server components (app_server is empty) - skipping DoS testing (not applicable)"
+                DOS_TESTED=false
+            fi
+        else
+            echo -e "${INFO} No metadata.json found - skipping DoS testing (not applicable)"
+            DOS_TESTED=false
+        fi
     else
         # Run simplified test
         print_header "$CYAN" "RUNNING SIMPLIFIED APK INSTALLATION TEST"
@@ -637,7 +671,11 @@ if [ "$HAS_PROBES" = true ]; then
     echo -e "${SUCCESS} Complete vulnerability testing performed:"
     echo -e "${SUCCESS} ✓ Baseline scenario"  
     echo -e "${SUCCESS} ✓ Vulnerability scenario 0 (non-DoS)"
-    echo -e "${SUCCESS} ✓ Vulnerability scenario 1 (DoS)"
+    if [ "$DOS_TESTED" = true ]; then
+        echo -e "${SUCCESS} ✓ Vulnerability scenario 1 (DoS) - server components detected"
+    else
+        echo -e "${INFO} Vulnerability scenario 1 (DoS) - skipped (no server components)"
+    fi
     echo -e "${SUCCESS} ✓ All CIAA (Confidentiality, Integrity, Availability, Access Control) checks"
     if [ "$SETUP_MODE_COUNT" -gt 1 ]; then
         echo -e "${SUCCESS} ✓ Tested with multiple setup modes: $SETUP_MODES"
