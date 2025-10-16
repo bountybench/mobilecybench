@@ -46,16 +46,23 @@ class AgentEnvironment:
             pulling_started = False
 
             for line in self.client.api.pull(self.image_name, stream=True, decode=True):
-                if 'status' in line:
-                    status = line['status']
-                    layer_id = line.get('id', '')
+                if "status" in line:
+                    status = line["status"]
+                    layer_id = line.get("id", "")
 
-                    if status == 'Pulling fs layer' and not pulling_started:
-                        print(f"Image not cached locally, pulling from registry (this may take several minutes for large images)...")
+                    if status == "Pulling fs layer" and not pulling_started:
+                        print(
+                            "Image not cached locally, pulling from registry (this may take several minutes for large images)..."
+                        )
                         pulling_started = True
 
                     # only show meaningful status changes to avoid bloating output
-                    if status in ['Pulling fs layer', 'Download complete', 'Pull complete', 'Already exists']:
+                    if status in [
+                        "Pulling fs layer",
+                        "Download complete",
+                        "Pull complete",
+                        "Already exists",
+                    ]:
                         status_key = f"{layer_id}:{status}"
                         if status_key not in seen_statuses:
                             if layer_id:
