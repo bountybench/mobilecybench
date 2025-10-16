@@ -18,7 +18,6 @@ ngrok.yml
 baseline_android_dir.txt
 after_android_dir.txt
 ssh_key
-.DS_Store
 .env
 !apps/**/.env
 token_usage.jsonl
