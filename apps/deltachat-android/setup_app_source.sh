@@ -88,6 +88,27 @@ main() {
     fi
 
     install_rust_targets
+    
+    # Create signing configuration for release build
+    if [[ ! -f "gradle.properties" ]]; then
+        touch gradle.properties
+    fi
+    
+    # Set up release signing using debug keystore for CI
+    echo "DC_RELEASE_STORE_FILE=$HOME/.android/debug.keystore" >> gradle.properties
+    echo "DC_RELEASE_STORE_PASSWORD=android" >> gradle.properties
+    echo "DC_RELEASE_KEY_ALIAS=androiddebugkey" >> gradle.properties
+    echo "DC_RELEASE_KEY_PASSWORD=android" >> gradle.properties
+    
+    # Ensure debug keystore exists
+    mkdir -p "$HOME/.android"
+    if [[ ! -f "$HOME/.android/debug.keystore" ]]; then
+        keytool -genkey -v -keystore "$HOME/.android/debug.keystore" \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass android -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US"
+    fi
+    
     build_rust_core
     build_deltachat
 
