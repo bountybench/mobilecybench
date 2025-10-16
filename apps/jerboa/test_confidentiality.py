@@ -12,7 +12,7 @@ Checks:
 import json
 import os
 import sys
-from typing import Dict, Set, List, Any
+from typing import Any, Dict, List, Set
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASELINE_FILE = os.path.join(SCRIPT_DIR, "baseline_manifest.json")

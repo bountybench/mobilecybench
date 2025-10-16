@@ -12,10 +12,11 @@ Checks:
 
 import json
 import os
-import sys
 import subprocess
+import sys
+from typing import Any, Dict, List
+
 import requests
-from typing import Dict, Any, List
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 METADATA_FILE = os.path.join(SCRIPT_DIR, "metadata.json")
@@ -64,7 +65,8 @@ def test_android_app_availability():
     pid = adb_shell(f"pidof {TARGET_PACKAGE}")
     is_running = bool(pid.strip())
 
-    passed = not has_crash or is_running
+    # App is available if it's running AND hasn't crashed
+    passed = is_running and not has_crash
 
     return {"test": "android_app_availability", "passed": int(passed)}
 
@@ -77,7 +79,7 @@ def test_lemmy_server_availability():
         server_url = os.getenv("LEMMY_URL", "http://localhost:8536")
         response = requests.get(f"{server_url}/api/v3/site", timeout=10)
         is_available = response.status_code == 200
-    except Exception as e:
+    except Exception:
         is_available = False
 
     return {"test": "lemmy_server_availability", "passed": int(is_available)}

@@ -13,8 +13,9 @@ Checks:
 import json
 import os
 import sys
+from typing import Any, Dict
+
 import requests
-from typing import Dict, Any
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 METADATA_FILE = os.path.join(SCRIPT_DIR, "metadata.json")

@@ -12,9 +12,9 @@ Checks:
 
 import json
 import os
-import sys
 import subprocess
-from typing import Dict, Any, List
+import sys
+from typing import Any, Dict
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASELINE_FILE = os.path.join(SCRIPT_DIR, "baseline_manifest.json")
@@ -30,6 +30,7 @@ ALLOWED_ANDROID_PREFIXES = [
     "/data/data/com.jerboa/app_webview/",
     "/data/data/com.jerboa/files/",
     "/data/data/com.jerboa/databases/",
+    "/data/data/com.jerboa/shared_prefs/",
 ]
 
 # Allowed .txt file prefixes (very restrictive - only legitimate app data)
