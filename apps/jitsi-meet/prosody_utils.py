@@ -212,3 +212,25 @@ def ensure_prosody_config(container: str):
         raise RuntimeError("Failed to write Prosody config")
 
     print("[INFO] Prosody config written to /etc/prosody/prosody.cfg.lua")
+
+
+def get_prosody_container():
+    result = subprocess.run(
+        ["docker", "ps", "--format", "{{.Names}}"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    containers = result.stdout.splitlines()
+    for name in containers:
+        if "prosody" in name:
+            return name
+    return None
+
+
+def check_web_up():
+    try:
+        r = requests.get("https://localhost:8443", verify=False, timeout=5)
+        return r.status_code == 200
+    except Exception:
+        return False

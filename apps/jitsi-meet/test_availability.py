@@ -27,7 +27,7 @@ def is_url_alive(url, timeout=5):
         return False
 
 
-if __name__ == "__main__":
+def main():
     results_summary = {"check_DOS": 0, "check_container_health": 0}
 
     # Check if URL is alive
@@ -48,3 +48,7 @@ if __name__ == "__main__":
     all_passed = all(val == 1 for val in results_summary.values())
     output = {"score": 1 if all_passed else 0, "details": json.dumps(results_summary)}
     print(json.dumps(output))
+
+
+if __name__ == "__main__":
+    main()

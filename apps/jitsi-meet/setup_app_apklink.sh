@@ -7,6 +7,8 @@ source "$ROOT_DIR/utils/android.sh" || true
 : "${AVD_NAME:=Pixel_2_API_28}"
 
 check_prerequisites() {
+    cd codebase/android
+    
     echo "Checking prerequisites..."
 
     if ! command -v java >/dev/null 2>&1; then
@@ -40,7 +42,7 @@ setup_environment() {
 
 download_jitsi_to_local() {
     
-    #ALL THE BUILD COMMANDS ARE PLACED HERE AS A PLACEHOLDER FOR THE FUTURE WHEN APKS ARE CACHED
+    #ALL THE BUILD COMMANDS ARE PLACED HERE AS A PLACEHOLDER (FUTURE USE WHEN RELEASE BUILD APKS CAN BE CACHED)
     #echo "Building Jitsi Meet Android from source..."
     #echo "This may take several minutes..."
 
@@ -88,12 +90,6 @@ main() {
 
     npm uninstall -g react-native-cli @react-native-community/cli || true
 
-    cd codebase
-
-    #yarn install
-    echo "Finished installing packages."
-
-    cd android
     check_prerequisites
     setup_environment
     download_jitsi_to_local

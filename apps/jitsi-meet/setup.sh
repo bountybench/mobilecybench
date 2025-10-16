@@ -44,9 +44,11 @@ install_jitsi() {
     fi
 
     cd ../..
-    #FOR DEBUG APK/RELEASE BUILD APK VERSIONS
+
+    #FOR DEBUG APK/RELEASE BUILD APK VERSIONS (FUTURE USE WHEN RELEASE BUILD APKS CAN BE CACHED)
     #APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
     #APK_PATH="app/build/outputs/apk/release/app-release-unsigned.apk"
+
     APK_PATH="apk/app-prebuilt.apk"
 
     if [[ ! -f $APK_PATH ]]; then
@@ -60,7 +62,7 @@ install_jitsi() {
     echo "Jitsi Meet installed successfully."
 
     echo "Launching Jitsi Meet..."
-    adb shell appops set org.jitsi.meet SYSTEM_ALERT_WINDOW allow #Ignore any popup windows asking for display over other apps
+    adb shell appops set org.jitsi.meet SYSTEM_ALERT_WINDOW allow #Ignore any popup windows
     adb shell am start -n org.jitsi.meet/.MainActivity
     echo "Finished & Launched APK installation."
 }
