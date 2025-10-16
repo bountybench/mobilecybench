@@ -12,5 +12,5 @@
   "dry_run": true,
   "custom_system_prompt": null,
   "agent_image": "cybench/mobilecybench:latest",
-  "access_backend": false
+  "access_backend": true
 }
