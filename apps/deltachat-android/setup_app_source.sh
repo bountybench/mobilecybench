@@ -73,6 +73,30 @@ sdk.dir=$ANDROID_HOME
 ndk.dir=$ANDROID_NDK_HOME
 EOF
 
+    # Create missing resource files that are causing compilation errors
+    mkdir -p src/main/res/values
+    
+    # Add missing string resources
+    if ! grep -q "zxing_msg_camera_framework_bug" src/main/res/values/strings.xml 2>/dev/null; then
+        # Add missing ZXing string
+        sed -i '/<\/resources>/i\    <string name="zxing_msg_camera_framework_bug">Camera framework bug detected</string>' src/main/res/values/strings.xml 2>/dev/null || echo '<resources><string name="zxing_msg_camera_framework_bug">Camera framework bug detected</string></resources>' > src/main/res/values/missing_strings.xml
+    fi
+    
+    # Add missing attributes
+    if ! grep -q "toolbarStyle" src/main/res/values/attrs.xml 2>/dev/null; then
+        # Add missing toolbar style attribute
+        sed -i '/<\/resources>/i\    <attr name="toolbarStyle" format="reference" />' src/main/res/values/attrs.xml 2>/dev/null || echo '<resources><attr name="toolbarStyle" format="reference" /></resources>' > src/main/res/values/missing_attrs.xml
+    fi
+    
+    # Add missing IDs
+    mkdir -p src/main/res/values
+    cat > src/main/res/values/missing_ids.xml << EOF
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="search_close_btn" type="id" />
+</resources>
+EOF
+
     local temp_out=$(mktemp)
     local temp_err=$(mktemp)
 
