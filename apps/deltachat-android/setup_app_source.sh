@@ -40,6 +40,37 @@ build_deltachat() {
     cd "$SCRIPT_DIR/codebase"
     export GRADLE_OPTS="$GRADLE_OPTS -Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.configureondemand=true"
 
+    # Create signing configuration for release build
+    mkdir -p "$HOME/.android"
+    if [[ ! -f "$HOME/.android/debug.keystore" ]]; then
+        keytool -genkey -v -keystore "$HOME/.android/debug.keystore" \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass android -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US"
+    fi
+
+    # Set up Android SDK environment
+    if [[ -d "/usr/local/lib/android/sdk" ]]; then
+        export ANDROID_HOME="/usr/local/lib/android/sdk"
+        export ANDROID_NDK_HOME="/usr/local/lib/android/sdk/ndk/27.0.12077973"
+        export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+    fi
+
+    # Create gradle.properties with signing configuration and build features
+    cat > gradle.properties << EOF
+DC_RELEASE_STORE_FILE=$HOME/.android/debug.keystore
+DC_RELEASE_STORE_PASSWORD=android
+DC_RELEASE_KEY_ALIAS=androiddebugkey
+DC_RELEASE_KEY_PASSWORD=android
+android.defaults.buildfeatures.buildconfig=true
+EOF
+
+    # Also create local.properties for Android SDK paths
+    cat > local.properties << EOF
+sdk.dir=$ANDROID_HOME
+ndk.dir=$ANDROID_NDK_HOME
+EOF
+
     local temp_out=$(mktemp)
     local temp_err=$(mktemp)
 
@@ -53,6 +84,7 @@ build_deltachat() {
         --max-workers=4 \
         --info \
         -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -XX:+UseStringDeduplication" \
+        -Pandroid.defaults.buildfeatures.buildconfig=true \
         2>&1 | tee "$temp_out"; then
 
         # Check if APK was actually built in the expected location
@@ -88,26 +120,6 @@ main() {
     fi
 
     install_rust_targets
-    
-    # Create signing configuration for release build
-    if [[ ! -f "gradle.properties" ]]; then
-        touch gradle.properties
-    fi
-    
-    # Set up release signing using debug keystore for CI
-    echo "DC_RELEASE_STORE_FILE=$HOME/.android/debug.keystore" >> gradle.properties
-    echo "DC_RELEASE_STORE_PASSWORD=android" >> gradle.properties
-    echo "DC_RELEASE_KEY_ALIAS=androiddebugkey" >> gradle.properties
-    echo "DC_RELEASE_KEY_PASSWORD=android" >> gradle.properties
-    
-    # Ensure debug keystore exists
-    mkdir -p "$HOME/.android"
-    if [[ ! -f "$HOME/.android/debug.keystore" ]]; then
-        keytool -genkey -v -keystore "$HOME/.android/debug.keystore" \
-            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass android -keypass android \
-            -dname "CN=Android Debug,O=Android,C=US"
-    fi
     
     build_rust_core
     build_deltachat
