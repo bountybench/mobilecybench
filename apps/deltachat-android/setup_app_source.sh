@@ -63,6 +63,8 @@ DC_RELEASE_STORE_PASSWORD=android
 DC_RELEASE_KEY_ALIAS=androiddebugkey
 DC_RELEASE_KEY_PASSWORD=android
 android.defaults.buildfeatures.buildconfig=true
+android.useAndroidX=true
+android.enableJetifier=true
 EOF
 
     # Also create local.properties for Android SDK paths
