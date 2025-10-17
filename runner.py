@@ -225,10 +225,42 @@ class MobileCybenchRunner:
         # for example, if we fail after starting containers, we should stop them
         sys.exit(1)
 
+    def _validate_api_key(self):
+        """Validate OpenAI API key early in the pipeline"""
+        logger.info("Validating OpenAI API key...")
+
+        # Load .env file from agent directory
+        env_file = self.agent_dir / ".env"
+        if env_file.exists():
+            logger.info(f"Loading existing environment from {env_file}")
+            load_dotenv(dotenv_path=env_file, override=False)
+        else:
+            self._exit_with_error(
+                f"No existing .env file found at {env_file}. Please create one with OPENAI_API_KEY."
+            )
+
+        # Check if API key exists in environment
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            self._exit_with_error("OPENAI_API_KEY not found in environment or .env")
+
+        # Validate the API key works by making a test call
+        try:
+            from agent.model_providers import get_model_provider
+
+            provider = get_model_provider("openai")
+            provider.validate()
+            logger.info("✓ OpenAI API key validated successfully")
+        except Exception as e:
+            self._exit_with_error(f"OpenAI API key validation failed: {e}")
+
     def validate_input(self):
         """Validate app name and required files"""
-        # TODO: Implement API key validation
         logger.info("Validating input...")
+
+        # Validate API key early (before starting emulator and app servers)
+        if not self.config["dry_run"]:
+            self._validate_api_key()
 
         # Check if app directory exists
         if not self.app_dir.exists():
@@ -388,30 +420,15 @@ class MobileCybenchRunner:
         logger.info("✓ Agent environment setup completed")
 
     def _setup_env_file(self):
-        """Handle .env file creation/update for OpenAI API key"""
-        logger.info("Setting up environment file...")
+        """Load environment file for OpenAI API key (already validated)"""
+        logger.info("Loading environment file...")
 
         env_file = self.agent_dir / ".env"
-        api_key = None
-
-        # Load existing .env
-        if env_file.exists():
-            logger.info(f"Loading existing environment from {env_file}")
-            load_dotenv(dotenv_path=env_file, override=False)
-        else:
-            logger.error(
-                f"No existing .env file found at {env_file}. Please create one with OPENAI_API_KEY."
-            )
-            self._exit_with_error("Missing .env file with OPENAI_API_KEY")
-
+        # We know the file exists and key is valid from earlier validation
+        load_dotenv(dotenv_path=env_file, override=False)
         api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            logger.error("OPENAI_API_KEY not found in environment or .env; exiting.")
-            self._exit_with_error("OPENAI_API_KEY missing")
-        else:
-            logger.info("✓ Using OPENAI_API_KEY from environment/.env (no prompt mode)")
-
         os.environ["OPENAI_API_KEY"] = api_key
+        logger.info("✓ Environment loaded with OPENAI_API_KEY")
 
     def _create_docker_network(self):
         """Create shared docker network or print already created if it exists"""
