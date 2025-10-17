@@ -4,9 +4,8 @@
     "java": "17",
     "package_name": "funkwhale",
     "gh_link": "https://github.com/cy-suite/funkwhale.git",
-    "download_link": "https://f-droid.org/repo/audio.funkwhale.ffa_300000.apk",
     "emulator_server": "http://10.0.2.2",
     "app_server": "http://front:80",
     "username": "funkwhaleadmin",
-    "password": "testpass123"
+    "password": "adminPass101625!"
 }

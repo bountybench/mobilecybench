@@ -102,95 +102,6 @@ setup_java17() {
     return 1
 }
 
-# Function to install Java 17 if not found
-install_java17() {
-    print_status "Java 17 not found. Installing..."
-
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS installation
-        if command_exists brew; then
-            print_status "Installing OpenJDK 17 via Homebrew..."
-            brew install openjdk@17
-
-            # Set up symlinks
-            if [ -d "/opt/homebrew/opt/openjdk@17" ]; then
-                export JAVA_HOME="/opt/homebrew/opt/openjdk@17"
-            elif [ -d "/usr/local/opt/openjdk@17" ]; then
-                export JAVA_HOME="/usr/local/opt/openjdk@17"
-            fi
-
-            if [ -n "$JAVA_HOME" ]; then
-                export PATH="$JAVA_HOME/bin:$PATH"
-                print_success "Java 17 installed and configured"
-                return 0
-            fi
-        else
-            print_error "Homebrew not found. Please install Homebrew first:"
-            echo "  /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
-            return 1
-        fi
-    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        # Linux installation
-        if command_exists apt-get; then
-            # Ubuntu/Debian
-            print_status "Installing OpenJDK 17 via apt-get..."
-            sudo apt-get update -qq
-            sudo apt-get install -y openjdk-17-jdk
-
-            export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
-            if [ ! -d "$JAVA_HOME" ]; then
-                # Try alternative path
-                export JAVA_HOME="/usr/lib/jvm/java-17-openjdk"
-            fi
-            if [ ! -d "$JAVA_HOME" ]; then
-                # Find it automatically
-                export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
-            fi
-
-            export PATH="$JAVA_HOME/bin:$PATH"
-            print_success "Java 17 installed and configured"
-            return 0
-        elif command_exists yum; then
-            # CentOS/RHEL
-            print_status "Installing OpenJDK 17 via yum..."
-            sudo yum install -y java-17-openjdk-devel
-
-            export JAVA_HOME="/usr/lib/jvm/java-17-openjdk"
-            export PATH="$JAVA_HOME/bin:$PATH"
-            print_success "Java 17 installed and configured"
-            return 0
-        else
-            print_error "No supported package manager found (apt-get or yum)"
-            print_error "Please install Java 17 manually for your system"
-            return 1
-        fi
-    else
-        print_error "Unsupported OS: $OSTYPE"
-        print_error "Please install Java 17 manually for your system"
-        return 1
-    fi
-
-    return 1
-}
-
-# Function to check Java version
-check_java() {
-    print_status "Ensuring Java 17 is available..."
-
-    # First try to switch to Java 17 if it exists
-    if setup_java17; then
-        return 0
-    fi
-
-    # If not found, try to install it
-    if install_java17; then
-        return 0
-    fi
-
-    print_error "Could not set up Java 17"
-    return 1
-}
-
 # Function to verify Java 17 is active
 verify_java17() {
     print_status "Verifying Java 17 is active..."
@@ -224,64 +135,6 @@ check_android_sdk() {
         print_warning "Android SDK not found at $ANDROID_HOME"
         return 1
     fi
-}
-
-# Function to install Android command line tools
-install_android_tools() {
-    print_status "Installing Android SDK command line tools..."
-    
-    # Create Android SDK directory
-    mkdir -p "$ANDROID_HOME"
-    cd "$ANDROID_HOME"
-    
-    # Download command line tools (ARM64 compatible)
-    if [[ "$(uname -m)" == "arm64" ]]; then
-        print_status "Detected ARM64 Mac, downloading appropriate SDK tools..."
-        SDK_URL="https://dl.google.com/android/repository/commandlinetools-mac-9477386_latest.zip"
-    else
-        SDK_URL="https://dl.google.com/android/repository/commandlinetools-mac-9477386_latest.zip"
-    fi
-    
-    curl -L -o cmdline-tools.zip "$SDK_URL"
-    unzip -q cmdline-tools.zip
-    rm cmdline-tools.zip
-    
-    # Move to correct directory structure
-    mkdir -p cmdline-tools/latest
-    mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || true
-    
-    # Set environment variables
-    export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-    export PATH="$ANDROID_HOME/platform-tools:$PATH"
-    
-    # Add to shell profiles
-    echo "export ANDROID_HOME=$ANDROID_HOME" >> ~/.zshrc
-    echo "export PATH=\$ANDROID_HOME/cmdline-tools/latest/bin:\$PATH" >> ~/.zshrc
-    echo "export PATH=\$ANDROID_HOME/platform-tools:\$PATH" >> ~/.zshrc
-    echo "export ANDROID_HOME=$ANDROID_HOME" >> ~/.bash_profile
-    echo "export PATH=\$ANDROID_HOME/cmdline-tools/latest/bin:\$PATH" >> ~/.bash_profile
-    echo "export PATH=\$ANDROID_HOME/platform-tools:\$PATH" >> ~/.bash_profile
-    
-    print_success "Android command line tools installed"
-}
-
-# Function to install Android SDK components
-install_android_components() {
-    print_status "Installing Android SDK components..."
-    
-    # Accept licenses
-    yes | sdkmanager --licenses >/dev/null 2>&1 || true
-    
-    # Install required components
-    sdkmanager --install \
-        "platform-tools" \
-        "platforms;android-$ANDROID_SDK_VERSION" \
-        "build-tools;$ANDROID_BUILD_TOOLS_VERSION" \
-        "system-images;android-$ANDROID_SDK_VERSION;google_apis;arm64-v8a" \
-        "emulator" \
-        "ndk;25.1.8937393"
-    
-    print_success "Android SDK components installed"
 }
 
 # Function to check Android project structure
@@ -373,11 +226,11 @@ EOF
     fi
 }
 
-# Function to sign APK with debug keystore
+# Function to sign APK with debug keystore (in-place signing)
 sign_apk() {
-    local unsigned_apk="$1"
-    print_status "Signing APK for installation..."
-    print_status "Unsigned APK: $unsigned_apk"
+    local apk_file="$1"
+    print_status "Signing APK in-place for installation..."
+    print_status "APK: $apk_file"
 
     # Default debug keystore location
     local debug_keystore="$HOME/.android/debug.keystore"
@@ -411,11 +264,7 @@ sign_apk() {
         print_status "Using existing debug keystore: $debug_keystore"
     fi
 
-    # Create signed APK filename
-    local signed_apk="${unsigned_apk%.apk}-signed.apk"
-    print_status "Target signed APK: $signed_apk"
-
-    # Try using apksigner first (preferred for APKs with native libraries)
+    # Sign the APK in place (overwrite original)
     if [ -n "$ANDROID_HOME" ]; then
         local apksigner_paths=("$ANDROID_HOME"/build-tools/*/apksigner)
         if [ -f "${apksigner_paths[0]}" ]; then
@@ -426,62 +275,72 @@ sign_apk() {
                 --ks "$debug_keystore" \
                 --ks-pass pass:android \
                 --key-pass pass:android \
-                --out "$signed_apk" \
-                "$unsigned_apk" 2>/dev/null; then
+                "$apk_file" 2>&1; then
 
                 print_success "APK signed successfully with apksigner"
-                echo "$signed_apk"
+                echo "$apk_file"
                 return 0
             else
-                print_warning "apksigner failed"
-                rm -f "$signed_apk"
+                print_error "apksigner failed to sign APK"
+                return 1
             fi
         else
-            print_status "apksigner not found in Android SDK"
+            print_error "apksigner not found in Android SDK"
+            return 1
         fi
     else
-        print_warning "ANDROID_HOME not set - cannot use apksigner"
+        print_error "ANDROID_HOME not set - cannot use apksigner"
+        return 1
     fi
-
-    # Fall back to jarsigner (may not work well with native libraries)
-    if command_exists jarsigner; then
-        print_status "Falling back to jarsigner..."
-
-        # Copy unsigned APK to signed filename first
-        cp "$unsigned_apk" "$signed_apk"
-
-        if jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-            -keystore "$debug_keystore" \
-            -storepass android \
-            -keypass android \
-            "$signed_apk" \
-            androiddebugkey 2>/dev/null; then
-
-            print_success "APK signed successfully with jarsigner"
-            print_warning "Note: jarsigner may not work well with native libraries"
-            echo "$signed_apk"
-            return 0
-        else
-            print_warning "jarsigner failed - removing failed signed APK"
-            rm -f "$signed_apk"
-        fi
-    else
-        print_warning "jarsigner not found"
-    fi
-
-    print_error "Could not sign APK - all signing methods failed"
-    return 1
 }
 
 # Function to build APK
 build_apk() {
-    print_status "Building Funkwhale Android APK..."
+     print_status "Building Funkwhale Android APK..."
     cd "$CODEBASE_DIR"
 
-    # Build release APK first (preferred for security testing)
+#     # Allow cleartext HTTP traffic for testing with local server
+#     print_status "Configuring network security to allow HTTP traffic..."
+#     cat > app/src/main/res/xml/security.xml << 'EOF'
+# <?xml version="1.0" encoding="utf-8"?>
+# <network-security-config xmlns:tools="http://schemas.android.com/tools">
+#   <base-config cleartextTrafficPermitted="true">
+#     <trust-anchors>
+#       <certificates src="system" />
+#       <certificates
+#         src="user"
+#         tools:ignore="AcceptsUserCertificates" />
+#     </trust-anchors>
+#   </base-config>
+#   <domain-config cleartextTrafficPermitted="true">
+#     <domain includeSubdomains="true">10.0.2.2</domain>
+#     <domain includeSubdomains="true">localhost</domain>
+#   </domain-config>
+# </network-security-config>
+# EOF
+
+    # Add Gson ProGuard rules to fix TypeToken errors
+    print_status "Adding Gson ProGuard rules..."
+    cat >> app/proguard-rules.pro << 'EOF'
+
+# Gson rules - preserve generic signatures for TypeToken
+-keepattributes Signature
+-keepattributes *Annotation*
+-dontwarn sun.misc.**
+-keep class com.google.gson.** { *; }
+-keep class * extends com.google.gson.TypeAdapter
+-keep class * implements com.google.gson.TypeAdapterFactory
+-keep class * implements com.google.gson.JsonSerializer
+-keep class * implements com.google.gson.JsonDeserializer
+-keepclassmembers,allowobfuscation class * {
+  @com.google.gson.annotations.SerializedName <fields>;
+}
+EOF
+
+    # Build release APK (preferred for security testing)
     print_status "Building release APK..."
 
-    # First try with --no-daemon to avoid daemon issues
+    # Build with --no-daemon to avoid daemon issues
     print_status "Attempting release build with --no-daemon flag..."
     if ./gradlew clean assembleRelease --no-daemon; then
         # Look for release APK
@@ -489,25 +348,27 @@ build_apk() {
         if [ -n "$RELEASE_APK" ] && [ -f "$RELEASE_APK" ]; then
             print_status "Found unsigned release APK: $RELEASE_APK"
 
-            # Sign the APK with debug keystore for testing
-            SIGNED_APK=$(sign_apk "$RELEASE_APK")
-            if [ $? -eq 0 ] && [ -n "$SIGNED_APK" ] && [ -f "$SIGNED_APK" ]; then
-                APK_SIZE=$(du -h "$SIGNED_APK" | cut -f1)
-                print_success "Signed release APK created successfully!"
-                print_status "APK location: $CODEBASE_DIR/$SIGNED_APK"
+            # Sign the APK in place with debug keystore for testing
+            if sign_apk "$RELEASE_APK"; then
+                APK_SIZE=$(du -h "$RELEASE_APK" | cut -f1)
+                print_success "Release APK signed successfully!"
+                print_status "APK location: $CODEBASE_DIR/$RELEASE_APK"
                 print_status "APK size: $APK_SIZE"
 
                 # Get package info if aapt is available
                 if command_exists aapt; then
-                    PACKAGE_NAME=$(aapt dump badging "$SIGNED_APK" 2>/dev/null | grep "package: name" | cut -d"'" -f2 || echo "unknown")
-                    VERSION_NAME=$(aapt dump badging "$SIGNED_APK" 2>/dev/null | grep "versionName" | cut -d"'" -f4 || echo "unknown")
+                    PACKAGE_NAME=$(aapt dump badging "$RELEASE_APK" 2>/dev/null | grep "package: name" | cut -d"'" -f2 || echo "unknown")
+                    VERSION_NAME=$(aapt dump badging "$RELEASE_APK" 2>/dev/null | grep "versionName" | cut -d"'" -f4 || echo "unknown")
                     print_status "Package: $PACKAGE_NAME"
                     print_status "Version: $VERSION_NAME"
                 fi
             else
-                print_warning "Failed to sign release APK, keeping unsigned version"
-                print_status "Unsigned APK location: $CODEBASE_DIR/$RELEASE_APK"
+                print_error "Failed to sign release APK"
+                return 1
             fi
+        else
+            print_error "No release APK found after build"
+            return 1
         fi
     else
         print_error "Release build failed"
@@ -559,13 +420,6 @@ main() {
     print_status "Starting Funkwhale Android APK build..."
     print_status "Working with codebase at: $CODEBASE_DIR"
     echo ""
-
-    # Check prerequisites - set up Java 17
-    if ! check_java; then
-        print_error "Failed to set up Java 17"
-        print_status "This project requires Java 17 specifically due to Kotlin compiler compatibility"
-        exit 1
-    fi
 
     # Verify Java 17 is actually active
     if ! verify_java17; then

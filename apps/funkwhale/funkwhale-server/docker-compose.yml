@@ -1,0 +1,126 @@
+services:
+  postgres:
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - "POSTGRES_HOST_AUTH_METHOD=trust"
+    image: postgres:15-alpine
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U funkwhale"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - private_net
+
+  redis:
+    restart: unless-stopped
+    env_file: .env
+    image: redis:7-alpine
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - private_net
+
+  celeryworker:
+    restart: unless-stopped
+    image: funkwhale/api:${FUNKWHALE_VERSION:-latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    command:
+      - celery
+      - --app=funkwhale_api.taskapp
+      - worker
+      - --loglevel=INFO
+      - --concurrency=${CELERYD_CONCURRENCY-0}
+    environment:
+      - C_FORCE_ROOT=true
+    volumes:
+      - "${MUSIC_DIRECTORY_SERVE_PATH-/srv/funkwhale/data/music}:${MUSIC_DIRECTORY_PATH-/music}:ro"
+      - "${MEDIA_ROOT}:${MEDIA_ROOT}"
+    networks:
+      - private_net
+
+  celerybeat:
+    restart: unless-stopped
+    image: funkwhale/api:${FUNKWHALE_VERSION:-latest}
+    command:
+      - celery
+      - --app=funkwhale_api.taskapp
+      - beat
+      - --loglevel=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    networks:
+      - private_net
+
+  api:
+    restart: unless-stopped
+    image: funkwhale/api:${FUNKWHALE_VERSION:-latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    ports:
+      # API directly accessible on port 8080 for Android emulator
+      - "8080:5000"
+    volumes:
+      - "${MUSIC_DIRECTORY_SERVE_PATH-/srv/funkwhale/data/music}:${MUSIC_DIRECTORY_PATH-/music}:ro"
+      - "${MEDIA_ROOT}:${MEDIA_ROOT}"
+      - "${STATIC_ROOT}:${STATIC_ROOT}"
+    networks:
+      - shared_net
+      - private_net
+
+  front:
+    restart: unless-stopped
+    image: funkwhale/front:${FUNKWHALE_VERSION:-latest}
+    env_file:
+      - .env
+    environment:
+      - "NGINX_MAX_BODY_SIZE=${NGINX_MAX_BODY_SIZE-100M}"
+    volumes:
+      - "${MUSIC_DIRECTORY_SERVE_PATH-/srv/funkwhale/data/music}:${MUSIC_DIRECTORY_PATH-/music}:ro"
+      - "${MEDIA_ROOT}:${MEDIA_ROOT}:ro"
+      - "${STATIC_ROOT}:/usr/share/nginx/html/staticfiles:ro"
+    ports:
+      - "80:80"
+    networks:
+      - shared_net
+      - private_net
+
+  typesense:
+    restart: unless-stopped
+    env_file:
+      - .env
+    image: typesense/typesense:0.24.0
+    volumes:
+      - ./typesense/data:/data
+    command: --data-dir /data --enable-cors
+    profiles:
+      - typesense
+    networks:
+      - private_net
+
+networks:
+  shared_net:
+    external: true
+  private_net:
+    driver: bridge

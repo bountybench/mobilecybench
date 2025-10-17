@@ -24,7 +24,7 @@ cleanup_docker(){
         # Stop all services
         if command_exists docker; then
             info "Stopping Docker services..."
-            docker-compose down -v 2>/dev/null || warn "Failed to stop some services"
+            docker-compose down -v 2>/dev/null || docker compose down -v 2>/dev/null || warn "Failed to stop some services"
 
             # Remove any dangling containers
             info "Removing Funkwhale containers..."
@@ -41,33 +41,36 @@ cleanup_docker(){
 }
 
 cleanup_files(){
-    info "Cleaning up temporary files"
+    info "Cleaning up data files"
 
-    # Remove server directory
     local server_dir="$SCRIPT_DIR/funkwhale-server"
-    if [ -d "$server_dir" ]; then
-        info "Removing server directory..."
-        rm -rf "$server_dir" && info "Removed server directory"
+
+    # Remove data directories (postgres, redis, media, etc.)
+    if [ -d "$server_dir/data" ]; then
+        info "Removing data directories..."
+        rm -rf "$server_dir/data" || {
+            rm -rf "$server_dir/data" || warn "Failed to remove data directory"
+        }
+
+        # Verify removal
+        if [ -d "$server_dir/data" ]; then
+            warn "Data directory still exists after cleanup attempt"
+        fi
     fi
 
-    # Remove secrets file
-    [ -f "$SCRIPT_DIR/secrets.json" ] && rm -f "$SCRIPT_DIR/secrets.json" && info "Removed secrets.json"
+    # Remove typesense data
+    if [ -d "$server_dir/typesense" ]; then
+        info "Removing typesense data..."
+        sudo rm -rf "$server_dir/typesense" || rm -rf "$server_dir/typesense" || warn "Failed to remove typesense data"
+    fi
 
-    # Note: APK files in apps/funkwhale/apk/ are preserved for future installations
-    # To clean build artifacts, run: cd codebase && ./gradlew clean
+    # Remove generated .env file
+    if [ -f "$server_dir/.env" ]; then
+        info "Removing .env file..."
+        rm -f "$server_dir/.env"
+    fi
 
     info "File cleanup completed"
-}
-
-uninstall_app(){
-    info "Uninstalling Funkwhale app from emulator/device"
-
-    if command_exists adb && adb get-state >/dev/null 2>&1; then
-        # Try to uninstall the app
-        adb uninstall audio.funkwhale.ffa 2>/dev/null && info "App uninstalled" || warn "App may not be installed"
-    else
-        warn "No device connected or ADB not available"
-    fi
 }
 
 main(){
@@ -76,15 +79,13 @@ main(){
     # Stop Docker services and remove containers
     cleanup_docker
 
-    # Clean up temporary files
+    # Clean up data files
     cleanup_files
-
-    # Uninstall app from device
-    uninstall_app
 
     info "Funkwhale cleanup completed!"
     echo ""
-    echo "All Docker containers, networks, and temporary files have been removed."
+    echo "All Docker containers, data files, and app have been removed."
+    echo "APK files in apk/ directory are preserved."
     echo "To restart the setup, run: ./setup.sh"
 }
 
