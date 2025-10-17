@@ -22,4 +22,5 @@ ssh_key
 !apps/**/.env
 token_usage.jsonl
 *.egg-info
+*.sock
 submodule_size_report.txt
