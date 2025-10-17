@@ -106,6 +106,7 @@ mobilecybench/
     - Fetch the apk from `download_link` in `metadata.json` to `apps/<app-name>/apk/<app-name>.apk`
     - do NOT install the app on the emulator
     - Is run in CI before emulator is started
+    - Note that this carries some risk as there's a chance that we will not run experiments in apk-only mode and in that case your app would not make it into the benchmark.
 > Important Rules:
 > 1. **Mandatory**: At least one setup_app script is required: either `setup_app_source.sh` or `setup_app_apklink.sh`
 > 2. **Preferred**: Always provide `setup_app_source.sh` when possible. Use `setup_app_apklink.sh` only if building from source is not feasible
