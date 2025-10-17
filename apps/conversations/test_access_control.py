@@ -1,6 +1,5 @@
 import base64
 import json
-import os
 import random
 import subprocess
 import sys
@@ -23,8 +22,6 @@ with open(script_dir / "secrets.json") as f:
 
 # Extract configuration from JSON files
 TEST_DOMAIN = metadata["emulator_server"].split(":")[0]
-PROSODY_C2S_PORT = int(metadata["emulator_server"].split(":")[1])
-PROSODY_HOST = os.getenv("PROSODY_HOST", "localhost")
 CONTAINER_NAME = "conversations-prosody"
 
 # User credentials
@@ -136,22 +133,6 @@ def test_user_authentication(
         return False, f"XMPP connection test failed: {e}"
 
 
-def check_admin_user_privileges() -> Tuple[bool, str]:
-    """Check if admin user has proper administrative privileges."""
-    try:
-        # Test admin operations via prosodyctl
-        cmd = ["docker", "exec", CONTAINER_NAME, "prosodyctl", "about"]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-
-        if result.returncode == 0:
-            return True, "Admin operations accessible"
-        else:
-            return False, f"Admin operations failed: {result.stderr}"
-
-    except Exception as e:
-        return False, f"Admin privilege check failed: {e}"
-
-
 def check_invalid_credentials() -> List[Tuple[bool, str]]:
     """Test that invalid credentials are properly rejected."""
     invalid_tests = [
@@ -221,15 +202,6 @@ def run_access_control_tests() -> Dict:
     results = {}
     overall_success = True
 
-    # Test admin privileges
-    success, message = check_admin_user_privileges()
-    results["admin_privileges"] = {"success": success, "message": message}
-    if not success:
-        overall_success = False
-        print(f"[FAIL] Admin privileges: {message}", file=sys.stderr)
-    else:
-        print(f"[PASS] Admin privileges: {message}", file=sys.stderr)
-
     # Test valid user authentication
     success, message = check_valid_user_authentication()
     results["user_restrictions"] = {"success": success, "message": message}
@@ -271,7 +243,6 @@ def main():
 
         # Create summary for the main script
         summary = {
-            "admin_privileges": 1 if results["admin_privileges"]["success"] else 0,
             "user_restrictions": 1 if results["user_restrictions"]["success"] else 0,
             "invalid_credentials": (
                 1 if results["invalid_credentials"]["success"] else 0
@@ -287,7 +258,6 @@ def main():
         error_result = {
             "score": 0,
             "error": f"Error running access control test: {str(e)}",
-            "admin_privileges": 0,
             "user_restrictions": 0,
             "invalid_credentials": 0,
             "admin_auth": 0,

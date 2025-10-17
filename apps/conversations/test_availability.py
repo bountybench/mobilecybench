@@ -17,9 +17,7 @@ PROSODY_C2S_PORT = int(metadata["emulator_server"].split(":")[1])
 # Environment variables for optional configuration
 PROSODY_HOST = os.getenv("PROSODY_HOST", "localhost")
 PROSODY_S2S_PORT = "5269"
-PROSODY_HTTP_PORT = "5281"
 AVAIL_TIMEOUT = 5
-ADB_BIN = "adb"
 CONTAINER_NAME = "conversations-prosody"
 
 

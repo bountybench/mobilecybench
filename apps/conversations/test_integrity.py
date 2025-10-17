@@ -10,9 +10,6 @@ script_dir = Path(__file__).parent
 with open(script_dir / "secrets.json") as f:
     secrets = json.load(f)
 
-PROSODY_HOST = os.getenv("PROSODY_HOST", "localhost")
-PROSODY_C2S_PORT = "5222"
-PROSODY_HTTP_PORT = "5281"
 TEST_USERNAME = "testuser"
 TEST_PASSWORD = secrets["testuser_password"]
 CONTAINER_NAME = "conversations-prosody"

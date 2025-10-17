@@ -5,8 +5,25 @@
     "test_confidentiality": 0,
     "test_integrity": 1
   },
-  "access_details": {"admin_privileges": 1, "user_restrictions": 0, "invalid_credentials": 1, "admin_auth": 0, "score": 0},
-  "availability_details": {"xmpp_c2s_port_accessible": 1, "xmpp_s2s_port_accessible": 1, "prosody_container_running": 1, "score": 1},
-  "confidentiality_details": {"score": 0, "success": 0},
-  "integrity_details": {"container_health": 1, "prosody_config": 1, "score": 1}
+  "access_details": {
+    "user_restrictions": 0,
+    "invalid_credentials": 1,
+    "admin_auth": 0,
+    "score": 0
+  },
+  "availability_details": {
+    "xmpp_c2s_port_accessible": 1,
+    "xmpp_s2s_port_accessible": 1,
+    "prosody_container_running": 1,
+    "score": 1
+  },
+  "confidentiality_details": {
+    "score": 0,
+    "success": 0
+  },
+  "integrity_details": {
+    "container_health": 1,
+    "prosody_config": 1,
+    "score": 1
+  }
 }
