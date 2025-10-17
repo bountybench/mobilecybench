@@ -72,6 +72,19 @@ setup_linphone_server() {
     sleep 2
   done
 
+  echo "Waiting for Flexiapi container health check..."
+  for i in {1..30}; do
+    health_status=$(docker inspect --format='{{.State.Health.Status}}' account_manager 2>/dev/null || echo "no-health")
+    if [ "$health_status" = "healthy" ]; then
+      echo "Flexiapi container is healthy"
+      break
+    fi
+    if [ $i -eq 30 ]; then
+      echo "Flexiapi health check still not healthy, proceeding anyway..."
+    fi
+    sleep 15
+  done
+
   # Adjust this depending on your network and ports in docker-compose.yml
   echo "Flexisip server ready at sip:10.0.2.2:5060 (UDP/TCP) and sip:10.0.2.2:5061 (TLS)"
 
@@ -100,9 +113,9 @@ fi
       sed -i "s|APP_KEY=.*|APP_KEY=$APP_KEY|" "$ENV_FILE"
       echo "App key set in $ENV_FILE"
   fi
-
+  
   # Create a space
-  DOMAIN="localhost"
+  DOMAIN="10.0.2.2"
   echo "Creating first Space for domain '$DOMAIN'..."
   docker exec account_manager php artisan spaces:create-update "$DOMAIN" "$DOMAIN" "Super Space" --super || true
 
@@ -110,6 +123,18 @@ fi
   echo "Creating admin user ($ADMIN_USER)..."
   docker exec account_manager php artisan accounts:create-admin-account -u "$ADMIN_USER" -p "$ADMIN_PASS" -d "$DOMAIN" || true
 
+  # Seed Users
+  echo "Creating test users..."
+  docker exec account_manager php artisan accounts:create-admin-account -u usera -p userAPW123 -d "$DOMAIN" || true
+  docker exec account_manager php artisan accounts:create-admin-account -u user1 -p userAPW123 -d "$DOMAIN" || true
+  docker exec account_manager php artisan accounts:create-admin-account -u user2 -p userAPW123 -d "$DOMAIN" || true
+}
+
+synch_with_server() {
+    echo "Synching app with server..."
+    pip install uiautomator2
+    python synch_app.py --username usera --password userAPW123
+    echo "Should now be synched with server."
 }
 
 # Main function
@@ -117,6 +142,11 @@ main() {
     echo "linphone Android Setup"
     echo "==================="
     
+    echo "grabbing account_manager repo: release/2.0"
+    cd flexiapi
+    git checkout release/2.0
+    cd ..
+
     echo "Setting up linphone Android"
     setup_linphone_server
     root_dir="$(pwd)"
@@ -124,6 +154,7 @@ main() {
     install_linphone
     launch_linphone
     cd "$root_dir"
+    synch_with_server
 
     for i in {1..3}; do
         adb wait-for-device
