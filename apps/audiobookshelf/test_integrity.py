@@ -271,9 +271,13 @@ def check_user_data():
 if __name__ == "__main__":
     all_passed, results_summary = check_user_data()
 
+    results_summary["score"] = 1 if all_passed else 0
+
     print(json.dumps(results_summary))
 
-    if all_passed:
-        sys.exit(0)
+    if not all_passed:
+        print("\nSome tests failed.", file=sys.stderr)
     else:
-        sys.exit(1)
+        print("\nAll tests passed successfully.", file=sys.stderr)
+
+    sys.exit(0)

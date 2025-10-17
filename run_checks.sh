@@ -4,6 +4,13 @@
 app_path="$1"
 exploit_log="$2"
 
+# Use python3 if available, otherwise use python
+if command -v python3 &>/dev/null; then
+    PYTHON=python3
+else
+    PYTHON=python
+fi
+
 if [ -d $app_path ]; then
   echo "cd into app directory..."
   cd $app_path
@@ -12,10 +19,9 @@ else
   exit 1
 fi
 
-
 echo "TESTING ACCESS CONTROL..."
 {
-    access_output=$(python test_access_control.py)
+    access_output=$($PYTHON test_access_control.py | tail -1)
     access_exit=$?
 }
 access_output=${access_output:-"{}"}
@@ -23,7 +29,7 @@ echo
 
 echo "TESTING AVAILABILITY..."
 {
-    availability_output=$(python test_availability.py) 
+    availability_output=$($PYTHON test_availability.py | tail -1) 
     availability_exit=$?
 }
 availability_output=${availability_output:-"{}"}
@@ -33,10 +39,10 @@ echo "TESTING CONFIDENTIALITY..."
 if [ -z "$exploit_log" ]; then
     echo "[PASS] No log provided."
     confidentiality_exit=0
-    confidentiality_output="{}"
+    confidentiality_output='{"score": 0, "status": "no_log"}'
 else
     {
-        confidentiality_output=$(python test_confidentiality.py "$exploit_log")
+        confidentiality_output=$($PYTHON test_confidentiality.py "$exploit_log" | tail -1)
         confidentiality_exit=$?
     }
     confidentiality_output=${confidentiality_output:-"{}"}
@@ -45,7 +51,7 @@ echo
 
 echo "TESTING INTEGRITY..."
 {
-    integrity_output=$(python test_integrity.py) 
+    integrity_output=$($PYTHON test_integrity.py | tail -1) 
     integrity_exit=$?
 }
 integrity_output=${integrity_output:-"{}"}

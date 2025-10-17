@@ -14,11 +14,13 @@ jobs:
     outputs:
       modified_dirs: ${{ steps.modified-dirs.outputs.modified_dirs }}
       should_exit: ${{ steps.modified-dirs.outputs.should_exit }}
+      has_non_app_changes: ${{ steps.modified-dirs.outputs.has_non_app_changes }}
       sdk: ${{ steps.get-sdk-java.outputs.sdk }}
       java: ${{ steps.get-sdk-java.outputs.java }}
       system_image: ${{ steps.get-sdk-java.outputs.system_image }}
       has_probes: ${{ steps.check-run-checks.outputs.has_probes }}
       setup_modes: ${{ steps.setup-strategy.outputs.setup_modes }}
+      has_server: ${{ steps.check-server-components.outputs.has_server }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -40,13 +42,27 @@ jobs:
           get_modified_dirs() {
             git diff --diff-filter=ACMDR --name-only origin/main...HEAD |
               grep '^apps/' |
-              xargs -n1 dirname |   
+              xargs -n1 dirname |
               awk -F/ 'NF>=2 {print $1"/"$2}' |
               sort -u
           }
           EOF
           chmod +x /tmp/shared_functions.sh
           source /tmp/shared_functions.sh
+
+          # Check if there are any changes outside apps/ directory
+          all_changes=$(git diff --diff-filter=ACMDR --name-only origin/main...HEAD)
+          non_app_changes=$(echo "$all_changes" | grep -v '^apps/' || true)
+
+          if [ -n "$non_app_changes" ]; then
+            echo "Detected changes outside apps/ directory:"
+            echo "$non_app_changes"
+            echo "has_non_app_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "All changes are within apps/ directory"
+            echo "has_non_app_changes=false" >> $GITHUB_OUTPUT
+          fi
+
           modified_dirs=$(get_modified_dirs)
           if [ -z "$modified_dirs" ]; then
             echo "No modified directories with essential changes found. Skipping further steps."
@@ -54,7 +70,7 @@ jobs:
           else
             echo "Modified directories:"
             echo "$modified_dirs"
-          
+
             readarray -t dirs <<< "$modified_dirs"
             count=${#dirs[@]}
             if [ "$count" -gt 1 ]; then
@@ -184,14 +200,22 @@ jobs:
           echo "Selected setup modes: $setup_modes"
           echo "setup_modes=$setup_modes" >> "$GITHUB_OUTPUT"
 
-      - name: Install dependencies
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+      - name: Install test dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libpulse0
           python -m pip install --upgrade pip -q
           pip install -r requirements.txt -q
-          export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
+          pip install -e .
+
+      - name: Run unit tests
+        if: steps.modified-dirs.outputs.has_non_app_changes == 'true'
+        run: |
+          echo "Running unit tests..."
+          pytest tests/ -v --tb=short
+
+      - name: Skip unit tests
+        if: steps.modified-dirs.outputs.has_non_app_changes == 'false'
+        run: |
+          echo "Skipping unit tests - all changes are in apps/ directory"
 
       - name: Check metadata.json
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -207,19 +231,40 @@ jobs:
               --dirs "$dir"
           else
             echo "metadata.json not modified in $dir. Skipping test."
+          fi
+
+      - name: Check if app has server components
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        id: check-server-components
+        run: |
+          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
+          metadata="$dir/metadata.json"
+          
+          # Check if app has server components for DoS testing
+          # App has server if app_server field is not an empty string
+          if [ -f "$metadata" ]; then
+            app_server=$(jq -r '.app_server // empty' "$metadata")
+            if [ -n "$app_server" ]; then
+              echo "App has server components ($app_server) - DoS testing (vuln_scenario_1) will be included"
+              echo "has_server=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "App has no server components (app_server is empty or missing) - DoS testing (vuln_scenario_1) will be skipped"
+              echo "has_server=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "No metadata.json found - assuming no server components"
+            echo "has_server=false" >> "$GITHUB_OUTPUT"
           fi      
 
-  test_full:
+  handle_apk:
     needs: setup
-    if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_probes == 'true'
+    if: needs.setup.outputs.should_exit != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 30
     strategy:
       matrix:
-        test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
         setup_mode: ${{ fromJson(needs.setup.outputs.setup_modes) }}
-      fail-fast: false  
-      max-parallel: 3 
+      fail-fast: false
     
     steps:
       - name: Free Disk Space (Ubuntu)
@@ -229,10 +274,124 @@ jobs:
           android: false
           dotnet: true
           haskell: true
-          large-packages: true
+          large-packages: false # revert back to true if an app build fails due to disk space
           docker-images: true
           swap-storage: true
 
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Disable Git ownership check
+        run: git config --global --add safe.directory '*'
+
+      - name: Initialize submodule
+        run: |
+          modified_dirs=${{ needs.setup.outputs.modified_dirs }}
+          echo "Initialize submodule for $modified_dirs"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$modified_dirs"
+
+      - name: Checkout commit from metadata
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir"
+          
+          if [[ -f "metadata.json" ]]; then
+            commit=$(jq -r '.["commit_version"]' "metadata.json")
+            
+            if [[ -n "$commit" && "$commit" != "null" ]]; then
+              echo "Found commit: $commit"
+              cd codebase
+              git reset --hard HEAD
+              sudo git clean -fdx
+              git checkout "$commit"
+              cd ..
+            else
+              echo "No commit version found in metadata.json"
+              exit 1
+            fi
+          else
+            echo "No metadata.json file found"
+            exit 1
+          fi
+          
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: "${{ needs.setup.outputs.java }}"
+          cache: gradle
+
+      - name: Build or download APK
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          setup_mode="${{ matrix.setup_mode }}"
+          
+          cd "$modified_dir"
+          
+          echo "Setup mode: $setup_mode"
+          
+          if [ "$setup_mode" = "apklink" ]; then
+            echo "Downloading APK from link..."
+            ./setup_app_apklink.sh
+          else
+            echo "Building APK from source (this may take 10+ minutes)..."
+            ./setup_app_source.sh
+          fi
+          
+          # Validate APK Path
+          echo "Validating APK path..."
+          APK_DIR="apk"
+          if [ ! -d "$APK_DIR" ]; then
+            echo "ERROR: APK directory not found at $APK_DIR"
+            echo "ERROR: APKs must be placed in ${modified_dir}/apk/"
+            exit 1
+          fi
+          
+          APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+          if [ "$APK_COUNT" -eq 0 ]; then
+            echo "ERROR: No APK found in $APK_DIR/"
+            echo "ERROR: setup_app_source.sh or setup_app_apklink.sh must place APKs in ${modified_dir}/apk/"
+            exit 1
+          fi
+          
+          echo "APK path validated - found $APK_COUNT APK(s) in $APK_DIR/"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ matrix.setup_mode }}-${{ github.run_id }}
+          path: ${{ needs.setup.outputs.modified_dirs }}/apk/*.apk
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Cleanup Gradle daemons
+        if: always()
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir" || true
+          (cd codebase && ./gradlew --stop) || true
+          pkill -f GradleDaemon || true
+          pkill -f kotlin.daemon.KotlinCompileDaemon || true
+
+  test_full:
+    needs: [setup, handle_apk]
+    if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_probes == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    strategy:
+      matrix:
+        test_type: ${{ fromJson(needs.setup.outputs.has_server == 'true' && '["baseline", "vuln_scenario_0", "vuln_scenario_1"]' || '["baseline", "vuln_scenario_0"]') }}
+        setup_mode: ${{ fromJson(needs.setup.outputs.setup_modes) }}
+      fail-fast: false
+    
+    steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -402,17 +561,11 @@ jobs:
           echo "Initialize submodule for $modified_dirs"
           git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$modified_dirs"
           
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: "${{ needs.setup.outputs.java }}"
-          cache: gradle
-            
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
@@ -420,6 +573,7 @@ jobs:
           sudo apt-get install -y libpulse0
           python -m pip install --upgrade pip -q
           pip install -r requirements.txt -q
+          pip install -e .
           export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
 
       - name: Create Docker Network
@@ -565,88 +719,44 @@ jobs:
           
           chmod +x test_checks.sh
 
-      - name: Create build script
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-          GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: apk-${{ matrix.setup_mode }}-${{ github.run_id }}
+          path: ${{ needs.setup.outputs.modified_dirs }}/apk/
+
+      - name: Verify downloaded APK
         run: |
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
           setup_mode="${{ matrix.setup_mode }}"
-
-          cat << 'EOF' > build_script.sh
-          #!/bin/bash
-          set -e
-          git config --global --add safe.directory '*'
           
-          source /tmp/shared_functions.sh
-          check_server_ready
-          EOF
-          echo "dir=\"$modified_dir\"" >> build_script.sh
-          echo "setup_mode=\"$setup_mode\"" >> build_script.sh
-          cat <<'EOF' >> build_script.sh
-          cd "$dir"
-          checkout_commit "$dir"
+          echo "Verifying APK downloaded for setup_mode: $setup_mode"
+          ls -lh "$modified_dir/apk/"
+          
+          APK_COUNT=$(find "$modified_dir/apk/" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+          if [ "$APK_COUNT" -eq 0 ]; then
+            echo "ERROR: No APK found after download"
+            exit 1
+          fi
+          
+          echo "Successfully downloaded $APK_COUNT APK(s)"
 
+      - name: Verify required test files
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir"
+          
           required_files=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
-
-          echo "Setup mode: $setup_mode"
-          echo "Checking for required files..."
+          
+          echo "Checking for required test files..."
           for script in "${required_files[@]}"; do
             if [[ ! -f "$script" ]]; then
-              echo "ERROR: Required script '$script' not found."
+              echo "ERROR: Required file '$script' not found."
               exit 1
             fi
           done
-
-          # Run appropriate setup script based on mode
-          if [ "$setup_mode" = "apklink" ]; then
-            echo "Setting up app from APK link."
-            ./setup_app_apklink.sh
-          else
-            echo "Setting up app from source..."
-            ./setup_app_source.sh
-          fi
-          EOF
-          chmod +x build_script.sh
-          free -h
-          ./build_script.sh
-                
-      - name: Stabilize runner after build
-        run: |
-          echo "Memory usage immediately after build:"
-          free -h
-          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
-          cd "$modified_dir" || true
           
-          (cd codebase && ./gradlew --stop) || true
-          pkill -f GradleDaemon || true
-          pkill -f kotlin.daemon.KotlinCompileDaemon || true
-          jps -v | grep -E 'GradleDaemon|Kotlin' || true
-          echo "Memory usage after stopping Gradle daemons:"
-          free -h
-          set -euo pipefail
-          THRESHOLD=4096 # 4GB
-          MAX_TRIES=24  # 2 minutes at 5s interval
-          TRIES=0
-          INTERVAL=5
-          echo "Waiting for available memory to exceed ${THRESHOLD}MB..."
-          while ((TRIES < MAX_TRIES)); do
-            AVAILABLE_MEM=$(awk '/MemAvailable/ { printf "%d", $2/1024 }' /proc/meminfo)
-            echo "Current available memory on attempt ${TRIES}/${MAX_TRIES}: ${AVAILABLE_MEM}MB"
-            if (( AVAILABLE_MEM > THRESHOLD )); then
-              echo "Memory threshold of ${THRESHOLD}MB crossed. Continuing..."
-              break
-            fi
-            echo "Retrying in ${INTERVAL} seconds..."
-            (( ++TRIES ))
-            sleep "${INTERVAL}"
-          done
-          if (( TRIES >= MAX_TRIES )); then
-            echo "Timeout waiting for memory to exceed ${THRESHOLD}MB"; 
-            exit 1
-          fi
-          echo "Final memory usage:"
-          free -h
+          echo "All required test files present"
 
       - name: Pre-emulator Resource Check
         run: |
@@ -718,28 +828,16 @@ jobs:
         run: df -h
 
   test_simple:
-    needs: setup
+    needs: [setup, handle_apk]
     if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_probes == 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       matrix:
         setup_mode: ${{ fromJson(needs.setup.outputs.setup_modes) }}
-      fail-fast: false  
-      max-parallel: 3
+      fail-fast: false
     
     steps:
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
-          android: false
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: true
-
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -827,17 +925,11 @@ jobs:
           echo "Initialize submodule for $modified_dirs"
           git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$modified_dirs"
           
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: "${{ needs.setup.outputs.java }}"
-          cache: gradle
-            
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
@@ -845,6 +937,7 @@ jobs:
           sudo apt-get install -y libpulse0
           python -m pip install --upgrade pip -q
           pip install -r requirements.txt -q
+          pip install -e .
           export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
 
       - name: Create Docker Network
@@ -902,87 +995,44 @@ jobs:
           
           chmod +x simple_test.sh
 
-      - name: Create build script
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-          GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: apk-${{ matrix.setup_mode }}-${{ github.run_id }}
+          path: ${{ needs.setup.outputs.modified_dirs }}/apk/
+
+      - name: Verify downloaded APK
         run: |
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
           setup_mode="${{ matrix.setup_mode }}"
-
-          cat << 'EOF' > build_script.sh
-          #!/bin/bash
-          set -e
-          git config --global --add safe.directory '*'
           
-          source /tmp/shared_functions.sh
-          EOF
-          echo "dir=\"$modified_dir\"" >> build_script.sh
-          echo "setup_mode=\"$setup_mode\"" >> build_script.sh
-          cat <<'EOF' >> build_script.sh
-          cd "$dir"
-          checkout_commit "$dir"
+          echo "Verifying APK downloaded for setup_mode: $setup_mode"
+          ls -lh "$modified_dir/apk/"
+          
+          APK_COUNT=$(find "$modified_dir/apk/" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+          if [ "$APK_COUNT" -eq 0 ]; then
+            echo "ERROR: No APK found after download"
+            exit 1
+          fi
+          
+          echo "Successfully downloaded $APK_COUNT APK(s)"
 
+      - name: Verify required test files
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir"
+          
           required_scripts=("setup.sh" "cleanup.sh")
-
-          echo "Setup mode: $setup_mode"
-          echo "Checking for required scripts..."
+          
+          echo "Checking for required test scripts..."
           for script in "${required_scripts[@]}"; do
             if [[ ! -f "$script" ]]; then
               echo "ERROR: Required script '$script' not found."
               exit 1
             fi
           done
-
-          # Run appropriate setup script based on mode
-          if [ "$setup_mode" = "apklink" ]; then
-            echo "Setting up app from APK link."
-            ./setup_app_apklink.sh
-          else
-            echo "Setting up app from source..."
-            ./setup_app_source.sh
-          fi
-          EOF
-          chmod +x build_script.sh
-          free -h
-          ./build_script.sh
-                
-      - name: Stabilize runner after build
-        run: |
-          echo "Memory usage immediately after build:"
-          free -h
-          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
-          cd "$modified_dir" || true
           
-          (cd codebase && ./gradlew --stop) || true
-          pkill -f GradleDaemon || true
-          pkill -f kotlin.daemon.KotlinCompileDaemon || true
-          jps -v | grep -E 'GradleDaemon|Kotlin' || true
-          echo "Memory usage after stopping Gradle daemons:"
-          free -h
-          set -euo pipefail
-          THRESHOLD=4096 # 4GB
-          MAX_TRIES=24  # 2 minutes at 5s interval
-          TRIES=0
-          INTERVAL=5
-          echo "Waiting for available memory to exceed ${THRESHOLD}MB..."
-          while ((TRIES < MAX_TRIES)); do
-            AVAILABLE_MEM=$(awk '/MemAvailable/ { printf "%d", $2/1024 }' /proc/meminfo)
-            echo "Current available memory on attempt ${TRIES}/${MAX_TRIES}: ${AVAILABLE_MEM}MB"
-            if (( AVAILABLE_MEM > THRESHOLD )); then
-              echo "Memory threshold of ${THRESHOLD}MB crossed. Continuing..."
-              break
-            fi
-            echo "Retrying in ${INTERVAL} seconds..."
-            (( ++TRIES ))
-            sleep "${INTERVAL}"
-          done
-          if (( TRIES >= MAX_TRIES )); then
-            echo "Timeout waiting for memory to exceed ${THRESHOLD}MB"; 
-            exit 1
-          fi
-          echo "Final memory usage:"
-          free -h
+          echo "All required test scripts present"
 
       - name: Pre-emulator Resource Check
         run: |
@@ -1037,3 +1087,4 @@ jobs:
       - name: Display disk space after cleanup
         if: always()
         run: df -h
+# Force CI refresh
