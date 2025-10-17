@@ -24,19 +24,13 @@ if [ -n "$GITHUB_ACTIONS" ] || [ -n "$CI" ]; then
     export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
 fi
 
-EMU="$ANDROID_HOME/emulator/emulator"
-if [ ! -x "$EMU" ]; then
-  echo "Error: Emulator binary not found at $EMU"
-  exit 1
-fi
-
 # Start Docker backend services
 echo "[Wallabag] Starting backend stack (Docker Compose)..."
 # Stop any existing containers first
 docker compose down 2>/dev/null || true
-# Force rebuild to ensure we get the latest Dockerfile changes
-docker compose build --no-cache wallabag
-docker compose up -d db redis wallabag
+
+# Start all services with rebuild
+docker compose up --build -d
 
 # Wait until Postgres is ready inside the container
 echo "[Wallabag] Waiting for database to be ready..."
@@ -52,7 +46,6 @@ while true; do
     STATUS=$(docker inspect --format='{{.State.Health.Status}}' wallabag 2>/dev/null || echo "unknown")
     
     if [ "$STATUS" == "healthy" ]; then
-        sleep 15  # Wait for full startup
         break
     fi
     
@@ -67,9 +60,26 @@ done
 
 # --- Web login and client creation ---
 
-# Fetch login page to get CSRF token and save cookies
-echo "Waiting 10s for Wallabag to finish internal initialization..."
-sleep 10
+# Wait for Wallabag web interface to be ready
+echo "[Wallabag] Waiting for web interface to be ready..."
+WEB_MAX_WAIT=60
+WEB_WAITED=0
+while true; do
+    if curl -s --connect-timeout 5 --max-time 10 http://localhost:8080/login > /dev/null 2>&1; then
+        echo "[Wallabag] Web interface is ready"
+        break
+    fi
+    
+    if [ "$WEB_WAITED" -ge "$WEB_MAX_WAIT" ]; then
+        echo "[Wallabag] ERROR: Web interface not ready after $WEB_MAX_WAIT seconds"
+        docker logs wallabag --tail 20
+        exit 1
+    fi
+    
+    echo "[Wallabag] Web interface not ready, waiting..."
+    sleep 2
+    WEB_WAITED=$((WEB_WAITED + 2))
+done
 
 # Test connection with detailed error reporting
 CURL_OUTPUT=$(curl -s --connect-timeout 10 --max-time 30 -w "HTTP_CODE:%{http_code}" http://localhost:8080/login 2>&1)
@@ -170,89 +180,13 @@ fi
 echo "[Wallabag] OAuth2 token obtained."
 export WALLABAG_OAUTH_TOKEN=$OAUTH_TOKEN
 
-# --- Android emulator setup and APK install ---
+# --- Android APK installation ---
 
 APK=apk/wallabag-release.apk
 if [ ! -f "$APK" ]; then
     echo "Error: APK not found! Please build or download it first."
     exit 1
 fi
-
-echo "Available AVDs:"
-$EMU -list-avds
-
-AVD_NAME=$($EMU -list-avds | head -n 1)
-if [ -z "$AVD_NAME" ]; then
-    echo "Error: No Android Virtual Device (AVD) found. Please create one."
-    
-    # In CI, try to create a basic AVD if none exists
-    if [ -n "$GITHUB_ACTIONS" ] || [ -n "$CI" ]; then
-        echo "[Wallabag] CI environment: Attempting to create a basic AVD..."
-        echo "no" | avdmanager create avd -n "test_avd" -k "system-images;android-34;google_atd;x86_64" -f 2>/dev/null || true
-        AVD_NAME="test_avd"
-        if [ -z "$($EMU -list-avds | grep "$AVD_NAME")" ]; then
-            echo "[Wallabag] Failed to create AVD, cannot proceed without emulator"
-            exit 1
-        fi
-    else
-        exit 1
-    fi
-fi
-echo "Using AVD: $AVD_NAME"
-
-# echo "[Wallabag] Starting emulator..."
-
-# # Check if we're in CI and adjust emulator parameters
-# if [ -n "$GITHUB_ACTIONS" ] || [ -n "$CI" ]; then
-#     echo "[Wallabag] CI environment detected, using headless emulator settings"
-#     $EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -no-boot-anim -verbose -netdelay none -netspeed full -gpu swiftshader_indirect -no-metrics -memory 2048 -cores 2 -read-only &
-#     EMULATOR_PID=$!
-#     sleep 30
-    
-#     # Check if emulator process is still alive
-#     if ! kill -0 $EMULATOR_PID 2>/dev/null; then
-#         echo "[Wallabag] Warning: Emulator process died, trying alternative configuration..."
-#         $EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -no-boot-anim -verbose -netdelay none -netspeed full -gpu off -no-metrics -read-only &
-#         EMULATOR_PID=$!
-#         sleep 15
-#     fi
-# else
-#     $EMU -avd "$AVD_NAME" -no-snapshot-load -no-audio -no-window -verbose -netdelay none -netspeed full -read-only &
-#     EMULATOR_PID=$!
-# fi
-
-# echo "Waiting for emulator in adb devices (timeout 180s)..."
-# TIMEOUT=180
-# START_TIME=$(date +%s)
-# while true; do
-#     EMULATOR_STATE=$(adb devices | grep emulator | grep device || true)
-#     if [ -n "$EMULATOR_STATE" ]; then
-#         echo "Emulator detected and ready."
-#         break
-#     fi
-    
-#     CURRENT_TIME=$(date +%s)
-#     ELAPSED=$((CURRENT_TIME - START_TIME))
-#     if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
-#         echo "Timeout waiting for emulator."
-#         exit 1
-#     fi
-#     sleep 5
-# done
-
-
-echo "[Wallabag] Debug: Testing network connectivity..."
-if nc -zv localhost 8080 2>&1 | grep -q succeeded; then
-  echo "Wallabag reachable on host: localhost:8080"
-elif nc -zv 10.0.2.2 8080 2>&1 | grep -q succeeded; then
-  echo "Wallabag reachable from emulator: 10.0.2.2:8080"
-else
-  echo "ERROR: Cannot reach app server!"
-  exit 1
-fi
-
-echo "Emulator connected, waiting 60 more seconds for boot completion..."
-sleep 60
 
 adb install -r "$APK"
 
