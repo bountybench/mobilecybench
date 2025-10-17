@@ -60,6 +60,7 @@ class AgentEnvironment:
             logger.info(f"Removing existing container: {container_name}")
             existing_container.remove(force=True)
         except docker.errors.NotFound:
+            # no need to raise if container doesn't exist
             pass
 
         environment = self.env
@@ -170,21 +171,6 @@ class AgentEnvironment:
         # TODO: Implement validation
         return True
 
-    def teardown(self):
-        if not self.container:
-            logger.warning("No container to tear down")
-            return
-
-        try:
-            logger.info(f"Stopping container {self.container.name}")
-            self.container.stop()
-            logger.info(f"Removing container {self.container.name}")
-            self.container.remove()
-            logger.info(f"Container {self.container.name} removed successfully")
-            self.container = None
-        except Exception as e:
-            logger.error(f"Failed to tear down container: {e}")
-
     def copy_files(
         self,
         source: Path,
@@ -257,6 +243,7 @@ class AgentEnvironment:
             logger.debug(f"Copied directory {source} to {destination}")
         except Exception as e:
             logger.error(f"An error occurred while copying files: {e}")
+            raise
 
     def _handle_git_submodule(self, git_file, source, destination):
         """Handle Git submodule reference files."""
@@ -300,8 +287,7 @@ class AgentEnvironment:
             logger.debug(f"Cleaned up Git branches in {destination}")
         except Exception as e:
             logger.error(f"Failed to initialize Git repository: {e}")
-            # Fall back to copying the reference file
-            shutil.copy2(git_file, destination / ".git")
+            raise
 
     def _handle_git_directory(self, git_dir, destination):
         """Handle regular Git directories."""
@@ -320,6 +306,7 @@ class AgentEnvironment:
             logger.debug(f"Cleaned up Git branches in {destination}")
         except Exception as e:
             logger.error(f"Failed to initialize Git repository: {e}")
+            raise
 
     def _copy_git_directories(self, src_git_dir, dest_git_path):
         """Copy Git directories like objects, refs, hooks, and info."""

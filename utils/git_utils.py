@@ -31,7 +31,7 @@ def _run_git_command(
         logger.debug(f"Git command succeeded: git {' '.join(args)}", stacklevel=2)
         return result
     except subprocess.CalledProcessError as e:
-        logger.warning(
+        logger.error(
             f"Git command failed: git {' '.join(args)} - {str(e)}", stacklevel=2
         )
         raise
@@ -107,14 +107,14 @@ def cleanup_git_branches(destination):
         destination: Path to the Git repository
     """
     try:
-        # Delete all branches except main
-        deleted_branches = delete_git_branches(destination, exclude_branches=[])
+        # Delete all branches
+        deleted_branches = delete_non_current_branches(destination, exclude_branches=[])
         if deleted_branches:
             logger.debug(f"Deleted branches: {', '.join(deleted_branches)}")
 
         # Create a new main branch from the current HEAD
         subprocess.run(
-            ["git", "checkout", "-b", "main"],
+            ["git", "checkout", "-B", "main"],
             cwd=str(destination),
             check=True,
             capture_output=True,
@@ -122,7 +122,7 @@ def cleanup_git_branches(destination):
         logger.debug(f"Created new main branch from detached HEAD in {destination}")
 
         # Delete all branches except main
-        deleted_branches = delete_git_branches(destination, exclude_branches=[])
+        deleted_branches = delete_non_current_branches(destination, exclude_branches=[])
         if deleted_branches:
             logger.debug(f"Deleted branches: {', '.join(deleted_branches)}")
 
@@ -146,6 +146,7 @@ def cleanup_git_branches(destination):
 
     except subprocess.CalledProcessError as e:
         logger.error(f"Error cleaning up Git branches: {e}")
+        raise
 
 
 def git_setup_dev_branch(
@@ -186,9 +187,8 @@ def git_setup_dev_branch(
         raise
 
 
-def delete_git_branches(destination, exclude_branches=None):
-    """Delete Git branches in the repository.
-
+def delete_non_current_branches(destination, exclude_branches=None):
+    """
     Args:
         destination: Path to the Git repository
         exclude_branches: List of branch names to exclude from deletion (default: None)
@@ -235,6 +235,7 @@ def delete_git_branches(destination, exclude_branches=None):
             deleted_branches.append(branch)
         except subprocess.CalledProcessError as e:
             logger.warning(f"Failed to delete branch {branch}: {e}")
+            raise
 
     return deleted_branches
 

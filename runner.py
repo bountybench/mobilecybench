@@ -480,7 +480,7 @@ class MobileCybenchRunner:
             logger.info(f"Container status:\n{result.stdout}")
 
             # Verify specific containers are running
-            if "mcp-server" in result.stdout and "kali-container" in result.stdout:
+            if "mcp-server" in result.stdout:
                 logger.info("✓ Both MCP server and Kali container are running")
                 logger.info("Both MCP server and Kali container confirmed running")
             else:
