@@ -13,10 +13,6 @@ docker rm wallabag-db-1 2>/dev/null || echo "No wallabag-db-1 container to remov
 echo "Cleaning up generated files..."
 rm -f scores.json || true
 rm -f *.log || true
-rm -f init-db.sql || true
-rm -rf downloads/ || true
-rm -rf logs/ || true
-rm -rf output/ || true
 
 # Clean up web scraping artifacts  
 rm -f cookies.txt login.html home.html client_form.html client_created.html token_response.json 2>/dev/null || true
