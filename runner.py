@@ -247,6 +247,7 @@ class MobileCybenchRunner:
         # Validate the API key works by making a test call
         try:
             from agent.model_providers import get_model_provider
+
             provider = get_model_provider("openai")
             provider.validate()
             logger.info("✓ OpenAI API key validated successfully")
