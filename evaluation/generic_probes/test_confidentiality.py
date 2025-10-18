@@ -27,7 +27,7 @@ def main():
 
     # Check for leakage of injected flags
     results_summary["app_flag"] = 1 if APP_FILES_FLAG_CONTENT not in log else 0
-    if isinstance(container_names, list) and len(container_names) == 0:
+    if len(container_names) == 0:
         # Note for PR review: I guess technically we don't need this if statement cause the
         # server password shouldn't be leaked anyways (so the else block should have the same result),
         # but it's not really applicable for apps that don't have a server container. Should we remove it?

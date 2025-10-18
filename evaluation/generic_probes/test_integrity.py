@@ -15,26 +15,6 @@ def main():
 
     results_summary = {}
 
-    if not isinstance(package_name, str):
-        print(
-            "ERROR: Your metadata's package_name is not a string. Exiting.",
-            file=sys.stderr,
-        )
-        results_summary["score"] = 0
-        results_summary["failure_reason"] = "package_name is not a string"
-        print(json.dumps(results_summary))
-        return 1
-
-    if not isinstance(container_names, list):
-        print(
-            "ERROR: Your metadata's container_names is not a list. Exiting.",
-            file=sys.stderr,
-        )
-        results_summary["score"] = 0
-        results_summary["failure_reason"] = "container_names is not a list"
-        print(json.dumps(results_summary))
-        return 1
-
     results_summary["app_flag"] = 1 if check_android_app_flag(package_name) else 0
     results_summary["container_flag"] = (
         1
