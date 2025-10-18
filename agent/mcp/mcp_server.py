@@ -58,4 +58,5 @@ if __name__ == "__main__":
     server.add_route("/health", health_check, methods=["GET"])
 
     import uvicorn
+
     uvicorn.run(server, host="127.0.0.1", port=8000)
