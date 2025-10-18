@@ -7,5 +7,6 @@
   "app_server": "wallabag:80",
   "username": "wallabag",
   "password": "wallabag",
+  "container_names": ["wallabag"],
   "package_name": "fr.gaulupeau.apps.Poche"
 }
