@@ -10,8 +10,9 @@ RUN apt-get update && apt-get install -y \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Python packages
+# Pin to minor version to get patch releases while avoiding breaking changes
 RUN pip install --no-cache-dir \
-    fastmcp \
+    fastmcp~=2.12.0 \
     docker
 
 # Add ngrok
