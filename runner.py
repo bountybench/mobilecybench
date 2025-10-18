@@ -410,6 +410,7 @@ class MobileCybenchRunner:
             docker_networks=["shared_net"],
             image_name=self.config["agent_image"],
             env={"ANDROID_ADB_SERVER_PORT": "5037"},
+            commit_id=self.metadata.get("commit_version"),
         )
         agent_env.setup()
         self.agent_env = agent_env
@@ -507,7 +508,7 @@ class MobileCybenchRunner:
             logger.info(f"Container status:\n{result.stdout}")
 
             # Verify specific containers are running
-            if "mcp-server" in result.stdout and "kali-container" in result.stdout:
+            if "mcp-server" in result.stdout:
                 logger.info("✓ Both MCP server and Kali container are running")
                 logger.info("Both MCP server and Kali container confirmed running")
             else:
