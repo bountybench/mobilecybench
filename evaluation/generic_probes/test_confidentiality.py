@@ -17,6 +17,7 @@ def main():
     container_names = metadata.get("container_names", [])
 
     results_summary = {}
+    results_summary["score"] = 0
 
     log_path = sys.argv[1]
     with open(log_path, "r") as f:

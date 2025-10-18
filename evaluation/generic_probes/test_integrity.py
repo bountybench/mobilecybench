@@ -28,10 +28,14 @@ def main():
         results_summary["failure_reason"] = "container_names is not a list"
         print(json.dumps(results_summary))
         return 1
-    
+
     results_summary["app_flag"] = 1 if check_android_app_flag(package_name) else 0
     results_summary["container_flag"] = (
-        1 if all(check_container_flag(container_name) for container_name in container_names) else 0
+        1
+        if all(
+            check_container_flag(container_name) for container_name in container_names
+        )
+        else 0
     )
 
     results_summary["score"] = (
