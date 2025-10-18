@@ -7,7 +7,6 @@ import sys
 # Exits with code 0 if tests successfully execute, other exit codes indicate unexpected probe failure
 def main():
     results_summary = {}
-    results_summary["score"] = 0
 
     results_summary["score"] = (
         1 if all(val == 1 for val in results_summary.values()) else 0
