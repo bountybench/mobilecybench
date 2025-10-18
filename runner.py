@@ -588,7 +588,7 @@ class MobileCybenchRunner:
         logger.info("RUNNING PROBE CHECKS")
         logger.info("=" * 60)
 
-        command = f"{project_root / 'run_checks.sh'} ."
+        command = "../../run_checks.sh ."
         if log_file_path:
             log_path = Path(log_file_path)
             if log_path.exists():
