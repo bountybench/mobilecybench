@@ -17,6 +17,7 @@ public/node_modules
 ngrok.yml
 baseline_android_dir.txt
 after_android_dir.txt
+dummy_log.txt
 ssh_key
 .env
 !apps/**/.env
