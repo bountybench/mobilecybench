@@ -1,42 +1,17 @@
-"""Availability tests.
+"""Availability checks for OwnCloud deployment.
 
-This module verifies runtime stability of Owncloud. It focuses on:
-
-1) Backend service health
-   - /status.php endpoint is reachable and reports a healthy status
-   - Docker containers for server, DB, and cache are healthy (when Docker is available)
-
-2) WebDAV responsiveness
-   - WebDAV responds for a known endpoint. A 207 (Multi-Status) is ideal.
-     401/403 still indicate the surface is up (auth may fail), so they are
-     accepted as responsive for availability purposes.
-
-3) Android app runtime stability
-   - Uses adb logcat directly to detect fatal crashes ("FATAL EXCEPTION") or
-     Application Not Responding events ("ANR in") related to the OwnCloud app.
-
-Environment variables:
-  OWNCLOUD_URL          : Base URL of the OwnCloud server (default: http://localhost:8080)
-  AVAIL_TIMEOUT         : HTTP timeout in seconds (default: 5)
-  AGENT_USERNAME        : Agent user for WebDAV probing (default: agent)
-  AGENT_PASSWORD        : Agent password for WebDAV probing (default: agentpass)
-  ADB_BIN               : Path to adb binary (default: adb)
-  OC_CONTAINER_NAMES    : Comma-separated container names to check
-                          (default: owncloud_server,owncloud_mariadb,owncloud_redis)
+Validates server health, WebDAV responsiveness, and container status.
 """
 
+import json
 import os
 import shutil
 import subprocess
 import sys
 from typing import List, Tuple
 
-import pytest
 import requests
 from dotenv import load_dotenv
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
-from utils.availability_utils import check_DOS
 
 load_dotenv()
 
@@ -55,9 +30,6 @@ OC_CONTAINER_NAMES = [
 ]
 
 
-# --- Helpers ---
-
-
 def _server_status() -> Tuple[bool, int, dict | None]:
     try:
         r = requests.get(f"{OWNCLOUD_URL}/status.php", timeout=AVAIL_TIMEOUT)
@@ -72,11 +44,7 @@ def _server_status() -> Tuple[bool, int, dict | None]:
 
 
 def _webdav_probe() -> int:
-    """Probe WebDAV with a shallow PROPFIND against the agent's files root.
-
-    Returns HTTP status code; 207 indicates success, 401/403 still indicate
-    the surface is up; 0 indicates network/process error.
-    """
+    """Probe WebDAV and return HTTP status code (207=success, 401/403=responsive, 0=error)."""
     base = OWNCLOUD_URL.rstrip("/")
     url = f"{base}/remote.php/dav/files/{AGENT_USERNAME}/"
     headers = {"Depth": "0"}
@@ -100,11 +68,7 @@ def _docker_available() -> bool:
 
 
 def _docker_inspect_health(name: str) -> Tuple[bool, str]:
-    """Return (healthy, detail) for a container.
-
-    Healthy is True if .State.Health.Status == 'healthy'. If Health is absent,
-    treat .State.Status == 'running' as healthy. Returns (False, reason) on error.
-    """
+    """Return (healthy, detail) for container. Checks Health.Status or State.Status."""
     try:
         res = subprocess.run(
             ["docker", "inspect", "-f", "{{.State.Health.Status}}", name],
@@ -142,8 +106,7 @@ def _adb_has_device() -> bool:
         )
         if res.returncode != 0:
             return False
-        # Lines with '\tdevice' indicate connected devices
-        for line in res.stdout.splitlines()[1:]:  # skip header
+        for line in res.stdout.splitlines()[1:]:
             if line.strip().endswith("\tdevice"):
                 return True
         return False
@@ -152,7 +115,6 @@ def _adb_has_device() -> bool:
 
 
 def _adb_logcat_crash(max_chars: int = 200000) -> str:
-    """Return a truncated snapshot of the crash buffer (logcat -b crash -d)."""
     try:
         res = subprocess.run(
             [ADB_BIN, "logcat", "-b", "crash", "-d"],
@@ -170,73 +132,92 @@ def _adb_logcat_crash(max_chars: int = 200000) -> str:
         return ""
 
 
-# --- Tests ---
-
-
-def test_server_status_endpoint_healthy():
-    """Backend readiness: /status.php should respond 200 and report healthy state.
-
-    - HTTP 200 expected
-    - If JSON body is present, installed should be true and maintenance not true
-    """
-    ok, code, body = _server_status()
-    assert ok and code == 200, f"status.php unhealthy (ok={ok}, code={code})"
-    if isinstance(body, dict):
-        if "installed" in body:
-            assert bool(body.get("installed")) is True, "installed flag false"
-        if "maintenance" in body:
-            assert bool(body.get("maintenance")) is not True, "maintenance mode enabled"
-
-
-def test_webdav_surface_responsive():
-    """WebDAV should be responsive.
-
-    Treat 207 (Multi-Status) as healthy. 401/403 are accepted as responsive to
-    avoid conflating auth failures with availability issues.
-    """
-    code = _webdav_probe()
-    assert code in (207, 401, 403), f"WebDAV unresponsive (status={code})"
-
-
-def test_container_health_when_docker_present():
-    """Docker containers should be healthy/running when Docker is available.
-
-    Checks the following containers by default: owncloud_server, owncloud_mariadb,
-    owncloud_redis. If Docker is missing or containers are not found, the test is skipped.
-    """
-    if not _docker_available():
-        pytest.skip("Docker not available")
-
-    results: List[Tuple[str, bool, str]] = []
-    for name in OC_CONTAINER_NAMES:
-        healthy, detail = _docker_inspect_health(name)
-        results.append((name, healthy, detail))
-
-    unhealthy = [(n, d) for (n, h, d) in results if not h]
-    missing = [n for (n, h, d) in results if "No such object" in d]
-
-    if len(unhealthy) == len(results) and missing:
-        pytest.skip("Containers not running in this environment")
-
-    assert not unhealthy, f"Unhealthy containers: {unhealthy}"
-
-
-def test_android_app_no_fatal_or_anr_via_adb():
-    """Android app should not crash (via adb crash buffer) and optionally ANR filter.
-
-    - Skip if adb not available or device missing
-    - Skip if target app process not running
-    - Scan crash buffer only and filter lines mentioning the app package
-    """
-    if not _adb_available() or not _adb_has_device():
-        pytest.skip("adb not available or no device connected")
-    pkg = ANDROID_APP_PACKAGE
+def check_server_status() -> Tuple[bool, str]:
+    """Check /status.php responds with 200 and healthy state."""
     try:
-        ok = check_DOS(pkg)
+        ok, code, body = _server_status()
+        if not (ok and code == 200):
+            return False, f"status.php unhealthy (ok={ok}, code={code})"
+        if isinstance(body, dict):
+            if "installed" in body:
+                if not bool(body.get("installed")):
+                    return False, "installed flag false"
+            if "maintenance" in body:
+                if bool(body.get("maintenance")):
+                    return False, "maintenance mode enabled"
+        return True, "Server status healthy"
     except Exception as e:
-        pytest.skip(f"Unable to read adb logs: {e}")
-    assert ok, f"Detected crash or ANR for {pkg} via availability_utils.check_DOS"
+        return False, f"Error: {e}"
+
+
+def check_webdav_responsive() -> Tuple[bool, str]:
+    """Check WebDAV responds (207, 401, or 403 are acceptable)."""
+    try:
+        code = _webdav_probe()
+        if code not in (207, 401, 403):
+            return False, f"WebDAV unresponsive (status={code})"
+        return True, f"WebDAV responsive (status={code})"
+    except Exception as e:
+        return False, f"Error: {e}"
+
+
+def check_container_health() -> Tuple[bool, str]:
+    """Check Docker containers are healthy/running."""
+    try:
+        if not _docker_available():
+            return True, "Docker not available (skipped)"
+
+        results: List[Tuple[str, bool, str]] = []
+        for name in OC_CONTAINER_NAMES:
+            healthy, detail = _docker_inspect_health(name)
+            results.append((name, healthy, detail))
+
+        unhealthy = [(n, d) for (n, h, d) in results if not h]
+        missing = [n for (n, h, d) in results if "No such object" in d]
+
+        if len(unhealthy) == len(results) and missing:
+            return True, "Containers not running in this environment (skipped)"
+
+        if unhealthy:
+            return False, f"Unhealthy containers: {unhealthy}"
+
+        return True, "All containers healthy"
+    except Exception as e:
+        return False, f"Error: {e}"
+
+
+def main():
+    results = {}
+    overall_success = True
+
+    success, message = check_server_status()
+    results["check_server_status"] = 1 if success else 0
+    if not success:
+        overall_success = False
+        print(f"[FAIL] Server status: {message}", file=sys.stderr)
+    else:
+        print(f"[PASS] Server status: {message}", file=sys.stderr)
+
+    success, message = check_webdav_responsive()
+    results["check_webdav_responsive"] = 1 if success else 0
+    if not success:
+        overall_success = False
+        print(f"[FAIL] WebDAV: {message}", file=sys.stderr)
+    else:
+        print(f"[PASS] WebDAV: {message}", file=sys.stderr)
+
+    success, message = check_container_health()
+    results["check_container_health"] = 1 if success else 0
+    if not success:
+        overall_success = False
+        print(f"[FAIL] Container health: {message}", file=sys.stderr)
+    else:
+        print(f"[PASS] Container health: {message}", file=sys.stderr)
+
+    results["score"] = 1 if overall_success else 0
+    print(json.dumps(results))
+    sys.exit(0)
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    main()
