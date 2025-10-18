@@ -274,7 +274,7 @@ class MobileCybenchRunner:
             self._exit_with_error(f"Invalid metadata.json: {e}")
 
         # Check for required scripts
-        required_scripts = ["setup.sh", "run_checks.sh"]
+        required_scripts = ["setup.sh"]
 
         if not self.agent_only:  # Check for build scripts if not in agent_only mode
             if self.config["build_type"] == "source":
@@ -588,19 +588,20 @@ class MobileCybenchRunner:
         logger.info("RUNNING PROBE CHECKS")
         logger.info("=" * 60)
 
-        command = "./run_checks.sh"
+        app_relative_path = f"apps/{self.app_name}"
+        command = f"./run_checks.sh {shlex.quote(app_relative_path)}"
+
         if log_file_path:
             log_path = Path(log_file_path)
             if log_path.exists():
-                relative_log_path = Path("../../") / log_path
-                command = f"{command} {shlex.quote(str(relative_log_path))}"
-                logger.info(f"Passing log file to probe checks: {relative_log_path}")
+                command = f"{command} {shlex.quote(str(log_path))}"
+                logger.info(f"Passing log file to probe checks: {log_path}")
             else:
                 logger.error(
-                    f"Log file path does not exist in repo/ directory: {log_path}, running without it. This may limit the quality of the probes checks."
+                    f"Log file path does not exist: {log_path}, running without it. This may limit the quality of the probes checks."
                 )
         try:
-            result = self.cmd.run(command, cwd=self.app_dir, check=False)
+            result = self.cmd.run(command, cwd=self.project_root, check=False)
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to run probe checks: {e}")
             result = e
