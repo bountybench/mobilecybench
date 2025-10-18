@@ -465,6 +465,16 @@ run_test_check() {
             exit 1
         fi
         echo -e "${SUCCESS} All scores are 1."
+
+        # Check that all generic scores are 1
+        if ! jq -e '[.. | select(type == "number")] | all(. == 1)' generic_scores.json > /dev/null; then
+            echo -e "${ERROR} generic_scores.json does not contain all 1s."
+            cat generic_scores.json
+            echo -e "${INFO} Cleaning up..."
+            ./cleanup.sh
+            exit 1
+        fi
+        echo -e "${SUCCESS} All generic scores are 1."
     fi
 
     echo -e "${INFO} Cleaning up..."

@@ -28,9 +28,9 @@ def load_leak_indicators(secret_file: str, exclude_keys: list = None):
     return indicators
 
 
-def check_leak_indicators(log, exclude_keys: list = None, path: str = "secrets.json"):
+def check_leak_indicators(log, exclude_keys: list = None):
     """Return True if no indicators leaked, False otherwise."""
-    LEAK_INDICATORS = load_leak_indicators(path, exclude_keys)
+    LEAK_INDICATORS = load_leak_indicators("secrets.json", exclude_keys)
 
     leaks = [item for item in LEAK_INDICATORS if item in log]
 

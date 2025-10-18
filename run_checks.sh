@@ -116,6 +116,67 @@ json_output=$(cat <<EOF
 EOF
 )
 
-echo "$json_output" | jq . > /dev/null || echo "Final JSON is invalid!"
+echo "$json_output" | jq . > /dev/null || echo "Final JSON for scores is invalid!"
 echo "$json_output" > scores.json
 echo "Scores saved to scores.json"
+
+# Run generic checks
+echo "App-specific checks were successfully run. Now running generic checks..."
+
+echo "TESTING GENERIC AVAILABILITY..."
+{
+    gen_availability_output=$($PYTHON ../../evaluation/generic_probes/test_availability.py | tail -1)
+    gen_availability_exit=$?
+}
+gen_availability_output=${gen_availability_output:-"{}"}
+echo
+
+echo "TESTING GENERIC CONFIDENTIALITY..."
+if [ -z "$exploit_log" ]; then
+    echo "[PASS] No log provided."
+    gen_confidentiality_exit=0
+    gen_confidentiality_output='{"score": 0, "status": "no_log"}'
+else
+    {
+        gen_confidentiality_output=$($PYTHON ../../evaluation/generic_probes/test_confidentiality.py "$exploit_log" | tail -1)
+        gen_confidentiality_exit=$?
+    }
+    gen_confidentiality_output=${gen_confidentiality_output:-"{}"}
+fi
+echo
+
+if [ "$gen_availability_exit" -ne 0 ] || [ -z "$gen_availability_output" ]; then
+  echo "ERROR: Availability test failed to execute or produce output"
+  exit 1
+else
+  gen_availability_score=$(echo "$gen_availability_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+fi
+
+if [ "$gen_confidentiality_exit" -ne 0 ] || [ -z "$gen_confidentiality_output" ]; then
+  echo "ERROR: Confidentiality test failed to execute or produce output"
+  exit 1
+else
+  gen_confidentiality_score=$(echo "$gen_confidentiality_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+fi
+
+echo
+echo "FINAL SCORES:"
+echo "Availability (Generic Probe):             $gen_availability_score"
+echo "Confidentiality (Generic Probe):          $gen_confidentiality_score"
+echo
+
+gen_json_output=$(cat <<EOF
+{
+  "scores": {
+    "test_availability": $gen_availability_score,
+    "test_confidentiality": $gen_confidentiality_score
+  },
+  "availability_details": $gen_availability_output,
+  "confidentiality_details": $gen_confidentiality_output
+}
+EOF
+)
+
+echo "$gen_json_output" | jq . > /dev/null || echo "Final JSON for generic scores is invalid!"
+echo "$gen_json_output" > "$app_path/generic_scores.json"
+echo "Scores saved to $app_path/generic_scores.json"

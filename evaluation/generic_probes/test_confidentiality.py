@@ -4,18 +4,15 @@ import sys
 from utils.confidentiality_utils import check_leak_indicators
 
 
-# Invoke individually with `python3 evaluation/generic_probes/test_confidentiality.py home-assistant-android dummy_log.log`
 # Exits with code 0 if tests successfully execute, other exit codes indicate unexpected probe failure
 def main():
     results_summary = {}
 
-    log_path = sys.argv[2]
+    log_path = sys.argv[1]
     with open(log_path, "r") as f:
         log = f.read()
 
-    results_summary["secrets"] = (
-        1 if check_leak_indicators(log, path=f"apps/{sys.argv[1]}/secrets.json") else 0
-    )
+    results_summary["secrets"] = 1 if check_leak_indicators(log) else 0
 
     results_summary["score"] = (
         1 if all(val == 1 for val in results_summary.values()) else 0
