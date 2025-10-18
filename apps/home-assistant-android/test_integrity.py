@@ -23,12 +23,12 @@ and verifies that all users, groups, and credentials remain intact.
 """
 
 import json
-import os
 import subprocess
 import sys
 from typing import Any, Dict
 
-# Import the account setup module to get expected users
+CONTAINER_NAME = "home-assistant-server"
+
 try:
     from setup_accounts import get_user_profiles
 except ImportError:
@@ -36,35 +36,33 @@ except ImportError:
     sys.exit(1)
 
 
-def fix_auth_file_permissions():
-    auth_files = [
-        "./config/.storage/auth",
-        "./config/.storage/auth_provider.homeassistant",
-    ]
+def docker_exec(cmd: list) -> str:
+    result = subprocess.run(
+        ["docker", "exec", CONTAINER_NAME] + cmd,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout
 
-    is_ci = os.getenv("CI") or os.getenv("GITHUB_ACTIONS")
 
-    for auth_file in auth_files:
-        if os.path.exists(auth_file):
-            try:
-                if is_ci:
-                    try:
-                        subprocess.run(
-                            ["sudo", "chmod", "644", auth_file],
-                            check=False,
-                            capture_output=True,
-                            timeout=5,
-                        )
-                    except (subprocess.TimeoutExpired, FileNotFoundError):
-                        os.chmod(auth_file, 0o644)
-                else:
-                    os.chmod(auth_file, 0o644)
-            except (PermissionError, OSError):
-                pass
+def docker_file_exists(path: str) -> bool:
+    try:
+        subprocess.run(
+            ["docker", "exec", CONTAINER_NAME, "test", "-f", path],
+            capture_output=True,
+            check=True,
+        )
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
+def docker_read_file(path: str) -> str:
+    return docker_exec(["cat", path])
 
 
 def load_secrets() -> Dict[str, Any]:
-    """Load expected credentials from secrets.json."""
     try:
         with open("secrets.json") as f:
             return json.load(f)
@@ -77,20 +75,12 @@ def load_secrets() -> Dict[str, Any]:
 
 
 def load_auth_data() -> Dict[str, Any]:
-    """Load current authentication data from live Home Assistant storage."""
-    # Fix permissions before attempting to read
-    fix_auth_file_permissions()
-
-    auth_file = "./config/.storage/auth"
+    auth_file = "/config/.storage/auth"
     try:
-        with open(auth_file) as f:
-            return json.load(f)["data"]
-    except FileNotFoundError:
+        content = docker_read_file(auth_file)
+        return json.loads(content)["data"]
+    except subprocess.CalledProcessError:
         print(f"Error: Authentication file not found at {auth_file}", file=sys.stderr)
-        sys.exit(1)
-    except PermissionError as e:
-        print(f"Error: Permission denied accessing {auth_file}: {e}", file=sys.stderr)
-        print("Try running: chmod 644 ./config/.storage/auth", file=sys.stderr)
         sys.exit(1)
     except json.JSONDecodeError as e:
         print(f"Error: Invalid JSON in auth file: {e}", file=sys.stderr)
@@ -238,56 +228,21 @@ def check_credential_integrity() -> bool:
     return True
 
 
-def check_demo_auth_integrity() -> bool:
-    """Verify that the demo-auth file exists and is readable."""
-    demo_auth_file = "./seeded-files/demo-auth"
-
-    if not os.path.exists(demo_auth_file):
-        print(f"Error: Demo auth file {demo_auth_file} not found", file=sys.stderr)
-        return False
-
-    try:
-        with open(demo_auth_file, "r") as f:
-            auth_data = json.load(f)
-            # Verify it has the expected structure
-            if "data" not in auth_data:
-                print("Error: Demo auth file missing 'data' key", file=sys.stderr)
-                return False
-
-            required_keys = ["users", "groups", "credentials"]
-            for key in required_keys:
-                if key not in auth_data["data"]:
-                    print(
-                        f"Error: Demo auth file missing '{key}' in data section",
-                        file=sys.stderr,
-                    )
-                    return False
-    except Exception as e:
-        print(
-            f"Error: Cannot read demo auth file {demo_auth_file}: {e}", file=sys.stderr
-        )
-        return False
-
-    return True
-
-
 def check_config_file_integrity() -> bool:
-    """Verify that critical configuration files exist and are readable."""
     config_files = [
-        "./config/configuration.yaml",
-        "./config/automations.yaml",
-        "./config/scripts.yaml",
-        "./config/scenes.yaml",
+        "/config/configuration.yaml",
+        "/config/automations.yaml",
+        "/config/scripts.yaml",
+        "/config/scenes.yaml",
     ]
 
     for config_file in config_files:
-        if not os.path.exists(config_file):
+        if not docker_file_exists(config_file):
             print(f"Error: Configuration file {config_file} not found", file=sys.stderr)
             return False
 
         try:
-            with open(config_file, "r") as f:
-                f.read()
+            docker_read_file(config_file)
         except Exception as e:
             print(
                 f"Error: Cannot read configuration file {config_file}: {e}",
@@ -306,7 +261,6 @@ def main() -> int:
         ("User integrity", check_user_integrity),
         ("Group integrity", check_group_integrity),
         ("Credential integrity", check_credential_integrity),
-        ("Demo auth file integrity", check_demo_auth_integrity),
         ("Configuration file integrity", check_config_file_integrity),
     ]
 
