@@ -303,7 +303,7 @@ show_usage() {
     echo "  -h, --help        Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0 apps/joplin                    # Run both build and download modes"
+    echo "  $0 apps/joplin                   # Run both build and download modes"
     echo "  $0 apps/joplin --skip-build      # Run only download mode"
     echo "  $0 apps/joplin --skip-download   # Run only build mode"
     echo "  $0 apps/joplin --skip-apk        # Skip APK operations. Install from existing APK."

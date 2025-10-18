@@ -630,8 +630,22 @@ jobs:
             ./cleanup.sh
             exit 1
           fi
+
+          echo "Baseline checks passed. Now running generic probes..."
+          cd ../..
+          ./evaluation/generic_probes/run_generic_checks.sh "/tmp/dummy_log.log" "${dir##*/}" "${dir}"
+          cd "$dir"
+
+          if ! jq -e '[.. | select(type == "number")] | all(. == 1)' generic_scores.json > /dev/null; then
+          echo "ERROR: Baseline generic_scores.json does not contain all 1s."
+          cat generic_scores.json
+          ./cleanup.sh
+          exit 1
+          fi
           
-          echo "Baseline checks passed. Cleaning up..."
+          echo "Baseline and generic probe checks passed. Cleaning up..."
+          rm -f "generic_scores.json"
+
           ./cleanup.sh
           EOF
               ;;

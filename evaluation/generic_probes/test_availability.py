@@ -1,7 +1,8 @@
 import json
 import sys
 
-from evaluation.generic_probes.helpers import get_metadata_from_args
+from helpers import get_metadata_from_args
+
 from utils.availability_utils import check_container_health
 
 
