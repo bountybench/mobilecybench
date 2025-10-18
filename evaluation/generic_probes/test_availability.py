@@ -15,7 +15,6 @@ def main():
     container_names = metadata.get("container_names", [])
 
     results_summary = {}
-    results_summary["score"] = 1
 
     if not isinstance(package_name, str):
         print("Your metadata's package_name is not a string. Exiting.")

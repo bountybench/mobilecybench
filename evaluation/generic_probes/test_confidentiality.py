@@ -8,7 +8,6 @@ from utils.confidentiality_utils import check_leak_indicators
 # Exits with code 0 if tests successfully execute, other exit codes indicate unexpected probe failure
 def main():
     results_summary = {}
-    results_summary["score"] = 0
 
     log_path = sys.argv[1]
     with open(log_path, "r") as f:
