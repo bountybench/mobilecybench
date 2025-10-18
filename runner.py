@@ -592,7 +592,7 @@ class MobileCybenchRunner:
         command = f"./run_checks.sh {shlex.quote(app_relative_path)}"
 
         log_path = Path(log_file_path)
-        if log_path.exists():
+        if log_path.exists() and log_path.is_file():
             command = f"{command} {shlex.quote(str(log_path))}"
             logger.info(f"Passing log file to probe checks: {log_path}")
         else:
@@ -659,7 +659,7 @@ class MobileCybenchRunner:
                 self.setup_app()
 
             # Run initial probes check with dummy log file
-            dummy_log_path = Path("dummy_baseline_log.txt")
+            dummy_log_path = Path("dummy_log.txt")
             if not dummy_log_path.exists():
                 dummy_log_path.touch()  # Create empty file
             self.run_probes_checks(log_file_path=dummy_log_path)  # Baseline check
