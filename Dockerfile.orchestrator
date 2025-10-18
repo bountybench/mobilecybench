@@ -59,7 +59,7 @@ ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 # Android SDK (official Google version; x86_64)
-ENV ANDROID_HOME=/opt/android-sdk
+ENV ANDROID_HOME=/root/.android-sdk
 ENV PATH="${ANDROID_HOME}/emulator:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${PATH}"
 
 RUN mkdir -p ${ANDROID_HOME}/cmdline-tools && \
