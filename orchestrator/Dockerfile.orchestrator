@@ -85,13 +85,13 @@ ENV PATH="/opt/venv/bin:$PATH" \
     VIRTUAL_ENV=/opt/venv
 
 # Install Python dependencies
-COPY ../requirements.txt /tmp/requirements.txt
+COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
     && pip install --no-cache-dir -r /tmp/requirements.txt \
     && rm /tmp/requirements.txt
 
 # Copy and set up entrypoint
-COPY entrypoint.sh /entrypoint.sh
+COPY orchestrator/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

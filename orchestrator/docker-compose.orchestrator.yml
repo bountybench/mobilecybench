@@ -1,8 +1,8 @@
 services:
   orchestrator:
     build:
-      context: .
-      dockerfile: Dockerfile.orchestrator
+      context: ..
+      dockerfile: orchestrator/Dockerfile.orchestrator
     container_name: mobilecybench-orchestrator
     privileged: true
     volumes:
