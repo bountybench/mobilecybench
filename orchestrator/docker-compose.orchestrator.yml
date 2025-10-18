@@ -6,11 +6,12 @@ services:
     container_name: mobilecybench-orchestrator
     privileged: true
     volumes:
-      - .:/mobilecybench
+      - ..:/mobilecybench
       - docker-data:/var/lib/docker
       - gradle-cache:/root/.gradle
     environment:
       - DOCKER_TLS_CERTDIR=
+      - APP_NAME=${APP_NAME:-}
     command: ["tail", "-f", "/dev/null"]
 
 volumes:

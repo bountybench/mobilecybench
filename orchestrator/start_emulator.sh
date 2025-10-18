@@ -1,8 +1,24 @@
 #!/bin/bash
-# Start Android emulator
+# Start Android emulator based on SDK version
+# Usage: ./start_emulator.sh <sdk_version>
 
+set -e
+
+# Check if SDK version argument is provided
+if [ -z "$1" ]; then
+    echo "Error: SDK version is required"
+    echo "Usage: $0 <sdk_version>"
+    exit 1
+fi
+
+SDK_VERSION="$1"
 ANDROID_HOME="${HOME}/.android-sdk"
-EMULATOR_NAME="MobileCybenchEmu"
+
+# Construct emulator name based on SDK version
+EMULATOR_NAME="MobileCybenchEmulatorAPI${SDK_VERSION}"
+
+echo "SDK Version: $SDK_VERSION"
+echo "Emulator: $EMULATOR_NAME"
 
 # Check if emulator is already running
 check_running_emulator() {
@@ -15,32 +31,17 @@ check_running_emulator() {
         echo "Warning: ADB not found, cannot check for running emulators"
         return 0
     fi
-    
+
     if [[ $running_emulators -gt 0 ]]; then
         echo "Warning: There are $running_emulators Android emulator(s) already running."
-        echo "Starting another emulator may cause performance issues or conflicts."
-        echo ""
-        echo "Current running emulators:"
-        if command -v adb >/dev/null 2>&1; then
-            adb devices | grep -E "emulator-[0-9]+.*device$"
-        else
-            "$ANDROID_HOME/platform-tools/adb" devices | grep -E "emulator-[0-9]+.*device$"
-        fi
-        echo ""
-        read -p "Do you want to proceed anyway? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo "Emulator start cancelled."
-            echo "To stop the currently running emulators, you can use: ./stop_emulator.sh"
-            exit 0
-        fi
+        echo "Continuing in Docker mode (no user prompt)..."
     fi
 }
 
 # Check for running emulators before starting
 check_running_emulator
 
-echo "Starting Android emulator: $EMULATOR_NAME"
+echo "Starting Android emulator: $EMULATOR_NAME (headless mode)"
 echo "This may take a few minutes on first boot..."
 
 "$ANDROID_HOME/emulator/emulator" \
@@ -49,11 +50,12 @@ echo "This may take a few minutes on first boot..."
     -wipe-data \
     -no-window \
     -gpu off \
-    -skin 1080x1920 \
     -memory 2048 \
+    -no-audio \
+    -read-only \
     &
 
-echo "Emulator started in background"
+echo "Emulator started in background (headless)"
 echo "Waiting for device to be ready..."
 
 # Wait for device

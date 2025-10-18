@@ -6,20 +6,28 @@
 docker compose -f docker-compose.orchestrator.yml build
 ```
 
-### Start 
+### Start with Automatic Runner Execution
+To run the orchestrator with automatic execution for a specific app:
+```bash
+# Set the app name and start the container
+APP_NAME=conversations docker compose -f docker-compose.orchestrator.yml up -d
+
+# View logs
+docker compose -f docker-compose.orchestrator.yml logs -f
+```
+
+The container will automatically:
+1. Start the Docker daemon
+2. Create the `shared_net` network
+3. Start the ADB server
+4. Run `python3 runner.py --docker <APP_NAME>`
+5. The runner will automatically select the correct emulator based on the app's SDK version from `metadata.json`
+
+### Start without Automatic Execution (Manual Mode)
+If you want to manually control the container:
 ```bash
 docker compose -f docker-compose.orchestrator.yml up -d
 docker exec -it mobilecybench-orchestrator bash
-```
-
-### Inside the Orchestrator container, start the emulator in the background
-```bash
-emulator -avd MobileCybenchEmulatorAPI33 -no-window -no-audio -no-snapshot-save -wipe-data -gpu off -skin 1080x1920 -memory 2048 &
-# or
-emulator -avd MobileCybenchEmulatorAPI34 -no-window -no-audio -no-snapshot-save -wipe-data -gpu off -skin 1080x1920 -memory 2048 &
-# or
-emulator -avd MobileCybenchEmulatorAPI35 -no-window -no-audio -no-snapshot-save -wipe-data -gpu off -skin 1080x1920 -memory 2048 &
-# note: Bitwarden is on SDK 33; others are on 34 and 35.
 ```
 
 ## Building apps

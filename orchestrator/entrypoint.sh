@@ -34,5 +34,12 @@ fi
 echo "Starting ADB server..."
 adb start-server
 
+# If APP_NAME is provided, run the runner
+if [ -n "$APP_NAME" ]; then
+    echo "Running MobileCybench for app: $APP_NAME"
+    cd /mobilecybench
+    python3 runner.py --docker "$APP_NAME"
+fi
+
 # Keep container running
 exec "$@"
