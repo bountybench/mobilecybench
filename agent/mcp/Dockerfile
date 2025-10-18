@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
 
 # Python packages
 RUN pip install --no-cache-dir \
-    fastmcp \
+    fastmcp==2.12.5 \
     docker
 
 # Add ngrok
