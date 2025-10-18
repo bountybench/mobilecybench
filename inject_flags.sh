@@ -36,7 +36,11 @@ for arg in "$@"; do
         else
             # Allow for arguments like --other_flag that we don't handle
             # This is to avoid breaking if the script is extended later
-            : 
+            if [[ "$arg" == -* ]]; then
+                echo "Warning: Unrecognized argument '$arg' - ignoring." >&2
+            else
+                echo "Warning: File '$arg' not found - ignoring." >&2
+            fi
         fi
         ;;
     esac
