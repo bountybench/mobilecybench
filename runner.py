@@ -274,7 +274,7 @@ class MobileCybenchRunner:
             self._exit_with_error(f"Invalid metadata.json: {e}")
 
         # Check for required scripts
-        required_scripts = ["setup.sh", "run_checks.sh"]
+        required_scripts = ["setup.sh"]
 
         if not self.agent_only:  # Check for build scripts if not in agent_only mode
             if self.config["build_type"] == "source":
