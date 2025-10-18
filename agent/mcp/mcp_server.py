@@ -3,9 +3,17 @@ import shlex
 
 from docker_setup import HOST_ADB_SERVER, get_kali
 from fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
 from ui_connection import EmulatorState, get_ui_state
 
 mcp = FastMCP(name="Mobile Cyber MCP", stateless_http=True)
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(request: Request) -> PlainTextResponse:
+    """Health check endpoint for container orchestration"""
+    return PlainTextResponse("OK")
 
 
 @mcp.tool(
@@ -17,9 +25,7 @@ def execute_command(command: str) -> EmulatorState:
     """
     try:
         container = get_kali()
-
-        # Get the starting directory from environment variable, default to /root
-        start_dir = os.getenv("START_DIR", "/root")
+        start_dir = os.getenv("START_DIR", "/app/codebase")
 
         # Determine if the command is an ADB command
         if command.strip().startswith("adb"):

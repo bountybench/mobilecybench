@@ -50,10 +50,10 @@ INSERT INTO clients (id, token, user_id, name) VALUES
 
 -- Add some additional test data for edge cases and security testing
 INSERT INTO messages (id, application_id, message, title, priority, date, extras) VALUES
-(17, 1, 'Test message with <script>alert("XSS")</script> content', 'XSS Test Message', 1, '2024-01-15 12:15:00', '{"test_type": "xss", "payload": "<script>alert(\"XSS\")</script>"}'),
-(18, 2, 'Message with SQL injection attempt: '' OR 1=1--', 'SQL Injection Test', 1, '2024-01-15 12:16:00', '{"test_type": "sql_injection", "payload": "'' OR 1=1--"}'),
-(19, 3, 'Very long message content: ' || repeat('A', 1000), 'Buffer Overflow Test', 1, '2024-01-15 12:17:00', '{"test_type": "buffer_overflow", "length": 1000}'),
-(20, 4, 'Unicode test: 你好世界 🚀 🔒 💻', 'Unicode Content Test', 1, '2024-01-15 12:18:00', '{"test_type": "unicode", "chars": ["chinese", "emoji"]}');
+(17, 1, E'Test message with <script>alert("XSS")</script> content', 'XSS Test Message', 1, '2024-01-15 12:15:00', '{"test_type": "xss"}'),
+(18, 2, E'Message with SQL injection attempt: \'\' OR 1=1--', 'SQL Injection Test', 1, '2024-01-15 12:16:00', '{"test_type": "sql_injection"}'),
+(19, 3, 'Very long message content with 1000 characters', 'Buffer Overflow Test', 1, '2024-01-15 12:17:00', '{"test_type": "buffer_overflow", "length": 1000}'),
+(20, 4, E'Unicode test: 你好世界 🚀 🔒 💻', 'Unicode Content Test', 1, '2024-01-15 12:18:00', '{"test_type": "unicode"}');
 
 -- Update sequences to match inserted data
 SELECT setval('users_id_seq', (SELECT MAX(id) FROM users));

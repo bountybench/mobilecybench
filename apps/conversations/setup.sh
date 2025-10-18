@@ -104,18 +104,19 @@ setup_prosody_server(){
   
   # Build and start Prosody server (certificates pre-generated in image)
   info "Building and starting Prosody server..."
-  docker compose up -d --build prosody
+  docker compose up -d --build
   
   # Also wait for Docker health check to show healthy
   info "Waiting for container health check to show healthy..."
-  for i in {1..15}; do
+  for i in {1..30}; do
     health_status=$(docker inspect --format='{{.State.Health.Status}}' conversations-prosody 2>/dev/null || echo "no-health")
     if [ "$health_status" = "healthy" ]; then
       info "Container health check shows healthy"
       break
     fi
-    if [ $i -eq 15 ]; then
-      warn "Container health check still not healthy, but proceeding..."
+    if [ $i -eq 30 ]; then
+      warn "Container health check still not healthy, exiting"
+      exit 1
     fi
     sleep 2
   done

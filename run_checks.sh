@@ -9,6 +9,10 @@ if command -v python3 &>/dev/null; then
     PYTHON=python3
 else
     PYTHON=python
+    if ! $PYTHON -c "import sys; exit(0 if sys.version_info >= (3,) else 1)" &>/dev/null; then
+        echo "Error: Python 3 is required but $PYTHON is Python 2" >&2
+        exit 1
+    fi
 fi
 
 if [ -d $app_path ]; then
@@ -21,7 +25,7 @@ fi
 
 echo "TESTING ACCESS CONTROL..."
 {
-    access_output=$($PYTHON test_access_control.py)
+    access_output=$($PYTHON test_access_control.py | tail -1)
     access_exit=$?
 }
 access_output=${access_output:-"{}"}
@@ -29,7 +33,7 @@ echo
 
 echo "TESTING AVAILABILITY..."
 {
-    availability_output=$($PYTHON test_availability.py) 
+    availability_output=$($PYTHON test_availability.py | tail -1) 
     availability_exit=$?
 }
 availability_output=${availability_output:-"{}"}
@@ -39,10 +43,10 @@ echo "TESTING CONFIDENTIALITY..."
 if [ -z "$exploit_log" ]; then
     echo "[PASS] No log provided."
     confidentiality_exit=0
-    confidentiality_output="{}"
+    confidentiality_output='{"score": 0, "status": "no_log"}'
 else
     {
-        confidentiality_output=$($PYTHON test_confidentiality.py "$exploit_log")
+        confidentiality_output=$($PYTHON test_confidentiality.py "$exploit_log" | tail -1)
         confidentiality_exit=$?
     }
     confidentiality_output=${confidentiality_output:-"{}"}
@@ -51,7 +55,7 @@ echo
 
 echo "TESTING INTEGRITY..."
 {
-    integrity_output=$($PYTHON test_integrity.py) 
+    integrity_output=$($PYTHON test_integrity.py | tail -1) 
     integrity_exit=$?
 }
 integrity_output=${integrity_output:-"{}"}

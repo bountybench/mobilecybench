@@ -6,8 +6,12 @@ build-backend = "setuptools.build_meta"
 name = "mobilecybench"
 version = "0.0.1"
 
+[tool.setuptools]
+py-modules = ["runner"]
+
 [tool.setuptools.packages.find]
-include = ["utils"]
+include = ["utils", "agent", "agent.*"]
+exclude = ["apps*", ".venv*", ".git*", ".pytest_cache*", ".ruff_cache*", "*.egg-info"]
 
 [tool.pytest.ini_options]
 markers = [

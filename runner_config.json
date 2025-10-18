@@ -9,5 +9,7 @@
   "model": "gpt-5-2025-08-07",
   "screenshot_mode": true,
   "headless_mode": false,
-  "dry_run": false
+  "dry_run": true,
+  "custom_system_prompt": null,
+  "agent_image": "cybench/mobilecybench:latest"
 }
