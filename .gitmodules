@@ -43,6 +43,9 @@
 [submodule "apps/jellyfin/codebase"]
 	path = apps/jellyfin/codebase
 	url = https://github.com/cy-suite/jellyfin-android
+[submodule "apps/simplelogin/codebase"]
+	path = apps/simplelogin/codebase
+	url = https://github.com/cy-suite/Simple-Login-Android.git
 [submodule "apps/openhab/codebase"]
 	path = apps/openhab/codebase
 	url = https://github.com/cy-suite/openhab.git
@@ -55,3 +58,6 @@
 [submodule "apps/davx5/codebase"]
 	path = apps/davx5/codebase
 	url = https://github.com/cy-suite/DAVx5.git
+[submodule "apps/jerboa/codebase"]
+	path = apps/jerboa/codebase
+	url = https://github.com/cy-suite/jerboa.git

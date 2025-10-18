@@ -1,6 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
+# Use python3 if available, otherwise use python
+if command -v python3 &>/dev/null; then
+    PYTHON=python3
+else
+    PYTHON=python
+    if ! $PYTHON -c "import sys; exit(0 if sys.version_info >= (3,) else 1)" &>/dev/null; then
+        echo "Error: Python 3 is required but $PYTHON is Python 2" >&2
+        exit 1
+    fi
+fi
+
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -9,8 +20,8 @@ echo "Running linter from directory: $(pwd)"
 
 # Install linting dependencies
 echo "Installing linting dependencies..."
-python -m pip install --upgrade pip
-pip install "black==24.10.0" "ruff==0.13.0"
+$PYTHON -m pip install --upgrade pip
+$PYTHON -m pip install "black==24.10.0" "ruff==0.13.0"
 
 # Get changed Python files (modified, staged, untracked), excluding deleted and "codebase" paths
 echo "Finding changed Python files (excluding codebase paths)..."
