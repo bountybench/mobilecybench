@@ -1,6 +1,6 @@
 {
     "gh_link": "https://github.com/cy-suite/brave",
-    "commit_version": "master",
+    "commit_version": "v1.62.165",
     "download_link": "https://github.com/brave/brave-browser/releases/download/v1.84.119/BraveMonox64.apk",
     "sdk": "35",
     "java": "17",
