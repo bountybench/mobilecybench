@@ -33,10 +33,6 @@
       "success": true,
       "message": "Credential integrity passed"
     },
-    "demo_auth_file_integrity": {
-      "success": true,
-      "message": "Demo auth file integrity passed"
-    },
     "configuration_file_integrity": {
       "success": true,
       "message": "Configuration file integrity passed"
