@@ -287,6 +287,7 @@ checkout_commit() {
 SKIP_BUILD=false
 SKIP_DOWNLOAD=false
 SKIP_APK=false
+RUN_UNIT_TESTS=false
 
 show_usage() {
     echo "Usage: $0 <dir> [options]"
@@ -298,6 +299,7 @@ show_usage() {
     echo "  --skip-build      Skip build mode (source setup)"
     echo "  --skip-download   Skip download mode (apklink setup)"
     echo "  --skip-apk        Skip APK operations. Install from existing APK."
+    echo "  --unit-tests      Run unit tests (opt-in)"
     echo "  -h, --help        Show this help message"
     echo ""
     echo "Examples:"
@@ -305,6 +307,7 @@ show_usage() {
     echo "  $0 apps/joplin --skip-build      # Run only download mode"
     echo "  $0 apps/joplin --skip-download   # Run only build mode"
     echo "  $0 apps/joplin --skip-apk        # Skip APK operations. Install from existing APK."
+    echo "  $0 apps/joplin --unit-tests      # Run unit tests"
     echo ""
     echo "By default, both build mode (source) and download mode (apklink) are run"
     echo "when both setup scripts are available."
@@ -325,6 +328,10 @@ while [[ $# -gt 0 ]]; do
             SKIP_APK=true
             SKIP_BUILD=true
             SKIP_DOWNLOAD=true
+            shift
+            ;;
+        --unit-tests)
+            RUN_UNIT_TESTS=true
             shift
             ;;
         -h|--help)
@@ -395,6 +402,24 @@ run_test_check() {
 
     cd "$ROOT_DIR"
     cd "$DIR"
+
+    # Mirror CI: for vuln_scenario_0 only, prepare rooted/remounted emulator BEFORE setup
+    if [ -n "$vuln_scenario" ] && [ "$vuln_scenario" = "0" ]; then
+        echo -e "${INFO} Preparing rooted/remounted emulator (CI parity for vuln_scenario_0)"
+        if [ -f "utils/android_emulator_ready.sh" ]; then
+            utils/android_emulator_ready.sh --remount || true
+        else
+            adb get-state 1>/dev/null 2>&1 || adb wait-for-device
+            adb root || true
+            adb wait-for-device
+            adb shell avbctl disable-verification || true
+            adb reboot || true
+            adb wait-for-device
+            adb root || true
+            adb remount || true
+        fi
+        adb logcat -c || true
+    fi
 
     echo -e "${INFO} Running setup..."
     { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
@@ -525,7 +550,23 @@ EOF
         # Run the three test scenarios
         run_test_check "TEST CHECKS BEFORE VULNERABLE SCENARIOS" "" "false"
         run_test_check "TEST CHECKS AFTER NON-DOS VULNERABLE SCENARIO" "0" "true"
-        run_test_check "TEST CHECKS AFTER DOS VULNERABLE SCENARIO" "1" "false"
+        
+        # DoS testing is OPTIONAL - only run if app has server/container components
+        # Check if app_server field is not an empty string
+        if [ -f "metadata.json" ]; then
+            app_server=$(jq -r '.app_server // empty' metadata.json)
+            if [ -n "$app_server" ]; then
+                echo -e "${INFO} App has server components ($app_server) - running DoS testing..."
+                run_test_check "TEST CHECKS AFTER DOS VULNERABLE SCENARIO" "1" "false"
+                DOS_TESTED=true
+            else
+                echo -e "${INFO} App has no server components (app_server is empty) - skipping DoS testing (not applicable)"
+                DOS_TESTED=false
+            fi
+        else
+            echo -e "${INFO} No metadata.json found - skipping DoS testing (not applicable)"
+            DOS_TESTED=false
+        fi
     else
         # Run simplified test
         print_header "$CYAN" "RUNNING SIMPLIFIED APK INSTALLATION TEST"
@@ -590,6 +631,20 @@ fi
 # Install mobilecybench utils
 pip install -e .
 
+# Run unit tests (only if --unit-tests flag is provided)
+if [ "$RUN_UNIT_TESTS" = true ]; then
+    print_header "$CYAN" "RUNNING UNIT TESTS"
+    echo -e "${INFO} Running unit tests..."
+    if pytest tests/ -v --tb=short; then
+        echo -e "${SUCCESS} Unit tests passed"
+    else
+        echo -e "${ERROR} Unit tests failed"
+        exit 1
+    fi
+else
+    echo -e "${INFO} Skipping unit tests (use --unit-tests flag to run them)"
+fi
+
 # Check if any setup mode has test_X.py to determine overall strategy
 cd "$DIR"
 HAS_PROBES=false
@@ -641,7 +696,11 @@ if [ "$HAS_PROBES" = true ]; then
     echo -e "${SUCCESS} Complete vulnerability testing performed:"
     echo -e "${SUCCESS} ✓ Baseline scenario"  
     echo -e "${SUCCESS} ✓ Vulnerability scenario 0 (non-DoS)"
-    echo -e "${SUCCESS} ✓ Vulnerability scenario 1 (DoS)"
+    if [ "$DOS_TESTED" = true ]; then
+        echo -e "${SUCCESS} ✓ Vulnerability scenario 1 (DoS) - server components detected"
+    else
+        echo -e "${INFO} Vulnerability scenario 1 (DoS) - skipped (no server components)"
+    fi
     echo -e "${SUCCESS} ✓ All CIAA (Confidentiality, Integrity, Availability, Access Control) checks"
     if [ "$SETUP_MODE_COUNT" -gt 1 ]; then
         echo -e "${SUCCESS} ✓ Tested with multiple setup modes: $SETUP_MODES"
