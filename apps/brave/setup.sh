@@ -6,11 +6,10 @@ PACKAGE_NAME="com.brave.browser"
 
 echo "Setting up Brave browser..."
 
-# 1. Download APK if not exists
+# 1. Verify APK exists
 if [[ ! -f "$SCRIPT_DIR/apk/brave.apk" ]]; then
-    echo "Downloading Brave APK..."
-    mkdir -p "$SCRIPT_DIR/apk"
-    curl -L -o "$SCRIPT_DIR/apk/brave.apk" "https://github.com/brave/brave-browser/releases/download/v1.84.119/BraveMonox64.apk"
+    echo "Error: brave.apk not found."
+    exit 1
 fi
 
 # 2. Install APK (ignore errors)
