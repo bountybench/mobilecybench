@@ -1,0 +1,18 @@
+{
+  database: {
+    uri: "postgres://lemmy:password@postgres:5432/lemmy"
+  }
+  hostname: "lemmy"
+  bind: "0.0.0.0"
+  port: 8536
+  tls_enabled: false
+  pictrs: {
+    url: "http://pictrs:8080/"
+    api_key: "API_KEY"
+  }
+  setup: {
+    admin_username: "admin"
+    admin_password: "7xK#9mP$2vN@5qR!8wL&4tJ%6zH^3bQ*"
+    site_name: "Lemmy Test Instance"
+  }
+}

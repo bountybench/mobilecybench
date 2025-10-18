@@ -20,6 +20,7 @@ from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 
+from agent.agent_setup import AgentEnvironment
 from utils.logger import logger, logger_manager
 from utils.utils import get_app_metadata
 
@@ -200,9 +201,10 @@ class CommandExecutor:
 
 
 class MobileCybenchRunner:
-    def __init__(self, app_name: str, config: dict):
+    def __init__(self, app_name: str, config: dict, agent_only: bool = False):
         self.app_name = app_name
         self.config = config
+        self.agent_only = agent_only
         self.project_root = project_root
         self.app_dir = self.project_root / "apps" / app_name
         self.agent_dir = self.project_root / "agent"
@@ -211,20 +213,7 @@ class MobileCybenchRunner:
         logger.info("=" * 80)
         logger.info("MobileCybench Runner Started")
         logger.info(f"App: {app_name}")
-        logger.info("Configuration:")
-        logger.info(f"  Server Access: {config['server_access']}")
-        logger.info(f"  Build Type: {config['build_type']}")
-        logger.info(f"  ADB Access: {config['adb_access']}")
-        logger.info(f"  Max Iterations: {config['max_iterations']}")
-        logger.info(f"  Max Kali Message Tokens: {config['max_kali_message_tokens']}")
-        logger.info(
-            f"  Max Model Response Tokens: {config['max_model_response_tokens']}"
-        )
-        logger.info(f"  Max Context Length: {config['max_context_length']}")
-        logger.info(f"  Model: {config['model']}")
-        logger.info(f"  Screenshot Mode: {config['screenshot_mode']}")
-        logger.info(f"  Headless Mode: {config['headless_mode']}")
-        logger.info(f"  Dry Run: {config['dry_run']}")
+        logger.info(f"Configuration: {json.dumps(config, indent=2)}")
         logger.info(f"Timestamp: {datetime.datetime.now()}")
         logger.info("=" * 80)
 
@@ -236,10 +225,42 @@ class MobileCybenchRunner:
         # for example, if we fail after starting containers, we should stop them
         sys.exit(1)
 
+    def _validate_api_key(self):
+        """Validate OpenAI API key early in the pipeline"""
+        logger.info("Validating OpenAI API key...")
+
+        # Load .env file from agent directory
+        env_file = self.agent_dir / ".env"
+        if env_file.exists():
+            logger.info(f"Loading existing environment from {env_file}")
+            load_dotenv(dotenv_path=env_file, override=False)
+        else:
+            self._exit_with_error(
+                f"No existing .env file found at {env_file}. Please create one with OPENAI_API_KEY."
+            )
+
+        # Check if API key exists in environment
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            self._exit_with_error("OPENAI_API_KEY not found in environment or .env")
+
+        # Validate the API key works by making a test call
+        try:
+            from agent.model_providers import get_model_provider
+
+            provider = get_model_provider("openai")
+            provider.validate()
+            logger.info("✓ OpenAI API key validated successfully")
+        except Exception as e:
+            self._exit_with_error(f"OpenAI API key validation failed: {e}")
+
     def validate_input(self):
         """Validate app name and required files"""
-        # TODO: Implement API key validation
         logger.info("Validating input...")
+
+        # Validate API key early (before starting emulator and app servers)
+        if not self.config["dry_run"]:
+            self._validate_api_key()
 
         # Check if app directory exists
         if not self.app_dir.exists():
@@ -254,23 +275,26 @@ class MobileCybenchRunner:
 
         # Check for required scripts
         required_scripts = ["setup.sh", "run_checks.sh"]
-        if self.config["build_type"] == "source":
-            required_scripts.append("setup_app_source.sh")
-        elif self.config["build_type"] == "download-apk":
-            required_scripts.append("setup_app_apklink.sh")
-        elif self.config["build_type"] == "skip-apk":
-            possible_setup_scripts = ["setup_app_source.sh", "setup_app_apklink.sh"]
-            # do not allow skip-apk if neither script exists
-            if not any(
-                (self.app_dir / script).exists() for script in possible_setup_scripts
-            ):
+
+        if not self.agent_only:  # Check for build scripts if not in agent_only mode
+            if self.config["build_type"] == "source":
+                required_scripts.append("setup_app_source.sh")
+            elif self.config["build_type"] == "download-apk":
+                required_scripts.append("setup_app_apklink.sh")
+            elif self.config["build_type"] == "skip-apk":
+                possible_setup_scripts = ["setup_app_source.sh", "setup_app_apklink.sh"]
+                # do not allow skip-apk if neither script exists
+                if not any(
+                    (self.app_dir / script).exists()
+                    for script in possible_setup_scripts
+                ):
+                    self._exit_with_error(
+                        f"At least one setup script required for build_type 'skip-apk' not found: {possible_setup_scripts}"
+                    )
+            else:
                 self._exit_with_error(
-                    f"At least one setup script required for build_type 'skip-apk' not found: {possible_setup_scripts}"
+                    f"Unsupported Build Type Detected: {self.config['build_type']}"
                 )
-        else:
-            self._exit_with_error(
-                f"Unsupported Build Type Detected: {self.config["build_type"]}"
-            )
 
         for script in required_scripts:
             script_path = self.app_dir / script
@@ -375,39 +399,36 @@ class MobileCybenchRunner:
         logger.info("=" * 60)
         logger.info("Setting up agent environment...")
 
-        self._setup_env_file()
+        if not self.config["dry_run"]:
+            self._setup_env_file()
         self._create_docker_network()
+
+        # Setup agent kali environment
+        logger.info("Setting up agent Kali environment...")
+        agent_env = AgentEnvironment(
+            app_dir=self.app_dir,
+            docker_networks=["shared_net"],
+            image_name=self.config["agent_image"],
+            env={"ANDROID_ADB_SERVER_PORT": "5037"},
+        )
+        agent_env.setup()
+        self.agent_env = agent_env
+
         self._start_containers()
-        self._copy_codebase_to_kali()
 
         logger.info("Agent environment setup completed")
         logger.info("✓ Agent environment setup completed")
 
     def _setup_env_file(self):
-        """Handle .env file creation/update for OpenAI API key"""
-        logger.info("Setting up environment file...")
+        """Load environment file for OpenAI API key (already validated)"""
+        logger.info("Loading environment file...")
 
         env_file = self.agent_dir / ".env"
-        api_key = None
-
-        # Load existing .env
-        if env_file.exists():
-            logger.info(f"Loading existing environment from {env_file}")
-            load_dotenv(dotenv_path=env_file, override=False)
-        else:
-            logger.error(
-                f"No existing .env file found at {env_file}. Please create one with OPENAI_API_KEY."
-            )
-            self._exit_with_error("Missing .env file with OPENAI_API_KEY")
-
+        # We know the file exists and key is valid from earlier validation
+        load_dotenv(dotenv_path=env_file, override=False)
         api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            logger.error("OPENAI_API_KEY not found in environment or .env; exiting.")
-            self._exit_with_error("OPENAI_API_KEY missing")
-        else:
-            logger.info("✓ Using OPENAI_API_KEY from environment/.env (no prompt mode)")
-
         os.environ["OPENAI_API_KEY"] = api_key
+        logger.info("✓ Environment loaded with OPENAI_API_KEY")
 
     def _create_docker_network(self):
         """Create shared docker network or print already created if it exists"""
@@ -439,9 +460,9 @@ class MobileCybenchRunner:
         env = os.environ.copy()
         start_dir = f"/tmp/{self.app_name}_app"
         env["START_DIR"] = start_dir
-
         logger.info(f"Setting START_DIR environment variable: {start_dir}")
         logger.info(f"Environment variable START_DIR set to: {start_dir}")
+
         logger.info("Starting containers with docker compose...")
 
         try:
@@ -482,49 +503,6 @@ class MobileCybenchRunner:
                 logger.warning("Some containers may not be running properly")
                 logger.warning("⚠ Warning: Some containers may not be running properly")
 
-    def _copy_codebase_to_kali(self):
-        """Copy app codebase to Kali container"""
-        logger.info("Copying app codebase to Kali container...")
-        logger.info("Copying app codebase to Kali container...")
-
-        source_path = self.app_dir / "codebase"
-        container_name = "kali-container"
-        target_path = f"/tmp/{self.app_name}_app"
-        # TODO: Make target path to be the directory that the agent has access to
-
-        if not source_path.exists():
-            logger.warning(f"⚠ Warning: Codebase directory not found at {source_path}")
-            logger.warning(f"Codebase directory not found: {source_path}")
-            return
-
-        logger.info(f"Source: {source_path}")
-        logger.info(f"Target: {container_name}:{target_path}")
-        logger.info(f"Copying from {source_path} to {container_name}:{target_path}")
-
-        try:
-            # Create target directory in container
-            try:
-                self.cmd.run(f"docker exec {container_name} mkdir -p {target_path}")
-            except subprocess.CalledProcessError as e:
-                logger.warning(f"Could not create directory in container: {e}")
-                logger.warning("⚠ Warning: Could not create directory in container")
-                return
-
-            # Copy files to container
-            try:
-                self.cmd.run(
-                    f"docker cp {source_path}/. {container_name}:{target_path}/"
-                )
-                logger.info(f"✓ Codebase copied successfully to {target_path}")
-                logger.info(f"Codebase copied successfully to {target_path}")
-            except subprocess.CalledProcessError as e:
-                logger.error(f"Failed to copy codebase: {e}")
-                logger.error("ERROR: Failed to copy codebase to container")
-
-        except Exception as e:
-            logger.warning(f"Exception during codebase copy: {e}")
-            logger.warning(f"⚠ Warning: Exception during codebase copy: {e}")
-
     def run_agent(self):
         """Run the custom agent - custom_agent.py"""
         logger.info("=" * 60)
@@ -549,8 +527,13 @@ class MobileCybenchRunner:
                 max_context_length=self.config["max_context_length"],
                 screenshot_enabled=self.config["screenshot_mode"],
                 app_name=self.app_name,
+                app_server=getattr(self, "metadata", {}).get(
+                    "app_server", None
+                ),  # default to None if in agent_only mode
+                # TODO - create proper dry run mode
+                # https://github.com/bountybench/mobilecybench/issues/322
                 dry_run=self.config["dry_run"],
-                app_server=self.metadata.get("app_server", None),
+                system_prompt=self.config.get("custom_system_prompt", None),
             )
 
             logger.info("Running agent...")
@@ -658,13 +641,19 @@ class MobileCybenchRunner:
         """Run the complete pipeline"""
         try:
             self.validate_input()
-            self.setup_emulator()
-            self.setup_app()
+
+            if not self.agent_only:
+                self.setup_emulator()
+                self.setup_app()
+
+            # Run initial probes check
             self.run_probes_checks()  # Probes consider it a pass if no log file is provided
 
+            # Set up and run agent
             self.setup_agent()
             self.run_agent()
 
+            # Run probe checks after agent execution
             agent_log_filename = logger_manager.get_log_file_name()
             log_path = Path(agent_log_filename) if agent_log_filename else None
             logger.info(f"Agent log file path: {log_path}")
@@ -722,6 +711,7 @@ def load_config(config_path: Path) -> dict:
         "screenshot_mode",
         "headless_mode",
         "dry_run",
+        "agent_image",
     ]
 
     missing_fields = [field for field in required_fields if field not in config]
@@ -766,6 +756,11 @@ def load_config(config_path: Path) -> dict:
         logger.error("Field 'model' must be a non-empty string")
         sys.exit(1)
 
+    # Validate agent_image field
+    if not isinstance(config["agent_image"], str) or not config["agent_image"].strip():
+        logger.error("Field 'agent_image' must be a non-empty string")
+        sys.exit(1)
+
     logger.info("Configuration validation passed")
     return config
 
@@ -775,9 +770,21 @@ def main():
     parser = argparse.ArgumentParser(
         description="MobileCybench Runner - Orchestrates AI-driven mobile app security testing"
     )
+
+    # Add agent_only as a flag
     parser.add_argument(
-        "app_name", help="Name of the app to test (must exist in apps/ directory)"
+        "--agent-only",
+        action="store_true",
+        dest="agent_only",
+        help="Run only the agent, skipping emulator setup and app setup. Optional.",
     )
+
+    parser.add_argument(
+        "app_name",
+        help="Name of the app to test (must exist in apps/ directory). Required.",
+    )
+
+    # Add config_file as optional
     parser.add_argument(
         "config_file",
         nargs="?",
@@ -798,7 +805,7 @@ def main():
     config = load_config(config_path)
 
     # Create and run the runner
-    runner = MobileCybenchRunner(args.app_name, config)
+    runner = MobileCybenchRunner(args.app_name, config, args.agent_only)
     return runner.run()
 
 
