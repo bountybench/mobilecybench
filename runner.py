@@ -201,10 +201,17 @@ class CommandExecutor:
 
 
 class MobileCybenchRunner:
-    def __init__(self, app_name: str, config: dict, agent_only: bool = False):
+    def __init__(
+        self,
+        app_name: str,
+        config: dict,
+        agent_only: bool = False,
+        docker: bool = False,
+    ):
         self.app_name = app_name
         self.config = config
         self.agent_only = agent_only
+        self.docker = docker
         self.project_root = project_root
         self.app_dir = self.project_root / "apps" / app_name
         self.agent_dir = self.project_root / "agent"
@@ -311,23 +318,37 @@ class MobileCybenchRunner:
         logger.info("Input validation passed")
 
     def setup_emulator(self):
-        """Start and check Android emulator"""
+        """Start Android emulator"""
         logger.info("Setting up Android emulator...")
-        try:
-            self.cmd.run(f"./setup.sh {self.app_name}", cwd=self.project_root)
-        except subprocess.CalledProcessError as e:
-            self._exit_with_error(f"Failed to setup emulator: {e}")
 
-        # Start emulator (runs in background - continuous output like docker without detached mode)
-        logger.info("Starting emulator in background...")
-        # Use --yes to auto-confirm starting another emulator if already running
-        self.cmd.start_background_process(
-            "bash ./start_emulator.sh --yes",
-            cwd=self.project_root,
-        )
-        logger.info(
-            "Emulator setup started, waiting for it to be ready while setting up the app..."
-        )
+        if self.docker:
+            logger.info("Docker mode enabled - starting emulator from orchestrator")
+            orchestrator_dir = self.project_root / "orchestrator"
+
+            sdk_version = self.metadata.get("sdk")
+            if not sdk_version:
+                self._exit_with_error("SDK version not found in metadata.json")
+
+            logger.info(f"Starting emulator for SDK version: {sdk_version}")
+            try:
+                self.cmd.run(f"./start_emulator.sh {sdk_version}", cwd=orchestrator_dir)
+            except subprocess.CalledProcessError as e:
+                self._exit_with_error(f"Failed to start emulator (docker mode): {e}")
+        else:
+            # host mode
+            try:
+                self.cmd.run(f"./setup.sh {self.app_name}", cwd=self.project_root)
+            except subprocess.CalledProcessError as e:
+                self._exit_with_error(f"Failed to setup emulator: {e}")
+
+            logger.info("Starting emulator in background...")
+            self.cmd.start_background_process(
+                "bash ./start_emulator.sh --yes",
+                cwd=self.project_root,
+            )
+            logger.info(
+                "Emulator setup started, waiting for it to be ready while setting up the app..."
+            )
 
     def setup_app(self):
         """APK Handling, App Backend Setup, and App Installation"""
@@ -793,6 +814,13 @@ def main():
     )
 
     parser.add_argument(
+        "--docker",
+        action="store_true",
+        dest="docker",
+        help="Use docker mode for emulator setup, running scripts from orchestrator/ directory. Optional.",
+    )
+
+    parser.add_argument(
         "app_name",
         help="Name of the app to test (must exist in apps/ directory). Required.",
     )
@@ -818,7 +846,7 @@ def main():
     config = load_config(config_path)
 
     # Create and run the runner
-    runner = MobileCybenchRunner(args.app_name, config, args.agent_only)
+    runner = MobileCybenchRunner(args.app_name, config, args.agent_only, args.docker)
     return runner.run()
 
 
