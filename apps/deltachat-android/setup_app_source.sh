@@ -170,12 +170,6 @@ main() {
     if [[ "$FILE_SIZE" -lt 1048576 ]]; then
         error "APK too small ($FILE_SIZE bytes)"
     fi
-
-    if [[ -f "$SCRIPT_DIR/setup_app_apklink.sh" ]]; then
-        "$SCRIPT_DIR/setup_app_apklink.sh"
-    else
-        warn "setup_app_apklink.sh not found"
-    fi
 }
 
 main "$@"

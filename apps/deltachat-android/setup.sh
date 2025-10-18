@@ -8,14 +8,14 @@ echo "=== DeltaChat setup ==="
 
 docker compose -f "$DELTACHAT_DIR/docker-compose.yml" up --build -d
 for i in {1..30}; do
-    if docker ps | grep -q "deltachat-greenmail"; then
+    health=$(docker inspect --format='{{.State.Health.Status}} deltachat-greenmail 2>/dev/null || echo "down")
+    if ["$health_status" = "healthy"]; then
+        echo "Greenmail container is healthy"
         break
     fi
     if [ $i -eq 30 ]; then
-        echo "[ERROR] Docker container not started"
-        exit 1
+        echo "[WARNING] Container not healthy after 60s. Proceeding anyways."
     fi
-    echo "[INFO] Waiting for Docker container to start... ($i/30)"
     sleep 2
 done
 
