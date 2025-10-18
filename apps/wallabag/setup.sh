@@ -193,3 +193,4 @@ adb install -r "$APK"
 echo "[Wallabag] APK installed successfully."
 echo "[Wallabag] Setup script complete."
 echo "Exported WALLABAG_OAUTH_TOKEN for agent use."
+
