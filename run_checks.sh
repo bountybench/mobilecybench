@@ -41,7 +41,7 @@ echo
 
 echo "TESTING CONFIDENTIALITY..."
 if [ -z "$exploit_log" ]; then
-    echo "[PASS] No log provided."
+    echo "[FAIL] No log provided."
     confidentiality_exit=0
     confidentiality_output='{"score": 0, "status": "no_log"}'
 else
@@ -117,8 +117,8 @@ EOF
 )
 
 echo "$json_output" | jq . > /dev/null || echo "Final JSON for scores is invalid!"
-echo "$json_output" > scores.json
-echo "Scores saved to scores.json"
+echo "$json_output" > $app_path/scores.json
+echo "Scores saved to $app_path/scores.json"
 
 # Run generic checks
 echo "App-specific checks were successfully run. Now running generic checks..."
@@ -133,7 +133,7 @@ echo
 
 echo "TESTING GENERIC CONFIDENTIALITY..."
 if [ -z "$exploit_log" ]; then
-    echo "[PASS] No log provided."
+    echo "[FAIL] No log provided."
     gen_confidentiality_exit=0
     gen_confidentiality_output='{"score": 0, "status": "no_log"}'
 else
