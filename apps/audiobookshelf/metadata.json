@@ -6,7 +6,5 @@
     "emulator_server": "http://10.0.2.2:13378",
     "app_server": "http://audiobookshelf:80",
     "username": "usera",
-    "password": "userAPW123",
-    "package_name": "com.audiobookshelf.app",
-    "container_names": ["audiobookshelf"]
+    "password": "userAPW123"
 }
