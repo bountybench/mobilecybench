@@ -314,7 +314,7 @@ class MobileCybenchRunner:
         """Start and check Android emulator"""
         logger.info("Setting up Android emulator...")
         try:
-            self.cmd.run(f"./setup.sh {self.app_name}", cwd=self.project_root)
+            self.cmd.run(f"bash ./setup.sh {self.app_name}", cwd=self.project_root)
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to setup emulator: {e}")
 
@@ -341,7 +341,7 @@ class MobileCybenchRunner:
             logger.info("=" * 60)
             try:
                 self.cmd.run(
-                    "./setup_app_apklink.sh", cwd=self.app_dir, live_output=True
+                    "bash ./setup_app_apklink.sh", cwd=self.app_dir, live_output=True
                 )
             except subprocess.CalledProcessError as e:
                 self._exit_with_error(
@@ -353,7 +353,7 @@ class MobileCybenchRunner:
             logger.info("=" * 60)
             try:
                 self.cmd.run(
-                    "./setup_app_source.sh", cwd=self.app_dir, live_output=True
+                    "bash ./setup_app_source.sh", cwd=self.app_dir, live_output=True
                 )
             except subprocess.CalledProcessError as e:
                 self._exit_with_error(
@@ -375,7 +375,7 @@ class MobileCybenchRunner:
 
         logger.info("Emulator booted. Running ./check_device.sh to verify...")
         try:
-            self.cmd.run("./check_device.sh", cwd=self.project_root, live_output=True)
+            self.cmd.run("bash ./check_device.sh", cwd=self.project_root, live_output=True)
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to check emulator status: {e}")
 
@@ -386,7 +386,7 @@ class MobileCybenchRunner:
         )
         logger.info("=" * 60)
         try:
-            self.cmd.run("./setup.sh", cwd=self.app_dir, live_output=True)
+            self.cmd.run("bash ./setup.sh", cwd=self.app_dir, live_output=True)
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to setup app: {e}")
 
@@ -589,7 +589,7 @@ class MobileCybenchRunner:
         logger.info("=" * 60)
 
         app_relative_path = f"apps/{self.app_name}"
-        command = f"./run_checks.sh {shlex.quote(app_relative_path)}"
+        command = f"bash ./run_checks.sh {shlex.quote(app_relative_path)}"
 
         log_path = Path(log_file_path)
         if log_path.exists() and log_path.is_file():
