@@ -385,11 +385,11 @@ class MobileCybenchRunner:
         logger.info("=" * 60)
         logger.info("Waiting for emulator to finish booting...")
         try:
-             self.cmd.run(
-                 'bash -c "source utils/wait.sh && wait_for_device_boot 300"',
-                 cwd=self.project_root,
-                 live_output=True,
-             )
+            self.cmd.run(
+                'bash -c "source utils/wait.sh && wait_for_device_boot 300"',
+                cwd=self.project_root,
+                live_output=True,
+            )
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to wait for emulator boot: {e}")
 

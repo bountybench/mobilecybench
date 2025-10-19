@@ -9,7 +9,7 @@ from ui_connection import EmulatorState, get_ui_state
 
 mcp = FastMCP(name="Mobile Cyber MCP", stateless_http=True)
 
-
+@mcp.custom_route("/health", methods=["GET"])
 async def health_check(request: Request) -> PlainTextResponse:
     """Health check endpoint for container orchestration"""
     return PlainTextResponse("OK")
@@ -52,11 +52,4 @@ def execute_command(command: str) -> EmulatorState:
 
 
 if __name__ == "__main__":
-    # Create the HTTP app and manually add the health check route
-    # @custom_route decorator doesn't work in some versions of FastMCP
-    server = mcp.http_app(transport="http")
-    server.add_route("/health", health_check, methods=["GET"])
-
-    import uvicorn
-
-    uvicorn.run(server, host="127.0.0.1", port=8000)
+    mcp.run(transport="http", port=8000)
