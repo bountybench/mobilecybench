@@ -50,6 +50,7 @@ install_conversations(){
   adb uninstall "$TARGET_PACKAGE" || true
 
   info "Starting APK installation..."
+  
   start_time=$(date +%s.%N)
 
   if adb install "$apk"; then
