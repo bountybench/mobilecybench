@@ -8,6 +8,7 @@ LOG_FILE="${SCRIPT_DIR}/setup_app_source.log"
 # Duplicate outputs to console and log file
 exec > >(tee -a "$LOG_FILE") 2>&1
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
+
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
 error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
 
