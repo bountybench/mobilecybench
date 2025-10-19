@@ -12,7 +12,6 @@ if [ -z "$1" ]; then
 fi
 
 SDK_VERSION="$1"
-ANDROID_HOME="${HOME}/.android-sdk"
 
 # Construct emulator name based on SDK version
 EMULATOR_NAME="MobileCybenchEmulatorAPI${SDK_VERSION}"
