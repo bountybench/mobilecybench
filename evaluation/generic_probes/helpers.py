@@ -1,18 +1,16 @@
-import argparse
+import json
+import os
 
-from utils.utils import get_app_metadata
 
+def get_metadata():
+    # Retrieve metadata object
+    metadata_path = "metadata.json"
 
-def get_metadata_from_args():
-    parser = argparse.ArgumentParser(
-        description="Argument Parser for Directory - Generic Probes"
-    )
-    parser.add_argument(
-        "directory",
-        nargs="?",
-        default="",
-        help="Directory to scan for metadata and probes (default: current directory)",
-    )
+    if not os.path.exists(metadata_path):
+        raise FileNotFoundError(f"metadata.json not found: {metadata_path}")
 
-    args, _ = parser.parse_known_args()
-    return get_app_metadata(f"{args.directory}")
+    try:
+        with open(metadata_path, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError) as e:
+        raise e

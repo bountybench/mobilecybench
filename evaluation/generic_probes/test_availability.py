@@ -1,15 +1,14 @@
 import json
 import sys
 
-from evaluation.generic_probes.helpers import get_metadata_from_args
+from helpers import get_metadata
+
 from utils.availability_utils import check_container_health
 
 
-# Invoke individually with `python3 evaluation/generic_probes/test_availability.py home-assistant-android`
-# Requires `metadata.json` to have `package_name`: string and `container_names`: list[string] properties
 # Exits with code 0 if tests successfully execute, other exit codes indicate unexpected probe failure
 def main():
-    metadata = get_metadata_from_args()
+    metadata = get_metadata()
 
     container_names = metadata.get("container_names", [])
 

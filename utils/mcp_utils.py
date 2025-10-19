@@ -6,17 +6,22 @@ from typing import Optional
 import requests
 
 
-def discover_mcp_server_url(logger: Optional[logging.Logger] = None) -> str:
+def discover_ngrok_base_url(logger: Optional[logging.Logger] = None) -> str:
+    """
+    Discover the ngrok base URL (without any endpoints) by querying the ngrok API.
+
+    Returns:
+        The base ngrok URL (e.g., "https://abc123.ngrok.io")
+    """
     if logger is None:
         logger = logging.getLogger(__name__)
 
     try:
-        logger.info("Attempting to discover MCP server URL via ngrok...")
+        logger.info("Attempting to discover ngrok base URL...")
         result = subprocess.run(
             [
                 "docker",
                 "exec",
-                "-it",
                 "mcp-server",
                 "curl",
                 "http://localhost:4040/api/tunnels",
@@ -29,9 +34,9 @@ def discover_mcp_server_url(logger: Optional[logging.Logger] = None) -> str:
         tunnels_data = json.loads(result.stdout)
 
         if tunnels_data.get("tunnels") and len(tunnels_data["tunnels"]) > 0:
-            public_url = tunnels_data["tunnels"][0]["public_url"]
-            logger.info(f"Discovered MCP server URL: {public_url}")
-            return public_url
+            ngrok_base_url = tunnels_data["tunnels"][0]["public_url"]
+            logger.info(f"Discovered ngrok base URL: {ngrok_base_url}")
+            return ngrok_base_url
         else:
             raise RuntimeError("No ngrok tunnels found")
 
@@ -40,46 +45,68 @@ def discover_mcp_server_url(logger: Optional[logging.Logger] = None) -> str:
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Failed to parse ngrok response: {e}")
     except Exception as e:
-        raise RuntimeError(f"Unexpected error during MCP server discovery: {e}")
+        raise RuntimeError(f"Unexpected error during ngrok base URL discovery: {e}")
 
 
-def check_mcp_server_reachable(server_url: str, timeout: int = 10) -> bool:
+def check_server_health(server_url: str, timeout: int = 10) -> bool:
     """
-    Check if the MCP server is reachable by making a simple HTTP request.
+    Check if the server is reachable by using its health endpoint.
+    Accepts URLs with or without the /mcp endpoint.
 
     Args:
-        server_url: The MCP server URL to check
+        server_url: The server URL to check (e.g., "https://abc123.ngrok.io" or "https://abc123.ngrok.io/mcp/")
         timeout: Request timeout in seconds
 
     Returns:
-        True if server is reachable, False otherwise
+        True if server is reachable and healthy, False otherwise
     """
     try:
-        # Try a simple GET request to check if server is up
-        response = requests.get(server_url, timeout=timeout)
-        return response.status_code < 500  # Accept any non-server-error response
+        # Strip /mcp/ endpoint if present to get the base URL for health check
+        base_url = server_url.rstrip("/")
+        if base_url.endswith("/mcp"):
+            base_url = base_url[:-4]  # Remove "/mcp" from the end
+
+        # Use base URL server's health check endpoint
+        health_url = base_url + "/health"
+        response = requests.get(health_url, timeout=timeout)
+        return response.status_code == 200 and response.text.strip() == "OK"
     except requests.exceptions.RequestException:
         return False
 
 
 def get_mcp_server_config(
-    server_url: str = None, allowed_tools: list = None, check_reachability: bool = True
+    ngrok_base_url: str = None,
+    allowed_tools: list = None,
+    check_reachability: bool = True,
 ) -> dict:
-    if server_url is None:
-        server_url = discover_mcp_server_url()
+    """
+    Get MCP server configuration by constructing the MCP endpoint URL from the ngrok base URL.
 
-    # Ensure URL has the /mcp/ endpoint with trailing slash
-    if not server_url.endswith("/mcp/"):
-        server_url = server_url.rstrip("/") + "/mcp/"
+    Args:
+        ngrok_base_url: The ngrok base URL (e.g., "https://abc123.ngrok.io").
+                       If None, will auto-discover from ngrok API.
+        allowed_tools: List of allowed tools for the MCP server
+        check_reachability: Whether to check if the server is reachable before returning config
+
+    Returns:
+        Dictionary containing MCP server configuration
+    """
+    if ngrok_base_url is None:
+        ngrok_base_url = discover_ngrok_base_url()
+
+    # Construct the MCP server URL by appending /mcp/ endpoint
+    mcp_server_url = ngrok_base_url.rstrip("/") + "/mcp/"
 
     # Check if server is reachable before returning config
-    if check_reachability and not check_mcp_server_reachable(server_url):
-        raise RuntimeError(f"MCP server at {server_url} is not reachable")
+    if check_reachability and not check_server_health(mcp_server_url):
+        raise RuntimeError(
+            f"MCP server at {mcp_server_url} is not reachable (base URL: {ngrok_base_url})"
+        )
 
     config = {
         "type": "mcp",
         "server_label": "mobile_server_mcp",
-        "server_url": server_url,
+        "server_url": mcp_server_url,
         "require_approval": "never",
     }
 
