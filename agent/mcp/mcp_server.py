@@ -9,6 +9,7 @@ from ui_connection import EmulatorState, get_ui_state
 
 mcp = FastMCP(name="Mobile Cyber MCP", stateless_http=True)
 
+
 @mcp.custom_route("/health", methods=["GET"])
 async def health_check(request: Request) -> PlainTextResponse:
     """Health check endpoint for container orchestration"""
