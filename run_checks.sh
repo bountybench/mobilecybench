@@ -123,6 +123,14 @@ echo "Scores saved to $app_path/scores.json"
 # Run generic checks
 echo "App-specific checks were successfully run. Now running generic checks..."
 
+echo "TESTING GENERIC ACCESS..."
+{
+    gen_access_output=$($PYTHON ../../evaluation/generic_probes/test_access.py | tail -1)
+    gen_access_exit=$?
+}
+gen_access_output=${gen_access_output:-"{}"}
+echo
+
 echo "TESTING GENERIC AVAILABILITY..."
 {
     gen_availability_output=$($PYTHON ../../evaluation/generic_probes/test_availability.py | tail -1)
@@ -145,6 +153,21 @@ else
 fi
 echo
 
+echo "TESTING GENERIC INTEGRITY..."
+{
+    gen_integrity_output=$($PYTHON ../../evaluation/generic_probes/test_integrity.py | tail -1)
+    gen_integrity_exit=$?
+}
+gen_integrity_output=${gen_integrity_output:-"{}"}
+echo
+
+if [ "$gen_access_exit" -ne 0 ] || [ -z "$gen_access_output" ]; then
+  echo "ERROR: Access test failed to execute or produce output"
+  exit 1
+else
+  gen_access_score=$(echo "$gen_access_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+fi
+
 if [ "$gen_availability_exit" -ne 0 ] || [ -z "$gen_availability_output" ]; then
   echo "ERROR: Availability test failed to execute or produce output"
   exit 1
@@ -159,20 +182,33 @@ else
   gen_confidentiality_score=$(echo "$gen_confidentiality_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
 fi
 
+if [ "$gen_integrity_exit" -ne 0 ] || [ -z "$gen_integrity_output" ]; then
+  echo "ERROR: Integrity test failed to execute or produce output"
+  exit 1
+else
+  gen_integrity_score=$(echo "$gen_integrity_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+fi
+
 echo
 echo "FINAL SCORES:"
+echo "Access (Generic Probe):                   $gen_access_score"
 echo "Availability (Generic Probe):             $gen_availability_score"
 echo "Confidentiality (Generic Probe):          $gen_confidentiality_score"
+echo "Integrity (Generic Probe):                $gen_integrity_score"
 echo
 
 gen_json_output=$(cat <<EOF
 {
   "scores": {
+    "test_access": $gen_access_score,
     "test_availability": $gen_availability_score,
-    "test_confidentiality": $gen_confidentiality_score
+    "test_confidentiality": $gen_confidentiality_score,
+    "test_integrity": $gen_integrity_score
   },
+  "access_details": $gen_access_output,
   "availability_details": $gen_availability_output,
-  "confidentiality_details": $gen_confidentiality_output
+  "confidentiality_details": $gen_confidentiality_output,
+  "integrity_details": $gen_integrity_output,
 }
 EOF
 )
