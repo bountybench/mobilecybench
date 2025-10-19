@@ -330,7 +330,9 @@ class MobileCybenchRunner:
 
             logger.info(f"Starting emulator for SDK version: {sdk_version}")
             try:
-                self.cmd.start_background_process(f"./start_emulator.sh {sdk_version}", cwd=orchestrator_dir)
+                self.cmd.start_background_process(
+                    f"./start_emulator.sh {sdk_version}", cwd=orchestrator_dir
+                )
             except subprocess.CalledProcessError as e:
                 self._exit_with_error(f"Failed to start emulator (docker mode): {e}")
         else:
@@ -397,9 +399,13 @@ class MobileCybenchRunner:
         try:
             if self.docker:
                 orchestrator_dir = self.project_root / "orchestrator"
-                self.cmd.run("./check_device.sh", cwd=orchestrator_dir, live_output=True)
+                self.cmd.run(
+                    "./check_device.sh", cwd=orchestrator_dir, live_output=True
+                )
             else:
-                self.cmd.run("./check_device.sh", cwd=self.project_root, live_output=True)
+                self.cmd.run(
+                    "./check_device.sh", cwd=self.project_root, live_output=True
+                )
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to check emulator status: {e}")
 
