@@ -63,7 +63,7 @@ class LoggerManager:
         self._agent_log_file = f"agent_only_{timestamp}.log"
 
         # Add file handler to agent logger
-        agent_handler = logging.FileHandler(self._agent_log_file, encoding='utf-8')
+        agent_handler = logging.FileHandler(self._agent_log_file, encoding="utf-8")
         agent_handler.setLevel(logging.INFO)
 
         formatter = logging.Formatter(

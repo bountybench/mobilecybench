@@ -156,7 +156,9 @@ class CustomAgent:
         for turn in range(self.max_iterations):
             print(f"[Agent] Starting turn {turn + 1}/{self.max_iterations}")
 
-            agent_logger.info(f"{'=' * 20} TURN {turn + 1}/{self.max_iterations} {'=' * 20}")
+            agent_logger.info(
+                f"{'=' * 20} TURN {turn + 1}/{self.max_iterations} {'=' * 20}"
+            )
 
             print(f"[Agent] Making OpenAI API call with model {self.model}")
             print(
@@ -285,7 +287,9 @@ class CustomAgent:
                         self.provider.client.conversations.delete(
                             conversation_id=self.conversation_id
                         )
-                        agent_logger.info(f"Deleted conversation: {self.conversation_id}")
+                        agent_logger.info(
+                            f"Deleted conversation: {self.conversation_id}"
+                        )
 
                     return {
                         "status": "completed",
