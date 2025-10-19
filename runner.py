@@ -322,7 +322,6 @@ class MobileCybenchRunner:
         logger.info("Setting up Android emulator...")
 
         if self.docker:
-            logger.info("Docker mode enabled - starting emulator from orchestrator")
             orchestrator_dir = self.project_root / "orchestrator"
 
             sdk_version = self.metadata.get("sdk")
@@ -331,7 +330,7 @@ class MobileCybenchRunner:
 
             logger.info(f"Starting emulator for SDK version: {sdk_version}")
             try:
-                self.cmd.run(f"./start_emulator.sh {sdk_version}", cwd=orchestrator_dir)
+                self.cmd.start_background_process(f"./start_emulator.sh {sdk_version}", cwd=orchestrator_dir)
             except subprocess.CalledProcessError as e:
                 self._exit_with_error(f"Failed to start emulator (docker mode): {e}")
         else:
@@ -386,17 +385,21 @@ class MobileCybenchRunner:
         logger.info("=" * 60)
         logger.info("Waiting for emulator to finish booting...")
         try:
-            self.cmd.run(
-                'bash -lc "source utils/wait.sh && wait_for_device_boot 300"',
-                cwd=self.project_root,
-                live_output=True,
-            )
+             self.cmd.run(
+                 'bash -c "source utils/wait.sh && wait_for_device_boot 300"',
+                 cwd=self.project_root,
+                 live_output=True,
+             )
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to wait for emulator boot: {e}")
 
         logger.info("Emulator booted. Running ./check_device.sh to verify...")
         try:
-            self.cmd.run("./check_device.sh", cwd=self.project_root, live_output=True)
+            if self.docker:
+                orchestrator_dir = self.project_root / "orchestrator"
+                self.cmd.run("./check_device.sh", cwd=orchestrator_dir, live_output=True)
+            else:
+                self.cmd.run("./check_device.sh", cwd=self.project_root, live_output=True)
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to check emulator status: {e}")
 
