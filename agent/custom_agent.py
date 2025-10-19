@@ -15,6 +15,7 @@ from agent.prompts.prompts import (
     SUBMISSION_INSTRUCTIONS,
     TARGET_HOST_EXAMPLE,
 )
+from utils.agent_utils import take_screenshot
 from utils.logger import logger, logger_manager
 from utils.mcp_utils import get_mcp_server_config
 from utils.token_tracker import TokenTracker
@@ -62,7 +63,13 @@ class CustomAgent:
         self.mcp_config = mcp_config or get_mcp_server_config()
 
         # Set up system prompt
-        self.system_prompt = system_prompt or self._get_default_system_prompt()
+        if system_prompt:
+            self.system_prompt = {
+                "role": "system",
+                "content": [{"type": "input_text", "text": system_prompt}],
+            }
+        else:
+            self.system_prompt = self._get_default_system_prompt()
 
         # Initialize conversation with system prompt
         self.conversation_id = None
@@ -149,7 +156,7 @@ class CustomAgent:
         for turn in range(self.max_iterations):
             print(f"[Agent] Starting turn {turn + 1}/{self.max_iterations}")
 
-            logger.info(f"{'='*20} TURN {turn + 1}/{self.max_iterations} {'='*20}")
+            logger.info(f"{'=' * 20} TURN {turn + 1}/{self.max_iterations} {'=' * 20}")
 
             print(f"[Agent] Making OpenAI API call with model {self.model}")
             print(
@@ -163,9 +170,30 @@ class CustomAgent:
 
             # conversation_id handles context
             # can also pass input_messages to add new messages if needed
+            screenshot_input = None
+            if self.screenshot_enabled:
+                try:
+                    screenshot_result = take_screenshot()
+                    if screenshot_result.get("success"):
+                        screenshot_input = {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "input_image",
+                                    "image_url": f"data:image/png;base64,{screenshot_result.get('image_data', '')}",
+                                }
+                            ],
+                        }
+                        logger.info(
+                            "Screenshot taken successfully. Including screenshot in input messages"
+                        )
+                except Exception as e:
+                    logger.error(f"Error taking screenshot: {e}")
+
             resp = self.provider.call(
                 model=self.model,
                 conversation_id=self.conversation_id,
+                input_messages=[screenshot_input] if screenshot_input else None,
                 tools=[self.mcp_config],
                 max_output_tokens=self.max_model_response_tokens,
                 timeout_ms=self.timeout_ms,
@@ -190,7 +218,7 @@ class CustomAgent:
             if hasattr(resp, "tool_outputs") and resp.tool_outputs:
                 logger.info(f"[TOOL OUTPUTS - {len(resp.tool_outputs)} outputs]")
                 for i, tool_output in enumerate(resp.tool_outputs):
-                    logger.info(f"Tool Output {i+1}:")
+                    logger.info(f"Tool Output {i + 1}:")
                     logger.info(str(tool_output))
                 logger.info("-" * 40)
 
@@ -241,7 +269,7 @@ class CustomAgent:
                 if msg.get("command") == "FinalSubmissionCommand":
                     print("[Agent] Final submission received - stopping execution")
 
-                    logger.info(f"{'='*20} RUN COMPLETED {'='*20}")
+                    logger.info(f"{'=' * 20} RUN COMPLETED {'=' * 20}")
                     logger.info("Status: Final submission received")
                     logger.info(f"Total turns: {turn + 1}")
                     logger.info(f"Final message: {json.dumps(msg, indent=2)}")
@@ -271,7 +299,7 @@ class CustomAgent:
 
         # Log completion
         with open(self.log_file, "a") as f:
-            f.write(f"\n{'='*20} RUN COMPLETED {'='*20}\n")
+            f.write(f"\n{'=' * 20} RUN COMPLETED {'=' * 20}\n")
             f.write("Status: Maximum iterations reached\n")
             f.write(f"Total turns: {self.max_iterations}\n")
             f.write(f"Token totals: {json.dumps(self.token_tracker.totals())}\n")

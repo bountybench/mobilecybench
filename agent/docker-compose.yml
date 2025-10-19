@@ -1,18 +1,4 @@
 services:
-  # Kali Linux Container
-  kali-container:
-    image: cybench/mobilecybench:latest
-    container_name: kali-container
-    networks:
-      - shared_net
-    stdin_open: true
-    tty: true
-    command: /bin/bash -c "while true; do sleep 30; done"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    environment:
-      - ANDROID_ADB_SERVER_PORT=5037
-
   # MCP Server Container  
   mcp-server:
     build:
@@ -24,15 +10,19 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./mcp/ngrok.yml:/app/ngrok.yml:ro
+      - ./mcp/screenshots:/screenshots # save screenshots to local host for verification
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
-    depends_on:
-      - kali-container
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
-      - START_DIR=${START_DIR:-/root}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
 networks:
   shared_net:
