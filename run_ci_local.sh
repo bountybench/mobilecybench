@@ -169,16 +169,31 @@ validate_setup_app_scripts() {
     fi
     
     local source_script="$dir/setup_app_source.sh"
-    local apklink_script="$dir/setup_app_apklink.sh"
-    if [ ! -f "$source_script" ] && [ ! -f "$apklink_script" ]; then
-        # fail if neither script exists
-        echo -e "${ERROR} No setup scripts found in $dir" >&2
-        echo -e "${ERROR} Expected: setup_app_source.sh or setup_app_apklink.sh" >&2
+    local has_source=false
+    local has_apklink=false
+    
+    if [ -f "$source_script" ]; then
+        has_source=true
+    fi
+    
+    # Check if apklink is available via metadata.json
+    if [ -f "$dir/metadata.json" ] && jq -er '.download_link // empty' "$dir/metadata.json" >/dev/null 2>&1; then
+        has_apklink=true
+    fi
+    
+    # At least one setup method must be available
+    if [ "$has_source" = false ] && [ "$has_apklink" = false ]; then
+        echo -e "${ERROR} No setup method found in $dir" >&2
+        echo -e "${ERROR} Expected: setup_app_source.sh or download_link in metadata.json" >&2
         return 1
     fi
+    
+    if [ "$has_source" = false ]; then
+        echo -e "${INFO} No source build available, but apklink mode is available" >&2
+    fi
+    
     return 0
 }
-
 
 discover_available_modes() {
     local dir="$1"
@@ -193,7 +208,9 @@ discover_available_modes() {
             modes="$modes source"
             echo -e "${INFO} Found setup_app_source.sh (build mode)" >&2
         fi
-        if [ -f "$dir/setup_app_apklink.sh" ]; then
+
+        # Universal apklink support - check if download_link is available
+        if [ -f "$dir/metadata.json" ] && jq -er '.download_link // empty' "$dir/metadata.json"; then
             modes="$modes apklink"
             echo -e "${INFO} Found setup_app_apklink.sh (download mode)" >&2
         fi
@@ -538,8 +555,9 @@ run_tests_for_mode() {
     if [ "$setup_mode" = "apk_skip" ]; then
         echo -e "${INFO} Skipping APK setup (apk_skip mode) - proceeding directly to setup.sh"
     elif [ "$setup_mode" = "apklink" ]; then
-        echo -e "${INFO} Setting up app from APK link."
-        { ./setup_app_apklink.sh; } || { echo -e "${ERROR} setup_app_apklink.sh failed"; exit 1; }
+        echo -e "${INFO} Setting up app from generic APK link script."
+        download_link=$(jq -r '.download_link' metadata.json)
+        { ../../setup_app_apklink.sh "$download_link"; } || { echo -e "${ERROR} setup_app_apklink.sh failed"; exit 1; }
     else
         echo -e "${INFO} Setting up app from source..."
         { ./setup_app_source.sh; } || { echo -e "${ERROR} setup_app_source.sh failed"; exit 1; }
@@ -554,14 +572,16 @@ run_tests_for_mode() {
         exit 1
     fi
 
-    APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
-    if [ "$APK_COUNT" -eq 0 ]; then
-        echo -e "${ERROR} No APK found in $APK_DIR/"
-        echo -e "${ERROR} setup_app_source.sh or setup_app_apklink.sh must place APKs in ${dir}/apk/"
+    APP_NAME=$(basename "$dir")
+    EXPECTED_APK="$APK_DIR/${APP_NAME}.apk"
+    
+    if [ ! -f "$EXPECTED_APK" ]; then
+        echo -e "${ERROR} Expected APK not found at $EXPECTED_APK"
+        echo -e "${ERROR} setup_app_source.sh or setup_app_apklink.sh must place APK at ${dir}/apk/${APP_NAME}.apk"
         exit 1
     fi
 
-    echo -e "${SUCCESS} APK structure validated - found $APK_COUNT APK(s) in $APK_DIR/"
+    echo -e "${SUCCESS} APK structure validated - found ${APP_NAME}.apk"
 
     cd "$ROOT_DIR"
     

@@ -153,10 +153,10 @@ jobs:
             has_source=true
             echo "Found setup_app_source.sh"
           fi
-          
-          if [ -f "$dir/setup_app_apklink.sh" ]; then
+
+          if [ -f "$dir/metadata.json" ] && jq -er '.download_link // empty' "$dir/metadata.json"; then
             has_apklink=true
-            echo "Found setup_app_apklink.sh"
+            echo "App's APK link was found in metadata.json"
           fi
           
           # Validate at least one exists
@@ -355,7 +355,8 @@ jobs:
           
           if [ "$setup_mode" = "apklink" ]; then
             echo "Downloading APK from link..."
-            ./setup_app_apklink.sh
+            download_link=$(jq -r '.download_link' metadata.json)
+            ../../setup_app_apklink.sh "$download_link"
           else
             echo "Building APK from source (this may take 10+ minutes)..."
             ./setup_app_source.sh
@@ -370,14 +371,17 @@ jobs:
             exit 1
           fi
           
-          APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
-          if [ "$APK_COUNT" -eq 0 ]; then
-            echo "ERROR: No APK found in $APK_DIR/"
-            echo "ERROR: setup_app_source.sh or setup_app_apklink.sh must place APKs in ${modified_dir}/apk/"
+          # Extract app name from directory (e.g., "apps/home-assistant-android" -> "home-assistant-android")
+          APP_NAME=$(basename "$modified_dir")
+          EXPECTED_APK="$APK_DIR/${APP_NAME}.apk"
+          
+          if [ ! -f "$EXPECTED_APK" ]; then
+            echo "ERROR: Expected APK not found at $EXPECTED_APK"
+            echo "ERROR: setup_app_source.sh or setup_app_apklink.sh must place APK at ${modified_dir}/apk/${APP_NAME}.apk"
             exit 1
           fi
           
-          echo "APK path validated - found $APK_COUNT APK(s) in $APK_DIR/"
+          echo "APK path validated - found ${APP_NAME}.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
