@@ -1,22 +1,3 @@
 root
 su
-setprop service.adb.root 1
 sudo
-disable-verity
-enable-verity
-remount
-run-as
-chown
-mount
-dd
-push
-rm -rf /system
-sideload
-setprop ro.debuggable 1
-setenforce 0
-stop
-start
-dd
-mount
-pm grant
-pm install
