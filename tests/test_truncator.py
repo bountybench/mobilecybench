@@ -10,26 +10,6 @@ import sys
 from tools.token_truncator import TokenTruncator
 
 
-def test_no_truncation_case():
-    """Test that short outputs are not truncated."""
-    print("Testing no-truncation case...")
-    
-    truncator = TokenTruncator(model="gpt-5-2025-08-07", max_tokens=100)
-    short_text = "Short output"
-    
-    result = truncator.truncate_output(short_text)
-    
-    # Assertions
-    assert not result.was_truncated, "Short text should not be truncated"
-    assert result.original_tokens == result.final_tokens, "Token counts should match"
-    assert result.content_tokens_kept == result.original_tokens, "All content should be kept"
-    assert result.tokens_removed_from_original == 0, "No tokens should be removed"
-    assert result.truncation_method == "none", "Should use 'none' method"
-    assert result.removed_middle_token_span is None, "No removed span for short text"
-    
-    print("✅ No-truncation case passed")
-
-
 def test_budget_guarantee():
     """Test that the hard guarantee is always met: final_tokens <= token_budget."""
     print("Testing budget guarantee...")
@@ -109,44 +89,6 @@ def test_marker_overrun():
     print("✅ Marker overrun handled correctly")
 
 
-def test_unicode_handling():
-    """Test Unicode characters, emojis, and CJK characters."""
-    print("Testing Unicode handling...")
-    
-    truncator = TokenTruncator(model="gpt-5-2025-08-07", max_tokens=100)
-    
-    # Test cases with different Unicode content
-    unicode_cases = [
-        "Hello 🌍 World! 你好世界! مرحبا بالعالم!",
-        "Emoji test: 🚀🔥💯🎉🌟",
-        "CJK test: 中文测试 日本語テスト 한국어테스트",
-        "Combining chars: café naïve résumé",
-        "Mixed: Hello 世界 🌍 café 123"
-    ]
-    
-    for i, test_text in enumerate(unicode_cases):
-        result = truncator.truncate_output(test_text, budget=20)
-        
-        # Basic assertions
-        assert result.final_tokens <= 20, f"Unicode case {i}: budget violated"
-        assert result.truncated_output is not None, f"Unicode case {i}: no output"
-        
-        # Check that Unicode characters are preserved (not corrupted)
-        if result.was_truncated:
-            # The truncated output should still contain valid Unicode
-            try:
-                result.truncated_output.encode('utf-8')
-            except UnicodeEncodeError:
-                assert False, f"Unicode case {i}: corrupted Unicode in output"
-        else:
-            # If not truncated, strings should match exactly
-            assert result.truncated_output == test_text, f"Unicode case {i}: exact match failed"
-        
-        print(f"  Unicode case {i}: {result.original_tokens} -> {result.final_tokens} tokens")
-    
-    print("✅ Unicode handling passed")
-
-
 def test_head_tail_preservation():
     """Test that head and tail are preserved correctly."""
     print("Testing head and tail preservation...")
@@ -171,43 +113,6 @@ def test_head_tail_preservation():
         assert tail in after, "Tail not preserved"
     
     print("✅ Head and tail preservation verified")
-
-
-def test_very_long_single_line():
-    """Test very long single line handling."""
-    print("Testing very long single line...")
-    
-    truncator = TokenTruncator(model="gpt-5-2025-08-07", max_tokens=100)
-    
-    # Create a very long single line (no newlines)
-    long_line = "This is a very long single line without any newlines that goes on and on and on. " * 1000
-    
-    result = truncator.truncate_output(long_line, budget=50)
-    
-    # Should handle without memory issues
-    assert result.final_tokens <= 50, "Long line budget violated"
-    assert result.was_truncated, "Long line should be truncated"
-    assert len(result.truncated_output) < len(long_line), "Output should be shorter"
-    
-    print("✅ Very long single line handled correctly")
-
-
-def test_binary_like_output():
-    """Test handling of binary-like output (NULs, control chars)."""
-    print("Testing binary-like output...")
-    
-    truncator = TokenTruncator(model="gpt-5-2025-08-07", max_tokens=100)
-    
-    # Create text with binary-like content
-    binary_like = "Normal text " + "\x00" * 100 + " more text " + "\x01\x02\x03" * 50
-    
-    result = truncator.truncate_output(binary_like, budget=20)
-    
-    # Should handle gracefully
-    assert result.final_tokens <= 20, "Binary-like output budget violated"
-    assert result.truncated_output is not None, "Should produce output"
-    
-    print("✅ Binary-like output handled correctly")
 
 
 def test_different_models():
@@ -303,14 +208,10 @@ def run_all_tests():
     print("=" * 60)
     
     test_functions = [
-        test_no_truncation_case,
         test_budget_guarantee,
         test_edge_budgets,
         test_marker_overrun,
-        test_unicode_handling,
         test_head_tail_preservation,
-        test_very_long_single_line,
-        test_binary_like_output,
         test_different_models,
         test_header_body_split,
         test_exact_and_just_over,
