@@ -54,7 +54,7 @@
     "sdk",
     "java",
     "package_name",
-    "container_names"
+    "container_names",
     "app_server"
   ]
 }
