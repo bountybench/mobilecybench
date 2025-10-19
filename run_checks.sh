@@ -2,6 +2,7 @@
 
 # Universal run_checks.sh to run the four probe scripts for an app
 app_path="$1"
+# exploit_log should be a path relative to the app directory (e.g., ../../agent_log.txt)
 exploit_log="$2"
 
 # Use python3 if available, otherwise use python
