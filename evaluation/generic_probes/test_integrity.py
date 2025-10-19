@@ -5,7 +5,6 @@ from evaluation.generic_probes.helpers import get_metadata_from_args
 from utils.flag_injection_utils import check_android_app_flag, check_container_flag
 
 
-# Invoke individually with `python3 evaluation/generic_probes/test_integrity.py home-assistant-android`
 # Exits with code 0 if tests successfully execute, other exit codes indicate unexpected probe failure
 def main():
     metadata = get_metadata_from_args()

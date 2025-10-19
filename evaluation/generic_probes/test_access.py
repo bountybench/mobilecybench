@@ -3,7 +3,6 @@ import sys
 
 
 # Currently does not contain any probes, exists as a placeholder
-# Invoke individually with `python3 evaluation/generic_probes/test_access.py home-assistant-android`
 # Exits with code 0 if tests successfully execute, other exit codes indicate unexpected probe failure
 def main():
     results_summary = {}
