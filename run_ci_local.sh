@@ -580,6 +580,7 @@ EOF
         
         # DoS testing is OPTIONAL - only run if app has server/container components
         # Check if app_server field is not an empty string
+        cd "$ROOT_DIR/$DIR"
         if [ -f "metadata.json" ]; then
             app_server=$(jq -r '.app_server // empty' metadata.json)
             if [ -n "$app_server" ]; then
@@ -594,6 +595,7 @@ EOF
             echo -e "${INFO} No metadata.json found - skipping DoS testing (not applicable)"
             DOS_TESTED=false
         fi
+        cd "$ROOT_DIR"
     else
         # Run simplified test
         print_header "$CYAN" "RUNNING SIMPLIFIED APK INSTALLATION TEST"
