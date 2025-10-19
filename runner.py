@@ -480,10 +480,12 @@ class MobileCybenchRunner:
         env["START_DIR"] = start_dir
         env["MODEL"] = self.config["model"]
         env["MAX_KALI_MESSAGE_TOKENS"] = str(self.config["max_kali_message_tokens"])
-        logger.info(f"Setting environment variables:")
+        logger.info("Setting environment variables:")
         logger.info(f"  START_DIR: {start_dir}")
         logger.info(f"  MODEL: {self.config['model']}")
-        logger.info(f"  MAX_KALI_MESSAGE_TOKENS: {self.config['max_kali_message_tokens']}")
+        logger.info(
+            f"  MAX_KALI_MESSAGE_TOKENS: {self.config['max_kali_message_tokens']}"
+        )
 
         logger.info("Starting containers with docker compose...")
 
