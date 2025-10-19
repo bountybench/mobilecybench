@@ -1,9 +1,6 @@
+# Ensure consistency for all text files
+* text=auto
+
 # Ensure shell scripts always use LF line endings
 *.sh text eol=lf
 gradlew text eol=lf
-
-# Python scripts should also use LF
-*.py text eol=lf
-
-# Ensure consistency for all text files
-* text=auto
