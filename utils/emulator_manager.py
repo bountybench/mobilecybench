@@ -8,7 +8,7 @@ import subprocess
 import time
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -54,12 +54,15 @@ class EmulatorManager:
             emulator_name = f"MobileCybenchEmulatorAPI{self.sdk_version}"
             emulator_args = [
                 str(emulator_bin),
-                "-avd", emulator_name,
+                "-avd",
+                emulator_name,
                 "-no-snapshot-save",
                 "-wipe-data",
                 "-no-window",
-                "-gpu", "off",
-                "-memory", "2048",
+                "-gpu",
+                "off",
+                "-memory",
+                "2048",
                 "-no-audio",
                 "-read-only",
             ]
@@ -67,12 +70,16 @@ class EmulatorManager:
             emulator_name = "MobileCybenchEmu"
             emulator_args = [
                 str(emulator_bin),
-                "-avd", emulator_name,
+                "-avd",
+                emulator_name,
                 "-no-snapshot-save",
                 "-wipe-data",
-                "-gpu", "host",
-                "-skin", "1080x1920",
-                "-memory", "2048",
+                "-gpu",
+                "host",
+                "-skin",
+                "1080x1920",
+                "-memory",
+                "2048",
             ]
 
         return {
@@ -148,7 +155,9 @@ class EmulatorManager:
         except FileNotFoundError as e:
             self.state = EmulatorState.STOPPED
             logger.error(f"Emulator binary not found: {emulator_args[0]}")
-            logger.error(f"Make sure ANDROID_HOME is set correctly: {env.get('ANDROID_HOME')}")
+            logger.error(
+                f"Make sure ANDROID_HOME is set correctly: {env.get('ANDROID_HOME')}"
+            )
             raise RuntimeError(f"Emulator binary not found: {e}")
         except Exception as e:
             self.state = EmulatorState.STOPPED
@@ -163,7 +172,9 @@ class EmulatorManager:
         for that specific device to complete booting.
         """
         if self.state != EmulatorState.RUNNING:
-            logger.error(f"Emulator is not in RUNNING state. Emulator process running: {self.is_running()}")
+            logger.error(
+                f"Emulator is not in RUNNING state. Emulator process running: {self.is_running()}"
+            )
             raise RuntimeError(
                 f"Cannot wait for emulator in state {self.state.value}. Must be RUNNING."
             )
@@ -217,7 +228,14 @@ class EmulatorManager:
 
                     # Check boot completion property
                     boot_result = subprocess.run(
-                        ["adb", "-s", self.device_id, "shell", "getprop", "sys.boot_completed"],
+                        [
+                            "adb",
+                            "-s",
+                            self.device_id,
+                            "shell",
+                            "getprop",
+                            "sys.boot_completed",
+                        ],
                         capture_output=True,
                         text=True,
                         timeout=5,
@@ -347,7 +365,9 @@ class EmulatorManager:
                     timeout=10,
                 )
             else:
-                logger.warning("Device ID not found. Unexpected error in emulator. Using generic adb emu kill, but does not guarantee stopping our specific emulator.")
+                logger.warning(
+                    "Device ID not found. Unexpected error in emulator. Using generic adb emu kill, but does not guarantee stopping our specific emulator."
+                )
                 result = subprocess.run(
                     ["adb", "emu", "kill"],
                     capture_output=True,
@@ -390,7 +410,6 @@ class EmulatorManager:
             self.process = None
             logger.info("Emulator stopped")
 
-
     def _get_connected_devices(self) -> set:
         """
         Get set of currently connected ADB device IDs.
@@ -419,7 +438,6 @@ class EmulatorManager:
             logger.error(f"Error getting connected devices: {e}")
             return set()
 
-    
     def __enter__(self):
         return self
 
