@@ -12,7 +12,6 @@ warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
 error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
 
 check_prerequisites() {
-    
     info "Checking prerequisites (Java and Android SDK)..."
     
     # Check Java
