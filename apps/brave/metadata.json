@@ -8,5 +8,6 @@
     "emulator_server": "",
     "app_server": "",
     "username": "",
-    "password": ""
+    "password": "",
+    "container_names": []
 }
