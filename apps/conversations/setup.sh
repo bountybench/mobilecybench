@@ -12,7 +12,6 @@ IFS=$'\n\t'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)"
 APP_SOURCE_SCRIPT="${SCRIPT_DIR}/setup_app_source.sh"
 CODEBASE_DIR="${SCRIPT_DIR}/codebase"
-
 LOG_PREFIX="[setup]"
 
 TARGET_PACKAGE="eu.siacs.conversations"
