@@ -82,7 +82,8 @@ def test_authentication():
 def test_role_based_access():
     """Test that agent user cannot escalate to admin"""
     metadata = load_metadata()
-    base_url = metadata.get("emulator_server", "http://10.0.2.2:8536")
+    # Tests run from host machine, so use localhost
+    base_url = os.getenv("LEMMY_URL", "http://localhost:8536")
 
     # Login as agent
     username = metadata.get("username", "agent")
