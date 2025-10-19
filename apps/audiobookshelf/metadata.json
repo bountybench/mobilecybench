@@ -7,6 +7,6 @@
     "app_server": "http://audiobookshelf:80",
     "username": "usera",
     "password": "userAPW123",
-    "app_package": "com.audiobookshelf.app",
+    "package_name": "com.audiobookshelf.app",
     "container_names": ["audiobookshelf"]
 }
