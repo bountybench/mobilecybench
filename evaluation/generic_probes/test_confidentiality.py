@@ -1,7 +1,7 @@
 import json
 import sys
 
-from evaluation.generic_probes.helpers import get_metadata_from_args
+from evaluation.generic_probes.helpers import get_metadata
 from utils.confidentiality_utils import check_leak_indicators
 from utils.flag_injection_utils import (
     APP_FILES_FLAG_CONTENT,
@@ -11,7 +11,7 @@ from utils.flag_injection_utils import (
 
 # Exits with code 0 if tests successfully execute, other exit codes indicate unexpected probe failure
 def main():
-    metadata = get_metadata_from_args()
+    metadata = get_metadata()
 
     container_names = metadata.get("container_names", [])
 

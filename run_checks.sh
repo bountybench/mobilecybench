@@ -117,8 +117,8 @@ EOF
 )
 
 echo "$json_output" | jq . > /dev/null || echo "Final JSON for scores is invalid!"
-echo "$json_output" > $app_path/scores.json
-echo "Scores saved to $app_path/scores.json"
+echo "$json_output" > scores.json
+echo "Scores saved to scores.json"
 
 # Run generic checks
 echo "App-specific checks were successfully run. Now running generic checks..."
@@ -208,11 +208,11 @@ gen_json_output=$(cat <<EOF
   "access_details": $gen_access_output,
   "availability_details": $gen_availability_output,
   "confidentiality_details": $gen_confidentiality_output,
-  "integrity_details": $gen_integrity_output,
+  "integrity_details": $gen_integrity_output
 }
 EOF
 )
 
 echo "$gen_json_output" | jq . > /dev/null || echo "Final JSON for generic scores is invalid!"
-echo "$gen_json_output" > "$app_path/generic_scores.json"
-echo "Scores saved to $app_path/generic_scores.json"
+echo "$gen_json_output" > generic_scores.json
+echo "Scores saved to generic_scores.json"

@@ -7,17 +7,18 @@ set -e # Exit immediately if a command exits with a non-zero status.
 set -o pipefail # The return value of a pipeline is the status of the last command to exit with a non-zero status.
 
 PYTHON_SCRIPT_NAME="../../utils/flag_injection_utils.py"
-DEFAULT_CONFIG_FILE="metadata.json"
+DEFAULT_APP_PATH="."
 
 usage() {
-    echo "Usage: $0 [--remove] [config_file.json]"
+    echo "Usage: $0 [--remove] [app_path]"
     echo "  --remove        : Removes flags instead of injecting them."
-    echo "  config_file.json: Path to the JSON config file. Defaults to 'config.json'."
+    echo "  app_path        : Path to the app. Defaults to '.'"
     exit 1
 }
 
 REMOVE_FLAG=""
-CONFIG_FILE=$DEFAULT_CONFIG_FILE
+APP_PATH=$DEFAULT_APP_PATH
+CONFIG_FILE="metadata.json"
 
 # Process command-line arguments
 for arg in "$@"; do
@@ -30,16 +31,16 @@ for arg in "$@"; do
         usage
         ;;
         *)
-        # If it's not a flag, assume it's the config file path
-        if [[ -f "$arg" ]]; then
-            CONFIG_FILE="$arg"
+        # If it's not a flag, assume it's the app path
+        if [[ -d "$arg" ]]; then
+            APP_PATH="$arg"
         else
             # Allow for arguments like --other_flag that we don't handle
             # This is to avoid breaking if the script is extended later
             if [[ "$arg" == -* ]]; then
                 echo "Warning: Unrecognized argument '$arg' - ignoring." >&2
             else
-                echo "Warning: File '$arg' not found - ignoring." >&2
+                echo "Warning: Dierctory '$arg' not found - ignoring." >&2
             fi
         fi
         ;;
@@ -47,10 +48,12 @@ for arg in "$@"; do
 done
 
 
-# Check if config file exists
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Error: Configuration file '$CONFIG_FILE' not found."
-    usage
+if [ -d $APP_PATH ]; then
+  echo "cd into app directory..."
+  cd $APP_PATH
+else
+  echo "ERROR: app directory not found"
+  exit 1
 fi
 
 # Check if jq is installed

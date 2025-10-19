@@ -10,7 +10,7 @@ version = "0.0.1"
 py-modules = ["runner"]
 
 [tool.setuptools.packages.find]
-include = ["utils", "agent", "agent.*"]
+include = ["utils", "agent", "agent.*", "evaluation"]
 exclude = ["apps*", ".venv*", ".git*", ".pytest_cache*", ".ruff_cache*", "*.egg-info"]
 
 [tool.pytest.ini_options]
