@@ -4,7 +4,6 @@ import sys
 from utils.confidentiality_utils import check_leak_indicators
 
 
-# Invoke individually with `python3 evaluation/generic_probes/test_confidentiality.py home-assistant-android`
 # Exits with code 0 if tests successfully execute, other exit codes indicate unexpected probe failure
 def main():
     results_summary = {}
