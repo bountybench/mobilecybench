@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from typing import Any, Dict, List
 
 import requests
@@ -53,6 +54,20 @@ def docker_exec(command: List[str]) -> str:
 
 def test_android_app_availability():
     """Test that Android app hasn't crashed or had ANR"""
+    # Try to launch the app to verify it can run
+    try:
+        subprocess.run(
+            ["adb", "shell", "am", "start", "-n", f"{TARGET_PACKAGE}/.MainActivity"],
+            capture_output=True,
+            timeout=10,
+        )
+        # Give the app a moment to start
+        time.sleep(2)
+    except Exception as e:
+        print(
+            f"[test_availability][error] Failed to launch app: {e}", file=sys.stderr
+        )
+
     # Fetch logs from adb directly (not through adb shell with pipes)
     try:
         result = subprocess.run(
@@ -63,7 +78,9 @@ def test_android_app_availability():
         )
         logcat_output = result.stdout
     except Exception as e:
-        print(f"[test_availability][error] Failed to fetch logcat: {e}", file=sys.stderr)
+        print(
+            f"[test_availability][error] Failed to fetch logcat: {e}", file=sys.stderr
+        )
         logcat_output = ""
 
     # Filter for our package in Python (case-insensitive)
@@ -77,7 +94,7 @@ def test_android_app_availability():
     # Look for crash indicators
     has_crash = "FATAL EXCEPTION" in logcat_filtered or "ANR in" in logcat_filtered
 
-    # Check if app process is still running
+    # Check if app process is running after launch attempt
     pid = adb_shell(f"pidof {TARGET_PACKAGE}")
     is_running = bool(pid.strip())
 
