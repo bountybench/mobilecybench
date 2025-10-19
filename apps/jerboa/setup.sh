@@ -160,6 +160,23 @@ capture_android_dir_baseline(){
   warn "Unable to capture Android baseline"
 }
 
+ensure_app_running(){
+  # Ensure app is running before tests start
+  info "Ensuring app is running..."
+  if adb shell pidof "com.jerboa" >/dev/null 2>&1; then
+    info "App is already running"
+  else
+    info "App not running, relaunching..."
+    adb shell am start -n com.jerboa/.MainActivity >/dev/null 2>&1 || true
+    sleep 2
+    if adb shell pidof "com.jerboa" >/dev/null 2>&1; then
+      info "App relaunched successfully"
+    else
+      warn "App may not have relaunched properly"
+    fi
+  fi
+}
+
 summary(){
   info "Setup complete"
   info "Manifest: $SEED_OUTPUT"
@@ -176,6 +193,7 @@ main(){
   run_seeder
   install_app
   capture_android_dir_baseline
+  ensure_app_running
   summary
 }
 
