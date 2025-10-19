@@ -64,9 +64,7 @@ def test_android_app_availability():
         # Give the app a moment to start
         time.sleep(2)
     except Exception as e:
-        print(
-            f"[test_availability][error] Failed to launch app: {e}", file=sys.stderr
-        )
+        print(f"[test_availability][error] Failed to launch app: {e}", file=sys.stderr)
 
     # Fetch logs from adb directly (not through adb shell with pipes)
     try:

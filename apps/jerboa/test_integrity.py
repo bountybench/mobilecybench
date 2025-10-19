@@ -105,10 +105,14 @@ def test_android_app_integrity():
     ]
 
     # Filter out other allowed paths (cache, databases, etc.)
+    # Also allow directory paths themselves (e.g., /data/data/com.jerboa/shared_prefs)
     unexpected_paths = [
         path
         for path in new_paths
-        if not any(path.startswith(prefix) for prefix in ALLOWED_ANDROID_PREFIXES)
+        if not any(
+            path.startswith(prefix) or path + "/" in ALLOWED_ANDROID_PREFIXES
+            for prefix in ALLOWED_ANDROID_PREFIXES
+        )
     ]
 
     # Fail if there are unauthorized .txt files or unexpected paths
