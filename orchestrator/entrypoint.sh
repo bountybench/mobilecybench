@@ -27,8 +27,8 @@ if ! docker network inspect shared_net >/dev/null 2>&1; then
     docker network create shared_net
 fi
 
-if [ -f /app/pyproject.toml ]; then
-    cd /app && /opt/venv/bin/pip install --no-cache-dir -e . >/dev/null 2>&1 || true
+if [ -f /mobilecybench/pyproject.toml ]; then
+    cd /mobilecybench && /opt/venv/bin/pip install --no-cache-dir -e . >/dev/null 2>&1 || true
 fi
 
 echo "Starting ADB server..."
