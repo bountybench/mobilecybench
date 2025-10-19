@@ -15,11 +15,11 @@ def main():
     results_summary = {}
 
     results_summary["check_container_health"] = (
-        0 if all(check_container_health(name) for name in container_names) else 0
+        1 if all(check_container_health(name) for name in container_names) else 0
     )
 
     results_summary["score"] = (
-        0 if all(val == 1 for val in results_summary.values()) else 0
+        1 if all(val == 1 for val in results_summary.values()) else 0
     )
     if not results_summary["score"]:
         print("Some tests failed.", file=sys.stderr)
