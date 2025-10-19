@@ -188,49 +188,74 @@ wait_for_docker_service_ready() {
   LOG "OpenHAB docker service is ready"
 }
 
-########## Karaf SSH configuration helper ##########
+########## Runtime configuration helpers ##########
+update_runtime_cfg() {
+  local cfg_file="$SCRIPT_DIR/openhab_conf/services/runtime.cfg"
 
-configure_karaf_ssh_binding() {
-  # Configure Karaf SSH to bind to 0.0.0.0 so it can be accessed from anywhere
-  local runtime_cfg="$SCRIPT_DIR/openhab_conf/services/runtime.cfg"
-  
-  if [ -f "$runtime_cfg" ]; then
-    LOG "Configuring Karaf SSH to bind to 0.0.0.0 for external access"
-    LOG "WARNING: This allows SSH access from any network interface. Ensure you have proper authentication configured!"
-    
-    # Check if the line is already uncommented and set to 0.0.0.0
-    if grep -q "^org\.apache\.karaf\.shell:sshHost = 0\.0\.0\.0" "$runtime_cfg"; then
-      LOG "Karaf SSH already configured to bind to 0.0.0.0"
-      return 0
-    fi
-    
-    # Create backup of the original file
-    cp "$runtime_cfg" "$runtime_cfg.bak.$(date +%s)" 2>/dev/null || true
-    
-    # Uncomment and set the sshHost parameter to 0.0.0.0
-    if sed -i.tmp 's/^#org\.apache\.karaf\.shell:sshHost = 0\.0\.0\.0/org.apache.karaf.shell:sshHost = 0.0.0.0/' "$runtime_cfg" 2>/dev/null; then
-      rm -f "$runtime_cfg.tmp" 2>/dev/null || true
-      LOG "Successfully configured Karaf SSH to bind to 0.0.0.0"
-    else
-      # If sed with -i.tmp failed, try without the extension
-      sed -i 's/^#org\.apache\.karaf\.shell:sshHost = 0\.0\.0\.0/org.apache.karaf.shell:sshHost = 0.0.0.0/' "$runtime_cfg" 2>/dev/null || {
-        LOG "WARNING: Failed to automatically configure Karaf SSH binding"
-        LOG "Please manually uncomment the line '#org.apache.karaf.shell:sshHost = 0.0.0.0' in $runtime_cfg"
-        return 1
-      }
-      LOG "Successfully configured Karaf SSH to bind to 0.0.0.0"
-    fi
-    
-    # Verify the change was applied
-    if grep -q "^org\.apache\.karaf\.shell:sshHost = 0\.0\.0\.0" "$runtime_cfg"; then
-      LOG "Verification: Karaf SSH binding configuration applied successfully"
-    else
-      LOG "WARNING: Karaf SSH binding configuration may not have been applied correctly"
-    fi
+  LOG "Ensuring Karaf SSH binding and REST auth settings in $cfg_file"
+
+  if [ -f "$cfg_file" ]; then
+    cp "$cfg_file" "$cfg_file.bak.$(date +%s)" 2>/dev/null || true
   else
-    LOG "WARNING: Runtime configuration file not found: $runtime_cfg"
-    LOG "Karaf SSH binding will use default settings (localhost only)"
+    mkdir -p "$(dirname "$cfg_file")" 2>/dev/null || true
+    touch "$cfg_file"
   fi
+
+  local tmpfile
+
+  # Create a temp file safely on Linux or macOS
+  tmpfile="$(mktemp 2>/dev/null || mktemp -t runtime_cfg 2>/dev/null || printf "/tmp/runtime_cfg.$$")"
+
+  awk '
+    BEGIN {
+      ssh_line = "org.apache.karaf.shell:sshHost = 0.0.0.0"
+      auth_line = "org.openhab.restauth:allowBasicAuth = true"
+      found_ssh = 0
+      found_auth = 0
+    }
+    {
+      line = $0
+      if (line ~ /^[[:space:]]*#?[[:space:]]*org\.apache\.karaf\.shell:sshHost[[:space:]]*=/) {
+        print ssh_line
+        found_ssh = 1
+        next
+      }
+      if (line ~ /^[[:space:]]*#?[[:space:]]*org\.openhab\.restauth:allowBasicAuth[[:space:]]*=/) {
+        print auth_line
+        found_auth = 1
+        next
+      }
+      print line
+    }
+    END {
+      if (found_ssh == 0) {
+        print ""
+        print ssh_line
+      }
+      if (found_auth == 0) {
+        print ""
+        print "# Allow HTTP Basic Auth for OpenHAB REST API"
+        print auth_line
+      }
+    }
+  ' "$cfg_file" > "$tmpfile" || {
+    LOG "ERROR: failed to process $cfg_file with awk"
+    rm -f "$tmpfile" 2>/dev/null || true
+    return 1
+  }
+
+  mv "$tmpfile" "$cfg_file" 2>/dev/null || {
+    LOG "WARNING: mv failed, attempting fallback copy"
+    cp "$tmpfile" "$cfg_file" 2>/dev/null || {
+      LOG "ERROR: failed to update $cfg_file"
+      rm -f "$tmpfile" 2>/dev/null || true
+      return 1
+    }
+    rm -f "$tmpfile" 2>/dev/null || true
+  }
+
+  chmod 644 "$cfg_file" 2>/dev/null || true
+  LOG "Updated $cfg_file successfully"
 }
 
 ########## User setup helper ##########
@@ -356,8 +381,8 @@ main() {
     fi
   fi
 
-  # Configure Karaf SSH to bind to 0.0.0.0 for external access
-  configure_karaf_ssh_binding
+  # Update runtime.cfg to ensure proper SSH binding and REST auth settings
+  update_runtime_cfg
 
   # Setup SSH key for Karaf authentication and create test users
   setup_users
