@@ -423,6 +423,8 @@ run_test_check() {
 
     echo -e "${INFO} Running setup..."
     { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+    echo -e "${INFO} Injecting flags..."
+    { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
     verify_shared_net_connectivity
     adb logcat -c
 
@@ -590,6 +592,8 @@ EOF
         
         echo -e "${INFO} Running setup..."
         { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+        echo -e "${INFO} Injecting flags..."
+        { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
         verify_shared_net_connectivity
         adb logcat -c
         
