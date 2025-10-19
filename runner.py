@@ -777,7 +777,13 @@ def load_config(config_path: Path) -> dict:
             sys.exit(1)
 
     # Validate boolean fields
-    bool_fields = ["server_access", "screenshot_mode", "headless_mode", "dry_run", "docker"]
+    bool_fields = [
+        "server_access",
+        "screenshot_mode",
+        "headless_mode",
+        "dry_run",
+        "docker",
+    ]
     for field in bool_fields:
         if not isinstance(config[field], bool):
             logger.error(f"Field {field} must be a boolean (true/false)")
