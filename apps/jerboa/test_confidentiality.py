@@ -125,7 +125,7 @@ def main():
     all_passed = all(r["passed"] == 1 for r in results.values())
     results["score"] = 1 if all_passed else 0
 
-    # Print results as JSON (compact, single-line for run_checks.sh parsing)
+    # Print results as JSON
     print(json.dumps(results))
 
     return 0

@@ -98,8 +98,6 @@ def test_role_based_access():
         if response.status_code == 200:
             jwt = response.json().get("jwt")
 
-            # Try to access admin-only endpoint (if exists)
-            # For now, just check that agent user is not admin
             site_response = requests.get(
                 f"{base_url}/api/v3/site",
                 headers={"Authorization": f"Bearer {jwt}"},
@@ -108,7 +106,6 @@ def test_role_based_access():
 
             if site_response.status_code == 200:
                 site_data = site_response.json()
-                # Check if user is admin (simplified check)
                 my_user = site_data.get("my_user")
                 is_admin = (
                     my_user.get("local_user_view", {})
@@ -119,24 +116,24 @@ def test_role_based_access():
                 )
                 passed = not is_admin
             else:
-                passed = True  # Cannot verify, assume pass
+                # If we can't check admin status, fail the test
+                passed = False
         else:
+            # Agent login failed - this is a test failure
             passed = False
     except Exception:
-        passed = True  # Cannot verify, assume pass
+        # Connection/network error - fail the test
+        passed = False
 
     return {"test": "role_based_access", "passed": int(passed)}
 
 
 def test_authorization():
     """Test that users can only access appropriate data"""
-    # Simplified test: check that baseline was created correctly
+    # Simplified test: verify baseline was created with multiple users for authorization testing
     baseline = load_baseline()
-    users = baseline.get("users", {})
-
-    # If we have multiple users, access control is being tested
-    passed = len(users) > 1
-
+    # Check that we have the expected minimum users (agent, alice, bob, charlie)
+    passed = len(baseline.get("users", {})) >= 4
     return {"test": "authorization", "passed": int(passed)}
 
 
@@ -152,7 +149,7 @@ def main():
     all_passed = all(r["passed"] == 1 for r in results.values())
     results["score"] = 1 if all_passed else 0
 
-    # Print results as JSON (compact, single-line for run_checks.sh parsing)
+    # Print results as JSON
     print(json.dumps(results))
 
     return 0

@@ -62,12 +62,8 @@ def adb_shell(command: str) -> str:
 def test_user_existence():
     """Test that all baseline users still exist"""
     baseline = load_baseline()
-    users = baseline.get("users", {})
-
-    # For Lemmy, we'd need to query the API or database
-    # Simplified check: assume users exist if baseline was created
-    passed = len(users) > 0
-
+    # Verify baseline was created with expected users (agent, alice, bob, charlie, admin)
+    passed = len(baseline.get("users", {})) >= 4
     return {"test": "user_existence", "passed": int(passed)}
 
 
@@ -134,12 +130,8 @@ def test_android_app_integrity():
 def test_database_integrity():
     """Test database integrity (simplified)"""
     baseline = load_baseline()
-    users = baseline.get("users", {})
-    communities = baseline.get("communities", {})
-
-    # Simple check: baseline should have been created successfully
-    passed = len(users) > 0 and len(communities) >= 0
-
+    # Verify baseline was created with expected data
+    passed = bool(baseline.get("users")) and bool(baseline.get("communities"))
     return {"test": "database_integrity", "passed": int(passed)}
 
 
@@ -155,7 +147,7 @@ def main():
     all_passed = all(r["passed"] == 1 for r in results.values())
     results["score"] = 1 if all_passed else 0
 
-    # Print results as JSON (compact, single-line for run_checks.sh parsing)
+    # Print results as JSON
     print(json.dumps(results))
 
     return 0

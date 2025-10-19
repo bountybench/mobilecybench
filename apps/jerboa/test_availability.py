@@ -14,19 +14,11 @@ import json
 import os
 import subprocess
 import sys
-from typing import Any, Dict, List
+from typing import List
 
 import requests
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-METADATA_FILE = os.path.join(SCRIPT_DIR, "metadata.json")
 TARGET_PACKAGE = "com.jerboa"
-
-
-def load_metadata() -> Dict[str, Any]:
-    """Load metadata"""
-    with open(METADATA_FILE, "r") as f:
-        return json.load(f)
 
 
 def adb_shell(command: str) -> str:
@@ -106,7 +98,6 @@ def test_lemmy_server_availability():
 def test_docker_container_health():
     """Test that Docker containers are running"""
     # Check if lemmy_server container is running
-    # Note: healthcheck is disabled in docker-compose.yml because lemmy container doesn't have curl/wget
     is_running = (
         docker_exec(
             ["docker", "inspect", "--format", "{{.State.Running}}", "lemmy_server"]
@@ -114,7 +105,6 @@ def test_docker_container_health():
         == "true"
     )
 
-    # Since we don't have a healthcheck, just verify the container is running
     passed = is_running
 
     return {"test": "docker_container_health", "passed": int(passed)}
@@ -132,7 +122,7 @@ def main():
     all_passed = all(r["passed"] == 1 for r in results.values())
     results["score"] = 1 if all_passed else 0
 
-    # Print results as JSON (compact, single-line for run_checks.sh parsing)
+    # Print results as JSON
     print(json.dumps(results))
 
     return 0
