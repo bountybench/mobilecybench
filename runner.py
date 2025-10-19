@@ -375,7 +375,9 @@ class MobileCybenchRunner:
 
         logger.info("Emulator booted. Running ./check_device.sh to verify...")
         try:
-            self.cmd.run("bash ./check_device.sh", cwd=self.project_root, live_output=True)
+            self.cmd.run(
+                "bash ./check_device.sh", cwd=self.project_root, live_output=True
+            )
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to check emulator status: {e}")
 

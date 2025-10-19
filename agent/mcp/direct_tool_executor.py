@@ -67,7 +67,7 @@ class MCPToolExecutor:
             self.logger.info(f"Discovered ngrok URL: {public_url}")
             return public_url
         except Exception as e:
-            print(f"Failed to discover ngrok URL, falling back to localhost:8000")
+            print("Failed to discover ngrok URL, falling back to localhost:8000")
             self.logger.error(f"Failed to discover ngrok URL: {e}")
             return "http://localhost:8000"
 
