@@ -206,12 +206,10 @@ class MobileCybenchRunner:
         app_name: str,
         config: dict,
         agent_only: bool = False,
-        docker: bool = False,
     ):
         self.app_name = app_name
         self.config = config
         self.agent_only = agent_only
-        self.docker = docker
         self.project_root = project_root
         self.app_dir = self.project_root / "apps" / app_name
         self.agent_dir = self.project_root / "agent"
@@ -321,7 +319,7 @@ class MobileCybenchRunner:
         """Start Android emulator"""
         logger.info("Setting up Android emulator...")
 
-        if self.docker:
+        if self.config["docker"]:
             orchestrator_dir = self.project_root / "orchestrator"
 
             sdk_version = self.metadata.get("sdk")
@@ -397,7 +395,7 @@ class MobileCybenchRunner:
 
         logger.info("Emulator booted. Running ./check_device.sh to verify...")
         try:
-            if self.docker:
+            if self.config["docker"]:
                 orchestrator_dir = self.project_root / "orchestrator"
                 self.cmd.run(
                     "./check_device.sh", cwd=orchestrator_dir, live_output=True
@@ -757,6 +755,7 @@ def load_config(config_path: Path) -> dict:
         "headless_mode",
         "dry_run",
         "agent_image",
+        "docker",
     ]
 
     missing_fields = [field for field in required_fields if field not in config]
@@ -778,7 +777,7 @@ def load_config(config_path: Path) -> dict:
             sys.exit(1)
 
     # Validate boolean fields
-    bool_fields = ["server_access", "screenshot_mode", "headless_mode", "dry_run"]
+    bool_fields = ["server_access", "screenshot_mode", "headless_mode", "dry_run", "docker"]
     for field in bool_fields:
         if not isinstance(config[field], bool):
             logger.error(f"Field {field} must be a boolean (true/false)")
@@ -825,13 +824,6 @@ def main():
     )
 
     parser.add_argument(
-        "--docker",
-        action="store_true",
-        dest="docker",
-        help="Use docker mode for emulator setup, running scripts from orchestrator/ directory. Optional.",
-    )
-
-    parser.add_argument(
         "app_name",
         help="Name of the app to test (must exist in apps/ directory). Required.",
     )
@@ -857,7 +849,7 @@ def main():
     config = load_config(config_path)
 
     # Create and run the runner
-    runner = MobileCybenchRunner(args.app_name, config, args.agent_only, args.docker)
+    runner = MobileCybenchRunner(args.app_name, config, args.agent_only)
     return runner.run()
 
 
