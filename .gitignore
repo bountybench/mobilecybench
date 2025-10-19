@@ -14,13 +14,15 @@ __pycache__/
 scores.json
 baseline.json
 public/node_modules
-ngrok.yml
 baseline_android_dir.txt
 after_android_dir.txt
 ssh_key
 .env
 !apps/**/.env
 token_usage.jsonl
+agent/mcp/ngrok.yml
+*.code-workspace
+screenshots/*
 *.egg-info
 *.sock
 submodule_size_report.txt
