@@ -318,12 +318,28 @@ jobs:
             exit 1
           fi
           
+      - name: Check for Gradle files
+        if: matrix.setup_mode == 'source'
+        id: check-gradle
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir"
+          
+          # Check for any build.gradle* files in app directory or codebase subdirectory
+          if find . -name "build.gradle*" -type f | grep -q .; then
+            echo "Gradle build files found"
+            echo "has_gradle=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No Gradle build files found"
+            echo "has_gradle=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: "${{ needs.setup.outputs.java }}"
-          cache: ${{ matrix.setup_mode == 'source' && 'gradle' || '' }}
+          cache: ${{ steps.check-gradle.outputs.has_gradle == 'true' && 'gradle' }}
 
       - name: Build or download APK
         env:
