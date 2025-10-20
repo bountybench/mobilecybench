@@ -442,6 +442,8 @@ run_test_check() {
     # Wait for app-specific containers to be ready (after setup.sh starts them)
     check_app_containers_ready
     
+    echo -e "${INFO} Injecting flags..."
+    { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
     verify_shared_net_connectivity
     adb logcat -c
 
@@ -615,6 +617,8 @@ EOF
         # Wait for app-specific containers to be ready (after setup.sh starts them)
         check_app_containers_ready
         
+        echo -e "${INFO} Injecting flags..."
+        { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
         verify_shared_net_connectivity
         adb logcat -c
         
