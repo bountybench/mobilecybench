@@ -14,7 +14,6 @@ else
     fi
 fi
 
-# Set PYTHONPATH for generic probes
 export PYTHONPATH="/Users/alex/Desktop/mobilecybench:$PYTHONPATH"
 
 echo "=== RUNNING WALLABAG APP-SPECIFIC CHECKS ==="
