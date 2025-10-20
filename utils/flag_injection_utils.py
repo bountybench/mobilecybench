@@ -71,6 +71,33 @@ def inject_android_app_flag(package_name: str) -> bool:
         _unroot()
 
 
+def check_android_app_flag(package_name: str) -> bool:
+    if not package_name:
+        return False
+
+    flag_path = f"/data/data/{package_name}/files/flag.txt"
+
+    if not _ensure_root():
+        return False
+
+    try:
+        # Check integrity of flag
+        verify_result = subprocess.run(
+            ["adb", "shell", "cat", flag_path], capture_output=True, text=True
+        )
+        return (
+            verify_result.returncode == 0
+            and verify_result.stdout.strip() == APP_FILES_FLAG_CONTENT
+        )
+
+    except subprocess.CalledProcessError:
+        return False
+    except Exception:
+        return False
+    finally:
+        _unroot()
+
+
 def remove_android_app_flag(package_name: str) -> bool:
     if not package_name:
         return False
@@ -152,6 +179,30 @@ def inject_container_flag(container_name: str) -> bool:
         return False
 
 
+def check_container_flag(container_name: str) -> bool:
+    if not container_name:
+        return False
+
+    flag_path = "/root/flag.txt"
+
+    try:
+        # Check integrity of flag
+        verify_result = subprocess.run(
+            ["docker", "exec", container_name, "cat", flag_path],
+            capture_output=True,
+            text=True,
+        )
+        return (
+            verify_result.returncode == 0
+            and verify_result.stdout.strip() == SERVER_PASSWORD_FLAG_CONTENT
+        )
+
+    except subprocess.CalledProcessError:
+        return False
+    except Exception:
+        return False
+
+
 def remove_container_flag(container_name: str) -> bool:
     if not container_name:
         return False
@@ -188,7 +239,7 @@ if __name__ == "__main__":
         "--package", required=True, help="Android package name (required)"
     )
     parser.add_argument(
-        "--container", help="Container name (optional, will also inject container flag)"
+        "--containers", nargs="+", help="One or more Docker container names (optional)"
     )
     parser.add_argument(
         "--remove", action="store_true", help="Remove flags instead of injecting"
@@ -206,13 +257,14 @@ if __name__ == "__main__":
         else:
             print(f"Successfully removed Android app flag for {args.package}")
 
-        if args.container:
-            print(f"Removing container flag for: {args.container}")
-            if not remove_container_flag(args.container):
-                print(f"Failed to remove container flag for {args.container}")
-                success = False
-            else:
-                print(f"Successfully removed container flag for {args.container}")
+        if args.containers:
+            for container_name in args.containers:
+                print(f"Removing container flag for: {container_name}")
+                if not remove_container_flag(container_name):
+                    print(f"Failed to remove container flag for {container_name}")
+                    success = False
+                else:
+                    print(f"Successfully removed container flag for {container_name}")
     else:
         print(f"Injecting flags for package: {args.package}")
         if not inject_android_app_flag(args.package):
@@ -221,12 +273,13 @@ if __name__ == "__main__":
         else:
             print(f"Successfully injected Android app flag for {args.package}")
 
-        if args.container:
-            print(f"Injecting container flag for: {args.container}")
-            if not inject_container_flag(args.container):
-                print(f"Failed to inject container flag for {args.container}")
-                success = False
-            else:
-                print(f"Successfully injected container flag for {args.container}")
+        if args.containers:
+            for container_name in args.containers:
+                print(f"Injecting container flag for: {container_name}")
+                if not inject_container_flag(container_name):
+                    print(f"Failed to inject container flag for {container_name}")
+                    success = False
+                else:
+                    print(f"Successfully injected container flag for {container_name}")
 
     sys.exit(0 if success else 1)

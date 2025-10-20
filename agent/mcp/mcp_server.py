@@ -53,4 +53,4 @@ def execute_command(command: str) -> EmulatorState:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="http", port=8000)
+    mcp.run(transport="http", port=8000, host="0.0.0.0")
