@@ -391,8 +391,71 @@ class MobileCybenchRunner:
             self.cmd.run("bash ./setup.sh", cwd=self.app_dir, live_output=True)
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to setup app: {e}")
-
+        if not self.config.get("access_backend"):
+            self.disconnect_app_containers_from_shared_net()
         logger.info("App setup completed")
+
+    def disconnect_app_containers_from_shared_net(self):
+        """Finds all currently running docker containers and
+         disconnects them from shared net that originally includes:
+         - Kali container
+         - MCP server
+         - App backend containers
+        Function is run if agent should not be allowed to access the backend,
+        i.e. access_backend is False in config.
+        """
+        network_name = "shared_net"
+
+        # 1. Get a list of all running container IDs
+        # The command 'docker ps -q' lists only the IDs of running containers.
+        try:
+            result = self.cmd.run("docker ps -q", check=True, capture_output=True)
+            container_ids = result.stdout.strip().split()
+        except subprocess.CalledProcessError:
+            logger.warning("Could not list running containers. Skipping disconnection.")
+            return
+
+        if not container_ids:
+            logger.info("No running Docker containers to disconnect.")
+            return
+
+        # 2. Iterate and disconnect each container from the network
+        disconnection_count = 0
+        for container_id in container_ids:
+            # Check if the container is attached to the network before attempting to disconnect.
+            # This check is a bit complex in a shell command, so we'll just attempt
+            # the disconnect and suppress/handle the expected error if it's not attached.
+            disconnect_command = (
+                f"docker network disconnect {network_name} {container_id}"
+            )
+            try:
+                # Disconnect command uses check=False because it will error if the container
+                # is not attached to the network, which is a common and acceptable case here.
+                disconnect_result = self.cmd.run(disconnect_command, check=False)
+
+                if disconnect_result.returncode == 0:
+                    disconnection_count += 1
+                    logger.debug(
+                        f"Disconnected container {container_id[:12]} from {network_name}"
+                    )
+                elif "is not connected" in disconnect_result.stderr:
+                    logger.debug(
+                        f"Container {container_id[:12]} was not connected to {network_name}"
+                    )
+                else:
+                    # Log any other unexpected error during disconnection
+                    logger.warning(
+                        f"Failed to disconnect container {container_id[:12]} from {network_name}: "
+                        f"{disconnect_result.stderr.strip()}"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"An error occurred while disconnecting container {container_id[:12]}: {e}"
+                )
+
+        logger.info(
+            f"Successfully disconnected {disconnection_count} container(s) from '{network_name}'."
+        )
 
     def setup_agent(self):
         """Configure agent environment and start services"""
@@ -730,6 +793,7 @@ def load_config(config_path: Path) -> dict:
         "headless_mode",
         "dry_run",
         "agent_image",
+        "access_backend",
     ]
 
     missing_fields = [field for field in required_fields if field not in config]
@@ -751,7 +815,13 @@ def load_config(config_path: Path) -> dict:
             sys.exit(1)
 
     # Validate boolean fields
-    bool_fields = ["server_access", "screenshot_mode", "headless_mode", "dry_run"]
+    bool_fields = [
+        "server_access",
+        "screenshot_mode",
+        "headless_mode",
+        "dry_run",
+        "access_backend",
+    ]
     for field in bool_fields:
         if not isinstance(config[field], bool):
             logger.error(f"Field {field} must be a boolean (true/false)")

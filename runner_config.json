@@ -11,5 +11,6 @@
   "headless_mode": false,
   "dry_run": true,
   "custom_system_prompt": null,
-  "agent_image": "cybench/mobilecybench:latest"
+  "agent_image": "cybench/mobilecybench:latest",
+  "access_backend": true
 }
