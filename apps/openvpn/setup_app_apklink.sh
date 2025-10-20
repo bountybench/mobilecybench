@@ -12,17 +12,11 @@ else
     exit 1
 fi
 
-# Check if emulator is running
-if ! adb devices | grep -q "emulator"; then
-    echo "Error: No emulator detected. Please start an Android emulator first."
-    exit 1
-fi
-
-# Create downloads directory
-mkdir -p downloads
+# Create apk directory (required for CI)
+mkdir -p apk
 
 # Download APK if not already present
-APK_FILE="downloads/openvpn.apk"
+APK_FILE="apk/openvpn.apk"
 if [ ! -f "$APK_FILE" ]; then
     echo "Downloading OpenVPN APK..."
     curl -L -o "$APK_FILE" "$DOWNLOAD_URL"
@@ -40,7 +34,16 @@ if [ ! -f "$APK_FILE" ] || [ ! -s "$APK_FILE" ]; then
     exit 1
 fi
 
-echo "Installing OpenVPN APK: $APK_FILE"
+echo "APK ready at: $APK_FILE"
+
+# Check if emulator is running (optional - only install if emulator available)
+if ! adb devices | grep -q "emulator"; then
+    echo "No emulator detected - APK downloaded but not installed"
+    echo "APK is available at $APK_FILE for CI to install later"
+    exit 0
+fi
+
+echo "Installing OpenVPN APK on emulator: $APK_FILE"
 
 # Uninstall existing version if present
 adb uninstall de.blinkt.openvpn || echo "No existing app to uninstall"

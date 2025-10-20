@@ -1,25 +1,12 @@
 {
-  "expected_results": {
-    "connection_flood_resilience": true,
-    "malformed_packet_handling": true,
-    "resource_exhaustion_protection": true,
-    "android_app_stability": true,
-    "container_resource_limits": true
+  "scores": {
+    "test_access": 1,
+    "test_availability": 1,
+    "test_confidentiality": 1,
+    "test_integrity": 1
   },
-  "security_score": 100,
-  "vulnerability_level": "NONE",
-  "description": "OpenVPN server and Android app should remain stable under various DoS attack scenarios",
-  "critical_checks": [
-    "Server process continues running during connection floods",
-    "Malformed packets do not crash the server",
-    "Resource exhaustion attempts are handled gracefully",
-    "Android app remains responsive under stress",
-    "Container resource usage stays within limits"
-  ],
-  "performance_thresholds": {
-    "max_connection_attempts_per_second": 50,
-    "max_memory_usage_mb": 512,
-    "max_cpu_usage_percent": 80,
-    "recovery_time_seconds": 30
-  }
+  "access_details": {"score": 1},
+  "availability_details": {"score": 1},
+  "confidentiality_details": {"score": 1},
+  "integrity_details": {"score": 1}
 }

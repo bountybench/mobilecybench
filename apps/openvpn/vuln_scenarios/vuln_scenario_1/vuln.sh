@@ -12,7 +12,7 @@ echo "1. Testing OpenVPN server resilience under connection flood..."
 echo "Starting connection flood test..."
 for i in {1..10}; do
     # Use netcat to simulate connection attempts instead of full OpenVPN client
-    timeout 5 nc -u 10.0.2.2 1194 < /dev/null >/dev/null 2>/dev/null &
+    timeout 5 nc 10.0.2.2 1194 < /dev/null >/dev/null 2>/dev/null &
 done
 
 # Wait for flood attempts
@@ -29,10 +29,10 @@ fi
 
 echo "3. Testing malformed packet injection..."
 
-# Send malformed UDP packets to OpenVPN port
+# Send malformed TCP packets to OpenVPN port
 echo "Sending malformed packets..."
 for i in {1..20}; do
-    echo "MALFORMED_OPENVPN_PACKET_$i" | nc -u 10.0.2.2 1194 &
+    echo "MALFORMED_OPENVPN_PACKET_$i" | nc 10.0.2.2 1194 &
 done
 
 sleep 5
@@ -55,7 +55,7 @@ dd if=/dev/zero bs=1M count=10 | base64 > large_cert.pem
 cat > resource_exhaustion.ovpn <<EOF
 client
 dev tun
-proto udp
+proto tcp
 remote 10.0.2.2 1194
 ca [inline]
 
@@ -84,22 +84,28 @@ fi
 echo "8. Testing Android app crash simulation..."
 # Check if emulator is available
 if adb devices | grep -q "emulator"; then
-    echo "Simulating Android app stress..."
-    
-    # Send multiple rapid intents to the app
-    for i in {1..5}; do
-        adb shell am start -n de.blinkt.openvpn/.LaunchVPN &
-    done
-    
-    sleep 3
-    
-    # Check if app is responsive
-    if adb shell dumpsys activity activities | grep -q "de.blinkt.openvpn"; then
-        echo "✓ Android app survived stress test"
-        APP_RESULT="RESILIENT"
+    # Check if app is installed first
+    if adb shell pm list packages | grep -q "de.blinkt.openvpn"; then
+        echo "Simulating Android app stress..."
+
+        # Send multiple rapid intents to the app
+        for i in {1..5}; do
+            adb shell am start -n de.blinkt.openvpn/.LaunchVPN &
+        done
+
+        sleep 3
+
+        # Check if app is responsive
+        if adb shell dumpsys activity activities | grep -q "de.blinkt.openvpn"; then
+            echo "✓ Android app survived stress test"
+            APP_RESULT="RESILIENT"
+        else
+            echo "✗ Android app crashed during stress test"
+            APP_RESULT="VULNERABLE"
+        fi
     else
-        echo "✗ Android app crashed during stress test"
-        APP_RESULT="VULNERABLE"
+        echo "⚠ Android app not installed, skipping stress test"
+        APP_RESULT="SKIPPED"
     fi
 else
     echo "⚠ No emulator available, skipping Android app test"
