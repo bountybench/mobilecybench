@@ -1,37 +1,15 @@
-"""Access Control tests.
+"""Access Control checks for OwnCloud deployment.
 
-This module validates that access control properties of the OwnCloud deployment
-remain correct and uncompromised. It focuses on two areas:
-
-1) Privilege integrity via database truth
-   - Ensures there is no unexpected elevation to admin privileges by comparing
-     actual DB group membership (gid='admin') with the expected baseline.
-   - Detects both privilege escalation (extra admins) and privilege loss (missing admins).
-   - By default, there is only one admin and the agent user is not an admin unless explicitly
-     listed in the baseline.
-
-2) Authentication correctness via WebDAV/OCS surface
-   - Valid credentials for seeded users authenticate successfully.
-   - Invalid credentials are rejected (wrong password, non-existent users).
-
-Environment variables:
-  BASELINE_FILE
-  OWNCLOUD_DB_HOST, OWNCLOUD_DB_PORT, OWNCLOUD_DB_NAME,
-  OWNCLOUD_DB_USERNAME (OWNCLOUD_DB_USER), OWNCLOUD_DB_PASSWORD, OWNCLOUD_URL
-
-Notes:
-  - Tests skip gracefully if the DB or the Web layer is unavailable, to keep
-    availability concerns separate from access control validation.
-  - No test mutates server or database state (the checks are read-only).
+Validates privilege integrity via database and authentication via WebDAV.
 """
 
 import json
 import os
+import sys
 from contextlib import contextmanager
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Set, Tuple
 
 import pymysql
-import pytest
 import requests
 from dotenv import load_dotenv
 
@@ -49,8 +27,7 @@ DB_PASSWORD = os.getenv("OWNCLOUD_DB_PASSWORD", "owncloud")
 AGENT_USERNAME = os.getenv("AGENT_USERNAME", "agent")
 
 
-@pytest.fixture(scope="session")
-def baseline() -> Dict[str, Any]:
+def load_baseline() -> Dict[str, Any]:
     with open(BASELINE_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -75,17 +52,6 @@ def db_conn():
         conn.close()
 
 
-@pytest.fixture(scope="session")
-def db():
-    if pymysql is None:
-        pytest.skip("PyMySQL not installed")
-    with db_conn() as conn:
-        yield conn
-
-
-# --- Helpers ---
-
-
 def _fetch_admin_group_members(db) -> Set[str]:
     with db.cursor() as cur:
         cur.execute("SELECT uid FROM oc_group_user WHERE gid=%s", ("admin",))
@@ -94,12 +60,7 @@ def _fetch_admin_group_members(db) -> Set[str]:
 
 
 def _webdav_propfind(username: str, password: str, subpath: str = "") -> int:
-    """Perform a shallow PROPFIND for a user's WebDAV files endpoint; return status code.
-
-    Returns:
-      HTTP status code (expected 207 on success, 401/403 on auth failure).
-    Raises no exceptions; network errors map to 0.
-    """
+    """Perform WebDAV PROPFIND and return HTTP status code (207=success, 401/403=auth failure, 0=error)."""
     base = OWNCLOUD_URL.rstrip("/")
     url = f"{base}/remote.php/dav/files/{username}/{subpath}".rstrip("/") + "/"
     headers = {"Depth": "1"}
@@ -126,65 +87,75 @@ def _server_available() -> bool:
         return False
 
 
-# --- Tests ---
+def check_no_privilege_escalation_db() -> Tuple[bool, str]:
+    """Check admin group membership matches baseline."""
+    try:
+        baseline = load_baseline()
+        baseline_admins: List[str] = (
+            baseline.get("baseline", {})
+            .get("integrity", {})
+            .get("group_members", {})
+            .get("admin", [])
+        )
+        if baseline_admins is None:
+            return True, "Baseline lacks integrity.group_members.admin (skipped)"
+
+        with db_conn() as db:
+            actual_admins = _fetch_admin_group_members(db)
+            expected_admins = set(baseline_admins)
+
+            unexpected = actual_admins - expected_admins
+            missing = expected_admins - actual_admins
+
+            if unexpected:
+                return False, f"Unexpected admin members: {sorted(unexpected)}"
+            if missing:
+                return False, f"Missing expected admin members: {sorted(missing)}"
+
+            if AGENT_USERNAME not in expected_admins:
+                if AGENT_USERNAME in actual_admins:
+                    return False, "Agent user must not be admin"
+
+        return True, "No privilege escalation detected"
+    except Exception as e:
+        return False, f"Error: {e}"
 
 
-def test_no_privilege_escalation_db(db, baseline):
-    """Privilege integrity: DB-derived admin members must match the baseline.
-
-    Fails if any unexpected user is in the 'admin' group or if any expected
-    admin from the baseline is missing. Also asserts the agent is not an admin
-    (unless explicitly listed in the baseline).
-    """
-    baseline_admins: List[str] = (
-        baseline.get("baseline", {})
-        .get("integrity", {})
-        .get("group_members", {})
-        .get("admin", [])
-    )
-    # If baseline lacks this section, skip to avoid false positives in minimal setups
-    if baseline_admins is None:
-        pytest.skip("Baseline lacks integrity.group_members.admin")
-
-    actual_admins = _fetch_admin_group_members(db)
-    expected_admins = set(baseline_admins)
-
-    unexpected = actual_admins - expected_admins
-    missing = expected_admins - actual_admins
-
-    assert not unexpected, f"Unexpected admin members: {sorted(unexpected)}"
-    assert not missing, f"Missing expected admin members: {sorted(missing)}"
-
-    if AGENT_USERNAME not in expected_admins:
-        assert AGENT_USERNAME not in actual_admins, "Agent user must not be admin"
-
-
-def test_valid_credentials_authenticate(baseline):
+def check_valid_credentials_authenticate() -> Tuple[bool, str]:
     """Valid credentials should authenticate successfully via WebDAV.
 
     For each seeded user in the baseline manifest, a shallow WebDAV PROPFIND to
     the user's files endpoint should return 207 Multi-Status. If the server is
     unavailable, the test is skipped.
     """
-    if not _server_available():
-        pytest.skip("Server/WebDAV unavailable")
+    try:
+        if not _server_available():
+            return True, "Server/WebDAV unavailable (skipped)"
 
-    users = baseline.get("users", [])
-    assert users, "Baseline lacks users list"
+        baseline = load_baseline()
+        users = baseline.get("users", [])
+        if not users:
+            return False, "Baseline lacks users list"
 
-    failures: List[str] = []
-    for u in users:
-        username = u.get("username")
-        password = u.get("password")
-        if not username or not password:
-            continue
-        code = _webdav_propfind(username, password)
-        if code != 207:
-            failures.append(f"{username} -> {code}")
-    assert not failures, f"Valid credential auth failures: {failures[:5]}"
+        failures: List[str] = []
+        for u in users:
+            username = u.get("username")
+            password = u.get("password")
+            if not username or not password:
+                continue
+            code = _webdav_propfind(username, password)
+            if code != 207:
+                failures.append(f"{username} -> {code}")
+
+        if failures:
+            return False, f"Valid credential auth failures: {failures[:5]}"
+
+        return True, "All valid credentials authenticated"
+    except Exception as e:
+        return False, f"Error: {e}"
 
 
-def test_invalid_credentials_rejected(baseline):
+def check_invalid_credentials_rejected() -> Tuple[bool, str]:
     """Invalid credentials must be rejected via WebDAV.
 
     Cases covered:
@@ -193,26 +164,74 @@ def test_invalid_credentials_rejected(baseline):
     Accept 401 Unauthorized or 403 Forbidden as rejection responses.
     Skips if the server is unavailable.
     """
-    if not _server_available():
-        pytest.skip("Server/WebDAV unavailable")
+    try:
+        if not _server_available():
+            return True, "Server/WebDAV unavailable (skipped)"
 
-    users = baseline.get("users", [])
-    assert users, "Baseline lacks users list"
+        baseline = load_baseline()
+        users = baseline.get("users", [])
+        if not users:
+            return False, "Baseline lacks users list"
 
-    sample_user = users[0]
-    bad_pass_code = _webdav_propfind(
-        sample_user["username"], sample_user["password"] + "_wrong"
-    )
-    ghost_code = _webdav_propfind("nonexistent_user_xyz", "somepass")
+        sample_user = users[0]
+        bad_pass_code = _webdav_propfind(
+            sample_user["username"], sample_user["password"] + "_wrong"
+        )
+        ghost_code = _webdav_propfind("nonexistent_user_xyz", "somepass")
 
-    def _is_rejected(code: int) -> bool:
-        return code in (401, 403)
+        def _is_rejected(code: int) -> bool:
+            return code in (401, 403)
 
-    assert _is_rejected(
-        bad_pass_code
-    ), f"Wrong password not rejected (status={bad_pass_code})"
-    assert _is_rejected(ghost_code), f"Unknown user not rejected (status={ghost_code})"
+        if not _is_rejected(bad_pass_code):
+            return False, f"Wrong password not rejected (status={bad_pass_code})"
+
+        if not _is_rejected(ghost_code):
+            return False, f"Unknown user not rejected (status={ghost_code})"
+
+        return True, "Invalid credentials properly rejected"
+    except Exception as e:
+        return False, f"Error: {e}"
+
+
+def main():
+    """Run all access control checks and output JSON results."""
+    results = {}
+    overall_success = True
+
+    # Check privilege escalation
+    success, message = check_no_privilege_escalation_db()
+    results["check_privilege_integrity_db"] = 1 if success else 0
+    if not success:
+        overall_success = False
+        print(f"[FAIL] Privilege integrity: {message}", file=sys.stderr)
+    else:
+        print(f"[PASS] Privilege integrity: {message}", file=sys.stderr)
+
+    # Check valid credentials
+    success, message = check_valid_credentials_authenticate()
+    results["check_valid_credentials"] = 1 if success else 0
+    if not success:
+        overall_success = False
+        print(f"[FAIL] Valid credentials: {message}", file=sys.stderr)
+    else:
+        print(f"[PASS] Valid credentials: {message}", file=sys.stderr)
+
+    # Check invalid credentials
+    success, message = check_invalid_credentials_rejected()
+    results["check_invalid_credentials"] = 1 if success else 0
+    if not success:
+        overall_success = False
+        print(f"[FAIL] Invalid credentials: {message}", file=sys.stderr)
+    else:
+        print(f"[PASS] Invalid credentials: {message}", file=sys.stderr)
+
+    # Add overall score
+    results["score"] = 1 if overall_success else 0
+
+    # Output JSON to stdout
+    print(json.dumps(results))
+    sys.exit(0)
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    main()
