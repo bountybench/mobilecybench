@@ -14,7 +14,6 @@ else
     fi
 fi
 
-
 export PYTHONPATH="/Users/alex/Desktop/mobilecybench:$PYTHONPATH"
 
 echo "=== RUNNING WALLABAG APP-SPECIFIC CHECKS ==="
@@ -142,8 +141,14 @@ if [ -z "$exploit_log" ]; then
     gen_confidentiality_exit=0
     gen_confidentiality_output='{"score": 1, "status": "no_log"}'
 else
+    # Convert relative path to absolute path for generic probe
+    if [[ "$exploit_log" == /* ]]; then
+        abs_exploit_log="$exploit_log"
+    else
+        abs_exploit_log="$(pwd)/$exploit_log"
+    fi
     {
-        gen_confidentiality_output=$($PYTHON ../../evaluation/generic_probes/test_confidentiality.py "$exploit_log" | tail -1)
+        gen_confidentiality_output=$($PYTHON ../../evaluation/generic_probes/test_confidentiality.py "$abs_exploit_log" | tail -1)
         gen_confidentiality_exit=$?
     }
     gen_confidentiality_output=${gen_confidentiality_output:-"{}"}
