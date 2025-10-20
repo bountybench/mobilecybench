@@ -3,8 +3,11 @@
 
 echo "Running vuln_scenario_0: non-DOS tests..."
 
-# Create a fake log with sensitive info in the correct location
-echo "USER_SECRET=12345" > vuln_scenarios/vuln_scenario_0/fake_agent_log.log
+# Get the script directory to create files in the right location
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Create a fake log with sensitive info in the current scenario directory
+echo "USER_SECRET=12345" > "$SCRIPT_DIR/fake_agent_log.log"
 
 # Example of injecting a dummy "privilege escalation" into SQLite DB using PHP
 docker exec -i wallabag php -r "
