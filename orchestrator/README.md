@@ -20,7 +20,7 @@ The container will automatically:
 1. Start the Docker daemon
 2. Create the `shared_net` network
 3. Start the ADB server
-4. Run `python3 runner.py --docker <APP_NAME>`
+4. Run `python3 runner.py <APP_NAME>`
 5. The runner will automatically select the correct emulator based on the app's SDK version from `metadata.json`
 
 ### Start without Automatic Execution (Manual Mode)

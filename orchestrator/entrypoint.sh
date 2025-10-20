@@ -38,7 +38,15 @@ adb start-server
 if [ -n "$APP_NAME" ]; then
     echo "Running MobileCybench for app: $APP_NAME"
     cd /mobilecybench
-    python3 runner.py --docker "$APP_NAME"
+
+    # Ensure docker mode is enabled in runner_config.json
+    # This changes the host filesystem via volume mount
+    if [ -f runner_config.json ]; then
+        jq '.docker = true' runner_config.json > runner_config.json.tmp && mv runner_config.json.tmp runner_config.json
+        echo "Set docker=true in runner_config.json"
+    fi
+
+    python3 runner.py "$APP_NAME"
 fi
 
 # Keep container running
