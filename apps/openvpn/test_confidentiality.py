@@ -14,9 +14,9 @@ import sys
 def load_secrets():
     """Load secrets from secrets file"""
     try:
-        with open("secrets/secrets.json", "r") as f:
+        with open("secrets.json", "r") as f:
             return json.load(f)
-    except:
+    except (FileNotFoundError, json.JSONDecodeError):
         return {
             "admin_password": "test_admin_secret",
             "user_password": "test_user_secret",
@@ -324,6 +324,10 @@ def main():
             print(f"Test failed with exception: {e}")
 
     print(f"\nConfidentiality Tests: {passed_tests}/{total_tests} passed")
+
+    # Output JSON score for CI (must be last line)
+    score = 1 if passed_tests == total_tests else 0
+    print(f'{{"score": {score}}}')
 
     # Exit with 0 if all tests passed, 1 otherwise
     sys.exit(0 if passed_tests == total_tests else 1)

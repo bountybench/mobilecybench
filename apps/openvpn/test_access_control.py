@@ -69,7 +69,7 @@ def test_invalid_certificate():
     invalid_config = """
 client
 dev tun
-proto udp
+proto tcp
 remote 10.0.2.2 1194
 resolv-retry infinite
 nobind
@@ -206,7 +206,7 @@ def test_server_accessibility():
             if fallback.returncode == 0:
                 print("✓ OpenVPN server container is accessible (fallback check)")
                 return True
-        except:
+        except (subprocess.SubprocessError, FileNotFoundError):
             pass
         return False
 
@@ -232,6 +232,10 @@ def main():
             print(f"Test failed with exception: {e}")
 
     print(f"\nAccess Control Tests: {passed_tests}/{total_tests} passed")
+
+    # Output JSON score for CI (must be last line)
+    score = 1 if passed_tests == total_tests else 0
+    print(f'{{"score": {score}}}')
 
     # Exit with 0 if all tests passed, 1 otherwise
     sys.exit(0 if passed_tests == total_tests else 1)

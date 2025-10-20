@@ -40,6 +40,21 @@ if [ -f "metadata.json" ]; then
     echo "Using SDK version: $SDK_VERSION, Java version: $JAVA_VERSION"
 fi
 
+# Generate keystore for release signing if it doesn't exist (before entering codebase)
+KEYSTORE_PATH="$(pwd)/keystore.jks"
+if [ ! -f "$KEYSTORE_PATH" ]; then
+    echo "Generating release keystore..."
+    keytool -genkey -v -keystore "$KEYSTORE_PATH" \
+        -alias openvpn-release \
+        -keyalg RSA \
+        -keysize 2048 \
+        -validity 10000 \
+        -storepass android123 \
+        -keypass android123 \
+        -dname "CN=OpenVPN Release,OU=Development,O=OpenVPN,L=City,S=State,C=US" \
+        -noprompt
+fi
+
 # Build locally
 echo "Building OpenVPN Android app locally..."
 cd codebase
@@ -47,6 +62,19 @@ cd codebase
 # Set up build environment
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/.android-sdk}"
 export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+
+# Create gradle.properties with signing config for releaseOvpn2 using absolute path
+cat > gradle.properties <<EOF
+android.useAndroidX=true
+android.enableJetifier=true
+android.nonFinalResIds=false
+org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError
+org.gradle.daemon=true
+keystoreO2File=$KEYSTORE_PATH
+keystoreO2Password=android123
+keystoreO2Alias=openvpn-release
+keystoreO2AliasPassword=android123
+EOF
 
 # Update git submodules
 git submodule update --init --recursive
@@ -56,89 +84,36 @@ git submodule update --init --recursive
 
 # Build the main app (UI variant with OpenVPN 2)
 echo "Building OpenVPN Android APK..."
-./gradlew :main:assembleUiOvpn2Debug
+./gradlew :main:assembleUiOvpn2Release
 
-# Copy APK to parent directory
-mkdir -p ../output
-cp main/build/outputs/apk/ui/ovpn2/debug/*.apk ../output/ || {
-    echo "Warning: Could not find APK files. Checking build outputs:"
+# Copy APK to standardized path
+mkdir -p ../apk
+# Find and copy the universal release APK (preferred) or any release APK
+RELEASE_APK=$(find main/build/outputs/apk/uiOvpn2/release -name "*universal*.apk" -type f | head -1)
+if [ -z "$RELEASE_APK" ]; then
+    RELEASE_APK=$(find main/build/outputs/apk/uiOvpn2/release -name "*.apk" -type f | head -1)
+fi
+
+if [ -n "$RELEASE_APK" ]; then
+    cp "$RELEASE_APK" ../apk/openvpn.apk
+    echo "Release APK copied to apk/openvpn.apk"
+else
+    echo "Error: No release APK files found. Checking build outputs:"
     find main/build/outputs -name "*.apk" -type f | head -5
-    # Try to copy any APK found
-    find main/build/outputs -name "*.apk" -type f -exec cp {} ../output/ \;
-}
+    exit 1
+fi
 
 cd ..
 
 echo "Android APK build completed!"
-if [ -d "output" ] && [ "$(ls -A output)" ]; then
-    echo "APKs available in: output/"
-    ls -la output/
-    
-    # Check if emulator is running - only install if available
-    echo "Checking for Android emulator..."
-    export ANDROID_HOME="${ANDROID_HOME:-$HOME/.android-sdk}"
-    export PATH="$ANDROID_HOME/platform-tools:$PATH"
-    
-    if ! adb devices | grep -q "emulator.*device"; then
-        echo "Warning: No emulator detected. Skipping APK installation."
-        echo "APK build completed successfully. Install manually if needed."
-        exit 0
-    fi
-    
-    # Install APK on emulator
-    echo "Installing APK on emulator..."
-    
-    # Find the best APK to install (prefer universal, then x86_64)
-    APK_FILE=""
-    if [ -f "output/main-ui-ovpn2-universal-debug.apk" ]; then
-        APK_FILE="output/main-ui-ovpn2-universal-debug.apk"
-    elif [ -f "output/main-ui-ovpn2-x86_64-debug.apk" ]; then
-        APK_FILE="output/main-ui-ovpn2-x86_64-debug.apk" 
-    else
-        APK_FILE=$(ls output/*.apk | head -1)
-    fi
-    
-    if [ -n "$APK_FILE" ]; then
-        echo "Installing APK: $APK_FILE"
-        
-        # Uninstall existing version
-        adb uninstall de.blinkt.openvpn 2>/dev/null || echo "No existing app to uninstall"
-        
-        # Install new APK
-        adb install "$APK_FILE"
-        
-        # Push OpenVPN config if available
-        if [ -f "client-configs/android-client.ovpn" ]; then
-            echo "Copying OpenVPN config to emulator..."
-            adb push client-configs/android-client.ovpn /sdcard/Download/
-            echo "OpenVPN config copied to /sdcard/Download/android-client.ovpn"
-        fi
-        
-        # Launch the app
-        echo "Launching OpenVPN app..."
-        adb shell am start -n de.blinkt.openvpn/de.blinkt.openvpn.LaunchVPN
-        
-        # Wait for app to start
-        sleep 3
-        
-        # Check if app launched successfully
-        if adb shell dumpsys package de.blinkt.openvpn | grep -q "ACTIVITY"; then
-            echo "✓ OpenVPN app launched successfully"
-            echo ""
-            echo "Setup completed! Next steps:"
-            echo "1. Open the OpenVPN app on the emulator"
-            echo "2. Import the client configuration from /sdcard/Download/android-client.ovpn"
-            echo "3. Connect to the VPN server at 10.0.2.2:1194"
-        else
-            echo "⚠ App may not have launched properly"
-        fi
-        
-    else
-        echo "Error: No APK files found to install"
-        exit 1
-    fi
+if [ -f "apk/openvpn.apk" ]; then
+    echo "Release APK available at: apk/openvpn.apk"
+    ls -lh apk/openvpn.apk
+    echo ""
+    echo "Build completed successfully!"
+    echo "APK can be installed using: adb install apk/openvpn.apk"
 else
-    echo "Error: No APK files found in output directory"
-    echo "Build may have failed - check build logs above"
+    echo "Error: APK build failed - apk/openvpn.apk not found"
+    echo "Check build logs above for details"
     exit 1
 fi

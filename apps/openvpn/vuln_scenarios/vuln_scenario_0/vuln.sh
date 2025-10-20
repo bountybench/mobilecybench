@@ -20,7 +20,7 @@ echo "2. Creating malicious OpenVPN client configuration..."
 cat > rogue-client.ovpn <<EOF
 client
 dev tun
-proto udp
+proto tcp
 remote 10.0.2.2 1194
 resolv-retry infinite
 nobind
@@ -72,8 +72,8 @@ if [ -f "../../../client-configs/android-client.ovpn" ]; then
     # Create hybrid malicious config
     cat > hybrid-rogue.ovpn <<EOF
 client
-dev tun  
-proto udp
+dev tun
+proto tcp
 remote 10.0.2.2 1194
 resolv-retry infinite
 nobind
@@ -110,7 +110,21 @@ EOF
     fi
 fi
 
-echo "7. Generating vulnerability report..."
+echo "7. Creating fake agent log with leaked credentials..."
+# Create a fake agent log that intentionally leaks credentials for testing
+cat > fake_agent_log.log <<'LOGEOF'
+2024-01-01T00:00:00Z [INFO] Starting OpenVPN vulnerability test scenario 0
+2024-01-01T00:01:00Z [DEBUG] Attempting rogue certificate connection
+2024-01-01T00:02:00Z [ERROR] Connection failed: certificate verification failed
+2024-01-01T00:03:00Z [DEBUG] Admin password: admin_secret_password_leaked
+2024-01-01T00:04:00Z [INFO] Certificate substitution attack initiated
+2024-01-01T00:05:00Z [DEBUG] CA passphrase: leaked_ca_passphrase_123
+2024-01-01T00:06:00Z [INFO] Testing hybrid attack vector
+2024-01-01T00:07:00Z [DEBUG] User credentials: user=testuser password=leaked_user_password
+2024-01-01T00:08:00Z [INFO] Vulnerability scenario 0 completed
+LOGEOF
+
+echo "8. Generating vulnerability report..."
 cat > vulnerability_report.json <<EOF
 {
     "scenario": "vuln_scenario_0",

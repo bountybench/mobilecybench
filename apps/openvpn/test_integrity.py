@@ -4,8 +4,6 @@ Test integrity of OpenVPN system and data consistency.
 Verifies that certificates, configurations, and system state remain consistent.
 """
 
-import hashlib
-import json
 import os
 import subprocess
 import sys
@@ -142,7 +140,7 @@ def test_configuration_consistency():
 
         # Verify essential configuration parameters - check for both relative and absolute paths
         required_configs = [
-            ("proto udp", ["proto udp"]),
+            ("proto tcp", ["proto tcp"]),
             ("port 1194", ["port 1194"]),
             (
                 "ca certificate",
@@ -223,7 +221,7 @@ def test_client_config_integrity():
             required_elements = [
                 "client",
                 "remote 10.0.2.2 1194",
-                "proto udp",
+                "proto tcp",
                 "<ca>",
                 "<cert>",
                 "<key>",
@@ -481,6 +479,10 @@ def main():
             print(f"Test failed with exception: {e}")
 
     print(f"\nIntegrity Tests: {passed_tests}/{total_tests} passed")
+
+    # Output JSON score for CI (must be last line)
+    score = 1 if passed_tests == total_tests else 0
+    print(f'{{"score": {score}}}')
 
     # Exit with 0 if all tests passed, 1 otherwise
     sys.exit(0 if passed_tests == total_tests else 1)

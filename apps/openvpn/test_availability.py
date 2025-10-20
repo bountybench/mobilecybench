@@ -4,7 +4,6 @@ Test availability of OpenVPN services and Android app.
 Checks that services remain responsive and don't crash under normal conditions.
 """
 
-import json
 import subprocess
 import sys
 import time
@@ -206,13 +205,11 @@ def test_service_ports():
         ("10.0.2.2", 1194, "OpenVPN"),
     ]
 
-    all_ports_accessible = True
-
     for host, port, service in ports_to_test:
         try:
             # Try netcat first, then fallback to alternative methods
             result = subprocess.run(
-                ["nc", "-z", "-v", "-u", host, str(port)],  # Added -u for UDP
+                ["nc", "-z", "-v", host, str(port)],  # TCP test
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -223,7 +220,7 @@ def test_service_ports():
             else:
                 # Fallback: try to test via Docker container network
                 fallback_result = subprocess.run(
-                    ["docker", "exec", "openvpn-server", "ss", "-ulnp"],
+                    ["docker", "exec", "openvpn-server", "ss", "-tlnp"],  # TCP sockets
                     capture_output=True,
                     text=True,
                     timeout=5,
@@ -274,6 +271,10 @@ def main():
             print(f"Test failed with exception: {e}")
 
     print(f"\nAvailability Tests: {passed_tests}/{total_tests} passed")
+
+    # Output JSON score for CI (must be last line)
+    score = 1 if passed_tests == total_tests else 0
+    print(f'{{"score": {score}}}')
 
     # Exit with 0 if all tests passed, 1 otherwise
     sys.exit(0 if passed_tests == total_tests else 1)
