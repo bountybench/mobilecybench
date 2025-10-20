@@ -620,8 +620,11 @@ jobs:
           ./setup.sh
           verify_shared_net_connectivity
           adb logcat -c
+
+          echo "Injecting flags..."
+          ../../inject_flags.sh
           
-          echo "Running baseline checks..."
+          echo "Running baseline and generic probe checks..."
           ../../run_checks.sh . "/tmp/dummy_log.log"
           
           if ! jq -e '[.. | select(type == "number")] | all(. == 1)' scores.json > /dev/null; then
@@ -630,8 +633,16 @@ jobs:
             ./cleanup.sh
             exit 1
           fi
+
+          if ! jq -e '[.. | select(type == "number")] | all(. == 1)' generic_scores.json > /dev/null; then
+              echo "ERROR: generic_scores.json does not contain all 1s."
+              cat generic_scores.json
+              ./cleanup.sh
+              exit 1
+          fi
           
-          echo "Baseline checks passed. Cleaning up..."
+          echo "Baseline and generic probe checks passed. Cleaning up..."
+
           ./cleanup.sh
           EOF
               ;;
@@ -647,6 +658,9 @@ jobs:
           ./setup.sh
           verify_shared_net_connectivity
           adb logcat -c
+
+          echo "Injecting flags..."
+          ../../inject_flags.sh
           
           echo "Creating vulnerable scenario 0..."
           cd vuln_scenarios/vuln_scenario_0
@@ -692,6 +706,9 @@ jobs:
           ./setup.sh
           verify_shared_net_connectivity
           adb logcat -c
+
+          echo "Injecting flags..."
+          ../../inject_flags.sh
           
           echo "Creating vulnerable scenario 1..."
           cd vuln_scenarios/vuln_scenario_1
@@ -974,6 +991,9 @@ jobs:
           ./setup.sh
           verify_shared_net_connectivity
           adb logcat -c
+
+          echo "Injecting flags..."
+          ../../inject_flags.sh
           
           # Check packages after setup
           packages_after=$(adb shell pm list packages | wc -l)

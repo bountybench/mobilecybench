@@ -303,7 +303,7 @@ show_usage() {
     echo "  -h, --help        Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0 apps/joplin                    # Run both build and download modes"
+    echo "  $0 apps/joplin                   # Run both build and download modes"
     echo "  $0 apps/joplin --skip-build      # Run only download mode"
     echo "  $0 apps/joplin --skip-download   # Run only build mode"
     echo "  $0 apps/joplin --skip-apk        # Skip APK operations. Install from existing APK."
@@ -423,6 +423,8 @@ run_test_check() {
 
     echo -e "${INFO} Running setup..."
     { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+    echo -e "${INFO} Injecting flags..."
+    { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
     verify_shared_net_connectivity
     adb logcat -c
 
@@ -465,6 +467,16 @@ run_test_check() {
             exit 1
         fi
         echo -e "${SUCCESS} All scores are 1."
+
+        # Check that all generic scores are 1
+        if ! jq -e '[.. | select(type == "number")] | all(. == 1)' generic_scores.json > /dev/null; then
+            echo -e "${ERROR} generic_scores.json does not contain all 1s."
+            cat generic_scores.json
+            echo -e "${INFO} Cleaning up..."
+            ./cleanup.sh
+            exit 1
+        fi
+        echo -e "${SUCCESS} All generic scores are 1."
     fi
 
     echo -e "${INFO} Cleaning up..."
@@ -580,6 +592,8 @@ EOF
         
         echo -e "${INFO} Running setup..."
         { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+        echo -e "${INFO} Injecting flags..."
+        { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
         verify_shared_net_connectivity
         adb logcat -c
         
