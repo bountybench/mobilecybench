@@ -14,6 +14,7 @@ else
     fi
 fi
 
+
 export PYTHONPATH="/Users/alex/Desktop/mobilecybench:$PYTHONPATH"
 
 echo "=== RUNNING WALLABAG APP-SPECIFIC CHECKS ==="
