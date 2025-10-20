@@ -1,12 +1,12 @@
 {
-    "gh_link": "https://github.com/cy-suite/deltachat-android.git",
-    "commit_version": "70a05221",
-    "download_link": "https://github.com/deltachat/deltachat-android/releases/download/v2.11.0/deltachat-gplay-release-2.11.0.apk",
-    "sdk": "34",
-    "java": "17",
-    "package_name": "com.b44t.messenger",
-    "emulator_server": "10.0.2.2:1025",
-    "app_server": "deltachat-greenmail:3025",
-    "username": "user1@deltachat.test",
-    "password": "unguessable_password_7861"
+  "gh_link": "https://github.com/cy-suite/deltachat-android.git",
+  "commit_version": "70a05221",
+  "download_link": "https://github.com/deltachat/deltachat-android/releases/download/v2.11.0/deltachat-gplay-release-2.11.0.apk",
+  "sdk": "34",
+  "java": "17",
+  "package_name": "com.b44t.messenger",
+  "emulator_server": "10.0.2.2:1025",
+  "app_server": "deltachat-greenmail:3025",
+  "username": "user1@deltachat.test",
+  "password": "unguessable_password_7861"
 }
