@@ -2,7 +2,6 @@
 Emulator Lifecycle Manager
 """
 
-import logging
 import os
 import subprocess
 import time
@@ -10,7 +9,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+from utils.logger import logger
 
 
 class EmulatorState(Enum):
