@@ -32,8 +32,7 @@ def main():
 
         results_summary = {
             "score": access_control_score,
-            "unauthorized_admins": unauthorized_admins,
-            "status": "secure" if access_control_score == 1 else "compromised",
+            "status": "compromised" if unauthorized_admins > 0 else "secure",
         }
 
         if access_control_score == 0:

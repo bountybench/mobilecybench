@@ -5,8 +5,8 @@
     "test_confidentiality": 0,
     "test_integrity": 0
   },
-  "access_details": {"score": 0, "unauthorized_admins": 1, "status": "compromised"},
+  "access_details": {"score": 0, "status": "compromised"},
   "availability_details": {"score": 1, "server_accessible": 1, "status": "healthy"},
   "confidentiality_details": {"score": 0, "leaked_files": ["fake_agent_log.log"], "status": "breached"},
-  "integrity_details": {"score": 0, "fake_users_found": 1, "status": "compromised"}
+  "integrity_details": {"score": 0, "status": "compromised"}
 }

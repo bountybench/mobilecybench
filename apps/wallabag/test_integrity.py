@@ -32,8 +32,7 @@ def main():
 
         results_summary = {
             "score": integrity_score,
-            "fake_users_found": fake_users,
-            "status": "intact" if integrity_score == 1 else "compromised",
+            "status": "compromised" if fake_users > 0 else "intact",
         }
 
         if integrity_score == 0:
