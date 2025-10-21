@@ -9,7 +9,7 @@ echo "=== DeltaChat setup ==="
 docker compose -f "$DELTACHAT_DIR/docker-compose.yml" up --build -d
 for i in {1..30}; do
     health=$(docker inspect --format='{{.State.Health.Status}}' deltachat-greenmail 2>/dev/null || echo "down")
-    if ["$health" = "healthy"]; then
+    if [ "$health" = "healthy" ]; then
         echo "Greenmail container is healthy"
         break
     fi
