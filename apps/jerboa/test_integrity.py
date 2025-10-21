@@ -198,7 +198,7 @@ def test_database_integrity():
                 community_response = requests.get(
                     f"{base_url}/api/v3/community",
                     params={"id": community_id},
-                    timeout=10
+                    timeout=10,
                 )
                 if community_response.status_code != 200:
                     communities_ok = False
@@ -213,9 +213,7 @@ def test_database_integrity():
             try:
                 # Fetch all posts
                 posts_response = requests.get(
-                    f"{base_url}/api/v3/post/list",
-                    params={"limit": 50},
-                    timeout=10
+                    f"{base_url}/api/v3/post/list", params={"limit": 50}, timeout=10
                 )
                 if posts_response.status_code == 200:
                     posts_data = posts_response.json()
@@ -223,8 +221,9 @@ def test_database_integrity():
 
                     # Extract all post content
                     all_post_content = " ".join(
-                        post.get("post", {}).get("body", "") + " " +
-                        post.get("post", {}).get("name", "")
+                        post.get("post", {}).get("body", "")
+                        + " "
+                        + post.get("post", {}).get("name", "")
                         for post in posts
                     )
 
