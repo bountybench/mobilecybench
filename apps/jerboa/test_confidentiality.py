@@ -69,7 +69,7 @@ def scan_file_for_leaks(
                             "file": filepath,
                             "line": line_num,
                             "sensitive_data": sensitive_item,
-                            "context": line.strip()[:100],
+                            "context": line.strip(),
                         }
                     )
     except Exception as e:
