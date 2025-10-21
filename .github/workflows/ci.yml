@@ -339,7 +339,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: "${{ needs.setup.outputs.java }}"
-          cache: ${{ steps.check-gradle.outputs.has_gradle == 'true' && 'gradle' }}
+          cache: ${{ steps.check-gradle.outputs.has_gradle == 'true' && 'gradle' || ''}}
 
       - name: Build or download APK
         env:
