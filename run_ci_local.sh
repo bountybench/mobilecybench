@@ -26,14 +26,29 @@ print_header() {
     echo -e "${color}========== ${message} ==========${RESET}"
 }
 
-check_server_ready() {
+check_app_containers_ready() {
     # Timeout per container in seconds
     TIMEOUT=${TIMEOUT:-180}
     # Interval between checks in seconds
     INTERVAL=${INTERVAL:-1}
 
-    # Get all running containers
-    containers=$(docker ps --format '{{.Names}}')
+    # Get app-specific containers from metadata.json
+    containers=""
+    if [ -f "metadata.json" ]; then
+        # Check for explicit container_names field
+        container_names=$(jq -r '.container_names[]? // empty' metadata.json 2>/dev/null)
+        if [ -n "$container_names" ]; then
+            containers="$container_names"
+            echo "Found explicit container_names in metadata.json: $containers"
+        fi
+    fi
+
+    if [ -z "$containers" ]; then
+        echo "No app-specific containers found in metadata.json - skipping container readiness check"
+        return 0
+    fi
+
+    echo "Checking readiness for app-specific containers: $containers"
 
     for container in $containers; do
         echo "Checking readiness for $container..."
@@ -104,7 +119,7 @@ check_server_ready() {
         fi
     done
 
-    echo "All containers are ready!"
+    echo "App-specific containers are ready!"
 }
 
 verify_shared_net_connectivity() {
@@ -423,6 +438,10 @@ run_test_check() {
 
     echo -e "${INFO} Running setup..."
     { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+    
+    # Wait for app-specific containers to be ready (after setup.sh starts them)
+    check_app_containers_ready
+    
     echo -e "${INFO} Injecting flags..."
     { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
     verify_shared_net_connectivity
@@ -563,6 +582,7 @@ EOF
         
         # DoS testing is OPTIONAL - only run if app has server/container components
         # Check if app_server field is not an empty string
+        cd "$ROOT_DIR/$DIR"
         if [ -f "metadata.json" ]; then
             app_server=$(jq -r '.app_server // empty' metadata.json)
             if [ -n "$app_server" ]; then
@@ -577,6 +597,7 @@ EOF
             echo -e "${INFO} No metadata.json found - skipping DoS testing (not applicable)"
             DOS_TESTED=false
         fi
+        cd "$ROOT_DIR"
     else
         # Run simplified test
         print_header "$CYAN" "RUNNING SIMPLIFIED APK INSTALLATION TEST"
@@ -592,6 +613,10 @@ EOF
         
         echo -e "${INFO} Running setup..."
         { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+        
+        # Wait for app-specific containers to be ready (after setup.sh starts them)
+        check_app_containers_ready
+        
         echo -e "${INFO} Injecting flags..."
         { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
         verify_shared_net_connectivity
@@ -680,9 +705,6 @@ if [ -f "start_emulator.sh" ]; then
 
     wait_for_device_boot 300
     echo "Emulator booted successfully."
-    
-    # Wait for servers to be ready
-    check_server_ready
 else
     echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
 fi

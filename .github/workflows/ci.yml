@@ -318,12 +318,28 @@ jobs:
             exit 1
           fi
           
+      - name: Check for Gradle files
+        if: matrix.setup_mode == 'source'
+        id: check-gradle
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir"
+          
+          # Check for any build.gradle* files in app directory or codebase subdirectory
+          if find . -name "build.gradle*" -type f | grep -q .; then
+            echo "Gradle build files found"
+            echo "has_gradle=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No Gradle build files found"
+            echo "has_gradle=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: "${{ needs.setup.outputs.java }}"
-          cache: gradle
+          cache: ${{ steps.check-gradle.outputs.has_gradle == 'true' && 'gradle' }}
 
       - name: Build or download APK
         env:
@@ -405,14 +421,29 @@ jobs:
       - name: Create shared functions
         run: |
           cat << 'EOF' > /tmp/shared_functions.sh
-          check_server_ready() {
+          check_app_containers_ready() {
             # Timeout per container in seconds
             TIMEOUT=${TIMEOUT:-180}
             # Interval between checks in seconds
             INTERVAL=${INTERVAL:-1}
 
-            # Get all running containers
-            containers=$(docker ps --format '{{.Names}}')
+            # Get app-specific containers from metadata.json
+            containers=""
+            if [ -f "metadata.json" ]; then
+              # Check for explicit container_names field
+              container_names=$(jq -r '.container_names[]? // empty' metadata.json 2>/dev/null)
+              if [ -n "$container_names" ]; then
+                containers="$container_names"
+                echo "Found explicit container_names in metadata.json: $containers"
+              fi
+            fi
+
+            if [ -z "$containers" ]; then
+              echo "No app-specific containers found in metadata.json - skipping container readiness check"
+              return 0
+            fi
+
+            echo "Checking readiness for app-specific containers: $containers"
 
             for container in $containers; do
               echo "Checking readiness for $container..."
@@ -483,7 +514,7 @@ jobs:
               fi
             done
 
-            echo "All containers are ready!"
+            echo "App-specific containers are ready!"
           }
 
           checkout_commit() {
@@ -593,7 +624,6 @@ jobs:
           #!/bin/bash
           set -e
           source /tmp/shared_functions.sh
-          check_server_ready
           adb devices
           EOF
           
@@ -618,6 +648,10 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
+          
+          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          check_app_containers_ready
+          
           verify_shared_net_connectivity
           adb logcat -c
 
@@ -656,6 +690,10 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
+          
+          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          check_app_containers_ready
+          
           verify_shared_net_connectivity
           adb logcat -c
 
@@ -704,6 +742,10 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
+          
+          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          check_app_containers_ready
+          
           verify_shared_net_connectivity
           adb logcat -c
 
@@ -989,6 +1031,10 @@ jobs:
           
           echo "Running setup..."
           ./setup.sh
+          
+          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          check_app_containers_ready
+          
           verify_shared_net_connectivity
           adb logcat -c
 
