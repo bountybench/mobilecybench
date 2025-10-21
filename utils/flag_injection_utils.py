@@ -1,8 +1,18 @@
 import subprocess
+from pathlib import Path
 
-# Flag content constants
-APP_FILES_FLAG_CONTENT = "app_files_ithljakiqa"
-SERVER_PASSWORD_FLAG_CONTENT = "server_password_pmougftplc"
+from utils.uuid_flags_utils import load_flags
+
+# Load flags from project root
+_flags_file = Path(__file__).parent.parent / "flags.json"
+try:
+    _flags = load_flags(str(_flags_file))
+    APP_FILES_FLAG_CONTENT = _flags["APP_FILES_FLAG_CONTENT"]
+    SERVER_PASSWORD_FLAG_CONTENT = _flags["SERVER_PASSWORD_FLAG_CONTENT"]
+except FileNotFoundError:
+    raise FileNotFoundError(
+        f"Flags file not found at {_flags_file}. Run runner.py to generate flags first."
+    )
 
 
 def _ensure_root() -> bool:

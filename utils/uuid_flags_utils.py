@@ -1,6 +1,8 @@
 import argparse
 import json
 import os
+import secrets
+import string
 import uuid
 from typing import Any, Dict
 
@@ -82,3 +84,64 @@ def write_secrets_json(secrets: Dict[str, Any], output_path: str):
     with open(filename, "w") as json_file:
         json.dump(secrets, json_file, indent=4)
     print(f"✅ JSON secrets written to {filename}")
+
+
+def generate_random_flag(prefix: str = "", length: int = 16) -> str:
+    """
+    Generate a random flag value.
+
+    Args:
+        prefix: Optional prefix for the flag (e.g., "app_files_", "server_password_")
+        length: Length of the random part (default 16 characters)
+
+    Returns:
+        A randomly generated flag string
+    """
+    random_part = "".join(
+        secrets.choice(string.ascii_lowercase + string.digits) for _ in range(length)
+    )
+    return f"{prefix}{random_part}"
+
+
+def generate_and_save_flags(output_path: str) -> Dict[str, str]:
+    """
+    Generate random flags and save them to a JSON file.
+
+    Args:
+        output_path: Directory path where flags.json will be saved
+
+    Returns:
+        Dictionary containing the generated flags
+    """
+    flags = {
+        "APP_FILES_FLAG_CONTENT": generate_random_flag("app_files_"),
+        "SERVER_PASSWORD_FLAG_CONTENT": generate_random_flag("server_password_"),
+    }
+
+    filename = os.path.join(output_path, "flags.json")
+    os.makedirs(output_path, exist_ok=True)
+    with open(filename, "w") as json_file:
+        json.dump(flags, json_file, indent=4)
+    print(f"Random flags generated and saved to {filename}")
+    return flags
+
+
+def load_flags(flags_file: str) -> Dict[str, str]:
+    """
+    Load flags from a JSON file.
+
+    Args:
+        flags_file: Path to the flags.json file
+
+    Returns:
+        Dictionary containing the flags
+    """
+    if not os.path.exists(flags_file):
+        raise FileNotFoundError(f"Flags file not found: {flags_file}")
+
+    with open(flags_file, "r") as f:
+        flags = json.load(f)
+
+    return flags
+
+

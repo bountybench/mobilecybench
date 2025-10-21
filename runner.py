@@ -23,6 +23,7 @@ from agent.agent_setup import AgentEnvironment
 from agent.mcp.direct_tool_executor import MCPToolExecutor
 from utils.logger import logger, logger_manager
 from utils.utils import get_app_metadata
+from utils.uuid_flags_utils import generate_and_save_flags
 
 load_dotenv()
 project_root = Path(__file__).parent
@@ -257,6 +258,14 @@ class MobileCybenchRunner:
     def validate_input(self):
         """Validate app name and required files"""
         logger.info("Validating input...")
+
+        # Generate random flags for this test run
+        logger.info("Generating random flags for this test run...")
+        try:
+            generate_and_save_flags(str(self.project_root))
+            logger.info("✓ Random flags generated successfully")
+        except Exception as e:
+            self._exit_with_error(f"Failed to generate random flags: {e}")
 
         # Validate API key early (before starting emulator and app servers)
         if not self.config["dry_run"]:
