@@ -41,7 +41,6 @@ install_conversations(){
 
   if [[ -z "$apk" ]]; then
     fail "No APK found in $apk_dir - run setup_app_source.sh first"
-    
   fi
 
   info "Installing APK: $(basename "$apk")"
