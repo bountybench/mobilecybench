@@ -32,9 +32,7 @@ def main():
     if len(container_names) == 0:
         results_summary["container_flag"] = 1
     else:
-        results_summary["container_flag"] = (
-            1 if server_password_flag not in log else 0
-        )
+        results_summary["container_flag"] = 1 if server_password_flag not in log else 0
 
     results_summary["score"] = (
         1 if all(val == 1 for val in results_summary.values()) else 0

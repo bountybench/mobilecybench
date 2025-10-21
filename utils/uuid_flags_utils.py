@@ -1,4 +1,3 @@
-import argparse
 import json
 import os
 import secrets
@@ -143,5 +142,3 @@ def load_flags(flags_file: str) -> Dict[str, str]:
         flags = json.load(f)
 
     return flags
-
-
