@@ -138,7 +138,7 @@ main() {
     fi
 
     if ! command -v java >/dev/null 2>&1; then
-        error "Java not found"
+        error "Java not found."
     fi
 
     if ! command -v "$SCRIPT_DIR/codebase/gradlew" >/dev/null 2>&1; then
