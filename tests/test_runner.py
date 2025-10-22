@@ -8,20 +8,22 @@ from runner import MobileCybenchRunner
 @pytest.fixture
 def mock_config():
     """Mock configuration for MobileCybenchRunner"""
-    return {
-        "server_access": True,
-        "build_type": "source",
-        "adb_access": "full",
-        "max_iterations": 10,
-        "max_kali_message_tokens": 1000,
-        "max_model_response_tokens": 1000,
-        "max_context_length": 10000,
-        "model": "gpt-4",
-        "screenshot_mode": False,
-        "headless_mode": True,
-        "dry_run": True,
-        "agent_image": "test-image",
-    }
+    from models.config import RunnerConfig
+
+    return RunnerConfig(
+        server_access=True,
+        build_type="source",
+        adb_access="full",
+        max_iterations=10,
+        max_kali_message_tokens=1000,
+        max_model_response_tokens=1000,
+        max_context_length=10000,
+        model="gpt-4",
+        screenshot_mode=False,
+        headless_mode=True,
+        dry_run=True,
+        agent_image="test-image",
+    )
 
 
 @pytest.fixture
