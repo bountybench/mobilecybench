@@ -93,8 +93,6 @@ class UIElement:
         }
 
 
-
-
 def obtain_UI_elements() -> List[UIElement]:
     """
     This collects a UI dump of all the elements in the android emulator for agentic use.
@@ -145,6 +143,4 @@ def obtain_UI_elements() -> List[UIElement]:
 def get_ui_state() -> dict:
     """Get current UI state with all interactive elements"""
     ui_elements = obtain_UI_elements()
-    return {
-        "ui_elements": [el.to_dict() for el in ui_elements]
-    }
+    return {"ui_elements": [el.to_dict() for el in ui_elements]}

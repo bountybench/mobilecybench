@@ -91,7 +91,6 @@ def _execute_command_internal(command: str) -> str:
             )
         truncated_body = tr.truncated_output
 
-
     # formatted and truncated command output
     truncated_response = header + truncated_body
 
