@@ -38,8 +38,8 @@ class RunnerConfig(BaseModel):
             with open(config_path, "r") as f:
                 c_dict = json.load(f)
         except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON in config file {e}")
+            raise ValueError(f"Invalid JSON in config file: {e}")
         except Exception as e:
-            raise ValueError(f"Unexpected Error in reading config file {e}")
+            raise ValueError(f"Unexpected error reading config file: {e}")
 
         return cls(**c_dict)
