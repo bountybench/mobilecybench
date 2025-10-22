@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e  # Exit on any error
+set -e
 
 # Colors for output
 RED='\033[0;31m'
@@ -12,10 +12,6 @@ NC='\033[0m' # No Color
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODEBASE_DIR="$SCRIPT_DIR/codebase"
-JAVA_VERSION="17"  # Funkwhale Android requires Java 17
-ANDROID_SDK_VERSION="34"  # Target SDK for recent Android versions
-ANDROID_BUILD_TOOLS_VERSION="34.0.0"
-MIN_SDK_VERSION="24"  # Funkwhale Android minimum SDK
 
 # Android SDK location (check common locations)
 if [ -d "$HOME/Library/Android/sdk" ]; then
@@ -50,56 +46,6 @@ print_error() {
 # Function to check if command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
-}
-
-# Function to check and switch to Java 17
-setup_java17() {
-    print_status "Setting up Java 17 for Funkwhale Android build..."
-
-    # Check if Java 17 is available via java_home (macOS)
-    if [[ "$OSTYPE" == "darwin"* ]] && command_exists /usr/libexec/java_home; then
-        JAVA17_HOME=$(/usr/libexec/java_home -v 17 2>/dev/null)
-        if [ -n "$JAVA17_HOME" ] && [ -d "$JAVA17_HOME" ]; then
-            print_success "Found Java 17 at: $JAVA17_HOME"
-            export JAVA_HOME="$JAVA17_HOME"
-            export PATH="$JAVA_HOME/bin:$PATH"
-
-            # Verify the switch worked
-            CURRENT_JAVA_VER=$(java -version 2>&1 | head -1 | cut -d'"' -f2 | sed 's/^1\.//' | cut -d'.' -f1)
-            if [ "$CURRENT_JAVA_VER" = "17" ]; then
-                print_success "Successfully switched to Java 17"
-                return 0
-            fi
-        fi
-    fi
-
-    # Check if Java 17 is available in common locations
-    JAVA17_PATHS=(
-        "/usr/lib/jvm/java-17-openjdk"
-        "/usr/lib/jvm/java-17"
-        "/opt/homebrew/opt/openjdk@17"
-        "/usr/local/opt/openjdk@17"
-        "/Library/Java/JavaVirtualMachines/openjdk-17.jdk/Contents/Home"
-    )
-
-    for java_path in "${JAVA17_PATHS[@]}"; do
-        if [ -d "$java_path" ]; then
-            print_status "Found Java 17 at: $java_path"
-            export JAVA_HOME="$java_path"
-            export PATH="$JAVA_HOME/bin:$PATH"
-
-            # Verify the switch worked
-            if command_exists java; then
-                CURRENT_JAVA_VER=$(java -version 2>&1 | head -1 | cut -d'"' -f2 | sed 's/^1\.//' | cut -d'.' -f1)
-                if [ "$CURRENT_JAVA_VER" = "17" ]; then
-                    print_success "Successfully switched to Java 17"
-                    return 0
-                fi
-            fi
-        fi
-    done
-
-    return 1
 }
 
 # Function to verify Java 17 is active
@@ -298,26 +244,6 @@ sign_apk() {
 build_apk() {
      print_status "Building Funkwhale Android APK..."
     cd "$CODEBASE_DIR"
-
-#     # Allow cleartext HTTP traffic for testing with local server
-#     print_status "Configuring network security to allow HTTP traffic..."
-#     cat > app/src/main/res/xml/security.xml << 'EOF'
-# <?xml version="1.0" encoding="utf-8"?>
-# <network-security-config xmlns:tools="http://schemas.android.com/tools">
-#   <base-config cleartextTrafficPermitted="true">
-#     <trust-anchors>
-#       <certificates src="system" />
-#       <certificates
-#         src="user"
-#         tools:ignore="AcceptsUserCertificates" />
-#     </trust-anchors>
-#   </base-config>
-#   <domain-config cleartextTrafficPermitted="true">
-#     <domain includeSubdomains="true">10.0.2.2</domain>
-#     <domain includeSubdomains="true">localhost</domain>
-#   </domain-config>
-# </network-security-config>
-# EOF
 
     # Add Gson ProGuard rules to fix TypeToken errors
     print_status "Adding Gson ProGuard rules..."

@@ -100,8 +100,11 @@ services:
       - "${MUSIC_DIRECTORY_SERVE_PATH-/srv/funkwhale/data/music}:${MUSIC_DIRECTORY_PATH-/music}:ro"
       - "${MEDIA_ROOT}:${MEDIA_ROOT}:ro"
       - "${STATIC_ROOT}:/usr/share/nginx/html/staticfiles:ro"
+      - "./nginx.conf:/etc/nginx/templates/default.conf.template"
+      - "./ssl:/etc/nginx/ssl:ro"
     ports:
       - "80:80"
+      - "443:443"
     networks:
       - shared_net
       - private_net

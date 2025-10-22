@@ -61,7 +61,7 @@ cleanup_files(){
     # Remove typesense data
     if [ -d "$server_dir/typesense" ]; then
         info "Removing typesense data..."
-        sudo rm -rf "$server_dir/typesense" || rm -rf "$server_dir/typesense" || warn "Failed to remove typesense data"
+        rm -rf "$server_dir/typesense" || rm -rf "$server_dir/typesense" || warn "Failed to remove typesense data"
     fi
 
     # Remove generated .env file

@@ -196,7 +196,7 @@ setup_server(){
     fi
 
     # Check for database snapshot
-    SNAPSHOT_FILE="$server_dir/postgres-snapshot.tar.gz"
+    SNAPSHOT_FILE="$server_dir/postgres-snapshot1017.tar.gz"
     POSTGRES_DATA_DIR="$server_dir/data/postgres"
 
     if [[ -f "$SNAPSHOT_FILE" ]] && [[ ! -d "$POSTGRES_DATA_DIR" ]]; then
@@ -300,9 +300,6 @@ main(){
     # Set up and start Funkwhale server (restores from snapshot)
     setup_server
 
-    # Snapshot already contains test data (superuser, test user, libraries)
-    # No need to populate server
-
     # Find pre-built APK (do not rebuild from source)
     info "Looking for pre-built APK to install"
     APK_PATH=$(find_apk)
@@ -335,5 +332,4 @@ main(){
     echo ""
    }
 
-# Run main function
 main "$@"
