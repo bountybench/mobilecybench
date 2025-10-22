@@ -1,6 +1,13 @@
 #!/bin/bash
 set -e
 
+# DeltaChat Android setup script
+# 
+# IMPORTANT: DeltaChat APK requires ARM64 emulator architecture.
+# If you get "INSTALL_FAILED_NO_MATCHING_ABIS" error, ensure you have:
+# 1. An ARM64 emulator running (setup with: ../../setup.sh deltachat-android)
+# 2. Or build from source which will auto-detect architecture (run setup_app_source.sh first)
+
 DELTACHAT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MOBILECYBENCH_ROOT="$(cd "$DELTACHAT_DIR/../.." && pwd)"
 

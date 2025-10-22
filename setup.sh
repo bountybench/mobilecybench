@@ -90,6 +90,13 @@ if [[ $# -gt 0 && "$1" != -* && -d "${SCRIPT_DIR}/apps/$1" ]]; then
     
     SYSTEM_IMAGE_TYPE="$DEFAULT_SYSTEM_IMAGE"
     
+    # Special handling for DeltaChat: force ARM architecture due to APK ABI requirements
+    if [[ "$APP_NAME" == "deltachat-android" ]]; then
+        echo "Note: DeltaChat requires ARM architecture emulator (APK built for arm64-v8a)"
+        # Force ARM architecture by setting the build to use arm64 system image
+        # This is done later in the detect_arch function override
+    fi
+    
     warn_old_sdk_version "$SDK_VERSION" "App '$APP_NAME' uses Android SDK"
 else
     # Standard flag parsing mode
@@ -233,6 +240,12 @@ detect_os() {
 }
 
 detect_arch() {
+    # Special case for DeltaChat: force ARM architecture due to APK ABI requirements
+    if [[ "$APP_NAME" == "deltachat-android" ]]; then
+        echo "arm64"
+        return
+    fi
+    
     case "$(uname -m)" in
         x86_64|amd64)   echo "x86_64";;
         arm64|aarch64)  echo "arm64";;
@@ -636,7 +649,9 @@ main() {
     echo "  SDK Version: $SDK_VERSION"
     echo "  System Image: $SYSTEM_IMAGE_TYPE"
     echo "  Architecture: $arch"
-    if [[ "$arch" == "arm64" ]]; then
+    if [[ "$APP_NAME" == "deltachat-android" ]]; then
+        echo "  Note: Forced ARM64 architecture for DeltaChat APK compatibility"
+    elif [[ "$arch" == "arm64" ]]; then
         echo "  Note: Using ARM64 system image for Apple Silicon compatibility"
     fi
     echo ""

@@ -8,16 +8,51 @@ info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
 error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
 
+detect_emulator_arch() {
+    # Check if emulator is running and get its architecture
+    if adb devices | grep -q "device$"; then
+        local abi=$(adb shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r\n')
+        if [[ "$abi" == "x86_64" ]]; then
+            echo "x86_64"
+        elif [[ "$abi" == "arm64-v8a" ]]; then
+            echo "arm64"
+        else
+            # Default to build for both if we can't detect
+            echo "both"
+        fi
+    else
+        # No emulator running, build for both architectures
+        echo "both"
+    fi
+}
+
 install_rust_targets() {
     if command -v rustup >/dev/null 2>&1; then
         RUSTUP_TOOLCHAIN="1.86.0"
-        TARGETS="aarch64-linux-android x86_64-linux-android i686-linux-android"
+        
+        local arch=$(detect_emulator_arch)
+        local targets=""
+        
+        case "$arch" in
+            "x86_64")
+                targets="x86_64-linux-android"
+                info "Building for x86_64 (detected running emulator)"
+                ;;
+            "arm64")
+                targets="aarch64-linux-android"
+                info "Building for arm64 (detected running emulator)"
+                ;;
+            *)
+                targets="aarch64-linux-android x86_64-linux-android"
+                info "Building for both architectures (no emulator detected or unknown arch)"
+                ;;
+        esac
 
         if ! rustup install "$RUSTUP_TOOLCHAIN"; then
             error "Failed to install toolchain $RUSTUP_TOOLCHAIN"
         fi
 
-        for target in $TARGETS; do
+        for target in $targets; do
             if ! rustup target add "$target" --toolchain "$RUSTUP_TOOLCHAIN"; then
                 error "Failed to install target $target"
             fi
@@ -36,6 +71,7 @@ build_rust_core() {
     cd "$SCRIPT_DIR/codebase"
     git submodule update --init --recursive
     
+<<<<<<< HEAD
     info "Building native libraries for multiple architectures..."
     
     for arch in arm64-v8a x86_64 x86; do
@@ -43,6 +79,29 @@ build_rust_core() {
         if ! ./scripts/ndk-make.sh "$arch"; then
             warn "Failed to build for $arch, continuing with other architectures"
         fi
+=======
+    local arch=$(detect_emulator_arch)
+    local ndk_targets=""
+    
+    case "$arch" in
+        "x86_64")
+            ndk_targets="x86_64"
+            info "Building Rust core for x86_64"
+            ;;
+        "arm64")
+            ndk_targets="arm64-v8a"
+            info "Building Rust core for arm64-v8a"
+            ;;
+        *)
+            ndk_targets="arm64-v8a x86_64"
+            info "Building Rust core for both architectures"
+            ;;
+    esac
+    
+    for target in $ndk_targets; do
+        info "Building Rust core for $target..."
+        ./scripts/ndk-make.sh "$target"
+>>>>>>> 4f0110ed (architecture enforcement tweak)
     done
 }
 
