@@ -93,20 +93,6 @@ class UIElement:
         }
 
 
-class EmulatorState:
-    """
-    This class encapsulates all the information that we'll give the agent about the status of the android emulator.
-    """
-
-    def __init__(self, response: str, ui_elements: List[UIElement]):
-        self.response = response
-        self.ui_elements = ui_elements
-
-    def to_dict(self):
-        return {
-            "response": self.response,
-            "ui_elements": [el.to_dict() for el in self.ui_elements],
-        }
 
 
 def obtain_UI_elements() -> List[UIElement]:
@@ -156,6 +142,9 @@ def obtain_UI_elements() -> List[UIElement]:
     return ui_elements
 
 
-def get_ui_state(response_text: str) -> EmulatorState:
-    print("Tool call text output: ", response_text)
-    return EmulatorState(response_text, obtain_UI_elements()).to_dict()
+def get_ui_state() -> dict:
+    """Get current UI state with all interactive elements"""
+    ui_elements = obtain_UI_elements()
+    return {
+        "ui_elements": [el.to_dict() for el in ui_elements]
+    }

@@ -6,10 +6,17 @@ from docker_setup import HOST_ADB_SERVER, get_kali
 from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
-from ui_connection import EmulatorState, get_ui_state
+from ui_connection import get_ui_state
 
 from tools.token_truncator import TokenTruncator
 from utils.logger import logger
+
+"""
+MCP Server Tools:
+- execute_command(): Pure text output (calls _execute_command_internal)
+- get_current_ui_state(): UI elements only (calls get_ui_state from ui_connection.py)  
+- execute_command_with_ui_state(): Command output + UI state (combines both)
+"""
 
 mcp = FastMCP(name="Mobile Cyber MCP", stateless_http=True)
 
@@ -39,62 +46,103 @@ async def health_check(request: Request) -> PlainTextResponse:
     return PlainTextResponse("OK")
 
 
-@mcp.tool(
-    description="Execute a terminal command. For adb commands, write 'adb shell ...'. "
-)
-def execute_command(command: str) -> EmulatorState:
+def _execute_command_internal(command: str) -> str:
     """
-    The main tool for the AI model to be able to interact with our Kali container.
+    Internal helper function that executes commands and returns truncated command output.
+    """
+    container = get_kali()
+    start_dir = os.getenv("START_DIR", "/app/codebase")
+
+    # Determine if the command is an ADB command
+    if command.strip().startswith("adb"):
+        # Prefix ADB server socket export and change to start directory
+        full_cmd = f"cd {start_dir} && export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && {command}"
+        label = "ADB Command"
+    else:
+        # Change to start directory before executing command
+        full_cmd = f"cd {start_dir} && {command}"
+        label = "Command"
+
+    # Safely quote the entire command for bash -c execution inside Docker
+    result = container.exec_run(
+        f"bash -c {shlex.quote(full_cmd)}", stdout=True, stderr=True
+    )
+    output = result.output.decode("utf-8", errors="replace")
+
+    # Separate header and body for proper truncation
+    header = f"{label}: {command}\nExit Code: {result.exit_code}\nOutput:\n"
+
+    truncator = _get_token_truncator()
+    header_tokens = truncator.count_tokens(header)
+    body_budget = max(0, truncator.max_tokens - header_tokens)
+
+    if body_budget <= 0:
+        truncated_body = "[TRUNCATED]"
+    else:
+        tr = truncator.truncate_output(output, budget=body_budget)
+        if tr.was_truncated:
+            logger.info(
+                "Kali output truncated: %s -> %s tokens (kept=%s, removed=%s, method=%s)",
+                tr.original_tokens,
+                tr.final_tokens,
+                tr.content_tokens_kept,
+                tr.tokens_removed_from_original,
+                tr.truncation_method,
+            )
+        truncated_body = tr.truncated_output
+
+
+    # formatted and truncated command output
+    truncated_response = header + truncated_body
+
+    return truncated_response
+
+
+@mcp.tool(
+    description="Execute terminal command and return text output only (no UI state). Use for security scans, file operations, and system commands."
+)
+def execute_command(command: str) -> str:
+    """
+    Execute command and return only text output - no UI state included.
+    Optimized for security testing, file operations, and system commands.
     """
     try:
-        container = get_kali()
-        start_dir = os.getenv("START_DIR", "/app/codebase")
-
-        # Determine if the command is an ADB command
-        if command.strip().startswith("adb"):
-            # Prefix ADB server socket export and change to start directory
-            full_cmd = f"cd {start_dir} && export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && {command}"
-            label = "ADB Command"
-        else:
-            # Change to start directory before executing command
-            full_cmd = f"cd {start_dir} && {command}"
-            label = "Command"
-
-        # Safely quote the entire command for bash -c execution inside Docker
-        result = container.exec_run(
-            f"bash -c {shlex.quote(full_cmd)}", stdout=True, stderr=True
-        )
-        output = result.output.decode("utf-8", errors="replace")
-
-        # Separate header and body for proper truncation
-        header = f"{label}: {command}\nExit Code: {result.exit_code}\nOutput:\n"
-
-        truncator = _get_token_truncator()
-        header_tokens = truncator.count_tokens(header)
-        body_budget = max(0, truncator.max_tokens - header_tokens)
-
-        if body_budget <= 0:
-            truncated_body = "[TRUNCATED]"
-        else:
-            tr = truncator.truncate_output(output, budget=body_budget)
-            if tr.was_truncated:
-                logger.info(
-                    "Kali output truncated: %s -> %s tokens (kept=%s, removed=%s, method=%s)",
-                    tr.original_tokens,
-                    tr.final_tokens,
-                    tr.content_tokens_kept,
-                    tr.tokens_removed_from_original,
-                    tr.truncation_method,
-                )
-            truncated_body = tr.truncated_output
-
-        truncated_response = header + truncated_body
-
-        # Returns the emulator state
-        return get_ui_state(truncated_response)
-
+        return _execute_command_internal(command)
     except Exception as e:
-        return get_ui_state(f"Error: {str(e)}")
+        return f"Error: {str(e)}"
+
+
+@mcp.tool(
+    description="Get current UI elements from Android emulator screen without executing any command."
+)
+def get_current_ui_state() -> dict:
+    """
+    Get current UI state with all interactive elements from the Android emulator.
+    Returns UI elements with coordinates for interaction.
+    """
+    try:
+        return get_ui_state()
+    except Exception as e:
+        return {"error": f"Failed to get UI state: {str(e)}", "ui_elements": []}
+
+
+@mcp.tool(
+    description="Execute terminal command and include current UI state. Use when you need both command output and UI context."
+)
+def execute_command_with_ui_state(command: str) -> dict:
+    """
+    Execute command and return both text output and current UI state.
+    Use when you need to see the effect of commands on the UI or for UI interaction commands.
+    """
+    try:
+        command_output = _execute_command_internal(command)
+        ui_data = get_ui_state()
+        ui_data["response"] = command_output
+        return ui_data
+    except Exception as e:
+        ui_data = get_ui_state()
+        ui_data["response"] = f"Error: {str(e)}"
+        return ui_data
 
 
 if __name__ == "__main__":
