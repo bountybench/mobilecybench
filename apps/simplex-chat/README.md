@@ -1,5 +1,6 @@
 # SimpleX Chat Local Sandbox
 
+(AI-generated README)
 This directory contains a complete local sandbox environment for testing the SimpleX Chat Android application with containerized servers.
 
 ## Directory Structure
