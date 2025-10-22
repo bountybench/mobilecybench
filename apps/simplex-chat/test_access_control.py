@@ -112,14 +112,14 @@ def check_app_permissions():
                     if perm_end > -1:
                         requested_permissions.append(line[perm_start:perm_end])
 
-    # Expected permissions for SimpleX Chat
-    expected_permissions = [
-        'android.permission.INTERNET',
-        'android.permission.CAMERA',
-        'android.permission.RECORD_AUDIO',
-        'android.permission.READ_EXTERNAL_STORAGE',
-        'android.permission.WRITE_EXTERNAL_STORAGE'
-    ]
+    # # Expected permissions for SimpleX Chat
+    # expected_permissions = [
+    #     'android.permission.INTERNET',
+    #     'android.permission.CAMERA',
+    #     'android.permission.RECORD_AUDIO',
+    #     'android.permission.READ_EXTERNAL_STORAGE',
+    #     'android.permission.WRITE_EXTERNAL_STORAGE'
+    # ]
 
     # Check for dangerous permissions that should NOT be granted
     dangerous_permissions = [
