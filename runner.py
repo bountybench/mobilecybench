@@ -23,6 +23,7 @@ from agent.agent_setup import AgentEnvironment
 from agent.mcp.direct_tool_executor import MCPToolExecutor
 from utils.logger import logger, logger_manager
 from utils.utils import get_app_metadata
+from models.config import RunnerConfig
 
 load_dotenv()
 project_root = Path(__file__).parent
@@ -201,7 +202,7 @@ class CommandExecutor:
 
 
 class MobileCybenchRunner:
-    def __init__(self, app_name: str, config: dict, agent_only: bool = False):
+    def __init__(self, app_name: str, config: RunnerConfig, agent_only: bool = False):
         self.app_name = app_name
         self.config = config
         self.agent_only = agent_only
@@ -213,7 +214,7 @@ class MobileCybenchRunner:
         logger.info("=" * 80)
         logger.info("MobileCybench Runner Started")
         logger.info(f"App: {app_name}")
-        logger.info(f"Configuration: {json.dumps(config, indent=2)}")
+        logger.info(f"Configuration: {config.model_dump_json(indent=2)}")
         logger.info(f"Timestamp: {datetime.datetime.now()}")
         logger.info("=" * 80)
 
@@ -259,7 +260,7 @@ class MobileCybenchRunner:
         logger.info("Validating input...")
 
         # Validate API key early (before starting emulator and app servers)
-        if not self.config["dry_run"]:
+        if not self.config.dry_run:
             self._validate_api_key()
 
         # Check if app directory exists
@@ -277,11 +278,11 @@ class MobileCybenchRunner:
         required_scripts = ["setup.sh"]
 
         if not self.agent_only:  # Check for build scripts if not in agent_only mode
-            if self.config["build_type"] == "source":
+            if self.config.build_type == "source":
                 required_scripts.append("setup_app_source.sh")
-            elif self.config["build_type"] == "download-apk":
+            elif self.config.build_type == "download-apk":
                 required_scripts.append("setup_app_apklink.sh")
-            elif self.config["build_type"] == "skip-apk":
+            elif self.config.build_type == "skip-apk":
                 possible_setup_scripts = ["setup_app_source.sh", "setup_app_apklink.sh"]
                 # do not allow skip-apk if neither script exists
                 if not any(
@@ -293,7 +294,7 @@ class MobileCybenchRunner:
                     )
             else:
                 self._exit_with_error(
-                    f"Unsupported Build Type Detected: {self.config['build_type']}"
+                    f"Unsupported Build Type Detected: {self.config.build_type}"
                 )
 
         for script in required_scripts:
@@ -331,11 +332,11 @@ class MobileCybenchRunner:
 
     def setup_app(self):
         """APK Handling, App Backend Setup, and App Installation"""
-        if self.config["build_type"] == "skip-apk":
+        if self.config.build_type == "skip-apk":
             logger.info("=" * 60)
             logger.info("SKIPPING APK HANDLING STEP")
             logger.info("=" * 60)
-        elif self.config["build_type"] == "download-apk":
+        elif self.config.build_type == "download-apk":
             logger.info("=" * 60)
             logger.info("FETCHING APK USING APKLINK")
             logger.info("=" * 60)
@@ -401,7 +402,7 @@ class MobileCybenchRunner:
         logger.info("=" * 60)
         logger.info("Setting up agent environment...")
 
-        if not self.config["dry_run"]:
+        if not self.config.dry_run:
             self._setup_env_file()
         self._create_docker_network()
 
@@ -410,7 +411,7 @@ class MobileCybenchRunner:
         agent_env = AgentEnvironment(
             app_dir=self.app_dir,
             docker_networks=["shared_net"],
-            image_name=self.config["agent_image"],
+            image_name=self.config.agent_image,
             env={"ANDROID_ADB_SERVER_PORT": "5037"},
             commit_id=self.metadata.get("commit_version"),
         )
@@ -480,13 +481,13 @@ class MobileCybenchRunner:
         env = os.environ.copy()
         start_dir = f"/tmp/{self.app_name}_app"
         env["START_DIR"] = start_dir
-        env["MODEL"] = self.config["model"]
-        env["MAX_KALI_MESSAGE_TOKENS"] = str(self.config["max_kali_message_tokens"])
+        env["MODEL"] = self.config.model
+        env["MAX_KALI_MESSAGE_TOKENS"] = str(self.config.max_kali_message_tokens)
         logger.info("Setting environment variables:")
         logger.info(f"  START_DIR: {start_dir}")
-        logger.info(f"  MODEL: {self.config['model']}")
+        logger.info(f"  MODEL: {self.config.model}")
         logger.info(
-            f"  MAX_KALI_MESSAGE_TOKENS: {self.config['max_kali_message_tokens']}"
+            f"  MAX_KALI_MESSAGE_TOKENS: {self.config.max_kali_message_tokens}"
         )
 
         logger.info("Starting containers with docker compose...")
@@ -540,20 +541,20 @@ class MobileCybenchRunner:
             logger.info("Creating CustomAgent instance")
 
             agent = CustomAgent(
-                model=self.config["model"],
-                max_iterations=self.config["max_iterations"],
-                max_model_response_tokens=self.config["max_model_response_tokens"],
-                max_kali_message_tokens=self.config["max_kali_message_tokens"],
-                max_context_length=self.config["max_context_length"],
-                screenshot_enabled=self.config["screenshot_mode"],
+                model=self.config.model,
+                max_iterations=self.config.max_iterations,
+                max_model_response_tokens=self.config.max_model_response_tokens,
+                max_kali_message_tokens=self.config.max_kali_message_tokens,
+                max_context_length=self.config.max_context_length,
+                screenshot_enabled=self.config.screenshot_mode,
                 app_name=self.app_name,
                 app_server=getattr(self, "metadata", {}).get(
                     "app_server", None
                 ),  # default to None if in agent_only mode
                 # TODO - create proper dry run mode
                 # https://github.com/bountybench/mobilecybench/issues/322
-                dry_run=self.config["dry_run"],
-                system_prompt=self.config.get("custom_system_prompt", None),
+                dry_run=self.config.dry_run,
+                system_prompt=self.config.custom_system_prompt,
             )
 
             logger.info("Running agent...")
@@ -705,90 +706,6 @@ class MobileCybenchRunner:
             # self.cleanup()
 
 
-def load_config(config_path: Path) -> dict:
-    """Load and validate configuration from JSON file"""
-    if not config_path.exists():
-        logger.error(f"Config file not found: {config_path}")
-        sys.exit(1)
-
-    try:
-        with open(config_path, "r") as f:
-            config = json.load(f)
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in config file: {e}")
-        sys.exit(1)
-    except Exception as e:
-        logger.error(f"Error reading config file: {e}")
-        sys.exit(1)
-
-    # Validate required fields
-    required_fields = [
-        "server_access",
-        "build_type",
-        # TODO - implement adb allowlist based on this
-        "adb_access",
-        "max_iterations",
-        "max_kali_message_tokens",
-        "max_model_response_tokens",
-        "max_context_length",
-        "model",
-        "screenshot_mode",
-        "headless_mode",
-        "dry_run",
-        "agent_image",
-    ]
-
-    missing_fields = [field for field in required_fields if field not in config]
-    if missing_fields:
-        logger.error(f"Missing required config fields: {missing_fields}")
-        sys.exit(1)
-
-    # Validate field values
-    valid_choices = {
-        "build_type": ["source", "download-apk", "skip-apk"],
-        "adb_access": ["none", "limited", "full"],
-    }
-
-    for field, choices in valid_choices.items():
-        if config[field] not in choices:
-            logger.error(
-                f"Invalid value for {field}: {config[field]}. Must be one of: {choices}"
-            )
-            sys.exit(1)
-
-    # Validate boolean fields
-    bool_fields = ["server_access", "screenshot_mode", "headless_mode", "dry_run"]
-    for field in bool_fields:
-        if not isinstance(config[field], bool):
-            logger.error(f"Field {field} must be a boolean (true/false)")
-            sys.exit(1)
-
-    # Validate integer fields
-    int_fields = [
-        "max_iterations",
-        "max_kali_message_tokens",
-        "max_model_response_tokens",
-        "max_context_length",
-    ]
-    for field in int_fields:
-        if not isinstance(config[field], int) or config[field] <= 0:
-            logger.error(f"Field {field} must be a positive integer")
-            sys.exit(1)
-
-    # Validate model field
-    if not isinstance(config["model"], str) or not config["model"].strip():
-        logger.error("Field 'model' must be a non-empty string")
-        sys.exit(1)
-
-    # Validate agent_image field
-    if not isinstance(config["agent_image"], str) or not config["agent_image"].strip():
-        logger.error("Field 'agent_image' must be a non-empty string")
-        sys.exit(1)
-
-    logger.info("Configuration validation passed")
-    return config
-
-
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(
@@ -826,7 +743,7 @@ def main():
     else:
         config_path = Path(config_file)
 
-    config = load_config(config_path)
+    config = RunnerConfig.from_file(config_path)
 
     # Create and run the runner
     runner = MobileCybenchRunner(args.app_name, config, args.agent_only)
