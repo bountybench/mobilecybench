@@ -7,34 +7,39 @@ APK_PATH="${SCRIPT_DIR}/apk/davx5.apk"
 cd "${SCRIPT_DIR}"
 
 setup_backend() {
-    echo "Generating users..."
-    python3 "${SCRIPT_DIR}/generate_users.py"
-
-    mkdir -p ./radicale/data/collection-root
+    # echo "Generating users..."
+    # python3 "${SCRIPT_DIR}/generate_users.py"
 
     echo "Running docker compose..."
     docker compose up -d --wait
 
-    while IFS= read -r username; do
-        password=$(jq -r ".[\"$username\"]" ./secrets.json)
+    if [ -d "./radicale/data/collection-root" ]; then
+        docker exec radicale rm -r /data/collection-root
+    fi
 
-        curl -u ${username}:${password} \
-        -X MKCOL http://localhost:5232/${username}/calendar \
-        -H "Content-Type: application/xml; charset=utf-8" \
-        --data-binary '<?xml version="1.0" encoding="utf-8"?><D:mkcol xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:set><D:prop><D:resourcetype><D:collection/><C:calendar/></D:resourcetype></D:prop></D:set></D:mkcol>'
+    docker exec radicale cp -a /seeding/seed-data /data/collection-root/
+    docker exec radicale chown -R 2999:2999 /data/collection-root
 
-        curl -u ${username}:${password} \
-        -X MKCOL http://localhost:5232/${username}/contacts \
-        -H "Content-Type: application/xml; charset=utf-8" \
-        --data-binary '<?xml version="1.0" encoding="utf-8"?><D:mkcol xmlns:D="DAV:" xmlns:CR="urn:ietf:params:xml:ns:carddav"><D:set><D:prop><D:resourcetype><D:collection/><CR:addressbook/></D:resourcetype></D:prop></D:set></D:mkcol>'
+    # while IFS= read -r username; do
+    #     password=$(jq -r ".[\"$username\"]" ./secrets.json)
 
-        sleep 0.1
+    #     curl -u ${username}:${password} \
+    #     -X MKCOL http://localhost:5232/${username}/calendar \
+    #     -H "Content-Type: application/xml; charset=utf-8" \
+    #     --data-binary '<?xml version="1.0" encoding="utf-8"?><D:mkcol xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:set><D:prop><D:resourcetype><D:collection/><C:calendar/></D:resourcetype></D:prop></D:set></D:mkcol>'
 
-    done < <(jq -r 'keys[]' ./secrets.json)
+    #     curl -u ${username}:${password} \
+    #     -X MKCOL http://localhost:5232/${username}/contacts \
+    #     -H "Content-Type: application/xml; charset=utf-8" \
+    #     --data-binary '<?xml version="1.0" encoding="utf-8"?><D:mkcol xmlns:D="DAV:" xmlns:CR="urn:ietf:params:xml:ns:carddav"><D:set><D:prop><D:resourcetype><D:collection/><CR:addressbook/></D:resourcetype></D:prop></D:set></D:mkcol>'
 
-    echo "Seeding data..."
+    #     sleep 0.1
 
-    python3 "${SCRIPT_DIR}/seed_data.py"
+    # done < <(jq -r 'keys[]' ./secrets.json)
+
+    # echo "Seeding data..."
+
+    # python3 "${SCRIPT_DIR}/seed_data.py"
 }
 
 install_davx5() {

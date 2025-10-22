@@ -1,0 +1,12 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:d70b2228-6d2f-4be5-8bee-214d1efa
+EMAIL;TYPE=INTERNET:alice.evans@example.com
+FN:Alice Evans
+N:Evans;Alice;;;
+NOTE:Auto-generated contact for testing
+ORG:Example Corp
+REV:20251019T125649Z
+TEL;TYPE=CELL:+1-555-8293
+TITLE:Engineer
+END:VCARD

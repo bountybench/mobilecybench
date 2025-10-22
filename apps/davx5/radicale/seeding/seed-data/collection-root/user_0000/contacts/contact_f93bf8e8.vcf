@@ -1,0 +1,12 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:924495c5-a57c-45f8-ac34-3c0d9c2c
+EMAIL;TYPE=INTERNET:grace.johnson@example.com
+FN:Grace Johnson
+N:Johnson;Grace;;;
+NOTE:Auto-generated contact for testing
+ORG:Example Corp
+REV:20251019T125647Z
+TEL;TYPE=CELL:+1-555-3170
+TITLE:Analyst
+END:VCARD
