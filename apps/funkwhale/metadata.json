@@ -7,5 +7,6 @@
     "emulator_server": "http://10.0.2.2",
     "app_server": "http://front:80",
     "username": "funkwhaleadmin",
-    "password": "adminPass101625!"
+    "password": "adminPass101625!",
+    "container_names": ["api", "front", "postgres", "redis"]
 }
