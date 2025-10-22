@@ -1,0 +1,54 @@
+version: '3.8'
+
+networks:
+  shared_net:
+    external: true
+  private_net:
+    driver: bridge
+
+services:
+  simplex-smp:
+    image: simplexchat/smp-server:latest
+    container_name: simplex-smp
+    restart: always
+    environment:
+      - SMP_SERVER_STORE_LOG=on
+    ports:
+      - "5223:5223"
+    volumes:
+      - /Volumes/WDHDD/simplex/smp_data:/opt/simplex/smp
+      - ./smp-server.ini:/opt/simplex/smp/smp-server.ini
+    networks:
+      - shared_net
+      - private_net
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "5223"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  simplex-xftp:
+    image: simplexchat/xftp-server:latest
+    container_name: simplex-xftp
+    restart: always
+    environment:
+      - XFTP_SERVER_STORE_LOG=on
+    ports:
+      - "5443:5443"
+    volumes:
+      - /Volumes/WDHDD/simplex/xftp_data:/opt/simplex/xftp
+      - ./xftp-server.ini:/opt/simplex/xftp/xftp-server.ini
+    networks:
+      - shared_net
+      - private_net
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "5443"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+# volumes:
+  # smp_data:
+  # xftp_data:
