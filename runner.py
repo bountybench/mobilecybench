@@ -8,7 +8,6 @@ on Android applications using AI agents.
 
 import argparse
 import datetime
-import json
 import os
 import shlex
 import subprocess
@@ -21,9 +20,9 @@ from dotenv import load_dotenv
 
 from agent.agent_setup import AgentEnvironment
 from agent.mcp.direct_tool_executor import MCPToolExecutor
+from models.config import RunnerConfig
 from utils.logger import logger, logger_manager
 from utils.utils import get_app_metadata
-from models.config import RunnerConfig
 
 load_dotenv()
 project_root = Path(__file__).parent
@@ -486,9 +485,7 @@ class MobileCybenchRunner:
         logger.info("Setting environment variables:")
         logger.info(f"  START_DIR: {start_dir}")
         logger.info(f"  MODEL: {self.config.model}")
-        logger.info(
-            f"  MAX_KALI_MESSAGE_TOKENS: {self.config.max_kali_message_tokens}"
-        )
+        logger.info(f"  MAX_KALI_MESSAGE_TOKENS: {self.config.max_kali_message_tokens}")
 
         logger.info("Starting containers with docker compose...")
 

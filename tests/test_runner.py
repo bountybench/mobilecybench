@@ -9,6 +9,7 @@ from runner import MobileCybenchRunner
 def mock_config():
     """Mock configuration for MobileCybenchRunner"""
     from models.config import RunnerConfig
+
     return RunnerConfig(
         server_access=True,
         build_type="source",

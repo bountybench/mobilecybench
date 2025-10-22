@@ -1,8 +1,9 @@
+import json
 from pathlib import Path
 from typing import Literal, Optional
-import json
 
 from pydantic import BaseModel, Field
+
 
 class RunnerConfig(BaseModel):
     build_type: Literal["source", "download-apk", "skip-apk"]
@@ -30,7 +31,9 @@ class RunnerConfig(BaseModel):
     @classmethod
     def from_file(cls, config_path: Path) -> "RunnerConfig":
         if not config_path.exists():
-            raise FileNotFoundError(f"Runner configuration file not found: {config_path}")
+            raise FileNotFoundError(
+                f"Runner configuration file not found: {config_path}"
+            )
         try:
             with open(config_path, "r") as f:
                 c_dict = json.load(f)
@@ -40,4 +43,3 @@ class RunnerConfig(BaseModel):
             raise ValueError(f"Unexpected Error in reading config file {e}")
 
         return cls(**c_dict)
-
