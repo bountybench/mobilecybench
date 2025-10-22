@@ -42,6 +42,10 @@
     "package_name": {
       "type": "string",
       "description": "Package name of the Android app."
+    },
+    "container_names": {
+      "type": "array",
+      "description": "An array of Docker container names that the generic probe `test_availability` can check for container health."
     }
   },
   "required": [
@@ -50,6 +54,7 @@
     "sdk",
     "java",
     "package_name",
+    "container_names",
     "app_server"
   ]
 }

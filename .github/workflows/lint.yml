@@ -50,3 +50,7 @@ jobs:
           else
             echo "No modified Python files to lint"
           fi
+
+      - name: Check validity of app_metadata_schema
+        run: |
+          { jq . "app_metadata_schema.json" 2>/dev/null; } || { echo -e "${ERROR} Validation of the app metadata schema failed. Check the schema file."; exit 1; }

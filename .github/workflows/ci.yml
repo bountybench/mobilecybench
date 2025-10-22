@@ -109,7 +109,7 @@ jobs:
 
           java=$(jq -r '.java' $metadata)
           if [ "$?" -ne 0 ] || [ "$java" = "null" ] || [ -z "$java" ]; then
-              echo "${ERROR} Could not extract Java version from $metadata. Use default (17)."
+              echo "ERROR: Could not extract Java version from $metadata. Use default (17)."
               java=17
           else 
               echo "Java version: $java"
@@ -318,12 +318,28 @@ jobs:
             exit 1
           fi
           
+      - name: Check for Gradle files
+        if: matrix.setup_mode == 'source'
+        id: check-gradle
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir"
+          
+          # Check for any build.gradle* files in app directory or codebase subdirectory
+          if find . -name "build.gradle*" -type f | grep -q .; then
+            echo "Gradle build files found"
+            echo "has_gradle=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No Gradle build files found"
+            echo "has_gradle=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: "${{ needs.setup.outputs.java }}"
-          cache: gradle
+          cache: ${{ steps.check-gradle.outputs.has_gradle == 'true' && 'gradle' || ''}}
 
       - name: Build or download APK
         env:
@@ -405,14 +421,29 @@ jobs:
       - name: Create shared functions
         run: |
           cat << 'EOF' > /tmp/shared_functions.sh
-          check_server_ready() {
+          check_app_containers_ready() {
             # Timeout per container in seconds
             TIMEOUT=${TIMEOUT:-180}
             # Interval between checks in seconds
             INTERVAL=${INTERVAL:-1}
 
-            # Get all running containers
-            containers=$(docker ps --format '{{.Names}}')
+            # Get app-specific containers from metadata.json
+            containers=""
+            if [ -f "metadata.json" ]; then
+              # Check for explicit container_names field
+              container_names=$(jq -r '.container_names[]? // empty' metadata.json 2>/dev/null)
+              if [ -n "$container_names" ]; then
+                containers="$container_names"
+                echo "Found explicit container_names in metadata.json: $containers"
+              fi
+            fi
+
+            if [ -z "$containers" ]; then
+              echo "No app-specific containers found in metadata.json - skipping container readiness check"
+              return 0
+            fi
+
+            echo "Checking readiness for app-specific containers: $containers"
 
             for container in $containers; do
               echo "Checking readiness for $container..."
@@ -483,7 +514,7 @@ jobs:
               fi
             done
 
-            echo "All containers are ready!"
+            echo "App-specific containers are ready!"
           }
 
           checkout_commit() {
@@ -593,7 +624,6 @@ jobs:
           #!/bin/bash
           set -e
           source /tmp/shared_functions.sh
-          check_server_ready
           adb devices
           EOF
           
@@ -618,10 +648,17 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
+          
+          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          check_app_containers_ready
+          
           verify_shared_net_connectivity
           adb logcat -c
+
+          echo "Injecting flags..."
+          ../../inject_flags.sh
           
-          echo "Running baseline checks..."
+          echo "Running baseline and generic probe checks..."
           ../../run_checks.sh . "/tmp/dummy_log.log"
           
           if ! jq -e '[.. | select(type == "number")] | all(. == 1)' scores.json > /dev/null; then
@@ -630,8 +667,16 @@ jobs:
             ./cleanup.sh
             exit 1
           fi
+
+          if ! jq -e '[.. | select(type == "number")] | all(. == 1)' generic_scores.json > /dev/null; then
+              echo "ERROR: generic_scores.json does not contain all 1s."
+              cat generic_scores.json
+              ./cleanup.sh
+              exit 1
+          fi
           
-          echo "Baseline checks passed. Cleaning up..."
+          echo "Baseline and generic probe checks passed. Cleaning up..."
+
           ./cleanup.sh
           EOF
               ;;
@@ -645,8 +690,15 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
+          
+          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          check_app_containers_ready
+          
           verify_shared_net_connectivity
           adb logcat -c
+
+          echo "Injecting flags..."
+          ../../inject_flags.sh
           
           echo "Creating vulnerable scenario 0..."
           cd vuln_scenarios/vuln_scenario_0
@@ -690,8 +742,15 @@ jobs:
           cd "$dir"
           echo "Running setup..."
           ./setup.sh
+          
+          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          check_app_containers_ready
+          
           verify_shared_net_connectivity
           adb logcat -c
+
+          echo "Injecting flags..."
+          ../../inject_flags.sh
           
           echo "Creating vulnerable scenario 1..."
           cd vuln_scenarios/vuln_scenario_1
@@ -851,6 +910,102 @@ jobs:
       - name: Create shared functions
         run: |
           cat << 'EOF' > /tmp/shared_functions.sh
+          check_app_containers_ready() {
+            # Timeout per container in seconds
+            TIMEOUT=${TIMEOUT:-180}
+            # Interval between checks in seconds
+            INTERVAL=${INTERVAL:-1}
+
+            # Get app-specific containers from metadata.json
+            containers=""
+            if [ -f "metadata.json" ]; then
+              # Check for explicit container_names field
+              container_names=$(jq -r '.container_names[]? // empty' metadata.json 2>/dev/null)
+              if [ -n "$container_names" ]; then
+                containers="$container_names"
+                echo "Found explicit container_names in metadata.json: $containers"
+              fi
+            fi
+
+            if [ -z "$containers" ]; then
+              echo "No app-specific containers found in metadata.json - skipping container readiness check"
+              return 0
+            fi
+
+            echo "Checking readiness for app-specific containers: $containers"
+
+            for container in $containers; do
+              echo "Checking readiness for $container..."
+
+              # Check if container has a health check
+              has_health=$(docker inspect --format '{{if .Config.Healthcheck}}true{{else}}false{{end}}' "$container")
+              if [ "$has_health" = "true" ]; then
+                echo "Container has a health check. Waiting to become healthy..."
+                elapsed=0
+                success=0
+                while [ $elapsed -lt $TIMEOUT ]; do
+                  status=$(docker inspect --format '{{.State.Health.Status}}' "$container" 2>/dev/null)
+                  if [ "$status" == "healthy" ]; then
+                    success=1
+                    break
+                  fi
+                  sleep "$INTERVAL"
+                  elapsed=$((elapsed + INTERVAL))
+                done
+                if [ $success -eq 1 ]; then
+                  echo "$container is healthy."
+                  continue
+                else
+                  echo "Timeout: $container did not become healthy within $TIMEOUT seconds." >&2
+                  exit 1
+                fi
+              else
+                # Get exposed TCP ports
+                ports=$(docker inspect --format '{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{.HostPort}} {{end}}{{end}}' "$container")
+                if [ -z "$ports" ]; then
+                  echo "No exposed ports for $container. Skipping readiness check." >&2
+                  continue
+                fi
+
+                elapsed=0
+                all_success=0
+                while [ $elapsed -lt $TIMEOUT ]; do
+                  success=1
+                  for port_spec in $ports; do
+                    port=$(echo "$port_spec" | cut -d'/' -f1)
+                    proto=$(echo "$port_spec" | cut -d'/' -f2)
+                    if [ "$proto" != "tcp" ]; then
+                      continue  # Skip non-TCP ports
+                    fi
+
+                    # Perform TCP check
+                    if ! nc -z -w 1 localhost "$port" &>/dev/null; then
+                      success=0
+                      break
+                    fi
+                  done
+
+                  if [ $success -eq 1 ]; then
+                    all_success=1
+                    break
+                  fi
+
+                  sleep "$INTERVAL"
+                  elapsed=$((elapsed + INTERVAL))
+                done
+
+                if [ $all_success -eq 1 ]; then
+                  echo "$container is ready via port check on all ports."
+                else
+                  echo "Timeout: $container not ready after $TIMEOUT seconds." >&2
+                  exit 1
+                fi
+              fi
+            done
+
+            echo "App-specific containers are ready!"
+          }
+
           checkout_commit() {
             pwd
             if [[ -f "metadata.json" ]]; then
@@ -972,8 +1127,15 @@ jobs:
           
           echo "Running setup..."
           ./setup.sh
+          
+          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          check_app_containers_ready
+          
           verify_shared_net_connectivity
           adb logcat -c
+
+          echo "Injecting flags..."
+          ../../inject_flags.sh
           
           # Check packages after setup
           packages_after=$(adb shell pm list packages | wc -l)

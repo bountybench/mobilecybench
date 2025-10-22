@@ -6,13 +6,15 @@ RUN apt-get update && apt-get install -y \
     docker.io \
     android-tools-adb \
     gcc \
-    g++ && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+    g++ \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Python packages
+# Pin to minor version to get patch releases while avoiding breaking changes
 RUN pip install --no-cache-dir \
-    fastmcp \
-    docker
+    fastmcp~=2.12.0 \
+    docker \
+    Pillow
 
 # Add ngrok
 RUN curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null \
