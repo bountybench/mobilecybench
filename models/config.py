@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -27,6 +27,7 @@ class RunnerConfig(BaseModel):
 
     # optional
     custom_system_prompt: Optional[str] = None
+    allowed_tools: Optional[List[str]] = None
 
     @classmethod
     def from_file(cls, config_path: Path) -> "RunnerConfig":

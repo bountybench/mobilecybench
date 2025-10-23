@@ -11,5 +11,10 @@
   "headless_mode": false,
   "dry_run": true,
   "custom_system_prompt": null,
-  "agent_image": "cybench/mobilecybench:latest"
+  "agent_image": "cybench/mobilecybench:latest",
+  "allowed_tools": [
+    "execute_command",
+    "get_current_ui_state", 
+    "execute_command_with_ui_state"
+  ]
 }
