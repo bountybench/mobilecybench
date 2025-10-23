@@ -1,3 +1,4 @@
+import json
 import os
 import shlex
 from functools import lru_cache
@@ -18,7 +19,36 @@ MCP Server Tools:
 - execute_command_with_ui_state(): Command output + UI state (combines both)
 """
 
+
+def _get_allowed_tools() -> list:
+    """Get the list of allowed tools from environment variable."""
+    allowed_tools_json = os.getenv("ALLOWED_TOOLS")
+    if not allowed_tools_json:
+        return [
+            "execute_command",
+            "get_current_ui_state",
+            "execute_command_with_ui_state",
+        ]  # Default: all tools
+
+    try:
+        allowed_tools = json.loads(allowed_tools_json)
+        return allowed_tools
+    except json.JSONDecodeError:
+        logger.error(
+            "Failed to parse ALLOWED_TOOLS environment variable, allowing all tools"
+        )
+        return [
+            "execute_command",
+            "get_current_ui_state",
+            "execute_command_with_ui_state",
+        ]
+
+
 mcp = FastMCP(name="Mobile Cyber MCP", stateless_http=True)
+
+# Get allowed tools once at startup
+ALLOWED_TOOLS = _get_allowed_tools()
+logger.info(f"Registering tools: {ALLOWED_TOOLS}")
 
 
 @lru_cache(maxsize=1)
@@ -97,51 +127,60 @@ def _execute_command_internal(command: str) -> str:
     return truncated_response
 
 
-@mcp.tool(
-    description="Execute terminal command and return text output only (no UI state). Use for security scans, file operations, and system commands."
-)
-def execute_command(command: str) -> str:
-    """
-    Execute command and return only text output - no UI state included.
-    Optimized for security testing, file operations, and system commands.
-    """
-    try:
-        return _execute_command_internal(command)
-    except Exception as e:
-        return f"Error: {str(e)}"
+# Conditionally register execute_command tool
+if "execute_command" in ALLOWED_TOOLS:
+
+    @mcp.tool(
+        description="Execute terminal command and return text output only (no UI state). Use for security scans, file operations, and system commands."
+    )
+    def execute_command(command: str) -> str:
+        """
+        Execute command and return only text output - no UI state included.
+        Optimized for security testing, file operations, and system commands.
+        """
+        try:
+            return _execute_command_internal(command)
+        except Exception as e:
+            return f"Error: {str(e)}"
 
 
-@mcp.tool(
-    description="Get current UI elements from Android emulator screen without executing any command."
-)
-def get_current_ui_state() -> dict:
-    """
-    Get current UI state with all interactive elements from the Android emulator.
-    Returns UI elements with coordinates for interaction.
-    """
-    try:
-        return get_ui_state()
-    except Exception as e:
-        return {"error": f"Failed to get UI state: {str(e)}", "ui_elements": []}
+# Conditionally register get_current_ui_state tool
+if "get_current_ui_state" in ALLOWED_TOOLS:
+
+    @mcp.tool(
+        description="Get current UI elements from Android emulator screen without executing any command."
+    )
+    def get_current_ui_state() -> dict:
+        """
+        Get current UI state with all interactive elements from the Android emulator.
+        Returns UI elements with coordinates for interaction.
+        """
+        try:
+            return get_ui_state()
+        except Exception as e:
+            return {"error": f"Failed to get UI state: {str(e)}", "ui_elements": []}
 
 
-@mcp.tool(
-    description="Execute terminal command and include current UI state. Use when you need both command output and UI context."
-)
-def execute_command_with_ui_state(command: str) -> dict:
-    """
-    Execute command and return both text output and current UI state.
-    Use when you need to see the effect of commands on the UI or for UI interaction commands.
-    """
-    try:
-        command_output = _execute_command_internal(command)
-        ui_data = get_ui_state()
-        ui_data["response"] = command_output
-        return ui_data
-    except Exception as e:
-        ui_data = get_ui_state()
-        ui_data["response"] = f"Error: {str(e)}"
-        return ui_data
+# Conditionally register execute_command_with_ui_state tool
+if "execute_command_with_ui_state" in ALLOWED_TOOLS:
+
+    @mcp.tool(
+        description="Execute terminal command and include current UI state. Use when you need both command output and UI context."
+    )
+    def execute_command_with_ui_state(command: str) -> dict:
+        """
+        Execute command and return both text output and current UI state.
+        Use when you need to see the effect of commands on the UI or for UI interaction commands.
+        """
+        try:
+            command_output = _execute_command_internal(command)
+            ui_data = get_ui_state()
+            ui_data["response"] = command_output
+            return ui_data
+        except Exception as e:
+            ui_data = get_ui_state()
+            ui_data["response"] = f"Error: {str(e)}"
+            return ui_data
 
 
 if __name__ == "__main__":
