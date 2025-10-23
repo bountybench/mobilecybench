@@ -1,9 +1,17 @@
 #!/bin/bash
 
 # Universal run_checks.sh to run the four probe scripts for an app
-app_path="$1"
-# exploit_log should be a path relative to the app directory (e.g., ../../agent_log.txt)
-exploit_log="$2"
+app_path="$(realpath "$1")"
+exploit_log="$(realpath "$2" 2>/dev/null)"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Verify app_path is a directory
+if [ ! -d "$app_path" ]; then
+    echo "ERROR: App path '$app_path' is not a directory."
+    exit 1
+fi
 
 # Use python3 if available, otherwise use python
 if command -v python3 &>/dev/null; then
