@@ -133,3 +133,28 @@
 [2025-10-20 18:09:36] Waiting for Android device to be ready...
 [2025-10-20 18:14:51] Installing SimpleX Chat APK...
 [2025-10-20 18:14:58] Warning: Failed to install SimpleX Chat APK
+[2025-10-22 21:28:36] Starting Android Emulator Setup
+[2025-10-22 21:28:36] SDK version: 35
+[2025-10-22 21:28:36] System image type: google_apis
+[2025-10-22 21:28:36] This script will install Android SDK and create an emulator
+[2025-10-22 21:28:36] Detected OS: macos
+[2025-10-22 21:28:36] Detected architecture: arm64
+[2025-10-22 21:28:36] Checking prerequisites...
+[2025-10-22 21:28:36] Checking Java installation...
+[2025-10-22 21:28:36] Detected Java version: 17
+[2025-10-22 21:28:36] Java 17 is compatible with Android SDK
+[2025-10-22 21:28:36] Android SDK already installed
+[2025-10-22 21:28:36] Setting up environment variables...
+[2025-10-22 21:28:36] Detected user shell: zsh
+[2025-10-22 21:28:36] Android SDK environment variables already exist in /Users/shahabhishek1729/.zshrc
+[2025-10-22 21:28:36] Installing required Android packages for arm64 architecture
+[2025-10-22 21:28:36] SDK version: 35, System image: google_apis
+[2025-10-22 21:28:36] Full system image: system-images;android-35;google_apis;arm64-v8a
+[2025-10-22 21:28:41] Android packages installed successfully
+[2025-10-22 21:28:41] Creating Android Virtual Device: MobileCybenchEmu for arm64
+[2025-10-22 21:28:41] SDK version: 35, System image: google_apis
+[2025-10-22 21:28:43] Android Virtual Device created successfully
+[2025-10-22 21:28:43] Creating helper scripts...
+[2025-10-22 21:28:43] Helper scripts created successfully
+[2025-10-22 21:28:43] Installing SimpleX Chat APK...
+[2025-10-22 21:28:43] Waiting for Android device to be ready...
