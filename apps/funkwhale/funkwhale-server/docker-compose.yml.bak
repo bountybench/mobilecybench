@@ -1,6 +1,7 @@
+version: "3"
+
 services:
   postgres:
-    container_name: postgres
     restart: unless-stopped
     env_file: .env
     environment:
@@ -8,38 +9,29 @@ services:
     image: postgres:15-alpine
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U funkwhale"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    networks:
-      - private_net
 
   redis:
-    container_name: redis
     restart: unless-stopped
     env_file: .env
     image: redis:7-alpine
     volumes:
       - ./data/redis:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    networks:
-      - private_net
 
   celeryworker:
     restart: unless-stopped
     image: funkwhale/api:${FUNKWHALE_VERSION:-latest}
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - postgres
+      - redis
     env_file: .env
+    # Celery workers handle background tasks (such file imports or federation
+    # messaging). The more processes a worker gets, the more tasks
+    # can be processed in parallel. However, more processes also means
+    # a bigger memory footprint.
+    # By default, a worker will span a number of process equal to your number
+    # of CPUs. You can adjust this, by explicitly setting the --concurrency
+    # flag:
+    #   celery -A funkwhale_api.taskapp worker -l INFO --concurrency=4
     command:
       - celery
       - --app=funkwhale_api.taskapp
@@ -51,8 +43,6 @@ services:
     volumes:
       - "${MUSIC_DIRECTORY_SERVE_PATH-/srv/funkwhale/data/music}:${MUSIC_DIRECTORY_PATH-/music}:ro"
       - "${MEDIA_ROOT}:${MEDIA_ROOT}"
-    networks:
-      - private_net
 
   celerybeat:
     restart: unless-stopped
@@ -63,54 +53,45 @@ services:
       - beat
       - --loglevel=INFO
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - postgres
+      - redis
     env_file: .env
-    networks:
-      - private_net
 
   api:
-    container_name: api
     restart: unless-stopped
     image: funkwhale/api:${FUNKWHALE_VERSION:-latest}
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - postgres
+      - redis
     env_file: .env
-    ports:
-      - "8080:5000"
     volumes:
       - "${MUSIC_DIRECTORY_SERVE_PATH-/srv/funkwhale/data/music}:${MUSIC_DIRECTORY_PATH-/music}:ro"
       - "${MEDIA_ROOT}:${MEDIA_ROOT}"
       - "${STATIC_ROOT}:${STATIC_ROOT}"
-    networks:
-      - shared_net
-      - private_net
 
   front:
-    container_name: front
     restart: unless-stopped
     image: funkwhale/front:${FUNKWHALE_VERSION:-latest}
+    depends_on:
+      - api
     env_file:
       - .env
     environment:
+      # Override those variables in your .env file if needed
       - "NGINX_MAX_BODY_SIZE=${NGINX_MAX_BODY_SIZE-100M}"
     volumes:
+      # Uncomment if you want to use your previous nginx config, please let us
+      # know what special configuration you need, so we can support it with out
+      # upstream nginx configuration!
+      #- "./nginx/funkwhale.template:/etc/nginx/templates/default.conf.template:ro"
+      #- "./nginx/funkwhale_proxy.conf:/etc/nginx/funkwhale_proxy.conf:ro"
+
       - "${MUSIC_DIRECTORY_SERVE_PATH-/srv/funkwhale/data/music}:${MUSIC_DIRECTORY_PATH-/music}:ro"
       - "${MEDIA_ROOT}:${MEDIA_ROOT}:ro"
       - "${STATIC_ROOT}:/usr/share/nginx/html/staticfiles:ro"
-      - "./nginx.conf:/etc/nginx/templates/default.conf.template"
-      - "./ssl:/etc/nginx/ssl:ro"
     ports:
-      - "80:80"
-      - "443:443"
-    networks:
-      - shared_net
-      - private_net
+      # override those variables in your .env file if needed
+      - "${FUNKWHALE_API_IP}:${FUNKWHALE_API_PORT}:80"
 
   typesense:
     restart: unless-stopped
@@ -122,11 +103,3 @@ services:
     command: --data-dir /data --enable-cors
     profiles:
       - typesense
-    networks:
-      - private_net
-
-networks:
-  shared_net:
-    external: true
-  private_net:
-    driver: bridge
