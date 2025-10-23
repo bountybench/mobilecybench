@@ -80,19 +80,35 @@ install_build_dependencies() {
     fi
 
     if [[ ${#missing_tools[@]} -gt 0 ]]; then
-        log "Missing tools: ${missing_tools[*]}"
-        log "Please install them manually or run with sudo to auto-install"
+        log "ERROR: Missing required tools: ${missing_tools[*]}"
+        log ""
+        log "Please install them manually using one of these methods:"
+        log ""
 
-        # Try to install on Ubuntu/Debian
         if command_exists apt-get; then
-            log "Attempting to install missing dependencies..."
-            sudo apt-get update
+            log "On Ubuntu/Debian:"
+            log "  sudo apt-get update"
             for tool in "${missing_tools[@]}"; do
-                sudo apt-get install -y "$tool"
+                log "  sudo apt-get install -y $tool"
+            done
+        elif command_exists brew; then
+            log "On macOS with Homebrew:"
+            for tool in "${missing_tools[@]}"; do
+                # Map Linux package names to macOS equivalents
+                case "$tool" in
+                    "build-essential")
+                        log "  xcode-select --install  # For build tools"
+                        ;;
+                    *)
+                        log "  brew install $tool"
+                        ;;
+                esac
             done
         else
-            error_exit "Please install missing tools manually: ${missing_tools[*]}"
+            log "Please install these tools using your system's package manager"
         fi
+        log ""
+        error_exit "Missing required dependencies"
     fi
 }
 
@@ -101,7 +117,7 @@ build_simplex_chat() {
     log "Building SimpleX Chat from source..."
 
     local source_dir="${SCRIPT_DIR}/simplex-chat"
-    local app_dir="${SCRIPT_DIR}/apps/simplex-chat"
+    local app_dir="${SCRIPT_DIR}"
     local apk_dir="$app_dir/apk"
 
     # Create directories
@@ -135,6 +151,8 @@ build_simplex_chat() {
     export ANDROID_HOME="${SCRIPT_DIR}/.android-sdk"
     export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/34.0.0:$PATH"
 
+	echo $ANDROID_HOME
+
 	log "Got to this point"
     # Clean previous builds
     ./gradlew clean --stacktrace -Dorg.gradle.jvmargs="--enable-native-access=ALL-UNNAMED" || error_exit "Gradle clean failed"
@@ -153,7 +171,7 @@ build_simplex_chat() {
     log "Found built APK: $built_apk"
 
     # Copy APK to expected location
-    local target_apk="${SCRIPT_DIR}/${apk_dir}/simplex-chat.apk"
+    local target_apk="${apk_dir}/simplex-chat.apk"
     cp "$built_apk" "$target_apk"
 
     log "APK copied to: $target_apk"
