@@ -484,7 +484,7 @@ class MobileCybenchRunner:
         env["MODEL"] = self.config.model
         env["MAX_KALI_MESSAGE_TOKENS"] = str(self.config.max_kali_message_tokens)
         logger.info(f"  MAX_KALI_MESSAGE_TOKENS: {self.config.max_kali_message_tokens}")
-        
+
         # Pass allowed tools to MCP server
         if self.config.allowed_tools:
             env["ALLOWED_TOOLS"] = json.dumps(self.config.allowed_tools)
@@ -708,7 +708,6 @@ class MobileCybenchRunner:
         finally:
             pass
             # self.cleanup()
-
 
 
 def main():
