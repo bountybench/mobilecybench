@@ -5,8 +5,9 @@
   "sdk": "36",
   "java": "17",
   "emulator_server": "",
-  "app_server": "",
-  "username": "",
-  "password": "",
-  "package_name": "eu.faircode.email"
+  "app_server": "client-only",
+  "username": "user@example.com",
+  "password": "password123",
+  "package_name": "eu.faircode.email",
+  "container_names": []
 }
