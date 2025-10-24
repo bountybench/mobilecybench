@@ -21,6 +21,8 @@ setup_backend() {
 }
 
 install_davx5() {
+    adb wait-for-device
+
     adb uninstall at.bitfire.davdroid 2>/dev/null || echo "No existing installation found"
 
     adb install -r -g "$APK_PATH"
