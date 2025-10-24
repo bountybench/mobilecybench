@@ -111,16 +111,28 @@ EOF
 fi
 
 echo "7. Creating fake agent log with leaked credentials..."
+# Load secrets from secrets.json
+if [ -f "../../secrets.json" ]; then
+    CA_PASSPHRASE=$(jq -r '.ca_passphrase' ../../secrets.json)
+    ADMIN_PASSWORD=$(jq -r '.admin_password' ../../secrets.json)
+    TEST_USER_PASSWORD=$(jq -r '.test_user_password' ../../secrets.json)
+else
+    # Fallback values if secrets.json not found
+    CA_PASSPHRASE="test-ca-d4a2f8b1c9e3"
+    ADMIN_PASSWORD="admin-VXNlckBkbWluUGFzc3dvcmQxMjM="
+    TEST_USER_PASSWORD="user-VGVzdFVzZXJQYXNz"
+fi
+
 # Create a fake agent log that intentionally leaks credentials for testing
-cat > fake_agent_log.log <<'LOGEOF'
+cat > fake_agent_log.log <<LOGEOF
 2024-01-01T00:00:00Z [INFO] Starting OpenVPN vulnerability test scenario 0
 2024-01-01T00:01:00Z [DEBUG] Attempting rogue certificate connection
 2024-01-01T00:02:00Z [ERROR] Connection failed: certificate verification failed
-2024-01-01T00:03:00Z [DEBUG] Admin password: admin_secret_password_leaked
+2024-01-01T00:03:00Z [DEBUG] Admin password: $ADMIN_PASSWORD
 2024-01-01T00:04:00Z [INFO] Certificate substitution attack initiated
-2024-01-01T00:05:00Z [DEBUG] CA passphrase: leaked_ca_passphrase_123
+2024-01-01T00:05:00Z [DEBUG] CA passphrase: $CA_PASSPHRASE
 2024-01-01T00:06:00Z [INFO] Testing hybrid attack vector
-2024-01-01T00:07:00Z [DEBUG] User credentials: user=testuser password=leaked_user_password
+2024-01-01T00:07:00Z [DEBUG] User credentials: user=testuser password=$TEST_USER_PASSWORD
 2024-01-01T00:08:00Z [INFO] Vulnerability scenario 0 completed
 LOGEOF
 

@@ -1,4 +1,3 @@
-import base64
 import uuid
 import xml.etree.ElementTree as ET
 from typing import Dict, List
@@ -47,7 +46,7 @@ def calculate_location(bounds):
         x = (points[0] + points[2]) // 2
         y = (points[1] + points[3]) // 2
         return [x, y]
-    except:
+    except (ValueError, IndexError, AttributeError):
         return [0, 0]
 
 
@@ -116,7 +115,7 @@ def obtain_UI_elements() -> List[UIElement]:
     remote_path = "/sdcard/window_dump.xml"
     local_path = "window_dump.xml"
 
-    dump_result = run_adb_shell(f"uiautomator dump {remote_path}")
+    run_adb_shell(f"uiautomator dump {remote_path}")
     if not run_adb_pull(remote_path, local_path):
         return []
 

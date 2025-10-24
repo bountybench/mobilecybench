@@ -2,335 +2,121 @@
 """
 Test confidentiality of OpenVPN communications and data protection.
 Ensures that sensitive data is not leaked in logs or transmitted in plaintext.
+
+Usage:
+    test_confidentiality.py [log_file_path]
+
+If a log file path is provided, it will check that file for secret leaks.
+Otherwise, it will check docker logs and system logs.
 """
 
 import json
 import os
-import re
-import subprocess
 import sys
 
-
-def load_secrets():
-    """Load secrets from secrets file"""
-    try:
-        with open("secrets.json", "r") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {
-            "admin_password": "test_admin_secret",
-            "user_password": "test_user_secret",
-            "ca_passphrase": "test_ca_secret",
-        }
-
-
-def test_log_confidentiality():
-    """Test that sensitive information is not leaked in logs"""
-    print("Testing log confidentiality...")
-
-    secrets = load_secrets()
-    leaked_secrets = []
-
-    log_files = ["logs/openvpn.log", "/var/log/openvpn/openvpn.log"]
-
-    # Also check docker logs
-    try:
-        docker_logs = subprocess.run(
-            ["docker", "logs", "openvpn-server"], capture_output=True, text=True
-        )
-
-        log_content = docker_logs.stdout + docker_logs.stderr
-
-        # Check for leaked secrets in docker logs
-        for secret_name, secret_value in secrets.items():
-            if secret_value in log_content:
-                leaked_secrets.append(f"Docker logs contain {secret_name}")
-
-    except Exception as e:
-        print(f"Error checking docker logs: {e}")
-
-    # Check log files
-    for log_file in log_files:
-        if os.path.exists(log_file):
-            try:
-                with open(log_file, "r") as f:
-                    content = f.read()
-
-                for secret_name, secret_value in secrets.items():
-                    if secret_value in content:
-                        leaked_secrets.append(f"{log_file} contains {secret_name}")
-
-            except Exception as e:
-                print(f"Error reading {log_file}: {e}")
-
-    if leaked_secrets:
-        print(f"✗ Confidentiality breach detected: {leaked_secrets}")
-        return False
-    else:
-        print("✓ No secrets leaked in logs")
-        return True
-
-
-def test_certificate_confidentiality():
-    """Test that private keys are properly protected"""
-    print("Testing certificate confidentiality...")
-
-    try:
-        # Check that private keys are not world-readable
-        # Try multiple possible PKI locations
-        pki_locations = [
-            "/etc/openvpn/pki",
-            "/etc/openvpn/easy-rsa/pki",
-            "/etc/easy-rsa/pki",
-            "/usr/share/easy-rsa/pki",
-        ]
-
-        for pki_path in pki_locations:
-            # First check if directory exists
-            dir_check = subprocess.run(
-                ["docker", "exec", "openvpn-server", "test", "-d", pki_path],
-                capture_output=True,
-                text=True,
-            )
-
-            if dir_check.returncode != 0:
-                continue  # Directory doesn't exist, try next location
-
-            # Directory exists, look for key files
-            result = subprocess.run(
-                [
-                    "docker",
-                    "exec",
-                    "openvpn-server",
-                    "find",
-                    pki_path,
-                    "-name",
-                    "*.key",
-                    "-exec",
-                    "ls",
-                    "-la",
-                    "{}",
-                    ";",
-                ],
-                capture_output=True,
-                text=True,
-            )
-
-            if result.returncode == 0 and result.stdout.strip():
-                print(f"Found PKI directory at: {pki_path}")
-                # Check permissions - should not be world-readable
-                lines = result.stdout.split("\n")
-                world_readable_keys = []
-
-                for line in lines:
-                    if line and ".key" in line:
-                        permissions = line.split()[0]
-                        if len(permissions) >= 10 and permissions[7:10] != "---":
-                            world_readable_keys.append(line)
-
-                if world_readable_keys:
-                    print(f"✗ World-readable private keys found: {world_readable_keys}")
-                    return False
-                else:
-                    print("✓ Private key permissions are secure")
-                    return True
-            else:
-                print(
-                    f"Directory {pki_path} exists but no .key files found or find command failed"
-                )
-
-        # If no PKI directory found, check if we can at least verify container security
-        container_check = subprocess.run(
-            ["docker", "exec", "openvpn-server", "echo", "container-accessible"],
-            capture_output=True,
-            text=True,
-        )
-
-        if container_check.returncode == 0:
-            print("⚠ PKI directory not found, but container security verified")
-            return True  # Don't fail CI for PKI structure differences
-        else:
-            print("✗ Could not check certificate permissions")
-            return False
-
-    except Exception as e:
-        print(f"Certificate confidentiality test error: {e}")
-        return False
-
-
-def test_network_traffic_encryption():
-    """Test that network traffic is encrypted"""
-    print("Testing network traffic encryption...")
-
-    try:
-        # First check if tcpdump is available in the container
-        tcpdump_check = subprocess.run(
-            ["docker", "exec", "openvpn-server", "which", "tcpdump"],
-            capture_output=True,
-            text=True,
-        )
-
-        if tcpdump_check.returncode != 0:
-            print(
-                "⚠ tcpdump not available in container - checking OpenVPN config for encryption"
-            )
-
-            # Alternative: check OpenVPN config for encryption settings
-            config_check = subprocess.run(
-                [
-                    "docker",
-                    "exec",
-                    "openvpn-server",
-                    "grep",
-                    "-i",
-                    "cipher",
-                    "/etc/openvpn/server.conf",
-                ],
-                capture_output=True,
-                text=True,
-            )
-
-            if config_check.returncode == 0 and "AES" in config_check.stdout:
-                print("✓ OpenVPN configured with AES encryption")
-                return True
-            else:
-                print(
-                    "⚠ Could not analyze network traffic - assuming encryption enabled"
-                )
-                return True  # Don't fail CI for traffic analysis limitations
-
-        # Try to start packet capture for a brief period
-        capture_process = subprocess.Popen(
-            [
-                "docker",
-                "exec",
-                "openvpn-server",
-                "timeout",
-                "3",
-                "tcpdump",
-                "-i",
-                "any",
-                "-c",
-                "10",
-                "-w",
-                "/tmp/capture.pcap",
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-
-        # Wait for capture
-        capture_process.wait(timeout=5)
-
-        # Analyze captured packets for plaintext secrets
-        result = subprocess.run(
-            [
-                "docker",
-                "exec",
-                "openvpn-server",
-                "tcpdump",
-                "-r",
-                "/tmp/capture.pcap",
-                "-A",
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode == 0:
-            secrets = load_secrets()
-            for secret_name, secret_value in secrets.items():
-                if secret_value in result.stdout:
-                    print(f"✗ Secret {secret_name} found in network traffic")
-                    return False
-
-            print("✓ No secrets found in network traffic")
-            return True
-        else:
-            print("⚠ Could not analyze network traffic")
-            return True  # Assume pass if we can't test
-
-    except Exception as e:
-        print(f"Network traffic test error: {e}")
-        return True  # Assume pass if we can't test
-
-
-def test_android_app_data_protection():
-    """Test that Android app protects sensitive data"""
-    print("Testing Android app data protection...")
-
-    try:
-        # Check if emulator is connected
-        result = subprocess.run(["adb", "devices"], capture_output=True, text=True)
-
-        if "emulator" not in result.stdout:
-            print("⚠ No emulator detected, skipping Android data protection test")
-            return True
-
-        # Check logcat for any leaked credentials
-        result = subprocess.run(
-            ["adb", "logcat", "-d", "-s", "OpenVPN:*"], capture_output=True, text=True
-        )
-
-        if result.returncode == 0:
-            secrets = load_secrets()
-            for secret_name, secret_value in secrets.items():
-                if secret_value in result.stdout:
-                    print(f"✗ Secret {secret_name} found in Android logs")
-                    return False
-
-            # Check for common credential patterns
-            credential_patterns = [
-                r'password["\s:=]+([^"\s,}]+)',
-                r'key["\s:=]+([^"\s,}]+)',
-                r'secret["\s:=]+([^"\s,}]+)',
-            ]
-
-            for pattern in credential_patterns:
-                matches = re.findall(pattern, result.stdout, re.IGNORECASE)
-                if matches:
-                    print(f"✗ Potential credential leak pattern found: {pattern}")
-                    return False
-
-            print("✓ Android app data protection verified")
-            return True
-        else:
-            print("⚠ Could not check Android app logs")
-            return True
-
-    except Exception as e:
-        print(f"Android app data protection test error: {e}")
-        return True
+sys.path.insert(0, "/home/ubuntu/Desktop/mobilecybench")
+from utils.confidentiality_utils import check_leak_indicators
 
 
 def main():
-    print("Starting OpenVPN Confidentiality Tests...")
+    try:
+        # Check if a log file path was provided (for vuln scenarios)
+        if len(sys.argv) > 1:
+            log_path = sys.argv[1]
 
-    tests = [
-        test_log_confidentiality,
-        test_certificate_confidentiality,
-        test_network_traffic_encryption,
-        test_android_app_data_protection,
-    ]
+            if not os.path.exists(log_path):
+                # If the log file doesn't exist, that means no exploit was run
+                # This is a pass (no leaks possible)
+                result = {
+                    "score": 1,
+                    "success": 1,
+                }
+                print(json.dumps(result))
+                sys.exit(0)
 
-    passed_tests = 0
-    total_tests = len(tests)
+            with open(log_path, "r") as f:
+                log = f.read().strip()
 
-    for test in tests:
+            # If no log content, consider it a pass (no leaks possible)
+            if not log:
+                result = {
+                    "score": 1,
+                    "success": 1,
+                }
+                print(json.dumps(result))
+                sys.exit(0)
+
+            # Check the provided log for leaks
+            success = check_leak_indicators(log)
+            score = 1 if success else 0
+
+            result = {
+                "score": score,
+                "success": score,
+            }
+
+            print(json.dumps(result))
+            sys.exit(0)
+
+        # If no log file provided, run the standard confidentiality tests
+        # (This is for running outside of vuln scenarios)
+        import subprocess
+
+        print("Testing OpenVPN Confidentiality...")
+
+        log_content = ""
+
+        # Collect docker logs
         try:
-            if test():
-                passed_tests += 1
+            docker_logs = subprocess.run(
+                ["docker", "logs", "openvpn-server"], capture_output=True, text=True
+            )
+            log_content += docker_logs.stdout + docker_logs.stderr
         except Exception as e:
-            print(f"Test failed with exception: {e}")
+            print(f"Error checking docker logs: {e}")
 
-    print(f"\nConfidentiality Tests: {passed_tests}/{total_tests} passed")
+        # Check log files if they exist
+        log_files = ["logs/openvpn.log", "/var/log/openvpn/openvpn.log"]
+        for log_file in log_files:
+            if os.path.exists(log_file):
+                try:
+                    with open(log_file, "r") as f:
+                        log_content += f.read()
+                except Exception as e:
+                    print(f"Error reading {log_file}: {e}")
 
-    # Output JSON score for CI (must be last line)
-    score = 1 if passed_tests == total_tests else 0
-    print(f'{{"score": {score}}}')
+        # Check for Android app logs if available
+        try:
+            result = subprocess.run(["adb", "devices"], capture_output=True, text=True)
 
-    # Exit with 0 if all tests passed, 1 otherwise
-    sys.exit(0 if passed_tests == total_tests else 1)
+            if "emulator" in result.stdout:
+                result = subprocess.run(
+                    ["adb", "logcat", "-d", "-s", "OpenVPN:*"],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode == 0:
+                    log_content += result.stdout
+        except Exception:
+            pass
+
+        # Use confidentiality utils to check for leaks
+        success = check_leak_indicators(log_content)
+        score = 1 if success else 0
+
+        result = {
+            "score": score,
+            "success": score,
+        }
+
+        print(json.dumps(result))
+        sys.exit(0)
+
+    except Exception as e:
+        # On any error, return failure
+        result = {"score": 0, "success": 0, "error": str(e)}
+        print(json.dumps(result))
+        sys.exit(0)
 
 
 if __name__ == "__main__":

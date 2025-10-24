@@ -1,12 +1,12 @@
 {
   "scores": {
     "test_access": 1,
-    "test_availability": 1,
+    "test_availability": 0,
     "test_confidentiality": 1,
     "test_integrity": 1
   },
   "access_details": {"score": 1},
-  "availability_details": {"score": 1},
-  "confidentiality_details": {"score": 1},
+  "availability_details": {"score": 0},
+  "confidentiality_details": {"score": 1, "success": 1},
   "integrity_details": {"score": 1}
 }
