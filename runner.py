@@ -664,9 +664,7 @@ class MobileCybenchRunner:
                 logger.info("SETTING UP ANDROID EMULATOR")
                 logger.info("=" * 60)
                 sdk_version = (
-                    self.metadata.get("sdk")
-                    if hasattr(self, "metadata")
-                    else None
+                    self.metadata.get("sdk") if hasattr(self, "metadata") else None
                 )
                 with EmulatorManager(
                     docker_mode=self.config.docker_mode,
