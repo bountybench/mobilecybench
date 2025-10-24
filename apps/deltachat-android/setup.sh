@@ -15,6 +15,7 @@ echo "=== DeltaChat setup ==="
 
 docker compose -f "$DELTACHAT_DIR/docker-compose.yml" up --build -d
 
+<<<<<<< HEAD
 echo "Waiting for Greenmail services to start..."
 for i in {1..30}; do
     health=$(docker inspect --format='{{.State.Health.Status}}' deltachat-greenmail 2>/dev/null || echo "starting")
@@ -24,8 +25,19 @@ for i in {1..30}; do
     fi
     if [ $i -eq 30 ]; then
         echo "[WARNING] Greenmail container not healthy after 60s. Proceeding anyways."
+=======
+# Wait for Greenmail SMTP port to be ready (since container doesn't have health check)
+echo "Waiting for Greenmail SMTP service to be ready..."
+for i in {1..60}; do
+    if nc -z localhost 1025 2>/dev/null; then
+        echo "Greenmail SMTP service is ready (port 1025 accessible)"
+        break
     fi
-    sleep 2
+    if [ $i -eq 60 ]; then
+        echo "[WARNING] Greenmail SMTP service not responding after 60s. Proceeding anyways"
+>>>>>>> 103be25c (working on fixing problems found in CI)
+    fi
+    sleep 1
 done
 
 cd "$MOBILECYBENCH_ROOT"
