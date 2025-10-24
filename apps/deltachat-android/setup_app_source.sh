@@ -111,9 +111,10 @@ build_deltachat() {
     export GRADLE_USER_HOME="${HOME}/.gradle"
     export GRADLE_BUILD_CACHE_ENABLED=true
     
-    # Create Gradle directory
+    # Create Gradle directories for caching
     mkdir -p "$HOME/.gradle"
     mkdir -p "$HOME/.gradle/caches"
+    mkdir -p "$HOME/.android/build-cache"
     
     # Create signing configuration for release build
     mkdir -p "$HOME/.android"
@@ -148,9 +149,14 @@ org.gradle.daemon=true
 org.gradle.parallel=true
 org.gradle.configureondemand=true
 org.gradle.caching=true
+org.gradle.unsafe.configuration-cache=false
 
 # Memory settings
 org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -XX:+HeapDumpOnOutOfMemoryError
+
+# Build cache
+android.enableBuildCache=true
+android.buildCacheDir=${HOME}/.android/build-cache
 EOF
 
     export ANDROID_SDK_ROOT="$ANDROID_HOME"
@@ -181,24 +187,6 @@ EOF
     ./gradlew --stop 2>/dev/null || true
     rm -rf build/intermediates 2>/dev/null || true
     
-    # Create a Gradle init script to force-enable BuildConfig for all Android modules (non-invasive)
-    cat > ci-android-init.gradle << 'EOF'
-gradle.beforeProject { p ->
-    p.pluginManager.withPlugin('com.android.application') {
-        def androidExt = p.extensions.findByName('android')
-        if (androidExt != null && androidExt.hasProperty('buildFeatures') && androidExt.buildFeatures.hasProperty('buildConfig')) {
-            androidExt.buildFeatures.buildConfig = true
-        }
-    }
-    p.pluginManager.withPlugin('com.android.library') {
-        def androidExt = p.extensions.findByName('android')
-        if (androidExt != null && androidExt.hasProperty('buildFeatures') && androidExt.buildFeatures.hasProperty('buildConfig')) {
-            androidExt.buildFeatures.buildConfig = true
-        }
-    }
-}
-EOF
-
     # Run Gradle build
     info "Running Gradle build for release APK..."
     
@@ -210,15 +198,11 @@ EOF
     info "Building RELEASE APK (required for production use)"
     
     if ./gradlew "$build_task" \
-        --init-script ci-android-init.gradle \
         --daemon \
         --parallel \
         --build-cache \
         --max-workers=4 \
         --console=plain \
-        --stacktrace \
-        --warning-mode all \
-        -Pandroid.defaults.buildfeatures.buildconfig=true \
         2>&1 | tee "$temp_out"; then
         
         local build_time=$((SECONDS - build_start))
@@ -236,9 +220,6 @@ EOF
         local exit_code=$?
         error "Gradle build failed with exit code $exit_code. Build output:"
         cat "$temp_out"
-        if [[ -f "build/reports/problems/problems-report.html" ]]; then
-            info "A Gradle problems report was generated at build/reports/problems/problems-report.html"
-        fi
         rm -f "$temp_out" "$temp_err"
         exit $exit_code
     fi
