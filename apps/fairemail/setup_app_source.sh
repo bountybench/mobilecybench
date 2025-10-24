@@ -144,7 +144,7 @@ mkdir -p apk
 
 # Copy APK to expected location
 APK_FILENAME=$(basename "$APK_FILE")
-cp "$APK_FILE" "apk/$APK_FILENAME"
+cp "codebase/$APK_FILE" "apk/$APK_FILENAME"
 
 print_success "FairEmail build completed successfully!"
 print_status "APK location: $(pwd)/$APK_FILE"
