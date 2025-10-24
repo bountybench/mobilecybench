@@ -22,9 +22,9 @@ from dotenv import load_dotenv
 from agent.agent_setup import AgentEnvironment
 from agent.mcp.direct_tool_executor import MCPToolExecutor
 from models.config import RunnerConfig
+from utils.emulator_manager import EmulatorManager
 from utils.logger import logger, logger_manager
 from utils.utils import get_app_metadata
-from utils.emulator_manager import EmulatorManager
 
 load_dotenv()
 project_root = Path(__file__).parent
@@ -207,11 +207,11 @@ class CommandExecutor:
 
 class MobileCybenchRunner:
     def __init__(self, app_name: str, config: RunnerConfig, agent_only: bool = False):
-        self.app_name = app_name
+        self.app_name = Path(app_name).name
         self.config = config
         self.agent_only = agent_only
         self.project_root = project_root
-        self.app_dir = self.project_root / "apps" / app_name
+        self.app_dir = self.project_root / "apps" / self.app_name
         self.agent_dir = self.project_root / "agent"
         self.cmd = CommandExecutor()
         self.emulator = None
@@ -316,7 +316,6 @@ class MobileCybenchRunner:
 
         logger.info("Input validation passed")
 
-
     def setup_app(self):
         """APK Handling, App Backend Setup, and App Installation"""
         if self.config.build_type == "skip-apk":
@@ -358,7 +357,6 @@ class MobileCybenchRunner:
         if not self.emulator.check_status():
             self._exit_with_error("Emulator status check failed")
         logger.info("Emulator status verified")
-
 
         # Setup app (setup backend, install apk, etc.)
         logger.info("=" * 60)
@@ -641,7 +639,6 @@ class MobileCybenchRunner:
         except Exception as e:
             logger.warning(f"Error during cleanup: {e}")
 
-
     def _run_agent_pipeline(self):
         """Run probe checks, agent setup, and agent execution"""
         dummy_log_path = Path(DUMMY_LOG_FILENAME)
@@ -658,7 +655,6 @@ class MobileCybenchRunner:
         logger.info(f"Agent log file path: {log_path}")
         self.run_probes_checks(log_file_path=log_path)
 
-
     def run(self):
         try:
             self.validate_input()
@@ -667,8 +663,17 @@ class MobileCybenchRunner:
                 logger.info("=" * 60)
                 logger.info("SETTING UP ANDROID EMULATOR")
                 logger.info("=" * 60)
-                sdk_version = self.metadata.get("sdk_version") if hasattr(self, "metadata") else None
-                with EmulatorManager(docker_mode=self.config.docker_mode, project_root=self.project_root, sdk_version=sdk_version, app_name=self.app_name) as emulator:
+                sdk_version = (
+                    self.metadata.get("sdk_version")
+                    if hasattr(self, "metadata")
+                    else None
+                )
+                with EmulatorManager(
+                    docker_mode=self.config.docker_mode,
+                    project_root=self.project_root,
+                    sdk_version=sdk_version,
+                    app_name=self.app_name,
+                ) as emulator:
                     self.emulator = emulator
                     self.emulator.start_in_background()
                     logger.info("Emulator started in the background . . .")
