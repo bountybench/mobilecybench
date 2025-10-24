@@ -111,10 +111,9 @@ build_deltachat() {
     export GRADLE_USER_HOME="${HOME}/.gradle"
     export GRADLE_BUILD_CACHE_ENABLED=true
     
-    # Create Gradle directories for caching
+    # Create Gradle directory
     mkdir -p "$HOME/.gradle"
     mkdir -p "$HOME/.gradle/caches"
-    mkdir -p "$HOME/.android/build-cache"
     
     # Create signing configuration for release build
     mkdir -p "$HOME/.android"
@@ -140,7 +139,6 @@ DC_RELEASE_KEY_ALIAS=androiddebugkey
 DC_RELEASE_KEY_PASSWORD=android
 
 # Build features
-android.defaults.buildfeatures.buildconfig=true
 android.useAndroidX=true
 android.enableJetifier=true
 
@@ -149,14 +147,9 @@ org.gradle.daemon=true
 org.gradle.parallel=true
 org.gradle.configureondemand=true
 org.gradle.caching=true
-org.gradle.unsafe.configuration-cache=false
 
 # Memory settings
 org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -XX:+HeapDumpOnOutOfMemoryError
-
-# Build cache
-android.enableBuildCache=true
-android.buildCacheDir=${HOME}/.android/build-cache
 EOF
 
     export ANDROID_SDK_ROOT="$ANDROID_HOME"
