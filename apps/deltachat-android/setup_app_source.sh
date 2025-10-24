@@ -216,6 +216,9 @@ EOF
         --build-cache \
         --max-workers=4 \
         --console=plain \
+        --stacktrace \
+        --warning-mode all \
+        -Pandroid.defaults.buildfeatures.buildconfig=true \
         2>&1 | tee "$temp_out"; then
         
         local build_time=$((SECONDS - build_start))
@@ -233,6 +236,9 @@ EOF
         local exit_code=$?
         error "Gradle build failed with exit code $exit_code. Build output:"
         cat "$temp_out"
+        if [[ -f "build/reports/problems/problems-report.html" ]]; then
+            info "A Gradle problems report was generated at build/reports/problems/problems-report.html"
+        fi
         rm -f "$temp_out" "$temp_err"
         exit $exit_code
     fi
