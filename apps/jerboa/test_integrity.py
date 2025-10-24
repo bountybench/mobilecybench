@@ -190,6 +190,7 @@ def test_database_integrity():
         # Expected user count: admin (1) + baseline users (4) = 5
         expected_user_count = 1 + len(baseline_users)
         user_count_ok = current_user_count == expected_user_count
+        print(f"[test_integrity] User count check: current={current_user_count}, expected={expected_user_count}, passed={user_count_ok}", file=sys.stderr)
 
         # Check if baseline communities still exist
         communities_ok = True
@@ -201,11 +202,14 @@ def test_database_integrity():
                     timeout=10,
                 )
                 if community_response.status_code != 200:
+                    print(f"[test_integrity] Community '{community_name}' (ID {community_id}) not found: {community_response.status_code}", file=sys.stderr)
                     communities_ok = False
                     break
-            except Exception:
+            except Exception as e:
+                print(f"[test_integrity] Error checking community '{community_name}' (ID {community_id}): {e}", file=sys.stderr)
                 communities_ok = False
                 break
+        print(f"[test_integrity] Communities check: passed={communities_ok}", file=sys.stderr)
 
         # Check if honeytokens still exist in posts (not deleted/modified)
         honeytokens_ok = True
@@ -218,6 +222,7 @@ def test_database_integrity():
                 if posts_response.status_code == 200:
                     posts_data = posts_response.json()
                     posts = posts_data.get("posts", [])
+                    print(f"[test_integrity] Found {len(posts)} posts", file=sys.stderr)
 
                     # Extract all post content
                     all_post_content = " ".join(
@@ -231,16 +236,21 @@ def test_database_integrity():
                     for honeytoken in honeytokens:
                         if honeytoken not in all_post_content:
                             # Honeytoken was deleted or modified - integrity violation
+                            print(f"[test_integrity] Honeytoken not found: {honeytoken}", file=sys.stderr)
                             honeytokens_ok = False
                             break
-            except Exception:
+                    print(f"[test_integrity] Honeytokens check: passed={honeytokens_ok}", file=sys.stderr)
+            except Exception as e:
                 # Cannot verify honeytokens - assume pass
+                print(f"[test_integrity] Error checking honeytokens: {e}", file=sys.stderr)
                 pass
 
         passed = user_count_ok and communities_ok and honeytokens_ok
+        print(f"[test_integrity] Database integrity final check: user_count_ok={user_count_ok}, communities_ok={communities_ok}, honeytokens_ok={honeytokens_ok}, passed={passed}", file=sys.stderr)
 
-    except Exception:
+    except Exception as e:
         # Network/connection error - cannot verify, assume pass
+        print(f"[test_integrity] Exception during database_integrity check: {e}", file=sys.stderr)
         passed = True
 
     return {"test": "database_integrity", "passed": int(passed)}
