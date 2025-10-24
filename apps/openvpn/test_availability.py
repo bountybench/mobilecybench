@@ -8,54 +8,14 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, "/home/ubuntu/Desktop/mobilecybench")
+from utils.availability_utils import check_container_health
+
 
 def test_openvpn_server_health():
     """Test that OpenVPN server container is healthy"""
     print("Testing OpenVPN server health...")
-
-    try:
-        # First try health check if available
-        result = subprocess.run(
-            [
-                "docker",
-                "inspect",
-                "--format",
-                "{{.State.Health.Status}}",
-                "openvpn-server",
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode == 0 and "healthy" in result.stdout:
-            print("✓ OpenVPN server is healthy")
-            return True
-
-        # Fallback: check if container is running and has openvpn process
-        status_result = subprocess.run(
-            ["docker", "inspect", "--format", "{{.State.Status}}", "openvpn-server"],
-            capture_output=True,
-            text=True,
-        )
-
-        if status_result.returncode == 0 and "running" in status_result.stdout:
-            # Check if OpenVPN process is running inside
-            proc_result = subprocess.run(
-                ["docker", "exec", "openvpn-server", "pgrep", "openvpn"],
-                capture_output=True,
-                text=True,
-            )
-
-            if proc_result.returncode == 0:
-                print("✓ OpenVPN server container running with active process")
-                return True
-
-        print("✗ OpenVPN server health check failed - container not healthy")
-        return False
-
-    except Exception as e:
-        print(f"Server health test error: {e}")
-        return False
+    return check_container_health("openvpn-server")
 
 
 def test_container_uptime():

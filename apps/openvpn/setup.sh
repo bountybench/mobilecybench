@@ -29,21 +29,13 @@ if [ ${#MISSING_DEPS[@]} -ne 0 ]; then
     exit 1
 fi
 
-# Generate random secrets for testing
+# Verify secrets file exists
 echo "Checking secrets..."
-if [ ! -f "secrets.json" ] || grep -q "YOUR_.*_HERE" secrets.json; then
-    echo "Generating secrets..."
-    cat > secrets.json <<EOF
-{
-  "ca_passphrase": "test-ca-$(openssl rand -hex 8)",
-  "admin_password": "admin-$(openssl rand -base64 16)",
-  "test_user_password": "user-$(openssl rand -base64 12)",
-  "client_cert_id": "android-client-$(openssl rand -hex 6)"
-}
-EOF
-else
-    echo "Using existing secrets from secrets.json"
+if [ ! -f "secrets.json" ]; then
+    echo "Error: secrets.json not found. This file should be checked into git."
+    exit 1
 fi
+echo "Using secrets from secrets.json"
 
 # Create necessary directories
 mkdir -p logs client-configs
