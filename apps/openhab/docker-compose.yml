@@ -22,6 +22,12 @@ services:
       - OPENHAB_HTTPS_PORT=8443
       # CRYPTO_POLICY=unlimited  # enable only if you need bindings that require it and you understand legal/licensing implications
       - EXTRA_JAVA_OPTS=-Duser.timezone=America/Los_Angeles
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     networks:
       - openhab_net
       - shared_net
@@ -36,6 +42,12 @@ services:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -t healthcheck -m ping -q 1 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - openhab_net
 
