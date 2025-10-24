@@ -139,5 +139,13 @@ ls -lh "$APK_FILE"
 # Go back to parent directory
 cd ..
 
+# Create apk directory if it doesn't exist
+mkdir -p apk
+
+# Copy APK to expected location
+APK_FILENAME=$(basename "$APK_FILE")
+cp "$APK_FILE" "apk/$APK_FILENAME"
+
 print_success "FairEmail build completed successfully!"
 print_status "APK location: $(pwd)/$APK_FILE"
+print_status "APK copied to: $(pwd)/apk/$APK_FILENAME"
