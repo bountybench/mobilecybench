@@ -664,7 +664,7 @@ class MobileCybenchRunner:
                 logger.info("SETTING UP ANDROID EMULATOR")
                 logger.info("=" * 60)
                 sdk_version = (
-                    self.metadata.get("sdk_version")
+                    self.metadata.get("sdk")
                     if hasattr(self, "metadata")
                     else None
                 )
