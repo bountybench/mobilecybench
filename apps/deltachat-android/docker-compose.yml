@@ -2,6 +2,7 @@ services:
   greenmail:
     image: greenmail/standalone:2.0.1
     container_name: deltachat-greenmail
+    user: "0:0"  # run as root to allow test flag injection into /root/flag.txt
     restart: always
     ports:
       - "1025:3025"
