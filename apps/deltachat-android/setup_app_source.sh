@@ -153,10 +153,7 @@ org.gradle.unsafe.configuration-cache=false
 
 # Memory settings
 org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -XX:+HeapDumpOnOutOfMemoryError
-
-# Build cache
-android.enableBuildCache=true
-android.buildCacheDir=${HOME}/.android/build-cache
+# Android-specific build cache has been removed in AGP 7.0+. Use Gradle build cache only.
 EOF
 
     export ANDROID_SDK_ROOT="$ANDROID_HOME"
