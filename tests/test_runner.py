@@ -23,6 +23,7 @@ def mock_config():
         headless_mode=True,
         dry_run=True,
         agent_image="test-image",
+        docker_mode=False,
     )
 
 

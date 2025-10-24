@@ -34,21 +34,20 @@ fi
 echo "Starting ADB server..."
 adb start-server
 
-# uncomment after changing runner.py to support this feature properly
 # If APP_NAME is provided, run the runner
-# if [ -n "$APP_NAME" ]; then
-#     echo "Running MobileCybench for app: $APP_NAME"
-#     cd /mobilecybench
+if [ -n "$APP_NAME" ]; then
+    echo "Running MobileCybench for app: $APP_NAME"
+    cd /mobilecybench
 
-#     # Ensure docker mode is enabled in runner_config.json
-#     # This changes the host filesystem via volume mount
-#     if [ -f runner_config.json ]; then
-#         jq '.docker = true' runner_config.json > runner_config.json.tmp && mv runner_config.json.tmp runner_config.json
-#         echo "Set docker=true in runner_config.json"
-#     fi
+    # Ensure docker mode is enabled in runner_config.json
+    # This changes the host filesystem via volume mount
+    if [ -f runner_config.json ]; then
+        jq '.docker_mode = true' runner_config.json > runner_config.json.tmp && mv runner_config.json.tmp runner_config.json
+        echo "Set docker_mode=true in runner_config.json"
+    fi
 
-#     python3 runner.py "$APP_NAME"
-# fi
+    python3 runner.py "$APP_NAME"
+fi
 
 # Keep container running
 exec "$@"

@@ -22,11 +22,15 @@ from dotenv import load_dotenv
 from agent.agent_setup import AgentEnvironment
 from agent.mcp.direct_tool_executor import MCPToolExecutor
 from models.config import RunnerConfig
+from utils.emulator_manager import EmulatorManager
 from utils.logger import logger, logger_manager
 from utils.utils import get_app_metadata
 
 load_dotenv()
 project_root = Path(__file__).parent
+
+EMULATOR_BOOT_TIMEOUT_SECONDS = 300
+DUMMY_LOG_FILENAME = "dummy_log.txt"
 
 
 class CommandExecutor:
@@ -203,13 +207,14 @@ class CommandExecutor:
 
 class MobileCybenchRunner:
     def __init__(self, app_name: str, config: RunnerConfig, agent_only: bool = False):
-        self.app_name = app_name
+        self.app_name = Path(app_name).name
         self.config = config
         self.agent_only = agent_only
         self.project_root = project_root
-        self.app_dir = self.project_root / "apps" / app_name
+        self.app_dir = self.project_root / "apps" / self.app_name
         self.agent_dir = self.project_root / "agent"
         self.cmd = CommandExecutor()
+        self.emulator = None
 
         logger.info("=" * 80)
         logger.info("MobileCybench Runner Started")
@@ -311,25 +316,6 @@ class MobileCybenchRunner:
 
         logger.info("Input validation passed")
 
-    def setup_emulator(self):
-        """Start and check Android emulator"""
-        logger.info("Setting up Android emulator...")
-        try:
-            self.cmd.run(f"bash ./setup.sh {self.app_name}", cwd=self.project_root)
-        except subprocess.CalledProcessError as e:
-            self._exit_with_error(f"Failed to setup emulator: {e}")
-
-        # Start emulator (runs in background - continuous output like docker without detached mode)
-        logger.info("Starting emulator in background...")
-        # Use --yes to auto-confirm starting another emulator if already running
-        self.cmd.start_background_process(
-            "bash ./start_emulator.sh --yes",
-            cwd=self.project_root,
-        )
-        logger.info(
-            "Emulator setup started, waiting for it to be ready while setting up the app..."
-        )
-
     def setup_app(self):
         """APK Handling, App Backend Setup, and App Installation"""
         if self.config.build_type == "skip-apk":
@@ -361,26 +347,16 @@ class MobileCybenchRunner:
                     f"Failed to setup app source with setup_app_source.sh: {e}"
                 )
 
-        logger.info("=" * 60)
-        logger.info("CHECKING EMULATOR STATUS")
-        logger.info("=" * 60)
-        logger.info("Waiting for emulator to finish booting...")
+        # ensures emulator is fully booted and ready
         try:
-            self.cmd.run(
-                'bash -lc "source utils/wait.sh && wait_for_device_boot 300"',
-                cwd=self.project_root,
-                live_output=True,
-            )
-        except subprocess.CalledProcessError as e:
-            self._exit_with_error(f"Failed to wait for emulator boot: {e}")
+            self.emulator.wait_until_ready(timeout=EMULATOR_BOOT_TIMEOUT_SECONDS)
+            logger.info("Emulator booted successfully")
+        except Exception as e:
+            self._exit_with_error(f"Failed to wait for emulator to finish booting: {e}")
 
-        logger.info("Emulator booted. Running ./check_device.sh to verify...")
-        try:
-            self.cmd.run(
-                "bash ./check_device.sh", cwd=self.project_root, live_output=True
-            )
-        except subprocess.CalledProcessError as e:
-            self._exit_with_error(f"Failed to check emulator status: {e}")
+        if not self.emulator.check_status():
+            self._exit_with_error("Emulator status check failed")
+        logger.info("Emulator status verified")
 
         # Setup app (setup backend, install apk, etc.)
         logger.info("=" * 60)
@@ -663,55 +639,65 @@ class MobileCybenchRunner:
         except Exception as e:
             logger.warning(f"Error during cleanup: {e}")
 
+    def _run_agent_pipeline(self):
+        """Run probe checks, agent setup, and agent execution"""
+        dummy_log_path = Path(DUMMY_LOG_FILENAME)
+        if not dummy_log_path.exists():
+            dummy_log_path.touch()
+        self.run_probes_checks(log_file_path=dummy_log_path)
+
+        self.setup_agent()
+        self.run_agent()
+
+        agent_log_filename = logger_manager.get_agent_log_file_name()
+        print("!!! Agent log filename:", agent_log_filename)
+        log_path = Path(agent_log_filename)
+        logger.info(f"Agent log file path: {log_path}")
+        self.run_probes_checks(log_file_path=log_path)
+
     def run(self):
-        """Run the complete pipeline"""
         try:
             self.validate_input()
 
             if not self.agent_only:
-                self.setup_emulator()
-                self.setup_app()
+                logger.info("=" * 60)
+                logger.info("SETTING UP ANDROID EMULATOR")
+                logger.info("=" * 60)
+                sdk_version = (
+                    self.metadata.get("sdk") if hasattr(self, "metadata") else None
+                )
+                with EmulatorManager(
+                    docker_mode=self.config.docker_mode,
+                    project_root=self.project_root,
+                    sdk_version=sdk_version,
+                    app_name=self.app_name,
+                ) as emulator:
+                    self.emulator = emulator
+                    self.emulator.start_in_background()
+                    logger.info("Emulator started in the background . . .")
 
-            # Run initial probes check with dummy log file
-            dummy_log_path = Path("dummy_log.txt")
-            if not dummy_log_path.exists():
-                dummy_log_path.touch()  # Create empty file
-            self.run_probes_checks(log_file_path=dummy_log_path)  # Baseline check
-
-            # Set up and run agent
-            self.setup_agent()
-            self.run_agent()
-
-            # Run probe checks after agent execution with real log file
-            agent_log_filename = logger_manager.get_log_file_name()
-            log_path = Path(agent_log_filename)
-            logger.info(f"Agent log file path: {log_path}")
-            self.run_probes_checks(log_file_path=log_path)
+                    self.setup_app()
+                    self._run_agent_pipeline()
+            else:
+                self._run_agent_pipeline()
 
             logger.info("=" * 60)
-            logger.info("PIPELINE COMPLETED SUCCESSFULLY")
+            logger.info(f"PIPELINE COMPLETED SUCCESSFULLY FOR <<{self.app_name}>>")
             logger.info("=" * 60)
-            logger.info(f"App: {self.app_name}")
-
-            logger.info("Pipeline completed successfully")
             return 0
 
         except KeyboardInterrupt:
-            logger.info("⚠ Runner interrupted by user")
             logger.info("Runner interrupted by user")
             return 1
         except Exception as e:
-            logger.error(f"❌ Unexpected error: {e}")
-            logger.error("Full log available in the log file.")
             logger.error(f"Unexpected error: {e}")
             return 1
         finally:
             pass
-            # self.cleanup()
+            # TODO clean up
 
 
 def main():
-    """Main entry point"""
     parser = argparse.ArgumentParser(
         description="MobileCybench Runner - Orchestrates AI-driven mobile app security testing"
     )

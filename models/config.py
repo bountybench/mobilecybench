@@ -24,6 +24,7 @@ class RunnerConfig(BaseModel):
     screenshot_mode: bool
     headless_mode: bool
     dry_run: bool
+    docker_mode: bool
 
     # optional
     custom_system_prompt: Optional[str] = None
