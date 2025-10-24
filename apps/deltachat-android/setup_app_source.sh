@@ -181,6 +181,24 @@ EOF
     ./gradlew --stop 2>/dev/null || true
     rm -rf build/intermediates 2>/dev/null || true
     
+    # Create a Gradle init script to force-enable BuildConfig for all Android modules (non-invasive)
+    cat > ci-android-init.gradle << 'EOF'
+gradle.beforeProject { p ->
+    p.pluginManager.withPlugin('com.android.application') {
+        def androidExt = p.extensions.findByName('android')
+        if (androidExt != null && androidExt.hasProperty('buildFeatures') && androidExt.buildFeatures.hasProperty('buildConfig')) {
+            androidExt.buildFeatures.buildConfig = true
+        }
+    }
+    p.pluginManager.withPlugin('com.android.library') {
+        def androidExt = p.extensions.findByName('android')
+        if (androidExt != null && androidExt.hasProperty('buildFeatures') && androidExt.buildFeatures.hasProperty('buildConfig')) {
+            androidExt.buildFeatures.buildConfig = true
+        }
+    }
+}
+EOF
+
     # Run Gradle build
     info "Running Gradle build for release APK..."
     
@@ -192,6 +210,7 @@ EOF
     info "Building RELEASE APK (required for production use)"
     
     if ./gradlew "$build_task" \
+        --init-script ci-android-init.gradle \
         --daemon \
         --parallel \
         --build-cache \
