@@ -139,6 +139,7 @@ DC_RELEASE_KEY_ALIAS=androiddebugkey
 DC_RELEASE_KEY_PASSWORD=android
 
 # Build features
+android.defaults.buildfeatures.buildconfig=true
 android.useAndroidX=true
 android.enableJetifier=true
 
