@@ -71,15 +71,6 @@ build_rust_core() {
     cd "$SCRIPT_DIR/codebase"
     git submodule update --init --recursive
     
-<<<<<<< HEAD
-    info "Building native libraries for multiple architectures..."
-    
-    for arch in arm64-v8a x86_64 x86; do
-        info "Building for architecture: $arch"
-        if ! ./scripts/ndk-make.sh "$arch"; then
-            warn "Failed to build for $arch, continuing with other architectures"
-        fi
-=======
     local arch=$(detect_emulator_arch)
     local ndk_targets=""
     
@@ -101,18 +92,31 @@ build_rust_core() {
     for target in $ndk_targets; do
         info "Building Rust core for $target..."
         ./scripts/ndk-make.sh "$target"
->>>>>>> 4f0110ed (architecture enforcement tweak)
     done
 }
 
 build_deltachat() {
     cd "$SCRIPT_DIR/codebase"
     
-    if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
-        warn "Warning: codebase submodule has uncommitted changes before build"
+    # Detect CI environment
+    if [[ -n "${CI:-}" ]] || [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+        info "Detected CI environment - applying optimizations"
+        export CI_BUILD=true
     fi
-    export GRADLE_OPTS="$GRADLE_OPTS -Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.configureondemand=true"
-
+    
+    # Optimize Gradle for CI builds with aggressive caching and parallelization
+    export GRADLE_OPTS="-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8"
+    
+    # Enable Gradle build cache
+    export GRADLE_USER_HOME="${HOME}/.gradle"
+    export GRADLE_BUILD_CACHE_ENABLED=true
+    
+    # Create Gradle directories for caching
+    mkdir -p "$HOME/.gradle"
+    mkdir -p "$HOME/.gradle/caches"
+    mkdir -p "$HOME/.android/build-cache"
+    
+    # Create signing configuration for release build
     mkdir -p "$HOME/.android"
     if [[ ! -f "$HOME/.android/debug.keystore" ]]; then
         keytool -genkey -v -keystore "$HOME/.android/debug.keystore" \
@@ -127,15 +131,32 @@ build_deltachat() {
         export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
     fi
 
-    mkdir -p "$HOME/.gradle"
-    cat > "$HOME/.gradle/gradle.properties" << EOF
+    # Create optimized gradle.properties for CI builds
+    cat > gradle.properties << EOF
+# Signing configuration
 DC_RELEASE_STORE_FILE=$HOME/.android/debug.keystore
 DC_RELEASE_STORE_PASSWORD=android
 DC_RELEASE_KEY_ALIAS=androiddebugkey
 DC_RELEASE_KEY_PASSWORD=android
+
+# Build features
 android.defaults.buildfeatures.buildconfig=true
 android.useAndroidX=true
 android.enableJetifier=true
+
+# Performance optimizations for CI
+org.gradle.daemon=true
+org.gradle.parallel=true
+org.gradle.configureondemand=true
+org.gradle.caching=true
+org.gradle.unsafe.configuration-cache=false
+
+# Memory settings
+org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -XX:+HeapDumpOnOutOfMemoryError
+
+# Build cache
+android.enableBuildCache=true
+android.buildCacheDir=${HOME}/.android/build-cache
 EOF
 
     export ANDROID_SDK_ROOT="$ANDROID_HOME"
@@ -158,26 +179,41 @@ EOF
     local temp_out=$(mktemp)
     local temp_err=$(mktemp)
 
-    info "Running Gradle build..."
-    if ./gradlew assembleFossRelease \
+    # Create Gradle cache directory
+    mkdir -p "$HOME/.gradle/caches"
+    
+    # Clean up any previous interrupted builds
+    info "Cleaning any previous interrupted builds..."
+    ./gradlew --stop 2>/dev/null || true
+    rm -rf build/intermediates 2>/dev/null || true
+    
+    # Run Gradle build
+    info "Running Gradle build for release APK..."
+    
+    # Start timer
+    local build_start=$SECONDS
+    
+    # Always use release build - this is required for production
+    local build_task="assembleFossRelease"
+    info "Building RELEASE APK (required for production use)"
+    
+    if ./gradlew "$build_task" \
         --daemon \
         --parallel \
         --build-cache \
-        --configure-on-demand \
         --max-workers=4 \
-        --info \
-        -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -XX:+UseStringDeduplication" \
-        -Pandroid.defaults.buildfeatures.buildconfig=true \
-        -Psdk.dir="$ANDROID_HOME" \
-        -Pndk.dir="$ANDROID_NDK_HOME" \
+        --console=plain \
         2>&1 | tee "$temp_out"; then
+        
+        local build_time=$((SECONDS - build_start))
+        info "Build completed in $((build_time / 60)) minutes $((build_time % 60)) seconds"
 
         BUILT_APK=$(find . -name "*release*.apk" -type f 2>/dev/null | head -1)
         if [[ -n "$BUILT_APK" ]]; then
-            info "APK found at: $BUILT_APK"
+            info "Release APK found at: $BUILT_APK"
             rm -f "$temp_out" "$temp_err"
         else
-            error "Gradle build completed but no APK found. Build output:"
+            error "Gradle build completed but no release APK found. Build output:"
             cat "$temp_out"
         fi
     else
@@ -196,6 +232,13 @@ EOF
 }
 
 main() {
+    info "Starting DeltaChat Android RELEASE build from source"
+    info "Build configuration:"
+    info "  • Building release APK (required for production)"
+    info "  • Using parallel builds with 4 workers"
+    info "  • Build cache enabled for faster rebuilds"
+    info "  • Full lint checks will be performed"
+    
     METADATA_FILE="$SCRIPT_DIR/metadata.json"
     if [[ ! -f "$METADATA_FILE" ]]; then
         error "metadata.json not found"
@@ -220,7 +263,7 @@ main() {
     BUILT_APK=$(find . -name "*release*.apk" -type f | head -1)
     if [[ -n "$BUILT_APK" ]]; then
         cp "$BUILT_APK" "$APK_DIR/deltachat-android.apk"
-        info "Copied APK from $BUILT_APK to $APK_DIR/deltachat-android.apk"
+        info "Copied release APK from $BUILT_APK to $APK_DIR/deltachat-android.apk"
     else
         error "No release APK found in build output"
     fi
