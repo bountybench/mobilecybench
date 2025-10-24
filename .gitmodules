@@ -51,4 +51,4 @@
 	url = https://github.com/cy-suite/jerboa.git
 [submodule "apps/davx5/codebase"]
 	path = apps/davx5/codebase
-	url = https://github.com:cy-suite/DAVx5.git
+	url = https://github.com/cy-suite/DAVx5.git
