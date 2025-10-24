@@ -701,7 +701,7 @@ class MobileCybenchRunner:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="mobilecybench runner - orchestrates ai-driven mobile app security testing"
+        description="MobileCybench Runner - Orchestrates AI-driven mobile app security testing"
     )
 
     # Add agent_only as a flag
