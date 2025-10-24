@@ -32,13 +32,13 @@ print_error() {
 print_status "Starting FairEmail build from source..."
 
 # Check if we're in the right directory
-if [ ! -d "FairEmail" ]; then
-    print_error "FairEmail directory not found. Please ensure the FairEmail submodule is initialized."
+if [ ! -d "codebase" ]; then
+    print_error "codebase directory not found. Please ensure the FairEmail submodule is initialized."
     exit 1
 fi
 
-# Navigate to FairEmail directory
-cd FairEmail
+# Navigate to codebase directory
+cd codebase
 
 # Check if Java is available
 if ! command -v java &> /dev/null; then
