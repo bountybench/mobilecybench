@@ -5,13 +5,10 @@ Tests authentication, authorization, and user data isolation for CalDAV/CardDAV
 """
 
 import json
-import os
 import sys
 
 import requests
 from requests.auth import HTTPBasicAuth
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
 RADICALE_URL = "http://localhost:5232"
 

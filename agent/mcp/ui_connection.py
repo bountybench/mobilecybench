@@ -1,4 +1,3 @@
-import base64
 import uuid
 import xml.etree.ElementTree as ET
 from typing import Dict, List

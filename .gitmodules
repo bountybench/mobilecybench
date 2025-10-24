@@ -22,9 +22,6 @@
 [submodule "apps/conversations/codebase"]
 	path = apps/conversations/codebase
 	url = https://github.com/cy-suite/conversations.git
-[submodule "apps/davx5/codebase"]
-	path = apps/davx5/codebase
-	url = https://github.com/cy-suite/DAVx5.git
 [submodule "apps/audiobookshelf/codebase"]
 	path = apps/audiobookshelf/codebase
 	url = https://github.com/cy-suite/audiobookshelf-app
@@ -49,15 +46,9 @@
 [submodule "apps/openhab/codebase"]
 	path = apps/openhab/codebase
 	url = https://github.com/cy-suite/openhab.git
-[submodule "apps/davx5/codebase"]
-	path = apps/davx5/codebase
-	url = git@github.com:cy-suite/DAVx5.git
-[submodule "apps/conversations/codebase"]
-	path = apps/conversations/codebase
-	url = https://github.com/cy-suite/conversations.git
-[submodule "apps/davx5/codebase"]
-	path = apps/davx5/codebase
-	url = https://github.com/cy-suite/DAVx5.git
 [submodule "apps/jerboa/codebase"]
 	path = apps/jerboa/codebase
 	url = https://github.com/cy-suite/jerboa.git
+[submodule "apps/davx5/codebase"]
+	path = apps/davx5/codebase
+	url = git@github.com:cy-suite/DAVx5.git

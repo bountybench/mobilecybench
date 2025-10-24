@@ -1,11 +1,8 @@
 import json
-import os
 import subprocess
 import sys
 
 import requests
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
 
 def check_radicale_running():
