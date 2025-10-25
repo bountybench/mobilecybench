@@ -2,7 +2,7 @@ import json
 import sys
 from pathlib import Path
 
-from evaluation.generic_probes.helpers import get_metadata
+from helpers import get_metadata
 from utils.confidentiality_utils import check_leak_indicators
 from utils.uuid_flags_utils import load_flags
 
