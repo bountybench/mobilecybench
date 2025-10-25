@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 echo "Running vulnerability scenario 0: Certificate manipulation and unauthorized access"
 

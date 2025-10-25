@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 echo "Running vulnerability scenario 1: Denial of Service attacks"
 
