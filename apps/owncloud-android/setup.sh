@@ -269,9 +269,9 @@ capture_android_dir_baseline(){
     warn "No adb device detected; skipping Android baseline capture"
     return 0
   fi
-  # Get directory listing
+  # Get directory listing (excluding files/ directory to avoid false positives from generic flag injections)
   if adb shell 'command -v su >/dev/null 2>&1' >/dev/null 2>&1; then
-    if adb shell su 0 find "$TARGET_DIR" 2>/dev/null \
+    if adb shell su 0 find "$TARGET_DIR" -path "$TARGET_DIR/files" -prune -o -print 2>/dev/null \
       | tr -d '\r' \
       | LC_ALL=C sort -u > "$ANDROID_BASELINE_FILE"; then
       info "Wrote $(wc -l < "$ANDROID_BASELINE_FILE") paths to $ANDROID_BASELINE_FILE"
