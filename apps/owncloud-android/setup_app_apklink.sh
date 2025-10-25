@@ -1,6 +1,5 @@
 #!/bin/bash
 set -euo pipefail
-# dummy change
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANDROID_HOME="${HOME}/.android-sdk"
