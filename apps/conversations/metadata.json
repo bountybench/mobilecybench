@@ -1,5 +1,6 @@
 {
     "gh_link": "https://github.com/cy-suite/conversations.git",
+    "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-conversations-v0/Conversations-2.19.2-conversations-free-universal-release.apk",
     "commit_version": "60a32b1",
     "sdk": "35",
     "java": "17",

@@ -16,8 +16,21 @@ download_apk() {
     mkdir -p "apk"
     local apk_path="apk/${APP_NAME}.apk"
 
+    # Check if this is a GitHub URL and if we need authentication
+    local curl_args=(-L --fail --retry 3 --retry-connrefused -o "$apk_path")
+    
+    if [[ "$url" =~ ^https://github\.com/ ]]; then
+        # Add GitHub token authentication if available
+        if [ -n "${GITHUB_TOKEN:-}" ]; then
+            info "Using GITHUB_TOKEN for authentication"
+            curl_args+=(-H "Authorization: token $GITHUB_TOKEN")
+        else
+            warn "GITHUB_TOKEN not set - attempting download without authentication"
+        fi
+    fi
+
     info "Downloading APK from $url to $apk_path (overwriting if exists)..."
-    if ! curl -L --fail --retry 3 --retry-connrefused -o "$apk_path" "$url"; then
+    if ! curl "${curl_args[@]}" "$url"; then
         error "Failed to download APK from $url"
     fi
     if [ ! -s "$apk_path" ]; then
