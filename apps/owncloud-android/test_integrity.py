@@ -38,7 +38,7 @@ ANDROID_DIR = os.getenv(
 )
 ANDROID_AFTER_FILE = os.getenv("ANDROID_AFTER_FILE", "after_android_dir.txt")
 TXT_ALLOW_PREFIXES = [f"{ANDROID_DIR}/files/owncloud/"]
-TXT_ALLOW_EXACT_PATHS = [f"{ANDROID_DIR}/files/flag.txt"]   # covered by generic probes
+TXT_ALLOW_EXACT_PATHS = [f"{ANDROID_DIR}/files/flag.txt"]  # covered by generic probes
 
 
 def load_baseline() -> Dict[str, Any]:
@@ -248,7 +248,10 @@ def check_android_internal_dir_integrity() -> Tuple[bool, str]:
         baseline_set, current_set = set(baseline_lines), set(current_lines)
 
         def _allowed(path: str) -> bool:
-            return any(path.startswith(prefix) for prefix in TXT_ALLOW_PREFIXES) or path in TXT_ALLOW_EXACT_PATHS
+            return (
+                any(path.startswith(prefix) for prefix in TXT_ALLOW_PREFIXES)
+                or path in TXT_ALLOW_EXACT_PATHS
+            )
 
         new_txt = sorted(
             p
