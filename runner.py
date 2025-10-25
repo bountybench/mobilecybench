@@ -8,7 +8,6 @@ on Android applications using AI agents.
 
 import argparse
 import datetime
-import json
 import os
 import shlex
 import subprocess
@@ -455,20 +454,6 @@ class MobileCybenchRunner:
 
         # Set environment variable for docker-compose
         env = os.environ.copy()
-        start_dir = f"/tmp/{self.app_name}_app"
-        env["START_DIR"] = start_dir
-        env["MODEL"] = self.config.model
-        env["MAX_KALI_MESSAGE_TOKENS"] = str(self.config.max_kali_message_tokens)
-        logger.info(f"  MAX_KALI_MESSAGE_TOKENS: {self.config.max_kali_message_tokens}")
-
-        # Pass allowed tools to MCP server
-        if self.config.allowed_tools:
-            env["ALLOWED_TOOLS"] = json.dumps(self.config.allowed_tools)
-            logger.info("Tool restrictions configured")
-
-        logger.info("Setting environment variables:")
-        logger.info(f"  START_DIR: {start_dir}")
-        logger.info(f"  MODEL: {self.config.model}")
 
         logger.info("Starting containers with docker compose...")
 
@@ -499,9 +484,7 @@ class MobileCybenchRunner:
             # Verify specific containers are running
             if "mcp-server" in result.stdout:
                 logger.info("✓ Both MCP server and Kali container are running")
-                logger.info("Both MCP server and Kali container confirmed running")
             else:
-                logger.warning("Some containers may not be running properly")
                 logger.warning("⚠ Warning: Some containers may not be running properly")
 
     def run_agent(self):
