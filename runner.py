@@ -22,16 +22,15 @@ from agent.mcp.direct_tool_executor import MCPToolExecutor
 from models.config import RunnerConfig
 from utils.command_executor import CommandExecutor
 from utils.emulator_manager import EmulatorManager
-from utils.logger import logger, logger_manager
+from utils.logger import log_banner, logger, logger_manager
 from utils.utils import get_app_metadata
 
 load_dotenv()
 project_root = Path(__file__).parent
 
 EMULATOR_BOOT_TIMEOUT_SECONDS = 300
+BUILD_COMMAND_TIMEOUT = 600  # 10 minutes for building APK from source
 DUMMY_LOG_FILENAME = "dummy_log.txt"
-
-
 
 
 class MobileCybenchRunner:
@@ -45,12 +44,10 @@ class MobileCybenchRunner:
         self.cmd = CommandExecutor()
         self.emulator = None
 
-        logger.info("=" * 80)
-        logger.info("MobileCybench Runner Started")
+        log_banner("MobileCybench Runner Started", width=80)
         logger.info(f"App: {app_name}")
         logger.info(f"Configuration: {config.model_dump_json(indent=2)}")
         logger.info(f"Timestamp: {datetime.datetime.now()}")
-        logger.info("=" * 80)
 
     def _exit_with_error(self, message: str):
         """Log error and exit"""
@@ -148,28 +145,28 @@ class MobileCybenchRunner:
     def setup_app(self):
         """APK Handling, App Backend Setup, and App Installation"""
         if self.config.build_type == "skip-apk":
-            logger.info("=" * 60)
-            logger.info("SKIPPING APK HANDLING STEP")
-            logger.info("=" * 60)
+            log_banner("SKIPPING APK HANDLING STEP")
         elif self.config.build_type == "download-apk":
-            logger.info("=" * 60)
-            logger.info("FETCHING APK USING APKLINK")
-            logger.info("=" * 60)
+            log_banner("FETCHING APK USING APKLINK")
             try:
-                self.cmd.run(
-                    "bash ./setup_app_apklink.sh", cwd=self.app_dir, live_output=True
+                self.cmd.run_with_progress(
+                    "bash ./setup_app_apklink.sh",
+                    timeout=BUILD_COMMAND_TIMEOUT,
+                    message="Downloading APK",
+                    cwd=self.app_dir,
                 )
             except subprocess.CalledProcessError as e:
                 self._exit_with_error(
                     f"Failed to setup app APK with setup_app_apklink.sh: {e}"
                 )
         else:  # source
-            logger.info("=" * 60)
-            logger.info("BUILDING APK FROM SOURCE")
-            logger.info("=" * 60)
+            log_banner("BUILDING APK FROM SOURCE")
             try:
-                self.cmd.run(
-                    "bash ./setup_app_source.sh", cwd=self.app_dir, live_output=True
+                self.cmd.run_with_progress(
+                    "bash ./setup_app_source.sh",
+                    timeout=BUILD_COMMAND_TIMEOUT,
+                    message="Building APK from source",
+                    cwd=self.app_dir,
                 )
             except subprocess.CalledProcessError as e:
                 self._exit_with_error(
@@ -188,11 +185,7 @@ class MobileCybenchRunner:
         logger.info("Emulator status verified")
 
         # Setup app (setup backend, install apk, etc.)
-        logger.info("=" * 60)
-        logger.info(
-            "SETTING UP THE BACKEND(RUNTIME SERVERS, DATABASES, SEEDS, etc.) AND INSTALLING APK"
-        )
-        logger.info("=" * 60)
+        log_banner("SETTING UP THE BACKEND(RUNTIME SERVERS, DATABASES, SEEDS, etc.) AND INSTALLING APK")
         try:
             self.cmd.run("bash ./setup.sh", cwd=self.app_dir, live_output=True)
         except subprocess.CalledProcessError as e:
@@ -202,17 +195,13 @@ class MobileCybenchRunner:
 
     def setup_agent(self):
         """Configure agent environment and start services"""
-        logger.info("=" * 60)
-        logger.info("SETTING UP AGENT ENVIRONMENT")
-        logger.info("=" * 60)
-        logger.info("Setting up agent environment...")
+        log_banner("SETTING UP AGENT ENVIRONMENT")
 
         if not self.config.dry_run:
             self._setup_env_file()
         self._create_docker_network()
 
         # Setup agent kali environment
-        logger.info("Setting up agent Kali environment...")
         agent_env = AgentEnvironment(
             app_dir=self.app_dir,
             docker_networks=["shared_net"],
@@ -226,7 +215,6 @@ class MobileCybenchRunner:
         self._start_containers()
 
         logger.info("Agent environment setup completed")
-        logger.info("✓ Agent environment setup completed")
 
     def _setup_env_file(self):
         """Load environment file for OpenAI API key (already validated)"""
@@ -279,13 +267,9 @@ class MobileCybenchRunner:
 
     def _start_containers(self):
         """Start MCP server and Kali container"""
-        logger.info("Starting containers...")
         logger.info("Starting MCP server and Kali container...")
 
-        # Set environment variable for docker-compose
         env = os.environ.copy()
-
-        logger.info("Starting containers with docker compose...")
 
         try:
             self.cmd.run("docker compose up -d --wait", cwd=self.agent_dir, env=env)
@@ -294,8 +278,6 @@ class MobileCybenchRunner:
                 f"Docker-compose failed: {e.stderr if hasattr(e, 'stderr') else e}"
             )
             self._exit_with_error("Failed to start containers")
-
-        logger.info("Checking container status...")
 
         # Validate MCP server functionality
         self._validate_mcp_server()
@@ -307,9 +289,7 @@ class MobileCybenchRunner:
             result = None
 
         if result:
-            logger.info("Container Status:")
-            logger.info(result.stdout)
-            logger.info(f"Container status:\n{result.stdout}")
+            logger.debug(f"Container status:\n{result.stdout}")
 
             # Verify specific containers are running
             if "mcp-server" in result.stdout:
@@ -319,19 +299,13 @@ class MobileCybenchRunner:
 
     def run_agent(self):
         """Run the custom agent - custom_agent.py"""
-        logger.info("=" * 60)
-        logger.info("RUNNING CUSTOM AGENT")
-        logger.info("=" * 60)
-        logger.info("Starting custom agent execution...")
+        log_banner("RUNNING CUSTOM AGENT")
 
         try:
             # Import the CustomAgent class
             from agent.custom_agent import CustomAgent
 
-            # Create agent instance with dry_run mode for infrastructure testing
-            # Set dry_run=False for actual AI execution
-            logger.info("Initializing custom agent...")
-            logger.info("Creating CustomAgent instance")
+            logger.info("Initializing CustomAgent...")
 
             agent = CustomAgent(
                 model=self.config.model,
@@ -350,19 +324,10 @@ class MobileCybenchRunner:
                 system_prompt=self.config.custom_system_prompt,
             )
 
-            logger.info("Running agent...")
-            logger.info("Executing agent.run()")
-
             # This can take a while for actual LLM calls
             result = agent.run()
 
-            # Log and display results
-            logger.info("Agent execution completed")
-            logger.info(f"Agent result: {result}")
-
-            logger.info("=" * 60)
-            logger.info("AGENT EXECUTION RESULTS")
-            logger.info("=" * 60)
+            log_banner("AGENT EXECUTION RESULTS")
             logger.info(f"Status: {result.get('status', 'Unknown')}")
             logger.info(f"Turns: {result.get('turns', 0)}")
             logger.info(f"Log file: {result.get('log_file', 'None')}")
@@ -371,13 +336,10 @@ class MobileCybenchRunner:
                 logger.info("Final Message:")
                 logger.info(f"  {result['final_message']}")
 
-            logger.info("=" * 60)
-
             return result
 
         except Exception as e:
-            logger.error(f"Error running custom agent: {e}")
-            logger.error(f"ERROR: Failed to run custom agent: {e}")
+            logger.error(f"Failed to run custom agent: {e}")
             return {
                 "status": f"error: {str(e)}",
                 "turns": 0,
@@ -386,9 +348,7 @@ class MobileCybenchRunner:
             }
 
     def run_probes_checks(self, log_file_path: Path):
-        logger.info("=" * 60)
-        logger.info("RUNNING PROBE CHECKS")
-        logger.info("=" * 60)
+        log_banner("RUNNING PROBE CHECKS")
 
         app_relative_path = f"apps/{self.app_name}"
         command = f"bash ./run_checks.sh {shlex.quote(app_relative_path)}"
@@ -429,9 +389,7 @@ class MobileCybenchRunner:
 
             except Exception as e:
                 logger.error(f"Error reading scores.json: {e}")
-                logger.error(f"Error reading scores.json: {e}")
         else:
-            logger.info("No scores.json file was created")
             logger.info("No scores.json file found")
 
         logger.info(f"Probe checks completed with exit code: {return_code}")
@@ -463,7 +421,6 @@ class MobileCybenchRunner:
         self.run_agent()
 
         agent_log_filename = logger_manager.get_agent_log_file_name()
-        print("!!! Agent log filename:", agent_log_filename)
         log_path = Path(agent_log_filename)
         logger.info(f"Agent log file path: {log_path}")
         self.run_probes_checks(log_file_path=log_path)
@@ -473,9 +430,7 @@ class MobileCybenchRunner:
             self.validate_input()
 
             if not self.agent_only:
-                logger.info("=" * 60)
-                logger.info("SETTING UP ANDROID EMULATOR")
-                logger.info("=" * 60)
+                log_banner("SETTING UP ANDROID EMULATOR")
                 sdk_version = (
                     self.metadata.get("sdk") if hasattr(self, "metadata") else None
                 )
@@ -494,9 +449,7 @@ class MobileCybenchRunner:
             else:
                 self._run_agent_pipeline()
 
-            logger.info("=" * 60)
-            logger.info(f"PIPELINE COMPLETED SUCCESSFULLY FOR <<{self.app_name}>>")
-            logger.info("=" * 60)
+            log_banner(f"PIPELINE COMPLETED SUCCESSFULLY FOR <<{self.app_name}>>")
             return 0
 
         except KeyboardInterrupt:
@@ -548,7 +501,6 @@ def main():
 
     config = RunnerConfig.from_file(config_path)
 
-    # Create and run the runner
     runner = MobileCybenchRunner(args.app_name, config, args.agent_only)
     return runner.run()
 
