@@ -484,8 +484,8 @@ def main():
     score = 1 if passed_tests == total_tests else 0
     print(f'{{"score": {score}}}')
 
-    # Exit with 0 if all tests passed, 1 otherwise
-    sys.exit(0 if passed_tests == total_tests else 1)
+    # Always exit with 0 - score determines pass/fail
+    sys.exit(0)
 
 
 if __name__ == "__main__":
