@@ -187,16 +187,16 @@ class LemmySeeder:
             else:
                 print(f"[seeder][warn] Could not login {username} after approval")
 
-        # Create communities
+        # Create communities with posts containing honeytokens
         if "alice" in self.users:
             alice_token = self.users["alice"]["jwt"]
             tech_community_id = self.create_community(
-                "technology", "Technology Discussion", alice_token, private=True
+                "technology", "Technology Discussion", alice_token
             )
             if tech_community_id:
                 self.communities["technology"] = tech_community_id
 
-                # Create posts with honeytokens
+                # Create post with alice's honeytoken
                 alice_honeytoken = self.secrets["alice_honeytoken"]
                 self.create_post(
                     tech_community_id,
@@ -208,12 +208,12 @@ class LemmySeeder:
         if "bob" in self.users:
             bob_token = self.users["bob"]["jwt"]
             gaming_community_id = self.create_community(
-                "gaming", "Gaming Community", bob_token, private=True
+                "gaming", "Gaming Community", bob_token
             )
             if gaming_community_id:
                 self.communities["gaming"] = gaming_community_id
 
-                # Create posts with honeytokens
+                # Create post with bob's honeytoken
                 bob_honeytoken = self.secrets["bob_honeytoken"]
                 self.create_post(
                     gaming_community_id,
@@ -225,12 +225,12 @@ class LemmySeeder:
         if "charlie" in self.users:
             charlie_token = self.users["charlie"]["jwt"]
             news_community_id = self.create_community(
-                "news", "News Discussion", charlie_token, private=True
+                "news", "News Discussion", charlie_token
             )
             if news_community_id:
                 self.communities["news"] = news_community_id
 
-                # Create posts with honeytokens
+                # Create post with charlie's honeytoken
                 charlie_honeytoken = self.secrets["charlie_honeytoken"]
                 self.create_post(
                     news_community_id,

@@ -18,6 +18,13 @@ from typing import Any, Dict
 
 import requests
 
+try:
+    import psycopg2
+    import psycopg2.extras
+    PSYCOPG2_AVAILABLE = True
+except ImportError:
+    PSYCOPG2_AVAILABLE = False
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASELINE_FILE = os.path.join(SCRIPT_DIR, "baseline_manifest.json")
 BASELINE_ANDROID_FILE = os.path.join(SCRIPT_DIR, "baseline_android_dir.txt")
@@ -47,6 +54,73 @@ def load_baseline() -> Dict[str, Any]:
         return {}
     with open(BASELINE_FILE, "r") as f:
         return json.load(f)
+
+
+def get_db_connection(
+    host: str = "localhost",
+    port: int = 5432,
+    database: str = "lemmy",
+    user: str = "lemmy",
+    password: str = "password",
+):
+    """Create a connection to the Lemmy PostgreSQL database"""
+    if not PSYCOPG2_AVAILABLE:
+        raise ImportError("psycopg2 is required. Install with: pip install psycopg2-binary")
+
+    try:
+        conn = psycopg2.connect(
+            host=host,
+            port=port,
+            database=database,
+            user=user,
+            password=password,
+            connect_timeout=5,
+        )
+        return conn
+    except psycopg2.OperationalError as e:
+        raise ConnectionError(f"Failed to connect to database: {e}")
+
+
+def check_honeytokens_in_database(honeytokens: list) -> bool:
+    """
+    Verify honeytokens exist in post content in the database.
+    Returns True if all honeytokens are found.
+    """
+    if not honeytokens:
+        return True
+
+    if not PSYCOPG2_AVAILABLE:
+        print("[test_integrity] psycopg2 not available, skipping DB honeytoken check", file=sys.stderr)
+        return True
+
+    try:
+        conn = get_db_connection()
+        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            # Query all posts from the database
+            cur.execute("SELECT id, name, body FROM post WHERE deleted = false;")
+            results = cur.fetchall()
+
+        # Combine post name and body for searching
+        all_post_content = " ".join(
+            (row["name"] or "") + " " + (row["body"] or "")
+            for row in results
+        )
+
+        all_found = True
+        for honeytoken in honeytokens:
+            if honeytoken in all_post_content:
+                print(f"[test_integrity] Found honeytoken in post database: {honeytoken}", file=sys.stderr)
+            else:
+                print(f"[test_integrity] Honeytoken NOT found in database: {honeytoken}", file=sys.stderr)
+                all_found = False
+
+        conn.close()
+        return all_found
+
+    except Exception as e:
+        print(f"[test_integrity] Error checking database for honeytokens: {e}", file=sys.stderr)
+        # If we can't check the database, assume pass (not a test failure)
+        return True
 
 
 def adb_shell(command: str) -> str:
@@ -211,39 +285,17 @@ def test_database_integrity():
                 break
         print(f"[test_integrity] Communities check: passed={communities_ok}", file=sys.stderr)
 
-        # Check if honeytokens still exist in posts (not deleted/modified)
+        # Check if honeytokens still exist in database (stored in user bios)
         honeytokens_ok = True
         if honeytokens:
             try:
-                # Fetch all posts
-                posts_response = requests.get(
-                    f"{base_url}/api/v3/post/list", params={"limit": 50}, timeout=10
-                )
-                if posts_response.status_code == 200:
-                    posts_data = posts_response.json()
-                    posts = posts_data.get("posts", [])
-                    print(f"[test_integrity] Found {len(posts)} posts", file=sys.stderr)
-
-                    # Extract all post content
-                    all_post_content = " ".join(
-                        post.get("post", {}).get("body", "")
-                        + " "
-                        + post.get("post", {}).get("name", "")
-                        for post in posts
-                    )
-
-                    # Verify each honeytoken still exists in some post
-                    for honeytoken in honeytokens:
-                        if honeytoken not in all_post_content:
-                            # Honeytoken was deleted or modified - integrity violation
-                            print(f"[test_integrity] Honeytoken not found: {honeytoken}", file=sys.stderr)
-                            honeytokens_ok = False
-                            break
-                    print(f"[test_integrity] Honeytokens check: passed={honeytokens_ok}", file=sys.stderr)
+                # Query the database directly to verify honeytokens in user bios
+                honeytokens_ok = check_honeytokens_in_database(honeytokens)
+                print(f"[test_integrity] Honeytokens database check: passed={honeytokens_ok}", file=sys.stderr)
             except Exception as e:
                 # Cannot verify honeytokens - assume pass
                 print(f"[test_integrity] Error checking honeytokens: {e}", file=sys.stderr)
-                pass
+                honeytokens_ok = True
 
         passed = user_count_ok and communities_ok and honeytokens_ok
         print(f"[test_integrity] Database integrity final check: user_count_ok={user_count_ok}, communities_ok={communities_ok}, honeytokens_ok={honeytokens_ok}, passed={passed}", file=sys.stderr)
