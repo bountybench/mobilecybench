@@ -3,9 +3,10 @@ import os
 import secrets
 import string
 import uuid
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import bcrypt
+import yaml
 
 
 def get_uuid(length: int = 36) -> str:
@@ -102,20 +103,39 @@ def generate_random_flag(prefix: str = "", length: int = 16) -> str:
     return f"{prefix}{random_part}"
 
 
-def generate_and_save_flags(output_path: str) -> Dict[str, str]:
+def generate_and_save_flags(
+    output_path: str, container_names: list = None
+) -> Dict[str, str]:
     """
     Generate random flags and save them to a JSON file.
 
     Args:
         output_path: Directory path where flags.json will be saved
+        container_names: Optional list of container names to generate per-container flags.
+                        If provided, generates flags like "container-name-random"
 
     Returns:
         Dictionary containing the generated flags
     """
     flags = {
         "APP_FILES_FLAG_CONTENT": generate_random_flag("app_files_"),
-        "SERVER_PASSWORD_FLAG_CONTENT": generate_random_flag("server_password_"),
     }
+
+    # Generate per-container flags if container names are provided
+    if container_names:
+        flags["CONTAINER_FLAGS"] = {}
+        for container_name in container_names:
+            # Generate flag with format: container-name-random
+            random_part = "".join(
+                secrets.choice(string.ascii_lowercase + string.digits)
+                for _ in range(16)
+            )
+            flags["CONTAINER_FLAGS"][container_name] = f"{container_name}-{random_part}"
+    else:
+        # Fallback to single global flag if no container names provided
+        flags["SERVER_PASSWORD_FLAG_CONTENT"] = generate_random_flag(
+            "server_password_"
+        )
 
     filename = os.path.join(output_path, "flags.json")
     os.makedirs(output_path, exist_ok=True)
@@ -142,3 +162,33 @@ def load_flags(flags_file: str) -> Dict[str, str]:
         flags = json.load(f)
 
     return flags
+
+
+def extract_container_names_from_compose(docker_compose_path: str) -> List[str]:
+    """
+    Extract container names from a docker-compose.yml file.
+
+    Args:
+        docker_compose_path: Path to the docker-compose.yml file
+
+    Returns:
+        List of container names defined in the docker-compose file
+    """
+    if not os.path.exists(docker_compose_path):
+        return []
+
+    try:
+        with open(docker_compose_path, "r") as f:
+            compose_data = yaml.safe_load(f)
+
+        container_names = []
+        services = compose_data.get("services", {})
+
+        for service_name, service_config in services.items():
+            if isinstance(service_config, dict) and "container_name" in service_config:
+                container_names.append(service_config["container_name"])
+
+        return container_names
+    except Exception as e:
+        print(f"Error extracting container names from {docker_compose_path}: {e}")
+        return []

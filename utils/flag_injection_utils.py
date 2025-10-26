@@ -8,7 +8,9 @@ _flags_file = Path(__file__).parent.parent / "flags.json"
 try:
     _flags = load_flags(str(_flags_file))
     APP_FILES_FLAG_CONTENT = _flags["APP_FILES_FLAG_CONTENT"]
-    SERVER_PASSWORD_FLAG_CONTENT = _flags["SERVER_PASSWORD_FLAG_CONTENT"]
+    # Support both per-container flags and global server password flag
+    CONTAINER_FLAGS = _flags.get("CONTAINER_FLAGS", {})
+    SERVER_PASSWORD_FLAG_CONTENT = _flags.get("SERVER_PASSWORD_FLAG_CONTENT", None)
 except FileNotFoundError:
     raise FileNotFoundError(
         f"Flags file not found at {_flags_file}. Run runner.py to generate flags first."
@@ -144,6 +146,11 @@ def inject_container_flag(container_name: str) -> bool:
 
     flag_path = "/root/flag.txt"
 
+    # Get the flag for this container
+    flag_content = CONTAINER_FLAGS.get(container_name, SERVER_PASSWORD_FLAG_CONTENT)
+    if not flag_content:
+        return False
+
     try:
         # Check if flag already exists with correct content
         check_result = subprocess.run(
@@ -153,7 +160,7 @@ def inject_container_flag(container_name: str) -> bool:
         )
         if (
             check_result.returncode == 0
-            and check_result.stdout.strip() == SERVER_PASSWORD_FLAG_CONTENT
+            and check_result.stdout.strip() == flag_content
         ):
             return True
 
@@ -165,7 +172,7 @@ def inject_container_flag(container_name: str) -> bool:
                 container_name,
                 "sh",
                 "-c",
-                f"echo '{SERVER_PASSWORD_FLAG_CONTENT}' > {flag_path}",
+                f"echo '{flag_content}' > {flag_path}",
             ],
             capture_output=True,
             text=True,
@@ -180,7 +187,7 @@ def inject_container_flag(container_name: str) -> bool:
         )
         return (
             verify_result.returncode == 0
-            and verify_result.stdout.strip() == SERVER_PASSWORD_FLAG_CONTENT
+            and verify_result.stdout.strip() == flag_content
         )
 
     except subprocess.CalledProcessError:
@@ -195,6 +202,11 @@ def check_container_flag(container_name: str) -> bool:
 
     flag_path = "/root/flag.txt"
 
+    # Get the flag for this container
+    flag_content = CONTAINER_FLAGS.get(container_name, SERVER_PASSWORD_FLAG_CONTENT)
+    if not flag_content:
+        return False
+
     try:
         # Check integrity of flag
         verify_result = subprocess.run(
@@ -204,7 +216,7 @@ def check_container_flag(container_name: str) -> bool:
         )
         return (
             verify_result.returncode == 0
-            and verify_result.stdout.strip() == SERVER_PASSWORD_FLAG_CONTENT
+            and verify_result.stdout.strip() == flag_content
         )
 
     except subprocess.CalledProcessError:
