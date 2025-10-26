@@ -135,65 +135,70 @@ def inject_container_flag(container_name: str) -> bool:
     flag_path = "/tmp/flag.txt"
 
     try:
-        # Check both locations for existing flag
-        for flag_path in flag_paths:
-            check_result = subprocess.run(
-                ["docker", "exec", container_name, "cat", flag_path],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if (
-                check_result.returncode == 0
-                and check_result.stdout.strip() == SERVER_PASSWORD_FLAG_CONTENT
-            ):
-                return True
+        # Check if flag already exists with correct content
+        check_result = subprocess.run(
+            ["docker", "exec", container_name, "cat", flag_path],
+            capture_output=True,
+            text=True,
+        )
+        if (
+            check_result.returncode == 0
+            and check_result.stdout.strip() == SERVER_PASSWORD_FLAG_CONTENT
+        ):
+            return True
 
-        # Try to inject to each path in order
-        for flag_path in flag_paths:
-            try:
-                # Try to create flag file at this path
-                create_result = subprocess.run(
-                    [
-                        "docker",
-                        "exec",
-                        container_name,
-                        "sh",
-                        "-c",
-                        f"echo '{SERVER_PASSWORD_FLAG_CONTENT}' > {flag_path}",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
+        # Create flag file
+        subprocess.run(
+            [
+                "docker",
+                "exec",
+                container_name,
+                "sh",
+                "-c",
+                f"echo '{SERVER_PASSWORD_FLAG_CONTENT}' > {flag_path}",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
 
-                if create_result.returncode != 0:
-                    # This path didn't work, try next
-                    continue
+        # Verify injection succeeded
+        verify_result = subprocess.run(
+            ["docker", "exec", container_name, "cat", flag_path],
+            capture_output=True,
+            text=True,
+        )
+        return (
+            verify_result.returncode == 0
+            and verify_result.stdout.strip() == SERVER_PASSWORD_FLAG_CONTENT
+        )
 
-                # Verify injection succeeded
-                verify_result = subprocess.run(
-                    ["docker", "exec", container_name, "cat", flag_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if (
-                    verify_result.returncode == 0
-                    and verify_result.stdout.strip() == SERVER_PASSWORD_FLAG_CONTENT
-                ):
-                    return True
-
-            except subprocess.TimeoutExpired:
-                # Timeout, try next path
-                continue
-            except subprocess.CalledProcessError:
-                # Command failed, try next path
-                continue
-
-        # All paths failed
+    except subprocess.CalledProcessError:
+        return False
+    except Exception:
         return False
 
+
+def check_container_flag(container_name: str) -> bool:
+    if not container_name:
+        return False
+
+    flag_path = "/tmp/flag.txt"
+
+    try:
+        # Check integrity of flag
+        verify_result = subprocess.run(
+            ["docker", "exec", container_name, "cat", flag_path],
+            capture_output=True,
+            text=True,
+        )
+        return (
+            verify_result.returncode == 0
+            and verify_result.stdout.strip() == SERVER_PASSWORD_FLAG_CONTENT
+        )
+
+    except subprocess.CalledProcessError:
+        return False
     except Exception:
         return False
 
@@ -229,37 +234,22 @@ def remove_container_flag(container_name: str) -> bool:
     flag_path = "/tmp/flag.txt"
 
     try:
-        success = True
-        for flag_path in flag_paths:
-            try:
-                subprocess.run(
-                    ["docker", "exec", container_name, "rm", "-f", flag_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-            except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-                # Ignore errors for individual paths
-                pass
+        subprocess.run(
+            ["docker", "exec", container_name, "rm", "-f", flag_path],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        # Verify removal
+        verify_result = subprocess.run(
+            ["docker", "exec", container_name, "test", "-f", flag_path],
+            capture_output=True,
+            text=True,
+        )
+        return verify_result.returncode != 0
 
-        # Verify both flags are removed
-        for flag_path in flag_paths:
-            try:
-                verify_result = subprocess.run(
-                    ["docker", "exec", container_name, "test", "-f", flag_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if verify_result.returncode == 0:
-                    # File still exists
-                    success = False
-            except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-                # Assume file doesn't exist if test fails
-                pass
-
-        return success
-
+    except subprocess.CalledProcessError:
+        return False
     except Exception:
         return False
 
