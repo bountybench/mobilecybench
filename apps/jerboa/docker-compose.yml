@@ -25,6 +25,11 @@ services:
     networks:
       - shared_net
       - private_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8536/api/v3/site"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   postgres:
     image: postgres:16-alpine
@@ -62,6 +67,11 @@ services:
       - pictrs_data:/mnt
     networks:
       - private_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6500/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   shared_net:
