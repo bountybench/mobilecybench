@@ -50,7 +50,10 @@ class CommandExecutor:
             raise
         except subprocess.CalledProcessError as e:
             logger.error(f"Command failed with exit code {e.returncode}: `{command}`")
-            logger.error(f"STDERR: {e.stderr.strip() if e.stderr else 'N/A'}")
+            if e.stdout:
+                logger.error(f"STDOUT:\n{e.stdout.strip()}")
+            if e.stderr:
+                logger.error(f"STDERR:\n{e.stderr.strip()}")
             raise
         except Exception as e:
             logger.error(
@@ -114,7 +117,7 @@ class CommandExecutor:
         env: Optional[Dict[str, str]],
         timeout: int,
     ) -> subprocess.CompletedProcess:
-        logger.info(f"{message}. . .")
+        logger.info(f"{message}...")
         start_time = time.time()
 
         try:
