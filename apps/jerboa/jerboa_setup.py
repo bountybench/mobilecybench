@@ -108,10 +108,10 @@ class LemmySeeder:
             return response.json().get("registration_applications", [])
         return []
 
-    def create_community(self, name: str, title: str, auth_token: str) -> Optional[int]:
+    def create_community(self, name: str, title: str, auth_token: str, private: bool = False) -> Optional[int]:
         """Create a community"""
         print(f"[seeder] Creating community: {name}")
-        payload = {"name": name, "title": title}
+        payload = {"name": name, "title": title, "private": private}
         headers = {"Authorization": f"Bearer {auth_token}"}
         response = requests.post(
             f"{self.base_url}/api/v3/community", json=payload, headers=headers
@@ -191,7 +191,7 @@ class LemmySeeder:
         if "alice" in self.users:
             alice_token = self.users["alice"]["jwt"]
             tech_community_id = self.create_community(
-                "technology", "Technology Discussion", alice_token
+                "technology", "Technology Discussion", alice_token, private=True
             )
             if tech_community_id:
                 self.communities["technology"] = tech_community_id
@@ -208,7 +208,7 @@ class LemmySeeder:
         if "bob" in self.users:
             bob_token = self.users["bob"]["jwt"]
             gaming_community_id = self.create_community(
-                "gaming", "Gaming Community", bob_token
+                "gaming", "Gaming Community", bob_token, private=True
             )
             if gaming_community_id:
                 self.communities["gaming"] = gaming_community_id
@@ -225,7 +225,7 @@ class LemmySeeder:
         if "charlie" in self.users:
             charlie_token = self.users["charlie"]["jwt"]
             news_community_id = self.create_community(
-                "news", "News Discussion", charlie_token
+                "news", "News Discussion", charlie_token, private=True
             )
             if news_community_id:
                 self.communities["news"] = news_community_id
