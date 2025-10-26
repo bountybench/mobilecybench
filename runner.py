@@ -26,6 +26,12 @@ BUILD_COMMAND_TIMEOUT = 600  # 10 minutes
 DUMMY_LOG_FILENAME = "dummy_log.txt"
 
 
+def log_banner(message: str, width: int = 60):
+    logger.info("=" * width)
+    logger.info(message.center(width))
+    logger.info("=" * width)
+
+
 class MobileCybenchRunner:
     def __init__(self, app_name: str, config: RunnerConfig, agent_only: bool = False):
         self.app_name = Path(app_name).name
@@ -191,6 +197,16 @@ class MobileCybenchRunner:
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to setup app: {e}")
 
+        logger.info("Injecting security flags...")
+        try:
+            self.cmd.run(
+                "bash ../../inject_flags.sh",
+                cwd=self.app_dir,
+                timeout=30,
+            )
+            logger.info("✓ Flags injected successfully")
+        except subprocess.CalledProcessError as e:
+            self._exit_with_error(f"Failed to inject security flags: {e}")
         logger.info("App setup completed")
 
     def setup_agent(self):
@@ -507,9 +523,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
-
-def log_banner(message: str, width: int = 60):
-    logger.info("=" * width)
-    logger.info(message.center(width))
-    logger.info("=" * width)
