@@ -158,10 +158,7 @@ def inject_container_flag(container_name: str) -> bool:
             capture_output=True,
             text=True,
         )
-        if (
-            check_result.returncode == 0
-            and check_result.stdout.strip() == flag_content
-        ):
+        if check_result.returncode == 0 and check_result.stdout.strip() == flag_content:
             return True
 
         # Create flag file
