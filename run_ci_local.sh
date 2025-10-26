@@ -435,9 +435,33 @@ run_test_check() {
         fi
         adb logcat -c || true
     fi
+    
+    # Get package_name from metadata.json (required field) and verify before setup
+    package_name=$(jq -r '.package_name' metadata.json)
+    echo -e "${INFO} Found package_name in metadata.json: $package_name"
+    
+    # Check if package is NOT installed before setup
+    if adb shell pm list packages | grep -q "^package:$package_name$"; then
+        echo -e "${ERROR} Package $package_name is already installed before setup.sh"
+        echo -e "${ERROR} This test expects the package to be uninstalled initially"
+        exit 1
+    else
+        echo -e "${SUCCESS} Package $package_name is not installed (as expected before setup)"
+    fi
 
     echo -e "${INFO} Running setup..."
     { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+
+    # Verify the specific package is installed after setup
+    if adb shell pm list packages | grep -q "^package:$package_name$"; then
+        echo -e "${SUCCESS} Package $package_name is installed after setup.sh"
+    else
+        echo -e "${ERROR} Package $package_name is not installed after setup.sh"
+        echo -e "${ERROR} This indicates setup.sh failed to install the expected package"
+        echo -e "${INFO} Cleaning up..."
+        ./cleanup.sh
+        exit 1
+    fi
     
     # Wait for app-specific containers to be ready (after setup.sh starts them)
     check_app_containers_ready
@@ -607,12 +631,32 @@ EOF
         
         echo -e "${INFO} Simple APK build and install test - no vulnerability scenarios"
         
-        # Check packages before setup
-        packages_before=$(adb shell pm list packages | wc -l)
-        echo -e "${INFO} Packages before setup: $packages_before"
+        # Get package_name from metadata.json (required field) and verify before setup
+        package_name=$(jq -r '.package_name' metadata.json)
+        echo -e "${INFO} Found package_name in metadata.json: $package_name"
+        
+        # Check if package is NOT installed before setup
+        if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo -e "${ERROR} Package $package_name is already installed before setup.sh"
+            echo -e "${ERROR} This test expects the package to be uninstalled initially"
+            exit 1
+        else
+            echo -e "${SUCCESS} Package $package_name is not installed (as expected before setup)"
+        fi
         
         echo -e "${INFO} Running setup..."
         { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+
+         # Verify the specific package is installed after setup
+        if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo -e "${SUCCESS} Package $package_name is installed after setup.sh"
+        else
+            echo -e "${ERROR} Package $package_name is not installed after setup.sh"
+            echo -e "${ERROR} This indicates setup.sh failed to install the expected package"
+            echo -e "${INFO} Cleaning up..."
+            ./cleanup.sh
+            exit 1
+        fi
         
         # Wait for app-specific containers to be ready (after setup.sh starts them)
         check_app_containers_ready
@@ -621,22 +665,6 @@ EOF
         { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
         verify_shared_net_connectivity
         adb logcat -c
-        
-        # Check packages after setup
-        packages_after=$(adb shell pm list packages | wc -l)
-        echo -e "${INFO} Packages after setup: $packages_after"
-        
-        if [ "$packages_after" -gt "$packages_before" ]; then
-            echo -e "${SUCCESS} Package count increased ($packages_before -> $packages_after) - app installation verified"
-        elif [ "$packages_after" -eq "$packages_before" ]; then
-            echo -e "${WARNING} Package count unchanged - setup may not have installed new packages"
-            echo -e "${WARNING} This could be expected if app was already installed or uses system components"
-        else
-            echo -e "${ERROR} Package count decreased ($packages_before -> $packages_after) - unexpected behavior"
-            echo -e "${INFO} Cleaning up..."
-            ./cleanup.sh
-            exit 1
-        fi
         
         echo -e "${INFO} Cleaning up..."
         ./cleanup.sh
