@@ -118,7 +118,6 @@ class EmulatorManager:
         except Exception as e:
             raise RuntimeError(f"Failed to verify AVD existence: {e}")
 
-
     def start_in_background(self):
         """
         Start the Android emulator in background (non-blocking).
