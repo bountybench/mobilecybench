@@ -95,6 +95,14 @@ build_joplin() {
     local temp_out=$(mktemp)
     local temp_err=$(mktemp)
     
+    # Pre-download Gradle wrapper to avoid timeout issues in CI
+    echo "Pre-downloading Gradle wrapper..."
+    ./gradlew --version > /dev/null 2>&1 || {
+        echo "Gradle wrapper download failed, trying with increased timeout..."
+        export GRADLE_OPTS="-Dorg.gradle.internal.http.connectionTimeout=300000 -Dorg.gradle.internal.http.socketTimeout=300000"
+        ./gradlew --version > /dev/null 2>&1
+    }
+    
     # Run gradle build with output suppressed
     sed -i -- 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
     if ./gradlew assembleRelease --no-daemon --max-workers=1 > "$temp_out" 2> "$temp_err"; then
