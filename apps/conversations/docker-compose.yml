@@ -1,6 +1,4 @@
 volumes:
-  prosody_config:
-    driver: local
   prosody_logs:
     driver: local
 

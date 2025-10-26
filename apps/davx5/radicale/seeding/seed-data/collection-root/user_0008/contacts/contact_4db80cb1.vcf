@@ -1,0 +1,12 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:33f98988-d68c-490d-8cc7-681497a2
+EMAIL;TYPE=INTERNET:bob.clark@example.com
+FN:Bob Clark
+N:Clark;Bob;;;
+NOTE:Auto-generated contact for testing
+ORG:Example Corp
+REV:20251019T125654Z
+TEL;TYPE=CELL:+1-555-2934
+TITLE:Designer
+END:VCARD

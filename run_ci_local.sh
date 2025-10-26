@@ -26,14 +26,29 @@ print_header() {
     echo -e "${color}========== ${message} ==========${RESET}"
 }
 
-check_server_ready() {
+check_app_containers_ready() {
     # Timeout per container in seconds
     TIMEOUT=${TIMEOUT:-180}
     # Interval between checks in seconds
     INTERVAL=${INTERVAL:-1}
 
-    # Get all running containers
-    containers=$(docker ps --format '{{.Names}}')
+    # Get app-specific containers from metadata.json
+    containers=""
+    if [ -f "metadata.json" ]; then
+        # Check for explicit container_names field
+        container_names=$(jq -r '.container_names[]? // empty' metadata.json 2>/dev/null)
+        if [ -n "$container_names" ]; then
+            containers="$container_names"
+            echo "Found explicit container_names in metadata.json: $containers"
+        fi
+    fi
+
+    if [ -z "$containers" ]; then
+        echo "No app-specific containers found in metadata.json - skipping container readiness check"
+        return 0
+    fi
+
+    echo "Checking readiness for app-specific containers: $containers"
 
     for container in $containers; do
         echo "Checking readiness for $container..."
@@ -104,7 +119,7 @@ check_server_ready() {
         fi
     done
 
-    echo "All containers are ready!"
+    echo "App-specific containers are ready!"
 }
 
 verify_shared_net_connectivity() {
@@ -287,6 +302,7 @@ checkout_commit() {
 SKIP_BUILD=false
 SKIP_DOWNLOAD=false
 SKIP_APK=false
+RUN_UNIT_TESTS=false
 
 show_usage() {
     echo "Usage: $0 <dir> [options]"
@@ -298,13 +314,15 @@ show_usage() {
     echo "  --skip-build      Skip build mode (source setup)"
     echo "  --skip-download   Skip download mode (apklink setup)"
     echo "  --skip-apk        Skip APK operations. Install from existing APK."
+    echo "  --unit-tests      Run unit tests (opt-in)"
     echo "  -h, --help        Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0 apps/joplin                    # Run both build and download modes"
+    echo "  $0 apps/joplin                   # Run both build and download modes"
     echo "  $0 apps/joplin --skip-build      # Run only download mode"
     echo "  $0 apps/joplin --skip-download   # Run only build mode"
     echo "  $0 apps/joplin --skip-apk        # Skip APK operations. Install from existing APK."
+    echo "  $0 apps/joplin --unit-tests      # Run unit tests"
     echo ""
     echo "By default, both build mode (source) and download mode (apklink) are run"
     echo "when both setup scripts are available."
@@ -325,6 +343,10 @@ while [[ $# -gt 0 ]]; do
             SKIP_APK=true
             SKIP_BUILD=true
             SKIP_DOWNLOAD=true
+            shift
+            ;;
+        --unit-tests)
+            RUN_UNIT_TESTS=true
             shift
             ;;
         -h|--help)
@@ -416,6 +438,12 @@ run_test_check() {
 
     echo -e "${INFO} Running setup..."
     { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+    
+    # Wait for app-specific containers to be ready (after setup.sh starts them)
+    check_app_containers_ready
+    
+    echo -e "${INFO} Injecting flags..."
+    { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
     verify_shared_net_connectivity
     adb logcat -c
 
@@ -458,6 +486,16 @@ run_test_check() {
             exit 1
         fi
         echo -e "${SUCCESS} All scores are 1."
+
+        # Check that all generic scores are 1
+        if ! jq -e '[.. | select(type == "number")] | all(. == 1)' generic_scores.json > /dev/null; then
+            echo -e "${ERROR} generic_scores.json does not contain all 1s."
+            cat generic_scores.json
+            echo -e "${INFO} Cleaning up..."
+            ./cleanup.sh
+            exit 1
+        fi
+        echo -e "${SUCCESS} All generic scores are 1."
     fi
 
     echo -e "${INFO} Cleaning up..."
@@ -544,6 +582,7 @@ EOF
         
         # DoS testing is OPTIONAL - only run if app has server/container components
         # Check if app_server field is not an empty string
+        cd "$ROOT_DIR/$DIR"
         if [ -f "metadata.json" ]; then
             app_server=$(jq -r '.app_server // empty' metadata.json)
             if [ -n "$app_server" ]; then
@@ -558,6 +597,7 @@ EOF
             echo -e "${INFO} No metadata.json found - skipping DoS testing (not applicable)"
             DOS_TESTED=false
         fi
+        cd "$ROOT_DIR"
     else
         # Run simplified test
         print_header "$CYAN" "RUNNING SIMPLIFIED APK INSTALLATION TEST"
@@ -573,6 +613,12 @@ EOF
         
         echo -e "${INFO} Running setup..."
         { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+        
+        # Wait for app-specific containers to be ready (after setup.sh starts them)
+        check_app_containers_ready
+        
+        echo -e "${INFO} Injecting flags..."
+        { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
         verify_shared_net_connectivity
         adb logcat -c
         
@@ -620,6 +666,20 @@ fi
 # Install mobilecybench utils
 pip install -e .
 
+# Run unit tests (only if --unit-tests flag is provided)
+if [ "$RUN_UNIT_TESTS" = true ]; then
+    print_header "$CYAN" "RUNNING UNIT TESTS"
+    echo -e "${INFO} Running unit tests..."
+    if pytest tests/ -v --tb=short; then
+        echo -e "${SUCCESS} Unit tests passed"
+    else
+        echo -e "${ERROR} Unit tests failed"
+        exit 1
+    fi
+else
+    echo -e "${INFO} Skipping unit tests (use --unit-tests flag to run them)"
+fi
+
 # Check if any setup mode has test_X.py to determine overall strategy
 cd "$DIR"
 HAS_PROBES=false
@@ -645,9 +705,6 @@ if [ -f "start_emulator.sh" ]; then
 
     wait_for_device_boot 300
     echo "Emulator booted successfully."
-    
-    # Wait for servers to be ready
-    check_server_ready
 else
     echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
 fi

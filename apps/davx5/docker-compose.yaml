@@ -1,0 +1,19 @@
+services:
+  radicale:
+    container_name: radicale
+    image: tomsquest/docker-radicale:3.5.5.0
+    ports:
+      - "5232:5232"
+    volumes:
+      - ./radicale/data:/data
+      - ./radicale/config:/config
+      - ./radicale/users:/users
+      - ./radicale/seeding:/seeding
+    environment:
+      - RADICALE_CONFIG=/config/config
+    networks:
+      - shared_net
+
+networks:
+  shared_net:
+    external: true
