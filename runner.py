@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""
-Mobile Cybench Runner Script
-
-This script orchestrates the complete pipeline for running cybersecurity tests
-on Android applications using AI agents.
-"""
 
 import argparse
 import datetime
@@ -13,7 +7,6 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, Optional
 
 from dotenv import load_dotenv
 
@@ -22,14 +15,14 @@ from agent.mcp.direct_tool_executor import MCPToolExecutor
 from models.config import RunnerConfig
 from utils.command_executor import CommandExecutor
 from utils.emulator_manager import EmulatorManager
-from utils.logger import log_banner, logger, logger_manager
+from utils.logger import logger, logger_manager
 from utils.utils import get_app_metadata
 
 load_dotenv()
 project_root = Path(__file__).parent
 
-EMULATOR_BOOT_TIMEOUT_SECONDS = 300
-BUILD_COMMAND_TIMEOUT = 600  # 10 minutes for building APK from source
+EMULATOR_BOOT_TIMEOUT_SECONDS = 300  # 5 minutes
+BUILD_COMMAND_TIMEOUT = 600  # 10 minutes
 DUMMY_LOG_FILENAME = "dummy_log.txt"
 
 
@@ -185,9 +178,16 @@ class MobileCybenchRunner:
         logger.info("Emulator status verified")
 
         # Setup app (setup backend, install apk, etc.)
-        log_banner("SETTING UP THE BACKEND(RUNTIME SERVERS, DATABASES, SEEDS, etc.) AND INSTALLING APK")
+        log_banner(
+            "SETTING UP THE BACKEND(RUNTIME SERVERS, DATABASES, SEEDS, etc.) AND INSTALLING APK"
+        )
         try:
-            self.cmd.run("bash ./setup.sh", cwd=self.app_dir, live_output=True)
+            self.cmd.run_with_progress(
+                "bash ./setup.sh",
+                timeout=BUILD_COMMAND_TIMEOUT,
+                message="Setting up backend and installing APK",
+                cwd=self.app_dir,
+            )
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to setup app: {e}")
 
@@ -507,3 +507,9 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def log_banner(message: str, width: int = 60):
+    logger.info("=" * width)
+    logger.info(message.center(width))
+    logger.info("=" * width)

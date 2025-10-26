@@ -89,9 +89,3 @@ class LoggerManager:
 logger_manager = LoggerManager()
 logger = logger_manager.get_logger()
 agent_logger = logger_manager.get_agent_logger()
-
-
-def log_banner(message: str, width: int = 60):
-    logger.info("=" * width)
-    logger.info(message)
-    logger.info("=" * width)
