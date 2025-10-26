@@ -104,7 +104,9 @@ class EmulatorManager:
 
             if not available_avds:
                 logger.error("No AVDs found on this system")
-                raise RuntimeError("No AVDs found. Please create an AVD first using Android SDK tools.")
+                raise RuntimeError(
+                    "No AVDs found. Please create an AVD first using Android SDK tools."
+                )
 
             if emulator_name not in available_avds:
                 logger.error(f"AVD '{emulator_name}' not found")
