@@ -98,7 +98,7 @@ class EmulatorManager:
                 [str(emulator_bin), "-list-avds"],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
             )
             available_avds = result.stdout.strip().split("\n")
             available_avds = [avd.strip() for avd in available_avds if avd.strip()]
