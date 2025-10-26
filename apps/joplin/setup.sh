@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e
 
-pip install uiautomator2
-pip install psycopg2-binary
-pip install bcrypt
-
-echo "Generating uuids..."
-python generate_uuid.py
+# Install Python dependencies globally 
+echo "Installing required Python packages..."
+pip3 install psycopg2-binary bcrypt requests 2>/dev/null || {
+    echo "installing packages failed..."
+    exit 1
+}
 
 echo "Running Docker compose..."
 docker compose up --build -d

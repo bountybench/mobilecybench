@@ -7,5 +7,6 @@
     "emulator_server": "http://10.0.2.2:22300",
     "app_server": "http://joplin-app:22300",
     "username": "usera@localhost",
-    "password": "userAPW123"
+    "password": "userAPW123",
+    "container_names": ["joplin-app", "joplin-postgres"]
 }

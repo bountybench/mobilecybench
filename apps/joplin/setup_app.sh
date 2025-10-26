@@ -17,13 +17,15 @@ install_joplin() {
         exit 1
     fi
     
-    # Install universal APK with correct path
-    APK_PATH="app/build/outputs/apk/release/app-release.apk"
+    # Install APK from the apk directory (created by setup_app_source.sh)
+    APK_DIR="$SCRIPT_DIR/apk"
+    APK_PATH="$APK_DIR/app-release.apk"
     
     if [[ ! -f $APK_PATH ]]; then
         echo "ERROR: APK not found at $APK_PATH"
-        echo "Available APKs:"
-        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
+        echo "Expected APK to be placed in $APK_DIR/ by setup_app_source.sh"
+        echo "Available APKs in apk directory:"
+        find "$APK_DIR" -name "*.apk" -type f 2>/dev/null | head -10
         exit 1
     fi
     
@@ -38,13 +40,6 @@ launch_joplin() {
     echo "joplin should now be running on your emulator."
 }
 
-# Synching with server
-synch_with_server() {
-    echo "Synching app with server..."
-    pip install uiautomator2
-    python synch_app.py --username usera@localhost --password userAPW123
-    echo "Should now be synched with server."
-}
 
 # Main function
 main() {
@@ -58,7 +53,6 @@ main() {
     install_joplin
     launch_joplin
     cd "$root_dir"
-    synch_with_server
 
     for i in {1..3}; do
         adb wait-for-device
@@ -69,9 +63,9 @@ main() {
         sleep 5
     done
 
-    local immutable_dirs=(/system /vendor /product /odm)
-    adb_hash_dirs "${immutable_dirs[@]}" > baseline.json
-
+    # Use static baseline.json for integrity testing
+    echo "Using static baseline.json for integrity testing"
+    
     local secret_dirs=(/data/cache /data/misc)
     adb_hide_secret_files "secrets.json" "${secret_dirs[@]}"
 

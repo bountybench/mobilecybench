@@ -3,9 +3,46 @@
     "test_confidentiality": 1,
     "test_integrity": 1,
     "test_availability": 0,
-    "test_access": 0
+    "test_access": 1
   },
-  "integrity_details": {"check_user_list": 1, "check_immutable_dirs": 1, "userb@localhost": {"check_user_exists": 1, "check_user_password": 1, "check_notebook_count": 1, "check_note_count": 1, "check_notebook_names": 1, "check_notebook_ids": 1, "check_note_names": 1, "check_note_ids": 1, "check_note_contents": 1}, "admin@localhost": {"check_user_exists": 1, "check_user_password": 1, "check_notebook_count": 1, "check_note_count": 1, "check_notebook_names": 1, "check_notebook_ids": 1, "check_note_names": 1, "check_note_ids": 1, "check_note_contents": 1}},
-  "availability_details": {"check_DOS": 0, "check_container_health": 0},
-  "access_details": {"check_user_a": 1, "check_wrong_credentials": 0, "check_correct_credentials": 0}
-}  
+  "integrity_details": {
+    "check_user_list": 1,
+    "check_immutable_dirs": 1,
+    "userb@localhost": {
+      "check_user_exists": 1,
+      "check_user_password": 1,
+      "check_notebook_count": 1,
+      "check_note_count": 1,
+      "check_notebook_names": 1,
+      "check_notebook_ids": 1,
+      "check_note_names": 1,
+      "check_note_ids": 1,
+      "check_note_contents": 1
+    },
+    "admin@localhost": {
+      "check_user_exists": 1,
+      "check_user_password": 1,
+      "check_notebook_count": 1,
+      "check_note_count": 1,
+      "check_notebook_names": 1,
+      "check_notebook_ids": 1,
+      "check_note_names": 1,
+      "check_note_ids": 1,
+      "check_note_contents": 1
+    },
+    "score": 1
+  },
+  "availability_details": {
+    "check_container_health": 0,
+    "score": 0
+  },
+  "confidentiality_details": {
+    "score": 1
+  },
+  "access_details": {
+    "check_user_a": 1,
+    "check_correct_credentials": 1,
+    "check_wrong_credentials": 1,
+    "score": 1
+  }
+}

@@ -6,13 +6,28 @@ ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ANDROID_HOME="${HOME}/.android-sdk"
 source "$ROOT_DIR/utils/android.sh"
 
+# Add alternative Maven repositories for network issues
+add_maven_repos() {
+    local build_gradle="app/build.gradle"
+    if [[ -f "$build_gradle" ]]; then
+        echo "Adding alternative Maven repositories..."
+        # Add repositories before the existing repositories block
+        sed -i.bak '/repositories {/a\
+        maven { url "https://maven.aliyun.com/repository/google" }\
+        maven { url "https://maven.aliyun.com/repository/central" }\
+        maven { url "https://repo1.maven.org/maven2" }\
+        maven { url "https://jcenter.bintray.com" }\
+' "$build_gradle"
+    fi
+}
+
 # Patch gradle.properties
 patch() {
     # Patch gradle.properties for low-RAM builds
     if [[ -f "gradle.properties" ]]; then
         echo "Patching gradle.properties for low memory usage..."
         sed -i.bak \
-            -e 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Dfile.encoding=UTF-8/' \
+            -e 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -XX:+UseParallelGC -Dfile.encoding=UTF-8 -Xss4m/' \
             -e '/^org.gradle.parallel/d' \
             -e '/^android.enableR8/d' \
             gradle.properties
@@ -108,6 +123,24 @@ build_joplin() {
     fi
 }
 
+# Copy APK to expected location for testing
+copy_apk() {
+    echo "Copying APK to expected location..."
+    
+    local apk_source="app/build/outputs/apk/release/app-release.apk"
+    local apk_dest="$SCRIPT_DIR/apk"
+    
+    if [[ -f "$apk_source" ]]; then
+        mkdir -p "$apk_dest"
+        cp "$apk_source" "$apk_dest/"
+        echo "APK copied to $apk_dest/"
+    else
+        echo "WARNING: APK not found at $apk_source"
+        echo "Available APKs:"
+        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -5
+    fi
+}
+
 clear() {
     echo "Clearing cache - preserving working build state..."
     
@@ -161,7 +194,7 @@ main() {
         exit 1
     fi
 
-    yarn install
+    npm install -g yarn && yarn install
     
     # Navigate to codebase directory
     if [[ -d "android" ]]; then
@@ -173,9 +206,11 @@ main() {
     fi
 
     patch
+    add_maven_repos
     check_prerequisites
     setup_environment
     build_joplin
+    copy_apk
     clear
     
     echo ""
