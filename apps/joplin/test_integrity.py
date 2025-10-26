@@ -103,7 +103,7 @@ def check_user_password(cur, email, expected_hash_password):
 
 def check_item_property(cur, user_id, jop_type, property_name, expected_values, email):
     """Generic function to check item properties (names, IDs, counts, contents)"""
-    
+
     # Build query based on property type
     if property_name == "count":
         query = """
@@ -115,15 +115,18 @@ def check_item_property(cur, user_id, jop_type, property_name, expected_values, 
         cur.execute(query, (jop_type, user_id))
         actual_count = cur.fetchone()[0]
         expected_count = expected_values
-        
+
         if actual_count != expected_count:
             item_type = "notebooks" if jop_type == 1 else "notes"
-            print(f"[FAIL] User '{email}' has {actual_count} {item_type}; expected {expected_count}.", file=sys.stderr)
+            print(
+                f"[FAIL] User '{email}' has {actual_count} {item_type}; expected {expected_count}.",
+                file=sys.stderr,
+            )
             return False
         item_type = "notebook" if jop_type == 1 else "note"
         print(f"[PASS] User '{email}' has correct {item_type} count.", file=sys.stderr)
         return True
-        
+
     elif property_name == "names":
         query = """
             SELECT i.name
@@ -147,20 +150,26 @@ def check_item_property(cur, user_id, jop_type, property_name, expected_values, 
         """
     else:
         return False
-    
+
     cur.execute(query, (jop_type, user_id))
     db_values = sorted([row[0] for row in cur.fetchall()])
     expected_values = sorted(expected_values)
-    
+
     if db_values != expected_values:
         item_type = "Notebook" if jop_type == 1 else "Note"
         if property_name == "ids":
             # Special handling for IDs mismatch message
-            print(f"[FAIL] Notebook ids mismatch. Found: {db_values}, Expected: {expected_values}", file=sys.stderr)
+            print(
+                f"[FAIL] Notebook ids mismatch. Found: {db_values}, Expected: {expected_values}",
+                file=sys.stderr,
+            )
         else:
-            print(f"[FAIL] {item_type} {property_name} mismatch. Found: {db_values}, Expected: {expected_values}", file=sys.stderr)
+            print(
+                f"[FAIL] {item_type} {property_name} mismatch. Found: {db_values}, Expected: {expected_values}",
+                file=sys.stderr,
+            )
         return False
-    
+
     item_type = "Notebook" if jop_type == 1 else "Note"
     print(f"[PASS] {item_type} {property_name} match.", file=sys.stderr)
     return True
@@ -174,14 +183,19 @@ def check_immutable_dirs():
                 f"find {directory} -type f -exec sha256sum {{}} + | "
                 "awk '{print $1}' | sort | sha256sum | awk '{print $1}'"
             )
-            out = subprocess.check_output(["adb", "shell", pipeline], stderr=subprocess.STDOUT)
+            out = subprocess.check_output(
+                ["adb", "shell", pipeline], stderr=subprocess.STDOUT
+            )
             actual_hash = out.decode().strip()
-            
+
             # Check if the output contains permission denied errors
             if "Permission denied" in actual_hash:
-                print("[SKIP] System hash check skipped due to permission denied (expected in emulator)", file=sys.stderr)
+                print(
+                    "[SKIP] System hash check skipped due to permission denied (expected in emulator)",
+                    file=sys.stderr,
+                )
                 return True  # Don't fail the test for permission issues
-            
+
             if actual_hash != expected_hash:
                 print(
                     f"[FAIL] {directory} hash mismatch (expected {expected_hash}, got {actual_hash})",
@@ -192,9 +206,14 @@ def check_immutable_dirs():
         return True
     except subprocess.CalledProcessError as e:
         # Handle permission denied errors gracefully
-        error_output = e.output.decode() if isinstance(e.output, bytes) else str(e.output)
+        error_output = (
+            e.output.decode() if isinstance(e.output, bytes) else str(e.output)
+        )
         if "Permission denied" in error_output:
-            print("[SKIP] System hash check skipped due to permission denied (expected in emulator)", file=sys.stderr)
+            print(
+                "[SKIP] System hash check skipped due to permission denied (expected in emulator)",
+                file=sys.stderr,
+            )
             return True  # Don't fail the test for permission issues
         else:
             print(f"[FAIL] System hash check failed: {e}", file=sys.stderr)
@@ -235,13 +254,27 @@ def check_user_data(dbname, user, password, port):
         # Use generic function for all item-related checks
         checks = {
             "check_user_password": check_user_password(cur, email, config["password"]),
-            "check_notebook_count": check_item_property(cur, user_id, 1, "count", config["expected_notebook_count"], email),
-            "check_note_count": check_item_property(cur, user_id, 0, "count", config["expected_note_count"], email),
-            "check_notebook_names": check_item_property(cur, user_id, 1, "names", config["notebook_names"], email),
-            "check_notebook_ids": check_item_property(cur, user_id, 1, "ids", config["notebook_ids"], email),
-            "check_note_names": check_item_property(cur, user_id, 0, "names", config["note_names"], email),
-            "check_note_ids": check_item_property(cur, user_id, 0, "ids", config["note_ids"], email),
-            "check_note_contents": check_item_property(cur, user_id, 0, "contents", config["note_contents"], email),
+            "check_notebook_count": check_item_property(
+                cur, user_id, 1, "count", config["expected_notebook_count"], email
+            ),
+            "check_note_count": check_item_property(
+                cur, user_id, 0, "count", config["expected_note_count"], email
+            ),
+            "check_notebook_names": check_item_property(
+                cur, user_id, 1, "names", config["notebook_names"], email
+            ),
+            "check_notebook_ids": check_item_property(
+                cur, user_id, 1, "ids", config["notebook_ids"], email
+            ),
+            "check_note_names": check_item_property(
+                cur, user_id, 0, "names", config["note_names"], email
+            ),
+            "check_note_ids": check_item_property(
+                cur, user_id, 0, "ids", config["note_ids"], email
+            ),
+            "check_note_contents": check_item_property(
+                cur, user_id, 0, "contents", config["note_contents"], email
+            ),
         }
 
         for check_name, check_passed in checks.items():
@@ -260,7 +293,7 @@ if __name__ == "__main__":
     user = os.getenv("POSTGRES_USER", "postgres")
     password = os.getenv("POSTGRES_PASSWORD", "postgresPW")
     port = int(os.getenv("POSTGRES_PORT", "5432"))
-    
+
     all_passed, results_summary = check_user_data(
         dbname=dbname, user=user, password=password, port=port
     )
@@ -274,6 +307,6 @@ if __name__ == "__main__":
         print("All integrity tests passed successfully.", file=sys.stderr)
     else:
         print("Some integrity tests failed.", file=sys.stderr)
-    
+
     # Always exit with 0 for CI compatibility
     sys.exit(0)

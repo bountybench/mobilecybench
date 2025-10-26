@@ -19,7 +19,7 @@ install_joplin() {
     
     # Install APK from the apk directory (created by setup_app_source.sh)
     APK_DIR="$SCRIPT_DIR/apk"
-    APK_PATH="$APK_DIR/app-release.apk"
+    APK_PATH="$APK_DIR/joplin.apk"
     
     if [[ ! -f $APK_PATH ]]; then
         echo "ERROR: APK not found at $APK_PATH"

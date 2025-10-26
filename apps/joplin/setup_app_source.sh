@@ -129,11 +129,12 @@ copy_apk() {
     
     local apk_source="app/build/outputs/apk/release/app-release.apk"
     local apk_dest="$SCRIPT_DIR/apk"
+    local apk_new_name="joplin.apk"
     
     if [[ -f "$apk_source" ]]; then
         mkdir -p "$apk_dest"
-        cp "$apk_source" "$apk_dest/"
-        echo "APK copied to $apk_dest/"
+        cp "$apk_source" "$apk_dest/$apk_new_name"
+        echo "APK copied to $apk_dest/$apk_new_name"
     else
         echo "WARNING: APK not found at $apk_source"
         echo "Available APKs:"

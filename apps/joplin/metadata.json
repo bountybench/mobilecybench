@@ -4,6 +4,7 @@
     "download_link": "https://github.com/laurent22/joplin-android/releases/download/android-v2.11.22/joplin-v2.11.22.apk",
     "sdk": "34",
     "java": "17",
+    "package_name": "net.cozic.joplin",
     "emulator_server": "http://10.0.2.2:22300",
     "app_server": "http://joplin-app:22300",
     "username": "usera@localhost",
