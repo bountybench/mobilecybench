@@ -19,7 +19,9 @@ Verify the MCP server is responding:
 docker exec mcp-server curl http://localhost:4040/api/tunnels
 ```
 
-This should return JSON with tunnel information including the public ngrok URL. If it doesn't, look through the following instructions to ensure your setup is correct. 
+**Note**: This command will only work after the agent containers are running and ngrok is properly configured (see [Agent Environment Setup](#agent-environment-setup) below). If you haven't set up the environment yet, you'll get connection errors - this is expected.
+
+This should return JSON with tunnel information including the public ngrok URL. If it doesn't work after ngrok setup, look through the following instructions to ensure your setup is correct. 
 
 ## Overview
 
@@ -50,7 +52,7 @@ agent/
 │   ├── ui_connection.py        # UI connection handling
 │   ├── docker_setup.py         # Docker setup utilities
 │   ├── Dockerfile              # MCP container build instructions
-│   ├── ngrok.yml               # Ngrok tunnel configuration
+│   ├── ngrok.yml               # Ngrok tunnel configuration (created from template)
 │   ├── ngrok.yml.template      # Template for ngrok configuration
 │   ├── example_commands.txt    # Example commands for testing
 │   └── screenshots/            # Screenshot storage directory
@@ -111,7 +113,7 @@ Before setting up the agent environment, ensure you have:
 
 ### 1. Ngrok Configuration
 
-**Important**: The `ngrok.yml` file is not tracked by git (for security reasons) and must be created from the template.
+**Important**: The `ngrok.yml` file is not tracked by git (for security reasons) and must be created from the template. **This step is required before the Quick Health Check will work.**
 
 1. **Get your ngrok token:**
    - Go to [https://ngrok.com](https://ngrok.com) and sign up
@@ -290,6 +292,8 @@ Timing data is automatically logged and saved for analysis and CI integration.
 - Verify Docker containers are running: `docker ps`
 - Check MCP server logs: `docker logs mcp-server`
 - Ensure ngrok tunnel is active: `docker exec mcp-server curl http://localhost:4040/api/tunnels`
+- **If container not found**: Run `docker-compose up --build -d` from the agent directory
+- **If ngrok command fails**: Make sure you've completed the [Ngrok Configuration](#1-ngrok-configuration) step and created `ngrok.yml` from the template
 
 **Agent Performance Issues:**
 - Check timing logs for slow LLM calls
