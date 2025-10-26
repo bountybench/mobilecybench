@@ -91,16 +91,17 @@ def generate_random_flag(prefix: str = "", length: int = 16) -> str:
     Generate a random flag value.
 
     Args:
-        prefix: Optional prefix for the flag (e.g., "app_files_", "server_password_")
+        prefix: Optional prefix for the flag (e.g., "app_files", "server_password")
+                A hyphen will be automatically added between prefix and random part
         length: Length of the random part (default 16 characters)
 
     Returns:
-        A randomly generated flag string
+        A randomly generated flag string in format: prefix-randompart
     """
     random_part = "".join(
         secrets.choice(string.ascii_lowercase + string.digits) for _ in range(length)
     )
-    return f"{prefix}{random_part}"
+    return f"{prefix}-{random_part}"
 
 
 def generate_and_save_flags(
@@ -118,7 +119,7 @@ def generate_and_save_flags(
         Dictionary containing the generated flags
     """
     flags = {
-        "APP_FILES_FLAG_CONTENT": generate_random_flag("app_files_"),
+        "APP_FILES_FLAG_CONTENT": generate_random_flag("app_files"),
     }
 
     # Generate per-container flags if container names are provided
@@ -126,14 +127,12 @@ def generate_and_save_flags(
         flags["CONTAINER_FLAGS"] = {}
         for container_name in container_names:
             # Generate flag with format: container-name-random
-            random_part = "".join(
-                secrets.choice(string.ascii_lowercase + string.digits)
-                for _ in range(16)
+            flags["CONTAINER_FLAGS"][container_name] = generate_random_flag(
+                container_name
             )
-            flags["CONTAINER_FLAGS"][container_name] = f"{container_name}-{random_part}"
     else:
         # Fallback to single global flag if no container names provided
-        flags["SERVER_PASSWORD_FLAG_CONTENT"] = generate_random_flag("server_password_")
+        flags["SERVER_PASSWORD_FLAG_CONTENT"] = generate_random_flag("server_password")
 
     filename = os.path.join(output_path, "flags.json")
     os.makedirs(output_path, exist_ok=True)
@@ -182,7 +181,7 @@ def extract_container_names_from_compose(docker_compose_path: str) -> List[str]:
         container_names = []
         services = compose_data.get("services", {})
 
-        for service_name, service_config in services.items():
+        for _, service_config in services.items():
             if isinstance(service_config, dict) and "container_name" in service_config:
                 container_names.append(service_config["container_name"])
 
