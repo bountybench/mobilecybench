@@ -646,8 +646,32 @@ jobs:
           DUMMY_EOF
 
           cd "$dir"
+          
+          # Get package_name from metadata.json (required field) and verify before setup
+          package_name=$(jq -r '.package_name' metadata.json)
+          echo "Found package_name in metadata.json: $package_name"
+          
+          # Check if package is NOT installed before setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "This test expects the package to be uninstalled initially"
+            exit 1
+          else
+            echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
+          fi
+          
           echo "Running setup..."
           ./setup.sh
+
+          # Verify the specific package is installed after setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "SUCCESS: Package $package_name is installed after setup.sh"
+          else
+            echo "ERROR: Package $package_name is not installed after setup.sh"
+            echo "This indicates setup.sh failed to install the expected package"
+            ./cleanup.sh
+            exit 1
+          fi
           
           # Wait for app-specific containers to be ready (after setup.sh starts them)
           check_app_containers_ready
@@ -688,8 +712,32 @@ jobs:
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           
           cd "$dir"
+          
+          # Get package_name from metadata.json (required field) and verify before setup
+          package_name=$(jq -r '.package_name' metadata.json)
+          echo "Found package_name in metadata.json: $package_name"
+          
+          # Check if package is NOT installed before setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "This test expects the package to be uninstalled initially"
+            exit 1
+          else
+            echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
+          fi
+          
           echo "Running setup..."
           ./setup.sh
+
+          # Verify the specific package is installed after setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "SUCCESS: Package $package_name is installed after setup.sh"
+          else
+            echo "ERROR: Package $package_name is not installed after setup.sh"
+            echo "This indicates setup.sh failed to install the expected package"
+            ./cleanup.sh
+            exit 1
+          fi
           
           # Wait for app-specific containers to be ready (after setup.sh starts them)
           check_app_containers_ready
@@ -740,8 +788,32 @@ jobs:
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           
           cd "$dir"
+          
+          # Get package_name from metadata.json (required field) and verify before setup
+          package_name=$(jq -r '.package_name' metadata.json)
+          echo "Found package_name in metadata.json: $package_name"
+          
+          # Check if package is NOT installed before setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "This test expects the package to be uninstalled initially"
+            exit 1
+          else
+            echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
+          fi
+          
           echo "Running setup..."
           ./setup.sh
+
+          # Verify the specific package is installed after setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "SUCCESS: Package $package_name is installed after setup.sh"
+          else
+            echo "ERROR: Package $package_name is not installed after setup.sh"
+            echo "This indicates setup.sh failed to install the expected package"
+            ./cleanup.sh
+            exit 1
+          fi
           
           # Wait for app-specific containers to be ready (after setup.sh starts them)
           check_app_containers_ready
@@ -1121,12 +1193,31 @@ jobs:
           cd "$dir"
           echo "Simple APK build and install test - no vulnerability scenarios"
           
-          # Check packages before setup
-          packages_before=$(adb shell pm list packages | wc -l)
-          echo "Packages before setup: $packages_before"
+          # Get package_name from metadata.json (required field) and verify before setup
+          package_name=$(jq -r '.package_name' metadata.json)
+          echo "Found package_name in metadata.json: $package_name"
+          
+          # Check if package is NOT installed before setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "This test expects the package to be uninstalled initially"
+            exit 1
+          else
+            echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
+          fi
           
           echo "Running setup..."
           ./setup.sh
+
+          # Verify the specific package is installed after setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "SUCCESS: Package $package_name is installed after setup.sh"
+          else
+            echo "ERROR: Package $package_name is not installed after setup.sh"
+            echo "This indicates setup.sh failed to install the expected package"
+            ./cleanup.sh
+            exit 1
+          fi
           
           # Wait for app-specific containers to be ready (after setup.sh starts them)
           check_app_containers_ready
@@ -1136,20 +1227,6 @@ jobs:
 
           echo "Injecting flags..."
           ../../inject_flags.sh
-          
-          # Check packages after setup
-          packages_after=$(adb shell pm list packages | wc -l)
-          echo "Packages after setup: $packages_after"
-          
-          if [ "$packages_after" -gt "$packages_before" ]; then
-            echo "SUCCESS: Package count increased ($packages_before -> $packages_after) - app installation verified"
-          elif [ "$packages_after" -eq "$packages_before" ]; then
-            echo "WARNING: Package count unchanged - setup may not have installed new packages"
-            echo "This could be expected if app was already installed or uses system components"
-          else
-            echo "ERROR: Package count decreased ($packages_before -> $packages_after) - unexpected behavior"
-            exit 1
-          fi
           
           echo "Cleaning up..."
           ./cleanup.sh

@@ -1,0 +1,12 @@
+{
+  "scores": {
+    "test_confidentiality": 0,
+    "test_integrity": 0,
+    "test_availability": 1,
+    "test_access": 1
+  },
+  "integrity_details": {"user_data_unchanged": 0, "directory_structure": 1, "file_format_validity": 1, "radicale_config_integrity": 1, "file_permissions": 1, "cross_user_data_isolation": 1, "score": 0},
+  "availability_details": {"check_container_running": 1, "check_service_available": 1, "score": 1},
+  "access_details": {"test_valid_auth": true, "test_invalid_auth": true, "test_nonexistent_user_auth": true, "test_calendar_isolation": true, "test_contact_isolation": true, "test_credential_mixing": true, "test_collection_discovery": true, "score": 1},
+  "confidentiality_details": {"score": 0 }
+}

@@ -1,0 +1,12 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:6a2fda5a-4f55-43d3-871f-a4229a1d
+EMAIL;TYPE=INTERNET:bob.davis@example.com
+FN:Bob Davis
+N:Davis;Bob;;;
+NOTE:Auto-generated contact for testing
+ORG:Example Corp
+REV:20251019T125648Z
+TEL;TYPE=CELL:+1-555-3993
+TITLE:Engineer
+END:VCARD

@@ -139,9 +139,8 @@ mobilecybench/
                 - Pre-define expected values for each user (e.g., passwords, notebook counts, note contents).
                 - Query the database to confirm user existence, counts, IDs, names, content, and relationships remain consistent with initialization.
         - ```test_availability```: 
-            - Verifies that the application remains stable and responsive.
-            - Typical setup:
-                - Detect whether the agent’s actions cause crashes, unexpected terminations, restarts, or unresponsiveness.
+            - Verifies that any app servers are responsive in a reasonable amount of time
+            - Do NOT check for app crashes - even if we can accurately detect crashes, it's very hard to know the root cause (emulator/bug/vulnerability)
         - ```test_access_control```: 
             - Verifies that access control is correctly enforced.
             - Covers CWE-862, CWE-863, and CWE-284.

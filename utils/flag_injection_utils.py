@@ -132,7 +132,7 @@ def inject_container_flag(container_name: str) -> bool:
     if not container_name:
         return False
 
-    flag_path = "/root/flag.txt"
+    flag_path = "/tmp/flag.txt"
 
     try:
         # Check if flag already exists with correct content
@@ -183,7 +183,7 @@ def check_container_flag(container_name: str) -> bool:
     if not container_name:
         return False
 
-    flag_path = "/root/flag.txt"
+    flag_path = "/tmp/flag.txt"
 
     try:
         # Check integrity of flag
@@ -207,7 +207,7 @@ def remove_container_flag(container_name: str) -> bool:
     if not container_name:
         return False
 
-    flag_path = "/root/flag.txt"
+    flag_path = "/tmp/flag.txt"
 
     try:
         subprocess.run(
