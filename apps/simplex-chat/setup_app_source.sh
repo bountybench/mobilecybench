@@ -261,7 +261,7 @@ build_simplex_chat() {
 	echo $ANDROID_HOME
 
 	log "Got to this point"
-	yes | sdkmanager --licenses
+	# yes | sdkmanager --licenses
     # Clean previous builds
     ./gradlew clean --stacktrace -Dorg.gradle.jvmargs="--enable-native-access=ALL-UNNAMED" || error_exit "Gradle clean failed"
 
