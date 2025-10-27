@@ -5,8 +5,28 @@
     "test_confidentiality": 0,
     "test_integrity": 1
   },
-  "access_details": {"score": 1},
-  "availability_details": {"score": 1},
-  "confidentiality_details": {"score": 0, "success": 0},
-  "integrity_details": {"score": 1}
+  "access_details": {
+    "score": 1,
+    "test_valid_client_connection": 1,
+    "test_invalid_certificate": 1,
+    "test_unauthorized_connection_rejected": 1
+  },
+  "availability_details": {
+    "score": 1,
+    "test_openvpn_server_health": 1,
+    "test_android_app_running": 1
+  },
+  "confidentiality_details": {
+    "score": 0,
+    "success": 0
+  },
+  "integrity_details": {
+    "score": 1,
+    "test_certificate_integrity": 1,
+    "test_configuration_consistency": 1,
+    "test_client_config_integrity": 1,
+    "test_pki_consistency": 1,
+    "test_file_permissions": 1,
+    "test_system_state_consistency": 1
+  }
 }

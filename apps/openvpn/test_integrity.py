@@ -397,21 +397,10 @@ def test_file_permissions():
 
 
 def test_system_state_consistency():
-    """Test that system state is consistent and stable"""
+    """Test that configuration files haven't been corrupted"""
     print("Testing system state consistency...")
 
     try:
-        # Check that OpenVPN process is running
-        result = subprocess.run(
-            ["docker", "exec", "openvpn-server", "pgrep", "openvpn"],
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode != 0:
-            print("✗ OpenVPN process not running")
-            return False
-
         # Check that configuration files haven't been corrupted - try multiple config locations
         config_locations = [
             "/etc/openvpn/server.conf",
@@ -441,18 +430,14 @@ def test_system_state_consistency():
                 break
 
         if not config_test_passed:
-            print(
-                "⚠ OpenVPN configuration test failed - may be expected in CI environment"
-            )
-            # Don't fail the test since config structure may be different in CI
-            print("✓ System state consistency verified (with warnings)")
-            return True
+            print("✗ OpenVPN configuration validation failed")
+            return False
 
         print("✓ System state is consistent")
         return True
 
     except Exception as e:
-        print(f"System state test error: {e}")
+        print(f"✗ System state test error: {e}")
         return False
 
 
