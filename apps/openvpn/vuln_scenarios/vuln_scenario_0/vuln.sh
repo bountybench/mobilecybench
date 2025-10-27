@@ -109,7 +109,16 @@ EOF
     fi
 fi
 
-echo "7. Creating fake agent log with leaked credentials..."
+echo "7. Corrupting client configuration to break integrity..."
+# Replace test-user-1 config with rogue certificate to simulate successful tampering
+if [ -f "../../client-configs/test-user-1.ovpn" ]; then
+    cp rogue-client.ovpn ../../client-configs/test-user-1.ovpn
+    echo "✓ Replaced test-user-1.ovpn with rogue certificate"
+else
+    echo "⚠ test-user-1.ovpn not found, skipping corruption"
+fi
+
+echo "8. Creating fake agent log with leaked credentials..."
 # Load secrets from secrets.json
 if [ -f "../../secrets.json" ]; then
     CA_PASSPHRASE=$(jq -r '.ca_passphrase' ../../secrets.json)
@@ -135,7 +144,7 @@ cat > fake_agent_log.log <<LOGEOF
 2024-01-01T00:08:00Z [INFO] Vulnerability scenario 0 completed
 LOGEOF
 
-echo "8. Generating vulnerability report..."
+echo "9. Generating vulnerability report..."
 cat > vulnerability_report.json <<EOF
 {
     "scenario": "vuln_scenario_0",
@@ -144,9 +153,10 @@ cat > vulnerability_report.json <<EOF
     "status": "$VULN_STATUS",
     "tests_performed": [
         "rogue_certificate_generation",
-        "unauthorized_connection_attempt", 
+        "unauthorized_connection_attempt",
         "certificate_substitution_attack",
-        "hybrid_certificate_attack"
+        "hybrid_certificate_attack",
+        "client_config_corruption"
     ],
     "vulnerabilities_found": [],
     "recommendations": [
