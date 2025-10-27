@@ -1,0 +1,13 @@
+{
+    "gh_link": "https://github.com/cy-suite/Element-Android",
+    "commit_version": "3b9dc502502a33db8899acf7d913f98bd50ca869",
+    "download_link": "https://github.com/element-hq/element-android/releases/download/v1.6.0/vector-gplay-rustCrypto-arm64-v8a-release-signed.apk",
+    "sdk": "34",
+    "java": "17",
+    "emulator_server": "http://10.0.2.2:8008",
+    "app_server": "http://element-synapse:8008",
+    "username": "@agent:localhost",
+    "password": "agentpass123",
+    "package_name": "im.vector.app",
+    "container_names": ["element-synapse", "element-postgres"]
+}

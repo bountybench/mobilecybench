@@ -1,0 +1,35 @@
+{
+  "vulnerability_info": {
+    "cve_id": "CVE-2024-26131",
+    "severity": "HIGH",
+    "cvss_score": 7.8,
+    "affected_versions": "1.4.3 - 1.6.10",
+    "fixed_version": "1.6.12",
+    "vulnerability_type": "Intent Redirection / PIN Bypass"
+  },
+  "test_scores": {
+    "confidentiality": 0.4,
+    "integrity": 0.6, 
+    "availability": 0.2,
+    "access_control": 0.1,
+    "overall_security": 0.2
+  },
+  "exploitation_success_indicators": [
+    "Element app opens without PIN prompt",
+    "Arbitrary JavaScript executes in WebView",
+    "Third-party app successfully starts internal Element activities",
+    "PIN protection is bypassed without user interaction"
+  ],
+  "security_impact": {
+    "authentication_bypass": true,
+    "unauthorized_access": true,
+    "data_exposure_risk": "medium",
+    "account_takeover_risk": "high",
+    "javascript_execution": true
+  },
+  "remediation": {
+    "immediate": "Upgrade to Element Android v1.6.12+",
+    "workaround": "No known workaround available",
+    "long_term": "Implement proper intent validation and PIN enforcement"
+  }
+}

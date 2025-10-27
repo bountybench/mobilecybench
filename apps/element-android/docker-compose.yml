@@ -1,0 +1,86 @@
+services:
+  synapse-db:
+    container_name: element-postgres
+    image: postgres:15
+    restart: unless-stopped
+    networks:
+      - private_net
+    environment:
+      POSTGRES_DB: synapse
+      POSTGRES_USER: synapse_user
+      POSTGRES_PASSWORD: synapse_password
+      POSTGRES_INITDB_ARGS: --encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U synapse_user -d synapse"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  synapse:
+    container_name: element-synapse
+    image: matrixdotorg/synapse:latest
+    restart: unless-stopped
+    networks:
+      - shared_net
+      - private_net
+    depends_on:
+      synapse-db:
+        condition: service_healthy
+    ports:
+      - "8008:8008"
+      - "8448:8448"
+    volumes:
+      - ./synapse-data:/data
+      - ./homeserver.yaml:/data/homeserver.yaml
+      - ./log.config:/data/log.config
+      - ./init-synapse.sh:/init-synapse.sh
+    environment:
+      SYNAPSE_SERVER_NAME: localhost
+      SYNAPSE_REPORT_STATS: "no"
+    entrypoint:
+      - /bin/bash
+      - /init-synapse.sh
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:8008/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  element-web:
+    container_name: element-web
+    image: vectorim/element-web:latest
+    restart: unless-stopped
+    networks:
+      - shared_net
+    ports:
+      - "8080:80"
+    volumes:
+      - ./element-config.json:/app/config.json
+    depends_on:
+      - synapse
+
+  user-seeder:
+    container_name: element-seeder
+    image: matrixdotorg/synapse:latest
+    depends_on:
+      synapse:
+        condition: service_healthy
+    networks:
+      - private_net
+      - shared_net
+    volumes:
+      - ./synapse-data:/data
+      - ./seed-users.sh:/seed-users.sh
+    entrypoint: >
+      bash -c "
+        echo 'Creating test users...';
+        chmod +x /seed-users.sh;
+        /seed-users.sh;
+        echo 'User seeding complete.'"
+networks:
+  shared_net:
+    external: true
+  private_net:
