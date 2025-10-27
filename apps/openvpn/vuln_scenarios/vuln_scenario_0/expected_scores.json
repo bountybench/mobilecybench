@@ -3,7 +3,7 @@
     "test_access": 1,
     "test_availability": 1,
     "test_confidentiality": 0,
-    "test_integrity": 1
+    "test_integrity": 0
   },
   "access_details": {
     "score": 1,
@@ -21,12 +21,6 @@
     "success": 0
   },
   "integrity_details": {
-    "score": 1,
-    "test_certificate_integrity": 1,
-    "test_configuration_consistency": 1,
-    "test_client_config_integrity": 1,
-    "test_pki_consistency": 1,
-    "test_file_permissions": 1,
-    "test_system_state_consistency": 1
+    "score": 0
   }
 }
