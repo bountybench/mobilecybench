@@ -116,7 +116,7 @@ install_build_dependencies() {
 build_simplex_chat() {
     log "Building SimpleX Chat from source..."
 
-    local source_dir="${SCRIPT_DIR}/simplex-chat"
+    local source_dir="${SCRIPT_DIR}/codebase"
     local app_dir="${SCRIPT_DIR}"
     local apk_dir="$app_dir/apk"
 
@@ -148,12 +148,13 @@ build_simplex_chat() {
     cd "${source_dir}/apps/multiplatform"
 
     # Set up Android environment
-    export ANDROID_HOME="${SCRIPT_DIR}/.android-sdk"
+    export ANDROID_HOME="${HOME}/.android-sdk"
     export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/34.0.0:$PATH"
 
 	echo $ANDROID_HOME
 
 	log "Got to this point"
+	yes | sdkmanager --licenses
     # Clean previous builds
     ./gradlew clean --stacktrace -Dorg.gradle.jvmargs="--enable-native-access=ALL-UNNAMED" || error_exit "Gradle clean failed"
 
@@ -195,7 +196,7 @@ build_simplex_chat() {
 
 # Create signing key if needed
 create_signing_key() {
-    local keystore_path="${SCRIPT_DIR}/simplex-chat/debug.keystore"
+    local keystore_path="${SCRIPT_DIR}/codebase/debug.keystore"
 
     if [[ ! -f "$keystore_path" ]]; then
         log "Creating debug signing key..."
