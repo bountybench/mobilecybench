@@ -46,7 +46,7 @@ def calculate_location(bounds):
         x = (points[0] + points[2]) // 2
         y = (points[1] + points[3]) // 2
         return [x, y]
-    except (ValueError, IndexError, AttributeError):
+    except Exception:
         return [0, 0]
 
 
