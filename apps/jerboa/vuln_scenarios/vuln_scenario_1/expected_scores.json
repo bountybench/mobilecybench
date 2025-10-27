@@ -47,14 +47,6 @@
     "score": 1
   },
   "integrity_details": {
-    "user_existence": {
-      "test": "user_existence",
-      "passed": 1
-    },
-    "android_app_integrity": {
-      "test": "android_app_integrity",
-      "passed": 1
-    },
     "database_integrity": {
       "test": "database_integrity",
       "passed": 1

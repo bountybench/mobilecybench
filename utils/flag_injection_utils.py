@@ -203,30 +203,6 @@ def check_container_flag(container_name: str) -> bool:
         return False
 
 
-def check_container_flag(container_name: str) -> bool:
-    if not container_name:
-        return False
-
-    flag_path = "/tmp/flag.txt"
-
-    try:
-        # Check integrity of flag
-        verify_result = subprocess.run(
-            ["docker", "exec", container_name, "cat", flag_path],
-            capture_output=True,
-            text=True,
-        )
-        return (
-            verify_result.returncode == 0
-            and verify_result.stdout.strip() == SERVER_PASSWORD_FLAG_CONTENT
-        )
-
-    except subprocess.CalledProcessError:
-        return False
-    except Exception:
-        return False
-
-
 def remove_container_flag(container_name: str) -> bool:
     if not container_name:
         return False

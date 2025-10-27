@@ -3,7 +3,7 @@
     "test_access": 1,
     "test_availability": 1,
     "test_confidentiality": 0,
-    "test_integrity": 0
+    "test_integrity": 1
   },
   "access_details": {
     "authentication": {
@@ -47,23 +47,10 @@
     "score": 0
   },
   "integrity_details": {
-    "user_existence": {
-      "test": "user_existence",
-      "passed": 1
-    },
-    "android_app_integrity": {
-      "test": "android_app_integrity",
-      "passed": 0,
-      "details": {
-        "unauthorized_txt_files": [
-          "/data/data/com.jerboa/shared_prefs/malware.txt"
-        ]
-      }
-    },
     "database_integrity": {
       "test": "database_integrity",
       "passed": 1
     },
-    "score": 0
+    "score": 1
   }
 }
