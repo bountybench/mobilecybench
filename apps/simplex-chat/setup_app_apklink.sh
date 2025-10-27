@@ -34,7 +34,7 @@ download_file() {
 main() {
     log "Starting SimpleX Chat APK download"
 
-    local app_dir="${SCRIPT_DIR}/apps/simplex-chat"
+    local app_dir="${SCRIPT_DIR}"
     local apk_dir="$app_dir/apk"
     local apk_file="$apk_dir/simplex-chat.apk"
 
