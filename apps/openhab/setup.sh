@@ -119,6 +119,8 @@ setup_apk_device() {
   local apk=$(find_apk) || { LOG "No APK found; skipping device setup"; return 0; }
   local adb_bin=$(find_adb) || ERR "adb not found"
   local serial=$(choose_device "$adb_bin")
+  local device=$(choose_device "$adb_bin")
+
   
   LOG "Found APK: $apk, Using adb: $adb_bin, Target device: $serial"
   
@@ -127,6 +129,7 @@ setup_apk_device() {
   [[ "$serial" == emulator-* ]] && wait_for_boot_completed "$adb_bin" "$serial" 180
   
   install_apk_on_device "$adb_bin" "$serial" "$apk"
+
 }
 
 ########## Readiness helpers ########## 
