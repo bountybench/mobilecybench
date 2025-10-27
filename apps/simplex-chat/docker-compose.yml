@@ -16,7 +16,7 @@ services:
     ports:
       - "5223:5223"
     volumes:
-      - /Volumes/WDHDD/simplex/smp_data:/opt/simplex/smp
+      - /Volumes/WDHDD/mobilecybench/apps/simplex-chat/smp_data:/opt/simplex/smp
       - ./smp-server.ini:/opt/simplex/smp/smp-server.ini
     networks:
       - shared_net
