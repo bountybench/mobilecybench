@@ -110,10 +110,30 @@ EOF
 fi
 
 echo "7. Corrupting client configuration to break integrity..."
-# Replace test-user-1 config with rogue certificate to simulate successful tampering
+# Corrupt test-user-1 config by removing the cert section to simulate tampering
 if [ -f "../../client-configs/test-user-1.ovpn" ]; then
-    cp rogue-client.ovpn ../../client-configs/test-user-1.ovpn
-    echo "✓ Replaced test-user-1.ovpn with rogue certificate"
+    # Create a corrupted config that's missing the <cert> section
+    cat > ../../client-configs/test-user-1.ovpn <<CORRUPT_EOF
+client
+dev tun
+proto tcp
+remote 10.0.2.2 1194
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+ca [inline]
+key [inline]
+
+<ca>
+$(cat rogue-ca.crt)
+</ca>
+
+<key>
+$(cat rogue-client.key)
+</key>
+CORRUPT_EOF
+    echo "✓ Corrupted test-user-1.ovpn (missing cert section)"
 else
     echo "⚠ test-user-1.ovpn not found, skipping corruption"
 fi
