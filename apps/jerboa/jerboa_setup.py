@@ -108,12 +108,10 @@ class LemmySeeder:
             return response.json().get("registration_applications", [])
         return []
 
-    def create_community(
-        self, name: str, title: str, auth_token: str, private: bool = False
-    ) -> Optional[int]:
+    def create_community(self, name: str, title: str, auth_token: str) -> Optional[int]:
         """Create a community"""
         print(f"[seeder] Creating community: {name}")
-        payload = {"name": name, "title": title, "private": private}
+        payload = {"name": name, "title": title}
         headers = {"Authorization": f"Bearer {auth_token}"}
         response = requests.post(
             f"{self.base_url}/api/v3/community", json=payload, headers=headers
