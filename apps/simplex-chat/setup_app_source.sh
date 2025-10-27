@@ -112,11 +112,115 @@ install_build_dependencies() {
     fi
 }
 
+# Build native libraries (libsimplex.so and libsupport.so)
+build_native_libraries() {
+	echo "Building native libraries"
+	gzip -d ${SCRIPT_DIR}/codebase/apps/multiplatform/common/src/commonMain/cpp/android/libs/arm64-v8a/libsimplex.so.gz
+	gzip -d ${SCRIPT_DIR}/codebase/apps/multiplatform/common/src/commonMain/cpp/android/libs/armeabi-v7a/libsimplex.so.gz
+	echo "Built native libraries"
+}
+# build_native_libraries() {
+#     log "Building native libraries (libsimplex.so and libsupport.so)..."
+# 
+#     local source_dir="${SCRIPT_DIR}/codebase"
+#     local multiplatform_dir="${source_dir}/apps/multiplatform"
+#     local libs_folder="${multiplatform_dir}/common/src/commonMain/cpp/android/libs"
+# 
+#     # Check if Nix is available
+#     if ! command_exists nix; then
+#         log "WARNING: Nix is not installed. Attempting to build without native libraries..."
+#         log "Native libraries may need to be provided separately."
+#         return 0
+#     fi
+# 
+#     # Check if running on macOS - attempt to build anyway
+#     if [[ "$(uname -s)" == "Darwin" ]]; then
+#         log "INFO: Running on macOS. Will attempt to cross-compile Android libraries using Nix."
+#         log "If this fails, you can use Docker/Colima to build on Linux."
+#         log "See: https://github.com/simplex-chat/simplex-chat for build instructions"
+#         # Continue with the build attempt
+#     fi
+# 
+#     cd "$source_dir"
+# 
+#     # Build for arm64-v8a (aarch64)
+#     local arch="aarch64"
+#     local android_arch="arm64-v8a"
+# 
+#     log "Building libraries for ${android_arch}..."
+# 
+#     # Detect the build system (x86_64-linux, x86_64-darwin, aarch64-darwin, etc.)
+#     local nix_system
+#     if [[ "$(uname -s)" == "Darwin" ]]; then
+#         if [[ "$(uname -m)" == "arm64" ]]; then
+#             nix_system="aarch64-darwin"
+#         else
+#             nix_system="x86_64-darwin"
+#         fi
+#     else
+#         nix_system="x86_64-linux"
+#     fi
+# 
+#     log "Detected Nix system: ${nix_system}"
+# 
+#     local android_simplex_lib="${source_dir}#hydraJobs.${nix_system}.${arch}-android:lib:simplex-chat"
+#     local android_support_lib="${source_dir}#hydraJobs.${nix_system}.${arch}-android:lib:support"
+# 
+#     # Create libs directory
+#     mkdir -p "$libs_folder/$android_arch"
+# 
+#     # Build libsimplex.so
+#     log "Building libsimplex.so for ${android_arch}... (this may take 30+ minutes on first build)"
+#     if nix --extra-experimental-features "nix-command flakes" build "$android_simplex_lib" --out-link "${SCRIPT_DIR}/result-libsimplex-${arch}" 2>&1 | tee -a "$LOG_FILE"; then
+#         local simplex_output="${SCRIPT_DIR}/result-libsimplex-${arch}/pkg-${arch}-android-libsimplex.zip"
+#         if [[ -f "$simplex_output" ]]; then
+#             unzip -o "$simplex_output" -d "$libs_folder/$android_arch"
+#             log "libsimplex.so built and extracted successfully"
+#         else
+#             log "WARNING: libsimplex.so build output not found at expected location: $simplex_output"
+#             log "Checking for alternative output locations..."
+#             find "${SCRIPT_DIR}/result-libsimplex-${arch}" -name "*.zip" -o -name "*.so" | tee -a "$LOG_FILE"
+#         fi
+#     else
+#         log "ERROR: Failed to build libsimplex.so"
+#         log "This is likely because Android cross-compilation from macOS is not fully supported."
+#         log "Please use Docker/Colima to build on Linux, or download prebuilt libraries."
+#         return 1
+#     fi
+# 
+#     # Build libsupport.so
+#     log "Building libsupport.so for ${android_arch}..."
+#     if nix --extra-experimental-features "nix-command flakes" build "$android_support_lib" --out-link "${SCRIPT_DIR}/result-libsupport-${arch}" 2>&1 | tee -a "$LOG_FILE"; then
+#         local support_output="${SCRIPT_DIR}/result-libsupport-${arch}/pkg-${arch}-android-libsupport.zip"
+#         if [[ -f "$support_output" ]]; then
+#             unzip -o "$support_output" -d "$libs_folder/$android_arch"
+#             log "libsupport.so built and extracted successfully"
+#         else
+#             log "WARNING: libsupport.so build output not found at expected location: $support_output"
+#             log "Checking for alternative output locations..."
+#             find "${SCRIPT_DIR}/result-libsupport-${arch}" -name "*.zip" -o -name "*.so" | tee -a "$LOG_FILE"
+#         fi
+#     else
+#         log "ERROR: Failed to build libsupport.so"
+#         log "This is likely because Android cross-compilation from macOS is not fully supported."
+#         log "Please use Docker/Colima to build on Linux, or download prebuilt libraries."
+#         return 1
+#     fi
+# 
+#     # Verify libraries were built
+#     if [[ -f "$libs_folder/$android_arch/libsimplex.so" ]] && [[ -f "$libs_folder/$android_arch/libsupport.so" ]]; then
+#         log "Native libraries built successfully!"
+#     else
+#         log "WARNING: Native libraries may not have been built correctly"
+#         log "You may need to manually build them using: scripts/android/build-android.sh"
+#     fi
+# }
+
 # Build SimpleX Chat from source
 build_simplex_chat() {
     log "Building SimpleX Chat from source..."
 
-    local source_dir="${SCRIPT_DIR}/simplex-chat"
+    local source_dir="${SCRIPT_DIR}/codebase"
     local app_dir="${SCRIPT_DIR}"
     local apk_dir="$app_dir/apk"
 
@@ -127,6 +231,9 @@ build_simplex_chat() {
     if [[ ! -d "$source_dir" ]]; then
         error_exit "SimpleX Chat source not found at $source_dir"
     fi
+
+    # Build native libraries first
+    build_native_libraries
 
     cd "$source_dir"
 
@@ -148,12 +255,13 @@ build_simplex_chat() {
     cd "${source_dir}/apps/multiplatform"
 
     # Set up Android environment
-    export ANDROID_HOME="${SCRIPT_DIR}/.android-sdk"
+    export ANDROID_HOME="${HOME}/.android-sdk"
     export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/34.0.0:$PATH"
 
 	echo $ANDROID_HOME
 
 	log "Got to this point"
+	yes | sdkmanager --licenses
     # Clean previous builds
     ./gradlew clean --stacktrace -Dorg.gradle.jvmargs="--enable-native-access=ALL-UNNAMED" || error_exit "Gradle clean failed"
 
@@ -195,7 +303,7 @@ build_simplex_chat() {
 
 # Create signing key if needed
 create_signing_key() {
-    local keystore_path="${SCRIPT_DIR}/simplex-chat/debug.keystore"
+    local keystore_path="${SCRIPT_DIR}/codebase/debug.keystore"
 
     if [[ ! -f "$keystore_path" ]]; then
         log "Creating debug signing key..."
