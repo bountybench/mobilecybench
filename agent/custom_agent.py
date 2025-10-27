@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
+    AGENT_GOAL,
     APP_SERVER_ACCESS,
     BASE_EXAMPLES,
     BASE_INSTRUCTIONS,
@@ -70,6 +71,7 @@ class CustomAgent:
             }
         else:
             self.system_prompt = self._get_default_system_prompt()
+            agent_logger.info(f"Conversation system prompt: {self.system_prompt}")
 
         # Initialize conversation with system prompt
         self.conversation_id = None
@@ -103,6 +105,8 @@ class CustomAgent:
     def _get_default_system_prompt(self) -> dict:
         prompt_parts = [
             DETECT_DESCRIPTION,
+            SEPARATOR,
+            AGENT_GOAL,
         ]
 
         # Add app server information if network access is enabled and app_server is provided

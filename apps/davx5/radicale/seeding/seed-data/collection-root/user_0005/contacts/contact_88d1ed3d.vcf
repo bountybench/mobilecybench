@@ -1,0 +1,12 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:d7507593-1882-4dad-8676-61da1189
+EMAIL;TYPE=INTERNET:jack.foster@example.com
+FN:Jack Foster
+N:Foster;Jack;;;
+NOTE:Auto-generated contact for testing
+ORG:Example Corp
+REV:20251019T125651Z
+TEL;TYPE=CELL:+1-555-7278
+TITLE:Manager
+END:VCARD

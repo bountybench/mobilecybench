@@ -1,0 +1,12 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:11f16858-d261-47aa-89f8-ea75b7db
+EMAIL;TYPE=INTERNET:henry.evans@example.com
+FN:Henry Evans
+N:Evans;Henry;;;
+NOTE:Auto-generated contact for testing
+ORG:Example Corp
+REV:20251019T125653Z
+TEL;TYPE=CELL:+1-555-3203
+TITLE:Developer
+END:VCARD

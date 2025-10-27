@@ -1,0 +1,12 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:2d72046d-0f8b-4b03-8c2a-8bac86ab
+EMAIL;TYPE=INTERNET:bob.king@example.com
+FN:Bob King
+N:King;Bob;;;
+NOTE:Auto-generated contact for testing
+ORG:Example Corp
+REV:20251019T125649Z
+TEL;TYPE=CELL:+1-555-2696
+TITLE:Manager
+END:VCARD

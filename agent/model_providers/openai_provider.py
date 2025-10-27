@@ -81,6 +81,7 @@ class OpenAIProvider(ModelProvider):
             kwargs["tools"] = tools
         if max_output_tokens is not None:
             kwargs["max_output_tokens"] = max_output_tokens
+        kwargs["max_tool_calls"] = 1
         if timeout_ms is not None:
             kwargs["timeout"] = timeout_ms
         if extra:

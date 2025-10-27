@@ -8,5 +8,6 @@
     "app_server": "owncloud_server:8080",
     "username": "agent",
     "password": "agentpass",
-    "package_name": "com.owncloud.android"
+    "package_name": "com.owncloud.android",
+    "container_names": ["owncloud_mariadb", "owncloud_server", "owncloud_redis"]
 }

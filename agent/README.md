@@ -188,12 +188,14 @@ For complete automated testing with the runner:
 ```bash
 # From the project root directory
 source .venv/bin/activate
+python runner.py apps/<app_name>
+# or
 python runner.py <app_name>
 ```
 
 Example:
 ```bash
-python runner.py joplin
+python runner.py apps/conversations
 ```
 
 This runs the complete pipeline:
