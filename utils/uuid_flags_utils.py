@@ -3,10 +3,9 @@ import os
 import secrets
 import string
 import uuid
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import bcrypt
-import yaml
 
 
 def get_uuid(length: int = 36) -> str:
@@ -159,33 +158,3 @@ def load_flags(flags_file: str) -> Dict[str, str]:
         flags = json.load(f)
 
     return flags
-
-
-def extract_container_names_from_compose(docker_compose_path: str) -> List[str]:
-    """
-    Extract container names from a docker-compose.yml file.
-
-    Args:
-        docker_compose_path: Path to the docker-compose.yml file
-
-    Returns:
-        List of container names defined in the docker-compose file
-    """
-    if not os.path.exists(docker_compose_path):
-        return []
-
-    try:
-        with open(docker_compose_path, "r") as f:
-            compose_data = yaml.safe_load(f)
-
-        container_names = []
-        services = compose_data.get("services", {})
-
-        for _, service_config in services.items():
-            if isinstance(service_config, dict) and "container_name" in service_config:
-                container_names.append(service_config["container_name"])
-
-        return container_names
-    except Exception as e:
-        print(f"Error extracting container names from {docker_compose_path}: {e}")
-        return []

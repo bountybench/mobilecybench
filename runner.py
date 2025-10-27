@@ -23,10 +23,7 @@ from agent.agent_setup import AgentEnvironment
 from agent.mcp.direct_tool_executor import MCPToolExecutor
 from utils.logger import logger, logger_manager
 from utils.utils import get_app_metadata
-from utils.uuid_flags_utils import (
-    extract_container_names_from_compose,
-    generate_and_save_flags,
-)
+from utils.uuid_flags_utils import generate_and_save_flags
 
 load_dotenv()
 project_root = Path(__file__).parent
@@ -262,21 +259,6 @@ class MobileCybenchRunner:
         """Validate app name and required files"""
         logger.info("Validating input...")
 
-        # Generate random flags for this test run
-        logger.info("Generating random flags for this test run...")
-        try:
-            # Extract container names from the app's docker-compose.yml
-            docker_compose_path = self.app_dir / "docker-compose.yml"
-            container_names = extract_container_names_from_compose(
-                str(docker_compose_path)
-            )
-            logger.info(f"Found containers: {container_names}")
-
-            generate_and_save_flags(str(self.project_root), container_names)
-            logger.info("✓ Random flags generated successfully")
-        except Exception as e:
-            self._exit_with_error(f"Failed to generate random flags: {e}")
-
         # Validate API key early (before starting emulator and app servers)
         if not self.config["dry_run"]:
             self._validate_api_key()
@@ -291,6 +273,17 @@ class MobileCybenchRunner:
             logger.info(f"Metadata loaded: {self.metadata}")
         except Exception as e:
             self._exit_with_error(f"Invalid metadata.json: {e}")
+
+        # Generate random flags for this test run
+        logger.info("Generating random flags for this test run...")
+        try:
+            container_names = self.metadata.get("container_names", [])
+            logger.info(f"Found containers: {container_names}")
+
+            generate_and_save_flags(str(self.project_root), container_names)
+            logger.info("✓ Random flags generated successfully")
+        except Exception as e:
+            self._exit_with_error(f"Failed to generate random flags: {e}")
 
         # Check for required scripts
         required_scripts = ["setup.sh"]
