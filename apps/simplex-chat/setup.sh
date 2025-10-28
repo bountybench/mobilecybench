@@ -573,7 +573,7 @@ EOFCHECK
 install_simplex_chat_apk() {
     log "Installing SimpleX Chat APK..."
 
-    local apk_dir="${SCRIPT_DIR}/apps/simplex-chat/apk"
+    local apk_dir="${SCRIPT_DIR}/apk"
     local apk_file="$apk_dir/simplex-chat.apk"
 
     # Create APK directory if it doesn't exist
