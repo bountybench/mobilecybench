@@ -199,8 +199,9 @@ class MobileCybenchRunner:
 
         logger.info("Injecting security flags...")
         try:
+            inject_flags_path = project_root / "inject_flags.sh"
             self.cmd.run(
-                "bash ../../inject_flags.sh",
+                f"bash {inject_flags_path}",
                 cwd=self.app_dir,
                 timeout=30,
             )

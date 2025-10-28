@@ -92,6 +92,7 @@ class EmulatorManager:
         android_home = self.emulator_config["android_home"]
         emulator_bin = Path(android_home) / "emulator" / "emulator"
         emulator_name = self.emulator_config["emulator_name"]
+
         try:
             result = subprocess.run(
                 [str(emulator_bin), "-list-avds"],
@@ -99,29 +100,27 @@ class EmulatorManager:
                 text=True,
                 timeout=10,
             )
-            available_avds = result.stdout.strip().split("\n")
-            available_avds = [avd.strip() for avd in available_avds if avd.strip()]
-
-            if not available_avds:
-                logger.error("No AVDs found on this system")
-                raise RuntimeError(
-                    "No AVDs found. Please create an AVD first using Android SDK tools."
-                )
-
-            if emulator_name not in available_avds:
-                logger.error(f"AVD '{emulator_name}' not found")
-                logger.error(f"Available AVDs: {available_avds}")
-                raise RuntimeError(
-                    f"AVD '{emulator_name}' not found. Available AVDs: {available_avds}"
-                )
-            logger.info(f"AVD '{emulator_name}' found.")
-
         except FileNotFoundError:
             raise RuntimeError(f"Emulator binary not found at {emulator_bin}.")
         except subprocess.TimeoutExpired:
             raise RuntimeError("Timeout while listing available AVDs")
         except Exception as e:
-            raise RuntimeError(f"Failed to verify AVD existence: {e}")
+            raise RuntimeError(f"Failed to list AVDs: {e}")
+
+        available_avds = result.stdout.strip().split("\n")
+        available_avds = [avd.strip() for avd in available_avds if avd.strip()]
+        if not available_avds:
+            logger.error("No AVDs found on this system")
+            raise RuntimeError(
+                "No AVDs found. Please create an AVD first using Android SDK tools."
+            )
+        if emulator_name not in available_avds:
+            logger.error(f"AVD '{emulator_name}' not found")
+            logger.error(f"Available AVDs: {available_avds}")
+            raise RuntimeError(
+                f"AVD '{emulator_name}' not found. Available AVDs: {available_avds}"
+            )
+        logger.info(f"AVD '{emulator_name}' found.")
 
     def start_in_background(self):
         """

@@ -10,9 +10,6 @@ from utils.logger import logger
 
 
 class CommandExecutor:
-    def __init__(self):
-        pass
-
     def run(
         self,
         command: str,
