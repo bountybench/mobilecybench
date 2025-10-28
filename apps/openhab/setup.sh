@@ -18,7 +18,7 @@ read_secrets() {
     ADMINUSER_PASSWORD=$(jq -r '.adminuser_password' "$secrets_file" 2>/dev/null || echo "")
     NONADMINUSER_PASSWORD=$(jq -r '.nonadminuser_password' "$secrets_file" 2>/dev/null || echo "")
     
-    # Set users (will be handled by setup_user.sh)
+    # Set users (will be handled by setup_karaf.sh)
     export ADMINUSER_PASSWORD NONADMINUSER_PASSWORD
   else
     LOG "Warning: secrets.json not found or jq not available, using default users"
@@ -119,6 +119,8 @@ setup_apk_device() {
   local apk=$(find_apk) || { LOG "No APK found; skipping device setup"; return 0; }
   local adb_bin=$(find_adb) || ERR "adb not found"
   local serial=$(choose_device "$adb_bin")
+  local device=$(choose_device "$adb_bin")
+
   
   LOG "Found APK: $apk, Using adb: $adb_bin, Target device: $serial"
   
@@ -127,65 +129,63 @@ setup_apk_device() {
   [[ "$serial" == emulator-* ]] && wait_for_boot_completed "$adb_bin" "$serial" 180
   
   install_apk_on_device "$adb_bin" "$serial" "$apk"
+
 }
 
-########## Docker readiness helper ##########
+########## Readiness helpers ########## 
 
-wait_for_docker_service_ready() {
-  # Wait for OpenHAB docker container to be ready by checking container health and port availability
-  local timeout=${1:-120}
-  local start_time=$(date +%s)
-  local container_name="openhab"
-  
-  LOG "Waiting for OpenHAB docker service to be ready..."
-  
-  # First, wait for container to be running
-  while ! docker ps --filter "name=$container_name" --filter "status=running" | grep -q "$container_name" 2>/dev/null; do
-    local current_time=$(date +%s)
-    if [ $((current_time - start_time)) -ge $timeout ]; then
-      LOG "Container $container_name not running after ${timeout}s, proceeding anyway"
-      return 0
-    fi
-    read -t 1 -N 1 < /dev/null 2>/dev/null || true
-  done
-  
-  # Then wait for the web interface port to be available
-  LOG "Waiting for OpenHAB web interface (port 8080) to be ready..."
-  while ! (echo > /dev/tcp/127.0.0.1/8080) >/dev/null 2>&1; do
-    local current_time=$(date +%s)
-    if [ $((current_time - start_time)) -ge $timeout ]; then
-      LOG "OpenHAB web interface (8080) not ready after ${timeout}s, proceeding anyway"
-      return 0
-    fi
-    read -t 0.5 -N 1 < /dev/null 2>/dev/null || true
-  done
-  
-  # Finally, wait for the Karaf SSH port to be available (needed for user creation)
-  LOG "Waiting for Karaf SSH service (port 8101) to be ready..."
-  while ! (echo > /dev/tcp/127.0.0.1/8101) >/dev/null 2>&1; do
-    local current_time=$(date +%s)
-    if [ $((current_time - start_time)) -ge $timeout ]; then
-      LOG "Karaf SSH service (8101) not ready after ${timeout}s, proceeding anyway"
-      return 0
-    fi
-    read -t 0.5 -N 1 < /dev/null 2>/dev/null || true
-  done
-  
-  # Verify Karaf service is fully initialized by attempting a simple command
-  LOG "Karaf SSH port available, testing service readiness..."
-  local karaf_ready_timeout=30
-  local karaf_ready_start=$(date +%s)
-  
-  while ! echo "info" | timeout 5 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -p 8101 karaf@127.0.0.1 2>/dev/null | grep -q "Karaf" 2>/dev/null; do
-    local current_time=$(date +%s)
-    if [ $((current_time - karaf_ready_start)) -ge $karaf_ready_timeout ]; then
-      LOG "Karaf service readiness test timed out after ${karaf_ready_timeout}s, proceeding anyway"
-      break
-    fi
-    read -t 1 -N 1 < /dev/null 2>/dev/null || true
-  done
-  
-  LOG "OpenHAB docker service is ready"
+# Wait for Docker container to be running and report healthy 
+wait_for_docker_container_ready() {
+    local timeout=${1:-300}       # seconds
+    local container_name="${2:-openhab}"
+    local start_time=$(date +%s)
+
+    LOG "Waiting for Docker container '$container_name' to be running (timeout: ${timeout}s)..."
+
+    # Wait for container to exist and be running
+    while ! docker ps --filter "name=$container_name" --filter "status=running" --format '{{.Names}}' \
+        | grep -qx "$container_name" 2>/dev/null; do
+
+        local now=$(date +%s)
+        if [ $((now - start_time)) -ge $timeout ]; then
+            ERR "Container '$container_name' did not start within ${timeout}s"
+        fi
+
+        # Passive 1s delay
+        read -t 1 -N 1 < /dev/null 2>/dev/null || true
+    done
+
+    LOG "Container '$container_name' is running, monitoring health status..."
+
+    # Poll Docker health status until it reports "healthy" or times out
+    local check_count=0
+    while :; do
+        local status
+        status=$(docker inspect --format '{{.State.Health.Status}}' "$container_name" 2>/dev/null || echo "unknown")
+        check_count=$((check_count + 1))
+
+        if [ "$status" = "healthy" ]; then
+            LOG "Container '$container_name' is healthy ✅"
+            break
+        elif [[ "$status" = "unhealthy" || "$status" = "starting" ]]; then
+            # Log every 5 checks so output isn't spammy
+            if (( check_count % 5 == 0 )); then
+                LOG "$(date '+%H:%M:%S') | Health check $check_count: still waiting (status=$status)"
+            fi
+        else
+            LOG "$(date '+%H:%M:%S') | Health check $check_count: unknown status '$status'"
+        fi
+
+        local now=$(date +%s)
+        if [ $((now - start_time)) -ge $timeout ]; then
+            ERR "Timed out waiting for container '$container_name' to become healthy after ${timeout}s"
+        fi
+
+        # Passive 1s delay
+        read -t 1 -N 1 < /dev/null 2>/dev/null || true
+    done
+
+    LOG "Docker container '$container_name' is ready."
 }
 
 ########## Runtime configuration helpers ##########
@@ -260,13 +260,13 @@ update_runtime_cfg() {
 
 ########## User setup helper ##########
 
-setup_users() {
-  # Call the separate setup_user.sh script to handle SSH/Karaf/user setup
-  local setup_user_script="$SCRIPT_DIR/setup_user.sh"
-  
-  if [ -f "$setup_user_script" ] && [ -x "$setup_user_script" ]; then
-    LOG "Running user setup via $setup_user_script"
-    
+setup_karaf() {
+  # Call the separate setup_karaf.sh script to handle SSH/Karaf/user setup
+  local setup_karaf_script="$SCRIPT_DIR/setup_karaf.sh"
+
+  if [ -f "$setup_karaf_script" ] && [ -x "$setup_karaf_script" ]; then
+    LOG "Running user setup via $setup_karaf_script"
+
     # Export environment variables so they're available to the child script
     export KARAF_TCP_TIMEOUT KARAF_READY_TIMEOUT KARAF_PASSWORD KARAF_SSH_KEY HARDCODED_TEST_USER
     
@@ -278,7 +278,7 @@ setup_users() {
       attempt=$((attempt + 1))
       LOG "User setup attempt $attempt/$max_attempts"
       
-      if "$setup_user_script"; then
+      if "$setup_karaf_script"; then
         LOG "User setup completed successfully"
         return 0
       else
@@ -288,7 +288,7 @@ setup_users() {
         if [ $attempt -lt $max_attempts ]; then
           LOG "Waiting for service to stabilize before retry..."
           # Wait for container and service to be ready again
-          wait_for_docker_service_ready 60
+          wait_for_docker_container_ready
         else
           LOG "User setup failed after $max_attempts attempts"
           return $exit_code
@@ -296,7 +296,7 @@ setup_users() {
       fi
     done
   else
-    LOG "User setup script not found or not executable: $setup_user_script"
+    LOG "User setup script not found or not executable: $setup_karaf_script"
     LOG "Skipping SSH/Karaf/user setup"
   fi
 }
@@ -321,11 +321,6 @@ create_env_file() {
 # OpenHAB Docker Environment Variables
 USER_ID=${user_id}
 GROUP_ID=${group_id}
-
-# Optional: Cloudflare tunnel token
-# If this is set to a valid token, the cloudflared service will be started
-# Leave empty or unset to disable the cloudflared service
-CLOUDFLARE_TUNNEL_TOKEN=
 EOF
 
   LOG ".env file created with USER_ID=${user_id} and GROUP_ID=${group_id}"
@@ -362,20 +357,13 @@ main() {
         source "$env_file"
       fi
       
-      if [ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" ] && [ "$CLOUDFLARE_TUNNEL_TOKEN" != "" ]; then
-        LOG "Cloudflare tunnel token found, enabling cloudflared service"
-        compose_profiles="--profile cloudflare"
-      else
-        LOG "No Cloudflare tunnel token found, skipping cloudflared service"
-      fi
-      
       if command -v docker-compose >/dev/null 2>&1; then
         docker-compose -f "$SCRIPT_DIR/docker-compose.yml" $compose_profiles up -d
       else
         docker compose -f "$SCRIPT_DIR/docker-compose.yml" $compose_profiles up -d
       fi
-      # Wait for OpenHAB service to be ready before proceeding (increased timeout for Karaf)
-      wait_for_docker_service_ready 180
+      # Wait for OpenHAB service to be ready before proceeding
+      wait_for_docker_container_ready
     else
       LOG "docker not found; skipping docker start"
     fi
@@ -385,7 +373,7 @@ main() {
   update_runtime_cfg
 
   # Setup SSH key for Karaf authentication and create test users
-  setup_users
+  setup_karaf
 
   # Setup APK on device
   setup_apk_device
