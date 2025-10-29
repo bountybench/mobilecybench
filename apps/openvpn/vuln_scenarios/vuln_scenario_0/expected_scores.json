@@ -18,7 +18,7 @@
   },
   "confidentiality_details": {
     "score": 0,
-    "success": 0
+    "status": "no_log"
   },
   "integrity_details": {
     "certificate_integrity": 1,
