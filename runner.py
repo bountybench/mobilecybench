@@ -633,7 +633,6 @@ class MobileCybenchRunner:
         self.run_agent()
 
         agent_log_filename = logger_manager.get_agent_log_file_name()
-        print("!!! Agent log filename:", agent_log_filename)
         log_path = Path(agent_log_filename)
         logger.info(f"Agent log file path: {log_path}")
         self.run_probes_checks(log_file_path=log_path)

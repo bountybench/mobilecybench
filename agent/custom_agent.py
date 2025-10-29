@@ -148,7 +148,6 @@ class CustomAgent:
 
     def run(self) -> dict:
         if self.dry_run:
-            print("[Agent] Dry run - returning immediately")
             agent_logger.info("Dry run: Quick return without execution")
             return {
                 "status": "This is a dry run. No OpenAI API calls were made.",
@@ -158,19 +157,12 @@ class CustomAgent:
             }
 
         for turn in range(self.max_iterations):
-            print(f"[Agent] Starting turn {turn + 1}/{self.max_iterations}")
-
             agent_logger.info(
                 f"{'=' * 20} TURN {turn + 1}/{self.max_iterations} {'=' * 20}"
             )
 
-            print(f"[Agent] Making OpenAI API call with model {self.model}")
-            print(
-                f"[Agent] MCP config: {self.mcp_config.get('server_url', 'No server_url')}"
-            )
-            print(f"[Agent] Using conversation_id: {self.conversation_id}")
-
             agent_logger.info(f"[API CALL - Turn {turn + 1}]")
+            agent_logger.info(f"Model: {self.model}")
             agent_logger.info(f"Conversation ID: {self.conversation_id}")
             agent_logger.info("-" * 40)
 
@@ -204,7 +196,7 @@ class CustomAgent:
                 max_output_tokens=self.max_model_response_tokens,
                 timeout_ms=self.timeout_ms,
             )
-            print("[Agent] API call completed")
+            agent_logger.info("API call completed")
 
             # Record token usage and cost
             try:
@@ -214,7 +206,6 @@ class CustomAgent:
 
             # Process response
             assistant_response = resp.output_text
-            print(f"[Agent] Response length: {len(assistant_response)} chars")
 
             agent_logger.info(f"[API RESPONSE - {len(assistant_response)} chars]")
             agent_logger.info(assistant_response)
@@ -238,7 +229,6 @@ class CustomAgent:
                         and output_item.type == "mcp_list_tools"
                     ):
                         tools_count = len(getattr(output_item, "tools", []))
-                        print(f"[Agent] MCP tools listed: {tools_count} tools")
 
                         agent_logger.info(f"MCP Tools Listed: {tools_count} tools")
                         tools = getattr(output_item, "tools", [])
@@ -254,8 +244,6 @@ class CustomAgent:
                         arguments = getattr(output_item, "arguments", "")
                         output = getattr(output_item, "output", "")
                         error = getattr(output_item, "error", None)
-
-                        print(f"[Agent] MCP call: {name} -> {str(output)}...")
 
                         agent_logger.info(f"MCP Call: {name}")
                         agent_logger.info(f"  Arguments: {arguments}")
@@ -273,8 +261,6 @@ class CustomAgent:
                     msg = {}
 
                 if msg.get("command") == "FinalSubmissionCommand":
-                    print("[Agent] Final submission received - stopping execution")
-
                     agent_logger.info(f"{'=' * 20} RUN COMPLETED {'=' * 20}")
                     agent_logger.info("Status: Final submission received")
                     agent_logger.info(f"Total turns: {turn + 1}")
@@ -283,8 +269,6 @@ class CustomAgent:
                         f"Token totals: {json.dumps(self.token_tracker.totals())}"
                     )
                     agent_logger.info(f"Log file: {self.log_file}")
-
-                    print(f"[Agent] Full log saved to: {self.log_file}")
 
                     # Clean up conversation
                     if self.conversation_id:
@@ -303,17 +287,12 @@ class CustomAgent:
                         "log_file": self.log_file,
                     }
 
-        print(f"[Agent] Reached maximum iterations ({self.max_iterations})")
-
         # Log completion
-        with open(self.log_file, "a") as f:
-            f.write(f"\n{'=' * 20} RUN COMPLETED {'=' * 20}\n")
-            f.write("Status: Maximum iterations reached\n")
-            f.write(f"Total turns: {self.max_iterations}\n")
-            f.write(f"Token totals: {json.dumps(self.token_tracker.totals())}\n")
-            f.write(f"Log file: {self.log_file}\n")
-
-        print(f"[Agent] Full log saved to: {self.log_file}")
+        agent_logger.info(f"{'=' * 20} RUN COMPLETED {'=' * 20}")
+        agent_logger.info("Status: Maximum iterations reached")
+        agent_logger.info(f"Total turns: {self.max_iterations}")
+        agent_logger.info(f"Token totals: {json.dumps(self.token_tracker.totals())}")
+        agent_logger.info(f"Log file: {self.log_file}")
 
         # Clean up conversation
         if self.conversation_id:
