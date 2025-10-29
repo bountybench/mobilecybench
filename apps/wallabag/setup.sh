@@ -34,8 +34,21 @@ docker compose up --build -d
 
 # Wait until Postgres is ready inside the container
 echo "[Wallabag] Waiting for database to be ready..."
-until docker exec wallabag-db-1 pg_isready -U wallabag >/dev/null 2>&1; do
+DB_MAX_WAIT=60
+DB_WAITED=0
+while true; do
+    if docker exec wallabag-db-1 pg_isready -U wallabag >/dev/null 2>&1; then
+        break
+    fi
+    
+    if [ "$DB_WAITED" -ge "$DB_MAX_WAIT" ]; then
+        echo "[Wallabag] ERROR: Database not ready after $DB_MAX_WAIT seconds"
+        docker logs wallabag-db-1 --tail 20
+        exit 1
+    fi
+    
     sleep 3
+    DB_WAITED=$((DB_WAITED + 3))
 done
 
 # Wait until Wallabag container reports healthy status
