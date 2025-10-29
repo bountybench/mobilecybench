@@ -6,21 +6,21 @@ from typing import Dict, List
 from docker_setup import HOST_ADB_SERVER, get_kali
 
 
-def run_adb_shell(command: str) -> str:
+def run_adb_shell(command: str, experiment_id: str = None) -> str:
     """
     Runs ADB shell commands for better seeing the screen state
     """
-    container = get_kali()
+    container = get_kali(experiment_id) if experiment_id else get_kali("default")
     cmd = f"export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb shell {command}"
     result = container.exec_run(f"bash -c '{cmd}'", stdout=True, stderr=True)
     return result.output.decode("utf-8")
 
 
-def run_adb_pull(remote_path: str, local_path: str) -> bool:
+def run_adb_pull(remote_path: str, local_path: str, experiment_id: str = None) -> bool:
     """
     Copies emulator files in a remote path to a local path.
     """
-    container = get_kali()
+    container = get_kali(experiment_id) if experiment_id else get_kali("default")
     cmd = (
         f"export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb shell cat {remote_path}"
     )
@@ -109,15 +109,15 @@ class EmulatorState:
         }
 
 
-def obtain_UI_elements() -> List[UIElement]:
+def obtain_UI_elements(experiment_id: str = None) -> List[UIElement]:
     """
     This collects a UI dump of all the elements in the android emulator for agentic use.
     """
     remote_path = "/sdcard/window_dump.xml"
     local_path = "window_dump.xml"
 
-    dump_result = run_adb_shell(f"uiautomator dump {remote_path}")
-    if not run_adb_pull(remote_path, local_path):
+    dump_result = run_adb_shell(f"uiautomator dump {remote_path}", experiment_id)
+    if not run_adb_pull(remote_path, local_path, experiment_id):
         return []
 
     try:
@@ -156,6 +156,6 @@ def obtain_UI_elements() -> List[UIElement]:
     return ui_elements
 
 
-def get_ui_state(response_text: str) -> EmulatorState:
+def get_ui_state(response_text: str, experiment_id: str = None) -> EmulatorState:
     print("Tool call text output: ", response_text)
-    return EmulatorState(response_text, obtain_UI_elements()).to_dict()
+    return EmulatorState(response_text, obtain_UI_elements(experiment_id)).to_dict()

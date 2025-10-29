@@ -51,7 +51,8 @@ class AgentEnvironment:
 
     def setup(self):
         """Set up the agent kali environment container."""
-        container_name = "kali-container"
+        # Use app_name as experiment_id for container naming to ensure isolation
+        container_name = f"kali-container-{self.app_name}"
 
         print(f"Checking for image {self.image_name}...")
         logger.info(f"Ensuring image {self.image_name} is available...")

@@ -19,12 +19,13 @@ async def health_check(request: Request) -> PlainTextResponse:
 @mcp.tool(
     description="Execute a terminal command. For adb commands, write 'adb shell ...'. "
 )
-def execute_command(command: str) -> EmulatorState:
+def execute_command(command: str, experiment_id: str) -> EmulatorState:
     """
     The main tool for the AI model to be able to interact with our
     """
     try:
-        container = get_kali()
+        # Use experiment_id to get the correct container for this experiment
+        container = get_kali(experiment_id)
         start_dir = os.getenv("START_DIR", "/app/codebase")
 
         # Determine if the command is an ADB command
@@ -45,11 +46,12 @@ def execute_command(command: str) -> EmulatorState:
 
         # Returns the emulator state
         return get_ui_state(
-            f"{label}: {command}\nExit Code: {result.exit_code}\nOutput:\n{output}"
+            f"{label}: {command}\nExit Code: {result.exit_code}\nOutput:\n{output}",
+            experiment_id
         )
 
     except Exception as e:
-        return get_ui_state(f"Error: {str(e)}")
+        return get_ui_state(f"Error: {str(e)}", experiment_id)
 
 
 if __name__ == "__main__":

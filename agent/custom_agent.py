@@ -59,8 +59,8 @@ class CustomAgent:
         self.network_access = network_access
         self.app_name = app_name
 
-        # Set up MCP configuration
-        self.mcp_config = mcp_config or get_mcp_server_config()
+        # Set up MCP configuration with app_name as experiment_id for container routing
+        self.mcp_config = mcp_config or get_mcp_server_config(experiment_id=self.app_name)
 
         # Set up system prompt
         if system_prompt:

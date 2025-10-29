@@ -459,7 +459,8 @@ class MobileCybenchRunner:
         logger.info("Validating MCP server with 'ls' command...")
 
         mcp_executor = MCPToolExecutor()
-        result = mcp_executor.call_tool("execute_command", "ls /app")
+        # Pass app_name as experiment_id for proper container routing
+        result = mcp_executor.call_tool("execute_command", "ls /app", experiment_id=self.app_name)
         response = (
             result.get("result", {}).get("structuredContent", {}).get("response", "")
         )

@@ -78,6 +78,7 @@ def get_mcp_server_config(
     ngrok_base_url: str = None,
     allowed_tools: list = None,
     check_reachability: bool = True,
+    experiment_id: str = None,
 ) -> dict:
     """
     Get MCP server configuration by constructing the MCP endpoint URL from the ngrok base URL.
@@ -94,8 +95,12 @@ def get_mcp_server_config(
     if ngrok_base_url is None:
         ngrok_base_url = discover_ngrok_base_url()
 
-    # Construct the MCP server URL by appending /mcp/ endpoint
-    mcp_server_url = ngrok_base_url.rstrip("/") + "/mcp/"
+    # Construct the MCP server URL with experiment_id for routing
+    base_url = ngrok_base_url.rstrip("/")
+    if experiment_id:
+        mcp_server_url = f"{base_url}/mcp/{experiment_id}/"
+    else:
+        mcp_server_url = f"{base_url}/mcp/"
 
     # Check if server is reachable before returning config
     if check_reachability and not check_server_health(mcp_server_url):
