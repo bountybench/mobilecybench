@@ -8,5 +8,5 @@
   "username": "wallabag",
   "password": "wallabag",
   "container_names": ["wallabag"],
-  "package_name": "fr.gaulupeau.apps.Poche"
+  "package_name": "fr.gaulupeau.apps.InThePoche"
 }
