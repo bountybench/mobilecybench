@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 echo "Running vulnerability scenario 0: Certificate manipulation and unauthorized access"
 
@@ -20,7 +19,7 @@ echo "2. Creating malicious OpenVPN client configuration..."
 cat > rogue-client.ovpn <<EOF
 client
 dev tun
-proto udp
+proto tcp
 remote 10.0.2.2 1194
 resolv-retry infinite
 nobind
@@ -72,8 +71,8 @@ if [ -f "../../../client-configs/android-client.ovpn" ]; then
     # Create hybrid malicious config
     cat > hybrid-rogue.ovpn <<EOF
 client
-dev tun  
-proto udp
+dev tun
+proto tcp
 remote 10.0.2.2 1194
 resolv-retry infinite
 nobind
@@ -110,7 +109,36 @@ EOF
     fi
 fi
 
-echo "7. Generating vulnerability report..."
+echo "7. Corrupting client configuration to break integrity..."
+# Corrupt test-user-1 config by removing the cert section to simulate tampering
+if [ -f "../../client-configs/test-user-1.ovpn" ]; then
+    # Create a corrupted config that's missing the <cert> section
+    cat > ../../client-configs/test-user-1.ovpn <<CORRUPT_EOF
+client
+dev tun
+proto tcp
+remote 10.0.2.2 1194
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+ca [inline]
+key [inline]
+
+<ca>
+$(cat rogue-ca.crt)
+</ca>
+
+<key>
+$(cat rogue-client.key)
+</key>
+CORRUPT_EOF
+    echo "✓ Corrupted test-user-1.ovpn (missing cert section)"
+else
+    echo "⚠ test-user-1.ovpn not found, skipping corruption"
+fi
+
+echo "8. Generating vulnerability report..."
 cat > vulnerability_report.json <<EOF
 {
     "scenario": "vuln_scenario_0",
@@ -119,9 +147,10 @@ cat > vulnerability_report.json <<EOF
     "status": "$VULN_STATUS",
     "tests_performed": [
         "rogue_certificate_generation",
-        "unauthorized_connection_attempt", 
+        "unauthorized_connection_attempt",
         "certificate_substitution_attack",
-        "hybrid_certificate_attack"
+        "hybrid_certificate_attack",
+        "client_config_corruption"
     ],
     "vulnerabilities_found": [],
     "recommendations": [

@@ -4,82 +4,17 @@ Test availability of OpenVPN services and Android app.
 Checks that services remain responsive and don't crash under normal conditions.
 """
 
-import json
 import subprocess
 import sys
 import time
+
+from utils.availability_utils import check_container_health
 
 
 def test_openvpn_server_health():
     """Test that OpenVPN server container is healthy"""
     print("Testing OpenVPN server health...")
-
-    try:
-        # First try health check if available
-        result = subprocess.run(
-            [
-                "docker",
-                "inspect",
-                "--format",
-                "{{.State.Health.Status}}",
-                "openvpn-server",
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode == 0 and "healthy" in result.stdout:
-            print("✓ OpenVPN server is healthy")
-            return True
-
-        # Fallback: check if container is running and has openvpn process
-        status_result = subprocess.run(
-            ["docker", "inspect", "--format", "{{.State.Status}}", "openvpn-server"],
-            capture_output=True,
-            text=True,
-        )
-
-        if status_result.returncode == 0 and "running" in status_result.stdout:
-            # Check if OpenVPN process is running inside
-            proc_result = subprocess.run(
-                ["docker", "exec", "openvpn-server", "pgrep", "openvpn"],
-                capture_output=True,
-                text=True,
-            )
-
-            if proc_result.returncode == 0:
-                print("✓ OpenVPN server container running with active process")
-                return True
-
-        print("✗ OpenVPN server health check failed - container not healthy")
-        return False
-
-    except Exception as e:
-        print(f"Server health test error: {e}")
-        return False
-
-
-def test_container_uptime():
-    """Test that containers have been running for reasonable time"""
-    print("Testing container uptime...")
-
-    try:
-        result = subprocess.run(
-            ["docker", "inspect", "--format", "{{.State.StartedAt}}", "openvpn-server"],
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode == 0:
-            print("✓ OpenVPN server container is running")
-            return True
-        else:
-            print("✗ OpenVPN server container not running")
-            return False
-
-    except Exception as e:
-        print(f"Container uptime test error: {e}")
-        return False
+    return check_container_health("openvpn-server")
 
 
 def test_android_app_running():
@@ -126,157 +61,41 @@ def test_android_app_running():
         return False
 
 
-def test_network_connectivity():
-    """Test basic network connectivity from OpenVPN server"""
-    print("Testing network connectivity...")
-
-    try:
-        # Try multiple connectivity tests in order of preference
-        connectivity_tests = [
-            (
-                [
-                    "docker",
-                    "exec",
-                    "openvpn-server",
-                    "ping",
-                    "-c",
-                    "1",
-                    "-W",
-                    "3",
-                    "8.8.8.8",
-                ],
-                "Google DNS",
-            ),
-            (
-                [
-                    "docker",
-                    "exec",
-                    "openvpn-server",
-                    "ping",
-                    "-c",
-                    "1",
-                    "-W",
-                    "3",
-                    "1.1.1.1",
-                ],
-                "Cloudflare DNS",
-            ),
-            (
-                ["docker", "exec", "openvpn-server", "nslookup", "google.com"],
-                "DNS resolution",
-            ),
-            (
-                ["docker", "exec", "openvpn-server", "echo", "connection-test"],
-                "Container connectivity",
-            ),
-        ]
-
-        for test_cmd, test_name in connectivity_tests:
-            try:
-                result = subprocess.run(
-                    test_cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-
-                if result.returncode == 0:
-                    print(f"✓ Network connectivity working ({test_name})")
-                    return True
-
-            except subprocess.TimeoutExpired:
-                continue
-            except Exception:
-                continue
-
-        print("⚠ Network connectivity tests failed - may be expected in CI environment")
-        return True  # Don't fail CI for network connectivity issues
-
-    except Exception as e:
-        print(f"Network connectivity test error: {e}")
-        return True  # Don't fail CI for network connectivity issues
-
-
-def test_service_ports():
-    """Test that required ports are accessible"""
-    print("Testing service port accessibility...")
-
-    # Only test the actual OpenVPN port, not management ports that may not exist
-    ports_to_test = [
-        ("10.0.2.2", 1194, "OpenVPN"),
-    ]
-
-    all_ports_accessible = True
-
-    for host, port, service in ports_to_test:
-        try:
-            # Try netcat first, then fallback to alternative methods
-            result = subprocess.run(
-                ["nc", "-z", "-v", "-u", host, str(port)],  # Added -u for UDP
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-
-            if result.returncode == 0:
-                print(f"✓ {service} port {port} is accessible")
-            else:
-                # Fallback: try to test via Docker container network
-                fallback_result = subprocess.run(
-                    ["docker", "exec", "openvpn-server", "ss", "-ulnp"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-
-                if f":{port}" in fallback_result.stdout:
-                    print(f"✓ {service} port {port} is bound (verified via container)")
-                else:
-                    print(
-                        f"⚠ {service} port {port} test timed out - may be expected in CI"
-                    )
-                    # Don't fail for port accessibility in CI environment
-                    continue
-
-        except subprocess.TimeoutExpired:
-            print(f"⚠ {service} port {port} test timed out - may be expected in CI")
-            # Don't fail for port timeouts in CI
-            continue
-        except Exception as e:
-            print(f"⚠ {service} port {port} test error: {e} - may be expected in CI")
-            continue
-
-    # Always return True to avoid failing CI on port accessibility
-    print("✓ Port accessibility tests completed (warnings acceptable in CI)")
-    return True
-
-
 def main():
     print("Starting OpenVPN Availability Tests...")
 
+    import json
+
     tests = [
-        test_openvpn_server_health,
-        test_container_uptime,
-        test_network_connectivity,
-        test_service_ports,
-        test_android_app_running,
+        ("openvpn_server_health", test_openvpn_server_health),
+        ("android_app_running", test_android_app_running),
     ]
 
     passed_tests = 0
     total_tests = len(tests)
+    test_results = {}
 
-    for test in tests:
+    for test_name, test_func in tests:
         try:
-            if test():
+            result = test_func()
+            test_results[test_name] = 1 if result else 0
+            if result:
                 passed_tests += 1
             time.sleep(1)  # Brief pause between tests
         except Exception as e:
             print(f"Test failed with exception: {e}")
+            test_results[test_name] = 0
 
     print(f"\nAvailability Tests: {passed_tests}/{total_tests} passed")
 
-    # Exit with 0 if all tests passed, 1 otherwise
-    sys.exit(0 if passed_tests == total_tests else 1)
+    # Output JSON score with detailed test results for CI (must be last line)
+    score = 1 if passed_tests == total_tests else 0
+    result_json = test_results.copy()
+    result_json["score"] = score
+    print(json.dumps(result_json))
+
+    # Always exit with 0 - score determines pass/fail
+    sys.exit(0)
 
 
 if __name__ == "__main__":
