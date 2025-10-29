@@ -35,7 +35,7 @@ def main():
 
             if found_patterns:
                 confidentiality_score = 0
-                leaked_files.append(exploit_log_path)
+                leaked_files.append(os.path.basename(exploit_log_path))
 
         except Exception as e:
             print(f"Error reading exploit log: {e}", file=sys.stderr)
