@@ -26,14 +26,29 @@ print_header() {
     echo -e "${color}========== ${message} ==========${RESET}"
 }
 
-check_server_ready() {
+check_app_containers_ready() {
     # Timeout per container in seconds
     TIMEOUT=${TIMEOUT:-180}
     # Interval between checks in seconds
     INTERVAL=${INTERVAL:-1}
 
-    # Get all running containers
-    containers=$(docker ps --format '{{.Names}}')
+    # Get app-specific containers from metadata.json
+    containers=""
+    if [ -f "metadata.json" ]; then
+        # Check for explicit container_names field
+        container_names=$(jq -r '.container_names[]? // empty' metadata.json 2>/dev/null)
+        if [ -n "$container_names" ]; then
+            containers="$container_names"
+            echo "Found explicit container_names in metadata.json: $containers"
+        fi
+    fi
+
+    if [ -z "$containers" ]; then
+        echo "No app-specific containers found in metadata.json - skipping container readiness check"
+        return 0
+    fi
+
+    echo "Checking readiness for app-specific containers: $containers"
 
     for container in $containers; do
         echo "Checking readiness for $container..."
@@ -104,7 +119,7 @@ check_server_ready() {
         fi
     done
 
-    echo "All containers are ready!"
+    echo "App-specific containers are ready!"
 }
 
 verify_shared_net_connectivity() {
@@ -420,9 +435,37 @@ run_test_check() {
         fi
         adb logcat -c || true
     fi
+    
+    # Get package_name from metadata.json (required field) and verify before setup
+    package_name=$(jq -r '.package_name' metadata.json)
+    echo -e "${INFO} Found package_name in metadata.json: $package_name"
+    
+    # Check if package is NOT installed before setup
+    if adb shell pm list packages | grep -q "^package:$package_name$"; then
+        echo -e "${ERROR} Package $package_name is already installed before setup.sh"
+        echo -e "${ERROR} This test expects the package to be uninstalled initially"
+        exit 1
+    else
+        echo -e "${SUCCESS} Package $package_name is not installed (as expected before setup)"
+    fi
 
     echo -e "${INFO} Running setup..."
     { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+
+    # Verify the specific package is installed after setup
+    if adb shell pm list packages | grep -q "^package:$package_name$"; then
+        echo -e "${SUCCESS} Package $package_name is installed after setup.sh"
+    else
+        echo -e "${ERROR} Package $package_name is not installed after setup.sh"
+        echo -e "${ERROR} This indicates setup.sh failed to install the expected package"
+        echo -e "${INFO} Cleaning up..."
+        ./cleanup.sh
+        exit 1
+    fi
+    
+    # Wait for app-specific containers to be ready (after setup.sh starts them)
+    check_app_containers_ready
+    
     echo -e "${INFO} Injecting flags..."
     { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
     verify_shared_net_connectivity
@@ -563,6 +606,7 @@ EOF
         
         # DoS testing is OPTIONAL - only run if app has server/container components
         # Check if app_server field is not an empty string
+        cd "$ROOT_DIR/$DIR"
         if [ -f "metadata.json" ]; then
             app_server=$(jq -r '.app_server // empty' metadata.json)
             if [ -n "$app_server" ]; then
@@ -577,6 +621,7 @@ EOF
             echo -e "${INFO} No metadata.json found - skipping DoS testing (not applicable)"
             DOS_TESTED=false
         fi
+        cd "$ROOT_DIR"
     else
         # Run simplified test
         print_header "$CYAN" "RUNNING SIMPLIFIED APK INSTALLATION TEST"
@@ -586,32 +631,40 @@ EOF
         
         echo -e "${INFO} Simple APK build and install test - no vulnerability scenarios"
         
-        # Check packages before setup
-        packages_before=$(adb shell pm list packages | wc -l)
-        echo -e "${INFO} Packages before setup: $packages_before"
+        # Get package_name from metadata.json (required field) and verify before setup
+        package_name=$(jq -r '.package_name' metadata.json)
+        echo -e "${INFO} Found package_name in metadata.json: $package_name"
+        
+        # Check if package is NOT installed before setup
+        if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo -e "${ERROR} Package $package_name is already installed before setup.sh"
+            echo -e "${ERROR} This test expects the package to be uninstalled initially"
+            exit 1
+        else
+            echo -e "${SUCCESS} Package $package_name is not installed (as expected before setup)"
+        fi
         
         echo -e "${INFO} Running setup..."
         { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
-        echo -e "${INFO} Injecting flags..."
-        { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
-        verify_shared_net_connectivity
-        adb logcat -c
-        
-        # Check packages after setup
-        packages_after=$(adb shell pm list packages | wc -l)
-        echo -e "${INFO} Packages after setup: $packages_after"
-        
-        if [ "$packages_after" -gt "$packages_before" ]; then
-            echo -e "${SUCCESS} Package count increased ($packages_before -> $packages_after) - app installation verified"
-        elif [ "$packages_after" -eq "$packages_before" ]; then
-            echo -e "${WARNING} Package count unchanged - setup may not have installed new packages"
-            echo -e "${WARNING} This could be expected if app was already installed or uses system components"
+
+         # Verify the specific package is installed after setup
+        if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo -e "${SUCCESS} Package $package_name is installed after setup.sh"
         else
-            echo -e "${ERROR} Package count decreased ($packages_before -> $packages_after) - unexpected behavior"
+            echo -e "${ERROR} Package $package_name is not installed after setup.sh"
+            echo -e "${ERROR} This indicates setup.sh failed to install the expected package"
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
             exit 1
         fi
+        
+        # Wait for app-specific containers to be ready (after setup.sh starts them)
+        check_app_containers_ready
+        
+        echo -e "${INFO} Injecting flags..."
+        { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
+        verify_shared_net_connectivity
+        adb logcat -c
         
         echo -e "${INFO} Cleaning up..."
         ./cleanup.sh
@@ -680,9 +733,6 @@ if [ -f "start_emulator.sh" ]; then
 
     wait_for_device_boot 300
     echo "Emulator booted successfully."
-    
-    # Wait for servers to be ready
-    check_server_ready
 else
     echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
 fi

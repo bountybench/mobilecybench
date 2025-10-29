@@ -109,7 +109,7 @@ jobs:
 
           java=$(jq -r '.java' $metadata)
           if [ "$?" -ne 0 ] || [ "$java" = "null" ] || [ -z "$java" ]; then
-              echo "${ERROR} Could not extract Java version from $metadata. Use default (17)."
+              echo "ERROR: Could not extract Java version from $metadata. Use default (17)."
               java=17
           else 
               echo "Java version: $java"
@@ -318,12 +318,28 @@ jobs:
             exit 1
           fi
           
+      - name: Check for Gradle files
+        if: matrix.setup_mode == 'source'
+        id: check-gradle
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir"
+          
+          # Check for any build.gradle* files in app directory or codebase subdirectory
+          if find . -name "build.gradle*" -type f | grep -q .; then
+            echo "Gradle build files found"
+            echo "has_gradle=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No Gradle build files found"
+            echo "has_gradle=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: "${{ needs.setup.outputs.java }}"
-          cache: gradle
+          cache: ${{ steps.check-gradle.outputs.has_gradle == 'true' && 'gradle' || ''}}
 
       - name: Build or download APK
         env:
@@ -405,14 +421,29 @@ jobs:
       - name: Create shared functions
         run: |
           cat << 'EOF' > /tmp/shared_functions.sh
-          check_server_ready() {
+          check_app_containers_ready() {
             # Timeout per container in seconds
             TIMEOUT=${TIMEOUT:-180}
             # Interval between checks in seconds
             INTERVAL=${INTERVAL:-1}
 
-            # Get all running containers
-            containers=$(docker ps --format '{{.Names}}')
+            # Get app-specific containers from metadata.json
+            containers=""
+            if [ -f "metadata.json" ]; then
+              # Check for explicit container_names field
+              container_names=$(jq -r '.container_names[]? // empty' metadata.json 2>/dev/null)
+              if [ -n "$container_names" ]; then
+                containers="$container_names"
+                echo "Found explicit container_names in metadata.json: $containers"
+              fi
+            fi
+
+            if [ -z "$containers" ]; then
+              echo "No app-specific containers found in metadata.json - skipping container readiness check"
+              return 0
+            fi
+
+            echo "Checking readiness for app-specific containers: $containers"
 
             for container in $containers; do
               echo "Checking readiness for $container..."
@@ -483,7 +514,7 @@ jobs:
               fi
             done
 
-            echo "All containers are ready!"
+            echo "App-specific containers are ready!"
           }
 
           checkout_commit() {
@@ -593,7 +624,6 @@ jobs:
           #!/bin/bash
           set -e
           source /tmp/shared_functions.sh
-          check_server_ready
           adb devices
           EOF
           
@@ -616,8 +646,36 @@ jobs:
           DUMMY_EOF
 
           cd "$dir"
+          
+          # Get package_name from metadata.json (required field) and verify before setup
+          package_name=$(jq -r '.package_name' metadata.json)
+          echo "Found package_name in metadata.json: $package_name"
+          
+          # Check if package is NOT installed before setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "This test expects the package to be uninstalled initially"
+            exit 1
+          else
+            echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
+          fi
+          
           echo "Running setup..."
           ./setup.sh
+
+          # Verify the specific package is installed after setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "SUCCESS: Package $package_name is installed after setup.sh"
+          else
+            echo "ERROR: Package $package_name is not installed after setup.sh"
+            echo "This indicates setup.sh failed to install the expected package"
+            ./cleanup.sh
+            exit 1
+          fi
+          
+          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          check_app_containers_ready
+          
           verify_shared_net_connectivity
           adb logcat -c
 
@@ -654,8 +712,36 @@ jobs:
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           
           cd "$dir"
+          
+          # Get package_name from metadata.json (required field) and verify before setup
+          package_name=$(jq -r '.package_name' metadata.json)
+          echo "Found package_name in metadata.json: $package_name"
+          
+          # Check if package is NOT installed before setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "This test expects the package to be uninstalled initially"
+            exit 1
+          else
+            echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
+          fi
+          
           echo "Running setup..."
           ./setup.sh
+
+          # Verify the specific package is installed after setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "SUCCESS: Package $package_name is installed after setup.sh"
+          else
+            echo "ERROR: Package $package_name is not installed after setup.sh"
+            echo "This indicates setup.sh failed to install the expected package"
+            ./cleanup.sh
+            exit 1
+          fi
+          
+          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          check_app_containers_ready
+          
           verify_shared_net_connectivity
           adb logcat -c
 
@@ -702,8 +788,36 @@ jobs:
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           
           cd "$dir"
+          
+          # Get package_name from metadata.json (required field) and verify before setup
+          package_name=$(jq -r '.package_name' metadata.json)
+          echo "Found package_name in metadata.json: $package_name"
+          
+          # Check if package is NOT installed before setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "This test expects the package to be uninstalled initially"
+            exit 1
+          else
+            echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
+          fi
+          
           echo "Running setup..."
           ./setup.sh
+
+          # Verify the specific package is installed after setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "SUCCESS: Package $package_name is installed after setup.sh"
+          else
+            echo "ERROR: Package $package_name is not installed after setup.sh"
+            echo "This indicates setup.sh failed to install the expected package"
+            ./cleanup.sh
+            exit 1
+          fi
+          
+          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          check_app_containers_ready
+          
           verify_shared_net_connectivity
           adb logcat -c
 
@@ -868,6 +982,102 @@ jobs:
       - name: Create shared functions
         run: |
           cat << 'EOF' > /tmp/shared_functions.sh
+          check_app_containers_ready() {
+            # Timeout per container in seconds
+            TIMEOUT=${TIMEOUT:-180}
+            # Interval between checks in seconds
+            INTERVAL=${INTERVAL:-1}
+
+            # Get app-specific containers from metadata.json
+            containers=""
+            if [ -f "metadata.json" ]; then
+              # Check for explicit container_names field
+              container_names=$(jq -r '.container_names[]? // empty' metadata.json 2>/dev/null)
+              if [ -n "$container_names" ]; then
+                containers="$container_names"
+                echo "Found explicit container_names in metadata.json: $containers"
+              fi
+            fi
+
+            if [ -z "$containers" ]; then
+              echo "No app-specific containers found in metadata.json - skipping container readiness check"
+              return 0
+            fi
+
+            echo "Checking readiness for app-specific containers: $containers"
+
+            for container in $containers; do
+              echo "Checking readiness for $container..."
+
+              # Check if container has a health check
+              has_health=$(docker inspect --format '{{if .Config.Healthcheck}}true{{else}}false{{end}}' "$container")
+              if [ "$has_health" = "true" ]; then
+                echo "Container has a health check. Waiting to become healthy..."
+                elapsed=0
+                success=0
+                while [ $elapsed -lt $TIMEOUT ]; do
+                  status=$(docker inspect --format '{{.State.Health.Status}}' "$container" 2>/dev/null)
+                  if [ "$status" == "healthy" ]; then
+                    success=1
+                    break
+                  fi
+                  sleep "$INTERVAL"
+                  elapsed=$((elapsed + INTERVAL))
+                done
+                if [ $success -eq 1 ]; then
+                  echo "$container is healthy."
+                  continue
+                else
+                  echo "Timeout: $container did not become healthy within $TIMEOUT seconds." >&2
+                  exit 1
+                fi
+              else
+                # Get exposed TCP ports
+                ports=$(docker inspect --format '{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{.HostPort}} {{end}}{{end}}' "$container")
+                if [ -z "$ports" ]; then
+                  echo "No exposed ports for $container. Skipping readiness check." >&2
+                  continue
+                fi
+
+                elapsed=0
+                all_success=0
+                while [ $elapsed -lt $TIMEOUT ]; do
+                  success=1
+                  for port_spec in $ports; do
+                    port=$(echo "$port_spec" | cut -d'/' -f1)
+                    proto=$(echo "$port_spec" | cut -d'/' -f2)
+                    if [ "$proto" != "tcp" ]; then
+                      continue  # Skip non-TCP ports
+                    fi
+
+                    # Perform TCP check
+                    if ! nc -z -w 1 localhost "$port" &>/dev/null; then
+                      success=0
+                      break
+                    fi
+                  done
+
+                  if [ $success -eq 1 ]; then
+                    all_success=1
+                    break
+                  fi
+
+                  sleep "$INTERVAL"
+                  elapsed=$((elapsed + INTERVAL))
+                done
+
+                if [ $all_success -eq 1 ]; then
+                  echo "$container is ready via port check on all ports."
+                else
+                  echo "Timeout: $container not ready after $TIMEOUT seconds." >&2
+                  exit 1
+                fi
+              fi
+            done
+
+            echo "App-specific containers are ready!"
+          }
+
           checkout_commit() {
             pwd
             if [[ -f "metadata.json" ]]; then
@@ -983,31 +1193,40 @@ jobs:
           cd "$dir"
           echo "Simple APK build and install test - no vulnerability scenarios"
           
-          # Check packages before setup
-          packages_before=$(adb shell pm list packages | wc -l)
-          echo "Packages before setup: $packages_before"
+          # Get package_name from metadata.json (required field) and verify before setup
+          package_name=$(jq -r '.package_name' metadata.json)
+          echo "Found package_name in metadata.json: $package_name"
+          
+          # Check if package is NOT installed before setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "This test expects the package to be uninstalled initially"
+            exit 1
+          else
+            echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
+          fi
           
           echo "Running setup..."
           ./setup.sh
+
+          # Verify the specific package is installed after setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "SUCCESS: Package $package_name is installed after setup.sh"
+          else
+            echo "ERROR: Package $package_name is not installed after setup.sh"
+            echo "This indicates setup.sh failed to install the expected package"
+            ./cleanup.sh
+            exit 1
+          fi
+          
+          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          check_app_containers_ready
+          
           verify_shared_net_connectivity
           adb logcat -c
 
           echo "Injecting flags..."
           ../../inject_flags.sh
-          
-          # Check packages after setup
-          packages_after=$(adb shell pm list packages | wc -l)
-          echo "Packages after setup: $packages_after"
-          
-          if [ "$packages_after" -gt "$packages_before" ]; then
-            echo "SUCCESS: Package count increased ($packages_before -> $packages_after) - app installation verified"
-          elif [ "$packages_after" -eq "$packages_before" ]; then
-            echo "WARNING: Package count unchanged - setup may not have installed new packages"
-            echo "This could be expected if app was already installed or uses system components"
-          else
-            echo "ERROR: Package count decreased ($packages_before -> $packages_after) - unexpected behavior"
-            exit 1
-          fi
           
           echo "Cleaning up..."
           ./cleanup.sh

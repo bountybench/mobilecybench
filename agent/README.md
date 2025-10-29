@@ -4,11 +4,12 @@
 1. [Quick Health Check](#quick-health-check)
 2. [Overview](#overview)
 3. [Directory Structure](#directory-structure)
-4. [Prerequisites](#prerequisites)
-5. [Agent Environment Setup](#agent-environment-setup)
-6. [Testing the Agent](#testing-the-agent)
-7. [Running the Agent](#running-the-agent)
-8. [Troubleshooting](#troubleshooting)
+4. [Utils Dependencies](#utils-dependencies)
+5. [Prerequisites](#prerequisites)
+6. [Agent Environment Setup](#agent-environment-setup)
+7. [Testing the Agent](#testing-the-agent)
+8. [Running the Agent](#running-the-agent)
+9. [Troubleshooting](#troubleshooting)
 
 ## Quick Health Check
 
@@ -18,7 +19,9 @@ Verify the MCP server is responding:
 docker exec mcp-server curl http://localhost:4040/api/tunnels
 ```
 
-This should return JSON with tunnel information including the public ngrok URL. If it doesn't, look through the following instructions to ensure your setup is correct. 
+**Note**: This command will only work after the agent containers are running and ngrok is properly configured (see [Agent Environment Setup](#agent-environment-setup) below). If you haven't set up the environment yet, you'll get connection errors - this is expected.
+
+This should return JSON with tunnel information including the public ngrok URL. If it doesn't work after ngrok setup, look through the following instructions to ensure your setup is correct. 
 
 ## Overview
 
@@ -28,6 +31,9 @@ The MobileCybench AI Agent enables an LM agent to perform security testing of An
 - **Kali Container**: Security testing environment with penetration testing tools
 - **Ngrok Tunnel**: Secure external connectivity for AI agent communication
 - **Custom Agent**: AI agent that interacts with Android apps and security tools
+- **Time Tracking**: Comprehensive timing and performance monitoring
+- **Model Providers**: Flexible AI model provider architecture
+- **Token Tracking**: Cost and usage monitoring for AI API calls 
 
 ## Directory Structure
 
@@ -36,18 +42,62 @@ agent/
 ├── README.md                    
 ├── docker-compose.yml           # Orchestrates MCP server and Kali containers
 ├── custom_agent.py              # Main AI agent implementation
-├── setup_env.sh                 # Environment setup script
+├── agent_setup.py               # Agent environment setup and configuration
 ├── kali/                        # Kali Linux container configuration
-│   └── Dockerfile              # Kali container build instructions
-└── mcp/                        
-    ├── mcp_server.py           # MCP server implementation
-    ├── direct_tool_executor.py # Tool execution interface
-    ├── ui_connection.py        # UI connection handling
-    ├── docker_setup.py         # Docker setup utilities
-    ├── Dockerfile              # MCP container build instructions
-    ├── ngrok.yml               # Ngrok tunnel configuration
-    └── example_commands.txt    # Example commands for testing
+│   ├── Dockerfile              # Kali container build instructions
+│   └── Dockerfile.kali         # Alternative Kali container setup
+├── mcp/                        
+│   ├── mcp_server.py           # MCP server implementation
+│   ├── direct_tool_executor.py # Tool execution interface
+│   ├── ui_connection.py        # UI connection handling
+│   ├── docker_setup.py         # Docker setup utilities
+│   ├── Dockerfile              # MCP container build instructions
+│   ├── ngrok.yml               # Ngrok tunnel configuration (created from template)
+│   ├── ngrok.yml.template      # Template for ngrok configuration
+│   ├── example_commands.txt    # Example commands for testing
+│   └── screenshots/            # Screenshot storage directory
+├── model_providers/            # AI model provider implementations
+│   ├── __init__.py
+│   ├── base.py                 # Base provider interface
+│   ├── factory.py              # Provider factory pattern
+│   └── openai_provider.py      # OpenAI API provider
+└── prompts/                    # AI agent prompt templates
+    ├── __init__.py
+    └── prompts.py              # Prompt definitions and templates
 ```
+
+## Utils Dependencies
+
+The agent system relies on several utility modules for core functionality:
+
+- **`utils.time_tracker`**: Comprehensive timing and performance monitoring
+  - Tracks total experiment duration
+  - Monitors individual LLM call times
+  - Generates structured JSON timing reports
+  - Provides statistics (p50, p95, p99) for performance analysis
+
+- **`utils.token_tracker`**: AI API cost and usage monitoring
+  - Tracks token usage across different models
+  - Calculates costs based on current pricing
+  - Provides usage summaries and totals
+
+- **`utils.agent_utils`**: Agent-specific utility functions
+  - Screenshot capture functionality
+  - UI interaction helpers
+
+- **`utils.mcp_utils`**: MCP server utilities
+  - Server health checking
+  - Ngrok URL discovery
+  - MCP configuration management
+
+- **`utils.logger`**: Centralized logging system
+  - Structured logging for agent operations
+  - Log file management
+  - Different log levels for debugging
+
+- **`utils.git_utils`**: Git repository utilities
+  - Repository setup and configuration
+  - Git operations for agent setup
 
 ## Prerequisites
 
@@ -63,7 +113,7 @@ Before setting up the agent environment, ensure you have:
 
 ### 1. Ngrok Configuration
 
-**Important**: The `ngrok.yml` file is not tracked by git (for security reasons) and must be created from the template.
+**Important**: The `ngrok.yml` file is not tracked by git (for security reasons) and must be created from the template. **This step is required before the Quick Health Check will work.**
 
 1. **Get your ngrok token:**
    - Go to [https://ngrok.com](https://ngrok.com) and sign up
@@ -188,18 +238,64 @@ For complete automated testing with the runner:
 ```bash
 # From the project root directory
 source .venv/bin/activate
+python runner.py apps/<app_name>
+# or
 python runner.py <app_name>
 ```
 
 Example:
 ```bash
-python runner.py joplin
+python runner.py apps/conversations
 ```
 
 This runs the complete pipeline:
 1. Sets up Android emulator
 2. Builds and installs the target app
 3. Runs initial security checks
-4. Starts the AI agent
+4. Starts the AI agent with time tracking
 5. Executes AI-driven security testing
 6. Runs final security validation
+7. Generates timing reports and performance statistics
+
+### Time Tracking and Performance Monitoring
+
+The agent now includes comprehensive timing and performance monitoring:
+
+- **Experiment Duration**: Total time from start to completion
+- **LLM Call Timing**: Individual API call durations with success/failure tracking
+- **Performance Statistics**: p50, p95, p99 percentiles for latency analysis
+- **JSON Reports**: Structured timing data saved as `timings_*.json` files
+- **Cost Tracking**: Token usage and API costs per model
+
+Timing data is automatically logged and saved for analysis and CI integration.
+
+## Troubleshooting
+
+### Common Issues
+
+**Time Tracking Issues:**
+- If timing data is missing, check that `utils.time_tracker` is properly imported
+- Verify that `time_tracker.start_experiment()` is called at the beginning of the run
+- Check that `time_tracker.end_experiment()` is called in the finally block
+
+**Model Provider Issues:**
+- Ensure your OpenAI API key is correctly set in the environment
+- Check that the model name matches the available models in your API plan
+- Verify network connectivity to OpenAI's API endpoints
+
+**Token Tracking Issues:**
+- If cost calculations are incorrect, check the pricing data in `utils/token_costs.py`
+- Verify that token usage is being recorded from API responses
+- Ensure the model name matches the pricing configuration
+
+**MCP Server Connection Issues:**
+- Verify Docker containers are running: `docker ps`
+- Check MCP server logs: `docker logs mcp-server`
+- Ensure ngrok tunnel is active: `docker exec mcp-server curl http://localhost:4040/api/tunnels`
+- **If container not found**: Run `docker-compose up --build -d` from the agent directory
+- **If ngrok command fails**: Make sure you've completed the [Ngrok Configuration](#1-ngrok-configuration) step and created `ngrok.yml` from the template
+
+**Agent Performance Issues:**
+- Check timing logs for slow LLM calls
+- Review JSON timing reports for performance bottlenecks
+- Monitor token usage for cost optimization

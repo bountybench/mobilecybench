@@ -8,7 +8,6 @@ on Android applications using AI agents.
 
 import argparse
 import datetime
-import json
 import os
 import shlex
 import subprocess
@@ -21,11 +20,17 @@ from dotenv import load_dotenv
 
 from agent.agent_setup import AgentEnvironment
 from agent.mcp.direct_tool_executor import MCPToolExecutor
+from models.config import RunnerConfig
+from utils.emulator_manager import EmulatorManager
 from utils.logger import logger, logger_manager
+from utils.time_tracker import time_tracker
 from utils.utils import get_app_metadata
 
 load_dotenv()
 project_root = Path(__file__).parent
+
+EMULATOR_BOOT_TIMEOUT_SECONDS = 300
+DUMMY_LOG_FILENAME = "dummy_log.txt"
 
 
 class CommandExecutor:
@@ -201,19 +206,20 @@ class CommandExecutor:
 
 
 class MobileCybenchRunner:
-    def __init__(self, app_name: str, config: dict, agent_only: bool = False):
-        self.app_name = app_name
+    def __init__(self, app_name: str, config: RunnerConfig, agent_only: bool = False):
+        self.app_name = Path(app_name).name
         self.config = config
         self.agent_only = agent_only
         self.project_root = project_root
-        self.app_dir = self.project_root / "apps" / app_name
+        self.app_dir = self.project_root / "apps" / self.app_name
         self.agent_dir = self.project_root / "agent"
         self.cmd = CommandExecutor()
+        self.emulator = None
 
         logger.info("=" * 80)
         logger.info("MobileCybench Runner Started")
         logger.info(f"App: {app_name}")
-        logger.info(f"Configuration: {json.dumps(config, indent=2)}")
+        logger.info(f"Configuration: {config.model_dump_json(indent=2)}")
         logger.info(f"Timestamp: {datetime.datetime.now()}")
         logger.info("=" * 80)
 
@@ -259,7 +265,7 @@ class MobileCybenchRunner:
         logger.info("Validating input...")
 
         # Validate API key early (before starting emulator and app servers)
-        if not self.config["dry_run"]:
+        if not self.config.dry_run:
             self._validate_api_key()
 
         # Check if app directory exists
@@ -277,11 +283,11 @@ class MobileCybenchRunner:
         required_scripts = ["setup.sh"]
 
         if not self.agent_only:  # Check for build scripts if not in agent_only mode
-            if self.config["build_type"] == "source":
+            if self.config.build_type == "source":
                 required_scripts.append("setup_app_source.sh")
-            elif self.config["build_type"] == "download-apk":
+            elif self.config.build_type == "download-apk":
                 required_scripts.append("setup_app_apklink.sh")
-            elif self.config["build_type"] == "skip-apk":
+            elif self.config.build_type == "skip-apk":
                 possible_setup_scripts = ["setup_app_source.sh", "setup_app_apklink.sh"]
                 # do not allow skip-apk if neither script exists
                 if not any(
@@ -293,7 +299,7 @@ class MobileCybenchRunner:
                     )
             else:
                 self._exit_with_error(
-                    f"Unsupported Build Type Detected: {self.config['build_type']}"
+                    f"Unsupported Build Type Detected: {self.config.build_type}"
                 )
 
         for script in required_scripts:
@@ -310,32 +316,13 @@ class MobileCybenchRunner:
 
         logger.info("Input validation passed")
 
-    def setup_emulator(self):
-        """Start and check Android emulator"""
-        logger.info("Setting up Android emulator...")
-        try:
-            self.cmd.run(f"bash ./setup.sh {self.app_name}", cwd=self.project_root)
-        except subprocess.CalledProcessError as e:
-            self._exit_with_error(f"Failed to setup emulator: {e}")
-
-        # Start emulator (runs in background - continuous output like docker without detached mode)
-        logger.info("Starting emulator in background...")
-        # Use --yes to auto-confirm starting another emulator if already running
-        self.cmd.start_background_process(
-            "bash ./start_emulator.sh --yes",
-            cwd=self.project_root,
-        )
-        logger.info(
-            "Emulator setup started, waiting for it to be ready while setting up the app..."
-        )
-
     def setup_app(self):
         """APK Handling, App Backend Setup, and App Installation"""
-        if self.config["build_type"] == "skip-apk":
+        if self.config.build_type == "skip-apk":
             logger.info("=" * 60)
             logger.info("SKIPPING APK HANDLING STEP")
             logger.info("=" * 60)
-        elif self.config["build_type"] == "download-apk":
+        elif self.config.build_type == "download-apk":
             logger.info("=" * 60)
             logger.info("FETCHING APK USING APKLINK")
             logger.info("=" * 60)
@@ -360,26 +347,16 @@ class MobileCybenchRunner:
                     f"Failed to setup app source with setup_app_source.sh: {e}"
                 )
 
-        logger.info("=" * 60)
-        logger.info("CHECKING EMULATOR STATUS")
-        logger.info("=" * 60)
-        logger.info("Waiting for emulator to finish booting...")
+        # ensures emulator is fully booted and ready
         try:
-            self.cmd.run(
-                'bash -lc "source utils/wait.sh && wait_for_device_boot 300"',
-                cwd=self.project_root,
-                live_output=True,
-            )
-        except subprocess.CalledProcessError as e:
-            self._exit_with_error(f"Failed to wait for emulator boot: {e}")
+            self.emulator.wait_until_ready(timeout=EMULATOR_BOOT_TIMEOUT_SECONDS)
+            logger.info("Emulator booted successfully")
+        except Exception as e:
+            self._exit_with_error(f"Failed to wait for emulator to finish booting: {e}")
 
-        logger.info("Emulator booted. Running ./check_device.sh to verify...")
-        try:
-            self.cmd.run(
-                "bash ./check_device.sh", cwd=self.project_root, live_output=True
-            )
-        except subprocess.CalledProcessError as e:
-            self._exit_with_error(f"Failed to check emulator status: {e}")
+        if not self.emulator.check_status():
+            self._exit_with_error("Emulator status check failed")
+        logger.info("Emulator status verified")
 
         # Setup app (setup backend, install apk, etc.)
         logger.info("=" * 60)
@@ -401,7 +378,7 @@ class MobileCybenchRunner:
         logger.info("=" * 60)
         logger.info("Setting up agent environment...")
 
-        if not self.config["dry_run"]:
+        if not self.config.dry_run:
             self._setup_env_file()
         self._create_docker_network()
 
@@ -410,7 +387,7 @@ class MobileCybenchRunner:
         agent_env = AgentEnvironment(
             app_dir=self.app_dir,
             docker_networks=["shared_net"],
-            image_name=self.config["agent_image"],
+            image_name=self.config.agent_image,
             env={"ANDROID_ADB_SERVER_PORT": "5037"},
             commit_id=self.metadata.get("commit_version"),
         )
@@ -478,10 +455,6 @@ class MobileCybenchRunner:
 
         # Set environment variable for docker-compose
         env = os.environ.copy()
-        start_dir = f"/tmp/{self.app_name}_app"
-        env["START_DIR"] = start_dir
-        logger.info(f"Setting START_DIR environment variable: {start_dir}")
-        logger.info(f"Environment variable START_DIR set to: {start_dir}")
 
         logger.info("Starting containers with docker compose...")
 
@@ -512,9 +485,7 @@ class MobileCybenchRunner:
             # Verify specific containers are running
             if "mcp-server" in result.stdout:
                 logger.info("✓ Both MCP server and Kali container are running")
-                logger.info("Both MCP server and Kali container confirmed running")
             else:
-                logger.warning("Some containers may not be running properly")
                 logger.warning("⚠ Warning: Some containers may not be running properly")
 
     def run_agent(self):
@@ -534,20 +505,20 @@ class MobileCybenchRunner:
             logger.info("Creating CustomAgent instance")
 
             agent = CustomAgent(
-                model=self.config["model"],
-                max_iterations=self.config["max_iterations"],
-                max_model_response_tokens=self.config["max_model_response_tokens"],
-                max_kali_message_tokens=self.config["max_kali_message_tokens"],
-                max_context_length=self.config["max_context_length"],
-                screenshot_enabled=self.config["screenshot_mode"],
+                model=self.config.model,
+                max_iterations=self.config.max_iterations,
+                max_model_response_tokens=self.config.max_model_response_tokens,
+                max_kali_message_tokens=self.config.max_kali_message_tokens,
+                max_context_length=self.config.max_context_length,
+                screenshot_enabled=self.config.screenshot_mode,
                 app_name=self.app_name,
                 app_server=getattr(self, "metadata", {}).get(
                     "app_server", None
                 ),  # default to None if in agent_only mode
                 # TODO - create proper dry run mode
                 # https://github.com/bountybench/mobilecybench/issues/322
-                dry_run=self.config["dry_run"],
-                system_prompt=self.config.get("custom_system_prompt", None),
+                dry_run=self.config.dry_run,
+                system_prompt=self.config.custom_system_prompt,
             )
 
             logger.info("Running agent...")
@@ -652,179 +623,131 @@ class MobileCybenchRunner:
         except Exception as e:
             logger.warning(f"Error during cleanup: {e}")
 
+    def _run_agent_pipeline(self):
+        """Run probe checks, agent setup, and agent execution"""
+        dummy_log_path = Path(DUMMY_LOG_FILENAME)
+        if not dummy_log_path.exists():
+            dummy_log_path.touch()
+        self.run_probes_checks(log_file_path=dummy_log_path)
+
+        self.setup_agent()
+        self.run_agent()
+
+        agent_log_filename = logger_manager.get_agent_log_file_name()
+        print("!!! Agent log filename:", agent_log_filename)
+        log_path = Path(agent_log_filename)
+        logger.info(f"Agent log file path: {log_path}")
+        self.run_probes_checks(log_file_path=log_path)
+
     def run(self):
-        """Run the complete pipeline"""
         try:
             self.validate_input()
 
             if not self.agent_only:
-                self.setup_emulator()
-                self.setup_app()
+                logger.info("=" * 60)
+                logger.info("SETTING UP ANDROID EMULATOR")
+                logger.info("=" * 60)
+                sdk_version = (
+                    self.metadata.get("sdk") if hasattr(self, "metadata") else None
+                )
+                with EmulatorManager(
+                    docker_mode=self.config.docker_mode,
+                    project_root=self.project_root,
+                    sdk_version=sdk_version,
+                    app_name=self.app_name,
+                ) as emulator:
+                    self.emulator = emulator
+                    self.emulator.start_in_background()
+                    logger.info("Emulator started in the background . . .")
 
-            # Run initial probes check with dummy log file
-            dummy_log_path = Path("dummy_log.txt")
-            if not dummy_log_path.exists():
-                dummy_log_path.touch()  # Create empty file
-            self.run_probes_checks(log_file_path=dummy_log_path)  # Baseline check
-
-            # Set up and run agent
-            self.setup_agent()
-            self.run_agent()
-
-            # Run probe checks after agent execution with real log file
-            agent_log_filename = logger_manager.get_log_file_name()
-            log_path = Path(agent_log_filename)
-            logger.info(f"Agent log file path: {log_path}")
-            self.run_probes_checks(log_file_path=log_path)
+                    self.setup_app()
+                    self._run_agent_pipeline()
+            else:
+                self._run_agent_pipeline()
 
             logger.info("=" * 60)
-            logger.info("PIPELINE COMPLETED SUCCESSFULLY")
+            logger.info(f"PIPELINE COMPLETED SUCCESSFULLY FOR <<{self.app_name}>>")
             logger.info("=" * 60)
-            logger.info(f"App: {self.app_name}")
-
-            logger.info("Pipeline completed successfully")
             return 0
 
         except KeyboardInterrupt:
-            logger.info("⚠ Runner interrupted by user")
             logger.info("Runner interrupted by user")
             return 1
         except Exception as e:
-            logger.error(f"❌ Unexpected error: {e}")
-            logger.error("Full log available in the log file.")
             logger.error(f"Unexpected error: {e}")
             return 1
         finally:
             pass
-            # self.cleanup()
-
-
-def load_config(config_path: Path) -> dict:
-    """Load and validate configuration from JSON file"""
-    if not config_path.exists():
-        logger.error(f"Config file not found: {config_path}")
-        sys.exit(1)
-
-    try:
-        with open(config_path, "r") as f:
-            config = json.load(f)
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in config file: {e}")
-        sys.exit(1)
-    except Exception as e:
-        logger.error(f"Error reading config file: {e}")
-        sys.exit(1)
-
-    # Validate required fields
-    required_fields = [
-        "server_access",
-        "build_type",
-        # TODO - implement adb allowlist based on this
-        "adb_access",
-        "max_iterations",
-        "max_kali_message_tokens",
-        "max_model_response_tokens",
-        "max_context_length",
-        "model",
-        "screenshot_mode",
-        "headless_mode",
-        "dry_run",
-        "agent_image",
-    ]
-
-    missing_fields = [field for field in required_fields if field not in config]
-    if missing_fields:
-        logger.error(f"Missing required config fields: {missing_fields}")
-        sys.exit(1)
-
-    # Validate field values
-    valid_choices = {
-        "build_type": ["source", "download-apk", "skip-apk"],
-        "adb_access": ["none", "limited", "full"],
-    }
-
-    for field, choices in valid_choices.items():
-        if config[field] not in choices:
-            logger.error(
-                f"Invalid value for {field}: {config[field]}. Must be one of: {choices}"
-            )
-            sys.exit(1)
-
-    # Validate boolean fields
-    bool_fields = ["server_access", "screenshot_mode", "headless_mode", "dry_run"]
-    for field in bool_fields:
-        if not isinstance(config[field], bool):
-            logger.error(f"Field {field} must be a boolean (true/false)")
-            sys.exit(1)
-
-    # Validate integer fields
-    int_fields = [
-        "max_iterations",
-        "max_kali_message_tokens",
-        "max_model_response_tokens",
-        "max_context_length",
-    ]
-    for field in int_fields:
-        if not isinstance(config[field], int) or config[field] <= 0:
-            logger.error(f"Field {field} must be a positive integer")
-            sys.exit(1)
-
-    # Validate model field
-    if not isinstance(config["model"], str) or not config["model"].strip():
-        logger.error("Field 'model' must be a non-empty string")
-        sys.exit(1)
-
-    # Validate agent_image field
-    if not isinstance(config["agent_image"], str) or not config["agent_image"].strip():
-        logger.error("Field 'agent_image' must be a non-empty string")
-        sys.exit(1)
-
-    logger.info("Configuration validation passed")
-    return config
+            # TODO clean up
 
 
 def main():
-    """Main entry point"""
-    parser = argparse.ArgumentParser(
-        description="MobileCybench Runner - Orchestrates AI-driven mobile app security testing"
-    )
+    # Start timing the experiment
+    time_tracker.start_experiment()
 
-    # Add agent_only as a flag
-    parser.add_argument(
-        "--agent-only",
-        action="store_true",
-        dest="agent_only",
-        help="Run only the agent, skipping emulator setup and app setup. Optional.",
-    )
+    try:
+        parser = argparse.ArgumentParser(
+            description="MobileCybench Runner - Orchestrates AI-driven mobile app security testing"
+        )
 
-    parser.add_argument(
-        "app_name",
-        help="Name of the app to test (must exist in apps/ directory). Required.",
-    )
+        # Add agent_only as a flag
+        parser.add_argument(
+            "--agent-only",
+            action="store_true",
+            dest="agent_only",
+            help="Run only the agent, skipping emulator setup and app setup. Optional.",
+        )
 
-    # Add config_file as optional
-    parser.add_argument(
-        "config_file",
-        nargs="?",
-        default="runner_config.json",
-        help="Path to JSON configuration file (default: runner_config.json)",
-    )
+        parser.add_argument(
+            "app_name",
+            help="Name of the app to test (must exist in apps/ directory). Required.",
+        )
 
-    args = parser.parse_args()
+        # Add config_file as optional
+        parser.add_argument(
+            "config_file",
+            nargs="?",
+            default="runner_config.json",
+            help="Path to JSON configuration file (default: runner_config.json)",
+        )
 
-    # Load configuration from file
-    # If relative path, make it relative to the script directory
-    config_file = args.config_file
-    if not os.path.isabs(config_file):
-        config_path = project_root / config_file
-    else:
-        config_path = Path(config_file)
+        args = parser.parse_args()
 
-    config = load_config(config_path)
+        # Update experiment with app name
+        time_tracker._app_name = args.app_name
 
-    # Create and run the runner
-    runner = MobileCybenchRunner(args.app_name, config, args.agent_only)
-    return runner.run()
+        # Load configuration from file
+        # If relative path, make it relative to the script directory
+        config_file = args.config_file
+        if not os.path.isabs(config_file):
+            config_path = project_root / config_file
+        else:
+            config_path = Path(config_file)
+
+        config = RunnerConfig.from_file(config_path)
+
+        # Create and run the runner
+        runner = MobileCybenchRunner(args.app_name, config, args.agent_only)
+        result = runner.run()
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to run experiment: {e}")
+        return 1
+    finally:
+        # Always end timing and log summary, regardless of success/failure
+        time_tracker.end_experiment()
+        try:
+            time_tracker.log_summary(logger)
+
+            # Save structured JSON output
+            json_path = project_root / f"timings_{time_tracker._experiment_id}.json"
+            time_tracker.save_json(json_path)
+            logger.info(f"Timing data saved to: {json_path}")
+
+        except Exception as e:
+            logger.error(f"Failed to log timing summary: {e}")
 
 
 if __name__ == "__main__":

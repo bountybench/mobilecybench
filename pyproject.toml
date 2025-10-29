@@ -17,6 +17,8 @@ exclude = ["apps*", ".venv*", ".git*", ".pytest_cache*", ".ruff_cache*", "*.egg-
 markers = [
     "pricing: mark tests related to token pricing",
     "token_tracker: mark tests related to token tracker",
+    "time_tracker: mark tests related to time tracker",
+    "slow: mark tests that take longer to run",
 ]
 
 [tool.ruff.lint]

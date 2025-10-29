@@ -50,7 +50,7 @@ def mock_agent_dependencies(mock_model_provider):
             return_value={"server_url": "http://test-mcp-server"},
         ):
             with patch("agent.custom_agent.TokenTracker") as mock_tracker:
-                with patch("agent.custom_agent.logger"):
+                with patch("agent.custom_agent.agent_logger"):
                     with patch("agent.custom_agent.logger_manager") as mock_logger_mgr:
                         mock_logger_mgr.get_log_file_name.return_value = (
                             "test_agent.log"
