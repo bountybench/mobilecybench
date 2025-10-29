@@ -113,17 +113,20 @@ class MCPToolExecutor:
             self.logger.error(f"Failed to list tools: {e}")
             return {"error": f"Failed to list tools: {e}"}
 
-    def call_tool(self, tool_name: str, command: str) -> dict:
-        """Execute tool via MCP JSON-RPC"""
+    def call_tool(self, tool_name: str, command: str, experiment_id: str) -> dict:
+        """Execute tool via MCP JSON-RPC with experiment_id for routing"""
         if not self.check_server():
             raise RuntimeError(f"Cannot connect to MCP server at {self.mcp_server_url}")
 
         self._request_id += 1
+        # Include experiment_id in arguments for MCP server routing
+        arguments = {"command": command, "experiment_id": experiment_id}
+            
         payload = {
             "jsonrpc": "2.0",
             "id": self._request_id,
             "method": "tools/call",
-            "params": {"name": tool_name, "arguments": {"command": command}},
+            "params": {"name": tool_name, "arguments": arguments},
         }
 
         try:
@@ -156,7 +159,7 @@ class MCPToolExecutor:
         else:
             return "execute_command", line
 
-    def execute_from_file(self, filepath: str):
+    def execute_from_file(self, filepath: str, experiment_id: str):
         """Execute commands from text file"""
         # Check server connectivity first
         if not self.check_server():
@@ -182,7 +185,7 @@ class MCPToolExecutor:
             self.logger.info(
                 f"Executing command {i}/{len(lines)}: {tool_name} - {command}"
             )
-            result = self.call_tool(tool_name, command)
+            result = self.call_tool(tool_name, command, experiment_id)
 
             # Log full response details
             self.logger.debug(
@@ -224,6 +227,10 @@ def main():
     parser.add_argument(
         "--args", help="Arguments for the tool (defaults to execute_command)"
     )
+    parser.add_argument(
+        "--experiment-id",
+        help="Experiment ID used for routing to the correct Kali container (required for tool calls and file execution)",
+    )
     args = parser.parse_args()
 
     executor = MCPToolExecutor()
@@ -260,7 +267,11 @@ def main():
             print(f"Arguments: {tool_arguments}")
         print("=" * 50)
 
-        result = executor.call_tool(tool_name, tool_arguments)
+        if not args.experiment_id:
+            print("❌ ERROR: --experiment-id is required for calling tools")
+            return
+
+        result = executor.call_tool(tool_name, tool_arguments, args.experiment_id)
         # Format the output nicely - only show response content, not UI elements
         if "error" in result:
             print(f"❌ ERROR: {result['error']}")
@@ -274,7 +285,10 @@ def main():
         if not args.file:
             parser.print_help()
             return
-        executor.execute_from_file(args.file)
+        if not args.experiment_id:
+            print("❌ ERROR: --experiment-id is required when executing from file")
+            return
+        executor.execute_from_file(args.file, args.experiment_id)
 
 
 if __name__ == "__main__":
