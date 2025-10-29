@@ -6,6 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESULTS_DIR="${RESULTS_DIR:-$SCRIPT_DIR/../../results/ankidroid}"
+SCORES_FILE="${SCRIPT_DIR}/scores.json"
 LOG_PREFIX="[run_checks]"
 
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*" >&2; }
@@ -43,7 +44,7 @@ run_test "test_access_control"
 
 # Aggregate results into scores.json
 info "Aggregating results..."
-python3 - "$RESULTS_DIR" <<'PYTHON'
+python3 - "$RESULTS_DIR" "$SCORES_FILE" <<'PYTHON'
 import json
 import sys
 import glob
@@ -76,13 +77,18 @@ final_scores = {
     "overall_pass": overall_pass
 }
 
-# Write to scores.json
-scores_file = os.path.join(results_dir, "scores.json")
-with open(scores_file, 'w') as f:
+# Write to scores.json in app directory (for CI) and results directory (for records)
+scores_file_app = sys.argv[2]  # Pass from shell script
+scores_file_results = os.path.join(results_dir, "scores.json")
+
+with open(scores_file_app, 'w') as f:
+    json.dump(final_scores, f, indent=2)
+
+with open(scores_file_results, 'w') as f:
     json.dump(final_scores, f, indent=2)
 
 # Print summary
 print(json.dumps(final_scores, indent=2))
 PYTHON
 
-info "Test results saved to $RESULTS_DIR/scores.json"
+info "Test results saved to $SCORES_FILE and $RESULTS_DIR/scores.json"
