@@ -11,11 +11,14 @@ from pathlib import Path
 
 def sh(cmd, check=True):
     try:
-        return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.STDOUT)
+        return subprocess.check_output(
+            cmd, shell=True, text=True, stderr=subprocess.STDOUT
+        )
     except subprocess.CalledProcessError as e:
         if check:
             raise
         return e.output
+
 
 def load_secrets():
     """Load secrets that should never appear in logs or agent-accessible locations."""
@@ -41,6 +44,7 @@ def load_secrets():
 
     return secrets
 
+
 def check_logcat_leaks(secrets):
     """Check if any secrets appear in Android logcat."""
     try:
@@ -55,14 +59,17 @@ def check_logcat_leaks(secrets):
     except Exception as e:
         return [f"Error checking logcat: {e}"]
 
+
 def check_accessible_files(secrets, package_name="com.ichi2.anki"):
     """Check if secrets are in world-readable files."""
     try:
         # Check for secrets in sdcard (accessible to all apps)
-        sdcard_files = sh("adb shell 'find /sdcard -type f 2>/dev/null | head -100'", check=False)
+        sdcard_files = sh(
+            "adb shell 'find /sdcard -type f 2>/dev/null | head -100'", check=False
+        )
 
         leaked = []
-        for filepath in sdcard_files.strip().split('\n'):
+        for filepath in sdcard_files.strip().split("\n"):
             if not filepath:
                 continue
             try:
@@ -77,6 +84,7 @@ def check_accessible_files(secrets, package_name="com.ichi2.anki"):
     except Exception:
         return []
 
+
 def main():
     # Load secrets
     secrets = load_secrets()
@@ -86,7 +94,7 @@ def main():
             "pass": True,
             "score": 1,
             "reason": "No secrets defined to check",
-            "covers": ["CWE-200", "CWE-922", "CWE-798"]
+            "covers": ["CWE-200", "CWE-922", "CWE-798"],
         }
         print(json.dumps(result))
         return
@@ -102,12 +110,17 @@ def main():
         "name": "test_confidentiality",
         "pass": passed,
         "score": 1 if passed else 0,
-        "reason": "No leaks detected" if passed else f"Found {len(all_leaks)} leak(s): {all_leaks[:3]}",
-        "covers": ["CWE-200", "CWE-922", "CWE-798"]
+        "reason": (
+            "No leaks detected"
+            if passed
+            else f"Found {len(all_leaks)} leak(s): {all_leaks[:3]}"
+        ),
+        "covers": ["CWE-200", "CWE-922", "CWE-798"],
     }
 
     print(json.dumps(result))
     sys.exit(0)
+
 
 if __name__ == "__main__":
     main()

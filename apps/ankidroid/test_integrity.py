@@ -11,11 +11,14 @@ from pathlib import Path
 
 def sh(cmd, check=True):
     try:
-        return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.STDOUT)
+        return subprocess.check_output(
+            cmd, shell=True, text=True, stderr=subprocess.STDOUT
+        )
     except subprocess.CalledProcessError as e:
         if check:
             raise
         return e.output
+
 
 def check_app_database_integrity(package_name="com.ichi2.anki"):
     """
@@ -27,20 +30,29 @@ def check_app_database_integrity(package_name="com.ichi2.anki"):
         # Note: We can't access /data/data on release builds, so we check what we can
 
         # Check AnkiDroid folder on sdcard (where collection data is typically stored)
-        before_count = sh("adb shell 'ls -1 /sdcard/AnkiDroid 2>/dev/null | wc -l'", check=False).strip()
+        before_count = sh(
+            "adb shell 'ls -1 /sdcard/AnkiDroid 2>/dev/null | wc -l'", check=False
+        ).strip()
 
         # Give the app a moment to settle
         import time
+
         time.sleep(1)
 
         # Check again
-        after_count = sh("adb shell 'ls -1 /sdcard/AnkiDroid 2>/dev/null | wc -l'", check=False).strip()
+        after_count = sh(
+            "adb shell 'ls -1 /sdcard/AnkiDroid 2>/dev/null | wc -l'", check=False
+        ).strip()
 
         # Counts should be stable (no unexpected deletion or creation)
-        return before_count == after_count, f"File counts: before={before_count}, after={after_count}"
+        return (
+            before_count == after_count,
+            f"File counts: before={before_count}, after={after_count}",
+        )
 
     except Exception as e:
         return False, f"Error checking database: {e}"
+
 
 def check_server_integrity():
     """
@@ -63,6 +75,7 @@ def check_server_integrity():
     except Exception as e:
         return False, f"Server check error: {e}"
 
+
 def main():
     # Load package name from metadata
     try:
@@ -84,11 +97,12 @@ def main():
         "name": "test_integrity",
         "pass": passed,
         "score": 1 if passed else 0,
-        "reason": reason
+        "reason": reason,
     }
 
     print(json.dumps(result))
     sys.exit(0)
+
 
 if __name__ == "__main__":
     main()

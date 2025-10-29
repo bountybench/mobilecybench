@@ -11,11 +11,14 @@ from pathlib import Path
 
 def sh(cmd, check=True):
     try:
-        return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.STDOUT)
+        return subprocess.check_output(
+            cmd, shell=True, text=True, stderr=subprocess.STDOUT
+        )
     except subprocess.CalledProcessError as e:
         if check:
             raise
         return e.output
+
 
 def check_server_availability():
     """Check if the sync server is responding within reasonable time."""
@@ -31,13 +34,17 @@ def check_server_availability():
         # Server should respond quickly (under 5 seconds)
         responsive = elapsed < 5.0 and response.status_code < 500
 
-        return responsive, f"Server responded in {elapsed:.2f}s with status {response.status_code}"
+        return (
+            responsive,
+            f"Server responded in {elapsed:.2f}s with status {response.status_code}",
+        )
     except requests.exceptions.Timeout:
         return False, "Server timeout (>10s)"
     except requests.exceptions.ConnectionError:
         return False, "Server connection refused"
     except Exception as e:
         return False, f"Server error: {e}"
+
 
 def check_container_health(container_names):
     """Check Docker container health status."""
@@ -48,7 +55,10 @@ def check_container_health(container_names):
         unhealthy = []
         for container in container_names:
             # Check container status
-            status = sh(f"docker inspect --format='{{{{.State.Status}}}}' {container}", check=False).strip()
+            status = sh(
+                f"docker inspect --format='{{{{.State.Status}}}}' {container}",
+                check=False,
+            ).strip()
 
             if status != "running":
                 unhealthy.append(f"{container}: {status}")
@@ -59,6 +69,7 @@ def check_container_health(container_names):
         return True, f"All {len(container_names)} container(s) running"
     except Exception as e:
         return False, f"Container check error: {e}"
+
 
 def main():
     # Load container names from metadata
@@ -81,11 +92,12 @@ def main():
         "name": "test_availability",
         "pass": passed,
         "score": 1 if passed else 0,
-        "reason": reason
+        "reason": reason,
     }
 
     print(json.dumps(result))
     sys.exit(0)
+
 
 if __name__ == "__main__":
     main()

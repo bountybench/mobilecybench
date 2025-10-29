@@ -19,6 +19,7 @@ def sh(cmd, check=True):
             raise
         return e.output
 
+
 # ---------- metadata ----------
 def load_meta():
     base = Path(__file__).resolve().parent
@@ -30,11 +31,13 @@ def load_meta():
         sys.exit(2)
     return url, m["username"], m["password"]
 
+
 # ---------- adb helpers ----------
 def wait_adb():
     sh("adb start-server >/dev/null 2>&1 || true")
     sh("adb wait-for-device")
     time.sleep(1.0)
+
 
 def detect_pkg():
     # Prefer explicit env override
@@ -48,6 +51,7 @@ def detect_pkg():
         return m.group(1)
     print("[synch_app] ERROR: com.ichi2.anki not installed?", file=sys.stderr)
     sys.exit(3)
+
 
 def launch_app(pkg):
     # Try monkey with LAUNCHER
@@ -63,7 +67,7 @@ def launch_app(pkg):
     comp = sh(
         f"adb shell cmd package resolve-activity --brief "
         f"-a android.intent.action.MAIN -c android.intent.category.LAUNCHER {pkg} | tail -n 1",
-        check=False
+        check=False,
     ).strip()
     if comp and "/" in comp:
         sh(f"adb shell am start -W -n {comp}")
@@ -74,7 +78,7 @@ def launch_app(pkg):
     comp2 = sh(
         "adb shell cmd package query-activities --brief "
         f"-a android.intent.action.MAIN -c android.intent.category.LAUNCHER | grep {pkg} | tail -n 1",
-        check=False
+        check=False,
     ).strip()
     if comp2 and "/" in comp2:
         sh(f"adb shell am start -W -n {comp2}")
@@ -100,16 +104,22 @@ def launch_app(pkg):
         f"{pkg}/{pkg}.ui.SplashActivity",
     ]
     for compx in candidates:
-        rc = subprocess.call(f"adb shell am start -W -n {compx} >/dev/null 2>&1", shell=True)
+        rc = subprocess.call(
+            f"adb shell am start -W -n {compx} >/dev/null 2>&1", shell=True
+        )
         if rc == 0:
             time.sleep(2.0)
         return
 
-    print("[synch_app] ERROR: unable to launch app (no launcher activity resolved).", file=sys.stderr)
+    print(
+        "[synch_app] ERROR: unable to launch app (no launcher activity resolved).",
+        file=sys.stderr,
+    )
     sys.exit(4)
 
+
 def set_sync_prefs(url, username, pkg):
-    spdir  = f"/data/data/{pkg}/shared_prefs"
+    spdir = f"/data/data/{pkg}/shared_prefs"
     spfile = f"{spdir}/{pkg}_preferences.xml"
 
     xml = f"""<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
@@ -127,8 +137,8 @@ def set_sync_prefs(url, username, pkg):
         # ensure directory exists, then write file with absolute path
         cmd = (
             f"run-as {pkg} sh -c "
-            f"\"mkdir -p {shlex.quote(spdir)} && cat > {shlex.quote(spfile)} && "
-            f"chmod 600 {shlex.quote(spfile)}\""
+            f'"mkdir -p {shlex.quote(spdir)} && cat > {shlex.quote(spfile)} && '
+            f'chmod 600 {shlex.quote(spfile)}"'
         )
         subprocess.run(["adb", "shell", cmd], input=xml, text=True, check=True)
         print(f"[synch_app] wrote custom sync prefs for {pkg}: {url} {username}")
@@ -136,6 +146,7 @@ def set_sync_prefs(url, username, pkg):
     except Exception as e:
         print(f"[synch_app] prefs-write failed ({e})", file=sys.stderr)
         sys.exit(5)
+
 
 # ---------- trigger sync & verify ----------
 def trigger_sync_and_check():
@@ -147,11 +158,15 @@ def trigger_sync_and_check():
     time.sleep(3.0)
 
     logs = sh("adb logcat -d -v brief | tail -n 1200").lower()
-    bad = any(s in logs for s in [
-        "fatal exception", "anr in", "java.lang.runtimeexception"
-    ])
+    bad = any(
+        s in logs for s in ["fatal exception", "anr in", "java.lang.runtimeexception"]
+    )
     if bad:
-        print("[synch_app] App startup failed. Logcat tail:\n", "\n".join(logs.splitlines()[-150:]), file=sys.stderr)
+        print(
+            "[synch_app] App startup failed. Logcat tail:\n",
+            "\n".join(logs.splitlines()[-150:]),
+            file=sys.stderr,
+        )
         sys.exit(4)
     print("[synch_app] Sync configuration appears OK.")
 

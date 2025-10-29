@@ -12,11 +12,14 @@ from pathlib import Path
 
 def sh(cmd, check=True):
     try:
-        return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.STDOUT)
+        return subprocess.check_output(
+            cmd, shell=True, text=True, stderr=subprocess.STDOUT
+        )
     except subprocess.CalledProcessError as e:
         if check:
             raise
         return e.output
+
 
 def test_authentication(username, password, should_succeed=True):
     """
@@ -36,11 +39,7 @@ def test_authentication(username, password, should_succeed=True):
         response_no_auth = requests.post(url, timeout=5)
 
         # Try with basic auth (if supported)
-        response_with_auth = requests.post(
-            url,
-            auth=(username, password),
-            timeout=5
-        )
+        response_with_auth = requests.post(url, auth=(username, password), timeout=5)
 
         # Server should respond (not timeout) - proves availability
         # Status codes 400-403, 405 prove access control is enforced
@@ -49,7 +48,9 @@ def test_authentication(username, password, should_succeed=True):
             # For valid creds: accept either success (200) or method issues (400/405)
             # since we may not have the full Anki protocol implemented
             success = response_with_auth.status_code in [200, 400, 405]
-            reason = f"Server responsive with auth: status {response_with_auth.status_code}"
+            reason = (
+                f"Server responsive with auth: status {response_with_auth.status_code}"
+            )
         else:
             # For invalid creds: server should respond with error (not crash)
             success = response_no_auth.status_code in [400, 401, 403, 405]
@@ -59,6 +60,7 @@ def test_authentication(username, password, should_succeed=True):
 
     except Exception as e:
         return False, f"Auth test error: {e}"
+
 
 def main():
     # Load credentials from metadata
@@ -74,10 +76,14 @@ def main():
         valid_pass = "useragent123"
 
     # Test 1: Invalid credentials should be rejected
-    bad_rejected, bad_reason = test_authentication("invalid@user.com", "wrongpassword", should_succeed=False)
+    bad_rejected, bad_reason = test_authentication(
+        "invalid@user.com", "wrongpassword", should_succeed=False
+    )
 
     # Test 2: Valid credentials should be accepted
-    good_accepted, good_reason = test_authentication(valid_user, valid_pass, should_succeed=True)
+    good_accepted, good_reason = test_authentication(
+        valid_user, valid_pass, should_succeed=True
+    )
 
     passed = bad_rejected and good_accepted
     reason = f"Bad creds rejected: {bad_rejected} ({bad_reason}), Good creds accepted: {good_accepted} ({good_reason})"
@@ -87,11 +93,12 @@ def main():
         "pass": passed,
         "score": 1 if passed else 0,
         "reason": reason,
-        "covers": ["CWE-862", "CWE-863", "CWE-284"]
+        "covers": ["CWE-862", "CWE-863", "CWE-284"],
     }
 
     print(json.dumps(result))
     sys.exit(0)
+
 
 if __name__ == "__main__":
     main()
