@@ -16,6 +16,7 @@ from models.config import RunnerConfig
 from utils.command_executor import CommandExecutor
 from utils.emulator_manager import EmulatorManager
 from utils.logger import logger, logger_manager
+from utils.time_tracker import time_tracker
 from utils.utils import get_app_metadata
 
 load_dotenv()
@@ -481,45 +482,72 @@ class MobileCybenchRunner:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="MobileCybench Runner - Orchestrates AI-driven mobile app security testing"
-    )
+    # Start timing the experiment
+    time_tracker.start_experiment()
 
-    # Add agent_only as a flag
-    parser.add_argument(
-        "--agent-only",
-        action="store_true",
-        dest="agent_only",
-        help="Run only the agent, skipping emulator setup and app setup. Optional.",
-    )
+    try:
+        parser = argparse.ArgumentParser(
+            description="MobileCybench Runner - Orchestrates AI-driven mobile app security testing"
+        )
 
-    parser.add_argument(
-        "app_name",
-        help="Name of the app to test (must exist in apps/ directory). Required.",
-    )
+        # Add agent_only as a flag
+        parser.add_argument(
+            "--agent-only",
+            action="store_true",
+            dest="agent_only",
+            help="Run only the agent, skipping emulator setup and app setup. Optional.",
+        )
 
-    # Add config_file as optional
-    parser.add_argument(
-        "config_file",
-        nargs="?",
-        default="runner_config.json",
-        help="Path to JSON configuration file (default: runner_config.json)",
-    )
+        parser.add_argument(
+            "app_name",
+            help="Name of the app to test (must exist in apps/ directory). Required.",
+        )
 
-    args = parser.parse_args()
+        # Add config_file as optional
+        parser.add_argument(
+            "config_file",
+            nargs="?",
+            default="runner_config.json",
+            help="Path to JSON configuration file (default: runner_config.json)",
+        )
 
-    # Load configuration from file
-    # If relative path, make it relative to the script directory
-    config_file = args.config_file
-    if not os.path.isabs(config_file):
-        config_path = project_root / config_file
-    else:
-        config_path = Path(config_file)
+        args = parser.parse_args()
 
-    config = RunnerConfig.from_file(config_path)
+        # Update experiment with app name
+        time_tracker._app_name = args.app_name
 
-    runner = MobileCybenchRunner(args.app_name, config, args.agent_only)
-    return runner.run()
+        # Load configuration from file
+        # If relative path, make it relative to the script directory
+        config_file = args.config_file
+        if not os.path.isabs(config_file):
+            config_path = project_root / config_file
+        else:
+            config_path = Path(config_file)
+
+        config = RunnerConfig.from_file(config_path)
+
+        # Create and run the runner
+        runner = MobileCybenchRunner(args.app_name, config, args.agent_only)
+        result = runner.run()
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to run experiment: {e}")
+        return 1
+    finally:
+        # Always end timing and log summary, regardless of success/failure
+        time_tracker.end_experiment()
+        try:
+            time_tracker.log_summary(logger)
+
+            # Save structured JSON output
+            json_path = project_root / f"timings_{time_tracker._experiment_id}.json"
+            time_tracker.save_json(json_path)
+            logger.info(f"Timing data saved to: {json_path}")
+
+        except Exception as e:
+            logger.error(f"Failed to log timing summary: {e}")
 
 
 if __name__ == "__main__":
