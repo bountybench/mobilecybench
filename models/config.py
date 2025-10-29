@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class RunnerConfig(BaseModel):
@@ -45,3 +45,23 @@ class RunnerConfig(BaseModel):
             raise ValueError(f"Unexpected error reading config file: {e}")
 
         return cls(**c_dict)
+
+    @field_validator("allowed_tools", mode="after")
+    @classmethod
+    def validate_allowed_tools(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if value is None:
+            return None
+        # define valid allowed_tools set
+        valid_tools = {
+            "execute_command",
+            "get_current_ui_state",
+            "execute_command_with_ui_state",
+        }
+        invalid = set(value) - valid_tools
+        if invalid:
+            raise ValueError(
+                f"Invalid tools found in allowed_tools: {(invalid)}\n"
+                f"Supported tools are: {(valid_tools)}"
+            )
+        return value
+
