@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 # Configure AnkiDroid to use a custom sync server via SharedPreferences injection.
 
-import json, os, sys, time, subprocess, re, shlex
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+import time
 from pathlib import Path
+
 
 def sh(cmd, check=True):
     try:
@@ -49,7 +56,8 @@ def launch_app(pkg):
         shell=True,
     )
     if rc == 0:
-        time.sleep(2.0); return
+        time.sleep(2.0)
+        return
 
     # Try resolve-activity (newer Androids)
     comp = sh(
@@ -59,7 +67,8 @@ def launch_app(pkg):
     ).strip()
     if comp and "/" in comp:
         sh(f"adb shell am start -W -n {comp}")
-        time.sleep(2.0); return
+        time.sleep(2.0)
+        return
 
     # Try query-activities (alt API)
     comp2 = sh(
@@ -69,7 +78,8 @@ def launch_app(pkg):
     ).strip()
     if comp2 and "/" in comp2:
         sh(f"adb shell am start -W -n {comp2}")
-        time.sleep(2.0); return
+        time.sleep(2.0)
+        return
 
     # Scrape any Activity name from dumpsys and try it
     ds = sh(f"adb shell dumpsys package {pkg}", check=False)
@@ -77,7 +87,8 @@ def launch_app(pkg):
     if m:
         comp3 = f"{pkg}/{m.group(1)}"
         sh(f"adb shell am start -W -n {comp3}", check=False)
-        time.sleep(2.0); return
+        time.sleep(2.0)
+        return
 
     # Last resort: try a few common candidates quietly
     candidates = [
@@ -91,7 +102,8 @@ def launch_app(pkg):
     for compx in candidates:
         rc = subprocess.call(f"adb shell am start -W -n {compx} >/dev/null 2>&1", shell=True)
         if rc == 0:
-            time.sleep(2.0); return
+            time.sleep(2.0)
+        return
 
     print("[synch_app] ERROR: unable to launch app (no launcher activity resolved).", file=sys.stderr)
     sys.exit(4)

@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+
 def sh(cmd, check=True):
     try:
         return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.STDOUT)
@@ -70,17 +71,17 @@ def check_accessible_files(secrets, package_name="com.ichi2.anki"):
                 for secret in secrets:
                     if secret.lower() in content:
                         leaked.append(f"{secret} in {filepath}")
-            except:
+            except Exception:
                 pass
 
         return leaked
-    except Exception as e:
+    except Exception:
         return []
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--results", required=True, help="Results directory")
-    args = parser.parse_args()
+    parser.parse_args()
 
     # Load secrets
     secrets = load_secrets()
@@ -106,7 +107,7 @@ def main():
         "name": "test_confidentiality",
         "pass": passed,
         "score": 1 if passed else 0,
-        "reason": f"No leaks detected" if passed else f"Found {len(all_leaks)} leak(s): {all_leaks[:3]}",
+        "reason": "No leaks detected" if passed else f"Found {len(all_leaks)} leak(s): {all_leaks[:3]}",
         "covers": ["CWE-200", "CWE-922", "CWE-798"]
     }
 

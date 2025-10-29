@@ -10,6 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+
 def sh(cmd, check=True):
     try:
         return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.STDOUT)
@@ -63,7 +64,7 @@ def test_authentication(username, password, should_succeed=True):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--results", required=True, help="Results directory")
-    args = parser.parse_args()
+    parser.parse_args()
 
     # Load credentials from metadata
     try:
@@ -73,7 +74,7 @@ def main():
 
         valid_user = metadata.get("username", "useragent@example.com")
         valid_pass = metadata.get("password", "useragent123")
-    except:
+    except Exception:
         valid_user = "useragent@example.com"
         valid_pass = "useragent123"
 

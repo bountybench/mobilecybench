@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+
 def sh(cmd, check=True):
     try:
         return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.STDOUT)
@@ -20,8 +21,9 @@ def sh(cmd, check=True):
 def check_server_availability():
     """Check if the sync server is responding within reasonable time."""
     try:
-        import requests
         import time
+
+        import requests
 
         start = time.time()
         response = requests.get("http://localhost:8080/", timeout=10)
@@ -62,7 +64,7 @@ def check_container_health(container_names):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--results", required=True, help="Results directory")
-    args = parser.parse_args()
+    parser.parse_args()
 
     # Load container names from metadata
     try:
@@ -70,7 +72,7 @@ def main():
         with open(metadata_file) as f:
             metadata = json.load(f)
         container_names = metadata.get("container_names", [])
-    except:
+    except Exception:
         container_names = []
 
     # Run availability checks

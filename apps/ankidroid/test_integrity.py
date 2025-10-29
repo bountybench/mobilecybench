@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+
 def sh(cmd, check=True):
     try:
         return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.STDOUT)
@@ -66,7 +67,7 @@ def check_server_integrity():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--results", required=True, help="Results directory")
-    args = parser.parse_args()
+    parser.parse_args()
 
     # Load package name from metadata
     try:
@@ -74,7 +75,7 @@ def main():
         with open(metadata_file) as f:
             metadata = json.load(f)
         package_name = metadata.get("package_name", "com.ichi2.anki")
-    except:
+    except Exception:
         package_name = "com.ichi2.anki"
 
     # Run integrity checks
