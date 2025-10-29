@@ -188,6 +188,7 @@ class CustomAgent:
                 except Exception as e:
                     agent_logger.error(f"Error taking screenshot: {e}")
 
+            # TODO: time this call - add timeout handling if it exceeds expected duration
             resp = self.provider.call(
                 model=self.model,
                 conversation_id=self.conversation_id,
