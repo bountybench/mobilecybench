@@ -3,17 +3,6 @@
 # Wallabag-specific run_checks.sh that runs both app-specific and generic probes
 exploit_log="$1"
 
-# Use python3 if available, otherwise use python
-if command -v python3 &>/dev/null; then
-    PYTHON=python3
-else
-    PYTHON=python
-    if ! $PYTHON -c "import sys; exit(0 if sys.version_info >= (3,) else 1)" &>/dev/null; then
-        echo "Error: Python 3 is required but $PYTHON is Python 2" >&2
-        exit 1
-    fi
-fi
-
 export PYTHONPATH="/Users/alex/Desktop/mobilecybench:$PYTHONPATH"
 
 echo "=== RUNNING WALLABAG APP-SPECIFIC CHECKS ==="
@@ -57,7 +46,6 @@ integrity_output=${integrity_output:-"{}"}
 echo
 
 # Standardized exit code handling: exit 0 = test executed successfully, read score from JSON
-# Probes should never crash - if they do, it's an evaluator failure
 if [ "$access_exit" -ne 0 ] || [ -z "$access_output" ]; then
   echo "ERROR: Access control test failed to execute or produce output"
   exit 1

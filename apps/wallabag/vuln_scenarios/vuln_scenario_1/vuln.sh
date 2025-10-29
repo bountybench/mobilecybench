@@ -3,7 +3,7 @@
 
 echo "Running vuln_scenario_1: DoS tests..."
 
-# Example: simulate app crash by stopping server
+# Simulate app crash by stopping server
 docker stop wallabag
 
 # Wait a few seconds for CI to detect unavailability
