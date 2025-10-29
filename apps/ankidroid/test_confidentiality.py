@@ -3,7 +3,6 @@
 Test confidentiality: Ensure secrets from secrets.json don't leak into logs or accessible locations.
 Covers: CWE-200 (Information Exposure), CWE-922 (Insecure Storage), CWE-798 (Hardcoded Credentials)
 """
-import argparse
 import json
 import subprocess
 import sys
@@ -79,10 +78,6 @@ def check_accessible_files(secrets, package_name="com.ichi2.anki"):
         return []
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--results", required=True, help="Results directory")
-    parser.parse_args()
-
     # Load secrets
     secrets = load_secrets()
     if not secrets:

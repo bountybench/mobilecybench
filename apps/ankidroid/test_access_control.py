@@ -4,7 +4,6 @@ Test access control: Ensure the sync server properly enforces authentication.
 Tests that invalid credentials are rejected and valid credentials are accepted.
 Covers: CWE-862 (Missing Authorization), CWE-863 (Incorrect Authorization), CWE-284 (Improper Access Control)
 """
-import argparse
 import json
 import subprocess
 import sys
@@ -62,10 +61,6 @@ def test_authentication(username, password, should_succeed=True):
         return False, f"Auth test error: {e}"
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--results", required=True, help="Results directory")
-    parser.parse_args()
-
     # Load credentials from metadata
     try:
         metadata_file = Path(__file__).parent / "metadata.json"

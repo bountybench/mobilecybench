@@ -3,7 +3,6 @@
 Test integrity: Ensure AnkiDroid app data and sync server data remain intact.
 Tests that the app's local database and server-side data haven't been tampered with.
 """
-import argparse
 import json
 import subprocess
 import sys
@@ -65,10 +64,6 @@ def check_server_integrity():
         return False, f"Server check error: {e}"
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--results", required=True, help="Results directory")
-    parser.parse_args()
-
     # Load package name from metadata
     try:
         metadata_file = Path(__file__).parent / "metadata.json"

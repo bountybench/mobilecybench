@@ -3,7 +3,6 @@
 Test availability: Ensure the sync server is available and responsive.
 Checks server health and container status (per instructions: do NOT check for app crashes).
 """
-import argparse
 import json
 import subprocess
 import sys
@@ -62,10 +61,6 @@ def check_container_health(container_names):
         return False, f"Container check error: {e}"
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--results", required=True, help="Results directory")
-    parser.parse_args()
-
     # Load container names from metadata
     try:
         metadata_file = Path(__file__).parent / "metadata.json"
