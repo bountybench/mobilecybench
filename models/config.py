@@ -51,7 +51,8 @@ class RunnerConfig(BaseModel):
     def validate_allowed_tools(cls, value: Optional[List[str]]) -> Optional[List[str]]:
         if value is None:
             return None
-        # define valid allowed_tools set
+        # TODO: should consider a single truth of source MCP tools registry or constants file
+        # currently hardcode as we don't have that file yet
         valid_tools = {
             "execute_command",
             "get_current_ui_state",
