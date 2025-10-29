@@ -54,7 +54,9 @@ def test_validate_mcp_server_success(mock_executor_class, runner):
 
     runner._validate_mcp_server()
 
-    mock_executor.call_tool.assert_called_once_with("execute_command", "ls /app", experiment_id="test_app")
+    mock_executor.call_tool.assert_called_once_with(
+        "execute_command", "ls /app", experiment_id="test_app"
+    )
 
 
 @patch("runner.MCPToolExecutor")

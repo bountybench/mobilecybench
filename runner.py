@@ -460,7 +460,9 @@ class MobileCybenchRunner:
 
         mcp_executor = MCPToolExecutor()
         # Pass app_name as experiment_id for proper container routing
-        result = mcp_executor.call_tool("execute_command", "ls /app", experiment_id=self.app_name)
+        result = mcp_executor.call_tool(
+            "execute_command", "ls /app", experiment_id=self.app_name
+        )
         response = (
             result.get("result", {}).get("structuredContent", {}).get("response", "")
         )

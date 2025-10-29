@@ -36,9 +36,19 @@ class MultiExperimentRoutingCheck:
             return False
         # MCP server container
         try:
-            result = subprocess.run([
-                "docker", "ps", "--filter", "name=mcp-server", "--format", "{{.Status}}"
-            ], capture_output=True, text=True, check=True)
+            result = subprocess.run(
+                [
+                    "docker",
+                    "ps",
+                    "--filter",
+                    "name=mcp-server",
+                    "--format",
+                    "{{.Status}}",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
             if "Up" in result.stdout:
                 print("   ✅ MCP server is running")
             else:
@@ -55,7 +65,7 @@ class MultiExperimentRoutingCheck:
             name = f"kali-container-{app}"
             try:
                 c = self.docker_client.containers.get(name)
-                is_running = (c.status == "running")
+                is_running = c.status == "running"
                 status = "✅" if is_running else "❌"
                 print(f"      {status} {app}: {name} status={c.status}")
                 if not is_running:
@@ -80,7 +90,7 @@ class MultiExperimentRoutingCheck:
             name = f"kali-container-{app}"
             try:
                 c = self.docker_client.containers.get(name)
-                is_running = (c.status == "running")
+                is_running = c.status == "running"
                 results[app] = is_running
                 status = "✅" if is_running else "❌"
                 print(f"   {status} {app}: {name} status={c.status}")
@@ -97,6 +107,7 @@ class MultiExperimentRoutingCheck:
         results: Dict[str, bool] = {}
         try:
             from agent.mcp.direct_tool_executor import MCPToolExecutor
+
             executor = MCPToolExecutor()
             for app in TEST_APPS:
                 try:
@@ -106,7 +117,7 @@ class MultiExperimentRoutingCheck:
                         command="echo 'Hello from experiment'",
                         experiment_id=app,
                     )
-                    ok_shell = ("error" not in resp_shell)
+                    ok_shell = "error" not in resp_shell
 
                     # ADB command path (exercises ADB branch)
                     resp_adb = executor.call_tool(
@@ -114,7 +125,7 @@ class MultiExperimentRoutingCheck:
                         command="adb shell echo routed",
                         experiment_id=app,
                     )
-                    ok_adb = ("error" not in resp_adb)
+                    ok_adb = "error" not in resp_adb
 
                     results[app] = ok_shell and ok_adb
                     status = "✅" if results[app] else "❌"
@@ -142,7 +153,7 @@ def main():
     routing_status = "✅ PASS" if routing_passed == routing_total else "❌ FAIL"
     print(f"\nSummary:")
     print(f"routing: {routing_status} ({routing_passed}/{routing_total})")
-    overall_ok = (routing_passed == routing_total)
+    overall_ok = routing_passed == routing_total
     return 0 if overall_ok else 1
 
 

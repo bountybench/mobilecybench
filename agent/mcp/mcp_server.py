@@ -47,7 +47,7 @@ def execute_command(command: str, experiment_id: str) -> EmulatorState:
         # Returns the emulator state
         return get_ui_state(
             f"{label}: {command}\nExit Code: {result.exit_code}\nOutput:\n{output}",
-            experiment_id
+            experiment_id,
         )
 
     except Exception as e:

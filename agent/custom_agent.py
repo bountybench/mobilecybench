@@ -60,7 +60,9 @@ class CustomAgent:
         self.app_name = app_name
 
         # Set up MCP configuration with app_name as experiment_id for container routing
-        self.mcp_config = mcp_config or get_mcp_server_config(experiment_id=self.app_name)
+        self.mcp_config = mcp_config or get_mcp_server_config(
+            experiment_id=self.app_name
+        )
 
         # Set up system prompt
         if system_prompt:
