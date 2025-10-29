@@ -60,7 +60,7 @@ class RunnerConfig(BaseModel):
         invalid = set(value) - valid_tools
         if invalid:
             raise ValueError(
-                f"Invalid tools found in allowed_tools: {(invalid)}\n"
-                f"Supported tools are: {(valid_tools)}"
+                f"Invalid tools found in allowed_tools: {invalid}\n"
+                f"Supported tools are: {valid_tools}"
             )
         return value
