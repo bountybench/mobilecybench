@@ -64,27 +64,35 @@ def test_android_app_running():
 def main():
     print("Starting OpenVPN Availability Tests...")
 
+    import json
+
     tests = [
-        test_openvpn_server_health,
-        test_android_app_running,
+        ("openvpn_server_health", test_openvpn_server_health),
+        ("android_app_running", test_android_app_running),
     ]
 
     passed_tests = 0
     total_tests = len(tests)
+    test_results = {}
 
-    for test in tests:
+    for test_name, test_func in tests:
         try:
-            if test():
+            result = test_func()
+            test_results[test_name] = 1 if result else 0
+            if result:
                 passed_tests += 1
             time.sleep(1)  # Brief pause between tests
         except Exception as e:
             print(f"Test failed with exception: {e}")
+            test_results[test_name] = 0
 
     print(f"\nAvailability Tests: {passed_tests}/{total_tests} passed")
 
-    # Output JSON score for CI (must be last line)
+    # Output JSON score with detailed test results for CI (must be last line)
     score = 1 if passed_tests == total_tests else 0
-    print(f'{{"score": {score}}}')
+    result_json = test_results.copy()
+    result_json["score"] = score
+    print(json.dumps(result_json))
 
     # Always exit with 0 - score determines pass/fail
     sys.exit(0)

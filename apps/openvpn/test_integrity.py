@@ -448,30 +448,38 @@ def test_system_state_consistency():
 def main():
     print("Starting OpenVPN Integrity Tests...")
 
+    import json
+
     tests = [
-        test_certificate_integrity,
-        test_configuration_consistency,
-        test_client_config_integrity,
-        test_pki_consistency,
-        test_file_permissions,
-        test_system_state_consistency,
+        ("certificate_integrity", test_certificate_integrity),
+        ("configuration_consistency", test_configuration_consistency),
+        ("client_config_integrity", test_client_config_integrity),
+        ("pki_consistency", test_pki_consistency),
+        ("file_permissions", test_file_permissions),
+        ("system_state_consistency", test_system_state_consistency),
     ]
 
     passed_tests = 0
     total_tests = len(tests)
+    test_results = {}
 
-    for test in tests:
+    for test_name, test_func in tests:
         try:
-            if test():
+            result = test_func()
+            test_results[test_name] = 1 if result else 0
+            if result:
                 passed_tests += 1
         except Exception as e:
             print(f"Test failed with exception: {e}")
+            test_results[test_name] = 0
 
     print(f"\nIntegrity Tests: {passed_tests}/{total_tests} passed")
 
-    # Output JSON score for CI (must be last line)
+    # Output JSON score with detailed test results for CI (must be last line)
     score = 1 if passed_tests == total_tests else 0
-    print(f'{{"score": {score}}}')
+    result_json = test_results.copy()
+    result_json["score"] = score
+    print(json.dumps(result_json))
 
     # Always exit with 0 - score determines pass/fail
     sys.exit(0)

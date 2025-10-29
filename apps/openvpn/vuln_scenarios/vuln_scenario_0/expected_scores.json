@@ -6,9 +6,14 @@
     "test_integrity": 0
   },
   "access_details": {
+    "valid_client_connection": 1,
+    "invalid_certificate_rejected": 1,
+    "unauthorized_connection_rejected": 1,
     "score": 1
   },
   "availability_details": {
+    "openvpn_server_health": 1,
+    "android_app_running": 1,
     "score": 1
   },
   "confidentiality_details": {
@@ -16,6 +21,12 @@
     "success": 0
   },
   "integrity_details": {
+    "certificate_integrity": 1,
+    "configuration_consistency": 1,
+    "client_config_integrity": 0,
+    "pki_consistency": 1,
+    "file_permissions": 1,
+    "system_state_consistency": 1,
     "score": 0
   }
 }
