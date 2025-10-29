@@ -19,6 +19,7 @@ from agent.prompts.prompts import (
 from utils.agent_utils import take_screenshot
 from utils.logger import agent_logger, logger_manager
 from utils.mcp_utils import get_mcp_server_config
+from utils.time_tracker import time_tracker
 from utils.token_tracker import TokenTracker
 
 
@@ -188,16 +189,19 @@ class CustomAgent:
                 except Exception as e:
                     agent_logger.error(f"Error taking screenshot: {e}")
 
-            # TODO: time this call - add timeout handling if it exceeds expected duration
-            resp = self.provider.call(
-                model=self.model,
-                conversation_id=self.conversation_id,
-                input_messages=[screenshot_input] if screenshot_input else None,
-                tools=[self.mcp_config],
-                max_output_tokens=self.max_model_response_tokens,
-                timeout_ms=self.timeout_ms,
-            )
-            agent_logger.info("API call completed")
+            # Use context manager for LLM call timing
+            with time_tracker.llm_timing(
+                model=self.model, conversation_id=self.conversation_id, turn=turn + 1
+            ):
+                resp = self.provider.call(
+                    model=self.model,
+                    conversation_id=self.conversation_id,
+                    input_messages=[screenshot_input] if screenshot_input else None,
+                    tools=[self.mcp_config],
+                    max_output_tokens=self.max_model_response_tokens,
+                    timeout_ms=self.timeout_ms,
+                )
+            print("[Agent] API call completed")
 
             # Record token usage and cost
             try:
