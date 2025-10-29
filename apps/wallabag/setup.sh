@@ -70,6 +70,7 @@ while true; do
         break
     fi
     
+    WEB_WAITED=$((WEB_WAITED + 5))
     if [ "$WEB_WAITED" -ge "$WEB_MAX_WAIT" ]; then
         echo "[Wallabag] ERROR: Web interface not ready after $WEB_MAX_WAIT seconds"
         docker logs wallabag --tail 20

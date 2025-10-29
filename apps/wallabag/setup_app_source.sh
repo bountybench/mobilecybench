@@ -12,43 +12,53 @@ if [ ! -d "$CODEBASE_DIR" ]; then
     exit 1
 fi
 
-cd "$CODEBASE_DIR"
+# Check if APK already exists and is recent
+if [ -f "$APK_OUT" ]; then
+    echo "[Wallabag] APK already exists at $APK_OUT, skipping build..."
+else
+    echo "[Wallabag] No existing APK found, building from source..."
+    
+    cd "$CODEBASE_DIR"
 
-export ANDROID_HOME="${ANDROID_HOME:-$HOME/.android-sdk}"
-export PATH="$ANDROID_HOME/platform-tools:$PATH"
+    export ANDROID_HOME="${ANDROID_HOME:-$HOME/.android-sdk}"
+    export PATH="$ANDROID_HOME/platform-tools:$PATH"
 
-# Check if we're in CI environment and adjust paths
-if [ -n "$GITHUB_ACTIONS" ] || [ -n "$CI" ]; then
-    export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-    export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools:$PATH"
+    # Check if we're in CI environment and adjust paths
+    if [ -n "$GITHUB_ACTIONS" ] || [ -n "$CI" ]; then
+        export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+        export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools:$PATH"
+    fi
+
+    # Create local.properties file with SDK location
+    echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+    ./gradlew clean
+    ./gradlew assembleRelease
+
+    KEYSTORE_FILE="$HOME/.android/debug.keystore"
+    APKSIGNER="$ANDROID_HOME/build-tools/$(ls -v "$ANDROID_HOME/build-tools" | tail -n 1)/apksigner"
+
+    # Check if the unsigned APK was created
+    if [ ! -f "$APK_UNSIGNED" ]; then
+        echo "Error: Unsigned APK not found at $APK_UNSIGNED"
+        exit 1
+    fi
+
+    if [ ! -f "$KEYSTORE_FILE" ]; then
+        mkdir -p "$(dirname "$KEYSTORE_FILE")"
+        keytool -genkey -v -keystore "$KEYSTORE_FILE" \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 \
+            -validity 10000 -storepass android -keypass android \
+            -dname "CN=Android Debug, O=Android, C=US"
+    fi
+
+    "$APKSIGNER" sign \
+        --ks "$KEYSTORE_FILE" \
+        --ks-key-alias androiddebugkey \
+        --ks-pass pass:android \
+        --key-pass pass:android \
+        "$APK_UNSIGNED"
+    mkdir -p "$(dirname "$APK_OUT")"
+    cp "$APK_UNSIGNED" "$APK_OUT"
 fi
-
-./gradlew clean
-./gradlew assembleRelease
-
-KEYSTORE_FILE="$HOME/.android/debug.keystore"
-APKSIGNER="$ANDROID_HOME/build-tools/$(ls -v "$ANDROID_HOME/build-tools" | tail -n 1)/apksigner"
-
-# Check if the unsigned APK was created
-if [ ! -f "$APK_UNSIGNED" ]; then
-    echo "Error: Unsigned APK not found at $APK_UNSIGNED"
-    exit 1
-fi
-
-if [ ! -f "$KEYSTORE_FILE" ]; then
-    mkdir -p "$(dirname "$KEYSTORE_FILE")"
-    keytool -genkey -v -keystore "$KEYSTORE_FILE" \
-        -alias androiddebugkey -keyalg RSA -keysize 2048 \
-        -validity 10000 -storepass android -keypass android \
-        -dname "CN=Android Debug, O=Android, C=US"
-fi
-
-"$APKSIGNER" sign \
-    --ks "$KEYSTORE_FILE" \
-    --ks-key-alias androiddebugkey \
-    --ks-pass pass:android \
-    --key-pass pass:android \
-    "$APK_UNSIGNED"
-mkdir -p "$(dirname "$APK_OUT")"
-cp "$APK_UNSIGNED" "$APK_OUT"
 echo "[Wallabag] ✅ Release APK built and copied to $APK_OUT"
