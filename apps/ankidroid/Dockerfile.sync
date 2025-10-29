@@ -1,0 +1,12 @@
+FROM python:3.11-slim
+
+# Pin later if needed: ANKI_PY_VERSION=23.12, etc.
+# Create venv and install the Anki sync server from PyPI
+RUN python -m venv /srv \
+ && /srv/bin/pip install --no-cache-dir "anki${ANKI_PY_VERSION:+==${ANKI_PY_VERSION}}"
+
+# The server listens on 8080 by default; compose will pass SYNC_* envs.
+EXPOSE 8080
+
+# Start the sync server
+CMD ["/srv/bin/python","-m","anki.syncserver"]

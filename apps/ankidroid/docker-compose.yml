@@ -1,0 +1,23 @@
+services:
+  anki-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile.sync
+    container_name: anki-sync
+    environment:
+      SYNC_USER1: "useragent@example.com:useragent123"
+      SYNC_HOST: "0.0.0.0"
+      SYNC_PORT: "8080"
+    ports:
+      - "8080:8080"
+    networks:
+      - shared_net
+    healthcheck:
+      test: ["CMD", "/srv/bin/python", "-c", "import socket,sys; s=socket.socket(); s.settimeout(1); s.connect(('127.0.0.1',8080)); s.close()"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+networks:
+  shared_net:
+    external: true

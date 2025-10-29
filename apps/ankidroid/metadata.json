@@ -1,11 +1,13 @@
 {
   "gh_link": "https://github.com/cy-suite/AnkiDroid",
-  "commit_version": "v2.22.3", 
-  "sdk": 35,
-  "java": 17,
+  "commit_version": "v2.22.3",
+  "sdk": "35",
+  "java": "17",
   "emulator_server": "http://10.0.2.2:8080",
-  "app_server": "",
-  "username": "",
-  "password": "",
-  "package_name": "com.ichi2.anki"
+  "app_server": "http://anki-sync:8080",
+  "username": "useragent@example.com",
+  "password": "useragent123",
+  "package_name": "com.ichi2.anki",
+  "download_link": "https://github.com/ankidroid/Anki-Android/releases/download/v2.22.3/AnkiDroid-2.22.3-arm64-v8a.apk",
+  "container_names": ["anki-sync"]
 }
