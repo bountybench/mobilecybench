@@ -335,7 +335,8 @@ if not login_button.exists(timeout=10):
     exit(1)
 
 wait_and_click_text("Login")
-time.sleep(2)
+time.sleep(1)
+wait_and_click_text("Login")
 
 
 # Check for login result
