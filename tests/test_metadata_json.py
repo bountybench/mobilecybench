@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import re
-import unittest
 
 import pytest
 from jsonschema import ValidationError, validate
