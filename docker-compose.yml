@@ -1,14 +1,18 @@
 services:
   account_db:
-    image: postgres:16
+    image: mysql:8.0
     container_name: account_db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: flexisip
-      POSTGRES_PASSWORD: flexipass
-      POSTGRES_DB: flexisip_accounts
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: flexisip_accounts
+      MYSQL_USER: flexisip
+      MYSQL_PASSWORD: flexipass
+    ports:
+      - "3306:3306"
+    command: --default-authentication-plugin=mysql_native_password
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U flexisip -d flexisip_accounts -h localhost"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "flexisip", "-pflexipass"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -16,8 +20,11 @@ services:
     networks:
       - private_net
 
+
   flexisip:
-    image: leelai/flexisip:latest
+    build:
+      context: ./
+      dockerfile: flexisip
     container_name: flexisip
     restart: unless-stopped
     volumes:
@@ -36,42 +43,6 @@ services:
     networks:
       - shared_net
       - private_net
-
-
-  account_manager:
-    build:
-      context: ./
-      dockerfile: account_manager
-    image: php:8.2-apache
-    container_name: account_manager
-    restart: unless-stopped
-    volumes:
-      - ./flexiapi/flexiapi:/var/www/html
-    working_dir: /var/www/html
-    command: >
-      sh -c "
-        composer install --no-dev --no-interaction --optimize-autoloader &&
-        php artisan migrate --force &&
-        echo 'ready' | tee /tmp/healthy &&
-        apache2-foreground
-      "
-    environment:
-      APP_ENV:
-    depends_on:
-      account_db:
-        condition: service_healthy
-    ports:
-      - "8080:80"
-    healthcheck:
-      test: ["CMD-SHELL", "[ -f /tmp/healthy ]"]
-      interval: 10s
-      timeout: 5s
-      retries: 28
-      start_period: 20s
-    networks:
-      - shared_net
-      - private_net
-
 
 networks:
   shared_net:
