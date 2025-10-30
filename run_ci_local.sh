@@ -38,7 +38,7 @@ check_metadata_schema() {
             print_header "$GREEN" "[PASS] Attribute $field is in the metadata."
         else
             print_header "$ERROR" "[FAIL] Attribute $field is not in the metadata."
-            all_ok=false
+            all_passed=false
         fi
     done
 
@@ -403,7 +403,6 @@ if [ ! -f "$metadata" ]; then
     echo -e "${ERROR} $metadata not found"
     exit 1
 fi
-
 check_metadata_schema "$metadata"
 
 
