@@ -38,7 +38,7 @@ def test_app_metadata(dirs: list[str]):
             print("Validation successful")
         except ValidationError as ve:
             print("Validation error:", ve)
-            
+
             required = {
                 "gh_link": "The cy-suite GitHub link for your app (example: https://github.com/cy-suite/conversations.git)",
                 "commit_version": "The version of the repo (e.g. 60a32b1). Used for git checkout <commit>.",
@@ -54,7 +54,6 @@ def test_app_metadata(dirs: list[str]):
                 else:
                     print(f"[FAIL] Attribute {attribute} is not in the metadata.")
                     print(f"    --> {required[attribute]}")
-
 
             assert False, "JSON does not match schema"
 
