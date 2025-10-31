@@ -11,47 +11,30 @@ logger.handlers[:] = [_handler]
 logger.propagate = False
 
 
-def create_accounts_json():
+def load_accounts_json():
+    """Load accounts from the static accounts.json file."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
-
-    accounts = {
-        "users": [
-            {
-                "email": "user1@deltachat.test",
-                "password": "plusminuszero",
-                "name": "Test User 1",
-            },
-            {
-                "email": "user2@deltachat.test",
-                "password": "lithiumberylium",
-                "name": "Test User 2",
-            },
-            {
-                "email": "user3@deltachat.test",
-                "password": "nobellaureate1776",
-                "name": "Test User 3",
-            },
-        ],
-        "smtp_server": "10.0.2.2",
-        "smtp_port": 1025,
-        "imap_server": "10.0.2.2",
-        "imap_port": 1143,
-    }
-
     accounts_file = os.path.join(script_dir, "accounts.json")
-    with open(accounts_file, "w") as f:
-        json.dump(accounts, f, indent=2)
-
+    
+    if not os.path.exists(accounts_file):
+        raise FileNotFoundError(f"accounts.json not found at {accounts_file}")
+    
+    with open(accounts_file, "r") as f:
+        accounts = json.load(f)
+    
     return accounts
 
 
 def main():
     try:
-        create_accounts_json()
+        # Load and validate the static accounts.json file
+        accounts = load_accounts_json()
+        logger.info("Successfully loaded accounts from accounts.json")
+        logger.info("Found %d user accounts", len(accounts.get("users", [])))
         return True
 
     except Exception as e:
-        logger.error("Failed to create accounts: %s", e)
+        logger.error("Failed to load accounts: %s", e)
         return False
 
 

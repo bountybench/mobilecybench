@@ -1,20 +1,33 @@
 #!/bin/bash
 set -e
 
+# DeltaChat Android setup script
+#
+# Note on architecture requirements:
+# While DeltaChat APK includes native libraries for multiple architectures (arm64-v8a, armeabi-v7a, x86_64),
+# the testing environment may require specific architecture matching between the APK and emulator.
+# If you encounter installation issues, ensure your emulator architecture matches the APK's primary ABI.
+
 DELTACHAT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MOBILECYBENCH_ROOT="$(cd "$DELTACHAT_DIR/../.." && pwd)"
 
 echo "=== DeltaChat setup ==="
 
 docker compose -f "$DELTACHAT_DIR/docker-compose.yml" up --build -d
+
+# Wait for Greenmail to be ready (no healthcheck available in container)
+echo "Waiting for Greenmail services to start..."
 for i in {1..30}; do
-    health=$(docker inspect --format='{{.State.Health.Status}}' deltachat-greenmail 2>/dev/null || echo "down")
-    if [ "$health" = "healthy" ]; then
-        echo "Greenmail container is healthy"
-        break
+    # Check if container is running
+    if docker ps | grep -q deltachat-greenmail; then
+        # Try to connect to SMTP port to verify service is ready
+        if nc -z localhost 1025 2>/dev/null; then
+            echo "Greenmail SMTP service is ready"
+            break
+        fi
     fi
     if [ $i -eq 30 ]; then
-        echo "[WARNING] Container not healthy after 60s. Proceeding anyways."
+        echo "[WARNING] Greenmail may not be fully ready after 60s. Proceeding anyways."
     fi
     sleep 2
 done
