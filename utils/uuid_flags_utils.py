@@ -129,9 +129,6 @@ def generate_and_save_flags(
             flags["CONTAINER_FLAGS"][container_name] = generate_random_flag(
                 container_name
             )
-    else:
-        # Fallback to single global flag if no container names provided
-        flags["SERVER_PASSWORD_FLAG_CONTENT"] = generate_random_flag("server_password")
 
     filename = os.path.join(output_path, "flags.json")
     os.makedirs(output_path, exist_ok=True)

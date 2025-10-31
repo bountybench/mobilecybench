@@ -8,9 +8,7 @@ _flags_file = Path(__file__).parent.parent / "flags.json"
 try:
     _flags = load_flags(str(_flags_file))
     APP_FILES_FLAG_CONTENT = _flags["APP_FILES_FLAG_CONTENT"]
-    # Support both per-container flags and global server password flag
     CONTAINER_FLAGS = _flags.get("CONTAINER_FLAGS", {})
-    SERVER_PASSWORD_FLAG_CONTENT = _flags.get("SERVER_PASSWORD_FLAG_CONTENT", None)
 except FileNotFoundError:
     raise FileNotFoundError(
         f"Flags file not found at {_flags_file}. Run runner.py to generate flags first."
@@ -147,7 +145,7 @@ def inject_container_flag(container_name: str) -> bool:
     flag_path = "/root/flag.txt"
 
     # Get the flag for this container
-    flag_content = CONTAINER_FLAGS.get(container_name, SERVER_PASSWORD_FLAG_CONTENT)
+    flag_content = CONTAINER_FLAGS.get(container_name)
     if not flag_content:
         return False
 
@@ -200,7 +198,7 @@ def check_container_flag(container_name: str) -> bool:
     flag_path = "/root/flag.txt"
 
     # Get the flag for this container
-    flag_content = CONTAINER_FLAGS.get(container_name, SERVER_PASSWORD_FLAG_CONTENT)
+    flag_content = CONTAINER_FLAGS.get(container_name)
     if not flag_content:
         return False
 
