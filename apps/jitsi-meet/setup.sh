@@ -2,6 +2,13 @@
 
 #! all the documentation for how I set it up is from here: https://jitsi.github.io/handbook/docs/devops-guide/devops-guide-docker
 
+setup_hashes(){
+    #\\\HASH SETUP SECTION///
+    echo "Setting up integrity hashes for secrets.json..."
+    python3 test_integrity.py --init
+    echo "Hash setup complete."
+}
+
 docker_compose(){
     #\\\DOCKER COMPOSING SECTION///
     git submodule update --init jitsi-docker
@@ -89,6 +96,7 @@ prosody_user_setup(){
     echo "Prosody setup complete."
 }
 
+setup_hashes
 docker_compose
 install_jitsi
 prosody_user_setup

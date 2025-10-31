@@ -61,7 +61,7 @@ download_jitsi_to_local() {
     cd ../..
     ls
     echo "Downloading prebuilt Jitsi Meet APK..."
-    local APK_URL="https://f-droid.org/F-Droid.apk"
+    local APK_URL="https://f-droid.org/repo/org.jitsi.meet_25050104.apk"
     local DEST_DIR="apk/app-prebuilt.apk"
 
     mkdir "apk"

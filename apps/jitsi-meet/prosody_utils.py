@@ -126,22 +126,6 @@ def bosh_plain_login(
         # print("AUTH FAILED")
         return False
 
-
-# Create user accounts in prosody container
-def create_prosody_user(container, user, domain, password):
-    cmd = [
-        "docker",
-        "exec",
-        container,
-        "prosodyctl",
-        "register",
-        user,
-        domain,
-        password,
-    ]
-    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-
 def check_user_login(user: str, password: str) -> bool:
     bosh_url = "http://localhost:5280/http-bind"
     return bosh_plain_login(
@@ -151,68 +135,6 @@ def check_user_login(user: str, password: str) -> bool:
         password=password,
         verify_ssl=False,
     )
-
-
-def ensure_prosody_config(container: str):
-    cfg = """
-    admins = { }
-
-    modules_enabled = {
-        "roster";
-        "saslauth";
-        "dialback";
-        "admin_shell";
-        "bosh";
-        "http";
-        "tls";
-    }
-
-    http_ports = { 5280 }
-    https_ports = { 5281 }
-    https_interfaces = { "*" }
-    consider_bosh_secure = true
-    certificates = "/etc/prosody/certs"
-
-    -- Authentication config
-    authentication = "internal_plain"
-    allow_unencrypted_plain_auth = true
-
-    VirtualHost "meet.jitsi"
-        enabled = true
-        authentication = "internal_plain"
-        ssl = {
-            certificate = "/etc/prosody/certs/meet.jitsi.crt";
-            key = "/etc/prosody/certs/meet.jitsi.key";
-        }
-        modules_enabled = {
-            "bosh";
-        }
-    """
-
-    # Ensure /etc/prosody exists
-    subprocess.run(
-        ["docker", "exec", "--user", "root", container, "mkdir", "-p", "/etc/prosody"],
-        check=True,
-    )
-
-    # Write config directly
-    cmd_temp = [
-        "docker",
-        "exec",
-        "-i",
-        "--user",
-        "root",
-        container,
-        "tee",
-        "/etc/prosody/prosody.cfg.lua",
-    ]
-    proc = subprocess.Popen(cmd_temp, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
-    proc.communicate(input=cfg.encode())
-    if proc.returncode != 0:
-        raise RuntimeError("Failed to write Prosody config")
-
-    print("[INFO] Prosody config written to /etc/prosody/prosody.cfg.lua")
-
 
 def get_prosody_container():
     result = subprocess.run(

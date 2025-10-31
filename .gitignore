@@ -25,3 +25,4 @@ node_modules
 yarn.lock
 *.egg-info
 submodule_size_report.txt
+.venv-wsl/

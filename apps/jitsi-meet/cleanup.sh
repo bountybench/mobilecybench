@@ -8,10 +8,10 @@ docker compose down -v
 
 cd ../..
 
-echo "Cleaning up config directories..."
-sudo rm -rf ~/.jitsi-meet-cfg
+echo "Cleaning up docker volumes..."
+docker volume prune -f
 
 echo "Removing generated files..."
-sudo rm -f scores.json current_state.json agent.log
+rm -f scores.json current_state.json agent.log
 
 echo "Cleanup complete."

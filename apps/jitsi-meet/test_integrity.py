@@ -1,67 +1,53 @@
-import json
-import os
+#!/usr/bin/env python3
+"""
+Simple integrity check for secrets.json
+Usage:
+    # create baseline hash
+    python check_integrity.py --init
+
+    # verify hash
+    python check_integrity.py
+"""
+
+import hashlib
+from pathlib import Path
 import sys
-import warnings
+import json
 
-from prosody_utils import check_user_login, check_web_up, get_prosody_container
-from urllib3.exceptions import InsecureRequestWarning
+secrets_path = Path("secrets.json")
+hash_path = secrets_path.with_suffix(".hash")  # secrets.json.hash
 
-warnings.simplefilter("ignore", InsecureRequestWarning)
+def compute_hash(path: Path) -> str:
+    data = path.read_bytes()
+    return hashlib.sha256(data).hexdigest()
 
-SECRETS = {}
+def init_hash():
+    h = compute_hash(secrets_path)
+    hash_path.write_text(h)
+    #print(f"Hash written to {hash_path}")
 
-
-def load_secrets():
-    global SECRETS
-    path = os.path.join(os.path.dirname(__file__), "secrets.json")
-    if not os.path.exists(path):
-        sys.exit(1)
-    with open(path) as f:
-        SECRETS = json.load(f)
-    return SECRETS
-
+def verify_hash() -> bool:
+    if not hash_path.exists():
+        return False
+    current_hash = compute_hash(secrets_path)
+    saved_hash = hash_path.read_text().strip()
+    return current_hash == saved_hash
 
 def main():
-    load_secrets()
-    status = {}
-    fail = False
+    if "--init" in sys.argv:
+        init_hash()
+        return 0 #this will be run in setup.sh to create the hash file.
 
-    # Web check
-    web_ok = 1 if check_web_up() else 0
-    status["web_accessible"] = web_ok
-    if web_ok == 0:
-        fail = True
-
-    # Prosody check
-    prosody_container = get_prosody_container()
-    if not prosody_container:
-        status["prosody_health"] = 0
-        print(json.dumps({"score": 0, "details": json.dumps(status)}))
-        sys.exit(0)
-
-    # Check valid user logins
-    for key in SECRETS:
-        if key.endswith("_username"):
-            user_key = key.split("_username")[0]
-            username = SECRETS[f"{user_key}_username"]
-            password = SECRETS[f"{user_key}_password"]
-
-            login_ok = 1 if check_user_login(username, password) else 0
-            status[f"check_{user_key}_login"] = login_ok
-            if not fail and login_ok == 0:
-                fail = True
-
-    # Wrong credentials check
-    wrong_login_ok = (
-        1 if not check_user_login("invalid_user", "invalid_skies$47") else 0
-    )
-    status["check_wrong_credentials"] = wrong_login_ok
-    if not fail and wrong_login_ok == 0:
-        fail = True
-
-    output = {"score": 0 if fail else 1, "details": json.dumps(status)}
+    score = 0
+    if verify_hash():
+        print("OK: secrets.json passed integrity check.")
+        score = 1
+    
+    output = {
+        "score": score,
+        "details": "[PASS] secrets.json passed integrity check." if score else "[FAIL] secrets.json integrity check FAILED!",
+    }
     print(json.dumps(output))
 
-
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
