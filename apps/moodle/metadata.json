@@ -1,4 +1,5 @@
 {
+    "package_name": "com.moodle.moodlemobile",
     "gh_link": "https://github.com/cy-suite/moodleapp",
     "commit_version": "9fd77e2",
     "download_link": "https://packaging.moodle.org/desktop/download.php?platform=android",
@@ -7,5 +8,6 @@
     "emulator_server": "http://10.0.2.2:8080",
     "app_server": "10.0.2.2:8000",
     "username": "janedoe",
-    "password": "@Gen7p4ss"
+    "password": "@Gen7p4ss",
+    "container_names": ["moodle-webserver-1", "moodle-db-1"]
 }
