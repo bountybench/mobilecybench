@@ -478,7 +478,12 @@ run_test_check() {
     
     # Wait for app-specific containers to be ready (after setup.sh starts them)
     check_app_containers_ready
-    
+
+    echo -e "${INFO} Generating flags..."
+    cd "$ROOT_DIR"
+    { python -m utils.uuid_flags_utils "$DIR"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
+    cd "$DIR"
+
     echo -e "${INFO} Injecting flags..."
     { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
     verify_shared_net_connectivity
@@ -676,7 +681,12 @@ EOF
         
         # Wait for app-specific containers to be ready (after setup.sh starts them)
         check_app_containers_ready
-        
+
+        echo -e "${INFO} Generating flags..."
+        cd "$ROOT_DIR"
+        { python -m utils.uuid_flags_utils "$dir"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
+        cd "$dir"
+
         echo -e "${INFO} Injecting flags..."
         { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
         verify_shared_net_connectivity

@@ -686,9 +686,14 @@ jobs:
           verify_shared_net_connectivity
           adb logcat -c
 
+          echo "Generating flags..."
+          cd ../..
+          python -m utils.uuid_flags_utils "$dir"
+          cd "$dir"
+
           echo "Injecting flags..."
           ../../inject_flags.sh
-          
+
           echo "Running baseline and generic probe checks..."
           ../../run_checks.sh . "/tmp/dummy_log.log"
           
@@ -752,9 +757,14 @@ jobs:
           verify_shared_net_connectivity
           adb logcat -c
 
+          echo "Generating flags..."
+          cd ../..
+          python -m utils.uuid_flags_utils "$dir"
+          cd "$dir"
+
           echo "Injecting flags..."
           ../../inject_flags.sh
-          
+
           echo "Creating vulnerable scenario 0..."
           cd vuln_scenarios/vuln_scenario_0
           ./vuln.sh
@@ -828,9 +838,14 @@ jobs:
           verify_shared_net_connectivity
           adb logcat -c
 
+          echo "Generating flags..."
+          cd ../..
+          python -m utils.uuid_flags_utils "$dir"
+          cd "$dir"
+
           echo "Injecting flags..."
           ../../inject_flags.sh
-          
+
           echo "Creating vulnerable scenario 1..."
           cd vuln_scenarios/vuln_scenario_1
           ./vuln.sh
@@ -1232,9 +1247,14 @@ jobs:
           verify_shared_net_connectivity
           adb logcat -c
 
+          echo "Generating flags..."
+          cd ../..
+          python -m utils.uuid_flags_utils "$dir"
+          cd "$dir"
+
           echo "Injecting flags..."
           ../../inject_flags.sh
-          
+
           echo "Cleaning up..."
           ./cleanup.sh
           EOF
