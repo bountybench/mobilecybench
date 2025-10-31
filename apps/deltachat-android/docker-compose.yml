@@ -11,9 +11,12 @@ services:
       - GREENMAIL_OPTS=-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=user1@deltachat.test:password123,user2@deltachat.test:password123,user3@deltachat.test:password123 -Dgreenmail.auth.disabled=false -Dgreenmail.verbose
     networks:
       - shared_net
-    # Healthcheck removed - Greenmail container doesn't include standard healthcheck tools
-    # The container will be considered healthy when it starts successfully
-    # SMTP port 3025 and IMAP port 3143 will be available when the service is ready
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 5 bash -c 'cat < /dev/null > /dev/tcp/localhost/3025' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
 networks:
   shared_net:

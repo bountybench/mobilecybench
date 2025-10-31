@@ -31,6 +31,12 @@ services:
     networks:
       - openhab_net
       - shared_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/rest/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   mosquitto:
     image: eclipse-mosquitto:2
@@ -50,6 +56,31 @@ services:
       start_period: 10s
     networks:
       - openhab_net
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -p 1883 -t '$$SYS/#' -C 1 -W 2 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # Optional: Cloudflare Tunnel for secure remote access without opening router ports
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - openhab
+    networks:
+      - openhab_net
+    profiles:
+      - cloudflare
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep cloudflared || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
 
 networks:
   openhab_net:
