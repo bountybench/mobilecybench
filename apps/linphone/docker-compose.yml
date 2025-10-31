@@ -1,0 +1,50 @@
+services:
+  account_db:
+    image: mysql:8.0
+    container_name: account_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: flexisip_accounts
+      MYSQL_USER: flexisip
+      MYSQL_PASSWORD: flexipass
+    ports:
+      - "3306:3306"
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "flexisip", "-pflexipass"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks:
+      - private_net
+
+
+  flexisip:
+    build:
+      context: ./
+      dockerfile: flexisip
+    container_name: flexisip
+    restart: unless-stopped
+    volumes:
+      - ./flexisip.conf:/etc/flexisip/flexisip.conf:ro
+    ports:
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+      - "5061:5061/tcp"
+    depends_on:
+      account_db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "echo > /dev/tcp/localhost/5060 || exit 1"]
+      interval: 5s
+      retries: 30
+    networks:
+      - shared_net
+      - private_net
+
+networks:
+  shared_net:
+    external: true
+  private_net:
