@@ -52,7 +52,16 @@ build_rust_core() {
 }
 
 build_deltachat() {
+    # IMPORTANT: Do NOT create gradle.properties or local.properties inside the codebase directory
+    # as it modifies the git submodule. Instead, we'll pass these as Gradle properties via command line
+    # or use the global gradle.properties in the user's home directory.
+    
     cd "$SCRIPT_DIR/codebase"
+    
+    # Verify we're not modifying the submodule
+    if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
+        warn "Warning: codebase submodule has uncommitted changes before build"
+    fi
     export GRADLE_OPTS="$GRADLE_OPTS -Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.configureondemand=true"
 
     # Create signing configuration for release build
@@ -71,8 +80,10 @@ build_deltachat() {
         export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
     fi
 
-    # Create gradle.properties with signing configuration and build features
-    cat > gradle.properties << EOF
+    # Create gradle.properties in user's .gradle directory (global location)
+    # This avoids modifying the codebase submodule
+    mkdir -p "$HOME/.gradle"
+    cat > "$HOME/.gradle/gradle.properties" << EOF
 DC_RELEASE_STORE_FILE=$HOME/.android/debug.keystore
 DC_RELEASE_STORE_PASSWORD=android
 DC_RELEASE_KEY_ALIAS=androiddebugkey
@@ -82,11 +93,9 @@ android.useAndroidX=true
 android.enableJetifier=true
 EOF
 
-    # Also create local.properties for Android SDK paths
-    cat > local.properties << EOF
-sdk.dir=$ANDROID_HOME
-ndk.dir=$ANDROID_NDK_HOME
-EOF
+    # Pass SDK paths as system properties instead of creating local.properties
+    # This avoids any modifications to the codebase directory
+    export ANDROID_SDK_ROOT="$ANDROID_HOME"
 
     # Create missing resource files that are causing compilation errors
     mkdir -p src/main/res/values
@@ -126,6 +135,8 @@ EOF
         --info \
         -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -XX:+UseStringDeduplication" \
         -Pandroid.defaults.buildfeatures.buildconfig=true \
+        -Psdk.dir="$ANDROID_HOME" \
+        -Pndk.dir="$ANDROID_NDK_HOME" \
         2>&1 | tee "$temp_out"; then
 
         # Check if APK was actually built in the expected location
@@ -143,6 +154,13 @@ EOF
         cat "$temp_out"
         rm -f "$temp_out" "$temp_err"
         exit $exit_code
+    fi
+    
+    # Verify we didn't modify the submodule during build
+    if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
+        warn "Warning: codebase submodule was modified during build. This should not happen!"
+        info "Modified files:"
+        git status --short
     fi
 }
 
