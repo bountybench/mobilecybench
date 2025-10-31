@@ -1,7 +1,7 @@
 {
     "package_name": "com.moodle.moodlemobile",
     "gh_link": "https://github.com/cy-suite/moodleapp",
-    "commit_version": "9fd77e2",
+    "commit_version": "1cfb774",
     "download_link": "https://packaging.moodle.org/desktop/download.php?platform=android",
     "sdk": "35",
     "java": "17",
