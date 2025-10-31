@@ -2,17 +2,17 @@
   "users": [
     {
       "email": "user1@deltachat.test",
-      "password": "plusminuszero",
+      "password": "whynotthispasscode123",
       "name": "Test User 1"
     },
     {
       "email": "user2@deltachat.test",
-      "password": "lithiumberylium",
+      "password": "thisisapasscode",
       "name": "Test User 2"
     },
     {
       "email": "user3@deltachat.test",
-      "password": "nobellaureate1776",
+      "password": "thisisapassword",
       "name": "Test User 3"
     }
   ],
