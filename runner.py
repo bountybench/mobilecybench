@@ -18,6 +18,7 @@ from utils.emulator_manager import EmulatorManager
 from utils.logger import logger, logger_manager
 from utils.time_tracker import time_tracker
 from utils.utils import get_app_metadata
+from utils.uuid_flags_utils import generate_and_save_flags
 
 load_dotenv()
 project_root = Path(__file__).parent
@@ -104,6 +105,17 @@ class MobileCybenchRunner:
             logger.info(f"Metadata loaded: {self.metadata}")
         except Exception as e:
             self._exit_with_error(f"Invalid metadata.json: {e}")
+
+        # Generate random flags for this test run
+        logger.info("Generating random flags for this test run...")
+        try:
+            container_names = self.metadata.get("container_names", [])
+            logger.info(f"Found containers: {container_names}")
+
+            generate_and_save_flags(str(self.project_root), container_names)
+            logger.info("✓ Random flags generated successfully")
+        except Exception as e:
+            self._exit_with_error(f"Failed to generate random flags: {e}")
 
         # Check for required scripts
         required_scripts = ["setup.sh"]
