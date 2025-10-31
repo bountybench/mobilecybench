@@ -1,19 +1,24 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=64.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "mobilecybench"
 version = "0.0.1"
 
+[tool.setuptools]
+py-modules = ["runner"]
+
 [tool.setuptools.packages.find]
-include = ["utils", "agent", "agent.*"]
+include = ["utils", "agent", "agent.*", "evaluation"]
 exclude = ["apps*", ".venv*", ".git*", ".pytest_cache*", ".ruff_cache*", "*.egg-info"]
 
 [tool.pytest.ini_options]
 markers = [
     "pricing: mark tests related to token pricing",
     "token_tracker: mark tests related to token tracker",
+    "time_tracker: mark tests related to time tracker",
+    "slow: mark tests that take longer to run",
 ]
 
 [tool.ruff.lint]

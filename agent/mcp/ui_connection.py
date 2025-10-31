@@ -1,4 +1,3 @@
-import base64
 import uuid
 import xml.etree.ElementTree as ET
 from typing import Dict, List
@@ -47,7 +46,7 @@ def calculate_location(bounds):
         x = (points[0] + points[2]) // 2
         y = (points[1] + points[3]) // 2
         return [x, y]
-    except:
+    except Exception:
         return [0, 0]
 
 
@@ -93,22 +92,6 @@ class UIElement:
         }
 
 
-class EmulatorState:
-    """
-    This class encapsulates all the information that we'll give the agent about the status of the android emulator.
-    """
-
-    def __init__(self, response: str, ui_elements: List[UIElement]):
-        self.response = response
-        self.ui_elements = ui_elements
-
-    def to_dict(self):
-        return {
-            "response": self.response,
-            "ui_elements": [el.to_dict() for el in self.ui_elements],
-        }
-
-
 def obtain_UI_elements() -> List[UIElement]:
     """
     This collects a UI dump of all the elements in the android emulator for agentic use.
@@ -116,7 +99,7 @@ def obtain_UI_elements() -> List[UIElement]:
     remote_path = "/sdcard/window_dump.xml"
     local_path = "window_dump.xml"
 
-    dump_result = run_adb_shell(f"uiautomator dump {remote_path}")
+    run_adb_shell(f"uiautomator dump {remote_path}")
     if not run_adb_pull(remote_path, local_path):
         return []
 
@@ -156,6 +139,7 @@ def obtain_UI_elements() -> List[UIElement]:
     return ui_elements
 
 
-def get_ui_state(response_text: str) -> EmulatorState:
-    print("Tool call text output: ", response_text)
-    return EmulatorState(response_text, obtain_UI_elements()).to_dict()
+def get_ui_state() -> dict:
+    """Get current UI state with all interactive elements"""
+    ui_elements = obtain_UI_elements()
+    return {"ui_elements": [el.to_dict() for el in ui_elements]}

@@ -138,7 +138,6 @@ inject_android_malware_txt(){
 main(){
   ensure_python_cli
   activate_python_env
-  # export BASELINE_FILE AGENT_LOG_FILE OWNCLOUD_URL
   create_fake_log_with_leaked_credentials || warn "fake log creation failed"
   run_cmd escalate_agent_to_admin || warn "escalate step failed"
   run_cmd tamper_non_agent_file_content || warn "file tamper step failed"

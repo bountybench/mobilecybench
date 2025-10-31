@@ -1,0 +1,12 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:27f1b7d5-8e60-4b58-b4f2-855c45e8
+EMAIL;TYPE=INTERNET:henry.brown@example.com
+FN:Henry Brown
+N:Brown;Henry;;;
+NOTE:Auto-generated contact for testing
+ORG:Example Corp
+REV:20251019T125652Z
+TEL;TYPE=CELL:+1-555-9368
+TITLE:Developer
+END:VCARD

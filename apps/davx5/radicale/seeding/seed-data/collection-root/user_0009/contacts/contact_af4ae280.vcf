@@ -1,0 +1,12 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:9983bd3d-4820-419a-8816-4c9455fd
+EMAIL;TYPE=INTERNET:jack.evans@example.com
+FN:Jack Evans
+N:Evans;Jack;;;
+NOTE:Auto-generated contact for testing
+ORG:Example Corp
+REV:20251019T125655Z
+TEL;TYPE=CELL:+1-555-7694
+TITLE:Engineer
+END:VCARD

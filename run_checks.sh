@@ -2,6 +2,7 @@
 
 # Universal run_checks.sh to run the four probe scripts for an app
 app_path="$1"
+# exploit_log should be a path relative to the app directory (e.g., ../../agent_log.txt)
 exploit_log="$2"
 
 # Use python3 if available, otherwise use python
@@ -9,6 +10,10 @@ if command -v python3 &>/dev/null; then
     PYTHON=python3
 else
     PYTHON=python
+    if ! $PYTHON -c "import sys; exit(0 if sys.version_info >= (3,) else 1)" &>/dev/null; then
+        echo "Error: Python 3 is required but $PYTHON is Python 2" >&2
+        exit 1
+    fi
 fi
 
 if [ -d $app_path ]; then
@@ -37,7 +42,7 @@ echo
 
 echo "TESTING CONFIDENTIALITY..."
 if [ -z "$exploit_log" ]; then
-    echo "[PASS] No log provided."
+    echo "[FAIL] No log provided."
     confidentiality_exit=0
     confidentiality_output='{"score": 0, "status": "no_log"}'
 else
@@ -112,6 +117,103 @@ json_output=$(cat <<EOF
 EOF
 )
 
-echo "$json_output" | jq . > /dev/null || echo "Final JSON is invalid!"
+echo "$json_output" | jq . > /dev/null || echo "Final JSON for scores is invalid!"
 echo "$json_output" > scores.json
 echo "Scores saved to scores.json"
+
+# Run generic checks
+echo "App-specific checks were successfully run. Now running generic checks..."
+
+echo "TESTING GENERIC ACCESS..."
+{
+    gen_access_output=$($PYTHON ../../evaluation/generic_probes/test_access.py | tail -1)
+    gen_access_exit=$?
+}
+gen_access_output=${gen_access_output:-"{}"}
+echo
+
+echo "TESTING GENERIC AVAILABILITY..."
+{
+    gen_availability_output=$($PYTHON ../../evaluation/generic_probes/test_availability.py | tail -1)
+    gen_availability_exit=$?
+}
+gen_availability_output=${gen_availability_output:-"{}"}
+echo
+
+echo "TESTING GENERIC CONFIDENTIALITY..."
+if [ -z "$exploit_log" ]; then
+    echo "[FAIL] No log provided."
+    gen_confidentiality_exit=0
+    gen_confidentiality_output='{"score": 0, "status": "no_log"}'
+else
+    {
+        gen_confidentiality_output=$($PYTHON ../../evaluation/generic_probes/test_confidentiality.py "$exploit_log" | tail -1)
+        gen_confidentiality_exit=$?
+    }
+    gen_confidentiality_output=${gen_confidentiality_output:-"{}"}
+fi
+echo
+
+echo "TESTING GENERIC INTEGRITY..."
+{
+    gen_integrity_output=$($PYTHON ../../evaluation/generic_probes/test_integrity.py | tail -1)
+    gen_integrity_exit=$?
+}
+gen_integrity_output=${gen_integrity_output:-"{}"}
+echo
+
+if [ "$gen_access_exit" -ne 0 ] || [ -z "$gen_access_output" ]; then
+  echo "ERROR: Access test failed to execute or produce output"
+  exit 1
+else
+  gen_access_score=$(echo "$gen_access_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+fi
+
+if [ "$gen_availability_exit" -ne 0 ] || [ -z "$gen_availability_output" ]; then
+  echo "ERROR: Availability test failed to execute or produce output"
+  exit 1
+else
+  gen_availability_score=$(echo "$gen_availability_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+fi
+
+if [ "$gen_confidentiality_exit" -ne 0 ] || [ -z "$gen_confidentiality_output" ]; then
+  echo "ERROR: Confidentiality test failed to execute or produce output"
+  exit 1
+else
+  gen_confidentiality_score=$(echo "$gen_confidentiality_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+fi
+
+if [ "$gen_integrity_exit" -ne 0 ] || [ -z "$gen_integrity_output" ]; then
+  echo "ERROR: Integrity test failed to execute or produce output"
+  exit 1
+else
+  gen_integrity_score=$(echo "$gen_integrity_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+fi
+
+echo
+echo "FINAL SCORES:"
+echo "Access (Generic Probe):                   $gen_access_score"
+echo "Availability (Generic Probe):             $gen_availability_score"
+echo "Confidentiality (Generic Probe):          $gen_confidentiality_score"
+echo "Integrity (Generic Probe):                $gen_integrity_score"
+echo
+
+gen_json_output=$(cat <<EOF
+{
+  "scores": {
+    "test_access": $gen_access_score,
+    "test_availability": $gen_availability_score,
+    "test_confidentiality": $gen_confidentiality_score,
+    "test_integrity": $gen_integrity_score
+  },
+  "access_details": $gen_access_output,
+  "availability_details": $gen_availability_output,
+  "confidentiality_details": $gen_confidentiality_output,
+  "integrity_details": $gen_integrity_output
+}
+EOF
+)
+
+echo "$gen_json_output" | jq . > /dev/null || echo "Final JSON for generic scores is invalid!"
+echo "$gen_json_output" > generic_scores.json
+echo "Scores saved to generic_scores.json"

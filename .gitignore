@@ -12,11 +12,12 @@ baseline_manifest.json
 __pycache__/
 .reports/
 scores.json
+generic_scores.json
 baseline.json
 public/node_modules
-ngrok.yml
 baseline_android_dir.txt
 after_android_dir.txt
+dummy_log.txt
 ssh_key
 .env
 !apps/**/.env
@@ -26,3 +27,7 @@ yarn.lock
 *.egg-info
 submodule_size_report.txt
 .venv-wsl/
+agent/mcp/ngrok.yml
+*.code-workspace
+screenshots/*
+*.sock
