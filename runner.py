@@ -315,9 +315,121 @@ class MobileCybenchRunner:
             else:
                 logger.warning("⚠ Warning: Some containers may not be running properly")
 
+    def run_interactive_shell(self):
+        """Run interactive shell for manual command execution (dry-run mode)"""
+        log_banner("RUNNING INTERACTIVE SHELL (DRY-RUN MODE)")
+
+        logger.info("Starting interactive shell for manual command execution...")
+        logger.info("You can now execute commands in the kali container.")
+        logger.info("Type 'exit' or 'quit' to stop the interactive shell.")
+        logger.info("Type 'help' for available commands.")
+        print()
+
+        try:
+            mcp_executor = MCPToolExecutor()
+
+            # List available tools
+            logger.info("Checking available tools...")
+            tools = mcp_executor.list_tools()
+
+            print("=" * 80)
+            print("DRY-RUN MODE: Interactive Shell")
+            print("=" * 80)
+            print(f"App: {self.app_name}")
+            print("Environment is fully set up (emulator, app servers, kali container)")
+            print("You can now manually execute commands to test the environment.")
+            print()
+            print("Available commands:")
+            print("  - Any shell command will be executed in the kali container")
+            print("  - 'exit' or 'quit' to exit the shell")
+            print("  - 'help' for this help message")
+            print("  - 'tools' to list available MCP tools")
+            print("=" * 80)
+            print()
+
+            command_count = 0
+            while True:
+                try:
+                    # Get user input
+                    user_input = input("kali> ").strip()
+
+                    if not user_input:
+                        continue
+
+                    # Handle special commands
+                    if user_input.lower() in ["exit", "quit"]:
+                        print("Exiting interactive shell...")
+                        break
+                    elif user_input.lower() == "help":
+                        print("Available commands:")
+                        print("  - Any shell command will be executed in the kali container")
+                        print("  - 'exit' or 'quit' to exit the shell")
+                        print("  - 'help' for this help message")
+                        print("  - 'tools' to list available MCP tools")
+                        continue
+                    elif user_input.lower() == "tools":
+                        tools = mcp_executor.list_tools()
+                        if tools and not isinstance(tools, dict):
+                            print(f"Available tools ({len(tools)}):")
+                            for tool in tools:
+                                print(f"  - {tool.get('name', 'unknown')}: {tool.get('description', 'No description')}")
+                        else:
+                            print("Could not list tools or no tools available")
+                        continue
+
+                    # Execute command via MCP
+                    command_count += 1
+                    logger.info(f"Executing command {command_count}: {user_input}")
+
+                    result = mcp_executor.call_tool("execute_command", user_input)
+
+                    # Display result
+                    if "error" in result:
+                        print(f"ERROR: {result['error']}")
+                        logger.error(f"Command {command_count} failed: {result['error']}")
+                    elif "result" in result and "structuredContent" in result["result"]:
+                        structured = result["result"]["structuredContent"]
+                        if "response" in structured:
+                            print(structured["response"])
+                        else:
+                            print(result)
+                    else:
+                        print(result)
+
+                except KeyboardInterrupt:
+                    print("\nUse 'exit' or 'quit' to exit the shell")
+                    continue
+                except EOFError:
+                    print("\nExiting interactive shell...")
+                    break
+                except Exception as e:
+                    print(f"Error: {e}")
+                    logger.error(f"Error in interactive shell: {e}")
+
+            log_banner("INTERACTIVE SHELL SESSION COMPLETED")
+            logger.info(f"Total commands executed: {command_count}")
+
+            return {
+                "status": "completed",
+                "commands_executed": command_count,
+                "log_file": None,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to run interactive shell: {e}")
+            return {
+                "status": f"error: {str(e)}",
+                "commands_executed": 0,
+                "log_file": None,
+            }
+
     def run_agent(self):
         """Run the custom agent - custom_agent.py"""
         log_banner("RUNNING CUSTOM AGENT")
+
+        # If in dry-run mode, use interactive shell instead
+        if self.config.dry_run:
+            return self.run_interactive_shell()
 
         try:
             # Import the CustomAgent class
@@ -336,8 +448,6 @@ class MobileCybenchRunner:
                 app_server=getattr(self, "metadata", {}).get(
                     "app_server", None
                 ),  # default to None if in agent_only mode
-                # TODO - create proper dry run mode
-                # https://github.com/bountybench/mobilecybench/issues/322
                 dry_run=self.config.dry_run,
                 system_prompt=self.config.custom_system_prompt,
             )
