@@ -14,13 +14,13 @@ logger.propagate = False
 def load_accounts_json():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     accounts_file = os.path.join(script_dir, "accounts.json")
-    
+
     if not os.path.exists(accounts_file):
         raise FileNotFoundError(f"accounts.json not found at {accounts_file}")
-    
+
     with open(accounts_file, "r") as f:
         accounts = json.load(f)
-    
+
     return accounts
 
 
