@@ -29,24 +29,7 @@ detect_emulator_arch() {
 install_rust_targets() {
     if command -v rustup >/dev/null 2>&1; then
         RUSTUP_TOOLCHAIN="1.86.0"
-        
-        local arch=$(detect_emulator_arch)
-        local targets=""
-        
-        case "$arch" in
-            "x86_64")
-                targets="x86_64-linux-android"
-                info "Building for x86_64 (detected running emulator)"
-                ;;
-            "arm64")
-                targets="aarch64-linux-android"
-                info "Building for arm64 (detected running emulator)"
-                ;;
-            *)
-                targets="aarch64-linux-android x86_64-linux-android"
-                info "Building for both architectures (no emulator detected or unknown arch)"
-                ;;
-        esac
+        TARGETS="x86_64-linux-android"
 
         if ! rustup install "$RUSTUP_TOOLCHAIN"; then
             error "Failed to install toolchain $RUSTUP_TOOLCHAIN"
@@ -71,27 +54,20 @@ build_rust_core() {
     cd "$SCRIPT_DIR/codebase"
     git submodule update --init --recursive
     
-    local arch=$(detect_emulator_arch)
-    local ndk_targets=""
+    if [[ -d "/usr/local/lib/android/sdk" ]]; then
+        export ANDROID_HOME="/usr/local/lib/android/sdk"
+        export ANDROID_NDK_HOME="/usr/local/lib/android/sdk/ndk/27.0.12077973"
+        export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
+        export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+    fi
     
-    case "$arch" in
-        "x86_64")
-            ndk_targets="x86_64"
-            info "Building Rust core for x86_64"
-            ;;
-        "arm64")
-            ndk_targets="arm64-v8a"
-            info "Building Rust core for arm64-v8a"
-            ;;
-        *)
-            ndk_targets="arm64-v8a x86_64"
-            info "Building Rust core for both architectures"
-            ;;
-    esac
+    info "Building native libraries for x86_64 architecture..."
     
-    for target in $ndk_targets; do
-        info "Building Rust core for $target..."
-        ./scripts/ndk-make.sh "$target"
+    for arch in x86_64; do
+        info "Building for architecture: $arch"
+        if ! ./scripts/ndk-make.sh "$arch"; then
+            warn "Failed to build for $arch, continuing with other architectures"
+        fi
     done
 }
 
@@ -143,63 +119,29 @@ DC_RELEASE_KEY_PASSWORD=android
 android.defaults.buildfeatures.buildconfig=true
 android.useAndroidX=true
 android.enableJetifier=true
-
-# Performance optimizations for CI
-org.gradle.daemon=true
+org.gradle.caching=true
 org.gradle.parallel=true
 org.gradle.configureondemand=true
-org.gradle.caching=true
-org.gradle.unsafe.configuration-cache=false
-
-# Memory settings
-org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -XX:+HeapDumpOnOutOfMemoryError
-# Android-specific build cache has been removed in AGP 7.0+. Use Gradle build cache only.
+org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -XX:+UseStringDeduplication
+kotlin.incremental=true
+kotlin.daemon.jvmargs=-Xmx2g
 EOF
 
     export ANDROID_SDK_ROOT="$ANDROID_HOME"
 
-    mkdir -p src/main/res/values
-    if ! grep -q "zxing_msg_camera_framework_bug" src/main/res/values/strings.xml 2>/dev/null; then
-        sed -i '/<\/resources>/i\    <string name="zxing_msg_camera_framework_bug">Camera framework bug detected</string>' src/main/res/values/strings.xml 2>/dev/null || echo '<resources><string name="zxing_msg_camera_framework_bug">Camera framework bug detected</string></resources>' > src/main/res/values/missing_strings.xml
-    fi
-    if ! grep -q "toolbarStyle" src/main/res/values/attrs.xml 2>/dev/null; then
-        sed -i '/<\/resources>/i\    <attr name="toolbarStyle" format="reference" />' src/main/res/values/attrs.xml 2>/dev/null || echo '<resources><attr name="toolbarStyle" format="reference" /></resources>' > src/main/res/values/missing_attrs.xml
-    fi
-    mkdir -p src/main/res/values
-    cat > src/main/res/values/missing_ids.xml << EOF
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <item name="search_close_btn" type="id" />
-</resources>
-EOF
-
     local temp_out=$(mktemp)
     local temp_err=$(mktemp)
 
-    # Create Gradle cache directory
-    mkdir -p "$HOME/.gradle/caches"
-    
-    # Clean up any previous interrupted builds
-    info "Cleaning any previous interrupted builds..."
-    ./gradlew --stop 2>/dev/null || true
-    rm -rf build/intermediates 2>/dev/null || true
-    
-    # Run Gradle build
-    info "Running Gradle build for release APK..."
-    
-    # Start timer
-    local build_start=$SECONDS
-    
-    # Always use release build - this is required for production
-    local build_task="assembleFossRelease"
-    info "Building RELEASE APK (required for production use)"
-    
-    if ./gradlew "$build_task" \
-        --daemon \
+    info "Running Gradle build..."
+    if ./gradlew assembleFossRelease \
         --parallel \
         --build-cache \
         --max-workers=4 \
-        --console=plain \
+        --no-scan \
+        -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -XX:+UseStringDeduplication" \
+        -Pandroid.defaults.buildfeatures.buildconfig=true \
+        -Psdk.dir="$ANDROID_HOME" \
+        -Pndk.dir="$ANDROID_NDK_HOME" \
         2>&1 | tee "$temp_out"; then
         
         local build_time=$((SECONDS - build_start))
