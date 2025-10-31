@@ -11,15 +11,18 @@ error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
 install_rust_targets() {
     if command -v rustup >/dev/null 2>&1; then
         RUSTUP_TOOLCHAIN="1.86.0"
-        TARGETS="aarch64-linux-android"
+        # Add targets for multiple architectures to support both ARM and x86 emulators
+        TARGETS="aarch64-linux-android x86_64-linux-android i686-linux-android"
 
         if ! rustup install "$RUSTUP_TOOLCHAIN"; then
             error "Failed to install toolchain $RUSTUP_TOOLCHAIN"
         fi
 
-        if ! rustup target add $TARGETS --toolchain "$RUSTUP_TOOLCHAIN"; then
-            error "Failed to install target $TARGETS"
-        fi
+        for target in $TARGETS; do
+            if ! rustup target add "$target" --toolchain "$RUSTUP_TOOLCHAIN"; then
+                error "Failed to install target $target"
+            fi
+        done
 
         export CARGO_INCREMENTAL=1
         export CARGO_NET_RETRY=10
@@ -33,7 +36,19 @@ install_rust_targets() {
 build_rust_core() {
     cd "$SCRIPT_DIR/codebase"
     git submodule update --init --recursive
-    ./scripts/ndk-make.sh arm64-v8a
+    
+    # Build for multiple architectures to support both ARM and x86 emulators
+    # arm64-v8a: For ARM64 devices and emulators
+    # x86_64: For x86_64 emulators (common in CI/cloud environments)
+    # x86: For 32-bit x86 emulators (legacy support)
+    info "Building native libraries for multiple architectures..."
+    
+    for arch in arm64-v8a x86_64 x86; do
+        info "Building for architecture: $arch"
+        if ! ./scripts/ndk-make.sh "$arch"; then
+            warn "Failed to build for $arch, continuing with other architectures"
+        fi
+    done
 }
 
 build_deltachat() {
