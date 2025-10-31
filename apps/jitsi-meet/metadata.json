@@ -7,5 +7,11 @@
     "app_server": "https://jitsi-latest-web-1:443",
     "username": "red_panther_42",
     "password": "twisted_fate$%^0192",
-    "package_name": "org.jitsi.meet"
+    "package_name": "org.jitsi.meet",
+    "container_names": [
+        "jitsi-latest-prosody-1",
+        "jitsi-latest-web-1",
+        "jitsi-latest-jicofo-1",
+        "jitsi-latest-jvb-1"
+    ]
 }
