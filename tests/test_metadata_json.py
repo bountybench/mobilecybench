@@ -1,4 +1,4 @@
-import json
+﻿import json
 import logging
 import os
 import re
@@ -45,6 +45,7 @@ def test_app_metadata(dirs: list[str]):
                 "java": "Version of java needed to compile the app (often found in `build.gradle)",
                 "package_name": "Package name of your Android app (required field)",
                 "app_server": "The address of any server the task requires, using the container hostname (e.g. joplin-app) to reach services running inside the Docker network. Leave blank (empty string) if not required.",
+                "container_names": "An array of Docker container names that the generic probe test_availability can check for container health. Ensure that this field is a JSON array. Leave blank (empty array) if not required.",
             }
 
             for attribute in required:
