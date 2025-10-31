@@ -9,7 +9,7 @@ parser = argparse.ArgumentParser(description="Linphone SIP account login")
 parser.add_argument("--username", required=True, help="SIP username")
 parser.add_argument("--password", required=True, help="SIP password")
 parser.add_argument("--domain", default="10.0.2.2", help="SIP domain/server")
-parser.add_argument("--transport", default="UDP", help="Transport protocol (UDP/TCP/TLS)")
+parser.add_argument("--transport", default="TCP", help="Transport protocol (UDP/TCP/TLS)")
 args = parser.parse_args()
 
 username = args.username
@@ -158,7 +158,7 @@ if d(text="Register an account").exists(timeout=5):
         exit(1)
 
 # Check if we're already on the login screen
-if d(resourceId="org.linphone:id/title", text="Login").exists(timeout=5):
+if d(resourceId="org.linphone:id/login", text="Login").exists(timeout=5):
     print("Already on login screen, skipping navigation", file=sys.stderr)
 else:
     # Step 1: Open the sidebar menu using the exact resource ID
@@ -201,7 +201,7 @@ else:
         wait_and_click_text("Use a third party SIP account")
     else:
         print("[INFO] 'Use a third party SIP account' option not found, assuming already on login form", file=sys.stderr)
-    
+
     # Step 6: Handle terms and services screen
     print("Handling terms and services screen...", file=sys.stderr)
     if d(text="Accept").exists(timeout=10):
@@ -214,8 +214,11 @@ else:
     else:
         print("[INFO] No 'I understand' prompt detected, continuing...", file=sys.stderr)
 
-wait_for_ui_stable(timeout=5, interval=1)
+    wait_for_ui_stable(timeout=5, interval=1)
 
+if d(resourceId="org.linphone:id/login", text="Login").exists(timeout=5):
+    d.swipe_ext("down", scale=1)
+    
 # Step 7: Fill in Username
 print(f"Filling username: {username}", file=sys.stderr)
 
@@ -283,7 +286,8 @@ else:
     print("[INFO] No separate Domain field found", file=sys.stderr)
 
 # Step 10: Set Transport (if needed and different from default)
-if transport != "UDP":
+if transport != "TLS":
+    d.swipe_ext("up", scale=0.5)
     print(f"Setting transport to: {transport}", file=sys.stderr)
     
     if d(text="Transport").exists(timeout=5):
@@ -307,23 +311,7 @@ if transport != "UDP":
 else:
     print("[INFO] Using default transport (UDP)", file=sys.stderr)
 d.swipe_ext("up", scale=0.5)
-# Step 11: Advanced settings
-if d(text="Advanced settings").exists(timeout=5):
-    print("Expanding Advanced settings...", file=sys.stderr)
-    wait_and_click_text("Advanced settings")
-    time.sleep(1)
-# scroll down if needed
-d.swipe_ext("up", scale=0.5)
-time.sleep(1)
-edit_proxy = d(resourceId="org.linphone:id/outbound_proxy")
-if edit_proxy.exists(timeout=5):
-    edit_proxy.click()
-    time.sleep(1)
-    edit_proxy.set_text(f"sip:{domain}:5060")
-    time.sleep(1)
-    print(f"Proxy set to: sip:{domain}:5060", file=sys.stderr)
 
-d.swipe_ext("up", scale=0.5)
 # Step 12: Click the Login button
 print("Clicking Login button...", file=sys.stderr)
 
@@ -336,15 +324,16 @@ if not login_button.exists(timeout=10):
 
 wait_and_click_text("Login")
 time.sleep(1)
-wait_and_click_text("Login")
-
-
+if d(resourceId="org.linphone:id/login", text="Login").exists(timeout=5):
+    wait_and_click_text("Login")
+    time.sleep(1)
+    
 # Check for login result
 print("Checking login result...", file=sys.stderr)
 wait_for_ui_stable(timeout=10, interval=1)
 
 # Check for error message
-if d(text="Error").exists(timeout=5):
+if d(text="Login").exists(timeout=5):
     print("[ERROR] Login failed", file=sys.stderr)
     print("FAILED")
     exit(1)

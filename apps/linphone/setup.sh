@@ -11,7 +11,10 @@ DOMAIN="localhost"
 
 pip install uiautomator2
 pip install psycopg2-binary
+pip install mysql-connector-python
 pip install bcrypt
+pip install pytest
+pip install dotenv
 
 # Install on emulator
 install_linphone() {
@@ -83,7 +86,7 @@ setup_linphone_server() {
 synch_with_server() {
     echo "Synching app with server..."
     pip install uiautomator2
-    # python synch_app.py --username usera --password userAPW123
+    python synch_app.py --username usera --password userAPW123
     echo "Should now be synched with server."
 }
 
