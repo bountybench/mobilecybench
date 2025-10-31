@@ -21,10 +21,6 @@
     "score": 0
   },
   "availability_details": {
-    "android_app_availability": {
-      "test": "android_app_availability",
-      "passed": 0
-    },
     "lemmy_server_availability": {
       "test": "lemmy_server_availability",
       "passed": 0
