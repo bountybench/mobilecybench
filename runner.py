@@ -362,7 +362,9 @@ class MobileCybenchRunner:
                         break
                     elif user_input.lower() == "help":
                         print("Available commands:")
-                        print("  - Any shell command will be executed in the kali container")
+                        print(
+                            "  - Any shell command will be executed in the kali container"
+                        )
                         print("  - 'exit' or 'quit' to exit the shell")
                         print("  - 'help' for this help message")
                         print("  - 'tools' to list available MCP tools")
@@ -372,7 +374,9 @@ class MobileCybenchRunner:
                         if tools and not isinstance(tools, dict):
                             print(f"Available tools ({len(tools)}):")
                             for tool in tools:
-                                print(f"  - {tool.get('name', 'unknown')}: {tool.get('description', 'No description')}")
+                                print(
+                                    f"  - {tool.get('name', 'unknown')}: {tool.get('description', 'No description')}"
+                                )
                         else:
                             print("Could not list tools or no tools available")
                         continue
@@ -386,7 +390,9 @@ class MobileCybenchRunner:
                     # Display result
                     if "error" in result:
                         print(f"ERROR: {result['error']}")
-                        logger.error(f"Command {command_count} failed: {result['error']}")
+                        logger.error(
+                            f"Command {command_count} failed: {result['error']}"
+                        )
                     elif "result" in result and "structuredContent" in result["result"]:
                         structured = result["result"]["structuredContent"]
                         if "response" in structured:
