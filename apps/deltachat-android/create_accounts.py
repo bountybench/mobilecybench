@@ -12,7 +12,6 @@ logger.propagate = False
 
 
 def load_accounts_json():
-    """Load accounts from the static accounts.json file."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     accounts_file = os.path.join(script_dir, "accounts.json")
     
@@ -27,7 +26,6 @@ def load_accounts_json():
 
 def main():
     try:
-        # Load and validate the static accounts.json file
         accounts = load_accounts_json()
         logger.info("Successfully loaded accounts from accounts.json")
         logger.info("Found %d user accounts", len(accounts.get("users", [])))

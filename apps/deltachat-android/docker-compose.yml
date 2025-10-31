@@ -4,9 +4,9 @@ services:
     container_name: deltachat-greenmail
     restart: always
     ports:
-      - "1025:3025"   # SMTP
-      - "1143:3143"   # IMAP
-      - "8025:8080"   # Web UI
+      - "1025:3025"
+      - "1143:3143"
+      - "8025:8080"
     environment:
       - GREENMAIL_OPTS=-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=user1@deltachat.test:password123,user2@deltachat.test:password123,user3@deltachat.test:password123 -Dgreenmail.auth.disabled=false -Dgreenmail.verbose
     networks:

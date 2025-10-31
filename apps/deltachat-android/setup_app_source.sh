@@ -11,7 +11,6 @@ error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
 install_rust_targets() {
     if command -v rustup >/dev/null 2>&1; then
         RUSTUP_TOOLCHAIN="1.86.0"
-        # Add targets for multiple architectures to support both ARM and x86 emulators
         TARGETS="aarch64-linux-android x86_64-linux-android i686-linux-android"
 
         if ! rustup install "$RUSTUP_TOOLCHAIN"; then
@@ -37,10 +36,6 @@ build_rust_core() {
     cd "$SCRIPT_DIR/codebase"
     git submodule update --init --recursive
     
-    # Build for multiple architectures to support both ARM and x86 emulators
-    # arm64-v8a: For ARM64 devices and emulators
-    # x86_64: For x86_64 emulators (common in CI/cloud environments)
-    # x86: For 32-bit x86 emulators (legacy support)
     info "Building native libraries for multiple architectures..."
     
     for arch in arm64-v8a x86_64 x86; do
@@ -52,19 +47,13 @@ build_rust_core() {
 }
 
 build_deltachat() {
-    # IMPORTANT: Do NOT create gradle.properties or local.properties inside the codebase directory
-    # as it modifies the git submodule. Instead, we'll pass these as Gradle properties via command line
-    # or use the global gradle.properties in the user's home directory.
-    
     cd "$SCRIPT_DIR/codebase"
     
-    # Verify we're not modifying the submodule
     if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
         warn "Warning: codebase submodule has uncommitted changes before build"
     fi
     export GRADLE_OPTS="$GRADLE_OPTS -Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.configureondemand=true"
 
-    # Create signing configuration for release build
     mkdir -p "$HOME/.android"
     if [[ ! -f "$HOME/.android/debug.keystore" ]]; then
         keytool -genkey -v -keystore "$HOME/.android/debug.keystore" \
@@ -73,15 +62,12 @@ build_deltachat() {
             -dname "CN=Android Debug,O=Android,C=US"
     fi
 
-    # Set up Android SDK environment
     if [[ -d "/usr/local/lib/android/sdk" ]]; then
         export ANDROID_HOME="/usr/local/lib/android/sdk"
         export ANDROID_NDK_HOME="/usr/local/lib/android/sdk/ndk/27.0.12077973"
         export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
     fi
 
-    # Create gradle.properties in user's .gradle directory (global location)
-    # This avoids modifying the codebase submodule
     mkdir -p "$HOME/.gradle"
     cat > "$HOME/.gradle/gradle.properties" << EOF
 DC_RELEASE_STORE_FILE=$HOME/.android/debug.keystore
@@ -93,26 +79,15 @@ android.useAndroidX=true
 android.enableJetifier=true
 EOF
 
-    # Pass SDK paths as system properties instead of creating local.properties
-    # This avoids any modifications to the codebase directory
     export ANDROID_SDK_ROOT="$ANDROID_HOME"
 
-    # Create missing resource files that are causing compilation errors
     mkdir -p src/main/res/values
-    
-    # Add missing string resources
     if ! grep -q "zxing_msg_camera_framework_bug" src/main/res/values/strings.xml 2>/dev/null; then
-        # Add missing ZXing string
         sed -i '/<\/resources>/i\    <string name="zxing_msg_camera_framework_bug">Camera framework bug detected</string>' src/main/res/values/strings.xml 2>/dev/null || echo '<resources><string name="zxing_msg_camera_framework_bug">Camera framework bug detected</string></resources>' > src/main/res/values/missing_strings.xml
     fi
-    
-    # Add missing attributes
     if ! grep -q "toolbarStyle" src/main/res/values/attrs.xml 2>/dev/null; then
-        # Add missing toolbar style attribute
         sed -i '/<\/resources>/i\    <attr name="toolbarStyle" format="reference" />' src/main/res/values/attrs.xml 2>/dev/null || echo '<resources><attr name="toolbarStyle" format="reference" /></resources>' > src/main/res/values/missing_attrs.xml
     fi
-    
-    # Add missing IDs
     mkdir -p src/main/res/values
     cat > src/main/res/values/missing_ids.xml << EOF
 <?xml version="1.0" encoding="utf-8"?>
@@ -124,7 +99,6 @@ EOF
     local temp_out=$(mktemp)
     local temp_err=$(mktemp)
 
-    # Run Gradle build and check if APK was actually created
     info "Running Gradle build..."
     if ./gradlew assembleFossRelease \
         --daemon \
@@ -139,7 +113,6 @@ EOF
         -Pndk.dir="$ANDROID_NDK_HOME" \
         2>&1 | tee "$temp_out"; then
 
-        # Check if APK was actually built in the expected location
         BUILT_APK=$(find . -name "*release*.apk" -type f 2>/dev/null | head -1)
         if [[ -n "$BUILT_APK" ]]; then
             info "APK found at: $BUILT_APK"
@@ -156,7 +129,6 @@ EOF
         exit $exit_code
     fi
     
-    # Verify we didn't modify the submodule during build
     if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
         warn "Warning: codebase submodule was modified during build. This should not happen!"
         info "Modified files:"

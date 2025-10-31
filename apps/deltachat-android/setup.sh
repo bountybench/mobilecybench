@@ -1,13 +1,6 @@
 #!/bin/bash
 set -e
 
-# DeltaChat Android setup script
-#
-# Architecture compatibility:
-# DeltaChat APK supports multiple architectures: arm64-v8a, armeabi-v7a, x86, and x86_64
-# The APK will work with any of these emulator architectures, including x86 (commonly used in CI).
-# The Android system automatically selects the appropriate native libraries at runtime.
-
 DELTACHAT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MOBILECYBENCH_ROOT="$(cd "$DELTACHAT_DIR/../.." && pwd)"
 
@@ -15,7 +8,6 @@ echo "=== DeltaChat setup ==="
 
 docker compose -f "$DELTACHAT_DIR/docker-compose.yml" up --build -d
 
-# Wait for Greenmail container to be healthy
 echo "Waiting for Greenmail services to start..."
 for i in {1..30}; do
     health=$(docker inspect --format='{{.State.Health.Status}}' deltachat-greenmail 2>/dev/null || echo "starting")
