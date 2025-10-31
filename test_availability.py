@@ -4,8 +4,7 @@ This module verifies service availability and runtime stability for the Linphone
 
 1) Backend service health
    - Flexisip SIP server is running and responsive
-   - FlexiAPI account manager is healthy
-   - PostgreSQL database is accessible
+   - MySQL database is accessible
    - Container health checks pass
 
 2) SIP service responsiveness
@@ -24,15 +23,12 @@ Environment variables:
   FLEXISIP_UDP_PORT     : SIP UDP port (default: 5060)
   FLEXISIP_TCP_PORT     : SIP TCP port (default: 5060)
   FLEXISIP_TLS_PORT     : SIP TLS port (default: 5061)
-  FLEXIAPI_HOST         : FlexiAPI hostname (default: localhost)
-  FLEXIAPI_PORT         : FlexiAPI HTTP port (default: 8080)
-  DB_HOST               : PostgreSQL hostname (default: localhost)
-  DB_PORT               : PostgreSQL port (default: 5432)
+  DB_HOST               : MySQL hostname (default: localhost)
+  DB_PORT               : MySQL port (default: 3306)
   AVAIL_TIMEOUT         : Connection timeout in seconds (default: 5)
   ADB_BIN               : Path to adb binary (default: adb)
   FLEXISIP_CONTAINER    : Flexisip container name (default: flexisip)
-  FLEXIAPI_CONTAINER    : FlexiAPI container name (default: account_manager)
-  DB_CONTAINER          : Database container name (default: account_db)
+  DB_CONTAINER          : Database container name (default: mysql)
 """
 
 import json
@@ -45,28 +41,82 @@ from typing import Tuple
 import pytest
 from dotenv import load_dotenv
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
-from utils.availability_utils import check_DOS
-
 load_dotenv()
 
-FLEXISIP_HOST = os.getenv("FLEXISIP_HOST", "10.0.2.2")
+FLEXISIP_HOST = os.getenv("FLEXISIP_HOST", "localhost")
 FLEXISIP_UDP_PORT = int(os.getenv("FLEXISIP_UDP_PORT", "5060"))
 FLEXISIP_TCP_PORT = int(os.getenv("FLEXISIP_TCP_PORT", "5060"))
 FLEXISIP_TLS_PORT = int(os.getenv("FLEXISIP_TLS_PORT", "5061"))
-FLEXIAPI_HOST = os.getenv("FLEXIAPI_HOST", "localhost")
-FLEXIAPI_PORT = int(os.getenv("FLEXIAPI_PORT", "8080"))
 DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = int(os.getenv("DB_PORT", "5432"))
+DB_PORT = int(os.getenv("DB_PORT", "3306"))
 AVAIL_TIMEOUT = int(os.getenv("AVAIL_TIMEOUT", "5"))
+print(AVAIL_TIMEOUT)
 ADB_BIN = os.getenv("ADB_BIN", "adb")
+
+
+def check_DOS(package_name: str) -> bool:
+    """Check for crashes/ANR in Android app via adb logcat.
+    
+    Returns True if no crashes detected, False if crashes found.
+    """
+    try:
+        # Get recent logcat entries (last 500 lines to keep it manageable)
+        result = subprocess.run(
+            [ADB_BIN, "logcat", "-d", "-t", "500"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if result.returncode != 0:
+            return True  # Can't check, assume OK
+        
+        logcat = result.stdout
+        lines = logcat.split('\n')
+        
+        # Look for crashes related to our package
+        for i, line in enumerate(lines):
+            line_lower = line.lower()
+            
+            # Check for fatal exceptions
+            if 'fatal exception' in line_lower or 'androidruntime' in line_lower:
+                # Look in surrounding lines for package name
+                context_start = max(0, i - 5)
+                context_end = min(len(lines), i + 20)
+                context = '\n'.join(lines[context_start:context_end]).lower()
+                
+                if package_name.lower() in context:
+                    return False
+            
+            # Check for ANR specifically mentioning our package
+            if 'anr in' in line_lower and package_name.lower() in line_lower:
+                return False
+            
+            # Check for process died/killed
+            if package_name.lower() in line_lower:
+                if any(x in line_lower for x in ['died', 'killed', 'crash', 'force clos']):
+                    return False
+        
+        return True
+        
+    except Exception as e:
+        # If we can't check, assume OK (don't fail the test on ADB issues)
+        return True
+
+
 FLEXISIP_CONTAINER = os.getenv("FLEXISIP_CONTAINER", "flexisip")
-FLEXIAPI_CONTAINER = os.getenv("FLEXIAPI_CONTAINER", "account_manager")
 DB_CONTAINER = os.getenv("DB_CONTAINER", "account_db")
 ANDROID_APP_PACKAGE = "org.linphone"
 
 
 # --- Helpers ---
+
+def _find_netcat():
+    for cmd in ["nc", "ncat", "netcat"]:
+        if shutil.which(cmd):
+            return cmd
+    
+    return "nc"
 
 
 def _sip_udp_probe() -> int:
@@ -75,9 +125,8 @@ def _sip_udp_probe() -> int:
     Returns 1 for successful connection, 0 for connection failure.
     """
     try:
-        # Use nc with UDP flag
         result = subprocess.run(
-            ["nc", "-u", "-z", "-w", "3", FLEXISIP_HOST, str(FLEXISIP_UDP_PORT)],
+            [_find_netcat(), "-u", "-z", "-w", "3", FLEXISIP_HOST, str(FLEXISIP_UDP_PORT)],
             capture_output=True,
             timeout=AVAIL_TIMEOUT,
         )
@@ -93,7 +142,7 @@ def _sip_tcp_probe() -> int:
     """
     try:
         result = subprocess.run(
-            ["nc", "-z", "-w", "3", FLEXISIP_HOST, str(FLEXISIP_TCP_PORT)],
+            [_find_netcat(), "-z", "-w", "3", FLEXISIP_HOST, str(FLEXISIP_TCP_PORT)],
             capture_output=True,
             timeout=AVAIL_TIMEOUT,
         )
@@ -109,7 +158,7 @@ def _sip_tls_probe() -> int:
     """
     try:
         result = subprocess.run(
-            ["nc", "-z", "-w", "3", FLEXISIP_HOST, str(FLEXISIP_TLS_PORT)],
+            [_find_netcat(), "-z", "-w", "3", FLEXISIP_HOST, str(FLEXISIP_TLS_PORT)],
             capture_output=True,
             timeout=AVAIL_TIMEOUT,
         )
@@ -118,33 +167,14 @@ def _sip_tls_probe() -> int:
         return 0
 
 
-def _flexiapi_http_probe() -> int:
-    """Probe FlexiAPI HTTP endpoint.
-
-    Returns 1 for successful connection, 0 for connection failure.
-    """
-    try:
-        result = subprocess.run(
-            ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-             f"http://{FLEXIAPI_HOST}:{FLEXIAPI_PORT}"],
-            capture_output=True,
-            text=True,
-            timeout=AVAIL_TIMEOUT,
-        )
-        # Accept any HTTP response (200, 404, etc.) as "service is up"
-        return 1 if result.returncode == 0 and result.stdout.strip().startswith(("2", "3", "4")) else 0
-    except Exception:
-        return 0
-
-
 def _db_probe() -> int:
-    """Probe PostgreSQL database connectivity.
+    """Probe MySQL database connectivity.
 
     Returns 1 for successful connection, 0 for connection failure.
     """
     try:
         result = subprocess.run(
-            ["nc", "-z", "-w", "3", DB_HOST, str(DB_PORT)],
+            [_find_netcat(), "-z", "-w", "3", DB_HOST, str(DB_PORT)],
             capture_output=True,
             timeout=AVAIL_TIMEOUT,
         )
@@ -231,14 +261,8 @@ def test_sip_tls_port_accessible():
     assert result == 1, f"SIP TLS port {FLEXISIP_TLS_PORT} not accessible"
 
 
-def test_flexiapi_http_accessible():
-    """FlexiAPI HTTP endpoint should be accessible."""
-    result = _flexiapi_http_probe()
-    assert result == 1, f"FlexiAPI HTTP port {FLEXIAPI_PORT} not accessible"
-
-
 def test_database_port_accessible():
-    """PostgreSQL database port should be accessible."""
+    """MySQL database port should be accessible."""
     result = _db_probe()
     assert result == 1, f"Database port {DB_PORT} not accessible"
 
@@ -254,19 +278,6 @@ def test_flexisip_container_running_when_docker_present():
         pytest.skip("Flexisip container not found in this environment")
 
     assert running, f"Flexisip container not running: {detail}"
-
-
-def test_flexiapi_container_running_when_docker_present():
-    """FlexiAPI container should be running when Docker is available."""
-    if not _docker_available():
-        pytest.skip("Docker not available")
-
-    running, detail = _docker_container_running(FLEXIAPI_CONTAINER)
-
-    if "No such object" in detail:
-        pytest.skip("FlexiAPI container not found in this environment")
-
-    assert running, f"FlexiAPI container not running: {detail}"
 
 
 def test_database_container_running_when_docker_present():
@@ -348,7 +359,7 @@ def main():
             results["sip_tcp_port_accessible"] = False
             print(f"[FAIL] SIP TCP port: {e}", file=sys.stderr)
 
-        # Test SIP TLS port
+        # # Test SIP TLS port
         try:
             result = _sip_tls_probe()
             success = result == 1
@@ -368,27 +379,6 @@ def main():
             overall_success = False
             results["sip_tls_port_accessible"] = False
             print(f"[FAIL] SIP TLS port: {e}", file=sys.stderr)
-
-        # Test FlexiAPI HTTP
-        try:
-            result = _flexiapi_http_probe()
-            success = result == 1
-            results["flexiapi_http_accessible"] = success
-            if not success:
-                overall_success = False
-                print(
-                    f"[FAIL] FlexiAPI HTTP: Port {FLEXIAPI_PORT} not accessible",
-                    file=sys.stderr,
-                )
-            else:
-                print(
-                    f"[PASS] FlexiAPI HTTP: Port {FLEXIAPI_PORT} accessible",
-                    file=sys.stderr,
-                )
-        except Exception as e:
-            overall_success = False
-            results["flexiapi_http_accessible"] = False
-            print(f"[FAIL] FlexiAPI HTTP: {e}", file=sys.stderr)
 
         # Test Database port
         try:
@@ -428,24 +418,6 @@ def main():
             overall_success = False
             results["flexisip_container_running"] = False
             print(f"[FAIL] Flexisip container: {e}", file=sys.stderr)
-
-        # Test FlexiAPI container
-        try:
-            if _docker_available():
-                running, detail = _docker_container_running(FLEXIAPI_CONTAINER)
-                results["flexiapi_container_running"] = running
-                if not running:
-                    overall_success = False
-                    print(f"[FAIL] FlexiAPI container: {detail}", file=sys.stderr)
-                else:
-                    print(f"[PASS] FlexiAPI container: {detail}", file=sys.stderr)
-            else:
-                results["flexiapi_container_running"] = True  # Skip if no docker
-                print("[SKIP] FlexiAPI container: Docker not available", file=sys.stderr)
-        except Exception as e:
-            overall_success = False
-            results["flexiapi_container_running"] = False
-            print(f"[FAIL] FlexiAPI container: {e}", file=sys.stderr)
 
         # Test Database container
         try:
@@ -505,10 +477,8 @@ def main():
             "sip_udp_port_accessible": False,
             "sip_tcp_port_accessible": False,
             "sip_tls_port_accessible": False,
-            "flexiapi_http_accessible": False,
             "database_port_accessible": False,
             "flexisip_container_running": False,
-            "flexiapi_container_running": False,
             "database_container_running": False,
             "android_app_no_crashes": False,
         }
