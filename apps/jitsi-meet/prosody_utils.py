@@ -126,6 +126,7 @@ def bosh_plain_login(
         # print("AUTH FAILED")
         return False
 
+
 def check_user_login(user: str, password: str) -> bool:
     bosh_url = "http://localhost:5280/http-bind"
     return bosh_plain_login(
@@ -135,6 +136,7 @@ def check_user_login(user: str, password: str) -> bool:
         password=password,
         verify_ssl=False,
     )
+
 
 def get_prosody_container():
     result = subprocess.run(
