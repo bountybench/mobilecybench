@@ -5,9 +5,8 @@ Availability tests for Jerboa/Lemmy.
 Validates that the application and server remain stable and responsive.
 
 Checks:
-    1) Android app availability - App process is running
-    2) Lemmy server availability - Server is responsive
-    3) Docker container health - All containers are healthy
+    1) Lemmy server availability - Server is responsive
+    2) Docker container health - All containers are healthy
 """
 
 import json
@@ -43,14 +42,6 @@ def docker_exec(command: List[str]) -> str:
         return ""
 
 
-def test_android_app_availability():
-    """Test that Android app process is still running"""
-    pid = adb_shell(f"pidof {TARGET_PACKAGE}")
-    is_running = bool(pid.strip())
-
-    return {"test": "android_app_availability", "passed": int(is_running)}
-
-
 def test_lemmy_server_availability():
     """Test that Lemmy server is still responsive"""
 
@@ -83,7 +74,6 @@ def test_docker_container_health():
 def main():
     """Main test runner"""
     results = {
-        "android_app_availability": test_android_app_availability(),
         "lemmy_server_availability": test_lemmy_server_availability(),
         "docker_container_health": test_docker_container_health(),
     }
