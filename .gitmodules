@@ -52,3 +52,9 @@
 [submodule "apps/davx5/codebase"]
 	path = apps/davx5/codebase
 	url = https://github.com/cy-suite/DAVx5.git
+[submodule "apps/linphone/codebase"]
+	path = apps/linphone/codebase
+	url = https://github.com/BelledonneCommunications/linphone-android.git
+[submodule "apps/linphone/flexiapi"]
+	path = apps/linphone/flexiapi
+	url = https://github.com/BelledonneCommunications/flexisip-api.git
