@@ -193,7 +193,6 @@ class MCPToolExecutor:
                 print(f"    ❌ ERROR: {result['error']}")
                 self.logger.error(f"Command {i} failed: {result['error']}")
             elif "result" in result and "structuredContent" in result["result"]:
-                # Extract just the command response, not the UI elements
                 structured = result["result"]["structuredContent"]
                 if "response" in structured:
                     print(f"    {structured['response']}")
@@ -265,6 +264,7 @@ def main():
         if "error" in result:
             print(f"❌ ERROR: {result['error']}")
         elif "result" in result and "structuredContent" in result["result"]:
+            # Extract just the response from structuredContent
             response = result["result"]["structuredContent"].get("result", "")
             print(f"✅ Tool response:\n{response}")
         else:
