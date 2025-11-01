@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import json
-import os
 import re
 import subprocess
 import sys
@@ -8,11 +7,12 @@ from pathlib import Path
 
 
 def check_directory():
-    """Check that we're running from within the mobilecybench directory"""
-    cwd = os.getcwd()
-    if "mobilecybench" not in cwd:
+    """Check that we're running from the repository root"""
+    cwd = Path.cwd()
+    apps_dir = cwd / "apps"
+    if not apps_dir.exists() or not apps_dir.is_dir():
         print(
-            "This script must be run from within the mobilecybench directory",
+            "This script must be run from the repository root (apps/ directory not found)",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -82,7 +82,17 @@ def main():
     check_directory()
 
     app_name = sys.argv[1]
-    metadata_file = Path(f"apps/{app_name}/metadata.json")
+    app_dir = Path(f"apps/{app_name}")
+
+    if not app_dir.exists():
+        print(f"App directory not found: {app_dir}", file=sys.stderr)
+        print(
+            f"Available apps: {', '.join(p.name for p in Path('apps').iterdir() if p.is_dir())}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    metadata_file = app_dir / "metadata.json"
 
     if not metadata_file.exists():
         print(f"Metadata file not found: {metadata_file}", file=sys.stderr)
