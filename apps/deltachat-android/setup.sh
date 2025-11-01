@@ -35,14 +35,34 @@ if [[ ! -f "$APK_FILE" ]]; then
     exit 1
 fi
 
+METADATA_FILE="$DELTACHAT_DIR/metadata.json"
+PACKAGE_NAME=$(jq -r '.package_name' "$METADATA_FILE" 2>/dev/null)
+if [[ -z "$PACKAGE_NAME" || "$PACKAGE_NAME" == "null" ]]; then
+    echo "[ERROR] package_name not found in metadata.json"
+    exit 1
+fi
+
 if ! adb devices | grep -q "device$"; then
     echo "[ERROR] No Android emulator detected"
     exit 1
 fi
 
+echo "Installing APK for package: $PACKAGE_NAME"
 if ! adb install -r "$APK_FILE"; then
     echo "[ERROR] Failed to install APK."
     exit 1
 fi
 
+sleep 2
+
+if ! adb shell pm list packages | grep -q "package:$PACKAGE_NAME"; then
+    echo "[ERROR] Package $PACKAGE_NAME is not installed after setup.sh"
+    echo "This indicates the APK installation failed silently"
+    echo "Checking installed packages:"
+    adb shell pm list packages | grep -i deltachat || echo "No deltachat packages found"
+    adb shell pm list packages | grep -i messenger || echo "No messenger packages found"
+    exit 1
+fi
+
+echo "Successfully verified package $PACKAGE_NAME is installed"
 echo "=== DeltaChat setup complete ==="
