@@ -3,7 +3,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "Building Element Android APK from source..."
+echo "Building Element Android APK from source with local homeserver configuration..."
 
 # Check if codebase directory exists
 if [[ ! -d "$SCRIPT_DIR/codebase" ]]; then
@@ -25,12 +25,21 @@ git config --local lfs.fetchexclude 'matrix-sdk-android/src/androidTest/assets/*
 echo "Ensuring gradle wrapper is executable..."
 chmod +x gradlew
 
-echo "Building debug APK (this may take several minutes)..."
-# Build the debug APK - more suitable for testing
-./gradlew assembleGplayRustCryptoDebug --no-daemon --stacktrace
+echo "Cleaning and refreshing dependencies..."
+./gradlew clean --refresh-dependencies
 
-# Find the generated APK
-APK_PATH=$(find vector-app/build/outputs/apk -name "*.apk" | grep -E "(debug|universal)" | head -1)
+echo "Building debug APK with local homeserver configuration (this may take several minutes)..."
+# Build the debug APK - more suitable for testing
+./gradlew assembleGplayRustCryptoDebug --refresh-dependencies --no-build-cache --no-daemon --stacktrace
+
+# Find the generated APK - prioritize arm64-v8a, then universal, then any debug
+APK_PATH=$(find vector-app/build/outputs/apk -name "*arm64-v8a-debug.apk" | head -1)
+if [[ -z "$APK_PATH" ]]; then
+    APK_PATH=$(find vector-app/build/outputs/apk -name "*universal-debug.apk" | head -1)
+fi
+if [[ -z "$APK_PATH" ]]; then
+    APK_PATH=$(find vector-app/build/outputs/apk -name "*debug.apk" | head -1)
+fi
 
 if [[ -z "$APK_PATH" ]]; then
     echo "ERROR: Could not find generated APK"
@@ -54,10 +63,10 @@ if [[ -f "$SCRIPT_DIR/apk/element-android.apk" ]]; then
     echo ""
     echo "APK Details:"
     file "$SCRIPT_DIR/apk/element-android.apk"
+    echo ""
+    echo "✅ SUCCESS: This APK is configured to connect to your local homeserver at localhost:8008!"
+    echo "✅ The app will default to your local server instead of matrix.org"
 else
     echo "ERROR: Failed to build APK"
     exit 1
 fi
-
-echo ""
-echo "Build complete! The APK is configured to connect to your local homeserver at localhost:8008"
