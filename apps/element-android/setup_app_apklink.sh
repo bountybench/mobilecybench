@@ -22,6 +22,24 @@ echo "Checking Git LFS status..."
 # Handle potential LFS issues gracefully - skip missing LFS files for build
 git config --local lfs.fetchexclude 'matrix-sdk-android/src/androidTest/assets/*'
 
+# Skip LFS files that might be missing (like test screenshots)
+export GIT_LFS_SKIP_SMUDGE=1
+
+# Also configure LFS to skip problematic files permanently for this repo
+git config --local lfs.fetchexclude "*screenshot*,*test/snapshots/*"
+
+echo "Ensuring we're on the correct commit from metadata.json..."
+# Navigate back to get the correct commit from metadata.json
+EXPECTED_COMMIT=$(cd "$SCRIPT_DIR" && python3 -c "import json; print(json.load(open('metadata.json'))['commit'])" 2>/dev/null || echo "")
+if [[ -n "$EXPECTED_COMMIT" ]]; then
+    echo "Checking out commit: $EXPECTED_COMMIT"
+    GIT_LFS_SKIP_SMUDGE=1 git checkout "$EXPECTED_COMMIT" || {
+        echo "Warning: Could not checkout $EXPECTED_COMMIT, continuing with current state"
+    }
+else
+    echo "Warning: Could not read expected commit from metadata.json, using current state"
+fi
+
 echo "Ensuring gradle wrapper is executable..."
 chmod +x gradlew
 
