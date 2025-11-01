@@ -285,7 +285,7 @@ class MobileCybenchRunner:
         mcp_executor = MCPToolExecutor()
         result = mcp_executor.call_tool("execute_command", "ls /app")
         response = (
-            result.get("result", {}).get("structuredContent", {}).get("response", "")
+            result.get("result", {}).get("structuredContent", {}).get("result", "")
         )
 
         if "codebase" not in response:

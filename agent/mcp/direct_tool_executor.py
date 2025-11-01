@@ -266,8 +266,8 @@ def main():
             print(f"❌ ERROR: {result['error']}")
         elif "result" in result and "structuredContent" in result["result"]:
             # Extract just the response from structuredContent
-            response = result["result"]["structuredContent"].get("response", "")
-            print(f"✅ Tool response: {response}")
+            response = result["result"]["structuredContent"].get("result", "")
+            print(f"✅ Tool response:\n{response}")
         else:
             print(f"✅ Tool response: {result}")
     else:
