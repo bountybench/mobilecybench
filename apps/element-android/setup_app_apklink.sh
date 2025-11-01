@@ -3,39 +3,61 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Read metadata.json to get download link
-METADATA_FILE="$SCRIPT_DIR/metadata.json"
-if [[ ! -f "$METADATA_FILE" ]]; then
-    echo "ERROR: metadata.json not found at $METADATA_FILE"
+echo "Building Element Android APK from source..."
+
+# Check if codebase directory exists
+if [[ ! -d "$SCRIPT_DIR/codebase" ]]; then
+    echo "ERROR: codebase directory not found at $SCRIPT_DIR/codebase"
+    echo "Please ensure the Element Android source code is properly cloned."
     exit 1
 fi
-
-DOWNLOAD_LINK=$(python3 -c "
-import json
-with open('$METADATA_FILE', 'r') as f:
-    data = json.load(f)
-    print(data.get('download_link', ''))
-")
-
-if [[ -z "$DOWNLOAD_LINK" ]]; then
-    echo "ERROR: download_link not found in metadata.json"
-    exit 1
-fi
-
-echo "Downloading Element Android APK from: $DOWNLOAD_LINK"
 
 # Create apk directory if it doesn't exist
 mkdir -p "$SCRIPT_DIR/apk"
 
-# Download the APK
-curl -L "$DOWNLOAD_LINK" -o "$SCRIPT_DIR/apk/element-android.apk"
+# Navigate to codebase directory
+cd "$SCRIPT_DIR/codebase"
 
-# Verify the download
-if [[ -f "$SCRIPT_DIR/apk/element-android.apk" ]]; then
-    echo "Element Android APK downloaded successfully to $SCRIPT_DIR/apk/element-android.apk"
-    # Show file size for verification
-    ls -lh "$SCRIPT_DIR/apk/element-android.apk"
-else
-    echo "ERROR: Failed to download APK"
+echo "Checking Git LFS status..."
+# Handle potential LFS issues gracefully - skip missing LFS files for build
+git config --local lfs.fetchexclude 'matrix-sdk-android/src/androidTest/assets/*'
+
+echo "Ensuring gradle wrapper is executable..."
+chmod +x gradlew
+
+echo "Building debug APK (this may take several minutes)..."
+# Build the debug APK - more suitable for testing
+./gradlew assembleGplayRustCryptoDebug --no-daemon --stacktrace
+
+# Find the generated APK
+APK_PATH=$(find vector-app/build/outputs/apk -name "*.apk" | grep -E "(debug|universal)" | head -1)
+
+if [[ -z "$APK_PATH" ]]; then
+    echo "ERROR: Could not find generated APK"
+    echo "Available APKs:"
+    find vector-app/build/outputs/apk -name "*.apk" 2>/dev/null || echo "No APKs found"
     exit 1
 fi
+
+echo "APK found at: $APK_PATH"
+
+# Copy APK to the expected location
+cp "$APK_PATH" "$SCRIPT_DIR/apk/element-android.apk"
+
+# Verify the build
+if [[ -f "$SCRIPT_DIR/apk/element-android.apk" ]]; then
+    echo "Element Android APK built successfully!"
+    echo "APK location: $SCRIPT_DIR/apk/element-android.apk"
+    # Show file size for verification
+    ls -lh "$SCRIPT_DIR/apk/element-android.apk"
+    
+    echo ""
+    echo "APK Details:"
+    file "$SCRIPT_DIR/apk/element-android.apk"
+else
+    echo "ERROR: Failed to build APK"
+    exit 1
+fi
+
+echo ""
+echo "Build complete! The APK is configured to connect to your local homeserver at localhost:8008"

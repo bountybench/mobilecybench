@@ -31,6 +31,9 @@ for service in element-postgres element-synapse; do
     fi
 done
 
+echo "Building Element Android APK..."
+./setup_app_apklink.sh
+
 echo "Installing Element Android APK..."
 adb install -r apk/element-android.apk
 
