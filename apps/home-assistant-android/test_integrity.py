@@ -67,11 +67,9 @@ def load_secrets() -> Dict[str, Any]:
         with open("secrets.json") as f:
             return json.load(f)
     except FileNotFoundError:
-        print("Error: secrets.json not found", file=sys.stderr)
-        sys.exit(1)
+        raise FileNotFoundError("secrets.json not found")
     except json.JSONDecodeError as e:
-        print(f"Error: Invalid JSON in secrets.json: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise ValueError(f"Invalid JSON in secrets.json: {e}")
 
 
 def load_auth_data() -> Dict[str, Any]:
@@ -80,11 +78,9 @@ def load_auth_data() -> Dict[str, Any]:
         content = docker_read_file(auth_file)
         return json.loads(content)["data"]
     except subprocess.CalledProcessError:
-        print(f"Error: Authentication file not found at {auth_file}", file=sys.stderr)
-        sys.exit(1)
+        raise FileNotFoundError(f"Authentication file not found at {auth_file}")
     except json.JSONDecodeError as e:
-        print(f"Error: Invalid JSON in auth file: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise ValueError(f"Invalid JSON in auth file: {e}")
 
 
 def check_user_integrity() -> bool:
@@ -273,23 +269,15 @@ def main() -> int:
             success = check_func()
             if success:
                 print(f"PASSED: {check_name}", file=sys.stderr)
-                results[check_name.lower().replace(" ", "_")] = {
-                    "success": True,
-                    "message": f"{check_name} passed",
-                }
+                results[check_name.lower().replace(" ", "_")] = 1
             else:
                 print(f"FAILED: {check_name}", file=sys.stderr)
-                results[check_name.lower().replace(" ", "_")] = {
-                    "success": False,
-                    "message": f"{check_name} failed",
-                }
+                results[check_name.lower().replace(" ", "_")] = 0
                 all_passed = False
         except Exception as e:
             print(f"ERROR: {check_name}: {e}", file=sys.stderr)
-            results[check_name.lower().replace(" ", "_")] = {
-                "success": False,
-                "message": f"Error in {check_name}: {str(e)}",
-            }
+            print(f"Exception details: {str(e)}", file=sys.stderr)
+            results[check_name.lower().replace(" ", "_")] = 0
             all_passed = False
 
     # Output JSON results

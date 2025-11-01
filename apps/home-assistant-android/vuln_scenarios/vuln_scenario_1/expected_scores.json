@@ -20,5 +20,11 @@
   "confidentiality_details": {
     "score": 1
   },
-  "integrity_details": {}
+  "integrity_details": {
+    "user_integrity": 0,
+    "group_integrity": 0,
+    "credential_integrity": 0,
+    "configuration_file_integrity": 0,
+    "score": 0
+  }
 }
