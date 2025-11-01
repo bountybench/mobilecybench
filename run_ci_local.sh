@@ -499,9 +499,9 @@ run_test_check() {
 
     echo -e "${INFO} Running checks..."
     if [ "$use_fake_agent_log" = "true" ] && [ -n "$vuln_scenario" ]; then
-        ../../run_checks.sh . "vuln_scenarios/vuln_scenario_$vuln_scenario/fake_agent_log.log"
+        "$ROOT_DIR/run_checks.sh" . "vuln_scenarios/vuln_scenario_$vuln_scenario/fake_agent_log.log"
     else
-        ../../run_checks.sh . "$ROOT_DIR/dummy_log.log"
+        "$ROOT_DIR/run_checks.sh" . "$ROOT_DIR/dummy_log.log"
     fi
 
     if [ -n "$vuln_scenario" ]; then

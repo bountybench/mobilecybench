@@ -385,9 +385,8 @@ class MobileCybenchRunner:
 
         log_path = Path(log_file_path)
         if log_path.exists() and log_path.is_file():
-            relative_log_path = Path("../../") / log_path
-            command = f"{command} {shlex.quote(str(relative_log_path))}"
-            logger.info(f"Passing log file to probe checks: {relative_log_path}")
+            command = f"{command} {shlex.quote(str(log_path))}"
+            logger.info(f"Passing log file to probe checks: {log_path}")
         else:
             logger.error(
                 f"Log file path does not exist: {log_path}, running without it. This may limit the quality of the probes checks."
