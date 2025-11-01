@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 import shlex
 import subprocess
 import time
@@ -10,6 +11,27 @@ from utils.logger import logger
 
 
 class CommandExecutor:
+    @staticmethod
+    def _fix_bash_command(args):
+        """
+        Replace 'bash' with Git Bash on Windows and convert Windows paths to Unix format.
+        Does nothing on non-NT systems.
+        """
+        if args and args[0] == "bash" and os.name == "nt":
+            # On Windows, prefer Git Bash over WSL bash
+            git_bash = r"C:\Program Files\Git\usr\bin\bash.exe"
+            if os.path.exists(git_bash):
+                args[0] = git_bash
+                # Convert Windows paths to Git Bash format for arguments
+                for i in range(1, len(args)):
+                    # Check if argument looks like a Windows path (e.g., C:\... or D:\...)
+                    if len(args[i]) > 2 and args[i][1:3] == ':\\':
+                        # Convert Windows path to Git Bash format: C:\path -> /c/path
+                        drive = args[i][0].lower()
+                        path = args[i][3:].replace('\\', '/')
+                        args[i] = f"/{drive}/{path}"
+        return args
+
     def run(
         self,
         command: str,
@@ -19,7 +41,9 @@ class CommandExecutor:
         timeout: Optional[int] = None,
         env: Optional[Dict[str, str]] = None,
     ) -> subprocess.CompletedProcess:
-        args = shlex.split(command)
+        # Use posix=False on Windows to preserve backslashes
+        args = shlex.split(command, posix=(os.name != "nt"))
+        args = self._fix_bash_command(args)
         logger.info(f"Preparing command: `{' '.join(args)}` in `{cwd or '.'}`")
 
         try:
@@ -63,7 +87,9 @@ class CommandExecutor:
         cwd: Optional[Path] = None,
         env: Optional[Dict[str, str]] = None,
     ) -> subprocess.Popen:
-        args = shlex.split(command)
+        # Use posix=False on Windows to preserve backslashes
+        args = shlex.split(command, posix=(os.name != "nt"))
+        args = self._fix_bash_command(args)
         logger.info(
             f"Starting background process: `{' '.join(args)}` in `{cwd or '.'}`"
         )
@@ -97,7 +123,9 @@ class CommandExecutor:
         check: bool = True,
         env: Optional[Dict[str, str]] = None,
     ) -> subprocess.CompletedProcess:
-        args = shlex.split(command)
+        # Use posix=False on Windows to preserve backslashes
+        args = shlex.split(command, posix=(os.name != "nt"))
+        args = self._fix_bash_command(args)
         logger.info(f"{message}...")
         spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         start_time = time.time()
