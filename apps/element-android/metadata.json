@@ -1,6 +1,6 @@
 {
     "gh_link": "https://github.com/cy-suite/Element-Android/tree/v1.6.0-customized",
-    "commit_version": "7f900c21b2aca4e82cd777e1d278154a13c397d2",
+    "commit_version": "52057d4ca89fee460e39be9f673667ff180c59a9",
     "download_link": "https://github.com/element-hq/element-android/releases/download/v1.6.0/vector-gplay-rustCrypto-arm64-v8a-release-signed.apk",
     "sdk": "34",
     "java": "17",
