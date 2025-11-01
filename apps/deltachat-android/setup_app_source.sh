@@ -54,11 +54,35 @@ build_rust_core() {
     cd "$SCRIPT_DIR/codebase"
     git submodule update --init --recursive
     
-    if [[ -d "/usr/local/lib/android/sdk" ]]; then
-        export ANDROID_HOME="/usr/local/lib/android/sdk"
-        export ANDROID_NDK_HOME="/usr/local/lib/android/sdk/ndk/27.0.12077973"
+    if [[ -z "$ANDROID_HOME" ]]; then
+        if [[ -d "/usr/local/lib/android/sdk" ]]; then
+            export ANDROID_HOME="/usr/local/lib/android/sdk"
+        elif [[ -d "$HOME/Android/Sdk" ]]; then
+            export ANDROID_HOME="$HOME/Android/Sdk"
+        elif [[ -n "$ANDROID_SDK_ROOT" ]]; then
+            export ANDROID_HOME="$ANDROID_SDK_ROOT"
+        fi
+    fi
+    
+    if [[ -z "$ANDROID_NDK_HOME" ]] && [[ -n "$ANDROID_HOME" ]]; then
+        if [[ -d "$ANDROID_HOME/ndk/27.0.12077973" ]]; then
+            export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.0.12077973"
+        elif [[ -d "$ANDROID_HOME/ndk/27.1.12297006" ]]; then
+            export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.1.12297006"
+        else
+            NDK_DIR=$(find "$ANDROID_HOME/ndk" -maxdepth 1 -type d -name "27.*" 2>/dev/null | head -1)
+            if [[ -n "$NDK_DIR" ]]; then
+                export ANDROID_NDK_HOME="$NDK_DIR"
+            fi
+        fi
+    fi
+    
+    if [[ -n "$ANDROID_NDK_HOME" ]]; then
         export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
         export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+        info "Using NDK: $ANDROID_NDK_ROOT"
+    else
+        warn "ANDROID_NDK_HOME not set, NDK build may fail"
     fi
     
     info "Building native libraries for x86_64 architecture..."
@@ -66,7 +90,7 @@ build_rust_core() {
     for arch in x86_64; do
         info "Building for architecture: $arch"
         if ! ./scripts/ndk-make.sh "$arch"; then
-            warn "Failed to build for $arch, continuing with other architectures"
+            error "Failed to build native libraries for $arch"
         fi
     done
 }
