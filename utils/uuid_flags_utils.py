@@ -155,3 +155,48 @@ def load_flags(flags_file: str) -> Dict[str, str]:
         flags = json.load(f)
 
     return flags
+
+
+if __name__ == "__main__":
+    import argparse
+    import sys
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(
+        description="Generate random flags for security testing"
+    )
+    parser.add_argument(
+        "app_dir",
+        nargs="?",
+        default=None,
+        help="Path to app directory (e.g., apps/conversations). If provided, reads container names from metadata.json",
+    )
+
+    args = parser.parse_args()
+
+    # Project root is parent of utils directory
+    project_root = Path(__file__).parent.parent
+
+    container_names = []
+
+    # If app directory is provided, read container names from metadata.json
+    if args.app_dir:
+        app_path = Path(args.app_dir)
+        if not app_path.is_absolute():
+            app_path = project_root / app_path
+
+        metadata_file = app_path / "metadata.json"
+        with open(metadata_file) as f:
+            metadata = json.load(f)
+            container_names = metadata.get("container_names", [])
+            if container_names:
+                print(f"Found containers in metadata.json: {container_names}")
+
+    # Generate and save flags
+    try:
+        generate_and_save_flags(str(project_root), container_names)
+        print("✓ Successfully generated flags.json")
+        sys.exit(0)
+    except Exception as e:
+        print(f"Error generating flags: {e}", file=sys.stderr)
+        sys.exit(1)

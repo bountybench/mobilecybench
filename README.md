@@ -48,7 +48,6 @@ mobilecybench/
     |   ├── secrets.json
     │   ├── setup.sh
     │   ├── setup_app_source.sh
-    │   ├── setup_app_apklink.sh
     │   ├── cleanup.sh
     |   |── test_confidentiaility.py
     |   |── test_integrity.py
@@ -104,15 +103,11 @@ mobilecybench/
     - Make sure to choose a release build (not debug) - there see `apps/conversations/setup_app_source.sh` for an example for apk signing
     - Copies the signed-apk to the path: `apps/<app-name>/apk/<app-name>.apk`
     - Is run in CI before emulator is started
-- ```setup_app_apklink.sh```: (*Optional*)
-    - Fetch the apk from `download_link` in `metadata.json` to `apps/<app-name>/apk/<app-name>.apk`
-    - do NOT install the app on the emulator
-    - Is run in CI before emulator is started
-    - Note that this carries some risk as there's a chance that we will not run experiments in apk-only mode and in that case your app would not make it into the benchmark.
+    - Prefer universal apks (not architecture specific)
 > Important Rules:
-> 1. **Mandatory**: At least one setup_app script is required: either `setup_app_source.sh` or `setup_app_apklink.sh`
-> 2. **Preferred**: Always provide `setup_app_source.sh` when possible. Use `setup_app_apklink.sh` only if building from source is not feasible
-> 3. **Optional**: It is also valid to include both `setup_app_source.sh` and `setup_app_apklink.sh`
+> 1. **Mandatory**: You must provide an apk: either `setup_app_source.sh` or `download_link` in metadata.json
+> 2. **Preferred**: Always provide `setup_app_source.sh` when possible. 
+> 3. **Optional**: It is also valid to include both `setup_app_source.sh` and `download_link`
 - ```run_checks.sh```: 
     - Per-app `run_checks.sh` is deprecated in favor of a universal, standardized `run_checks.sh` described below
     - Present in the project root directory (the same universal `run_checks.sh` is used for each app).
@@ -166,7 +161,6 @@ See [ownCloud](/apps/owncloud-android/):
 │   ├── codebase
 │   ├── setup.sh
 │   ├── setup_app_source.sh
-│   ├── setup_app_apklink.sh
 │   ├── docker-compose.yml
 │   ├── metadata.json
 │   ├── owncloud_setup.py
@@ -191,7 +185,6 @@ See [ownCloud](/apps/owncloud-android/):
 ```ownCloud```
 - ```codebase/```: Here, codebase points to a private ownCloud repo that we cloned from the [original repo](https://github.com/owncloud/android). The ownCloud Android app is a mobile client for the ownCloud platform, letting you access, sync, and share files stored on your ownCloud server directly from your Android device. It provides cloud file management similar to Dropbox or Google Drive, but under your own control.
 - ```setup_app_source.sh```: Installs any prerequisites (e.g. correct Java and SDK versions) required for Gradle build. Build the release version (not debug), and sign the apk. The signed apk is then copied to `apps/owncloud-android/apk/owncloud-android.apk`.
-- ```setup_app_apklink.sh```: Download the apk from `download_link` in `metadata.json`, and place it in `apps/owncloud-android/apk/owncloud-android.apk`.
 - ```setup.sh```: Installs various requirements, seeds database data, and calls docker compose up, i.e. starts docker. This relies on other files such as docker-compose.yml and the system docker to initialize the ownCloud task docker environment. It expects the apk to be in `apps/owncloud-android/apk/owncloud-android.apk`. It then installs the app on the emulator, launches the app, and syncs the app with the task server.
 - ```docker-compose.yml```: Defines the ownCloud stack with three core services—owncloud (application server), mariadb (database), and redis (cache)—along with persistent volumes for files, database, and cache, and healthchecks to ensure each service is running correctly.
 - ```owncloud_setup.py```: Seeds the ownCloud environment—creating test users (agent, alex, bob, charlie), per-user baseline files, private honeytokens, and a single read-only share (alex → agent).
@@ -212,14 +205,6 @@ CI runs in two modes:
 
 The mode is determined by the presence of any of the 4 `test_access_control.py`, `test_availability.py`, `test_confidentiality.py`, `test_integrity.py` probe scripts in the app directory. If any of the 4 probe scripts exist, full CI runs; otherwise, simple CI runs.
 
-In each mode, the CI determines the setup_app mode dynamically.
-* Only one of (`setup_app_source.sh`, `setup_app_apklink.sh`) exists -> use the existing one.
-* Both files are missing -> CI fails
-* Both files exist: 
-    * only `setup_app_source.sh` is modified -> setup_mode = build apk from source
-    * only `setup_app_apklink.sh` is modified -> setup_mode = fetch apk from download link
-    * both files are modified -> both setup_mode will be run
-
 ### 3.1 Simple CI
 
 Simple CI only requires the basic files to build and install the app:
@@ -234,7 +219,6 @@ mobilecybench/
     |   ├── metadata.json
     │   ├── setup.sh
     │   ├── setup_app_source.sh
-    │   ├── setup_app_apklink.sh
 
 (at least one setup_app_*.sh) is strictly required
 ```
@@ -244,7 +228,7 @@ mobilecybench/
 2. App Build and Install: 
     - APK Handling - depending on the setup_mode chosen by the CI, it will run either one or both of the following steps:
         - Runs `./setup_app_source.sh` to check out the specified commit version and build the APK (i.e. build, sign, and output to the standardized folder)
-        - Runs `./setup_app_apklink.sh` to fetch the apk directly from the link and output to the standardized folder
+        - Uses `download_link` from metadata.json to download a prebuilt apk
     - APK Install - runs `./setup.sh` to install the APK on the emulator
     - Verifies successful installation
 
@@ -281,7 +265,7 @@ mobilecybench/
 Both GitHub CI and local CI perform the following tests:
 1. File Tree Schema:
     - Confirms that the directory structure includes at least the minimum required file tree.
-Additional setup also occurs for the test environment, including checking out the `commit_version` of the codebase, running ```./setup_app_source.sh``` | `setup_app_apklink.sh`, and starting the emulators. Then, CI tests:
+Additional setup also occurs for the test environment, including checking out the `commit_version` of the codebase, running ```./setup_app_source.sh```, and starting the emulators. Then, CI tests:
 2. Baseline CIA Check (No Vulnerabilities):
     - Runs ```./setup.sh``` (installs app, spins up any needed infra).
     - Runs ```../../run_checks.sh .``` which outputs ```scores.json```. 
