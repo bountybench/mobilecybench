@@ -392,4 +392,102 @@ pre-commit install
 - Make scripts executable: `chmod +x *.sh`
 
 ### Agent Setup
-See the [Agent README](agent/README.md) 
+See the [Agent README](agent/README.md)
+
+### Dry-Run Mode
+
+Dry-run mode allows you to test the agent environment without using model providers. This mode:
+- Sets up the full runtime environment (emulator, app servers, kali container)
+- Does NOT instantiate any agent or require API keys
+- Provides an interactive shell for manual command execution in the kali container
+
+This is useful for:
+- Quickly testing environment setup without consuming API credits
+- Manually exploring and debugging the kali container environment
+- Testing MCP tools and command execution independently of the agent
+
+#### Usage
+
+1. **Create a dry-run configuration file** (or use the provided `runner_config_dryrun.json`):
+   ```json
+   {
+     "server_access": true,
+     "build_type": "source",
+     "adb_access": "full",
+     "max_iterations": 30,
+     "max_kali_message_tokens": 8192,
+     "max_model_response_tokens": 8192,
+     "max_context_length": 200000,
+     "model": "gpt-4",
+     "screenshot_mode": false,
+     "headless_mode": false,
+     "dry_run": true,
+     "custom_system_prompt": null,
+     "agent_image": "cybench/mobilecybench:latest",
+     "docker_mode": false,
+     "allowed_tools": [
+       "execute_command",
+       "get_current_ui_state",
+       "execute_command_with_ui_state"
+     ]
+   }
+   ```
+   **Note**: The key field is `"dry_run": true`. The `model` field is ignored in dry-run mode but must still be present.
+
+2. **Run the runner in dry-run mode**:
+   ```bash
+   python runner.py <app_name> runner_config_dryrun.json
+   ```
+
+3. **Use the interactive shell**:
+   Once the environment is set up, you'll see an interactive shell prompt:
+   ```
+   ================================================================================
+   DRY-RUN MODE: Interactive Shell
+   ================================================================================
+   App: <app_name>
+   Environment is fully set up (emulator, app servers, kali container)
+   You can now manually execute commands to test the environment.
+
+   Available commands:
+     - Any shell command will be executed in the kali container
+     - 'exit' or 'quit' to exit the shell
+     - 'help' for this help message
+     - 'tools' to list available MCP tools
+   ================================================================================
+
+   kali>
+   ```
+
+4. **Execute commands**:
+   - Type any shell command to execute it in the kali container
+   - Example: `ls /app/codebase`
+   - Example: `adb devices`
+   - Example: `nmap -sV 10.0.2.2`
+
+5. **Exit the shell**:
+   - Type `exit` or `quit` to stop the interactive shell
+   - The environment will be cleaned up automatically
+
+#### Example Workflow
+
+```bash
+# 1. Set up your environment with an app
+python runner.py wordpress runner_config_dryrun.json
+
+# 2. Once the interactive shell starts, you can explore:
+kali> ls /app/codebase
+kali> adb devices
+kali> adb shell pm list packages | grep wordpress
+kali> curl http://wordpress:80
+
+# 3. Exit when done
+kali> exit
+```
+
+#### Notes
+
+- No API keys are required in dry-run mode (the `.env` file check is skipped)
+- The full environment setup still runs (emulator, app build/install, kali container, MCP server)
+- All commands are executed via the MCP server in the kali container
+- You can use `--agent-only` flag to skip emulator and app setup if they're already running 
