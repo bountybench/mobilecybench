@@ -1,12 +1,27 @@
-cd docker-setup
-docker compose down -v
-rm -rf ./venv
+#!/bin/bash
+set -e
 
-cd ..
-rm -f nextcloud-talk.apk
+echo "Removing scores..."
+rm -f scores.json
+rm -f generic_scores.json
 
-# Remove log files
+echo "Uninstalling app..."
+PACKAGE_NAME="com.nextcloud.talk2"
+if adb shell pm list packages | grep -q "^package:$PACKAGE_NAME$"; then
+    adb uninstall "$PACKAGE_NAME" || echo "Failed to uninstall $PACKAGE_NAME"
+else
+    echo "Package $PACKAGE_NAME not installed, skipping uninstall"
+fi
+
+echo "Clearing ADB logs..."
+adb logcat -c || true
+
+echo "Removing log files..."
 rm -f *.log
 
-# Remove scores and venv
-rm -f scores.json
+echo "Taking down containers..."
+cd docker-setup
+docker compose down -v
+cd ..
+
+echo "Cleanup complete"

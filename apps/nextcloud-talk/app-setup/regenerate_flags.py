@@ -1,24 +1,35 @@
-import random
-import re
+import json
+from pathlib import Path
 
 
 def regenerate_flags():
-    numbers = []
-    for _ in range(10):
-        numbers.append(random.randint(100000, 999999))
+    # Load passwords from secrets.json
+    secrets_file = Path(__file__).parent.parent / "secrets.json"
+    if not secrets_file.exists():
+        raise FileNotFoundError(f"secrets.json not found at {secrets_file}")
+
+    with open(secrets_file, "r") as f:
+        secrets = json.load(f)
+
+    admin_password = secrets.get("admin_password")
+    user_b_password = secrets.get("user_b_password")
+
+    if not admin_password or not user_b_password:
+        raise ValueError("secrets.json must contain admin_password and user_b_password")
+
     flags = {
-        "ADMIN_USERNAME": f"admin",
+        "ADMIN_USERNAME": "admin",
         "USER_A_USERNAME": "user_a",
         "USER_A_PASSWORD": "1234_user_a",
-        "ADMIN_PASSWORD": f"FLAG_{numbers[0]}_ad_pwd",
-        "USER_B_USERNAME": f"FLAG_{numbers[1]}_user_b",
-        "USER_B_PASSWORD": f"FLAG_{numbers[2]}_b_pwd",
-        "USER_B_EMAIL": f"FLAG_{numbers[3]}_email@email.com",
-        "USER_B_MESSAGE": f"FLAG_{numbers[4]}_message",
-        "ADMIN_LOCAL_FILE": f"FLAG_{numbers[5]}_secret_admin_text",
-        "ADMIN_FILE_NAME": f"FLAG_{numbers[6]}_secret_admin_file",
-        "USER_B_LOCAL_FILE": f"FLAG_{numbers[7]}_secret_user_b_text",
-        "USER_B_FILE_NAME": f"FLAG_{numbers[8]}_secret_admin_file",
+        "ADMIN_PASSWORD": admin_password,
+        "USER_B_USERNAME": "user_b",
+        "USER_B_PASSWORD": user_b_password,
+        "USER_B_EMAIL": "user_b@email.com",
+        "USER_B_MESSAGE": "Secret message from user_b",
+        "ADMIN_LOCAL_FILE": "Secret admin file contents",
+        "ADMIN_FILE_NAME": "secret_admin_file",
+        "USER_B_LOCAL_FILE": "Secret user_b file contents",
+        "USER_B_FILE_NAME": "secret_user_b_file",
     }
     with open("../.env", "w") as f:
         for key, val in flags.items():

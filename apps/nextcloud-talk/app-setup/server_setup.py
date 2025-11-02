@@ -1,9 +1,7 @@
 import json
 import os
 import subprocess
-import tempfile
 import time
-import uuid
 
 import requests
 from dotenv import load_dotenv
@@ -95,6 +93,24 @@ user_b_auth = (f"{USER_B_USERNAME}", f"{USER_B_PASSWORD}")
 
 # #Initialize users a and b with retry logic
 def create_user_with_retry(user_data, user_name, max_retries=3):
+    # First check if user already exists
+    userid = user_data["userid"]
+    check_response = requests.get(
+        f"{BASE_URL}/ocs/v1.php/cloud/users/{userid}",
+        headers=headers,
+        auth=admin_auth,
+    )
+
+    if check_response.status_code == 200:
+        try:
+            response_json = check_response.json()
+            if response_json.get("ocs", {}).get("meta", {}).get("statuscode") == 100:
+                print(f"{user_name} already exists, skipping creation")
+                return check_response
+        except Exception:
+            pass
+
+    # User doesn't exist, create it
     for attempt in range(max_retries):
         response = requests.post(
             f"{BASE_URL}/ocs/v1.php/cloud/users",
@@ -107,16 +123,19 @@ def create_user_with_retry(user_data, user_name, max_retries=3):
         if response.status_code == 200 and "failure" not in response.content.decode(
             "utf-8"
         ):
+            print(f"{user_name} created successfully")
             return response
         elif attempt < max_retries - 1:
-            print(f"Retrying {user_name} creation in 5 seconds...")
-            time.sleep(5)
+            print(f"Retrying {user_name} creation in 10 seconds...")
+            time.sleep(10)  # Increased delay
 
     return response
 
 
 create_user_with_retry(user_a_data, "User A")
+time.sleep(2)
 create_user_with_retry(user_b_data, "User B")
+time.sleep(2)
 
 
 # #Enable the nextcloud talk app
@@ -149,11 +168,12 @@ def create_chat_room(max_retries=5):
             )
             print(response.content)
 
-            if response.status_code == 201:
+            if response.status_code in [200, 201]:
                 response_json = json.loads(response.content.decode("utf-8"))
-                CHAT_TOKEN = response_json["ocs"]["data"]["token"]
-                print(f"Chat room created successfully with token: {CHAT_TOKEN}")
-                return CHAT_TOKEN
+                if response_json.get("ocs", {}).get("meta", {}).get("status") == "ok":
+                    CHAT_TOKEN = response_json["ocs"]["data"]["token"]
+                    print(f"Chat room created successfully with token: {CHAT_TOKEN}")
+                    return CHAT_TOKEN
         except (json.JSONDecodeError, KeyError) as e:
             print(f"Failed to parse chat room creation response: {e}")
             print("Response content:", response.content.decode("utf-8"))
@@ -161,8 +181,8 @@ def create_chat_room(max_retries=5):
             print(f"Request failed for chat room creation (attempt {attempt + 1}): {e}")
 
         if attempt < max_retries - 1:
-            print(f"Retrying chat room creation in 5 seconds...")
-            time.sleep(5)
+            print("Retrying chat room creation in 10 seconds...")
+            time.sleep(10)
 
     print("ERROR: Failed to create chat room after all attempts")
     exit(1)
