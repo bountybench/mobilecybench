@@ -205,6 +205,71 @@ check_java() {
     log "Java $java_version is compatible with Android SDK"
 }
 
+# Check and install apktool
+check_apktool() {
+    log "Checking apktool installation..."
+
+    if command_exists apktool; then
+        local apktool_version=$(apktool --version 2>&1 | head -n1 || echo "unknown")
+        log "apktool is already installed: $apktool_version"
+        return 0
+    fi
+
+    log "apktool not found. Installing..."
+
+    local os=$(detect_os)
+
+    case "$os" in
+        linux)
+            log "Installing apktool via apt..."
+            if command_exists apt-get; then
+                sudo apt-get update && sudo apt-get install -y apktool
+            elif command_exists apt; then
+                sudo apt update && sudo apt install -y apktool
+            else
+                error_exit "Could not install apktool. Please install manually:
+                sudo apt-get install apktool"
+            fi
+            ;;
+        macos)
+            log "Installing apktool via Homebrew..."
+            if command_exists brew; then
+                brew install apktool
+            else
+                error_exit "Homebrew not found. Please install Homebrew first:
+                /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"
+                Then run this setup script again."
+            fi
+            ;;
+        windows)
+            log "Windows detected. Please install apktool manually:"
+            echo ""
+            echo "Option 1 (Chocolatey - Recommended):"
+            echo "  choco install apktool"
+            echo ""
+            echo "Option 2 (Manual):"
+            echo "  1. Download from: https://github.com/iBotPeaches/Apktool/releases"
+            echo "  2. Download both apktool.bat and apktool_X.X.X.jar"
+            echo "  3. Rename the jar to apktool.jar"
+            echo "  4. Place both files in C:\\Windows\\System32 or add to PATH"
+            echo ""
+            read -p "Press Enter after installing apktool to continue..."
+
+            if ! command_exists apktool; then
+                error_exit "apktool still not found. Please install it and try again."
+            fi
+            ;;
+    esac
+
+    # Verify installation
+    if command_exists apktool; then
+        local apktool_version=$(apktool --version 2>&1 | head -n1 || echo "unknown")
+        log "apktool installed successfully: $apktool_version"
+    else
+        error_exit "Failed to install apktool"
+    fi
+}
+
 # Detect OS and architecture
 detect_os() {
     case "$(uname -s)" in
@@ -584,13 +649,16 @@ main() {
     
     # Check prerequisites
     log "Checking prerequisites..."
-    
+
     if [[ "$os" == "linux" ]] && ! command_exists unzip; then
         error_exit "unzip is required. Install with: sudo apt-get install unzip"
     fi
-    
+
     # Check Java installation and version
     check_java
+
+    # Check and install apktool
+    check_apktool
     
     # Install Android SDK if not present
     if [[ ! -d "$ANDROID_HOME/cmdline-tools" ]]; then
