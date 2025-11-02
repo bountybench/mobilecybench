@@ -60,6 +60,9 @@ if [ ! -f "$TARGET_APK" ]; then
     exit 1
 fi
 
+# Get script directory before changing directories
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Get absolute path and extract filename components
 TARGET_APK=$(realpath "$TARGET_APK")
 APK_DIR=$(dirname "$TARGET_APK")
@@ -83,7 +86,6 @@ command -v keytool >/dev/null 2>&1 || { echo >&2 "Error: 'keytool' is not instal
 [ -f "$APKSIGNER" ] || { echo >&2 "Error: 'apksigner' is not installed (part of Android SDK). Expected at: $APKSIGNER"; exit 1; }
 
 # Keystore configuration (stored in script directory to be reused across APKs)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KEYSTORE_NAME="${SCRIPT_DIR}/benchmark.keystore"
 KEYSTORE_PASS="password"
 KEY_ALIAS="benchmark-key"
