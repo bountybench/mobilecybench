@@ -154,7 +154,7 @@ class EmulatorManager:
             logger.info(f"Running setup.sh for {self.app_name} in host mode...")
             try:
                 subprocess.run(
-                    ["./setup.sh", self.app_name],
+                    ["bash", "./setup.sh", self.app_name],
                     cwd=self.project_root,
                     check=True,
                     capture_output=True,
