@@ -111,7 +111,6 @@ fi
 
 SMALI_PATH="$SMALI_BASE/$PACKAGE_PATH/internal"
 SMALI_CLASS_PATH="L$PACKAGE_PATH/internal/VulnFlagActivity;"
-ACTIVITY_NAME="$PACKAGE_NAME.internal.VulnFlagActivity"
 
 # --- 5. Inject Honeypot Activity (Smali) ---
 
