@@ -25,10 +25,10 @@ class CommandExecutor:
                 # Convert Windows paths to Git Bash format for arguments
                 for i in range(1, len(args)):
                     # Check if argument looks like a Windows path (e.g., C:\... or D:\...)
-                    if len(args[i]) > 2 and args[i][1:3] == ':\\':
+                    if len(args[i]) > 2 and args[i][1:3] == ":\\":
                         # Convert Windows path to Git Bash format: C:\path -> /c/path
                         drive = args[i][0].lower()
-                        path = args[i][3:].replace('\\', '/')
+                        path = args[i][3:].replace("\\", "/")
                         args[i] = f"/{drive}/{path}"
         return args
 
