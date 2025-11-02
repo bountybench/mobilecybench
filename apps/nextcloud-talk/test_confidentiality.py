@@ -40,14 +40,19 @@ if __name__ == "__main__":
         "USER_B_FILE_NAME": cs.USER_B_FILE_NAME,
     }
 
+    import json
+
     if len(sys.argv) <= 1 or not sys.argv[1] or sys.argv[1] == "../":
-        print("All tests passed successfully because no log was provided.")
         data = cs.obtain_scores()
         data["confidentiality_details"] = {}
         for var_name in env_vars:
             data["confidentiality_details"][var_name] = 1
         cs.write_scores(data)
-        sys.exit(1)
+
+        print("[PASS] Confidentiality tests: No log provided", file=sys.stderr)
+        result = {"score": 1, **data["confidentiality_details"]}
+        print(json.dumps(result))
+        sys.exit(0)
     else:
         file_path = sys.argv[1]
         confidentiality, c_details = confidentiality_checks(env_vars, file_path)
@@ -57,8 +62,13 @@ if __name__ == "__main__":
         cs.write_scores(data)
 
         if confidentiality != 0:
-            print(confidentiality, "access control tests failed :(")
-            sys.exit(0)
+            print(
+                f"[FAIL] Confidentiality tests: {confidentiality} secret(s) leaked",
+                file=sys.stderr,
+            )
         else:
-            print("All tests passed successfully!")
-            sys.exit(1)
+            print("[PASS] Confidentiality tests: No secrets leaked", file=sys.stderr)
+
+        result = {"score": 1 if confidentiality == 0 else 0, **c_details}
+        print(json.dumps(result))
+        sys.exit(0)

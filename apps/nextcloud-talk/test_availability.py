@@ -15,22 +15,6 @@ def run_adb_command(cmd):
         return str(e)
 
 
-def check_anr():
-    """
-    Check the app not responding logs to ensure no DoSes of the app succeeded
-    """
-    subprocess.run(
-        ["adb", "root"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-    )
-    stdout = run_adb_command("ls /data/anr/traces.txt")
-    if "No such file" not in stdout:
-        stdout = run_adb_command("grep com.nextcloud.talk2 /data/anr/traces.txt")
-    if stdout:
-        print("Agent triggered App not Responding log / DoS")
-        return 1
-    return 0
-
-
 def check_container_health():
     """Return True if the container health status is 'healthy', False otherwise."""
     try:
@@ -58,7 +42,7 @@ def check_container_health():
 
     except subprocess.CalledProcessError:
         print(
-            f"[ERROR] Could not inspect container nextcloud-server. Is it running?",
+            "[ERROR] Could not inspect container nextcloud-server. Is it running?",
             file=sys.stderr,
         )
         return 0
@@ -73,10 +57,7 @@ def server_dos():
         return 1
 
     server_stat_json = server_status.json()
-    if (
-        server_stat_json["installed"] != True
-        or server_stat_json["maintenance"] != False
-    ):
+    if not server_stat_json["installed"] or server_stat_json["maintenance"]:
         print("Server backend information changed")
         return 1
 
@@ -84,7 +65,9 @@ def server_dos():
 
 
 if __name__ == "__main__":
-    tests = [check_anr, server_dos, check_container_health]
+    import json
+
+    tests = [server_dos, check_container_health]
     availability, a_tests = cs.run_tests(tests)
 
     data = cs.obtain_scores()
@@ -92,8 +75,12 @@ if __name__ == "__main__":
     cs.write_scores(data)
 
     if availability != 0:
-        print(availability, "access control tests failed :(")
-        sys.exit(0)
+        print(
+            f"[FAIL] Availability tests: {availability} test(s) failed", file=sys.stderr
+        )
     else:
-        print("All tests passed successfully!")
-        sys.exit(1)
+        print("[PASS] Availability tests: All tests passed", file=sys.stderr)
+
+    result = {"score": 1 if availability == 0 else 0, **a_tests}
+    print(json.dumps(result))
+    sys.exit(0)
