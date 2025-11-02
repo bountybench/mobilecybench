@@ -6,7 +6,6 @@
 set -e # Exit immediately if a command exits with a non-zero status.
 set -o pipefail # The return value of a pipeline is the status of the last command to exit with a non-zero status.
 
-PYTHON_SCRIPT_NAME="../../utils/flag_injection_utils.py"
 DEFAULT_APP_PATH="."
 
 usage() {
@@ -19,6 +18,7 @@ usage() {
 REMOVE_FLAG=""
 APP_PATH=$DEFAULT_APP_PATH
 CONFIG_FILE="metadata.json"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Process command-line arguments
 for arg in "$@"; do
@@ -51,6 +51,7 @@ done
 if [ -d $APP_PATH ]; then
   echo "cd into app directory..."
   cd $APP_PATH
+  APP_DIR="$(pwd)"
 else
   echo "ERROR: app directory not found"
   exit 1
@@ -59,12 +60,6 @@ fi
 # Check if jq is installed
 if ! command -v jq &> /dev/null; then
     echo "Error: 'jq' is not installed. Please install it to parse the JSON config file."
-    exit 1
-fi
-
-# Check if the python script exists
-if [ ! -f "$PYTHON_SCRIPT_NAME" ]; then
-    echo "Error: Python script '$PYTHON_SCRIPT_NAME' not found in the current directory."
     exit 1
 fi
 
@@ -95,12 +90,16 @@ echo "--------------------------------------------------"
 
 if [[ -z "$CONTAINER_NAMES" ]]; then
     echo "No 'container_names' found in config. Nothing to do for containers."
-    python "$PYTHON_SCRIPT_NAME" --package "$PACKAGE_NAME" $REMOVE_FLAG
+    cd "$SCRIPT_DIR"
+    python -m utils.flag_injection_utils --package "$PACKAGE_NAME" $REMOVE_FLAG
+    cd "$APP_DIR"
 else
     # Call python script once with all container names
     echo "$ACTION container flags for containers: $CONTAINER_NAMES"
     # The $CONTAINER_NAMES variable will be expanded by the shell into separate arguments
-    python "$PYTHON_SCRIPT_NAME" --package "$PACKAGE_NAME" --container $CONTAINER_NAMES $REMOVE_FLAG
+    cd "$SCRIPT_DIR"
+    python -m utils.flag_injection_utils --package "$PACKAGE_NAME" --containers $CONTAINER_NAMES $REMOVE_FLAG
+    cd "$APP_DIR"
     echo "--------------------------------------------------"
 fi
 

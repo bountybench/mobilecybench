@@ -14,6 +14,8 @@ __pycache__/
 scores.json
 generic_scores.json
 baseline.json
+flags.json
+timings_*.json
 public/node_modules
 baseline_android_dir.txt
 after_android_dir.txt
@@ -30,4 +32,6 @@ submodule_size_report.txt
 agent/mcp/ngrok.yml
 *.code-workspace
 screenshots/*
+*.egg-info
 *.sock
+submodule_size_report.txt

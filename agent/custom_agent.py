@@ -42,14 +42,18 @@ class CustomAgent:
         network_access: bool = True,
     ):
         self.dry_run = dry_run
-        # Load environment variables from .env file in the agent directory
-        agent_dir = os.path.dirname(os.path.abspath(__file__))
-        env_file = os.path.join(agent_dir, ".env")
-        if os.path.exists(env_file):
-            load_dotenv(env_file, override=True)
 
-        self.provider = get_model_provider("openai")
-        self.provider.validate()
+        # Skip provider setup in dry-run mode
+        if not self.dry_run:
+            # Load environment variables from .env file in the agent directory
+            agent_dir = os.path.dirname(os.path.abspath(__file__))
+            env_file = os.path.join(agent_dir, ".env")
+            if os.path.exists(env_file):
+                load_dotenv(env_file, override=True)
+
+            self.provider = get_model_provider("openai")
+            self.provider.validate()
+
         self.model = model
         self.max_iterations = max_iterations
         self.max_model_response_tokens = max_model_response_tokens
@@ -64,19 +68,19 @@ class CustomAgent:
         # Set up MCP configuration
         self.mcp_config = mcp_config or get_mcp_server_config()
 
-        # Set up system prompt
-        if system_prompt:
-            self.system_prompt = {
-                "role": "system",
-                "content": [{"type": "input_text", "text": system_prompt}],
-            }
-        else:
-            self.system_prompt = self._get_default_system_prompt()
-            agent_logger.info(f"Conversation system prompt: {self.system_prompt}")
-
-        # Initialize conversation with system prompt
+        # Set up system prompt (skip in dry-run mode)
         self.conversation_id = None
         if not self.dry_run:
+            if system_prompt:
+                self.system_prompt = {
+                    "role": "system",
+                    "content": [{"type": "input_text", "text": system_prompt}],
+                }
+            else:
+                self.system_prompt = self._get_default_system_prompt()
+                agent_logger.info(f"Conversation system prompt: {self.system_prompt}")
+
+            # Initialize conversation with system prompt
             system_content = self.system_prompt["content"][0]["text"]
             conversation = self.provider.client.conversations.create(
                 metadata={"app_name": self.app_name, "model": self.model},

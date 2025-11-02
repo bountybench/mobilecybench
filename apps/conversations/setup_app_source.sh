@@ -63,33 +63,15 @@ setup_environment() {
     info "Environment configured."
 }
 
-get_emulator_arch() {
-    # Detect emulator architecture
-    if command -v adb >/dev/null 2>&1 && adb get-state >/dev/null 2>&1; then
-        local arch
-        arch=$(adb shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r\n\t ' || echo "")
-        if [[ -n "$arch" ]]; then
-            info "Detected emulator architecture: $arch" >&2
-            echo "$arch"
-            return 0
-        fi
-    fi
-
-    # Default to universal if can't detect
-    warn "Could not detect emulator architecture, building universal APK" >&2
-    echo "universal"
-}
-
 build_conversations() {
     info "Building Conversations from source (this may take several minutes)..."
 
-    local arch
-    arch=$(get_emulator_arch)
+    local arch="universal"
 
     ./gradlew clean
 
     # Build all architectures - Android will create splits automatically
-    info "Building Conversations (with architecture splits for $arch)"
+    info "Building Conversations (with universal APK)"
     ./gradlew assembleConversationsFreeRelease
 
     info "Build completed successfully."
@@ -163,8 +145,11 @@ sign_apk() {
     APK_NAME=$(basename "$APK_SIGNED")
     cp "$APK_SIGNED" "$APK_DIR/$APK_NAME"
 
+    # Rename to conversations.apk
+    mv "$APK_DIR/$APK_NAME" "$APK_DIR/conversations.apk"
+
     info "Signed APK: $APK_SIGNED"
-    info "Copied to: $APK_DIR/$APK_NAME"
+    info "Copied to: $APK_DIR/conversations.apk"
 }
 
 
