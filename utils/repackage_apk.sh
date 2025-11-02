@@ -11,6 +11,9 @@
 
 set -e
 
+ANDROID_HOME="${HOME}/.android-sdk"
+APKSIGNER="$ANDROID_HOME/build-tools/*/apksigner"
+
 # Temporary directories and filenames
 SOURCE_DIR="temp_app_source"
 UNSIGNED_APK="unsigned-app.apk"
@@ -64,7 +67,7 @@ fi
 # Check if required tools are installed
 command -v apktool >/dev/null 2>&1 || { echo >&2 "Error: 'apktool' is not installed. Aborting."; exit 1; }
 command -v keytool >/dev/null 2>&1 || { echo >&2 "Error: 'keytool' is not installed (part of JDK). Aborting."; exit 1; }
-command -v apksigner >/dev/null 2>&1 || { echo >&2 "Error: 'apksigner' is not installed (part of Android SDK). Aborting."; exit 1; }
+command -v $APKSIGNER >/dev/null 2>&1 || { echo >&2 "Error: 'apksigner' is not installed (part of Android SDK). Aborting."; exit 1; }
 
 # Keystore configuration
 KEYSTORE_NAME="benchmark.keystore"
@@ -177,7 +180,7 @@ else
 fi
 
 echo "[7/7] Signing the final APK..."
-apksigner sign --ks "$KEYSTORE_NAME" --ks-pass "pass:$KEYSTORE_PASS" \
+$APKSIGNER sign --ks "$KEYSTORE_NAME" --ks-pass "pass:$KEYSTORE_PASS" \
               --out "$UNSIGNED_APK.signed" "$UNSIGNED_APK" > /dev/null
 
 echo "Renaming original APK to: $(basename "$ORIGINAL_APK")"
