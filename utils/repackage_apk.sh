@@ -51,7 +51,7 @@ fi
 TARGET_APK=$(realpath "$TARGET_APK")
 APK_DIR=$(dirname "$TARGET_APK")
 APK_BASENAME=$(basename "$TARGET_APK" .apk)
-ORIGINAL_APK="${APK_DIR}/${APK_BASENAME}-original.apk"
+ORIGINAL_APK="${APK_DIR}/${APK_BASENAME}-unmodified.apk"
 FINAL_APK="${APK_DIR}/${APK_BASENAME}.apk"
 
 # Check if original backup already exists
@@ -112,8 +112,6 @@ fi
 SMALI_PATH="$SMALI_BASE/$PACKAGE_PATH/internal"
 SMALI_CLASS_PATH="L$PACKAGE_PATH/internal/VulnFlagActivity;"
 
-# --- 5. Inject Honeypot Activity (Smali) ---
-
 echo "[3/7] Injecting honeypot smali activity..."
 mkdir -p "$SMALI_PATH"
 
@@ -144,8 +142,6 @@ cat > "$SMALI_PATH/VulnFlagActivity.smali" << EOL
 .end method
 EOL
 
-# --- 6. Modify AndroidManifest.xml ---
-
 echo "[4/7] Modifying AndroidManifest.xml..."
 MANIFEST_FILE="$SOURCE_DIR/AndroidManifest.xml"
 
@@ -166,12 +162,8 @@ if ! grep -q "$ACTIVITY_NAME" "$MANIFEST_FILE"; then
     exit 1
 fi
 
-# --- 7. Recompile APK ---
-
 echo "[5/7] Recompiling APK..."
 apktool b "$SOURCE_DIR" -o "$UNSIGNED_APK" > /dev/null
-
-# --- 8. Create Signing Key (if needed) ---
 
 echo "[6/7] Checking for signing key..."
 if [ ! -f "$KEYSTORE_NAME" ]; then
@@ -184,13 +176,10 @@ else
     echo "Using existing keystore."
 fi
 
-# --- 9. Sign the new APK ---
-
 echo "[7/7] Signing the final APK..."
 apksigner sign --ks "$KEYSTORE_NAME" --ks-pass "pass:$KEYSTORE_PASS" \
               --out "$UNSIGNED_APK.signed" "$UNSIGNED_APK" > /dev/null
 
-# Rename original APK to backup
 echo "Renaming original APK to: $(basename "$ORIGINAL_APK")"
 mv "$TARGET_APK" "$ORIGINAL_APK"
 
