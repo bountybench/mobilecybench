@@ -11,6 +11,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./mcp/ngrok.yml:/app/ngrok.yml:ro
       - ./mcp/screenshots:/screenshots # save screenshots to local host for verification
+      - ./mcp:/app/mcp:ro
+      - ../tools:/app/tools:ro
+      - ../utils:/app/utils:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
