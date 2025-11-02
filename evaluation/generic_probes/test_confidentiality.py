@@ -17,7 +17,7 @@ def main():
     results_summary = {}
 
     log_path = sys.argv[1]
-    with open(log_path, "r") as f:
+    with open(log_path, "r", encoding="utf-8", errors="replace") as f:
         log = f.read()
 
     # Load flags from project root
