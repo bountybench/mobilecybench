@@ -37,6 +37,9 @@ cleanup() {
     if [ -f "$UNSIGNED_APK.signed" ]; then
         rm -f "$UNSIGNED_APK.signed"
     fi
+    if [ -f "$UNSIGNED_APK.signed.idsig" ]; then
+        rm -f "$UNSIGNED_APK.signed.idsig"
+    fi
 }
 
 # Set trap to cleanup on exit (including errors)
@@ -61,8 +64,11 @@ fi
 TARGET_APK=$(realpath "$TARGET_APK")
 APK_DIR=$(dirname "$TARGET_APK")
 APK_BASENAME=$(basename "$TARGET_APK" .apk)
-ORIGINAL_APK="${APK_DIR}/${APK_BASENAME}-unmodified.apk"
-FINAL_APK="${APK_DIR}/${APK_BASENAME}.apk"
+ORIGINAL_APK="${APK_BASENAME}-unmodified.apk"
+FINAL_APK="${APK_BASENAME}.apk"
+
+# Change to APK directory
+cd "$APK_DIR"
 
 # Check if original backup already exists
 if [ -f "$ORIGINAL_APK" ]; then
@@ -74,21 +80,22 @@ fi
 # Check if required tools are installed
 command -v apktool >/dev/null 2>&1 || { echo >&2 "Error: 'apktool' is not installed. Aborting."; exit 1; }
 command -v keytool >/dev/null 2>&1 || { echo >&2 "Error: 'keytool' is not installed (part of JDK). Aborting."; exit 1; }
-command -v $APKSIGNER >/dev/null 2>&1 || { echo >&2 "Error: 'apksigner' is not installed (part of Android SDK). Aborting."; exit 1; }
+[ -f "$APKSIGNER" ] || { echo >&2 "Error: 'apksigner' is not installed (part of Android SDK). Expected at: $APKSIGNER"; exit 1; }
 
-# Keystore configuration
-KEYSTORE_NAME="benchmark.keystore"
+# Keystore configuration (stored in script directory to be reused across APKs)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+KEYSTORE_NAME="${SCRIPT_DIR}/benchmark.keystore"
 KEYSTORE_PASS="password"
 KEY_ALIAS="benchmark-key"
 
-echo "--- Starting Repackaging Process for: $TARGET_APK ---"
+echo "--- Starting Repackaging Process for: $FINAL_APK ---"
 
 echo "[1/7] Decompiling APK..."
 if [ -d "$SOURCE_DIR" ]; then
     echo "Warning: '$SOURCE_DIR' directory already exists. Removing it."
     rm -rf "$SOURCE_DIR"
 fi
-apktool d "$TARGET_APK" -o "$SOURCE_DIR" -f > /dev/null
+apktool d "$FINAL_APK" -o "$SOURCE_DIR" -f > /dev/null
 
 echo "[2/7] Detecting package name..."
 PACKAGE_NAME=$(grep "package=" "$SOURCE_DIR/AndroidManifest.xml" | head -n 1 | sed -E 's/.*package="([^"]+)".*/\1/')
@@ -190,15 +197,15 @@ echo "[7/7] Signing the final APK..."
 $APKSIGNER sign --ks "$KEYSTORE_NAME" --ks-pass "pass:$KEYSTORE_PASS" \
               --out "$UNSIGNED_APK.signed" "$UNSIGNED_APK" > /dev/null
 
-echo "Renaming original APK to: $(basename "$ORIGINAL_APK")"
-mv "$TARGET_APK" "$ORIGINAL_APK"
+echo "Renaming original APK to: $ORIGINAL_APK"
+mv "$FINAL_APK" "$ORIGINAL_APK"
 
 # Move signed APK to original name
-echo "Saving repackaged APK as: $(basename "$FINAL_APK")"
+echo "Saving repackaged APK as: $FINAL_APK"
 mv "$UNSIGNED_APK.signed" "$FINAL_APK"
 
 echo ""
 echo "--- ✅ Success! ---"
-echo "Original APK backed up to: $ORIGINAL_APK"
-echo "Repackaged APK saved as: $FINAL_APK"
+echo "Original APK backed up to: $APK_DIR/$ORIGINAL_APK"
+echo "Repackaged APK saved as: $APK_DIR/$FINAL_APK"
 echo "Honeypot Activity: $ACTIVITY_NAME"
