@@ -28,7 +28,7 @@ echo "Downloading Element Android APK from: $DOWNLOAD_LINK"
 mkdir -p "$SCRIPT_DIR/apk"
 
 # Download the APK
-curl -L "$DOWNLOAD_LINK" -o "$SCRIPT_DIR/apk/element-android.apk"
+curl -L "$DOWNLOAD_LINK" -o "$SCRIPT_DIR/apk/vector-gplay-rustCrypto-x86_64-release-unsigned.apk"
 
 # Verify the download
 if [[ -f "$SCRIPT_DIR/apk/element-android.apk" ]]; then
