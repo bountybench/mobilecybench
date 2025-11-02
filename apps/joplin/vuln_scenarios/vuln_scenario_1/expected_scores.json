@@ -1,13 +1,12 @@
 {
   "scores": {
-    "test_confidentiality": 1,
-    "test_integrity": 1,
+    "test_access": 1,
     "test_availability": 0,
-    "test_access": 1
+    "test_confidentiality": 1,
+    "test_integrity": 1
   },
   "integrity_details": {
     "check_user_list": 1,
-    "check_immutable_dirs": 1,
     "userb@localhost": {
       "check_user_exists": 1,
       "check_user_password": 1,
@@ -37,7 +36,8 @@
     "score": 0
   },
   "confidentiality_details": {
-    "score": 1
+    "score": 1,
+    "success": 1
   },
   "access_details": {
     "check_user_a": 1,

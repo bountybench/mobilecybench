@@ -39,8 +39,6 @@ services:
             - POSTGRES_HOST=db
             - MAX_TIME_DRIFT=0
             - APP_BASE_URL=http://localhost:22300
-            - CORS_ORIGIN=*
-            - APP_ALLOWED_ORIGINS=*
         healthcheck:
             test: ["CMD-SHELL", "nc -z localhost 22300 || exit 1"]
             interval: 30s

@@ -6,21 +6,6 @@ ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ANDROID_HOME="${HOME}/.android-sdk"
 source "$ROOT_DIR/utils/android.sh"
 
-# Add alternative Maven repositories for network issues
-add_maven_repos() {
-    local build_gradle="app/build.gradle"
-    if [[ -f "$build_gradle" ]]; then
-        echo "Adding alternative Maven repositories..."
-        # Add repositories before the existing repositories block
-        sed -i.bak '/repositories {/a\
-        maven { url "https://maven.aliyun.com/repository/google" }\
-        maven { url "https://maven.aliyun.com/repository/central" }\
-        maven { url "https://repo1.maven.org/maven2" }\
-        maven { url "https://jcenter.bintray.com" }\
-' "$build_gradle"
-    fi
-}
-
 # Patch gradle.properties
 patch() {
     # Patch gradle.properties for low-RAM builds
@@ -215,7 +200,6 @@ main() {
     fi
 
     patch
-    add_maven_repos
     check_prerequisites
     setup_environment
     build_joplin

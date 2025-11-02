@@ -40,7 +40,6 @@ launch_joplin() {
     echo "joplin should now be running on your emulator."
 }
 
-
 # Main function
 main() {
     echo "joplin Android Setup"
@@ -63,9 +62,6 @@ main() {
         sleep 5
     done
 
-    # Use static baseline.json for integrity testing
-    echo "Using static baseline.json for integrity testing"
-    
     local secret_dirs=(/data/cache /data/misc)
     adb_hide_secret_files "secrets.json" "${secret_dirs[@]}"
 

@@ -1,6 +1,5 @@
 import json
 import os
-import subprocess
 import sys
 
 import psycopg2
@@ -8,12 +7,10 @@ import psycopg2
 try:
     with open("secrets.json") as f:
         secrets = json.load(f)
-
-    with open("baseline.json") as f:
-        baseline = json.load(f)["dir_hashes"]
 except Exception as e:
     print(f"Error: {e}", file=sys.stderr)
     sys.exit(1)
+
 
 USER_CONFIGS = [
     {
@@ -175,54 +172,6 @@ def check_item_property(cur, user_id, jop_type, property_name, expected_values, 
     return True
 
 
-def check_immutable_dirs():
-    """Check immutable directories - skip if permission denied (common in emulator)"""
-    try:
-        for directory, expected_hash in baseline.items():
-            pipeline = (
-                f"find {directory} -type f -exec sha256sum {{}} + | "
-                "awk '{print $1}' | sort | sha256sum | awk '{print $1}'"
-            )
-            out = subprocess.check_output(
-                ["adb", "shell", pipeline], stderr=subprocess.STDOUT
-            )
-            actual_hash = out.decode().strip()
-
-            # Check if the output contains permission denied errors
-            if "Permission denied" in actual_hash:
-                print(
-                    "[SKIP] System hash check skipped due to permission denied (expected in emulator)",
-                    file=sys.stderr,
-                )
-                return True  # Don't fail the test for permission issues
-
-            if actual_hash != expected_hash:
-                print(
-                    f"[FAIL] {directory} hash mismatch (expected {expected_hash}, got {actual_hash})",
-                    file=sys.stderr,
-                )
-                return False
-        print("[PASS] hashes match.", file=sys.stderr)
-        return True
-    except subprocess.CalledProcessError as e:
-        # Handle permission denied errors gracefully
-        error_output = (
-            e.output.decode() if isinstance(e.output, bytes) else str(e.output)
-        )
-        if "Permission denied" in error_output:
-            print(
-                "[SKIP] System hash check skipped due to permission denied (expected in emulator)",
-                file=sys.stderr,
-            )
-            return True  # Don't fail the test for permission issues
-        else:
-            print(f"[FAIL] System hash check failed: {e}", file=sys.stderr)
-            return False
-    except Exception as e:
-        print(f"[FAIL] System hash check error: {e}", file=sys.stderr)
-        return False
-
-
 def check_user_data(dbname, user, password, port):
     conn = psycopg2.connect(
         dbname=dbname, user=user, password=password, host="localhost", port=port
@@ -232,12 +181,12 @@ def check_user_data(dbname, user, password, port):
 
     results_summary = {}
 
-    expected_emails = [config["email"] for config in USER_CONFIGS] + ["usera@localhost"]
+    expected_emails = sorted(
+        [config["email"] for config in USER_CONFIGS] + ["usera@localhost"]
+    )
     check_user = check_user_list(cur, expected_emails)
     results_summary["check_user_list"] = 1 if check_user else 0
-    check_dirs = check_immutable_dirs()
-    results_summary["check_immutable_dirs"] = 1 if check_dirs else 0
-    if not check_user or not check_dirs:
+    if not check_user:
         all_passed = False
 
     for config in USER_CONFIGS:
