@@ -13,6 +13,13 @@ set -e
 
 ANDROID_HOME="${HOME}/.android-sdk"
 APKSIGNER="$ANDROID_HOME/build-tools/*/apksigner"
+# Fix path for Windows MinGW users
+if [[ "$OSTYPE" == "msys" ]]; then
+    {
+        APKSIGNER="$ANDROID_HOME/build-tools/*/apksigner.bat"
+    }
+fi
+APKSIGNER=$(ls $APKSIGNER 2>/dev/null | head -1)
 
 # Temporary directories and filenames
 SOURCE_DIR="temp_app_source"
