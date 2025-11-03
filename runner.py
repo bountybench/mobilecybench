@@ -1,208 +1,37 @@
 #!/usr/bin/env python3
-"""
-Mobile Cybench Runner Script
-
-This script orchestrates the complete pipeline for running cybersecurity tests
-on Android applications using AI agents.
-"""
 
 import argparse
 import datetime
-import json
 import os
 import shlex
 import subprocess
 import sys
 from pathlib import Path
-from selectors import EVENT_READ, DefaultSelector
-from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 
 from agent.agent_setup import AgentEnvironment
 from agent.mcp.direct_tool_executor import MCPToolExecutor
 from models.config import RunnerConfig
+from utils.command_executor import CommandExecutor
 from utils.emulator_manager import EmulatorManager
 from utils.logger import logger, logger_manager
+from utils.time_tracker import time_tracker
 from utils.utils import get_app_metadata
+from utils.uuid_flags_utils import generate_and_save_flags
 
 load_dotenv()
 project_root = Path(__file__).parent
 
-EMULATOR_BOOT_TIMEOUT_SECONDS = 300
+EMULATOR_BOOT_TIMEOUT_SECONDS = 300  # 5 minutes
+BUILD_COMMAND_TIMEOUT = 600  # 10 minutes
 DUMMY_LOG_FILENAME = "dummy_log.txt"
 
 
-class CommandExecutor:
-    def __init__(self):
-        pass
-
-    def run(
-        self,
-        command: str,
-        cwd: Optional[Path] = None,
-        check: bool = True,
-        capture_output: bool = True,
-        live_output: bool = False,
-        env: Optional[Dict[str, str]] = None,
-    ) -> subprocess.CompletedProcess:
-        """
-        Runs a shell command securely.
-
-        Args:
-            command: The command string to execute.
-            cwd: The working directory for the command.
-            check: If True, raises an exception on non-zero exit codes.
-            capture_output: If True, captures stdout and stderr.
-            live_output: If True, streams command output to the logger in real-time.
-            env: Optional environment variables for the subprocess.
-
-        Returns:
-            A CompletedProcess object.
-        """
-        args = shlex.split(command)
-        logger.info(f"Preparing command: `{' '.join(args)}` in `{cwd or '.'}`")
-
-        try:
-            if live_output:
-                return self._run_with_live_output(args, cwd, check, env)
-
-            result = subprocess.run(
-                args,
-                cwd=cwd,
-                capture_output=capture_output,
-                text=True,
-                check=False,  # We handle the check manually
-                env=env,
-            )
-
-            if result.stdout:
-                logger.debug(f"STDOUT:\n{result.stdout.strip()}")
-            if result.stderr:
-                logger.warning(f"STDERR:\n{result.stderr.strip()}")
-
-            if check and result.returncode != 0:
-                raise subprocess.CalledProcessError(
-                    result.returncode, args, result.stdout, result.stderr
-                )
-
-            return result
-
-        except FileNotFoundError:
-            logger.error(f"Command not found: {args[0]}")
-            raise
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Command failed with exit code {e.returncode}: `{command}`")
-            logger.error(f"STDERR: {e.stderr.strip() if e.stderr else 'N/A'}")
-            raise
-        except Exception as e:
-            logger.error(
-                f"An unexpected error occurred while running command `{command}`: {e}"
-            )
-            raise
-
-    def start_background_process(
-        self,
-        command: str,
-        cwd: Optional[Path] = None,
-        env: Optional[Dict[str, str]] = None,
-    ) -> subprocess.Popen:
-        """
-        Starts a background process without waiting for it to complete.
-
-        Args:
-            command: The command string to execute.
-            cwd: The working directory for the command.
-            env: Optional environment variables for the subprocess.
-
-        Returns:
-            A Popen object for the background process.
-        """
-        args = shlex.split(command)
-        logger.info(
-            f"Starting background process: `{' '.join(args)}` in `{cwd or '.'}`"
-        )
-
-        try:
-            process = subprocess.Popen(
-                args,
-                cwd=cwd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                env=env,
-            )
-            logger.info(f"Background process started with PID: {process.pid}")
-            return process
-        except FileNotFoundError:
-            logger.error(f"Command not found: {args[0]}")
-            raise
-        except Exception as e:
-            logger.error(
-                f"An unexpected error occurred while starting background process `{command}`: {e}"
-            )
-            raise
-
-    def _run_with_live_output(
-        self,
-        args: List[str],
-        cwd: Optional[Path],
-        check: bool,
-        env: Optional[Dict[str, str]],
-    ) -> subprocess.CompletedProcess:
-        """Helper to stream output in real-time."""
-        stdout_lines = []
-        stderr_lines = []
-
-        process = subprocess.Popen(
-            args,
-            cwd=cwd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env,
-        )
-
-        selector = DefaultSelector()
-        selector.register(process.stdout, EVENT_READ)
-        selector.register(process.stderr, EVENT_READ)
-
-        while process.poll() is None and selector.get_map():
-            events = selector.select(timeout=0.1)
-            for key, _ in events:
-                line = key.fileobj.readline()
-                if not line:
-                    selector.unregister(key.fileobj)
-                    continue
-
-                if key.fileobj == process.stdout:
-                    logger.info(line.strip())
-                    stdout_lines.append(line)
-                else:
-                    logger.warning(line.strip())
-                    stderr_lines.append(line)
-
-        stdout, stderr = process.communicate()
-        if stdout:
-            for line in stdout.splitlines():
-                logger.info(line.strip())
-                stdout_lines.append(line + "\n")
-        if stderr:
-            for line in stderr.splitlines():
-                logger.warning(line.strip())
-                stderr_lines.append(line + "\n")
-
-        if check and process.returncode != 0:
-            raise subprocess.CalledProcessError(
-                process.returncode, args, "".join(stdout_lines), "".join(stderr_lines)
-            )
-
-        return subprocess.CompletedProcess(
-            args=args,
-            returncode=process.returncode,
-            stdout="".join(stdout_lines),
-            stderr="".join(stderr_lines),
-        )
+def log_banner(message: str, width: int = 60):
+    logger.info("=" * width)
+    logger.info(message.center(width))
+    logger.info("=" * width)
 
 
 class MobileCybenchRunner:
@@ -216,12 +45,10 @@ class MobileCybenchRunner:
         self.cmd = CommandExecutor()
         self.emulator = None
 
-        logger.info("=" * 80)
-        logger.info("MobileCybench Runner Started")
+        log_banner("MobileCybench Runner Started", width=80)
         logger.info(f"App: {app_name}")
         logger.info(f"Configuration: {config.model_dump_json(indent=2)}")
         logger.info(f"Timestamp: {datetime.datetime.now()}")
-        logger.info("=" * 80)
 
     def _exit_with_error(self, message: str):
         """Log error and exit"""
@@ -279,6 +106,17 @@ class MobileCybenchRunner:
         except Exception as e:
             self._exit_with_error(f"Invalid metadata.json: {e}")
 
+        # Generate random flags for this test run
+        logger.info("Generating random flags for this test run...")
+        try:
+            container_names = self.metadata.get("container_names", [])
+            logger.info(f"Found containers: {container_names}")
+
+            generate_and_save_flags(str(self.project_root), container_names)
+            logger.info("✓ Random flags generated successfully")
+        except Exception as e:
+            self._exit_with_error(f"Failed to generate random flags: {e}")
+
         # Check for required scripts
         required_scripts = ["setup.sh"]
 
@@ -319,28 +157,28 @@ class MobileCybenchRunner:
     def setup_app(self):
         """APK Handling, App Backend Setup, and App Installation"""
         if self.config.build_type == "skip-apk":
-            logger.info("=" * 60)
-            logger.info("SKIPPING APK HANDLING STEP")
-            logger.info("=" * 60)
+            log_banner("SKIPPING APK HANDLING STEP")
         elif self.config.build_type == "download-apk":
-            logger.info("=" * 60)
-            logger.info("FETCHING APK USING APKLINK")
-            logger.info("=" * 60)
+            log_banner("FETCHING APK USING APKLINK")
             try:
-                self.cmd.run(
-                    "bash ./setup_app_apklink.sh", cwd=self.app_dir, live_output=True
+                self.cmd.run_with_progress(
+                    "bash ./setup_app_apklink.sh",
+                    timeout=BUILD_COMMAND_TIMEOUT,
+                    message="Downloading APK",
+                    cwd=self.app_dir,
                 )
             except subprocess.CalledProcessError as e:
                 self._exit_with_error(
                     f"Failed to setup app APK with setup_app_apklink.sh: {e}"
                 )
         else:  # source
-            logger.info("=" * 60)
-            logger.info("BUILDING APK FROM SOURCE")
-            logger.info("=" * 60)
+            log_banner("BUILDING APK FROM SOURCE")
             try:
-                self.cmd.run(
-                    "bash ./setup_app_source.sh", cwd=self.app_dir, live_output=True
+                self.cmd.run_with_progress(
+                    "bash ./setup_app_source.sh",
+                    timeout=BUILD_COMMAND_TIMEOUT,
+                    message="Building APK from source",
+                    cwd=self.app_dir,
                 )
             except subprocess.CalledProcessError as e:
                 self._exit_with_error(
@@ -359,31 +197,41 @@ class MobileCybenchRunner:
         logger.info("Emulator status verified")
 
         # Setup app (setup backend, install apk, etc.)
-        logger.info("=" * 60)
-        logger.info(
+        log_banner(
             "SETTING UP THE BACKEND(RUNTIME SERVERS, DATABASES, SEEDS, etc.) AND INSTALLING APK"
         )
-        logger.info("=" * 60)
         try:
-            self.cmd.run("bash ./setup.sh", cwd=self.app_dir, live_output=True)
+            self.cmd.run_with_progress(
+                "bash ./setup.sh",
+                timeout=BUILD_COMMAND_TIMEOUT,
+                message="Setting up backend and installing APK",
+                cwd=self.app_dir,
+            )
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to setup app: {e}")
 
+        logger.info("Injecting security flags...")
+        try:
+            inject_flags_path = project_root / "inject_flags.sh"
+            self.cmd.run(
+                f"bash {inject_flags_path}",
+                cwd=self.app_dir,
+                timeout=30,
+            )
+            logger.info("✓ Flags injected successfully")
+        except subprocess.CalledProcessError as e:
+            self._exit_with_error(f"Failed to inject security flags: {e}")
         logger.info("App setup completed")
 
     def setup_agent(self):
         """Configure agent environment and start services"""
-        logger.info("=" * 60)
-        logger.info("SETTING UP AGENT ENVIRONMENT")
-        logger.info("=" * 60)
-        logger.info("Setting up agent environment...")
+        log_banner("SETTING UP AGENT ENVIRONMENT")
 
         if not self.config.dry_run:
             self._setup_env_file()
         self._create_docker_network()
 
         # Setup agent kali environment
-        logger.info("Setting up agent Kali environment...")
         agent_env = AgentEnvironment(
             app_dir=self.app_dir,
             docker_networks=["shared_net"],
@@ -397,7 +245,6 @@ class MobileCybenchRunner:
         self._start_containers()
 
         logger.info("Agent environment setup completed")
-        logger.info("✓ Agent environment setup completed")
 
     def _setup_env_file(self):
         """Load environment file for OpenAI API key (already validated)"""
@@ -438,7 +285,7 @@ class MobileCybenchRunner:
         mcp_executor = MCPToolExecutor()
         result = mcp_executor.call_tool("execute_command", "ls /app")
         response = (
-            result.get("result", {}).get("structuredContent", {}).get("response", "")
+            result.get("result", {}).get("structuredContent", {}).get("result", "")
         )
 
         if "codebase" not in response:
@@ -450,27 +297,9 @@ class MobileCybenchRunner:
 
     def _start_containers(self):
         """Start MCP server and Kali container"""
-        logger.info("Starting containers...")
         logger.info("Starting MCP server and Kali container...")
 
-        # Set environment variable for docker-compose
         env = os.environ.copy()
-        start_dir = f"/tmp/{self.app_name}_app"
-        env["START_DIR"] = start_dir
-        env["MODEL"] = self.config.model
-        env["MAX_KALI_MESSAGE_TOKENS"] = str(self.config.max_kali_message_tokens)
-        logger.info(f"  MAX_KALI_MESSAGE_TOKENS: {self.config.max_kali_message_tokens}")
-
-        # Pass allowed tools to MCP server
-        if self.config.allowed_tools:
-            env["ALLOWED_TOOLS"] = json.dumps(self.config.allowed_tools)
-            logger.info("Tool restrictions configured")
-
-        logger.info("Setting environment variables:")
-        logger.info(f"  START_DIR: {start_dir}")
-        logger.info(f"  MODEL: {self.config.model}")
-
-        logger.info("Starting containers with docker compose...")
 
         try:
             self.cmd.run("docker compose up -d --wait", cwd=self.agent_dir, env=env)
@@ -479,8 +308,6 @@ class MobileCybenchRunner:
                 f"Docker-compose failed: {e.stderr if hasattr(e, 'stderr') else e}"
             )
             self._exit_with_error("Failed to start containers")
-
-        logger.info("Checking container status...")
 
         # Validate MCP server functionality
         self._validate_mcp_server()
@@ -492,33 +319,141 @@ class MobileCybenchRunner:
             result = None
 
         if result:
-            logger.info("Container Status:")
-            logger.info(result.stdout)
-            logger.info(f"Container status:\n{result.stdout}")
+            logger.debug(f"Container status:\n{result.stdout}")
 
             # Verify specific containers are running
             if "mcp-server" in result.stdout:
                 logger.info("✓ Both MCP server and Kali container are running")
-                logger.info("Both MCP server and Kali container confirmed running")
             else:
-                logger.warning("Some containers may not be running properly")
                 logger.warning("⚠ Warning: Some containers may not be running properly")
+
+    def run_interactive_shell(self):
+        """Run interactive shell for manual command execution (dry-run mode)"""
+        log_banner("RUNNING INTERACTIVE SHELL (DRY-RUN MODE)")
+
+        logger.info("Starting interactive shell for manual command execution...")
+        logger.info("You can now execute commands in the kali container.")
+        logger.info("Type 'exit' or 'quit' to stop the interactive shell.")
+        logger.info("Type 'help' for available commands.")
+        print()
+
+        try:
+            mcp_executor = MCPToolExecutor()
+
+            # List available tools
+            logger.info("Checking available tools...")
+            tools = mcp_executor.list_tools()
+
+            print("=" * 80)
+            print("DRY-RUN MODE: Interactive Shell")
+            print("=" * 80)
+            print(f"App: {self.app_name}")
+            print("Environment is fully set up (emulator, app servers, kali container)")
+            print("You can now manually execute commands to test the environment.")
+            print()
+            print("Available commands:")
+            print("  - Any shell command will be executed in the kali container")
+            print("  - 'exit' or 'quit' to exit the shell")
+            print("  - 'help' for this help message")
+            print("  - 'tools' to list available MCP tools")
+            print("=" * 80)
+            print()
+
+            command_count = 0
+            while True:
+                try:
+                    # Get user input
+                    user_input = input("kali> ").strip()
+
+                    if not user_input:
+                        continue
+
+                    # Handle special commands
+                    if user_input.lower() in ["exit", "quit"]:
+                        print("Exiting interactive shell...")
+                        break
+                    elif user_input.lower() == "help":
+                        print("Available commands:")
+                        print(
+                            "  - Any shell command will be executed in the kali container"
+                        )
+                        print("  - 'exit' or 'quit' to exit the shell")
+                        print("  - 'help' for this help message")
+                        print("  - 'tools' to list available MCP tools")
+                        continue
+                    elif user_input.lower() == "tools":
+                        tools = mcp_executor.list_tools()
+                        if tools and not isinstance(tools, dict):
+                            print(f"Available tools ({len(tools)}):")
+                            for tool in tools:
+                                print(
+                                    f"  - {tool.get('name', 'unknown')}: {tool.get('description', 'No description')}"
+                                )
+                        else:
+                            print("Could not list tools or no tools available")
+                        continue
+
+                    # Execute command via MCP
+                    command_count += 1
+                    logger.info(f"Executing command {command_count}: {user_input}")
+
+                    result = mcp_executor.call_tool("execute_command", user_input)
+
+                    # Display result
+                    if "error" in result:
+                        print(f"ERROR: {result['error']}")
+                        logger.error(
+                            f"Command {command_count} failed: {result['error']}"
+                        )
+                    elif "result" in result and "structuredContent" in result["result"]:
+                        structured = result["result"]["structuredContent"]
+                        if "response" in structured:
+                            print(structured["response"])
+                        else:
+                            print(result)
+                    else:
+                        print(result)
+
+                except KeyboardInterrupt:
+                    print("\nUse 'exit' or 'quit' to exit the shell")
+                    continue
+                except EOFError:
+                    print("\nExiting interactive shell...")
+                    break
+                except Exception as e:
+                    print(f"Error: {e}")
+                    logger.error(f"Error in interactive shell: {e}")
+
+            log_banner("INTERACTIVE SHELL SESSION COMPLETED")
+            logger.info(f"Total commands executed: {command_count}")
+
+            return {
+                "status": "completed",
+                "commands_executed": command_count,
+                "log_file": None,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to run interactive shell: {e}")
+            return {
+                "status": f"error: {str(e)}",
+                "commands_executed": 0,
+                "log_file": None,
+            }
 
     def run_agent(self):
         """Run the custom agent - custom_agent.py"""
-        logger.info("=" * 60)
-        logger.info("RUNNING CUSTOM AGENT")
-        logger.info("=" * 60)
-        logger.info("Starting custom agent execution...")
+        log_banner("RUNNING CUSTOM AGENT")
+
+        # If in dry-run mode, use interactive shell instead
+        if self.config.dry_run:
+            return self.run_interactive_shell()
 
         try:
             # Import the CustomAgent class
             from agent.custom_agent import CustomAgent
 
-            # Create agent instance with dry_run mode for infrastructure testing
-            # Set dry_run=False for actual AI execution
-            logger.info("Initializing custom agent...")
-            logger.info("Creating CustomAgent instance")
+            logger.info("Initializing CustomAgent...")
 
             agent = CustomAgent(
                 model=self.config.model,
@@ -531,25 +466,14 @@ class MobileCybenchRunner:
                 app_server=getattr(self, "metadata", {}).get(
                     "app_server", None
                 ),  # default to None if in agent_only mode
-                # TODO - create proper dry run mode
-                # https://github.com/bountybench/mobilecybench/issues/322
                 dry_run=self.config.dry_run,
                 system_prompt=self.config.custom_system_prompt,
             )
 
-            logger.info("Running agent...")
-            logger.info("Executing agent.run()")
-
             # This can take a while for actual LLM calls
             result = agent.run()
 
-            # Log and display results
-            logger.info("Agent execution completed")
-            logger.info(f"Agent result: {result}")
-
-            logger.info("=" * 60)
-            logger.info("AGENT EXECUTION RESULTS")
-            logger.info("=" * 60)
+            log_banner("AGENT EXECUTION RESULTS")
             logger.info(f"Status: {result.get('status', 'Unknown')}")
             logger.info(f"Turns: {result.get('turns', 0)}")
             logger.info(f"Log file: {result.get('log_file', 'None')}")
@@ -558,13 +482,10 @@ class MobileCybenchRunner:
                 logger.info("Final Message:")
                 logger.info(f"  {result['final_message']}")
 
-            logger.info("=" * 60)
-
             return result
 
         except Exception as e:
-            logger.error(f"Error running custom agent: {e}")
-            logger.error(f"ERROR: Failed to run custom agent: {e}")
+            logger.error(f"Failed to run custom agent: {e}")
             return {
                 "status": f"error: {str(e)}",
                 "turns": 0,
@@ -573,18 +494,15 @@ class MobileCybenchRunner:
             }
 
     def run_probes_checks(self, log_file_path: Path):
-        logger.info("=" * 60)
-        logger.info("RUNNING PROBE CHECKS")
-        logger.info("=" * 60)
+        log_banner("RUNNING PROBE CHECKS")
 
         app_relative_path = f"apps/{self.app_name}"
         command = f"bash ./run_checks.sh {shlex.quote(app_relative_path)}"
 
         log_path = Path(log_file_path)
         if log_path.exists() and log_path.is_file():
-            relative_log_path = Path("../../") / log_path
-            command = f"{command} {shlex.quote(str(relative_log_path))}"
-            logger.info(f"Passing log file to probe checks: {relative_log_path}")
+            command = f"{command} {shlex.quote(str(log_path))}"
+            logger.info(f"Passing log file to probe checks: {log_path}")
         else:
             logger.error(
                 f"Log file path does not exist: {log_path}, running without it. This may limit the quality of the probes checks."
@@ -616,9 +534,7 @@ class MobileCybenchRunner:
 
             except Exception as e:
                 logger.error(f"Error reading scores.json: {e}")
-                logger.error(f"Error reading scores.json: {e}")
         else:
-            logger.info("No scores.json file was created")
             logger.info("No scores.json file found")
 
         logger.info(f"Probe checks completed with exit code: {return_code}")
@@ -650,7 +566,6 @@ class MobileCybenchRunner:
         self.run_agent()
 
         agent_log_filename = logger_manager.get_agent_log_file_name()
-        print("!!! Agent log filename:", agent_log_filename)
         log_path = Path(agent_log_filename)
         logger.info(f"Agent log file path: {log_path}")
         self.run_probes_checks(log_file_path=log_path)
@@ -660,9 +575,7 @@ class MobileCybenchRunner:
             self.validate_input()
 
             if not self.agent_only:
-                logger.info("=" * 60)
-                logger.info("SETTING UP ANDROID EMULATOR")
-                logger.info("=" * 60)
+                log_banner("SETTING UP ANDROID EMULATOR")
                 sdk_version = (
                     self.metadata.get("sdk") if hasattr(self, "metadata") else None
                 )
@@ -681,9 +594,7 @@ class MobileCybenchRunner:
             else:
                 self._run_agent_pipeline()
 
-            logger.info("=" * 60)
-            logger.info(f"PIPELINE COMPLETED SUCCESSFULLY FOR <<{self.app_name}>>")
-            logger.info("=" * 60)
+            log_banner(f"PIPELINE COMPLETED SUCCESSFULLY FOR <<{self.app_name}>>")
             return 0
 
         except KeyboardInterrupt:
@@ -698,46 +609,72 @@ class MobileCybenchRunner:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="MobileCybench Runner - Orchestrates AI-driven mobile app security testing"
-    )
+    # Start timing the experiment
+    time_tracker.start_experiment()
 
-    # Add agent_only as a flag
-    parser.add_argument(
-        "--agent-only",
-        action="store_true",
-        dest="agent_only",
-        help="Run only the agent, skipping emulator setup and app setup. Optional.",
-    )
+    try:
+        parser = argparse.ArgumentParser(
+            description="MobileCybench Runner - Orchestrates AI-driven mobile app security testing"
+        )
 
-    parser.add_argument(
-        "app_name",
-        help="Name of the app to test (must exist in apps/ directory). Required.",
-    )
+        # Add agent_only as a flag
+        parser.add_argument(
+            "--agent-only",
+            action="store_true",
+            dest="agent_only",
+            help="Run only the agent, skipping emulator setup and app setup. Optional.",
+        )
 
-    # Add config_file as optional
-    parser.add_argument(
-        "config_file",
-        nargs="?",
-        default="runner_config.json",
-        help="Path to JSON configuration file (default: runner_config.json)",
-    )
+        parser.add_argument(
+            "app_name",
+            help="Name of the app to test (must exist in apps/ directory). Required.",
+        )
 
-    args = parser.parse_args()
+        # Add config_file as optional
+        parser.add_argument(
+            "config_file",
+            nargs="?",
+            default="runner_config.json",
+            help="Path to JSON configuration file (default: runner_config.json)",
+        )
 
-    # Load configuration from file
-    # If relative path, make it relative to the script directory
-    config_file = args.config_file
-    if not os.path.isabs(config_file):
-        config_path = project_root / config_file
-    else:
-        config_path = Path(config_file)
+        args = parser.parse_args()
 
-    config = RunnerConfig.from_file(config_path)
+        # Update experiment with app name
+        time_tracker._app_name = args.app_name
 
-    # Create and run the runner
-    runner = MobileCybenchRunner(args.app_name, config, args.agent_only)
-    return runner.run()
+        # Load configuration from file
+        # If relative path, make it relative to the script directory
+        config_file = args.config_file
+        if not os.path.isabs(config_file):
+            config_path = project_root / config_file
+        else:
+            config_path = Path(config_file)
+
+        config = RunnerConfig.from_file(config_path)
+
+        # Create and run the runner
+        runner = MobileCybenchRunner(args.app_name, config, args.agent_only)
+        result = runner.run()
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to run experiment: {e}")
+        return 1
+    finally:
+        # Always end timing and log summary, regardless of success/failure
+        time_tracker.end_experiment()
+        try:
+            time_tracker.log_summary(logger)
+
+            # Save structured JSON output
+            json_path = project_root / f"timings_{time_tracker._experiment_id}.json"
+            time_tracker.save_json(json_path)
+            logger.info(f"Timing data saved to: {json_path}")
+
+        except Exception as e:
+            logger.error(f"Failed to log timing summary: {e}")
 
 
 if __name__ == "__main__":

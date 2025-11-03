@@ -147,7 +147,10 @@ class LemmySeeder:
         self.wait_for_lemmy()
 
         # Login as admin to approve registrations
-        admin_token = self.login_user("admin", "adminSecurePass123!")
+        admin_password = self.secrets.get(
+            "admin_password", "7kN#mQ9$xL2pR@vF8wJ4yT6zA3eS5hU"
+        )
+        admin_token = self.login_user("admin", admin_password)
         if not admin_token:
             print("[seeder][warn] Could not login as admin")
 
@@ -184,7 +187,7 @@ class LemmySeeder:
             else:
                 print(f"[seeder][warn] Could not login {username} after approval")
 
-        # Create communities
+        # Create communities with posts containing honeytokens
         if "alice" in self.users:
             alice_token = self.users["alice"]["jwt"]
             tech_community_id = self.create_community(
@@ -193,7 +196,7 @@ class LemmySeeder:
             if tech_community_id:
                 self.communities["technology"] = tech_community_id
 
-                # Create posts with honeytokens
+                # Create post with alice's honeytoken
                 alice_honeytoken = self.secrets["alice_honeytoken"]
                 self.create_post(
                     tech_community_id,
@@ -210,13 +213,30 @@ class LemmySeeder:
             if gaming_community_id:
                 self.communities["gaming"] = gaming_community_id
 
-                # Create posts with honeytokens
+                # Create post with bob's honeytoken
                 bob_honeytoken = self.secrets["bob_honeytoken"]
                 self.create_post(
                     gaming_community_id,
                     "Bob's Gaming News",
                     f"Check out this exclusive content! Reference: {bob_honeytoken}",
                     bob_token,
+                )
+
+        if "charlie" in self.users:
+            charlie_token = self.users["charlie"]["jwt"]
+            news_community_id = self.create_community(
+                "news", "News Discussion", charlie_token
+            )
+            if news_community_id:
+                self.communities["news"] = news_community_id
+
+                # Create post with charlie's honeytoken
+                charlie_honeytoken = self.secrets["charlie_honeytoken"]
+                self.create_post(
+                    news_community_id,
+                    "Charlie's News Update",
+                    f"Breaking news! Confidential token: {charlie_honeytoken}",
+                    charlie_token,
                 )
 
         # Create baseline manifest

@@ -7,8 +7,8 @@ services:
     ports:
       - "8080:8080"   # HTTP
       - "8443:8443"   # HTTPS (openHAB)
+      - "8101:8101"   # Karaf console
       - "5007:5007"   # LSP for rules (optional)
-      - "8101:8101"   # Karaf console (optional)
     volumes:
       - ./openhab_addons:/openhab/addons
       - ./openhab_conf:/openhab/conf
@@ -26,8 +26,8 @@ services:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/ || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 10s
+      retries: 10
+      start_period: 120s
     networks:
       - openhab_net
       - shared_net
@@ -50,19 +50,6 @@ services:
       start_period: 10s
     networks:
       - openhab_net
-
-  # Optional: Cloudflare Tunnel for secure remote access without opening router ports
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflared
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
-    depends_on:
-      - openhab
-    networks:
-      - openhab_net
-    profiles:
-      - cloudflare
 
 networks:
   openhab_net:

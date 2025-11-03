@@ -8,5 +8,6 @@
   "app_server": "http://lemmy:8536",
   "username": "agent",
   "password": "agentpass123",
-  "package_name": "com.jerboa"
+  "package_name": "com.jerboa",
+  "container_names": ["lemmy_server", "lemmy_postgres", "lemmy_pictrs"]
 }

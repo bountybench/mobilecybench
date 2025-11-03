@@ -9,6 +9,7 @@ import argparse
 import json
 import logging
 from datetime import datetime
+from typing import Union
 
 import requests
 
@@ -74,8 +75,8 @@ class MCPToolExecutor:
         print("✅ MCP server is accessible")
         return True
 
-    def list_tools(self) -> list[str]:
-        """List available tools from the MCP server"""
+    def list_tools(self) -> Union[list, dict]:
+        """List available tools from the MCP server. Returns list of tools or error dict."""
         if not self.check_server():
             raise RuntimeError(f"Cannot connect to MCP server at {self.mcp_server_url}")
 
@@ -113,17 +114,23 @@ class MCPToolExecutor:
             self.logger.error(f"Failed to list tools: {e}")
             return {"error": f"Failed to list tools: {e}"}
 
-    def call_tool(self, tool_name: str, command: str) -> dict:
+    def call_tool(self, tool_name: str, command: str = "") -> dict:
         """Execute tool via MCP JSON-RPC"""
         if not self.check_server():
             raise RuntimeError(f"Cannot connect to MCP server at {self.mcp_server_url}")
 
         self._request_id += 1
+        no_command_tools = ["get_current_ui_state"]
+        if tool_name in no_command_tools and not command:
+            arguments = {}
+        else:
+            arguments = {"command": command}
+
         payload = {
             "jsonrpc": "2.0",
             "id": self._request_id,
             "method": "tools/call",
-            "params": {"name": tool_name, "arguments": {"command": command}},
+            "params": {"name": tool_name, "arguments": arguments},
         }
 
         try:
@@ -144,15 +151,37 @@ class MCPToolExecutor:
         except Exception as e:
             return {"error": str(e)}
 
+    def _extract_result(self, result: dict) -> tuple[bool, str]:
+        if "error" in result:
+            return False, result["error"]
+
+        if "result" in result and "structuredContent" in result["result"]:
+            structured = result["result"]["structuredContent"]
+            response = structured.get("result", "")
+            if response:
+                return True, response
+        return True, str(result)
+
     def parse_line(self, line: str) -> tuple[str, str]:
-        """Parse line into tool and command. Default tool is execute_command."""
+        """Parse line into tool and command. Default tool is execute_command.
+
+        Supported formats:
+        - 'tool,command' -> uses specified tool with command
+        - 'tool,' -> uses specified tool with empty command
+        - 'command' -> uses execute_command with command
+        - 'get_current_ui_state' -> recognized as tool with no command
+        """
         line = line.strip()
         if not line:
             return None, None
 
+        no_command_tools = ["get_current_ui_state"]
+
         if "," in line:
             tool, command = line.split(",", 1)
             return tool.strip(), command.strip()
+        elif line in no_command_tools:
+            return line, ""
         else:
             return "execute_command", line
 
@@ -175,10 +204,13 @@ class MCPToolExecutor:
         for i, line in enumerate(lines, 1):
             tool_name, command = self.parse_line(line)
 
-            if not command:
+            if tool_name is None:
                 continue
 
-            print(f"[{i}] {tool_name}: {command}")
+            if command:
+                print(f"[{i}] {tool_name}: {command}")
+            else:
+                print(f"[{i}] {tool_name} (no arguments)")
             self.logger.info(
                 f"Executing command {i}/{len(lines)}: {tool_name} - {command}"
             )
@@ -189,22 +221,13 @@ class MCPToolExecutor:
                 f"Full response for command {i}: {json.dumps(result, indent=2)}"
             )
 
-            if "error" in result:
-                print(f"    ❌ ERROR: {result['error']}")
-                self.logger.error(f"Command {i} failed: {result['error']}")
-            elif "result" in result and "structuredContent" in result["result"]:
-                # Extract just the command response, not the UI elements
-                structured = result["result"]["structuredContent"]
-                if "response" in structured:
-                    print(f"    {structured['response']}")
-                    self.logger.info(f"Command {i} completed successfully")
-                else:
-                    print(f"    {result}")
-                    self.logger.warning(f"Unexpected response format for command {i}")
+            success, message = self._extract_result(result)
+            if success:
+                print(f"    {message}")
+                self.logger.info(f"Command {i} completed successfully")
             else:
-                print(f"    {result}")
-                self.logger.warning(f"Unexpected response format for command {i}")
-
+                print(f"    ERROR: {message}")
+                self.logger.error(f"Command {i} failed: {message}")
             print()
 
 
@@ -261,15 +284,11 @@ def main():
         print("=" * 50)
 
         result = executor.call_tool(tool_name, tool_arguments)
-        # Format the output nicely - only show response content, not UI elements
-        if "error" in result:
-            print(f"❌ ERROR: {result['error']}")
-        elif "result" in result and "structuredContent" in result["result"]:
-            # Extract just the response from structuredContent
-            response = result["result"]["structuredContent"].get("response", "")
-            print(f"✅ Tool response: {response}")
+        success, message = executor._extract_result(result)
+        if success:
+            print(f"Tool response:\n{message}")
         else:
-            print(f"✅ Tool response: {result}")
+            print(f"ERROR: {message}")
     else:
         if not args.file:
             parser.print_help()

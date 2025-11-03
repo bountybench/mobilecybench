@@ -162,18 +162,27 @@ verify_shared_net_connectivity() {
 # Validate directory structure and required scripts
 validate_setup_app_scripts() {
     local dir="$1"
-    
+
     if [ ! -d "$dir" ]; then
         echo -e "${ERROR} Directory '$dir' does not exist" >&2
         return 1
     fi
-    
+
     local source_script="$dir/setup_app_source.sh"
-    local apklink_script="$dir/setup_app_apklink.sh"
-    if [ ! -f "$source_script" ] && [ ! -f "$apklink_script" ]; then
-        # fail if neither script exists
-        echo -e "${ERROR} No setup scripts found in $dir" >&2
-        echo -e "${ERROR} Expected: setup_app_source.sh or setup_app_apklink.sh" >&2
+    local has_download_link=false
+
+    # Check if download_link exists in metadata.json
+    if [ -f "$dir/metadata.json" ]; then
+        download_link=$(jq -r '.download_link // empty' "$dir/metadata.json")
+        if [ -n "$download_link" ]; then
+            has_download_link=true
+        fi
+    fi
+
+    if [ ! -f "$source_script" ] && [ "$has_download_link" = false ]; then
+        # fail if neither option exists
+        echo -e "${ERROR} No setup options found in $dir" >&2
+        echo -e "${ERROR} Expected: setup_app_source.sh or download_link in metadata.json" >&2
         return 1
     fi
     return 0
@@ -183,7 +192,7 @@ validate_setup_app_scripts() {
 discover_available_modes() {
     local dir="$1"
     local modes=""
-    
+
     # If --skip-apk is specified, only offer apk_skip mode
     if [ "$SKIP_APK" = true ]; then
         modes="apk_skip"
@@ -193,9 +202,13 @@ discover_available_modes() {
             modes="$modes source"
             echo -e "${INFO} Found setup_app_source.sh (build mode)" >&2
         fi
-        if [ -f "$dir/setup_app_apklink.sh" ]; then
-            modes="$modes apklink"
-            echo -e "${INFO} Found setup_app_apklink.sh (download mode)" >&2
+        # Check if download_link exists in metadata.json
+        if [ -f "$dir/metadata.json" ]; then
+            download_link=$(jq -r '.download_link // empty' "$dir/metadata.json")
+            if [ -n "$download_link" ]; then
+                modes="$modes apklink"
+                echo -e "${INFO} Found download_link in metadata.json (download mode)" >&2
+            fi
         fi
     fi
 
@@ -435,13 +448,42 @@ run_test_check() {
         fi
         adb logcat -c || true
     fi
+    
+    # Get package_name from metadata.json (required field) and verify before setup
+    package_name=$(jq -r '.package_name' metadata.json)
+    echo -e "${INFO} Found package_name in metadata.json: $package_name"
+    
+    # Check if package is NOT installed before setup
+    if adb shell pm list packages | grep -q "^package:$package_name$"; then
+        echo -e "${ERROR} Package $package_name is already installed before setup.sh"
+        echo -e "${ERROR} This test expects the package to be uninstalled initially"
+        exit 1
+    else
+        echo -e "${SUCCESS} Package $package_name is not installed (as expected before setup)"
+    fi
 
     echo -e "${INFO} Running setup..."
     { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+
+    # Verify the specific package is installed after setup
+    if adb shell pm list packages | grep -q "^package:$package_name$"; then
+        echo -e "${SUCCESS} Package $package_name is installed after setup.sh"
+    else
+        echo -e "${ERROR} Package $package_name is not installed after setup.sh"
+        echo -e "${ERROR} This indicates setup.sh failed to install the expected package"
+        echo -e "${INFO} Cleaning up..."
+        ./cleanup.sh
+        exit 1
+    fi
     
     # Wait for app-specific containers to be ready (after setup.sh starts them)
     check_app_containers_ready
-    
+
+    echo -e "${INFO} Generating flags..."
+    cd "$ROOT_DIR"
+    { python -m utils.uuid_flags_utils "$DIR"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
+    cd "$DIR"
+
     echo -e "${INFO} Injecting flags..."
     { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
     verify_shared_net_connectivity
@@ -457,9 +499,9 @@ run_test_check() {
 
     echo -e "${INFO} Running checks..."
     if [ "$use_fake_agent_log" = "true" ] && [ -n "$vuln_scenario" ]; then
-        ../../run_checks.sh . "vuln_scenarios/vuln_scenario_$vuln_scenario/fake_agent_log.log"
+        "$ROOT_DIR/run_checks.sh" . "vuln_scenarios/vuln_scenario_$vuln_scenario/fake_agent_log.log"
     else
-        ../../run_checks.sh . "$ROOT_DIR/dummy_log.log"
+        "$ROOT_DIR/run_checks.sh" . "$ROOT_DIR/dummy_log.log"
     fi
 
     if [ -n "$vuln_scenario" ]; then
@@ -539,7 +581,10 @@ run_tests_for_mode() {
         echo -e "${INFO} Skipping APK setup (apk_skip mode) - proceeding directly to setup.sh"
     elif [ "$setup_mode" = "apklink" ]; then
         echo -e "${INFO} Setting up app from APK link."
-        { ./setup_app_apklink.sh; } || { echo -e "${ERROR} setup_app_apklink.sh failed"; exit 1; }
+        app_name=$(basename "$dir")
+        cd "$ROOT_DIR"
+        { python setup_app_apklink.py "$app_name"; } || { echo -e "${ERROR} setup_app_apklink.py failed"; exit 1; }
+        cd "$ROOT_DIR/$dir"
     else
         echo -e "${INFO} Setting up app from source..."
         { ./setup_app_source.sh; } || { echo -e "${ERROR} setup_app_source.sh failed"; exit 1; }
@@ -557,7 +602,7 @@ run_tests_for_mode() {
     APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
     if [ "$APK_COUNT" -eq 0 ]; then
         echo -e "${ERROR} No APK found in $APK_DIR/"
-        echo -e "${ERROR} setup_app_source.sh or setup_app_apklink.sh must place APKs in ${dir}/apk/"
+        echo -e "${ERROR} setup_app_source.sh or setup_app_apklink.py must place APKs in ${dir}/apk/"
         exit 1
     fi
 
@@ -607,36 +652,45 @@ EOF
         
         echo -e "${INFO} Simple APK build and install test - no vulnerability scenarios"
         
-        # Check packages before setup
-        packages_before=$(adb shell pm list packages | wc -l)
-        echo -e "${INFO} Packages before setup: $packages_before"
+        # Get package_name from metadata.json (required field) and verify before setup
+        package_name=$(jq -r '.package_name' metadata.json)
+        echo -e "${INFO} Found package_name in metadata.json: $package_name"
+        
+        # Check if package is NOT installed before setup
+        if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo -e "${ERROR} Package $package_name is already installed before setup.sh"
+            echo -e "${ERROR} This test expects the package to be uninstalled initially"
+            exit 1
+        else
+            echo -e "${SUCCESS} Package $package_name is not installed (as expected before setup)"
+        fi
         
         echo -e "${INFO} Running setup..."
         { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
-        
-        # Wait for app-specific containers to be ready (after setup.sh starts them)
-        check_app_containers_ready
-        
-        echo -e "${INFO} Injecting flags..."
-        { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
-        verify_shared_net_connectivity
-        adb logcat -c
-        
-        # Check packages after setup
-        packages_after=$(adb shell pm list packages | wc -l)
-        echo -e "${INFO} Packages after setup: $packages_after"
-        
-        if [ "$packages_after" -gt "$packages_before" ]; then
-            echo -e "${SUCCESS} Package count increased ($packages_before -> $packages_after) - app installation verified"
-        elif [ "$packages_after" -eq "$packages_before" ]; then
-            echo -e "${WARNING} Package count unchanged - setup may not have installed new packages"
-            echo -e "${WARNING} This could be expected if app was already installed or uses system components"
+
+         # Verify the specific package is installed after setup
+        if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo -e "${SUCCESS} Package $package_name is installed after setup.sh"
         else
-            echo -e "${ERROR} Package count decreased ($packages_before -> $packages_after) - unexpected behavior"
+            echo -e "${ERROR} Package $package_name is not installed after setup.sh"
+            echo -e "${ERROR} This indicates setup.sh failed to install the expected package"
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
             exit 1
         fi
+        
+        # Wait for app-specific containers to be ready (after setup.sh starts them)
+        check_app_containers_ready
+
+        echo -e "${INFO} Generating flags..."
+        cd "$ROOT_DIR"
+        { python -m utils.uuid_flags_utils "$dir"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
+        cd "$dir"
+
+        echo -e "${INFO} Injecting flags..."
+        { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
+        verify_shared_net_connectivity
+        adb logcat -c
         
         echo -e "${INFO} Cleaning up..."
         ./cleanup.sh
