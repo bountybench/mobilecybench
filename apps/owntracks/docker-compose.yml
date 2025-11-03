@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: mosquitto
+    ports:
+      - "1883:1883"  # MQTT port
+      - "9001:9001"  # WebSockets port (optional)
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+    networks:
+      - shared_net
+      - private_net
+    restart: unless-stopped
+
+networks:
+  shared_net:
+    external: true
+  private_net:
+    driver: bridge
+
