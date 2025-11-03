@@ -1,18 +1,10 @@
-cd docker-setup
 docker compose up --build -d
 sleep 20
-cd ..
 
 python3 -m venv ./venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-cd app-setup
-python regenerate_flags.py
-cd ..
-
-python common_setup.py
-cd app-setup
 python server_setup.py
 
 sleep 10
@@ -58,5 +50,4 @@ install_nextcloud_talk() {
     echo "Nextcloud Talk installed successfully!"
 }
 
-cd ..
 install_nextcloud_talk
