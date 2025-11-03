@@ -5,10 +5,13 @@ source "${SCRIPT_DIR}/utils.sh"
 APK_DIR="${SCRIPT_DIR}/apk"
 SIGNED_APK="${APK_DIR}/wordpress.apk"
 require_cmd git
-require_cmd jq
+require_cmd java
 require_cmd keytool
 
 CODEBASE_DIR="${SCRIPT_DIR}/codebase"
+TASK_DEFAULT=":WordPress:assembleWordpressVanillaRelease"
+TASK="${BUILD_TASK:-${TASK_DEFAULT}}"
+
 if [[ ! -d "${CODEBASE_DIR}" ]]; then
   fatal "codebase directory not found at ${CODEBASE_DIR}"
 fi
@@ -19,33 +22,27 @@ if [[ ! -f "./gradlew" ]]; then
 fi
 chmod +x ./gradlew || true
 
-find_apk() {
-  find . -type f \( -path "*/release/*/*.apk" -o -path "*/outputs/apk/*/*/*.apk" -o -path "*/outputs/apk/*/*-release-unsigned.apk" \) -print 2>/dev/null | head -n1 || true
+log_info "Using single canonical Gradle task: ${TASK}"
+export GRADLE_OPTS="${GRADLE_OPTS:-"-Xmx2g -XX:MaxMetaspaceSize=512m"}"
+GRADLE_FLAGS=(--no-daemon -x lint --console=plain --no-parallel --max-workers=1)
+
+"./gradlew" "${TASK}" "${GRADLE_FLAGS[@]}" || fatal "Gradle ${TASK} failed"
+
+find_apk_module() {
+  if [[ -d "WordPress/build/outputs/apk" ]]; then
+    find WordPress/build/outputs/apk -type f -iname "*release*.apk" -not -iname "*unaligned*.apk" -print -quit || true
+  fi
 }
 
-build_candidates=(
-  "assembleRelease"
-  "assembleWordpressVanillaRelease"
-  "assembleWordpressVanillaDebug"
-  "assembleDebug"
-)
-
-built_apk=""
-for task in "${build_candidates[@]}"; do
-  log_info "Attempting Gradle task: ${task}"
-  if ./gradlew --no-daemon "${task}" -x lint; then
-    built_apk=$(find_apk)
-    if [[ -n "${built_apk}" ]]; then
-      log_info "Found APK after task ${task}: ${built_apk}"
-      break
-    fi
-  else
-    log_warn "Gradle task ${task} failed or produced no APK, continuing"
-  fi
-done
-
+built_apk="$(find_apk_module)"
 if [[ -z "${built_apk}" ]]; then
-  fatal "No APK produced by gradle"
+  built_apk="$(find . -type f -iname "*wordpress*vanilla*release*.apk" -not -iname "*unaligned*.apk" -print -quit || true)"
+fi
+if [[ -z "${built_apk}" ]]; then
+  built_apk="$(find . -type f -iname "*release*.apk" -not -iname "*unaligned*.apk" -print -quit || true)"
+fi
+if [[ -z "${built_apk}" ]]; then
+  fatal "No APK produced by ${TASK}"
 fi
 
 mkdir -p "${APK_DIR}"
