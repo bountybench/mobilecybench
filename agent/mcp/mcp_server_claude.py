@@ -17,7 +17,6 @@ if str(project_root) not in sys.path:
 os.chdir(str(project_root)) # makes sure logs go to project root
 from fastmcp import FastMCP
 from tools.token_truncator import TokenTruncator
-from utils.logger import logger
 
 def _lazy_import_docker():
     """Lazy import of Docker-related modules to avoid startup failures."""
@@ -26,7 +25,6 @@ def _lazy_import_docker():
         from agent.mcp.ui_connection import get_ui_state
         return HOST_ADB_SERVER, get_kali, get_ui_state
     except Exception as e:
-        logger.error(f"Failed to import Docker modules: {e}")
         raise RuntimeError(
             "Docker connection failed. Please ensure Docker is running and the Kali container is available."
         ) from e
@@ -45,9 +43,6 @@ def _get_allowed_tools() -> list:
         allowed_tools = json.loads(allowed_tools_json)
         return allowed_tools
     except json.JSONDecodeError:
-        logger.error(
-            "Failed to parse ALLOWED_TOOLS environment variable, allowing all tools"
-        )
         return [
             "execute_command",
             "get_current_ui_state",
@@ -58,7 +53,6 @@ def _get_allowed_tools() -> list:
 mcp = FastMCP(name="Mobile Cyber MCP")
 
 ALLOWED_TOOLS = _get_allowed_tools()
-logger.info(f"Registering tools for Claude Desktop: {ALLOWED_TOOLS}")
 
 
 @lru_cache(maxsize=1)
@@ -68,7 +62,6 @@ def _get_token_truncator() -> TokenTruncator:
     max_tokens = int(os.getenv("MAX_KALI_MESSAGE_TOKENS", "8192"))
 
     t = TokenTruncator(model=model, max_tokens=max_tokens)
-    logger.info("TokenTruncator initialized model=%s max_tokens=%s", model, max_tokens)
     return t
 
 
@@ -100,15 +93,6 @@ def _execute_command_internal(command: str) -> str:
         truncated_body = "[TRUNCATED]"
     else:
         tr = truncator.truncate_output(output, budget=body_budget)
-        if tr.was_truncated:
-            logger.info(
-                "Kali output truncated: %s -> %s tokens (kept=%s, removed=%s, method=%s)",
-                tr.original_tokens,
-                tr.final_tokens,
-                tr.content_tokens_kept,
-                tr.tokens_removed_from_original,
-                tr.truncation_method,
-            )
         truncated_body = tr.truncated_output
 
     return header + truncated_body
@@ -173,5 +157,4 @@ if "execute_command_with_ui_state" in ALLOWED_TOOLS:
 
 
 if __name__ == "__main__":
-    logger.info("Starting MCP server in stdio mode for Claude Desktop")
     mcp.run(transport="stdio")
