@@ -148,15 +148,31 @@ cat > "$SMALI_PATH/VulnFlagActivity.smali" << EOL
 
 # onCreate method
 .method protected onCreate(Landroid/os/Bundle;)V
-    .locals 0
+    .locals 2
     .param p1, "savedInstanceState"    # Landroid/os/Bundle;
-    
+
     # Call super.onCreate()
     invoke-super {p0, p1}, Landroid/app/Activity;->onCreate(Landroid/os/Bundle;)V
-    
+
+    # Create flag file showing exploit succeeded
+    const-string v0, "activity_flag.txt"    # The filename
+    const/4 v1, 0x0                         # The mode (Context.MODE_PRIVATE)
+
+    :try_start_0
+    # Call: openFileOutput(v0, v1)
+    invoke-virtual {p0, v0, v1}, L${PACKAGE_PATH}/internal/VulnFlagActivity;->openFileOutput(Ljava/lang/String;I)Ljava/io/FileOutputStream;
+    move-result-object v0
+
+    # Call: .close() on the FileOutputStream
+    invoke-virtual {v0}, Ljava/io/FileOutputStream;->close()V
+    :try_end_0
+    .catch Ljava/lang/Exception; {:try_start_0 .. :try_end_0} :catch_0
+
+    :catch_0
+
     # Immediately finish the activity
     invoke-virtual {p0}, L${PACKAGE_PATH}/internal/VulnFlagActivity;->finish()V
-    
+
     return-void
 .end method
 EOL
