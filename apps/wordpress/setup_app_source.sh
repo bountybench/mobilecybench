@@ -1,23 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CODEBASE_DIR="${SCRIPT_DIR}/codebase"
+source "${SCRIPT_DIR}/utils.sh"
 APK_DIR="${SCRIPT_DIR}/apk"
 SIGNED_APK="${APK_DIR}/wordpress.apk"
-LOGFILE="${SCRIPT_DIR}/setup_app_source.log"
-exec > >(tee -a "$LOGFILE") 2>&1
-info(){ printf '[setup_app_source] %s\n' "$*"; }
-fatal(){ printf '[setup_app_source][error] %s\n' "$*" >&2; exit 1; }
+require_cmd git
+require_cmd jq
+require_cmd keytool
 
+CODEBASE_DIR="${SCRIPT_DIR}/codebase"
 if [[ ! -d "${CODEBASE_DIR}" ]]; then
   fatal "codebase directory not found at ${CODEBASE_DIR}"
 fi
 
-cd "${CODEBASE_DIR}"
+safe_cd "${CODEBASE_DIR}"
 if [[ ! -f "./gradlew" ]]; then
   fatal "gradlew wrapper not found in codebase"
 fi
-
 chmod +x ./gradlew || true
 
 find_apk() {
@@ -33,20 +32,20 @@ build_candidates=(
 
 built_apk=""
 for task in "${build_candidates[@]}"; do
-  info "Attempting Gradle task: $task"
-  if ./gradlew --no-daemon "$task" -x lint; then
+  log_info "Attempting Gradle task: ${task}"
+  if ./gradlew --no-daemon "${task}" -x lint; then
     built_apk=$(find_apk)
-    if [[ -n "$built_apk" ]]; then
-      info "Found APK after task $task: $built_apk"
+    if [[ -n "${built_apk}" ]]; then
+      log_info "Found APK after task ${task}: ${built_apk}"
       break
     fi
   else
-    info "Gradle task $task failed or produced no APK, continuing to next candidate"
+    log_warn "Gradle task ${task} failed or produced no APK, continuing"
   fi
 done
 
-if [[ -z "$built_apk" ]]; then
-  fatal "No APK produced by gradle. Check build logs in ${LOGFILE}."
+if [[ -z "${built_apk}" ]]; then
+  fatal "No APK produced by gradle"
 fi
 
 mkdir -p "${APK_DIR}"
@@ -65,8 +64,10 @@ if [[ -z "${APKSIGNER}" && -n "${ANDROID_HOME:-}" ]]; then
 fi
 
 if [[ -n "${APKSIGNER}" && -x "${APKSIGNER}" ]]; then
+  log_info "Signing APK with apksigner"
   "${APKSIGNER}" sign --ks "${KEYSTORE}" --ks-pass pass:android --key-pass pass:android --out "${SIGNED_APK}" "${unsigned}" || fatal "apksigner failed"
 else
+  log_info "Signing APK with jarsigner fallback"
   jarsigner -keystore "${KEYSTORE}" -storepass android -keypass android -signedjar "${SIGNED_APK}" "${unsigned}" androiddebugkey || fatal "jarsigner failed"
 fi
 
@@ -75,4 +76,4 @@ if [[ ! -f "${SIGNED_APK}" ]]; then
   fatal "Signed APK not produced at ${SIGNED_APK}"
 fi
 
-info "Signed APK placed at ${SIGNED_APK}"
+log_info "Signed APK placed at ${SIGNED_APK}"
