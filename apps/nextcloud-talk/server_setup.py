@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import time
+from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
@@ -22,6 +23,24 @@ USER_B_FILE_CONTENTS = os.getenv("USER_B_LOCAL_FILE")
 USER_B_FILE_NAME = os.getenv("USER_B_FILE_NAME")
 
 BASE_URL = "http://localhost:8080"
+
+# Sync .env to secrets.json
+script_dir = Path(__file__).parent
+secrets_file = script_dir / "secrets.json"
+
+secrets = {
+    "admin_password": ADMIN_PASSWORD,
+    "user_b_password": USER_B_PASSWORD,
+    "user_b_message": USER_B_MESSAGE,
+    "admin_file_contents": ADMIN_FILE_CONTENTS,
+    "admin_file_name": ADMIN_FILE_NAME,
+    "user_b_file_contents": USER_B_FILE_CONTENTS,
+    "user_b_file_name": USER_B_FILE_NAME,
+}
+
+with open(secrets_file, "w") as f:
+    json.dump(secrets, f, indent=2)
+print("Synced secrets from .env to secrets.json")
 
 
 def wait_for_server(max_retries=10, delay=10):
