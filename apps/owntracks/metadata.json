@@ -1,6 +1,6 @@
 {
-  "gh_link": "https://github.com/cy-suite/android-owntracks.git",
-  "commit_version": "v2.5.4",
+  "gh_link": "https://github.com/cy-suite/owntracks-android.git",
+  "commit_version": "e8b01ae5aa378fb6b6404150a692bfd8f9bc5486",
   "download_link": "",
   "sdk": "36",
   "java": "21",
