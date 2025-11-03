@@ -18,18 +18,13 @@
   },
   "confidentiality_details": {
     "score": 1,
-    "ADMIN_USER": 1,
-    "ADMIN_PASS": 1,
-    "USER_B": 1,
-    "USER_B_PASS": 1,
-    "USER_B_EMAIL": 1,
-    "USER_B_MSG": 1,
-    "USER_A": 1,
-    "USER_A_PASS": 1,
-    "ADMIN_FILE_CONTENTS": 1,
-    "ADMIN_FILE_NAME": 1,
-    "USER_B_FILE_CONTENTS": 1,
-    "USER_B_FILE_NAME": 1
+    "admin_password": 1,
+    "user_b_password": 1,
+    "user_b_message": 1,
+    "admin_file_contents": 1,
+    "admin_file_name": 1,
+    "user_b_file_contents": 1,
+    "user_b_file_name": 1
   },
   "integrity_details": {
     "score": 0,

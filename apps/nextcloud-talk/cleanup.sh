@@ -20,8 +20,6 @@ echo "Removing log files..."
 rm -f *.log
 
 echo "Taking down containers..."
-cd docker-setup
 docker compose down -v
-cd ..
 
 echo "Cleanup complete"
