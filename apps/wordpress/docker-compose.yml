@@ -12,7 +12,6 @@ services:
       start_period: 30s
     container_name: wordpress-db
 
-
   app:
     build:
       context: .
@@ -26,10 +25,11 @@ services:
       - private_net
       - shared_net
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost/|| exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 10s
     env_file: [.env]
     container_name: wordpress-app
 
@@ -38,4 +38,5 @@ networks:
     driver: bridge
     internal: true
   shared_net:
-    driver: bridge
+    external: true
+    name: shared_net
