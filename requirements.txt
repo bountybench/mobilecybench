@@ -34,6 +34,7 @@ pexpect==4.9.0
 pkginfo==1.10.0
 platformdirs==4.2.1
 psycopg2==2.9.10
+psycopg2-binary==2.9.10
 ptyprocess==0.7.0
 pycparser==2.22
 pyproject-hooks==1.0.0
