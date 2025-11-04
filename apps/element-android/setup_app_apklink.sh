@@ -27,8 +27,17 @@ echo "Downloading Element Android APK from: $DOWNLOAD_LINK"
 # Create apk directory if it doesn't exist
 mkdir -p "$SCRIPT_DIR/apk" 
 
-# Download the APK
-curl -L "$DOWNLOAD_LINK" -o "$SCRIPT_DIR/apk/vector-gplay-rustCrypto-x86_64-release-unsigned.apk"
+# Download the APK - first get a fresh LFS download URL
+echo "Getting LFS download URL..."
+LFS_URL=$(curl -H "Accept: application/vnd.git-lfs+json" -H "Content-Type: application/json" -X POST "https://github.com/cy-suite/element-android-apks.git/info/lfs/objects/batch" -d '{"operation":"download","objects":[{"oid":"139f043e1a4f6d791fffd9041659ba95ae067cf44ec0bd1432809efd3a25a4b2","size":76341616}]}' 2>/dev/null | python3 -c "import json, sys; data=json.load(sys.stdin); print(data['objects'][0]['actions']['download']['href'])")
+
+if [[ -z "$LFS_URL" ]]; then
+    echo "ERROR: Failed to get LFS download URL"
+    exit 1
+fi
+
+echo "Downloading APK from LFS..."
+curl -L "$LFS_URL" -o "$SCRIPT_DIR/apk/vector-gplay-rustCrypto-x86_64-release-unsigned.apk"
 
 # Verify the download
 if [[ -f "$SCRIPT_DIR/apk/vector-gplay-rustCrypto-x86_64-release-unsigned.apk" ]]; then
