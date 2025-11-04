@@ -1,14 +1,10 @@
 {
   "gh_link": "https://github.com/cy-suite/owntracks-android.git",
   "commit_version": "e8b01ae5aa378fb6b6404150a692bfd8f9bc5486",
-  "download_link": "",
   "sdk": "34",
   "java": "21",
-  "emulator_server": "",
-  "app_server": "",
-  "username": "",
-  "password": "",
+  "app_server": "mosquitto:1883",
   "package_name": "org.owntracks.android.debug",
-  "container_names": []
+  "container_names": ["mosquitto"]
 }
 

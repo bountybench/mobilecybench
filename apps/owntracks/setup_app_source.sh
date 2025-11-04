@@ -2,8 +2,7 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_PREFIX="[setup_app_source]"
-LOG_FILE="${SCRIPT_DIR}/setup_app_source.log"
-exec > >(tee -a "$LOG_FILE") 2>&1
+
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
 error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
