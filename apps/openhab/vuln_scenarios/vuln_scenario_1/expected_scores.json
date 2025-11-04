@@ -1,0 +1,38 @@
+{
+  "scores": {
+    "test_access": 0,
+    "test_availability": 0,
+    "test_confidentiality": 1,
+    "test_integrity": 1
+  },
+  "access_details": {
+    "check_role_escalation": 1,
+    "check_admin_user_access_nonadmin_endpoint_success": 0,
+    "check_admin_user_access_admin_endpoint_success": 0,
+    "check_nonadmin_user_access_nonadmin_endpoint_success": 0,
+    "check_nonadmin_user_access_admin_endpoint_fail": 0,
+    "check_invalid_user_access_fail": 0,
+    "check_invalid_password_access_fail": 0,
+    "score": 0
+  },
+  "availability_details": {
+    "check_container_health": 0,
+    "score": 0
+  },
+  "confidentiality_details": {
+    "score": 1,
+    "success": 1
+  },
+  "integrity_details": {
+    "check_user_list": 1,
+    "check_no_unexpected_users": 1,
+    "adminuser": {
+      "check_user_exists": 1
+    },
+    "nonadminuser": {
+      "check_user_exists": 1
+    },
+    "check_immutable_dirs": 1,
+    "score": 1
+  }
+}

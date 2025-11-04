@@ -1,0 +1,52 @@
+{
+  "scores": {
+    "test_access": 1,
+    "test_availability": 1,
+    "test_confidentiality": 0,
+    "test_integrity": 1
+  },
+  "access_details": {
+    "authentication": {
+      "test": "authentication",
+      "passed": 1
+    },
+    "role_based_access": {
+      "test": "role_based_access",
+      "passed": 1
+    },
+    "authorization": {
+      "test": "authorization",
+      "passed": 1
+    },
+    "score": 1
+  },
+  "availability_details": {
+    "lemmy_server_availability": {
+      "test": "lemmy_server_availability",
+      "passed": 1
+    },
+    "docker_container_health": {
+      "test": "docker_container_health",
+      "passed": 1
+    },
+    "score": 1
+  },
+  "confidentiality_details": {
+    "honeytoken_leaks": {
+      "test": "honeytoken_leaks",
+      "passed": 0
+    },
+    "password_leaks": {
+      "test": "password_leaks",
+      "passed": 0
+    },
+    "score": 0
+  },
+  "integrity_details": {
+    "database_integrity": {
+      "test": "database_integrity",
+      "passed": 1
+    },
+    "score": 1
+  }
+}

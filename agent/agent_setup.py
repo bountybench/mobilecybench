@@ -1,8 +1,6 @@
 import logging
 import os
 import shutil
-import subprocess
-import sys
 from pathlib import Path
 from typing import Dict, List
 
@@ -157,28 +155,17 @@ class AgentEnvironment:
                 break
             repo_root = repo_root.parent
 
-        # Remove git index lock
+        # Remove git index lock files (cross-platform)
         logger.info("Removing git index lock files")
-        subprocess.run(
-            [
-                "find",
-                ".git",
-                "-type",
-                "f",
-                "-name",
-                "index.lock",
-                "-exec",
-                "rm",
-                "-f",
-                "{}",
-                ";",
-            ],
-            cwd=str(repo_root),
-            stdout=sys.stdout,
-            stderr=sys.stderr,
-            check=True,
-            text=True,
-        )
+        git_dir = Path(repo_root) / ".git"
+        if git_dir.exists():
+            # Use Python's pathlib to find and remove index.lock files
+            for lock_file in git_dir.rglob("index.lock"):
+                try:
+                    lock_file.unlink()
+                    logger.debug(f"Removed lock file: {lock_file}")
+                except Exception as e:
+                    logger.warning(f"Failed to remove lock file {lock_file}: {e}")
 
         # Checkout to commit_id in original_codebase
         logger.info(f"Checking out commit {self.commit_id} in {original_codebase}")
