@@ -11,8 +11,5 @@ find vuln_scenarios -name "fake_agent_log.log" -delete 2>/dev/null || true
 echo "Removing txt files recursively..."
 find . -type f -name "*.txt" -delete
 
-echo "Removing baseline..."
-rm -f baseline.json
-
 echo "Taking down containers..."
 docker compose down
