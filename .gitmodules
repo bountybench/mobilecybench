@@ -52,6 +52,9 @@
 [submodule "apps/element-android/codebase"]
 	path = apps/element-android/codebase
 	url = https://github.com/cy-suite/Element-Android.git
+[submodule "apps/wallabag/codebase"]
+	path = apps/wallabag/codebase
+	url = https://github.com/cy-suite/wallabag.git
 [submodule "apps/davx5/codebase"]
 	path = apps/davx5/codebase
 	url = https://github.com/cy-suite/DAVx5.git

@@ -19,6 +19,7 @@ from agent.prompts.prompts import (
 from utils.agent_utils import take_screenshot
 from utils.logger import agent_logger, logger_manager
 from utils.mcp_utils import get_mcp_server_config
+from utils.time_tracker import time_tracker
 from utils.token_tracker import TokenTracker
 
 
@@ -41,14 +42,18 @@ class CustomAgent:
         network_access: bool = True,
     ):
         self.dry_run = dry_run
-        # Load environment variables from .env file in the agent directory
-        agent_dir = os.path.dirname(os.path.abspath(__file__))
-        env_file = os.path.join(agent_dir, ".env")
-        if os.path.exists(env_file):
-            load_dotenv(env_file, override=True)
 
-        self.provider = get_model_provider("openai")
-        self.provider.validate()
+        # Skip provider setup in dry-run mode
+        if not self.dry_run:
+            # Load environment variables from .env file in the agent directory
+            agent_dir = os.path.dirname(os.path.abspath(__file__))
+            env_file = os.path.join(agent_dir, ".env")
+            if os.path.exists(env_file):
+                load_dotenv(env_file, override=True)
+
+            self.provider = get_model_provider("openai")
+            self.provider.validate()
+
         self.model = model
         self.max_iterations = max_iterations
         self.max_model_response_tokens = max_model_response_tokens
@@ -63,19 +68,19 @@ class CustomAgent:
         # Set up MCP configuration
         self.mcp_config = mcp_config or get_mcp_server_config()
 
-        # Set up system prompt
-        if system_prompt:
-            self.system_prompt = {
-                "role": "system",
-                "content": [{"type": "input_text", "text": system_prompt}],
-            }
-        else:
-            self.system_prompt = self._get_default_system_prompt()
-            agent_logger.info(f"Conversation system prompt: {self.system_prompt}")
-
-        # Initialize conversation with system prompt
+        # Set up system prompt (skip in dry-run mode)
         self.conversation_id = None
         if not self.dry_run:
+            if system_prompt:
+                self.system_prompt = {
+                    "role": "system",
+                    "content": [{"type": "input_text", "text": system_prompt}],
+                }
+            else:
+                self.system_prompt = self._get_default_system_prompt()
+                agent_logger.info(f"Conversation system prompt: {self.system_prompt}")
+
+            # Initialize conversation with system prompt
             system_content = self.system_prompt["content"][0]["text"]
             conversation = self.provider.client.conversations.create(
                 metadata={"app_name": self.app_name, "model": self.model},
@@ -148,7 +153,6 @@ class CustomAgent:
 
     def run(self) -> dict:
         if self.dry_run:
-            print("[Agent] Dry run - returning immediately")
             agent_logger.info("Dry run: Quick return without execution")
             return {
                 "status": "This is a dry run. No OpenAI API calls were made.",
@@ -158,19 +162,12 @@ class CustomAgent:
             }
 
         for turn in range(self.max_iterations):
-            print(f"[Agent] Starting turn {turn + 1}/{self.max_iterations}")
-
             agent_logger.info(
                 f"{'=' * 20} TURN {turn + 1}/{self.max_iterations} {'=' * 20}"
             )
 
-            print(f"[Agent] Making OpenAI API call with model {self.model}")
-            print(
-                f"[Agent] MCP config: {self.mcp_config.get('server_url', 'No server_url')}"
-            )
-            print(f"[Agent] Using conversation_id: {self.conversation_id}")
-
             agent_logger.info(f"[API CALL - Turn {turn + 1}]")
+            agent_logger.info(f"Model: {self.model}")
             agent_logger.info(f"Conversation ID: {self.conversation_id}")
             agent_logger.info("-" * 40)
 
@@ -196,14 +193,18 @@ class CustomAgent:
                 except Exception as e:
                     agent_logger.error(f"Error taking screenshot: {e}")
 
-            resp = self.provider.call(
-                model=self.model,
-                conversation_id=self.conversation_id,
-                input_messages=[screenshot_input] if screenshot_input else None,
-                tools=[self.mcp_config],
-                max_output_tokens=self.max_model_response_tokens,
-                timeout_ms=self.timeout_ms,
-            )
+            # Use context manager for LLM call timing
+            with time_tracker.llm_timing(
+                model=self.model, conversation_id=self.conversation_id, turn=turn + 1
+            ):
+                resp = self.provider.call(
+                    model=self.model,
+                    conversation_id=self.conversation_id,
+                    input_messages=[screenshot_input] if screenshot_input else None,
+                    tools=[self.mcp_config],
+                    max_output_tokens=self.max_model_response_tokens,
+                    timeout_ms=self.timeout_ms,
+                )
             print("[Agent] API call completed")
 
             # Record token usage and cost
@@ -214,7 +215,6 @@ class CustomAgent:
 
             # Process response
             assistant_response = resp.output_text
-            print(f"[Agent] Response length: {len(assistant_response)} chars")
 
             agent_logger.info(f"[API RESPONSE - {len(assistant_response)} chars]")
             agent_logger.info(assistant_response)
@@ -238,7 +238,6 @@ class CustomAgent:
                         and output_item.type == "mcp_list_tools"
                     ):
                         tools_count = len(getattr(output_item, "tools", []))
-                        print(f"[Agent] MCP tools listed: {tools_count} tools")
 
                         agent_logger.info(f"MCP Tools Listed: {tools_count} tools")
                         tools = getattr(output_item, "tools", [])
@@ -254,8 +253,6 @@ class CustomAgent:
                         arguments = getattr(output_item, "arguments", "")
                         output = getattr(output_item, "output", "")
                         error = getattr(output_item, "error", None)
-
-                        print(f"[Agent] MCP call: {name} -> {str(output)}...")
 
                         agent_logger.info(f"MCP Call: {name}")
                         agent_logger.info(f"  Arguments: {arguments}")
@@ -273,8 +270,6 @@ class CustomAgent:
                     msg = {}
 
                 if msg.get("command") == "FinalSubmissionCommand":
-                    print("[Agent] Final submission received - stopping execution")
-
                     agent_logger.info(f"{'=' * 20} RUN COMPLETED {'=' * 20}")
                     agent_logger.info("Status: Final submission received")
                     agent_logger.info(f"Total turns: {turn + 1}")
@@ -283,8 +278,6 @@ class CustomAgent:
                         f"Token totals: {json.dumps(self.token_tracker.totals())}"
                     )
                     agent_logger.info(f"Log file: {self.log_file}")
-
-                    print(f"[Agent] Full log saved to: {self.log_file}")
 
                     # Clean up conversation
                     if self.conversation_id:
@@ -303,17 +296,12 @@ class CustomAgent:
                         "log_file": self.log_file,
                     }
 
-        print(f"[Agent] Reached maximum iterations ({self.max_iterations})")
-
         # Log completion
-        with open(self.log_file, "a") as f:
-            f.write(f"\n{'=' * 20} RUN COMPLETED {'=' * 20}\n")
-            f.write("Status: Maximum iterations reached\n")
-            f.write(f"Total turns: {self.max_iterations}\n")
-            f.write(f"Token totals: {json.dumps(self.token_tracker.totals())}\n")
-            f.write(f"Log file: {self.log_file}\n")
-
-        print(f"[Agent] Full log saved to: {self.log_file}")
+        agent_logger.info(f"{'=' * 20} RUN COMPLETED {'=' * 20}")
+        agent_logger.info("Status: Maximum iterations reached")
+        agent_logger.info(f"Total turns: {self.max_iterations}")
+        agent_logger.info(f"Token totals: {json.dumps(self.token_tracker.totals())}")
+        agent_logger.info(f"Log file: {self.log_file}")
 
         # Clean up conversation
         if self.conversation_id:

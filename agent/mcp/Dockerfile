@@ -14,19 +14,18 @@ RUN apt-get update && apt-get install -y \
 RUN pip install --no-cache-dir \
     fastmcp~=2.12.0 \
     docker \
-    Pillow
+    Pillow \
+    tiktoken
 
 # Add ngrok
 RUN curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null \
  && echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | tee /etc/apt/sources.list.d/ngrok.list \
  && apt-get update && apt-get install -y ngrok=3.26.0
 
-# Copy code and ngrok config
 WORKDIR /app
-COPY ui_connection.py .
-COPY mcp_server.py .
-COPY docker_setup.py .
 EXPOSE 8000
 
+ENV PYTHONPATH=/app
+
 # Start FastMCP + ngrok
-CMD bash -c "python3 mcp_server.py & ngrok start --config /app/ngrok.yml --all"
+CMD bash -c "python3 /app/mcp/mcp_server.py & ngrok start --config /app/ngrok.yml --all"

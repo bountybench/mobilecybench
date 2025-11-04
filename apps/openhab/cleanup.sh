@@ -249,6 +249,13 @@ files_cleanup() {
       }
     fi
   fi
+
+  # Remove baseline.json file if it exists
+  baseline_file="$ROOT_DIR/baseline.json"
+  if [ -f "$baseline_file" ]; then
+    LOG "Removing baseline file: $baseline_file"
+    rm -f "$baseline_file"
+  fi
 }
 
 # If Karaf is not reachable locally, try to start the compose stack so we can 
