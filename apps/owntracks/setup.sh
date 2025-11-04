@@ -30,25 +30,40 @@ load_credentials() {
 setup_mosquitto() {
     info "Setting up Mosquitto MQTT broker"
     
-    # Start Mosquitto container
-    if command -v docker >/dev/null 2>&1; then
-        cd "$SCRIPT_DIR"
-        docker compose up -d mosquitto
-        
-        # Wait for container to be ready
-        sleep 2
-        
-        # Create password file inside the container
-        info "Creating MQTT user: $MQTT_USERNAME"
-        docker exec mosquitto mosquitto_passwd -b -c /mosquitto/config/mosquitto.password "$MQTT_USERNAME" "$MQTT_PASSWORD"
-        
-        # Reload mosquitto to apply password changes
-        docker exec mosquitto killall -HUP mosquitto || true
-        
-        info "Mosquitto MQTT broker ready at 10.0.2.2:1883"
-    else
+    if ! command -v docker >/dev/null 2>&1; then
         fail "Docker is required but not found"
     fi
+    
+    cd "$SCRIPT_DIR"
+    
+    # Create password file BEFORE starting container (avoids crash on startup)
+    info "Creating MQTT password file with user: $MQTT_USERNAME"
+    mkdir -p "$SCRIPT_DIR/mosquitto/config"
+    
+    # Use mosquitto_passwd via docker to create the password file
+    # This runs the command in a temporary container and saves to host volume
+    docker run --rm \
+        -v "$SCRIPT_DIR/mosquitto/config:/config" \
+        eclipse-mosquitto:2.0.15 \
+        mosquitto_passwd -b -c /config/mosquitto.password "$MQTT_USERNAME" "$MQTT_PASSWORD"
+    
+    info "Password file created successfully"
+    
+    # Now start Mosquitto container - it will enforce authentication
+    info "Starting Mosquitto MQTT broker..."
+    docker compose up -d mosquitto
+    
+    # Wait for container to be ready
+    info "Waiting for Mosquitto to start..."
+    sleep 5
+    
+    # Verify container is running
+    if ! docker ps | grep -q mosquitto; then
+        fail "Mosquitto container failed to start"
+    fi
+    
+    info "Mosquitto MQTT broker ready at 10.0.2.2:1883"
+    info "Authentication required - User: $MQTT_USERNAME"
 }
 
 install_and_configure_app() {
