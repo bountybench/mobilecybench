@@ -34,9 +34,6 @@ done
 echo "Building Element Android APK..."
 ./setup_app_apklink.sh
 
-echo "Installing Element Android APK..."
-adb install -r apk/element-android.apk
-
 echo "Element Android setup complete!"
 echo ""
 echo "Matrix homeserver available at: http://localhost:8008"
