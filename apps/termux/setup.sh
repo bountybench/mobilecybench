@@ -3,7 +3,7 @@ set -e
 
 echo "Setting up Termux app..."
 
-APK_PATH="apk/termux-release.apk"
+APK_PATH="apk/termux.apk"
 if [ ! -f "$APK_PATH" ]; then
     echo "APK not found, building it now..."
     echo "Running setup_app_source.sh to build APK..."
