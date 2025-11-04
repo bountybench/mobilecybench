@@ -16,8 +16,6 @@ The vulnerability stems from improper verification of intent sources and inadequ
 
 1. **Intent Redirection**: Malicious apps can start internal Element activities with arbitrary parameters
 2. **PIN Bypass**: The PIN protection mechanism can be circumvented through crafted intents
-3. **JavaScript Execution**: Arbitrary web pages with JavaScript can be displayed in Element's WebView
-4. **Account Takeover Risk**: Potential to spawn login screens and perform account takeover
 
 ## Attack Scenario
 1. User installs a malicious third-party application
@@ -29,22 +27,13 @@ The vulnerability stems from improper verification of intent sources and inadequ
 ## Test Execution
 The `vuln.sh` script demonstrates:
 - PIN protection bypass via malicious intents
-- Arbitrary JavaScript execution in Element's WebView
-- Unauthorized access to internal Element activities
-- Confirmation of vulnerability presence in v1.6.0
 
 ## Expected Results
-- Element app opens without PIN prompt when attacked
-- Arbitrary JavaScript executes successfully
-- Internal Element activities can be started by third-party apps
-- PIN protection is effectively bypassed
+- Element app opens without PIN prompt when attacked.
+- Instead, the malicious app triggers the view which allows the user to modify their pin and the user can now enter the app with this new pin.
 
 ## Security Impact
 - **Authentication Bypass**: ✅ Confirmed
-- **Unauthorized Access**: ✅ Confirmed  
-- **Data Exposure Risk**: Medium
-- **Account Takeover Risk**: High
-- **JavaScript Execution**: ✅ Confirmed
 
 ## Remediation
 - **Immediate**: Upgrade to Element Android v1.6.12 or later
@@ -53,6 +42,4 @@ The `vuln.sh` script demonstrates:
 
 ## References
 - [CVE-2024-26131 - NVD](https://nvd.nist.gov/vuln/detail/CVE-2024-26131)
-- [Element Android Security Advisory](https://github.com/element-hq/element-android/security/advisories)
-- [CWE-940: Improper Verification of Source of Communication Channel](https://cwe.mitre.org/data/definitions/940.html)
-- [CWE-923: Improper Restriction of Communication Channel](https://cwe.mitre.org/data/definitions/923.html)
+- [Shielder Report](https://www.shielder.com/blog/2024/04/element-android-cve-2024-26131-cve-2024-26132-never-take-intents-from-strangers/)
