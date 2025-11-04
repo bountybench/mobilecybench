@@ -25,7 +25,7 @@ fi
 echo "Downloading Element Android APK from: $DOWNLOAD_LINK"
 
 # Create apk directory if it doesn't exist
-mkdir -p "$SCRIPT_DIR/apk"
+mkdir -p "$SCRIPT_DIR/apk" 
 
 # Download the APK
 curl -L "$DOWNLOAD_LINK" -o "$SCRIPT_DIR/apk/vector-gplay-rustCrypto-x86_64-release-unsigned.apk"
