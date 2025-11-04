@@ -9,20 +9,25 @@ from pathlib import Path
 
 # Add project root to sys.path to enable imports
 # (when Claude Desktop launches the script directly)
+# This must happen before imports that depend on project modules
 script_dir = Path(__file__).parent
 project_root = script_dir.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-os.chdir(str(project_root)) # makes sure logs go to project root
-from fastmcp import FastMCP
-from tools.token_truncator import TokenTruncator
+from fastmcp import FastMCP  # noqa: E402
+
+from tools.token_truncator import TokenTruncator  # noqa: E402
+
+os.chdir(str(project_root))  # makes sure logs go to project root
+
 
 def _lazy_import_docker():
     """Lazy import of Docker-related modules to avoid startup failures."""
     try:
         from agent.mcp.docker_setup import HOST_ADB_SERVER, get_kali
         from agent.mcp.ui_connection import get_ui_state
+
         return HOST_ADB_SERVER, get_kali, get_ui_state
     except Exception as e:
         raise RuntimeError(
@@ -58,7 +63,7 @@ ALLOWED_TOOLS = _get_allowed_tools()
 @lru_cache(maxsize=1)
 def _get_token_truncator() -> TokenTruncator:
     # TokenTruncator doesn't support anthropic models - just going with the default settings
-    model = os.getenv("MODEL", "gpt-5-2025-08-07") 
+    model = os.getenv("MODEL", "gpt-5-2025-08-07")
     max_tokens = int(os.getenv("MAX_KALI_MESSAGE_TOKENS", "8192"))
 
     t = TokenTruncator(model=model, max_tokens=max_tokens)
@@ -99,10 +104,11 @@ def _execute_command_internal(command: str) -> str:
 
 
 if "execute_command" in ALLOWED_TOOLS:
+
     @mcp.tool(
         description=(
-        "Run a terminal command and return the plain text output. "
-        "No UI state is included. Ideal for executing system-level or security-related commands."
+            "Run a terminal command and return the plain text output. "
+            "No UI state is included. Ideal for executing system-level or security-related commands."
         )
     )
     def execute_command(command: str) -> str:
@@ -114,12 +120,13 @@ if "execute_command" in ALLOWED_TOOLS:
 
 
 if "get_current_ui_state" in ALLOWED_TOOLS:
+
     @mcp.tool(
-            description=(
+        description=(
             "Retrieve a structured snapshot of the current Android emulator UI, "
             "including all visible and interactive elements. "
             "Use this tool when you need UI context without executing any commands."
-            )
+        )
     )
     def get_current_ui_state() -> dict:
         """Get current UI state with all interactive elements from the Android emulator."""
@@ -131,11 +138,12 @@ if "get_current_ui_state" in ALLOWED_TOOLS:
 
 
 if "execute_command_with_ui_state" in ALLOWED_TOOLS:
+
     @mcp.tool(
         description=(
-        "Execute terminal command and return both "
-        "the command's text output and a snapshot of the current UI state. "
-        "Use this when you need to correlate command results with on-screen UI elements."
+            "Execute terminal command and return both "
+            "the command's text output and a snapshot of the current UI state. "
+            "Use this when you need to correlate command results with on-screen UI elements."
         )
     )
     def execute_command_with_ui_state(command: str) -> dict:
@@ -150,8 +158,11 @@ if "execute_command_with_ui_state" in ALLOWED_TOOLS:
                 # Try to get UI state even on error
                 _, _, get_ui_state = _lazy_import_docker()
                 ui_data = get_ui_state()
-            except:
-                ui_data = {"ui_elements": []}
+            except Exception as e:
+                ui_data = {
+                    "ui_elements": [],
+                    "error": f"Failed to get UI state: {str(e)}",
+                }
             ui_data["response"] = f"Error: {str(e)}"
             return ui_data
 
