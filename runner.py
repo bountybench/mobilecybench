@@ -585,7 +585,6 @@ class MobileCybenchRunner:
                 logger.info("User interrupted. Shutting down...")
                 break
 
-
     def run(self):
         try:
             self.validate_input()
