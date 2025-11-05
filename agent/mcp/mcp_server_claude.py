@@ -22,7 +22,6 @@ from fastmcp import FastMCP  # noqa: E402
 from tools.token_truncator import TokenTruncator  # noqa: E402
 
 
-
 def _lazy_import_docker():
     """Lazy import of Docker-related modules to avoid startup failures."""
     try:
