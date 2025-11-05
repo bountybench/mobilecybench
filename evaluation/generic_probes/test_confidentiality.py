@@ -2,7 +2,8 @@ import json
 import sys
 from pathlib import Path
 
-from evaluation.generic_probes.helpers import get_metadata
+from helpers import get_metadata
+
 from utils.confidentiality_utils import check_leak_indicators
 from utils.uuid_flags_utils import load_flags
 
@@ -16,7 +17,7 @@ def main():
     results_summary = {}
 
     log_path = sys.argv[1]
-    with open(log_path, "r") as f:
+    with open(log_path, "r", encoding="utf-8", errors="replace") as f:
         log = f.read()
 
     # Load flags from project root

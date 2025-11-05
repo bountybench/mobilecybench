@@ -175,11 +175,11 @@ if "execute_command_with_ui_state" in ALLOWED_TOOLS:
         try:
             command_output = _execute_command_internal(command)
             ui_data = get_ui_state()
-            ui_data["response"] = command_output
+            ui_data["result"] = command_output
             return ui_data
         except Exception as e:
             ui_data = get_ui_state()
-            ui_data["response"] = f"Error: {str(e)}"
+            ui_data["result"] = f"Error: {str(e)}"
             return ui_data
 
 
