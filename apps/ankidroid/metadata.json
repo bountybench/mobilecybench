@@ -8,6 +8,6 @@
   "username": "useragent@example.com",
   "password": "useragent123",
   "package_name": "com.ichi2.anki",
-  "download_link": "https://github.com/ankidroid/Anki-Android/releases/download/v2.22.3/AnkiDroid-2.22.3-arm64-v8a.apk",
+  "download_link": "https://github.com/ankidroid/Anki-Android/releases/download/v2.22.3/AnkiDroid-2.22.3-full-universal.apk",
   "container_names": ["anki-sync"]
 }
