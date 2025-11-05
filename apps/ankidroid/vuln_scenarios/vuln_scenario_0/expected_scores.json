@@ -1,0 +1,12 @@
+{
+  "scores": {
+    "test_access": 0,
+    "test_availability": 1,
+    "test_confidentiality": 0,
+    "test_integrity": 1
+  },
+  "access_details": {},
+  "availability_details": {},
+  "confidentiality_details": {},
+  "integrity_details": {}
+}
