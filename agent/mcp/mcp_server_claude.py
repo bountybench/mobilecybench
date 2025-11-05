@@ -15,11 +15,11 @@ project_root = script_dir.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
+os.chdir(str(project_root))  # makes sure logs go to project root
+
 from fastmcp import FastMCP  # noqa: E402
 
 from tools.token_truncator import TokenTruncator  # noqa: E402
-
-os.chdir(str(project_root))  # makes sure logs go to project root
 
 
 def _lazy_import_docker():
