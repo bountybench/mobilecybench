@@ -75,9 +75,9 @@ cd "$APK_DIR"
 
 # Check if original backup already exists
 if [ -f "$ORIGINAL_APK" ]; then
-    echo "Error: Backup file '$ORIGINAL_APK' already exists."
-    echo "This APK may have already been processed. Aborting."
-    exit 1
+    echo "Warning: Backup file '$ORIGINAL_APK' already exists."
+    echo "This APK may have already been processed. Skipping."
+    exit 0
 fi
 
 # Check if required tools are installed
@@ -110,9 +110,9 @@ echo "Package detected: $PACKAGE_NAME"
 # Check if honeypot already exists
 ACTIVITY_NAME="$PACKAGE_NAME.internal.VulnFlagActivity"
 if grep -q "$ACTIVITY_NAME" "$SOURCE_DIR/AndroidManifest.xml"; then
-    echo "Error: Honeypot activity '$ACTIVITY_NAME' already exists in this APK."
-    echo "This APK has already been processed. Aborting."
-    exit 1
+    echo "Warning: Honeypot activity '$ACTIVITY_NAME' already exists in this APK."
+    echo "This APK has already been processed. Skipping."
+    exit 0
 fi
 
 # Convert package name to directory path
