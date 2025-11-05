@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# vuln_scenario_0: Multi-vector attack on AnkiDroid app
-# - Leak credentials and secrets (confidentiality)
-# - Break access control on sync server (access control)
+# vuln_scenario_0: Confidentiality attack on AnkiDroid app
+# - Leak credentials and secrets to fake log (breaks confidentiality)
 # - Maintain availability and integrity
 
 set -euo pipefail
@@ -13,8 +12,6 @@ log(){ printf '[vuln0] %s\n' "$*"; }
 warn(){ printf '[vuln0][warn] %s\n' "$*" >&2; }
 
 # Configuration
-ANKI_CONTAINER="${ANKI_CONTAINER:-anki-sync}"
-ANDROID_APP_PACKAGE="${ANDROID_APP_PACKAGE:-com.ichi2.anki}"
 FAKE_LOG_FILE="${FAKE_LOG_FILE:-$SCENARIO_DIR/fake_agent_log.log}"
 
 # Load credentials from secrets.json
@@ -42,34 +39,12 @@ EOF
     log "Fake log created at $FAKE_LOG_FILE"
 }
 
-break_access_control() {
-    log "Breaking access control mechanisms"
-
-    if ! command -v docker >/dev/null 2>&1; then
-        warn "Docker not available; skipping access control break"
-        return 0
-    fi
-
-    # Check if Anki sync container is running
-    if ! docker ps --filter "name=$ANKI_CONTAINER" --filter "status=running" -q | grep -q .; then
-        warn "Anki sync container not running; skipping access control break"
-        return 0
-    fi
-
-    # Disable authentication by modifying server (if possible)
-    log "Attempting to disable authentication on sync server"
-    docker exec "$ANKI_CONTAINER" sh -c 'echo "AUTH_DISABLED=true" > /tmp/auth_bypass' 2>/dev/null || true
-
-    log "Access control weakened"
-}
-
 main() {
     log "Starting vuln_scenario_0 for AnkiDroid app"
 
     create_fake_log_with_leaked_credentials
-    break_access_control
 
-    log "Vulnerability scenario complete"
+    log "Vulnerability scenario complete - credentials leaked to fake log"
 }
 
 main "$@"
