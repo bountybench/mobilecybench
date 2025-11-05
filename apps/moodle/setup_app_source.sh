@@ -36,11 +36,6 @@ build_moodle() {
     mkdir -p apk
     docker cp temp-builder:/moodleapp/platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk ./apk/moodle-unsigned.apk
 
-    echo "Cleaning up Docker containers/images"
-
-    docker rm temp-builder
-    docker image rm moodle-builder
-
     sign_apk
 }
 
