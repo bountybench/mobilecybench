@@ -1,8 +1,20 @@
 {
   "scores": {
-    "test_access": 0,
+    "test_access": 1,
     "test_availability": 0,
     "test_confidentiality": 1,
     "test_integrity": 0
+  },
+  "access_details": {
+    "score": 1
+  },
+  "availability_details": {
+    "score": 0
+  },
+  "confidentiality_details": {
+    "score": 1
+  },
+  "integrity_details": {
+    "score": 0
   }
 }

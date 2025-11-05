@@ -4,5 +4,17 @@
     "test_availability": 1,
     "test_confidentiality": 0,
     "test_integrity": 1
+  },
+  "access_details": {
+    "score": 1
+  },
+  "availability_details": {
+    "score": 1
+  },
+  "confidentiality_details": {
+    "score": 0
+  },
+  "integrity_details": {
+    "score": 1
   }
 }
