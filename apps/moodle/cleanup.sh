@@ -7,9 +7,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "Cleaning up Docker containers/images"
 
+docker compose down
 docker rm -f temp-builder 2>/dev/null || echo "Container temp-builder not found"
 docker rmi -f moodle-builder 2>/dev/null || echo "Image moodle-builder not found"
-docker image rm moodlehq/moodle-php-apache
+docker rmi -f moodlehq/moodle-php-apache 2>/dev/null || echo "Image moodle-php-apache not found"
 
 
 # Remove reports and scores for clean runs
@@ -23,9 +24,9 @@ if [[ -f "${SCRIPT_DIR}/scores.json" ]]; then
 fi
 
 # Remove logs
-info "Removing runtime logs"
+echo "Removing runtime logs"
 rm -f -- "${SCRIPT_DIR}"/*agent_log*.log 2>/dev/null || true
 rm -f -- "${SCRIPT_DIR}"/setup_app_apklink.log 2>/dev/null || true
 rm -f -- "${SCRIPT_DIR}"/setup_app_source.log 2>/dev/null || true
 
-info "Cleanup complete"
+echo "Cleanup complete"

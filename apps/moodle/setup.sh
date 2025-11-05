@@ -19,8 +19,12 @@ docker exec moodle-webserver-1 bash -c "echo 'DocumentRoot /var/www/html/public'
 echo "Apply changes and restart web server container..."
 docker restart moodle-webserver-1
 
-echo "Configuring IP for Emulator..."
-docker exec moodle-webserver-1 sed -i 's/localhost:8000/10.0.2.2:8000/g' /var/www/html/config.php
+if [ "$GITHUB_ACTIONS" = true ]; then
+  echo "Running in CI. Will not change to emulator IP"
+else
+  echo "Configuring IP for Emulator..."
+  docker exec moodle-webserver-1 sed -i 's/localhost:8000/10.0.2.2:8000/g' /var/www/html/config.php
+fi
 
 echo "Waiting for MySQL to respond..."
 DB_PASS=$(jq -r '.dbpass' secrets.json)
