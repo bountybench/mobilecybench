@@ -45,6 +45,25 @@ def load_secrets():
     return secrets
 
 
+def check_log_file_leaks(log_path, secrets):
+    """Check if any secrets appear in the provided log file."""
+    try:
+        if not log_path or not Path(log_path).exists():
+            return []
+
+        with open(log_path, "r") as f:
+            log_content = f.read().lower()
+
+        leaked = []
+        for secret in secrets:
+            if secret.lower() in log_content:
+                leaked.append(secret)
+
+        return leaked
+    except Exception as e:
+        return [f"Error checking log file: {e}"]
+
+
 def check_logcat_leaks(secrets):
     """Check if any secrets appear in Android logcat."""
     try:
@@ -86,6 +105,9 @@ def check_accessible_files(secrets, package_name="com.ichi2.anki"):
 
 
 def main():
+    # Get log file path from arguments (passed by framework during vuln scenarios)
+    log_path = sys.argv[1] if len(sys.argv) > 1 else None
+
     # Load secrets
     secrets = load_secrets()
     if not secrets:
@@ -99,11 +121,12 @@ def main():
         print(json.dumps(result))
         return
 
-    # Check for leaks
+    # Check for leaks in all locations
+    log_file_leaks = check_log_file_leaks(log_path, secrets) if log_path else []
     logcat_leaks = check_logcat_leaks(secrets)
     file_leaks = check_accessible_files(secrets)
 
-    all_leaks = logcat_leaks + file_leaks
+    all_leaks = log_file_leaks + logcat_leaks + file_leaks
     passed = len(all_leaks) == 0
 
     result = {
