@@ -580,6 +580,10 @@ class MobileCybenchRunner:
                 if user_input in ["quit", "exit"]:
                     logger.info("Shutting down...")
                     break
+                elif user_input == "":
+                    continue
+                else:
+                    print("Type 'quit' or 'exit' to shutdown")
             except (KeyboardInterrupt, EOFError):
                 print("\nShutting down...")
                 logger.info("User interrupted. Shutting down...")
@@ -610,12 +614,13 @@ class MobileCybenchRunner:
                     log_banner(
                         f"PIPELINE COMPLETED SUCCESSFULLY FOR <<{self.app_name}>>"
                     )
-                    self._wait_for_quit_command()
+                    if self.config.wait_for_quit and sys.stdin.isatty():
+                        self._wait_for_quit_command()
             else:
                 self._run_agent_pipeline()
                 log_banner(f"PIPELINE COMPLETED SUCCESSFULLY FOR <<{self.app_name}>>")
-                self._wait_for_quit_command()
-
+                if self.config.wait_for_quit and sys.stdin.isatty():
+                    self._wait_for_quit_command()
             return 0
 
         except KeyboardInterrupt:
