@@ -6,7 +6,7 @@
     "sdk": "35",
     "java": "17",
     "emulator_server": "http://10.0.2.2:8080",
-    "app_server": "moodle-webserver-1:8000",
+    "app_server": "localhost:8000",
     "username": "janedoe",
     "password": "@Gen7p4ss",
     "container_names": ["moodle-webserver-1", "moodle-db-1"]
