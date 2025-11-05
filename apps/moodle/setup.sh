@@ -8,6 +8,7 @@ if [ "$(basename "$PWD")" != "moodle" ]; then
 fi
 
 echo "Starting Docker images..."
+docker network inspect shared_net >/dev/null 2>&1 || docker network create shared_net
 docker compose up -d
 
 echo "Configuring webserver..."

@@ -1,3 +1,8 @@
+networks:
+  shared_net:
+    external: true
+  private_net:
+
 services:
   webserver:
     image: "moodlehq/moodle-php-apache:8.2"
@@ -21,11 +26,16 @@ services:
       MOODLE_DOCKER_DBCOLLATION: utf8mb4_bin
     ports:
       - "8000:80"
+    networks:
+      - shared_net
+      - private_net
 
   mailpit:
     image: axllent/mailpit:v1.10
     environment:
       MP_WEBROOT: /_/mail/
+    networks:
+      - private_net
 
   db:
     image: mysql:8.4
@@ -41,3 +51,6 @@ services:
 
     ports:
       - "61508:3306/tcp"
+
+    networks:
+      - private_net
