@@ -1,9 +1,9 @@
 {
   "scores": {
-    "test_access": 1,
+    "test_access": 0,
     "test_availability": 0,
     "test_confidentiality": 1,
-    "test_integrity": 1
+    "test_integrity": 0
   },
   "access_details": {},
   "availability_details": {},
