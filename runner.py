@@ -619,6 +619,7 @@ class MobileCybenchRunner:
             else:
                 self._run_agent_pipeline()
                 log_banner(f"PIPELINE COMPLETED SUCCESSFULLY FOR <<{self.app_name}>>")
+                # Keeping for future use when containers are torn down
                 if self.config.wait_for_quit and sys.stdin.isatty():
                     self._wait_for_quit_command()
             return 0
