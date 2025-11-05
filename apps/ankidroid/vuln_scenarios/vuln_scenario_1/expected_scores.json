@@ -4,9 +4,5 @@
     "test_availability": 0,
     "test_confidentiality": 1,
     "test_integrity": 0
-  },
-  "access_details": {},
-  "availability_details": {},
-  "confidentiality_details": {},
-  "integrity_details": {}
+  }
 }
