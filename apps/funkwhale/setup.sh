@@ -120,49 +120,6 @@ install_app(){
     fail "Failed to install APK after $retries attempts"
 }
 
-verify_installation(){
-    info "Verifying app installation"
-
-    # Check if release version is installed
-    if adb shell pm list packages | grep -q "$TARGET_PACKAGE"; then
-        info "✓ Release version installed: $TARGET_PACKAGE"
-        INSTALLED_PACKAGE="$TARGET_PACKAGE"
-
-        # Get app version info
-        local version_info=$(adb shell dumpsys package "$TARGET_PACKAGE" | grep versionName || echo "Version info not available")
-        info "App version: ${version_info#*=}"
-
-        # Check app permissions
-        local permissions=$(adb shell pm list permissions "$TARGET_PACKAGE" 2>/dev/null | wc -l || echo "0")
-        info "App has $permissions permissions granted"
-
-    else
-        # List all installed packages for debugging
-        warn "App not found. Installed packages containing 'funkwhale' or 'audio':"
-        adb shell pm list packages | grep -E "(funkwhale|audio)" || info "No matching packages found"
-        fail "App not found in installed packages"
-    fi
-}
-
-launch_app(){
-    info "Launching Funkwhale app"
-
-    # Launch the app
-    adb shell am start -n "${INSTALLED_PACKAGE}/audio.funkwhale.ffa.activities.MainActivity" || {
-        warn "Failed to launch with specific activity, trying package start"
-        adb shell monkey -p "$INSTALLED_PACKAGE" -c android.intent.category.LAUNCHER 1 || {
-            fail "Failed to launch app"
-        }
-    }
-
-    # Check if app is running
-    if adb shell ps | grep -q "$INSTALLED_PACKAGE" || adb shell dumpsys activity activities | grep -q "$INSTALLED_PACKAGE"; then
-        info "App launched successfully"
-    else
-        warn "App may not be running properly"
-    fi
-}
-
 verify_ssl_certificates(){
     local server_dir="$1"
 
@@ -203,186 +160,6 @@ The certificates must be generated before building the app so they can be embedd
     info "Certificate expires: $expiry"
 
     info "✓ SSL certificates verified and ready for HTTPS"
-    return 0
-}
-
-setup_ssl_certificates(){
-    local server_dir="$1"
-
-    info "Setting up SSL certificates for HTTPS testing"
-
-    # Create SSL directory
-    mkdir -p "$server_dir/ssl"
-
-    # Check if certificates already exist
-    if [[ -f "$server_dir/ssl/server.crt" ]] && [[ -f "$server_dir/ssl/server.key" ]]; then
-        info "SSL certificates already exist"
-        return 0
-    fi
-
-    # Check if openssl is available
-    if ! command_exists openssl; then
-        warn "openssl not found, skipping HTTPS setup"
-        return 1
-    fi
-
-    info "Generating self-signed SSL certificates..."
-    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-        -keyout "$server_dir/ssl/server.key" \
-        -out "$server_dir/ssl/server.crt" \
-        -subj "/C=US/ST=State/L=City/O=MobileCybench/CN=funkwhale.local" \
-        2>/dev/null || {
-            warn "Failed to generate SSL certificates, skipping HTTPS setup"
-            return 1
-        }
-
-    # Generate DER format certificate for Android
-    openssl x509 -outform der \
-        -in "$server_dir/ssl/server.crt" \
-        -out "$server_dir/ssl/server.der.crt" \
-        2>/dev/null || warn "Failed to generate DER certificate"
-
-    info "✓ SSL certificates generated"
-    return 0
-}
-
-create_nginx_config(){
-    local server_dir="$1"
-
-    # Check if nginx.conf already exists
-    if [[ -f "$server_dir/nginx.conf" ]]; then
-        info "nginx.conf already exists"
-        return 0
-    fi
-
-    info "Creating nginx configuration with HTTP..."
-    cat > "$server_dir/nginx.conf" << 'NGINX_EOF'
-upstream funkwhale-api {
-    server api:5000;
-}
-
-map $http_upgrade $connection_upgrade {
-    default upgrade;
-    ''      close;
-}
-
-server {
-    listen 80;
-    listen [::]:80;
-    server_name _;
-
-    # General configs
-    root /usr/share/nginx/html;
-    client_max_body_size 100M;
-    charset utf-8;
-
-    # Compression settings
-    gzip on;
-    gzip_comp_level 5;
-    gzip_min_length 256;
-    gzip_proxied any;
-    gzip_vary on;
-    gzip_types
-        application/javascript
-        application/json
-        application/vnd.geo+json
-        application/vnd.ms-fontobject
-        application/x-font-ttf
-        application/x-web-app-manifest+json
-        font/opentype
-        image/bmp
-        image/svg+xml
-        image/x-icon
-        text/cache-manifest
-        text/css
-        text/plain
-        text/vcard
-        text/vnd.rim.location.xloc
-        text/vtt
-        text/x-component
-        text/x-cross-domain-policy;
-
-    # API proxy
-    location /api/ {
-        proxy_pass http://funkwhale-api;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host:$server_port;
-        proxy_redirect off;
-    }
-
-    # Static files and frontend
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    # Media files
-    location /media/ {
-        alias /srv/funkwhale/data/media/;
-    }
-
-    # Static files
-    location /staticfiles/ {
-        alias /usr/share/nginx/html/staticfiles/;
-    }
-
-    # Well-known endpoints
-    location /.well-known/ {
-        proxy_pass http://funkwhale-api;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-NGINX_EOF
-
-    info "✓ nginx.conf created"
-    return 0
-}
-
-patch_docker_compose_for_https(){
-    local server_dir="$1"
-    local compose_file="$server_dir/docker-compose.yml"
-
-    info "Checking docker-compose.yml for HTTPS configuration..."
-
-    # Check if already patched
-    if grep -q 'nginx.conf:/etc/nginx/templates/default.conf.template' "$compose_file" 2>/dev/null; then
-        info "docker-compose.yml already configured for HTTPS"
-        return 0
-    fi
-
-    # Create backup if it doesn't exist
-    if [[ ! -f "${compose_file}.orig" ]]; then
-        cp "$compose_file" "${compose_file}.orig"
-        info "Created backup: docker-compose.yml.orig"
-    fi
-
-    info "Patching docker-compose.yml for HTTPS support..."
-
-    # Find the line with STATIC_ROOT volume mount and add nginx config mounts after it
-    if grep -q "STATIC_ROOT.*staticfiles:ro" "$compose_file"; then
-        # Add nginx.conf and ssl mounts after the STATIC_ROOT line
-        sed -i.tmp '/STATIC_ROOT.*staticfiles:ro/a\
-      - "./nginx.conf:/etc/nginx/templates/default.conf.template"\
-      - "./ssl:/etc/nginx/ssl:ro"
-' "$compose_file"
-    fi
-
-    # Update ports to include 443 if not already present
-    if ! grep -q "443:443" "$compose_file"; then
-        # Add 443 port after 80:80 in the front service
-        sed -i.tmp '/front:/,/^  [a-z]/ {
-            /- "80:80"/a\
-      - "443:443"
-        }' "$compose_file"
-    fi
-
-    # Clean up temp file
-    rm -f "${compose_file}.tmp"
-
-    info "✓ docker-compose.yml patched for HTTPS"
     return 0
 }
 
@@ -453,23 +230,6 @@ setup_server(){
     info "Starting all Funkwhale services on shared_net..."
     docker compose up -d --wait || fail "Failed to start services or healthchecks failed"
 
-    # Verify containers are on correct networks
-    info "Verifying container network configuration..."
-    for container in $(docker compose ps -q); do
-        container_name=$(docker inspect "$container" --format '{{.Name}}' | sed 's/^\///')
-        networks=$(docker inspect "$container" --format '{{range $net, $conf := .NetworkSettings.Networks}}{{$net}} {{end}}')
-        info "  $container_name -> networks: $networks"
-    done
-
-    # Show all containers on shared_net from network perspective
-    info "Containers on shared_net:"
-    docker network inspect shared_net --format '{{range $id, $conf := .Containers}}{{$conf.Name}} {{end}}' || true
-
-    info "Containers on private_net:"
-    docker network inspect funkwhale-server_private_net --format '{{range $id, $conf := .Containers}}{{$conf.Name}} {{end}}' 2>/dev/null || \
-    docker network inspect private_net --format '{{range $id, $conf := .Containers}}{{$conf.Name}} {{end}}' 2>/dev/null || \
-    warn "Could not inspect private_net"
-
     info "Database services are healthy, waiting for API and frontend to start..."
 
 
@@ -514,12 +274,6 @@ main(){
 
     # Install the app
     install_app "$APK_PATH"
-
-    # Verify installation
-    verify_installation
-
-    # Launch the app
-    launch_app
 
     info "Funkwhale server + app setup completed successfully!"
    }
