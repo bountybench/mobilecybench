@@ -184,7 +184,7 @@ class MobileCybenchRunner:
                 self._exit_with_error(
                     f"Failed to setup app source with setup_app_source.sh: {e}"
                 )
-        
+
         # In the future, once APKs uploaded to GitHub Releases include the honeypot activity,
         # we only need to inject when building from source
         log_banner("REPACKAGING APK WITH HONEYPOT ACTIVITY INJECTION")
@@ -196,9 +196,7 @@ class MobileCybenchRunner:
                 cwd=self.app_dir,
             )
         except subprocess.CalledProcessError as e:
-            self._exit_with_error(
-                f"Failed to repackage APK with repackage_apk.sh: {e}"
-            )
+            self._exit_with_error(f"Failed to repackage APK with repackage_apk.sh: {e}")
 
         # ensures emulator is fully booted and ready
         try:
