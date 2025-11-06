@@ -134,4 +134,3 @@ networks:
   shared_net:
     external: true
   private_net:
-    driver: bridge

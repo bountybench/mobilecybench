@@ -5,7 +5,7 @@
     "package_name": "audio.funkwhale.ffa",
     "gh_link": "https://github.com/cy-suite/funkwhale.git",
     "emulator_server": "https://10.0.2.2",
-    "app_server": "http://front:80",
+    "app_server": "https://front:443",
     "username": "agent",
     "password": "agentpassword",
     "container_names": ["api", "front", "postgres", "redis"]
