@@ -93,9 +93,9 @@ fi
 echo "Set org.gradle.jvmargs=-Xmx4g in gradle.properties"
 
 # Run Gradle assembleRelease
-echo "Running Gradle assembleRelease for module :$MODULE_NAME"
+echo "Running Gradle assembleFullStableRelease for module :$MODULE_NAME"
 cd "$CODEBASE_DIR"
-./gradlew ":$MODULE_NAME:clean" ":$MODULE_NAME:assembleRelease" --no-daemon -x lint
+./gradlew ":$MODULE_NAME:clean" ":$MODULE_NAME:assembleFullStableRelease" --no-daemon -x lint
 cd "$ROOT_DIR"
 
 # Locate release APK (prefer already aligned release APKs, else unsigned)
