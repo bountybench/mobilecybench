@@ -286,17 +286,15 @@ docker_cleanup
 
 # Uninstall the app from emulator
 if command -v adb >/dev/null 2>&1; then
-  LOG "Checking for OpenHAB app installations on emulator"
+  LOG "Checking for OpenHAB app installation on emulator"
 
-  # Try to uninstall both stable and beta versions
-  for pkg in "org.openhab.habdroid" "org.openhab.habdroid.beta"; do
-    if adb shell pm list packages | grep -q "^package:$pkg$"; then
-      LOG "Uninstalling $pkg from emulator"
-      adb uninstall "$pkg" 2>/dev/null || LOG "Warning: Failed to uninstall $pkg"
-    else
-      LOG "Package $pkg not found on emulator"
-    fi
-  done
+  pkg="org.openhab.habdroid"
+  if adb shell pm list packages | grep -q "^package:$pkg$"; then
+    LOG "Uninstalling $pkg from emulator"
+    adb uninstall "$pkg" 2>/dev/null || LOG "Warning: Failed to uninstall $pkg"
+  else
+    LOG "Package $pkg not found on emulator"
+  fi
 else
   LOG "adb not available; skipping app uninstallation from emulator"
 fi
