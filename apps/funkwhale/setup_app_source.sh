@@ -240,6 +240,110 @@ sign_apk() {
     fi
 }
 
+# Function to generate SSL certificates for HTTPS server
+generate_ssl_certificates() {
+    print_status "Generating SSL certificates for HTTPS server..."
+
+    local ssl_dir="$SCRIPT_DIR/funkwhale-server/ssl"
+
+    # Remove existing certificates to force regeneration
+    if [ -d "$ssl_dir" ]; then
+        print_status "Removing existing SSL certificates..."
+        rm -rf "$ssl_dir"
+    fi
+
+    # Create SSL directory
+    mkdir -p "$ssl_dir"
+
+    # Generate self-signed certificate for 10.0.2.2 (Android emulator host access)
+    print_status "Creating self-signed certificate for 10.0.2.2..."
+
+    openssl req -x509 -nodes -days 36500 \
+        -newkey rsa:2048 \
+        -keyout "$ssl_dir/server.key" \
+        -out "$ssl_dir/server.crt" \
+        -subj "/C=US/ST=Test/L=Test/O=MobileCybench/CN=10.0.2.2" \
+        -addext "subjectAltName=IP:10.0.2.2" \
+        2>/dev/null
+
+    if [ $? -eq 0 ] && [ -f "$ssl_dir/server.crt" ] && [ -f "$ssl_dir/server.key" ]; then
+        print_success "SSL certificates generated successfully"
+
+        # Also create DER format for Android (if needed)
+        openssl x509 -outform der -in "$ssl_dir/server.crt" -out "$ssl_dir/server.der.crt" 2>/dev/null
+
+        print_status "Certificate files:"
+        print_status "  - $ssl_dir/server.crt (PEM format)"
+        print_status "  - $ssl_dir/server.key (private key)"
+        print_status "  - $ssl_dir/server.der.crt (DER format)"
+        return 0
+    else
+        print_error "Failed to generate SSL certificates"
+        return 1
+    fi
+}
+
+# Function to integrate SSL certificate into Android app
+integrate_ssl_into_app() {
+    print_status "Integrating SSL certificate into Android app..."
+    cd "$CODEBASE_DIR"
+
+    local ssl_cert="$SCRIPT_DIR/funkwhale-server/ssl/server.crt"
+    local raw_dir="app/src/main/res/raw"
+    local security_xml="app/src/main/res/xml/security.xml"
+
+    # Check if SSL certificate exists
+    if [ ! -f "$ssl_cert" ]; then
+        print_error "SSL certificate not found: $ssl_cert"
+        return 1
+    fi
+
+    # Create raw resources directory
+    mkdir -p "$raw_dir"
+
+    # Copy certificate to raw resources
+    print_status "Copying SSL certificate to app resources..."
+    cp "$ssl_cert" "$raw_dir/funkwhale_cert.crt"
+
+    if [ ! -f "$raw_dir/funkwhale_cert.crt" ]; then
+        print_error "Failed to copy certificate to raw resources"
+        return 1
+    fi
+
+    print_success "Certificate copied to $raw_dir/funkwhale_cert.crt"
+
+    # Patch security.xml to include the certificate
+    print_status "Patching network security configuration..."
+
+    if [ -f "$security_xml" ]; then
+        # Check if certificate reference already exists
+        if grep -q "funkwhale_cert" "$security_xml"; then
+            print_status "Certificate reference already exists in security.xml"
+        else
+            # Add certificate to trust anchors
+            print_status "Adding certificate reference to security.xml..."
+
+            # Use sed to add the certificate before </trust-anchors>
+            if grep -q "<trust-anchors>" "$security_xml"; then
+                sed -i.bak '/<trust-anchors>/a\
+        <certificates src="@raw/funkwhale_cert" />
+' "$security_xml"
+                rm -f "${security_xml}.bak"
+                print_success "Certificate reference added to security.xml"
+            else
+                print_warning "Could not find <trust-anchors> in security.xml"
+                print_status "You may need to manually add the certificate reference"
+            fi
+        fi
+    else
+        print_warning "security.xml not found at $security_xml"
+        print_status "The app may not trust the self-signed certificate"
+    fi
+
+    print_success "SSL certificate integrated into app"
+    return 0
+}
+
 # Function to build APK
 build_apk() {
      print_status "Building Funkwhale Android APK..."
@@ -371,6 +475,18 @@ main() {
 
     # Fix ProGuard rules to prevent R8 issues
     fix_proguard_rules
+
+    # Generate SSL certificates for HTTPS server
+    if ! generate_ssl_certificates; then
+        print_error "SSL certificate generation failed"
+        exit 1
+    fi
+
+    # Integrate SSL certificate into Android app
+    if ! integrate_ssl_into_app; then
+        print_error "SSL certificate integration failed"
+        exit 1
+    fi
 
     # Build APK
     build_apk

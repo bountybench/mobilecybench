@@ -4,9 +4,9 @@
     "java": "17",
     "package_name": "funkwhale",
     "gh_link": "https://github.com/cy-suite/funkwhale.git",
-    "emulator_server": "http://10.0.2.2",
+    "emulator_server": "https://10.0.2.2",
     "app_server": "http://front:80",
-    "username": "funkwhaleadmin",
-    "password": "adminPass101625!",
+    "username": "agent",
+    "password": "agentpassword",
     "container_names": ["api", "front", "postgres", "redis"]
 }

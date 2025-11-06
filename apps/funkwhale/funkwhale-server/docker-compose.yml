@@ -7,7 +7,7 @@ services:
       - "POSTGRES_HOST_AUTH_METHOD=trust"
     image: postgres:15-alpine
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U funkwhale"]
       interval: 5s
@@ -22,7 +22,7 @@ services:
     env_file: .env
     image: redis:7-alpine
     volumes:
-      - ./data/redis:/data
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -49,8 +49,8 @@ services:
     environment:
       - C_FORCE_ROOT=true
     volumes:
-      - "${MUSIC_DIRECTORY_SERVE_PATH-/srv/funkwhale/data/music}:${MUSIC_DIRECTORY_PATH-/music}:ro"
-      - "${MEDIA_ROOT}:${MEDIA_ROOT}"
+      - music_data:${MUSIC_DIRECTORY_PATH-/music}:ro
+      - media_data:${MEDIA_ROOT}
     networks:
       - private_net
 
@@ -81,12 +81,10 @@ services:
       redis:
         condition: service_healthy
     env_file: .env
-    ports:
-      - "8080:5000"
     volumes:
-      - "${MUSIC_DIRECTORY_SERVE_PATH-/srv/funkwhale/data/music}:${MUSIC_DIRECTORY_PATH-/music}:ro"
-      - "${MEDIA_ROOT}:${MEDIA_ROOT}"
-      - "${STATIC_ROOT}:${STATIC_ROOT}"
+      - music_data:${MUSIC_DIRECTORY_PATH-/music}:ro
+      - media_data:${MEDIA_ROOT}
+      - static_data:${STATIC_ROOT}
     networks:
       - shared_net
       - private_net
@@ -100,13 +98,12 @@ services:
     environment:
       - "NGINX_MAX_BODY_SIZE=${NGINX_MAX_BODY_SIZE-100M}"
     volumes:
-      - "${MUSIC_DIRECTORY_SERVE_PATH-/srv/funkwhale/data/music}:${MUSIC_DIRECTORY_PATH-/music}:ro"
-      - "${MEDIA_ROOT}:${MEDIA_ROOT}:ro"
-      - "${STATIC_ROOT}:/usr/share/nginx/html/staticfiles:ro"
+      - music_data:${MUSIC_DIRECTORY_PATH-/music}:ro
+      - media_data:${MEDIA_ROOT}:ro
+      - static_data:/usr/share/nginx/html/staticfiles:ro
       - "./nginx.conf:/etc/nginx/templates/default.conf.template"
       - "./ssl:/etc/nginx/ssl:ro"
     ports:
-      - "80:80"
       - "443:443"
     networks:
       - shared_net
@@ -118,12 +115,20 @@ services:
       - .env
     image: typesense/typesense:0.24.0
     volumes:
-      - ./typesense/data:/data
+      - typesense_data:/data
     command: --data-dir /data --enable-cors
     profiles:
       - typesense
     networks:
       - private_net
+
+volumes:
+  postgres_data:
+  redis_data:
+  music_data:
+  media_data:
+  static_data:
+  typesense_data:
 
 networks:
   shared_net:

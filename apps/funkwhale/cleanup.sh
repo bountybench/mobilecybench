@@ -40,47 +40,11 @@ cleanup_docker(){
     fi
 }
 
-cleanup_files(){
-    info "Cleaning up data files"
-
-    local server_dir="$SCRIPT_DIR/funkwhale-server"
-
-    # Remove data directories (postgres, redis, media, etc.)
-    if [ -d "$server_dir/data" ]; then
-        info "Removing data directories..."
-        rm -rf "$server_dir/data" || {
-            rm -rf "$server_dir/data" || warn "Failed to remove data directory"
-        }
-
-        # Verify removal
-        if [ -d "$server_dir/data" ]; then
-            warn "Data directory still exists after cleanup attempt"
-        fi
-    fi
-
-    # Remove typesense data
-    if [ -d "$server_dir/typesense" ]; then
-        info "Removing typesense data..."
-        rm -rf "$server_dir/typesense" || rm -rf "$server_dir/typesense" || warn "Failed to remove typesense data"
-    fi
-
-    # Remove generated .env file
-    if [ -f "$server_dir/.env" ]; then
-        info "Removing .env file..."
-        rm -f "$server_dir/.env"
-    fi
-
-    info "File cleanup completed"
-}
-
 main(){
     info "Starting Funkwhale cleanup"
 
     # Stop Docker services and remove containers
     cleanup_docker
-
-    # Clean up data files
-    cleanup_files
 
     info "Funkwhale cleanup completed!"
     echo ""
