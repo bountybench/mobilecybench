@@ -284,20 +284,17 @@ class MobileCybenchRunner:
 
         mcp_executor = MCPToolExecutor()
         result = mcp_executor.call_tool("execute_command", "ls /app")
-        response = (
-            result.get("result", {}).get("structuredContent", {}).get("result", "")
-        )
 
-        if "codebase" not in response:
+        if "codebase" not in str(result):
             self._exit_with_error(
-                "MCP server validation failed: 'codebase' directory not found"
+                f"MCP server validation failed: 'codebase' directory not found - response: {result}"
             )
 
         logger.info("✓ MCP server validation passed: 'codebase' directory found")
 
     def _start_containers(self):
         """Start MCP server and Kali container"""
-        logger.info("Starting MCP server and Kali container...")
+        logger.info("Starting MCP server...")
 
         env = os.environ.copy()
 
@@ -536,8 +533,6 @@ class MobileCybenchRunner:
                 logger.error(f"Error reading scores.json: {e}")
         else:
             logger.info("No scores.json file found")
-
-        logger.info(f"Probe checks completed with exit code: {return_code}")
         return return_code == 0
 
     def cleanup(self):
