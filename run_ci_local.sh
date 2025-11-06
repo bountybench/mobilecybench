@@ -26,6 +26,38 @@ print_header() {
     echo -e "${color}========== ${message} ==========${RESET}"
 }
 
+check_metadata_schema() {
+    local metadata_file="$1"
+    echo "Checking metadata.json against expected schema..."
+
+    declare -A required_fields
+    required_fields["gh_link"]="GitHub link to the app's repository"
+    required_fields["commit_version"]="Commit version to checkout for testing"
+    required_fields["sdk"]="Android SDK version required"
+    required_fields["java"]="Java version needed to compile the app"
+    required_fields["package_name"]="Package name of the Android app"
+    required_fields["app_server"]="Address of any server the app requires (empty string if not required)"
+    required_fields["container_names"]="Array of Docker container names for health checks (empty array if not required)"
+    all_passed=true
+
+    for field in "${!required_fields[@]}"; do
+        if jq -e ".${field}" "$metadata_file" >/dev/null; then
+            print_header "$GREEN" "[PASS] Attribute $field is in the metadata."
+        else
+            print_header "$ERROR" "[FAIL] Attribute $field is not in the metadata."
+            print_header "$ERROR" " --> Attribute ${required_fields[$field]} is not in the metadata."
+            all_passed=false
+        fi
+    done
+
+    if [ "$all_passed" = true ]; then
+        print_header "$GREEN" "[PASS] Metadata schema validation success."
+    else
+        print_header "$ERROR" "[FAIL] Metadata schema validation failed."
+        exit 1
+    fi
+}
+
 check_app_containers_ready() {
     # Timeout per container in seconds
     TIMEOUT=${TIMEOUT:-180}
@@ -407,6 +439,7 @@ if [ ! -f "$metadata" ]; then
     echo -e "${ERROR} $metadata not found"
     exit 1
 fi
+check_metadata_schema "$metadata"
 
 sdk=$(jq -r '.sdk' "$metadata")
 if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
