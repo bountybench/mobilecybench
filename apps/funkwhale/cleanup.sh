@@ -50,7 +50,6 @@ main(){
     echo ""
     echo "All Docker containers, data files, and app have been removed."
     echo "APK files in apk/ directory are preserved."
-    echo "To restart the setup, run: ./setup.sh"
 }
 
 # Run main function
