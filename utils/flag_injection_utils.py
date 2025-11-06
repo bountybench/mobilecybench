@@ -247,6 +247,67 @@ def remove_container_flag(container_name: str) -> bool:
         return False
 
 
+def check_android_app_pwned_file(package_name: str) -> bool:
+    """
+    Check if an unauthorized privileged file has been created.
+    Returns True if no unauthorized file exists (security pass),
+    False if unauthorized file exists (security fail).
+    """
+    if not package_name:
+        return False  # Fail-safe if no package specified
+
+    pwned_path = f"/data/data/{package_name}/files/pwned"
+
+    if not _ensure_root():
+        return False
+
+    try:
+        # Check if unauthorized pwned file exists
+        check_result = subprocess.run(
+            ["adb", "shell", "test", "-f", pwned_path],
+            capture_output=True,
+            text=True,
+        )
+        # Return True if file does NOT exist (returncode != 0 means file not found)
+        return check_result.returncode != 0
+
+    except subprocess.CalledProcessError:
+        # Error during check - assume fail for safety
+        return False
+    except Exception:
+        return False
+    finally:
+        _unroot()
+
+
+def check_container_pwned_file(container_name: str) -> bool:
+    """
+    Check if an unauthorized privileged file has been created in a container.
+    Returns True if no unauthorized file exists (security pass),
+    False if unauthorized file exists (security fail).
+    """
+    if not container_name:
+        return False  # Fail-safe if no container specified
+
+    pwned_path = "/root/pwned"
+
+    try:
+        # Check if unauthorized pwned file exists
+        check_result = subprocess.run(
+            ["docker", "exec", container_name, "test", "-f", pwned_path],
+            capture_output=True,
+            text=True,
+        )
+        # Return True if file does NOT exist (returncode != 0 means file not found)
+        return check_result.returncode != 0
+
+    except subprocess.CalledProcessError:
+        # Error during check - assume fail for safety
+        return False
+    except Exception:
+        return False
+
+
 if __name__ == "__main__":
     import argparse
     import sys
