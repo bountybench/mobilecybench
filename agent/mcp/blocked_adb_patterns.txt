@@ -1,3 +1,2 @@
 root
-su
-sudo
+backup

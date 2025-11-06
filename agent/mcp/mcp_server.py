@@ -87,6 +87,8 @@ def _execute_command_internal(command: str) -> str:
     # Determine if the command is an ADB command
     if command.strip().startswith("adb"):
         # Prefix ADB server socket export and change to start directory
+        if not is_adb_command_allowed(command):
+            raise Exception("This ADB command is not allowed.")
         full_cmd = f"cd {start_dir} && export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && {command}"
         label = "ADB Command"
     else:
