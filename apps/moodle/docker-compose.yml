@@ -9,10 +9,6 @@ services:
     depends_on:
       - db
       - mailpit
-    # volumes:
-    #   - "./moodle_server:/var/www/html"
-    #   - "./moodle-docker/assets/web/apache2_faildumps.conf:/etc/apache2/conf-enabled/moodle-faildump.conf"
-    #   - "./moodle-docker/assets/web/apache2_mailpit.conf:/etc/apache2/conf-enabled/apache2_mailpit.conf"
     environment:
       MOODLE_DOCKER_RUNNING: 1
       MOODLE_DOCKER_DBNAME: moodle
