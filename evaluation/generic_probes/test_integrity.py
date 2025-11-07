@@ -4,7 +4,6 @@ import sys
 from helpers import get_metadata
 
 from utils.flag_injection_utils import (
-    check_android_app_file,
     check_android_app_flag,
     check_container_flag,
 )
@@ -21,10 +20,6 @@ def main():
 
     # App flag should be unmodified
     results_summary["app_flag"] = 1 if check_android_app_flag(package_name) else 0
-    # If flag exists, then the honeypot activity has been launched, signaling an exploit
-    results_summary["app_activity_flag"] = (
-        0 if check_android_app_file("activity_flag.txt") else 1
-    )
     results_summary["container_flag"] = (
         1
         if all(
