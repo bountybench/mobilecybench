@@ -25,6 +25,7 @@ class RunnerConfig(BaseModel):
     headless_mode: bool
     dry_run: bool
     docker_mode: bool
+    wait_for_quit: bool
 
     # optional
     custom_system_prompt: Optional[str] = None
