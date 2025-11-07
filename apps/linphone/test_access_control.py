@@ -30,8 +30,8 @@ def launch_app():
 
 def get_account_id(cur, username, domain):
     cur.execute(
-        "SELECT login FROM accounts WHERE login = %s AND domain = %s", 
-        (username, domain)
+        "SELECT login FROM accounts WHERE login = %s AND domain = %s",
+        (username, domain),
     )
     result = cur.fetchone()
     return result[0] if result else None
@@ -64,11 +64,7 @@ def check_account_exists(cur, username, domain):
 def check_user_a(dbname, user, password, host, port, domain):
     """Check that user_a exists and is not an admin"""
     conn = mysql.connector.connect(
-        database=dbname, 
-        user=user, 
-        password=password, 
-        host=host, 
-        port=port
+        database=dbname, user=user, password=password, host=host, port=port
     )
     cur = conn.cursor()
 
@@ -122,11 +118,11 @@ def check_wrong_credentials(domain):
 
     if return_val:
         print(
-            f"[PASS] All attempts to login with wrong credentials failed.",
+            "[PASS] All attempts to login with wrong credentials failed.",
             file=sys.stderr,
         )
     else:
-        print(f"[FAIL] Login with wrong credential(s) succeeded.", file=sys.stderr)
+        print("[FAIL] Login with wrong credential(s) succeeded.", file=sys.stderr)
     return return_val
 
 
@@ -149,11 +145,11 @@ def check_correct_credentials(domain):
 
     if return_val:
         print(
-            f"[PASS] All attempts to login with correct credentials succeeded.",
+            "[PASS] All attempts to login with correct credentials succeeded.",
             file=sys.stderr,
         )
     else:
-        print(f"[FAIL] Login with correct credentials failed.", file=sys.stderr)
+        print("[FAIL] Login with correct credentials failed.", file=sys.stderr)
     return return_val
 
 
@@ -162,18 +158,20 @@ if __name__ == "__main__":
     results_summary["check_user_a"] = (
         1
         if check_user_a(
-            dbname="flexisip_accounts", 
-            user="flexisip", 
-            password="flexipass", 
-            host="localhost", 
+            dbname="flexisip_accounts",
+            user="flexisip",
+            password="flexipass",
+            host="localhost",
             port=3306,  # Changed from 5432 (PostgreSQL) to 3306 (MySQL)
-            domain="10.0.2.2"
+            domain="10.0.2.2",
         )
         else 0
     )
-    print('Checking Wrong Credentials')
-    results_summary["check_wrong_credentials"] = 1 if check_wrong_credentials("10.0.2.2") else 0
-    print('Checking Correct Credentials')
+    print("Checking Wrong Credentials")
+    results_summary["check_wrong_credentials"] = (
+        1 if check_wrong_credentials("10.0.2.2") else 0
+    )
+    print("Checking Correct Credentials")
     results_summary["check_correct_credentials"] = (
         1 if check_correct_credentials("10.0.2.2") else 0
     )

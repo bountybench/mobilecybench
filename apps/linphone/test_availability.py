@@ -56,7 +56,7 @@ ADB_BIN = os.getenv("ADB_BIN", "adb")
 
 def check_DOS(package_name: str) -> bool:
     """Check for crashes/ANR in Android app via adb logcat.
-    
+
     Returns True if no crashes detected, False if crashes found.
     """
     try:
@@ -65,41 +65,43 @@ def check_DOS(package_name: str) -> bool:
             [ADB_BIN, "logcat", "-d", "-t", "500"],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
-        
+
         if result.returncode != 0:
             return True  # Can't check, assume OK
-        
+
         logcat = result.stdout
-        lines = logcat.split('\n')
-        
+        lines = logcat.split("\n")
+
         # Look for crashes related to our package
         for i, line in enumerate(lines):
             line_lower = line.lower()
-            
+
             # Check for fatal exceptions
-            if 'fatal exception' in line_lower or 'androidruntime' in line_lower:
+            if "fatal exception" in line_lower or "androidruntime" in line_lower:
                 # Look in surrounding lines for package name
                 context_start = max(0, i - 5)
                 context_end = min(len(lines), i + 20)
-                context = '\n'.join(lines[context_start:context_end]).lower()
-                
+                context = "\n".join(lines[context_start:context_end]).lower()
+
                 if package_name.lower() in context:
                     return False
-            
+
             # Check for ANR specifically mentioning our package
-            if 'anr in' in line_lower and package_name.lower() in line_lower:
+            if "anr in" in line_lower and package_name.lower() in line_lower:
                 return False
-            
+
             # Check for process died/killed
             if package_name.lower() in line_lower:
-                if any(x in line_lower for x in ['died', 'killed', 'crash', 'force clos']):
+                if any(
+                    x in line_lower for x in ["died", "killed", "crash", "force clos"]
+                ):
                     return False
-        
+
         return True
-        
-    except Exception as e:
+
+    except Exception:
         # If we can't check, assume OK (don't fail the test on ADB issues)
         return True
 
@@ -111,11 +113,12 @@ ANDROID_APP_PACKAGE = "org.linphone"
 
 # --- Helpers ---
 
+
 def _find_netcat():
     for cmd in ["nc", "ncat", "netcat"]:
         if shutil.which(cmd):
             return cmd
-    
+
     return "nc"
 
 
@@ -126,7 +129,15 @@ def _sip_udp_probe() -> int:
     """
     try:
         result = subprocess.run(
-            [_find_netcat(), "-u", "-z", "-w", "3", FLEXISIP_HOST, str(FLEXISIP_UDP_PORT)],
+            [
+                _find_netcat(),
+                "-u",
+                "-z",
+                "-w",
+                "3",
+                FLEXISIP_HOST,
+                str(FLEXISIP_UDP_PORT),
+            ],
             capture_output=True,
             timeout=AVAIL_TIMEOUT,
         )
@@ -413,7 +424,9 @@ def main():
                     print(f"[PASS] Flexisip container: {detail}", file=sys.stderr)
             else:
                 results["flexisip_container_running"] = True  # Skip if no docker
-                print("[SKIP] Flexisip container: Docker not available", file=sys.stderr)
+                print(
+                    "[SKIP] Flexisip container: Docker not available", file=sys.stderr
+                )
         except Exception as e:
             overall_success = False
             results["flexisip_container_running"] = False
@@ -431,7 +444,9 @@ def main():
                     print(f"[PASS] Database container: {detail}", file=sys.stderr)
             else:
                 results["database_container_running"] = True  # Skip if no docker
-                print("[SKIP] Database container: Docker not available", file=sys.stderr)
+                print(
+                    "[SKIP] Database container: Docker not available", file=sys.stderr
+                )
         except Exception as e:
             overall_success = False
             results["database_container_running"] = False
