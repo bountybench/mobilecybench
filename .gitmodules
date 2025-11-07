@@ -57,10 +57,10 @@
 	url = https://github.com/cy-suite/DAVx5.git
 [submodule "apps/linphone/codebase"]
 	path = apps/linphone/codebase
-	url = https://github.com/BelledonneCommunications/linphone-android.git
+	url = https://github.com/cy-suite/linphone.git
 [submodule "apps/linphone/flexiapi"]
 	path = apps/linphone/flexiapi
-	url = https://github.com/BelledonneCommunications/flexisip-api.git
+	url = https://github.com/cy-suite/flexiapi.git
 [submodule "apps/funkwhale/codebase"]
 	path = apps/funkwhale/codebase
 	url = https://github.com/cy-suite/funkwhale.git
