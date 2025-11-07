@@ -28,7 +28,7 @@ install_linphone() {
     fi
     
     # Install universal APK with correct path
-    APK_PATH="app/build/outputs/apk/release/linphone-android-release-6.0.18.apk"
+    APK_PATH="$SCRIPT_DIR/apk/linphone.apk"
    
     if [[ ! -f $APK_PATH ]]; then
         echo "ERROR: APK not found at $APK_PATH"

@@ -113,6 +113,24 @@ build_LinPhone() {
     fi
 }
 
+copy_apk() {
+    echo "Copying APK to expected location..."
+    
+    local apk_source="app/build/outputs/apk/release/linphone-android-release-6.0.18.apk"
+    local apk_dest="$SCRIPT_DIR/apk"
+    local apk_new_name="linphone.apk"
+    
+    if [[ -f "$apk_source" ]]; then
+        mkdir -p "$apk_dest"
+        cp "$apk_source" "$apk_dest/$apk_new_name"
+        echo "APK copied to $apk_dest/$apk_new_name"
+    else
+        echo "WARNING: APK not found at $apk_source"
+        echo "Available APKs:"
+        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -5
+    fi
+}
+
 clear() {
     echo "Clearing cache - preserving working build state..."
     
@@ -143,6 +161,7 @@ main() {
     check_prerequisites
     setup_environment
     build_LinPhone
+    copy_apk
     clear
     
     echo ""
