@@ -9,7 +9,9 @@ KARAF_PASSWORD=${KARAF_PASSWORD:-}
 KARAF_SSH_KEY=${KARAF_SSH_KEY:-}
 
 # Get user credentials from environment (set by setup.sh)
+ADMINUSER_USERNAME=${ADMINUSER_USERNAME:-}
 ADMINUSER_PASSWORD=${ADMINUSER_PASSWORD:-}
+NONADMINUSER_USERNAME=${NONADMINUSER_USERNAME:-}
 NONADMINUSER_PASSWORD=${NONADMINUSER_PASSWORD:-}
 
 # Function to read secrets from JSON file if not already loaded
@@ -205,13 +207,13 @@ create_test_users() {
   
   # Create adminuser  
   if [ -n "$ADMINUSER_PASSWORD" ]; then
-    create_user "adminuser" "$ADMINUSER_PASSWORD" "administrator"
+    create_user "$ADMINUSER_USERNAME" "$ADMINUSER_PASSWORD" "administrator"
     users_created=$((users_created + 1))
   fi
   
   # Create nonadminuser
   if [ -n "$NONADMINUSER_PASSWORD" ]; then
-    create_user "nonadminuser" "$NONADMINUSER_PASSWORD" "user"
+    create_user "$NONADMINUSER_USERNAME" "$NONADMINUSER_PASSWORD" "user"
     users_created=$((users_created + 1))
   fi
   

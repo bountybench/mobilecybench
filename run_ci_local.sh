@@ -26,6 +26,48 @@ print_header() {
     echo -e "${color}========== ${message} ==========${RESET}"
 }
 
+check_metadata_schema() {
+    local metadata_file="$1"
+    echo "Checking metadata.json against expected schema..."
+
+    if ! jq empty "$metadata_file" >/dev/null 2>&1; then
+        print_header "$ERROR" "[FAIL] Invalid JSON in $metadata_file"
+        echo -e "${ERROR} The metadata.json file contains invalid JSON syntax."
+        exit 1
+    fi
+
+    local required_fields=(
+        "gh_link:GitHub link to the app's repository"
+        "commit_version:Commit version to checkout for testing"
+        "sdk:Android SDK version required"
+        "java:Java version needed to compile the app"
+        "package_name:Package name of the Android app"
+        "app_server:Address of any server the app requires (empty string if not required)"
+        "container_names:Array of Docker container names for health checks (empty array if not required)"
+    )
+    all_passed=true
+
+    for field_pair in "${required_fields[@]}"; do
+        field="${field_pair%%:*}"
+        description="${field_pair#*:}"
+
+        if jq -e ".${field}" "$metadata_file" >/dev/null 2>&1; then
+            print_header "$GREEN" "[PASS] Attribute $field is in the metadata."
+        else
+            print_header "$ERROR" "[FAIL] Attribute $field is not in the metadata."
+            print_header "$ERROR" " --> Attribute ${description} is not in the metadata."
+            all_passed=false
+        fi
+    done
+
+    if [ "$all_passed" = true ]; then
+        print_header "$GREEN" "[PASS] Metadata schema validation success."
+    else
+        print_header "$ERROR" "[FAIL] Metadata schema validation failed."
+        exit 1
+    fi
+}
+
 check_app_containers_ready() {
     # Timeout per container in seconds
     TIMEOUT=${TIMEOUT:-180}
@@ -162,18 +204,27 @@ verify_shared_net_connectivity() {
 # Validate directory structure and required scripts
 validate_setup_app_scripts() {
     local dir="$1"
-    
+
     if [ ! -d "$dir" ]; then
         echo -e "${ERROR} Directory '$dir' does not exist" >&2
         return 1
     fi
-    
+
     local source_script="$dir/setup_app_source.sh"
-    local apklink_script="$dir/setup_app_apklink.sh"
-    if [ ! -f "$source_script" ] && [ ! -f "$apklink_script" ]; then
-        # fail if neither script exists
-        echo -e "${ERROR} No setup scripts found in $dir" >&2
-        echo -e "${ERROR} Expected: setup_app_source.sh or setup_app_apklink.sh" >&2
+    local has_download_link=false
+
+    # Check if download_link exists in metadata.json
+    if [ -f "$dir/metadata.json" ]; then
+        download_link=$(jq -r '.download_link // empty' "$dir/metadata.json")
+        if [ -n "$download_link" ]; then
+            has_download_link=true
+        fi
+    fi
+
+    if [ ! -f "$source_script" ] && [ "$has_download_link" = false ]; then
+        # fail if neither option exists
+        echo -e "${ERROR} No setup options found in $dir" >&2
+        echo -e "${ERROR} Expected: setup_app_source.sh or download_link in metadata.json" >&2
         return 1
     fi
     return 0
@@ -183,7 +234,7 @@ validate_setup_app_scripts() {
 discover_available_modes() {
     local dir="$1"
     local modes=""
-    
+
     # If --skip-apk is specified, only offer apk_skip mode
     if [ "$SKIP_APK" = true ]; then
         modes="apk_skip"
@@ -193,9 +244,13 @@ discover_available_modes() {
             modes="$modes source"
             echo -e "${INFO} Found setup_app_source.sh (build mode)" >&2
         fi
-        if [ -f "$dir/setup_app_apklink.sh" ]; then
-            modes="$modes apklink"
-            echo -e "${INFO} Found setup_app_apklink.sh (download mode)" >&2
+        # Check if download_link exists in metadata.json
+        if [ -f "$dir/metadata.json" ]; then
+            download_link=$(jq -r '.download_link // empty' "$dir/metadata.json")
+            if [ -n "$download_link" ]; then
+                modes="$modes apklink"
+                echo -e "${INFO} Found download_link in metadata.json (download mode)" >&2
+            fi
         fi
     fi
 
@@ -394,6 +449,7 @@ if [ ! -f "$metadata" ]; then
     echo -e "${ERROR} $metadata not found"
     exit 1
 fi
+check_metadata_schema "$metadata"
 
 sdk=$(jq -r '.sdk' "$metadata")
 if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
@@ -465,7 +521,12 @@ run_test_check() {
     
     # Wait for app-specific containers to be ready (after setup.sh starts them)
     check_app_containers_ready
-    
+
+    echo -e "${INFO} Generating flags..."
+    cd "$ROOT_DIR"
+    { python -m utils.uuid_flags_utils "$DIR"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
+    cd "$DIR"
+
     echo -e "${INFO} Injecting flags..."
     { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
     verify_shared_net_connectivity
@@ -481,9 +542,9 @@ run_test_check() {
 
     echo -e "${INFO} Running checks..."
     if [ "$use_fake_agent_log" = "true" ] && [ -n "$vuln_scenario" ]; then
-        ../../run_checks.sh . "vuln_scenarios/vuln_scenario_$vuln_scenario/fake_agent_log.log"
+        "$ROOT_DIR/run_checks.sh" . "vuln_scenarios/vuln_scenario_$vuln_scenario/fake_agent_log.log"
     else
-        ../../run_checks.sh . "$ROOT_DIR/dummy_log.log"
+        "$ROOT_DIR/run_checks.sh" . "$ROOT_DIR/dummy_log.log"
     fi
 
     if [ -n "$vuln_scenario" ]; then
@@ -563,7 +624,10 @@ run_tests_for_mode() {
         echo -e "${INFO} Skipping APK setup (apk_skip mode) - proceeding directly to setup.sh"
     elif [ "$setup_mode" = "apklink" ]; then
         echo -e "${INFO} Setting up app from APK link."
-        { ./setup_app_apklink.sh; } || { echo -e "${ERROR} setup_app_apklink.sh failed"; exit 1; }
+        app_name=$(basename "$dir")
+        cd "$ROOT_DIR"
+        { python setup_app_apklink.py "$app_name"; } || { echo -e "${ERROR} setup_app_apklink.py failed"; exit 1; }
+        cd "$ROOT_DIR/$dir"
     else
         echo -e "${INFO} Setting up app from source..."
         { ./setup_app_source.sh; } || { echo -e "${ERROR} setup_app_source.sh failed"; exit 1; }
@@ -581,7 +645,7 @@ run_tests_for_mode() {
     APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
     if [ "$APK_COUNT" -eq 0 ]; then
         echo -e "${ERROR} No APK found in $APK_DIR/"
-        echo -e "${ERROR} setup_app_source.sh or setup_app_apklink.sh must place APKs in ${dir}/apk/"
+        echo -e "${ERROR} setup_app_source.sh or setup_app_apklink.py must place APKs in ${dir}/apk/"
         exit 1
     fi
 
@@ -660,7 +724,12 @@ EOF
         
         # Wait for app-specific containers to be ready (after setup.sh starts them)
         check_app_containers_ready
-        
+
+        echo -e "${INFO} Generating flags..."
+        cd "$ROOT_DIR"
+        { python -m utils.uuid_flags_utils "$dir"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
+        cd "$dir"
+
         echo -e "${INFO} Injecting flags..."
         { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
         verify_shared_net_connectivity

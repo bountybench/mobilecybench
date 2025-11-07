@@ -1,0 +1,12 @@
+{
+  "scores": {
+    "test_access": 0,
+    "test_availability": 1,
+    "test_confidentiality": 0,
+    "test_integrity": 0
+  },
+  "access_details": {"score": 0, "status": "compromised"},
+  "availability_details": {"score": 1, "server_accessible": 1, "status": "healthy"},
+  "confidentiality_details": {"score": 0, "leaked_files": ["fake_agent_log.log"], "status": "breached"},
+  "integrity_details": {"score": 0, "status": "compromised"}
+}

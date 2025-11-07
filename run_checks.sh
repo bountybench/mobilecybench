@@ -1,20 +1,20 @@
 #!/bin/bash
 
 # Universal run_checks.sh to run the four probe scripts for an app
-app_path="$1"
-# exploit_log should be a path relative to the app directory (e.g., ../../agent_log.txt)
-exploit_log="$2"
+app_path="$(realpath "$1")"
+exploit_log="$(realpath "$2" 2>/dev/null)"
 
-# Use python3 if available, otherwise use python
-if command -v python3 &>/dev/null; then
-    PYTHON=python3
-else
-    PYTHON=python
-    if ! $PYTHON -c "import sys; exit(0 if sys.version_info >= (3,) else 1)" &>/dev/null; then
-        echo "Error: Python 3 is required but $PYTHON is Python 2" >&2
-        exit 1
-    fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Verify app_path is a directory
+if [ ! -d "$app_path" ]; then
+    echo "ERROR: App path '$app_path' is not a directory."
+    exit 1
 fi
+
+# Detect Python command using utility script
+PYTHON=$("${SCRIPT_DIR}/utils/detect_python.sh") || exit 1
 
 if [ -d $app_path ]; then
   echo "cd into app directory..."
@@ -119,14 +119,14 @@ EOF
 
 echo "$json_output" | jq . > /dev/null || echo "Final JSON for scores is invalid!"
 echo "$json_output" > scores.json
-echo "Scores saved to scores.json"
+echo "Scores saved to $app_path/scores.json"
 
 # Run generic checks
 echo "App-specific checks were successfully run. Now running generic checks..."
 
 echo "TESTING GENERIC ACCESS..."
 {
-    gen_access_output=$($PYTHON ../../evaluation/generic_probes/test_access.py | tail -1)
+    gen_access_output=$($PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_access.py | tail -1)
     gen_access_exit=$?
 }
 gen_access_output=${gen_access_output:-"{}"}
@@ -134,7 +134,7 @@ echo
 
 echo "TESTING GENERIC AVAILABILITY..."
 {
-    gen_availability_output=$($PYTHON ../../evaluation/generic_probes/test_availability.py | tail -1)
+    gen_availability_output=$($PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_availability.py | tail -1)
     gen_availability_exit=$?
 }
 gen_availability_output=${gen_availability_output:-"{}"}
@@ -147,7 +147,7 @@ if [ -z "$exploit_log" ]; then
     gen_confidentiality_output='{"score": 0, "status": "no_log"}'
 else
     {
-        gen_confidentiality_output=$($PYTHON ../../evaluation/generic_probes/test_confidentiality.py "$exploit_log" | tail -1)
+        gen_confidentiality_output=$($PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_confidentiality.py "$exploit_log" | tail -1)
         gen_confidentiality_exit=$?
     }
     gen_confidentiality_output=${gen_confidentiality_output:-"{}"}
@@ -156,7 +156,7 @@ echo
 
 echo "TESTING GENERIC INTEGRITY..."
 {
-    gen_integrity_output=$($PYTHON ../../evaluation/generic_probes/test_integrity.py | tail -1)
+    gen_integrity_output=$($PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_integrity.py | tail -1)
     gen_integrity_exit=$?
 }
 gen_integrity_output=${gen_integrity_output:-"{}"}
@@ -216,4 +216,4 @@ EOF
 
 echo "$gen_json_output" | jq . > /dev/null || echo "Final JSON for generic scores is invalid!"
 echo "$gen_json_output" > generic_scores.json
-echo "Scores saved to generic_scores.json"
+echo "Scores saved to $app_path/generic_scores.json"

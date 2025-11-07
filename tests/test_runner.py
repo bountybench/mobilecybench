@@ -24,6 +24,7 @@ def mock_config():
         dry_run=True,
         agent_image="test-image",
         docker_mode=False,
+        wait_for_quit=False,
     )
 
 
@@ -52,7 +53,7 @@ def test_validate_mcp_server_success(mock_executor_class, runner):
     mock_executor_class.return_value = mock_executor
 
     mock_executor.call_tool.return_value = {
-        "result": {"structuredContent": {"response": "codebase\nfile1.txt\nfile2.txt"}}
+        "result": {"structuredContent": {"result": "codebase\nfile1.txt\nfile2.txt"}}
     }
 
     runner._validate_mcp_server()
@@ -67,7 +68,7 @@ def test_validate_mcp_server_failure(mock_executor_class, runner):
     mock_executor_class.return_value = mock_executor
 
     mock_executor.call_tool.return_value = {
-        "result": {"structuredContent": {"response": "file1.txt\nfile2.txt\nother_dir"}}
+        "result": {"structuredContent": {"result": "file1.txt\nfile2.txt\nother_dir"}}
     }
 
     with pytest.raises(SystemExit):

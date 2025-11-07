@@ -1,0 +1,24 @@
+#!/bin/bash
+set -e
+
+echo "Cleaning up Wallabag testing environment..."
+
+# Stop and remove Docker containers
+echo "Stopping Docker containers..."
+docker-compose down -v 2>/dev/null || echo "No compose services to stop"
+docker stop wallabag-db-1 2>/dev/null || echo "No wallabag-db-1 container to stop"
+docker rm wallabag-db-1 2>/dev/null || echo "No wallabag-db-1 container to remove"
+
+# Clean up generated files
+echo "Cleaning up generated files..."
+rm -f scores.json || true
+rm -f *.log || true
+
+# Clean up web scraping artifacts  
+rm -f cookies.txt login.html home.html client_form.html client_created.html token_response.json 2>/dev/null || true
+
+# Clean up vulnerability test artifacts
+find . -type f -name "fake_agent_log.log" -delete
+rm -rf /tmp/vuln_scenario_* || true
+
+echo "Wallabag environment cleanup completed!"
