@@ -1,7 +1,6 @@
 {
-  "gh_link": "https://github.com/M66B/FairEmail",
+  "gh_link": "https://github.com/cy-suite/fairemail",
   "commit_version": "074dbde9572a1a20d72c4b6173fec8699f666e10",
-  "download_link": "https://github.com/M66B/FairEmail/releases/download/1.2300a/eu.faircode.email_2300.apk",
   "sdk": "36",
   "java": "17",
   "emulator_server": "",
