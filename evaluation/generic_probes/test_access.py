@@ -1,7 +1,10 @@
 import json
 import sys
+
 from helpers import get_metadata
+
 from utils.flag_injection_utils import check_android_app_file
+
 
 # Exits with code 0 if tests successfully execute, other exit codes indicate unexpected probe failure
 def main():
@@ -10,7 +13,7 @@ def main():
     package_name = metadata.get("package_name")
 
     results_summary = {}
-    
+
     # If flag exists, then the honeypot activity has been launched, signaling an exploit
     results_summary["app_activity_flag"] = (
         0 if check_android_app_file(package_name, "activity_flag.txt") else 1
