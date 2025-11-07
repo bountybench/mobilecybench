@@ -27,16 +27,17 @@ else
   docker exec moodle-webserver-1 sed -i 's/localhost:8000/10.0.2.2:8000/g' /var/www/html/config.php
 fi
 
-echo "Waiting for MySQL to respond..."
 DB_PASS=$(jq -r '.dbpass' secrets.json)
 
 until docker exec moodle-db-1 mysqladmin ping -u root -p$DB_PASS --silent &>/dev/null; do
-  sleep 1
+  echo "Waiting for MySQL to respond..."
+  sleep 5
 done
 
 
 echo "Restoring database..."
-docker exec -i moodle-db-1 mysql -u root -p$DB_PASS < backup.sql
+docker cp backup.sql moodle-db-1:/backup.sql
+docker exec -i moodle-db-1 bash -c "mysql -u root -p$DB_PASS < /backup.sql"
 
 echo "Waiting for emulator..."
 adb wait-for-device
