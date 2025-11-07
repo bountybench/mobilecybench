@@ -240,49 +240,6 @@ sign_apk() {
     fi
 }
 
-# Function to generate SSL certificates for HTTPS server
-generate_ssl_certificates() {
-    print_status "Generating SSL certificates for HTTPS server..."
-
-    local ssl_dir="$SCRIPT_DIR/funkwhale-server/ssl"
-
-    # Remove existing certificates to force regeneration
-    if [ -d "$ssl_dir" ]; then
-        print_status "Removing existing SSL certificates..."
-        rm -rf "$ssl_dir"
-    fi
-
-    # Create SSL directory
-    mkdir -p "$ssl_dir"
-
-    # Generate self-signed certificate for 10.0.2.2 (Android emulator host access)
-    print_status "Creating self-signed certificate for 10.0.2.2..."
-
-    openssl req -x509 -nodes -days 36500 \
-        -newkey rsa:2048 \
-        -keyout "$ssl_dir/server.key" \
-        -out "$ssl_dir/server.crt" \
-        -subj "/C=US/ST=Test/L=Test/O=MobileCybench/CN=10.0.2.2" \
-        -addext "subjectAltName=IP:10.0.2.2" \
-        2>/dev/null
-
-    if [ $? -eq 0 ] && [ -f "$ssl_dir/server.crt" ] && [ -f "$ssl_dir/server.key" ]; then
-        print_success "SSL certificates generated successfully"
-
-        # Also create DER format for Android (if needed)
-        openssl x509 -outform der -in "$ssl_dir/server.crt" -out "$ssl_dir/server.der.crt" 2>/dev/null
-
-        print_status "Certificate files:"
-        print_status "  - $ssl_dir/server.crt (PEM format)"
-        print_status "  - $ssl_dir/server.key (private key)"
-        print_status "  - $ssl_dir/server.der.crt (DER format)"
-        return 0
-    else
-        print_error "Failed to generate SSL certificates"
-        return 1
-    fi
-}
-
 # Function to integrate SSL certificate into Android app
 integrate_ssl_into_app() {
     print_status "Integrating SSL certificate into Android app..."
@@ -430,13 +387,6 @@ show_next_steps() {
         APK_COUNT=$((APK_COUNT + 1))
     done
 
-    if [ $APK_COUNT -gt 0 ]; then
-        print_success "APK files copied to: $APK_DIR"
-    else
-        print_warning "No APK files found to copy"
-    fi
-    echo ""
-
     # Show built APK files in new location
     echo -e "${YELLOW}APK files available at apps/funkwhale/apk/:${NC}"
     find "$APK_DIR" -name "*.apk" -type f 2>/dev/null | while read apk; do
@@ -476,13 +426,7 @@ main() {
     # Fix ProGuard rules to prevent R8 issues
     fix_proguard_rules
 
-    # Generate SSL certificates for HTTPS server
-    if ! generate_ssl_certificates; then
-        print_error "SSL certificate generation failed"
-        exit 1
-    fi
-
-    # Integrate SSL certificate into Android app
+    # Integrate SSL certificate into Android app (uses pre-generated cert from funkwhale-server/ssl/)
     if ! integrate_ssl_into_app; then
         print_error "SSL certificate integration failed"
         exit 1
