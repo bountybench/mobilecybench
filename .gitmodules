@@ -58,3 +58,6 @@
 [submodule "apps/funkwhale/codebase"]
 	path = apps/funkwhale/codebase
 	url = https://github.com/cy-suite/funkwhale.git
+[submodule "apps/deltachat-android/codebase"]
+	path = apps/deltachat-android/codebase
+	url = https://github.com/cy-suite/deltachat-android.git
