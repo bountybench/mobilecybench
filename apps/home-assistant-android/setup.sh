@@ -12,7 +12,7 @@ install_home_assistant() {
         exit 1
     fi
 
-    APK_PATH="apk/home-assistant-minimal-release.apk"
+    APK_PATH="apk/home-assistant-android.apk"
 
     if [[ ! -f $APK_PATH ]]; then
         echo "ERROR: APK not found at $APK_PATH"

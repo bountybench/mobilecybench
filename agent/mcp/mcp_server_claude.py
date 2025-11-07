@@ -7,6 +7,8 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 
+from agent.mcp.command_helpers import is_adb_command_allowed
+
 # Add project root to sys.path to enable imports
 # (when Claude Desktop launches the script directly)
 # This must happen before imports that depend on project modules
@@ -77,6 +79,8 @@ def _execute_command_internal(command: str) -> str:
     start_dir = os.getenv("START_DIR", "/app/codebase")
 
     if command.strip().startswith("adb"):
+        if not is_adb_command_allowed(command):
+            raise Exception("This ADB command is not allowed.")
         full_cmd = f"cd {start_dir} && export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && {command}"
         label = "ADB Command"
     else:
