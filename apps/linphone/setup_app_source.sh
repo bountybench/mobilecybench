@@ -86,6 +86,7 @@ build_LinPhone() {
     fi
     # Run gradle build with output suppressed
     pwd
+    sed -i 's/abiFilters += listOf("armeabi-v7a", "arm64-v8a")/abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")/' app/build.gradle.kts
     sed -i -- 's/signingConfigs.getByName("release")/signingConfigs.getByName("debug")/' app/build.gradle.kts
     if ./gradlew assembleRelease --no-daemon --max-workers=1 > "$temp_out" 2> "$temp_err"; then
         echo "Build completed successfully."
