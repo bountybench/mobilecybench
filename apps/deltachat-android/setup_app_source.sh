@@ -35,7 +35,7 @@ install_rust_targets() {
             error "Failed to install toolchain $RUSTUP_TOOLCHAIN"
         fi
 
-        for target in $targets; do
+        for target in $TARGETS; do
             if ! rustup target add "$target" --toolchain "$RUSTUP_TOOLCHAIN"; then
                 error "Failed to install target $target"
             fi
