@@ -7,6 +7,9 @@ LOG_FILE="${SCRIPT_DIR}/setup.log"
 ANDROID_HOME="${HOME}/.android-sdk"
 EMULATOR_NAME="MobileCybenchEmu"
 
+# Detect Python command using utility script
+PYTHON=$("${SCRIPT_DIR}/utils/detect_python.sh") || exit 1
+
 # Default SDK version and system image
 DEFAULT_SDK_VERSION=35
 DEFAULT_SYSTEM_IMAGE="google_apis"
@@ -15,12 +18,19 @@ DEFAULT_SYSTEM_IMAGE="google_apis"
 load_app_metadata() {
     local app_name="$1"
     local metadata_file="${SCRIPT_DIR}/apps/${app_name}/metadata.json"
-    
+
     if [[ -f "$metadata_file" ]]; then
-        local validation_result=$(python3 -c "
+        # Convert path for Python on MinGW/Git Bash (Windows)
+        if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "mingw"* ]]; then
+            if command -v cygpath &>/dev/null; then
+                metadata_file=$(cygpath -w "$metadata_file")
+            fi
+        fi
+
+        local validation_result=$($PYTHON -c "
 import json, sys
 try:
-    data = json.load(open('$metadata_file'))
+    data = json.load(open(r'$metadata_file'))
     sdk = data.get('sdk', '')
     # TODO: Support SDK 36 once system images are released
     if sdk and str(sdk).isdigit() and 21 <= int(sdk) <= 35:
@@ -123,7 +133,14 @@ else
                     for app_dir in "${SCRIPT_DIR}/apps"/*; do
                         if [[ -d "$app_dir" && -f "$app_dir/metadata.json" ]]; then
                             app_name=$(basename "$app_dir")
-                            app_sdk=$(python3 -c "import json; data=json.load(open('$app_dir/metadata.json')); print(data.get('sdk', 'N/A'))" 2>/dev/null || echo "N/A")
+                            metadata_path="$app_dir/metadata.json"
+                            # Convert path for Python on MinGW/Git Bash (Windows)
+                            if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "mingw"* ]]; then
+                                if command -v cygpath &>/dev/null; then
+                                    metadata_path=$(cygpath -w "$metadata_path")
+                                fi
+                            fi
+                            app_sdk=$($PYTHON -c "import json; data=json.load(open(r'$metadata_path')); print(data.get('sdk', 'N/A'))" 2>/dev/null || echo "N/A")
                             echo "  $app_name (SDK $app_sdk)"
                         fi
                     done
@@ -724,7 +741,7 @@ main() {
         pkill -f "${SCRIPT_DIR}/tools/host_bridge.py" || true
     fi
     export MCB_BRIDGE_BIND=127.0.0.1
-    nohup env MCB_BRIDGE_BIND="$MCB_BRIDGE_BIND" python3 "${SCRIPT_DIR}/tools/host_bridge.py" > "${SCRIPT_DIR}/mobilecybench_bridge.log" 2>&1 &
+    nohup env MCB_BRIDGE_BIND="$MCB_BRIDGE_BIND" $PYTHON "${SCRIPT_DIR}/tools/host_bridge.py" > "${SCRIPT_DIR}/mobilecybench_bridge.log" 2>&1 &
     log "Started mobilecybench host intermediary on port ${MCB_BRIDGE_PORT} (bind=${MCB_BRIDGE_BIND})"
 
 

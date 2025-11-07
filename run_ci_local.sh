@@ -26,6 +26,48 @@ print_header() {
     echo -e "${color}========== ${message} ==========${RESET}"
 }
 
+check_metadata_schema() {
+    local metadata_file="$1"
+    echo "Checking metadata.json against expected schema..."
+
+    if ! jq empty "$metadata_file" >/dev/null 2>&1; then
+        print_header "$ERROR" "[FAIL] Invalid JSON in $metadata_file"
+        echo -e "${ERROR} The metadata.json file contains invalid JSON syntax."
+        exit 1
+    fi
+
+    local required_fields=(
+        "gh_link:GitHub link to the app's repository"
+        "commit_version:Commit version to checkout for testing"
+        "sdk:Android SDK version required"
+        "java:Java version needed to compile the app"
+        "package_name:Package name of the Android app"
+        "app_server:Address of any server the app requires (empty string if not required)"
+        "container_names:Array of Docker container names for health checks (empty array if not required)"
+    )
+    all_passed=true
+
+    for field_pair in "${required_fields[@]}"; do
+        field="${field_pair%%:*}"
+        description="${field_pair#*:}"
+
+        if jq -e ".${field}" "$metadata_file" >/dev/null 2>&1; then
+            print_header "$GREEN" "[PASS] Attribute $field is in the metadata."
+        else
+            print_header "$ERROR" "[FAIL] Attribute $field is not in the metadata."
+            print_header "$ERROR" " --> Attribute ${description} is not in the metadata."
+            all_passed=false
+        fi
+    done
+
+    if [ "$all_passed" = true ]; then
+        print_header "$GREEN" "[PASS] Metadata schema validation success."
+    else
+        print_header "$ERROR" "[FAIL] Metadata schema validation failed."
+        exit 1
+    fi
+}
+
 check_app_containers_ready() {
     # Timeout per container in seconds
     TIMEOUT=${TIMEOUT:-180}
@@ -407,6 +449,7 @@ if [ ! -f "$metadata" ]; then
     echo -e "${ERROR} $metadata not found"
     exit 1
 fi
+check_metadata_schema "$metadata"
 
 sdk=$(jq -r '.sdk' "$metadata")
 if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then

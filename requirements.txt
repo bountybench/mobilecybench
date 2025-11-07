@@ -1,7 +1,7 @@
 adbutils==2.9.4
 apkutils==2.0.2
 annotated-types>=0.6.0
-anyio==3.7.1
+anyio>=4.0.0
 build==1.2.1
 cachecontrol[filecache]==0.14.0
 certifi==2024.2.2
@@ -13,12 +13,12 @@ crashtest==0.4.1
 distlib==0.3.8
 distro==1.9.0
 dulwich==0.21.7
-exceptiongroup==1.2.1
+exceptiongroup>=1.2.2
 fastjsonschema==2.19.1
 filelock==3.13.4
 h11==0.14.0
-httpcore==0.17.3
-httpx==0.24.1
+httpcore>=1.0.0
+httpx>=0.27.1
 idna==3.7
 importlib-metadata==7.1.0
 installer==0.7.0
@@ -34,10 +34,11 @@ pexpect==4.9.0
 pkginfo==1.10.0
 platformdirs==4.2.1
 psycopg2==2.9.10
+psycopg2-binary==2.9.10
 ptyprocess==0.7.0
 pycparser==2.22
 pyproject-hooks==1.0.0
-python-dotenv==1.0.1
+python-dotenv>=1.1.0
 pywin32-ctypes==0.2.2
 rapidfuzz==3.8.1
 requests-toolbelt==1.0.0
@@ -73,4 +74,6 @@ pydantic>=2.0.0
 Pillow>=10.0.0
 pymysql>=1.1.0
 tiktoken>=0.5.0
+fastmcp>=2.12.0
+mcp>=1.16.0
 
