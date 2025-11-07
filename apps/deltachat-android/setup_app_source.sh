@@ -142,6 +142,7 @@ DC_RELEASE_KEY_PASSWORD=android
 # Build features
 android.defaults.buildfeatures.buildconfig=true
 android.useAndroidX=true
+android.nonTransitiveRClass=false
 android.enableJetifier=true
 org.gradle.caching=true
 org.gradle.parallel=true
