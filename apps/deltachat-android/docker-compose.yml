@@ -1,0 +1,20 @@
+services:
+  greenmail:
+    image: greenmail/standalone:2.0.1
+    container_name: deltachat-greenmail
+    user: "0:0"  # run as root to allow test flag injection into /root/flag.txt
+    restart: always
+    ports:
+      - "1025:3025"
+      - "1143:3143"
+      - "8025:8080"
+    environment:
+      - GREENMAIL_OPTS=-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=user1@deltachat.test:password123,user2@deltachat.test:password123,user3@deltachat.test:password123 -Dgreenmail.auth.disabled=false -Dgreenmail.verbose
+    networks:
+      - shared_net
+    # Health check removed - Greenmail container doesn't have standard networking tools
+    # The setup.sh and run_ci_local.sh scripts will check port availability instead
+
+networks:
+  shared_net:
+    external: true

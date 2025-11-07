@@ -249,6 +249,13 @@ files_cleanup() {
       }
     fi
   fi
+
+  # Remove baseline.json file if it exists
+  baseline_file="$ROOT_DIR/baseline.json"
+  if [ -f "$baseline_file" ]; then
+    LOG "Removing baseline file: $baseline_file"
+    rm -f "$baseline_file"
+  fi
 }
 
 # If Karaf is not reachable locally, try to start the compose stack so we can 
@@ -276,6 +283,21 @@ fi
 
 # Now that users have been handled (or attempted), bring down docker services
 docker_cleanup
+
+# Uninstall the app from emulator
+if command -v adb >/dev/null 2>&1; then
+  LOG "Checking for OpenHAB app installation on emulator"
+
+  pkg="org.openhab.habdroid"
+  if adb shell pm list packages | grep -q "^package:$pkg$"; then
+    LOG "Uninstalling $pkg from emulator"
+    adb uninstall "$pkg" 2>/dev/null || LOG "Warning: Failed to uninstall $pkg"
+  else
+    LOG "Package $pkg not found on emulator"
+  fi
+else
+  LOG "adb not available; skipping app uninstallation from emulator"
+fi
 
 # Clean up files after user operations are complete
 files_cleanup

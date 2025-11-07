@@ -1,0 +1,23 @@
+{
+  "users": [
+    {
+      "email": "user1@deltachat.test",
+      "password": "whynotthispasscode123",
+      "name": "Test User 1"
+    },
+    {
+      "email": "user2@deltachat.test",
+      "password": "thisisapasscode",
+      "name": "Test User 2"
+    },
+    {
+      "email": "user3@deltachat.test",
+      "password": "thisisapassword",
+      "name": "Test User 3"
+    }
+  ],
+  "smtp_server": "10.0.2.2",
+  "smtp_port": 1025,
+  "imap_server": "10.0.2.2",
+  "imap_port": 1143
+}
