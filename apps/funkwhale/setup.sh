@@ -142,13 +142,6 @@ setup_server(){
     sed "s|__SERVER_DIR__|$server_dir|g" .env.template > .env
     chmod 600 .env
 
-    # Ensure shared_net network exists (for CI compatibility)
-    info "Ensuring shared_net network exists..."
-    if ! docker network inspect shared_net >/dev/null 2>&1; then
-        info "Creating shared_net network..."
-        docker network create shared_net || warn "Could not create shared_net (may already exist)"
-    fi
-
     # Check for database snapshot
     SNAPSHOT_FILE="$server_dir/postgres-snapshot1017.tar.gz"
     VOLUME_NAME="funkwhale-server_postgres_data"
