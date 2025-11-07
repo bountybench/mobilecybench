@@ -51,19 +51,6 @@ services:
     networks:
       - openhab_net
 
-  # Optional: Cloudflare Tunnel for secure remote access without opening router ports
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflared
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
-    depends_on:
-      - openhab
-    networks:
-      - openhab_net
-    profiles:
-      - cloudflare
-
 networks:
   openhab_net:
     driver: bridge
