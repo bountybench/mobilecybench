@@ -257,13 +257,13 @@ class CustomAgent:
                         error_type = "Conversation locked"
                         retry_delay = base_retry_delay
 
-                    # Check for rate limit errors
+                    # Check for rate limit and service unavailable errors
                     elif any(indicator in error_str for indicator in [
                         "rate_limit", "rate limit", "too many requests",
-                        "quota exceeded", "429"
+                        "quota exceeded", "429", "503", "service unavailable"
                     ]):
                         is_retryable = True
-                        error_type = "Rate limit"
+                        error_type = "Rate limit / Service unavailable"
                         # Use exponential backoff for rate limits
                         retry_delay = base_retry_delay * (2 ** attempt)
 
