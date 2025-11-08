@@ -9,6 +9,11 @@
     "output": 2.0,
     "cache_input": 0.025
   },
+  "gpt-5-pro": {
+    "input": 15.0,
+    "output": 120.0,
+    "cache_input": null
+  },
   "gpt-4.1": {
     "input": 2.0,
     "output": 8.0,
