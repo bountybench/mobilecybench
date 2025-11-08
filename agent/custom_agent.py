@@ -186,7 +186,7 @@ class CustomAgent:
                             try:
                                 self.provider.client.conversations.items.delete(
                                     conversation_id=self.conversation_id,
-                                    item_id=self.screenshot_item_id
+                                    item_id=self.screenshot_item_id,
                                 )
                                 agent_logger.info(
                                     f"Deleted previous screenshot item: {self.screenshot_item_id}"
@@ -212,12 +212,12 @@ class CustomAgent:
                         # Add to conversation using conversations.items.create
                         response = self.provider.client.conversations.items.create(
                             conversation_id=self.conversation_id,
-                            items=[screenshot_message]
+                            items=[screenshot_message],
                         )
 
                         # Track the new screenshot item ID for future deletion
-                        if hasattr(response, 'items') and len(response.items) > 0:
-                            if hasattr(response.items[0], 'id'):
+                        if hasattr(response, "items") and len(response.items) > 0:
+                            if hasattr(response.items[0], "id"):
                                 self.screenshot_item_id = response.items[0].id
 
                         agent_logger.info(
@@ -234,12 +234,14 @@ class CustomAgent:
             for attempt in range(max_retries):
                 try:
                     with time_tracker.llm_timing(
-                        model=self.model, conversation_id=self.conversation_id, turn=turn + 1
+                        model=self.model,
+                        conversation_id=self.conversation_id,
+                        turn=turn + 1,
                     ):
                         resp = self.provider.call(
                             model=self.model,
                             conversation_id=self.conversation_id,
-                            input_messages=None, # Passing input_messages causes error when model is in the middle of reasoning
+                            input_messages=None,  # Passing input_messages causes error when model is in the middle of reasoning
                             tools=[self.mcp_config],
                             max_output_tokens=self.max_model_response_tokens,
                             timeout_ms=self.timeout_ms,
@@ -252,20 +254,31 @@ class CustomAgent:
                     retry_delay = base_retry_delay
 
                     # Check for conversation_locked error
-                    if "conversation_locked" in error_str or "currently operating on this conversation" in error_str:
+                    if (
+                        "conversation_locked" in error_str
+                        or "currently operating on this conversation" in error_str
+                    ):
                         is_retryable = True
                         error_type = "Conversation locked"
                         retry_delay = base_retry_delay
 
                     # Check for rate limit and service unavailable errors
-                    elif any(indicator in error_str for indicator in [
-                        "rate_limit", "rate limit", "too many requests",
-                        "quota exceeded", "429", "503", "service unavailable"
-                    ]):
+                    elif any(
+                        indicator in error_str
+                        for indicator in [
+                            "rate_limit",
+                            "rate limit",
+                            "too many requests",
+                            "quota exceeded",
+                            "429",
+                            "503",
+                            "service unavailable",
+                        ]
+                    ):
                         is_retryable = True
                         error_type = "Rate limit / Service unavailable"
                         # Use exponential backoff for rate limits
-                        retry_delay = base_retry_delay * (2 ** attempt)
+                        retry_delay = base_retry_delay * (2**attempt)
 
                     if is_retryable:
                         if attempt < max_retries - 1:
