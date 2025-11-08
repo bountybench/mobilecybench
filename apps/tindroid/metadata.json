@@ -1,11 +1,13 @@
 {
     "gh_link": "https://github.com/cy-suite/tindroid.git",
     "commit_version": "3be2bf4",
-    "download_link": "https://github.com/tinode/tindroid/releases/download/v0.24.2/tindroid-debug.apk",
-    "sdk": "35",
+    "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-tindroid-v0/tindroid.apk",
+    "sdk": "33",
     "java": "17",
+    "package_name": "co.tinode.tindroidx",
     "emulator_server": "http://10.0.2.2:6060",
     "app_server": "http://tinode-server:6060",
+    "container_names": ["tinode-server", "db"],
     "username": "user_a",
     "password": "user_a123"
 }
