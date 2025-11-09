@@ -6,6 +6,7 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -35,10 +36,17 @@ def log_banner(message: str, width: int = 60):
 
 
 class MobileCybenchRunner:
-    def __init__(self, app_name: str, config: RunnerConfig, agent_only: bool = False):
+    def __init__(
+        self,
+        app_name: str,
+        config: RunnerConfig,
+        agent_only: bool = False,
+        codex_mode: bool = False,
+    ):
         self.app_name = Path(app_name).name
         self.config = config
         self.agent_only = agent_only
+        self.codex_mode = codex_mode
         self.project_root = project_root
         self.app_dir = self.project_root / "apps" / self.app_name
         self.agent_dir = self.project_root / "agent"
@@ -236,7 +244,7 @@ class MobileCybenchRunner:
             self._exit_with_error(f"Failed to inject security flags: {e}")
         logger.info("App setup completed")
 
-    def setup_agent(self):
+    def setup_agent(self, codex_mode=False):
         """Configure agent environment and start services"""
         log_banner("SETTING UP AGENT ENVIRONMENT")
 
@@ -244,18 +252,27 @@ class MobileCybenchRunner:
             self._setup_env_file()
         self._create_docker_network()
 
-        # Setup agent kali environment
+        # Setup agent kali environment with appropriate image
+        logger.info("Setting up agent Kali environment...")
+
+        # Select image based on agent type
+        if codex_mode:
+            image_name = self.config.codex_agent_image or "cybench/mobilecybench:codex"
+            logger.info(f"Using Codex agent image: {image_name}")
+        else:
+            image_name = self.config.agent_image
+            logger.info(f"Using custom agent image: {image_name}")
         agent_env = AgentEnvironment(
             app_dir=self.app_dir,
             docker_networks=["shared_net"],
-            image_name=self.config.agent_image,
+            image_name=image_name,
             env={"ANDROID_ADB_SERVER_PORT": "5037"},
             commit_id=self.metadata.get("commit_version"),
         )
         agent_env.setup()
         self.agent_env = agent_env
 
-        self._start_containers()
+        self._start_containers(codex_mode=codex_mode)
 
         logger.info("Agent environment setup completed")
 
@@ -305,19 +322,52 @@ class MobileCybenchRunner:
 
         logger.info("✓ MCP server validation passed: 'codebase' directory found")
 
-    def _start_containers(self):
-        """Start MCP server and Kali container"""
-        logger.info("Starting MCP server...")
+    def _start_containers(self, codex_mode: bool = False):
+        """Start the containerized environment.
 
+        Args:
+            codex_mode: If True, uses codex-specific configuration.
+                        If False, uses custom implementation.
+        """
+        logger.info("Starting containerized environment...")
+
+        # Build environment variables
         env = os.environ.copy()
 
-        try:
-            self.cmd.run("docker compose up -d --wait", cwd=self.agent_dir, env=env)
-        except subprocess.CalledProcessError as e:
-            logger.error(
-                f"Docker-compose failed: {e.stderr if hasattr(e, 'stderr') else e}"
+        if codex_mode:
+            env.update(
+                {
+                    "APP_NAME": self.app_name,
+                    "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
+                    "AGENT_TYPE": "codex",
+                    "MCP_COMMAND": "python3 mcp_server.py",  # Skip ngrok for codex
+                }
             )
-            self._exit_with_error("Failed to start containers")
+            cmd = f"docker compose -f {self.agent_dir / 'docker-compose.yml'} up -d"
+            cwd = self.project_root
+        else:
+            env["AGENT_TYPE"] = "custom"
+            cmd = "docker compose up -d --wait"
+            cwd = self.agent_dir
+
+        logger.info("Starting containers with docker compose...")
+
+        # Execute docker compose
+        try:
+            result = self.cmd.run(cmd, cwd=cwd, env=env)
+            logger.info("✓ Containers started successfully")
+            if result.stdout:
+                logger.debug(f"Docker compose output: {result.stdout}")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to start containers: {e}")
+            if codex_mode:
+                raise
+            else:
+                self._exit_with_error("Failed to start containers")
+
+        # Container verification
+        logger.info("Waiting for MCP server to initialize...")
+        time.sleep(5)
 
         # Validate MCP server functionality
         self._validate_mcp_server()
@@ -452,33 +502,56 @@ class MobileCybenchRunner:
             }
 
     def run_agent(self):
-        """Run the custom agent - custom_agent.py"""
-        log_banner("RUNNING CUSTOM AGENT")
+        """Run the agent - custom or codex based on mode"""
+        agent_type = "CODEX AGENT" if self.codex_mode else "CUSTOM AGENT"
+        log_banner(f"RUNNING {agent_type}")
 
         # If in dry-run mode, use interactive shell instead
         if self.config.dry_run:
             return self.run_interactive_shell()
 
+        logger.info(f"Starting {agent_type.lower()} execution...")
+
         try:
-            # Import the CustomAgent class
-            from agent.custom_agent import CustomAgent
+            if self.codex_mode:
+                # Import and use CodexAgent
+                from agent.codex_agent import CodexAgent
 
-            logger.info("Initializing CustomAgent...")
+                logger.info("Initializing codex agent...")
+                logger.info("Creating CodexAgent instance")
 
-            agent = CustomAgent(
-                model=self.config.model,
-                max_iterations=self.config.max_iterations,
-                max_model_response_tokens=self.config.max_model_response_tokens,
-                max_kali_message_tokens=self.config.max_kali_message_tokens,
-                max_context_length=self.config.max_context_length,
-                screenshot_enabled=self.config.screenshot_mode,
-                app_name=self.app_name,
-                app_server=getattr(self, "metadata", {}).get(
-                    "app_server", None
-                ),  # default to None if in agent_only mode
-                dry_run=self.config.dry_run,
-                system_prompt=self.config.custom_system_prompt,
-            )
+                agent = CodexAgent(
+                    max_conversation_turns=self.config.max_iterations,
+                    screenshot_enabled=self.config.screenshot_mode,
+                    app_name=self.app_name,
+                    app_server=getattr(self, "metadata", {}).get("app_server", None),
+                    dry_run=self.config.dry_run,
+                )
+            else:
+                # Import and use CustomAgent
+                from agent.custom_agent import CustomAgent
+
+                # Create agent instance with dry_run mode for infrastructure testing
+                # Set dry_run=False for actual AI execution
+                logger.info("Initializing custom agent...")
+                logger.info("Creating CustomAgent instance")
+
+                agent = CustomAgent(
+                    model=self.config.model,
+                    max_iterations=self.config.max_iterations,
+                    max_model_response_tokens=self.config.max_model_response_tokens,
+                    max_kali_message_tokens=self.config.max_kali_message_tokens,
+                    max_context_length=self.config.max_context_length,
+                    screenshot_enabled=self.config.screenshot_mode,
+                    app_name=self.app_name,
+                    app_server=getattr(self, "metadata", {}).get(
+                        "app_server", None
+                    ),  # default to None if in agent_only mode
+                    # TODO - create proper dry run mode
+                    # https://github.com/bountybench/mobilecybench/issues/322
+                    dry_run=self.config.dry_run,
+                    system_prompt=self.config.custom_system_prompt,
+                )
 
             # This can take a while for actual LLM calls
             result = agent.run()
@@ -570,7 +643,7 @@ class MobileCybenchRunner:
             dummy_log_path.touch()
         self.run_probes_checks(log_file_path=dummy_log_path)
 
-        self.setup_agent()
+        self.setup_agent(codex_mode=self.codex_mode)
         self.run_agent()
 
         agent_log_filename = logger_manager.get_agent_log_file_name()
@@ -660,6 +733,14 @@ def main():
             help="Run only the agent, skipping emulator setup and app setup. Optional.",
         )
 
+        # Add agent_type selection
+        parser.add_argument(
+            "--agent-type",
+            choices=["custom", "codex"],
+            default="custom",
+            help="Agent type to use: 'custom' (OpenAI API) or 'codex' (Codex CLI). Default: custom.",
+        )
+
         parser.add_argument(
             "app_name",
             help="Name of the app to test (must exist in apps/ directory). Required.",
@@ -689,7 +770,8 @@ def main():
         config = RunnerConfig.from_file(config_path)
 
         # Create and run the runner
-        runner = MobileCybenchRunner(args.app_name, config, args.agent_only)
+        codex_mode = args.agent_type == "codex"
+        runner = MobileCybenchRunner(args.app_name, config, args.agent_only, codex_mode)
         result = runner.run()
 
         return result
