@@ -63,7 +63,9 @@ fi
 # Check if Python meshtastic library is installed
 if ! python3 -c "import meshtastic" 2>/dev/null; then
     log "Installing meshtastic Python library..."
-    pip3 install --quiet meshtastic || warn "Could not install meshtastic library"
+    pip3 install --quiet --break-system-packages meshtastic 2>/dev/null || \
+        pip3 install --quiet meshtastic 2>/dev/null || \
+        warn "Could not install meshtastic library"
 fi
 
 # Run the exploit

@@ -11,11 +11,18 @@ PACKAGE_NAME="com.geeksville.mesh"
 MESH_HOST="10.0.2.2"
 MESH_PORT=4403
 
+# Add adb to PATH if ANDROID_HOME is set
+if [ -n "${ANDROID_HOME:-}" ] && [ -d "$ANDROID_HOME/platform-tools" ]; then
+    export PATH="$ANDROID_HOME/platform-tools:$PATH"
+fi
+
 echo "[setup] Starting Meshtastic-Android setup..."
 
 # Install Python meshtastic library for testing
 echo "[setup] Installing Python meshtastic library..."
-pip3 install --quiet meshtastic || echo "[setup] WARNING: Could not install meshtastic library"
+pip3 install --quiet --break-system-packages meshtastic 2>/dev/null || \
+    pip3 install --quiet meshtastic 2>/dev/null || \
+    echo "[setup] WARNING: Could not install meshtastic library"
 
 # Start mesh network simulators
 echo "[setup] Starting mesh network simulators..."
