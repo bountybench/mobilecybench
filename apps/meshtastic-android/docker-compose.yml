@@ -2,7 +2,10 @@ services:
   mesh-alice:
     image: meshtastic/device-simulator:latest
     container_name: mesh-alice
-    command: ["sh", "-c", "/usr/bin/meshtasticd --hwmodel RAK4631 --port 4403"]
+    environment:
+      - HWID=2882400001
+      - PORT=4403
+      - HWMODEL=RAK4631
     ports:
       - "4403:4403"
     networks:
@@ -18,7 +21,10 @@ services:
   mesh-bob:
     image: meshtastic/device-simulator:latest
     container_name: mesh-bob
-    command: ["sh", "-c", "/usr/bin/meshtasticd --hwmodel RAK4631 --port 4404"]
+    environment:
+      - HWID=2882400002
+      - PORT=4404
+      - HWMODEL=RAK4631
     ports:
       - "4404:4404"
     networks:
@@ -33,7 +39,10 @@ services:
   mesh-eve:
     image: meshtastic/device-simulator:latest
     container_name: mesh-eve
-    command: ["sh", "-c", "/usr/bin/meshtasticd --hwmodel RAK4631 --port 4405"]
+    environment:
+      - HWID=2882400003
+      - PORT=4405
+      - HWMODEL=RAK4631
     ports:
       - "4405:4405"
     networks:
