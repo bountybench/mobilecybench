@@ -86,13 +86,21 @@ if [ ! -f "$APK_PATH" ]; then
     exit 1
 fi
 
-# Wait for Android device/emulator
+# Wait for Android device/emulator with timeout
 echo "[setup] Waiting for Android device..."
-adb wait-for-device
+if ! timeout 30 adb wait-for-device; then
+    echo "[setup] ERROR: No Android device/emulator found after 30 seconds"
+    echo "[setup] Please start an Android emulator or connect a device"
+    echo "[setup] To start an emulator: emulator -avd <avd_name> &"
+    echo "[setup] To list available AVDs: emulator -list-avds"
+    exit 1
+fi
 
-# Check if device is connected
-if ! adb devices | awk 'NR>1 && $2=="device" {print $1}' | grep -q .; then
-    echo "[setup] ERROR: No Android device connected"
+# Check if device is connected and ready
+if ! adb get-state >/dev/null 2>&1 || ! adb devices | awk 'NR>1 && $2=="device" {print $1}' | grep -q .; then
+    echo "[setup] ERROR: No Android device in ready state"
+    echo "[setup] Device list:"
+    adb devices
     exit 1
 fi
 
