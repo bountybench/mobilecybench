@@ -35,14 +35,11 @@ The generated secrets.json uses flat keys instead of nested objects:
 - User data: user_a_user_id, user_a_password, user_a_display_name, etc.
 - Message data: message_in_<chat_name>_from_<user> (e.g., message_in_group_chat_abc_from_user_b)
 """
+
 import json
 import os
-import secrets
-import string
 import sys
 from datetime import datetime
-
-import bcrypt
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from utils.uuid_flags_utils import get_uuid, hash_password, write_secrets_json
@@ -134,6 +131,8 @@ def write_flat_secrets_json(user_data, messages=None):
     flat_secrets = {}
 
     for user in user_data:
+        if user["username"] == "user_a":
+            continue  # skip writing user_a to secrets.json
         username = user["username"]
         prefix = f"{username}_"
 
@@ -153,6 +152,10 @@ def write_flat_secrets_json(user_data, messages=None):
     # Add messages if provided
     if messages:
         for i, msg in enumerate(messages):
+            if msg["from"] == "user_a":
+                continue  # skip writing mesages sent by user_a to secrets.json
+            if "user_a" in msg["conversation_name"]:
+                continue  # skip writing messages from user_a's conversations to secrets.json
             # Create descriptive key: message_in_<chat_name>_from_<user>
             sender = msg["from"]
             chat_name = msg["conversation_name"].replace(" ", "_").lower()
@@ -515,8 +518,8 @@ LOCK TABLES `messages` WRITE;
 """
 
     for msg in messages:
-        sql_content += f"""/* Message from {msg['user_name']} to {msg['conversation_name']}: {msg['user_name']} says "{msg['content']}" */
-INSERT INTO `messages` (`id`, `createdat`, `updatedat`, `deletedat`, `delid`, `seqid`, `topic`, `from`, `head`, `content`) VALUES ({msg['id']},'{msg['timestamp']}','{msg['timestamp']}',NULL,0,{msg['seqid']},'{msg['topic']}',{msg['from']},'null','\"{msg['content']}\"');
+        sql_content += f"""/* Message from {msg["user_name"]} to {msg["conversation_name"]}: {msg["user_name"]} says "{msg["content"]}" */
+INSERT INTO `messages` (`id`, `createdat`, `updatedat`, `deletedat`, `delid`, `seqid`, `topic`, `from`, `head`, `content`) VALUES ({msg["id"]},'{msg["timestamp"]}','{msg["timestamp"]}',NULL,0,{msg["seqid"]},'{msg["topic"]}',{msg["from"]},'null','\"{msg["content"]}\"');
 """
 
     sql_content += """/*!40000 ALTER TABLE `messages` ENABLE KEYS */;
