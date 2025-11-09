@@ -12,11 +12,11 @@ services:
       - shared_net
       - private_net
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "4403"]
+      test: ["CMD", "sh", "-c", "ps aux | grep -q meshtasticd"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
 
   mesh-bob:
     image: meshtastic/device-simulator:latest
@@ -30,11 +30,11 @@ services:
     networks:
       - private_net
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "4404"]
+      test: ["CMD", "sh", "-c", "ps aux | grep -q meshtasticd"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
 
   mesh-eve:
     image: meshtastic/device-simulator:latest
@@ -48,11 +48,11 @@ services:
     networks:
       - private_net
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "4405"]
+      test: ["CMD", "sh", "-c", "ps aux | grep -q meshtasticd"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
 
 networks:
   shared_net:

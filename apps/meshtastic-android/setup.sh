@@ -11,9 +11,21 @@ PACKAGE_NAME="com.geeksville.mesh"
 MESH_HOST="10.0.2.2"
 MESH_PORT=4403
 
-# Add adb to PATH if ANDROID_HOME is set
+# Add adb to PATH
+# First try ANDROID_HOME if set
 if [ -n "${ANDROID_HOME:-}" ] && [ -d "$ANDROID_HOME/platform-tools" ]; then
     export PATH="$ANDROID_HOME/platform-tools:$PATH"
+# Otherwise try common Android SDK locations
+elif [ -d "$HOME/Android/Sdk/platform-tools" ]; then
+    export PATH="$HOME/Android/Sdk/platform-tools:$PATH"
+elif [ -d "$HOME/Library/Android/sdk/platform-tools" ]; then
+    export PATH="$HOME/Library/Android/sdk/platform-tools:$PATH"
+fi
+
+# Verify adb is available
+if ! command -v adb >/dev/null 2>&1; then
+    echo "[setup] WARNING: adb not found in PATH. Android device operations may fail."
+    echo "[setup] Please ensure ANDROID_HOME is set or adb is in your PATH."
 fi
 
 echo "[setup] Starting Meshtastic-Android setup..."
