@@ -10,11 +10,19 @@ echo "[cleanup] Stopping Meshtastic mesh network simulators..."
 
 cd "$SCRIPT_DIR"
 
+# Use sudo if docker requires it (local development), but not in CI
+DOCKER_CMD="docker"
+if ! docker ps >/dev/null 2>&1; then
+    if sudo docker ps >/dev/null 2>&1; then
+        DOCKER_CMD="sudo docker"
+    fi
+fi
+
 # Stop and remove Docker containers
-docker-compose down -v 2>/dev/null || echo "[cleanup] No containers to stop"
+$DOCKER_CMD compose down -v 2>/dev/null || echo "[cleanup] No containers to stop"
 
 # Remove any Docker volumes
-docker volume ls -q | grep meshtastic | xargs docker volume rm 2>/dev/null || true
+$DOCKER_CMD volume ls -q | grep meshtastic | xargs $DOCKER_CMD volume rm 2>/dev/null || true
 
 # Remove fake agent logs
 if [ -f "vuln_scenarios/vuln_scenario_0/fake_agent_log.log" ]; then

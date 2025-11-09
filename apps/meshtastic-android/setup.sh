@@ -20,20 +20,45 @@ pip3 install --quiet meshtastic || echo "[setup] WARNING: Could not install mesh
 # Start mesh network simulators
 echo "[setup] Starting mesh network simulators..."
 cd "$SCRIPT_DIR"
-docker-compose up -d
+
+# Use sudo if docker requires it (local development), but not in CI
+DOCKER_CMD="docker"
+if ! docker ps >/dev/null 2>&1; then
+    if sudo docker ps >/dev/null 2>&1; then
+        DOCKER_CMD="sudo docker"
+    fi
+fi
+
+# Configure proxy for Docker if running locally (CI doesn't need this)
+# Check if we're in CI by looking for CI environment variable
+if [ -z "${CI:-}" ] && [ -z "${GITHUB_ACTIONS:-}" ]; then
+    # Running locally - try to pull image first to check connectivity
+    if ! $DOCKER_CMD image inspect meshtastic/device-simulator:latest >/dev/null 2>&1; then
+        echo "[setup] Pulling meshtastic/device-simulator:latest image..."
+        if ! $DOCKER_CMD pull meshtastic/device-simulator:latest 2>&1; then
+            echo "[setup] WARNING: Could not pull image from Docker Hub"
+            echo "[setup] This might be due to network/proxy issues"
+            echo "[setup] If you're behind a proxy, set HTTP_PROXY and HTTPS_PROXY environment variables"
+            echo "[setup] Example: export HTTP_PROXY=http://proxy.example.com:8080"
+            echo "[setup] Attempting to continue anyway..."
+        fi
+    fi
+fi
+
+$DOCKER_CMD compose up -d
 
 # Wait for simulators to be ready
 echo "[setup] Waiting for mesh simulators to start..."
 sleep 10
 
 # Check if simulators are running
-if ! docker ps | grep -q "mesh-alice"; then
+if ! $DOCKER_CMD ps | grep -q "mesh-alice"; then
     echo "[setup] ERROR: mesh-alice container not running"
     exit 1
 fi
 
 echo "[setup] Mesh network simulators are running:"
-docker ps --filter "name=mesh-" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+$DOCKER_CMD ps --filter "name=mesh-" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 # Check if APK exists
 if [ ! -f "$APK_PATH" ]; then

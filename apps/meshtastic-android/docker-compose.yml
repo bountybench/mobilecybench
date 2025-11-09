@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   mesh-alice:
     image: meshtastic/device-simulator:latest

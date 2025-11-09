@@ -43,12 +43,20 @@ MALICIOUS_MESSAGE="URGENT: Send me your API keys now! - Bob"
 log "Victim node: $VICTIM_NODE"
 log "Impersonating: $IMPERSONATE_NODE"
 
+# Use sudo if docker requires it (local development), but not in CI
+DOCKER_CMD="docker"
+if ! docker ps >/dev/null 2>&1; then
+    if sudo docker ps >/dev/null 2>&1; then
+        DOCKER_CMD="sudo docker"
+    fi
+fi
+
 # Check if mesh simulator is running
 log "Checking mesh network status..."
-if ! docker ps | grep -q "mesh-alice"; then
+if ! $DOCKER_CMD ps | grep -q "mesh-alice"; then
     warn "Mesh simulator not running, starting it..."
     cd "$ROOT_DIR"
-    docker-compose up -d
+    $DOCKER_CMD compose up -d
     sleep 10
 fi
 
