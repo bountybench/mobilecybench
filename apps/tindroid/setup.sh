@@ -115,7 +115,7 @@ FLUSH PRIVILEGES;
 EOF
 
     echo "Running docker compose up to start the db and tinode-server containers..."
-    docker compose up -d
+    docker compose -p tindroid up -d # Use tindroid as the project name
 
     echo "Waiting for the containers to be ready"
     echo "==================="
