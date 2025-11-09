@@ -1,6 +1,6 @@
 {
   "server_access": true,
-  "build_type": "source",
+  "build_type": "skip-apk",
   "adb_access": "full",
   "max_iterations": 30,
   "max_kali_message_tokens": 8192,
@@ -9,7 +9,7 @@
   "model": "gpt-5-2025-08-07",
   "screenshot_mode": true,
   "headless_mode": false,
-  "dry_run": true,
+  "dry_run": false,
   "custom_system_prompt": null,
   "agent_image": "cybench/mobilecybench:latest",
   "codex_agent_image": "cybench/mobilecybench:codex",

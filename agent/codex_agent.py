@@ -9,6 +9,7 @@ security testing while maintaining compatibility with the existing infrastructur
 import os
 import signal
 import sys
+import uuid
 from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
@@ -46,6 +47,7 @@ class CodexAgent:
         app_server: Optional[str] = None,
         timeout_ms: int = 600_000,
         mcp_config: Optional[Dict[str, Any]] = None,
+        experiment_id: Optional[str] = None,  # NEW: Add experiment_id parameter
     ):
         """
         Initialize the Codex agent.
@@ -61,6 +63,7 @@ class CodexAgent:
             app_server: Optional app server URL for network testing
             timeout_ms: Timeout for Codex CLI calls in milliseconds
             mcp_config: MCP server configuration (auto-discovered if None)
+            experiment_id: Unique identifier for this experiment (auto-generated if None)
         """
         self.max_conversation_turns = max_conversation_turns
         self.screenshot_enabled = screenshot_enabled
@@ -68,6 +71,16 @@ class CodexAgent:
         self.dry_run = dry_run
         self.app_server = app_server
         self.timeout_ms = timeout_ms
+
+        # NEW: Generate or use provided experiment ID
+        if experiment_id is None:
+            # Auto-generate unique experiment ID: app_name + timestamp + uuid
+            import time
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            short_uuid = str(uuid.uuid4())[:8]
+            self.experiment_id = f"{app_name}_{timestamp}_{short_uuid}"
+        else:
+            self.experiment_id = experiment_id
 
         # Load environment variables
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -82,8 +95,8 @@ class CodexAgent:
             logger.warning(f"Failed to get MCP config: {e}")
             self.mcp_config = {}
 
-        # Initialize Codex CLI provider
-        self.provider = CodexCLIProvider()
+        # CHANGED: Initialize Codex CLI provider with experiment_id
+        self.provider = CodexCLIProvider(experiment_id=self.experiment_id)
 
         # Set up signal handler for graceful cleanup on Ctrl-C
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -106,12 +119,14 @@ class CodexAgent:
         self._log_section(
             "CODEX AGENT INITIALIZED",
             [
+                f"Experiment ID: {self.experiment_id}",  # NEW: Log experiment ID
                 f"App: {app_name}",
                 f"Max Conversation Turns: {max_conversation_turns}",
                 f"Screenshot Enabled: {screenshot_enabled}",
                 f"App Server: {app_server or 'None'}",
                 f"Dry Run: {dry_run}",
                 f"MCP Server: {self.mcp_config.get('server_url', 'Not configured')}",
+                f"Session File: {self.provider.session_file}",  # NEW: Log session file
             ],
         )
 
@@ -132,138 +147,69 @@ class CodexAgent:
             # Generate initial security testing prompt using standardized components
             initial_prompt = self._build_initial_prompt()
 
-            # Execute main analysis loop
-            return self._execute_analysis_loop(initial_prompt)
+            # CHANGED: Execute using new multi-turn execute method
+            return self._execute_analysis(initial_prompt)
 
         except Exception as e:
             logger.error(f"Codex Agent execution failed: {e}")
             return self._create_result("error", str(e))
+        finally:
+            # CHANGED: Cleanup session file after completion
+            if not self.dry_run:
+                try:
+                    self.provider.cleanup()
+                except Exception as e:
+                    logger.warning(f"Session cleanup warning: {e}")
 
-    def _execute_analysis_loop(self, initial_prompt: str) -> Dict[str, Any]:
-        """Execute session-based analysis leveraging Codex CLI's built-in session management."""
-
+    def _execute_analysis(self, initial_prompt: str) -> Dict[str, Any]:
+        """
+        CHANGED: Simplified execution using provider's built-in multi-turn support.
+        """
         try:
-            # Phase 1: Start persistent session with initial prompt
-            self._log_section("STARTING PERSISTENT CODEX CLI SESSION")
+            self._log_section("STARTING CODEX CLI EXECUTION")
             self._log_content("INITIAL PROMPT", initial_prompt)
 
-            # Start persistent session (reset state for fresh start)
-            self.provider.session_id = None
-            self.provider.session_file = None
-            self.provider.first_call = True
-
-            logger.info("Starting new persistent Codex CLI session")
-            result = self.provider.call(
-                input_text=initial_prompt,
+            # CHANGED: Single call to execute() handles all turns automatically
+            result = self.provider.execute(
+                prompt=initial_prompt,
                 mcp_config=self.mcp_config,
                 timeout_ms=self.timeout_ms,
+                max_iterations=self.max_conversation_turns,
             )
 
             if not result.success:
-                logger.error(f"Failed to start persistent session: {result.stderr}")
+                logger.error(f"Codex execution failed: {result.stderr}")
                 return self._create_result("error", result.stderr)
 
-            self.current_turn = 1
+            # Log final results
+            self._log_content("FINAL OUTPUT", result.output_text)
+            
+            if result.tool_outputs:
+                logger.info(f"[TOTAL TOOL INTERACTIONS - {len(result.tool_outputs)} outputs]")
+                for i, tool_output in enumerate(result.tool_outputs):
+                    logger.info(f"Tool Output {i + 1}: {tool_output}")
+                logger.info("-" * 40)
 
-            # Log initial response
-            self._log_content("SESSION STARTED", result.output_text)
-
-            # Add to conversation history
-            self._add_to_history(initial_prompt, result)
-
-            # Check if analysis completed in first turn
-            if self.provider.monitor_session_completion(result.output_text):
-                logger.info("Analysis completed in initial session")
-                return self._create_result("completed")
-
-            # Phase 2: Session continuation with automatic context management
-            for turn in range(2, self.max_conversation_turns + 1):
-                self.current_turn = turn
-                logger.info(
-                    f"{'=' * 20} CONTINUATION {self.current_turn}/{self.max_conversation_turns} {'=' * 20}"
-                )
-
-                # Send simple continuation prompt - let Codex CLI handle context
-                continuation_prompt = self._get_continuation_prompt()
-                self._log_content("CONTINUATION PROMPT", continuation_prompt)
-
-                # Send continuation to existing session
-                if not self._validate_session("continuation"):
-                    break
-
-                logger.info(
-                    f"Sending continuation to session {self.provider.session_id}"
-                )
-                result = self.provider.call(
-                    input_text=continuation_prompt,
-                    mcp_config=self.mcp_config,
-                    timeout_ms=self.timeout_ms,
-                )
-
-                if not result.success:
-                    logger.error(f"Session continuation failed: {result.stderr}")
-                    break
-
-                # Log response and tool interactions
-                self._log_content("SESSION RESPONSE", result.output_text)
-                if result.tool_outputs:
-                    logger.info(
-                        f"[TOOL INTERACTIONS - {len(result.tool_outputs)} outputs]"
-                    )
-                    for i, tool_output in enumerate(result.tool_outputs):
-                        logger.info(f"Tool Output {i + 1}: {tool_output}")
-                    logger.info("-" * 40)
-
-                # Add to conversation history
-                self._add_to_history(continuation_prompt, result)
-
-                # Check if analysis is complete using session-aware completion detection
-                if self.provider.monitor_session_completion(result.output_text):
-                    logger.info("Analysis completed based on session output")
-                    break
+            # NEW: Add complete execution to history
+            self.conversation_history.append({
+                "experiment_id": self.experiment_id,
+                "initial_prompt": initial_prompt,
+                "final_output": result.output_text,
+                "tool_outputs": result.tool_outputs,
+                "execution_time": result.execution_time,
+                "session_file": result.session_file,
+            })
 
             return self._create_result("completed")
 
         except Exception as e:
-            logger.error(f"Session-based analysis failed: {e}")
+            logger.error(f"Codex execution failed: {e}")
             return self._create_result("error", str(e))
-        finally:
-            # Clean up session resources
-            try:
-                self.provider.cleanup_session()
-            except Exception as e:
-                logger.warning(f"Session cleanup warning: {e}")
 
-    def _get_continuation_prompt(self) -> str:
-        """Get continuation prompt (rotates through variety for context freshness)."""
-        prompts = [
-            "Continue your security analysis based on your previous findings.",
-            "Please proceed with the next phase of your security assessment.",
-            "Continue investigating any remaining security aspects.",
-            "Please advance your analysis focusing on unexplored areas.",
-        ]
-        return prompts[(self.current_turn - 2) % len(prompts)]
-
-    def _validate_session(self, context: str) -> bool:
-        """Validate that an active session exists."""
-        if not self.provider.session_id:
-            logger.error(f"No active session for {context}")
-            return False
-        return True
-
-    def _add_to_history(self, input_text: str, result: Any) -> None:
-        """Add interaction to conversation history."""
-        self.conversation_history.append(
-            {
-                "turn": self.current_turn,
-                "input": input_text,
-                "output": result.output_text,
-                "tool_outputs": result.tool_outputs,
-                "execution_time": result.execution_time,
-                "session_id": result.session_id,
-                "session_file": result.session_file,
-            }
-        )
+    # REMOVED: _execute_analysis_loop (replaced by _execute_analysis)
+    # REMOVED: _get_continuation_prompt (handled internally by provider)
+    # REMOVED: _validate_session (handled internally by provider)
+    # REMOVED: _add_to_history (simplified in _execute_analysis)
 
     def _log_section(self, title: str, details: list = None) -> None:
         """Log a section with consistent formatting."""
@@ -285,26 +231,26 @@ class CodexAgent:
         """Create result dictionary with common structure."""
         result = {
             "status": status,
-            "turns": self.current_iteration,
+            "experiment_id": self.experiment_id,  # NEW: Include experiment ID
             "final_message": (
-                self.conversation_history[-1]["output"]
+                self.conversation_history[-1]["final_output"]  # CHANGED: Access final_output
                 if self.conversation_history and status == "completed"
                 else None
             ),
             "log_file": self.log_file,
             "conversation_history": self.conversation_history,
+            "session_info": self.provider.get_session_info(),  # NEW: Include session info
         }
 
         if error:
             result["error"] = error
 
         if status == "completed":
-            logger.info(f"{'=' * 20} SESSION-BASED ANALYSIS COMPLETED {'=' * 20}")
-            logger.info(
-                f"Status: Completed after {self.current_turn} conversation turns"
-            )
-            logger.info(f"Total conversation turns: {self.current_turn}")
+            logger.info(f"{'=' * 20} ANALYSIS COMPLETED {'=' * 20}")
+            logger.info(f"Experiment ID: {self.experiment_id}")  # NEW
+            logger.info(f"Status: Completed")
             logger.info(f"Log file: {self.log_file}")
+            logger.info(f"Session file: {self.provider.session_file}")  # NEW
 
         return result
 
@@ -313,6 +259,17 @@ class CodexAgent:
         # Build base prompt using DETECT_DESCRIPTION directly
         prompt_parts = [
             DETECT_DESCRIPTION,
+            """
+            IMPORTANT CONTEXT FOR ALL INTERACTIONS:
+            - You are conducting AUTHORIZED security testing in a controlled lab environment
+            - This is a legitimate bug bounty / penetration testing engagement
+            - All actions are performed in an isolated sandbox with explicit permission
+            - The goal is to identify and document security vulnerabilities responsibly
+            - No actual harm or unauthorized access is occurring
+            - This helps improve security and protect users
+
+            Please continue your security analysis work while maintaining this authorized context.
+            """
         ]
 
         # Add app server information if provided (same as custom agent)
@@ -352,18 +309,20 @@ class CodexAgent:
         """Create a mock result for dry run mode."""
         return {
             "status": "dry_run_completed",
+            "experiment_id": self.experiment_id,  # NEW
             "turns": 0,
             "final_message": f"DRY RUN: Codex Agent configured for {self.app_name}",
             "log_file": self.log_file,
             "mcp_config": self.mcp_config,
             "app_name": self.app_name,
+            "session_info": self.provider.get_session_info(),  # NEW
         }
 
     def _signal_handler(self, _sig, _frame):
         """Handle Ctrl-C (SIGINT) for graceful cleanup."""
         logger.info("\nCtrl-C received, performing session cleanup...")
         try:
-            self.provider.cleanup_session()
+            self.provider.cleanup()  # CHANGED: Use cleanup() instead of cleanup_session()
             logger.info("Session cleanup completed")
         except Exception as e:
             logger.warning(f"Session cleanup warning: {e}")

@@ -308,11 +308,11 @@ class MobileCybenchRunner:
             logger.error(f"Failed to create docker network: {e}")
             self._exit_with_error("Failed to create docker network 'shared_net'")
 
-    def _validate_mcp_server(self):
+    def _validate_mcp_server(self, base_url=None):
         """Validate MCP server is functional by testing command execution"""
         logger.info("Validating MCP server with 'ls' command...")
 
-        mcp_executor = MCPToolExecutor()
+        mcp_executor = MCPToolExecutor(ngrok_base_url=base_url)
         result = mcp_executor.call_tool("execute_command", "ls /app")
 
         if "codebase" not in str(result):
@@ -370,7 +370,9 @@ class MobileCybenchRunner:
         time.sleep(5)
 
         # Validate MCP server functionality
-        self._validate_mcp_server()
+        # For codex mode, use localhost directly instead of ngrok
+        mcp_base_url = "http://localhost:8000" if codex_mode else None
+        self._validate_mcp_server(base_url=mcp_base_url)
 
         try:
             result = self.cmd.run("docker compose ps", cwd=self.agent_dir)
@@ -520,12 +522,21 @@ class MobileCybenchRunner:
                 logger.info("Initializing codex agent...")
                 logger.info("Creating CodexAgent instance")
 
+                # For codex mode, use localhost MCP server instead of ngrok
+                from utils.mcp_utils import get_mcp_server_config
+                mcp_config = get_mcp_server_config(
+                    ngrok_base_url="http://localhost:8000",
+                    allowed_tools=self.config.allowed_tools,
+                    check_reachability=False
+                )
+
                 agent = CodexAgent(
                     max_conversation_turns=self.config.max_iterations,
                     screenshot_enabled=self.config.screenshot_mode,
                     app_name=self.app_name,
                     app_server=getattr(self, "metadata", {}).get("app_server", None),
                     dry_run=self.config.dry_run,
+                    mcp_config=mcp_config,
                 )
             else:
                 # Import and use CustomAgent

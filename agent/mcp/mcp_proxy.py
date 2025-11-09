@@ -138,23 +138,43 @@ class MCPProxy:
                             },
                         )
 
-                        # Extract the actual command output from FastMCP response
+                        # Extract the actual command output from MCP server response
                         if "result" in http_response:
                             result = http_response["result"]
-                            # Try to get from structuredContent first (new format)
-                            if "structuredContent" in result:
-                                actual_output = result["structuredContent"].get(
-                                    "response", "Command executed"
-                                )
-                            # Fallback to direct response field
-                            elif "response" in result:
-                                actual_output = result.get(
-                                    "response", "Command executed"
-                                )
+                            
+                            # Check for content array (standard MCP format)
+                            if "content" in result and isinstance(result["content"], list):
+                                if len(result["content"]) > 0:
+                                    # Get text from first content item
+                                    first_content = result["content"][0]
+                                    if isinstance(first_content, dict):
+                                        actual_output = first_content.get("text", "Command executed")
+                                    else:
+                                        actual_output = str(first_content)
+                                else:
+                                    actual_output = "Command executed (empty content)"
+                            
+                            # Fallback: check for structuredContent (custom format)
+                            elif "structuredContent" in result:
+                                if isinstance(result["structuredContent"], dict):
+                                    actual_output = result["structuredContent"].get("result", "Command executed")
+                                else:
+                                    actual_output = str(result["structuredContent"])
+                            
+                            # Fallback: check for direct result field
+                            elif "result" in result:
+                                actual_output = str(result["result"])
+                            
                             else:
-                                actual_output = "Command executed"
+                                # Debug: log what we actually got
+                                actual_output = f"Unexpected response format: {json.dumps(result)}"
+                                
+                        elif "error" in http_response:
+                            # Handle error response
+                            error = http_response["error"]
+                            actual_output = f"Error: {error.get('message', 'Unknown error')}"
                         else:
-                            actual_output = "Command executed"
+                            actual_output = "Command executed (no result)"
 
                         # Forward response
                         response = {

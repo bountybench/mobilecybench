@@ -53,44 +53,53 @@ class AgentEnvironment:
 
         print(f"Checking for image {self.image_name}...")
         logger.info(f"Ensuring image {self.image_name} is available...")
+
+        # First check if image exists locally
         try:
-            seen_statuses = set()
-            pulling_started = False
+            self.client.images.get(self.image_name)
+            print(f"Image {self.image_name} found locally")
+            logger.info(f"Image {self.image_name} found locally, skipping pull")
+        except docker.errors.ImageNotFound:
+            # Image not found locally, try to pull it
+            logger.info(f"Image {self.image_name} not found locally, pulling from registry...")
+            try:
+                seen_statuses = set()
+                pulling_started = False
 
-            for line in self.client.api.pull(self.image_name, stream=True, decode=True):
-                if "status" in line:
-                    status = line["status"]
-                    layer_id = line.get("id", "")
+                for line in self.client.api.pull(self.image_name, stream=True, decode=True):
+                    if "status" in line:
+                        status = line["status"]
+                        layer_id = line.get("id", "")
 
-                    if status == "Pulling fs layer" and not pulling_started:
-                        print(
-                            "Image not cached locally, pulling from registry (this may take several minutes for large images)..."
-                        )
-                        pulling_started = True
+                        if status == "Pulling fs layer" and not pulling_started:
+                            print(
+                                "Image not cached locally, pulling from registry (this may take several minutes for large images)..."
+                            )
+                            pulling_started = True
 
-                    # only show meaningful status changes to avoid bloating output
-                    if status in [
-                        "Pulling fs layer",
-                        "Download complete",
-                        "Pull complete",
-                        "Already exists",
-                    ]:
-                        status_key = f"{layer_id}:{status}"
-                        if status_key not in seen_statuses:
-                            if layer_id:
-                                print(f"  {layer_id}: {status}")
-                            else:
-                                print(f"  {status}")
-                            seen_statuses.add(status_key)
+                        # only show meaningful status changes to avoid bloating output
+                        if status in [
+                            "Pulling fs layer",
+                            "Download complete",
+                            "Pull complete",
+                            "Already exists",
+                        ]:
+                            status_key = f"{layer_id}:{status}"
+                            if status_key not in seen_statuses:
+                                if layer_id:
+                                    print(f"  {layer_id}: {status}")
+                                else:
+                                    print(f"  {status}")
+                                seen_statuses.add(status_key)
 
-            print(f"Image {self.image_name} ready")
-            logger.info(f"Image {self.image_name} ready")
-        except docker.errors.APIError as e:
-            logger.error(f"Failed to pull image {self.image_name}: {e}")
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error pulling image: {e}")
-            raise
+                print(f"Image {self.image_name} ready")
+                logger.info(f"Image {self.image_name} ready")
+            except docker.errors.APIError as e:
+                logger.error(f"Failed to pull image {self.image_name}: {e}")
+                raise
+            except Exception as e:
+                logger.error(f"Unexpected error pulling image: {e}")
+                raise
 
         # Remove existing container with the same name if it exists
         # TODO: long term fix is to append random id to container so it
