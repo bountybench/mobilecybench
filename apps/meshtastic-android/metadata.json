@@ -1,0 +1,13 @@
+{
+  "gh_link": "https://github.com/cy-suite/Meshtastic-Android",
+  "commit_version": "2.5.20",
+  "download_link": "https://github.com/meshtastic/Meshtastic-Android/releases/download/2.5.20/app-release.apk",
+  "sdk": "34",
+  "java": "17",
+  "package_name": "com.geeksville.mesh",
+  "emulator_server": "10.0.2.2:4403",
+  "app_server": "mesh-simulator:4403",
+  "username": "",
+  "password": "",
+  "container_names": ["mesh-alice", "mesh-bob"]
+}

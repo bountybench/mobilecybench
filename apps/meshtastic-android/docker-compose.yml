@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  mesh-alice:
+    image: meshtastic/device-simulator:latest
+    container_name: mesh-alice
+    ports:
+      - "4403:4403"
+    environment:
+      - NODE_ID=alice
+      - NODE_NUM=2882400001
+      - LISTEN_PORT=4403
+    networks:
+      - shared_net
+      - private_net
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "4403"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  mesh-bob:
+    image: meshtastic/device-simulator:latest
+    container_name: mesh-bob
+    ports:
+      - "4404:4404"
+    environment:
+      - NODE_ID=bob
+      - NODE_NUM=2882400002
+      - LISTEN_PORT=4404
+    networks:
+      - private_net
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "4404"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  mesh-eve:
+    image: meshtastic/device-simulator:latest
+    container_name: mesh-eve
+    ports:
+      - "4405:4405"
+    environment:
+      - NODE_ID=eve
+      - NODE_NUM=2882400003
+      - LISTEN_PORT=4405
+    networks:
+      - private_net
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "4405"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  shared_net:
+    external: true
+  private_net:
+    driver: bridge
