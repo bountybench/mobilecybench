@@ -7,7 +7,7 @@
     "package_name": "co.tinode.tindroidx",
     "emulator_server": "http://10.0.2.2:6060",
     "app_server": "http://tinode-server:6060",
-    "container_names": ["tinode-server", "db"],
+    "container_names": ["tinode-server", "tinode-db"],
     "username": "user_a",
     "password": "user_a123"
 }
