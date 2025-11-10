@@ -1,264 +1,195 @@
-import argparse
-import sys
+import base64
+import json
+import subprocess
+import threading
 import time
+import uuid
+from pathlib import Path
 
-import uiautomator2 as u2
+import websocket
 
+# API key from Cache.java in tindroid codebase
+TINODE_API_KEY = "AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K"
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Tindroid login script")
-    parser.add_argument("--username", required=True, help="Tinode login, e.g. user_a")
-    parser.add_argument("--password", required=True, help="password")
-    parser.add_argument(
-        "--expect",
-        default="Group Chat ABC",
-        help="Text expected on the chat list after successful login",
-    )
-    parser.add_argument(
-        "--logout-after",
-        action="store_true",
-        help="Log out after a successful login",
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Print PASS/FAIL/INFO/WARN messages to stdout. ERROR messages are always printed.",
-    )
-    return parser.parse_args()
+# Load metadata to get server container name and WebSocket URL
+script_dir = Path(__file__).parent
+with open(script_dir / "metadata.json") as f:
+    metadata = json.load(f)
+
+SERVER_CONTAINER_NAME = [x for x in metadata["container_names"] if "server" in x][0]
+APP_SERVER = metadata.get("app_server", "http://tinode-server:6060")
+WS_URL = APP_SERVER.replace("http://", "ws://") + "/v0/channels"
+WS_URL_LOCAL = WS_URL.replace("tinode-server", "localhost") # Replace tinode-server with localhost
 
 
-def wait_and_click_text(d: u2.Device, text: str, timeout: float = 30):
-    if d(text=text).wait(timeout=timeout):
-        d(text=text).click_exists(timeout=3)
-        time.sleep(1.5)
-        return True
-    return False
-
-
-def fill_and_submit_login(d: u2.Device, username: str, password: str):
-    # Preferred: fill by labels with sibling EditText
-    filled_login = False
-    login_label = d(text="Login")
-    if login_label.exists:
-        login_edit = login_label.sibling(className="android.widget.EditText")
-        if login_edit.exists:
-            login_edit.click()
-            time.sleep(0.3)
-            login_edit.set_text("")
-            login_edit.set_text(username)
-            time.sleep(0.3)
-            filled_login = True
-
-    filled_pw = False
-    pw_label = d(text="Password")
-    if pw_label.exists:
-        pw_edit = pw_label.sibling(className="android.widget.EditText")
-        if pw_edit.exists:
-            pw_edit.click()
-            time.sleep(0.3)
-            pw_edit.set_text("")
-            pw_edit.set_text(password)
-            time.sleep(0.3)
-            filled_pw = True
-
-    # Fallback: use first two EditText fields on screen
-    if not (filled_login and filled_pw):
-        edits = list(d(className="android.widget.EditText"))
-        if len(edits) >= 1 and not filled_login:
-            edits[0].click()
-            time.sleep(0.2)
-            edits[0].set_text("")
-            edits[0].set_text(username)
-            time.sleep(0.2)
-            filled_login = True
-        if len(edits) >= 2 and not filled_pw:
-            edits[1].click()
-            time.sleep(0.2)
-            edits[1].set_text("")
-            edits[1].set_text(password)
-            time.sleep(0.2)
-            filled_pw = True
-
-    # Submit (accept both Sign In and SIGN IN)
-    if not (
-        wait_and_click_text(d, "SIGN IN", timeout=3)
-        or wait_and_click_text(d, "Sign In", timeout=3)
-    ):
-        return False
-    return True
-
-
-def dismiss_runtime_dialogs(d: u2.Device):
-    # Best-effort close common dialogs which could block the flow
-    for _ in range(3):
-        if d(text="ALLOW").exists:
-            d(text="ALLOW").click_exists()
-            time.sleep(0.5)
-        if d(text="Allow").exists:
-            d(text="Allow").click_exists()
-            time.sleep(0.5)
-        if d(text="OK").exists:
-            d(text="OK").click_exists()
-            time.sleep(0.5)
-
-
-def wait_login_failure_banner(d: u2.Device, timeout: float = 6.0) -> bool:
-    """Detect transient login failure UI like snackbars or toasts.
-
-    Returns True if a failure indicator is observed within timeout seconds.
+def try_websocket_login(
+    ws_url: str, username: str, password: str, handshake_id: str, login_id: str
+) -> tuple[bool, bool, bool, str]:
     """
-    start = time.time()
-    # Common texts seen: "Login failed", sometimes with trailing colon or details
-    texts = ["Login failed", "Login failed:", "authentication failed", "401"]
+    Internal helper to attempt WebSocket login with a given WebSocket URL.
+    Returns (handshake_complete: bool, login_response_received: bool, login_success: bool, error_message: str)
+    """
+    received_messages = []
+    handshake_complete = False
+    login_response_received = False
+    login_success = False
+    ws_app = None
+    connection_error = None
+    lock = threading.Lock()
 
-    while time.time() - start < timeout:
-        # Direct text check
-        for t in texts:
-            if d(textContains=t).exists or d(text=t).exists:
-                return True
-
-        # Try typical Material snackbar pattern: resource id contains 'snackbar'
+    def on_message(ws, message):
+        nonlocal handshake_complete, login_response_received, login_success, ws_app
         try:
-            if d(resourceIdMatches=".*snackbar.*").exists:
-                return True
-        except Exception:
+            data = json.loads(message)
+            received_messages.append(data)
+
+            # Check for "ctrl" in server response
+            if "ctrl" in data:
+                ctrl = data["ctrl"]
+                ctrl_id = ctrl.get("id")
+                code = ctrl.get("code", 0)
+
+                with lock:
+                    # Check if this is the handshake response
+                    if ctrl_id == handshake_id and not handshake_complete:
+                        handshake_complete = True
+                        # Send login message after handshake
+                        if ws_app and ws_app.sock and ws_app.sock.connected:
+                            auth_secret = base64.b64encode(
+                                f"{username}:{password}".encode("utf-8")
+                            ).decode("utf-8")
+                            login_msg = {
+                                "login": {
+                                    "id": login_id,
+                                    "scheme": "basic",
+                                    "secret": auth_secret,
+                                }
+                            }
+                            ws_app.send(json.dumps(login_msg))
+                    # Check if this is the login response
+                    elif ctrl_id == login_id and handshake_complete:
+                        login_response_received = True
+                        login_success = (
+                            code == 200
+                        )  # success if server response code is 200
+        except json.JSONDecodeError:
             pass
 
-        # uiautomator2 toast detection (if enabled)
-        try:
-            toast = d.toast.get_message(0.1)
-            if toast and any(
-                tok.lower() in toast.lower()
-                for tok in ["login", "failed", "rejected", "401"]
-            ):
-                return True
-        except Exception:
-            pass
+    def on_error(ws, error):
+        nonlocal connection_error
+        connection_error = str(error)
 
-        time.sleep(0.2)
-    return False
+    def on_close(ws, close_status_code, close_msg):
+        pass
+
+    def on_open(ws):
+        nonlocal ws_app
+        ws_app = ws
+        # Send handshake message
+        handshake_msg = {
+            "hi": {
+                "id": handshake_id,
+                "ver": "0.24",
+                "ua": "tindroid-test/1.0",
+                "dev": "test-device",
+                "lang": "en",
+                "bkg": False,
+            }
+        }
+        ws.send(json.dumps(handshake_msg))
+
+    # Create WebSocket connection with API key header
+    ws = websocket.WebSocketApp(
+        ws_url,
+        on_message=on_message,
+        on_error=on_error,
+        on_close=on_close,
+        on_open=on_open,
+        header=[f"X-Tinode-APIKey: {TINODE_API_KEY}"],
+    )
+
+    # Run in a thread with timeout
+    ws_thread = threading.Thread(target=ws.run_forever)
+    ws_thread.daemon = True
+    ws_thread.start()
+
+    # Wait for responses with timeout
+    timeout = 5
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if login_response_received:
+            break
+        if connection_error and not handshake_complete:
+            # Connection failed before handshake completed
+            break
+        time.sleep(0.1)  # sleep for 0.1 seconds and check conditions again
+
+    ws.close()
+
+    error_msg = connection_error if connection_error else ""
+    return handshake_complete, login_response_received, login_success, error_msg
 
 
-def logout_current_user(d: u2.Device, timeout: float = 15.0) -> bool:
+def test_tinode_login(
+    username: str,
+    password: str,
+) -> tuple[bool, str]:
     """
-    Logs out a user by following a strict flow starting from the chat list screen.
+    Test login to Tinode server using WebSocket protocol.
+    Connects via localhost since the test runs from the host (port is mapped via docker-compose).
+    Returns (success: bool, message: str)
 
-    Steps (no fallbacks; only these exact targets are used):
-    - Tap the toolbar overflow (content-desc "More options").
-    - Tap "Settings" in the overflow menu.
-    - Tap "Security" on the Settings screen.
-    - Tap "LOGOUT" on the Security screen.
-    - Wait until the login screen ("Tinode Chat"/"SIGN IN"/"Login") appears.
+    Args:
+        username: Username for authentication
+        password: Password for authentication
 
     Returns:
-    - True if the login screen is detected within timeout seconds
-    - False otherwise
+        success: True if login succeeds, False otherwise.
     """
-    if not d(description="More options").click_exists(timeout=3):
-        return False
-
-    if not wait_and_click_text(d, "Settings", timeout=5):
-        return False
-
-    if not wait_and_click_text(d, "Security", timeout=5):
-        return False
-
-    if not wait_and_click_text(d, "LOGOUT", timeout=5):
-        return False
-
-    if not wait_and_click_text(d, "OK", timeout=5):
-        return False
-
-    end = time.time() + timeout
-    while time.time() < end:
-        if (
-            d(text="Tinode Chat").exists
-            or d(text="SIGN IN").exists
-            or d(text="Login").exists
-        ):
-            return True
-        time.sleep(0.3)
-    return False
-
-
-def main():
-    args = parse_args()
-
     try:
-        d = u2.connect()
-    except Exception as e:
-        print(f"[ERROR] Could not connect to device: {e}", file=sys.stderr)
-        sys.exit(2)
-
-    # Wait for login screen and start Tindroid app
-    d.app_start("co.tinode.tindroidx")
-    time.sleep(2)
-
-    dismiss_runtime_dialogs(d)
-    # Ensure login screen is visible
-    if not d(text="Tinode Chat").wait(timeout=10):
-        (
-            print("[WARN] Login screen not detected. Attempting to logout first.")
-            if args.verbose
-            else None
+        # Check if server container is running
+        container_check = subprocess.run(
+            [
+                "docker",
+                "ps",
+                "--filter",
+                f"name={SERVER_CONTAINER_NAME}",
+                "--filter",
+                "status=running",
+                "-q",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
-        if not logout_current_user(d):
-            print(
-                "[ERROR] Logout attempt failed. Please check Android device and try again."
-                if args.verbose
-                else None
+
+        if not container_check.stdout.strip():
+            return False, f"Container {SERVER_CONTAINER_NAME} is not running"
+
+        # Generate message IDs
+        handshake_id = str(uuid.uuid4())
+        login_id = str(uuid.uuid4())
+
+        handshake_complete, login_response_received, login_success, conn_error = (
+            try_websocket_login(
+                WS_URL_LOCAL, username, password, handshake_id, login_id
             )
-            if args.verbose:
-                print(d.dump_hierarchy())
-            sys.exit(1)
-        else:
-            print("[INFO] Logout successful.") if args.verbose else None
-    else:
-        (
-            print("[INFO] Login screen detected. Proceeding with login.")
-            if args.verbose
-            else None
         )
 
-    if not fill_and_submit_login(d, args.username, args.password):
-        print("[ERROR] Could not fill and submit login.")
-        sys.exit(1)
-
-    # Watch briefly for transient failure banners/toasts
-    if wait_login_failure_banner(d, timeout=5.0):
-        (
-            print("❌ [FAIL] Login failed (login failed banner detected).")
-            if args.verbose
-            else None
-        )
-        sys.exit(1)
-
-    time.sleep(1)
-    hierarchy = d.dump_hierarchy()
-
-    # Success indicator: expected topic or chat UI present
-    if (args.expect and args.expect in hierarchy) or (
-        "co.tinode.tindroidx:id/startNewChat" in hierarchy
-    ):
-        (
-            print("✅ [PASS] Login successful and main chat UI detected.")
-            if args.verbose
-            else None
-        )
-        if args.logout_after:
-            if logout_current_user(d):
-                print("[INFO] Logout successful.") if args.verbose else None
+        if handshake_complete and login_response_received:
+            # Successfully connected and got response
+            if login_success:
+                return True, f"User {username} authenticated successfully"
             else:
-                print("[ERROR] Logout attempt failed.") if args.verbose else None
-        sys.exit(0)
+                return False, f"Authentication failed for {username}"
+        elif conn_error:
+            return False, f"Connection error: {conn_error}"
+        elif not handshake_complete:
+            return False, f"Failed to complete handshake for {username}"
+        elif not login_response_received:
+            return False, f"Login response not received for {username}"
+        else:
+            return False, f"Unexpected error during login for {username}"
 
-    if args.verbose:
-        print(
-            "[ERROR] Could not positively confirm login from UI; treating as failure."
-        )
-        print(d.dump_hierarchy())
-    sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
+    except Exception as e:
+        return False, f"Tinode login test failed: {e}"

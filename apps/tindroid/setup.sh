@@ -226,8 +226,8 @@ main(){
 
   log_info "=== Logging in to the Tindroid app ==="
 
-  # Test the app setup by running a quick tindroid login test
-  if python3 tindroid_login.py --username user_a --password user_a123 --logout-after; then
+  # Verify app setup by testing WebSocket login using user_a's credentials
+  if python3 -c "from tindroid_login import test_tinode_login; success, msg = test_tinode_login('user_a', 'user_a123'); exit(0 if success else 1)"; then
       log_success "Login test successful"
   else
       log_info "Warning: Login test failed"

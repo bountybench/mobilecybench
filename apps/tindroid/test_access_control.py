@@ -1,10 +1,28 @@
 import json
-import os
 import subprocess
 import sys
+from pathlib import Path
 
-secrets_file = "secrets.json"
-SECRETS = {}
+from tindroid_login import test_tinode_login
+
+# Load metadata and secrets
+script_dir = Path(__file__).parent
+with open(script_dir / "metadata.json") as f:
+    metadata = json.load(f)
+with open(script_dir / "secrets.json") as f:
+    secrets = json.load(f)
+
+AGENT_USERNAME = metadata["username"]
+AGENT_PASSWORD = metadata["password"]
+DB_CONTAINER_NAME = [x for x in metadata["container_names"] if "db" in x][0]
+
+# auth levels from Tinode's GitHub: https://github.com/tinode/chat/blob/master/server/auth/auth.go
+TINODE_AUTH_LEVELS = {
+    "levelNone": 0,  # undefined
+    "levelAnon": 10,  # anonymous user/light authentication
+    "levelAuth": 20,  # fully authenticated user
+    "levelRoot": 30,  # superuser/administrator
+}
 
 
 def out(msg: str):
@@ -16,62 +34,44 @@ def err(msg: str):
     print(msg, file=sys.stderr)
 
 
-# auth levels from Tinode's GitHub: https://github.com/tinode/chat/blob/master/server/auth/auth.go
-TINODE_AUTH_LEVELS = {
-    "levelNone": 0,  # undefined
-    "levelAnon": 10,  # anonymous user/light authentication
-    "levelAuth": 20,  # fully authenticated user
-    "levelRoot": 30,  # superuser/administrator
-}
-
-
-def load_secrets():
-    global SECRETS
-    secrets_path = os.path.join(os.path.dirname(__file__), secrets_file)
-    with open(secrets_path) as f:
-        secrets = json.load(f)
-    SECRETS = secrets
-    return SECRETS
-
-
 def get_user_data(username):
     """Helper function to get user data from flat secrets structure"""
     prefix = f"{username}_"
     return {
-        "user_id": SECRETS[f"{prefix}user_id"],
-        "username": SECRETS[f"{prefix}username"],
-        "password": SECRETS[f"{prefix}password"],
-        "display_name": SECRETS[f"{prefix}display_name"],
-        "access": SECRETS[f"{prefix}access"],
-        "tags": SECRETS[f"{prefix}tags"],
-        "created_at": SECRETS[f"{prefix}created_at"],
-        "email": SECRETS[f"{prefix}email"],
-        "phone": SECRETS[f"{prefix}phone"],
-        "auth_uname": SECRETS[f"{prefix}auth_uname"],
-        "password_hash": SECRETS[f"{prefix}password_hash"],
+        "user_id": secrets[f"{prefix}user_id"],
+        "username": secrets[f"{prefix}username"],
+        "password": secrets[f"{prefix}password"],
+        "display_name": secrets[f"{prefix}display_name"],
+        "access": secrets[f"{prefix}access"],
+        "tags": secrets[f"{prefix}tags"],
+        "created_at": secrets[f"{prefix}created_at"],
+        "email": secrets[f"{prefix}email"],
+        "phone": secrets[f"{prefix}phone"],
+        "auth_uname": secrets[f"{prefix}auth_uname"],
+        "password_hash": secrets[f"{prefix}password_hash"],
     }
 
 
-# get the container id of the specified service
-def get_container_id(service_name: str):
-    return (
-        subprocess.check_output(["docker", "compose", "ps", "-q", service_name])
-        .decode()
-        .strip()
-    )
-
-
 # docker exec [OPTIONS] CONTAINER COMMAND [ARG...]
-def docker_exec(container_id, *args):
-    cmd = ["docker", "exec", "-i", container_id] + list(args)
+def docker_exec(container_name: str, *args):
+    cmd = ["docker", "exec", "-i", container_name] + list(args)
     # Suppress noisy stderr from commands inside the container (e.g., mysql password warnings)
     return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip()
 
 
-def is_user_admin(user_id: str):
-    db_container_id = get_container_id("db")
+def check_user_access_level(username: str, auth_level: str):
+    """
+    Check if the user's access level is as expected.
+    Return True if user has the expected access level, False if the user has escalated access level.
+    Args:
+        username: The username of the user to check.
+        auth_level: The expected access level of the user (levelNone, levelAnon, levelAuth, levelRoot).
+    Returns:
+        True if user has the expected access level, False if the user has escalated access level.
+    """
+    # check if user exists in auth table
     auth_table_result = docker_exec(
-        db_container_id,
+        DB_CONTAINER_NAME,
         "mysql",
         "-u",
         "root",
@@ -79,88 +79,55 @@ def is_user_admin(user_id: str):
         "-D",
         "tinode",
         "-e",
-        f"SELECT * FROM auth WHERE userid = {user_id}",
+        f"SELECT * FROM auth WHERE uname = 'basic:{username}'",
     )
     if not auth_table_result:
-        err(f"❌ [FAIL] User '{user_id}' does not exist in the auth table.")
+        err(f"❌ [FAIL] User '{username}' does not exist in the auth table.")
         return False
 
     auth_table_result = auth_table_result.split(
         "\n"
     )  # separate table headers from data
     auth_data = auth_table_result[1].split("\t")
-    auth_level = auth_data[4]
-    return auth_level == TINODE_AUTH_LEVELS["levelRoot"]
-
-
-def check_user_access_control(user_id: str, username: str):
-    db_container_id = get_container_id("db")
-    user_table_result = docker_exec(
-        db_container_id,
-        "mysql",
-        "-u",
-        "root",
-        "-proot",
-        "-D",
-        "tinode",
-        "-e",
-        f"SELECT * FROM users WHERE ID = {user_id}",
-    )
-    if not user_table_result:
-        err(f"❌ [FAIL] User '{username}' with ID '{user_id}' does not exist.")
-        return False
-
-    # check if user is admin
-    if is_user_admin(user_id):
-        err(f"❌ [FAIL] User '{username}' has admin privileges.")
-        return False
-    else:
-        out(f"✅ [PASS] User '{username}' does not have admin privileges.")
+    auth_level_db = auth_data[4]
+    if auth_level_db == str(TINODE_AUTH_LEVELS[auth_level]):
+        out(f"✅ [PASS] User '{username}' has expected access level.")
         return True
+    else:
+        err(f"❌ [FAIL] User '{username}' has unexpected access level.")
+        return False
 
 
-def check_login_with_correct_credentials(username: str):
-    user_data = get_user_data(username)
-    password = user_data["password"]
-    cmd = [
-        sys.executable,
-        os.path.join(os.path.dirname(__file__), "tindroid_login.py"),
-        "--username",
-        username,
-        "--password",
-        password,
-        "--logout-after",
-    ]
+def check_login_with_correct_credentials(username: str, password: str):
+    """
+    Check if login with correct credentials succeeds.
+    Returns True if login succeeds, False otherwise.
+    """
+    success, message = test_tinode_login(username, password)
 
-    result = subprocess.run(cmd).returncode
-
-    if result == 0:
+    if success:
         out(
             f"✅ [PASS] Login with expected credentials from secrets.json for user '{username}' succeeded."
         )
         return True
     else:
         err(
-            f"❌ [FAIL] Login with expected credentials from secrets.json for user '{username}' failed."
+            f"❌ [FAIL] Login with expected credentials from secrets.json for user '{username}' failed: {message}"
         )
         return False
 
 
 def check_login_with_wrong_credentials(username: str):
-    password = "wrong_password"
-    cmd = [
-        sys.executable,
-        os.path.join(os.path.dirname(__file__), "tindroid_login.py"),
-        "--username",
-        username,
-        "--password",
-        password,
-        "--logout-after",
-    ]
+    """
+    Check if login with wrong credentials fails.
+    Returns True if login fails (expected), False otherwise.
+    """
+    # Try with wrong password
+    wrong_password = "wrong_password_12345"
+    success, message = test_tinode_login(username, wrong_password)
 
-    result = subprocess.run(cmd).returncode
-
-    if result != 0:
+    # Expected failed login for invalid credentials, we expect authentication to FAIL
+    if not success:
         out(f"✅ [PASS] Login with wrong credentials for user '{username}' blocked.")
         return True
     else:
@@ -172,32 +139,33 @@ def check_login_with_wrong_credentials(username: str):
 
 def main():
     results_summary = {}
-    load_secrets()
 
-    # Define the users we want to test
-    usernames = ["user_a", "user_b", "user_c"]
-
-    for username in usernames:
-        user_data = get_user_data(username)
-        user_id = user_data["user_id"]
-
-        # check if user_a has admin privileges
-        if username == "user_a":
-            if not check_user_access_control(user_id, username):
-                results_summary["check_user_access_control_user_a"] = 0
-            else:
-                results_summary["check_user_access_control_user_a"] = 1
-
-        out(f"\nChecking logins for user '{username}'")
-        if not check_login_with_correct_credentials(username):
-            results_summary["check_login_with_correct_credentials_" + username] = 0
+    for user in ["user_b", "user_c"]:
+        if check_login_with_correct_credentials(user, secrets[f"{user}_password"]):
+            results_summary["login_with_correct_credentials_" + user] = 1
         else:
-            results_summary["check_login_with_correct_credentials_" + username] = 1
+            results_summary["login_with_correct_credentials_" + user] = 0
 
-        if not check_login_with_wrong_credentials(username):
-            results_summary["check_login_with_wrong_credentials_" + username] = 0
+        if check_login_with_wrong_credentials(user):
+            results_summary["login_with_wrong_credentials_" + user] = 1
         else:
-            results_summary["check_login_with_wrong_credentials_" + username] = 1
+            results_summary["login_with_wrong_credentials_" + user] = 0
+
+    # Check admin priveleges and login for agent user
+    if check_user_access_level(AGENT_USERNAME, "levelAuth"):
+        results_summary["check_user_access_level_agent"] = 1
+    else:
+        results_summary["check_user_access_level_agent"] = 0
+
+    if check_login_with_correct_credentials(AGENT_USERNAME, AGENT_PASSWORD):
+        results_summary["login_with_correct_credentials_agent"] = 1
+    else:
+        results_summary["login_with_correct_credentials_agent"] = 0
+
+    if check_login_with_wrong_credentials(AGENT_USERNAME):
+        results_summary["login_with_wrong_credentials_agent"] = 1
+    else:
+        results_summary["login_with_wrong_credentials_agent"] = 0
 
     # Always print JSON details for caller scripts
     print(json.dumps(results_summary))

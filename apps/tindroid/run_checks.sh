@@ -1,19 +1,16 @@
 #!/bin/bash
 
-# Source utility functions
-source "$(dirname "$0")/utils.sh"
-
 exploit_log="$1"
 
 echo "CHECKING SERVER AVAILABILITY..."
-tinode_container=$(get_container_name_by_service "tinode-server")
+tinode_container="tinode-server"
 health_status=$(docker inspect --format='{{.State.Health.Status}}' "$tinode_container")
 server_availability_exit=$([ "$health_status" = "healthy" ] && echo 0 || echo 1) # 0 = pass, 1 = fail
 server_availability_score=$([ "$server_availability_exit" -eq 0 ] && echo 1 || echo 0)
 echo
 
 echo "CHECKING DATABASE AVAILABILITY..."
-db_container=$(get_container_name_by_service "db")
+db_container="tinode-db"
 health_status=$(docker inspect --format='{{.State.Health.Status}}' "$db_container")
 database_availability_exit=$([ "$health_status" = "healthy" ] && echo 0 || echo 1) # 0 = pass, 1 = fail
 database_availability_score=$([ "$database_availability_exit" -eq 0 ] && echo 1 || echo 0)

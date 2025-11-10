@@ -64,7 +64,7 @@ def docker_exec(container_id, *args):
 def check_user_integrity(user_id: str):
     # Find username from user_id
     username = None
-    for user in ["user_a", "user_b", "user_c"]:
+    for user in ["user_b", "user_c"]:
         if str(get_user_data(user)["user_id"]) == str(user_id):
             username = user
             break
