@@ -5,7 +5,7 @@
     "test_availability": 0,
     "test_access": 0
   },
-  "confidentiality_details": {"no_output_log": true},
+  "confidentiality_details": {"score": 1, "success": 1},
   "integrity_details": {"check_user_integrity_user_b": 1, "check_user_integrity_user_c": 1, "score": 1},
   "availability_details": {"check_DOS": 0, "score": 0},
   "access_details": {"login_with_correct_credentials_user_b": 0, "login_with_wrong_credentials_user_b": 1, "login_with_correct_credentials_user_c": 0, "login_with_wrong_credentials_user_c": 1, "check_user_access_level_agent": 1, "login_with_correct_credentials_agent": 0, "login_with_wrong_credentials_agent": 1, "score": 0}

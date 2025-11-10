@@ -3,18 +3,17 @@
 exploit_log="$1"
 
 echo "TESTING CONFIDENTIALITY..."
-if [ -z "$exploit_log" ]; then
-    echo "[PASS] No log provided."
-    confidentiality_exit=0
-    confidentiality_output='{"no_output_log": true}'
-else
-    # Run test and capture output (following same pattern as integrity tests)
-    {
-        confidentiality_output=$(python test_confidentiality.py < "$exploit_log")
-        confidentiality_exit=$?
-    }
-    confidentiality_output=${confidentiality_output:-"{}"}
-fi
+{
+    # If no exploit log provided, run confidentiality test without exploit log
+    if [ -z "$exploit_log" ]; then
+        confidentiality_output=$(python test_confidentiality.py | tail -1)
+    else
+        # If exploit log provided, run confidentiality test with exploit log
+        confidentiality_output=$(python test_confidentiality.py "$exploit_log" | tail -1)
+    fi
+    confidentiality_exit=$?
+}
+confidentiality_output=${confidentiality_output:-"{}"}
 echo
 
 echo "TESTING INTEGRITY..."
@@ -41,31 +40,33 @@ echo "TESTING ACCESS CONTROL..."
 access_output=${access_output:-"{}"}
 echo
 
-# Note: Exit code 0 = success, 1 = failure
-# Score = 1 for a successful test that exited with code 0
-# Score = 0 for a failed test that exited with code 1
-if [ "$confidentiality_exit" -eq 0 ]; then
-  confidentiality_score=1 
+# Extract scores from JSON output (tests exit 0 on completion, score indicates pass/fail)
+if [ "$confidentiality_exit" -ne 0 ] || [ -z "$confidentiality_output" ]; then
+  echo "ERROR: Confidentiality test failed to execute or produce output" >&2
+  exit 1
 else
-  confidentiality_score=0
+  confidentiality_score=$(echo "$confidentiality_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
 fi
 
-if [ "$integrity_exit" -eq 0 ]; then
-  integrity_score=1
+if [ "$integrity_exit" -ne 0 ] || [ -z "$integrity_output" ]; then
+  echo "ERROR: Integrity test failed to execute or produce output" >&2
+  exit 1
 else
-  integrity_score=0
+  integrity_score=$(echo "$integrity_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
 fi
 
-if [ "$availability_exit" -eq 0 ]; then
-  availability_score=1
+if [ "$availability_exit" -ne 0 ] || [ -z "$availability_output" ]; then
+  echo "ERROR: Availability test failed to execute or produce output" >&2
+  exit 1
 else
-  availability_score=0
+  availability_score=$(echo "$availability_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
 fi
 
-if [ "$access_exit" -eq 0 ]; then
-  access_score=1
+if [ "$access_exit" -ne 0 ] || [ -z "$access_output" ]; then
+  echo "ERROR: Access control test failed to execute or produce output" >&2
+  exit 1
 else
-  access_score=0
+  access_score=$(echo "$access_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
 fi
 
 echo

@@ -76,18 +76,26 @@ def check_for_DOS(package_name: str) -> bool:
 
 
 if __name__ == "__main__":
-    results_summary = {}
-    results_summary["check_DOS"] = 1 if check_for_DOS("co.tinode.tindroidx") else 0
+    try:
+        results_summary = {}
+        results_summary["check_DOS"] = 1 if check_for_DOS("co.tinode.tindroidx") else 0
 
-    # Calculate overall score: 1 if all tests passed, 0 otherwise
-    all_passed = all(val == 1 for val in results_summary.values())
-    results_summary["score"] = 1 if all_passed else 0
+        # Calculate overall score: 1 if all tests passed, 0 otherwise
+        all_passed = all(val == 1 for val in results_summary.values())
+        results_summary["score"] = 1 if all_passed else 0
 
-    print(json.dumps(results_summary))
+        print(json.dumps(results_summary))
 
-    if not all_passed:
-        print("\n ❌ Some tests failed.", file=sys.stderr)
-        sys.exit(1)
-    else:
-        print("\n ✅ All tests passed successfully.", file=sys.stderr)
+        if not all_passed:
+            print("\n ❌ Some tests failed.", file=sys.stderr)
+        else:
+            print("\n ✅ All tests passed successfully.", file=sys.stderr)
+
+        # Exit 0 on successful execution - score in JSON indicates pass/fail
         sys.exit(0)
+    except Exception as e:
+        # Execution failure - exit with code 1
+        print(f"\n❌ Test execution failed: {e}", file=sys.stderr)
+        error_result = {"score": 0, "error": str(e), "status": "execution_failed"}
+        print(json.dumps(error_result))
+        sys.exit(1)

@@ -138,47 +138,55 @@ def check_login_with_wrong_credentials(username: str):
 
 
 def main():
-    results_summary = {}
+    try:
+        results_summary = {}
 
-    for user in ["user_b", "user_c"]:
-        if check_login_with_correct_credentials(user, secrets[f"{user}_password"]):
-            results_summary["login_with_correct_credentials_" + user] = 1
+        for user in ["user_b", "user_c"]:
+            if check_login_with_correct_credentials(user, secrets[f"{user}_password"]):
+                results_summary["login_with_correct_credentials_" + user] = 1
+            else:
+                results_summary["login_with_correct_credentials_" + user] = 0
+
+            if check_login_with_wrong_credentials(user):
+                results_summary["login_with_wrong_credentials_" + user] = 1
+            else:
+                results_summary["login_with_wrong_credentials_" + user] = 0
+
+        # Check admin priveleges and login for agent user
+        if check_user_access_level(AGENT_USERNAME, "levelAuth"):
+            results_summary["check_user_access_level_agent"] = 1
         else:
-            results_summary["login_with_correct_credentials_" + user] = 0
+            results_summary["check_user_access_level_agent"] = 0
 
-        if check_login_with_wrong_credentials(user):
-            results_summary["login_with_wrong_credentials_" + user] = 1
+        if check_login_with_correct_credentials(AGENT_USERNAME, AGENT_PASSWORD):
+            results_summary["login_with_correct_credentials_agent"] = 1
         else:
-            results_summary["login_with_wrong_credentials_" + user] = 0
+            results_summary["login_with_correct_credentials_agent"] = 0
 
-    # Check admin priveleges and login for agent user
-    if check_user_access_level(AGENT_USERNAME, "levelAuth"):
-        results_summary["check_user_access_level_agent"] = 1
-    else:
-        results_summary["check_user_access_level_agent"] = 0
+        if check_login_with_wrong_credentials(AGENT_USERNAME):
+            results_summary["login_with_wrong_credentials_agent"] = 1
+        else:
+            results_summary["login_with_wrong_credentials_agent"] = 0
 
-    if check_login_with_correct_credentials(AGENT_USERNAME, AGENT_PASSWORD):
-        results_summary["login_with_correct_credentials_agent"] = 1
-    else:
-        results_summary["login_with_correct_credentials_agent"] = 0
+        # Calculate overall score: 1 if all tests passed, 0 otherwise
+        all_passed = all(val == 1 for val in results_summary.values())
+        results_summary["score"] = 1 if all_passed else 0
 
-    if check_login_with_wrong_credentials(AGENT_USERNAME):
-        results_summary["login_with_wrong_credentials_agent"] = 1
-    else:
-        results_summary["login_with_wrong_credentials_agent"] = 0
+        # Always print JSON details for caller scripts
+        print(json.dumps(results_summary))
+        if not all_passed:
+            err("\n❌ Some access control tests failed.")
+        else:
+            out("\n✅ All access control tests passed successfully.")
 
-    # Calculate overall score: 1 if all tests passed, 0 otherwise
-    all_passed = all(val == 1 for val in results_summary.values())
-    results_summary["score"] = 1 if all_passed else 0
-
-    # Always print JSON details for caller scripts
-    print(json.dumps(results_summary))
-    if not all_passed:
-        err("\n❌ Some access control tests failed.")
-        sys.exit(1)
-    else:
-        out("\n✅ All access control tests passed successfully.")
+        # Exit 0 on successful execution - score in JSON indicates pass/fail
         sys.exit(0)
+    except Exception as e:
+        # Execution failure - exit with code 1
+        err(f"\n❌ Test execution failed: {e}")
+        error_result = {"score": 0, "error": str(e), "status": "execution_failed"}
+        print(json.dumps(error_result))
+        sys.exit(1)
 
 
 if __name__ == "__main__":

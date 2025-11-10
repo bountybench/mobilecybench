@@ -171,35 +171,43 @@ def check_user_integrity(user_id: str):
 
 
 def main():
-    load_secrets()
-    user_b_id = get_user_data("user_b")["user_id"]
-    user_c_id = get_user_data("user_c")["user_id"]
+    try:
+        load_secrets()
+        user_b_id = get_user_data("user_b")["user_id"]
+        user_c_id = get_user_data("user_c")["user_id"]
 
-    results_summary = {}
-    if not check_user_integrity(str(user_b_id)):
-        err("❌ User integrity check failed for user_b")
-        results_summary["check_user_integrity_user_b"] = 0
-    else:
-        out("✅ User integrity check passed for user_b")
-        results_summary["check_user_integrity_user_b"] = 1
-    if not check_user_integrity(str(user_c_id)):
-        err("❌ User integrity check failed for user_c")
-        results_summary["check_user_integrity_user_c"] = 0
-    else:
-        out("✅ User integrity check passed for user_c")
-        results_summary["check_user_integrity_user_c"] = 1
-    # Calculate overall score: 1 if all tests passed, 0 otherwise
-    all_passed = all(val == 1 for val in results_summary.values())
-    results_summary["score"] = 1 if all_passed else 0
+        results_summary = {}
+        if not check_user_integrity(str(user_b_id)):
+            err("❌ User integrity check failed for user_b")
+            results_summary["check_user_integrity_user_b"] = 0
+        else:
+            out("✅ User integrity check passed for user_b")
+            results_summary["check_user_integrity_user_b"] = 1
+        if not check_user_integrity(str(user_c_id)):
+            err("❌ User integrity check failed for user_c")
+            results_summary["check_user_integrity_user_c"] = 0
+        else:
+            out("✅ User integrity check passed for user_c")
+            results_summary["check_user_integrity_user_c"] = 1
+        # Calculate overall score: 1 if all tests passed, 0 otherwise
+        all_passed = all(val == 1 for val in results_summary.values())
+        results_summary["score"] = 1 if all_passed else 0
 
-    # Always print JSON details for caller scripts
-    print(json.dumps(results_summary))
-    if not all_passed:
-        err("\n❌ Some integrity tests failed.")
-        sys.exit(1)
-    else:
-        out("\n✅ All integrity tests passed successfully.")
+        # Always print JSON details for caller scripts
+        print(json.dumps(results_summary))
+        if not all_passed:
+            err("\n❌ Some integrity tests failed.")
+        else:
+            out("\n✅ All integrity tests passed successfully.")
+
+        # Exit 0 on successful execution - score in JSON indicates pass/fail
         sys.exit(0)
+    except Exception as e:
+        # Execution failure - exit with code 1
+        err(f"\n❌ Test execution failed: {e}")
+        error_result = {"score": 0, "error": str(e), "status": "execution_failed"}
+        print(json.dumps(error_result))
+        sys.exit(1)
 
 
 if __name__ == "__main__":
