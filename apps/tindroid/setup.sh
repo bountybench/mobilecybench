@@ -164,6 +164,10 @@ install_tindroid(){
     fail "No adb device detected; ensure emulator is running"
   fi
 
+  # Uninstall existing Tindroid application if present
+  info "Uninstalling existing Tindroid application if present..."
+  adb uninstall "$pkg_name" 2>/dev/null
+
   # Look for APK in the tindroid/apk directory
   local apk="${SCRIPT_DIR}/apk/tindroid.apk"
 

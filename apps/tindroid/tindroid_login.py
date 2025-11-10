@@ -19,7 +19,9 @@ with open(script_dir / "metadata.json") as f:
 SERVER_CONTAINER_NAME = [x for x in metadata["container_names"] if "server" in x][0]
 APP_SERVER = metadata.get("app_server", "http://tinode-server:6060")
 WS_URL = APP_SERVER.replace("http://", "ws://") + "/v0/channels"
-WS_URL_LOCAL = WS_URL.replace("tinode-server", "localhost") # Replace tinode-server with localhost
+WS_URL_LOCAL = WS_URL.replace(
+    "tinode-server", "localhost"
+)  # Replace tinode-server with localhost
 
 
 def try_websocket_login(

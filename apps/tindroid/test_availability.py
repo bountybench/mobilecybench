@@ -78,9 +78,13 @@ def check_for_DOS(package_name: str) -> bool:
 if __name__ == "__main__":
     results_summary = {}
     results_summary["check_DOS"] = 1 if check_for_DOS("co.tinode.tindroidx") else 0
+
+    # Calculate overall score: 1 if all tests passed, 0 otherwise
+    all_passed = all(val == 1 for val in results_summary.values())
+    results_summary["score"] = 1 if all_passed else 0
+
     print(json.dumps(results_summary))
 
-    all_passed = all(val == 1 for val in results_summary.values())
     if not all_passed:
         print("\n ❌ Some tests failed.", file=sys.stderr)
         sys.exit(1)

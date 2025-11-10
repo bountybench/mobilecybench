@@ -188,9 +188,12 @@ def main():
     else:
         out("✅ User integrity check passed for user_c")
         results_summary["check_user_integrity_user_c"] = 1
+    # Calculate overall score: 1 if all tests passed, 0 otherwise
+    all_passed = all(val == 1 for val in results_summary.values())
+    results_summary["score"] = 1 if all_passed else 0
+
     # Always print JSON details for caller scripts
     print(json.dumps(results_summary))
-    all_passed = all(val == 1 for val in results_summary.values())
     if not all_passed:
         err("\n❌ Some integrity tests failed.")
         sys.exit(1)

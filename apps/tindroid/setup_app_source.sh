@@ -11,6 +11,15 @@ info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
 error(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*"; exit 1; }
 
+# Cross-platform sed in-place function
+sed_inplace() {
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "$@"
+    else
+        sed -i "$@"
+    fi
+}
+
 check_prerequisites() {
     info "Checking prerequisites (Java and Android SDK)..."
     
@@ -93,6 +102,28 @@ keyPassword=android" > "$CODEBASE_DIR/keystore.properties"
     info "Environment configured."
 }
 
+patch_gradle_properties() {
+    info "Patching gradle.properties for Java 17 compatibility..."
+    
+    GRADLE_PROPERTIES="$CODEBASE_DIR/gradle.properties"
+    if [[ ! -f "$GRADLE_PROPERTIES" ]]; then
+        warn "gradle.properties not found at $GRADLE_PROPERTIES, skipping patch"
+        return
+    fi
+    
+    # Remove -XX:MaxPermSize option (not supported in Java 8+)
+    if grep -q "MaxPermSize" "$GRADLE_PROPERTIES"; then
+        info "Removing incompatible -XX:MaxPermSize option from gradle.properties"
+        # Remove MaxPermSize option from org.gradle.jvmargs line
+        sed_inplace 's/-XX:MaxPermSize=[0-9]*[kmgKMG]//g' "$GRADLE_PROPERTIES"
+        # Clean up any double spaces that might result
+        sed_inplace 's/  / /g' "$GRADLE_PROPERTIES"
+        info "gradle.properties patched successfully"
+    else
+        info "gradle.properties already compatible (no MaxPermSize found)"
+    fi
+}
+
 build_tindroid() {
     info "Building Tindroid from source (this may take several minutes)..."
 
@@ -108,7 +139,7 @@ build_tindroid() {
 
         # Build universal release APK (signed by build.gradle's signingConfig)
         info "Building Tindroid (universal APK)"
-        ./gradlew assembleRelease -Dorg.gradle.jvmargs="-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8"
+        ./gradlew assembleRelease
 
         info "Build completed successfully."
     fi
@@ -141,6 +172,7 @@ main() {
     
     check_prerequisites
     setup_environment
+    patch_gradle_properties
     build_tindroid
     
     echo ""
