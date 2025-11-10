@@ -2,35 +2,45 @@ import uuid
 import xml.etree.ElementTree as ET
 from typing import Dict, List
 
-from docker_setup import HOST_ADB_SERVER, get_kali
+from command_helpers import execute_adb_command_with_retry
+from utils.logger import logger
 
 
 def run_adb_shell(command: str) -> str:
     """
-    Runs ADB shell commands for better seeing the screen state
+    Runs ADB shell commands for better seeing the screen state.
+    Uses retry function for automatic reconnection.
     """
-    container = get_kali()
-    cmd = f"export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb shell {command}"
-    result = container.exec_run(f"bash -c '{cmd}'", stdout=True, stderr=True)
-    return result.output.decode("utf-8")
+    try:
+        start_dir = "/app/codebase"
+        _, output = execute_adb_command_with_retry(f"adb shell {command}", start_dir)
+        return output
+    except Exception as e:
+        logger.error(f"Error executing ADB shell command: {e}")
+        # Return empty string rather than raising, to allow UI state to continue
+        return ""
 
 
 def run_adb_pull(remote_path: str, local_path: str) -> bool:
     """
     Copies emulator files in a remote path to a local path.
+    Uses retry function for automatic reconnection.
     """
-    container = get_kali()
-    cmd = (
-        f"export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb shell cat {remote_path}"
-    )
-    result = container.exec_run(f"bash -c '{cmd}'", stdout=True, stderr=True)
-    output = result.output
-    if result.exit_code != 0 or not output:
-        print("ADB pull failed.")
+    try:
+        start_dir = "/app/codebase"
+        exit_code, output = execute_adb_command_with_retry(f"adb shell cat {remote_path}", start_dir)
+        
+        if exit_code != 0 or not output:
+            logger.warning(f"ADB pull failed for {remote_path}: exit_code={exit_code}, output_empty={not output}")
+            return False
+        
+        # Write output as bytes (output is a string from the retry function, encode it back to bytes)
+        with open(local_path, "wb") as f:
+            f.write(output.encode("utf-8"))
+        return True
+    except Exception as e:
+        logger.error(f"Error executing ADB pull command: {e}")
         return False
-    with open(local_path, "wb") as f:
-        f.write(output)
-    return True
 
 
 def calculate_location(bounds):
