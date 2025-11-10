@@ -42,6 +42,7 @@ class CodexCLIResult:
     stderr: Optional[str] = None
     experiment_id: Optional[str] = None
     session_id: Optional[str] = None
+    turns: int = 0
 
 
 class CodexCLIProvider:
@@ -106,7 +107,7 @@ class CodexCLIProvider:
         self,
         prompt: str,
         mcp_config: dict,
-        timeout_ms: int = 600_000,
+        timeout_ms: int = 1_200_000,
         max_iterations: int = 30,
     ) -> CodexCLIResult:
         """
@@ -258,6 +259,7 @@ class CodexCLIProvider:
                 execution_time=total_time,
                 experiment_id=self.experiment_id,
                 session_id=self.session_id,
+                turns=turn_count,
             )
 
         except subprocess.TimeoutExpired:
@@ -335,7 +337,9 @@ class CodexCLIProvider:
                 # Find the session file for our session_id
                 session_file_path = self._find_session_file(self.session_id)
                 if not session_file_path:
-                    raise Exception(f"Could not find session file for ID: {self.session_id}")
+                    raise Exception(
+                        f"Could not find session file for ID: {self.session_id}"
+                    )
 
                 cmd = [
                     self.codex_binary,
@@ -351,7 +355,9 @@ class CodexCLIProvider:
                     app_codebase_dir,
                     prompt,  # Empty prompt to continue
                 ]
-                logger.info(f"Resuming session {self.session_id} from: {session_file_path}")
+                logger.info(
+                    f"Resuming session {self.session_id} from: {session_file_path}"
+                )
 
             # Execute command
             env = os.environ.copy()
@@ -495,13 +501,16 @@ class CodexCLIProvider:
         """
         try:
             from datetime import datetime
+
             sessions_base = Path.home() / ".codex" / "sessions"
 
             # Session files are named: rollout-YYYY-MM-DDTHH-MM-SS-<session_id>.jsonl
             # They're stored in: ~/.codex/sessions/YYYY/MM/DD/
             # Search today's directory
             now = datetime.now()
-            today_path = sessions_base / str(now.year) / f"{now.month:02d}" / f"{now.day:02d}"
+            today_path = (
+                sessions_base / str(now.year) / f"{now.month:02d}" / f"{now.day:02d}"
+            )
 
             if today_path.exists():
                 pattern = f"rollout-*-{session_id}.jsonl"

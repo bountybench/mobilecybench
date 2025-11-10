@@ -202,10 +202,11 @@ class CodexAgent:
                     "tool_outputs": result.tool_outputs,
                     "execution_time": result.execution_time,
                     "session_id": result.session_id,
+                    "turns": result.turns,
                 }
             )
 
-            return self._create_result("completed")
+            return self._create_result("completed", turns=result.turns)
 
         except Exception as e:
             logger.error(f"Codex execution failed: {e}")
@@ -232,11 +233,14 @@ class CodexAgent:
         logger.info(content)
         logger.info("-" * 40)
 
-    def _create_result(self, status: str, error: str = None) -> Dict[str, Any]:
+    def _create_result(
+        self, status: str, error: str = None, turns: int = 0
+    ) -> Dict[str, Any]:
         """Create result dictionary with common structure."""
         result = {
             "status": status,
             "experiment_id": self.experiment_id,  # NEW: Include experiment ID
+            "turns": turns,
             "final_message": (
                 self.conversation_history[-1][
                     "final_output"
@@ -256,6 +260,7 @@ class CodexAgent:
             logger.info(f"{'=' * 20} ANALYSIS COMPLETED {'=' * 20}")
             logger.info(f"Experiment ID: {self.experiment_id}")
             logger.info("Status: Completed")
+            logger.info(f"Turns: {turns}")
             logger.info(f"Log file: {self.log_file}")
             logger.info(f"Session ID: {self.provider.session_id}")
 
