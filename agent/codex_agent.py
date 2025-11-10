@@ -45,7 +45,7 @@ class CodexAgent:
         app_name: str = "",
         dry_run: bool = False,
         app_server: Optional[str] = None,
-        timeout_ms: int = 600_000,
+        timeout_ms: int = 1_200_000,
         mcp_config: Optional[Dict[str, Any]] = None,
         experiment_id: Optional[str] = None,  # NEW: Add experiment_id parameter
     ):
@@ -76,6 +76,7 @@ class CodexAgent:
         if experiment_id is None:
             # Auto-generate unique experiment ID: app_name + timestamp + uuid
             import time
+
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             short_uuid = str(uuid.uuid4())[:8]
             self.experiment_id = f"{app_name}_{timestamp}_{short_uuid}"
@@ -183,22 +184,26 @@ class CodexAgent:
 
             # Log final results
             self._log_content("FINAL OUTPUT", result.output_text)
-            
+
             if result.tool_outputs:
-                logger.info(f"[TOTAL TOOL INTERACTIONS - {len(result.tool_outputs)} outputs]")
+                logger.info(
+                    f"[TOTAL TOOL INTERACTIONS - {len(result.tool_outputs)} outputs]"
+                )
                 for i, tool_output in enumerate(result.tool_outputs):
                     logger.info(f"Tool Output {i + 1}: {tool_output}")
                 logger.info("-" * 40)
 
             # NEW: Add complete execution to history
-            self.conversation_history.append({
-                "experiment_id": self.experiment_id,
-                "initial_prompt": initial_prompt,
-                "final_output": result.output_text,
-                "tool_outputs": result.tool_outputs,
-                "execution_time": result.execution_time,
-                "session_file": result.session_file,
-            })
+            self.conversation_history.append(
+                {
+                    "experiment_id": self.experiment_id,
+                    "initial_prompt": initial_prompt,
+                    "final_output": result.output_text,
+                    "tool_outputs": result.tool_outputs,
+                    "execution_time": result.execution_time,
+                    "session_file": result.session_file,
+                }
+            )
 
             return self._create_result("completed")
 
@@ -233,7 +238,9 @@ class CodexAgent:
             "status": status,
             "experiment_id": self.experiment_id,  # NEW: Include experiment ID
             "final_message": (
-                self.conversation_history[-1]["final_output"]  # CHANGED: Access final_output
+                self.conversation_history[-1][
+                    "final_output"
+                ]  # CHANGED: Access final_output
                 if self.conversation_history and status == "completed"
                 else None
             ),
@@ -248,7 +255,7 @@ class CodexAgent:
         if status == "completed":
             logger.info(f"{'=' * 20} ANALYSIS COMPLETED {'=' * 20}")
             logger.info(f"Experiment ID: {self.experiment_id}")  # NEW
-            logger.info(f"Status: Completed")
+            logger.info("Status: Completed")
             logger.info(f"Log file: {self.log_file}")
             logger.info(f"Session file: {self.provider.session_file}")  # NEW
 
@@ -269,7 +276,7 @@ class CodexAgent:
             - This helps improve security and protect users
 
             Please continue your security analysis work while maintaining this authorized context.
-            """
+            """,
         ]
 
         # Add app server information if provided (same as custom agent)

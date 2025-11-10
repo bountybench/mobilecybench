@@ -61,12 +61,16 @@ class AgentEnvironment:
             logger.info(f"Image {self.image_name} found locally, skipping pull")
         except docker.errors.ImageNotFound:
             # Image not found locally, try to pull it
-            logger.info(f"Image {self.image_name} not found locally, pulling from registry...")
+            logger.info(
+                f"Image {self.image_name} not found locally, pulling from registry..."
+            )
             try:
                 seen_statuses = set()
                 pulling_started = False
 
-                for line in self.client.api.pull(self.image_name, stream=True, decode=True):
+                for line in self.client.api.pull(
+                    self.image_name, stream=True, decode=True
+                ):
                     if "status" in line:
                         status = line["status"]
                         layer_id = line.get("id", "")

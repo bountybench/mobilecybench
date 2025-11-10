@@ -524,10 +524,11 @@ class MobileCybenchRunner:
 
                 # For codex mode, use localhost MCP server instead of ngrok
                 from utils.mcp_utils import get_mcp_server_config
+
                 mcp_config = get_mcp_server_config(
                     ngrok_base_url="http://localhost:8000",
                     allowed_tools=self.config.allowed_tools,
-                    check_reachability=False
+                    check_reachability=False,
                 )
 
                 agent = CodexAgent(

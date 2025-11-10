@@ -233,7 +233,9 @@ class CodexCLIProvider:
                 final_output = result.output_text
                 all_tool_outputs.extend(result.tool_outputs)
 
-                logger.info(f"✅ Turn {turn_count} completed in {result.execution_time:.1f}s")
+                logger.info(
+                    f"✅ Turn {turn_count} completed in {result.execution_time:.1f}s"
+                )
                 logger.info(f"Output: {final_output}")
 
                 # If output is empty, session might be done
@@ -349,9 +351,7 @@ class CodexCLIProvider:
                     app_codebase_dir,
                     prompt,
                 ]
-                logger.info(
-                    f"Resuming EXISTING session from: {self.session_file.name}"
-                )
+                logger.info(f"Resuming EXISTING session from: {self.session_file.name}")
 
             # Execute command
             env = os.environ.copy()
@@ -402,7 +402,9 @@ class CodexCLIProvider:
 
                 # Provide helpful error messages
                 if "No such device or address" in str(result.stderr):
-                    auth_error = "Codex CLI authentication required. Please run 'codex login'"
+                    auth_error = (
+                        "Codex CLI authentication required. Please run 'codex login'"
+                    )
                     logger.error(auth_error)
                     return CodexCLIResult(
                         success=False,
