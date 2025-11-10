@@ -405,6 +405,8 @@ main() {
     # Build the app
     build_simplex_chat
 
+	sign_apk
+
     log "SimpleX Chat build completed successfully!"
     echo ""
     echo "APK Location: apps/simplex-chat/apk/simplex-chat.apk"
