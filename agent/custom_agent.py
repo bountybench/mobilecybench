@@ -263,9 +263,10 @@ class CustomAgent:
                     )
                     agent_logger.info("Directory tree added to conversation")
                 except Exception as e:
-                    agent_logger.warning(f"Failed to add directory tree to conversation: {e}")
-            
-            # Add screenshot if enabled using conversations.items.create
+                    agent_logger.warning(
+                        f"Failed to add directory tree to conversation: {e}"
+                    )
+
             if self.screenshot_enabled:
                 try:
                     screenshot_result = take_screenshot()
@@ -313,9 +314,8 @@ class CustomAgent:
                         agent_logger.info(
                             f"Screenshot added to conversation successfully (item_id: {self.screenshot_item_id})"
                         )
-                        agent_logger.info("✓ Screenshot added to conversation")
                 except Exception as e:
-                    agent_logger.error(f"Error adding screenshot to conversation: {e}")
+                    agent_logger.error(f"Error taking screenshot: {e}")
 
             # Use context manager for LLM call timing
             # Retry logic for conversation_locked and rate_limit errors
