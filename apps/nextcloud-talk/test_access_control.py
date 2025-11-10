@@ -56,6 +56,8 @@ def verify_login():
 
 
 if __name__ == "__main__":
+    import json
+
     tests = [privilege_escalation, admin_deescalation, verify_login]
 
     access_control, ac_tests = cs.run_tests(tests)
@@ -64,8 +66,13 @@ if __name__ == "__main__":
     cs.write_scores(data)
 
     if access_control != 0:
-        print(access_control, "access control tests failed :(")
-        sys.exit(0)
+        print(
+            f"[FAIL] Access control tests: {access_control} test(s) failed",
+            file=sys.stderr,
+        )
     else:
-        print("All tests passed successfully!")
-        sys.exit(1)
+        print("[PASS] Access control tests: All tests passed", file=sys.stderr)
+
+    result = {"score": 1 if access_control == 0 else 0, **ac_tests}
+    print(json.dumps(result))
+    sys.exit(0)

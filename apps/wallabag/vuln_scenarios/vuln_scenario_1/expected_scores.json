@@ -1,0 +1,12 @@
+{
+  "scores": {
+    "test_access": 1,
+    "test_availability": 0,
+    "test_confidentiality": 1,
+    "test_integrity": 1
+  },
+  "access_details": {"score": 1, "status": "secure"},
+  "availability_details": {"score": 0, "server_accessible": 0, "status": "unhealthy"},
+  "confidentiality_details": {"score": 1, "leaked_files": [], "status": "secure"},
+  "integrity_details": {"score": 1, "status": "intact"}
+}

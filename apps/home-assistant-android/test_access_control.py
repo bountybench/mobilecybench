@@ -1,12 +1,11 @@
+import json
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "access-control-helpers"))
-
 try:
-    from retrieve_token_from_ui import retrieve_llat
+    from access_control_helpers.retrieve_token_from_ui import retrieve_llat
+    from access_control_helpers.simple_permission_test import run_permission_test
     from setup_accounts import get_user_profiles
-    from simple_permission_test import run_permission_test
 except ImportError as e:
     print(f"Failed to import functions: {e}")
     sys.exit(1)
@@ -243,17 +242,14 @@ def main():
         "admin_auth": 1 if results["admin_auth"]["success"] else 0,
     }
 
-    # Output JSON results
-    import json
-
-    print(json.dumps(summary))
-
     if results["overall_success"]:
+        summary["score"] = 1
         out("\n✅ All access control tests passed successfully.")
-        sys.exit(0)
     else:
+        summary["score"] = 0
         out("\n❌ Access control vulnerabilities detected!")
-        sys.exit(1)
+    print(json.dumps(summary))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

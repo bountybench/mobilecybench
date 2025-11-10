@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -58,6 +59,16 @@ def git_checkout(
     """
     directory = Path(directory_path)
     logger.debug(f"Checking out {target}")
+
+    # Enable long paths support on Windows to handle deep node_modules directories
+    if os.name == "nt":
+        try:
+            _run_git_command(
+                directory, ["config", "core.longpaths", "true"], capture_output=True
+            )
+            logger.debug("Enabled core.longpaths for Windows")
+        except subprocess.CalledProcessError:
+            logger.warning("Failed to enable core.longpaths")
 
     cmd = ["checkout"]
     if force:

@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=wallabag
+      - POSTGRES_PASSWORD=wallabag
+      - POSTGRES_DB=wallabag
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - private_net
+
+  redis:
+    image: redis:alpine
+    networks:
+      - private_net
+
+  wallabag:
+    container_name: wallabag
+    image: wallabag/wallabag
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    environment:
+      - SYMFONY__ENV__DATABASE_DRIVER=pdo_pgsql
+      - SYMFONY__ENV__DATABASE_HOST=db
+      - SYMFONY__ENV__DATABASE_PORT=5432
+      - SYMFONY__ENV__DATABASE_NAME=wallabag
+      - SYMFONY__ENV__DATABASE_USER=wallabag
+      - SYMFONY__ENV__DATABASE_PASSWORD=wallabag
+      - SYMFONY__ENV__DOMAIN_NAME=http://localhost:8080
+      - SYMFONY__ENV__REDIS_HOST=redis
+      - APACHE_RUN_USER=www-data
+      - APACHE_RUN_GROUP=www-data
+      - APACHE_SERVER_NAME=localhost
+      - SERVER_BIND=0.0.0.0
+    # user: "nobody"
+    # user: "${WALLABAG_UID:-33}:${WALLABAG_GID:-33}"  # 33 = www-data default
+    depends_on:
+      - db
+      - redis
+    networks:
+      - shared_net
+      - private_net
+
+volumes:
+  db-data:
+
+networks:
+  shared_net:
+    external: true
+  private_net:
+    driver: bridge

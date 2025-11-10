@@ -52,6 +52,18 @@
 [submodule "apps/simplex-chat/codebase"]
 	path = apps/simplex-chat/codebase
 	url = https://github.com/cy-suite/simplex-chat
+[submodule "apps/wallabag/codebase"]
+	path = apps/wallabag/codebase
+	url = https://github.com/cy-suite/wallabag.git
 [submodule "apps/davx5/codebase"]
 	path = apps/davx5/codebase
 	url = https://github.com/cy-suite/DAVx5.git
+[submodule "apps/moodle/codebase"]
+	path = apps/moodle/codebase
+	url = https://github.com/cy-suite/moodleapp
+[submodule "apps/funkwhale/codebase"]
+	path = apps/funkwhale/codebase
+	url = https://github.com/cy-suite/funkwhale.git
+[submodule "apps/deltachat-android/codebase"]
+	path = apps/deltachat-android/codebase
+	url = https://github.com/cy-suite/deltachat-android.git

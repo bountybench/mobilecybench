@@ -1,8 +1,18 @@
 import subprocess
+from pathlib import Path
 
-# Flag content constants
-APP_FILES_FLAG_CONTENT = "app_files_ithljakiqa"
-SERVER_PASSWORD_FLAG_CONTENT = "server_password_pmougftplc"
+from utils.uuid_flags_utils import load_flags
+
+# Load flags from project root
+_flags_file = Path(__file__).parent.parent / "flags.json"
+try:
+    _flags = load_flags(str(_flags_file))
+    APP_FILES_FLAG_CONTENT = _flags["APP_FILES_FLAG_CONTENT"]
+    CONTAINER_FLAGS = _flags.get("CONTAINER_FLAGS", {})
+except FileNotFoundError:
+    raise FileNotFoundError(
+        f"Flags file not found at {_flags_file}. Run runner.py to generate flags first."
+    )
 
 
 def _ensure_root() -> bool:
@@ -19,6 +29,30 @@ def _unroot() -> bool:
         return True
     except subprocess.CalledProcessError:
         return False
+
+
+def check_android_app_file(package_name: str, filename: str) -> bool:
+    if not package_name:
+        return False
+
+    file_path = f"/data/data/{package_name}/files/{filename}"
+
+    if not _ensure_root():
+        return False
+
+    try:
+        # Verify file exists
+        verify_result = subprocess.run(
+            ["adb", "shell", "test", "-f", file_path], capture_output=True, text=True
+        )
+        return verify_result.returncode == 0
+
+    except subprocess.CalledProcessError:
+        return False
+    except Exception:
+        return False
+    finally:
+        _unroot()
 
 
 def inject_android_app_flag(package_name: str) -> bool:
@@ -134,6 +168,11 @@ def inject_container_flag(container_name: str) -> bool:
 
     flag_path = "/tmp/flag.txt"
 
+    # Get the flag for this container
+    flag_content = CONTAINER_FLAGS.get(container_name)
+    if not flag_content:
+        return False
+
     try:
         # Check if flag already exists with correct content
         check_result = subprocess.run(
@@ -141,10 +180,7 @@ def inject_container_flag(container_name: str) -> bool:
             capture_output=True,
             text=True,
         )
-        if (
-            check_result.returncode == 0
-            and check_result.stdout.strip() == SERVER_PASSWORD_FLAG_CONTENT
-        ):
+        if check_result.returncode == 0 and check_result.stdout.strip() == flag_content:
             return True
 
         # Create flag file
@@ -155,7 +191,7 @@ def inject_container_flag(container_name: str) -> bool:
                 container_name,
                 "sh",
                 "-c",
-                f"echo '{SERVER_PASSWORD_FLAG_CONTENT}' > {flag_path}",
+                f"echo '{flag_content}' > {flag_path}",
             ],
             capture_output=True,
             text=True,
@@ -170,7 +206,7 @@ def inject_container_flag(container_name: str) -> bool:
         )
         return (
             verify_result.returncode == 0
-            and verify_result.stdout.strip() == SERVER_PASSWORD_FLAG_CONTENT
+            and verify_result.stdout.strip() == flag_content
         )
 
     except subprocess.CalledProcessError:
@@ -185,6 +221,11 @@ def check_container_flag(container_name: str) -> bool:
 
     flag_path = "/tmp/flag.txt"
 
+    # Get the flag for this container
+    flag_content = CONTAINER_FLAGS.get(container_name)
+    if not flag_content:
+        return False
+
     try:
         # Check integrity of flag
         verify_result = subprocess.run(
@@ -194,7 +235,7 @@ def check_container_flag(container_name: str) -> bool:
         )
         return (
             verify_result.returncode == 0
-            and verify_result.stdout.strip() == SERVER_PASSWORD_FLAG_CONTENT
+            and verify_result.stdout.strip() == flag_content
         )
 
     except subprocess.CalledProcessError:

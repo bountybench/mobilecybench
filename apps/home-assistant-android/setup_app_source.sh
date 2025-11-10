@@ -130,7 +130,7 @@ export_apk() {
     APK_DIR="../apk"
     mkdir -p "$APK_DIR"
     
-    out="$APK_DIR/home-assistant-minimal-release.apk"
+    out="$APK_DIR/home-assistant-android.apk"
     cp -f "$apk" "$out"
     
     echo "APK exported to: $out"
