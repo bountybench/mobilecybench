@@ -160,6 +160,9 @@ class MobileCybenchRunner:
         Check if APK exists in GitHub releases and download it.
         Format: apk-{app_name}-v0
         Returns True if downloaded, False otherwise.
+        
+        Note: Requires GitHub CLI (gh) to be installed. If not available,
+        will gracefully fall back to building from source.
         """
         release_filename = f"apk-{self.app_name.lower()}-v0"
         apk_path = self.app_dir / "apk" / f"{self.app_name}.apk"
@@ -170,6 +173,18 @@ class MobileCybenchRunner:
         if apk_path.exists():
             logger.info(f"APK already exists at {apk_path}, skipping GitHub release check")
             return True
+        
+        # Check if GitHub CLI (gh) is available
+        # Use --version to check availability (works cross-platform)
+        gh_check = self.cmd.run("gh --version", check=False, timeout=5, capture_output=True)
+        if gh_check.returncode != 0:
+            logger.info("GitHub CLI (gh) is not installed. Skipping GitHub release check.")
+            logger.info("To enable GitHub release downloads, install gh CLI:")
+            logger.info("  macOS: brew install gh")
+            logger.info("  Linux: See https://github.com/cli/cli/blob/trunk/docs/install_linux.md")
+            logger.info("  Windows: See https://github.com/cli/cli/blob/trunk/docs/install_windows.md")
+            logger.info("Will build from source")
+            return False
         
         try:
             logger.info(f"Checking for GitHub release APK: {release_filename}")
