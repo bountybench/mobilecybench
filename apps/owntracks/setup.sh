@@ -10,21 +10,34 @@ warn() { printf '%s[warn] %s\n' "$LOG_PREFIX" "$*" >&2; }
 fail() { printf '%s[error] %s\n' "$LOG_PREFIX" "$*" >&2; exit 1; }
 
 load_credentials() {
-    info "Loading MQTT credentials from secrets.json"
-    local secrets_file="${SCRIPT_DIR}/secrets.json"
+    # Load agent credentials from metadata.json (agent will have access to these)
+    local metadata_file="${SCRIPT_DIR}/metadata.json"
+    if [[ ! -f "$metadata_file" ]]; then
+        fail "metadata.json not found at $metadata_file"
+    fi
     
+    AGENT_USERNAME=$(jq -r '.username' "$metadata_file")
+    AGENT_PASSWORD=$(jq -r '.password' "$metadata_file")
+    
+    if [[ -z "$AGENT_USERNAME" || -z "$AGENT_PASSWORD" ]]; then
+        fail "Failed to load agent credentials from metadata.json"
+    fi
+    
+    # Load non-agent user credentials from secrets.json (for testing scenarios)
+    local secrets_file="${SCRIPT_DIR}/secrets.json"
     if [[ ! -f "$secrets_file" ]]; then
         fail "secrets.json not found at $secrets_file"
     fi
     
-    MQTT_USERNAME=$(jq -r '.mqtt_username' "$secrets_file")
-    MQTT_PASSWORD=$(jq -r '.mqtt_password' "$secrets_file")
+    ADMIN_USERNAME=$(jq -r '.admin_username' "$secrets_file")
+    ADMIN_PASSWORD=$(jq -r '.admin_password' "$secrets_file")
     
-    if [[ -z "$MQTT_USERNAME" || -z "$MQTT_PASSWORD" ]]; then
-        fail "Failed to load MQTT credentials from secrets.json"
+    if [[ -z "$ADMIN_USERNAME" || -z "$ADMIN_PASSWORD" ]]; then
+        fail "Failed to load admin credentials from secrets.json"
     fi
     
-    info "MQTT credentials loaded: user=$MQTT_USERNAME"
+    info "Agent credentials loaded: user=$AGENT_USERNAME"
+    info "Admin credentials loaded: user=$ADMIN_USERNAME"
 }
 
 setup_mosquitto() {
@@ -37,17 +50,23 @@ setup_mosquitto() {
     cd "$SCRIPT_DIR"
     
     # Create password file BEFORE starting container (avoids crash on startup)
-    info "Creating MQTT password file with user: $MQTT_USERNAME"
+    info "Creating MQTT password file with agent and admin users"
     mkdir -p "$SCRIPT_DIR/mosquitto/config"
     
     # Use mosquitto_passwd via docker to create the password file
-    # This runs the command in a temporary container and saves to host volume
+    # -c flag creates a new file (clears existing), first user
     docker run --rm \
         -v "$SCRIPT_DIR/mosquitto/config:/config" \
         eclipse-mosquitto:2.0.15 \
-        mosquitto_passwd -b -c /config/mosquitto.password "$MQTT_USERNAME" "$MQTT_PASSWORD"
+        mosquitto_passwd -b -c /config/mosquitto.password "$AGENT_USERNAME" "$AGENT_PASSWORD"
     
-    info "Password file created successfully"
+    # Add admin user (without -c flag to append)
+    docker run --rm \
+        -v "$SCRIPT_DIR/mosquitto/config:/config" \
+        eclipse-mosquitto:2.0.15 \
+        mosquitto_passwd -b /config/mosquitto.password "$ADMIN_USERNAME" "$ADMIN_PASSWORD"
+    
+    info "Password file created with agent user ($AGENT_USERNAME) and admin user ($ADMIN_USERNAME)"
     
     # Now start Mosquitto container - it will enforce authentication
     info "Starting Mosquitto MQTT broker..."
@@ -63,7 +82,7 @@ setup_mosquitto() {
     fi
     
     info "Mosquitto MQTT broker ready at 10.0.2.2:1883"
-    info "Authentication required - User: $MQTT_USERNAME"
+    info "Authentication required - Agent user: $AGENT_USERNAME, Admin user: $ADMIN_USERNAME"
 }
 
 install_and_configure_app() {
@@ -102,8 +121,8 @@ install_and_configure_app() {
   "waypoints": [],
   "host": "10.0.2.2",
   "port": 1883,
-  "username": "$MQTT_USERNAME",
-  "password": "$MQTT_PASSWORD",
+  "username": "$AGENT_USERNAME",
+  "password": "$AGENT_PASSWORD",
   "mode": 0,
   "connectionTimeoutSeconds": 30,
   "keepalive": 60,
@@ -132,8 +151,8 @@ main() {
     
     info "Setup complete!"
     info "MQTT Broker: 10.0.2.2:1883"
-    info "Username: $MQTT_USERNAME"
-    info "Password: $MQTT_PASSWORD"
+    info "Agent credentials (from metadata.json): $AGENT_USERNAME / $AGENT_PASSWORD"
+    info "Admin credentials (from secrets.json): $ADMIN_USERNAME / $ADMIN_PASSWORD"
 }
 
 main "$@"
