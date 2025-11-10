@@ -189,7 +189,7 @@ class CustomAgent:
                 
                 for line in lines:
                     if line.strip().startswith("Output:"):
-                        in_output_section = os.truncate
+                        in_output_section = True
                         continue
                     if in_output_section:
                         output_lines.append(line)
@@ -288,8 +288,9 @@ class CustomAgent:
                         agent_logger.info(
                             f"Screenshot added to conversation successfully (item_id: {self.screenshot_item_id})"
                         )
+                        agent_logger.info("✓ Screenshot added to conversation")
                 except Exception as e:
-                    agent_logger.error(f"Error taking screenshot: {e}")
+                    agent_logger.error(f"Error adding screenshot to conversation: {e}")
 
             # Use context manager for LLM call timing
             # Retry logic for conversation_locked and rate_limit errors
