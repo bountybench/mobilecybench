@@ -114,10 +114,17 @@ install_build_dependencies() {
 
 # Build native libraries (libsimplex.so and libsupport.so)
 build_native_libraries() {
-	echo "Building native libraries"
-	gzip -d ${SCRIPT_DIR}/codebase/apps/multiplatform/common/src/commonMain/cpp/android/libs/arm64-v8a/libsimplex.so.gz
-	gzip -d ${SCRIPT_DIR}/codebase/apps/multiplatform/common/src/commonMain/cpp/android/libs/armeabi-v7a/libsimplex.so.gz
-	echo "Built native libraries"
+	local lib_dir="${SCRIPT_DIR}/codebase/apps/multiplatform/common/src/commonMain/cpp/android/libs"
+
+	if [ ! -f "${lib_dir}/arm64-v8a/libsimplex.so" ] ; then
+		ls "${lib_dir}/arm64-v8a/"
+		echo "Building native libraries"
+		gzip -d ${SCRIPT_DIR}/codebase/apps/multiplatform/common/src/commonMain/cpp/android/libs/arm64-v8a/libsimplex.so.gz
+		gzip -d ${SCRIPT_DIR}/codebase/apps/multiplatform/common/src/commonMain/cpp/android/libs/armeabi-v7a/libsimplex.so.gz
+		echo "Built native libraries"
+	else
+		echo "Native libraries already exist, skipping build."
+	fi
 }
 # build_native_libraries() {
 #     log "Building native libraries (libsimplex.so and libsupport.so)..."
@@ -279,7 +286,7 @@ build_simplex_chat() {
     log "Found built APK: $built_apk"
 
     # Copy APK to expected location
-    local target_apk="${apk_dir}/simplex-chat.apk"
+    local target_apk="${apk_dir}/simplex-chat-unsigned.apk"
     cp "$built_apk" "$target_apk"
 
     log "APK copied to: $target_apk"
@@ -313,6 +320,76 @@ create_signing_key() {
             -storepass android -keypass android
     fi
 }
+
+# Sign the release APK with debug keystore using modern APK signing
+sign_apk() {
+    local apk_dir="$app_dir/apk"
+	local APK_UNSIGNED = "$apk_dir/simplex-chat-unsigned.apk"
+	
+    info "Signing release APK (debug keystore with v2+ signature scheme)..."
+
+    KEYSTORE_FILE="$HOME/.android/debug.keystore"
+    
+    # Check if the debug keystore exists, and create it if it doesn't.
+    if [ ! -f "$KEYSTORE_FILE" ]; then
+        info "Debug keystore not found. Generating a new one..."
+        mkdir -p "$HOME/.android/"
+        keytool -genkey -v -keystore "$KEYSTORE_FILE" \
+                -alias androiddebugkey -keyalg RSA -keysize 2048 \
+                -validity 10000 -storepass android -keypass android \
+                -dname "CN=Android Debug, O=Android, C=US"
+        info "Debug keystore generated at $KEYSTORE_FILE"
+    fi
+
+    if [[ -z "$APK_UNSIGNED" ]]; then
+        warn "No unsigned release APK found to sign."
+        return 1
+    fi
+    
+    APK_SIGNED="${APK_UNSIGNED/-unsigned.apk/.apk}"
+    
+    # Use apksigner for SDK 30+ compatibility (supports v2+ signature schemes)
+    local apksigner_path="$ANDROID_HOME/build-tools"
+    local apksigner_tool=""
+    
+    # Find the latest build-tools version that has apksigner
+    if [[ -d "$apksigner_path" ]]; then
+        local latest_build_tools
+        latest_build_tools=$(ls -1 "$apksigner_path" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1)
+        if [[ -n "$latest_build_tools" && -f "$apksigner_path/$latest_build_tools/apksigner" ]]; then
+            apksigner_tool="$apksigner_path/$latest_build_tools/apksigner"
+            info "Using apksigner from build-tools $latest_build_tools"
+        fi
+    fi
+    
+    if [[ -n "$apksigner_tool" && -x "$apksigner_tool" ]]; then
+        info "Signing with apksigner (v1+v2 schemes for SDK 30+ compatibility)"
+        "$apksigner_tool" sign \
+            --ks "$KEYSTORE_FILE" \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --out "$APK_SIGNED" \
+            "$APK_UNSIGNED"
+    else
+        error "apksigner not found. Required for SDK 30+ compatibility. Please ensure Android build-tools are properly installed."
+    fi
+    
+    info "Signed APK: $APK_SIGNED"
+    
+    # Verify the signature
+    if [[ -n "$apksigner_tool" && -x "$apksigner_tool" ]]; then
+        info "Verifying APK signature..."
+        if "$apksigner_tool" verify "$APK_SIGNED"; then
+            info "APK signature verification successful"
+        else
+            warn "APK signature verification failed"
+        fi
+    fi
+}
+
 
 # Main function
 main() {
