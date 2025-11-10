@@ -4,7 +4,7 @@
   "java": "17",
   "package_name": "chat.simplex.app",
   "gh_link": "https://github.com/simplex-chat/simplex-chat.git",
-  "download_link": "https://github.com/simplex-chat/simplex-chat/releases/latest/download/simplex.apk",
+  "download_link": "",
   "emulator_server": "smp://10.0.2.2:5223",
   "app_server": "smp://simplex-smp:5223",
   "username": "",
