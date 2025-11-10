@@ -342,7 +342,7 @@ create_signing_key() {
 
 # Sign the release APK with debug keystore using modern APK signing
 sign_apk() {
-    local apk_dir="$app_dir/apk"
+    local apk_dir="${SCRIPT_DIR}/apk"
 	local APK_UNSIGNED="${apk_dir}/simplex-chat-unsigned.apk"
 
 	
