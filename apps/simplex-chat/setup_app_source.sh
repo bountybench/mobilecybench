@@ -46,6 +46,25 @@ check_java() {
     log "Java $java_version is compatible"
 }
 
+check_android() {
+	# More robust check for the Android SDK path.
+    if [ -n "$ANDROID_HOME" ] && [ -d "$ANDROID_HOME" ]; then
+      info "Using Android SDK from pre-set ANDROID_HOME: $ANDROID_HOME"
+    elif [ -d "${HOME}/.android-sdk" ]; then
+      # Fallback to the default path if ANDROID_HOME isn't set.
+      ANDROID_HOME="${HOME}/.android-sdk"
+      info "Found Android SDK at default location: $ANDROID_HOME"
+    else
+      error "Android SDK not found. Please set the ANDROID_HOME environment variable."
+    fi
+
+    
+    # Check Android SDK
+    if [[ ! -d "$ANDROID_HOME" ]]; then
+        error "Android SDK not found at $ANDROID_HOME. Please run the Android emulator setup first."
+    fi
+}
+
 # Check and install build dependencies
 install_build_dependencies() {
     log "Checking build dependencies..."
@@ -261,9 +280,9 @@ build_simplex_chat() {
     log "Building Android APK..."
     cd "${source_dir}/apps/multiplatform"
 
-    # Set up Android environment
-    export ANDROID_HOME="${HOME}/.android-sdk"
-    export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/34.0.0:$PATH"
+	# Set Android SDK
+    export ANDROID_HOME="$ANDROID_HOME"
+    export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 
 	echo $ANDROID_HOME
 
@@ -324,7 +343,8 @@ create_signing_key() {
 # Sign the release APK with debug keystore using modern APK signing
 sign_apk() {
     local apk_dir="$app_dir/apk"
-	local APK_UNSIGNED="$apk_dir/simplex-chat-unsigned.apk"
+	local APK_UNSIGNED="${apk_dir}/simplex-chat-unsigned.apk"
+
 	
     echo "Signing release APK (debug keystore with v2+ signature scheme)..."
 
