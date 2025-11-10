@@ -76,4 +76,4 @@ pymysql>=1.1.0
 tiktoken>=0.5.0
 fastmcp>=2.12.0
 mcp>=1.16.0
-
+websocket-client>=1.9.0
