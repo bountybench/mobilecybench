@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Codex CLI Provider with Experiment-Scoped Session Management
+Codex CLI Provider with Session ID-Based Resumption
 
-Uses explicit session files per experiment to ensure parallel safety
-and proper session resumption across multi-turn executions.
+Uses Codex CLI's native session management with session IDs to ensure:
+- Proper session resumption across multi-turn executions
+- Parallel execution safety (each experiment tracks its own session ID)
+- Clean integration with Codex CLI's built-in session handling
 """
 
 import json
@@ -39,17 +41,18 @@ class CodexCLIResult:
     execution_time: float
     stderr: Optional[str] = None
     experiment_id: Optional[str] = None
-    session_file: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class CodexCLIProvider:
     """
-    Codex CLI provider with experiment-scoped session management.
+    Codex CLI provider with session ID-based resumption.
 
-    Each experiment gets a unique session file to ensure:
-    - Parallel execution safety (no race conditions)
-    - Proper session resumption across turns
+    Each experiment tracks its Codex session ID to ensure:
+    - Parallel execution safety (each experiment has its own session ID)
+    - Proper session resumption across turns using `codex resume <session-id>`
     - Clean isolation between experiments
+    - Integration with Codex CLI's native session management
     """
 
     def __init__(self, experiment_id: str):
@@ -62,16 +65,9 @@ class CodexCLIProvider:
         """
         self.codex_binary = "codex"
         self.experiment_id = experiment_id
-
-        # Create dedicated sessions directory for experiments
-        self.sessions_dir = Path.home() / ".codex" / "sessions" / "experiments"
-        self.sessions_dir.mkdir(parents=True, exist_ok=True)
-
-        # Each experiment gets its own session file
-        self.session_file = self.sessions_dir / f"{experiment_id}.jsonl"
+        self.session_id = None  # Track the Codex session ID for resumption
 
         logger.info(f"CodexCLIProvider initialized for experiment: {experiment_id}")
-        logger.info(f"Session file: {self.session_file}")
 
     def validate(self) -> bool:
         """Validate that Codex CLI is available and accessible."""
@@ -156,12 +152,12 @@ class CodexCLIProvider:
                         execution_time=time.time() - start_time,
                         stderr="Security policy: Only secure MCP servers allowed",
                         experiment_id=self.experiment_id,
-                        session_file=str(self.session_file),
+                        session_id=self.session_id,
                     )
                 logger.info(f"Using MCP server: {server_url}")
 
             # Check if this is a new session or resuming existing one
-            is_new_session = not self.session_file.exists()
+            is_new_session = self.session_id is None
 
             if is_new_session:
                 logger.info(
@@ -169,7 +165,7 @@ class CodexCLIProvider:
                 )
             else:
                 logger.info(
-                    f"🔄 RESUMING existing session for experiment: {self.experiment_id}"
+                    f"🔄 RESUMING existing session: {self.session_id} for experiment: {self.experiment_id}"
                 )
 
             logger.info(f"Working directory: {app_codebase_dir}")
@@ -261,7 +257,7 @@ class CodexCLIProvider:
                 tool_outputs=all_tool_outputs,
                 execution_time=total_time,
                 experiment_id=self.experiment_id,
-                session_file=str(self.session_file),
+                session_id=self.session_id,
             )
 
         except subprocess.TimeoutExpired:
@@ -274,7 +270,7 @@ class CodexCLIProvider:
                 execution_time=execution_time,
                 stderr=f"Execution timed out after {timeout_ms}ms",
                 experiment_id=self.experiment_id,
-                session_file=str(self.session_file),
+                session_id=self.session_id,
             )
         except Exception as e:
             execution_time = time.time() - start_time
@@ -286,7 +282,7 @@ class CodexCLIProvider:
                 execution_time=execution_time,
                 stderr=str(e),
                 experiment_id=self.experiment_id,
-                session_file=str(self.session_file),
+                session_id=self.session_id,
             )
 
     def _run_codex_turn(
@@ -335,12 +331,16 @@ class CodexCLIProvider:
                 ]
                 logger.info(f"Executing NEW session: {' '.join(cmd)}")
             else:
-                # Build codex resume command for EXISTING session
-                # Use experimental_resume with our specific session file
+                # Build codex exec command with experimental_resume to continue session
+                # Find the session file for our session_id
+                session_file_path = self._find_session_file(self.session_id)
+                if not session_file_path:
+                    raise Exception(f"Could not find session file for ID: {self.session_id}")
+
                 cmd = [
                     self.codex_binary,
                     "-c",
-                    f"experimental_resume={self.session_file}",
+                    f"experimental_resume={session_file_path}",
                     "exec",
                     "--dangerously-bypass-approvals-and-sandbox",
                     "--skip-git-repo-check",
@@ -349,9 +349,9 @@ class CodexCLIProvider:
                     output_file.name,
                     "-C",
                     app_codebase_dir,
-                    prompt,
+                    prompt,  # Empty prompt to continue
                 ]
-                logger.info(f"Resuming EXISTING session from: {self.session_file.name}")
+                logger.info(f"Resuming session {self.session_id} from: {session_file_path}")
 
             # Execute command
             env = os.environ.copy()
@@ -368,23 +368,34 @@ class CodexCLIProvider:
 
             execution_time = time.time() - turn_start
 
-            # Read outputs
-            output_file.seek(0)
-            final_output = output_file.read()
+            # Read outputs (reopen files to get subprocess writes)
+            with open(output_file.name, "r") as f:
+                final_output = f.read()
 
-            jsonl_file.seek(0)
-            jsonl_content = jsonl_file.read()
+            with open(jsonl_file.name, "r") as f:
+                jsonl_content = f.read()
 
-            # Parse JSONL events to extract tool outputs
+            # Parse JSONL events to extract tool outputs and session ID
             tool_outputs = []
             for line in jsonl_content.strip().split("\n"):
                 if line:
                     try:
                         event = json.loads(line)
-                        if event.get("type") == "tool_result":
+                        event_type = event.get("type")
+
+                        # Extract session ID from thread.started event on initial run
+                        if is_initial and event_type == "thread.started":
+                            self.session_id = event.get("thread_id")
+                            logger.info(f"Captured session ID: {self.session_id}")
+
+                        if event_type == "tool_result":
                             tool_outputs.append(json.dumps(event.get("content", {})))
-                    except json.JSONDecodeError:
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Failed to parse JSONL line: {e}")
                         continue
+
+            if is_initial and not self.session_id:
+                logger.warning("Could not capture session ID from initial execution")
 
             if result.returncode == 0:
 
@@ -394,7 +405,7 @@ class CodexCLIProvider:
                     tool_outputs=tool_outputs,
                     execution_time=execution_time,
                     experiment_id=self.experiment_id,
-                    session_file=str(self.session_file),
+                    session_id=self.session_id,  # Store session ID instead
                 )
             else:
                 logger.error(f"Codex turn failed with code {result.returncode}")
@@ -413,7 +424,7 @@ class CodexCLIProvider:
                         execution_time=execution_time,
                         stderr=auth_error,
                         experiment_id=self.experiment_id,
-                        session_file=str(self.session_file),
+                        session_id=self.session_id,
                     )
                 elif "OPENAI_API_KEY" in str(result.stderr):
                     api_key_error = "OPENAI_API_KEY environment variable required"
@@ -425,7 +436,7 @@ class CodexCLIProvider:
                         execution_time=execution_time,
                         stderr=api_key_error,
                         experiment_id=self.experiment_id,
-                        session_file=str(self.session_file),
+                        session_id=self.session_id,
                     )
 
                 return CodexCLIResult(
@@ -435,7 +446,7 @@ class CodexCLIProvider:
                     execution_time=execution_time,
                     stderr=result.stderr,
                     experiment_id=self.experiment_id,
-                    session_file=str(self.session_file),
+                    session_id=self.session_id,
                 )
 
         except subprocess.TimeoutExpired:
@@ -448,7 +459,7 @@ class CodexCLIProvider:
                 execution_time=execution_time,
                 stderr="Turn timed out",
                 experiment_id=self.experiment_id,
-                session_file=str(self.session_file),
+                session_id=self.session_id,
             )
         except Exception as e:
             execution_time = time.time() - turn_start
@@ -460,7 +471,7 @@ class CodexCLIProvider:
                 execution_time=execution_time,
                 stderr=str(e),
                 experiment_id=self.experiment_id,
-                session_file=str(self.session_file),
+                session_id=self.session_id,
             )
         finally:
             # Cleanup temp files
@@ -472,44 +483,64 @@ class CodexCLIProvider:
             except Exception as e:
                 logger.warning(f"Failed to cleanup temp files: {e}")
 
-    def cleanup(self):
+    def _find_session_file(self, session_id: str) -> Optional[str]:
         """
-        Clean up experiment session file.
+        Find the session file path for a given session ID.
 
-        Call this after experiment completes to free up disk space.
+        Args:
+            session_id: The session ID to find
+
+        Returns:
+            Full path to session file, or None if not found
         """
         try:
-            if self.session_file.exists():
-                self.session_file.unlink()
-                logger.info(
-                    f"Cleaned up session file for experiment: {self.experiment_id}"
-                )
-            else:
-                logger.info(f"No session file to clean up for: {self.experiment_id}")
+            from datetime import datetime
+            sessions_base = Path.home() / ".codex" / "sessions"
+
+            # Session files are named: rollout-YYYY-MM-DDTHH-MM-SS-<session_id>.jsonl
+            # They're stored in: ~/.codex/sessions/YYYY/MM/DD/
+            # Search today's directory
+            now = datetime.now()
+            today_path = sessions_base / str(now.year) / f"{now.month:02d}" / f"{now.day:02d}"
+
+            if today_path.exists():
+                pattern = f"rollout-*-{session_id}.jsonl"
+                matches = list(today_path.glob(pattern))
+                if matches:
+                    return str(matches[0])
+
+            logger.warning(f"Session file not found for ID: {session_id}")
+            return None
+
         except Exception as e:
-            logger.warning(f"Error cleaning up session file: {e}")
+            logger.error(f"Error finding session file: {e}")
+            return None
+
+    def cleanup(self):
+        """
+        Clean up experiment session.
+
+        Note: With the new session ID approach, Codex CLI manages session files
+        in its default location. This method is kept for API compatibility but
+        no longer performs file cleanup.
+        """
+        if self.session_id:
+            logger.info(
+                f"Session {self.session_id} for experiment {self.experiment_id} completed. "
+                f"Codex CLI manages session file cleanup automatically."
+            )
+        else:
+            logger.info(f"No session to clean up for experiment: {self.experiment_id}")
 
     def get_session_info(self) -> dict:
         """
         Get information about the current session.
 
         Returns:
-            dict: Session metadata including file path, size, and modification time
+            dict: Session metadata including session ID and experiment ID
         """
-        info = {
+        return {
             "experiment_id": self.experiment_id,
-            "session_file": str(self.session_file),
-            "exists": self.session_file.exists(),
+            "session_id": self.session_id,
+            "has_session": self.session_id is not None,
         }
-
-        if self.session_file.exists():
-            stat = self.session_file.stat()
-            info.update(
-                {
-                    "size_bytes": stat.st_size,
-                    "modified_time": stat.st_mtime,
-                    "modified_time_str": time.ctime(stat.st_mtime),
-                }
-            )
-
-        return info

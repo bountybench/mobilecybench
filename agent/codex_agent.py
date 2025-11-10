@@ -127,7 +127,7 @@ class CodexAgent:
                 f"App Server: {app_server or 'None'}",
                 f"Dry Run: {dry_run}",
                 f"MCP Server: {self.mcp_config.get('server_url', 'Not configured')}",
-                f"Session File: {self.provider.session_file}",  # NEW: Log session file
+                f"Session ID: {self.provider.session_id}",  # NEW: Log session file
             ],
         )
 
@@ -201,7 +201,7 @@ class CodexAgent:
                     "final_output": result.output_text,
                     "tool_outputs": result.tool_outputs,
                     "execution_time": result.execution_time,
-                    "session_file": result.session_file,
+                    "session_id": result.session_id,
                 }
             )
 
@@ -254,10 +254,10 @@ class CodexAgent:
 
         if status == "completed":
             logger.info(f"{'=' * 20} ANALYSIS COMPLETED {'=' * 20}")
-            logger.info(f"Experiment ID: {self.experiment_id}")  # NEW
+            logger.info(f"Experiment ID: {self.experiment_id}")
             logger.info("Status: Completed")
             logger.info(f"Log file: {self.log_file}")
-            logger.info(f"Session file: {self.provider.session_file}")  # NEW
+            logger.info(f"Session ID: {self.provider.session_id}")
 
         return result
 
