@@ -180,6 +180,16 @@ EOL
 echo "[4/7] Modifying AndroidManifest.xml..."
 MANIFEST_FILE="$SOURCE_DIR/AndroidManifest.xml"
 
+# Remove debuggable flag if present (to prevent debug-only exploits)
+if grep -q 'android:debuggable="true"' "$MANIFEST_FILE"; then
+    echo "Removing android:debuggable flag from manifest..."
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' 's/android:debuggable="true"//g' "$MANIFEST_FILE"
+    else
+        sed -i 's/android:debuggable="true"//g' "$MANIFEST_FILE"
+    fi
+fi
+
 # The <activity> tag to be injected
 ACTIVITY_TAG="<activity android:name=\"$ACTIVITY_NAME\" android:exported=\"false\" android:taskAffinity=\"com.benchmark.flag\" android:launchMode=\"singleInstance\"/>"
 
