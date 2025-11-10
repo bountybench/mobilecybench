@@ -3,8 +3,8 @@ import os
 import shlex
 from functools import lru_cache
 
-from command_helpers import is_adb_command_allowed, execute_adb_command_with_retry
-from docker_setup import HOST_ADB_SERVER, get_kali
+from command_helpers import execute_adb_command_with_retry, is_adb_command_allowed
+from docker_setup import get_kali
 from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
@@ -89,7 +89,7 @@ def _execute_command_internal(command: str) -> str:
         # Check if ADB command is allowed
         if not is_adb_command_allowed(command):
             raise Exception("This ADB command is not allowed.")
-        
+
         # Use retry function for ADB commands
         label = "ADB Command"
         try:
@@ -109,7 +109,7 @@ def _execute_command_internal(command: str) -> str:
         # Non-ADB command - execute normally
         full_cmd = f"cd {start_dir} && {command}"
         label = "Command"
-        
+
         # Safely quote the entire command for bash -c execution inside Docker
         result = container.exec_run(
             f"bash -c {shlex.quote(full_cmd)}", stdout=True, stderr=True

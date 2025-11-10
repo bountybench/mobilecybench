@@ -3,6 +3,7 @@ import xml.etree.ElementTree as ET
 from typing import Dict, List
 
 from command_helpers import execute_adb_command_with_retry
+
 from utils.logger import logger
 
 
@@ -28,12 +29,16 @@ def run_adb_pull(remote_path: str, local_path: str) -> bool:
     """
     try:
         start_dir = "/app/codebase"
-        exit_code, output = execute_adb_command_with_retry(f"adb shell cat {remote_path}", start_dir)
-        
+        exit_code, output = execute_adb_command_with_retry(
+            f"adb shell cat {remote_path}", start_dir
+        )
+
         if exit_code != 0 or not output:
-            logger.warning(f"ADB pull failed for {remote_path}: exit_code={exit_code}, output_empty={not output}")
+            logger.warning(
+                f"ADB pull failed for {remote_path}: exit_code={exit_code}, output_empty={not output}"
+            )
             return False
-        
+
         # Write output as bytes (output is a string from the retry function, encode it back to bytes)
         with open(local_path, "wb") as f:
             f.write(output.encode("utf-8"))

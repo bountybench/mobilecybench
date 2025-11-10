@@ -7,7 +7,10 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 
-from agent.mcp.command_helpers import is_adb_command_allowed, execute_adb_command_with_retry
+from agent.mcp.command_helpers import (
+    execute_adb_command_with_retry,
+    is_adb_command_allowed,
+)
 
 # Add project root to sys.path to enable imports
 # (when Claude Desktop launches the script directly)
@@ -81,7 +84,7 @@ def _execute_command_internal(command: str) -> str:
     if command.strip().startswith("adb"):
         if not is_adb_command_allowed(command):
             raise Exception("This ADB command is not allowed.")
-        
+
         # Use retry function for ADB commands
         label = "ADB Command"
         try:

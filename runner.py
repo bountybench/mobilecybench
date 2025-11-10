@@ -160,7 +160,7 @@ class MobileCybenchRunner:
         Check if APK exists in GitHub releases and download it.
         Format: apk-{app_name}-v0
         Returns True if downloaded, False otherwise.
-        
+
         Note: Requires GitHub CLI (gh) to be installed. If not available,
         will gracefully fall back to building from source.
         """
@@ -168,32 +168,42 @@ class MobileCybenchRunner:
         apk_path = self.app_dir / "apk" / f"{self.app_name}.apk"
         apk_dir = self.app_dir / "apk"
         apk_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Check if APK already exists
         if apk_path.exists():
-            logger.info(f"APK already exists at {apk_path}, skipping GitHub release check")
+            logger.info(
+                f"APK already exists at {apk_path}, skipping GitHub release check"
+            )
             return True
-        
+
         # Check if GitHub CLI (gh) is available
         # Use --version to check availability (works cross-platform)
-        gh_check = self.cmd.run("gh --version", check=False, timeout=5, capture_output=True)
+        gh_check = self.cmd.run(
+            "gh --version", check=False, timeout=5, capture_output=True
+        )
         if gh_check.returncode != 0:
-            logger.info("GitHub CLI (gh) is not installed. Skipping GitHub release check.")
+            logger.info(
+                "GitHub CLI (gh) is not installed. Skipping GitHub release check."
+            )
             logger.info("To enable GitHub release downloads, install gh CLI:")
             logger.info("  macOS: brew install gh")
-            logger.info("  Linux: See https://github.com/cli/cli/blob/trunk/docs/install_linux.md")
-            logger.info("  Windows: See https://github.com/cli/cli/blob/trunk/docs/install_windows.md")
+            logger.info(
+                "  Linux: See https://github.com/cli/cli/blob/trunk/docs/install_linux.md"
+            )
+            logger.info(
+                "  Windows: See https://github.com/cli/cli/blob/trunk/docs/install_windows.md"
+            )
             logger.info("Will build from source")
             return False
-        
+
         try:
             logger.info(f"Checking for GitHub release APK: {release_filename}")
-            logger.info(f"Repository: bountybench/mobilecybench")
+            logger.info("Repository: bountybench/mobilecybench")
             logger.info(f"App name: {self.app_name}")
-            
+
             # The release tag should match the filename format: apk-{app_name}-v0
             release_tag = release_filename  # apk-{app_name}-v0
-            
+
             # Check if this specific release exists
             logger.info(f"Checking for release tag: {release_tag}")
             result = self.cmd.run(
@@ -201,23 +211,29 @@ class MobileCybenchRunner:
                 check=False,
                 timeout=10,
             )
-            
+
             if result.returncode != 0:
-                logger.info(f"Release {release_tag} not found (exit code {result.returncode})")
+                logger.info(
+                    f"Release {release_tag} not found (exit code {result.returncode})"
+                )
                 if result.stderr:
                     logger.debug(f"Error: {result.stderr}")
                 logger.info("Will build from source")
                 return False
-            
+
             # Parse JSON output to get asset names
             try:
                 if not result.stdout or not result.stdout.strip():
-                    logger.warning(f"No output from gh release view command")
+                    logger.warning("No output from gh release view command")
                     return False
-                    
+
                 release_data = json.loads(result.stdout)
-                available_assets = [asset.get("name", "") for asset in release_data.get("assets", [])]
-                logger.info(f"Found {len(available_assets)} assets in {release_tag} release")
+                available_assets = [
+                    asset.get("name", "") for asset in release_data.get("assets", [])
+                ]
+                logger.info(
+                    f"Found {len(available_assets)} assets in {release_tag} release"
+                )
                 if available_assets:
                     logger.info(f"Available assets: {', '.join(available_assets)}")
                 else:
@@ -225,27 +241,33 @@ class MobileCybenchRunner:
                     return False
             except json.JSONDecodeError as e:
                 logger.warning(f"Failed to parse GitHub release JSON: {e}")
-                logger.info(f"JSON output (first 500 chars): {result.stdout[:500] if result.stdout else 'None'}")
+                logger.info(
+                    f"JSON output (first 500 chars): {result.stdout[:500] if result.stdout else 'None'}"
+                )
                 return False
-            
+
             # Find matching asset - the release tag matches the filename, so look for any APK asset
             matching_asset = None
-            
+
             # First try exact match
             if release_filename in available_assets:
                 matching_asset = release_filename
             else:
                 # Look for any APK file in this release (since release tag = filename)
                 for asset in available_assets:
-                    if asset.endswith('.apk') or 'apk' in asset.lower():
+                    if asset.endswith(".apk") or "apk" in asset.lower():
                         matching_asset = asset
-                        logger.info(f"Found APK asset: {asset} in release {release_tag}")
+                        logger.info(
+                            f"Found APK asset: {asset} in release {release_tag}"
+                        )
                         break
-            
+
             if matching_asset:
-                logger.info(f"✓ Found GitHub release APK: {matching_asset} in release {release_tag}")
+                logger.info(
+                    f"✓ Found GitHub release APK: {matching_asset} in release {release_tag}"
+                )
                 log_banner("DOWNLOADING APK FROM GITHUB RELEASE")
-                
+
                 # Download using gh CLI
                 try:
                     self.cmd.run_with_progress(
@@ -256,23 +278,23 @@ class MobileCybenchRunner:
                     )
                 except subprocess.CalledProcessError as e:
                     logger.error(f"Failed to download APK from GitHub release: {e}")
-                    if hasattr(e, 'stderr'):
+                    if hasattr(e, "stderr"):
                         logger.error(f"Error output: {e.stderr}")
                     return False
-                
+
                 # Check if file was downloaded
                 downloaded_file = apk_dir / matching_asset
                 if not downloaded_file.exists():
                     # Try just the filename without path
                     downloaded_file = apk_dir / Path(matching_asset).name
-                
+
                 if downloaded_file.exists():
                     if downloaded_file != apk_path:
                         downloaded_file.rename(apk_path)
                         logger.info(f"✓ APK downloaded and renamed to {apk_path}")
                     else:
                         logger.info(f"✓ APK downloaded to {apk_path}")
-                    
+
                     # Verify file is actually an APK (check size > 0)
                     if apk_path.stat().st_size > 0:
                         return True
@@ -282,15 +304,19 @@ class MobileCybenchRunner:
                 else:
                     # List what was actually downloaded
                     downloaded_files = list(apk_dir.glob("*"))
-                    logger.warning(f"Downloaded file not found at expected path: {downloaded_file}")
-                    logger.warning(f"Files in apk directory: {[f.name for f in downloaded_files]}")
+                    logger.warning(
+                        f"Downloaded file not found at expected path: {downloaded_file}"
+                    )
+                    logger.warning(
+                        f"Files in apk directory: {[f.name for f in downloaded_files]}"
+                    )
                     return False
             else:
                 logger.info(f"No APK asset found in release {release_tag}")
                 logger.info(f"Available assets: {available_assets}")
-                logger.info(f"Will build from source")
+                logger.info("Will build from source")
                 return False
-                
+
         except Exception as e:
             logger.warning(f"GitHub release check failed (will build from source): {e}")
             return False
