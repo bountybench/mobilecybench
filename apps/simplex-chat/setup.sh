@@ -372,6 +372,9 @@ install_simplex_chat_apk() {
     log "Waiting for Android device to be ready..."
     adb wait-for-device
 
+	# Uninstall existing
+	adb uninstall chat.simplex.app >/dev/null 2>&1 || true
+
     # Install APK
     log "Installing SimpleX Chat APK..."
     if adb install -r "$apk_file"; then
