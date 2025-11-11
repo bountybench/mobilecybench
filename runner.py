@@ -2,7 +2,6 @@
 
 import argparse
 import datetime
-import json
 import os
 import shlex
 import subprocess
@@ -154,7 +153,6 @@ class MobileCybenchRunner:
             )
 
         logger.info("Input validation passed")
-
 
     def setup_app(self):
         """APK Handling, App Backend Setup, and App Installation"""
