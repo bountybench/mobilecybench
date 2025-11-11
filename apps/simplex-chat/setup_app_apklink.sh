@@ -1,99 +1,48 @@
-#!/bin/bash
-
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_FILE="${SCRIPT_DIR}/setup_app_apklink.log"
+APK_DIR="${SCRIPT_DIR}/apk"
+APK_PATH="${APK_DIR}/simplex-chat.apk"
 
-# Logging function
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+log()  { printf '[setup_app_apklink] %s\n' "$*"; }
+fail() { printf '[setup_app_apklink][error] %s\n' "$*" >&2; exit 1; }
+
+resolve_url() {
+  local metadata="${SCRIPT_DIR}/metadata.json"
+  [[ -f "$metadata" ]] || fail "metadata.json not found – cannot determine download URL"
+
+  local url
+  url=$(python3 -c "import json;print(json.load(open('$metadata')).get('download_link',''))" 2>/dev/null || true)
+  [[ -n "$url" ]] || fail "download_link missing from metadata.json"
+  echo "$url"
 }
 
-# Error handling
-error_exit() {
-    log "ERROR: $1"
-    exit 1
+download_apk() {
+  local url="$1"
+  mkdir -p "$APK_DIR"
+  log "Downloading APK from $url"
+  if command -v curl >/dev/null 2>&1; then
+    curl -L "$url" -o "$APK_PATH"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -O "$APK_PATH" "$url"
+  else
+    fail "Neither curl nor wget is available"
+  fi
 }
 
-# Download file with progress
-download_file() {
-    local url="$1"
-    local output="$2"
-
-    if command -v curl >/dev/null 2>&1; then
-        curl -L --progress-bar "$url" -o "$output"
-    elif command -v wget >/dev/null 2>&1; then
-        wget --progress=bar:force "$url" -O "$output"
-    else
-        error_exit "Neither curl nor wget found. Please install one of them."
-    fi
-}
-
-# Main function
 main() {
-    log "Starting SimpleX Chat APK download"
+  local url
+  url=$(resolve_url)
 
-    local app_dir="${SCRIPT_DIR}"
-    local apk_dir="$app_dir/apk"
-    local apk_file="$apk_dir/simplex-chat.apk"
+  if [[ -f "$APK_PATH" ]]; then
+    log "APK already present at $APK_PATH"
+    exit 0
+  fi
 
-    # Create directories
-    mkdir -p "$apk_dir"
-
-    # Load download URL from metadata
-    local metadata_file="${SCRIPT_DIR}/metadata.json"
-    local download_url=""
-
-    if [[ -f "$metadata_file" ]]; then
-        download_url=$(python3 -c "
-import json
-try:
-    with open('$metadata_file', 'r') as f:
-        data = json.load(f)
-    print(data.get('download_link', ''))
-except:
-    print('')
-")
-    fi
-
-    if [[ -z "$download_url" ]]; then
-        download_url="https://github.com/simplex-chat/simplex-chat/releases/latest/download/simplex.apk"
-        log "Using default download URL: $download_url"
-    else
-        log "Using download URL from metadata: $download_url"
-    fi
-
-    # Download APK
-    log "Downloading SimpleX Chat APK..."
-    if download_file "$download_url" "$apk_file"; then
-        local apk_size=$(du -h "$apk_file" | cut -f1)
-        log "APK downloaded successfully (size: $apk_size)"
-
-        # Verify APK (basic check)
-        if [[ -f "$apk_file" ]]; then
-            local file_type=$(file "$apk_file" 2>/dev/null || echo "unknown")
-            if [[ "$file_type" == *"Android package"* ]] || [[ "$file_type" == *"Zip archive"* ]]; then
-                log "APK file appears to be valid"
-            else
-                log "Warning: Downloaded file may not be a valid APK"
-            fi
-        fi
-
-        log "SimpleX Chat APK ready at: $apk_file"
-        echo ""
-        echo "APK downloaded successfully!"
-        echo "Location: $apk_file"
-        echo ""
-        echo "Next steps:"
-        echo "1. Run ./setup.sh to set up the emulator and install the APK"
-        echo "2. Or manually install with: adb install $apk_file"
-
-        return 0
-    else
-        error_exit "Failed to download APK from $download_url"
-    fi
+  download_apk "$url"
+  [[ -s "$APK_PATH" ]] || fail "Download failed; APK is empty"
+  log "APK ready at $APK_PATH"
 }
 
-# Run main function
 main "$@"

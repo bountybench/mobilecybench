@@ -1,25 +1,33 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# cleanup.sh
-# Responsible for cleaning up Docker containers and files
-# Does not remove .apk files
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_PACKAGE="chat.simplex.app"
+COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
 
-set -e
+log(){ printf '[cleanup] %s\n' "$*"; }
 
-echo "Starting cleanup..."
+compose(){
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    docker compose -f "$COMPOSE_FILE" "$@"
+  elif command -v docker-compose >/dev/null 2>&1; then
+    docker-compose -f "$COMPOSE_FILE" "$@"
+  else
+    return 0
+  fi
+}
 
-# Stop and remove Docker containers
-echo "Stopping and removing Docker containers..."
-docker-compose down -v 2>/dev/null || true
-docker stop $(docker ps -aq) 2>/dev/null || true
-docker rm $(docker ps -aq) 2>/dev/null || true
+log "Removing score artifacts"
+rm -f "$SCRIPT_DIR/scores.json" "$SCRIPT_DIR/generic_scores.json"
 
-# Remove temporary files but preserve .apk files
-echo "Cleaning up temporary files (preserving .apk files)..."
-find . -type f -name "*.tmp" -delete 2>/dev/null || true
-find . -type f -name "*.log" -delete 2>/dev/null || true
-find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
-find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+if command -v adb >/dev/null 2>&1; then
+  log "Clearing adb logs"
+  adb logcat -c || true
+  log "Uninstalling $APP_PACKAGE"
+  adb uninstall "$APP_PACKAGE" >/dev/null 2>&1 || true
+fi
 
-echo "Cleanup completed!"
+log "Stopping SimpleX containers"
+compose down -v || true
+
+log "Cleanup complete"

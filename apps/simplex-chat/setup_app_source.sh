@@ -1,440 +1,202 @@
-#!/bin/bash
-
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_FILE="${SCRIPT_DIR}/setup_app_source.log"
+CODEBASE_DIR="${SCRIPT_DIR}/codebase"
+MULTIPLATFORM_DIR="${CODEBASE_DIR}/apps/multiplatform"
+APK_DIR="${SCRIPT_DIR}/apk"
+APK_UNSIGNED="${APK_DIR}/simplex-chat-unsigned.apk"
+APK_SIGNED="${APK_DIR}/simplex-chat.apk"
+KEYSTORE_FILE="$HOME/.android/debug.keystore"
+AVAILABLE_ABIS=()
 
-# Logging function
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+log()  { printf '[setup_app_source] %s\n' "$*"; }
+warn() { printf '[setup_app_source][warn] %s\n' "$*" >&2; }
+fail() { printf '[setup_app_source][error] %s\n' "$*" >&2; exit 1; }
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || fail "Required command '$1' not found in PATH"
 }
 
-# Error handling
-error_exit() {
-    log "ERROR: $1"
-    exit 1
+android_home() {
+  if [[ -n "${ANDROID_HOME:-}" && -d "$ANDROID_HOME" ]]; then
+    echo "$ANDROID_HOME"
+    return
+  fi
+
+  local default_home="$HOME/.android-sdk"
+  [[ -d "$default_home" ]] || fail "Android SDK not found. Set ANDROID_HOME or install the SDK at $default_home"
+  echo "$default_home"
 }
 
-# Check if command exists
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
+ensure_keystore() {
+  if [[ -f "$KEYSTORE_FILE" ]]; then
+    return
+  fi
+
+  log "Generating debug keystore at $KEYSTORE_FILE"
+  mkdir -p "$(dirname "$KEYSTORE_FILE")"
+  keytool -genkey -v -keystore "$KEYSTORE_FILE" \
+    -alias androiddebugkey -keyalg RSA -keysize 2048 \
+    -validity 10000 -storepass android -keypass android \
+    -dname "CN=Android Debug, O=Android, C=US"
 }
 
-# Check Java installation
-check_java() {
-    log "Checking Java installation..."
-
-    if ! command_exists java; then
-        error_exit "Java is not installed. Please install OpenJDK 17 or newer"
-    fi
-
-    # Get Java version
-    local java_version=$(java -version 2>&1 | head -n1 | cut -d'"' -f2 | cut -d'.' -f1)
-
-    # Handle Java version format (8, 11, 17, etc.)
-    if [[ "$java_version" =~ ^1\. ]]; then
-        java_version=$(echo "$java_version" | cut -d'.' -f2)
-    fi
-
-    log "Detected Java version: $java_version"
-
-    if [[ $java_version -lt 17 ]]; then
-        error_exit "Java $java_version is too old. Android SDK requires Java 17 or newer"
-    fi
-
-    log "Java $java_version is compatible"
+find_apk() {
+  find "$MULTIPLATFORM_DIR" -name '*release*.apk' -type f | head -n1
 }
 
-check_android() {
-	# More robust check for the Android SDK path.
-    if [ -n "$ANDROID_HOME" ] && [ -d "$ANDROID_HOME" ]; then
-      info "Using Android SDK from pre-set ANDROID_HOME: $ANDROID_HOME"
-    elif [ -d "${HOME}/.android-sdk" ]; then
-      # Fallback to the default path if ANDROID_HOME isn't set.
-      ANDROID_HOME="${HOME}/.android-sdk"
-      info "Found Android SDK at default location: $ANDROID_HOME"
-    else
-      error "Android SDK not found. Please set the ANDROID_HOME environment variable."
-    fi
-
-    
-    # Check Android SDK
-    if [[ ! -d "$ANDROID_HOME" ]]; then
-        error "Android SDK not found at $ANDROID_HOME. Please run the Android emulator setup first."
-    fi
+find_apksigner() {
+  local sdk_home="$1"
+  local tool="$(find "$sdk_home"/build-tools -name apksigner -type f 2>/dev/null | sort | tail -1)"
+  [[ -n "$tool" ]] || fail "Could not find apksigner under $sdk_home/build-tools"
+  echo "$tool"
 }
 
-# Check and install build dependencies
-install_build_dependencies() {
-    log "Checking build dependencies..."
-
-    # Check for required tools
-    local missing_tools=()
-
-    if ! command_exists git; then
-        missing_tools+=("git")
-    fi
-
-    if ! command_exists make; then
-        missing_tools+=("build-essential")
-    fi
-
-    if ! command_exists pkg-config; then
-        missing_tools+=("pkg-config")
-    fi
-
-    # Check for Haskell Stack (required for SimpleX server components)
-    if ! command_exists stack; then
-        log "Installing Haskell Stack..."
-        curl -sSL https://get.haskellstack.org/ | sh
-        export PATH="$HOME/.local/bin:$PATH"
-    fi
-
-    # Check for Rust (required for some crypto components)
-    if ! command_exists rustc; then
-        log "Installing Rust..."
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-        source "$HOME/.cargo/env"
-    fi
-
-    if [[ ${#missing_tools[@]} -gt 0 ]]; then
-        log "ERROR: Missing required tools: ${missing_tools[*]}"
-        log ""
-        log "Please install them manually using one of these methods:"
-        log ""
-
-        if command_exists apt-get; then
-            log "On Ubuntu/Debian:"
-            log "  sudo apt-get update"
-            for tool in "${missing_tools[@]}"; do
-                log "  sudo apt-get install -y $tool"
-            done
-        elif command_exists brew; then
-            log "On macOS with Homebrew:"
-            for tool in "${missing_tools[@]}"; do
-                # Map Linux package names to macOS equivalents
-                case "$tool" in
-                    "build-essential")
-                        log "  xcode-select --install  # For build tools"
-                        ;;
-                    *)
-                        log "  brew install $tool"
-                        ;;
-                esac
-            done
-        else
-            log "Please install these tools using your system's package manager"
-        fi
-        log ""
-        error_exit "Missing required dependencies"
-    fi
+check_prereqs() {
+  require_cmd java
+  require_cmd keytool
+  require_cmd gunzip
+  mkdir -p "$APK_DIR"
+  [[ -d "$MULTIPLATFORM_DIR" ]] || fail "SimpleX source tree not found at $MULTIPLATFORM_DIR"
+  chmod +x "$MULTIPLATFORM_DIR/gradlew"
 }
 
-# Build native libraries (libsimplex.so and libsupport.so)
-build_native_libraries() {
-	local lib_dir="${SCRIPT_DIR}/codebase/apps/multiplatform/common/src/commonMain/cpp/android/libs"
-
-	if [ ! -f "${lib_dir}/arm64-v8a/libsimplex.so" ] ; then
-		ls "${lib_dir}/arm64-v8a/"
-		echo "Building native libraries"
-		gzip -d ${SCRIPT_DIR}/codebase/apps/multiplatform/common/src/commonMain/cpp/android/libs/arm64-v8a/libsimplex.so.gz
-		gzip -d ${SCRIPT_DIR}/codebase/apps/multiplatform/common/src/commonMain/cpp/android/libs/armeabi-v7a/libsimplex.so.gz
-		echo "Built native libraries"
-	else
-		echo "Native libraries already exist, skipping build."
-	fi
-}
-# build_native_libraries() {
-#     log "Building native libraries (libsimplex.so and libsupport.so)..."
-# 
-#     local source_dir="${SCRIPT_DIR}/codebase"
-#     local multiplatform_dir="${source_dir}/apps/multiplatform"
-#     local libs_folder="${multiplatform_dir}/common/src/commonMain/cpp/android/libs"
-# 
-#     # Check if Nix is available
-#     if ! command_exists nix; then
-#         log "WARNING: Nix is not installed. Attempting to build without native libraries..."
-#         log "Native libraries may need to be provided separately."
-#         return 0
-#     fi
-# 
-#     # Check if running on macOS - attempt to build anyway
-#     if [[ "$(uname -s)" == "Darwin" ]]; then
-#         log "INFO: Running on macOS. Will attempt to cross-compile Android libraries using Nix."
-#         log "If this fails, you can use Docker/Colima to build on Linux."
-#         log "See: https://github.com/simplex-chat/simplex-chat for build instructions"
-#         # Continue with the build attempt
-#     fi
-# 
-#     cd "$source_dir"
-# 
-#     # Build for arm64-v8a (aarch64)
-#     local arch="aarch64"
-#     local android_arch="arm64-v8a"
-# 
-#     log "Building libraries for ${android_arch}..."
-# 
-#     # Detect the build system (x86_64-linux, x86_64-darwin, aarch64-darwin, etc.)
-#     local nix_system
-#     if [[ "$(uname -s)" == "Darwin" ]]; then
-#         if [[ "$(uname -m)" == "arm64" ]]; then
-#             nix_system="aarch64-darwin"
-#         else
-#             nix_system="x86_64-darwin"
-#         fi
-#     else
-#         nix_system="x86_64-linux"
-#     fi
-# 
-#     log "Detected Nix system: ${nix_system}"
-# 
-#     local android_simplex_lib="${source_dir}#hydraJobs.${nix_system}.${arch}-android:lib:simplex-chat"
-#     local android_support_lib="${source_dir}#hydraJobs.${nix_system}.${arch}-android:lib:support"
-# 
-#     # Create libs directory
-#     mkdir -p "$libs_folder/$android_arch"
-# 
-#     # Build libsimplex.so
-#     log "Building libsimplex.so for ${android_arch}... (this may take 30+ minutes on first build)"
-#     if nix --extra-experimental-features "nix-command flakes" build "$android_simplex_lib" --out-link "${SCRIPT_DIR}/result-libsimplex-${arch}" 2>&1 | tee -a "$LOG_FILE"; then
-#         local simplex_output="${SCRIPT_DIR}/result-libsimplex-${arch}/pkg-${arch}-android-libsimplex.zip"
-#         if [[ -f "$simplex_output" ]]; then
-#             unzip -o "$simplex_output" -d "$libs_folder/$android_arch"
-#             log "libsimplex.so built and extracted successfully"
-#         else
-#             log "WARNING: libsimplex.so build output not found at expected location: $simplex_output"
-#             log "Checking for alternative output locations..."
-#             find "${SCRIPT_DIR}/result-libsimplex-${arch}" -name "*.zip" -o -name "*.so" | tee -a "$LOG_FILE"
-#         fi
-#     else
-#         log "ERROR: Failed to build libsimplex.so"
-#         log "This is likely because Android cross-compilation from macOS is not fully supported."
-#         log "Please use Docker/Colima to build on Linux, or download prebuilt libraries."
-#         return 1
-#     fi
-# 
-#     # Build libsupport.so
-#     log "Building libsupport.so for ${android_arch}..."
-#     if nix --extra-experimental-features "nix-command flakes" build "$android_support_lib" --out-link "${SCRIPT_DIR}/result-libsupport-${arch}" 2>&1 | tee -a "$LOG_FILE"; then
-#         local support_output="${SCRIPT_DIR}/result-libsupport-${arch}/pkg-${arch}-android-libsupport.zip"
-#         if [[ -f "$support_output" ]]; then
-#             unzip -o "$support_output" -d "$libs_folder/$android_arch"
-#             log "libsupport.so built and extracted successfully"
-#         else
-#             log "WARNING: libsupport.so build output not found at expected location: $support_output"
-#             log "Checking for alternative output locations..."
-#             find "${SCRIPT_DIR}/result-libsupport-${arch}" -name "*.zip" -o -name "*.so" | tee -a "$LOG_FILE"
-#         fi
-#     else
-#         log "ERROR: Failed to build libsupport.so"
-#         log "This is likely because Android cross-compilation from macOS is not fully supported."
-#         log "Please use Docker/Colima to build on Linux, or download prebuilt libraries."
-#         return 1
-#     fi
-# 
-#     # Verify libraries were built
-#     if [[ -f "$libs_folder/$android_arch/libsimplex.so" ]] && [[ -f "$libs_folder/$android_arch/libsupport.so" ]]; then
-#         log "Native libraries built successfully!"
-#     else
-#         log "WARNING: Native libraries may not have been built correctly"
-#         log "You may need to manually build them using: scripts/android/build-android.sh"
-#     fi
-# }
-
-# Build SimpleX Chat from source
-build_simplex_chat() {
-    log "Building SimpleX Chat from source..."
-
-    local source_dir="${SCRIPT_DIR}/codebase"
-    local app_dir="${SCRIPT_DIR}"
-    local apk_dir="$app_dir/apk"
-
-    # Create directories
-    mkdir -p "$apk_dir"
-
-    # Check if source exists
-    if [[ ! -d "$source_dir" ]]; then
-        error_exit "SimpleX Chat source not found at $source_dir"
-    fi
-
-    # Build native libraries first
-    build_native_libraries
-
-    cd "$source_dir"
-
-    # Get commit version for metadata
-    local commit_version=$(git rev-parse --short HEAD)
-    log "Building from commit: $commit_version"
-
-    # Build native dependencies first
-    log "Building native Haskell components..."
-    cd "${source_dir}"
-
-    # Build the simplexmq library that the Android app depends on
-    if [[ -f "Makefile" ]]; then
-        make android-deps || log "Warning: Android dependencies build failed or not required"
-    fi
-
-    # Build Android app
-    log "Building Android APK..."
-    cd "${source_dir}/apps/multiplatform"
-
-	# Set Android SDK
-    export ANDROID_HOME="$ANDROID_HOME"
-    export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-
-	echo $ANDROID_HOME
-
-	log "Got to this point"
-	# yes | sdkmanager --licenses
-    # Clean previous builds
-    ./gradlew clean --stacktrace -Dorg.gradle.jvmargs="--enable-native-access=ALL-UNNAMED" || error_exit "Gradle clean failed"
-
-    # Build release APK
-    log "Building release APK (this may take 10-20 minutes)..."
-    ./gradlew :android:assembleRelease -Dorg.gradle.jvmargs="--enable-native-access=ALL-UNNAMED" || error_exit "APK build failed"
-
-    # Find the built APK
-    local built_apk=$(find . -name "*release*.apk" -type f | head -n1)
-
-    if [[ -z "$built_apk" || ! -f "$built_apk" ]]; then
-        error_exit "Built APK not found"
-    fi
-
-    log "Found built APK: $built_apk"
-
-    # Copy APK to expected location
-    local target_apk="${apk_dir}/simplex-chat-unsigned.apk"
-    cp "$built_apk" "$target_apk"
-
-    log "APK copied to: $target_apk"
-
-    # Verify APK
-    if [[ -f "$target_apk" ]]; then
-        local apk_size=$(du -h "$target_apk" | cut -f1)
-        log "SimpleX Chat APK built successfully (size: $apk_size)"
-
-        # Show APK info
-        if command_exists aapt; then
-            log "APK information:"
-            aapt dump badging "$target_apk" | head -n5 || true
-        fi
-
-        return 0
-    else
-        error_exit "Failed to copy APK to target location"
-    fi
+available_abis() {
+  local libs_root="$1"
+  mapfile -t AVAILABLE_ABIS < <(
+    find "$libs_root" -mindepth 1 -maxdepth 1 -type d -print0 \
+      | xargs -0 -I{} bash -c '
+          shopt -s nullglob;
+          dir="$1";
+          abi=$(basename "$dir");
+          files=("$dir"/*.so "$dir"/*.so.gz);
+          if [[ ${#files[@]} -gt 0 ]]; then
+            echo "$abi"
+          fi
+        ' _ {}
+  )
+  AVAILABLE_ABIS=($(printf "%s\n" "${AVAILABLE_ABIS[@]}" | awk 'NF' | sort -u))
+  if [[ ${#AVAILABLE_ABIS[@]} -eq 0 ]]; then
+    fail "No native library directories found under $libs_root"
+  fi
 }
 
-# Create signing key if needed
-create_signing_key() {
-    local keystore_path="${SCRIPT_DIR}/codebase/debug.keystore"
+ensure_native_libs() {
+  local libs_root="${CODEBASE_DIR}/apps/multiplatform/common/src/commonMain/cpp/android/libs"
+  [[ -d "$libs_root" ]] || fail "Expected native libs directory missing at $libs_root"
 
-    if [[ ! -f "$keystore_path" ]]; then
-        log "Creating debug signing key..."
-        keytool -genkey -v -keystore "$keystore_path" -alias androiddebugkey \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Debug,OU=Debug,O=Debug,L=Debug,S=Debug,C=US" \
-            -storepass android -keypass android
+  local updated=0
+  while IFS= read -r -d '' archive; do
+    local target="${archive%.gz}"
+    if [[ ! -f "$target" ]]; then
+      log "Decompressing $(basename "$archive")"
+      gunzip -c "$archive" > "$target"
+      updated=1
     fi
+  done < <(find "$libs_root" -name '*.so.gz' -print0)
+
+  available_abis "$libs_root"
+
+  if [[ $updated -eq 0 ]]; then
+    log "Native libraries already present (${AVAILABLE_ABIS[*]})"
+  else
+    log "Prepared native libraries for ABIs: ${AVAILABLE_ABIS[*]}"
+  fi
 }
 
-# Sign the release APK with debug keystore using modern APK signing
+select_build_abis() {
+  local requested="${SIMPLEX_ANDROID_ABIS:-}"
+  if [[ -n "$requested" ]]; then
+    IFS=',' read -r -a requested_array <<< "$requested"
+    local filtered=()
+    for abi in "${requested_array[@]}"; do
+      abi="${abi// /}"
+      if [[ -z "$abi" ]]; then
+        continue
+      fi
+      if printf '%s\n' "${AVAILABLE_ABIS[@]}" | grep -qx "$abi"; then
+        filtered+=("$abi")
+      else
+        warn "Requested ABI '$abi' not available in native libs, skipping"
+      fi
+    done
+    if [[ ${#filtered[@]} -eq 0 ]]; then
+      fail "None of the requested ABIs ($requested) are available. Present ABIs: ${AVAILABLE_ABIS[*]}"
+    fi
+    echo "${filtered[@]}"
+    return
+  fi
+
+  local host_arch
+  host_arch=$(uname -m)
+  local preferred=""
+  case "$host_arch" in
+    x86_64|amd64)
+      preferred="x86_64"
+      ;;
+    arm64|aarch64)
+      preferred="arm64-v8a"
+      ;;
+    *)
+      preferred="armeabi-v7a"
+      ;;
+  esac
+
+  if printf '%s\n' "${AVAILABLE_ABIS[@]}" | grep -qx "$preferred"; then
+    echo "$preferred"
+    return
+  fi
+
+  warn "Host architecture $host_arch has no matching native libs (wanted $preferred). Building with available ABIs: ${AVAILABLE_ABIS[*]}"
+  echo "${AVAILABLE_ABIS[@]}"
+}
+
+build_apk() {
+  local sdk_home="$1"
+  shift
+  local abis=("$@")
+  log "Building SimpleX Chat release APK (ABIs: ${abis[*]})"
+  pushd "$MULTIPLATFORM_DIR" >/dev/null
+  export ANDROID_HOME="$sdk_home"
+  export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+
+  local abi_property
+  abi_property=$(IFS=,; echo "${abis[*]}")
+
+  ./gradlew clean :android:assembleRelease -PsimplexAbiFilters="$abi_property"
+  local built_apk
+  built_apk=$(find_apk)
+  [[ -n "$built_apk" ]] || fail "Gradle build finished but no release APK was found"
+  cp "$built_apk" "$APK_UNSIGNED"
+  popd >/dev/null
+  log "Unsigned APK copied to $APK_UNSIGNED"
+}
+
 sign_apk() {
-    local apk_dir="${SCRIPT_DIR}/apk"
-	local APK_UNSIGNED="${apk_dir}/simplex-chat-unsigned.apk"
-
-	
-    echo "Signing release APK (debug keystore with v2+ signature scheme)..."
-
-    KEYSTORE_FILE="$HOME/.android/debug.keystore"
-    
-    # Check if the debug keystore exists, and create it if it doesn't.
-    if [ ! -f "$KEYSTORE_FILE" ]; then
-        echo "Debug keystore not found. Generating a new one..."
-        mkdir -p "$HOME/.android/"
-        keytool -genkey -v -keystore "$KEYSTORE_FILE" \
-                -alias androiddebugkey -keyalg RSA -keysize 2048 \
-                -validity 10000 -storepass android -keypass android \
-                -dname "CN=Android Debug, O=Android, C=US"
-        echo "Debug keystore generated at $KEYSTORE_FILE"
-    fi
-
-    if [[ -z "$APK_UNSIGNED" ]]; then
-        echo "No unsigned release APK found to sign."
-        return 1
-    fi
-    
-    APK_SIGNED="${APK_UNSIGNED/-unsigned.apk/.apk}"
-    
-    # Use apksigner for SDK 30+ compatibility (supports v2+ signature schemes)
-    local apksigner_path="$ANDROID_HOME/build-tools"
-    local apksigner_tool=""
-    
-    # Find the latest build-tools version that has apksigner
-    if [[ -d "$apksigner_path" ]]; then
-        local latest_build_tools
-        latest_build_tools=$(ls -1 "$apksigner_path" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1)
-        if [[ -n "$latest_build_tools" && -f "$apksigner_path/$latest_build_tools/apksigner" ]]; then
-            apksigner_tool="$apksigner_path/$latest_build_tools/apksigner"
-            echo "Using apksigner from build-tools $latest_build_tools"
-        fi
-    fi
-    
-    if [[ -n "$apksigner_tool" && -x "$apksigner_tool" ]]; then
-        echo "Signing with apksigner (v1+v2 schemes for SDK 30+ compatibility)"
-        "$apksigner_tool" sign \
-            --ks "$KEYSTORE_FILE" \
-            --ks-key-alias androiddebugkey \
-            --ks-pass pass:android \
-            --key-pass pass:android \
-            --v1-signing-enabled true \
-            --v2-signing-enabled true \
-            --out "$APK_SIGNED" \
-            "$APK_UNSIGNED"
-    else
-        echo "apksigner not found. Required for SDK 30+ compatibility. Please ensure Android build-tools are properly installed."
-    fi
-    
-    echo "Signed APK: $APK_SIGNED"
-    
-    # Verify the signature
-    if [[ -n "$apksigner_tool" && -x "$apksigner_tool" ]]; then
-        echo "Verifying APK signature..."
-        if "$apksigner_tool" verify "$APK_SIGNED"; then
-            echo "APK signature verification successful"
-        else
-            echo "APK signature verification failed"
-        fi
-    fi
+  local sdk_home="$1"
+  ensure_keystore
+  local apksigner
+  apksigner=$(find_apksigner "$sdk_home")
+  log "Signing APK with $apksigner"
+  "$apksigner" sign --ks "$KEYSTORE_FILE" --ks-key-alias androiddebugkey \
+    --ks-pass pass:android --key-pass pass:android --v1-signing-enabled true \
+    --v2-signing-enabled true --out "$APK_SIGNED" "$APK_UNSIGNED"
+  "$apksigner" verify "$APK_SIGNED"
+  log "Signed APK ready at $APK_SIGNED"
 }
 
-
-# Main function
 main() {
-    log "Starting SimpleX Chat build from source"
-
-    # Check prerequisites
-    check_java
-    install_build_dependencies
-
-    # Create signing key
-    create_signing_key
-
-    # Build the app
-    build_simplex_chat
-
-	sign_apk
-
-    log "SimpleX Chat build completed successfully!"
-    echo ""
-    echo "APK Location: apps/simplex-chat/apk/simplex-chat.apk"
-    echo ""
-    echo "Next steps:"
-    echo "1. Run ./setup.sh to set up the emulator and install the APK"
-    echo "2. Or manually install with: adb install apps/simplex-chat/apk/simplex-chat.apk"
+  log "Starting SimpleX Chat source build"
+  check_prereqs
+  ensure_native_libs
+  mapfile -t BUILD_ABIS < <(select_build_abis)
+  [[ ${#BUILD_ABIS[@]} -gt 0 ]] || fail "No ABIs selected for build"
+  local sdk_home
+  sdk_home=$(android_home)
+  build_apk "$sdk_home" "${BUILD_ABIS[@]}"
+  sign_apk "$sdk_home"
+  log "Build complete"
 }
 
-# Run main function
 main "$@"

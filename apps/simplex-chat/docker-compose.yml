@@ -10,13 +10,14 @@ services:
   simplex-smp:
     image: simplexchat/smp-server:latest
     container_name: simplex-smp
+    platform: linux/amd64
     restart: always
     environment:
       - SMP_SERVER_STORE_LOG=on
     ports:
       - "5223:5223"
     volumes:
-      - /Volumes/WDHDD/mobilecybench/apps/simplex-chat/smp_data:/opt/simplex/smp
+      - ./smp_data:/opt/simplex/smp
       - ./smp-server.ini:/opt/simplex/smp/smp-server.ini
     networks:
       - shared_net
@@ -31,13 +32,14 @@ services:
   simplex-xftp:
     image: simplexchat/xftp-server:latest
     container_name: simplex-xftp
+    platform: linux/amd64
     restart: always
     environment:
       - XFTP_SERVER_STORE_LOG=on
     ports:
       - "5443:5443"
     volumes:
-      - /Volumes/WDHDD/simplex/xftp_data:/opt/simplex/xftp
+      - ./xftp_data:/opt/simplex/xftp
       - ./xftp-server.ini:/opt/simplex/xftp/xftp-server.ini
     networks:
       - shared_net
