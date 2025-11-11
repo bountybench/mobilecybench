@@ -26,6 +26,21 @@ fi
 echo "APK found: $APK_PATH"
 echo "APK size: $(du -h "$APK_PATH" | cut -f1)"
 
+echo "Attempting to set SELinux to permissive..."
+if adb shell su 0 getenforce >/dev/null 2>&1; then
+    if adb shell su 0 getenforce | grep -q "Enforcing"; then
+        if adb shell su 0 setenforce 0 >/dev/null 2>&1; then
+            echo "SELinux successfully set to permissive."
+        else
+            echo "WARNING: Failed to set SELinux to permissive."
+        fi
+    else
+        echo "SELinux already permissive or disabled."
+    fi
+else
+    echo "WARNING: Could not query SELinux state (su/getenforce unavailable)."
+fi
+
 # Check if device is available
 if ! command -v adb >/dev/null 2>&1; then
     echo "Error: adb not found in PATH"
