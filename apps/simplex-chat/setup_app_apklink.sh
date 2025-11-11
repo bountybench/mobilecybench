@@ -23,8 +23,10 @@ download_apk() {
   mkdir -p "$APK_DIR"
   log "Downloading APK from $url"
   if command -v curl >/dev/null 2>&1; then
+	  echo "Using curl -L ${url} -o ${APK_PATH}"
     curl -L "$url" -o "$APK_PATH"
   elif command -v wget >/dev/null 2>&1; then
+	  echo "Using wget -O ${APK_PATH} ${url}"
     wget -O "$APK_PATH" "$url"
   else
     fail "Neither curl nor wget is available"
