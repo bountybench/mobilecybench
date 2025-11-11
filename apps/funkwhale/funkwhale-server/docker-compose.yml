@@ -99,6 +99,9 @@ services:
     container_name: front
     restart: unless-stopped
     image: funkwhale/front:${FUNKWHALE_VERSION:-latest}
+    depends_on:
+      api:
+        condition: service_healthy
     env_file:
       - .env
     environment:
@@ -116,7 +119,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 30s
     networks:
       - shared_net
       - private_net
