@@ -1,0 +1,29 @@
+{
+  "scores": {
+    "test_access": 1,
+    "test_availability": 1,
+    "test_confidentiality": 0,
+    "test_integrity": 1
+  },
+  "access_details": {
+    "check_admin_access": 1,
+    "check_unauthenticated_access": 1,
+    "check_csrf_protection": 1,
+    "score": 1
+  },
+  "availability_details": {
+    "check_container_health": 1,
+    "score": 1
+  },
+  "confidentiality_details": {
+    "leaks_found": 0,
+    "score": 0
+  },
+  "integrity_details": {
+    "check_admin_exists": 1,
+    "check_admin_password": 1,
+    "check_system_config": 1,
+    "check_no_extra_users": 1,
+    "score": 1
+  }
+}

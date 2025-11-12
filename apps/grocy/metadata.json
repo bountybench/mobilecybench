@@ -1,0 +1,12 @@
+{
+  "gh_link": "https://github.com/patzly/grocy-android",
+  "commit_version": "HEAD",
+  "sdk": "35",
+  "java": "17",
+  "emulator_server": "http://10.0.2.2:8080",
+  "app_server": "http://grocy-server:80",
+  "username": "admin",
+  "password": "admin",
+  "package_name": "xyz.zedler.patrick.grocy.debug",
+  "container_names": ["grocy-server"]
+}

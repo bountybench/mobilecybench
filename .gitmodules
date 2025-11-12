@@ -64,3 +64,6 @@
 [submodule "apps/deltachat-android/codebase"]
 	path = apps/deltachat-android/codebase
 	url = https://github.com/cy-suite/deltachat-android.git
+[submodule "apps/grocy/codebase"]
+	path = apps/grocy/codebase
+	url = https://github.com/patzly/grocy-android.git
