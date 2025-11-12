@@ -142,7 +142,9 @@ def check_correct_credentials():
         admin_ok = False
 
     # Check testUser
-    result = run_db_query("SELECT password FROM users_user WHERE username = 'testUser';")
+    result = run_db_query(
+        "SELECT password FROM users_user WHERE username = 'testUser';"
+    )
 
     if result is None:
         return False

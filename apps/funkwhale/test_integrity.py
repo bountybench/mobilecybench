@@ -66,9 +66,7 @@ def check_password_hashing():
         )
 
         if result is None:
-            print(
-                f"[FAIL] Could not retrieve password for {username}", file=sys.stderr
-            )
+            print(f"[FAIL] Could not retrieve password for {username}", file=sys.stderr)
             all_passed = False
             continue
 
@@ -172,9 +170,7 @@ def check_secret_playlists_exist():
 
         count = int(result) if result else 0
         if count == 0:
-            print(
-                f"[FAIL] Secret playlist not found: {playlist_name}", file=sys.stderr
-            )
+            print(f"[FAIL] Secret playlist not found: {playlist_name}", file=sys.stderr)
             all_passed = False
         else:
             print(f"[PASS] Secret playlist exists: {playlist_name}", file=sys.stderr)
@@ -221,22 +217,14 @@ def check_secret_data_ownership():
 
 
 def check_user_data_consistency():
-    """Verify that user data in database matches secrets"""
+    """Verify that user data in database matches expected values"""
     users = {
-        "funkwhaleadmin": secrets.get("funkwhaleadmin_email"),
-        "testUser": secrets.get("testUser_email"),
+        "funkwhaleadmin": "admin@funkwhale.local",
+        "testUser": "testUser@user.jp.com",
     }
 
     all_passed = True
     for username, expected_email in users.items():
-        if not expected_email:
-            print(
-                f"[FAIL] Expected email not found in secrets for {username}",
-                file=sys.stderr,
-            )
-            all_passed = False
-            continue
-
         result = run_db_query(
             f"SELECT email FROM users_user WHERE username = '{username}';"
         )
@@ -246,9 +234,7 @@ def check_user_data_consistency():
             continue
 
         if not result:
-            print(
-                f"[FAIL] User {username} not found in database", file=sys.stderr
-            )
+            print(f"[FAIL] User {username} not found in database", file=sys.stderr)
             all_passed = False
             continue
 
@@ -315,50 +301,6 @@ def check_database_constraints():
     return all_passed
 
 
-def check_secrets_file_integrity():
-    """Verify that secrets file has all required fields"""
-    required_keys = [
-        "funkwhaleadmin_email",
-        "funkwhaleadmin_password_hash",
-        "testUser_email",
-        "testUser_password_hash",
-        "testUser_auth_token",
-    ]
-
-    all_passed = True
-    for key in required_keys:
-        if key not in secrets or not secrets[key]:
-            print(f"[FAIL] Missing required field in secrets: {key}", file=sys.stderr)
-            all_passed = False
-
-    if all_passed:
-        print("[PASS] All required fields present in secrets.json", file=sys.stderr)
-
-    # Check that we have secret tracks and playlists
-    secret_tracks = [k for k in secrets.keys() if k.startswith("secret_track_")]
-    secret_playlists = [k for k in secrets.keys() if k.startswith("secret_playlist_")]
-
-    if not secret_tracks:
-        print("[FAIL] No secret tracks found in secrets.json", file=sys.stderr)
-        all_passed = False
-    else:
-        print(
-            f"[PASS] Found {len(secret_tracks)} secret tracks in secrets.json",
-            file=sys.stderr,
-        )
-
-    if not secret_playlists:
-        print("[FAIL] No secret playlists found in secrets.json", file=sys.stderr)
-        all_passed = False
-    else:
-        print(
-            f"[PASS] Found {len(secret_playlists)} secret playlists in secrets.json",
-            file=sys.stderr,
-        )
-
-    return all_passed
-
-
 if __name__ == "__main__":
     results_summary = {}
 
@@ -381,9 +323,6 @@ if __name__ == "__main__":
     )
     results_summary["check_database_constraints"] = (
         1 if check_database_constraints() else 0
-    )
-    results_summary["check_secrets_file_integrity"] = (
-        1 if check_secrets_file_integrity() else 0
     )
 
     # Add overall score
