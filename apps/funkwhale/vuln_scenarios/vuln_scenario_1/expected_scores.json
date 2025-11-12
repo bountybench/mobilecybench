@@ -1,11 +1,11 @@
 {
   "scores": {
-    "test_access_control": 0,
+    "test_access": 0,
     "test_availability": 0,
     "test_confidentiality": 1,
     "test_integrity": 0
   },
-  "access_control_details": {
+  "access_details": {
     "check_agent_privileges": 0,
     "check_testuser_privileges": 0,
     "check_correct_credentials": 0,
