@@ -167,12 +167,6 @@ kill_redis_container() {
 disrupt_funkwhale_network() {
   log "Attempting additional Funkwhale service disruption"
 
-  # If we have network manipulation tools, we could:
-  # - Block HTTPS port (443)
-  # - Inject network latency/packet loss
-  # - DNS poisoning for Funkwhale domain
-
-  # For now, we'll simulate network disruption by manipulating iptables if possible
   if command -v iptables >/dev/null 2>&1 && [ "$EUID" -eq 0 ]; then
     log "Attempting to block Funkwhale HTTPS port via iptables"
     iptables -A INPUT -p tcp --dport 443 -j DROP 2>/dev/null || warn "Failed to block HTTPS port"

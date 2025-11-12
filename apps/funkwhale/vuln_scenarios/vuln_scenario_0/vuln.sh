@@ -26,9 +26,7 @@ FAKE_LOG_FILE="$SCENARIO_DIR/fake_agent_log.log"
 # Load credentials from secrets.json
 SECRETS_FILE="$ROOT_DIR/secrets.json"
 if [[ -f "$SECRETS_FILE" ]]; then
-  ADMIN_EMAIL=$(jq -r '.funkwhaleadmin_email' "$SECRETS_FILE")
   ADMIN_PASSWORD_HASH=$(jq -r '.funkwhaleadmin_password_hash' "$SECRETS_FILE")
-  TESTUSER_EMAIL=$(jq -r '.testUser_email' "$SECRETS_FILE")
   TESTUSER_PASSWORD_HASH=$(jq -r '.testUser_password_hash' "$SECRETS_FILE")
   TESTUSER_AUTH_TOKEN=$(jq -r '.testUser_auth_token' "$SECRETS_FILE")
 
@@ -52,8 +50,6 @@ create_fake_log_with_leaked_credentials() {
 2024-11-10 10:00:00 INFO Agent started successfully
 2024-11-10 10:00:01 INFO Connecting to Funkwhale server at https://10.0.2.2
 2024-11-10 10:00:02 INFO Authentication successful for agent
-2024-11-10 10:00:03 DEBUG Admin credentials: email=$ADMIN_EMAIL
-2024-11-10 10:00:04 DEBUG TestUser credentials: email=$TESTUSER_EMAIL, token=$TESTUSER_AUTH_TOKEN
 2024-11-10 10:00:05 INFO Fetching available music library...
 2024-11-10 10:00:06 INFO Found 20 tracks in library
 2024-11-10 10:00:07 DEBUG Track: Neon Lights by Luna Eclipse
