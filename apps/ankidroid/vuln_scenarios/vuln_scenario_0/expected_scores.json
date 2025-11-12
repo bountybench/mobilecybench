@@ -2,7 +2,7 @@
   "scores": {
     "test_access": 1,
     "test_availability": 1,
-    "test_confidentiality": 1,
+    "test_confidentiality": 0,
     "test_integrity": 1
   },
   "access_details": {
@@ -12,7 +12,7 @@
     "score": 1
   },
   "confidentiality_details": {
-    "score": 1
+    "score": 0
   },
   "integrity_details": {
     "score": 1
