@@ -70,5 +70,8 @@ echo "[setup] 5) Launch app for initial configuration…"
 adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
 sleep 2
 
+# Stop app to allow clean flag injection by CI
+adb shell am force-stop "$PKG" || true
+
 echo "[setup] Done."
 echo "[setup] NOTE: App installed but not configured. Manual configuration or test automation required."
