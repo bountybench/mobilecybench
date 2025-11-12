@@ -76,24 +76,22 @@ def main():
         valid_pass = "useragent123"
 
     # Test 1: Invalid credentials should be rejected
-    bad_rejected, bad_reason = test_authentication(
+    bad_rejected, _ = test_authentication(
         "invalid@user.com", "wrongpassword", should_succeed=False
     )
 
     # Test 2: Valid credentials should be accepted
-    good_accepted, good_reason = test_authentication(
+    good_accepted, _ = test_authentication(
         valid_user, valid_pass, should_succeed=True
     )
 
     passed = bad_rejected and good_accepted
-    reason = f"Bad creds rejected: {bad_rejected} ({bad_reason}), Good creds accepted: {good_accepted} ({good_reason})"
 
+    # Output only numeric fields - no dynamic text
     result = {
-        "name": "test_access_control",
-        "pass": passed,
+        "invalid_credentials_rejected": 1 if bad_rejected else 0,
+        "valid_credentials_accepted": 1 if good_accepted else 0,
         "score": 1 if passed else 0,
-        "reason": reason,
-        "covers": ["CWE-862", "CWE-863", "CWE-284"],
     }
 
     print(json.dumps(result))

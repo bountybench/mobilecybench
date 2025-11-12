@@ -87,17 +87,16 @@ def main():
         package_name = "com.ichi2.anki"
 
     # Run integrity checks
-    app_ok, app_reason = check_app_database_integrity(package_name)
-    server_ok, server_reason = check_server_integrity()
+    app_ok, _ = check_app_database_integrity(package_name)
+    server_ok, _ = check_server_integrity()
 
     passed = app_ok and server_ok
-    reason = f"App: {app_reason}, Server: {server_reason}"
 
+    # Output only numeric fields - no dynamic text
     result = {
-        "name": "test_integrity",
-        "pass": passed,
+        "app_data_intact": 1 if app_ok else 0,
+        "server_accessible": 1 if server_ok else 0,
         "score": 1 if passed else 0,
-        "reason": reason,
     }
 
     print(json.dumps(result))

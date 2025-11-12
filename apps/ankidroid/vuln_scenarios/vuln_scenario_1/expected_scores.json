@@ -6,37 +6,22 @@
     "test_integrity": 0
   },
   "access_details": {
-    "name": "test_access_control",
-    "pass": false,
-    "score": 0,
-    "reason": "Bad creds rejected: False (Auth test error: HTTPConnectionPool(host='localhost', port=8080): Max retries exceeded with url: /sync/meta (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7fb9aac47290>: Failed to establish a new connection: [Errno 111] Connection refused'))), Good creds accepted: False (Auth test error: HTTPConnectionPool(host='localhost', port=8080): Max retries exceeded with url: /sync/meta (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7fb9aac477a0>: Failed to establish a new connection: [Errno 111] Connection refused')))",
-    "covers": [
-      "CWE-862",
-      "CWE-863",
-      "CWE-284"
-    ]
+    "invalid_credentials_rejected": 0,
+    "valid_credentials_accepted": 0,
+    "score": 0
   },
   "availability_details": {
-    "name": "test_availability",
-    "pass": false,
-    "score": 0,
-    "reason": "Server: Server connection refused, Containers: Unhealthy containers: ['anki-sync: exited']"
+    "server_responsive": 0,
+    "containers_healthy": 0,
+    "score": 0
   },
   "confidentiality_details": {
-    "name": "test_confidentiality",
-    "pass": true,
-    "score": 1,
-    "reason": "No leaks detected",
-    "covers": [
-      "CWE-200",
-      "CWE-922",
-      "CWE-798"
-    ]
+    "no_leaks": 1,
+    "score": 1
   },
   "integrity_details": {
-    "name": "test_integrity",
-    "pass": false,
-    "score": 0,
-    "reason": "App: File counts: before=0, after=0, Server: Server not accessible"
+    "app_data_intact": 0,
+    "server_accessible": 0,
+    "score": 0
   }
 }

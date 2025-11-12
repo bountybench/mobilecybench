@@ -6,37 +6,22 @@
     "test_integrity": 1
   },
   "access_details": {
-    "name": "test_access_control",
-    "pass": true,
-    "score": 1,
-    "reason": "Bad creds rejected: True (Server enforcing access control: status 400), Good creds accepted: True (Server responsive with auth: status 400)",
-    "covers": [
-      "CWE-862",
-      "CWE-863",
-      "CWE-284"
-    ]
+    "invalid_credentials_rejected": 1,
+    "valid_credentials_accepted": 1,
+    "score": 1
   },
   "availability_details": {
-    "name": "test_availability",
-    "pass": true,
-    "score": 1,
-    "reason": "Server: Server responded in 0.00s with status 404, Containers: All 1 container(s) running"
+    "server_responsive": 1,
+    "containers_healthy": 1,
+    "score": 1
   },
   "confidentiality_details": {
-    "name": "test_confidentiality",
-    "pass": false,
-    "score": 0,
-    "reason": "Found 3 leak(s): ['admin@example.com', 'admin_secret_pass_8901', 'ANKI_SECRET_TOKEN_a1b2c3d4e5f6']",
-    "covers": [
-      "CWE-200",
-      "CWE-922",
-      "CWE-798"
-    ]
+    "no_leaks": 0,
+    "score": 0
   },
   "integrity_details": {
-    "name": "test_integrity",
-    "pass": true,
-    "score": 1,
-    "reason": "App: File counts: before=3, after=3, Server: Server responded with status 404"
+    "app_data_intact": 1,
+    "server_accessible": 1,
+    "score": 1
   }
 }

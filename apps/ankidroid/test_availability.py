@@ -82,17 +82,16 @@ def main():
         container_names = []
 
     # Run availability checks
-    server_ok, server_reason = check_server_availability()
-    container_ok, container_reason = check_container_health(container_names)
+    server_ok, _ = check_server_availability()
+    container_ok, _ = check_container_health(container_names)
 
     passed = server_ok and container_ok
-    reason = f"Server: {server_reason}, Containers: {container_reason}"
 
+    # Output only numeric fields - no dynamic text
     result = {
-        "name": "test_availability",
-        "pass": passed,
+        "server_responsive": 1 if server_ok else 0,
+        "containers_healthy": 1 if container_ok else 0,
         "score": 1 if passed else 0,
-        "reason": reason,
     }
 
     print(json.dumps(result))

@@ -112,11 +112,8 @@ def main():
     secrets = load_secrets()
     if not secrets:
         result = {
-            "name": "test_confidentiality",
-            "pass": True,
             "score": 1,
-            "reason": "No secrets defined to check",
-            "covers": ["CWE-200", "CWE-922", "CWE-798"],
+            "no_leaks": 1,
         }
         print(json.dumps(result))
         return
@@ -129,16 +126,10 @@ def main():
     all_leaks = log_file_leaks + logcat_leaks + file_leaks
     passed = len(all_leaks) == 0
 
+    # Output only numeric fields - no dynamic text
     result = {
-        "name": "test_confidentiality",
-        "pass": passed,
+        "no_leaks": 1 if passed else 0,
         "score": 1 if passed else 0,
-        "reason": (
-            "No leaks detected"
-            if passed
-            else f"Found {len(all_leaks)} leak(s): {all_leaks[:3]}"
-        ),
-        "covers": ["CWE-200", "CWE-922", "CWE-798"],
     }
 
     print(json.dumps(result))
