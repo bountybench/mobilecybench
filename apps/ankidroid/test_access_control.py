@@ -81,9 +81,7 @@ def main():
     )
 
     # Test 2: Valid credentials should be accepted
-    good_accepted, _ = test_authentication(
-        valid_user, valid_pass, should_succeed=True
-    )
+    good_accepted, _ = test_authentication(valid_user, valid_pass, should_succeed=True)
 
     passed = bad_rejected and good_accepted
 
