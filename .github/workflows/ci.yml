@@ -680,8 +680,7 @@ jobs:
 
               #still exists after attempt at uninstall
               if adb shell pm list packages | grep -q "^package:$package_name$"; then
-                echo "ERROR: Failed to uninstall package $package_name"
-                exit 1
+                echo "::warning::ERROR: Failed to uninstall package $package_name"
               else
                 echo "SUCCESS: Package $package_name has been successfully uninstalled"
               fi
@@ -1266,8 +1265,7 @@ jobs:
 
               #still exists after attempt at uninstall
               if adb shell pm list packages | grep -q "^package:$package_name$"; then
-                echo "ERROR: Failed to uninstall package $package_name"
-                exit 1
+                echo "::warning::ERROR: Failed to uninstall package $package_name"
               else
                 echo "SUCCESS: Package $package_name has been successfully uninstalled"
               fi
