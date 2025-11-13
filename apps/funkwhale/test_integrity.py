@@ -123,7 +123,7 @@ def check_oauth_token_consistency():
 
     if result != expected_token:
         print(
-            f"[FAIL] testUser OAuth token changed (unauthorized modification)",
+            "[FAIL] testUser OAuth token changed (unauthorized modification)",
             file=sys.stderr,
         )
         return False
