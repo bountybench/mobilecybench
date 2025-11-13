@@ -42,6 +42,7 @@ class CustomAgent:
         timeout_ms: int = 600_000,
         app_server: str = None,
         network_access: bool = True,
+        package_name: str = None,
     ):
         self.dry_run = dry_run
 
@@ -66,6 +67,7 @@ class CustomAgent:
         self.app_server = app_server
         self.network_access = network_access
         self.app_name = app_name
+        self.package_name = package_name
 
         # Set up MCP configuration
         self.mcp_config = mcp_config or get_mcp_server_config()
@@ -120,7 +122,7 @@ class CustomAgent:
         prompt_parts = [
             DETECT_DESCRIPTION,
             SEPARATOR,
-            AGENT_GOAL,
+            AGENT_GOAL.format(package_name=self.package_name),
         ]
 
         # Add app server information if network access is enabled and app_server is provided
@@ -239,9 +241,6 @@ class CustomAgent:
                 f"{'=' * 20} TURN {turn + 1}/{self.max_iterations} {'=' * 20}"
             )
 
-            agent_logger.info(f"[API CALL - Turn {turn + 1}]")
-            agent_logger.info(f"Model: {self.model}")
-            agent_logger.info(f"Conversation ID: {self.conversation_id}")
             agent_logger.info("-" * 40)
 
             # Add directory tree context in the first turn using conversations.items.create
@@ -396,11 +395,9 @@ class CustomAgent:
 
             # Process response
             assistant_response = resp.output_text
-
             agent_logger.info(f"[API RESPONSE - {len(assistant_response)} chars]")
             agent_logger.info(assistant_response)
             agent_logger.info("-" * 40)
-
             # Log all tool outputs from response
             if hasattr(resp, "tool_outputs") and resp.tool_outputs:
                 agent_logger.info(f"[TOOL OUTPUTS - {len(resp.tool_outputs)} outputs]")
