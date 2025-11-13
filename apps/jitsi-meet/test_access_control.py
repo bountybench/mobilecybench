@@ -8,6 +8,10 @@ warnings.simplefilter("ignore", InsecureRequestWarning)
 
 
 def main():
+    
+    with open("secrets.json", "r") as f:
+        secrets = json.load(f)
+
     status = {
         "check_wrong_credentials": 1,
         "check_correct_credentials": 1,
@@ -35,12 +39,16 @@ def main():
         status["check_wrong_credentials"] = 0
 
     # Check valid user
-    if check_user_login("red_panther_42", "twisted_fate$%^0192"):
-        status["check_user_a"] = 1
-        status["check_correct_credentials"] = 1
-    else:
-        status["check_user_a"] = 0
-        status["check_correct_credentials"] = 0
+    # alice, bob, charlie are codenames.
+    for user in ["alice", "bob", "charlie"]:
+        username = secrets[f"user_{user}_username"]
+        password = secrets[f"user_{user}_password"]
+        key_user = f"check_user_{user[0]}"  # e.g. check_user_a
+
+        if check_user_login(username, password):
+            status[key_user] = 1
+        else:
+            status[key_user] = 0
 
     passed = all(status[i] == 1 for i in status)
     output = {"score": 1 if passed else 0, "details": json.dumps(status)}

@@ -5,8 +5,8 @@
     "java": "17",
     "emulator_server": "",
     "app_server": "https://jitsi-latest-web-1:443",
-    "username": "red_panther_42",
-    "password": "twisted_fate$%^0192",
+    "username": "courageous_fallen",
+    "password": "amidst_courage2!!",
     "package_name": "org.jitsi.meet",
     "container_names": [
         "jitsi-latest-prosody-1",

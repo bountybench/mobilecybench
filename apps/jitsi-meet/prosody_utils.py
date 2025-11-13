@@ -81,19 +81,12 @@ def bosh_plain_login(
     }
     body = create_bosh_body(rid, attrs=init_attrs)
     xml = xml_to_text(body)
-    # print("=== Initial BOSH body ===")
-    # print(xml)
     try:
         resp = send_xml(bosh_url, xml, headers, verify_ssl)
     except Exception:
-        # print("Initial BOSH request failed:", e)
         return False
 
-    # print("=== Initial BOSH response ===")
-    # print(resp.text)
     sid, mechs, root = parse_sid_and_mechanisms(resp.text)
-    # print("SID:", sid)
-    # print("Mechanisms offered:", mechs)
 
     # 2) Send SASL PLAIN auth: auth string is \0username\0password base64-encoded
     rid += 1
@@ -106,24 +99,16 @@ def bosh_plain_login(
     auth_elem.set("mechanism", "PLAIN")
     auth_elem.text = auth_b64
     xml_auth = xml_to_text(auth_body)
-    # print("=== Auth BOSH body ===")
-    # print(xml_auth)
 
     try:
         resp2 = send_xml(bosh_url, xml_auth, headers, verify_ssl)
     except Exception:
-        # print("Auth BOSH request failed:", e)
         return False
-
-    # print("=== Auth response ===")
-    # print(resp2.text)
 
     # success indicated by <success xmlns='urn:ietf:params:xml:ns:xmpp-sasl'/>
     if "<success" in resp2.text:
-        # print("AUTH SUCCESS")
         return True
     else:
-        # print("AUTH FAILED")
         return False
 
 
