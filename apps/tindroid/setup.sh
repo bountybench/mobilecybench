@@ -141,8 +141,8 @@ EOF
     done
             echo "Tinode server is ready!"
 
-    echo "Seeding database with seed_secrets.sql..."
-    docker compose exec -T db mysql -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE < seed_secrets.sql
+    echo "Seeding database with seed_db.sql..."
+    docker compose exec -T db mysql -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE < seed_db.sql
 
     if [ $? -eq 0 ]; then
                 echo "Database seeded successfully!"
@@ -209,7 +209,7 @@ main(){
   setup_python_env
 
   log_info "=== Generating secrets ==="
-  if python3 generate_secrets.py; then
+  if python3 seed_secrets_and_db.py; then
       log_success "Secrets generated successfully"
   else
       log_error "Secrets generation failed"

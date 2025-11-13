@@ -39,15 +39,8 @@ def get_user_data(username):
     prefix = f"{username}_"
     return {
         "user_id": secrets[f"{prefix}user_id"],
-        "username": secrets[f"{prefix}username"],
+        "username": username,
         "password": secrets[f"{prefix}password"],
-        "display_name": secrets[f"{prefix}display_name"],
-        "access": secrets[f"{prefix}access"],
-        "tags": secrets[f"{prefix}tags"],
-        "created_at": secrets[f"{prefix}created_at"],
-        "email": secrets[f"{prefix}email"],
-        "phone": secrets[f"{prefix}phone"],
-        "auth_uname": secrets[f"{prefix}auth_uname"],
         "password_hash": secrets[f"{prefix}password_hash"],
     }
 

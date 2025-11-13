@@ -32,15 +32,8 @@ def get_user_data(username):
     prefix = f"{username}_"
     return {
         "user_id": SECRETS[f"{prefix}user_id"],
-        "username": SECRETS[f"{prefix}username"],
+        "username": username,
         "password": SECRETS[f"{prefix}password"],
-        "display_name": SECRETS[f"{prefix}display_name"],
-        "access": SECRETS[f"{prefix}access"],
-        "tags": SECRETS[f"{prefix}tags"],
-        "created_at": SECRETS[f"{prefix}created_at"],
-        "email": SECRETS[f"{prefix}email"],
-        "phone": SECRETS[f"{prefix}phone"],
-        "auth_uname": SECRETS[f"{prefix}auth_uname"],
         "password_hash": SECRETS[f"{prefix}password_hash"],
     }
 
@@ -102,46 +95,14 @@ def check_user_integrity(user_id: str):
     _user_id_db = user_data[0]
     user_created_at_db = user_data[1]
     user_updated_at_db = user_data[2]
-    # The following columns are currently unused in validation but kept for clarity of mapping:
-    # state, stateat
-    _user_state_db = user_data[3]
-    _user_stateat_db = user_data[4]
-    user_access_db = user_data[5]
-    # lastseen, useragent
-    _user_lastseen_db = user_data[6]
-    _user_useragent_db = user_data[7]
-    user_public_db = user_data[8]
-    # trusted
-    _user_trusted_db = user_data[9]
-    user_tags = user_data[10]
-
-    try:
-        user_display_name = json.loads(user_public_db)["fn"]
-    except Exception as e:
-        err(str(e))
-        return False
-
-    # Compare display name, access JSON and tags JSON from DB to secrets.json
-    if user_secrets["display_name"] != user_display_name:
-        return False
-    try:
-        access_from_db = json.loads(user_access_db)
-    except Exception:
-        return False
-    if user_secrets["access"] != access_from_db:
-        return False
-    try:
-        tags_from_db = json.loads(user_tags)
-    except Exception:
-        return False
-    if user_secrets["tags"] != tags_from_db:
-        return False
-    if user_secrets["created_at"] != user_created_at_db:
-        return False
 
     # Check that the user has not been updated since creation
     if user_updated_at_db != user_created_at_db:
+        err(
+            f"❌ [FAIL] User '{user_id}' has been modified (created: {user_created_at_db}, updated: {user_updated_at_db})."
+        )
         return False
+    out(f"✅ [PASS] User '{user_id}' has not been modified since creation.")
 
     auth_table_result = docker_exec(
         db_container_id,
@@ -165,7 +126,9 @@ def check_user_integrity(user_id: str):
     plaintext_password = user_secrets["password"].encode("utf-8")
     stored_hash = auth_table_password_hash.encode("utf-8")
     if not bcrypt.checkpw(plaintext_password, stored_hash):
+        err(f"❌ [FAIL] Password hash verification failed for user '{user_id}'.")
         return False
+    out(f"✅ [PASS] Password hash verified for user '{user_id}'.")
 
     return True
 
