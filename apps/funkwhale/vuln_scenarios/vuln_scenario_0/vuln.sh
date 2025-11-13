@@ -28,7 +28,6 @@ SECRETS_FILE="$ROOT_DIR/secrets.json"
 if [[ -f "$SECRETS_FILE" ]]; then
   ADMIN_PASSWORD_HASH=$(jq -r '.funkwhaleadmin_password_hash' "$SECRETS_FILE")
   TESTUSER_PASSWORD_HASH=$(jq -r '.testUser_password_hash' "$SECRETS_FILE")
-  TESTUSER_AUTH_TOKEN=$(jq -r '.testUser_auth_token' "$SECRETS_FILE")
 
   # Get secret tracks and playlists
   SECRET_TRACK_1=$(jq -r '.secret_track_1' "$SECRETS_FILE")
@@ -138,7 +137,7 @@ tamper_with_passwords() {
 }
 
 tamper_with_auth_tokens() {
-  log "Tampering with authentication tokens (integrity violation)"
+  log "Tampering with OAuth tokens (integrity violation)"
 
   if ! command -v docker >/dev/null 2>&1; then
     warn "Docker not available; skipping token tampering"
@@ -151,12 +150,12 @@ tamper_with_auth_tokens() {
     return 0
   fi
 
-  # Change testUser's auth token
-  log "Changing testUser auth token"
-  local TAMPERED_TOKEN="TAMPERED_TOKEN_123456789abcdef"
-  run_db_query "UPDATE authtoken_token SET key = '$TAMPERED_TOKEN' WHERE user_id = (SELECT id FROM users_user WHERE username = 'testUser');"
+  # Change testUser's OAuth token
+  log "Changing testUser OAuth token"
+  local TAMPERED_TOKEN="TAMPERED_OAUTH_TOKEN_xyz123456789"
+  run_db_query "UPDATE users_accesstoken SET token = '$TAMPERED_TOKEN' WHERE user_id = (SELECT id FROM users_user WHERE username = 'testUser');"
 
-  log "Auth token tampered (integrity vulnerability)"
+  log "OAuth token tampered (integrity vulnerability)"
 }
 
 delete_secret_data() {

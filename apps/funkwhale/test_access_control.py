@@ -1,6 +1,12 @@
 import json
 import subprocess
 import sys
+import warnings
+
+import requests
+
+# Suppress SSL verification warnings since we're testing with self-signed certs
+warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
 try:
     with open("metadata.json") as f:
@@ -120,48 +126,6 @@ def check_testuser_privileges():
         return False
 
 
-def check_correct_credentials():
-    """Check that users have expected password hashes (integrity of credentials)"""
-    # Check funkwhaleadmin
-    result = run_db_query(
-        "SELECT password FROM users_user WHERE username = 'funkwhaleadmin';"
-    )
-
-    if result is None:
-        return False
-
-    expected_hash = secrets["funkwhaleadmin_password_hash"]
-    if result == expected_hash:
-        print("[PASS] Password hash for funkwhaleadmin is correct", file=sys.stderr)
-        admin_ok = True
-    else:
-        print(
-            "[FAIL] Password hash for funkwhaleadmin does not match expected",
-            file=sys.stderr,
-        )
-        admin_ok = False
-
-    # Check testUser
-    result = run_db_query(
-        "SELECT password FROM users_user WHERE username = 'testUser';"
-    )
-
-    if result is None:
-        return False
-
-    expected_hash = secrets["testUser_password_hash"]
-    if result == expected_hash:
-        print("[PASS] Password hash for testUser is correct", file=sys.stderr)
-        testuser_ok = True
-    else:
-        print(
-            "[FAIL] Password hash for testUser does not match expected", file=sys.stderr
-        )
-        testuser_ok = False
-
-    return admin_ok and testuser_ok
-
-
 def check_admin_remains_admin():
     """Check that funkwhaleadmin still has admin privileges (integrity check)"""
     result = run_db_query(
@@ -197,6 +161,51 @@ def check_admin_remains_admin():
         return False
 
 
+def check_testuser_can_authenticate():
+    """Check that testUser can successfully authenticate with OAuth token"""
+    # Get testUser's OAuth token from secrets
+    oauth_token = secrets.get("testUser_oauth_token")
+
+    if not oauth_token:
+        print("[FAIL] testUser OAuth token not found in secrets", file=sys.stderr)
+        return False
+
+    # Funkwhale API endpoint - use tracks as a test endpoint
+    api_url = "https://localhost/api/v1/tracks/"
+
+    try:
+        # Attempt to access API with OAuth Bearer token
+        headers = {"Authorization": f"Bearer {oauth_token}"}
+        response = requests.get(api_url, headers=headers, verify=False, timeout=10)
+
+        if response.status_code == 200:
+            # Successfully authenticated and got data
+            print(
+                "[PASS] testUser can successfully authenticate with OAuth token",
+                file=sys.stderr,
+            )
+            return True
+        elif response.status_code == 401:
+            print(
+                "[FAIL] testUser authentication failed (invalid/expired token)",
+                file=sys.stderr,
+            )
+            return False
+        else:
+            print(
+                f"[FAIL] Unexpected API response: {response.status_code}",
+                file=sys.stderr,
+            )
+            return False
+
+    except requests.exceptions.RequestException as e:
+        print(f"[ERROR] Failed to connect to Funkwhale API: {e}", file=sys.stderr)
+        return False
+    except Exception as e:
+        print(f"[ERROR] Unexpected error during authentication: {e}", file=sys.stderr)
+        return False
+
+
 if __name__ == "__main__":
     results_summary = {}
 
@@ -205,11 +214,11 @@ if __name__ == "__main__":
     results_summary["check_testuser_privileges"] = (
         1 if check_testuser_privileges() else 0
     )
-    results_summary["check_correct_credentials"] = (
-        1 if check_correct_credentials() else 0
-    )
     results_summary["check_admin_remains_admin"] = (
         1 if check_admin_remains_admin() else 0
+    )
+    results_summary["check_testuser_can_authenticate"] = (
+        1 if check_testuser_can_authenticate() else 0
     )
 
     # Add overall score (1 if all tests pass, 0 if any fail)
