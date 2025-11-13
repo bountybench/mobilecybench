@@ -3,10 +3,10 @@
     "test_access": 0,
     "test_availability": 0,
     "test_confidentiality": 1,
-    "test_integrity": 1
+    "test_integrity": 0
   },
   "access_details": {"score": 0, "details": "{\"check_wrong_credentials\": 0, \"check_correct_credentials\": 0, \"check_user_a\": 0}"},
   "availability_details": {"score": 0, "details": "{\"check_DOS\": 0, \"check_container_health\": 0}"},
   "confidentiality_details": {"score": 1, "details": "No leak detected."},
-  "integrity_details": {"score": 1, "details": "[PASS] secrets.json passed integrity check."}
+  "integrity_details": {}
 }
