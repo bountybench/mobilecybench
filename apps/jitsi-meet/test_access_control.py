@@ -8,7 +8,7 @@ warnings.simplefilter("ignore", InsecureRequestWarning)
 
 
 def main():
-    
+
     with open("secrets.json", "r") as f:
         secrets = json.load(f)
 
