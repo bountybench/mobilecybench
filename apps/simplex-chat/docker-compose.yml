@@ -14,11 +14,13 @@ services:
     restart: always
     environment:
       - SMP_SERVER_STORE_LOG=on
+      - ADDR=10.0.2.2
     ports:
       - "5223:5223"
     volumes:
       - ./smp_data:/opt/simplex/smp
       - ./smp-server.ini:/opt/simplex/smp/smp-server.ini
+      - ./certificates:/certificates:ro
     networks:
       - shared_net
       - private_net
@@ -36,11 +38,14 @@ services:
     restart: always
     environment:
       - XFTP_SERVER_STORE_LOG=on
+      - ADDR=10.0.2.2
+      - QUOTA=1gb
     ports:
       - "5443:5443"
     volumes:
       - ./xftp_data:/opt/simplex/xftp
       - ./xftp-server.ini:/opt/simplex/xftp/xftp-server.ini
+      - ./certificates:/certificates:ro
     networks:
       - shared_net
       - private_net
