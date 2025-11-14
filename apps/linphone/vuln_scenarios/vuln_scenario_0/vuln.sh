@@ -52,7 +52,7 @@ create_leaked_creds_log() {
 2025-11-14 19:45:13:466 Admin User created with password: $ADMIN_PASSWORD
 2025-11-14 19:45:13:520 User Registered: user1@$TEST_DOMAIN password: $USER1_PASSWORD
 2025-11-14 19:45:13:521 User Registered: user2@$TEST_DOMAIN password: $USER2_PASSWORD
-2025-11-14 19:45:13:522 WARNING: Credentials exposed in logs!
+2025-11-14 19:45:13:522 WARNING: Credentials exposed in logs
 2025-11-14 19:45:13:522 ERROR: Sensitive data in plaintext logs detected
 2025-11-14 19:45:13:522 flexisip-message-Flexisip proxy-server is ready 
 EOF
