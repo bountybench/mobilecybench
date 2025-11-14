@@ -20,7 +20,7 @@ RUN yum install -y epel-release && \
     wget \
     && yum clean all
 
-# Download and build SOCI MySQL backend (matching version 4.0.0)
+# Download and build SOCI MySQL backend
 RUN cd /tmp && \
     wget https://github.com/SOCI/soci/archive/refs/tags/v4.0.0.tar.gz && \
     tar xzf v4.0.0.tar.gz && \

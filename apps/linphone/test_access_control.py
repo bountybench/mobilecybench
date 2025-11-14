@@ -168,6 +168,9 @@ if __name__ == "__main__":
     results_summary["check_correct_credentials"] = (
         1 if check_correct_credentials("10.0.2.2") else 0
     )
+    results_summary["score"] = (
+        1 if all(val == 1 for val in results_summary.values()) else 0
+    )
     print(json.dumps(results_summary))
 
     all_passed = all(val == 1 for val in results_summary.values())

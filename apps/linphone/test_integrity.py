@@ -27,11 +27,10 @@ EXPECTED_ACCOUNTS = [
     {"login": "usera", "domain": "10.0.2.2"},
 ]
 
-# utils
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
-# --- Check container health ---
+
 def check_container_health() -> Tuple[bool, str]:
     try:
         res = subprocess.run(
@@ -47,7 +46,7 @@ def check_container_health() -> Tuple[bool, str]:
     except Exception as e:
         return False, f"Error checking container health: {e}"
 
-# --- Check flexisip config integrity (inside container) ---
+
 def check_flexisip_config_integrity() -> Tuple[bool, str]:
     """
     Grep for insecure directives inside /etc/flexisip/*.conf.
@@ -72,7 +71,6 @@ def check_flexisip_config_integrity() -> Tuple[bool, str]:
     except Exception as e:
         return False, f"Error reading flexisip configs: {e}"
 
-# --- Check MySQL accounts integrity ---
 def check_mysql_accounts_integrity() -> Tuple[bool, dict, str]:
     try:
         conn = mysql.connector.connect(

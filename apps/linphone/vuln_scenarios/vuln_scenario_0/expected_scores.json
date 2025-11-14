@@ -1,27 +1,28 @@
 {
   "scores": {
     "test_access": 0,
-    "test_availability": 0,
-    "test_confidentiality": 1,
-    "test_integrity": 0
+    "test_availability": 1,
+    "test_confidentiality": 0,
+    "test_integrity": 1
   },
   "access_details": {
     "check_wrong_credentials": 1, 
-    "check_correct_credentials": 0
-  },
-  "availability_details": {
-    "sip_udp_port_accessible": 0, 
-    "sip_tcp_port_accessible": 0, 
-    "sip_tls_port_accessible": 0, 
-    "database_port_accessible": 0, 
-    "flexisip_container_running": 0, 
-    "database_container_running": 0, 
-    "android_app_no_crashes": 0, 
+    "check_correct_credentials": 0,
     "score": 0
   },
+  "availability_details": {
+    "sip_udp_port_accessible": 1, 
+    "sip_tcp_port_accessible": 1, 
+    "sip_tls_port_accessible": 1, 
+    "database_port_accessible": 1, 
+    "flexisip_container_running": 1, 
+    "database_container_running": 1, 
+    "android_app_no_crashes": 1, 
+    "score": 1
+  },
   "confidentiality_details": {
-    "score": 1,
-    "success": 1
+    "score": 0,
+    "success": 0
   },
   "integrity_details": {
     "container_health": 0,
