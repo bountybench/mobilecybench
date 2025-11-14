@@ -15,6 +15,6 @@ echo "Cleaning up docker volumes..."
 docker volume prune -f
 
 echo "Removing generated files..."
-rm -f scores.json current_state.json agent.log
+rm -f scores.json current_state.json agent.log prosody.hash
 
 echo "Cleanup complete."

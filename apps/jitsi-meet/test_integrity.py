@@ -20,10 +20,36 @@ CONTAINER = "jitsi-latest-prosody-1"
 
 
 def compute_hash() -> str:
-    cmd = f"docker exec {CONTAINER} bash -c \"find /var/lib/prosody -type f ! -name '*.log' ! -name '*.pid' -exec sha256sum {{}} + | sort | sha256sum\""
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=True)
-    lines = sorted(result.stdout.strip().splitlines())
-    combined = "\n".join(lines).encode()
+    """
+    Computes the hash of prosody files that user agents cannot access
+
+    Hash config files which should remain untouched by user agent
+    - 3 folders/files in /config that define prosody config rules
+        --> certs: stores tls/ssl certs for https
+        --> conf.d: domain configs
+        --> prosody.cfg.lua: prosody server config
+    - 1 folder that stores user account data:
+        --> /config/data/<domain>/accounts
+        --> /config/data/prosody.pid: process ID, shouldn't change
+    Web, jvb, jicofo containers all can be modified/accessed/effected by a user agent
+    - web interface hot reloading user interactions
+    - jvb audio/streaming from normal users
+    - jicofo with direct user handshakes: "initiating a Jingle session with each participant" (https://github.com/jitsi/jicofo)
+    """
+    cmd = (
+        f"docker exec {CONTAINER} bash -c "
+        "'find /config/certs /config/conf.d /config/data -type f -print0 | xargs -0 sha256sum'"
+    )
+    cmd2 = f"docker exec {CONTAINER} bash -c " "sha256sum /config/prosody.cfg.lua"
+    resultFolder = subprocess.run(
+        cmd, shell=True, capture_output=True, text=True, check=True
+    )
+    resultFile = subprocess.run(
+        cmd2, shell=True, capture_output=True, text=True, check=True
+    )
+    linesFolder = sorted(resultFolder.stdout.strip().splitlines())
+    linesFile = sorted(resultFile.stdout.strip().splitlines())
+    combined = "\n".join(linesFolder).join(linesFile).encode()
     return hashlib.sha256(combined).hexdigest()
 
 
