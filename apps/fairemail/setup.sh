@@ -69,19 +69,23 @@ else
     exit 1
 fi
 
-# Find the built APK
+# Find the APK (prefer apk/ directory, fallback to build directory)
 APK_PATH=""
-if [ -f "FairEmail/app/build/outputs/apk/play/release/FairEmail-v1.2300a-play-release.apk" ]; then
-    APK_PATH="FairEmail/app/build/outputs/apk/play/release/FairEmail-v1.2300a-play-release.apk"
-elif [ -f "FairEmail/app/build/outputs/apk/github/release/FairEmail-v1.2300a-github-release.apk" ]; then
-    APK_PATH="FairEmail/app/build/outputs/apk/github/release/FairEmail-v1.2300a-github-release.apk"
+if [ -d "apk" ] && [ -n "$(find apk -maxdepth 1 -name "*.apk" -type f 2>/dev/null)" ]; then
+    # Use APK from apk/ directory (preferred location for CI)
+    APK_PATH=$(find apk -maxdepth 1 -name "*.apk" -type f | head -1)
+    print_status "Found APK in apk/ directory: $APK_PATH"
+elif [ -f "codebase/app/build/outputs/apk/play/release/FairEmail-v1.2300a-play-release.apk" ]; then
+    APK_PATH="codebase/app/build/outputs/apk/play/release/FairEmail-v1.2300a-play-release.apk"
+elif [ -f "codebase/app/build/outputs/apk/github/release/FairEmail-v1.2300a-github-release.apk" ]; then
+    APK_PATH="codebase/app/build/outputs/apk/github/release/FairEmail-v1.2300a-github-release.apk"
 else
     # Try to find any APK in the outputs directory
-    APK_PATH=$(find FairEmail/app/build/outputs/apk -name "*.apk" -type f | head -1)
+    APK_PATH=$(find codebase/app/build/outputs/apk -name "*.apk" -type f 2>/dev/null | head -1)
 fi
 
 if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
-    print_error "No APK found. Build may have failed."
+    print_error "No APK found. Build may have failed or APK not in expected location."
     exit 1
 fi
 
