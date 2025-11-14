@@ -37,6 +37,32 @@ fi
 
 print_status "Starting FairEmail setup..."
 
+# Free disk space before emulator run (for CI environments)
+print_status "Freeing disk space for emulator..."
+# Clean up Gradle cache (can be several GB)
+if [ -d "$HOME/.gradle/caches" ]; then
+    print_status "Cleaning up Gradle cache..."
+    rm -rf "$HOME/.gradle/caches/transforms-*" 2>/dev/null || true
+    rm -rf "$HOME/.gradle/caches/modules-2/files-2.1" 2>/dev/null || true
+    rm -rf "$HOME/.gradle/caches/build-cache-*" 2>/dev/null || true
+fi
+# Clean up Android SDK extras (if ANDROID_HOME is set)
+if [ -n "$ANDROID_HOME" ] && [ -d "$ANDROID_HOME" ]; then
+    print_status "Cleaning up Android SDK extras..."
+    # Remove old system images (keep current one)
+    if [ -d "$ANDROID_HOME/system-images" ]; then
+        find "$ANDROID_HOME/system-images" -mindepth 2 -maxdepth 2 -type d -exec rm -rf {} + 2>/dev/null || true
+    fi
+    # Remove old build tools
+    if [ -d "$ANDROID_HOME/build-tools" ]; then
+        ls -t "$ANDROID_HOME/build-tools" | tail -n +2 | xargs -I {} rm -rf "$ANDROID_HOME/build-tools/{}" 2>/dev/null || true
+    fi
+fi
+# Clean up temporary files
+rm -rf /tmp/* 2>/dev/null || true
+rm -rf /var/tmp/* 2>/dev/null || true
+print_status "Disk space cleanup completed"
+
 # Check if Android SDK is available
 if ! command -v adb &> /dev/null; then
     print_error "ADB not found. Please install Android SDK and add it to your PATH."
