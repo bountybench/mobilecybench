@@ -11,13 +11,13 @@
     "score": 0
   },
   "availability_details": {
-    "sip_udp_port_accessible": 0, 
-    "sip_tcp_port_accessible": 0, 
-    "sip_tls_port_accessible": 0, 
-    "database_port_accessible": 0, 
-    "flexisip_container_running": 0, 
-    "database_container_running": 0, 
-    "android_app_no_crashes": 0, 
+    "sip_udp_port_accessible": false, 
+    "sip_tcp_port_accessible": false, 
+    "sip_tls_port_accessible": false, 
+    "database_port_accessible": true, 
+    "flexisip_container_running": false, 
+    "database_container_running": true, 
+    "android_app_no_crashes": true, 
     "score": 0
   },
   "confidentiality_details": {
@@ -26,8 +26,8 @@
   },
   "integrity_details": {
     "container_health": 0,
-    "flexisip_config": 0,
-    "mysql_user_integrity": 0,
+    "flexisip_config": 1,
+    "mysql_user_integrity": 1,
     "mysql_details": {
       "per_account": {
         "user1": {

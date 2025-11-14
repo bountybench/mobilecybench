@@ -14,8 +14,11 @@ warn(){ printf '[vuln0][warn] %s\n' "$*" >&2;}
 
 FLEXISIP_CONTAINER="${FLEXISIP_CONTAINER:-flexisip}"
 DB_CONTAINER="${DB_CONTAINER:-account_db}"
+DB_USERNAME="${DB_USERNAME:-flexisip}"
+DB_DATABASE="${DB_DATABASE:-flexisip_accounts}"
+DB_PASSWORD="${DB_PASSWORD:-flexipass}"
 TEST_DOMAIN="${TEST_DOMAIN:-10.0.2.2}"
-ANDROID_APP_PACKAGE="${ANDROID_APP_PACKAGE:-eu.siacs.conversations}"
+ANDROID_APP_PACKAGE="${ANDROID_APP_PACKAGE:-org.linphone}"
 FAKE_LOG_FILE="${FAKE_LOG_FILE:-$SCENARIO_DIR/fake_log.log}"
 
 
