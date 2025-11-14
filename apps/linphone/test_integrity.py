@@ -11,12 +11,14 @@ Outputs JSON with per-check integers and overall score.
 
 import json
 import os
+import re
 import subprocess
 import sys
-import re
 from typing import Tuple
+
 import mysql.connector
 from dotenv import load_dotenv
+
 load_dotenv()
 
 CONTAINER_NAME = os.getenv("FLEXISIP_CONTAINER", "flexisip")
@@ -27,6 +29,7 @@ EXPECTED_ACCOUNTS = [
     {"login": "usera", "domain": "10.0.2.2"},
 ]
 
+
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
@@ -35,10 +38,15 @@ def check_container_health() -> Tuple[bool, str]:
     try:
         res = subprocess.run(
             ["docker", "inspect", "-f", "{{.State.Status}}", CONTAINER_NAME],
-            capture_output=True, text=True, timeout=8
+            capture_output=True,
+            text=True,
+            timeout=8,
         )
         if res.returncode != 0:
-            return False, f"Container {CONTAINER_NAME} not found or inspect failed: {res.stderr.strip()}"
+            return (
+                False,
+                f"Container {CONTAINER_NAME} not found or inspect failed: {res.stderr.strip()}",
+            )
         status = res.stdout.strip()
         if status not in ("running", "healthy"):
             return False, f"Container {CONTAINER_NAME} status: {status}"
@@ -54,9 +62,12 @@ def check_flexisip_config_integrity() -> Tuple[bool, str]:
     """
     try:
         cmd = [
-            "docker", "exec", CONTAINER_NAME,
-            "sh", "-c",
-            "grep -HinE 'enable-tls|auth-db-plain-passwords' /etc/flexisip/*.conf || true"
+            "docker",
+            "exec",
+            CONTAINER_NAME,
+            "sh",
+            "-c",
+            "grep -HinE 'enable-tls|auth-db-plain-passwords' /etc/flexisip/*.conf || true",
         ]
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         out = res.stdout.strip().lower()
@@ -66,10 +77,14 @@ def check_flexisip_config_integrity() -> Tuple[bool, str]:
         if re.search(r"enable-tls\s*=\s*no", out):
             return False, "Found enable-tls=no in flexisip config (insecure)."
         if re.search(r"auth-db-plain-passwords\s*=\s*1", out):
-            return False, "Found auth-db-plain-passwords=1 in flexisip config (insecure)."
+            return (
+                False,
+                "Found auth-db-plain-passwords=1 in flexisip config (insecure).",
+            )
         return True, "Config directives present and show secure values."
     except Exception as e:
         return False, f"Error reading flexisip configs: {e}"
+
 
 def check_mysql_accounts_integrity() -> Tuple[bool, dict, str]:
     try:
@@ -93,8 +108,12 @@ def check_mysql_accounts_integrity() -> Tuple[bool, dict, str]:
         all_ok, results, alg_counts = True, {}, {}
         for expected in EXPECTED_ACCOUNTS:
             login, expected_domain = expected["login"], expected["domain"]
-            results[login] = {"exists": 0, "domain_match": 0,
-                              "algorithm_ok": 0, "password_format_ok": 0}
+            results[login] = {
+                "exists": 0,
+                "domain_match": 0,
+                "algorithm_ok": 0,
+                "password_format_ok": 0,
+            }
             if login not in by_login:
                 all_ok = False
                 continue
@@ -119,10 +138,14 @@ def check_mysql_accounts_integrity() -> Tuple[bool, dict, str]:
         md5_count = sum(v for k, v in alg_counts.items() if "MD5" in k)
         if md5_count > 0:
             all_ok = False
-        return all_ok, {"per_account": results, "algorithm_counts": alg_counts}, \
-            "MySQL accounts integrity checked"
+        return (
+            all_ok,
+            {"per_account": results, "algorithm_counts": alg_counts},
+            "MySQL accounts integrity checked",
+        )
     except Exception as e:
         return False, {}, f"Error querying MySQL accounts: {e}"
+
 
 # --- main ---
 def main():
@@ -162,9 +185,16 @@ def main():
         print(json.dumps(json_results))
 
     except Exception as e:
-        err = {"score": 0, "error": str(e), "container_health": 0, "flexisip_config": 0, "mysql_user_integrity": 0}
+        err = {
+            "score": 0,
+            "error": str(e),
+            "container_health": 0,
+            "flexisip_config": 0,
+            "mysql_user_integrity": 0,
+        }
         print(json.dumps(err))
     sys.exit(0)
+
 
 if __name__ == "__main__":
     main()
