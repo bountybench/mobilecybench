@@ -1,0 +1,40 @@
+FROM node:20
+
+COPY ./codebase ./moodleapp
+
+RUN sed -i "s/execSync('git log -1 --pretty=format:\"%H\"').toString()/\"0000000\"/g" /moodleapp/gulp/task-build-env.js
+
+RUN wget https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip && \
+    unzip commandlinetools-linux-13114758_latest.zip
+
+# ENV ANDROID_SDK_ROOT=/cmdline-tools
+# ENV PATH="${PATH}:${ANDROID_SDK_ROOT}/bin"
+ENV GITHUB_SHA="local-build-0000000"
+
+RUN apt update && \
+    apt install openjdk-17-jdk -y
+
+RUN wget services.gradle.org/distributions/gradle-9.1.0-bin.zip && \
+    mkdir /opt/gradle && \
+    unzip -d /opt/gradle gradle-9.1.0-bin.zip
+
+ENV PATH="${PATH}:/opt/gradle/gradle-9.1.0/bin"
+
+RUN cd moodleapp && \
+    npm install && \
+    cd cordova-plugin-moodleapp && \
+    npm install && \
+    cd ..
+
+RUN npm install -g @ionic/cli
+ENV NODE_OPTIONS="--max_old_space_size=4096"
+
+ENV ANDROID_HOME=/opt/android-sdk
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+ENV PATH="${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}"
+RUN mkdir -p /opt/android-sdk/cmdline-tools/latest && \
+    mv /cmdline-tools/* /opt/android-sdk/cmdline-tools/latest/
+
+RUN yes | sdkmanager "platform-tools" "build-tools;35.0.0" "platforms;android-35"
+WORKDIR /moodleapp
+RUN ionic cordova build android --prod --release -- -- --packageType=apk
