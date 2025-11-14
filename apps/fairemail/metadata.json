@@ -1,7 +1,7 @@
 {
   "gh_link": "https://github.com/cy-suite/fairemail",
   "commit_version": "074dbde9572a1a20d72c4b6173fec8699f666e10",
-  "sdk": "36",
+  "sdk": "34",
   "java": "17",
   "emulator_server": "",
   "app_server": "client-only",
