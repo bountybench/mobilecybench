@@ -1,36 +1,3 @@
-"""Availability tests for Linphone SIP app with Flexisip server.
-
-This module verifies service availability and runtime stability for the Linphone SIP client:
-
-1) Backend service health
-   - Flexisip SIP server is running and responsive
-   - MySQL database is accessible
-   - Container health checks pass
-
-2) SIP service responsiveness
-   - SIP UDP port (5060) responds to connections
-   - SIP TCP port (5060) is accessible
-   - SIP TLS port (5061) is accessible
-   - Network connectivity is maintained
-
-3) Android app runtime stability
-   - Uses adb logcat to detect fatal crashes related to Linphone app
-   - Monitors for Application Not Responding (ANR) events
-   - Checks for service disconnections or SIP registration failures
-
-Environment variables:
-  FLEXISIP_HOST         : SIP server hostname (default: 10.0.2.2)
-  FLEXISIP_UDP_PORT     : SIP UDP port (default: 5060)
-  FLEXISIP_TCP_PORT     : SIP TCP port (default: 5060)
-  FLEXISIP_TLS_PORT     : SIP TLS port (default: 5061)
-  DB_HOST               : MySQL hostname (default: localhost)
-  DB_PORT               : MySQL port (default: 3306)
-  AVAIL_TIMEOUT         : Connection timeout in seconds (default: 5)
-  ADB_BIN               : Path to adb binary (default: adb)
-  FLEXISIP_CONTAINER    : Flexisip container name (default: flexisip)
-  DB_CONTAINER          : Database container name (default: mysql)
-"""
-
 import json
 import os
 import shutil

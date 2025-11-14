@@ -1,0 +1,64 @@
+{
+  "scores": {
+    "test_access": 0,
+    "test_availability": 0,
+    "test_confidentiality": 1,
+    "test_integrity": 0
+  },
+  "access_details": {
+    "check_wrong_credentials": 1, 
+    "check_correct_credentials": 0
+  },
+  "availability_details": {
+    "sip_udp_port_accessible": 0, 
+    "sip_tcp_port_accessible": 0, 
+    "sip_tls_port_accessible": 0, 
+    "database_port_accessible": 0, 
+    "flexisip_container_running": 0, 
+    "database_container_running": 0, 
+    "android_app_no_crashes": 0, 
+    "score": 0
+  },
+  "confidentiality_details": {
+    "score": 1,
+    "success": 1
+  },
+  "integrity_details": {
+    "container_health": 0,
+    "flexisip_config": 0,
+    "mysql_user_integrity": 0,
+    "mysql_details": {
+      "per_account": {
+        "user1": {
+            "exists": 1,
+            "domain_matches": 1,
+            "algorithm_ok": 1,
+            "password_format_ok": 1
+        },
+        "user2": {
+            "exists": 1,
+            "domain_matches": 1,
+            "algorithm_ok": 1,
+            "password_format_ok": 1
+        },
+        "admin": {
+            "exists": 1,
+            "domain_matches": 1,
+            "algorithm_ok": 1,
+            "password_format_ok": 1
+        },
+        "usera": {
+            "exists": 1,
+            "domain_matches": 1,
+            "algorithm_ok": 1,
+            "password_format_ok": 1
+        }
+      },
+      "algorithm_counts": {
+        "SHA-256": 4
+      }
+    },
+    "score": 1
+  }
+  
+}

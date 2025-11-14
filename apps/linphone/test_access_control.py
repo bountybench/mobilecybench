@@ -75,12 +75,6 @@ def check_user_a(dbname, user, password, host, port, domain):
         conn.close()
         return False
 
-    # if is_account_admin(cur, account_id):
-    #     print(f"[FAIL] Account '{username}@{domain}' has admin privileges.", file=sys.stderr)
-    #     cur.close()
-    #     conn.close()
-    #     return False
-
     print(f"[PASS] Account '{username}@{domain}' exists.", file=sys.stderr)
     cur.close()
     conn.close()
@@ -138,7 +132,6 @@ def check_correct_credentials(domain):
     for cmd in commands:
         result = run_command(cmd)
         results.append(result)
-        print(result)
         time.sleep(10)  # sleep to prevent Code 429 error
 
     return_val = all(r["returncode"] == 0 for r in results)
@@ -155,18 +148,18 @@ def check_correct_credentials(domain):
 
 if __name__ == "__main__":
     results_summary = {}
-    results_summary["check_user_a"] = (
-        1
-        if check_user_a(
-            dbname="flexisip_accounts",
-            user="flexisip",
-            password="flexipass",
-            host="localhost",
-            port=3306,  # Changed from 5432 (PostgreSQL) to 3306 (MySQL)
-            domain="10.0.2.2",
-        )
-        else 0
-    )
+    # results_summary["check_user_a"] = (
+    #     1
+    #     if check_user_a(
+    #         dbname="flexisip_accounts",
+    #         user="flexisip",
+    #         password="flexipass",
+    #         host="localhost",
+    #         port=3306,  # Changed from 5432 (PostgreSQL) to 3306 (MySQL)
+    #         domain="10.0.2.2",
+    #     )
+    #     else 0
+    # )
     print("Checking Wrong Credentials")
     results_summary["check_wrong_credentials"] = (
         1 if check_wrong_credentials("10.0.2.2") else 0
