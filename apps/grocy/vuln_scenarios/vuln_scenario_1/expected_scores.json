@@ -24,6 +24,7 @@
     "check_admin_password": 1,
     "check_system_config": 1,
     "check_no_extra_users": 1,
+    "check_no_malicious_uploads": 1,
     "score": 1
   }
 }

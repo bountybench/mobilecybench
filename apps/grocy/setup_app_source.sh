@@ -43,9 +43,7 @@ setup_environment() {
     echo "Setting up build environment..."
 
     # Set Java 17 or higher (Java 21 from Android Studio JBR is compatible)
-    if [[ -d "/home/xusheng/Downloads/android-studio-2025.2.1.7-linux/android-studio/jbr" ]]; then
-        export JAVA_HOME=/home/xusheng/Downloads/android-studio-2025.2.1.7-linux/android-studio/jbr
-    elif [[ -d "$HOME/Downloads/android-studio"*"/android-studio/jbr" ]]; then
+    if [[ -d "$HOME/Downloads/android-studio"*"/android-studio/jbr" ]]; then
         export JAVA_HOME=$(echo $HOME/Downloads/android-studio*/android-studio/jbr | head -n1)
     elif [[ -d "/opt/homebrew/opt/openjdk@17" ]]; then
         export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
@@ -94,9 +92,9 @@ build_grocy() {
         ./gradlew --version > /dev/null 2>&1
     }
 
-    # Build debug variant (easier to work with, no signing issues)
-    echo "Building debug APK..."
-    if ./gradlew assembleDebug --no-daemon --max-workers=2 > "$temp_out" 2> "$temp_err"; then
+    # Build release variant (uses debug signing automatically, no .debug suffix)
+    echo "Building release APK..."
+    if ./gradlew assembleRelease --no-daemon --max-workers=2 > "$temp_out" 2> "$temp_err"; then
         echo "Build completed successfully."
         rm -f "$temp_out" "$temp_err"
     else
@@ -118,23 +116,52 @@ build_grocy() {
     fi
 }
 
-# Copy APK to expected location
+# Sign and copy APK to expected location
 copy_apk() {
-    echo "Copying APK to expected location..."
+    echo "Signing and copying APK to expected location..."
 
-    local apk_source="app/build/outputs/apk/debug/app-debug.apk"
+    local apk_unsigned="app/build/outputs/apk/release/app-release-unsigned.apk"
     local apk_dest="$SCRIPT_DIR/apk"
     local apk_new_name="grocy.apk"
 
-    if [[ -f "$apk_source" ]]; then
+    if [[ -f "$apk_unsigned" ]]; then
         mkdir -p "$apk_dest"
-        cp "$apk_source" "$apk_dest/$apk_new_name"
-        echo "APK copied to $apk_dest/$apk_new_name"
+
+        # Keystore configuration (shared across apps in utils/)
+        local keystore_dir="$ROOT_DIR/utils"
+        local keystore_name="$keystore_dir/benchmark.keystore"
+        local keystore_pass="password"
+        local key_alias="benchmark-key"
+
+        # Create keystore if it doesn't exist
+        if [ ! -f "$keystore_name" ]; then
+            echo "Creating signing keystore..."
+            keytool -genkey -v -keystore "$keystore_name" \
+                    -alias "$key_alias" -keyalg RSA -keysize 2048 \
+                    -validity 10000 -storepass "$keystore_pass" -keypass "$keystore_pass" \
+                    -dname "CN=Benchmark, OU=Test, O=Test, L=Test, S=Test, C=US"
+        fi
+
+        # Sign the APK
+        echo "Signing APK..."
+        local apksigner="$ANDROID_HOME/build-tools/*/apksigner"
+        apksigner=$(ls $apksigner 2>/dev/null | head -1)
+
+        if [ -z "$apksigner" ]; then
+            echo "ERROR: apksigner not found in ANDROID_HOME/build-tools"
+            exit 1
+        fi
+
+        $apksigner sign --ks "$keystore_name" --ks-pass "pass:$keystore_pass" \
+                  --out "$apk_dest/$apk_new_name" "$apk_unsigned"
+
+        echo "APK signed and copied to $apk_dest/$apk_new_name"
         ls -lh "$apk_dest/$apk_new_name"
     else
-        echo "WARNING: APK not found at $apk_source"
+        echo "ERROR: Unsigned APK not found at $apk_unsigned"
         echo "Available APKs:"
         find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -5
+        exit 1
     fi
 }
 

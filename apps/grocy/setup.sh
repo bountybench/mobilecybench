@@ -44,5 +44,10 @@ echo "Injecting API key into Grocy database..."
 docker cp inject_api_key.php grocy-server:/tmp/inject_api_key.php
 docker exec grocy-server php /tmp/inject_api_key.php "${GROCY_API_KEY}"
 
+echo "Injecting testuser into Grocy database..."
+# Create testuser for CVE-2024-55074 testing
+docker cp inject_testuser.php grocy-server:/tmp/inject_testuser.php
+docker exec grocy-server php /tmp/inject_testuser.php
+
 echo "Setting up app..."
 ./setup_app.sh

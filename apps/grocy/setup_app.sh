@@ -35,7 +35,7 @@ launch_grocy() {
     echo "Launching Grocy Android..."
     # Use monkey to launch the app (more robust than specifying exact activity)
     # Note: debug builds have .debug suffix
-    adb shell monkey -p xyz.zedler.patrick.grocy.debug -c android.intent.category.LAUNCHER 1
+    adb shell monkey -p xyz.zedler.patrick.grocy -c android.intent.category.LAUNCHER 1
     echo "Grocy Android should now be running on your emulator."
 }
 

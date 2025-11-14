@@ -14,23 +14,39 @@ os.environ["no_proxy"] = "localhost,127.0.0.1,10.0.2.2"
 GROCY_URL = os.getenv("APP_BASE_URL", "http://localhost:8080")
 GROCY_API_KEY = os.getenv("GROCY_API_KEY", "demo_api_key_for_testing")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "GrocyAdmin!2024$Secure")
 
 
 def check_admin_access():
     """
     Test that admin account can still login with expected credentials
+    Uses the Grocy API login endpoint to verify username/password authentication
     """
     try:
-        response = requests.get(
-            f"{GROCY_URL}/api/system/info", headers={"GROCY-API-KEY": GROCY_API_KEY}
+        # Test actual login with username and password (not just API key)
+        # Grocy uses form-based authentication at /loginform
+        login_response = requests.post(
+            f"{GROCY_URL}/loginform",
+            data={"username": ADMIN_USERNAME, "password": ADMIN_PASSWORD},
+            allow_redirects=False,
         )
-        if response.status_code == 200:
-            print("Admin access verified", file=sys.stderr)
+
+        # Successful login returns 302 redirect to /
+        if login_response.status_code == 302:
+            print("Admin login successful with username/password", file=sys.stderr)
+            return 1
+        # Also check if API key still works (backup check)
+        elif (
+            requests.get(
+                f"{GROCY_URL}/api/system/info", headers={"GROCY-API-KEY": GROCY_API_KEY}
+            ).status_code
+            == 200
+        ):
+            print("Admin access verified via API key", file=sys.stderr)
             return 1
         else:
             print(
-                f"Admin access failed with status {response.status_code}",
+                f"Admin login failed with status {login_response.status_code}",
                 file=sys.stderr,
             )
             return 0

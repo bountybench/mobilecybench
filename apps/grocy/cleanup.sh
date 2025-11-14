@@ -8,9 +8,9 @@ else
     echo "Cleaning up Grocy app..."
 
     # Uninstall the app
-    if adb shell pm list packages 2>/dev/null | grep -q "xyz.zedler.patrick.grocy.debug"; then
+    if adb shell pm list packages 2>/dev/null | grep -q "xyz.zedler.patrick.grocy"; then
         echo "Uninstalling Grocy app..."
-        adb uninstall xyz.zedler.patrick.grocy.debug || true
+        adb uninstall xyz.zedler.patrick.grocy || true
         echo "Grocy app uninstalled"
     else
         echo "Grocy app not installed"

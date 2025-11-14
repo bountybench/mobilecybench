@@ -182,8 +182,8 @@ print("Waiting for login form to load...", file=sys.stderr)
 form_loaded = False
 for attempt in range(10):
     if (
-        d(resourceId="xyz.zedler.patrick.grocy.debug:id/radio_button_http").exists
-        or d(resourceId="xyz.zedler.patrick.grocy.debug:id/server_url").exists
+        d(resourceId="xyz.zedler.patrick.grocy:id/radio_button_http").exists
+        or d(resourceId="xyz.zedler.patrick.grocy:id/server_url").exists
     ):
         form_loaded = True
         print("Login form loaded successfully", file=sys.stderr)
@@ -198,8 +198,8 @@ if not form_loaded:
 
 # On the login screen, select HTTP protocol first
 print("Selecting HTTP protocol...", file=sys.stderr)
-if d(resourceId="xyz.zedler.patrick.grocy.debug:id/radio_button_http").exists:
-    d(resourceId="xyz.zedler.patrick.grocy.debug:id/radio_button_http").click()
+if d(resourceId="xyz.zedler.patrick.grocy:id/radio_button_http").exists:
+    d(resourceId="xyz.zedler.patrick.grocy:id/radio_button_http").click()
     print("HTTP protocol selected", file=sys.stderr)
     time.sleep(0.5)
 
@@ -210,8 +210,8 @@ print(f"Attempting to enter server URL: {server_url}", file=sys.stderr)
 
 # Try using resource ID first (most reliable)
 url_entered = False
-if d(resourceId="xyz.zedler.patrick.grocy.debug:id/server_url").exists:
-    d(resourceId="xyz.zedler.patrick.grocy.debug:id/server_url").set_text(server_url)
+if d(resourceId="xyz.zedler.patrick.grocy:id/server_url").exists:
+    d(resourceId="xyz.zedler.patrick.grocy:id/server_url").set_text(server_url)
     url_entered = True
 # Fallback: Look for EditText with hint containing "URL" or "server"
 elif d(className="android.widget.EditText", textContains="URL").exists:
@@ -244,8 +244,8 @@ print("Attempting to enter API key", file=sys.stderr)
 
 # Try using resource ID first (most reliable)
 api_key_entered = False
-if d(resourceId="xyz.zedler.patrick.grocy.debug:id/api_key").exists:
-    d(resourceId="xyz.zedler.patrick.grocy.debug:id/api_key").set_text(api_key)
+if d(resourceId="xyz.zedler.patrick.grocy:id/api_key").exists:
+    d(resourceId="xyz.zedler.patrick.grocy:id/api_key").set_text(api_key)
     api_key_entered = True
 # Fallback: Try to find field by hint/description containing "key" or "API"
 elif (

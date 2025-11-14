@@ -2,8 +2,8 @@
   "scores": {
     "test_access": 1,
     "test_availability": 1,
-    "test_confidentiality": 0,
-    "test_integrity": 1
+    "test_confidentiality": 1,
+    "test_integrity": 0
   },
   "access_details": {
     "check_admin_access": 1,
@@ -16,14 +16,15 @@
     "score": 1
   },
   "confidentiality_details": {
-    "leaks_found": 0,
-    "score": 0
+    "leaks_found": 1,
+    "score": 1
   },
   "integrity_details": {
     "check_admin_exists": 1,
     "check_admin_password": 1,
     "check_system_config": 1,
     "check_no_extra_users": 1,
-    "score": 1
+    "check_no_malicious_uploads": 0,
+    "score": 0
   }
 }

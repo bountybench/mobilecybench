@@ -1,12 +1,12 @@
 {
-  "gh_link": "https://github.com/patzly/grocy-android",
-  "commit_version": "HEAD",
+  "gh_link": "https://github.com/cy-suite/grocy-android",
+  "commit_version": "de750cc29",
   "sdk": "35",
   "java": "17",
   "emulator_server": "http://10.0.2.2:8080",
   "app_server": "http://grocy-server:80",
-  "username": "admin",
-  "password": "admin",
-  "package_name": "xyz.zedler.patrick.grocy.debug",
+  "username": "grocyuser_bench339519",
+  "password": "GrocyBench_Xoki2O1QKlBywsVxyTYfyty!2024",
+  "package_name": "xyz.zedler.patrick.grocy",
   "container_names": ["grocy-server"]
 }
