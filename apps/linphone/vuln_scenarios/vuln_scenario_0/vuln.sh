@@ -10,7 +10,7 @@ SCENARIO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCENARIO_DIR/../.." && pwd)"
 
 log(){ printf '[vuln0] %s\n' "$*"; }
-warn(){ printf '[vuln0][warn] %s\n' "$*" >&2; }
+warn(){ printf '[vuln0][warn] %s\n' "$*" >&2;}
 
 FLEXISIP_CONTAINER="${FLEXISIP_CONTAINER:-flexisip}"
 DB_CONTAINER="${DB_CONTAINER:-account_db}"
