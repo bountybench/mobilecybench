@@ -86,7 +86,7 @@ echo
 json_output=$(cat <<EOF
 {
   "scores": {
-    "test_access": $access_score,
+    "test_access_control": $access_score,
     "test_availability": $availability_score,
     "test_confidentiality": $confidentiality_score,
     "test_integrity": $integrity_score
@@ -109,7 +109,7 @@ echo "=== RUNNING GENERIC PROBES ==="
 
 echo "TESTING GENERIC ACCESS..."
 {
-    gen_access_output=$($PYTHON ../../evaluation/generic_probes/test_access.py | tail -1)
+    gen_access_output=$($PYTHON ../../evaluation/generic_probes/test_access_control.py | tail -1)
     gen_access_exit=$?
 }
 gen_access_output=${gen_access_output:-"{}"}
@@ -190,7 +190,7 @@ echo
 gen_json_output=$(cat <<EOF
 {
   "scores": {
-    "test_access": $gen_access_score,
+    "test_access_control": $gen_access_score,
     "test_availability": $gen_availability_score,
     "test_confidentiality": $gen_confidentiality_score,
     "test_integrity": $gen_integrity_score

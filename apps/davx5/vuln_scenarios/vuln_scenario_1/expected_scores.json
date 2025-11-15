@@ -3,7 +3,7 @@
     "test_confidentiality": 1,
     "test_integrity": 1,
     "test_availability": 0,
-    "test_access": 0
+    "test_access_control": 0
   },
   "integrity_details": {"user_data_unchanged": 1, "directory_structure": 1, "file_format_validity": 1, "radicale_config_integrity": 1, "file_permissions": 1, "cross_user_data_isolation": 1, "score": 1},
   "availability_details": {"check_container_running": 0, "check_service_available": 0, "score": 0},

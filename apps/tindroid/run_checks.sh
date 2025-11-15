@@ -103,7 +103,7 @@ json_output=$(cat <<EOF
     "test_confidentiality": $confidentiality_score,
     "test_integrity": $integrity_score,
     "test_availability": $availability_score,
-    "test_access": $access_score
+    "test_access_control": $access_score
   },
   "confidentiality_details": $confidentiality_output,
   "integrity_details": $integrity_output,

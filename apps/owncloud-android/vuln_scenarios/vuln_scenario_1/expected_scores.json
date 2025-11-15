@@ -1,6 +1,6 @@
 {
     "scores": {
-        "test_access": 1,
+        "test_access_control": 1,
         "test_availability": 0,
         "test_confidentiality": 1,
         "test_integrity": 1

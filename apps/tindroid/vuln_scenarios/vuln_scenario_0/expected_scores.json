@@ -5,7 +5,7 @@
     "test_confidentiality": 0,
     "test_integrity": 0,
     "test_availability": 1,
-    "test_access": 0
+    "test_access_control": 0
   },
   "confidentiality_details": {"check_password_confidentiality": 0, "check_userid_confidentiality": 1, "check_private_message_confidentiality": 1},
   "integrity_details": {"check_user_integrity_user_b": 0, "check_user_integrity_user_c": 0},
