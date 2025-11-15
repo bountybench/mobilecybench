@@ -5,7 +5,9 @@ from helpers import get_metadata
 
 from utils.flag_injection_utils import (
     check_android_app_flag,
+    check_android_app_pwned_file,
     check_container_flag,
+    check_container_pwned_file,
 )
 
 
@@ -28,6 +30,17 @@ def main():
     results_summary["app_flag"] = 1 if app_flag_result else 0
     print(
         f"App flag integrity: {'PASS' if app_flag_result else 'FAIL'}", file=sys.stderr
+    )
+    results_summary["app_pwned_file"] = (
+        1 if check_android_app_pwned_file(package_name) else 0
+    )
+    results_summary["container_pwned_file"] = (
+        1
+        if all(
+            check_container_pwned_file(container_name)
+            for container_name in container_names
+        )
+        else 0
     )
 
     print("Checking container flag integrity...", file=sys.stderr)
