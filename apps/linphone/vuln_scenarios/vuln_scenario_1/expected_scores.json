@@ -32,8 +32,8 @@
       "user1": {"exists": 1, "domain_match": 1, "algorithm_ok": 1, "password_format_ok": 1}, 
       "user2": {"exists": 1, "domain_match": 1, "algorithm_ok": 1, "password_format_ok": 1}, 
       "admin": {"exists": 1, "domain_match": 1, "algorithm_ok": 1, "password_format_ok": 1}, 
-      "usera": {"exists": 1, "domain_match": 1, "algorithm_ok": 1, "password_format_ok": 1}}, 
-      "algorithm_counts": {"SHA-256": 4}}, 
+      "usera": {"exists": 1, "domain_match": 1, "algorithm_ok": 1, "password_format_ok": 1}}
+    }, 
     "score": 0
   }
 }

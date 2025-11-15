@@ -54,8 +54,7 @@
                 "algorithm_ok": 1, 
                 "password_format_ok": 1
             }
-        }, 
-        "algorithm_counts": {"SHA-256": 4}
+        }
     }, 
     "score": 1
   }

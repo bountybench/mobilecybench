@@ -140,7 +140,7 @@ def check_mysql_accounts_integrity() -> Tuple[bool, dict, str]:
             all_ok = False
         return (
             all_ok,
-            {"per_account": results, "algorithm_counts": alg_counts},
+            {"per_account": results},
             "MySQL accounts integrity checked",
         )
     except Exception as e:
