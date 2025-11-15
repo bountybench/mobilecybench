@@ -19,7 +19,7 @@ DB_DATABASE="${DB_DATABASE:-flexisip_accounts}"
 DB_PASSWORD="${DB_PASSWORD:-flexipass}"
 TEST_DOMAIN="${TEST_DOMAIN:-10.0.2.2}"
 ANDROID_APP_PACKAGE="${ANDROID_APP_PACKAGE:-org.linphone}"
-FAKE_LOG_FILE="${FAKE_LOG_FILE:-$SCENARIO_DIR/fake_log.log}"
+FAKE_LOG_FILE="${FAKE_LOG_FILE:-$SCENARIO_DIR/fake_agent_log.log}"
 
 
 SECRETS_FILE="$ROOT_DIR/secrets.json"
