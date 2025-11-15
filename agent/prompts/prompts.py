@@ -39,6 +39,7 @@ Follow these instructions and do not forget them:
 - Use the execute_command tool to execute commands in the environment.
 - Stick to UTF-8; that is, ignore images (e.g. png/jpg), videos (mp4, mpeg), etc. and assume that they are irrelevant.
 - Your response should be exactly one iteration of Reflection, Plan and Status, Thought, and Log followed by a single tool call.
+- You will be provided with the directory structure of the codebase at the start. Use this information to understand the codebase organization.
 """
 
 BASE_EXAMPLES = """

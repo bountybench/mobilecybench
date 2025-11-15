@@ -4,6 +4,7 @@ import time
 
 from dotenv import load_dotenv
 
+from agent.mcp.direct_tool_executor import MCPToolExecutor
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     AGENT_GOAL,
@@ -41,6 +42,7 @@ class CustomAgent:
         timeout_ms: int = 600_000,
         app_server: str = None,
         network_access: bool = True,
+        package_name: str = None,
     ):
         self.dry_run = dry_run
 
@@ -65,12 +67,14 @@ class CustomAgent:
         self.app_server = app_server
         self.network_access = network_access
         self.app_name = app_name
+        self.package_name = package_name
 
         # Set up MCP configuration
         self.mcp_config = mcp_config or get_mcp_server_config()
 
         # Set up system prompt (skip in dry-run mode)
         self.conversation_id = None
+        self._initial_tree_context = None
         if not self.dry_run:
             if system_prompt:
                 self.system_prompt = {
@@ -91,6 +95,9 @@ class CustomAgent:
             )
             self.conversation_id = conversation.id
             agent_logger.info(f"Created conversation: {self.conversation_id}")
+
+            # Fetch directory tree for initial context (will be added in first turn)
+            self._initial_tree_context = self._get_directory_tree()
 
         # Use shared logger's file name for consistency
         self.log_file = logger_manager.get_agent_log_file_name()
@@ -115,7 +122,7 @@ class CustomAgent:
         prompt_parts = [
             DETECT_DESCRIPTION,
             SEPARATOR,
-            AGENT_GOAL,
+            AGENT_GOAL.format(package_name=self.package_name),
         ]
 
         # Add app server information if network access is enabled and app_server is provided
@@ -155,6 +162,70 @@ class CustomAgent:
             "content": [{"type": "input_text", "text": full_prompt}],
         }
 
+    def _get_directory_tree(self) -> str:
+        """
+        Fetch the directory tree structure (depth 2) from the codebase.
+        Returns empty string if tree cannot be retrieved.
+        """
+        try:
+            agent_logger.info(
+                "Fetching directory tree structure for initial context..."
+            )
+
+            # Use MCPToolExecutor to get the tree output
+            mcp_executor = MCPToolExecutor()
+
+            # Try tree command with depth 2, fallback to ls if tree is not available
+            tree_cmd = "tree -L 2 2>/dev/null || (ls -la . && echo '---' && find . -maxdepth 2 -type d | head -50)"
+            result = mcp_executor.call_tool("execute_command", tree_cmd)
+
+            # Extract the tree output from the result
+            success, tree_output = mcp_executor._extract_result(result)
+
+            if not success:
+                agent_logger.warning(f"Failed to get directory tree: {tree_output}")
+                return ""
+
+            if tree_output:
+                lines = tree_output.split("\n")
+                output_lines = []
+                in_output_section = False
+
+                for line in lines:
+                    if line.strip().startswith("Output:"):
+                        in_output_section = True
+                        continue
+                    if in_output_section:
+                        output_lines.append(line)
+
+                # If we found output section, use it; otherwise use the whole thing (might be just output)
+                if output_lines:
+                    cleaned_output = "\n".join(output_lines).strip()
+                else:
+                    # Maybe the output doesn't have headers, use as-is
+                    cleaned_output = tree_output.strip()
+
+                # Limit output size to avoid token limits (2000 chars should be enough for depth 2)
+                if len(cleaned_output) > 2000:
+                    cleaned_output = cleaned_output[:2000] + "\n... (truncated)"
+
+                if cleaned_output:
+                    agent_logger.info("✓ Directory tree retrieved successfully")
+                    return cleaned_output
+                else:
+                    agent_logger.warning(
+                        "Directory tree output is empty after cleaning"
+                    )
+                    return ""
+            else:
+                agent_logger.warning("Failed to get directory tree: empty output")
+                return ""
+
+        except Exception as e:
+            # Don't fail the agent run if tree command fails
+            agent_logger.warning(f"Failed to get directory tree: {e}")
+            return ""
+
     def run(self) -> dict:
         if self.dry_run:
             agent_logger.info("Dry run: Quick return without execution")
@@ -170,12 +241,31 @@ class CustomAgent:
                 f"{'=' * 20} TURN {turn + 1}/{self.max_iterations} {'=' * 20}"
             )
 
-            agent_logger.info(f"[API CALL - Turn {turn + 1}]")
-            agent_logger.info(f"Model: {self.model}")
-            agent_logger.info(f"Conversation ID: {self.conversation_id}")
             agent_logger.info("-" * 40)
 
-            # conversation_id handles context
+            # Add directory tree context in the first turn using conversations.items.create
+            # This avoids interrupting reasoning by not using input_messages
+            if turn == 0 and self._initial_tree_context:
+                try:
+                    tree_message = {
+                        "type": "message",
+                        "role": "user",
+                        "content": (
+                            "Directory structure of the codebase (depth 2):\n\n"
+                            f"{self._initial_tree_context}\n\n"
+                            "Use this directory structure to understand the codebase organization."
+                        ),
+                    }
+                    self.provider.client.conversations.items.create(
+                        conversation_id=self.conversation_id,
+                        items=[tree_message],
+                    )
+                    agent_logger.info("Directory tree added to conversation")
+                except Exception as e:
+                    agent_logger.warning(
+                        f"Failed to add directory tree to conversation: {e}"
+                    )
+
             if self.screenshot_enabled:
                 try:
                     screenshot_result = take_screenshot()
@@ -305,11 +395,9 @@ class CustomAgent:
 
             # Process response
             assistant_response = resp.output_text
-
             agent_logger.info(f"[API RESPONSE - {len(assistant_response)} chars]")
             agent_logger.info(assistant_response)
             agent_logger.info("-" * 40)
-
             # Log all tool outputs from response
             if hasattr(resp, "tool_outputs") and resp.tool_outputs:
                 agent_logger.info(f"[TOOL OUTPUTS - {len(resp.tool_outputs)} outputs]")
