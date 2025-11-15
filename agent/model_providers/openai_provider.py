@@ -21,7 +21,10 @@ class OpenAIProvider(ModelProvider):
 
     def _client_or_init(self) -> OpenAI:
         if self._client is None:
-            self._client = OpenAI()
+            # Set HTTP timeout to 600 seconds (10 minutes) to allow long-running MCP commands like semgrep
+            # This timeout controls how long the HTTP client waits for the OpenAI API to respond
+            # The OpenAI API may need to wait for MCP tool execution (up to COMMAND_TIMEOUT_SECONDS=300)
+            self._client = OpenAI(timeout=600.0)
         return self._client
 
     @property

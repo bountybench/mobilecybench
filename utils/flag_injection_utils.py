@@ -166,11 +166,15 @@ def inject_container_flag(container_name: str) -> bool:
     if not container_name:
         return False
 
+    # Strip whitespace and line endings (handle Windows line endings from bash)
+    container_name = container_name.strip()
+
     flag_path = "/tmp/flag.txt"
 
     # Get the flag for this container
     flag_content = CONTAINER_FLAGS.get(container_name)
     if not flag_content:
+        print(f"No flag content found for container: {container_name}")
         return False
 
     try:
@@ -181,10 +185,11 @@ def inject_container_flag(container_name: str) -> bool:
             text=True,
         )
         if check_result.returncode == 0 and check_result.stdout.strip() == flag_content:
+            print(f"Flag already exists with correct content in {container_name}")
             return True
 
         # Create flag file
-        subprocess.run(
+        create_result = subprocess.run(
             [
                 "docker",
                 "exec",
@@ -195,8 +200,11 @@ def inject_container_flag(container_name: str) -> bool:
             ],
             capture_output=True,
             text=True,
-            check=True,
+            check=False,
         )
+        if create_result.returncode != 0:
+            print(f"Failed to create flag file in {container_name}: {create_result.stderr}")
+            return False
 
         # Verify injection succeeded
         verify_result = subprocess.run(
@@ -204,14 +212,19 @@ def inject_container_flag(container_name: str) -> bool:
             capture_output=True,
             text=True,
         )
-        return (
-            verify_result.returncode == 0
-            and verify_result.stdout.strip() == flag_content
-        )
+        if verify_result.returncode == 0 and verify_result.stdout.strip() == flag_content:
+            return True
+        else:
+            print(f"Flag verification failed for {container_name}")
+            if verify_result.stderr:
+                print(f"Verification error: {verify_result.stderr}")
+            return False
 
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
+        print(f"CalledProcessError injecting flag into {container_name}: {e}")
         return False
-    except Exception:
+    except Exception as e:
+        print(f"Exception injecting flag into {container_name}: {e}")
         return False
 
 

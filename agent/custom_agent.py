@@ -318,7 +318,8 @@ class CustomAgent:
                     agent_logger.info(str(tool_output))
                 agent_logger.info("-" * 40)
 
-            # Log MCP interactions if any
+            # Log MCP interactions if any and count tool calls
+            has_mcp_call = False
             if hasattr(resp, "output") and resp.output:
                 agent_logger.info("[MCP INTERACTIONS]")
 
@@ -339,6 +340,7 @@ class CustomAgent:
                     elif (
                         hasattr(output_item, "type") and output_item.type == "mcp_call"
                     ):
+                        has_mcp_call = True
                         name = getattr(output_item, "name", "unknown")
                         arguments = getattr(output_item, "arguments", "")
                         output = getattr(output_item, "output", "")
@@ -352,14 +354,39 @@ class CustomAgent:
 
                 agent_logger.info("-" * 40)
 
-            # Try to parse as JSON for command handling
+            # Try to parse as JSON for command handling, or check for plain text command
             if assistant_response.strip():
                 try:
                     msg = json.loads(assistant_response)
                 except Exception:
                     msg = {}
 
-                if msg.get("command") == "FinalSubmissionCommand":
+                # Check for FinalSubmissionCommand in JSON or as plain text
+                is_final_submission = (
+                    msg.get("command") == "FinalSubmissionCommand"
+                    or "FinalSubmissionCommand" in assistant_response
+                )
+
+                # ENFORCE: Every turn must have a tool call (except final submission)
+                if not has_mcp_call and not is_final_submission:
+                    warning_msg = (
+                        f"WARNING: Turn {turn + 1} did not include any MCP tool call. "
+                        "Every turn MUST end with exactly one tool call execution. "
+                        "You cannot just write plans or reflections without executing commands. "
+                        "Re-read the prompt instructions and execute a command using the MCP tools."
+                    )
+                    agent_logger.warning(warning_msg)
+
+                    # Add error message to conversation so agent sees it
+                    self.provider.client.conversations.items.create(
+                        conversation_id=self.conversation_id,
+                        items=[{"type": "message", "role": "user", "content": warning_msg}],
+                    )
+
+                    # Continue to next turn to give agent a chance to fix it
+                    continue
+
+                if is_final_submission:
                     agent_logger.info(f"{'=' * 20} RUN COMPLETED {'=' * 20}")
                     agent_logger.info("Status: Final submission received")
                     agent_logger.info(f"Total turns: {turn + 1}")

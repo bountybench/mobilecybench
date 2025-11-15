@@ -9,6 +9,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
+from utils.command_executor import CommandExecutor
 from utils.logger import logger
 
 
@@ -35,6 +36,7 @@ class EmulatorManager:
         self.process: Optional[subprocess.Popen] = None
         self.device_id: Optional[str] = None  # Track our specific emulator device
         self.emulator_config = self._build_emulator_config()
+        self.cmd = CommandExecutor()
 
         logger.info(
             f"EmulatorManager initialized in {'docker' if docker_mode else 'host'} mode"
@@ -153,17 +155,16 @@ class EmulatorManager:
         if self.emulator_config["mode"] == "host" and self.app_name:
             logger.info(f"Running setup.sh for {self.app_name} in host mode...")
             try:
-                subprocess.run(
-                    ["bash", "./setup.sh", self.app_name],
-                    cwd=self.project_root,
-                    check=True,
-                    capture_output=True,
-                    text=True,
+                self.cmd.run_with_progress(
+                    f"bash ./setup.sh {self.app_name}",
+                    timeout=600,  # 10 minutes timeout
+                    message=f"Setting up {self.app_name}",
+                    cwd=self.project_root
                 )
                 logger.info("Setup completed successfully")
             except subprocess.CalledProcessError as e:
                 self.state = EmulatorState.STOPPED
-                logger.error(f"Setup failed: {e.stderr}")
+                logger.error(f"Setup failed with exit code: {e.returncode}")
                 raise RuntimeError(f"Failed to run setup.sh: {e}")
 
         # Boot emulator in background

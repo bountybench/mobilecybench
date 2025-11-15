@@ -1,0 +1,12 @@
+# Ensure shell scripts always use LF (Unix) line endings
+*.sh text eol=lf
+
+# Ensure Python scripts use LF line endings
+*.py text eol=lf
+
+# Windows batch files should use CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Let Git decide line endings for other text files
+* text=auto

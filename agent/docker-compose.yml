@@ -20,6 +20,7 @@ services:
       - "8000:8000"
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
+      - COMMAND_TIMEOUT_SECONDS=300
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 5s

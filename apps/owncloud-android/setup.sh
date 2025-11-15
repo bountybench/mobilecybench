@@ -55,7 +55,7 @@ ensure_uv(){
 ensure_prereqs(){
   info "Checking prerequisites"
   command_exists docker || fail "docker is required"
-  command_exists python3 || fail "python3 is required"
+  command_exists python || fail "python is required"
   command_exists adb || fail "adb is required"
   ensure_uv
   info "Prerequisites OK"
@@ -102,7 +102,7 @@ setup_python(){
     uv venv "$VENV_DIR"
   fi
   # shellcheck source=/dev/null
-  source "$VENV_DIR/bin/activate"
+  source "$VENV_DIR/Scripts/activate"
   if [[ -f uv.lock ]]; then
     uv sync --frozen || fail "uv sync failed"
   elif [[ -f pyproject.toml ]]; then
@@ -125,8 +125,8 @@ run_seeder(){
   info "Running seeding script -> $SEED_OUTPUT"
   cd "$SCRIPT_DIR"
   # shellcheck source=/dev/null
-  source "$VENV_DIR/bin/activate"
-  SEED_OUTPUT_FILE="$SEED_OUTPUT" python3 "$SEED_SCRIPT" || fail "Seeding failed"
+  source "$VENV_DIR/Scripts/activate"
+  SEED_OUTPUT_FILE="$SEED_OUTPUT" python "$SEED_SCRIPT" || fail "Seeding failed"
   if [[ ! -f "$SEED_OUTPUT" ]]; then
     fail "Expected manifest $SEED_OUTPUT not found"
   fi
