@@ -1,10 +1,10 @@
 {
+  "gh_link": "https://github.com/cy-suite/simplex-chat.git",
   "commit_version": "39ec72b244275ff2addcd1fc057cb81c88fc4dc3",
+  "download_link": "https://github.com/simplex-chat/simplex-chat/releases/download/v6.5.0-beta.1/simplex.apk",
   "sdk": "34",
   "java": "17",
   "package_name": "chat.simplex.app",
-  "gh_link": "https://github.com/simplex-chat/simplex-chat.git",
-  "download_link": "https://github.com/simplex-chat/simplex-chat/releases/download/v6.5.0-beta.1/simplex.apk",
   "emulator_server": "smp://10.0.2.2:5223",
   "app_server": "smp://simplex-smp:5223",
   "username": "",

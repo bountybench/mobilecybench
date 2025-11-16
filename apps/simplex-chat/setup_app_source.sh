@@ -64,7 +64,10 @@ check_prereqs() {
 
 available_abis() {
   local libs_root="$1"
-  mapfile -t AVAILABLE_ABIS < <(
+  AVAILABLE_ABIS=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && AVAILABLE_ABIS+=("$line")
+  done < <(
     find "$libs_root" -mindepth 1 -maxdepth 1 -type d -print0 \
       | xargs -0 -I{} bash -c '
           shopt -s nullglob;
@@ -190,7 +193,9 @@ main() {
   log "Starting SimpleX Chat source build"
   check_prereqs
   ensure_native_libs
-  mapfile -t BUILD_ABIS < <(select_build_abis)
+  local abis_output
+  abis_output=$(select_build_abis)
+  BUILD_ABIS=($abis_output)
   [[ ${#BUILD_ABIS[@]} -gt 0 ]] || fail "No ABIs selected for build"
   local sdk_home
   sdk_home=$(android_home)
