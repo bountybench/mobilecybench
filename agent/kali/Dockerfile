@@ -44,3 +44,6 @@ RUN if [ -L /usr/bin/python3 ]; then rm /usr/bin/python3; fi && \
     ln -s /usr/local/bin/python3.12 /usr/bin/python3 && \
     if [ -L /usr/bin/python ]; then rm /usr/bin/python; fi && \
     ln -s /usr/local/bin/python3.12 /usr/bin/python
+
+# Install semgrep for code analysis
+RUN python3.12 -m pip install semgrep
