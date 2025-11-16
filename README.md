@@ -297,6 +297,7 @@ Additional setup also occurs for the test environment, including checking out th
 # for additional flags
 ./run_ci_local.sh --help
 ```
+- It is best to ensure that Docker is running on your system before you invoke this command.
 
 Quick note on `--skip-apk` flag.
 1. This should not be used for test_simple CI as the purpose of test_simple is to check the apk build/fetch process.
