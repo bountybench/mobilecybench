@@ -364,7 +364,6 @@ class CustomAgent:
                 # Check for FinalSubmissionCommand in JSON or as plain text
                 is_final_submission = (
                     msg.get("command") == "FinalSubmissionCommand"
-                    or "FinalSubmissionCommand" in assistant_response
                 )
 
                 # ENFORCE: Every turn must have a tool call (except final submission)

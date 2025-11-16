@@ -47,9 +47,9 @@ setup_environment() {
         export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
     elif [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
-    else
-        warn "Could not find Java 17 via known paths. Using system default."
-        export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
+    # else
+    #     warn "Could not find Java 17 via known paths. Using system default."
+    #     export JAVA_HOME="$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')"
     fi
     
     export PATH="$JAVA_HOME/bin:$PATH"

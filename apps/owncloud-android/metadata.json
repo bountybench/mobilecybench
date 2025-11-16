@@ -1,6 +1,6 @@
 {
     "gh_link": "https://github.com/cy-suite/owncloud-android-app",
-    "commit_version": "f507b5a",
+    "commit_version": "63309237eb2c32a92ebbbdb67d7521d7627f1c3f",
     "download_link": "https://github.com/owncloud/android/releases/download/oc-android-2.21.2/owncloud_2.21.2-original-release.apk",
     "sdk": "34",
     "java": "17",
