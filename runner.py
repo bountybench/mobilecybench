@@ -661,6 +661,9 @@ class MobileCybenchRunner:
         agent_log_filename = logger_manager.get_agent_log_file_name()
         log_path = Path(agent_log_filename)
         logger.info(f"Agent log file path: {log_path}")
+        # TODO, now that the agent is writing an exploit script, we should run it's exploit in kali
+        # First need to clean up services (restart emulator, reinstall app, restart services)
+        # Run probes, run agent exploit, then run probes again
         self.run_probes_checks(log_file_path=log_path)
 
     def _wait_for_quit_command(self):

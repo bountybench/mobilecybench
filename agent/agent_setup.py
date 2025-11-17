@@ -141,6 +141,10 @@ class AgentEnvironment:
             network_obj = self.client.networks.get(additional_network)
             network_obj.connect(self.container)
 
+        # Create exploit_files directory
+        logger.info("Creating exploit_files directory in container")
+        self.container.exec_run("mkdir -p /app/exploit_files")
+
     def _setup_agent_codebase(self):
         """Create a copy of codebase, prune all branches / future commits, copy into agent env"""
         original_codebase = self.app_dir / "codebase"

@@ -13,9 +13,7 @@ from agent.prompts.prompts import (
     BASE_INSTRUCTIONS,
     BASE_RESPONSE_FORMAT,
     DETECT_DESCRIPTION,
-    SEPARATOR,
     STOP_TOKEN,
-    SUBMISSION_INSTRUCTIONS,
     TARGET_HOST_EXAMPLE,
 )
 from utils.agent_utils import take_screenshot
@@ -74,7 +72,8 @@ class CustomAgent:
 
         # Set up system prompt (skip in dry-run mode)
         self.conversation_id = None
-        self._initial_tree_context = None
+        self._initial_tree_context = self._get_directory_tree()
+
         if not self.dry_run:
             if system_prompt:
                 self.system_prompt = {
@@ -97,7 +96,6 @@ class CustomAgent:
             agent_logger.info(f"Created conversation: {self.conversation_id}")
 
             # Fetch directory tree for initial context (will be added in first turn)
-            self._initial_tree_context = self._get_directory_tree()
 
         # Use shared logger's file name for consistency
         self.log_file = logger_manager.get_agent_log_file_name()
@@ -121,23 +119,18 @@ class CustomAgent:
     def _get_default_system_prompt(self) -> dict:
         prompt_parts = [
             DETECT_DESCRIPTION,
-            SEPARATOR,
-            AGENT_GOAL.format(package_name=self.package_name),
+            AGENT_GOAL.format(
+                package_name=self.package_name, codebase=self._initial_tree_context
+            ),
         ]
 
-        # Add app server information if network access is enabled and app_server is provided
         if self.network_access and self.app_server:
-            prompt_parts.extend(
-                [SEPARATOR, APP_SERVER_ACCESS.format(app_server=self.app_server)]
-            )
+            prompt_parts.extend([APP_SERVER_ACCESS.format(app_server=self.app_server)])
 
         prompt_parts.extend(
             [
-                SEPARATOR,
                 BASE_RESPONSE_FORMAT.format(stop_token=STOP_TOKEN),
-                SEPARATOR,
                 BASE_INSTRUCTIONS.format(stop_token=STOP_TOKEN),
-                SEPARATOR,
                 BASE_EXAMPLES.format(stop_token=STOP_TOKEN),
             ]
         )
@@ -146,14 +139,11 @@ class CustomAgent:
         if self.app_server:
             prompt_parts.extend(
                 [
-                    SEPARATOR,
                     TARGET_HOST_EXAMPLE.format(
                         resolved_host=self.app_server, stop_token=STOP_TOKEN
                     ),
                 ]
             )
-
-        prompt_parts.extend([SEPARATOR, SUBMISSION_INSTRUCTIONS])
 
         full_prompt = "".join(prompt_parts)
 
@@ -242,29 +232,6 @@ class CustomAgent:
             )
 
             agent_logger.info("-" * 40)
-
-            # Add directory tree context in the first turn using conversations.items.create
-            # This avoids interrupting reasoning by not using input_messages
-            if turn == 0 and self._initial_tree_context:
-                try:
-                    tree_message = {
-                        "type": "message",
-                        "role": "user",
-                        "content": (
-                            "Directory structure of the codebase (depth 2):\n\n"
-                            f"{self._initial_tree_context}\n\n"
-                            "Use this directory structure to understand the codebase organization."
-                        ),
-                    }
-                    self.provider.client.conversations.items.create(
-                        conversation_id=self.conversation_id,
-                        items=[tree_message],
-                    )
-                    agent_logger.info("Directory tree added to conversation")
-                except Exception as e:
-                    agent_logger.warning(
-                        f"Failed to add directory tree to conversation: {e}"
-                    )
 
             if self.screenshot_enabled:
                 try:
