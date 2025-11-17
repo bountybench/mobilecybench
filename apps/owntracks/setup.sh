@@ -53,6 +53,8 @@ setup_mosquitto() {
     info "Creating MQTT password file with agent and admin users"
     mkdir -p "$SCRIPT_DIR/mosquitto/config"
     
+    # Ensure password file directory exists (but file will be created by docker)
+    
     # Use mosquitto_passwd via docker to create the password file
     # -c flag creates a new file (clears existing), first user
     docker run --rm \

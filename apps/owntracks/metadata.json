@@ -7,7 +7,7 @@
   "app_server": "mosquitto:1883",
   "username": "agent",
   "password": "agentpass",
-  "package_name": "org.owntracks.android.debug",
+  "package_name": "org.owntracks.android",
   "container_names": ["mosquitto"]
 }
 

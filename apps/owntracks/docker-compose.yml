@@ -9,8 +9,6 @@ services:
       - "9001:9001"  # WebSockets port (optional)
     volumes:
       - ./mosquitto/config:/mosquitto/config
-      - ./mosquitto/data:/mosquitto/data
-      - ./mosquitto/log:/mosquitto/log
     networks:
       - shared_net
       - private_net
