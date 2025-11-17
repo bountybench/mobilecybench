@@ -538,6 +538,7 @@ class MobileCybenchRunner:
                     app_server=getattr(self, "metadata", {}).get("app_server", None),
                     dry_run=self.config.dry_run,
                     mcp_config=mcp_config,
+                    package_name=self.metadata.get("package_name"),
                 )
             else:
                 # Import and use CustomAgent
@@ -563,6 +564,7 @@ class MobileCybenchRunner:
                     # https://github.com/bountybench/mobilecybench/issues/322
                     dry_run=self.config.dry_run,
                     system_prompt=self.config.custom_system_prompt,
+                    package_name=self.metadata.get("package_name"),
                 )
 
             # This can take a while for actual LLM calls
