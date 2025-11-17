@@ -278,7 +278,7 @@ jobs:
           android: false
           dotnet: true
           haskell: true
-          large-packages: false # revert back to true if an app build fails due to disk space
+          large-packages: true # revert back to true if an app build fails due to disk space
           docker-images: true
           swap-storage: true
 
@@ -415,6 +415,17 @@ jobs:
       fail-fast: false
     
     steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true # revert back to true if an app build fails due to disk space
+          docker-images: true
+          swap-storage: true
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -1015,6 +1026,17 @@ jobs:
       fail-fast: false
     
     steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true # revert back to true if an app build fails due to disk space
+          docker-images: true
+          swap-storage: true
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
