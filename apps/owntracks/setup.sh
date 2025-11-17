@@ -3,7 +3,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_PREFIX="[setup]"
-PKG="org.owntracks.android.debug"
 
 info() { printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn() { printf '%s[warn] %s\n' "$LOG_PREFIX" "$*" >&2; }
@@ -16,11 +15,12 @@ load_credentials() {
         fail "metadata.json not found at $metadata_file"
     fi
     
+    PKG=$(jq -r '.package_name' "$metadata_file")
     AGENT_USERNAME=$(jq -r '.username' "$metadata_file")
     AGENT_PASSWORD=$(jq -r '.password' "$metadata_file")
     
-    if [[ -z "$AGENT_USERNAME" || -z "$AGENT_PASSWORD" ]]; then
-        fail "Failed to load agent credentials from metadata.json"
+    if [[ -z "$PKG" || -z "$AGENT_USERNAME" || -z "$AGENT_PASSWORD" ]]; then
+        fail "Failed to load package name or agent credentials from metadata.json"
     fi
     
     # Load non-agent user credentials from secrets.json (for testing scenarios)
@@ -53,7 +53,7 @@ setup_mosquitto() {
     info "Creating MQTT password file with agent and admin users"
     mkdir -p "$SCRIPT_DIR/mosquitto/config"
     
-    # Ensure password file directory exists (but file will be created by docker)
+    # Ensure password file directory exists (file will be created by docker)
     
     # Use mosquitto_passwd via docker to create the password file
     # -c flag creates a new file (clears existing), first user
