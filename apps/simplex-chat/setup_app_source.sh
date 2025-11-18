@@ -10,6 +10,8 @@ APK_SIGNED="${APK_DIR}/simplex-chat.apk"
 KEYSTORE_FILE="$HOME/.android/debug.keystore"
 AVAILABLE_ABIS=()
 
+export SIMPLEX_ANDROID_ABIS=arm64-v8a
+
 log()  { printf '[setup_app_source] %s\n' "$*"; }
 warn() { printf '[setup_app_source][warn] %s\n' "$*" >&2; }
 fail() { printf '[setup_app_source][error] %s\n' "$*" >&2; exit 1; }
