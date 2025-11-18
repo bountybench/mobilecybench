@@ -1,5 +1,5 @@
 {
-  "gh_link": "https://github.com/thunderbird/thunderbird-android",
+  "gh_link": "https://github.com/cy-suite/thunderbird-android-app.git",
   "commit_version": "32a673732e",
   "download_link": "https://f-droid.org/repo/net.thunderbird.android_13.apk",
   "sdk": "34",
@@ -9,5 +9,5 @@
   "username": "usera@test.com",
   "password": "userAPW123",
   "package_name": "net.thunderbird.android",
-  "container_names": ["thunderbird-app", "seeder"]
+  "container_names": ["thunderbird-app"]
 }
