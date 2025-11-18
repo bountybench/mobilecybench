@@ -1,0 +1,13 @@
+{
+  "gh_link": "https://github.com/cy-suite/owntracks-android.git",
+  "commit_version": "e8b01ae5aa378fb6b6404150a692bfd8f9bc5486",
+  "sdk": "34",
+  "java": "21",
+  "emulator_server": "tcp://10.0.2.2:1883",
+  "app_server": "mosquitto:1883",
+  "username": "agent",
+  "password": "agentpass",
+  "package_name": "org.owntracks.android",
+  "container_names": ["mosquitto"]
+}
+
