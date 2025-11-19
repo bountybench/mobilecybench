@@ -7,14 +7,13 @@ import time
 from email import policy
 from email.parser import BytesParser
 from pathlib import Path
- 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 SECRETS_PATH = PROJECT_ROOT / "secrets.json"
 EXPECTED_PATH = (
     PROJECT_ROOT / "vuln_scenarios" / "vuln_scenario_0" / "expected_scores.json"
 )
- 
+
 
 def load_json(p: Path) -> dict:
     """Load and parse a JSON file."""
