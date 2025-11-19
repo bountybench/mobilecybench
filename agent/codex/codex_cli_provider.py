@@ -15,7 +15,10 @@ from utils.logger import logger
 # Create dedicated logger for tool interactions
 tool_logger = logging.getLogger("MobileCyBench.ToolInteractions")
 if not tool_logger.handlers:
-    file_handler = logging.FileHandler("/tmp/mobile_security_analysis.log")
+    # Use platform-independent temp directory
+    log_dir = Path(tempfile.gettempdir())
+    log_file_path = log_dir / "mobile_security_analysis.log"
+    file_handler = logging.FileHandler(log_file_path)
     file_handler.setFormatter(
         logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     )
