@@ -4,6 +4,7 @@ import time
 
 from dotenv import load_dotenv
 
+from agent.agent_helpers import get_directory_tree
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     AGENT_GOAL,
@@ -12,9 +13,7 @@ from agent.prompts.prompts import (
     BASE_INSTRUCTIONS,
     BASE_RESPONSE_FORMAT,
     DETECT_DESCRIPTION,
-    SEPARATOR,
     STOP_TOKEN,
-    SUBMISSION_INSTRUCTIONS,
     TARGET_HOST_EXAMPLE,
 )
 from utils.agent_utils import take_screenshot
@@ -41,6 +40,7 @@ class CustomAgent:
         timeout_ms: int = 600_000,
         app_server: str = None,
         network_access: bool = True,
+        package_name: str = None,
     ):
         self.dry_run = dry_run
 
@@ -65,12 +65,15 @@ class CustomAgent:
         self.app_server = app_server
         self.network_access = network_access
         self.app_name = app_name
+        self.package_name = package_name
 
         # Set up MCP configuration
         self.mcp_config = mcp_config or get_mcp_server_config()
 
         # Set up system prompt (skip in dry-run mode)
         self.conversation_id = None
+        self._initial_tree_context = get_directory_tree()
+
         if not self.dry_run:
             if system_prompt:
                 self.system_prompt = {
@@ -91,6 +94,8 @@ class CustomAgent:
             )
             self.conversation_id = conversation.id
             agent_logger.info(f"Created conversation: {self.conversation_id}")
+
+            # Fetch directory tree for initial context (will be added in first turn)
 
         # Use shared logger's file name for consistency
         self.log_file = logger_manager.get_agent_log_file_name()
@@ -114,23 +119,18 @@ class CustomAgent:
     def _get_default_system_prompt(self) -> dict:
         prompt_parts = [
             DETECT_DESCRIPTION,
-            SEPARATOR,
-            AGENT_GOAL,
+            AGENT_GOAL.format(
+                package_name=self.package_name, codebase=self._initial_tree_context
+            ),
         ]
 
-        # Add app server information if network access is enabled and app_server is provided
         if self.network_access and self.app_server:
-            prompt_parts.extend(
-                [SEPARATOR, APP_SERVER_ACCESS.format(app_server=self.app_server)]
-            )
+            prompt_parts.extend([APP_SERVER_ACCESS.format(app_server=self.app_server)])
 
         prompt_parts.extend(
             [
-                SEPARATOR,
                 BASE_RESPONSE_FORMAT.format(stop_token=STOP_TOKEN),
-                SEPARATOR,
                 BASE_INSTRUCTIONS.format(stop_token=STOP_TOKEN),
-                SEPARATOR,
                 BASE_EXAMPLES.format(stop_token=STOP_TOKEN),
             ]
         )
@@ -139,14 +139,11 @@ class CustomAgent:
         if self.app_server:
             prompt_parts.extend(
                 [
-                    SEPARATOR,
                     TARGET_HOST_EXAMPLE.format(
                         resolved_host=self.app_server, stop_token=STOP_TOKEN
                     ),
                 ]
             )
-
-        prompt_parts.extend([SEPARATOR, SUBMISSION_INSTRUCTIONS])
 
         full_prompt = "".join(prompt_parts)
 
@@ -170,12 +167,8 @@ class CustomAgent:
                 f"{'=' * 20} TURN {turn + 1}/{self.max_iterations} {'=' * 20}"
             )
 
-            agent_logger.info(f"[API CALL - Turn {turn + 1}]")
-            agent_logger.info(f"Model: {self.model}")
-            agent_logger.info(f"Conversation ID: {self.conversation_id}")
             agent_logger.info("-" * 40)
 
-            # conversation_id handles context
             if self.screenshot_enabled:
                 try:
                     screenshot_result = take_screenshot()
@@ -305,11 +298,9 @@ class CustomAgent:
 
             # Process response
             assistant_response = resp.output_text
-
             agent_logger.info(f"[API RESPONSE - {len(assistant_response)} chars]")
             agent_logger.info(assistant_response)
             agent_logger.info("-" * 40)
-
             # Log all tool outputs from response
             if hasattr(resp, "tool_outputs") and resp.tool_outputs:
                 agent_logger.info(f"[TOOL OUTPUTS - {len(resp.tool_outputs)} outputs]")

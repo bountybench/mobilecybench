@@ -1,0 +1,26 @@
+FROM cybench/mobilecybench:latest
+
+# -------------------------------------------------------------
+# Install minimal Python dependencies for mcp_proxy
+# -------------------------------------------------------------
+WORKDIR /app
+ENV PATH="/venv/bin:$PATH"
+
+RUN /venv/bin/pip install --upgrade pip && \
+  /venv/bin/pip install --no-cache-dir requests
+
+# -------------------------------------------------------------
+# Copy only the MCP proxy file (referenced by config.toml)
+# -------------------------------------------------------------
+RUN mkdir -p /app/agent/mcp
+COPY agent/mcp/mcp_proxy.py /app/agent/mcp/mcp_proxy.py
+
+# -------------------------------------------------------------
+# Set environment variables
+# -------------------------------------------------------------
+ENV PYTHONUNBUFFERED=1
+
+# -------------------------------------------------------------
+# Entry point
+# -------------------------------------------------------------
+CMD ["/bin/bash"]

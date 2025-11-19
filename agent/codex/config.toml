@@ -1,0 +1,31 @@
+# Codex CLI Configuration for Containerized Mobile Security Agent
+# This configuration routes MCP calls to the Kali security container
+
+# Model & Provider Settings
+model = "codex-mini-latest"
+model_provider = "openai-responses"
+
+[model_providers.openai-responses]
+name = "OpenAI using Responses API"
+base_url = "https://api.openai.com/v1"
+env_key = "OPENAI_API_KEY"
+wire_api = "responses"
+
+# Sandbox Configuration
+[sandbox_workspace_write]
+network_access = false
+exclude_tmpdir_env_var = false
+exclude_slash_tmp = false
+
+# Shell Environment Policy
+[shell_environment_policy]
+inherit = "core"
+ignore_default_excludes = false
+exclude = ["AWS_*", "AZURE_*", "GCP_*", "*_TOKEN", "*_SECRET", "*_KEY", "*_PASSWORD"]
+
+# MCP Server Configuration - Routes to separate MCP Server Container
+[mcp_servers.mobilecybench_tools]
+command = "python3"
+args = ["/app/agent/mcp/mcp_proxy.py"]
+env = { "MCP_SERVER_URL" = "http://mcp-server:8000", "START_DIR" = "/app/codebase" }
+startup_timeout_ms = 60000

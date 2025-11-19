@@ -7,16 +7,21 @@
   "max_model_response_tokens": 8192,
   "max_context_length": 200000,
   "model": "gpt-5.1-2025-11-13",
+<<<<<<< HEAD
   "screenshot_mode": false,
+=======
+  "screenshot_mode": true,
+>>>>>>> main
   "headless_mode": false,
   "dry_run": false,
   "custom_system_prompt": null,
   "agent_image": "cybench/mobilecybench:latest",
+  "codex_agent_image": "cybench/mobilecybench:codex",
   "docker_mode": false,
   "wait_for_quit": true,
   "allowed_tools": [
     "execute_command",
-    "get_current_ui_state", 
+    "get_current_ui_state",
     "execute_command_with_ui_state"
   ]
 }
