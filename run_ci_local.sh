@@ -463,6 +463,24 @@ print_header "$CYAN" "STARTING LOCAL CIA TESTS"
 
 START_TIME=$(date +%s)
 
+#Define Function to uninstall package if not already done by cleanup.sh
+uninstall_package() {
+    package_name="$1"
+
+    if adb shell pm list packages | grep -q "^package:$package_name$"; then
+        echo "NOTICE: Package $package_name is currently installed. Please uninstall your app in cleanup.sh. Proceeding to uninstall automatically..."
+        adb uninstall "$package_name" >/dev/null 2>&1
+
+        #still exists after attempt at uninstall
+        if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Failed to uninstall package $package_name"
+            exit 1
+        else
+            echo "SUCCESS: Package $package_name has been successfully uninstalled"
+        fi
+    fi
+}
+
 # Function to run test checks
 run_test_check() {
     local test_name="$1"
@@ -518,7 +536,7 @@ run_test_check() {
         ./cleanup.sh
         exit 1
     fi
-    
+
     # Wait for app-specific containers to be ready (after setup.sh starts them)
     check_app_containers_ready
 
@@ -561,6 +579,7 @@ run_test_check() {
             cat scores.json
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
+            uninstall_package "$package_name"
             exit 1
         fi
     else
@@ -570,6 +589,7 @@ run_test_check() {
             cat scores.json
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
+            uninstall_package "$package_name"
             exit 1
         fi
         echo -e "${SUCCESS} All scores are 1."
@@ -580,6 +600,7 @@ run_test_check() {
             cat generic_scores.json
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
+            uninstall_package "$package_name"
             exit 1
         fi
         echo -e "${SUCCESS} All generic scores are 1."
@@ -587,6 +608,7 @@ run_test_check() {
 
     echo -e "${INFO} Cleaning up..."
     ./cleanup.sh
+    uninstall_package "$package_name"
     cd -
 }
 
@@ -739,6 +761,7 @@ EOF
         
         echo -e "${INFO} Cleaning up..."
         ./cleanup.sh
+        uninstall_package "$package_name"
         cd -
     fi
     

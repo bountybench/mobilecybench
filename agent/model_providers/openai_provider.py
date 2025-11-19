@@ -5,6 +5,8 @@ from typing import Any, Dict, Optional, Union
 
 from openai import OpenAI
 
+from utils.logger import agent_logger
+
 from .base import ModelProvider
 
 
@@ -87,4 +89,5 @@ class OpenAIProvider(ModelProvider):
         if extra:
             kwargs.update(extra)
 
+        agent_logger.info(f"OpenAI API request kwargs: {kwargs}")
         return client.responses.create(**kwargs)

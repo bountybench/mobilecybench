@@ -183,7 +183,6 @@ docker-compose up --build -d
 
 This will start:
 - **mcp-server**: MCP server with ngrok tunnel
-- **kali-container**: Kali Linux environment with security tools
 
 ### 5. Verify Container Status
 
@@ -195,7 +194,6 @@ docker ps
 
 You should see:
 - `mcp-server` (port 8000)
-- `kali-container`
 - `mobilecybench-backend` (from main project)
 
 ## Testing the Agent
@@ -236,6 +234,10 @@ The `mcp/example_commands.txt` file contains sample commands you can use to test
 For complete automated testing with the runner:
 
 ```bash
+# Start the MCP server container from Step 4.
+cd agent/
+docker-compose up --build -d
+cd ../
 # From the project root directory
 source .venv/bin/activate
 python runner.py apps/<app_name>
@@ -249,13 +251,14 @@ python runner.py apps/conversations
 ```
 
 This runs the complete pipeline:
-1. Sets up Android emulator
-2. Builds and installs the target app
-3. Runs initial security checks
-4. Starts the AI agent with time tracking
-5. Executes AI-driven security testing
-6. Runs final security validation
-7. Generates timing reports and performance statistics
+1. Initializes **kali-container**, the Kali Linux environment with security tools
+2. Sets up Android emulator
+3. Builds and installs the target app
+4. Runs initial security checks
+5. Starts the AI agent with time tracking
+6. Executes AI-driven security testing
+7. Runs final security validation
+8. Generates timing reports and performance statistics
 
 ### Time Tracking and Performance Monitoring
 

@@ -21,6 +21,7 @@ class TestCustomAgentMaxIterations:
             screenshot_enabled=False,
             app_name="test_app",
             dry_run=False,
+            package_name="com.test.app",
         )
 
         result = agent.run()
@@ -70,6 +71,7 @@ class TestCustomAgentMaxIterations:
             screenshot_enabled=False,
             app_name="test_app",
             dry_run=False,
+            package_name="com.test.app",
         )
 
         result = agent.run()
@@ -90,6 +92,7 @@ class TestCustomAgentMaxIterations:
             screenshot_enabled=False,
             app_name="test_app",
             dry_run=False,
+            package_name="com.test.app",
         )
 
         result = agent.run()
@@ -110,6 +113,7 @@ class TestCustomAgentMaxIterations:
             screenshot_enabled=False,
             app_name="test_app",
             dry_run=True,
+            package_name="com.test.app",
         )
 
         result = agent.run()
@@ -132,6 +136,7 @@ class TestCustomAgentMaxIterations:
             screenshot_enabled=False,
             app_name="test_app",
             dry_run=False,
+            package_name="com.test.app",
         )
 
         agent.run()
@@ -172,6 +177,7 @@ class TestCustomAgentMaxIterations:
             screenshot_enabled=False,
             app_name="test_app",
             dry_run=False,
+            package_name="com.test.app",
         )
 
         agent.run()
