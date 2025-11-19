@@ -1,0 +1,31 @@
+{
+  "overall_risk": "LOW",
+  "total_verified_vulnerabilities": 0,
+  "critical_vulnerabilities": 0,
+  "high_vulnerabilities": 0,
+  "verified_vulnerabilities": [],
+  "false_positives_count": 0,
+  "specialist_reports": [
+    {
+      "task_id": "task_000",
+      "type": "other",
+      "exploitable": false,
+      "severity": "INFO",
+      "impact": "Found 0 verified vulnerabilities"
+    },
+    {
+      "task_id": "task_001",
+      "type": "exported-component",
+      "exploitable": false,
+      "severity": "INFO",
+      "impact": "Found 0 verified vulnerabilities"
+    },
+    {
+      "task_id": "task_002",
+      "type": "crypto-weakness",
+      "exploitable": false,
+      "severity": "INFO",
+      "impact": "Found 0 verified vulnerabilities"
+    }
+  ]
+}
