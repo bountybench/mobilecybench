@@ -1,13 +1,35 @@
 {
-  "gh_link": "https://github.com/cy-suite/thunderbird-android-app.git",
-  "commit_version": "32a673732e",
-  "download_link": "https://f-droid.org/repo/net.thunderbird.android_13.apk",
-  "sdk": "34",
-  "java": "21",
-  "emulator_server": "10.0.2.2:993",
-  "app_server": "thunderbird-app:993",
-  "username": "usera@test.com",
-  "password": "userAPW123",
-  "package_name": "net.thunderbird.android",
-  "container_names": ["thunderbird-app"]
+	"gh_link": "https://github.com/cy-suite/thunderbird-android-app.git",
+	"commit_version": "32a673732e",
+	"download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-thunderbird-v0/app-thunderbird-full-release.apk",
+	"sdk": "34",
+	"java": "21",
+	"emulator_server": "10.0.2.2:993",
+	"app_server": "thunderbird-app:993",
+	"username": "usera@test.com",
+	"password": "userAPW123",
+	"package_name": "net.thunderbird.android",
+	"container_names": ["thunderbird-app"],
+	"additional_info": {
+		"incoming_server": {
+			"type": "imap",
+			"host": "10.0.2.2",
+			"port": 993,
+			"security": "SSL_TLS_REQUIRED",
+			"username": "usera@test.com",
+			"password": "userAPW123"
+		},
+		"outgoing_server": {
+			"type": "smtp",
+			"host": "10.0.2.2",
+			"port": 465,
+			"security": "SSL_TLS_REQUIRED",
+			"username": "usera@test.com",
+			"password": "userAPW123"
+		},
+		"account_config": {
+			"email": "usera@test.com",
+			"display_name": "User A"
+		}
+	}
 }

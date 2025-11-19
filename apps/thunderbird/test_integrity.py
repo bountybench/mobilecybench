@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import imaplib
 import json
+import ssl
 import sys
+import time
 from email import policy
 from email.parser import BytesParser
 from pathlib import Path
@@ -18,13 +20,48 @@ def load_json(p: Path) -> dict:
         return json.load(f)
 
 
+def tls_ctx():
+    """Create SSL context with disabled verification for self-signed certs."""
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
+def retry_operation(func, max_retries=3, delay=0.5):
+    """Retry an operation with exponential backoff."""
+    last_exception = None
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except (OSError, imaplib.IMAP4.error, imaplib.IMAP4.abort) as e:
+            last_exception = e
+            if attempt < max_retries - 1:
+                sleep_time = delay * (2**attempt)
+                time.sleep(sleep_time)
+            continue
+    raise last_exception
+
+
 def imap_login(host: str, port: int, user: str, pw: str) -> imaplib.IMAP4_SSL:
-    conn = imaplib.IMAP4_SSL(host, port)
-    status, _ = conn.login(user, pw)
-    if status != "OK":
-        raise RuntimeError("IMAP login failed")
-    conn.select("INBOX")
-    return conn
+    def _connect():
+        conn = imaplib.IMAP4_SSL(host, port, ssl_context=tls_ctx())
+        try:
+            status, _ = conn.login(user, pw)
+            if status != "OK":
+                raise RuntimeError("IMAP login failed")
+            status, _ = conn.select("INBOX")
+            if status != "OK":
+                raise RuntimeError("Failed to select INBOX")
+            return conn
+        except Exception:
+            try:
+                conn.logout()
+            except Exception:
+                pass
+            raise
+
+    return retry_operation(_connect, max_retries=3, delay=0.5)
 
 
 def search_by_msgid(conn: imaplib.IMAP4_SSL, msgid_raw: str):

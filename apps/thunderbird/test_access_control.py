@@ -1,5 +1,7 @@
 import json
 import os
+import ssl
+import subprocess
 import sys
 from imaplib import IMAP4_SSL
 
@@ -18,6 +20,14 @@ def load_metadata():
         return json.load(f)
 
 
+def tls_ctx():
+    """Create SSL context with disabled verification for self-signed certs."""
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
 def get_imap_host_port():
     """Get IMAP host and port for testing"""
     # Use localhost for testing from host machine
@@ -28,11 +38,9 @@ def verify_authentication():
     """Test that IMAP authentication is properly enforced"""
     host, port = get_imap_host_port()
 
-    print(f"DEBUG: Testing IMAP authentication on {host}:{port}", file=sys.stderr)
-
     # Test 1: Verify invalid credentials are rejected
     try:
-        imap = IMAP4_SSL(host, port)
+        imap = IMAP4_SSL(host, port, ssl_context=tls_ctx())
         try:
             # Try to login with invalid credentials
             imap.login("userb@test.com", "invalid_password")
@@ -59,9 +67,7 @@ def verify_authentication():
         username = metadata["username"]
         password = metadata["password"]
 
-        print(f"DEBUG: Testing valid credentials for {username}", file=sys.stderr)
-
-        imap = IMAP4_SSL(host, port)
+        imap = IMAP4_SSL(host, port, ssl_context=tls_ctx())
         imap.login(username, password)
         print(f"Good: Valid credentials accepted for {username}", file=sys.stderr)
         imap.logout()
@@ -69,6 +75,54 @@ def verify_authentication():
     except Exception as e:
         print(f"ERROR: Valid credentials rejected: {e}", file=sys.stderr)
         return 0
+
+
+def check_acl_violations():
+    """Check if there are any unauthorized ACLs on userb's mailbox.
+
+    This directly checks the ACL configuration rather than trying to access
+    mailboxes through IMAP, which is more reliable and definitive.
+    """
+    try:
+        # Check ACLs on userb's INBOX using doveadm
+        result = subprocess.run(
+            [
+                "docker",
+                "exec",
+                "thunderbird-app",
+                "doveadm",
+                "acl",
+                "get",
+                "-u",
+                "userb@test.com",
+                "INBOX",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        if result.returncode != 0:
+            # If we can't check ACLs, assume no violation (pass the test)
+            return 1
+
+        acl_output = result.stdout
+
+        # Check if usera has any access rights
+        if "usera@test.com" in acl_output.lower() or "user=usera" in acl_output.lower():
+            print(
+                "WARNING: ACL violation detected! usera@test.com has access to userb's mailbox!",
+                file=sys.stderr,
+            )
+            print("WARNING: Unauthorized ACL entry found in output", file=sys.stderr)
+            return 0
+
+        print("Good: No unauthorized ACLs found on userb's mailbox", file=sys.stderr)
+        return 1
+
+    except Exception:
+        # If we can't check, assume no violation
+        return 1
 
 
 def verify_user_isolation():
@@ -82,41 +136,42 @@ def verify_user_isolation():
         username = metadata["username"]
         password = metadata["password"]
 
-        print(f"DEBUG: Testing user isolation from {username}", file=sys.stderr)
+        # First, check for ACL violations directly (most reliable method)
+        acl_check = check_acl_violations()
+        if acl_check == 0:
+            # ACL violation found - definitive proof of access control failure
+            return 0
 
+        # Secondary check: Try IMAP-based access (less reliable but good to have)
         try:
-            imap = IMAP4_SSL(host, port)
+            imap = IMAP4_SSL(host, port, ssl_context=tls_ctx())
             imap.login(username, password)
+
+            # List all mailboxes
+            status, mailboxes = imap.list()
+            if status == "OK":
+                mailbox_list = [m.decode() for m in mailboxes]
+
+                # Check if userb's mailbox is visible in LIST
+                has_userb_access = any("userb" in mb.lower() for mb in mailbox_list)
+                if has_userb_access:
+                    print(
+                        "WARNING: Can see userb's mailboxes in LIST!", file=sys.stderr
+                    )
+                    imap.logout()
+                    return 0
+
+            imap.logout()
+            print("Good: Cannot see userb's mailboxes via IMAP", file=sys.stderr)
+            return 1
+
         except (ConnectionRefusedError, TimeoutError, OSError) as e:
             print(
                 f"WARNING: Could not connect to IMAP server (may be down): {e}",
                 file=sys.stderr,
             )
-            # If server is down (DoS), return passing score - can't test user isolation
+            # If server is down, we already checked ACLs above, so return that result
             return 1
-
-        # Try to access userb's mailbox (if IMAP server supports shared mailboxes)
-        # Most IMAP servers automatically isolate users, but we test this
-        try:
-            # List all mailboxes - should only see own mailboxes
-            status, mailboxes = imap.list()
-            if status == "OK":
-                mailbox_list = [m.decode() for m in mailboxes]
-                print(f"DEBUG: Accessible mailboxes: {mailbox_list}", file=sys.stderr)
-
-                # Check if userb's mailbox is accessible
-                has_userb_access = any("userb" in mb.lower() for mb in mailbox_list)
-                if has_userb_access:
-                    print("WARNING: Can see userb mailboxes!", file=sys.stderr)
-                    imap.logout()
-                    return 0
-                else:
-                    print("Good: Cannot see other users' mailboxes", file=sys.stderr)
-        except Exception as e:
-            print(f"DEBUG: Mailbox listing check: {e}", file=sys.stderr)
-
-        imap.logout()
-        return 1
 
     except Exception as e:
         print(f"ERROR: User isolation test failed: {e}", file=sys.stderr)

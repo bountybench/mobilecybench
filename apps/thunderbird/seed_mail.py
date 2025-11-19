@@ -7,9 +7,8 @@ import random
 import smtplib
 import ssl
 import sys
+import time
 from pathlib import Path
-
-print("SEED_MAIL: Starting seeding...")
 
 # =========================
 # Mail server configuration
@@ -60,19 +59,53 @@ def normalize_msgid(msgid: str) -> str:
     return f"<{mid}>"
 
 
+def retry_imap_operation(func, max_retries=3, delay=0.5):
+    """Retry an IMAP operation with exponential backoff.
+
+    Args:
+        func: Callable that performs the IMAP operation
+        max_retries: Maximum number of retry attempts
+        delay: Initial delay in seconds between retries
+
+    Returns:
+        The result from func() if successful
+
+    Raises:
+        The last exception if all retries fail
+    """
+    last_exception = None
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except (OSError, imaplib.IMAP4.error) as e:
+            last_exception = e
+            if attempt < max_retries - 1:
+                sleep_time = delay * (2**attempt)
+                time.sleep(sleep_time)
+            continue
+    # All retries failed
+    raise last_exception
+
+
 def has_msg(user_email: str, password: str, msgid: str) -> bool:
     """Check if INBOX already contains a message with this Message-ID."""
     mid = normalize_msgid(msgid)
     # For IMAP SEARCH we match without the outer <>, so strip for the query string.
     search_mid = mid[1:-1]
-    try:
+
+    def _check():
         with imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT, ssl_context=tls_ctx()) as m:
             m.login(user_email, password)
             m.select("INBOX")
-            typ, data = m.search(None, f'(HEADER Message-ID "{search_mid}")')
+            # Use proper imaplib.search() syntax: separate arguments for HEADER search
+            typ, data = m.search(None, "HEADER", "Message-ID", search_mid)
+            if typ != "OK":
+                return False
             return bool(data and data[0].strip())
-    except Exception as e:
-        print(f"Error checking for message {mid}: {e}")
+
+    try:
+        return retry_imap_operation(_check, max_retries=2, delay=0.3)
+    except Exception:
         return False
 
 
@@ -80,11 +113,13 @@ def delete_msg(user_email: str, password: str, msgid: str) -> bool:
     """Delete all messages with this Message-ID from INBOX."""
     mid = normalize_msgid(msgid)
     search_mid = mid[1:-1]
-    try:
+
+    def _delete():
         with imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT, ssl_context=tls_ctx()) as m:
             m.login(user_email, password)
             m.select("INBOX")
-            typ, data = m.search(None, f'(HEADER Message-ID "{search_mid}")')
+            # Use proper imaplib.search() syntax: separate arguments for HEADER search
+            typ, data = m.search(None, "HEADER", "Message-ID", search_mid)
             if typ == "OK" and data and data[0].strip():
                 msg_ids = data[0].split()
                 for msg_id in msg_ids:
@@ -93,8 +128,10 @@ def delete_msg(user_email: str, password: str, msgid: str) -> bool:
                 print(f"Deleted {len(msg_ids)} message(s) with Message-ID {mid}")
                 return True
             return False
-    except Exception as e:
-        print(f"Error deleting message {mid}: {e}")
+
+    try:
+        return retry_imap_operation(_delete, max_retries=2, delay=0.3)
+    except Exception:
         return False
 
 
@@ -125,17 +162,16 @@ def send_self(
         with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=tls_ctx()) as s:
             s.login(user_email, password)
             s.sendmail(user_email, [user_email], raw.encode("utf-8"))
-    except Exception as e:
-        print(f"Error sending email (Message-ID {mid}): {e}")
+        return True
+    except Exception:
         return False
-    return True
 
 
 # =========================
 # Generators for non-integrity seeds (unchanged behavior)
 # =========================
-def generate_message_id(user, category):
-    """Generate a unique message ID based on user and category."""
+def generate_message_id(_user, category):
+    """Generate a unique message ID based on category (user parameter unused but kept for API compatibility)."""
     random_part = "".join(random.choices("abcdefghijklmnopqrstuvwxyz0123456789", k=8))
     return f"<{category}-{random_part}@test.com>"
 
@@ -262,8 +298,7 @@ def seed_integrity_email_with_attachment(
             f"Seeded attachment email ({msgid_key}) for {user_email} with Message-ID {msgid}"
         )
         return True
-    except Exception as e:
-        print(f"Error sending attachment email (Message-ID {msgid}): {e}")
+    except Exception:
         return False
 
 

@@ -1,10 +1,34 @@
 #!/usr/bin/env python3
 """
 Grant unauthorized access to userb's mailbox for usera.
-This violates user isolation and causes access control test to fail.
+
+This script creates an access control violation by using Dovecot's ACL feature
+to grant usera access to userb's mailbox, which should cause the access control
+tests to fail.
 """
 import subprocess
 import sys
+
+
+def check_container_running(container_name):
+    """Check if the specified docker container is running."""
+    try:
+        result = subprocess.run(
+            [
+                "docker",
+                "ps",
+                "--filter",
+                f"name={container_name}",
+                "--format",
+                "{{.Names}}",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return container_name in result.stdout
+    except Exception:
+        return False
 
 
 def grant_mailbox_access():
@@ -14,30 +38,49 @@ def grant_mailbox_access():
     """
     container_name = "thunderbird-app"
 
-    # Grant usera lookup and read permissions on userb's INBOX
-    # 'l' = lookup (mailbox is visible in LIST)
-    # 'r' = read (can SELECT and read messages)
+    # Check if container is running
+    if not check_container_running(container_name):
+        print(
+            f"[-] Error: Container '{container_name}' is not running", file=sys.stderr
+        )
+        print(
+            "[-] Please run './setup.sh' first to start the mail server",
+            file=sys.stderr,
+        )
+        return False
+
+    # Grant usera lookup and read permissions on userb's INBOX using doveadm acl add
+    # Dovecot ACL rights:
+    #   lookup = mailbox is visible in LIST
+    #   read   = can SELECT and read messages
+    #   write-seen = can mark messages as read
+    #   write = can change flags
+    #   insert = can append messages
+    #
+    # Using 'doveadm acl add' instead of 'set' and full right names
     cmd = [
-        "docker", "exec", container_name,
-        "doveadm", "acl", "set",
-        "-u", "userb@test.com",
+        "docker",
+        "exec",
+        container_name,
+        "doveadm",
+        "acl",
+        "add",
+        "-u",
+        "userb@test.com",
         "INBOX",
-        "user=usera@test.com", "lr"
+        "user=usera@test.com",
+        "lookup",
+        "read",
     ]
 
-    print(f"[*] Granting usera@test.com access to userb@test.com's INBOX...")
+    print("[*] Granting usera@test.com access to userb@test.com's INBOX...")
     print(f"[*] Running: {' '.join(cmd)}")
 
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
 
         print("[+] Successfully granted unauthorized access!")
-        print(f"[+] usera@test.com can now see userb@test.com's mailbox")
+        print("[+] usera@test.com can now see userb@test.com's mailbox")
 
         if result.stdout:
             print(f"[*] stdout: {result.stdout}")
@@ -63,23 +106,23 @@ def verify_access():
     container_name = "thunderbird-app"
 
     cmd = [
-        "docker", "exec", container_name,
-        "doveadm", "acl", "get",
-        "-u", "userb@test.com",
-        "INBOX"
+        "docker",
+        "exec",
+        container_name,
+        "doveadm",
+        "acl",
+        "get",
+        "-u",
+        "userb@test.com",
+        "INBOX",
     ]
 
-    print(f"\n[*] Verifying ACL settings...")
+    print("\n[*] Verifying ACL settings...")
 
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
 
-        print(f"[+] Current ACLs for userb@test.com INBOX:")
+        print("[+] Current ACLs for userb@test.com INBOX:")
         print(result.stdout)
 
         if "usera@test.com" in result.stdout:
