@@ -187,32 +187,6 @@ install_thunderbird() {
   echo "App installed successfully."
 }
 
-synch_with_server() {
-  echo "Syncing with server via uiautomator2..."
-  
-  # Check for device/emulator with timeout
-  echo "Waiting for device/emulator (max 30s)..."
-  timeout 30 bash -c 'until adb devices | grep -q "device\|emulator"; do sleep 1; done' || {
-    echo "ERROR: No emulator/device available after waiting. Skipping sync step."
-    return 0
-  }
-  
-  cd "$SCRIPT_DIR"
-  pip install -q uiautomator2
-  USERNAME="$(jq -r '.username' metadata.json)"
-  PASSWORD="$(jq -r '.password' metadata.json)"
-  
-  # In CI environment, use a timeout for the sync operation
-  if [ -n "${CI:-}" ]; then
-    echo "Running sync in CI environment (with 60s timeout)..."
-    timeout 60 python synch_app.py --username "$USERNAME" --password "$PASSWORD" || {
-      echo "WARNING: Sync operation timed out or failed in CI environment"
-      return 0
-    }
-  else
-    python synch_app.py --username "$USERNAME" --password "$PASSWORD"
-  fi
-}
 
 launch_thunderbird() {
   echo "Launching Thunderbird..." 
@@ -237,7 +211,6 @@ main() {
   # commented out for CI 
   # install_thunderbird
   # launch_thunderbird
-  # synch_with_server
   echo "Setup complete!"
 }
 
