@@ -67,3 +67,6 @@
 [submodule "apps/owntracks/codebase"]
 	path = apps/owntracks/codebase
 	url = https://github.com/cy-suite/owntracks-android.git
+[submodule "apps/grocy/codebase"]
+	path = apps/grocy/codebase
+	url = git@github.com:cy-suite/grocy.git

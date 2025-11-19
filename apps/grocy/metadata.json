@@ -1,0 +1,13 @@
+{
+  "gh_link": "https://github.com/cy-suite/grocy",
+  "commit_version": "8be08c9",
+  "sdk": "35",
+  "java": "17",
+  "package_name": "xyz.zedler.patrick.grocy",
+  "emulator_server": "http://10.0.2.2:9283",
+  "app_server": "http://grocy-app:80",
+  "username": "agent",
+  "password": "agentpass",
+  "container_names": ["grocy-app"]
+}
+

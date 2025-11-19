@@ -1,0 +1,34 @@
+services:
+  grocy:
+    image: lscr.io/linuxserver/grocy:latest
+    container_name: grocy-app
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+    ports:
+      - "9283:80"
+    volumes:
+      - grocy_data:/config
+    restart: unless-stopped
+    networks:
+      - shared_net
+      - private_net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  grocy_data:
+    driver: local
+
+networks:
+  shared_net:
+    external: true
+  private_net:
+    driver: bridge
+
+
