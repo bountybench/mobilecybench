@@ -1,0 +1,25 @@
+services:
+  grocy-server:
+    container_name: grocy-server
+    image: lscr.io/linuxserver/grocy:latest
+    ports:
+      - 8080:80
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - ./files/config:/config
+    networks:
+      - private_net
+      - shared_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 5s
+      timeout: 10s
+      retries: 3
+
+networks:
+  shared_net:
+    external: true
+  private_net:
