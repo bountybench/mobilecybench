@@ -22,31 +22,39 @@ def detect_provider_from_model(model: str) -> str:
     model_lower = model.lower()
 
     # Gemini models
-    if any(prefix in model_lower for prefix in [
-        'gemini',
-        'gemma',
-        'learnlm',
-        'imagen',
-    ]):
+    if any(
+        prefix in model_lower
+        for prefix in [
+            "gemini",
+            "gemma",
+            "learnlm",
+            "imagen",
+        ]
+    ):
         return "gemini"
 
     # OpenAI models
-    if any(prefix in model_lower for prefix in [
-        'gpt',
-        'o1',
-        'o3',
-        'davinci',
-        'curie',
-        'babbage',
-        'ada',
-    ]):
+    if any(
+        prefix in model_lower
+        for prefix in [
+            "gpt",
+            "o1",
+            "o3",
+            "davinci",
+            "curie",
+            "babbage",
+            "ada",
+        ]
+    ):
         return "openai"
 
     # Default to OpenAI for unknown models
     return "openai"
 
 
-def get_model_provider(name: ProviderName | None = None, model: str | None = None) -> ModelProvider:
+def get_model_provider(
+    name: ProviderName | None = None, model: str | None = None
+) -> ModelProvider:
     """Return a model provider instance based on name or model.
 
     Args:

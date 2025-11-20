@@ -23,6 +23,7 @@ class GeminiConversationsAPI:
     def create(self, metadata=None, items=None):
         """Create a new conversation."""
         import uuid
+
         conv_id = str(uuid.uuid4())
 
         # Convert items to proper format if provided
@@ -33,11 +34,11 @@ class GeminiConversationsAPI:
                     formatted_items.append(item)
 
         self._conversations[conv_id] = {
-            'id': conv_id,
-            'metadata': metadata or {},
-            'items': formatted_items
+            "id": conv_id,
+            "metadata": metadata or {},
+            "items": formatted_items,
         }
-        return type('Conversation', (), {'id': conv_id})()
+        return type("Conversation", (), {"id": conv_id})()
 
     def delete(self, conversation_id):
         """Delete a conversation."""
@@ -60,22 +61,20 @@ class GeminiConversationItems:
         """Create a conversation item (e.g., add screenshot)."""
         if conversation_id in self._conversations:
             item_id = f"item-{len(self._conversations[conversation_id]['items'])}"
-            item = {
-                'id': item_id,
-                'input': input
-            }
-            self._conversations[conversation_id]['items'].append(item)
-            return type('Response', (), {
-                'items': [type('Item', (), {'id': item_id})()]
-            })()
+            item = {"id": item_id, "input": input}
+            self._conversations[conversation_id]["items"].append(item)
+            return type(
+                "Response", (), {"items": [type("Item", (), {"id": item_id})()]}
+            )()
         return None
 
     def delete(self, conversation_id, item_id):
         """Delete a conversation item."""
         if conversation_id in self._conversations:
-            self._conversations[conversation_id]['items'] = [
-                item for item in self._conversations[conversation_id]['items']
-                if item.get('id') != item_id
+            self._conversations[conversation_id]["items"] = [
+                item
+                for item in self._conversations[conversation_id]["items"]
+                if item.get("id") != item_id
             ]
 
 
@@ -99,8 +98,12 @@ class GeminiProvider(ModelProvider):
         self._mock_client = GeminiClient()
         self._mcp_request_id = 0  # JSON-RPC request ID counter for MCP calls
         self._gemini_call_id = 0  # Counter for unique Gemini response IDs
-        self._max_tool_rounds = max_tool_rounds_per_turn  # Allow multiple tool calls per turn
-        self._tool_cache: Dict[str, list] = {}  # Cache for MCP tool definitions by server URL
+        self._max_tool_rounds = (
+            max_tool_rounds_per_turn  # Allow multiple tool calls per turn
+        )
+        self._tool_cache: Dict[str, list] = (
+            {}
+        )  # Cache for MCP tool definitions by server URL
 
     @property
     def client(self):
@@ -175,38 +178,42 @@ class GeminiProvider(ModelProvider):
         # Build conversation history if conversation_id is provided
         contents = []
 
-        if conversation_id and conversation_id in self._mock_client.conversations._conversations:
+        if (
+            conversation_id
+            and conversation_id in self._mock_client.conversations._conversations
+        ):
             # Get conversation history
             conv = self._mock_client.conversations._conversations[conversation_id]
-            for item in conv.get('items', []):
-                if isinstance(item, dict) and 'role' in item and 'content' in item:
-                    role = item['role']
-                    content_data = item['content']
+            for item in conv.get("items", []):
+                if isinstance(item, dict) and "role" in item and "content" in item:
+                    role = item["role"]
+                    content_data = item["content"]
 
                     # Convert to Gemini Content format
                     if isinstance(content_data, str):
-                        contents.append({
-                            "role": "user" if role == "system" else role,
-                            "parts": [{"text": content_data}]
-                        })
+                        contents.append(
+                            {
+                                "role": "user" if role == "system" else role,
+                                "parts": [{"text": content_data}],
+                            }
+                        )
                     elif isinstance(content_data, list):
                         text_parts = []
                         for part in content_data:
-                            if isinstance(part, dict) and 'text' in part:
-                                text_parts.append(part['text'])
+                            if isinstance(part, dict) and "text" in part:
+                                text_parts.append(part["text"])
                         if text_parts:
-                            contents.append({
-                                "role": "user" if role == "system" else role,
-                                "parts": [{"text": " ".join(text_parts)}]
-                            })
+                            contents.append(
+                                {
+                                    "role": "user" if role == "system" else role,
+                                    "parts": [{"text": " ".join(text_parts)}],
+                                }
+                            )
 
         # Add new input message
         if input_messages is not None:
             if isinstance(input_messages, str):
-                contents.append({
-                    "role": "user",
-                    "parts": [{"text": input_messages}]
-                })
+                contents.append({"role": "user", "parts": [{"text": input_messages}]})
             elif isinstance(input_messages, list):
                 # Extract text from message format
                 prompt_parts = []
@@ -224,10 +231,9 @@ class GeminiProvider(ModelProvider):
                             prompt_parts.append(msg["text"])
 
                 if prompt_parts:
-                    contents.append({
-                        "role": "user",
-                        "parts": [{"text": "\n".join(prompt_parts)}]
-                    })
+                    contents.append(
+                        {"role": "user", "parts": [{"text": "\n".join(prompt_parts)}]}
+                    )
             else:
                 raise ValueError("input_messages must be a string or list")
 
@@ -251,14 +257,13 @@ class GeminiProvider(ModelProvider):
 
         # Create model instance with tools if available
         if gemini_tools:
-            gemini_model = genai.GenerativeModel(
-                model,
-                tools=gemini_tools
-            )
+            gemini_model = genai.GenerativeModel(model, tools=gemini_tools)
         else:
             gemini_model = genai.GenerativeModel(model)
 
-        agent_logger.info(f"Gemini API request: model={model}, contents_count={len(contents)}, tools={len(gemini_tools) if gemini_tools else 0}")
+        agent_logger.info(
+            f"Gemini API request: model={model}, contents_count={len(contents)}, tools={len(gemini_tools) if gemini_tools else 0}"
+        )
 
         try:
             # Increment call ID for unique tracking
@@ -280,11 +285,13 @@ class GeminiProvider(ModelProvider):
             while tool_round < self._max_tool_rounds:
                 # Check if response contains function calls
                 has_function_call = False
-                if hasattr(response, 'candidates') and len(response.candidates) > 0:
+                if hasattr(response, "candidates") and len(response.candidates) > 0:
                     candidate = response.candidates[0]
-                    if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                    if hasattr(candidate, "content") and hasattr(
+                        candidate.content, "parts"
+                    ):
                         for part in candidate.content.parts:
-                            if hasattr(part, 'function_call') and part.function_call:
+                            if hasattr(part, "function_call") and part.function_call:
                                 has_function_call = True
                                 break
 
@@ -293,30 +300,38 @@ class GeminiProvider(ModelProvider):
                     break
 
                 tool_round += 1
-                agent_logger.info(f"Tool calling round {tool_round}/{self._max_tool_rounds}")
+                agent_logger.info(
+                    f"Tool calling round {tool_round}/{self._max_tool_rounds}"
+                )
 
                 # Execute function calls and collect results
                 function_responses = []
                 candidate = response.candidates[0]
                 for part in candidate.content.parts:
-                    if hasattr(part, 'function_call') and part.function_call:
+                    if hasattr(part, "function_call") and part.function_call:
                         fc = part.function_call
                         function_name = fc.name
-                        function_args = dict(fc.args) if hasattr(fc, 'args') else {}
+                        function_args = dict(fc.args) if hasattr(fc, "args") else {}
 
                         agent_logger.info(f"Executing function: {function_name}")
-                        agent_logger.info(f"Function arguments: {json.dumps(function_args)}")
+                        agent_logger.info(
+                            f"Function arguments: {json.dumps(function_args)}"
+                        )
 
                         # Execute via MCP if server URL is available
                         if mcp_server_url:
-                            mcp_result = self._execute_mcp_tool(mcp_server_url, function_name, function_args)
+                            mcp_result = self._execute_mcp_tool(
+                                mcp_server_url, function_name, function_args
+                            )
 
                             # Track full MCP result for final response
-                            mcp_calls_made.append({
-                                'name': function_name,
-                                'arguments': function_args,
-                                'output': mcp_result
-                            })
+                            mcp_calls_made.append(
+                                {
+                                    "name": function_name,
+                                    "arguments": function_args,
+                                    "output": mcp_result,
+                                }
+                            )
 
                             # Extract simplified result for Gemini
                             # MCP returns: {"content": [...], "structuredContent": {"result": "..."}}
@@ -327,11 +342,18 @@ class GeminiProvider(ModelProvider):
                                 if "structuredContent" in mcp_result:
                                     gemini_result = mcp_result["structuredContent"]
                                 # Fallback: extract text from content array
-                                elif "content" in mcp_result and isinstance(mcp_result["content"], list):
+                                elif "content" in mcp_result and isinstance(
+                                    mcp_result["content"], list
+                                ):
                                     if len(mcp_result["content"]) > 0:
                                         first_item = mcp_result["content"][0]
-                                        if isinstance(first_item, dict) and "text" in first_item:
-                                            gemini_result = {"result": first_item["text"]}
+                                        if (
+                                            isinstance(first_item, dict)
+                                            and "text" in first_item
+                                        ):
+                                            gemini_result = {
+                                                "result": first_item["text"]
+                                            }
                                         else:
                                             gemini_result = {"result": str(first_item)}
                                 # Last resort: stringify the whole result
@@ -340,25 +362,35 @@ class GeminiProvider(ModelProvider):
                             else:
                                 gemini_result = {"result": str(mcp_result)}
 
-                            agent_logger.debug(f"Simplified response for Gemini: {json.dumps(gemini_result)[:200]}...")
+                            agent_logger.debug(
+                                f"Simplified response for Gemini: {json.dumps(gemini_result)[:200]}..."
+                            )
 
                             # Add function response for next Gemini call
-                            function_responses.append({
-                                "function_call": fc,
-                                "function_response": {
-                                    "name": function_name,
-                                    "response": gemini_result
+                            function_responses.append(
+                                {
+                                    "function_call": fc,
+                                    "function_response": {
+                                        "name": function_name,
+                                        "response": gemini_result,
+                                    },
                                 }
-                            })
+                            )
                         else:
-                            agent_logger.error(f"Cannot execute function {function_name}: MCP server URL not available")
-                            function_responses.append({
-                                "function_call": fc,
-                                "function_response": {
-                                    "name": function_name,
-                                    "response": {"error": "MCP server not configured"}
+                            agent_logger.error(
+                                f"Cannot execute function {function_name}: MCP server URL not available"
+                            )
+                            function_responses.append(
+                                {
+                                    "function_call": fc,
+                                    "function_response": {
+                                        "name": function_name,
+                                        "response": {
+                                            "error": "MCP server not configured"
+                                        },
+                                    },
                                 }
-                            })
+                            )
 
                 # Add function responses to conversation and continue
                 # First add the assistant's function call
@@ -370,13 +402,15 @@ class GeminiProvider(ModelProvider):
                     function_response_part = genai.protos.Part(
                         function_response=genai.protos.FunctionResponse(
                             name=fr["function_response"]["name"],
-                            response=fr["function_response"]["response"]
+                            response=fr["function_response"]["response"],
                         )
                     )
-                    contents.append(genai.protos.Content(
-                        role="user",  # Function responses use 'user' role in Gemini
-                        parts=[function_response_part]
-                    ))
+                    contents.append(
+                        genai.protos.Content(
+                            role="user",  # Function responses use 'user' role in Gemini
+                            parts=[function_response_part],
+                        )
+                    )
 
                 # Call Gemini again with function results
                 response = gemini_model.generate_content(
@@ -386,22 +420,32 @@ class GeminiProvider(ModelProvider):
 
             # Log summary if multiple tool rounds were used
             if tool_round > 0:
-                agent_logger.info(f"Completed {tool_round} tool calling round(s) with {len(mcp_calls_made)} total MCP call(s)")
+                agent_logger.info(
+                    f"Completed {tool_round} tool calling round(s) with {len(mcp_calls_made)} total MCP call(s)"
+                )
 
             # Convert Gemini response to OpenAI-compatible format
-            converted_response = self._convert_response(response, request_id=current_call_id)
+            converted_response = self._convert_response(
+                response, request_id=current_call_id
+            )
 
             # Add MCP call information to output
             if mcp_calls_made:
-                output_items = list(getattr(converted_response, 'output', []))
+                output_items = list(getattr(converted_response, "output", []))
                 for mcp_call in mcp_calls_made:
-                    output_items.append(type('MCPItem', (), {
-                        'type': 'mcp_call',
-                        'name': mcp_call['name'],
-                        'arguments': json.dumps(mcp_call['arguments']),
-                        'output': json.dumps(mcp_call['output']),
-                        'error': None
-                    })())
+                    output_items.append(
+                        type(
+                            "MCPItem",
+                            (),
+                            {
+                                "type": "mcp_call",
+                                "name": mcp_call["name"],
+                                "arguments": json.dumps(mcp_call["arguments"]),
+                                "output": json.dumps(mcp_call["output"]),
+                                "error": None,
+                            },
+                        )()
+                    )
                 # Update output attribute
                 converted_response.output = output_items
 
@@ -449,12 +493,12 @@ class GeminiProvider(ModelProvider):
                 "jsonrpc": "2.0",
                 "id": self._mcp_request_id,
                 "method": "tools/list",
-                "params": {}
+                "params": {},
             }
 
             headers = {
                 "Content-Type": "application/json",
-                "Accept": "application/json, text/event-stream"
+                "Accept": "application/json, text/event-stream",
             }
 
             response = requests.post(url, json=payload, headers=headers, timeout=10)
@@ -477,10 +521,14 @@ class GeminiProvider(ModelProvider):
                 return []
 
         except Exception as e:
-            agent_logger.error(f"Failed to fetch tools from MCP server {server_url}: {e}")
+            agent_logger.error(
+                f"Failed to fetch tools from MCP server {server_url}: {e}"
+            )
             return []
 
-    def _execute_mcp_tool(self, server_url: str, tool_name: str, arguments: dict) -> dict:
+    def _execute_mcp_tool(
+        self, server_url: str, tool_name: str, arguments: dict
+    ) -> dict:
         """Execute a tool call via MCP server.
 
         Args:
@@ -501,15 +549,12 @@ class GeminiProvider(ModelProvider):
                 "jsonrpc": "2.0",
                 "id": self._mcp_request_id,
                 "method": "tools/call",
-                "params": {
-                    "name": tool_name,
-                    "arguments": arguments
-                }
+                "params": {"name": tool_name, "arguments": arguments},
             }
 
             headers = {
                 "Content-Type": "application/json",
-                "Accept": "application/json, text/event-stream"
+                "Accept": "application/json, text/event-stream",
             }
 
             response = requests.post(url, json=payload, headers=headers, timeout=30)
@@ -550,7 +595,7 @@ class GeminiProvider(ModelProvider):
             "number": "NUMBER",
             "integer": "INTEGER",
             "boolean": "BOOLEAN",
-            "array": "ARRAY"
+            "array": "ARRAY",
         }
 
         mcp_type = mcp_schema.get("type", "object").lower()
@@ -570,9 +615,13 @@ class GeminiProvider(ModelProvider):
             for prop_name, prop_schema in mcp_schema["properties"].items():
                 # Recursively convert nested schemas
                 if isinstance(prop_schema, dict):
-                    gemini_properties[prop_name] = self._convert_mcp_schema_to_gemini(prop_schema)
+                    gemini_properties[prop_name] = self._convert_mcp_schema_to_gemini(
+                        prop_schema
+                    )
                 else:
-                    gemini_properties[prop_name] = {"type_": "STRING"}  # Default fallback
+                    gemini_properties[prop_name] = {
+                        "type_": "STRING"
+                    }  # Default fallback
             gemini_schema["properties"] = gemini_properties
 
         if "required" in mcp_schema:
@@ -580,7 +629,9 @@ class GeminiProvider(ModelProvider):
 
         # Handle array items
         if "items" in mcp_schema and isinstance(mcp_schema["items"], dict):
-            gemini_schema["items"] = self._convert_mcp_schema_to_gemini(mcp_schema["items"])
+            gemini_schema["items"] = self._convert_mcp_schema_to_gemini(
+                mcp_schema["items"]
+            )
 
         return gemini_schema
 
@@ -613,7 +664,9 @@ class GeminiProvider(ModelProvider):
         # Check cache first to avoid redundant fetches
         if server_url in self._tool_cache:
             cached_tools = self._tool_cache[server_url]
-            agent_logger.debug(f"Using cached tools for {server_url} ({len(cached_tools)} tools)")
+            agent_logger.debug(
+                f"Using cached tools for {server_url} ({len(cached_tools)} tools)"
+            )
             return cached_tools
 
         # Fetch tools from MCP server
@@ -632,7 +685,9 @@ class GeminiProvider(ModelProvider):
 
             # Convert input schema if present
             if "inputSchema" in tool:
-                function_decl["parameters"] = self._convert_mcp_schema_to_gemini(tool["inputSchema"])
+                function_decl["parameters"] = self._convert_mcp_schema_to_gemini(
+                    tool["inputSchema"]
+                )
             else:
                 # No parameters
                 function_decl["parameters"] = {"type": "object", "properties": {}}
@@ -641,10 +696,14 @@ class GeminiProvider(ModelProvider):
 
         # Cache the converted tools for future use
         self._tool_cache[server_url] = gemini_functions
-        agent_logger.info(f"Converted and cached {len(gemini_functions)} MCP tools to Gemini format")
+        agent_logger.info(
+            f"Converted and cached {len(gemini_functions)} MCP tools to Gemini format"
+        )
         return gemini_functions
 
-    def _convert_response(self, response: GenerateContentResponse, request_id: str = "gemini-response") -> Dict[str, Any]:
+    def _convert_response(
+        self, response: GenerateContentResponse, request_id: str = "gemini-response"
+    ) -> Dict[str, Any]:
         """Convert Gemini response to OpenAI Responses API compatible format.
 
         Args:
@@ -659,16 +718,18 @@ class GeminiProvider(ModelProvider):
 
         try:
             # Check if response has candidates
-            if hasattr(response, 'candidates') and len(response.candidates) > 0:
+            if hasattr(response, "candidates") and len(response.candidates) > 0:
                 candidate = response.candidates[0]
-                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                if hasattr(candidate, "content") and hasattr(
+                    candidate.content, "parts"
+                ):
                     # Extract text parts (function calls are handled in call() method)
                     text_parts = []
                     has_function_call = False
                     for part in candidate.content.parts:
-                        if hasattr(part, 'text') and part.text:
+                        if hasattr(part, "text") and part.text:
                             text_parts.append(part.text)
-                        elif hasattr(part, 'function_call') and part.function_call:
+                        elif hasattr(part, "function_call") and part.function_call:
                             has_function_call = True
 
                     text = "".join(text_parts)
@@ -678,7 +739,11 @@ class GeminiProvider(ModelProvider):
                     if not text and not has_function_call:
                         # Only try response.text if there's no function call
                         try:
-                            text = response.text if hasattr(response, 'text') and response.text else ""
+                            text = (
+                                response.text
+                                if hasattr(response, "text") and response.text
+                                else ""
+                            )
                         except Exception:
                             # response.text can fail for various reasons, just leave text empty
                             pass
@@ -688,30 +753,58 @@ class GeminiProvider(ModelProvider):
             text = ""
 
         # Extract token counts from Gemini's usage_metadata
-        input_tokens = response.usage_metadata.prompt_token_count if hasattr(response, 'usage_metadata') else 0
-        output_tokens = response.usage_metadata.candidates_token_count if hasattr(response, 'usage_metadata') else 0
-        total_tokens = response.usage_metadata.total_token_count if hasattr(response, 'usage_metadata') else 0
+        input_tokens = (
+            response.usage_metadata.prompt_token_count
+            if hasattr(response, "usage_metadata")
+            else 0
+        )
+        output_tokens = (
+            response.usage_metadata.candidates_token_count
+            if hasattr(response, "usage_metadata")
+            else 0
+        )
+        total_tokens = (
+            response.usage_metadata.total_token_count
+            if hasattr(response, "usage_metadata")
+            else 0
+        )
 
         # Build OpenAI-compatible response structure
         # Note: usage must be an object with attributes (not a dict) for token tracker compatibility
-        return type('GeminiResponse', (), {
-            'id': f'gemini-response-{request_id}',
-            'output_text': text,
-            'items': [
-                type('Item', (), {
-                    'role': 'assistant',
-                    'content': [{'type': 'text', 'text': text}] if text else [],
-                    'usage': type('Usage', (), {
-                        'input_tokens': input_tokens,
-                        'output_tokens': output_tokens,
-                    })()
-                })()
-            ],
-            'usage': type('Usage', (), {
-                'input_tokens': input_tokens,
-                'output_tokens': output_tokens,
-                'total_tokens': total_tokens,
-            })(),
-            'tool_outputs': [],
-            'output': []  # MCP calls are added by call() method
-        })()
+        return type(
+            "GeminiResponse",
+            (),
+            {
+                "id": f"gemini-response-{request_id}",
+                "output_text": text,
+                "items": [
+                    type(
+                        "Item",
+                        (),
+                        {
+                            "role": "assistant",
+                            "content": [{"type": "text", "text": text}] if text else [],
+                            "usage": type(
+                                "Usage",
+                                (),
+                                {
+                                    "input_tokens": input_tokens,
+                                    "output_tokens": output_tokens,
+                                },
+                            )(),
+                        },
+                    )()
+                ],
+                "usage": type(
+                    "Usage",
+                    (),
+                    {
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "total_tokens": total_tokens,
+                    },
+                )(),
+                "tool_outputs": [],
+                "output": [],  # MCP calls are added by call() method
+            },
+        )()
