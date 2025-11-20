@@ -100,6 +100,7 @@ class GeminiProvider(ModelProvider):
         self._mcp_request_id = 0  # JSON-RPC request ID counter for MCP calls
         self._gemini_call_id = 0  # Counter for unique Gemini response IDs
         self._max_tool_rounds = max_tool_rounds_per_turn  # Allow multiple tool calls per turn
+        self._tool_cache: Dict[str, list] = {}  # Cache for MCP tool definitions by server URL
 
     @property
     def client(self):
@@ -609,6 +610,12 @@ class GeminiProvider(ModelProvider):
             agent_logger.error("MCP configuration missing server_url")
             return None
 
+        # Check cache first to avoid redundant fetches
+        if server_url in self._tool_cache:
+            cached_tools = self._tool_cache[server_url]
+            agent_logger.debug(f"Using cached tools for {server_url} ({len(cached_tools)} tools)")
+            return cached_tools
+
         # Fetch tools from MCP server
         mcp_tools = self._fetch_mcp_tools(server_url)
         if not mcp_tools:
@@ -632,7 +639,9 @@ class GeminiProvider(ModelProvider):
 
             gemini_functions.append(function_decl)
 
-        agent_logger.info(f"Converted {len(gemini_functions)} MCP tools to Gemini format")
+        # Cache the converted tools for future use
+        self._tool_cache[server_url] = gemini_functions
+        agent_logger.info(f"Converted and cached {len(gemini_functions)} MCP tools to Gemini format")
         return gemini_functions
 
     def _convert_response(self, response: GenerateContentResponse, request_id: str = "gemini-response") -> Dict[str, Any]:
