@@ -12,8 +12,8 @@ echo "Running linter from directory: $(pwd)"
 
 # Install linting dependencies
 echo "Installing linting dependencies..."
-python -m pip install --upgrade pip
-pip install "black==24.10.0" "ruff==0.13.0"
+$PYTHON -m pip install --upgrade pip
+$PYTHON -m pip install "black==24.10.0" "ruff==0.13.0"
 
 # Get changed Python files (modified, staged, untracked), excluding deleted and "codebase" paths
 echo "Finding changed Python files (excluding codebase paths)..."
