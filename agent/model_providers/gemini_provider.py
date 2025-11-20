@@ -92,12 +92,13 @@ class GeminiProvider(ModelProvider):
     Wraps client setup, env validation, and Gemini API calls.
     """
 
-    def __init__(self, max_tool_rounds_per_turn: int = 3) -> None:
+    def __init__(self, max_tool_rounds_per_turn: int = 1) -> None:
         # Configuration is done lazily to avoid issues if validation fails
         self._configured: bool = False
         self._validated: bool = False
         self._mock_client = GeminiClient()
-        self._request_id = 0  # JSON-RPC request ID counter
+        self._mcp_request_id = 0  # JSON-RPC request ID counter for MCP calls
+        self._gemini_call_id = 0  # Counter for unique Gemini response IDs
         self._max_tool_rounds = max_tool_rounds_per_turn  # Allow multiple tool calls per turn
 
     @property
@@ -259,6 +260,10 @@ class GeminiProvider(ModelProvider):
         agent_logger.info(f"Gemini API request: model={model}, contents_count={len(contents)}, tools={len(gemini_tools) if gemini_tools else 0}")
 
         try:
+            # Increment call ID for unique tracking
+            self._gemini_call_id += 1
+            current_call_id = f"gemini-{self._gemini_call_id}"
+
             # Generate content with full conversation history
             response = gemini_model.generate_content(
                 contents,
@@ -383,7 +388,7 @@ class GeminiProvider(ModelProvider):
                 agent_logger.info(f"Completed {tool_round} tool calling round(s) with {len(mcp_calls_made)} total MCP call(s)")
 
             # Convert Gemini response to OpenAI-compatible format
-            converted_response = self._convert_response(response)
+            converted_response = self._convert_response(response, request_id=current_call_id)
 
             # Add MCP call information to output
             if mcp_calls_made:
@@ -437,11 +442,11 @@ class GeminiProvider(ModelProvider):
             # Normalize URL - remove trailing slash
             url = server_url.rstrip("/")
 
-            self._request_id += 1
+            self._mcp_request_id += 1
             # Use JSON-RPC 2.0 format for MCP protocol
             payload = {
                 "jsonrpc": "2.0",
-                "id": self._request_id,
+                "id": self._mcp_request_id,
                 "method": "tools/list",
                 "params": {}
             }
@@ -489,11 +494,11 @@ class GeminiProvider(ModelProvider):
             # Normalize URL - remove trailing slash
             url = server_url.rstrip("/")
 
-            self._request_id += 1
+            self._mcp_request_id += 1
             # Use JSON-RPC 2.0 format for MCP protocol
             payload = {
                 "jsonrpc": "2.0",
-                "id": self._request_id,
+                "id": self._mcp_request_id,
                 "method": "tools/call",
                 "params": {
                     "name": tool_name,
@@ -630,11 +635,12 @@ class GeminiProvider(ModelProvider):
         agent_logger.info(f"Converted {len(gemini_functions)} MCP tools to Gemini format")
         return gemini_functions
 
-    def _convert_response(self, response: GenerateContentResponse) -> Dict[str, Any]:
+    def _convert_response(self, response: GenerateContentResponse, request_id: str = "gemini-response") -> Dict[str, Any]:
         """Convert Gemini response to OpenAI Responses API compatible format.
 
         Args:
             response: Gemini GenerateContentResponse
+            request_id: Unique identifier for this request
 
         Returns:
             Dict with OpenAI-compatible structure
@@ -680,7 +686,7 @@ class GeminiProvider(ModelProvider):
         # Build OpenAI-compatible response structure
         # Note: usage must be an object with attributes (not a dict) for token tracker compatibility
         return type('GeminiResponse', (), {
-            'id': 'gemini-response',
+            'id': f'gemini-response-{request_id}',
             'output_text': text,
             'items': [
                 type('Item', (), {
