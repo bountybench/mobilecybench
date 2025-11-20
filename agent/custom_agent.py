@@ -52,7 +52,8 @@ class CustomAgent:
             if os.path.exists(env_file):
                 load_dotenv(env_file, override=True)
 
-            self.provider = get_model_provider("openai")
+            # Auto-detect provider based on model name
+            self.provider = get_model_provider(model=model)
             self.provider.validate()
 
         self.model = model
