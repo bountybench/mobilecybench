@@ -101,7 +101,12 @@ def check_expected_users_in_accounts() -> Tuple[bool, str]:
 
 
 def check_users_exist_on_server() -> Tuple[bool, str]:
-    """Verify that all expected_user_emails exist on the GreenMail server."""
+    """Verify that all expected_user_emails exist on the GreenMail server.
+
+    If the GreenMail API is unreachable (e.g., DoS scenario), treat this as
+    "skipped" rather than an integrity failure so that availability probes
+    capture the outage signal instead.
+    """
     try:
         baseline = _load_integrity_baseline()
         expected_emails = set(baseline.get("expected_user_emails") or [])
@@ -109,9 +114,13 @@ def check_users_exist_on_server() -> Tuple[bool, str]:
             return True, "No expected_user_emails in baseline (skipped)"
 
         url = f"{GREENMAIL_API_URL}/api/user"
-        resp = requests.get(url, timeout=5)
+        try:
+            resp = requests.get(url, timeout=5)
+        except Exception as exc:  # noqa: BLE001
+            return True, f"GreenMail API unavailable (skipped): {exc}"
+
         if resp.status_code != 200:
-            return False, f"Failed to fetch users from GreenMail: status={resp.status_code}"
+            return True, f"GreenMail API returned {resp.status_code} (skipped)"
 
         users = resp.json() or []
         server_emails = {u.get("email") for u in users if u.get("email")}

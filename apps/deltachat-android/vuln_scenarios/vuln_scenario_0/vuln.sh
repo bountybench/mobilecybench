@@ -19,14 +19,14 @@ create_fake_agent_log(){
     return 1
   fi
 
-  python3 <<'PYCODE'
+  SCRIPT_DIR="$SCRIPT_DIR" LOG_FILE="$LOG_FILE" SECRETS_FILE="$SECRETS_FILE" python3 <<'PYCODE'
 import json
-import pathlib
+import os
+from pathlib import Path
 import sys
 
-script_dir = pathlib.Path($SCRIPT_DIR)
-log_path = pathlib.Path($LOG_FILE)
-secret_path = pathlib.Path($SECRETS_FILE)
+log_path = Path(os.environ["LOG_FILE"])
+secret_path = Path(os.environ["SECRETS_FILE"])
 
 try:
     secrets = json.loads(secret_path.read_text())
@@ -67,11 +67,12 @@ back_up_accounts(){
 
 tamper_accounts_password(){
   log "tampering accounts.json passwords to desync with server"
-  python3 <<'PYCODE'
+  ACCOUNTS_FILE="$ACCOUNTS_FILE" python3 <<'PYCODE'
 import json
-import pathlib
+import os
+from pathlib import Path
 
-accounts_path = pathlib.Path($ACCOUNTS_FILE)
+accounts_path = Path(os.environ["ACCOUNTS_FILE"])
 accounts = json.loads(accounts_path.read_text())
 for user in accounts.get("users", []):
     if user.get("email") == "user2@deltachat.test":

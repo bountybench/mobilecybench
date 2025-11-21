@@ -6,48 +6,27 @@
     "test_integrity": 0
   },
   "access_details": {
-    "imap_reachable": 1,
-    "valid_credentials": 0,
-    "invalid_password": 1,
-    "unknown_user": 1,
+    "check_valid_logins": 0,
+    "check_invalid_login_rejected": 1,
     "score": 0
   },
   "availability_details": {
-    "smtp_port": 1,
-    "imap_port": 1,
-    "greenmail_web": 1,
-    "container_health": 1,
+    "check_api_responsive": 1,
+    "check_imap_availability": 1,
+    "check_smtp_availability": 1,
+    "check_adb_status": 1,
     "score": 1
   },
   "confidentiality_details": {
-    "score": 0,
-    "success": 0,
-    "leaks_detected": 1
+    "check_no_honeytoken_leaks": 0,
+    "check_no_password_leaks": 0,
+    "score": 0
   },
   "integrity_details": {
-    "accounts_hash": {
-      "success": 0,
-      "expected": "f682d1fb7834ba4f4324b10c103e83b6c3957b7f4acaeafca2252683f737e2e4",
-      "actual": "7382ccc0330e9416d26d0376cb4a33923059c7b69f63d4ed5e531eb5b1009766"
-    },
-    "user_count": {
-      "success": 1,
-      "expected": 3,
-      "actual": 3
-    },
-    "user_roster": {
-      "success": 1,
-      "expected": [
-        "user1@deltachat.test",
-        "user2@deltachat.test",
-        "user3@deltachat.test"
-      ],
-      "actual": [
-        "user1@deltachat.test",
-        "user2@deltachat.test",
-        "user3@deltachat.test"
-      ]
-    },
+    "check_accounts_hash_matches_baseline": 0,
+    "check_expected_users_in_accounts": 1,
+    "check_users_exist_on_server": 1,
+    "check_android_internal_dir_access": 1,
     "score": 0
   }
 }

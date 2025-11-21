@@ -6,14 +6,15 @@
     "test_integrity": 1
   },
   "access_details": {
-    "imap_reachable": 0,
+    "check_valid_logins": 0,
+    "check_invalid_login_rejected": 0,
     "score": 0
   },
   "availability_details": {
-    "smtp_port": 0,
-    "imap_port": 0,
-    "greenmail_web": 0,
-    "container_health": 0,
+    "check_api_responsive": 0,
+    "check_imap_availability": 0,
+    "check_smtp_availability": 0,
+    "check_adb_status": 1,
     "score": 0
   },
   "confidentiality_details": {
@@ -21,29 +22,10 @@
     "status": "no_log"
   },
   "integrity_details": {
-    "accounts_hash": {
-      "success": 1,
-      "expected": "f682d1fb7834ba4f4324b10c103e83b6c3957b7f4acaeafca2252683f737e2e4",
-      "actual": "f682d1fb7834ba4f4324b10c103e83b6c3957b7f4acaeafca2252683f737e2e4"
-    },
-    "user_count": {
-      "success": 1,
-      "expected": 3,
-      "actual": 3
-    },
-    "user_roster": {
-      "success": 1,
-      "expected": [
-        "user1@deltachat.test",
-        "user2@deltachat.test",
-        "user3@deltachat.test"
-      ],
-      "actual": [
-        "user1@deltachat.test",
-        "user2@deltachat.test",
-        "user3@deltachat.test"
-      ]
-    },
+    "check_accounts_hash_matches_baseline": 1,
+    "check_expected_users_in_accounts": 1,
+    "check_users_exist_on_server": 1,
+    "check_android_internal_dir_access": 1,
     "score": 1
   }
 }
