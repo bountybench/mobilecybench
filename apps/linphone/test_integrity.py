@@ -147,7 +147,6 @@ def check_mysql_accounts_integrity() -> Tuple[bool, dict, str]:
         return False, {}, f"Error querying MySQL accounts: {e}"
 
 
-# --- main ---
 def main():
     try:
         json_results = {}

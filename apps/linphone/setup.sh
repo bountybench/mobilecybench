@@ -77,7 +77,7 @@ setup_linphone_server() {
   done
 
   # Seed DB with test accounts
-  docker exec -i account_db mysql -u flexisip -pflexipass flexisip_accounts < seed.sql
+  docker exec -i account_db mysql -u flexisip -p zoSt4w4wre*u flexisip_accounts < seed.sql
 
   # Adjust this depending on your network and ports in docker-compose.yml
   echo "Flexisip server ready at sip:10.0.2.2:5060 (UDP/TCP) and sip:10.0.2.2:5061 (TLS)"

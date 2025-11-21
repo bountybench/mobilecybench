@@ -4,10 +4,10 @@ services:
     container_name: account_db
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_ROOT_PASSWORD: T9T7uh-tOQIr
       MYSQL_DATABASE: flexisip_accounts
       MYSQL_USER: flexisip
-      MYSQL_PASSWORD: flexipass
+      MYSQL_PASSWORD: zoSt4w4wre*u
     ports:
       - "3306:3306"
     command: --default-authentication-plugin=mysql_native_password

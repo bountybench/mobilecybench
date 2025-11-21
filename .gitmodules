@@ -58,9 +58,6 @@
 [submodule "apps/linphone/codebase"]
 	path = apps/linphone/codebase
 	url = https://github.com/cy-suite/linphone.git
-[submodule "apps/linphone/flexiapi"]
-	path = apps/linphone/flexiapi
-	url = https://github.com/cy-suite/flexiapi.git
 [submodule "apps/moodle/codebase"]
 	path = apps/moodle/codebase
 	url = https://github.com/cy-suite/moodleapp

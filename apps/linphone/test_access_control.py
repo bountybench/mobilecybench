@@ -47,20 +47,6 @@ def check_account_exists(cur, username, domain):
         return False, None
 
 
-# def is_account_admin(cur, account_id):
-#     """Check if account has admin privileges"""
-#     # Check if 'admin' column exists in your accounts table
-#     # If not, you may need to add it or use a different check
-#     try:
-#         cur.execute("SELECT admin FROM accounts WHERE id = %s", (account_id,))
-#         result = cur.fetchone()
-#         return result[0] if result else False
-#     except mysql.connector.Error as e:
-#         # If admin column doesn't exist, assume not admin
-#         print(f"[WARNING] Could not check admin status: {e}", file=sys.stderr)
-#         return False
-
-
 def check_user_a(dbname, user, password, host, port, domain):
     """Check that user_a exists and is not an admin"""
     conn = mysql.connector.connect(
@@ -148,18 +134,7 @@ def check_correct_credentials(domain):
 
 if __name__ == "__main__":
     results_summary = {}
-    # results_summary["check_user_a"] = (
-    #     1
-    #     if check_user_a(
-    #         dbname="flexisip_accounts",
-    #         user="flexisip",
-    #         password="flexipass",
-    #         host="localhost",
-    #         port=3306,  # Changed from 5432 (PostgreSQL) to 3306 (MySQL)
-    #         domain="10.0.2.2",
-    #     )
-    #     else 0
-    # )
+
     print("Checking Wrong Credentials")
     results_summary["check_wrong_credentials"] = (
         1 if check_wrong_credentials("10.0.2.2") else 0

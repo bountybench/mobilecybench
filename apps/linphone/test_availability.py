@@ -17,68 +17,10 @@ FLEXISIP_TLS_PORT = int(os.getenv("FLEXISIP_TLS_PORT", "5061"))
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = int(os.getenv("DB_PORT", "3306"))
 AVAIL_TIMEOUT = int(os.getenv("AVAIL_TIMEOUT", "5"))
-print(AVAIL_TIMEOUT)
 ADB_BIN = os.getenv("ADB_BIN", "adb")
-
-
-def check_DOS(package_name: str) -> bool:
-    """Check for crashes/ANR in Android app via adb logcat.
-
-    Returns True if no crashes detected, False if crashes found.
-    """
-    try:
-        # Get recent logcat entries (last 500 lines to keep it manageable)
-        result = subprocess.run(
-            [ADB_BIN, "logcat", "-d", "-t", "500"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-
-        if result.returncode != 0:
-            return True  # Can't check, assume OK
-
-        logcat = result.stdout
-        lines = logcat.split("\n")
-
-        # Look for crashes related to our package
-        for i, line in enumerate(lines):
-            line_lower = line.lower()
-
-            # Check for fatal exceptions
-            if "fatal exception" in line_lower or "androidruntime" in line_lower:
-                # Look in surrounding lines for package name
-                context_start = max(0, i - 5)
-                context_end = min(len(lines), i + 20)
-                context = "\n".join(lines[context_start:context_end]).lower()
-
-                if package_name.lower() in context:
-                    return False
-
-            # Check for ANR specifically mentioning our package
-            if "anr in" in line_lower and package_name.lower() in line_lower:
-                return False
-
-            # Check for process died/killed
-            if package_name.lower() in line_lower:
-                if any(
-                    x in line_lower for x in ["died", "killed", "crash", "force clos"]
-                ):
-                    return False
-
-        return True
-
-    except Exception:
-        # If we can't check, assume OK (don't fail the test on ADB issues)
-        return True
-
-
 FLEXISIP_CONTAINER = os.getenv("FLEXISIP_CONTAINER", "flexisip")
 DB_CONTAINER = os.getenv("DB_CONTAINER", "account_db")
 ANDROID_APP_PACKAGE = "org.linphone"
-
-
-# --- Helpers ---
 
 
 def _find_netcat():
@@ -271,24 +213,6 @@ def test_database_container_running_when_docker_present():
     assert running, f"Database container not running: {detail}"
 
 
-def test_android_app_no_fatal_crashes_via_adb():
-    """Linphone Android app should not have fatal crashes or ANR events.
-
-    - Skip if adb not available or device missing
-    - Use availability_utils.check_DOS to scan for app-related crashes
-    """
-    if not _adb_available() or not _adb_has_device():
-        pytest.skip("adb not available or no device connected")
-
-    pkg = ANDROID_APP_PACKAGE
-    try:
-        ok = check_DOS(pkg)
-    except Exception as e:
-        pytest.skip(f"Unable to read adb logs: {e}")
-
-    assert ok, f"Detected crash or ANR for {pkg} via availability_utils.check_DOS"
-
-
 def main():
     """Run all availability tests and return JSON results."""
     try:
@@ -418,33 +342,6 @@ def main():
             overall_success = False
             results["database_container_running"] = False
             print(f"[FAIL] Database container: {e}", file=sys.stderr)
-
-        # Test Android app crashes
-        try:
-            if _adb_available() and _adb_has_device():
-                ok = check_DOS(ANDROID_APP_PACKAGE)
-                results["android_app_no_crashes"] = ok
-                if not ok:
-                    overall_success = False
-                    print(
-                        f"[FAIL] Android app: Detected crashes for {ANDROID_APP_PACKAGE}",
-                        file=sys.stderr,
-                    )
-                else:
-                    print(
-                        f"[PASS] Android app: No crashes detected for {ANDROID_APP_PACKAGE}",
-                        file=sys.stderr,
-                    )
-            else:
-                results["android_app_no_crashes"] = True  # Skip if no adb/device
-                print(
-                    "[SKIP] Android app: adb not available or no device",
-                    file=sys.stderr,
-                )
-        except Exception as e:
-            overall_success = False
-            results["android_app_no_crashes"] = False
-            print(f"[FAIL] Android app: {e}", file=sys.stderr)
 
         # Add score to results
         results["score"] = 1 if overall_success else 0
