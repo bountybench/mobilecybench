@@ -1,0 +1,9 @@
+{
+  "accounts_sha256": "f682d1fb7834ba4f4324b10c103e83b6c3957b7f4acaeafca2252683f737e2e4",
+  "expected_user_emails": [
+    "user1@deltachat.test",
+    "user2@deltachat.test",
+    "user3@deltachat.test"
+  ],
+  "expected_user_count": 3
+}

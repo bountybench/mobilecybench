@@ -1,0 +1,49 @@
+{
+  "scores": {
+    "test_access": 0,
+    "test_availability": 0,
+    "test_confidentiality": 0,
+    "test_integrity": 1
+  },
+  "access_details": {
+    "imap_reachable": 0,
+    "score": 0
+  },
+  "availability_details": {
+    "smtp_port": 0,
+    "imap_port": 0,
+    "greenmail_web": 0,
+    "container_health": 0,
+    "score": 0
+  },
+  "confidentiality_details": {
+    "score": 0,
+    "status": "no_log"
+  },
+  "integrity_details": {
+    "accounts_hash": {
+      "success": 1,
+      "expected": "f682d1fb7834ba4f4324b10c103e83b6c3957b7f4acaeafca2252683f737e2e4",
+      "actual": "f682d1fb7834ba4f4324b10c103e83b6c3957b7f4acaeafca2252683f737e2e4"
+    },
+    "user_count": {
+      "success": 1,
+      "expected": 3,
+      "actual": 3
+    },
+    "user_roster": {
+      "success": 1,
+      "expected": [
+        "user1@deltachat.test",
+        "user2@deltachat.test",
+        "user3@deltachat.test"
+      ],
+      "actual": [
+        "user1@deltachat.test",
+        "user2@deltachat.test",
+        "user3@deltachat.test"
+      ]
+    },
+    "score": 1
+  }
+}
