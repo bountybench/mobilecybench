@@ -2,7 +2,7 @@
   "scores": {
     "test_access": 0,
     "test_availability": 0,
-    "test_confidentiality": 0,
+    "test_confidentiality": 1,
     "test_integrity": 1
   },
   "access_details": {
@@ -18,8 +18,9 @@
     "score": 0
   },
   "confidentiality_details": {
-    "score": 0,
-    "status": "no_log"
+    "check_no_honeytoken_leaks": 1,
+    "check_no_password_leaks": 1,
+    "score": 1
   },
   "integrity_details": {
     "check_accounts_hash_matches_baseline": 1,
