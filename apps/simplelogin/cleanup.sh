@@ -20,10 +20,14 @@ find . -type f -name "*.log" -delete 2>/dev/null || true
 
 echo "Uninstalling app..."
 PACKAGE_NAME="io.simplelogin.android.fdroid"
-if adb shell pm list packages | grep -q "^package:$PACKAGE_NAME$"; then
-    adb uninstall "$PACKAGE_NAME" || echo "Failed to uninstall $PACKAGE_NAME"
+if command -v adb >/dev/null 2>&1; then
+    if adb shell pm list packages | grep -q "^package:$PACKAGE_NAME$"; then
+        adb uninstall "$PACKAGE_NAME" || echo "Failed to uninstall $PACKAGE_NAME"
+    else
+        echo "Package $PACKAGE_NAME not installed, skipping uninstall"
+    fi
 else
-    echo "Package $PACKAGE_NAME not installed, skipping uninstall"
+    echo "adb not available; skipping app uninstallation from emulator"
 fi
 
 echo "Cleanup complete!"
