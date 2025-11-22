@@ -14,7 +14,7 @@
 ## Quick Health Check
 
 Verify the MCP server is responding:
-# TODO - update this to 
+# TODO - update this to give instructions for setting up the kali container + validate
 
 ```bash
 docker exec mcp-server curl http://localhost:4040/api/tunnels

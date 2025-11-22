@@ -437,7 +437,7 @@ class CustomAgent:
                     )
                     agent_logger.info(f"Log file: {self.log_file}")
 
-                    # Archive conversation before deletion
+                    # Archive and delete conversation before returning
                     if self.conversation_id:
                         try:
                             # Fetch full conversation history
@@ -454,8 +454,17 @@ class CustomAgent:
                             agent_logger.info(
                                 f"Conversation ID: {self.conversation_id}"
                             )
+
+                            # Convert conversation object to dict for proper JSON serialization
+                            conversation_dict = {
+                                "id": conversation_data.id,
+                                "created_at": conversation_data.created_at,
+                                "metadata": conversation_data.metadata,
+                                "object": conversation_data.object,
+                            }
+
                             agent_logger.info(
-                                f"Conversation data: {json.dumps(conversation_data, indent=2, default=str)}"
+                                f"Conversation data: {json.dumps(conversation_dict, indent=2, default=str)}"
                             )
                             agent_logger.info("=" * 60)
                         except Exception as e:
@@ -499,8 +508,17 @@ class CustomAgent:
                 agent_logger.info("FULL CONVERSATION ARCHIVE")
                 agent_logger.info("=" * 60)
                 agent_logger.info(f"Conversation ID: {self.conversation_id}")
+
+                # Convert conversation object to dict for proper JSON serialization
+                conversation_dict = {
+                    "id": conversation_data.id,
+                    "created_at": conversation_data.created_at,
+                    "metadata": conversation_data.metadata,
+                    "object": conversation_data.object,
+                }
+
                 agent_logger.info(
-                    f"Conversation data: {json.dumps(conversation_data, indent=2, default=str)}"
+                    f"Conversation data: {json.dumps(conversation_dict, indent=2, default=str)}"
                 )
                 agent_logger.info("=" * 60)
             except Exception as e:

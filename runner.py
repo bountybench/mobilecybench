@@ -704,12 +704,21 @@ class MobileCybenchRunner:
             logger.warning(f"Error checking for exploit.sh in Kali container: {e}")
             return False
 
-    def _run_agent_exploit(self) -> None:
-        """Run the agent-generated exploit script and log output."""
+    def _run_agent_exploit(self) -> Path:
+        """Run the agent-generated exploit script and log output.
+
+        Returns:
+            Path to the exploit log file.
+        """
         logger.info("Running agent exploit script...")
 
         # Path to exploit script in container
         exploit_script_path = "/app/exploit_files/exploit.sh"
+
+        # Create exploit log file path
+        logs_dir = logger_manager.get_logs_dir()
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        exploit_log_path = logs_dir / f"exploit_execution_{timestamp}.log"
 
         try:
             # Step 1: Dump the exploit script contents
@@ -721,12 +730,21 @@ class MobileCybenchRunner:
                 timeout=30,
             )
 
-            # Step 2: Log exploit script contents
+            # Step 2: Log exploit script contents (to both logger and file)
+            script_contents = cat_result.stdout
             logger.info("=" * 80)
             logger.info("EXPLOIT SCRIPT CONTENTS")
             logger.info("=" * 80)
-            logger.info(cat_result.stdout)
+            logger.info(script_contents)
             logger.info("=" * 80)
+
+            # Write to log file
+            with open(exploit_log_path, "w") as log_file:
+                log_file.write("=" * 80 + "\n")
+                log_file.write("EXPLOIT SCRIPT CONTENTS\n")
+                log_file.write("=" * 80 + "\n")
+                log_file.write(script_contents)
+                log_file.write("\n" + "=" * 80 + "\n")
 
             # Step 3: Execute the exploit script and capture output
             logger.info("Executing exploit script...")
@@ -737,7 +755,7 @@ class MobileCybenchRunner:
                 timeout=300,  # 5 minute timeout for exploit execution
             )
 
-            # Step 4: Log execution output (stdout and stderr)
+            # Step 4: Log execution output (stdout and stderr) to both logger and file
             logger.info("=" * 80)
             logger.info("EXPLOIT EXECUTION OUTPUT")
             logger.info("=" * 80)
@@ -757,15 +775,65 @@ class MobileCybenchRunner:
                 f"Exploit execution completed with exit code: {exec_result.returncode}"
             )
 
-            return None
+            # Append execution output to log file
+            with open(exploit_log_path, "a") as log_file:
+                log_file.write("\n" + "=" * 80 + "\n")
+                log_file.write("EXPLOIT EXECUTION OUTPUT\n")
+                log_file.write("=" * 80 + "\n")
+                if exec_result.stdout:
+                    log_file.write("STDOUT:\n")
+                    log_file.write(exec_result.stdout)
+                    log_file.write("\n")
+                if exec_result.stderr:
+                    log_file.write("STDERR:\n")
+                    log_file.write(exec_result.stderr)
+                    log_file.write("\n")
+                log_file.write("=" * 80 + "\n")
+                log_file.write(f"EXIT CODE: {exec_result.returncode}\n")
+                log_file.write("=" * 80 + "\n")
+
+            return exploit_log_path
 
         except subprocess.TimeoutExpired as e:
             logger.error(f"Exploit execution timed out: {e}")
-            return None
+            # Write timeout error to log file (create file if it doesn't exist)
+            try:
+                mode = "a" if exploit_log_path.exists() else "w"
+                with open(exploit_log_path, mode) as log_file:
+                    if mode == "w":
+                        # If file didn't exist, write header first
+                        log_file.write("=" * 80 + "\n")
+                        log_file.write("EXPLOIT EXECUTION LOG\n")
+                        log_file.write("=" * 80 + "\n")
+                    log_file.write("\n" + "=" * 80 + "\n")
+                    log_file.write("EXPLOIT EXECUTION TIMED OUT\n")
+                    log_file.write("=" * 80 + "\n")
+                    log_file.write(f"Error: {e}\n")
+                    log_file.write("Command timed out after 300 seconds\n")
+                    log_file.write("=" * 80 + "\n")
+            except Exception:
+                pass  # If file writing fails, at least return the path
+            return exploit_log_path
 
         except Exception as e:
             logger.error(f"Failed to run agent exploit: {e}")
-            return None
+            # Write error to log file (create file if it doesn't exist)
+            try:
+                mode = "a" if exploit_log_path.exists() else "w"
+                with open(exploit_log_path, mode) as log_file:
+                    if mode == "w":
+                        # If file didn't exist, write header first
+                        log_file.write("=" * 80 + "\n")
+                        log_file.write("EXPLOIT EXECUTION LOG\n")
+                        log_file.write("=" * 80 + "\n")
+                    log_file.write("\n" + "=" * 80 + "\n")
+                    log_file.write("EXPLOIT EXECUTION FAILED\n")
+                    log_file.write("=" * 80 + "\n")
+                    log_file.write(f"Error: {e}\n")
+                    log_file.write("=" * 80 + "\n")
+            except Exception:
+                pass  # If file writing fails, at least return the path
+            return exploit_log_path
 
     def _wait_for_quit_command(self):
         log_banner("RUN COMPLETED - ENVIRONMENT STILL RUNNING")
