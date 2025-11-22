@@ -13,15 +13,19 @@ from typing import Union
 
 import requests
 
+from utils.logger import logger_manager
 from utils.mcp_utils import check_server_health, discover_ngrok_base_url
 
 
 class MCPToolExecutor:
     def __init__(self, ngrok_base_url: str = None):
         # Setup logging to file first
-        log_filename = f"mcp_executor_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        logs_dir = logger_manager.get_logs_dir()
+        log_filename = (
+            logs_dir / f"mcp_executor_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        )
         logging.basicConfig(
-            filename=log_filename,
+            filename=str(log_filename),
             level=logging.DEBUG,
             format="%(asctime)s - %(levelname)s - %(message)s",
             filemode="w",

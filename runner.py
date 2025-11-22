@@ -2,6 +2,7 @@
 
 import argparse
 import datetime
+import json
 import os
 import shlex
 import subprocess
@@ -40,18 +41,17 @@ class MobileCybenchRunner:
         self,
         app_name: str,
         config: RunnerConfig,
-        agent_only: bool = False,
         codex_mode: bool = False,
     ):
         self.app_name = Path(app_name).name
         self.config = config
-        self.agent_only = agent_only
         self.codex_mode = codex_mode
         self.project_root = project_root
         self.app_dir = self.project_root / "apps" / self.app_name
         self.agent_dir = self.project_root / "agent"
         self.cmd = CommandExecutor()
         self.emulator = None
+        self.probe_results = {}
 
         log_banner("MobileCybench Runner Started", width=80)
         logger.info(f"App: {app_name}")
@@ -128,25 +128,21 @@ class MobileCybenchRunner:
         # Check for required scripts
         required_scripts = ["setup.sh"]
 
-        if not self.agent_only:  # Check for build scripts if not in agent_only mode
-            if self.config.build_type == "source":
-                required_scripts.append("setup_app_source.sh")
-            elif self.config.build_type == "download-apk":
-                required_scripts.append("setup_app_apklink.sh")
-            elif self.config.build_type == "skip-apk":
-                possible_setup_scripts = ["setup_app_source.sh", "setup_app_apklink.sh"]
-                # do not allow skip-apk if neither script exists
-                if not any(
-                    (self.app_dir / script).exists()
-                    for script in possible_setup_scripts
-                ):
-                    self._exit_with_error(
-                        f"At least one setup script required for build_type 'skip-apk' not found: {possible_setup_scripts}"
-                    )
-            else:
+        if self.config.build_type == "source":
+            required_scripts.append("setup_app_source.sh")
+        elif self.config.build_type == "skip-apk":
+            # Check if either setup_app_source.sh exists or download_link is in metadata
+            has_setup_source = (self.app_dir / "setup_app_source.sh").exists()
+            has_download_link = self.metadata.get("download_link") is not None
+
+            if not (has_setup_source or has_download_link):
                 self._exit_with_error(
-                    f"Unsupported Build Type Detected: {self.config.build_type}"
+                    "For build_type 'skip-apk', either setup_app_source.sh must exist or download_link must be in metadata.json"
                 )
+        else:
+            self._exit_with_error(
+                f"Unsupported Build Type Detected: {self.config.build_type}"
+            )
 
         for script in required_scripts:
             script_path = self.app_dir / script
@@ -162,22 +158,23 @@ class MobileCybenchRunner:
 
         logger.info("Input validation passed")
 
-    def setup_app(self):
-        """APK Handling, App Backend Setup, and App Installation"""
+    def setup_app_apk(self):
+        """APK Handling - Download, Build, or Skip"""
         if self.config.build_type == "skip-apk":
             log_banner("SKIPPING APK HANDLING STEP")
         elif self.config.build_type == "download-apk":
             log_banner("FETCHING APK USING APKLINK")
             try:
+                setup_script = self.project_root / "setup_app_apklink.py"
                 self.cmd.run_with_progress(
-                    "bash ./setup_app_apklink.sh",
+                    f"python3 {setup_script} {self.app_name}",
                     timeout=BUILD_COMMAND_TIMEOUT,
                     message="Downloading APK",
-                    cwd=self.app_dir,
+                    cwd=self.project_root,
                 )
             except subprocess.CalledProcessError as e:
                 self._exit_with_error(
-                    f"Failed to setup app APK with setup_app_apklink.sh: {e}"
+                    f"Failed to setup app APK with setup_app_apklink.py: {e}"
                 )
         else:  # source
             log_banner("BUILDING APK FROM SOURCE")
@@ -217,6 +214,8 @@ class MobileCybenchRunner:
             self._exit_with_error("Emulator status check failed")
         logger.info("Emulator status verified")
 
+    def install_app_and_setup_backend(self):
+        """Setup app backend and install APK"""
         # Setup app (setup backend, install apk, etc.)
         log_banner(
             "SETTING UP THE BACKEND(RUNTIME SERVERS, DATABASES, SEEDS, etc.) AND INSTALLING APK"
@@ -244,7 +243,7 @@ class MobileCybenchRunner:
             self._exit_with_error(f"Failed to inject security flags: {e}")
         logger.info("App setup completed")
 
-    def setup_agent(self, codex_mode=False):
+    def setup_agent_environment(self, codex_mode=False):
         """Configure agent environment and start services"""
         log_banner("SETTING UP AGENT ENVIRONMENT")
 
@@ -557,9 +556,7 @@ class MobileCybenchRunner:
                     max_context_length=self.config.max_context_length,
                     screenshot_enabled=self.config.screenshot_mode,
                     app_name=self.app_name,
-                    app_server=getattr(self, "metadata", {}).get(
-                        "app_server", None
-                    ),  # default to None if in agent_only mode
+                    app_server=getattr(self, "metadata", {}).get("app_server", None),
                     # TODO - create proper dry run mode
                     # https://github.com/bountybench/mobilecybench/issues/322
                     dry_run=self.config.dry_run,
@@ -623,17 +620,20 @@ class MobileCybenchRunner:
 
         # Check for scores.json file
         scores_file = self.app_dir / "scores.json"
+        scores_dict = None
         if scores_file.exists():
             try:
                 with open(scores_file, "r") as f:
-                    scores_content = f.read()
-                logger.info(f"Scores found: {scores_content}")
+                    scores_dict = json.load(f)
+                logger.info(f"Scores found: {json.dumps(scores_dict, indent=2)}")
 
             except Exception as e:
                 logger.error(f"Error reading scores.json: {e}")
+                scores_dict = None
         else:
             logger.info("No scores.json file found")
-        return return_code == 0
+
+        return scores_dict
 
     def cleanup(self):
         """Clean up services"""
@@ -650,23 +650,122 @@ class MobileCybenchRunner:
         except Exception as e:
             logger.warning(f"Error during cleanup: {e}")
 
-    def _run_agent_pipeline(self):
-        """Run probe checks, agent setup, and agent execution"""
-        dummy_log_path = Path(DUMMY_LOG_FILENAME)
-        if not dummy_log_path.exists():
-            dummy_log_path.touch()
-        self.run_probes_checks(log_file_path=dummy_log_path)
+    def _run_cleanup(self):
+        """Run cleanup script for the app"""
+        cleanup_script = self.app_dir / "cleanup.sh"
 
-        self.setup_agent(codex_mode=self.codex_mode)
-        self.run_agent()
+        if not cleanup_script.exists():
+            self._exit_with_error(
+                f"Required cleanup script not found: {cleanup_script}"
+            )
 
-        agent_log_filename = logger_manager.get_agent_log_file_name()
-        log_path = Path(agent_log_filename)
-        logger.info(f"Agent log file path: {log_path}")
-        # TODO, now that the agent is writing an exploit script, we should run it's exploit in kali
-        # First need to clean up services (restart emulator, reinstall app, restart services)
-        # Run probes, run agent exploit, then run probes again
-        self.run_probes_checks(log_file_path=log_path)
+        try:
+            self.cmd.run_with_progress(
+                "bash ./cleanup.sh",
+                timeout=BUILD_COMMAND_TIMEOUT,
+                message="Running cleanup script",
+                cwd=self.app_dir,
+            )
+        except subprocess.CalledProcessError as e:
+            self._exit_with_error(f"Failed to run cleanup script: {e}")
+
+    def _check_and_save_agent_exploit(self):
+        """Check if agent created exploit.sh and log its contents"""
+        logger.info("Checking for agent-generated exploit.sh...")
+        exploit_path = "/app/exploit_files/exploit.sh"
+
+        try:
+            check_result = subprocess.run(
+                ["docker", "exec", "kali-container", "test", "-f", exploit_path],
+                capture_output=True,
+                text=True,
+            )
+
+            if check_result.returncode == 0:
+                logger.info("Found exploit.sh in Kali container, reading contents...")
+                read_result = subprocess.run(
+                    ["docker", "exec", "kali-container", "cat", exploit_path],
+                    capture_output=True,
+                    text=True,
+                )
+
+                if read_result.returncode == 0:
+                    logger.info(f"exploit.sh contents:\n{read_result.stdout}")
+                    return True
+                else:
+                    logger.warning(f"Failed to read exploit.sh: {read_result.stderr}")
+                    return False
+            else:
+                logger.info(
+                    "No exploit.sh file found - agent did not create an exploit script"
+                )
+                return False
+        except Exception as e:
+            logger.warning(f"Error checking for exploit.sh in Kali container: {e}")
+            return False
+
+    def _run_agent_exploit(self) -> None:
+        """Run the agent-generated exploit script and log output."""
+        logger.info("Running agent exploit script...")
+
+        # Path to exploit script in container
+        exploit_script_path = "/app/exploit_files/exploit.sh"
+
+        try:
+            # Step 1: Dump the exploit script contents
+            logger.info("Reading exploit script contents...")
+            cat_result = subprocess.run(
+                ["docker", "exec", "kali-container", "cat", exploit_script_path],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            # Step 2: Log exploit script contents
+            logger.info("=" * 80)
+            logger.info("EXPLOIT SCRIPT CONTENTS")
+            logger.info("=" * 80)
+            logger.info(cat_result.stdout)
+            logger.info("=" * 80)
+
+            # Step 3: Execute the exploit script and capture output
+            logger.info("Executing exploit script...")
+            exec_result = subprocess.run(
+                ["docker", "exec", "kali-container", "bash", exploit_script_path],
+                capture_output=True,
+                text=True,
+                timeout=300,  # 5 minute timeout for exploit execution
+            )
+
+            # Step 4: Log execution output (stdout and stderr)
+            logger.info("=" * 80)
+            logger.info("EXPLOIT EXECUTION OUTPUT")
+            logger.info("=" * 80)
+            if exec_result.stdout:
+                logger.info("STDOUT:")
+                logger.info(exec_result.stdout)
+
+            if exec_result.stderr:
+                logger.info("STDERR:")
+                logger.info(exec_result.stderr)
+
+            logger.info("=" * 80)
+            logger.info(f"EXIT CODE: {exec_result.returncode}")
+            logger.info("=" * 80)
+
+            logger.info(
+                f"Exploit execution completed with exit code: {exec_result.returncode}"
+            )
+
+            return None
+
+        except subprocess.TimeoutExpired as e:
+            logger.error(f"Exploit execution timed out: {e}")
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to run agent exploit: {e}")
+            return None
 
     def _wait_for_quit_command(self):
         log_banner("RUN COMPLETED - ENVIRONMENT STILL RUNNING")
@@ -691,36 +790,67 @@ class MobileCybenchRunner:
         try:
             self.validate_input()
 
-            if not self.agent_only:
-                log_banner("SETTING UP ANDROID EMULATOR")
-                sdk_version = (
-                    self.metadata.get("sdk") if hasattr(self, "metadata") else None
+            log_banner("SETTING UP ANDROID EMULATOR")
+            sdk_version = (
+                self.metadata.get("sdk") if hasattr(self, "metadata") else None
+            )
+            with EmulatorManager(
+                docker_mode=self.config.docker_mode,
+                project_root=self.project_root,
+                sdk_version=sdk_version,
+                app_name=self.app_name,
+            ) as emulator:
+                self.emulator = emulator
+                self.emulator.start_in_background()
+                logger.info("Emulator started in the background . . .")
+
+                self.setup_app_apk()
+                self.install_app_and_setup_backend()
+                dummy_log_path = Path(DUMMY_LOG_FILENAME)
+                if not dummy_log_path.exists():
+                    dummy_log_path.touch()
+                self.probe_results["pre_agent_run"] = self.run_probes_checks(
+                    log_file_path=dummy_log_path
                 )
-                with EmulatorManager(
-                    docker_mode=self.config.docker_mode,
-                    project_root=self.project_root,
-                    sdk_version=sdk_version,
-                    app_name=self.app_name,
-                ) as emulator:
-                    self.emulator = emulator
-                    self.emulator.start_in_background()
-                    logger.info("Emulator started in the background . . .")
 
-                    self.setup_app()
-                    self._run_agent_pipeline()
+                self.setup_agent_environment(codex_mode=self.codex_mode)
+                self.run_agent()
 
-                    log_banner(
-                        f"PIPELINE COMPLETED SUCCESSFULLY FOR <<{self.app_name}>>"
-                    )
-                    if self.config.wait_for_quit and sys.stdin.isatty():
-                        self._wait_for_quit_command()
-            else:
-                self._run_agent_pipeline()
-                log_banner(f"PIPELINE COMPLETED SUCCESSFULLY FOR <<{self.app_name}>>")
-                # Keeping for future use when containers are torn down
-                if self.config.wait_for_quit and sys.stdin.isatty():
-                    self._wait_for_quit_command()
-            return 0
+                agent_log_filename = logger_manager.get_agent_log_file_name()
+                log_path = Path(agent_log_filename)
+                logger.info(f"Agent log file path: {log_path}")
+
+                self.probe_results["post_agent_run"] = self.run_probes_checks(
+                    log_file_path=log_path
+                )
+                log_banner("Restarting services, running agent exploit")
+
+            exploit_exists = self._check_and_save_agent_exploit()
+            if not exploit_exists:
+                logger.info("No Agent Exploit Found - exiting")
+            with EmulatorManager(
+                docker_mode=self.config.docker_mode,
+                project_root=self.project_root,
+                sdk_version=sdk_version,
+                app_name=self.app_name,
+            ) as emulator:
+                self.emulator = emulator
+                self.emulator.start_in_background()
+                logger.info("New emulator starting . . .")
+                self._run_cleanup()
+                self.setup_app_apk()
+                self.install_app_and_setup_backend()
+                dummy_log_path = Path(DUMMY_LOG_FILENAME)
+                if not dummy_log_path.exists():
+                    dummy_log_path.touch()
+                self.probe_results["pre_agent_exploit"] = self.run_probes_checks(
+                    log_file_path=dummy_log_path
+                )
+                self._run_agent_exploit()
+                self.probe_results["post_agent_exploit"] = self.run_probes_checks(
+                    log_file_path=dummy_log_path
+                )
+                log_banner("Agent Exploit done")
 
         except KeyboardInterrupt:
             logger.info("Runner interrupted by user")
@@ -729,8 +859,16 @@ class MobileCybenchRunner:
             logger.error(f"Unexpected error: {e}")
             return 1
         finally:
-            pass
-            # TODO clean up
+            log_banner("PROBE RESULTS SUMMARY")
+            if self.probe_results:
+                logger.info(
+                    f"Probe results: {json.dumps(self.probe_results, indent=2)}"
+                )
+            else:
+                logger.info("No probe results collected")
+            # TODO: Add cleanup for app cleanup.sh, Kali container, and MCP server
+            # Should run docker compose down in agent_dir and cleanup.sh in app_dir
+            # The AgentEnvironment will also need a cleanup step
 
 
 def main():
@@ -740,14 +878,6 @@ def main():
     try:
         parser = argparse.ArgumentParser(
             description="MobileCybench Runner - Orchestrates AI-driven mobile app security testing"
-        )
-
-        # Add agent_only as a flag
-        parser.add_argument(
-            "--agent-only",
-            action="store_true",
-            dest="agent_only",
-            help="Run only the agent, skipping emulator setup and app setup. Optional.",
         )
 
         # Add agent_type selection
@@ -788,7 +918,7 @@ def main():
 
         # Create and run the runner
         codex_mode = args.agent_type == "codex"
-        runner = MobileCybenchRunner(args.app_name, config, args.agent_only, codex_mode)
+        runner = MobileCybenchRunner(args.app_name, config, codex_mode)
         result = runner.run()
 
         return result
@@ -803,7 +933,8 @@ def main():
             time_tracker.log_summary(logger)
 
             # Save structured JSON output
-            json_path = project_root / f"timings_{time_tracker._experiment_id}.json"
+            logs_dir = logger_manager.get_logs_dir()
+            json_path = logs_dir / f"timings_{time_tracker._experiment_id}.json"
             time_tracker.save_json(json_path)
             logger.info(f"Timing data saved to: {json_path}")
 

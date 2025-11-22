@@ -35,9 +35,7 @@ def runner(mock_config):
         "runner.get_app_metadata"
     ) as mock_metadata:
         mock_metadata.return_value = {"app_name": "test_app"}
-        runner_instance = MobileCybenchRunner(
-            app_name="test_app", config=mock_config, agent_only=True
-        )
+        runner_instance = MobileCybenchRunner(app_name="test_app", config=mock_config)
         return runner_instance
 
 
@@ -73,3 +71,182 @@ def test_validate_mcp_server_failure(mock_executor_class, runner):
 
     with pytest.raises(SystemExit):
         runner._validate_mcp_server()
+
+
+##########################################
+#     Exploit Workflow Tests            #
+##########################################
+
+
+@patch("runner.subprocess.run")
+def test_check_and_save_agent_exploit_exists(mock_run, runner):
+    """Test _check_and_save_agent_exploit when exploit.sh exists"""
+    # Mock docker exec test -f to succeed (file exists)
+    test_result = MagicMock(returncode=0)
+    # Mock docker exec cat to return exploit contents
+    cat_result = MagicMock(returncode=0, stdout="#!/bin/bash\necho 'exploit'\n")
+
+    mock_run.side_effect = [test_result, cat_result]
+
+    result = runner._check_and_save_agent_exploit()
+
+    assert result is True
+    # Verify docker commands were called
+    assert mock_run.call_count == 2
+    assert "test" in str(mock_run.call_args_list[0])
+    assert "cat" in str(mock_run.call_args_list[1])
+
+
+@patch("runner.subprocess.run")
+def test_check_and_save_agent_exploit_not_exists(mock_run, runner):
+    """Test _check_and_save_agent_exploit when exploit.sh does not exist"""
+    # Mock docker exec test -f to fail (file does not exist)
+    test_result = MagicMock(returncode=1)
+    mock_run.return_value = test_result
+
+    result = runner._check_and_save_agent_exploit()
+
+    assert result is False
+    # Should only call test, not cat
+    assert mock_run.call_count == 1
+
+
+@patch("runner.subprocess.run")
+@patch("runner.Path")
+def test_run_agent_exploit_success(mock_path, mock_run, runner):
+    """Test _run_agent_exploit successfully executes and logs exploit"""
+    # Mock file operations
+    mock_file = MagicMock()
+    mock_path.return_value.__truediv__.return_value = mock_file
+
+    # Mock docker exec cat (read exploit)
+    cat_result = MagicMock(returncode=0, stdout="#!/bin/bash\necho 'running exploit'\n")
+    # Mock docker exec bash (run exploit)
+    exec_result = MagicMock(returncode=0, stdout="exploit output\n", stderr="")
+
+    mock_run.side_effect = [cat_result, exec_result]
+
+    # Mock open for writing log file
+    with patch("builtins.open", create=True) as mock_open:
+        mock_open.return_value.__enter__.return_value = mock_file
+
+        runner._run_agent_exploit()
+
+        # Verify log file was written
+        assert mock_open.call_count >= 2  # At least 2 writes (script contents + output)
+        assert mock_file.write.called
+
+
+@patch("runner.subprocess.run")
+def test_run_agent_exploit_timeout(mock_run, runner):
+    """Test _run_agent_exploit handles timeout gracefully"""
+    # Mock docker exec cat to succeed
+    cat_result = MagicMock(returncode=0, stdout="#!/bin/bash\nsleep 1000\n")
+
+    # Mock docker exec bash to timeout
+    from subprocess import TimeoutExpired
+
+    mock_run.side_effect = [cat_result, TimeoutExpired(cmd="bash", timeout=300)]
+
+    # Mock file operations
+    with patch("builtins.open", create=True) as mock_open:
+        mock_file = MagicMock()
+        mock_open.return_value.__enter__.return_value = mock_file
+
+        result = runner._run_agent_exploit()
+
+        # Should still return a log path
+        assert result is not None
+        # Should have written timeout error - check the actual write call args
+        write_calls = mock_file.write.call_args_list
+        all_writes = "".join([str(call[0][0]) for call in write_calls])
+        assert "timeout" in all_writes.lower() or "timed out" in all_writes.lower()
+
+
+@patch("runner.subprocess.run")
+@patch("runner.Path.exists", return_value=True)
+def test_run_cleanup(mock_exists, mock_run, runner):
+    """Test _run_cleanup executes cleanup.sh"""
+    mock_run.return_value = MagicMock(returncode=0)
+
+    with patch.object(runner.cmd, "run_with_progress") as mock_progress:
+        runner._run_cleanup()
+
+        # Verify cleanup.sh was called
+        mock_progress.assert_called_once()
+        assert "cleanup.sh" in str(mock_progress.call_args)
+
+
+def test_probe_results_structure(runner):
+    """Test that probe_results dictionary is initialized properly"""
+    assert hasattr(runner, "probe_results")
+    assert isinstance(runner.probe_results, dict)
+
+
+@patch("runner.EmulatorManager")
+@patch.object(MobileCybenchRunner, "validate_input")
+@patch.object(MobileCybenchRunner, "setup_app_apk")
+@patch.object(MobileCybenchRunner, "install_app_and_setup_backend")
+@patch.object(MobileCybenchRunner, "setup_agent_environment")
+@patch.object(MobileCybenchRunner, "run_agent")
+@patch.object(MobileCybenchRunner, "run_probes_checks")
+@patch.object(MobileCybenchRunner, "_check_and_save_agent_exploit")
+@patch.object(MobileCybenchRunner, "_run_cleanup")
+@patch.object(MobileCybenchRunner, "_run_agent_exploit")
+@patch("runner.logger_manager")
+@patch("runner.Path.exists", return_value=True)
+def test_run_two_emulator_workflow(
+    mock_path_exists,
+    mock_logger_manager,
+    mock_run_exploit,
+    mock_cleanup,
+    mock_check_exploit,
+    mock_probes,
+    mock_run_agent,
+    mock_setup_agent,
+    mock_install_app,
+    mock_setup_apk,
+    mock_validate,
+    mock_emulator_class,
+    runner,
+):
+    """Test the full workflow with two EmulatorManager contexts"""
+    # Mock EmulatorManager context manager
+    mock_emulator1 = MagicMock()
+    mock_emulator2 = MagicMock()
+    mock_emulator_class.return_value.__enter__.side_effect = [
+        mock_emulator1,
+        mock_emulator2,
+    ]
+
+    # Mock exploit exists
+    mock_check_exploit.return_value = True
+
+    # Mock probe results
+    mock_probes.return_value = {"probe1": "result1"}
+
+    # Mock logger
+    mock_logger_manager.get_agent_log_file_name.return_value = "test_agent.log"
+
+    # Mock exploit log path
+    from pathlib import Path
+
+    mock_run_exploit.return_value = Path("exploit_log_test.log")
+
+    # Execute
+    runner.run()
+
+    # Verify two emulators were created
+    assert mock_emulator_class.call_count == 2
+
+    # Verify probe_results has all four stages
+    assert "pre_agent_run" in runner.probe_results
+    assert "post_agent_run" in runner.probe_results
+    assert "pre_agent_exploit" in runner.probe_results
+    assert "post_agent_exploit" in runner.probe_results
+
+    # Verify cleanup was called before second emulator
+    mock_cleanup.assert_called_once()
+
+    # Verify exploit was executed
+    mock_run_exploit.assert_called_once()
