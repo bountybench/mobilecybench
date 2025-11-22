@@ -259,7 +259,16 @@ class GeminiProvider(ModelProvider):
         if gemini_tools:
             gemini_model = genai.GenerativeModel(model, tools=gemini_tools)
             # Remind model it has access to tools so that it actually makes a tool call instead of just putting it in reasoning
-            contents.append({"role": "user", "parts": [{"text": f"Recall that you have access to the following tools: {gemini_tools}. You must end every turn with a tool call."}]})
+            contents.append(
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "text": f"Recall that you have access to the following tools: {gemini_tools}. You must end every turn with a tool call."
+                        }
+                    ],
+                }
+            )
         else:
             agent_logger.warning("WARNING: No tools provided to model")
             gemini_model = genai.GenerativeModel(model)
@@ -317,7 +326,9 @@ class GeminiProvider(ModelProvider):
 
                 if intermediate_text_parts:
                     intermediate_text = "".join(intermediate_text_parts)
-                    agent_logger.info(f"[GEMINI THINKING BEFORE TOOLS - {len(intermediate_text)} chars]")
+                    agent_logger.info(
+                        f"[GEMINI THINKING BEFORE TOOLS - {len(intermediate_text)} chars]"
+                    )
                     agent_logger.info(intermediate_text)
                     agent_logger.info("-" * 40)
                     # Save intermediate reasoning for conversation history
@@ -442,19 +453,29 @@ class GeminiProvider(ModelProvider):
                 if hasattr(response, "candidates") and len(response.candidates) > 0:
                     candidate = response.candidates[0]
                     text_parts = []
-                    if hasattr(candidate, "content") and hasattr(candidate.content, "parts"):
+                    if hasattr(candidate, "content") and hasattr(
+                        candidate.content, "parts"
+                    ):
                         for part in candidate.content.parts:
                             if hasattr(part, "text") and part.text:
                                 text_parts.append(part.text)
 
                     # If no text was generated, prompt for analysis
                     if not text_parts:
-                        agent_logger.info("No text generated after max tool rounds - prompting for analysis")
+                        agent_logger.info(
+                            "No text generated after max tool rounds - prompting for analysis"
+                        )
                         contents.append(candidate.content)
-                        contents.append({
-                            "role": "user",
-                            "parts": [{"text": "Based on the tool execution results above, please provide your analysis in the required format (Reflection, Plan and Status, Thought, Log, Command)."}]
-                        })
+                        contents.append(
+                            {
+                                "role": "user",
+                                "parts": [
+                                    {
+                                        "text": "Based on the tool execution results above, please provide your analysis in the required format (Reflection, Plan and Status, Thought, Log, Command)."
+                                    }
+                                ],
+                            }
+                        )
                         response = gemini_model.generate_content(
                             contents,
                             generation_config=generation_config,
@@ -494,20 +515,26 @@ class GeminiProvider(ModelProvider):
             # Save conversation history for next turn
             # We need to save all the new content that was added during this turn
             # This includes the model's responses and any tool calls/responses
-            if conversation_id and conversation_id in self._mock_client.conversations._conversations:
+            if (
+                conversation_id
+                and conversation_id in self._mock_client.conversations._conversations
+            ):
                 # Save all intermediate reasoning that was generated during tool rounds
                 if intermediate_reasoning:
                     combined_intermediate = "\n\n".join(intermediate_reasoning)
-                    self._mock_client.conversations._conversations[conversation_id]["items"].append({
-                        "role": "model",
-                        "content": f"[Intermediate reasoning during tool execution]\n{combined_intermediate}"
-                    })
+                    self._mock_client.conversations._conversations[conversation_id][
+                        "items"
+                    ].append(
+                        {
+                            "role": "model",
+                            "content": f"[Intermediate reasoning during tool execution]\n{combined_intermediate}",
+                        }
+                    )
 
                 # Save the assistant's final text response
-                self._mock_client.conversations._conversations[conversation_id]["items"].append({
-                    "role": "model",
-                    "content": converted_response.output_text
-                })
+                self._mock_client.conversations._conversations[conversation_id][
+                    "items"
+                ].append({"role": "model", "content": converted_response.output_text})
 
                 # Save tool calls and responses for context
                 # Use "model" role so Gemini recognizes these as its own tool calls
@@ -516,12 +543,13 @@ class GeminiProvider(ModelProvider):
                     tool_summary = "Tool calls made:\n"
                     for mcp_call in mcp_calls_made:
                         tool_summary += f"- {mcp_call['name']}: {json.dumps(mcp_call['arguments'])}\n"
-                        tool_summary += f"  Result: {json.dumps(mcp_call['output'])[:200]}...\n"
+                        tool_summary += (
+                            f"  Result: {json.dumps(mcp_call['output'])[:200]}...\n"
+                        )
 
-                    self._mock_client.conversations._conversations[conversation_id]["items"].append({
-                        "role": "model",
-                        "content": tool_summary
-                    })
+                    self._mock_client.conversations._conversations[conversation_id][
+                        "items"
+                    ].append({"role": "model", "content": tool_summary})
 
             return converted_response
 
