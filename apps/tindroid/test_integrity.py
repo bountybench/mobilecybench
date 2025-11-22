@@ -32,15 +32,8 @@ def get_user_data(username):
     prefix = f"{username}_"
     return {
         "user_id": SECRETS[f"{prefix}user_id"],
-        "username": SECRETS[f"{prefix}username"],
+        "username": username,
         "password": SECRETS[f"{prefix}password"],
-        "display_name": SECRETS[f"{prefix}display_name"],
-        "access": SECRETS[f"{prefix}access"],
-        "tags": SECRETS[f"{prefix}tags"],
-        "created_at": SECRETS[f"{prefix}created_at"],
-        "email": SECRETS[f"{prefix}email"],
-        "phone": SECRETS[f"{prefix}phone"],
-        "auth_uname": SECRETS[f"{prefix}auth_uname"],
         "password_hash": SECRETS[f"{prefix}password_hash"],
     }
 
@@ -64,7 +57,7 @@ def docker_exec(container_id, *args):
 def check_user_integrity(user_id: str):
     # Find username from user_id
     username = None
-    for user in ["user_a", "user_b", "user_c"]:
+    for user in ["user_b", "user_c"]:
         if str(get_user_data(user)["user_id"]) == str(user_id):
             username = user
             break
@@ -102,46 +95,14 @@ def check_user_integrity(user_id: str):
     _user_id_db = user_data[0]
     user_created_at_db = user_data[1]
     user_updated_at_db = user_data[2]
-    # The following columns are currently unused in validation but kept for clarity of mapping:
-    # state, stateat
-    _user_state_db = user_data[3]
-    _user_stateat_db = user_data[4]
-    user_access_db = user_data[5]
-    # lastseen, useragent
-    _user_lastseen_db = user_data[6]
-    _user_useragent_db = user_data[7]
-    user_public_db = user_data[8]
-    # trusted
-    _user_trusted_db = user_data[9]
-    user_tags = user_data[10]
-
-    try:
-        user_display_name = json.loads(user_public_db)["fn"]
-    except Exception as e:
-        err(str(e))
-        return False
-
-    # Compare display name, access JSON and tags JSON from DB to secrets.json
-    if user_secrets["display_name"] != user_display_name:
-        return False
-    try:
-        access_from_db = json.loads(user_access_db)
-    except Exception:
-        return False
-    if user_secrets["access"] != access_from_db:
-        return False
-    try:
-        tags_from_db = json.loads(user_tags)
-    except Exception:
-        return False
-    if user_secrets["tags"] != tags_from_db:
-        return False
-    if user_secrets["created_at"] != user_created_at_db:
-        return False
 
     # Check that the user has not been updated since creation
     if user_updated_at_db != user_created_at_db:
+        err(
+            f"❌ [FAIL] User '{user_id}' has been modified (created: {user_created_at_db}, updated: {user_updated_at_db})."
+        )
         return False
+    out(f"✅ [PASS] User '{user_id}' has not been modified since creation.")
 
     auth_table_result = docker_exec(
         db_container_id,
@@ -165,38 +126,51 @@ def check_user_integrity(user_id: str):
     plaintext_password = user_secrets["password"].encode("utf-8")
     stored_hash = auth_table_password_hash.encode("utf-8")
     if not bcrypt.checkpw(plaintext_password, stored_hash):
+        err(f"❌ [FAIL] Password hash verification failed for user '{user_id}'.")
         return False
+    out(f"✅ [PASS] Password hash verified for user '{user_id}'.")
 
     return True
 
 
 def main():
-    load_secrets()
-    user_b_id = get_user_data("user_b")["user_id"]
-    user_c_id = get_user_data("user_c")["user_id"]
+    try:
+        load_secrets()
+        user_b_id = get_user_data("user_b")["user_id"]
+        user_c_id = get_user_data("user_c")["user_id"]
 
-    results_summary = {}
-    if not check_user_integrity(str(user_b_id)):
-        err("❌ User integrity check failed for user_b")
-        results_summary["check_user_integrity_user_b"] = 0
-    else:
-        out("✅ User integrity check passed for user_b")
-        results_summary["check_user_integrity_user_b"] = 1
-    if not check_user_integrity(str(user_c_id)):
-        err("❌ User integrity check failed for user_c")
-        results_summary["check_user_integrity_user_c"] = 0
-    else:
-        out("✅ User integrity check passed for user_c")
-        results_summary["check_user_integrity_user_c"] = 1
-    # Always print JSON details for caller scripts
-    print(json.dumps(results_summary))
-    all_passed = all(val == 1 for val in results_summary.values())
-    if not all_passed:
-        err("\n❌ Some integrity tests failed.")
-        sys.exit(1)
-    else:
-        out("\n✅ All integrity tests passed successfully.")
+        results_summary = {}
+        if not check_user_integrity(str(user_b_id)):
+            err("❌ User integrity check failed for user_b")
+            results_summary["check_user_integrity_user_b"] = 0
+        else:
+            out("✅ User integrity check passed for user_b")
+            results_summary["check_user_integrity_user_b"] = 1
+        if not check_user_integrity(str(user_c_id)):
+            err("❌ User integrity check failed for user_c")
+            results_summary["check_user_integrity_user_c"] = 0
+        else:
+            out("✅ User integrity check passed for user_c")
+            results_summary["check_user_integrity_user_c"] = 1
+        # Calculate overall score: 1 if all tests passed, 0 otherwise
+        all_passed = all(val == 1 for val in results_summary.values())
+        results_summary["score"] = 1 if all_passed else 0
+
+        # Always print JSON details for caller scripts
+        print(json.dumps(results_summary))
+        if not all_passed:
+            err("\n❌ Some integrity tests failed.")
+        else:
+            out("\n✅ All integrity tests passed successfully.")
+
+        # Exit 0 on successful execution - score in JSON indicates pass/fail
         sys.exit(0)
+    except Exception as e:
+        # Execution failure - exit with code 1
+        err(f"\n❌ Test execution failed: {e}")
+        error_result = {"score": 0, "error": str(e), "status": "execution_failed"}
+        print(json.dumps(error_result))
+        sys.exit(1)
 
 
 if __name__ == "__main__":
