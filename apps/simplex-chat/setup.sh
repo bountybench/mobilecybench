@@ -20,6 +20,21 @@ require_cmd() {
   command -v "$cmd" >/dev/null 2>&1 || fail "Required command '$cmd' not found"
 }
 
+mount_certificates() {
+	local KEY_PATH="${SCRIPT_DIR}/certificates/10.0.2.2.key"
+	local CRT_PATH="${SCRIPT_DIR}/certificates/10.0.2.2.crt"
+
+	mkdir -p "${SCRIPT_DIR}/certificates"
+
+	if [ ! -f "$KEY_PATH" ] || [ ! -f "$CRT_PATH" ]; then
+		log "Certificate files not found, generating them now..."
+		openssl req -x509 -nodes -days 365 -newkey rsa:4096 -keyout certificates/10.0.2.2.key -out certificates/10.0.2.2.crt -subj "/CN=10.0.2.2" -addext "subjectAltName=IP:10.0.2.2,DNS:10.0.2.2"
+		log "Certificates successfully generated"
+	else
+		log "Certificate files found, skipping re-gen"
+	fi
+}
+
 compose() {
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
     docker compose -f "$COMPOSE_FILE" "$@"
@@ -77,6 +92,7 @@ start_backends() {
 }
 
 wait_for_container() {
+  mount_certificates
   local name="$1"
   for _ in {1..30}; do
     local state
