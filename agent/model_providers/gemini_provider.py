@@ -91,7 +91,7 @@ class GeminiProvider(ModelProvider):
     Wraps client setup, env validation, and Gemini API calls.
     """
 
-    def __init__(self, max_tool_rounds_per_turn: int = 5) -> None:
+    def __init__(self, max_tool_rounds_per_turn: int = 3) -> None:
         # Configuration is done lazily to avoid issues if validation fails
         self._configured: bool = False
         self._validated: bool = False
@@ -258,7 +258,10 @@ class GeminiProvider(ModelProvider):
         # Create model instance with tools if available
         if gemini_tools:
             gemini_model = genai.GenerativeModel(model, tools=gemini_tools)
+            # Remind model it has access to tools so that it actually makes a tool call instead of just putting it in reasoning
+            contents.append({"role": "user", "parts": [{"text": f"Recall that you have access to the following tools: {gemini_tools}. You must end every turn with a tool call."}]})
         else:
+            agent_logger.warning("WARNING: No tools provided to model")
             gemini_model = genai.GenerativeModel(model)
 
         agent_logger.info(
