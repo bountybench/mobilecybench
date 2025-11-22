@@ -1,0 +1,31 @@
+{
+  "scores": {
+    "test_access": 0,
+    "test_availability": 1,
+    "test_confidentiality": 0,
+    "test_integrity": 0
+  },
+  "access_details": {
+    "user_restrictions": 0,
+    "invalid_credentials": 0,
+    "admin_auth": 0,
+    "score": 0
+  },
+  "availability_details": {
+    "synapse_server_accessible": 0,
+    "postgres_db_accessible": 0,
+    "element_app_running": 0,
+    "matrix_ports_accessible": 0,
+    "score": 1
+  },
+  "confidentiality_details": {
+    "score": 0,
+    "success": 0
+  },
+  "integrity_details": {
+    "container_health": 0,
+    "synapse_config": 0,
+    "database_integrity": 0,
+    "score": 0
+  }
+}
