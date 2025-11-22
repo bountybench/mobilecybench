@@ -2,7 +2,6 @@
 set -e
 
 HOMESERVER_URL="http://element-synapse:8008"
-REGISTRATION_SECRET="test_registration_secret_key_for_testing_only"
 
 echo "Waiting for Synapse to be ready..."
 for i in {1..30}; do
@@ -18,7 +17,6 @@ done
 create_user() {
     local username="$1"
     local password="$2"
-    local admin="$3"
 
     echo "Creating user: $username"
 
@@ -28,9 +26,6 @@ create_user() {
         -d "{
             \"username\": \"$username\",
             \"password\": \"$password\",
-            \"auth\": {
-                \"type\": \"m.login.dummy\"
-            }
         }" \
         --silent --show-error 2>&1)
 
@@ -46,11 +41,7 @@ create_user() {
 # Create test users
 echo "Creating test users..."
 
-# Admin user
-create_user "admin" "adminpass123" "true"
-
 # Regular users for testing
-create_user "agent" "agentpass123" "false"
 create_user "alice" "alicepass123" "false"
 create_user "bob" "bobpass123" "false"
 
@@ -58,7 +49,6 @@ echo "All users created successfully!"
 echo ""
 echo "Available test accounts:"
 echo "- @admin:localhost / adminpass123 (admin)"
-echo "- @agent:localhost / agentpass123 (regular user)"
 echo "- @alice:localhost / alicepass123 (regular user)" 
 echo "- @bob:localhost / bobpass123 (regular user)"
 echo ""

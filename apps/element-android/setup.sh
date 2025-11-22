@@ -36,7 +36,7 @@ echo "Building Element Android APK..."
 
 echo "Installing Element Android APK..."
 # Install the APK that was just downloaded by setup_app_apklink.sh
-APK_FILE="apk/vector-gplay-rustCrypto-x86_64-release-unsigned.apk"
+APK_FILE="apk/element-android.apk"
 if [ ! -f "$APK_FILE" ]; then
     echo "ERROR: APK file not found: $APK_FILE"
     exit 1
@@ -56,7 +56,5 @@ echo "Matrix homeserver available at: http://localhost:8008"
 echo "Element Web interface available at: http://localhost:8080"
 echo ""
 echo "Test users available:"
-echo "- @agent:localhost / agentpass123"
 echo "- @alice:localhost / alicepass123"
 echo "- @bob:localhost / bobpass123"
-echo "- @admin:localhost / adminpass123 (admin)"
