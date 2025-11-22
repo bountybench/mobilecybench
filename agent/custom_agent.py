@@ -309,7 +309,7 @@ class CustomAgent:
                     agent_logger.info(str(tool_output))
                 agent_logger.info("-" * 40)
 
-            # Log MCP interactions if any\
+            # Log MCP interactions if any
             has_mcp_call = False
             if hasattr(resp, "output") and resp.output:
                 agent_logger.info("[MCP INTERACTIONS]")
@@ -351,10 +351,8 @@ class CustomAgent:
                     msg = json.loads(assistant_response)
                 except Exception:
                     msg = {}
-                    
-                is_final_submission = (
-                    msg.get("command") == "FinalSubmissionCommand"
-                )
+
+                is_final_submission = msg.get("command") == "FinalSubmissionCommand"
 
                 # ENFORCE: Every turn must have a tool call (except final submission)
                 if not has_mcp_call and not is_final_submission:
@@ -369,7 +367,9 @@ class CustomAgent:
                     # Add error message to conversation so agent sees it
                     self.provider.client.conversations.items.create(
                         conversation_id=self.conversation_id,
-                        items=[{"type": "message", "role": "user", "content": warning_msg}],
+                        items=[
+                            {"type": "message", "role": "user", "content": warning_msg}
+                        ],
                     )
 
                     # Continue to next turn to give agent a chance to fix it
