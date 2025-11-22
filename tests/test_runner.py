@@ -195,7 +195,7 @@ def test_probe_results_structure(runner):
 @patch.object(MobileCybenchRunner, "_run_agent_exploit")
 @patch("runner.logger_manager")
 @patch("runner.Path.exists", return_value=True)
-def test_run_two_emulator_workflow(
+def test_run_two_emulator_workflow_with_exploit(
     mock_path_exists,
     mock_logger_manager,
     mock_run_exploit,
@@ -210,7 +210,7 @@ def test_run_two_emulator_workflow(
     mock_emulator_class,
     runner,
 ):
-    """Test the full workflow with two EmulatorManager contexts"""
+    """Test the full workflow with two EmulatorManager contexts when exploit exists"""
     # Mock EmulatorManager context manager
     mock_emulator1 = MagicMock()
     mock_emulator2 = MagicMock()
@@ -250,3 +250,63 @@ def test_run_two_emulator_workflow(
 
     # Verify exploit was executed
     mock_run_exploit.assert_called_once()
+
+
+@patch("runner.EmulatorManager")
+@patch.object(MobileCybenchRunner, "validate_input")
+@patch.object(MobileCybenchRunner, "setup_app_apk")
+@patch.object(MobileCybenchRunner, "install_app_and_setup_backend")
+@patch.object(MobileCybenchRunner, "setup_agent_environment")
+@patch.object(MobileCybenchRunner, "run_agent")
+@patch.object(MobileCybenchRunner, "run_probes_checks")
+@patch.object(MobileCybenchRunner, "_check_and_save_agent_exploit")
+@patch.object(MobileCybenchRunner, "_run_cleanup")
+@patch.object(MobileCybenchRunner, "_run_agent_exploit")
+@patch("runner.logger_manager")
+@patch("runner.Path.exists", return_value=True)
+def test_run_skips_exploit_pipeline_when_no_exploit(
+    mock_path_exists,
+    mock_logger_manager,
+    mock_run_exploit,
+    mock_cleanup,
+    mock_check_exploit,
+    mock_probes,
+    mock_run_agent,
+    mock_setup_agent,
+    mock_install_app,
+    mock_setup_apk,
+    mock_validate,
+    mock_emulator_class,
+    runner,
+):
+    """Test that exploit pipeline is skipped when no exploit exists"""
+    # Mock EmulatorManager context manager
+    mock_emulator1 = MagicMock()
+    mock_emulator_class.return_value.__enter__.return_value = mock_emulator1
+
+    # Mock exploit does NOT exist
+    mock_check_exploit.return_value = False
+
+    # Mock probe results
+    mock_probes.return_value = {"probe1": "result1"}
+
+    # Mock logger
+    mock_logger_manager.get_agent_log_file_name.return_value = "test_agent.log"
+
+    # Execute
+    runner.run()
+
+    # Verify only ONE emulator was created (not two)
+    assert mock_emulator_class.call_count == 1
+
+    # Verify probe_results has only first two stages (not exploit stages)
+    assert "pre_agent_run" in runner.probe_results
+    assert "post_agent_run" in runner.probe_results
+    assert "pre_agent_exploit" not in runner.probe_results
+    assert "post_agent_exploit" not in runner.probe_results
+
+    # Verify cleanup was NOT called (since no second emulator)
+    mock_cleanup.assert_not_called()
+
+    # Verify exploit was NOT executed
+    mock_run_exploit.assert_not_called()

@@ -895,30 +895,33 @@ class MobileCybenchRunner:
 
             exploit_exists = self._check_and_save_agent_exploit()
             if not exploit_exists:
-                logger.info("No Agent Exploit Found - exiting")
-            with EmulatorManager(
-                docker_mode=self.config.docker_mode,
-                project_root=self.project_root,
-                sdk_version=sdk_version,
-                app_name=self.app_name,
-            ) as emulator:
-                self.emulator = emulator
-                self.emulator.start_in_background()
-                logger.info("New emulator starting . . .")
-                self._run_cleanup()
-                self.setup_app_apk()
-                self.install_app_and_setup_backend()
-                dummy_log_path = Path(DUMMY_LOG_FILENAME)
-                if not dummy_log_path.exists():
-                    dummy_log_path.touch()
-                self.probe_results["pre_agent_exploit"] = self.run_probes_checks(
-                    log_file_path=dummy_log_path
+                logger.info(
+                    "No Agent Exploit Found - skipping exploit execution pipeline"
                 )
-                self._run_agent_exploit()
-                self.probe_results["post_agent_exploit"] = self.run_probes_checks(
-                    log_file_path=dummy_log_path
-                )
-                log_banner("Agent Exploit done")
+            else:
+                with EmulatorManager(
+                    docker_mode=self.config.docker_mode,
+                    project_root=self.project_root,
+                    sdk_version=sdk_version,
+                    app_name=self.app_name,
+                ) as emulator:
+                    self.emulator = emulator
+                    self.emulator.start_in_background()
+                    logger.info("New emulator starting . . .")
+                    self._run_cleanup()
+                    self.setup_app_apk()
+                    self.install_app_and_setup_backend()
+                    dummy_log_path = Path(DUMMY_LOG_FILENAME)
+                    if not dummy_log_path.exists():
+                        dummy_log_path.touch()
+                    self.probe_results["pre_agent_exploit"] = self.run_probes_checks(
+                        log_file_path=dummy_log_path
+                    )
+                    self._run_agent_exploit()
+                    self.probe_results["post_agent_exploit"] = self.run_probes_checks(
+                        log_file_path=dummy_log_path
+                    )
+                    log_banner("Agent Exploit done")
 
         except KeyboardInterrupt:
             logger.info("Runner interrupted by user")
