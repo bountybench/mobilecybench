@@ -21,13 +21,18 @@ require_cmd() {
 }
 
 android_home() {
-  if [[ -n "${ANDROID_HOME:-}" && -d "$ANDROID_HOME" ]]; then
+  if [[ -n "${ANDROID_HOME:-}" ]]; then
+    if [[ ! -d "$ANDROID_HOME" ]]; then
+      fail "ANDROID_HOME is set to '$ANDROID_HOME' but this is not a valid directory"
+    fi
     echo "$ANDROID_HOME"
     return
   fi
 
   local default_home="$HOME/.android-sdk"
-  [[ -d "$default_home" ]] || fail "Android SDK not found. Set ANDROID_HOME or install the SDK at $default_home"
+  if [[ ! -d "$default_home" ]]; then
+    fail "Android SDK not found. Set ANDROID_HOME or install the SDK at $default_home"
+  fi
   echo "$default_home"
 }
 
@@ -45,13 +50,34 @@ ensure_keystore() {
 }
 
 find_apk() {
+  local abi_filter="$1"
+  if [[ -n "$abi_filter" ]]; then
+    # Try to find APK matching the requested ABI
+    local apk
+    apk=$(find "$MULTIPLATFORM_DIR" -name "*${abi_filter}*release*.apk" -type f | head -n1)
+    if [[ -n "$apk" ]]; then
+      echo "$apk"
+      return
+    fi
+    # Fallback: try without ABI in name (universal APK)
+    apk=$(find "$MULTIPLATFORM_DIR" -name '*release*.apk' -type f ! -name '*-*-release*.apk' | head -n1)
+    if [[ -n "$apk" ]]; then
+      echo "$apk"
+      return
+    fi
+  fi
+  # Final fallback: any release APK
   find "$MULTIPLATFORM_DIR" -name '*release*.apk' -type f | head -n1
 }
 
 find_apksigner() {
   local sdk_home="$1"
-  local tool="$(find "$sdk_home"/build-tools -name apksigner -type f 2>/dev/null | sort | tail -1)"
+  [[ -n "$sdk_home" ]] || fail "Android SDK home path is empty"
+  [[ -d "$sdk_home" ]] || fail "Android SDK home is not a directory: $sdk_home"
+  [[ -d "$sdk_home/build-tools" ]] || fail "build-tools directory not found at $sdk_home/build-tools"
+  local tool="$(find "$sdk_home"/build-tools -name apksigner -type f 2>/dev/null | sort -V | tail -1)"
   [[ -n "$tool" ]] || fail "Could not find apksigner under $sdk_home/build-tools"
+  [[ -f "$tool" ]] || fail "apksigner path is not a file: $tool"
   echo "$tool"
 }
 
@@ -163,19 +189,28 @@ build_apk() {
   local abis=("$@")
   log "Building SimpleX Chat release APK (ABIs: ${abis[*]})"
   pushd "$MULTIPLATFORM_DIR" >/dev/null
+  
+  # Ensure local.properties exists with correct SDK path for Gradle
+  local local_props="$MULTIPLATFORM_DIR/local.properties"
+  echo "sdk.dir=$sdk_home" > "$local_props"
+  
   export ANDROID_HOME="$sdk_home"
+  export ANDROID_SDK_ROOT="$sdk_home"
   export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 
   local abi_property
   abi_property=$(IFS=,; echo "${abis[*]}")
 
   ./gradlew clean :android:assembleRelease -PsimplexAbiFilters="$abi_property"
+  
+  # Find the APK matching the first requested ABI (or any if multiple)
+  local primary_abi="${abis[0]}"
   local built_apk
-  built_apk=$(find_apk)
-  [[ -n "$built_apk" ]] || fail "Gradle build finished but no release APK was found"
+  built_apk=$(find_apk "$primary_abi")
+  [[ -n "$built_apk" ]] || fail "Gradle build finished but no release APK was found for ABI: $primary_abi"
   cp "$built_apk" "$APK_UNSIGNED"
   popd >/dev/null
-  log "Unsigned APK copied to $APK_UNSIGNED"
+  log "Unsigned APK copied to $APK_UNSIGNED (from: $(basename "$built_apk"))"
 }
 
 sign_apk() {

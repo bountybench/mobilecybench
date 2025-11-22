@@ -87,6 +87,12 @@ wait_for_container() {
     fi
     sleep 2
   done
+  echo "Logs for container one"
+  echo "---------------------------------------------"
+  echo $(docker logs $(docker ps | awk 'NR==2 {print $1}'))
+  echo "---------------------------------------------"
+  echo $(docker logs $(docker ps | awk 'NR==3 {print $1}'))
+  echo "---------------------------------------------"
   fail "Container $name did not become ready"
 }
 
