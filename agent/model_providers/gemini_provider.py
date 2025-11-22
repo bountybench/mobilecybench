@@ -842,6 +842,12 @@ class GeminiProvider(ModelProvider):
             if hasattr(response, "usage_metadata")
             else 0
         )
+        cached_tokens = (
+            response.usage_metadata.cached_content_token_count
+            if hasattr(response, "usage_metadata")
+            and hasattr(response.usage_metadata, "cached_content_token_count")
+            else 0
+        )
 
         # Build OpenAI-compatible response structure
         # Note: usage must be an object with attributes (not a dict) for token tracker compatibility
@@ -864,6 +870,7 @@ class GeminiProvider(ModelProvider):
                                 {
                                     "input_tokens": input_tokens,
                                     "output_tokens": output_tokens,
+                                    "cached_tokens": cached_tokens,
                                 },
                             )(),
                         },
@@ -876,6 +883,7 @@ class GeminiProvider(ModelProvider):
                         "input_tokens": input_tokens,
                         "output_tokens": output_tokens,
                         "total_tokens": total_tokens,
+                        "cached_tokens": cached_tokens,
                     },
                 )(),
                 "tool_outputs": [],
