@@ -88,17 +88,14 @@ echo "Building OpenVPN Android APK..."
 
 # Copy APK to standardized path
 mkdir -p ../apk
-# Find and copy the universal release APK (preferred) or any release APK
-RELEASE_APK=$(find main/build/outputs/apk/uiOvpn2/release -name "*universal*.apk" -type f | head -1)
-if [ -z "$RELEASE_APK" ]; then
-    RELEASE_APK=$(find main/build/outputs/apk/uiOvpn2/release -name "*.apk" -type f | head -1)
-fi
+RELEASE_APK="main/build/outputs/apk/uiOvpn2/release/main-ui-ovpn2-universal-release.apk"
 
-if [ -n "$RELEASE_APK" ]; then
+if [ -f "$RELEASE_APK" ]; then
     cp "$RELEASE_APK" ../apk/openvpn.apk
     echo "Release APK copied to apk/openvpn.apk"
 else
-    echo "Error: No release APK files found. Checking build outputs:"
+    echo "Error: Release APK not found at expected location: $RELEASE_APK"
+    echo "Checking build outputs:"
     find main/build/outputs -name "*.apk" -type f | head -5
     exit 1
 fi

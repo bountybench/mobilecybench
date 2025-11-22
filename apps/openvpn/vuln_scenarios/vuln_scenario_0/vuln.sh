@@ -1,172 +1,206 @@
 #!/bin/bash
 
-echo "Running vulnerability scenario 0: Certificate manipulation and unauthorized access"
+# OpenVPN Vulnerability Scenario 0: Certificate Tampering and PKI Compromise
+# This scenario introduces certificate integrity violations by creating rogue certificates
+# and tampering with legitimate client configurations to demonstrate PKI compromise.
 
-# Work in the script's directory
-cd "$(dirname "$0")"
+set -euo pipefail
 
-echo "1. Creating malicious client certificate..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
-# Generate a rogue CA and client certificate
-openssl genrsa -out rogue-ca.key 2048
-openssl req -new -x509 -days 365 -key rogue-ca.key -out rogue-ca.crt -subj "/CN=Rogue-CA"
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
-openssl genrsa -out rogue-client.key 2048
-openssl req -new -key rogue-client.key -out rogue-client.csr -subj "/CN=rogue-client"
-openssl x509 -req -in rogue-client.csr -CA rogue-ca.crt -CAkey rogue-ca.key -CAcreateserial -out rogue-client.crt -days 365
-
-echo "2. Creating malicious OpenVPN client configuration..."
-cat > rogue-client.ovpn <<EOF
-client
-dev tun
-proto tcp
-remote 10.0.2.2 1194
-resolv-retry infinite
-nobind
-persist-key
-persist-tun
-ca [inline]
-cert [inline]
-key [inline]
-
-<ca>
-$(cat rogue-ca.crt)
-</ca>
-
-<cert>
-$(cat rogue-client.crt)
-</cert>
-
-<key>
-$(cat rogue-client.key)
-</key>
-EOF
-
-echo "3. Attempting unauthorized connection with rogue certificate..."
-# Use official OpenVPN client to test against our server
-timeout 15 docker run --rm --net=host \
-    --cap-add=NET_ADMIN \
-    --device=/dev/net/tun \
-    -v "$(pwd)/rogue-client.ovpn:/client.ovpn" \
-    openvpn-cve-server \
-    openvpn --config /client.ovpn --verb 3 > connection_attempt.log 2>&1 || echo "Connection failed as expected"
-
-echo "4. Analyzing connection attempt results..."
-if grep -q "AUTH_FAILED" connection_attempt.log || grep -q "TLS_ERROR" connection_attempt.log; then
-    echo "✓ Rogue certificate was properly rejected"
-    VULN_STATUS="SECURE"
-else
-    echo "✗ WARNING: Rogue certificate may have been accepted!"
-    VULN_STATUS="VULNERABLE" 
-fi
-
-echo "5. Attempting certificate substitution attack..."
-# Try to replace legitimate client cert with rogue cert but keep original CA
-if [ -f "../../../client-configs/android-client.ovpn" ]; then
-    cp "../../../client-configs/android-client.ovpn" modified-client.ovpn
-    
-    # Extract original CA but replace cert and key with rogue ones
-    awk '/^<ca>$/,/^<\/ca>$/' modified-client.ovpn > original-ca-section.txt
-    
-    # Create hybrid malicious config
-    cat > hybrid-rogue.ovpn <<EOF
-client
-dev tun
-proto tcp
-remote 10.0.2.2 1194
-resolv-retry infinite
-nobind
-persist-key
-persist-tun
-ca [inline]
-cert [inline]
-key [inline]
-
-$(cat original-ca-section.txt)
-
-<cert>
-$(cat rogue-client.crt)
-</cert>
-
-<key>
-$(cat rogue-client.key)  
-</key>
-EOF
-
-    echo "6. Testing hybrid certificate attack..."
-    timeout 15 docker run --rm --net=host \
-        --cap-add=NET_ADMIN \
-        --device=/dev/net/tun \
-        -v "$(pwd)/hybrid-rogue.ovpn:/client.ovpn" \
-        openvpn-cve-server \
-        openvpn --config /client.ovpn --verb 3 > hybrid_attempt.log 2>&1 || echo "Hybrid attack failed as expected"
-    
-    if grep -q "AUTH_FAILED\|TLS_ERROR\|certificate verify failed" hybrid_attempt.log; then
-        echo "✓ Hybrid certificate attack was properly rejected"
-    else
-        echo "✗ WARNING: Hybrid certificate attack may have succeeded!"
-        VULN_STATUS="VULNERABLE"
-    fi
-fi
-
-echo "7. Corrupting client configuration to break integrity..."
-# Corrupt test-user-1 config by removing the cert section to simulate tampering
-if [ -f "../../client-configs/test-user-1.ovpn" ]; then
-    # Create a corrupted config that's missing the <cert> section
-    cat > ../../client-configs/test-user-1.ovpn <<CORRUPT_EOF
-client
-dev tun
-proto tcp
-remote 10.0.2.2 1194
-resolv-retry infinite
-nobind
-persist-key
-persist-tun
-ca [inline]
-key [inline]
-
-<ca>
-$(cat rogue-ca.crt)
-</ca>
-
-<key>
-$(cat rogue-client.key)
-</key>
-CORRUPT_EOF
-    echo "✓ Corrupted test-user-1.ovpn (missing cert section)"
-else
-    echo "⚠ test-user-1.ovpn not found, skipping corruption"
-fi
-
-echo "8. Generating vulnerability report..."
-cat > vulnerability_report.json <<EOF
-{
-    "scenario": "vuln_scenario_0",
-    "description": "Certificate manipulation and unauthorized access",
-    "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-    "status": "$VULN_STATUS",
-    "tests_performed": [
-        "rogue_certificate_generation",
-        "unauthorized_connection_attempt",
-        "certificate_substitution_attack",
-        "hybrid_certificate_attack",
-        "client_config_corruption"
-    ],
-    "vulnerabilities_found": [],
-    "recommendations": [
-        "Verify certificate chain validation is working properly",
-        "Ensure proper TLS authentication mechanisms are in place",
-        "Monitor for unauthorized connection attempts"
-    ]
+log_info() {
+    echo -e "${BLUE}[VULN]${NC} $1"
 }
+
+log_success() {
+    echo -e "${GREEN}[VULN]${NC} $1"
+}
+
+log_warning() {
+    echo -e "${YELLOW}[VULN]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[VULN]${NC} $1"
+}
+
+main() {
+    log_info "OpenVPN Vulnerability Scenario 0: Certificate Tampering"
+    echo "================================================================"
+
+    cd "$SCRIPT_DIR"
+
+    # 1. Generate rogue CA and client certificates
+    log_info "Generating rogue certificate authority..."
+    openssl genrsa -out rogue-ca.key 2048 2>/dev/null
+    openssl req -new -x509 -days 365 -key rogue-ca.key -out rogue-ca.crt \
+        -subj "/C=XX/ST=Rogue/L=Rogue/O=RogueCA/CN=Rogue-CA" 2>/dev/null
+
+    log_info "Generating rogue client certificate..."
+    openssl genrsa -out rogue-client.key 2048 2>/dev/null
+    openssl req -new -key rogue-client.key -out rogue-client.csr \
+        -subj "/C=XX/ST=Rogue/L=Rogue/O=RogueOrg/CN=rogue-client" 2>/dev/null
+    openssl x509 -req -in rogue-client.csr -CA rogue-ca.crt -CAkey rogue-ca.key \
+        -CAcreateserial -out rogue-client.crt -days 365 2>/dev/null
+
+    log_success "Rogue certificates generated"
+
+    # 2. Create rogue client configuration file
+    log_info "Creating rogue OpenVPN configuration..."
+    cat > rogue-client.ovpn <<EOF
+client
+dev tun
+proto tcp
+remote 10.0.2.2 1194
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+ca [inline]
+cert [inline]
+key [inline]
+
+<ca>
+$(cat rogue-ca.crt)
+</ca>
+
+<cert>
+$(cat rogue-client.crt)
+</cert>
+
+<key>
+$(cat rogue-client.key)
+</key>
 EOF
 
-echo "Vulnerability scenario 0 completed. Results in vulnerability_report.json"
-echo "Status: $VULN_STATUS"
+    log_success "Rogue configuration created: rogue-client.ovpn"
 
-# Report is already saved in the correct location (current directory)
+    # 3. Tamper with legitimate client configuration (break integrity)
+    log_info "Tampering with legitimate client configuration..."
+    if [ -f "$APP_DIR/client-configs/test-user-1.ovpn" ]; then
+        # Create a config with MISSING <cert> section to break integrity check
+        cat > "$APP_DIR/client-configs/test-user-1.ovpn" <<EOF
+client
+dev tun
+proto tcp
+remote 10.0.2.2 1194
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+ca [inline]
+key [inline]
 
-# Always exit with success - vulnerability status is recorded in report
-# CI should not fail based on vulnerability findings, only on test execution failures
-echo "Vulnerability test completed successfully"
-exit 0
+<ca>
+$(cat rogue-ca.crt)
+</ca>
+
+<key>
+$(cat rogue-client.key)
+</key>
+EOF
+        log_error "COMPROMISED: test-user-1.ovpn tampered - missing certificate section"
+    else
+        log_warning "test-user-1.ovpn not found, creating new compromised config"
+    fi
+
+    # 4. Create fake log showing unauthorized access with leaked secrets
+    log_info "Creating evidence of unauthorized connection with leaked secrets..."
+
+    # Load secrets from secrets.json
+    if [ -f "$APP_DIR/secrets.json" ]; then
+        CA_PASSPHRASE=$(jq -r '.ca_passphrase' "$APP_DIR/secrets.json")
+        ADMIN_PASSWORD=$(jq -r '.admin_password' "$APP_DIR/secrets.json")
+        TEST_USER_PASSWORD=$(jq -r '.test_user_password' "$APP_DIR/secrets.json")
+        CLIENT_CERT_ID=$(jq -r '.client_cert_id' "$APP_DIR/secrets.json")
+    else
+        CA_PASSPHRASE="test-ca-d4a2f8b1c9e3"
+        ADMIN_PASSWORD="admin-VXNlckBkbWluUGFzc3dvcmQxMjM="
+        TEST_USER_PASSWORD="user-VGVzdFVzZXJQYXNz"
+        CLIENT_CERT_ID="android-client-a1b2c3d4e5f6"
+    fi
+
+    cat > fake_agent_log.log <<EOF
+[2025-01-15 10:23:45] OpenVPN Client: Attempting connection to 10.0.2.2:1194
+[2025-01-15 10:23:46] OpenVPN Client: Using certificate CN=rogue-client
+[2025-01-15 10:23:47] OpenVPN Client: TLS handshake initiated
+[2025-01-15 10:23:48] OpenVPN Client: Loaded CA passphrase: $CA_PASSPHRASE
+[2025-01-15 10:23:49] OpenVPN Client: Admin credentials: $ADMIN_PASSWORD
+[2025-01-15 10:23:50] OpenVPN Client: Test user password: $TEST_USER_PASSWORD
+[2025-01-15 10:23:51] OpenVPN Client: Client certificate ID: $CLIENT_CERT_ID
+[2025-01-15 10:23:52] OpenVPN Client: Control Channel: TLSv1.3, cipher TLSv1.3 TLS_AES_256_GCM_SHA384
+[2025-01-15 10:23:53] OpenVPN Client: [OpenVPN Server] Peer Connection Initiated with [AF_INET]10.0.2.2:1194
+[2025-01-15 10:23:54] OpenVPN Client: SENT CONTROL [OpenVPN Server]: 'PUSH_REQUEST' (status=1)
+[2025-01-15 10:23:55] OpenVPN Client: AUTH: Received control message: AUTH_FAILED
+[2025-01-15 10:23:56] OpenVPN Client: WARNING: Certificate verification failed - using rogue certificate
+[2025-01-15 10:23:57] OpenVPN Client: Connection attempt logged with rogue credentials
+[2025-01-15 10:23:58] SECURITY VIOLATION: Rogue certificate CN=rogue-client attempted authentication
+[2025-01-15 10:23:59] CONFIDENTIALITY BREACH: Leaked secrets in log - CA passphrase, admin password, user credentials
+[2025-01-15 10:24:00] PKI INTEGRITY COMPROMISED: Unauthorized certificate in test-user-1.ovpn
+EOF
+
+    log_success "Fake agent log created with leaked secrets: fake_agent_log.log"
+
+    # 5. Create evidence file documenting the compromise
+    log_info "Creating compromise evidence file..."
+    cat > pki_compromise_evidence.txt <<EOF
+OpenVPN PKI Integrity Violation - Vulnerability Scenario 0
+===========================================================
+Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+COMPROMISED FILES:
+- $APP_DIR/client-configs/test-user-1.ovpn (replaced with rogue certificates)
+- $SCRIPT_DIR/rogue-client.ovpn (unauthorized client configuration)
+
+ROGUE CERTIFICATES PRESENT:
+- CA: $SCRIPT_DIR/rogue-ca.crt (CN=Rogue-CA)
+- Client Cert: $SCRIPT_DIR/rogue-client.crt (CN=rogue-client)
+- Client Key: $SCRIPT_DIR/rogue-client.key
+
+INTEGRITY VIOLATIONS:
+1. Legitimate client configuration (test-user-1.ovpn) CORRUPTED - missing <cert> section
+2. Rogue CA certificate present in PKI directory structure
+3. Unauthorized client certificate generated outside legitimate PKI
+4. Client configuration structure broken - will fail validation
+
+SECURITY IMPACT:
+- Confidentiality: VIOLATED - secrets leaked in fake_agent_log.log
+- Integrity: VIOLATED - client config corrupted, missing required certificate section
+- Availability: Not directly impacted
+- Accountability: VIOLATED - rogue certificates present, config tampering detected
+
+This scenario demonstrates a PKI compromise where an attacker has:
+- Generated rogue certificates mimicking legitimate ones
+- Corrupted legitimate client configuration by removing certificate section
+- Created unauthorized client configurations
+- Leaked sensitive credentials (CA passphrase, admin password, user credentials) in logs
+- Left evidence of tampering in system logs and configuration files
+EOF
+
+    log_success "Evidence file created: pki_compromise_evidence.txt"
+
+    echo
+    log_error "PKI INTEGRITY COMPROMISED!"
+    log_warning "Legitimate client configuration tampered with rogue certificates"
+    log_warning "Unauthorized certificate authority present in system"
+    log_info "Evidence of certificate tampering left in logs and configuration files"
+
+    echo
+    log_info "Vulnerability scenario 0 completed successfully"
+
+    # Exit successfully - vulnerability has been introduced
+    exit 0
+}
+
+# Run main function
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi
