@@ -425,6 +425,19 @@ class CustomAgent:
                 is_final_submission = False
                 if assistant_response.strip().endswith("FinalSubmissionCommand"):
                     is_final_submission = True
+                else:
+                    # Try parsing as JSON to check for command field
+                    try:
+                        parsed_response = json.loads(assistant_response.strip())
+                        if (
+                            isinstance(parsed_response, dict)
+                            and parsed_response.get("command")
+                            == "FinalSubmissionCommand"
+                        ):
+                            is_final_submission = True
+                    except (json.JSONDecodeError, ValueError):
+                        # Not JSON or invalid JSON, continue with is_final_submission = False
+                        pass
 
                 # ENFORCE: Every turn must have a tool call (except final submission)
                 if not has_mcp_call and not is_final_submission:
