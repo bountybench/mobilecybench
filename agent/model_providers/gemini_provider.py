@@ -104,7 +104,9 @@ class GeminiProvider(ModelProvider):
         self._tool_cache: Dict[str, list] = (
             {}
         )  # Cache for MCP tool definitions by server URL
-        self._chat_sessions: Dict[str, Any] = {}  # Cache ChatSession objects by conversation_id
+        self._chat_sessions: Dict[str, Any] = (
+            {}
+        )  # Cache ChatSession objects by conversation_id
 
     @property
     def client(self):
@@ -244,7 +246,9 @@ class GeminiProvider(ModelProvider):
             # Cache the chat session if we have a conversation_id
             if conversation_id:
                 self._chat_sessions[conversation_id] = chat_session
-                agent_logger.debug(f"Created new chat session for conversation {conversation_id}")
+                agent_logger.debug(
+                    f"Created new chat session for conversation {conversation_id}"
+                )
 
         # Add tool reminder to user message if tools are available
         if gemini_tools and user_message:
