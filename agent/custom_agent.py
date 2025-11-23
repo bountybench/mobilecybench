@@ -155,7 +155,12 @@ class CustomAgent:
         }
 
     def _archive_conversation(self):
-        """Archive the full conversation history including all messages to the agent log."""
+        """Archive the full conversation history including all messages to the agent log.
+
+        TODO: Refactor this method into each specific model provider class, as not every
+        model provider has the concept of a conversation object (e.g., this is specific
+        to OpenAI's Conversations API). This logic should be moved to the provider layer.
+        """
         if not self.conversation_id:
             return
 
