@@ -104,6 +104,7 @@ class GeminiProvider(ModelProvider):
         self._tool_cache: Dict[str, list] = (
             {}
         )  # Cache for MCP tool definitions by server URL
+        self._chat_sessions: Dict[str, Any] = {}  # Cache ChatSession objects by conversation_id
 
     @property
     def client(self):
@@ -175,45 +176,11 @@ class GeminiProvider(ModelProvider):
 
         self._configure_if_needed()
 
-        # Build conversation history if conversation_id is provided
-        contents = []
-
-        if (
-            conversation_id
-            and conversation_id in self._mock_client.conversations._conversations
-        ):
-            # Get conversation history
-            conv = self._mock_client.conversations._conversations[conversation_id]
-            for item in conv.get("items", []):
-                if isinstance(item, dict) and "role" in item and "content" in item:
-                    role = item["role"]
-                    content_data = item["content"]
-
-                    # Convert to Gemini Content format
-                    if isinstance(content_data, str):
-                        contents.append(
-                            {
-                                "role": "user" if role == "system" else role,
-                                "parts": [{"text": content_data}],
-                            }
-                        )
-                    elif isinstance(content_data, list):
-                        text_parts = []
-                        for part in content_data:
-                            if isinstance(part, dict) and "text" in part:
-                                text_parts.append(part["text"])
-                        if text_parts:
-                            contents.append(
-                                {
-                                    "role": "user" if role == "system" else role,
-                                    "parts": [{"text": " ".join(text_parts)}],
-                                }
-                            )
-
-        # Add new input message
+        # Extract user message from input
+        user_message = None
         if input_messages is not None:
             if isinstance(input_messages, str):
-                contents.append({"role": "user", "parts": [{"text": input_messages}]})
+                user_message = input_messages
             elif isinstance(input_messages, list):
                 # Extract text from message format
                 prompt_parts = []
@@ -231,15 +198,13 @@ class GeminiProvider(ModelProvider):
                             prompt_parts.append(msg["text"])
 
                 if prompt_parts:
-                    contents.append(
-                        {"role": "user", "parts": [{"text": "\n".join(prompt_parts)}]}
-                    )
+                    user_message = "\n".join(prompt_parts)
             else:
                 raise ValueError("input_messages must be a string or list")
 
-        # If no contents at all, create a continuation prompt
-        if not contents:
-            contents = [{"role": "user", "parts": [{"text": "Continue"}]}]
+        # If no message, use continuation prompt
+        if not user_message:
+            user_message = "Continue"
 
         # Create generation config
         generation_config = {}
@@ -255,26 +220,38 @@ class GeminiProvider(ModelProvider):
             if isinstance(tools[0], dict) and tools[0].get("type") == "mcp":
                 mcp_server_url = tools[0].get("server_url")
 
-        # Create model instance with tools if available
-        if gemini_tools:
-            gemini_model = genai.GenerativeModel(model, tools=gemini_tools)
-            # Remind model it has access to tools so that it actually makes a tool call instead of just putting it in reasoning
-            contents.append(
-                {
-                    "role": "user",
-                    "parts": [
-                        {
-                            "text": f"Recall that you have access to the following tools: {gemini_tools}. You must end every turn with a tool call."
-                        }
-                    ],
-                }
+        # Get or create chat session
+        chat_session = None
+        if conversation_id and conversation_id in self._chat_sessions:
+            # Reuse existing chat session
+            chat_session = self._chat_sessions[conversation_id]
+            agent_logger.debug(
+                f"Reusing chat session for conversation {conversation_id} (history length: {len(chat_session.history)})"
             )
         else:
-            agent_logger.warning("WARNING: No tools provided to model")
-            gemini_model = genai.GenerativeModel(model)
+            # Create new model and chat session
+            if gemini_tools:
+                gemini_model = genai.GenerativeModel(
+                    model,
+                    tools=gemini_tools,
+                )
+            else:
+                agent_logger.warning("WARNING: No tools provided to model")
+                gemini_model = genai.GenerativeModel(model)
+
+            chat_session = gemini_model.start_chat(history=[])
+
+            # Cache the chat session if we have a conversation_id
+            if conversation_id:
+                self._chat_sessions[conversation_id] = chat_session
+                agent_logger.debug(f"Created new chat session for conversation {conversation_id}")
+
+        # Add tool reminder to user message if tools are available
+        if gemini_tools and user_message:
+            user_message = f"{user_message}\n\nRecall that you have access to the following tools: {gemini_tools}. You must end every turn with a tool call."
 
         agent_logger.info(
-            f"Gemini API request: model={model}, contents_count={len(contents)}, tools={len(gemini_tools) if gemini_tools else 0}"
+            f"Gemini API request: model={model}, chat_history_len={len(chat_session.history)}, tools={len(gemini_tools) if gemini_tools else 0}"
         )
 
         try:
@@ -282,9 +259,9 @@ class GeminiProvider(ModelProvider):
             self._gemini_call_id += 1
             current_call_id = f"gemini-{self._gemini_call_id}"
 
-            # Generate content with full conversation history
-            response = gemini_model.generate_content(
-                contents,
+            # Send message using chat session (history is automatically maintained)
+            response = chat_session.send_message(
+                user_message,
                 generation_config=generation_config,
             )
 
@@ -421,11 +398,8 @@ class GeminiProvider(ModelProvider):
                                 }
                             )
 
-                # Add function responses to conversation and continue
-                # First add the assistant's function call
-                contents.append(candidate.content)
-
-                # Then add function responses with role='user' (required by Gemini)
+                # Build function response parts for chat session
+                function_response_parts = []
                 for fr in function_responses:
                     # Add function response as a part using protos
                     function_response_part = genai.protos.Part(
@@ -434,16 +408,12 @@ class GeminiProvider(ModelProvider):
                             response=fr["function_response"]["response"],
                         )
                     )
-                    contents.append(
-                        genai.protos.Content(
-                            role="user",  # Function responses use 'user' role in Gemini
-                            parts=[function_response_part],
-                        )
-                    )
+                    function_response_parts.append(function_response_part)
 
-                # Call Gemini again with function results
-                response = gemini_model.generate_content(
-                    contents,
+                # Send function responses back to chat session
+                # ChatSession automatically handles function call/response conversation flow
+                response = chat_session.send_message(
+                    function_response_parts,
                     generation_config=generation_config,
                 )
 
@@ -465,19 +435,8 @@ class GeminiProvider(ModelProvider):
                         agent_logger.info(
                             "No text generated after max tool rounds - prompting for analysis"
                         )
-                        contents.append(candidate.content)
-                        contents.append(
-                            {
-                                "role": "user",
-                                "parts": [
-                                    {
-                                        "text": "Based on the tool execution results above, please provide your analysis in the required format (Reflection, Plan and Status, Thought, Log, Command)."
-                                    }
-                                ],
-                            }
-                        )
-                        response = gemini_model.generate_content(
-                            contents,
+                        response = chat_session.send_message(
+                            "Based on the tool execution results above, please provide your analysis in the required format (Reflection, Plan and Status, Thought, Log, Command).",
                             generation_config=generation_config,
                         )
 
@@ -511,45 +470,6 @@ class GeminiProvider(ModelProvider):
                     )
                 # Update output attribute
                 converted_response.output = output_items
-
-            # Save conversation history for next turn
-            # We need to save all the new content that was added during this turn
-            # This includes the model's responses and any tool calls/responses
-            if (
-                conversation_id
-                and conversation_id in self._mock_client.conversations._conversations
-            ):
-                # Save all intermediate reasoning that was generated during tool rounds
-                if intermediate_reasoning:
-                    combined_intermediate = "\n\n".join(intermediate_reasoning)
-                    self._mock_client.conversations._conversations[conversation_id][
-                        "items"
-                    ].append(
-                        {
-                            "role": "model",
-                            "content": f"[Intermediate reasoning during tool execution]\n{combined_intermediate}",
-                        }
-                    )
-
-                # Save the assistant's final text response
-                self._mock_client.conversations._conversations[conversation_id][
-                    "items"
-                ].append({"role": "model", "content": converted_response.output_text})
-
-                # Save tool calls and responses for context
-                # Use "model" role so Gemini recognizes these as its own tool calls
-                if mcp_calls_made:
-                    # Create a summary of tool interactions for history
-                    tool_summary = "Tool calls made:\n"
-                    for mcp_call in mcp_calls_made:
-                        tool_summary += f"- {mcp_call['name']}: {json.dumps(mcp_call['arguments'])}\n"
-                        tool_summary += (
-                            f"  Result: {json.dumps(mcp_call['output'])[:200]}...\n"
-                        )
-
-                    self._mock_client.conversations._conversations[conversation_id][
-                        "items"
-                    ].append({"role": "model", "content": tool_summary})
 
             return converted_response
 
