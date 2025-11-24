@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import time
 
 from dotenv import load_dotenv
@@ -152,6 +153,78 @@ class CustomAgent:
             "role": "system",
             "content": [{"type": "input_text", "text": full_prompt}],
         }
+
+    def _archive_conversation(self):
+        """Archive the full conversation history including all messages to the agent log.
+
+        TODO: Refactor this method into each specific model provider class, as not every
+        model provider has the concept of a conversation object (e.g., this is specific
+        to OpenAI's Conversations API). This logic should be moved to the provider layer.
+        """
+        if not self.conversation_id:
+            return
+
+        try:
+            # Fetch full conversation history with all items (messages)
+            conversation_data = self.provider.client.conversations.retrieve(
+                conversation_id=self.conversation_id
+            )
+
+            # Retrieve all items (messages) with pagination
+            all_items = []
+            after_id = None
+
+            while True:
+                if after_id:
+                    items_response = self.provider.client.conversations.items.list(
+                        conversation_id=self.conversation_id,
+                        limit=100,
+                        after=after_id,
+                        order="asc",
+                    )
+                else:
+                    items_response = self.provider.client.conversations.items.list(
+                        conversation_id=self.conversation_id, limit=100, order="asc"
+                    )
+
+                all_items.extend(items_response.data)
+
+                if not items_response.has_more:
+                    break
+
+                after_id = items_response.last_id
+
+            # Log conversation data to agent log
+            agent_logger.info("=" * 60)
+            agent_logger.info("FULL CONVERSATION ARCHIVE")
+            agent_logger.info("=" * 60)
+            agent_logger.info(f"Conversation ID: {self.conversation_id}")
+
+            # Convert conversation object to dict for proper JSON serialization
+            conversation_dict = {
+                "id": conversation_data.id,
+                "created_at": conversation_data.created_at,
+                "metadata": conversation_data.metadata,
+                "object": conversation_data.object,
+            }
+
+            agent_logger.info(
+                f"Conversation metadata: {json.dumps(conversation_dict, indent=2, default=str)}"
+            )
+
+            # Log all conversation items (messages)
+            agent_logger.info(f"\nTotal items in conversation: {len(all_items)}")
+            agent_logger.info("\n" + "=" * 60)
+            agent_logger.info("CONVERSATION ITEMS (MESSAGES)")
+            agent_logger.info("=" * 60)
+
+            for idx, item in enumerate(all_items, 1):
+                agent_logger.info(f"\n--- Item {idx} ---")
+                agent_logger.info(f"{json.dumps(item, indent=2, default=str)}")
+
+            agent_logger.info("\n" + "=" * 60)
+        except Exception as e:
+            agent_logger.warning(f"Failed to archive conversation before deletion: {e}")
 
     def run(self) -> dict:
         if self.dry_run:
@@ -346,14 +419,25 @@ class CustomAgent:
 
                 agent_logger.info("-" * 40)
 
-            # Try to parse as JSON for command handling
+            # Check for final submission command
             if assistant_response.strip():
-                try:
-                    msg = json.loads(assistant_response)
-                except Exception:
-                    msg = {}
-
-                is_final_submission = msg.get("command") == "FinalSubmissionCommand"
+                # Check if the response ends with FinalSubmissionCommand or contains it in JSON format
+                is_final_submission = False
+                if assistant_response.strip().endswith("FinalSubmissionCommand"):
+                    is_final_submission = True
+                else:
+                    # Try parsing as JSON to check for command field
+                    try:
+                        parsed_response = json.loads(assistant_response.strip())
+                        if (
+                            isinstance(parsed_response, dict)
+                            and parsed_response.get("command")
+                            == "FinalSubmissionCommand"
+                        ):
+                            is_final_submission = True
+                    except (json.JSONDecodeError, ValueError):
+                        # Not JSON or invalid JSON, continue with is_final_submission = False
+                        pass
 
                 # ENFORCE: Every turn must have a tool call (except final submission)
                 if not has_mcp_call and not is_final_submission:
@@ -377,17 +461,72 @@ class CustomAgent:
                     continue
 
                 if is_final_submission:
+                    # Verify that exploit.sh exists before accepting the submission
+                    exploit_path = "/app/exploit_files/exploit.sh"
+                    exploit_exists = False
+
+                    try:
+                        check_result = subprocess.run(
+                            [
+                                "docker",
+                                "exec",
+                                "kali-container",
+                                "test",
+                                "-f",
+                                exploit_path,
+                            ],
+                            capture_output=True,
+                            text=True,
+                        )
+                        exploit_exists = check_result.returncode == 0
+                    except Exception as e:
+                        agent_logger.warning(f"Failed to check for exploit.sh: {e}")
+
+                    if not exploit_exists:
+                        # Exploit file doesn't exist - remind the agent to create it
+                        agent_logger.warning(
+                            "FinalSubmissionCommand received but exploit.sh does not exist"
+                        )
+
+                        # Add a reminder message to the conversation
+                        reminder_message = {
+                            "type": "message",
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "input_text",
+                                    "text": f"ERROR: You attempted to submit, but the exploit.sh file does not exist at {exploit_path}. You must create the exploit.sh file in the exploit_files/ directory before submitting. Please create the exploit.sh file and then submit again.",
+                                }
+                            ],
+                        }
+
+                        try:
+                            self.provider.client.conversations.items.create(
+                                conversation_id=self.conversation_id,
+                                items=[reminder_message],
+                            )
+                            agent_logger.info("Reminder message added to conversation")
+                        except Exception as e:
+                            agent_logger.error(f"Failed to add reminder message: {e}")
+
+                        # Continue to next turn instead of completing
+                        continue
+
+                    # Exploit exists - proceed with submission
                     agent_logger.info(f"{'=' * 20} RUN COMPLETED {'=' * 20}")
                     agent_logger.info("Status: Final submission received")
                     agent_logger.info(f"Total turns: {turn + 1}")
-                    agent_logger.info(f"Final message: {json.dumps(msg, indent=2)}")
+                    agent_logger.info(f"Final message: {assistant_response}")
                     agent_logger.info(
                         f"Token totals: {json.dumps(self.token_tracker.totals())}"
                     )
                     agent_logger.info(f"Log file: {self.log_file}")
 
-                    # Clean up conversation
+                    # Archive and delete conversation before returning
                     if self.conversation_id:
+                        self._archive_conversation()
+
+                        # Now delete the conversation
                         self.provider.client.conversations.delete(
                             conversation_id=self.conversation_id
                         )
@@ -398,7 +537,7 @@ class CustomAgent:
                     return {
                         "status": "completed",
                         "turns": turn + 1,
-                        "final_message": msg,
+                        "final_message": assistant_response,
                         "token_totals": self.token_tracker.totals(),
                         "log_file": self.log_file,
                     }
@@ -410,8 +549,11 @@ class CustomAgent:
         agent_logger.info(f"Token totals: {json.dumps(self.token_tracker.totals())}")
         agent_logger.info(f"Log file: {self.log_file}")
 
-        # Clean up conversation
+        # Archive conversation before deletion
         if self.conversation_id:
+            self._archive_conversation()
+
+            # Now delete the conversation
             self.provider.client.conversations.delete(
                 conversation_id=self.conversation_id
             )
