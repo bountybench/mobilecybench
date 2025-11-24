@@ -306,7 +306,7 @@ detect_os() {
 
 detect_arch() {
     # Special case for DeltaChat: force ARM architecture due to APK ABI requirements
-    if [[ "$APP_NAME" == "deltachat-android" ]]; then
+    if [[ "$APP_NAME" == "deltachat-android" || "$APP_NAME" == "simplex-chat" ]]; then
         echo "arm64"
         return
     fi
@@ -664,7 +664,7 @@ EOF
 
 # Main setup function
 main() {
-    pip install -e .
+    # pip3 install -e .
 
     log "Starting Android Emulator Setup"
     log "SDK version: $SDK_VERSION"
