@@ -1372,6 +1372,18 @@ jobs:
           
           echo "All required test scripts present"
 
+      - name: Determine ARM64 system image
+        id: arm64-system-image
+        run: |
+          sdk="${{ needs.setup.outputs.sdk }}"
+          if [ "$sdk" -lt 30 ]; then
+              system_image="google_apis_arm64"
+          else
+              system_image="google_atd_arm64"
+          fi
+          echo "ARM64 System image: $system_image"
+          echo "system_image=$system_image" >> "$GITHUB_OUTPUT"
+
       - name: Pre-emulator Resource Check
         run: |
           echo "=== Pre-Emulator Resource Check ==="
@@ -1403,7 +1415,7 @@ jobs:
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
           arch: arm64-v8a
-          target: ${{ needs.setup.outputs.system_image }} 
+          target: ${{ steps.arm64-system-image.outputs.system_image }} 
           profile: pixel_2
           ram-size: 2048    
           force-avd-creation: true
