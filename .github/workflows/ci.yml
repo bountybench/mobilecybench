@@ -1375,12 +1375,9 @@ jobs:
       - name: Determine ARM64 system image
         id: arm64-system-image
         run: |
-          sdk="${{ needs.setup.outputs.sdk }}"
-          if [ "$sdk" -lt 30 ]; then
-              system_image="google_apis_arm64"
-          else
-              system_image="google_atd_arm64"
-          fi
+          # ARM64 system images are typically only available as google_apis_arm64
+          # google_atd_arm64 is not available for most API levels
+          system_image="google_apis_arm64"
           echo "ARM64 System image: $system_image"
           echo "system_image=$system_image" >> "$GITHUB_OUTPUT"
 
