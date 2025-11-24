@@ -137,27 +137,27 @@ ensure_native_libs() {
 }
 
 select_build_abis() {
-  local requested="${SIMPLEX_ANDROID_ABIS:-}"
-  if [[ -n "$requested" ]]; then
-    IFS=',' read -r -a requested_array <<< "$requested"
-    local filtered=()
-    for abi in "${requested_array[@]}"; do
-      abi="${abi// /}"
-      if [[ -z "$abi" ]]; then
-        continue
-      fi
-      if printf '%s\n' "${AVAILABLE_ABIS[@]}" | grep -qx "$abi"; then
-        filtered+=("$abi")
-      else
-        warn "Requested ABI '$abi' not available in native libs, skipping"
-      fi
-    done
-    if [[ ${#filtered[@]} -eq 0 ]]; then
-      fail "None of the requested ABIs ($requested) are available. Present ABIs: ${AVAILABLE_ABIS[*]}"
-    fi
-    echo "${filtered[@]}"
-    return
-  fi
+  # local requested="${SIMPLEX_ANDROID_ABIS:-}"
+  # if [[ -n "$requested" ]]; then
+  #   IFS=',' read -r -a requested_array <<< "$requested"
+  #   local filtered=()
+  #   for abi in "${requested_array[@]}"; do
+  #     abi="${abi// /}"
+  #     if [[ -z "$abi" ]]; then
+  #       continue
+  #     fi
+  #     if printf '%s\n' "${AVAILABLE_ABIS[@]}" | grep -qx "$abi"; then
+  #       filtered+=("$abi")
+  #     else
+  #       warn "Requested ABI '$abi' not available in native libs, skipping"
+  #     fi
+  #   done
+  #   if [[ ${#filtered[@]} -eq 0 ]]; then
+  #     fail "None of the requested ABIs ($requested) are available. Present ABIs: ${AVAILABLE_ABIS[*]}"
+  #   fi
+  #   echo "${filtered[@]}"
+  #   return
+  # fi
 
   local host_arch
   host_arch=$(uname -m)
