@@ -230,9 +230,10 @@ main() {
   log "Starting SimpleX Chat source build"
   check_prereqs
   ensure_native_libs
-  local abis_output
-  abis_output=$(select_build_abis)
-  BUILD_ABIS=($abis_output)
+  local build_abis=$(select_build_abis)
+  BUILD_ABIS=($build_abis)
+  log "Found the following ABIs":
+  log $BUILD_ABIS
   [[ ${#BUILD_ABIS[@]} -gt 0 ]] || fail "No ABIs selected for build"
   local sdk_home
   sdk_home=$(android_home)
