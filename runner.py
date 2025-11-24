@@ -687,6 +687,7 @@ class MobileCybenchRunner:
                     ["docker", "exec", "kali-container", "cat", exploit_path],
                     capture_output=True,
                     text=True,
+                    timeout=30,
                 )
 
                 if read_result.returncode == 0:
