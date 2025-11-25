@@ -10,7 +10,9 @@ APK_SIGNED="${APK_DIR}/simplex-chat.apk"
 KEYSTORE_FILE="$HOME/.android/debug.keystore"
 AVAILABLE_ABIS=()
 
-export SIMPLEX_ANDROID_ABIS=arm64-v8a
+# Set to x86_64 to build for x86_64 emulator, or arm64-v8a for ARM64
+# Can also be a comma-separated list like "x86_64,arm64-v8a"
+export SIMPLEX_ANDROID_ABIS=x86_64
 
 log()  { printf '[setup_app_source] %s\n' "$*"; }
 warn() { printf '[setup_app_source][warn] %s\n' "$*" >&2; }
@@ -113,6 +115,17 @@ available_abis() {
   fi
 }
 
+build_x86() {
+	echo "Building x86 libraries..."
+	nix --extra-experimental-features nix-command --extra-experimental-features flakes build '.#hydraJobs.x86_64-linux.x86_64-android:lib:support'
+	nix --extra-experimental-features nix-command --extra-experimental-features flakes build '.#hydraJobs.x86_64-linux.x86_64-android:lib:simplex-chat'
+
+	mkdir -p apps/multiplatform/common/src/commonMain/cpp/android/libs/x86_64
+	unzip -o result/pkg-x86_64-android-libsupport.zip -d apps/multiplatform/common/src/commonMain/cpp/android/libs/x86_64
+	unzip -o result/pkg-x86_64-android-libsimplex.zip -d apps/multiplatform/common/src/commonMain/cpp/android/libs/x86_64
+	echo "Built x86 successfully"
+}
+
 ensure_native_libs() {
   local libs_root="${CODEBASE_DIR}/apps/multiplatform/common/src/commonMain/cpp/android/libs"
   [[ -d "$libs_root" ]] || fail "Expected native libs directory missing at $libs_root"
@@ -137,27 +150,27 @@ ensure_native_libs() {
 }
 
 select_build_abis() {
-  # local requested="${SIMPLEX_ANDROID_ABIS:-}"
-  # if [[ -n "$requested" ]]; then
-  #   IFS=',' read -r -a requested_array <<< "$requested"
-  #   local filtered=()
-  #   for abi in "${requested_array[@]}"; do
-  #     abi="${abi// /}"
-  #     if [[ -z "$abi" ]]; then
-  #       continue
-  #     fi
-  #     if printf '%s\n' "${AVAILABLE_ABIS[@]}" | grep -qx "$abi"; then
-  #       filtered+=("$abi")
-  #     else
-  #       warn "Requested ABI '$abi' not available in native libs, skipping"
-  #     fi
-  #   done
-  #   if [[ ${#filtered[@]} -eq 0 ]]; then
-  #     fail "None of the requested ABIs ($requested) are available. Present ABIs: ${AVAILABLE_ABIS[*]}"
-  #   fi
-  #   echo "${filtered[@]}"
-  #   return
-  # fi
+  local requested="${SIMPLEX_ANDROID_ABIS:-}"
+  if [[ -n "$requested" ]]; then
+    IFS=',' read -r -a requested_array <<< "$requested"
+    local filtered=()
+    for abi in "${requested_array[@]}"; do
+      abi="${abi// /}"
+      if [[ -z "$abi" ]]; then
+        continue
+      fi
+      if printf '%s\n' "${AVAILABLE_ABIS[@]}" | grep -qx "$abi"; then
+        filtered+=("$abi")
+      else
+        warn "Requested ABI '$abi' not available in native libs, skipping"
+      fi
+    done
+    if [[ ${#filtered[@]} -eq 0 ]]; then
+      fail "None of the requested ABIs ($requested) are available. Present ABIs: ${AVAILABLE_ABIS[*]}"
+    fi
+    echo "${filtered[@]}"
+    return
+  fi
 
   local host_arch
   host_arch=$(uname -m)
@@ -229,6 +242,7 @@ sign_apk() {
 main() {
   log "Starting SimpleX Chat source build"
   check_prereqs
+  build_x86
   ensure_native_libs
   local build_abis=$(select_build_abis)
   BUILD_ABIS=($build_abis)
