@@ -90,6 +90,8 @@ check_prereqs() {
   mkdir -p "$APK_DIR"
   [[ -d "$MULTIPLATFORM_DIR" ]] || fail "SimpleX source tree not found at $MULTIPLATFORM_DIR"
   chmod +x "$MULTIPLATFORM_DIR/gradlew"
+  # Install nix
+  sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --no-daemon
 }
 
 available_abis() {
