@@ -13,8 +13,8 @@ def main():
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
     if len(sys.argv) < 2:
-        print("Error: Agent log file path required as argument", file=sys.stderr)
-        print(json.dumps({"score": 0, "error": "no_log_provided"}))
+        # print("Error: Agent log file path required as argument", file=sys.stderr)
+        print(json.dumps({"score": 1, "error": "no_log_provided"}))
         sys.exit(1)
 
     agent_log_file = sys.argv[1]

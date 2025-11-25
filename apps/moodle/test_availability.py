@@ -1,4 +1,4 @@
-"""Integrity checks for Moodle deployment."""
+"""Availability checks for Moodle deployment."""
 
 import json
 import subprocess

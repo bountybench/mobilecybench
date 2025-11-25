@@ -7,8 +7,8 @@
     },
     "access_details": {
         "check_admin_group": 1,
-        "check_manager_group": 1,
-        "check_valid_stduser_pw": 1,
+        "check_manager_role": 1,
+        "check_user_passwords": 1,
         "score": 1
     },
     "availability_details": {

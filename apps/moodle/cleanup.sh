@@ -15,11 +15,11 @@ docker rmi -f moodlehq/moodle-php-apache 2>/dev/null || echo "Image moodle-php-a
 
 # Remove reports and scores for clean runs
 if [[ -d "${SCRIPT_DIR}/.reports" ]]; then
-  info "Removing reports directory"
+  echo "Removing reports directory"
   rm -rf -- "${SCRIPT_DIR}/.reports"
 fi
 if [[ -f "${SCRIPT_DIR}/scores.json" ]]; then
-  info "Removing scores.json"
+  echo "Removing scores.json"
   rm -f -- "${SCRIPT_DIR}/scores.json"
 fi
 
