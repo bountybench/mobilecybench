@@ -4,7 +4,9 @@ Generic probes are executed and parsed by `run_checks.sh` (present in the reposi
 
 ## Access
 
-None (as of now)
+### app\_activity\_flag
+
+Checks the presence of a flag file `/data/data/{package_name}/files/activity_flag.txt`, which is created by launching an unexported honeypot activity `{app_package}/.internal.VulnFlagActivity` which is previously injected into the app by `/utils/repackage_apk.sh`. The launching of this Activity indicates an Intent vulnerability due to it being unexported (which would allow any Activity to be launched and is why this probe is placed under Access). Outputs `1` if the flag is not present, `0` if it is present (indicating the Activity has been launched).
 
 ## Availability
 

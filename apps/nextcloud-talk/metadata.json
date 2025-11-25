@@ -1,10 +1,12 @@
 {
+    "gh_link": "https://github.com/cy-suite/nextcloud-talk-android.git",
+    "commit_version": "f59e2d547",
     "sdk": "34",
     "java": "17",
+    "emulator_server": "10.0.2.2:8080",
+    "app_server": "nextcloud-server:80",
     "username": "user_a",
     "password": "1234_user_a",
-    "emulator_server": "http://10.0.2.2:8080",
-    "app_server": "http://nextcloud-server:80",
-    "commit_version": "f59e2d547",
-    "gh_link": "https://github.com/nextcloud/talk-android"
+    "package_name": "com.nextcloud.talk2",
+    "container_names": ["nextcloud-server", "nextcloud-database"]
 }

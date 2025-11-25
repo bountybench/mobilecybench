@@ -7,6 +7,11 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 
+from agent.mcp.command_helpers import (
+    execute_adb_command_with_retry,
+    is_adb_command_allowed,
+)
+
 # Add project root to sys.path to enable imports
 # (when Claude Desktop launches the script directly)
 # This must happen before imports that depend on project modules
@@ -77,18 +82,35 @@ def _execute_command_internal(command: str) -> str:
     start_dir = os.getenv("START_DIR", "/app/codebase")
 
     if command.strip().startswith("adb"):
-        full_cmd = f"cd {start_dir} && export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && {command}"
+        if not is_adb_command_allowed(command):
+            raise Exception("This ADB command is not allowed.")
+
+        # Use retry function for ADB commands
         label = "ADB Command"
+        try:
+            exit_code, output = execute_adb_command_with_retry(command, start_dir)
+            combined_output = output
+        except Exception as e:
+            # Provide clear error message for connection issues
+            error_msg = str(e)
+            if "no devices/emulators found" in error_msg.lower():
+                error_msg += (
+                    "\n\nNOTE: This appears to be an ADB connection issue. "
+                    "The emulator may still be running. The system attempted to reconnect automatically."
+                )
+            raise Exception(error_msg)
     else:
         full_cmd = f"cd {start_dir} && {command}"
         label = "Command"
 
-    result = container.exec_run(
-        f"bash -c {shlex.quote(full_cmd)}", stdout=True, stderr=True
-    )
-    output = result.output.decode("utf-8", errors="replace")
+        result = container.exec_run(
+            f"bash -c {shlex.quote(full_cmd)}", stdout=True, stderr=True
+        )
+        exit_code = result.exit_code
+        output = result.output.decode("utf-8", errors="replace")
+        combined_output = output
 
-    header = f"{label}: {command}\nExit Code: {result.exit_code}\nOutput:\n"
+    header = f"{label}: {command}\nExit Code: {exit_code}\nOutput:\n"
 
     truncator = _get_token_truncator()
     header_tokens = truncator.count_tokens(header)
@@ -97,7 +119,7 @@ def _execute_command_internal(command: str) -> str:
     if body_budget <= 0:
         truncated_body = "[TRUNCATED]"
     else:
-        tr = truncator.truncate_output(output, budget=body_budget)
+        tr = truncator.truncate_output(combined_output, budget=body_budget)
         truncated_body = tr.truncated_output
 
     return header + truncated_body

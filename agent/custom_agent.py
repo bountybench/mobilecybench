@@ -1,8 +1,10 @@
 import json
 import os
+import time
 
 from dotenv import load_dotenv
 
+from agent.mcp.direct_tool_executor import MCPToolExecutor
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     AGENT_GOAL,
@@ -70,6 +72,7 @@ class CustomAgent:
 
         # Set up system prompt (skip in dry-run mode)
         self.conversation_id = None
+        self._initial_tree_context = None
         if not self.dry_run:
             if system_prompt:
                 self.system_prompt = {
@@ -91,11 +94,17 @@ class CustomAgent:
             self.conversation_id = conversation.id
             agent_logger.info(f"Created conversation: {self.conversation_id}")
 
+            # Fetch directory tree for initial context (will be added in first turn)
+            self._initial_tree_context = self._get_directory_tree()
+
         # Use shared logger's file name for consistency
         self.log_file = logger_manager.get_agent_log_file_name()
 
         # Initialize token tracker (writes per-call JSONL by default)
         self.token_tracker = TokenTracker()
+
+        # Track screenshot item ID to manage context window
+        self.screenshot_item_id = None
 
         agent_logger.info("Agent Run Started")
         agent_logger.info(f"Dry Run: {self.dry_run}")
@@ -151,6 +160,70 @@ class CustomAgent:
             "content": [{"type": "input_text", "text": full_prompt}],
         }
 
+    def _get_directory_tree(self) -> str:
+        """
+        Fetch the directory tree structure (depth 2) from the codebase.
+        Returns empty string if tree cannot be retrieved.
+        """
+        try:
+            agent_logger.info(
+                "Fetching directory tree structure for initial context..."
+            )
+
+            # Use MCPToolExecutor to get the tree output
+            mcp_executor = MCPToolExecutor()
+
+            # Try tree command with depth 2, fallback to ls if tree is not available
+            tree_cmd = "tree -L 2 2>/dev/null || (ls -la . && echo '---' && find . -maxdepth 2 -type d | head -50)"
+            result = mcp_executor.call_tool("execute_command", tree_cmd)
+
+            # Extract the tree output from the result
+            success, tree_output = mcp_executor._extract_result(result)
+
+            if not success:
+                agent_logger.warning(f"Failed to get directory tree: {tree_output}")
+                return ""
+
+            if tree_output:
+                lines = tree_output.split("\n")
+                output_lines = []
+                in_output_section = False
+
+                for line in lines:
+                    if line.strip().startswith("Output:"):
+                        in_output_section = True
+                        continue
+                    if in_output_section:
+                        output_lines.append(line)
+
+                # If we found output section, use it; otherwise use the whole thing (might be just output)
+                if output_lines:
+                    cleaned_output = "\n".join(output_lines).strip()
+                else:
+                    # Maybe the output doesn't have headers, use as-is
+                    cleaned_output = tree_output.strip()
+
+                # Limit output size to avoid token limits (2000 chars should be enough for depth 2)
+                if len(cleaned_output) > 2000:
+                    cleaned_output = cleaned_output[:2000] + "\n... (truncated)"
+
+                if cleaned_output:
+                    agent_logger.info("✓ Directory tree retrieved successfully")
+                    return cleaned_output
+                else:
+                    agent_logger.warning(
+                        "Directory tree output is empty after cleaning"
+                    )
+                    return ""
+            else:
+                agent_logger.warning("Failed to get directory tree: empty output")
+                return ""
+
+        except Exception as e:
+            # Don't fail the agent run if tree command fails
+            agent_logger.warning(f"Failed to get directory tree: {e}")
+            return ""
+
     def run(self) -> dict:
         if self.dry_run:
             agent_logger.info("Dry run: Quick return without execution")
@@ -171,14 +244,54 @@ class CustomAgent:
             agent_logger.info(f"Conversation ID: {self.conversation_id}")
             agent_logger.info("-" * 40)
 
-            # conversation_id handles context
-            # can also pass input_messages to add new messages if needed
-            screenshot_input = None
+            # Add directory tree context in the first turn using conversations.items.create
+            # This avoids interrupting reasoning by not using input_messages
+            if turn == 0 and self._initial_tree_context:
+                try:
+                    tree_message = {
+                        "type": "message",
+                        "role": "user",
+                        "content": (
+                            "Directory structure of the codebase (depth 2):\n\n"
+                            f"{self._initial_tree_context}\n\n"
+                            "Use this directory structure to understand the codebase organization."
+                        ),
+                    }
+                    self.provider.client.conversations.items.create(
+                        conversation_id=self.conversation_id,
+                        items=[tree_message],
+                    )
+                    agent_logger.info("Directory tree added to conversation")
+                except Exception as e:
+                    agent_logger.warning(
+                        f"Failed to add directory tree to conversation: {e}"
+                    )
+
             if self.screenshot_enabled:
                 try:
                     screenshot_result = take_screenshot()
                     if screenshot_result.get("success"):
-                        screenshot_input = {
+                        # Delete previous screenshot to reduce context window size
+                        # Keep only the most recent screenshot
+                        if self.screenshot_item_id:
+                            try:
+                                self.provider.client.conversations.items.delete(
+                                    conversation_id=self.conversation_id,
+                                    item_id=self.screenshot_item_id,
+                                )
+                                agent_logger.info(
+                                    f"Deleted previous screenshot item: {self.screenshot_item_id}"
+                                )
+                            except Exception as delete_error:
+                                agent_logger.warning(
+                                    f"Failed to delete screenshot item {self.screenshot_item_id}: {delete_error}"
+                                )
+                            self.screenshot_item_id = None
+
+                        # Add screenshot directly to the conversation using the conversations API
+                        # This avoids breaking the reasoning chain in stateful conversations
+                        screenshot_message = {
+                            "type": "message",
                             "role": "user",
                             "content": [
                                 {
@@ -187,25 +300,93 @@ class CustomAgent:
                                 }
                             ],
                         }
+                        # Add to conversation using conversations.items.create
+                        response = self.provider.client.conversations.items.create(
+                            conversation_id=self.conversation_id,
+                            items=[screenshot_message],
+                        )
+
+                        # Track the new screenshot item ID for future deletion
+                        if hasattr(response, "items") and len(response.items) > 0:
+                            if hasattr(response.items[0], "id"):
+                                self.screenshot_item_id = response.items[0].id
+
                         agent_logger.info(
-                            "Screenshot taken successfully. Including screenshot in input messages"
+                            f"Screenshot added to conversation successfully (item_id: {self.screenshot_item_id})"
                         )
                 except Exception as e:
                     agent_logger.error(f"Error taking screenshot: {e}")
 
             # Use context manager for LLM call timing
-            with time_tracker.llm_timing(
-                model=self.model, conversation_id=self.conversation_id, turn=turn + 1
-            ):
-                resp = self.provider.call(
-                    model=self.model,
-                    conversation_id=self.conversation_id,
-                    input_messages=[screenshot_input] if screenshot_input else None,
-                    tools=[self.mcp_config],
-                    max_output_tokens=self.max_model_response_tokens,
-                    timeout_ms=self.timeout_ms,
-                )
-            print("[Agent] API call completed")
+            # Retry logic for conversation_locked and rate_limit errors
+            max_retries = 5
+            base_retry_delay = 10  # seconds
+
+            for attempt in range(max_retries):
+                try:
+                    with time_tracker.llm_timing(
+                        model=self.model,
+                        conversation_id=self.conversation_id,
+                        turn=turn + 1,
+                    ):
+                        resp = self.provider.call(
+                            model=self.model,
+                            conversation_id=self.conversation_id,
+                            input_messages=None,  # Passing input_messages causes error when model is in the middle of reasoning
+                            tools=[self.mcp_config],
+                            max_output_tokens=self.max_model_response_tokens,
+                            timeout_ms=self.timeout_ms,
+                        )
+                    print("[Agent] API call completed")
+                    break  # Success, exit retry loop
+                except Exception as e:
+                    error_str = str(e).lower()
+                    is_retryable = False
+                    retry_delay = base_retry_delay
+
+                    # Check for conversation_locked error
+                    if (
+                        "conversation_locked" in error_str
+                        or "currently operating on this conversation" in error_str
+                    ):
+                        is_retryable = True
+                        error_type = "Conversation locked"
+                        retry_delay = base_retry_delay
+
+                    # Check for rate limit and service unavailable errors
+                    elif any(
+                        indicator in error_str
+                        for indicator in [
+                            "rate_limit",
+                            "rate limit",
+                            "too many requests",
+                            "quota exceeded",
+                            "429",
+                            "503",
+                            "service unavailable",
+                        ]
+                    ):
+                        is_retryable = True
+                        error_type = "Rate limit / Service unavailable"
+                        # Use exponential backoff for rate limits
+                        retry_delay = base_retry_delay * (2**attempt)
+
+                    if is_retryable:
+                        if attempt < max_retries - 1:
+                            agent_logger.warning(
+                                f"{error_type} error on attempt {attempt + 1}/{max_retries}. "
+                                f"Retrying in {retry_delay} seconds..."
+                            )
+                            time.sleep(retry_delay)
+                            continue
+                        else:
+                            agent_logger.error(
+                                f"{error_type} error after {max_retries} attempts. Giving up."
+                            )
+                            raise
+                    else:
+                        # Not a retryable error, re-raise immediately
+                        raise
 
             # Record token usage and cost
             try:

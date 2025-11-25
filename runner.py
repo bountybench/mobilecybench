@@ -185,6 +185,19 @@ class MobileCybenchRunner:
                     f"Failed to setup app source with setup_app_source.sh: {e}"
                 )
 
+        # In the future, once APKs uploaded to GitHub Releases include the honeypot activity,
+        # we only need to inject when building from source
+        log_banner("REPACKAGING APK WITH HONEYPOT ACTIVITY INJECTION")
+        try:
+            self.cmd.run_with_progress(
+                f"bash ../../utils/repackage_apk.sh apk/{self.app_name}.apk",
+                timeout=BUILD_COMMAND_TIMEOUT,
+                message="Repackaging APK",
+                cwd=self.app_dir,
+            )
+        except subprocess.CalledProcessError as e:
+            self._exit_with_error(f"Failed to repackage APK with repackage_apk.sh: {e}")
+
         # ensures emulator is fully booted and ready
         try:
             self.emulator.wait_until_ready(timeout=EMULATOR_BOOT_TIMEOUT_SECONDS)
@@ -284,20 +297,17 @@ class MobileCybenchRunner:
 
         mcp_executor = MCPToolExecutor()
         result = mcp_executor.call_tool("execute_command", "ls /app")
-        response = (
-            result.get("result", {}).get("structuredContent", {}).get("result", "")
-        )
 
-        if "codebase" not in response:
+        if "codebase" not in str(result):
             self._exit_with_error(
-                "MCP server validation failed: 'codebase' directory not found"
+                f"MCP server validation failed: 'codebase' directory not found - response: {result}"
             )
 
         logger.info("✓ MCP server validation passed: 'codebase' directory found")
 
     def _start_containers(self):
         """Start MCP server and Kali container"""
-        logger.info("Starting MCP server and Kali container...")
+        logger.info("Starting MCP server...")
 
         env = os.environ.copy()
 
@@ -536,8 +546,6 @@ class MobileCybenchRunner:
                 logger.error(f"Error reading scores.json: {e}")
         else:
             logger.info("No scores.json file found")
-
-        logger.info(f"Probe checks completed with exit code: {return_code}")
         return return_code == 0
 
     def cleanup(self):
@@ -570,6 +578,25 @@ class MobileCybenchRunner:
         logger.info(f"Agent log file path: {log_path}")
         self.run_probes_checks(log_file_path=log_path)
 
+    def _wait_for_quit_command(self):
+        log_banner("RUN COMPLETED - ENVIRONMENT STILL RUNNING")
+        print("\nThe emulator and all services are still running.")
+        print("Type 'quit' or 'exit' to stop all services, or press Ctrl-C\n")
+        while True:
+            try:
+                user_input = input("runner> ").strip().lower()
+                if user_input in ["quit", "exit"]:
+                    logger.info("Shutting down...")
+                    break
+                elif user_input == "":
+                    continue
+                else:
+                    print("Type 'quit' or 'exit' to shutdown")
+            except (KeyboardInterrupt, EOFError):
+                print("\nShutting down...")
+                logger.info("User interrupted. Shutting down...")
+                break
+
     def run(self):
         try:
             self.validate_input()
@@ -591,10 +618,18 @@ class MobileCybenchRunner:
 
                     self.setup_app()
                     self._run_agent_pipeline()
+
+                    log_banner(
+                        f"PIPELINE COMPLETED SUCCESSFULLY FOR <<{self.app_name}>>"
+                    )
+                    if self.config.wait_for_quit and sys.stdin.isatty():
+                        self._wait_for_quit_command()
             else:
                 self._run_agent_pipeline()
-
-            log_banner(f"PIPELINE COMPLETED SUCCESSFULLY FOR <<{self.app_name}>>")
+                log_banner(f"PIPELINE COMPLETED SUCCESSFULLY FOR <<{self.app_name}>>")
+                # Keeping for future use when containers are torn down
+                if self.config.wait_for_quit and sys.stdin.isatty():
+                    self._wait_for_quit_command()
             return 0
 
         except KeyboardInterrupt:

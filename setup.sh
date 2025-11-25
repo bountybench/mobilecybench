@@ -7,6 +7,9 @@ LOG_FILE="${SCRIPT_DIR}/setup.log"
 ANDROID_HOME="${HOME}/.android-sdk"
 EMULATOR_NAME="MobileCybenchEmu"
 
+# Detect Python command using utility script
+PYTHON=$("${SCRIPT_DIR}/utils/detect_python.sh") || exit 1
+
 # Default SDK version and system image
 DEFAULT_SDK_VERSION=35
 DEFAULT_SYSTEM_IMAGE="google_apis"
@@ -15,12 +18,19 @@ DEFAULT_SYSTEM_IMAGE="google_apis"
 load_app_metadata() {
     local app_name="$1"
     local metadata_file="${SCRIPT_DIR}/apps/${app_name}/metadata.json"
-    
+
     if [[ -f "$metadata_file" ]]; then
-        local validation_result=$(python3 -c "
+        # Convert path for Python on MinGW/Git Bash (Windows)
+        if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "mingw"* ]]; then
+            if command -v cygpath &>/dev/null; then
+                metadata_file=$(cygpath -w "$metadata_file")
+            fi
+        fi
+
+        local validation_result=$($PYTHON -c "
 import json, sys
 try:
-    data = json.load(open('$metadata_file'))
+    data = json.load(open(r'$metadata_file'))
     sdk = data.get('sdk', '')
     # TODO: Support SDK 36 once system images are released
     if sdk and str(sdk).isdigit() and 21 <= int(sdk) <= 35:
@@ -80,6 +90,13 @@ if [[ $# -gt 0 && "$1" != -* && -d "${SCRIPT_DIR}/apps/$1" ]]; then
     
     SYSTEM_IMAGE_TYPE="$DEFAULT_SYSTEM_IMAGE"
     
+    # Special handling for DeltaChat: force ARM architecture due to APK ABI requirements
+    if [[ "$APP_NAME" == "deltachat-android" ]]; then
+        echo "Note: DeltaChat requires ARM architecture emulator (APK built for arm64-v8a)"
+        # Force ARM architecture by setting the build to use arm64 system image
+        # This is done later in the detect_arch function override
+    fi
+    
     warn_old_sdk_version "$SDK_VERSION" "App '$APP_NAME' uses Android SDK"
 else
     # Standard flag parsing mode
@@ -123,7 +140,14 @@ else
                     for app_dir in "${SCRIPT_DIR}/apps"/*; do
                         if [[ -d "$app_dir" && -f "$app_dir/metadata.json" ]]; then
                             app_name=$(basename "$app_dir")
-                            app_sdk=$(python3 -c "import json; data=json.load(open('$app_dir/metadata.json')); print(data.get('sdk', 'N/A'))" 2>/dev/null || echo "N/A")
+                            metadata_path="$app_dir/metadata.json"
+                            # Convert path for Python on MinGW/Git Bash (Windows)
+                            if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "mingw"* ]]; then
+                                if command -v cygpath &>/dev/null; then
+                                    metadata_path=$(cygpath -w "$metadata_path")
+                                fi
+                            fi
+                            app_sdk=$($PYTHON -c "import json; data=json.load(open(r'$metadata_path')); print(data.get('sdk', 'N/A'))" 2>/dev/null || echo "N/A")
                             echo "  $app_name (SDK $app_sdk)"
                         fi
                     done
@@ -205,6 +229,71 @@ check_java() {
     log "Java $java_version is compatible with Android SDK"
 }
 
+# Check and install apktool
+check_apktool() {
+    log "Checking apktool installation..."
+
+    if command_exists apktool; then
+        local apktool_version=$(apktool --version 2>&1 | head -n1 || echo "unknown")
+        log "apktool is already installed: $apktool_version"
+        return 0
+    fi
+
+    log "apktool not found. Installing..."
+
+    local os=$(detect_os)
+
+    case "$os" in
+        linux)
+            log "Installing apktool via apt..."
+            if command_exists apt-get; then
+                sudo apt-get update && sudo apt-get install -y apktool
+            elif command_exists apt; then
+                sudo apt update && sudo apt install -y apktool
+            else
+                error_exit "Could not install apktool. Please install manually:
+                sudo apt-get install apktool"
+            fi
+            ;;
+        macos)
+            log "Installing apktool via Homebrew..."
+            if command_exists brew; then
+                brew install apktool
+            else
+                error_exit "Homebrew not found. Please install Homebrew first:
+                /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"
+                Then run this setup script again."
+            fi
+            ;;
+        windows)
+            log "Windows detected. Please install apktool manually:"
+            echo ""
+            echo "Option 1 (Chocolatey - Recommended):"
+            echo "  choco install apktool"
+            echo ""
+            echo "Option 2 (Manual):"
+            echo "  1. Download from: https://github.com/iBotPeaches/Apktool/releases"
+            echo "  2. Download both apktool.bat and apktool_X.X.X.jar"
+            echo "  3. Rename the jar to apktool.jar"
+            echo "  4. Place both files in C:\\Windows\\System32 or add to PATH"
+            echo ""
+            read -p "Press Enter after installing apktool to continue..."
+
+            if ! command_exists apktool; then
+                error_exit "apktool still not found. Please install it and try again."
+            fi
+            ;;
+    esac
+
+    # Verify installation
+    if command_exists apktool; then
+        local apktool_version=$(apktool --version 2>&1 | head -n1 || echo "unknown")
+        log "apktool installed successfully: $apktool_version"
+    else
+        error_exit "Failed to install apktool"
+    fi
+}
+
 # Detect OS and architecture
 detect_os() {
     case "$(uname -s)" in
@@ -216,6 +305,12 @@ detect_os() {
 }
 
 detect_arch() {
+    # Special case for DeltaChat: force ARM architecture due to APK ABI requirements
+    if [[ "$APP_NAME" == "deltachat-android" ]]; then
+        echo "arm64"
+        return
+    fi
+    
     case "$(uname -m)" in
         x86_64|amd64)   echo "x86_64";;
         arm64|aarch64)  echo "arm64";;
@@ -584,13 +679,16 @@ main() {
     
     # Check prerequisites
     log "Checking prerequisites..."
-    
+
     if [[ "$os" == "linux" ]] && ! command_exists unzip; then
         error_exit "unzip is required. Install with: sudo apt-get install unzip"
     fi
-    
+
     # Check Java installation and version
     check_java
+
+    # Check and install apktool
+    check_apktool
     
     # Install Android SDK if not present
     if [[ ! -d "$ANDROID_HOME/cmdline-tools" ]]; then
@@ -619,7 +717,9 @@ main() {
     echo "  SDK Version: $SDK_VERSION"
     echo "  System Image: $SYSTEM_IMAGE_TYPE"
     echo "  Architecture: $arch"
-    if [[ "$arch" == "arm64" ]]; then
+    if [[ "$APP_NAME" == "deltachat-android" ]]; then
+        echo "  Note: Forced ARM64 architecture for DeltaChat APK compatibility"
+    elif [[ "$arch" == "arm64" ]]; then
         echo "  Note: Using ARM64 system image for Apple Silicon compatibility"
     fi
     echo ""
@@ -656,7 +756,7 @@ main() {
         pkill -f "${SCRIPT_DIR}/tools/host_bridge.py" || true
     fi
     export MCB_BRIDGE_BIND=127.0.0.1
-    nohup env MCB_BRIDGE_BIND="$MCB_BRIDGE_BIND" python3 "${SCRIPT_DIR}/tools/host_bridge.py" > "${SCRIPT_DIR}/mobilecybench_bridge.log" 2>&1 &
+    nohup env MCB_BRIDGE_BIND="$MCB_BRIDGE_BIND" $PYTHON "${SCRIPT_DIR}/tools/host_bridge.py" > "${SCRIPT_DIR}/mobilecybench_bridge.log" 2>&1 &
     log "Started mobilecybench host intermediary on port ${MCB_BRIDGE_PORT} (bind=${MCB_BRIDGE_BIND})"
 
 

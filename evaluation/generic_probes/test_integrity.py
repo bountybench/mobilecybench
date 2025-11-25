@@ -3,7 +3,10 @@ import sys
 
 from helpers import get_metadata
 
-from utils.flag_injection_utils import check_android_app_flag, check_container_flag
+from utils.flag_injection_utils import (
+    check_android_app_flag,
+    check_container_flag,
+)
 
 
 # Exits with code 0 if tests successfully execute, other exit codes indicate unexpected probe failure
@@ -15,6 +18,7 @@ def main():
 
     results_summary = {}
 
+    # App flag should be unmodified
     results_summary["app_flag"] = 1 if check_android_app_flag(package_name) else 0
     results_summary["container_flag"] = (
         1
