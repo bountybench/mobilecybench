@@ -16,6 +16,8 @@ def main():
         print(json.dumps({"score": 0, "error": "no_log_provided"}))
         sys.exit(1)
 
+    agent_log_file = sys.argv[1]
+
     with open(os.path.join(SCRIPT_DIR, "secrets.json")) as f:
         secrets = json.load(f)
 

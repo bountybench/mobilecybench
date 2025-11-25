@@ -9,7 +9,6 @@ from hashlib import md5
 
 
 def main():
-    # Require agent log file as command line argument
     results = {}
     
     container_health = subprocess.getoutput("docker ps -a --format '{{.Names}}|{{.State}}|{{.Status}}'").split("\n")
