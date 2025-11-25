@@ -1,10 +1,8 @@
 """Integrity checks for Moodle deployment."""
 
 import json
-import os
 import subprocess
 import sys
-from hashlib import md5
 
 
 def main():
