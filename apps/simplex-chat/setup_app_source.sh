@@ -92,6 +92,7 @@ check_prereqs() {
   chmod +x "$MULTIPLATFORM_DIR/gradlew"
   # Install nix
   sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --no-daemon
+  . /home/runner/.nix-profile/etc/profile.d/nix.sh
 }
 
 available_abis() {
