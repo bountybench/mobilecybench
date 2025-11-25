@@ -10,16 +10,52 @@ APK_SIGNED="${APK_DIR}/simplex-chat.apk"
 KEYSTORE_FILE="$HOME/.android/debug.keystore"
 AVAILABLE_ABIS=()
 
-# Set to x86_64 to build for x86_64 emulator, or arm64-v8a for ARM64
-# Can also be a comma-separated list like "x86_64,arm64-v8a"
-export SIMPLEX_ANDROID_ABIS=x86_64
-
 log()  { printf '[setup_app_source] %s\n' "$*"; }
 warn() { printf '[setup_app_source][warn] %s\n' "$*" >&2; }
 fail() { printf '[setup_app_source][error] %s\n' "$*" >&2; exit 1; }
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Required command '$1' not found in PATH"
+}
+
+default_host_abi() {
+  local host_arch
+  host_arch=$(uname -m)
+  case "$host_arch" in
+    x86_64|amd64) echo "x86_64" ;;
+    arm64|aarch64) echo "arm64-v8a" ;;
+    *) echo "armeabi-v7a" ;;
+  esac
+}
+
+ensure_requested_abis_env() {
+  if [[ -z "${SIMPLEX_ANDROID_ABIS:-}" ]]; then
+    local default_abi
+    default_abi=$(default_host_abi)
+    export SIMPLEX_ANDROID_ABIS="$default_abi"
+    log "SIMPLEX_ANDROID_ABIS not set; defaulting to $default_abi based on host architecture"
+  fi
+}
+
+parse_requested_abis() {
+  ensure_requested_abis_env
+  local requested="${SIMPLEX_ANDROID_ABIS:-}"
+  IFS=',' read -r -a requested_array <<< "$requested"
+  local normalized=()
+  for abi in "${requested_array[@]}"; do
+    abi="${abi// /}"
+    if [[ -n "$abi" ]]; then
+      normalized+=("$abi")
+    fi
+  done
+  echo "${normalized[@]}"
+}
+
+resolve_path() {
+  python3 - "$1" <<'PY'
+import os, sys
+print(os.path.realpath(sys.argv[1]))
+PY
 }
 
 android_home() {
@@ -84,9 +120,11 @@ find_apksigner() {
 }
 
 check_prereqs() {
+  require_cmd python3
   require_cmd java
   require_cmd keytool
   require_cmd gunzip
+  require_cmd unzip
   mkdir -p "$APK_DIR"
   [[ -d "$MULTIPLATFORM_DIR" ]] || fail "SimpleX source tree not found at $MULTIPLATFORM_DIR"
   chmod +x "$MULTIPLATFORM_DIR/gradlew"
@@ -118,15 +156,44 @@ available_abis() {
   fi
 }
 
-build_x86() {
-	echo "Building x86 libraries..."
-	nix --extra-experimental-features nix-command --extra-experimental-features flakes build '.#hydraJobs.x86_64-linux.x86_64-android:lib:support'
-	nix --extra-experimental-features nix-command --extra-experimental-features flakes build '.#hydraJobs.x86_64-linux.x86_64-android:lib:simplex-chat'
+build_x86_native_libs() {
+  log "Ensuring x86_64 native libraries via Nix flake"
+  pushd "$CODEBASE_DIR" >/dev/null
+  nix --extra-experimental-features nix-command --extra-experimental-features flakes build '.#hydraJobs.x86_64-linux.x86_64-android:lib:support'
+  local support_result
+  support_result=$(resolve_path "result")
+  rm -f result
+  nix --extra-experimental-features nix-command --extra-experimental-features flakes build '.#hydraJobs.x86_64-linux.x86_64-android:lib:simplex-chat'
+  local simplex_result
+  simplex_result=$(resolve_path "result")
+  rm -f result
+  popd >/dev/null
 
-	mkdir -p apps/multiplatform/common/src/commonMain/cpp/android/libs/x86_64
-	unzip -o result/pkg-x86_64-android-libsupport.zip -d apps/multiplatform/common/src/commonMain/cpp/android/libs/x86_64
-	unzip -o result/pkg-x86_64-android-libsimplex.zip -d apps/multiplatform/common/src/commonMain/cpp/android/libs/x86_64
-	echo "Built x86 successfully"
+  local libs_dir="${CODEBASE_DIR}/apps/multiplatform/common/src/commonMain/cpp/android/libs/x86_64"
+  mkdir -p "$libs_dir"
+  unzip -o "${support_result}/pkg-x86_64-android-libsupport.zip" -d "$libs_dir" >/dev/null
+  unzip -o "${simplex_result}/pkg-x86_64-android-libsimplex.zip" -d "$libs_dir" >/dev/null
+  log "x86_64 native libraries prepared via Nix"
+}
+
+prepare_native_libs_for_requested_abis() {
+  local requested=("$@")
+  local processed=""
+  for abi in "${requested[@]}"; do
+    [[ -n "$abi" ]] || continue
+    if [[ " $processed " == *" $abi "* ]]; then
+      continue
+    fi
+    processed+=" $abi"
+    case "$abi" in
+      x86_64)
+        build_x86_native_libs
+        ;;
+      *)
+        log "No extra preparation required for ABI '$abi'"
+        ;;
+    esac
+  done
 }
 
 ensure_native_libs() {
@@ -244,8 +311,10 @@ sign_apk() {
 
 main() {
   log "Starting SimpleX Chat source build"
+  ensure_requested_abis_env
   check_prereqs
-  build_x86
+  local requested_abis=($(parse_requested_abis))
+  prepare_native_libs_for_requested_abis "${requested_abis[@]}"
   ensure_native_libs
   local build_abis=$(select_build_abis)
   BUILD_ABIS=($build_abis)
