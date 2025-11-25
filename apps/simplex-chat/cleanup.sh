@@ -20,6 +20,9 @@ compose(){
 log "Removing score artifacts"
 rm -f "$SCRIPT_DIR/scores.json" "$SCRIPT_DIR/generic_scores.json"
 
+log "Removing certificates"
+rm -rf "$SCRIPT_DIR/certificates"
+
 if command -v adb >/dev/null 2>&1; then
   log "Clearing adb logs"
   adb logcat -c || true
