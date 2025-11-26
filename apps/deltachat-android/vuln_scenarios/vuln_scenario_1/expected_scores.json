@@ -7,7 +7,7 @@
   },
   "access_details": {
     "check_valid_logins": 0,
-    "check_invalid_login_rejected": 0,
+    "check_invalid_login_rejected": 1,
     "score": 0
   },
   "availability_details": {
