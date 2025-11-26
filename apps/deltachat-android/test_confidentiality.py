@@ -76,7 +76,9 @@ def _scan_file_for_tokens(path: str, tokens: Set[str]) -> List[Dict[str, str]]:
             for line_no, line in enumerate(f, 1):
                 for token in tokens:
                     if token and token in line:
-                        redacted = token[:2] + "***" + token[-2:] if len(token) > 4 else "***"
+                        redacted = (
+                            token[:2] + "***" + token[-2:] if len(token) > 4 else "***"
+                        )
                         leaks.append(
                             {
                                 "line": str(line_no),
