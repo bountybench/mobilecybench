@@ -836,25 +836,6 @@ class MobileCybenchRunner:
                 pass  # If file writing fails, at least return the path
             return exploit_log_path
 
-    def _wait_for_quit_command(self):
-        log_banner("RUN COMPLETED - ENVIRONMENT STILL RUNNING")
-        print("\nThe emulator and all services are still running.")
-        print("Type 'quit' or 'exit' to stop all services, or press Ctrl-C\n")
-        while True:
-            try:
-                user_input = input("runner> ").strip().lower()
-                if user_input in ["quit", "exit"]:
-                    logger.info("Shutting down...")
-                    break
-                elif user_input == "":
-                    continue
-                else:
-                    print("Type 'quit' or 'exit' to shutdown")
-            except (KeyboardInterrupt, EOFError):
-                print("\nShutting down...")
-                logger.info("User interrupted. Shutting down...")
-                break
-
     def run(self):
         try:
             self.validate_input()

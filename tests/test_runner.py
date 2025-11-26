@@ -24,7 +24,6 @@ def mock_config():
         dry_run=True,
         agent_image="test-image",
         docker_mode=False,
-        wait_for_quit=False,
     )
 
 
