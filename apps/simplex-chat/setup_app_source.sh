@@ -62,7 +62,9 @@ patch_flake_for_x86() {
   local flake="$CODEBASE_DIR/flake.nix"
   [[ -f "$flake" ]] || return
   if grep -q 'pkg-x86_64-android-libsupport' "$flake"; then
-    return
+    if grep -Eq 'androidX86Pkgs\s*=\s*pkgs\.pkgsCross\.android64;' "$flake"; then
+      return
+    fi
   fi
   log "Injecting x86_64 Android hydra jobs into flake.nix"
   python3 - "$flake" <<'PY'
@@ -76,12 +78,18 @@ if "pkg-x86_64-android-libsupport" in text:
     raise SystemExit
 
 if "androidX86Pkgs" not in text:
-    pattern = re.compile(r"(android32Pkgs\\s*=\\s*pkgs\\.pkgsCross\\.armv7a-android-prebuilt;\\s*)")
-    match = pattern.search(text)
-    if not match:
-        raise SystemExit("Unable to locate android32Pkgs definition for injection")
+    patterns = [
+        r"(android32Pkgs\\s*=\\s*pkgs\\.pkgsCross\\.armv7a-android-prebuilt;\\s*)",
+        r"(androidPkgs\\s*=\\s*pkgs\\.pkgsCross\\.aarch64-android;\\s*)",
+    ]
     insertion = "                  androidX86Pkgs = pkgs.pkgsCross.android64;\\n"
-    text = text[:match.end()] + insertion + text[match.end():]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            text = text[:match.end()] + insertion + text[match.end():]
+            break
+    else:
+        raise SystemExit("Unable to locate insertion point for androidX86Pkgs")
 
 def clone(block: str) -> str:
     replacements = [
@@ -118,6 +126,13 @@ simplex_end += len(clone_support)
 text = text[:simplex_end] + clone_simplex + text[simplex_end:]
 path.write_text(text)
 PY
+
+  if ! grep -Eq 'androidX86Pkgs\s*=\s*pkgs\.pkgsCross\.android64;' "$flake"; then
+    fail "Failed to inject androidX86Pkgs binding into flake.nix"
+  fi
+  if ! grep -q 'pkg-x86_64-android-libsupport' "$flake"; then
+    fail "Failed to inject x86_64 hydra jobs into flake.nix"
+  fi
 }
 
 android_home() {
@@ -190,9 +205,6 @@ check_prereqs() {
   mkdir -p "$APK_DIR"
   [[ -d "$MULTIPLATFORM_DIR" ]] || fail "SimpleX source tree not found at $MULTIPLATFORM_DIR"
   chmod +x "$MULTIPLATFORM_DIR/gradlew"
-  # Install nix
-  sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --no-daemon
-  . /home/runner/.nix-profile/etc/profile.d/nix.sh
 }
 
 available_abis() {
@@ -219,6 +231,9 @@ available_abis() {
 }
 
 build_x86_native_libs() {
+  if ! command -v nix >/dev/null 2>&1; then
+    fail "nix is required to build x86_64 native libraries; install it and ensure it is in PATH"
+  }
   log "Ensuring x86_64 native libraries via Nix flake"
   pushd "$CODEBASE_DIR" >/dev/null
   nix --extra-experimental-features nix-command --extra-experimental-features flakes build '.#hydraJobs.x86_64-linux.x86_64-android:lib:support'
