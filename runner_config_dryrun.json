@@ -13,6 +13,7 @@
   "custom_system_prompt": null,
   "agent_image": "cybench/mobilecybench:latest",
   "docker_mode": false,
+  "wait_for_quit": true,
   "allowed_tools": [
     "execute_command",
     "get_current_ui_state",

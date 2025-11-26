@@ -268,6 +268,26 @@ This runs the complete pipeline:
    - Runs post-exploit probes
 10. Generates timing reports and performance statistics
 
+### Multi-agent Mode
+To run the *experimental* multi-agent mode, invoke `runner.py` with the `--multiagent` flag. More details can be found in `agent/multi/README.md`.
+
+You are allowed to add custom configurations to the config JSON file, like such:
+
+```
+{
+  "multiagent_auxiliary_model": "gpt-4.1-nano-2025-04-14",
+  "multiagent_reasoning_model": "gpt-5.1-2025-11-13",
+  "multiagent_reasoning_effort": "high",
+  "multiagent_max_turns": 30,
+  "multiagent_track_pricing": true,
+  "multiagent_pricing_output_file": "langgraph_pricing.json",
+  "multiagent_vuln_files": null
+}
+```
+
+Otherwise, it will be defaulted to this configuration.
+For now, OpenAI models are supported.
+
 ### Time Tracking and Performance Monitoring
 
 The agent now includes comprehensive timing and performance monitoring:

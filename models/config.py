@@ -32,6 +32,15 @@ class RunnerConfig(BaseModel):
     allowed_tools: Optional[List[str]] = None
     codex_agent_image: Optional[str] = "cybench/mobilecybench:codex"
 
+    # multiagent pipeline options
+    multiagent_auxiliary_model: str = "gpt-4.1-nano-2025-04-14"
+    multiagent_reasoning_model: str = "gpt-5.1-2025-11-13"
+    multiagent_reasoning_effort: Optional[str] = "high"
+    multiagent_max_turns: int = 30
+    multiagent_track_pricing: bool = True
+    multiagent_pricing_output_file: str = "langgraph_pricing.json"
+    multiagent_vuln_files: Optional[List[str]] = None
+
     @classmethod
     def from_file(cls, config_path: Path) -> "RunnerConfig":
         if not config_path.exists():

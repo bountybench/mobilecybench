@@ -42,10 +42,12 @@ class MobileCybenchRunner:
         app_name: str,
         config: RunnerConfig,
         codex_mode: bool = False,
+        multiagent_mode: bool = False,
     ):
         self.app_name = Path(app_name).name
         self.config = config
         self.codex_mode = codex_mode
+        self.multiagent_mode = multiagent_mode
         self.project_root = project_root
         self.app_dir = self.project_root / "apps" / self.app_name
         self.agent_dir = self.project_root / "agent"
@@ -587,6 +589,269 @@ class MobileCybenchRunner:
                 "log_file": None,
             }
 
+    def run_static_analysis(self):
+        """Run static analysis tools (semgrep and qark) on the app codebase.
+
+        This generates vulnerability report files that can be used by the
+        multi-agent pipeline.
+
+        Returns:
+            dict: Paths to generated report files and status information
+        """
+        log_banner("RUNNING STATIC ANALYSIS")
+
+        results = {
+            "semgrep_results": None,
+            "qark_results": None,
+            "status": "completed",
+            "errors": [],
+        }
+
+        codebase_dir = self.app_dir / "codebase"
+        apk_dir = self.app_dir / "apk"
+
+        # Run semgrep on the codebase
+        if codebase_dir.exists():
+            semgrep_output = self.app_dir / "semgrep-results.json"
+            logger.info(f"Running semgrep on {codebase_dir}...")
+
+            try:
+                # Use semgrep scan with auto config and JSON output
+                semgrep_cmd = (
+                    f"semgrep scan --config auto --json "
+                    f"--json-output={shlex.quote(str(semgrep_output))} "
+                    f"{shlex.quote(str(codebase_dir))}"
+                )
+
+                self.cmd.run(
+                    semgrep_cmd,
+                    cwd=self.project_root,
+                    timeout=BUILD_COMMAND_TIMEOUT,
+                    check=False,  # Don't fail on findings
+                )
+
+                if semgrep_output.exists():
+                    results["semgrep_results"] = str(semgrep_output)
+                    logger.info(f"✓ Semgrep analysis complete: {semgrep_output}")
+                else:
+                    logger.warning("Semgrep did not produce output file")
+                    results["errors"].append("Semgrep output file not created")
+
+            except subprocess.TimeoutExpired:
+                logger.error("Semgrep analysis timed out")
+                results["errors"].append("Semgrep timeout")
+            except Exception as e:
+                logger.error(f"Semgrep analysis failed: {e}")
+                results["errors"].append(f"Semgrep error: {str(e)}")
+        else:
+            logger.warning(f"Codebase directory not found: {codebase_dir}")
+            results["errors"].append("Codebase directory not found")
+
+        # Run qark on the APK
+        apk_file = apk_dir / f"{self.app_name}.apk"
+        if apk_file.exists():
+            qark_output = self.app_dir / "qark-results.json"
+            qark_build_dir = self.app_dir / "qark_build"
+            logger.info(f"Running qark on {apk_file}...")
+
+            try:
+                # Use qark with JSON report type and build-path for output
+                # qark outputs report.json to the build-path directory
+                qark_cmd = (
+                    f"qark --apk {shlex.quote(str(apk_file))} "
+                    f"--report-type json "
+                    f"--build-path {shlex.quote(str(qark_build_dir))}"
+                )
+
+                self.cmd.run(
+                    qark_cmd,
+                    cwd=self.project_root,
+                    timeout=BUILD_COMMAND_TIMEOUT,
+                    check=False,  # Don't fail on findings
+                )
+
+                # qark outputs to report.json in the build path
+                qark_default_output = qark_build_dir / "report.json"
+                if qark_default_output.exists():
+                    import shutil
+
+                    shutil.copy(str(qark_default_output), str(qark_output))
+                    results["qark_results"] = str(qark_output)
+                    logger.info(f"✓ QARK analysis complete: {qark_output}")
+                elif qark_output.exists():
+                    results["qark_results"] = str(qark_output)
+                    logger.info(f"✓ QARK analysis complete: {qark_output}")
+                else:
+                    # Check if qark put output elsewhere
+                    alt_output = self.app_dir / "report.json"
+                    if alt_output.exists():
+                        alt_output.rename(qark_output)
+                        results["qark_results"] = str(qark_output)
+                        logger.info(f"✓ QARK analysis complete: {qark_output}")
+                    else:
+                        logger.warning("QARK did not produce output file")
+                        results["errors"].append("QARK output file not created")
+
+                # Clean up qark build directory (decompiled files, etc.)
+                # qark generates thousands of files during decompilation
+                if qark_build_dir.exists():
+                    import shutil
+
+                    try:
+                        shutil.rmtree(str(qark_build_dir))
+                        logger.info(
+                            f"✓ Cleaned up QARK build directory: {qark_build_dir}"
+                        )
+                    except Exception as cleanup_error:
+                        logger.warning(
+                            f"Failed to clean up QARK build directory: {cleanup_error}"
+                        )
+
+            except subprocess.TimeoutExpired:
+                logger.error("QARK analysis timed out")
+                results["errors"].append("QARK timeout")
+            except FileNotFoundError:
+                logger.warning("QARK not installed, skipping APK analysis")
+                results["errors"].append("QARK not installed")
+            except Exception as e:
+                logger.error(f"QARK analysis failed: {e}")
+                results["errors"].append(f"QARK error: {str(e)}")
+        else:
+            logger.warning(f"APK file not found: {apk_file}")
+            results["errors"].append("APK file not found")
+
+        # Update config with generated files for multiagent pipeline
+        generated_files = []
+        if results["semgrep_results"]:
+            generated_files.append(results["semgrep_results"])
+        if results["qark_results"]:
+            generated_files.append(results["qark_results"])
+
+        if generated_files:
+            # Store for use by multiagent pipeline
+            self._static_analysis_results = generated_files
+            logger.info(f"Static analysis generated {len(generated_files)} report(s)")
+        else:
+            self._static_analysis_results = []
+            logger.warning("No static analysis reports were generated")
+            results["status"] = "partial" if results["errors"] else "completed"
+
+        return results
+
+    def run_multiagent(self):
+        """Run the multi-agent LangGraph pipeline for vulnerability detection."""
+        log_banner("RUNNING MULTI-AGENT PIPELINE")
+
+        # If in dry-run mode, use interactive shell instead
+        if self.config.dry_run:
+            logger.info(
+                "Dry-run mode: skipping multi-agent pipeline, running interactive shell"
+            )
+            return self.run_interactive_shell()
+
+        logger.info("Starting multi-agent pipeline execution...")
+
+        try:
+            from langchain_openai import ChatOpenAI
+
+            from agent.agent_helpers import get_directory_tree
+            from agent.multi.pipeline import call_pipeline
+
+            # Build LLM instances from config
+            auxiliary_llm = ChatOpenAI(model=self.config.multiagent_auxiliary_model)
+
+            # Build reasoning LLM with optional reasoning_effort
+            reasoning_kwargs = {"model": self.config.multiagent_reasoning_model}
+            if self.config.multiagent_reasoning_effort:
+                reasoning_kwargs["reasoning_effort"] = (
+                    self.config.multiagent_reasoning_effort
+                )
+            reasoning_llm = ChatOpenAI(**reasoning_kwargs)
+
+            # Determine vulnerability report files
+            vuln_files = self.config.multiagent_vuln_files or []
+            if not vuln_files:
+                # First check if static analysis was run and produced results
+                if (
+                    hasattr(self, "_static_analysis_results")
+                    and self._static_analysis_results
+                ):
+                    vuln_files = self._static_analysis_results
+                    logger.info(f"Using static analysis results: {vuln_files}")
+                else:
+                    logger.warning(
+                        "No vulnerability report files found. Pipeline may have limited input."
+                    )
+
+            # Get app server from metadata if available
+            app_server = getattr(self, "metadata", {}).get("app_server", "")
+
+            # Build pipeline config
+            pipeline_config = {
+                "max_turns": self.config.multiagent_max_turns,
+                "initial_tree_context": get_directory_tree(),
+                "app_server": app_server,
+                "network_access": self.config.server_access,
+            }
+
+            logger.info(
+                f"Pipeline config: max_turns={pipeline_config['max_turns']}, "
+                f"network_access={pipeline_config['network_access']}, "
+                f"app_server={pipeline_config['app_server']}"
+            )
+            logger.info(f"Summarizer model: {self.config.multiagent_auxiliary_model}")
+            logger.info(f"Reasoning model: {self.config.multiagent_reasoning_model}")
+
+            # Run the pipeline
+            result = call_pipeline(
+                list_of_vuln_files=vuln_files,
+                auxiliary_llm=auxiliary_llm,
+                reasoning_llm=reasoning_llm,
+                config=pipeline_config,
+                track_pricing=self.config.multiagent_track_pricing,
+                pricing_output_file=self.config.multiagent_pricing_output_file,
+            )
+
+            log_banner("MULTI-AGENT PIPELINE RESULTS")
+
+            # Log pricing info if available
+            if "pricing" in result:
+                pricing = result["pricing"]
+                logger.info(f"Total cost: ${pricing['total_cost_usd']:.6f}")
+                logger.info(f"Total API calls: {pricing['total_calls']}")
+                logger.info(f"Total input tokens: {pricing['total_input_tokens']}")
+                logger.info(f"Total output tokens: {pricing['total_output_tokens']}")
+                logger.info(f"Pricing details saved to: {pricing['output_file']}")
+
+            # Log final reports summary
+            final_reports = result.get("final_reports", [])
+            logger.info(f"Number of vulnerability analyses: {len(final_reports)}")
+            for i, (_, vuln_found, explanation) in enumerate(final_reports):
+                status = "FOUND" if vuln_found else "NOT FOUND"
+                logger.info(f"  Report {i+1}: Vulnerability {status}")
+                logger.info(
+                    f"    Explanation: {explanation[:200]}..."
+                    if len(explanation) > 200
+                    else f"    Explanation: {explanation}"
+                )
+
+            return {
+                "status": "completed",
+                "final_reports": final_reports,
+                "pricing": result.get("pricing"),
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to run multi-agent pipeline: {e}")
+            import traceback
+
+            logger.error(traceback.format_exc())
+            return {
+                "status": f"error: {str(e)}",
+                "final_reports": [],
+                "pricing": None,
+            }
+
     def run_probes_checks(self, log_file_path: Path):
         log_banner("RUNNING PROBE CHECKS")
 
@@ -836,6 +1101,33 @@ class MobileCybenchRunner:
                 pass  # If file writing fails, at least return the path
             return exploit_log_path
 
+    def _run_agent_pipeline(self):
+        """Run probe checks, agent setup, and agent execution"""
+        dummy_log_path = Path(DUMMY_LOG_FILENAME)
+        if not dummy_log_path.exists():
+            dummy_log_path.touch()
+        self.run_probes_checks(log_file_path=dummy_log_path)
+
+        # Run static analysis before multiagent pipeline to generate vulnerability reports
+        if self.multiagent_mode:
+            self.run_static_analysis()
+
+        self.setup_agent(codex_mode=self.codex_mode)
+
+        # Run the appropriate agent type
+        if self.multiagent_mode:
+            self.run_multiagent()
+        else:
+            self.run_agent()
+
+        agent_log_filename = logger_manager.get_agent_log_file_name()
+        log_path = Path(agent_log_filename)
+        logger.info(f"Agent log file path: {log_path}")
+        # TODO, now that the agent is writing an exploit script, we should run it's exploit in kali
+        # First need to clean up services (restart emulator, reinstall app, restart services)
+        # Run probes, run agent exploit, then run probes again
+        self.run_probes_checks(log_file_path=log_path)
+
     def _wait_for_quit_command(self):
         log_banner("RUN COMPLETED - ENVIRONMENT STILL RUNNING")
         print("\nThe emulator and all services are still running.")
@@ -960,6 +1252,14 @@ def main():
             help="Agent type to use: 'custom' (OpenAI API) or 'codex' (Codex CLI). Default: custom.",
         )
 
+        # Add multiagent mode flag
+        parser.add_argument(
+            "--multiagent",
+            action="store_true",
+            dest="multiagent",
+            help="Run the multi-agent LangGraph pipeline instead of single agent. Uses in-pipeline-generated vulnerability report files for analysis.",
+        )
+
         parser.add_argument(
             "app_name",
             help="Name of the app to test (must exist in apps/ directory). Required.",
@@ -990,7 +1290,8 @@ def main():
 
         # Create and run the runner
         codex_mode = args.agent_type == "codex"
-        runner = MobileCybenchRunner(args.app_name, config, codex_mode)
+        multiagent_mode = args.multiagent
+        runner = MobileCybenchRunner(args.app_name, config, codex_mode, multiagent_mode)
         result = runner.run()
 
         return result
