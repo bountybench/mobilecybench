@@ -12,8 +12,14 @@ services:
       - GREENMAIL_OPTS=-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=user1@deltachat.test:password123,user2@deltachat.test:password123,user3@deltachat.test:password123 -Dgreenmail.auth.disabled=false -Dgreenmail.verbose
     networks:
       - shared_net
-    # Health check removed - Greenmail container doesn't have standard networking tools
-    # The setup.sh and run_ci_local.sh scripts will check port availability instead
+    healthcheck:
+      # GreenMail standalone image is based on Eclipse Temurin (Java) and has basic shell
+      # Use bash built-in to check if SMTP port (3025) is listening
+      test: ["CMD-SHELL", "bash -c '(echo > /dev/tcp/localhost/3025) 2>/dev/null'"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
 
 networks:
   shared_net:
