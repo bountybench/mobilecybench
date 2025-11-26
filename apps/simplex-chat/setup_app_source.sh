@@ -66,23 +66,17 @@ patch_flake_for_x86() {
   fi
   log "Injecting x86_64 Android hydra jobs into flake.nix"
   python3 - "$flake" <<'PY'
-import re
 import sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text()
 if "pkg-x86_64-android-libsupport" in text:
-    sys.exit(0)
+    raise SystemExit
 
 marker = "                  android32Pkgs = pkgs.pkgsCross.armv7a-android-prebuilt;\\n"
 if "androidX86Pkgs" not in text:
     text = text.replace(marker, marker + "                  androidX86Pkgs = pkgs.pkgsCross.android64;\\n", 1)
-
-support_match = re.search(r'              "aarch64-android:lib:support" =(.+?)              });\\n', text, re.S)
-simplex_match = re.search(r'              "aarch64-android:lib:simplex-chat" =(.+?)              });\\n', text, re.S)
-if not support_match or not simplex_match:
-    raise SystemExit("Could not locate aarch64 android blocks in flake.nix")
 
 def clone(block: str) -> str:
     replacements = [
@@ -95,11 +89,25 @@ def clone(block: str) -> str:
         block = block.replace(old, new)
     return block
 
-support_block = support_match.group(0)
-simplex_block = simplex_match.group(0)
+def extract_block(start_token: str, search_from: int) -> tuple[str, int, int]:
+    start = text.find(start_token, search_from)
+    if start == -1:
+        raise SystemExit(f"Unable to locate block start: {start_token.strip()}")
+    end = text.find("              });\\n", start)
+    if end == -1:
+        raise SystemExit(f"Unable to locate block end for token {start_token.strip()}")
+    end += len("              });\\n")
+    return text[start:end], start, end
 
-text = text.replace(support_block, support_block + clone(support_block), 1)
-text = text.replace(simplex_block, simplex_block + clone(simplex_block), 1)
+support_block, _, support_end = extract_block('              "aarch64-android:lib:support" =', 0)
+simplex_block, _, simplex_end = extract_block('              "aarch64-android:lib:simplex-chat" =', support_end)
+
+clone_support = clone(support_block)
+clone_simplex = clone(simplex_block)
+
+text = text[:support_end] + clone_support + text[support_end:]
+simplex_end += len(clone_support)
+text = text[:simplex_end] + clone_simplex + text[simplex_end:]
 path.write_text(text)
 PY
 }
