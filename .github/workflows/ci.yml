@@ -278,7 +278,7 @@ jobs:
           android: false
           dotnet: true
           haskell: true
-          large-packages: false # revert back to true if an app build fails due to disk space
+          large-packages: true # revert back to true if an app build fails due to disk space
           docker-images: true
           swap-storage: true
 
@@ -415,6 +415,17 @@ jobs:
       fail-fast: false
     
     steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true # revert back to true if an app build fails due to disk space
+          docker-images: true
+          swap-storage: true
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -1045,6 +1056,17 @@ jobs:
       fail-fast: false
     
     steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true # revert back to true if an app build fails due to disk space
+          docker-images: true
+          swap-storage: true
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -1372,15 +1394,6 @@ jobs:
           
           echo "All required test scripts present"
 
-      - name: Determine ARM64 system image
-        id: arm64-system-image
-        run: |
-          # ARM64 system images are typically only available as google_apis_arm64
-          # google_atd_arm64 is not available for most API levels
-          system_image="google_apis_arm64"
-          echo "ARM64 System image: $system_image"
-          echo "system_image=$system_image" >> "$GITHUB_OUTPUT"
-
       - name: Pre-emulator Resource Check
         run: |
           echo "=== Pre-Emulator Resource Check ==="
@@ -1411,8 +1424,8 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
-          arch: arm64-v8a
-          target: ${{ steps.arm64-system-image.outputs.system_image }} 
+          arch: x86_64
+          target: ${{ needs.setup.outputs.system_image }} 
           profile: pixel_2
           ram-size: 2048    
           force-avd-creation: true
