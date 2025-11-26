@@ -79,7 +79,7 @@ patch_flake_for_x86() {
   local flake="$CODEBASE_DIR/flake.nix"
   [[ -f "$flake" ]] || return
   if grep -q 'pkg-x86_64-android-libsupport' "$flake"; then
-    if grep -Eq 'androidX86Pkgs\s*=\s*pkgs\.pkgsCross\.x86_64-android;' "$flake"; then
+    if grep -Eq 'androidX86Pkgs\s*=\s*pkgs\.pkgsCross\.android64;' "$flake"; then
       return
     fi
   fi
@@ -92,17 +92,12 @@ import re
 path = Path(sys.argv[1])
 text = path.read_text()
 
-old_binding = "androidX86Pkgs = pkgs.pkgsCross.android64;"
-new_binding = "androidX86Pkgs = pkgs.pkgsCross.x86_64-android;"
+old_binding = "androidX86Pkgs = pkgs.pkgsCross.x86_64-android;"
+new_binding = "androidX86Pkgs = pkgs.pkgsCross.android64;"
 if old_binding in text and new_binding not in text:
     text = text.replace(old_binding, new_binding, 1)
     path.write_text(text)
     text = path.read_text()
-
-text = text.replace(
-    "androidX86Pkgs = pkgs.pkgsCross.android64;",
-    "androidX86Pkgs = pkgs.pkgsCross.x86_64-android;",
-)
 
 if "pkg-x86_64-android-libsupport" in text:
     raise SystemExit
@@ -112,7 +107,7 @@ if "androidX86Pkgs" not in text:
         r"(android32Pkgs\s*=\s*pkgs\.pkgsCross\.armv7a-android-prebuilt;\s*)",
         r"(androidPkgs\s*=\s*pkgs\.pkgsCross\.aarch64-android;\s*)",
     ]
-    insertion = "\n                  androidX86Pkgs = pkgs.pkgsCross.x86_64-android;\n"
+    insertion = "\n                  androidX86Pkgs = pkgs.pkgsCross.android64;\n"
     for pattern in patterns:
         match = re.search(pattern, text)
         if match:
@@ -157,7 +152,7 @@ text = text[:simplex_end] + clone_simplex + text[simplex_end:]
 path.write_text(text)
 PY
 
-  if ! grep -Eq 'androidX86Pkgs\s*=\s*pkgs\.pkgsCross\.x86_64-android;' "$flake"; then
+  if ! grep -Eq 'androidX86Pkgs\s*=\s*pkgs\.pkgsCross\.android64;' "$flake"; then
     fail "Failed to inject androidX86Pkgs binding into flake.nix"
   fi
   if ! grep -q 'pkg-x86_64-android-libsupport' "$flake"; then
@@ -264,7 +259,7 @@ build_x86_native_libs() {
   ensure_nix
   log "Ensuring x86_64 native libraries via Nix flake"
   pushd "$CODEBASE_DIR" >/dev/null
-  nix --extra-experimental-features nix-command --extra-experimental-features flakes build '.#hydraJobs.x86_64-linux.x86_64-android:lib:support'
+nix --extra-experimental-features nix-command --extra-experimental-features flakes build '.#hydraJobs.x86_64-linux.x86_64-android:lib:support'
   local support_result
   support_result=$(resolve_path "result")
   rm -f result
