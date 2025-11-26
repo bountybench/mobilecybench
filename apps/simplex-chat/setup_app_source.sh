@@ -93,10 +93,13 @@ def extract_block(start_token: str, search_from: int) -> tuple[str, int, int]:
     start = text.find(start_token, search_from)
     if start == -1:
         raise SystemExit(f"Unable to locate block start: {start_token.strip()}")
-    end = text.find("              });\\n", start)
+    end_marker = "              });"
+    end = text.find(end_marker, start)
     if end == -1:
         raise SystemExit(f"Unable to locate block end for token {start_token.strip()}")
-    end += len("              });\\n")
+    end += len(end_marker)
+    if end < len(text) and text[end] == "\\n":
+        end += 1
     return text[start:end], start, end
 
 support_block, _, support_end = extract_block('              "aarch64-android:lib:support" =', 0)
