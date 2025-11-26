@@ -58,6 +58,23 @@ print(os.path.realpath(sys.argv[1]))
 PY
 }
 
+ensure_nix() {
+  if command -v nix >/dev/null 2>&1; then
+    return
+  fi
+
+  log "nix not found; installing single-user copy (sudo may be required locally to create /nix)"
+  sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --no-daemon
+
+  local nix_profile="$HOME/.nix-profile/etc/profile.d/nix.sh"
+  [[ -f "$nix_profile" ]] || fail "Nix installation completed but $nix_profile is missing"
+
+  # shellcheck disable=SC1090
+  . "$nix_profile"
+
+  command -v nix >/dev/null 2>&1 || fail "Nix installation failed to add 'nix' to PATH"
+}
+
 patch_flake_for_x86() {
   local flake="$CODEBASE_DIR/flake.nix"
   [[ -f "$flake" ]] || return
@@ -231,9 +248,7 @@ available_abis() {
 }
 
 build_x86_native_libs() {
-  if ! command -v nix >/dev/null 2>&1; then
-    fail "nix is required to build x86_64 native libraries; install it and ensure it is in PATH"
-  fi
+  ensure_nix
   log "Ensuring x86_64 native libraries via Nix flake"
   pushd "$CODEBASE_DIR" >/dev/null
   nix --extra-experimental-features nix-command --extra-experimental-features flakes build '.#hydraJobs.x86_64-linux.x86_64-android:lib:support'
