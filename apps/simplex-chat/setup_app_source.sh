@@ -78,11 +78,6 @@ ensure_nix() {
 patch_flake_for_x86() {
   local flake="$CODEBASE_DIR/flake.nix"
   [[ -f "$flake" ]] || return
-  if grep -q 'pkg-x86_64-android-libsupport' "$flake"; then
-    if grep -Eq 'androidX86Pkgs\s*=\s*pkgs\.pkgsCross\.android64;' "$flake"; then
-      return
-    fi
-  fi
   log "Injecting x86_64 Android hydra jobs into flake.nix"
   python3 - "$flake" <<'PY'
 import sys
@@ -92,22 +87,56 @@ import re
 path = Path(sys.argv[1])
 text = path.read_text()
 
-old_binding = "androidX86Pkgs = pkgs.pkgsCross.x86_64-android;"
-new_binding = "androidX86Pkgs = pkgs.pkgsCross.android64;"
-if old_binding in text and new_binding not in text:
-    text = text.replace(old_binding, new_binding, 1)
-    path.write_text(text)
-    text = path.read_text()
+# Ensure android26 overlay provides android64 and x86_64-android aliases
+overlay_start = text.find("let android26 = final: prev: {")
+if overlay_start == -1:
+    raise SystemExit("Unable to locate android26 overlay start")
+overlay_end = text.find("}; in", overlay_start)
+if overlay_end == -1:
+    raise SystemExit("Unable to locate android26 overlay end marker")
+overlay_block = text[overlay_start:overlay_end+len("}; in")]
 
-if "pkg-x86_64-android-libsupport" in text:
-    raise SystemExit
+desired_overlay = """let android26 = final: prev: {
+        pkgsCross = prev.pkgsCross // {
+          aarch64-android = import prev.path {
+            inherit system;
+            inherit (prev) overlays;
+            crossSystem = prev.lib.systems.examples.aarch64-android // { sdkVer = "26"; };
+          };
+          armv7a-android-prebuilt = import prev.path {
+            inherit system;
+            inherit (prev) overlays;
+            crossSystem = prev.lib.systems.examples.armv7a-android-prebuilt // { sdkVer = "26"; };
+          };
+          android64 = import prev.path {
+            inherit system;
+            inherit (prev) overlays;
+            crossSystem = prev.lib.systems.examples.x86_64-android-prebuilt or {
+              config = "x86_64-unknown-linux-android";
+              libc = "bionic";
+              sdkVer = "26";
+              useAndroidPrebuilt = true;
+            };
+          };
+          # Alias so callers using x86_64-android continue to work.
+          x86_64-android = android64;
+        };
+      }; in"""
+
+if "android64" not in overlay_block or "x86_64-android = android64" not in overlay_block:
+    text = text[:overlay_start] + desired_overlay + text[overlay_end+len("}; in"):]
+
+# Ensure the binding uses the alias we define
+text = re.sub(r"androidX86Pkgs\s*=\s*pkgs\.pkgsCross\.[^\s;]+;", "androidX86Pkgs = pkgs.pkgsCross.x86_64-android;", text, count=1)
+
+has_x86 = "pkg-x86_64-android-libsupport" in text
 
 if "androidX86Pkgs" not in text:
     patterns = [
         r"(android32Pkgs\s*=\s*pkgs\.pkgsCross\.armv7a-android-prebuilt;\s*)",
         r"(androidPkgs\s*=\s*pkgs\.pkgsCross\.aarch64-android;\s*)",
     ]
-    insertion = "\n                  androidX86Pkgs = pkgs.pkgsCross.android64;\n"
+    insertion = "\n                  androidX86Pkgs = pkgs.pkgsCross.x86_64-android;\n"
     for pattern in patterns:
         match = re.search(pattern, text)
         if match:
@@ -146,13 +175,14 @@ simplex_block, _, simplex_end = extract_block('              "aarch64-android:li
 clone_support = clone(support_block)
 clone_simplex = clone(simplex_block)
 
-text = text[:support_end] + clone_support + text[support_end:]
-simplex_end += len(clone_support)
-text = text[:simplex_end] + clone_simplex + text[simplex_end:]
+if not has_x86:
+    text = text[:support_end] + clone_support + text[support_end:]
+    simplex_end += len(clone_support)
+    text = text[:simplex_end] + clone_simplex + text[simplex_end:]
 path.write_text(text)
 PY
 
-  if ! grep -Eq 'androidX86Pkgs\s*=\s*pkgs\.pkgsCross\.android64;' "$flake"; then
+  if ! grep -Eq 'androidX86Pkgs\s*=\s*pkgs\.pkgsCross\.x86_64-android;' "$flake"; then
     fail "Failed to inject androidX86Pkgs binding into flake.nix"
   fi
   if ! grep -q 'pkg-x86_64-android-libsupport' "$flake"; then
