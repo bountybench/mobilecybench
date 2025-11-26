@@ -418,7 +418,7 @@ main() {
   log "Starting SimpleX Chat source build"
   ensure_requested_abis_env
   check_prereqs
-  patch_flake_for_x86
+  # patch_flake_for_x86
   local requested_abis=($(parse_requested_abis))
   prepare_native_libs_for_requested_abis "${requested_abis[@]}"
   ensure_native_libs
