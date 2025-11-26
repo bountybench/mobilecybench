@@ -91,6 +91,7 @@ import re
 
 path = Path(sys.argv[1])
 text = path.read_text()
+
 if "pkg-x86_64-android-libsupport" in text:
     raise SystemExit
 
@@ -99,7 +100,7 @@ if "androidX86Pkgs" not in text:
         r"(android32Pkgs\s*=\s*pkgs\.pkgsCross\.armv7a-android-prebuilt;\s*)",
         r"(androidPkgs\s*=\s*pkgs\.pkgsCross\.aarch64-android;\s*)",
     ]
-    insertion = "\n                  androidX86Pkgs = pkgs.pkgsCross.android64;\n"
+    insertion = "\n                  androidX86Pkgs = pkgs.pkgsCross.x86_64-android;\n"
     for pattern in patterns:
         match = re.search(pattern, text)
         if match:
