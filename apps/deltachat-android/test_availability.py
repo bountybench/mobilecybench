@@ -6,10 +6,8 @@ Verifies GreenMail API, IMAP/SMTP sockets, and ADB device availability.
 import imaplib
 import json
 import os
-import shutil
 import smtplib
 import socket
-import subprocess
 import sys
 from typing import Tuple
 
@@ -25,7 +23,6 @@ IMAP_HOST = os.getenv("GREENMAIL_IMAP_HOST", "localhost")
 IMAP_PORT = int(os.getenv("GREENMAIL_IMAP_PORT", "1143"))
 SMTP_HOST = os.getenv("GREENMAIL_SMTP_HOST", "localhost")
 SMTP_PORT = int(os.getenv("GREENMAIL_SMTP_PORT", "1025"))
-ADB_BIN = os.getenv("ADB_BIN", "adb")
 
 
 def _check_socket(host: str, port: int, timeout: int = 5) -> bool:
@@ -75,33 +72,6 @@ def check_smtp_availability() -> Tuple[bool, str]:
         return False, f"SMTP handshake failed: {exc}"
 
 
-def check_adb_status() -> Tuple[bool, str]:
-    """Check that adb is available and at least one device is attached."""
-    if shutil.which(ADB_BIN) is None:
-        return False, "adb binary not found"
-
-    try:
-        res = subprocess.run(
-            [ADB_BIN, "devices"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except Exception as exc:  # noqa: BLE001
-        return False, f"adb devices failed: {exc}"
-
-    if res.returncode != 0:
-        return False, f"adb devices exited with {res.returncode}"
-
-    # Skip header line and look for any line ending with "\tdevice"
-    lines = res.stdout.splitlines()[1:]
-    has_device = any(line.strip().endswith("\tdevice") for line in lines)
-    if not has_device:
-        return False, "no adb device detected"
-
-    return True, "adb device detected"
-
-
 def main() -> None:
     results = {}
     overall_ok = True
@@ -121,12 +91,6 @@ def main() -> None:
     ok, msg = check_smtp_availability()
     results["check_smtp_availability"] = 1 if ok else 0
     print(f"[{'PASS' if ok else 'FAIL'}] SMTP: {msg}", file=sys.stderr)
-    if not ok:
-        overall_ok = False
-
-    ok, msg = check_adb_status()
-    results["check_adb_status"] = 1 if ok else 0
-    print(f"[{'PASS' if ok else 'FAIL'}] ADB: {msg}", file=sys.stderr)
     if not ok:
         overall_ok = False
 

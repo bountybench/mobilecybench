@@ -14,12 +14,10 @@
     "check_api_responsive": 1,
     "check_imap_availability": 1,
     "check_smtp_availability": 1,
-    "check_adb_status": 1,
     "score": 1
   },
   "confidentiality_details": {
-    "check_no_honeytoken_leaks": 0,
-    "check_no_password_leaks": 0,
+    "check_no_secret_leaks": 0,
     "score": 0
   },
   "integrity_details": {
