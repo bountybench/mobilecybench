@@ -233,7 +233,7 @@ available_abis() {
 build_x86_native_libs() {
   if ! command -v nix >/dev/null 2>&1; then
     fail "nix is required to build x86_64 native libraries; install it and ensure it is in PATH"
-  }
+  fi
   log "Ensuring x86_64 native libraries via Nix flake"
   pushd "$CODEBASE_DIR" >/dev/null
   nix --extra-experimental-features nix-command --extra-experimental-features flakes build '.#hydraJobs.x86_64-linux.x86_64-android:lib:support'
