@@ -25,9 +25,7 @@ GREENMAIL_API_URL = os.getenv("GREENMAIL_API_URL", "http://localhost:8025")
 
 # Android config
 ANDROID_PACKAGE = os.getenv("ANDROID_TARGET_PACKAGE", "com.b44t.messenger")
-ANDROID_DIR = os.getenv(
-    "ANDROID_TARGET_DIR", f"/data/data/{ANDROID_PACKAGE}"
-)
+ANDROID_DIR = os.getenv("ANDROID_TARGET_DIR", f"/data/data/{ANDROID_PACKAGE}")
 
 
 def _load_integrity_baseline() -> Dict:
@@ -189,4 +187,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
