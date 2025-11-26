@@ -124,7 +124,9 @@ desired_overlay = """let android26 = final: prev: {
                 libc = "bionic";
                 targetPrefix = "x86_64-linux-android-";
                 sdkVer = "26";
-                useAndroidPrebuilt = false;
+                ndkVer = "24.0.8215888";
+                useAndroidPrebuilt = true;
+                useAndroidPrebuiltSdk = true;
               };
           };
           # Alias so callers using x86_64-android continue to work.
