@@ -67,12 +67,13 @@ patch_flake_for_x86() {
   log "Injecting x86_64 Android hydra jobs into flake.nix"
   python3 - "$flake" <<'PY'
 import re
+import sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text()
 if "pkg-x86_64-android-libsupport" in text:
-    raise SystemExit
+    sys.exit(0)
 
 marker = "                  android32Pkgs = pkgs.pkgsCross.armv7a-android-prebuilt;\\n"
 if "androidX86Pkgs" not in text:
