@@ -72,7 +72,7 @@ def create_langchain_tools_from_mcp(mcp_config: Dict[str, Any] = None) -> List:
         if isinstance(result, str):
             try:
                 return json.loads(result)
-            except:
+            except Exception:
                 return {"error": "Failed to parse UI state", "raw": result}
         return result
 

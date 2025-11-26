@@ -2,7 +2,6 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 
 from agent.multi.arch import create_graph
-from agent.agent_helpers import get_directory_tree
 from agent.multi.langgraph_pricing_tracker import LangGraphPricingTracker
 
 # Load environment variables from .env file
