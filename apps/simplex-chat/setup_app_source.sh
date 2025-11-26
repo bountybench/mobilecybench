@@ -66,36 +66,39 @@ patch_flake_for_x86() {
   fi
   log "Injecting x86_64 Android hydra jobs into flake.nix"
   python3 - "$flake" <<'PY'
-import sys
+import re
 from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text()
 if "pkg-x86_64-android-libsupport" in text:
-    sys.exit(0)
+    raise SystemExit
 
 marker = "                  android32Pkgs = pkgs.pkgsCross.armv7a-android-prebuilt;\\n"
 if "androidX86Pkgs" not in text:
     text = text.replace(marker, marker + "                  androidX86Pkgs = pkgs.pkgsCross.android64;\\n", 1)
 
-try:
-    start = text.index('              "aarch64-android:lib:support"')
-    end = text.index('              "armv7a-android:lib:support"')
-except ValueError:
-    sys.exit(0)
+support_match = re.search(r'              "aarch64-android:lib:support" =(.+?)              });\\n', text, re.S)
+simplex_match = re.search(r'              "aarch64-android:lib:simplex-chat" =(.+?)              });\\n', text, re.S)
+if not support_match or not simplex_match:
+    raise SystemExit("Could not locate aarch64 android blocks in flake.nix")
 
-block = text[start:end]
-replacements = [
-    ("aarch64-android", "x86_64-android"),
-    ("aarch64-unknown-linux-android", "x86_64-unknown-linux-android"),
-    ("pkg-aarch64-android", "pkg-x86_64-android"),
-    ("androidPkgs", "androidX86Pkgs"),
-]
-patched = block
-for old, new in replacements:
-    patched = patched.replace(old, new)
+def clone(block: str) -> str:
+    replacements = [
+        ("aarch64-android", "x86_64-android"),
+        ("aarch64-unknown-linux-android", "x86_64-unknown-linux-android"),
+        ("pkg-aarch64-android", "pkg-x86_64-android"),
+        ("androidPkgs", "androidX86Pkgs"),
+    ]
+    for old, new in replacements:
+        block = block.replace(old, new)
+    return block
 
-text = text[:end] + patched + text[end:]
+support_block = support_match.group(0)
+simplex_block = simplex_match.group(0)
+
+text = text.replace(support_block, support_block + clone(support_block), 1)
+text = text.replace(simplex_block, simplex_block + clone(simplex_block), 1)
 path.write_text(text)
 PY
 }
