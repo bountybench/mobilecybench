@@ -111,11 +111,16 @@ desired_overlay = """let android26 = final: prev: {
           android64 = import prev.path {
             inherit system;
             inherit (prev) overlays;
-            crossSystem = prev.lib.systems.examples.x86_64-android-prebuilt or {
+            # Prefer a native x86_64 android prebuilt crossSystem if present; otherwise
+            # fall back to the armv7a prebuilt definition and override to x86_64. We
+            # also force targetPrefix/config to match x86_64 to avoid missing attrs.
+            crossSystem = (
+              prev.lib.systems.examples.x86_64-android-prebuilt or
+              prev.lib.systems.examples.armv7a-android-prebuilt
+            ) // {
               config = "x86_64-unknown-linux-android";
-              libc = "bionic";
+              targetPrefix = "x86_64-linux-android-";
               sdkVer = "26";
-              useAndroidPrebuilt = true;
             };
           };
           # Alias so callers using x86_64-android continue to work.
