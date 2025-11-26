@@ -99,7 +99,7 @@ if "androidX86Pkgs" not in text:
         r"(android32Pkgs\s*=\s*pkgs\.pkgsCross\.armv7a-android-prebuilt;\s*)",
         r"(androidPkgs\s*=\s*pkgs\.pkgsCross\.aarch64-android;\s*)",
     ]
-    insertion = "                  androidX86Pkgs = pkgs.pkgsCross.android64;\\n"
+    insertion = "\\n                  androidX86Pkgs = pkgs.pkgsCross.android64;\\n"
     for pattern in patterns:
         match = re.search(pattern, text)
         if match:
