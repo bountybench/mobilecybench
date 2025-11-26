@@ -97,7 +97,7 @@ if overlay_end == -1:
 overlay_block = text[overlay_start:overlay_end+len("}; in")]
 
 desired_overlay = """let android26 = final: prev: {
-        pkgsCross = prev.pkgsCross // {
+        pkgsCross = prev.pkgsCross // rec {
           aarch64-android = import prev.path {
             inherit system;
             inherit (prev) overlays;
@@ -123,7 +123,9 @@ desired_overlay = """let android26 = final: prev: {
         };
       }; in"""
 
-if "android64" not in overlay_block or "x86_64-android = android64" not in overlay_block:
+if ("android64" not in overlay_block
+        or "x86_64-android = android64" not in overlay_block
+        or "pkgsCross = prev.pkgsCross // rec" not in overlay_block):
     text = text[:overlay_start] + desired_overlay + text[overlay_end+len("}; in"):]
 
 # Ensure the binding uses the alias we define
