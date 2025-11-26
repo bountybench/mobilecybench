@@ -68,15 +68,20 @@ patch_flake_for_x86() {
   python3 - "$flake" <<'PY'
 import sys
 from pathlib import Path
+import re
 
 path = Path(sys.argv[1])
 text = path.read_text()
 if "pkg-x86_64-android-libsupport" in text:
     raise SystemExit
 
-marker = "                  android32Pkgs = pkgs.pkgsCross.armv7a-android-prebuilt;\\n"
 if "androidX86Pkgs" not in text:
-    text = text.replace(marker, marker + "                  androidX86Pkgs = pkgs.pkgsCross.android64;\\n", 1)
+    pattern = re.compile(r"(android32Pkgs\\s*=\\s*pkgs\\.pkgsCross\\.armv7a-android-prebuilt;\\s*)")
+    match = pattern.search(text)
+    if not match:
+        raise SystemExit("Unable to locate android32Pkgs definition for injection")
+    insertion = "                  androidX86Pkgs = pkgs.pkgsCross.android64;\\n"
+    text = text[:match.end()] + insertion + text[match.end():]
 
 def clone(block: str) -> str:
     replacements = [
