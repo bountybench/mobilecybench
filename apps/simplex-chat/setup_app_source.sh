@@ -79,7 +79,7 @@ patch_flake_for_x86() {
   local flake="$CODEBASE_DIR/flake.nix"
   [[ -f "$flake" ]] || return
   if grep -q 'pkg-x86_64-android-libsupport' "$flake"; then
-    if grep -Eq 'androidX86Pkgs\s*=\s*pkgs\.pkgsCross\.android64;' "$flake"; then
+    if grep -Eq 'androidX86Pkgs\s*=\s*pkgs\.pkgsCross\.x86_64-android;' "$flake"; then
       return
     fi
   fi
@@ -91,6 +91,18 @@ import re
 
 path = Path(sys.argv[1])
 text = path.read_text()
+
+old_binding = "androidX86Pkgs = pkgs.pkgsCross.android64;"
+new_binding = "androidX86Pkgs = pkgs.pkgsCross.x86_64-android;"
+if old_binding in text and new_binding not in text:
+    text = text.replace(old_binding, new_binding, 1)
+    path.write_text(text)
+    text = path.read_text()
+
+text = text.replace(
+    "androidX86Pkgs = pkgs.pkgsCross.android64;",
+    "androidX86Pkgs = pkgs.pkgsCross.x86_64-android;",
+)
 
 if "pkg-x86_64-android-libsupport" in text:
     raise SystemExit
@@ -145,7 +157,7 @@ text = text[:simplex_end] + clone_simplex + text[simplex_end:]
 path.write_text(text)
 PY
 
-  if ! grep -Eq 'androidX86Pkgs\s*=\s*pkgs\.pkgsCross\.android64;' "$flake"; then
+  if ! grep -Eq 'androidX86Pkgs\s*=\s*pkgs\.pkgsCross\.x86_64-android;' "$flake"; then
     fail "Failed to inject androidX86Pkgs binding into flake.nix"
   fi
   if ! grep -q 'pkg-x86_64-android-libsupport' "$flake"; then
