@@ -8,7 +8,6 @@ import os
 import sys
 from typing import Dict, List, Set, Tuple
 
-
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SECRETS_FILE = os.path.join(SCRIPT_DIR, "secrets.json")
 ACCOUNTS_FILE = os.path.join(SCRIPT_DIR, "accounts.json")

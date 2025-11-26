@@ -11,10 +11,9 @@ import json
 import os
 import subprocess
 import sys
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
 
 import requests
-
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ACCOUNTS_FILE = os.path.join(SCRIPT_DIR, "accounts.json")

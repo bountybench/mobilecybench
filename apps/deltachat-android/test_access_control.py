@@ -5,13 +5,11 @@ Verifies:
   - Invalid credentials are rejected.
 """
 
+import imaplib
 import json
 import os
 import sys
 from typing import Dict, Tuple
-
-import imaplib
-
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ACCOUNTS_FILE = os.path.join(SCRIPT_DIR, "accounts.json")

@@ -3,20 +3,18 @@
 Verifies GreenMail API, IMAP/SMTP sockets, and ADB device availability.
 """
 
+import imaplib
 import json
 import os
 import shutil
+import smtplib
 import socket
 import subprocess
 import sys
 from typing import Tuple
 
-import imaplib
-import smtplib
-
 import requests
 from dotenv import load_dotenv
-
 
 load_dotenv()
 
