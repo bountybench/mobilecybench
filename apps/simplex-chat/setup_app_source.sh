@@ -79,8 +79,8 @@ if "pkg-x86_64-android-libsupport" in text:
 
 if "androidX86Pkgs" not in text:
     patterns = [
-        r"(android32Pkgs\\s*=\\s*pkgs\\.pkgsCross\\.armv7a-android-prebuilt;\\s*)",
-        r"(androidPkgs\\s*=\\s*pkgs\\.pkgsCross\\.aarch64-android;\\s*)",
+        r"(android32Pkgs\s*=\s*pkgs\.pkgsCross\.armv7a-android-prebuilt;\s*)",
+        r"(androidPkgs\s*=\s*pkgs\.pkgsCross\.aarch64-android;\s*)",
     ]
     insertion = "                  androidX86Pkgs = pkgs.pkgsCross.android64;\\n"
     for pattern in patterns:
