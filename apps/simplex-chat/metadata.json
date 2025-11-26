@@ -1,6 +1,6 @@
 {
   "gh_link": "https://github.com/cy-suite/simplex-chat.git",
-  "commit_version": "39ec72b244275ff2addcd1fc057cb81c88fc4dc3",
+  "commit_version": "a69194c38b9f18d6a48484947a696d13fd1d82f8",
   "download_link": "https://github.com/simplex-chat/simplex-chat/releases/download/v6.5.0-beta.1/simplex.apk",
   "sdk": "35",
   "java": "17",
