@@ -58,6 +58,48 @@ print(os.path.realpath(sys.argv[1]))
 PY
 }
 
+patch_flake_for_x86() {
+  local flake="$CODEBASE_DIR/flake.nix"
+  [[ -f "$flake" ]] || return
+  if grep -q 'pkg-x86_64-android-libsupport' "$flake"; then
+    return
+  fi
+  log "Injecting x86_64 Android hydra jobs into flake.nix"
+  python3 - "$flake" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+if "pkg-x86_64-android-libsupport" in text:
+    sys.exit(0)
+
+marker = "                  android32Pkgs = pkgs.pkgsCross.armv7a-android-prebuilt;\\n"
+if "androidX86Pkgs" not in text:
+    text = text.replace(marker, marker + "                  androidX86Pkgs = pkgs.pkgsCross.android64;\\n", 1)
+
+try:
+    start = text.index('              "aarch64-android:lib:support"')
+    end = text.index('              "armv7a-android:lib:support"')
+except ValueError:
+    sys.exit(0)
+
+block = text[start:end]
+replacements = [
+    ("aarch64-android", "x86_64-android"),
+    ("aarch64-unknown-linux-android", "x86_64-unknown-linux-android"),
+    ("pkg-aarch64-android", "pkg-x86_64-android"),
+    ("androidPkgs", "androidX86Pkgs"),
+]
+patched = block
+for old, new in replacements:
+    patched = patched.replace(old, new)
+
+text = text[:end] + patched + text[end:]
+path.write_text(text)
+PY
+}
+
 android_home() {
   if [[ -n "${ANDROID_HOME:-}" ]]; then
     if [[ ! -d "$ANDROID_HOME" ]]; then
@@ -313,6 +355,7 @@ main() {
   log "Starting SimpleX Chat source build"
   ensure_requested_abis_env
   check_prereqs
+  patch_flake_for_x86
   local requested_abis=($(parse_requested_abis))
   prepare_native_libs_for_requested_abis "${requested_abis[@]}"
   ensure_native_libs
