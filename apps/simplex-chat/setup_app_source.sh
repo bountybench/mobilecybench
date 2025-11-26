@@ -124,7 +124,8 @@ desired_overlay = """let android26 = final: prev: {
                 libc = "bionic";
                 targetPrefix = "x86_64-linux-android-";
                 sdkVer = "26";
-                ndkVer = "24.0.8215888";
+                # Align with the Android project build.gradle ndkVersion
+                ndkVer = "23.1.7779620";
                 useAndroidPrebuilt = true;
                 useAndroidPrebuiltSdk = true;
               };
