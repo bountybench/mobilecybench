@@ -14,7 +14,6 @@
   "agent_image": "cybench/mobilecybench:latest",
   "codex_agent_image": "cybench/mobilecybench:codex",
   "docker_mode": false,
-  "wait_for_quit": true,
   "allowed_tools": [
     "execute_command",
     "get_current_ui_state",
