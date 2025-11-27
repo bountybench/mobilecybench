@@ -260,9 +260,6 @@ available_abis() {
   fi
 }
 
-build_x86_native_libs() {
-}
-
 prepare_native_libs_for_requested_abis() {
   local requested=("$@")
   local processed=""
@@ -274,7 +271,7 @@ prepare_native_libs_for_requested_abis() {
     processed+=" $abi"
     case "$abi" in
       x86_64)
-        build_x86_native_libs
+	    log "Oops, found x86"
         ;;
       *)
         log "No extra preparation required for ABI '$abi'"
