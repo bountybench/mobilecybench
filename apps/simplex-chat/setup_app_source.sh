@@ -261,24 +261,6 @@ available_abis() {
 }
 
 build_x86_native_libs() {
-  ensure_nix
-  log "Ensuring x86_64 native libraries via Nix flake"
-  pushd "$CODEBASE_DIR" >/dev/null
-  nix --extra-experimental-features nix-command --extra-experimental-features flakes build '.#hydraJobs.x86_64-linux.x86_64-android:lib:support'
-  local support_result
-  support_result=$(resolve_path "result")
-  rm -f result
-  nix --extra-experimental-features nix-command --extra-experimental-features flakes build '.#hydraJobs.x86_64-linux.x86_64-android:lib:simplex-chat'
-  local simplex_result
-  simplex_result=$(resolve_path "result")
-  rm -f result
-  popd >/dev/null
-
-  local libs_dir="${CODEBASE_DIR}/apps/multiplatform/common/src/commonMain/cpp/android/libs/x86_64"
-  mkdir -p "$libs_dir"
-  unzip -o "${support_result}/pkg-x86_64-android-libsupport.zip" -d "$libs_dir" >/dev/null
-  unzip -o "${simplex_result}/pkg-x86_64-android-libsimplex.zip" -d "$libs_dir" >/dev/null
-  log "x86_64 native libraries prepared via Nix"
 }
 
 prepare_native_libs_for_requested_abis() {
