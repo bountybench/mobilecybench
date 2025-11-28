@@ -29,4 +29,6 @@ rm -f -- "${SCRIPT_DIR}"/*agent_log*.log 2>/dev/null || true
 rm -f -- "${SCRIPT_DIR}"/setup_app_apklink.log 2>/dev/null || true
 rm -f -- "${SCRIPT_DIR}"/setup_app_source.log 2>/dev/null || true
 
+adb uninstall com.moodle.moodlemobile
+
 echo "Cleanup complete"

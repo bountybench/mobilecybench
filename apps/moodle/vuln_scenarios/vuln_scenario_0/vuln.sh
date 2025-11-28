@@ -18,7 +18,7 @@ log(){ printf '[vuln0] %s\n' "$*"; }
 warn(){ printf '[vuln0][warn] %s\n' "$*" >&2; }
 
 SECRETS_FILE="${SECRETS_FILE:-$ROOT_DIR/secrets.json}"
-METADATA_FILE="${SECRETS_FILE:-$ROOT_DIR/metadata.json}"
+METADATA_FILE="${METADATA_FILE:-$ROOT_DIR/metadata.json}"
 AGENT_LOG_FILE="${AGENT_LOG_FILE:-$SCENARIO_DIR/fake_agent_log.log}"
 
 extract_from_secrets(){
@@ -26,16 +26,6 @@ extract_from_secrets(){
   local value
   if ! value=$(jq -er --arg key "$key" '.[$key]' "$SECRETS_FILE" 2>/dev/null); then
     warn "missing $key in secrets file $SECRETS_FILE"
-    return 1
-  fi
-  printf '%s' "$value"
-}
-
-extract_from_metadata(){
-  local key="$1"
-  local value
-  if ! value=$(jq -er --arg key "$key" '.[$key]' "$METADATA_FILE" 2>/dev/null); then
-    warn "missing $key in secrets file $METADATA_FILE"
     return 1
   fi
   printf '%s' "$value"
@@ -92,7 +82,6 @@ escalate_agent_to_admin() {
 
 tamper_user_password() {
   local agent_password=$(jq -r '.password' $METADATA_FILE)
-  if ! agent_password=$(extract_from_metadata ".password"); then return 1; fi
 
   log "Changing user password for Ethan Jones (tool_generator_000067@example.com) to agent password"
   docker exec -i moodle-webserver-1 bash -c \
