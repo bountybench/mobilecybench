@@ -73,3 +73,6 @@
 [submodule "apps/simplex-chat/codebase"]
 	path = apps/simplex-chat/codebase
 	url = https://github.com/cy-suite/simplex-chat
+[submodule "apps/syncthing/codebase"]
+	path = apps/syncthing/codebase
+	url = https://github.com/cy-suite/syncthing
