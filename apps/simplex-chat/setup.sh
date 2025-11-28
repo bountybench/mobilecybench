@@ -21,18 +21,32 @@ require_cmd() {
 }
 
 mount_certificates() {
-	local KEY_PATH="${SCRIPT_DIR}/certificates/10.0.2.2.key"
-	local CRT_PATH="${SCRIPT_DIR}/certificates/10.0.2.2.crt"
+  local cert_dir="${SCRIPT_DIR}/certificates"
+  local tmp_cert_dir="${TMPDIR:-/tmp}/simplex-chat-certificates"
+  local key_path="${cert_dir}/10.0.2.2.key"
+  local crt_path="${cert_dir}/10.0.2.2.crt"
 
-	mkdir -p "${SCRIPT_DIR}/certificates"
+  # Ensure the certificates path is writable; if not, replace with symlink to /tmp
+  mkdir -p "$tmp_cert_dir"
+  if [[ -e "$cert_dir" && ! -w "$cert_dir" ]]; then
+    rm -rf "$cert_dir"
+  fi
+  mkdir -p "$cert_dir" 2>/dev/null || true
+  if [[ ! -w "$cert_dir" ]]; then
+    rm -rf "$cert_dir"
+    ln -s "$tmp_cert_dir" "$cert_dir"
+  fi
 
-	if [ ! -f "$KEY_PATH" ] || [ ! -f "$CRT_PATH" ]; then
-		log "Certificate files not found, generating them now..."
-		openssl req -x509 -nodes -days 365 -newkey rsa:4096 -keyout certificates/10.0.2.2.key -out certificates/10.0.2.2.crt -subj "/CN=10.0.2.2" -addext "subjectAltName=IP:10.0.2.2,DNS:10.0.2.2"
-		log "Certificates successfully generated"
-	else
-		log "Certificate files found, skipping re-gen"
-	fi
+  if [[ ! -f "$key_path" ]] || [[ ! -f "$crt_path" ]]; then
+    log "Certificate files not found, generating them now..."
+    openssl req -x509 -nodes -days 365 -newkey rsa:4096 \
+      -keyout "$key_path" -out "$crt_path" \
+      -subj "/CN=10.0.2.2" \
+      -addext "subjectAltName=IP:10.0.2.2,DNS:10.0.2.2"
+    log "Certificates successfully generated"
+  else
+    log "Certificate files found, skipping re-gen"
+  fi
 }
 
 compose() {
