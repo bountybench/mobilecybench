@@ -8,7 +8,6 @@ APK_DIR="${SCRIPT_DIR}/apk"
 APK_UNSIGNED="${APK_DIR}/simplex-chat-unsigned.apk"
 APK_SIGNED="${APK_DIR}/simplex-chat.apk"
 KEYSTORE_FILE="$HOME/.android/debug.keystore"
-AVAILABLE_ABIS=()
 
 log()  { printf '[setup_app_source] %s\n' "$*"; }
 warn() { printf '[setup_app_source][warn] %s\n' "$*" >&2; }
@@ -18,26 +17,9 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Required command '$1' not found in PATH"
 }
 
-default_host_abi() {
-  local host_arch
-  host_arch=$(uname -m)
-  case "$host_arch" in
-    x86_64|amd64) echo "x86_64" ;;
-    arm64|aarch64) echo "arm64-v8a" ;;
-    *) echo "armeabi-v7a" ;;
-  esac
-}
-
 parse_requested_abis() {
   # Force ARM build; only arm64-v8a for now
   echo "arm64-v8a"
-}
-
-resolve_path() {
-  python3 - "$1" <<'PY'
-import os, sys
-print(os.path.realpath(sys.argv[1]))
-PY
 }
 
 android_home() {
@@ -112,13 +94,6 @@ check_prereqs() {
   chmod +x "$MULTIPLATFORM_DIR/gradlew"
 }
 
-available_abis() {
-  # Force arm64-v8a ABI
-  AVAILABLE_ABIS=(arm64-v8a)
-}
-
-prepare_native_libs_for_requested_abis() { :; }
-
 ensure_native_libs() {
   local libs_root="${CODEBASE_DIR}/apps/multiplatform/common/src/commonMain/cpp/android/libs"
   [[ -d "$libs_root" ]] || fail "Expected native libs directory missing at $libs_root"
@@ -133,12 +108,8 @@ ensure_native_libs() {
     fi
   done < <(find "$libs_root" -name '*.so.gz' -print0)
 
-  available_abis "$libs_root"
-
   if [[ $updated -eq 0 ]]; then
-    log "Native libraries already present (${AVAILABLE_ABIS[*]})"
-  else
-    log "Prepared native libraries for ABIs: ${AVAILABLE_ABIS[*]}"
+    log "Native libraries already present under $(basename "$libs_root")"
   fi
 }
 
@@ -188,13 +159,13 @@ sign_apk() {
 main() {
   log "Starting SimpleX Chat source build"
   check_prereqs
+  ensure_native_libs
   local requested_abis=($(parse_requested_abis))
-  AVAILABLE_ABIS=("${requested_abis[@]}")
-  BUILD_ABIS=("${requested_abis[@]}")
-  log "Building for ABIs: ${BUILD_ABIS[*]}"
+  local build_abis=("${requested_abis[@]}")
+  log "Building for ABIs: ${build_abis[*]}"
   local sdk_home
   sdk_home=$(android_home)
-  build_apk "$sdk_home" "${BUILD_ABIS[@]}"
+  build_apk "$sdk_home" "${build_abis[@]}"
   sign_apk "$sdk_home"
   log "Build complete"
 }
