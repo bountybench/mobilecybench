@@ -6,6 +6,11 @@ networks:
 services:
   webserver:
     image: "moodlehq/moodle-php-apache:8.2"
+    depends_on:
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
     environment:
       MOODLE_DOCKER_RUNNING: 1
       MOODLE_DOCKER_DBNAME: moodle
