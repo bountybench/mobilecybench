@@ -1424,7 +1424,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ needs.setup.outputs.sdk }}
-          arch: arm64
+          arch: x86_64
           target: ${{ needs.setup.outputs.system_image }} 
           profile: pixel_2
           ram-size: 2048    
