@@ -28,27 +28,9 @@ default_host_abi() {
   esac
 }
 
-ensure_requested_abis_env() {
-  if [[ -z "${SIMPLEX_ANDROID_ABIS:-}" ]]; then
-    local default_abi
-    default_abi=$(default_host_abi)
-    export SIMPLEX_ANDROID_ABIS="$default_abi"
-    log "SIMPLEX_ANDROID_ABIS not set; defaulting to $default_abi based on host architecture"
-  fi
-}
-
 parse_requested_abis() {
-  ensure_requested_abis_env
-  local requested="${SIMPLEX_ANDROID_ABIS:-}"
-  IFS=',' read -r -a requested_array <<< "$requested"
-  local normalized=()
-  for abi in "${requested_array[@]}"; do
-    abi="${abi// /}"
-    if [[ -n "$abi" ]]; then
-      normalized+=("$abi")
-    fi
-  done
-  echo "${normalized[@]}"
+  # Force ARM build; only arm64-v8a for now
+  echo "arm64-v8a"
 }
 
 resolve_path() {
@@ -56,152 +38,6 @@ resolve_path() {
 import os, sys
 print(os.path.realpath(sys.argv[1]))
 PY
-}
-
-ensure_nix() {
-  if command -v nix >/dev/null 2>&1; then
-    return
-  fi
-
-  log "nix not found; installing single-user copy (sudo may be required locally to create /nix)"
-  sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --no-daemon
-
-  local nix_profile="$HOME/.nix-profile/etc/profile.d/nix.sh"
-  [[ -f "$nix_profile" ]] || fail "Nix installation completed but $nix_profile is missing"
-
-  # shellcheck disable=SC1090
-  . "$nix_profile"
-
-  command -v nix >/dev/null 2>&1 || fail "Nix installation failed to add 'nix' to PATH"
-}
-
-patch_flake_for_x86() {
-  local flake="$CODEBASE_DIR/flake.nix"
-  [[ -f "$flake" ]] || return
-  log "Injecting x86_64 Android hydra jobs into flake.nix"
-  python3 - "$flake" <<'PY'
-import sys
-from pathlib import Path
-import re
-
-path = Path(sys.argv[1])
-text = path.read_text()
-
-# Ensure android26 overlay provides android64 and x86_64-android aliases
-overlay_start = text.find("let android26 = final: prev: {")
-if overlay_start == -1:
-    raise SystemExit("Unable to locate android26 overlay start")
-overlay_end = text.find("}; in", overlay_start)
-if overlay_end == -1:
-    raise SystemExit("Unable to locate android26 overlay end marker")
-overlay_block = text[overlay_start:overlay_end+len("}; in")]
-
-desired_overlay = """let android26 = final: prev: {
-        pkgsCross = prev.pkgsCross // rec {
-          aarch64-android = import prev.path {
-            inherit system;
-            inherit (prev) overlays;
-            crossSystem = prev.lib.systems.examples.aarch64-android // { sdkVer = "26"; };
-          };
-          armv7a-android-prebuilt = import prev.path {
-            inherit system;
-            inherit (prev) overlays;
-            crossSystem = prev.lib.systems.examples.armv7a-android-prebuilt // { sdkVer = "26"; };
-          };
-          android64 = import prev.path {
-            inherit system;
-            inherit (prev) overlays;
-            # Prefer native android64 or x86_64 prebuilt if present; otherwise fall back
-            # to a manual x86_64 bionic crossSystem without pulling in arm prebuilt
-            # requirements.
-            crossSystem =
-              if prev.lib.systems.examples ? android64 then
-                prev.lib.systems.examples.android64 // { sdkVer = "26"; }
-              else if prev.lib.systems.examples ? x86_64-android-prebuilt then
-                prev.lib.systems.examples.x86_64-android-prebuilt // { sdkVer = "26"; }
-              else {
-                config = "x86_64-unknown-linux-android";
-                libc = "bionic";
-                targetPrefix = "x86_64-linux-android-";
-                sdkVer = "26";
-                # Align with the Android project build.gradle ndkVersion
-                ndkVer = "23.1.7779620";
-                useAndroidPrebuilt = true;
-                useAndroidPrebuiltSdk = true;
-              };
-          };
-          # Alias so callers using x86_64-android continue to work.
-          x86_64-android = android64;
-        };
-      }; in"""
-
-if ("android64" not in overlay_block
-        or "x86_64-android = android64" not in overlay_block
-        or "pkgsCross = prev.pkgsCross // rec" not in overlay_block):
-    text = text[:overlay_start] + desired_overlay + text[overlay_end+len("}; in"):]
-
-# Ensure the binding uses the alias we define
-text = re.sub(r"androidX86Pkgs\s*=\s*pkgs\.pkgsCross\.[^\s;]+;", "androidX86Pkgs = pkgs.pkgsCross.x86_64-android;", text, count=1)
-
-has_x86 = "pkg-x86_64-android-libsupport" in text
-
-if "androidX86Pkgs" not in text:
-    patterns = [
-        r"(android32Pkgs\s*=\s*pkgs\.pkgsCross\.armv7a-android-prebuilt;\s*)",
-        r"(androidPkgs\s*=\s*pkgs\.pkgsCross\.aarch64-android;\s*)",
-    ]
-    insertion = "\n                  androidX86Pkgs = pkgs.pkgsCross.x86_64-android;\n"
-    for pattern in patterns:
-        match = re.search(pattern, text)
-        if match:
-            text = text[:match.end()] + insertion + text[match.end():]
-            break
-    else:
-        raise SystemExit("Unable to locate insertion point for androidX86Pkgs")
-
-def clone(block: str) -> str:
-    replacements = [
-        ("aarch64-android", "x86_64-android"),
-        ("aarch64-unknown-linux-android", "x86_64-unknown-linux-android"),
-        ("pkg-aarch64-android", "pkg-x86_64-android"),
-        ("androidPkgs", "androidX86Pkgs"),
-    ]
-    for old, new in replacements:
-        block = block.replace(old, new)
-    return block
-
-def extract_block(start_token: str, search_from: int) -> tuple[str, int, int]:
-    start = text.find(start_token, search_from)
-    if start == -1:
-        raise SystemExit(f"Unable to locate block start: {start_token.strip()}")
-    end_marker = "              });"
-    end = text.find(end_marker, start)
-    if end == -1:
-        raise SystemExit(f"Unable to locate block end for token {start_token.strip()}")
-    end += len(end_marker)
-    if end < len(text) and text[end] == "\\n":
-        end += 1
-    return text[start:end], start, end
-
-support_block, _, support_end = extract_block('              "aarch64-android:lib:support" =', 0)
-simplex_block, _, simplex_end = extract_block('              "aarch64-android:lib:simplex-chat" =', support_end)
-
-clone_support = clone(support_block)
-clone_simplex = clone(simplex_block)
-
-if not has_x86:
-    text = text[:support_end] + clone_support + text[support_end:]
-    simplex_end += len(clone_support)
-    text = text[:simplex_end] + clone_simplex + text[simplex_end:]
-path.write_text(text)
-PY
-
-  if ! grep -Eq 'androidX86Pkgs\s*=\s*pkgs\.pkgsCross\.x86_64-android;' "$flake"; then
-    fail "Failed to inject androidX86Pkgs binding into flake.nix"
-  fi
-  if ! grep -q 'pkg-x86_64-android-libsupport' "$flake"; then
-    fail "Failed to inject x86_64 hydra jobs into flake.nix"
-  fi
 }
 
 android_home() {
@@ -277,68 +113,11 @@ check_prereqs() {
 }
 
 available_abis() {
-  local libs_root="$1"
-  AVAILABLE_ABIS=()
-  while IFS= read -r line; do
-    [[ -n "$line" ]] && AVAILABLE_ABIS+=("$line")
-  done < <(
-    find "$libs_root" -mindepth 1 -maxdepth 1 -type d -print0 \
-      | xargs -0 -I{} bash -c '
-          shopt -s nullglob;
-          dir="$1";
-          abi=$(basename "$dir");
-          files=("$dir"/*.so "$dir"/*.so.gz);
-          if [[ ${#files[@]} -gt 0 ]]; then
-            echo "$abi"
-          fi
-        ' _ {}
-  )
-  AVAILABLE_ABIS=($(printf "%s\n" "${AVAILABLE_ABIS[@]}" | awk 'NF' | sort -u))
-  if [[ ${#AVAILABLE_ABIS[@]} -eq 0 ]]; then
-    fail "No native library directories found under $libs_root"
-  fi
+  # Force arm64-v8a ABI
+  AVAILABLE_ABIS=(arm64-v8a)
 }
 
-build_x86_native_libs() {
-  ensure_nix
-  log "Ensuring x86_64 native libraries via Nix flake"
-  pushd "$CODEBASE_DIR" >/dev/null
-nix --extra-experimental-features nix-command --extra-experimental-features flakes build '.#hydraJobs.x86_64-linux.x86_64-android:lib:support'
-  local support_result
-  support_result=$(resolve_path "result")
-  rm -f result
-  nix --extra-experimental-features nix-command --extra-experimental-features flakes build '.#hydraJobs.x86_64-linux.x86_64-android:lib:simplex-chat'
-  local simplex_result
-  simplex_result=$(resolve_path "result")
-  rm -f result
-  popd >/dev/null
-
-  local libs_dir="${CODEBASE_DIR}/apps/multiplatform/common/src/commonMain/cpp/android/libs/x86_64"
-  mkdir -p "$libs_dir"
-  unzip -o "${support_result}/pkg-x86_64-android-libsupport.zip" -d "$libs_dir" >/dev/null
-  unzip -o "${simplex_result}/pkg-x86_64-android-libsimplex.zip" -d "$libs_dir" >/dev/null
-  log "x86_64 native libraries prepared via Nix"
-}
-
-prepare_native_libs_for_requested_abis() {
-  local requested=("$@")
-  local processed=""
-  for abi in "${requested[@]}"; do
-    [[ -n "$abi" ]] || continue
-    if [[ " $processed " == *" $abi "* ]]; then
-      continue
-    fi
-    processed+=" $abi"
-    case "$abi" in
-      x86_64)
-        build_x86_native_libs
-        ;;
-      *)
-        log "No extra preparation required for ABI '$abi'"
-        ;;
-    esac
-  done
-}
+prepare_native_libs_for_requested_abis() { :; }
 
 ensure_native_libs() {
   local libs_root="${CODEBASE_DIR}/apps/multiplatform/common/src/commonMain/cpp/android/libs"
@@ -361,53 +140,6 @@ ensure_native_libs() {
   else
     log "Prepared native libraries for ABIs: ${AVAILABLE_ABIS[*]}"
   fi
-}
-
-select_build_abis() {
-  local requested="${SIMPLEX_ANDROID_ABIS:-}"
-  if [[ -n "$requested" ]]; then
-    IFS=',' read -r -a requested_array <<< "$requested"
-    local filtered=()
-    for abi in "${requested_array[@]}"; do
-      abi="${abi// /}"
-      if [[ -z "$abi" ]]; then
-        continue
-      fi
-      if printf '%s\n' "${AVAILABLE_ABIS[@]}" | grep -qx "$abi"; then
-        filtered+=("$abi")
-      else
-        warn "Requested ABI '$abi' not available in native libs, skipping"
-      fi
-    done
-    if [[ ${#filtered[@]} -eq 0 ]]; then
-      fail "None of the requested ABIs ($requested) are available. Present ABIs: ${AVAILABLE_ABIS[*]}"
-    fi
-    echo "${filtered[@]}"
-    return
-  fi
-
-  local host_arch
-  host_arch=$(uname -m)
-  local preferred=""
-  case "$host_arch" in
-    x86_64|amd64)
-      preferred="x86_64"
-      ;;
-    arm64|aarch64)
-      preferred="arm64-v8a"
-      ;;
-    *)
-      preferred="armeabi-v7a"
-      ;;
-  esac
-
-  if printf '%s\n' "${AVAILABLE_ABIS[@]}" | grep -qx "$preferred"; then
-    echo "$preferred"
-    return
-  fi
-
-  warn "Host architecture $host_arch has no matching native libs (wanted $preferred). Building with available ABIs: ${AVAILABLE_ABIS[*]}"
-  echo "${AVAILABLE_ABIS[@]}"
 }
 
 build_apk() {
@@ -455,17 +187,11 @@ sign_apk() {
 
 main() {
   log "Starting SimpleX Chat source build"
-  ensure_requested_abis_env
   check_prereqs
-  patch_flake_for_x86
   local requested_abis=($(parse_requested_abis))
-  prepare_native_libs_for_requested_abis "${requested_abis[@]}"
-  ensure_native_libs
-  local build_abis=$(select_build_abis)
-  BUILD_ABIS=($build_abis)
-  log "Found the following ABIs":
-  log $BUILD_ABIS
-  [[ ${#BUILD_ABIS[@]} -gt 0 ]] || fail "No ABIs selected for build"
+  AVAILABLE_ABIS=("${requested_abis[@]}")
+  BUILD_ABIS=("${requested_abis[@]}")
+  log "Building for ABIs: ${BUILD_ABIS[*]}"
   local sdk_home
   sdk_home=$(android_home)
   build_apk "$sdk_home" "${BUILD_ABIS[@]}"
