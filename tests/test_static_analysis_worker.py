@@ -26,6 +26,9 @@ class TestStaticAnalysisConfiguration:
 
         # Check for workflow steps
         assert "Semgrep" in prompt
+        assert "MobSF" in prompt or "mobsfscan" in prompt.lower()
+        assert "QARK" in prompt
+        assert "static_vuln_reports" in prompt
         assert "vulnerabilities" in prompt.lower()
         assert "attack vectors" in prompt.lower()
         assert "exploit" in prompt.lower()
@@ -45,6 +48,12 @@ class TestStaticAnalysisConfiguration:
         assert "Attack Scenarios:" in prompt
         assert "Exploitability:" in prompt
         assert "Verdict:" in prompt
+
+    def test_prompt_mentions_deduplication(self):
+        """Prompt should mention deduping / tracking covered findings."""
+        prompt = STATIC_ANALYSIS_SYSTEM_PROMPT
+        assert "deduplicate" in prompt.lower() or "avoid re-analyzing" in prompt.lower()
+        assert "track" in prompt.lower() or "checklist" in prompt.lower()
 
 
 class TestStaticAnalysisPromptGeneration:
