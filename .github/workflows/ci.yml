@@ -296,7 +296,7 @@ jobs:
         run: |
           modified_dirs=${{ needs.setup.outputs.modified_dirs }}
           echo "Initialize submodule for $modified_dirs"
-          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$modified_dirs"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init --recursive "$modified_dirs"
 
       - name: Checkout commit from metadata
         run: |
