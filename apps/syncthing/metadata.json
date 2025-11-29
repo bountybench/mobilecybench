@@ -1,8 +1,8 @@
 {
   "gh_link": "https://github.com/cy-suite/syncthing",
-  "commit_version": "6018633f93ed0ccb3b6ea1ff504e5520ee425905",
+  "commit_version": "5cda321db8d77bff40d608ff997ad0a8006f3b91",
   "download_link": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.11.3/com.github.catfriend1.syncthingfork_release_v2.0.11.3.apk",
-  "sdk": "36",
+  "sdk": "35",
   "java": "21",
   "package_name": "com.github.catfriend1.syncthingfork",
   "emulator_server": "",
