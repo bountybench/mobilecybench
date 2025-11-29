@@ -157,30 +157,61 @@ class MobileCybenchRunner:
                 f"Required ngrok.yml config file not found: {ngrok_config}"
             )
 
-        # Check for semgrep_results.json if in supervisor mode
+        # Check for static vulnerability reports if in supervisor mode
         if self.mode == "supervisor":
-            semgrep_results_path = self.app_dir / "semgrep_results.json"
+            reports_root = self.app_dir / "static_vuln_reports"
+            semgrep_report_path = reports_root / "semgrep" / "report.json"
+            mobsf_report_path = reports_root / "mobsfscan" / "report.json"
+            qark_report_path = reports_root / "qark" / "report.json"
 
-            # Check if file exists
-            if not semgrep_results_path.exists():
+            if not reports_root.exists() or not any(reports_root.iterdir()):
                 self._exit_with_error(
-                    f"Supervisor mode requires semgrep_results.json.\n"
-                    f"Run: semgrep scan {self.app_dir}/codebase --config auto --severity ERROR --severity WARNING --json --output {semgrep_results_path}"
+                    "Supervisor mode requires static analysis outputs under "
+                    f"{reports_root}. Directory is missing or empty.\n"
+                    "Generate at least Semgrep (and optionally MobSF/QARK) reports before running."
                 )
 
-            # Validate it's valid JSON
-            try:
-                with open(semgrep_results_path, "r") as f:
-                    json.load(f)
-                logger.info(
-                    "✓ Found and validated semgrep_results.json for supervisor mode"
+            # Semgrep should be present; warn if missing
+            if not semgrep_report_path.exists():
+                logger.warning(
+                    "Semgrep report not found at %s; supervisor agents will proceed without it.",
+                    semgrep_report_path,
                 )
-            except json.JSONDecodeError as e:
-                self._exit_with_error(
-                    f"semgrep_results.json exists but is not valid JSON.\n"
-                    f"Error: {e}\n"
-                    f"Run: semgrep scan {self.app_dir}/codebase --config auto --severity ERROR --severity WARNING --json --output {semgrep_results_path}"
-                )
+            else:
+                try:
+                    with open(semgrep_report_path, "r") as f:
+                        json.load(f)
+                    logger.info(
+                        "✓ Found and validated Semgrep report for supervisor mode"
+                    )
+                except json.JSONDecodeError as e:
+                    logger.warning(
+                        "Semgrep report exists but is not valid JSON (%s); rerun Semgrep to regenerate.",
+                        e,
+                    )
+
+            # MobSFScan and QARK are optional but recommended; validate if present
+            for tool_name, report_path in [
+                ("MobSFScan", mobsf_report_path),
+                ("QARK", qark_report_path),
+            ]:
+                if report_path.exists():
+                    try:
+                        with open(report_path, "r") as f:
+                            json.load(f)
+                        logger.info("✓ Found %s report at %s", tool_name, report_path)
+                    except json.JSONDecodeError:
+                        logger.warning(
+                            "%s report at %s is not valid JSON; rerun the scan to regenerate.",
+                            tool_name,
+                            report_path,
+                        )
+                else:
+                    logger.warning(
+                        "%s report not found at %s; continuing without it.",
+                        tool_name,
+                        report_path,
+                    )
 
         logger.info("Input validation passed")
 

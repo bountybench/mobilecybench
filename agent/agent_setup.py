@@ -200,13 +200,22 @@ class AgentEnvironment:
 
         logger.info(f"Agent codebase setup complete at {agent_codebase}")
 
-        # Copy semgrep_results.json into agent_codebase if in supervisor mode
+        # Copy pre-generated static vulnerability reports into agent_codebase if in supervisor mode
         if self.mode == "supervisor":
-            semgrep_results_path = self.app_dir / "semgrep_results.json"
-            dest_semgrep_path = agent_codebase / "semgrep_results.json"
-            logger.info("Copying semgrep_results.json to agent_codebase")
-            shutil.copy2(semgrep_results_path, dest_semgrep_path)
-            logger.info(f"✓ Copied semgrep_results.json to {dest_semgrep_path}")
+            static_reports_src = self.app_dir / "static_vuln_reports"
+            static_reports_dest = agent_codebase / "static_vuln_reports"
+            if static_reports_src.exists():
+                logger.info(
+                    f"Copying static vulnerability reports from {static_reports_src} to {static_reports_dest}"
+                )
+                shutil.copytree(
+                    static_reports_src, static_reports_dest, dirs_exist_ok=True
+                )
+                logger.info("✓ Copied static vulnerability reports into agent_codebase")
+            else:
+                logger.warning(
+                    "static_vuln_reports directory not found; supervisor agents will not see pre-generated static reports"
+                )
 
         # Return volume mapping for bind mount
         return {str(agent_codebase): {"bind": "/app/codebase", "mode": "rw"}}

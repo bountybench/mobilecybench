@@ -5,7 +5,7 @@ This package implements a hierarchical multi-agent system for cybersecurity
 vulnerability analysis and exploitation:
 
 - **Supervisor Agent**: Coordinates worker agents and manages the overall workflow
-- **Static Analysis Worker**: Analyzes Semgrep results to identify HIGH SEVERITY vulnerabilities
+- **Static Analysis Worker**: Analyzes Semgrep/MobSF/QARK results to identify HIGH SEVERITY vulnerabilities
 - **Exploit Worker**: Creates executable exploit.sh scripts to validate vulnerabilities
 
 All workers use MCP tools from runner_config.json for command execution and
