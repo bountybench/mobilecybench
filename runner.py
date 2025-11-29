@@ -747,7 +747,9 @@ class MobileCybenchRunner:
 
     def _check_and_save_agent_exploit(self):
         """Ensure exploit.sh exists, log it, and copy the entire exploit_files directory to host."""
-        logger.info("Checking for agent-generated exploit.sh and exploit_files directory...")
+        logger.info(
+            "Checking for agent-generated exploit.sh and exploit_files directory..."
+        )
         exploit_path = "/app/exploit_files/exploit.sh"
 
         try:
