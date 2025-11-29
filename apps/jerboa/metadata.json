@@ -1,6 +1,6 @@
 {
   "gh_link": "https://github.com/cy-suite/jerboa.git",
-  "commit_version": "7a27064aeda6fcd99a07f86ff08aa43b6511e159",
+  "commit_version": "d06eef5",
   "download_link": "https://github.com/LemmyNet/jerboa/releases/download/0.0.84/app-release.apk",
   "sdk": "33",
   "java": "17",
