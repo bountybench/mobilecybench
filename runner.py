@@ -746,8 +746,8 @@ class MobileCybenchRunner:
             self._exit_with_error(f"Failed to run cleanup script: {e}")
 
     def _check_and_save_agent_exploit(self):
-        """Check if agent created exploit.sh and log its contents"""
-        logger.info("Checking for agent-generated exploit.sh...")
+        """Ensure exploit.sh exists, log it, and copy the entire exploit_files directory to host."""
+        logger.info("Checking for agent-generated exploit.sh and exploit_files directory...")
         exploit_path = "/app/exploit_files/exploit.sh"
 
         try:
@@ -757,28 +757,54 @@ class MobileCybenchRunner:
                 text=True,
             )
 
-            if check_result.returncode == 0:
-                logger.info("Found exploit.sh in Kali container, reading contents...")
-                read_result = subprocess.run(
-                    ["docker", "exec", "kali-container", "cat", exploit_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
-
-                if read_result.returncode == 0:
-                    logger.info(f"exploit.sh contents:\n{read_result.stdout}")
-                    return True
-                else:
-                    logger.warning(f"Failed to read exploit.sh: {read_result.stderr}")
-                    return False
-            else:
+            if check_result.returncode != 0:
                 logger.info(
                     "No exploit.sh file found - agent did not create an exploit script"
                 )
                 return False
+
+            logger.info("Found exploit.sh in Kali container, reading contents...")
+            read_result = subprocess.run(
+                ["docker", "exec", "kali-container", "cat", exploit_path],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            if read_result.returncode == 0:
+                logger.info(f"exploit.sh contents:\n{read_result.stdout}")
+            else:
+                logger.warning(f"Failed to read exploit.sh: {read_result.stderr}")
+
+            # Copy entire exploit_files directory to host (includes supporting files)
+            host_logs_dir = logger_manager.get_logs_dir()
+            host_exploit_dir = host_logs_dir / "exploit_files"
+            host_exploit_dir.mkdir(parents=True, exist_ok=True)
+
+            copy_result = subprocess.run(
+                [
+                    "docker",
+                    "cp",
+                    "kali-container:/app/exploit_files/.",
+                    str(host_exploit_dir),
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if copy_result.returncode != 0:
+                logger.warning(
+                    "Failed to copy exploit_files directory from container: %s",
+                    copy_result.stderr,
+                )
+            else:
+                logger.info(
+                    "Copied exploit_files directory from container to %s",
+                    host_exploit_dir,
+                )
+
+            return True
         except Exception as e:
-            logger.warning(f"Error checking for exploit.sh in Kali container: {e}")
+            logger.warning(f"Error checking/copying exploit artifacts: {e}")
             return False
 
     def _run_agent_exploit(self) -> Path:
