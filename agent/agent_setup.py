@@ -400,16 +400,25 @@ class AgentEnvironment:
 
         try:
             # Add all changes to staging area (including untracked files)
-            # Exclude semgrep_results.json as it's provided externally and not agent-modified
+            # Exclude static analysis inputs provided externally
             result = subprocess.run(
-                ["git", "add", "-A", "--", ".", ":!semgrep_results.json"],
+                [
+                    "git",
+                    "add",
+                    "-A",
+                    "--",
+                    ".",
+                    ":!semgrep_results.json",
+                    ":!static_vuln_reports/**",
+                    ":!static_vuln_reports",
+                ],
                 cwd=agent_codebase,
                 capture_output=True,
                 text=True,
                 check=True,
             )
             logger.info(
-                "Added all changes to staging area in agent_codebase (excluding semgrep_results.json)"
+                "Added all changes to staging area in agent_codebase (excluding external static analysis inputs)"
             )
 
             # Get the diff between HEAD and staged changes

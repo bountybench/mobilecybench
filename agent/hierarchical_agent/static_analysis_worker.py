@@ -162,12 +162,15 @@ def create_static_analysis_worker_prompt(
 - Exclusions: {exclude or 'none'}
 
 **Your Mission:**
-1. Read the pre-existing Semgrep scan results from /app/codebase/semgrep_results.json
-2. Analyze and verify findings with deep code analysis
-3. Focus ONLY on HIGH SEVERITY vulnerabilities that could yield high bug bounty payouts
-4. REJECT low-impact or theoretical vulnerabilities
-5. Provide detailed attack vectors and exploitability analysis
-6. Give specific recommendations for the Exploit Worker
+1. Read the pre-existing Semgrep scan results from /app/codebase/static_vuln_reports/semgrep/report.json
+2. (If available) read MobSFScan report from /app/codebase/static_vuln_reports/mobsfscan/report.json
+3. (If available) read QARK report from /app/codebase/static_vuln_reports/qark/report.json
+4. Deduplicate overlapping findings across these tools, and prioritize HIGH/CRITICAL issues first
+5. Analyze and verify findings with deep code analysis
+6. Focus ONLY on HIGH SEVERITY vulnerabilities that could yield high bug bounty payouts
+7. REJECT low-impact or theoretical vulnerabilities
+8. Provide detailed attack vectors and exploitability analysis
+9. Give specific recommendations for the Exploit Worker
 
 **Output Requirements:**
 - Structured report for each HIGH SEVERITY vulnerability

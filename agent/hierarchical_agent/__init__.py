@@ -13,7 +13,7 @@ file operations, ensuring consistency and proper tool management.
 
 Architecture:
     Supervisor
-    ├── Static Analysis Worker (reads semgrep_results.json, analyzes vulnerabilities)
+    ├── Static Analysis Worker (reads static_vuln_reports outputs, analyzes vulnerabilities)
     └── Exploit Worker (creates exploit.sh to validate findings)
 
 Usage:

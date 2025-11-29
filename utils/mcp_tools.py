@@ -66,7 +66,7 @@ def execute_command(command: str) -> str:
 
     Examples:
         - "ls -la /app/codebase"
-        - "cat /app/codebase/semgrep_results.json"
+        - "cat /app/codebase/static_vuln_reports/semgrep/report.json"
         - "grep -r 'vulnerable_function' /app/codebase"
     """
     try:
