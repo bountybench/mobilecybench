@@ -24,7 +24,7 @@ importlib-metadata==7.1.0
 installer==0.7.0
 jaraco-classes==3.4.0
 jeepney==0.8.0
-jsonschema==4.22.0
+jsonschema==4.21.1
 keyring==24.3.1
 more-itertools==10.2.0
 msgpack==1.0.8
@@ -81,6 +81,8 @@ langchain>=0.3.7
 langchain-core>=0.3.15
 langchain-openai>=0.2.9
 langgraph>=0.2.50
-semgrep>=1.95.0
-mobsfscan>=0.4.0
-qark==4.0.0
+# The static analysis toolchain is commented out to keep CI install times manageable.
+# Uncomment locally when you need to generate static_vuln_reports (Semgrep/MobSFScan/QARK).
+# semgrep>=1.95.0
+# mobsfscan>=0.4.0
+# qark==4.0.0

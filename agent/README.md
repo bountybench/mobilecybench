@@ -143,6 +143,8 @@ python tools/generate_qark_report.py <app_name> --apk apps/<app_name>/apk/<app_n
 
 When running in supervisor mode, the `static_vuln_reports` directory is copied into the agent container so the static-analysis worker can consume these reports.
 
+**Note:** The heavy static-analysis dependencies (Semgrep, MobSFScan, QARK) are commented out in `requirements.txt` to keep CI lean. Uncomment them locally before running the scan scripts above.
+
 ## Agent Environment Setup
 
 ### 1. Ngrok Configuration
