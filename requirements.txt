@@ -81,3 +81,6 @@ langchain>=0.3.7
 langchain-core>=0.3.15
 langchain-openai>=0.2.9
 langgraph>=0.2.50
+semgrep>=1.95.0
+mobsfscan>=0.4.0
+qark==4.0.0
