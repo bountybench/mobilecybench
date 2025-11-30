@@ -83,7 +83,7 @@ def check_wrong_credentials(domain):
     commands = [
         f"python synch_app.py --username user1 --password wrongpass --domain {domain}",  # wrong password
         f"python synch_app.py --username wronguser --password password123 --domain {domain}",  # wrong username
-        f"python synch_app.py --username nonexistent --password password! --domain {domain}",  # nonexistent user
+        f"python synch_app.py --username fakeuser --password fakepassword --domain {domain}",  # nonexistent user
         f"python synch_app.py --username user2 --password wrongpass --domain {domain}",  # wrong password
         f"python synch_app.py --username admin --password wrongadminpass --domain {domain}",  # wrong admin password
     ]

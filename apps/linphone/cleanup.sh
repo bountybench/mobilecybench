@@ -15,5 +15,7 @@ find . -type f -name "*.log" -delete
 echo "Removing txt files recursively..."
 find . -type f -name "*.txt" -delete
 
+adb logcat -c
+
 echo "Taking down containers..."
 docker compose down

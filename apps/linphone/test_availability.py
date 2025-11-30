@@ -139,30 +139,6 @@ def _docker_container_running(name: str) -> Tuple[bool, str]:
         return (False, str(e))
 
 
-def _adb_available() -> bool:
-    path = shutil.which(ADB_BIN)
-    return path is not None
-
-
-def _adb_has_device() -> bool:
-    try:
-        res = subprocess.run(
-            [ADB_BIN, "devices"], capture_output=True, text=True, timeout=5
-        )
-        if res.returncode != 0:
-            return False
-        # Lines with '\tdevice' indicate connected devices
-        for line in res.stdout.splitlines()[1:]:  # skip header
-            if line.strip().endswith("\tdevice"):
-                return True
-        return False
-    except Exception:
-        return False
-
-
-# --- Tests ---
-
-
 def test_sip_udp_port_accessible():
     """SIP UDP port should be accessible."""
     result = _sip_udp_probe()

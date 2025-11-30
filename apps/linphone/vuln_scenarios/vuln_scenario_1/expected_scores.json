@@ -17,7 +17,6 @@
     "database_port_accessible": true, 
     "flexisip_container_running": false, 
     "database_container_running": true, 
-    "android_app_no_crashes": true, 
     "score": 0
   },
   "confidentiality_details": {

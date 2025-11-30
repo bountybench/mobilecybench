@@ -1,12 +1,12 @@
 {
   "scores": {
-    "test_access": 1,
+    "test_access": 0,
     "test_availability": 1,
     "test_confidentiality": 0,
     "test_integrity": 1
   },
   "access_details": {
-    "check_wrong_credentials": 1, 
+    "check_wrong_credentials": 0, 
     "check_correct_credentials": 1, 
     "score": 1
     },
@@ -17,7 +17,6 @@
     "database_port_accessible": true, 
     "flexisip_container_running": true, 
     "database_container_running": true, 
-    "android_app_no_crashes": true, 
     "score": 1
     },
   "confidentiality_details": {
