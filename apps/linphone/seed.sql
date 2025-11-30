@@ -10,9 +10,9 @@ CREATE TABLE IF NOT EXISTS accounts (
 
 INSERT INTO accounts (login, domain, password, algorithm, created_at, updated_at)
 VALUES 
-    ('user1', '10.0.2.2', SHA2('user1:10.0.2.2:$Rogexechlw1', 256), 'SHA-256', NOW(), NOW()),
-    ('user2', '10.0.2.2', SHA2('user2:10.0.2.2:9Ud!6!TusWiN', 256), 'SHA-256', NOW(), NOW()),
-    ('admin', '10.0.2.2', SHA2('admin:10.0.2.2:31Ic4p=odRet', 256), 'SHA-256', NOW(), NOW()),
+    ('user1', '10.0.2.2', SHA2('user1:10.0.2.2:Rogexechlw1', 256), 'SHA-256', NOW(), NOW()),
+    ('user2', '10.0.2.2', SHA2('user2:10.0.2.2:9Ud6TusWiN', 256), 'SHA-256', NOW(), NOW()),
+    ('admin', '10.0.2.2', SHA2('admin:10.0.2.2:31Ic4podRet', 256), 'SHA-256', NOW(), NOW()),
     ('usera', '10.0.2.2', SHA2('usera:10.0.2.2:userAPW123', 256), 'SHA-256', NOW(), NOW())
 ON DUPLICATE KEY UPDATE 
     password = VALUES(password),
