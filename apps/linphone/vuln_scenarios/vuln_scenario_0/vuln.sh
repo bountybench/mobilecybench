@@ -119,7 +119,7 @@ inject_false_user() {
     log "Inserting false user into accounts table"
     docker exec "$DB_CONTAINER" sh -c "
         mysql -u$DB_USERNAME -p$DB_PASSWORD $DB_DATABASE \
-        -e \"INSERT INTO accounts (username, domain, password) VALUES ('fakeuser', '$TEST_DOMAIN', SHA2('fakeuser:10.0.2.2:fakepassword', 256));\"
+        -e \"INSERT INTO accounts (login, domain, password, algorithm, created_at, updated_at) VALUES ('fakeuser', '$TEST_DOMAIN', SHA2('fakeuser:$TEST_DOMAIN:fakepassword', 256), 'SHA-256', NOW(), NOW());\"
     " 2>/dev/null || warn "Failed to insert false user"
 
     log "False user injected into Flexisip database"
