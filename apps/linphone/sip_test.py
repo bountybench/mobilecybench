@@ -11,19 +11,34 @@ import socket
 import sys
 
 
-# Generate a random hex string
 def rand_hex(n=16):
-    return ''.join(random.choice("abcdef0123456789") for _ in range(n))
+    return "".join(random.choice("abcdef0123456789") for _ in range(n))
 
 
-# Build a SIP Digest response (supports MD5 and SHA-256)
-def compute_digest(username, realm, password, nonce, uri, method="REGISTER",
-                   algorithm="MD5", nc="00000001", qop="auth"):
+def sha256_hex(data):
+    return hashlib.sha256(data.encode()).hexdigest()
+
+
+def md5_hex(data):
+    return hashlib.md5(data.encode()).hexdigest()
+
+
+def compute_digest(
+    username,
+    realm,
+    password,
+    nonce,
+    uri,
+    method="REGISTER",
+    algorithm="MD5",
+    nc="00000001",
+    qop="auth",
+):
 
     if algorithm.upper() == "SHA-256":
-        H = lambda x: hashlib.sha256(x.encode()).hexdigest()
+        H = sha256_hex
     else:
-        H = lambda x: hashlib.md5(x.encode()).hexdigest()
+        H = md5_hex
 
     cnonce = rand_hex()
 
@@ -35,21 +50,13 @@ def compute_digest(username, realm, password, nonce, uri, method="REGISTER",
 
 
 def test_sip_register(username, password, domain, server, port, verbose):
-
-    # Use local loopback for safety (works with Docker port mapping)
     public_ip = "127.0.0.1"
-
-    # Build unique identifiers
     call_id = rand_hex(12)
     tag = rand_hex(8)
     branch = f"z9hG4bK{rand_hex(8)}"
 
     uri = f"sip:{domain}"
     from_uri = f"sip:{username}@{domain}"
-
-    # ---------------------------------------------------------
-    # 1) INITIAL REGISTER (no auth)
-    # ---------------------------------------------------------
 
     local_port = random.randint(50000, 60000)
 
@@ -74,7 +81,6 @@ def test_sip_register(username, password, domain, server, port, verbose):
         print("==== INITIAL REGISTER (NO AUTH) ====")
         print(request1)
 
-    # Open TCP socket
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((server, port))
@@ -95,7 +101,6 @@ def test_sip_register(username, password, domain, server, port, verbose):
         print("Error: Expected 401 Unauthorized")
         return False
 
-    # Parse challenge
     realm = None
     nonce = None
     opaque = None
@@ -112,26 +117,23 @@ def test_sip_register(username, password, domain, server, port, verbose):
             if "SHA-256" in line:
                 algorithm = "SHA-256"
 
-    # compute digest
     response_hash, cnonce = compute_digest(
-        username, realm, password, nonce,
-        uri, algorithm=algorithm
+        username, realm, password, nonce, uri, algorithm=algorithm
     )
 
     auth_header = (
-        'Digest '
+        "Digest "
         f'username="{username}", '
         f'realm="{realm}", '
         f'nonce="{nonce}", '
         f'opaque="{opaque}", '
         f'uri="{uri}", '
         f'algorithm="SHA-256", '
-        'qop=auth, '
-        'nc=00000001, '
+        "qop=auth, "
+        "nc=00000001, "
         f'cnonce="{cnonce}", '
         f'response="{response_hash}"'
     )
-
 
     branch2 = f"z9hG4bK{rand_hex(8)}"
 
