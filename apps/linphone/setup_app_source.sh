@@ -84,31 +84,28 @@ build_LinPhone() {
     else
         echo "Gradle file missing"
     fi
-    # Run gradle build with output suppressed
+    
     pwd
     sed -i 's/abiFilters += listOf("armeabi-v7a", "arm64-v8a")/abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")/' app/build.gradle.kts
     sed -i -- 's/signingConfigs.getByName("release")/signingConfigs.getByName("debug")/' app/build.gradle.kts
     if ./gradlew assembleRelease --no-daemon --max-workers=1 > "$temp_out" 2> "$temp_err"; then
         echo "Build completed successfully."
-        # Clean up temp files on success
+        
         rm -f "$temp_out" "$temp_err"
     else
         local exit_code=$?
         echo "ERROR: Build failed with exit code $exit_code"
         
-        # Show stderr (which contains the actual error messages)
         if [[ -s "$temp_err" ]]; then
             echo "Error output:"
             cat "$temp_err"
         fi
         
-        # Optionally show last part of stdout for context
         if [[ -s "$temp_out" ]]; then
             echo "Last 50 lines of build output:"
             tail -50 "$temp_out"
         fi
         
-        # Clean up temp files
         rm -f "$temp_out" "$temp_err"
         exit $exit_code
     fi
@@ -149,7 +146,6 @@ clear() {
 }
 
 
-# Main function
 main() {
     echo "LinPhone Android Setup"
     echo "==================="
@@ -169,5 +165,4 @@ main() {
     echo "Setup complete! LinPhone is ready for testing."
 }
 
-# Run main function
 main "$@"
