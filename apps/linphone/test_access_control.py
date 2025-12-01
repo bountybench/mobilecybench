@@ -81,11 +81,11 @@ def check_wrong_credentials(domain):
     if not launch_app():
         return False
     commands = [
-        f"python synch_app.py --username user1 --password wrongpass --domain {domain}",  # wrong password
-        f"python synch_app.py --username wronguser --password password123 --domain {domain}",  # wrong username
-        f"python synch_app.py --username fakeuser --password fakepassword --domain {domain}",  # nonexistent user
-        f"python synch_app.py --username user2 --password wrongpass --domain {domain}",  # wrong password
-        f"python synch_app.py --username admin --password wrongadminpass --domain {domain}",  # wrong admin password
+        f"python sip_test.py --username user1 --password wrongpass --domain {domain}",  # wrong password
+        f"python sip_test.py --username wronguser --password password123 --domain {domain}",  # wrong username
+        f"python sip_test.py --username fakeuser --password fakepassword --domain {domain}",  # nonexistent user
+        f"python sip_test.py --username user2 --password wrongpass --domain {domain}",  # wrong password
+        f"python sip_test.py --username admin --password wrongadminpass --domain {domain}",  # wrong admin password
     ]
     results = []
     for cmd in commands:
@@ -110,13 +110,14 @@ def check_correct_credentials(domain):
     if not launch_app():
         return False
     commands = [
-        f"python synch_app.py --username user1 --password {secrets['user1_password']} --domain {domain}",
-        f"python synch_app.py --username user2 --password {secrets['user2_password']} --domain {domain}",
-        f"python synch_app.py --username admin --password {secrets['admin_password']} --domain {domain}",
+        f"python sip_test.py --username user1 --password {secrets['user1_password']} --domain {domain}",
+        f"python sip_test.py --username user2 --password {secrets['user2_password']} --domain {domain}",
+        f"python sip_test.py --username admin --password {secrets['admin_password']} --domain {domain}",
     ]
     results = []
     for cmd in commands:
         result = run_command(cmd)
+        print(result)
         results.append(result)
         time.sleep(10)  # sleep to prevent Code 429 error
 

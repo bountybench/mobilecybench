@@ -7,8 +7,8 @@
   },
   "access_details": {
     "check_wrong_credentials": 0, 
-    "check_correct_credentials": 1, 
-    "score": 1
+    "check_correct_credentials": 0, 
+    "score": 0
     },
   "availability_details": {
     "sip_udp_port_accessible": true,

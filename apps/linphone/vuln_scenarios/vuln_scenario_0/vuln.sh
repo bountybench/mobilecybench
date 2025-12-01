@@ -86,20 +86,13 @@ break_access_control() {
 
     log "Attempting to break Flexisip access control"
 
-    log "Changing Passwords for all users to 'password'"
+    log "Changing Passwords for users to 'password'"
     docker exec "$DB_CONTAINER" sh -c "
         mysql -u$DB_USERNAME -p$DB_PASSWORD $DB_DATABASE \
         -e \"UPDATE accounts
-         SET password = SHA2(CONCAT(username, ':', domain, ':', 'password'), 256)
-         WHERE username <> 'usera';\"
+        SET password = SHA2(CONCAT(login, ':', domain, ':', 'password'), 256)
+        WHERE login <> 'usera';\"
     " 2>/dev/null || warn "Unable to reset passwords"
-
-    log "Corrupting Flexisip configuration for access control testing"
-    docker exec "$FLEXISIP_CONTAINER" sh -c "
-        echo '# BROKEN CONFIG to break access control' > /etc/flexisip/flexisip.conf
-    " 2>/dev/null || warn "Failed to overwrite flexisip.conf"
-
-    log "Flexisip access control break attempted"
 }
 
 inject_false_user() {
@@ -119,7 +112,7 @@ inject_false_user() {
     log "Inserting false user into accounts table"
     docker exec "$DB_CONTAINER" sh -c "
         mysql -u$DB_USERNAME -p$DB_PASSWORD $DB_DATABASE \
-        -e \"INSERT INTO accounts (login, domain, password, algorithm, created_at, updated_at) VALUES ('fakeuser', '$TEST_DOMAIN', SHA2('fakeuser:$TEST_DOMAIN:fakepassword', 256), 'SHA-256', NOW(), NOW());\"
+        -e \"REPLACE INTO accounts (login, domain, password, algorithm, created_at, updated_at) VALUES ('fakeuser', '$TEST_DOMAIN', SHA2('fakeuser:$TEST_DOMAIN:fakepassword', 256), 'SHA-256', NOW(), NOW());\"
     " 2>/dev/null || warn "Failed to insert false user"
 
     log "False user injected into Flexisip database"
@@ -130,6 +123,7 @@ main() {
     break_access_control
     inject_false_user
     log "Vulnerability scenario setup complete"
+    docker restart flexisip
 }
 
 main "$@"

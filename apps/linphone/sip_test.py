@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Pure Python SIP REGISTER test - Works on Windows and Linux
-No dependencies needed - uses only Python standard library
+Pure Python SIP REGISTER test over TCP
+Compatible with Windows, Linux, Docker
 """
 
 import argparse
@@ -11,56 +11,59 @@ import socket
 import sys
 
 
-def test_sip_register(
-    username, password, domain, server="localhost", port=5060, verbose=False
-):
-    """
-    Test SIP REGISTER authentication using pure Python.
+# Generate a random hex string
+def rand_hex(n=16):
+    return ''.join(random.choice("abcdef0123456789") for _ in range(n))
 
-    Args:
-        username: SIP username (without @domain)
-        password: User password
-        domain: SIP domain (e.g., "sip.example.org")
-        server: Flexisip server hostname/IP (default: "localhost")
-        port: SIP port (default: 5060)
-        verbose: Print detailed output (default: False)
 
-    Returns:
-        bool: True if authentication successful, False otherwise
-    """
+# Build a SIP Digest response (supports MD5 and SHA-256)
+def compute_digest(username, realm, password, nonce, uri, method="REGISTER",
+                   algorithm="MD5", nc="00000001", qop="auth"):
 
-    # Get local IP
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        local_ip = s.getsockname()[0]
-        s.close()
-    except socket.timeout:
-        local_ip = "127.0.0.1"
+    if algorithm.upper() == "SHA-256":
+        H = lambda x: hashlib.sha256(x.encode()).hexdigest()
+    else:
+        H = lambda x: hashlib.md5(x.encode()).hexdigest()
 
-    # Generate unique identifiers
-    call_id = f"{random.randint(1000000, 9999999)}@{local_ip}"
-    tag = str(random.randint(1000000, 9999999))
-    branch = f"z9hG4bK{random.randint(1000000, 9999999)}"
+    cnonce = rand_hex()
 
-    if verbose:
-        print(f"Testing: {username}@{domain}")
-        print(f"Server: {server}:{port}")
-        print("-" * 60)
+    ha1 = H(f"{username}:{realm}:{password}")
+    ha2 = H(f"{method}:{uri}")
+    response = H(f"{ha1}:{nonce}:{nc}:{cnonce}:{qop}:{ha2}")
 
-    # Step 1: Send initial REGISTER (no auth)
+    return response, cnonce
+
+
+def test_sip_register(username, password, domain, server, port, verbose):
+
+    # Use local loopback for safety (works with Docker port mapping)
+    public_ip = "127.0.0.1"
+
+    # Build unique identifiers
+    call_id = rand_hex(12)
+    tag = rand_hex(8)
+    branch = f"z9hG4bK{rand_hex(8)}"
+
     uri = f"sip:{domain}"
     from_uri = f"sip:{username}@{domain}"
 
+    # ---------------------------------------------------------
+    # 1) INITIAL REGISTER (no auth)
+    # ---------------------------------------------------------
+
+    local_port = random.randint(50000, 60000)
+
     request1 = (
         f"REGISTER {uri} SIP/2.0\r\n"
-        f"Via: SIP/2.0/UDP {local_ip}:5060;branch={branch};rport\r\n"
+        f"Via: SIP/2.0/TCP {public_ip}:{local_port};branch={branch};rport\r\n"
         f"From: <{from_uri}>;tag={tag}\r\n"
         f"To: <{from_uri}>\r\n"
         f"Call-ID: {call_id}\r\n"
         f"CSeq: 1 REGISTER\r\n"
-        f"Contact: <sip:{username}@{local_ip}:5060>\r\n"
         f"Max-Forwards: 70\r\n"
+        f"Supported: outbound\r\n"
+        f"Accept: application/sdp, text/plain\r\n"
+        f"Contact: <sip:{username}@{public_ip}:{local_port};transport=tcp>\r\n"
         f"User-Agent: PythonSIPTest/1.0\r\n"
         f"Expires: 3600\r\n"
         f"Content-Length: 0\r\n"
@@ -68,95 +71,82 @@ def test_sip_register(
     )
 
     if verbose:
-        print("Sending initial REGISTER...")
+        print("==== INITIAL REGISTER (NO AUTH) ====")
         print(request1)
 
-    # Send first request
+    # Open TCP socket
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(5.0)
-        local_port = random.randint(5060, 65535)
-        sock.bind((local_ip, local_port))
-        sock.sendto(request1.encode(), (server, port))
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((server, port))
+        sock.sendall(request1.encode())
 
-        # Receive response
-        data, _ = sock.recvfrom(4096)
-        response1 = data.decode("utf-8", errors="ignore")
+        data = sock.recv(4096).decode(errors="ignore")
         sock.close()
-
-    except socket.timeout:
-        if verbose:
-            print("ERROR: Timeout waiting for response")
-        return False
     except Exception as e:
-        if verbose:
-            print(f"ERROR: {e}")
+        print(f"Socket error: {e}")
         return False
 
     if verbose:
-        print("Received response:")
-        print(response1)
-        print("-" * 60)
+        print("---- RESPONSE ----")
+        print(data)
 
-    # Check for 401
-    if "401" not in response1.split("\r\n")[0]:
-        if verbose:
-            print("ERROR: Expected 401 Unauthorized")
+    status = data.split("\r\n")[0]
+    if "401" not in status:
+        print("Error: Expected 401 Unauthorized")
         return False
 
-    # Step 2: Parse authentication challenge
+    # Parse challenge
     realm = None
     nonce = None
+    opaque = None
+    algorithm = "SHA-256"
 
-    for line in response1.split("\r\n"):
-        if "WWW-Authenticate:" in line or "Proxy-Authenticate:" in line:
+    for line in data.split("\r\n"):
+        if "WWW-Authenticate" in line:
             if 'realm="' in line:
-                start = line.index('realm="') + 7
-                end = line.index('"', start)
-                realm = line[start:end]
-
+                realm = line.split('realm="')[1].split('"')[0]
             if 'nonce="' in line:
-                start = line.index('nonce="') + 7
-                end = line.index('"', start)
-                nonce = line[start:end]
+                nonce = line.split('nonce="')[1].split('"')[0]
+            if 'opaque="' in line:
+                opaque = line.split('opaque="')[1].split('"')[0]
+            if "SHA-256" in line:
+                algorithm = "SHA-256"
 
-    if not realm or not nonce:
-        if verbose:
-            print("ERROR: Could not parse authentication challenge")
-        return False
-
-    if verbose:
-        print(f"Realm: {realm}")
-        print(f"Nonce: {nonce}")
-        print("-" * 60)
-
-    # Step 3: Calculate MD5 response
-    ha1 = hashlib.md5(f"{username}:{realm}:{password}".encode()).hexdigest()
-    ha2 = hashlib.md5(f"REGISTER:{uri}".encode()).hexdigest()
-    response_hash = hashlib.md5(f"{ha1}:{nonce}:{ha2}".encode()).hexdigest()
-
-    # Step 4: Send authenticated REGISTER
-    branch2 = f"z9hG4bK{random.randint(1000000, 9999999)}"
+    # compute digest
+    response_hash, cnonce = compute_digest(
+        username, realm, password, nonce,
+        uri, algorithm=algorithm
+    )
 
     auth_header = (
-        f'Digest username="{username}", '
+        'Digest '
+        f'username="{username}", '
         f'realm="{realm}", '
         f'nonce="{nonce}", '
+        f'opaque="{opaque}", '
         f'uri="{uri}", '
-        f'response="{response_hash}", '
-        f"algorithm=MD5"
+        f'algorithm="SHA-256", '
+        'qop=auth, '
+        'nc=00000001, '
+        f'cnonce="{cnonce}", '
+        f'response="{response_hash}"'
     )
+
+
+    branch2 = f"z9hG4bK{rand_hex(8)}"
 
     request2 = (
         f"REGISTER {uri} SIP/2.0\r\n"
-        f"Via: SIP/2.0/UDP {local_ip}:5060;branch={branch2};rport\r\n"
+        f"Via: SIP/2.0/TCP {public_ip}:{local_port};branch={branch2};rport\r\n"
         f"From: <{from_uri}>;tag={tag}\r\n"
         f"To: <{from_uri}>\r\n"
         f"Call-ID: {call_id}\r\n"
         f"CSeq: 2 REGISTER\r\n"
-        f"Contact: <sip:{username}@{local_ip}:5060>\r\n"
-        f"Authorization: {auth_header}\r\n"
         f"Max-Forwards: 70\r\n"
+        f"Supported: outbound\r\n"
+        f"Accept: application/sdp, text/plain\r\n"
+        f"Contact: <sip:{username}@{public_ip}:{local_port};transport=tcp>\r\n"
+        f"Authorization: {auth_header}\r\n"
         f"User-Agent: PythonSIPTest/1.0\r\n"
         f"Expires: 3600\r\n"
         f"Content-Length: 0\r\n"
@@ -164,59 +154,38 @@ def test_sip_register(
     )
 
     if verbose:
-        print("Sending authenticated REGISTER...")
+        print("==== AUTHENTICATED REGISTER ====")
         print(request2)
 
-    # Send authenticated request
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(5.0)
-        local_port = random.randint(5060, 65535)
-        sock.bind((local_ip, local_port))
-        sock.sendto(request2.encode(), (server, port))
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((server, port))
+        sock.sendall(request2.encode())
 
-        # Receive response
-        data, _ = sock.recvfrom(4096)
-        response2 = data.decode("utf-8", errors="ignore")
+        data2 = sock.recv(4096).decode(errors="ignore")
         sock.close()
-
-    except socket.timeout:
-        if verbose:
-            print("ERROR: Timeout waiting for response")
-        return False
     except Exception as e:
-        if verbose:
-            print(f"ERROR: {e}")
+        print(f"Socket error: {e}")
         return False
 
     if verbose:
-        print("Received response:")
-        print(response2)
-        print("-" * 60)
+        print("---- RESPONSE ----")
+        print(data2)
 
-    # Check result
-    status_line = response2.split("\r\n")[0]
-
-    if "200 OK" in status_line:
+    if "200 Registration successful" in data2.split("\r\n")[0]:
         return True
-    else:
-        return False
+
+    return False
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Test SIP REGISTER authentication (Pure Python - Works on Windows/Linux)"
-    )
-    parser.add_argument("--username", required=True, help="SIP username")
-    parser.add_argument("--password", required=True, help="User password")
-    parser.add_argument("--domain", required=True, help="SIP domain")
-    parser.add_argument(
-        "--server", default="localhost", help="Flexisip server (default: localhost)"
-    )
-    parser.add_argument(
-        "--port", type=int, default=5060, help="SIP port (default: 5060)"
-    )
-    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    parser = argparse.ArgumentParser(description="TCP SIP REGISTER Tester for Flexisip")
+    parser.add_argument("--username", required=True)
+    parser.add_argument("--password", required=True)
+    parser.add_argument("--domain", required=True)
+    parser.add_argument("--server", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=5060)
+    parser.add_argument("-v", "--verbose", action="store_true")
 
     args = parser.parse_args()
 
@@ -230,8 +199,8 @@ if __name__ == "__main__":
     )
 
     if success:
-        print("✓ Authentication successful")
+        print("SIP REGISTER SUCCESS")
         sys.exit(0)
     else:
-        print("✗ Authentication failed")
+        print("SIP REGISTER FAILED")
         sys.exit(1)
