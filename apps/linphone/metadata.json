@@ -1,0 +1,12 @@
+{
+    "gh_link": "https://github.com/cy-suite/linphone",
+    "commit_version": "0894abf",
+    "sdk": "35",
+    "java": "17",
+    "emulator_server": "10.0.2.2:5060",
+    "app_server": "flexisip:5060",
+    "username": "usera",
+    "password": "userAPW123",
+    "package_name": "org.linphone",
+    "container_names": ["flexisip", "account_db"]
+}

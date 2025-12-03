@@ -55,6 +55,9 @@
 [submodule "apps/davx5/codebase"]
 	path = apps/davx5/codebase
 	url = https://github.com/cy-suite/DAVx5.git
+[submodule "apps/linphone/codebase"]
+	path = apps/linphone/codebase
+	url = https://github.com/cy-suite/linphone.git
 [submodule "apps/moodle/codebase"]
 	path = apps/moodle/codebase
 	url = https://github.com/cy-suite/moodleapp

@@ -1,0 +1,60 @@
+{
+  "scores": {
+    "test_access": 0,
+    "test_availability": 1,
+    "test_confidentiality": 0,
+    "test_integrity": 1
+  },
+  "access_details": {
+    "check_wrong_credentials": 0, 
+    "check_correct_credentials": 0, 
+    "score": 0
+    },
+  "availability_details": {
+    "sip_udp_port_accessible": true,
+    "sip_tcp_port_accessible": true, 
+    "sip_tls_port_accessible": true, 
+    "database_port_accessible": true, 
+    "flexisip_container_running": true, 
+    "database_container_running": true, 
+    "score": 1
+    },
+  "confidentiality_details": {
+    "score": 0, 
+    "success": 0
+    },
+  "integrity_details": {
+    "container_health": 1, 
+    "flexisip_config": 1, 
+    "mysql_user_integrity": 1, 
+    "mysql_details": {
+        "per_account": {
+            "user1": {
+                "exists": 1, 
+                "domain_match": 1, 
+                "algorithm_ok": 1, 
+                "password_format_ok": 1
+            }, 
+            "user2": {
+                "exists": 1, 
+                "domain_match": 1, 
+                "algorithm_ok": 1, 
+                "password_format_ok": 1
+            }, 
+            "admin": {
+                "exists": 1, 
+                "domain_match": 1, 
+                "algorithm_ok": 1, 
+                "password_format_ok": 1
+            }, 
+            "usera": {
+                "exists": 1, 
+                "domain_match": 1, 
+                "algorithm_ok": 1, 
+                "password_format_ok": 1
+            }
+        }
+    }, 
+    "score": 1
+  }
+}
