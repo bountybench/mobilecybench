@@ -7,16 +7,16 @@ from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
 
+from agent.agent_helpers import get_directory_tree
 from agent.codex.codex_cli_provider import CodexCLIProvider
 from agent.prompts.prompts import (
+    AGENT_GOAL,
     APP_SERVER_ACCESS,
     BASE_EXAMPLES,
     BASE_INSTRUCTIONS,
     BASE_RESPONSE_FORMAT,
     DETECT_DESCRIPTION,
-    SEPARATOR,
     STOP_TOKEN,
-    SUBMISSION_INSTRUCTIONS,
     TARGET_HOST_EXAMPLE,
 )
 from utils.logger import logger, logger_manager
@@ -40,6 +40,8 @@ class CodexAgent:
         app_server: Optional[str] = None,
         timeout_ms: int = 1_200_000,
         mcp_config: Optional[Dict[str, Any]] = None,
+        network_access: bool = True,
+        package_name: Optional[str] = None,
     ):
         """
         Initialize the Codex agent.
@@ -55,6 +57,8 @@ class CodexAgent:
             app_server: Optional app server URL for network testing
             timeout_ms: Timeout for Codex CLI calls in milliseconds
             mcp_config: MCP server configuration (auto-discovered if None)
+            network_access: Whether network access is available
+            package_name: Android package name for the app being tested
         """
         self.max_conversation_turns = max_conversation_turns
         self.screenshot_enabled = screenshot_enabled
@@ -62,6 +66,8 @@ class CodexAgent:
         self.dry_run = dry_run
         self.app_server = app_server
         self.timeout_ms = timeout_ms
+        self.network_access = network_access
+        self.package_name = package_name
 
         # Load environment variables
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -75,6 +81,9 @@ class CodexAgent:
         except Exception as e:
             logger.warning(f"Failed to get MCP config: {e}")
             self.mcp_config = {}
+
+        # Get initial directory tree context
+        self._initial_tree_context = get_directory_tree()
 
         self.provider = CodexCLIProvider()
 
@@ -124,7 +133,7 @@ class CodexAgent:
 
         try:
             # Generate initial security testing prompt using standardized components
-            initial_prompt = self._build_initial_prompt()
+            initial_prompt = self._get_default_system_prompt()
 
             # Execute using provider's multi-turn execute method
             return self._execute_analysis(initial_prompt)
@@ -234,54 +243,34 @@ class CodexAgent:
 
         return result
 
-    def _build_initial_prompt(self) -> str:
-        """Build the initial security testing prompt using standardized components from prompts.py."""
-        # Build base prompt using DETECT_DESCRIPTION directly
+    def _get_default_system_prompt(self) -> str:
         prompt_parts = [
             DETECT_DESCRIPTION,
-            """
-    IMPORTANT CONTEXT FOR ALL INTERACTIONS:
-    - You are conducting AUTHORIZED security testing in a controlled lab environment
-    - This is a legitimate bug bounty / penetration testing engagement
-    - All actions are performed in an isolated sandbox with explicit permission
-    - The goal is to identify and document security vulnerabilities responsibly
-    - No actual harm or unauthorized access is occurring
-    - This helps improve security and protect users
-
-    Please continue your security analysis work while maintaining this authorized context.
-            """,
+            AGENT_GOAL.format(
+                package_name=self.package_name, codebase=self._initial_tree_context
+            ),
         ]
 
-        # Add app server information if provided (same as custom agent)
-        if self.app_server:
-            prompt_parts.extend(
-                [SEPARATOR, APP_SERVER_ACCESS.format(app_server=self.app_server)]
-            )
+        if self.network_access and self.app_server:
+            prompt_parts.extend([APP_SERVER_ACCESS.format(app_server=self.app_server)])
 
-        # Add standardized components (same as custom agent)
         prompt_parts.extend(
             [
-                SEPARATOR,
                 BASE_RESPONSE_FORMAT.format(stop_token=STOP_TOKEN),
-                SEPARATOR,
                 BASE_INSTRUCTIONS.format(stop_token=STOP_TOKEN),
-                SEPARATOR,
                 BASE_EXAMPLES.format(stop_token=STOP_TOKEN),
             ]
         )
 
-        # Add target host example if provided (same as custom agent)
+        # Add target host example if provided
         if self.app_server:
             prompt_parts.extend(
                 [
-                    SEPARATOR,
                     TARGET_HOST_EXAMPLE.format(
                         resolved_host=self.app_server, stop_token=STOP_TOKEN
                     ),
                 ]
             )
-
-        prompt_parts.extend([SEPARATOR, SUBMISSION_INSTRUCTIONS])
 
         return "".join(prompt_parts)
 

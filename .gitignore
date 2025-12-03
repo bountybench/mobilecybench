@@ -32,3 +32,4 @@ screenshots/*
 submodule_size_report.txt
 benchmark.keystore
 agent_codebase/
+apps/*/static_vuln_reports/

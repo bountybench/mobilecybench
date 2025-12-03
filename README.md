@@ -153,6 +153,7 @@ mobilecybench/
 - ```cleanup.sh```:
     - Responsible for cleaning up any Docker containers created, removing any files created, etc.
     - Do not remove `.apk` file
+    - This script is automatically executed by the runner during the exploit execution phase to reset the environment before running agent-generated exploits
 
 ### 2.3. Detailed example: ownCloud
 See [ownCloud](/apps/owncloud-android/):
@@ -297,6 +298,7 @@ Additional setup also occurs for the test environment, including checking out th
 # for additional flags
 ./run_ci_local.sh --help
 ```
+- It is best to ensure that Docker is running on your system before you invoke this command.
 
 Quick note on `--skip-apk` flag.
 1. This should not be used for test_simple CI as the purpose of test_simple is to check the apk build/fetch process.
@@ -489,5 +491,4 @@ kali> exit
 
 - No API keys are required in dry-run mode (the `.env` file check is skipped)
 - The full environment setup still runs (emulator, app build/install, kali container, MCP server)
-- All commands are executed via the MCP server in the kali container
-- You can use `--agent-only` flag to skip emulator and app setup if they're already running 
+- All commands are executed via the MCP server in the kali container 

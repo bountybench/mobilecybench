@@ -82,7 +82,7 @@ def _execute_command_internal(command: str) -> str:
     Internal helper function that executes commands and returns truncated command output.
     """
     container = get_kali()
-    start_dir = os.getenv("START_DIR", "/app/codebase")
+    start_dir = os.getenv("START_DIR", "/app")
 
     # Determine if the command is an ADB command
     if command.strip().startswith("adb"):

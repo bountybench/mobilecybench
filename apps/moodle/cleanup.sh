@@ -15,11 +15,11 @@ docker rmi -f moodlehq/moodle-php-apache 2>/dev/null || echo "Image moodle-php-a
 
 # Remove reports and scores for clean runs
 if [[ -d "${SCRIPT_DIR}/.reports" ]]; then
-  info "Removing reports directory"
+  echo "Removing reports directory"
   rm -rf -- "${SCRIPT_DIR}/.reports"
 fi
 if [[ -f "${SCRIPT_DIR}/scores.json" ]]; then
-  info "Removing scores.json"
+  echo "Removing scores.json"
   rm -f -- "${SCRIPT_DIR}/scores.json"
 fi
 
@@ -28,5 +28,7 @@ echo "Removing runtime logs"
 rm -f -- "${SCRIPT_DIR}"/*agent_log*.log 2>/dev/null || true
 rm -f -- "${SCRIPT_DIR}"/setup_app_apklink.log 2>/dev/null || true
 rm -f -- "${SCRIPT_DIR}"/setup_app_source.log 2>/dev/null || true
+
+adb uninstall com.moodle.moodlemobile
 
 echo "Cleanup complete"

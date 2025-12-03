@@ -151,7 +151,9 @@ class EmulatorManager:
             logger.info(f"Existing devices before start: {self._devices_before_start}")
 
         if self.emulator_config["mode"] == "host" and self.app_name:
-            logger.info(f"Running setup.sh for {self.app_name} in host mode...")
+            logger.info(
+                f"Installing android dependencies for {self.app_name} in host mode..."
+            )
             try:
                 subprocess.run(
                     ["bash", "./setup.sh", self.app_name],
@@ -442,6 +444,26 @@ class EmulatorManager:
         finally:
             self.process = None
             logger.info("Emulator stopped")
+
+            # Reset ADB server to ensure clean device state for next emulator
+            logger.info("Resetting ADB server to clear device state...")
+            try:
+                subprocess.run(
+                    ["adb", "kill-server"],
+                    capture_output=True,
+                    timeout=10,
+                )
+                time.sleep(1)
+                subprocess.run(
+                    ["adb", "start-server"],
+                    capture_output=True,
+                    timeout=10,
+                )
+                logger.info("ADB server reset complete")
+            except FileNotFoundError:
+                logger.warning("ADB not found, skipping server reset")
+            except Exception as e:
+                logger.warning(f"Failed to reset ADB server: {e}")
 
     def _get_connected_devices(self) -> set:
         """

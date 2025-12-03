@@ -78,3 +78,7 @@ RUN /venv/bin/pip install --upgrade pip
 
 # Configure git to trust all directories (fixes bind mount ownership issues)
 RUN git config --global --add safe.directory '*'
+
+# Install semgrep for code analysis
+RUN /venv/bin/pip install semgrep && \
+    ln -s /venv/bin/semgrep /usr/local/bin/semgrep

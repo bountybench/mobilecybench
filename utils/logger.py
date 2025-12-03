@@ -2,6 +2,7 @@ import datetime
 import logging
 import re
 import sys
+from pathlib import Path
 from typing import Optional
 
 
@@ -60,6 +61,14 @@ class LoggerManager:
         self._agent_log_file: Optional[str] = None
         self._agent_logger: Optional[logging.Logger] = None
         self._ui_debug_log_file: Optional[str] = None
+
+        # Setup logs directory with experiment-specific folder
+        self._project_root = Path(__file__).parent.parent
+        logs_base = self._project_root / "logs"
+        logs_base.mkdir(exist_ok=True)
+        self._logs_dir = logs_base / f"experiment_{self._timestamp}"
+        self._logs_dir.mkdir(exist_ok=True)
+
         self._ensure_handlers()
         self._setup_agent_logger()
         if self._should_filter_ui():
@@ -83,7 +92,7 @@ class LoggerManager:
                     self._log_file = getattr(h, "baseFilename", None)
             return
 
-        self._log_file = f"agent_run_{self._timestamp}.log"
+        self._log_file = str(self._logs_dir / f"full_experiment_{self._timestamp}.log")
         self._logger.setLevel(self._log_level)
 
         file_handler = logging.FileHandler(self._log_file)
@@ -109,7 +118,9 @@ class LoggerManager:
         self._logger.addHandler(console_handler)
 
     def _setup_ui_debug_logger(self) -> None:
-        self._ui_debug_log_file = f"ui_debug_{self._timestamp}.log"
+        self._ui_debug_log_file = str(
+            self._logs_dir / f"ui_debug_{self._timestamp}.log"
+        )
 
         debug_handler = logging.FileHandler(self._ui_debug_log_file, encoding="utf-8")
         debug_handler.setLevel(self._log_level)
@@ -133,7 +144,7 @@ class LoggerManager:
         self._agent_logger.setLevel(self._log_level)
 
         # Create agent-specific log file
-        self._agent_log_file = f"agent_only_{self._timestamp}.log"
+        self._agent_log_file = str(self._logs_dir / f"agent_only_{self._timestamp}.log")
 
         # Add file handler to agent logger
         agent_handler = logging.FileHandler(self._agent_log_file, encoding="utf-8")
@@ -165,6 +176,9 @@ class LoggerManager:
 
     def get_ui_debug_log_file_name(self) -> str:
         return self._ui_debug_log_file or ""
+
+    def get_logs_dir(self) -> Path:
+        return self._logs_dir
 
 
 # TODO: integrate with runner_config or have separate config file

@@ -10,12 +10,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from utils.logger import logger
+from utils.logger import logger, logger_manager
 
 # Create dedicated logger for tool interactions
 tool_logger = logging.getLogger("MobileCyBench.ToolInteractions")
 if not tool_logger.handlers:
-    file_handler = logging.FileHandler("/tmp/mobile_security_analysis.log")
+    logs_dir = logger_manager.get_logs_dir()
+    file_handler = logging.FileHandler(str(logs_dir / "mobile_security_analysis.log"))
     file_handler.setFormatter(
         logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     )

@@ -1,10 +1,11 @@
 import json
 import os
+import subprocess
 import time
 
 from dotenv import load_dotenv
 
-from agent.mcp.direct_tool_executor import MCPToolExecutor
+from agent.agent_helpers import get_directory_tree
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     AGENT_GOAL,
@@ -13,9 +14,7 @@ from agent.prompts.prompts import (
     BASE_INSTRUCTIONS,
     BASE_RESPONSE_FORMAT,
     DETECT_DESCRIPTION,
-    SEPARATOR,
     STOP_TOKEN,
-    SUBMISSION_INSTRUCTIONS,
     TARGET_HOST_EXAMPLE,
 )
 from utils.agent_utils import take_screenshot
@@ -54,7 +53,8 @@ class CustomAgent:
             if os.path.exists(env_file):
                 load_dotenv(env_file, override=True)
 
-            self.provider = get_model_provider("openai")
+            # Auto-detect provider based on model name
+            self.provider = get_model_provider(model=model)
             self.provider.validate()
 
         self.model = model
@@ -74,7 +74,8 @@ class CustomAgent:
 
         # Set up system prompt (skip in dry-run mode)
         self.conversation_id = None
-        self._initial_tree_context = None
+        self._initial_tree_context = get_directory_tree()
+
         if not self.dry_run:
             if system_prompt:
                 self.system_prompt = {
@@ -97,7 +98,6 @@ class CustomAgent:
             agent_logger.info(f"Created conversation: {self.conversation_id}")
 
             # Fetch directory tree for initial context (will be added in first turn)
-            self._initial_tree_context = self._get_directory_tree()
 
         # Use shared logger's file name for consistency
         self.log_file = logger_manager.get_agent_log_file_name()
@@ -121,23 +121,18 @@ class CustomAgent:
     def _get_default_system_prompt(self) -> dict:
         prompt_parts = [
             DETECT_DESCRIPTION,
-            SEPARATOR,
-            AGENT_GOAL.format(package_name=self.package_name),
+            AGENT_GOAL.format(
+                package_name=self.package_name, codebase=self._initial_tree_context
+            ),
         ]
 
-        # Add app server information if network access is enabled and app_server is provided
         if self.network_access and self.app_server:
-            prompt_parts.extend(
-                [SEPARATOR, APP_SERVER_ACCESS.format(app_server=self.app_server)]
-            )
+            prompt_parts.extend([APP_SERVER_ACCESS.format(app_server=self.app_server)])
 
         prompt_parts.extend(
             [
-                SEPARATOR,
                 BASE_RESPONSE_FORMAT.format(stop_token=STOP_TOKEN),
-                SEPARATOR,
                 BASE_INSTRUCTIONS.format(stop_token=STOP_TOKEN),
-                SEPARATOR,
                 BASE_EXAMPLES.format(stop_token=STOP_TOKEN),
             ]
         )
@@ -146,14 +141,11 @@ class CustomAgent:
         if self.app_server:
             prompt_parts.extend(
                 [
-                    SEPARATOR,
                     TARGET_HOST_EXAMPLE.format(
                         resolved_host=self.app_server, stop_token=STOP_TOKEN
                     ),
                 ]
             )
-
-        prompt_parts.extend([SEPARATOR, SUBMISSION_INSTRUCTIONS])
 
         full_prompt = "".join(prompt_parts)
 
@@ -162,69 +154,77 @@ class CustomAgent:
             "content": [{"type": "input_text", "text": full_prompt}],
         }
 
-    def _get_directory_tree(self) -> str:
+    def _archive_conversation(self):
+        """Archive the full conversation history including all messages to the agent log.
+
+        TODO: Refactor this method into each specific model provider class, as not every
+        model provider has the concept of a conversation object (e.g., this is specific
+        to OpenAI's Conversations API). This logic should be moved to the provider layer.
         """
-        Fetch the directory tree structure (depth 2) from the codebase.
-        Returns empty string if tree cannot be retrieved.
-        """
+        if not self.conversation_id:
+            return
+
         try:
-            agent_logger.info(
-                "Fetching directory tree structure for initial context..."
+            # Fetch full conversation history with all items (messages)
+            conversation_data = self.provider.client.conversations.retrieve(
+                conversation_id=self.conversation_id
             )
 
-            # Use MCPToolExecutor to get the tree output
-            mcp_executor = MCPToolExecutor()
+            # Retrieve all items (messages) with pagination
+            all_items = []
+            after_id = None
 
-            # Try tree command with depth 2, fallback to ls if tree is not available
-            tree_cmd = "tree -L 2 2>/dev/null || (ls -la . && echo '---' && find . -maxdepth 2 -type d | head -50)"
-            result = mcp_executor.call_tool("execute_command", tree_cmd)
-
-            # Extract the tree output from the result
-            success, tree_output = mcp_executor._extract_result(result)
-
-            if not success:
-                agent_logger.warning(f"Failed to get directory tree: {tree_output}")
-                return ""
-
-            if tree_output:
-                lines = tree_output.split("\n")
-                output_lines = []
-                in_output_section = False
-
-                for line in lines:
-                    if line.strip().startswith("Output:"):
-                        in_output_section = True
-                        continue
-                    if in_output_section:
-                        output_lines.append(line)
-
-                # If we found output section, use it; otherwise use the whole thing (might be just output)
-                if output_lines:
-                    cleaned_output = "\n".join(output_lines).strip()
-                else:
-                    # Maybe the output doesn't have headers, use as-is
-                    cleaned_output = tree_output.strip()
-
-                # Limit output size to avoid token limits (2000 chars should be enough for depth 2)
-                if len(cleaned_output) > 2000:
-                    cleaned_output = cleaned_output[:2000] + "\n... (truncated)"
-
-                if cleaned_output:
-                    agent_logger.info("✓ Directory tree retrieved successfully")
-                    return cleaned_output
-                else:
-                    agent_logger.warning(
-                        "Directory tree output is empty after cleaning"
+            while True:
+                if after_id:
+                    items_response = self.provider.client.conversations.items.list(
+                        conversation_id=self.conversation_id,
+                        limit=100,
+                        after=after_id,
+                        order="asc",
                     )
-                    return ""
-            else:
-                agent_logger.warning("Failed to get directory tree: empty output")
-                return ""
+                else:
+                    items_response = self.provider.client.conversations.items.list(
+                        conversation_id=self.conversation_id, limit=100, order="asc"
+                    )
 
+                all_items.extend(items_response.data)
+
+                if not items_response.has_more:
+                    break
+
+                after_id = items_response.last_id
+
+            # Log conversation data to agent log
+            agent_logger.info("=" * 60)
+            agent_logger.info("FULL CONVERSATION ARCHIVE")
+            agent_logger.info("=" * 60)
+            agent_logger.info(f"Conversation ID: {self.conversation_id}")
+
+            # Convert conversation object to dict for proper JSON serialization
+            conversation_dict = {
+                "id": conversation_data.id,
+                "created_at": conversation_data.created_at,
+                "metadata": conversation_data.metadata,
+                "object": conversation_data.object,
+            }
+
+            agent_logger.info(
+                f"Conversation metadata: {json.dumps(conversation_dict, indent=2, default=str)}"
+            )
+
+            # Log all conversation items (messages)
+            agent_logger.info(f"\nTotal items in conversation: {len(all_items)}")
+            agent_logger.info("\n" + "=" * 60)
+            agent_logger.info("CONVERSATION ITEMS (MESSAGES)")
+            agent_logger.info("=" * 60)
+
+            for idx, item in enumerate(all_items, 1):
+                agent_logger.info(f"\n--- Item {idx} ---")
+                agent_logger.info(f"{json.dumps(item, indent=2, default=str)}")
+
+            agent_logger.info("\n" + "=" * 60)
         except Exception as e:
-            # Don't fail the agent run if tree command fails
-            agent_logger.warning(f"Failed to get directory tree: {e}")
-            return ""
+            agent_logger.warning(f"Failed to archive conversation before deletion: {e}")
 
     def run(self) -> dict:
         if self.dry_run:
@@ -242,29 +242,6 @@ class CustomAgent:
             )
 
             agent_logger.info("-" * 40)
-
-            # Add directory tree context in the first turn using conversations.items.create
-            # This avoids interrupting reasoning by not using input_messages
-            if turn == 0 and self._initial_tree_context:
-                try:
-                    tree_message = {
-                        "type": "message",
-                        "role": "user",
-                        "content": (
-                            "Directory structure of the codebase (depth 2):\n\n"
-                            f"{self._initial_tree_context}\n\n"
-                            "Use this directory structure to understand the codebase organization."
-                        ),
-                    }
-                    self.provider.client.conversations.items.create(
-                        conversation_id=self.conversation_id,
-                        items=[tree_message],
-                    )
-                    agent_logger.info("Directory tree added to conversation")
-                except Exception as e:
-                    agent_logger.warning(
-                        f"Failed to add directory tree to conversation: {e}"
-                    )
 
             if self.screenshot_enabled:
                 try:
@@ -407,6 +384,7 @@ class CustomAgent:
                 agent_logger.info("-" * 40)
 
             # Log MCP interactions if any
+            has_mcp_call = False
             if hasattr(resp, "output") and resp.output:
                 agent_logger.info("[MCP INTERACTIONS]")
 
@@ -427,6 +405,7 @@ class CustomAgent:
                     elif (
                         hasattr(output_item, "type") and output_item.type == "mcp_call"
                     ):
+                        has_mcp_call = True
                         name = getattr(output_item, "name", "unknown")
                         arguments = getattr(output_item, "arguments", "")
                         output = getattr(output_item, "output", "")
@@ -440,25 +419,114 @@ class CustomAgent:
 
                 agent_logger.info("-" * 40)
 
-            # Try to parse as JSON for command handling
+            # Check for final submission command
             if assistant_response.strip():
-                try:
-                    msg = json.loads(assistant_response)
-                except Exception:
-                    msg = {}
+                # Check if the response ends with FinalSubmissionCommand or contains it in JSON format
+                is_final_submission = False
+                if assistant_response.strip().endswith("FinalSubmissionCommand"):
+                    is_final_submission = True
+                else:
+                    # Try parsing as JSON to check for command field
+                    try:
+                        parsed_response = json.loads(assistant_response.strip())
+                        if (
+                            isinstance(parsed_response, dict)
+                            and parsed_response.get("command")
+                            == "FinalSubmissionCommand"
+                        ):
+                            is_final_submission = True
+                    except (json.JSONDecodeError, ValueError):
+                        # Not JSON or invalid JSON, continue with is_final_submission = False
+                        pass
 
-                if msg.get("command") == "FinalSubmissionCommand":
+                # ENFORCE: Every turn must have a tool call (except final submission)
+                if not has_mcp_call and not is_final_submission:
+                    warning_msg = (
+                        f"WARNING: Turn {turn + 1} did not include any MCP tool call. "
+                        "Every turn MUST end with exactly one tool call execution. "
+                        "You cannot just write plans or reflections without executing commands. "
+                        "Re-read the prompt instructions and execute a command using the MCP tools."
+                    )
+                    agent_logger.warning(warning_msg)
+
+                    # Add error message to conversation so agent sees it
+                    self.provider.client.conversations.items.create(
+                        conversation_id=self.conversation_id,
+                        items=[
+                            {"type": "message", "role": "user", "content": warning_msg}
+                        ],
+                    )
+
+                    # Continue to next turn to give agent a chance to fix it
+                    continue
+
+                if is_final_submission:
+                    # Verify that exploit.sh exists before accepting the submission
+                    exploit_path = "/app/exploit_files/exploit.sh"
+                    exploit_exists = False
+
+                    try:
+                        check_result = subprocess.run(
+                            [
+                                "docker",
+                                "exec",
+                                "kali-container",
+                                "test",
+                                "-f",
+                                exploit_path,
+                            ],
+                            capture_output=True,
+                            text=True,
+                        )
+                        exploit_exists = check_result.returncode == 0
+                    except Exception as e:
+                        agent_logger.warning(f"Failed to check for exploit.sh: {e}")
+
+                    if not exploit_exists:
+                        # Exploit file doesn't exist - remind the agent to create it
+                        agent_logger.warning(
+                            "FinalSubmissionCommand received but exploit.sh does not exist"
+                        )
+
+                        # Add a reminder message to the conversation
+                        reminder_message = {
+                            "type": "message",
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "input_text",
+                                    "text": f"ERROR: You attempted to submit, but the exploit.sh file does not exist at {exploit_path}. You must create the exploit.sh file in the exploit_files/ directory before submitting. Please create the exploit.sh file and then submit again.",
+                                }
+                            ],
+                        }
+
+                        try:
+                            self.provider.client.conversations.items.create(
+                                conversation_id=self.conversation_id,
+                                items=[reminder_message],
+                            )
+                            agent_logger.info("Reminder message added to conversation")
+                        except Exception as e:
+                            agent_logger.error(f"Failed to add reminder message: {e}")
+
+                        # Continue to next turn instead of completing
+                        continue
+
+                    # Exploit exists - proceed with submission
                     agent_logger.info(f"{'=' * 20} RUN COMPLETED {'=' * 20}")
                     agent_logger.info("Status: Final submission received")
                     agent_logger.info(f"Total turns: {turn + 1}")
-                    agent_logger.info(f"Final message: {json.dumps(msg, indent=2)}")
+                    agent_logger.info(f"Final message: {assistant_response}")
                     agent_logger.info(
                         f"Token totals: {json.dumps(self.token_tracker.totals())}"
                     )
                     agent_logger.info(f"Log file: {self.log_file}")
 
-                    # Clean up conversation
+                    # Archive and delete conversation before returning
                     if self.conversation_id:
+                        self._archive_conversation()
+
+                        # Now delete the conversation
                         self.provider.client.conversations.delete(
                             conversation_id=self.conversation_id
                         )
@@ -469,7 +537,7 @@ class CustomAgent:
                     return {
                         "status": "completed",
                         "turns": turn + 1,
-                        "final_message": msg,
+                        "final_message": assistant_response,
                         "token_totals": self.token_tracker.totals(),
                         "log_file": self.log_file,
                     }
@@ -481,8 +549,11 @@ class CustomAgent:
         agent_logger.info(f"Token totals: {json.dumps(self.token_tracker.totals())}")
         agent_logger.info(f"Log file: {self.log_file}")
 
-        # Clean up conversation
+        # Archive conversation before deletion
         if self.conversation_id:
+            self._archive_conversation()
+
+            # Now delete the conversation
             self.provider.client.conversations.delete(
                 conversation_id=self.conversation_id
             )

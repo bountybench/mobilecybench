@@ -13,17 +13,21 @@ set -e
 
 ANDROID_HOME="${HOME}/.android-sdk"
 APKSIGNER="$ANDROID_HOME/build-tools/*/apksigner"
+ZIPALIGN="$ANDROID_HOME/build-tools/*/zipalign"
 # Fix path for Windows MinGW users
 if [[ "$OSTYPE" == "msys" ]]; then
     {
         APKSIGNER="$ANDROID_HOME/build-tools/*/apksigner.bat"
+        ZIPALIGN="$ANDROID_HOME/build-tools/*/zipalign.exe"
     }
 fi
 APKSIGNER=$(ls $APKSIGNER 2>/dev/null | head -1)
+ZIPALIGN=$(ls $ZIPALIGN 2>/dev/null | head -1)
 
 # Temporary directories and filenames
 SOURCE_DIR="temp_app_source"
 UNSIGNED_APK="unsigned-app.apk"
+ALIGNED_APK="aligned-app.apk"
 
 # Cleanup function to remove temporary files
 cleanup() {
@@ -39,6 +43,9 @@ cleanup() {
     fi
     if [ -f "$UNSIGNED_APK.signed.idsig" ]; then
         rm -f "$UNSIGNED_APK.signed.idsig"
+    fi
+    if [ -f "$ALIGNED_APK" ]; then
+        rm -f "$ALIGNED_APK"
     fi
 }
 
@@ -84,6 +91,7 @@ fi
 command -v apktool >/dev/null 2>&1 || { echo >&2 "Error: 'apktool' is not installed. Aborting."; exit 1; }
 command -v keytool >/dev/null 2>&1 || { echo >&2 "Error: 'keytool' is not installed (part of JDK). Aborting."; exit 1; }
 [ -f "$APKSIGNER" ] || { echo >&2 "Error: 'apksigner' is not installed (part of Android SDK). Expected at: $APKSIGNER"; exit 1; }
+[ -f "$ZIPALIGN" ] || { echo >&2 "Error: 'zipalign' is not installed (part of Android SDK). Expected at: $ZIPALIGN"; exit 1; }
 
 # Keystore configuration (stored in script directory to be reused across APKs)
 KEYSTORE_NAME="${SCRIPT_DIR}/benchmark.keystore"
@@ -92,14 +100,14 @@ KEY_ALIAS="benchmark-key"
 
 echo "--- Starting Repackaging Process for: $FINAL_APK ---"
 
-echo "[1/7] Decompiling APK..."
+echo "[1/9] Decompiling APK..."
 if [ -d "$SOURCE_DIR" ]; then
     echo "Warning: '$SOURCE_DIR' directory already exists. Removing it."
     rm -rf "$SOURCE_DIR"
 fi
 apktool d "$FINAL_APK" -o "$SOURCE_DIR" -f > /dev/null
 
-echo "[2/7] Detecting package name..."
+echo "[2/9] Detecting package name..."
 PACKAGE_NAME=$(grep "package=" "$SOURCE_DIR/AndroidManifest.xml" | head -n 1 | sed -E 's/.*package="([^"]+)".*/\1/')
 if [ -z "$PACKAGE_NAME" ]; then
     echo "Error: Could not detect package name."
@@ -131,7 +139,7 @@ fi
 SMALI_PATH="$SMALI_BASE/$PACKAGE_PATH/internal"
 SMALI_CLASS_PATH="L$PACKAGE_PATH/internal/VulnFlagActivity;"
 
-echo "[3/7] Injecting honeypot smali activity..."
+echo "[3/9] Injecting honeypot smali activity..."
 mkdir -p "$SMALI_PATH"
 
 # Write the minimal .smali activity file
@@ -177,7 +185,7 @@ cat > "$SMALI_PATH/VulnFlagActivity.smali" << EOL
 .end method
 EOL
 
-echo "[4/7] Modifying AndroidManifest.xml..."
+echo "[4/9] Modifying AndroidManifest.xml..."
 MANIFEST_FILE="$SOURCE_DIR/AndroidManifest.xml"
 
 # Remove debuggable flag if present (to prevent debug-only exploits)
@@ -207,10 +215,10 @@ if ! grep -q "$ACTIVITY_NAME" "$MANIFEST_FILE"; then
     exit 1
 fi
 
-echo "[5/7] Recompiling APK..."
+echo "[5/9] Recompiling APK..."
 apktool b "$SOURCE_DIR" -o "$UNSIGNED_APK" > /dev/null
 
-echo "[6/7] Checking for signing key..."
+echo "[6/9] Checking for signing key..."
 if [ ! -f "$KEYSTORE_NAME" ]; then
     echo "No keystore found. Creating '$KEYSTORE_NAME'..."
     keytool -genkey -v -keystore "$KEYSTORE_NAME" \
@@ -221,9 +229,15 @@ else
     echo "Using existing keystore."
 fi
 
-echo "[7/7] Signing the final APK..."
+echo "[7/9] Aligning APK..."
+$ZIPALIGN -p -f 4 "$UNSIGNED_APK" "$ALIGNED_APK" > /dev/null
+
+echo "[8/9] Signing the final APK..."
 $APKSIGNER sign --ks "$KEYSTORE_NAME" --ks-pass "pass:$KEYSTORE_PASS" \
-              --out "$UNSIGNED_APK.signed" "$UNSIGNED_APK" > /dev/null
+              --out "$UNSIGNED_APK.signed" "$ALIGNED_APK" > /dev/null
+
+echo "[9/9] Verifying APK signature..."
+$APKSIGNER verify "$UNSIGNED_APK.signed" > /dev/null || { echo "Error: APK signature verification failed"; exit 1; }
 
 echo "Renaming original APK to: $ORIGINAL_APK"
 mv "$FINAL_APK" "$ORIGINAL_APK"

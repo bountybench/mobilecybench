@@ -1,40 +1,24 @@
 {
-	"project_info": {
-		"project_number": "123456789000",
-		"firebase_url": "https://dummy-project.firebaseio.com",
-		"project_id": "dummy-project",
-		"storage_bucket": "dummy-project.appspot.com"
-	},
-	"client": [
-		{
-			"client_info": {
-				"mobilesdk_app_id": "1:123456789000:android:abcdef1234567890",
-				"android_client_info": {
-					"package_name": "co.tinode.tindroidx"
-				}
-			},
-			"oauth_client": [
-				{
-					"client_id": "123456789000-abcdefghijklmnopqrstuvwxyz123456.apps.googleusercontent.com",
-					"client_type": 3
-				}
-			],
-			"api_key": [
-				{
-					"current_key": "AIzaSyDummyKeyForTestingPurposes123456789"
-				}
-			],
-			"services": {
-				"appinvite_service": {
-					"other_platform_oauth_client": [
-						{
-							"client_id": "123456789000-abcdefghijklmnopqrstuvwxyz123456.apps.googleusercontent.com",
-							"client_type": 3
-						}
-					]
-				}
-			}
-		}
-	],
-	"configuration_version": "1"
+  "project_info": {
+    "project_number": "123456789000",
+    "firebase_url": "https://dummy-project.firebaseio.com",
+    "project_id": "dummy-project",
+    "storage_bucket": "dummy-project.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:123456789000:android:abcdef1234567890",
+        "android_client_info": {
+          "package_name": "co.tinode.tindroidx"
+        }
+      },
+      "api_key": [
+        {
+          "current_key": "AIzaSydummy_key"
+        }
+      ]
+    }
+  ],
+  "configuration_version": "1"
 }

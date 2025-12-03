@@ -13,10 +13,12 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from shutil import which
 from urllib.parse import parse_qs, urlparse
 
+from utils.logger import logger_manager
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PORT = int(os.environ.get("MCB_BRIDGE_PORT", "52888"))
 TOKEN_FILE = os.path.join(REPO_ROOT, "ssh_key")
-LOGFILE = os.path.join(REPO_ROOT, "mobilecybench_bridge.log")
+LOGFILE = str(logger_manager.get_logs_dir() / "mobilecybench_bridge.log")
 UDS_PATH = os.environ.get("MCB_UDS_PATH", os.path.join(REPO_ROOT, "mcb.sock"))
 BRIDGE_BIND = os.environ.get("MCB_BRIDGE_BIND", "127.0.0.1")
 

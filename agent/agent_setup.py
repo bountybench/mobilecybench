@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Dict, List
 
@@ -27,6 +28,7 @@ class AgentEnvironment:
         image_name: str,
         env: Dict[str, str],
         commit_id: str,
+        mode: str = None,
     ):
         self.app_dir = app_dir
         self.app_name = app_dir.name
@@ -34,6 +36,7 @@ class AgentEnvironment:
         self.image_name = image_name
         self.env = env
         self.commit_id = commit_id
+        self.mode = mode
 
         import traceback
 
@@ -141,20 +144,19 @@ class AgentEnvironment:
             network_obj = self.client.networks.get(additional_network)
             network_obj.connect(self.container)
 
+        # Create exploit_files directory
+        logger.info("Creating exploit_files directory in container")
+        self.container.exec_run("mkdir -p /app/exploit_files")
+
     def _setup_agent_codebase(self):
         """Create a copy of codebase, prune all branches / future commits, copy into agent env"""
         original_codebase = self.app_dir / "codebase"
         agent_codebase = self.app_dir / "agent_codebase"
 
-        # Check if agent_codebase exists and validate it
+        # Always recreate agent_codebase to avoid contamination
         if agent_codebase.exists():
-            logger.info(f"Found existing agent_codebase at {agent_codebase}")
-            if not self._validate_agent_codebase(agent_codebase):
-                logger.warning("Validation failed, recreating agent_codebase")
-                shutil.rmtree(agent_codebase)
-            else:
-                logger.info("Validation passed, using existing agent_codebase")
-                return {str(agent_codebase): {"bind": "/app/codebase", "mode": "rw"}}
+            logger.info(f"Removing existing agent_codebase at {agent_codebase}")
+            shutil.rmtree(agent_codebase)
 
         # Check if original_codebase is empty, if so use git_submodule_update
         if not original_codebase.exists() or not any(original_codebase.iterdir()):
@@ -198,19 +200,25 @@ class AgentEnvironment:
 
         logger.info(f"Agent codebase setup complete at {agent_codebase}")
 
+        # Copy pre-generated static vulnerability reports into agent_codebase if in supervisor mode
+        if self.mode == "supervisor":
+            static_reports_src = self.app_dir / "static_vuln_reports"
+            static_reports_dest = agent_codebase / "static_vuln_reports"
+            if static_reports_src.exists():
+                logger.info(
+                    f"Copying static vulnerability reports from {static_reports_src} to {static_reports_dest}"
+                )
+                shutil.copytree(
+                    static_reports_src, static_reports_dest, dirs_exist_ok=True
+                )
+                logger.info("✓ Copied static vulnerability reports into agent_codebase")
+            else:
+                logger.warning(
+                    "static_vuln_reports directory not found; supervisor agents will not see pre-generated static reports"
+                )
+
         # Return volume mapping for bind mount
         return {str(agent_codebase): {"bind": "/app/codebase", "mode": "rw"}}
-
-    def _validate_agent_codebase(self, agent_codebase: Path) -> bool:
-        """Validate that agent_codebase is properly set up.
-
-        This function will be implemented later to check:
-        - Branches are properly set up
-        - Future commits are not reachable
-        - Commit id matches
-        """
-        # TODO: Implement validation
-        return True
 
     def copy_files(
         self,
@@ -372,3 +380,88 @@ class AgentEnvironment:
             f.write(
                 "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n"
             )
+
+    def save_agent_codebase_state(self) -> str:
+        """Save the current state of agent_codebase by capturing git diff.
+
+        This captures:
+        - Modified files (tracked changes)
+        - New files (untracked files)
+        - Deleted files
+
+        Returns:
+            The git diff output as a string, or empty string if no changes.
+        """
+        agent_codebase = self.app_dir / "agent_codebase"
+
+        if not agent_codebase.exists():
+            logger.warning("agent_codebase does not exist, nothing to save")
+            return ""
+
+        try:
+            # Add all changes to staging area (including untracked files)
+            # Exclude static analysis inputs provided externally
+            result = subprocess.run(
+                [
+                    "git",
+                    "add",
+                    "-A",
+                    "--",
+                    ".",
+                    ":!semgrep_results.json",
+                    ":!static_vuln_reports/**",
+                    ":!static_vuln_reports",
+                ],
+                cwd=agent_codebase,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            logger.info(
+                "Added all changes to staging area in agent_codebase (excluding external static analysis inputs)"
+            )
+
+            # Get the diff between HEAD and staged changes
+            # This will now include all tracked modifications AND new files
+            result = subprocess.run(
+                ["git", "diff", "--cached"],
+                cwd=agent_codebase,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            diff_output = result.stdout
+            if diff_output:
+                logger.info(
+                    f"Captured git diff from agent_codebase ({len(diff_output)} chars)"
+                )
+            else:
+                logger.info("No changes detected in agent_codebase")
+
+            return diff_output
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to save agent_codebase state: {e}")
+            logger.error(f"stderr: {e.stderr}")
+            return ""
+        except Exception as e:
+            logger.error(f"Unexpected error saving agent_codebase state: {e}")
+            return ""
+
+    def delete_agent_codebase(self):
+        agent_codebase = self.app_dir / "agent_codebase"
+
+        if not agent_codebase.exists():
+            logger.info("agent_codebase does not exist, nothing to reset")
+            return
+
+        try:
+            # Simple approach: delete the entire directory
+            logger.info(f"Deleting agent_codebase directory at {agent_codebase}")
+            shutil.rmtree(agent_codebase)
+            logger.info("Successfully deleted agent_codebase directory")
+
+        except Exception as e:
+            logger.error(f"Failed to reset agent_codebase: {e}")
+            raise

@@ -3,7 +3,7 @@ set -e
 
 echo "Setting up Termux app..."
 
-APK_PATH="apk/termux-release.apk"
+APK_PATH="apk/termux.apk"
 if [ ! -f "$APK_PATH" ]; then
     echo "APK not found, building it now..."
     echo "Running setup_app_source.sh to build APK..."
@@ -25,6 +25,21 @@ fi
 
 echo "APK found: $APK_PATH"
 echo "APK size: $(du -h "$APK_PATH" | cut -f1)"
+
+echo "Attempting to set SELinux to permissive..."
+if adb shell su 0 getenforce >/dev/null 2>&1; then
+    if adb shell su 0 getenforce | grep -q "Enforcing"; then
+        if adb shell su 0 setenforce 0 >/dev/null 2>&1; then
+            echo "SELinux successfully set to permissive."
+        else
+            echo "WARNING: Failed to set SELinux to permissive."
+        fi
+    else
+        echo "SELinux already permissive or disabled."
+    fi
+else
+    echo "WARNING: Could not query SELinux state (su/getenforce unavailable)."
+fi
 
 # Check if device is available
 if ! command -v adb >/dev/null 2>&1; then
