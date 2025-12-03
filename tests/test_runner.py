@@ -84,16 +84,19 @@ def test_check_and_save_agent_exploit_exists(mock_run, runner):
     test_result = MagicMock(returncode=0)
     # Mock docker exec cat to return exploit contents
     cat_result = MagicMock(returncode=0, stdout="#!/bin/bash\necho 'exploit'\n")
+    # Mock docker cp to succeed
+    cp_result = MagicMock(returncode=0, stdout="", stderr="")
 
-    mock_run.side_effect = [test_result, cat_result]
+    mock_run.side_effect = [test_result, cat_result, cp_result]
 
     result = runner._check_and_save_agent_exploit()
 
     assert result is True
     # Verify docker commands were called
-    assert mock_run.call_count == 2
+    assert mock_run.call_count == 3
     assert "test" in str(mock_run.call_args_list[0])
     assert "cat" in str(mock_run.call_args_list[1])
+    assert "cp" in str(mock_run.call_args_list[2])
 
 
 @patch("runner.subprocess.run")

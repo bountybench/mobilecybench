@@ -41,11 +41,11 @@ class MobileCybenchRunner:
         self,
         app_name: str,
         config: RunnerConfig,
-        codex_mode: bool = False,
+        mode: str = "custom",
     ):
         self.app_name = Path(app_name).name
         self.config = config
-        self.codex_mode = codex_mode
+        self.mode = mode
         self.project_root = project_root
         self.app_dir = self.project_root / "apps" / self.app_name
         self.agent_dir = self.project_root / "agent"
@@ -56,6 +56,7 @@ class MobileCybenchRunner:
         log_banner("MobileCybench Runner Started", width=80)
         logger.info(f"App: {app_name}")
         logger.info(f"Configuration: {config.model_dump_json(indent=2)}")
+        logger.info(f"Agent Type: {mode.capitalize()}")
         logger.info(f"Timestamp: {datetime.datetime.now()}")
 
     def _exit_with_error(self, message: str):
@@ -156,6 +157,62 @@ class MobileCybenchRunner:
                 f"Required ngrok.yml config file not found: {ngrok_config}"
             )
 
+        # Check for static vulnerability reports if in supervisor mode
+        if self.mode == "supervisor":
+            reports_root = self.app_dir / "static_vuln_reports"
+            semgrep_report_path = reports_root / "semgrep" / "report.json"
+            mobsf_report_path = reports_root / "mobsfscan" / "report.json"
+            qark_report_path = reports_root / "qark" / "report.json"
+
+            if not reports_root.exists() or not any(reports_root.iterdir()):
+                self._exit_with_error(
+                    "Supervisor mode requires static analysis outputs under "
+                    f"{reports_root}. Directory is missing or empty.\n"
+                    "Generate at least Semgrep (and optionally MobSF/QARK) reports before running."
+                )
+
+            # Semgrep should be present; warn if missing
+            if not semgrep_report_path.exists():
+                logger.warning(
+                    "Semgrep report not found at %s; supervisor agents will proceed without it.",
+                    semgrep_report_path,
+                )
+            else:
+                try:
+                    with open(semgrep_report_path, "r") as f:
+                        json.load(f)
+                    logger.info(
+                        "✓ Found and validated Semgrep report for supervisor mode"
+                    )
+                except json.JSONDecodeError as e:
+                    logger.warning(
+                        "Semgrep report exists but is not valid JSON (%s); rerun Semgrep to regenerate.",
+                        e,
+                    )
+
+            # MobSFScan and QARK are optional but recommended; validate if present
+            for tool_name, report_path in [
+                ("MobSFScan", mobsf_report_path),
+                ("QARK", qark_report_path),
+            ]:
+                if report_path.exists():
+                    try:
+                        with open(report_path, "r") as f:
+                            json.load(f)
+                        logger.info("✓ Found %s report at %s", tool_name, report_path)
+                    except json.JSONDecodeError:
+                        logger.warning(
+                            "%s report at %s is not valid JSON; rerun the scan to regenerate.",
+                            tool_name,
+                            report_path,
+                        )
+                else:
+                    logger.warning(
+                        "%s report not found at %s; continuing without it.",
+                        tool_name,
+                        report_path,
+                    )
+
         logger.info("Input validation passed")
 
     def setup_app_apk(self):
@@ -243,7 +300,7 @@ class MobileCybenchRunner:
             self._exit_with_error(f"Failed to inject security flags: {e}")
         logger.info("App setup completed")
 
-    def setup_agent_environment(self, codex_mode=False):
+    def setup_agent_environment(self):
         """Configure agent environment and start services"""
         log_banner("SETTING UP AGENT ENVIRONMENT")
 
@@ -255,7 +312,7 @@ class MobileCybenchRunner:
         logger.info("Setting up agent Kali environment...")
 
         # Select image based on agent type
-        if codex_mode:
+        if self.mode == "codex":
             image_name = self.config.codex_agent_image or "cybench/mobilecybench:codex"
             logger.info(f"Using Codex agent image: {image_name}")
         else:
@@ -267,11 +324,12 @@ class MobileCybenchRunner:
             image_name=image_name,
             env={"ANDROID_ADB_SERVER_PORT": "5037"},
             commit_id=self.metadata.get("commit_version"),
+            mode=self.mode,
         )
         agent_env.setup()
         self.agent_env = agent_env
 
-        self._start_containers(codex_mode=codex_mode)
+        self._start_containers()
 
         logger.info("Agent environment setup completed")
 
@@ -321,19 +379,14 @@ class MobileCybenchRunner:
 
         logger.info("✓ MCP server validation passed: 'codebase' directory found")
 
-    def _start_containers(self, codex_mode: bool = False):
-        """Start the containerized environment.
-
-        Args:
-            codex_mode: If True, uses codex-specific configuration.
-                        If False, uses custom implementation.
-        """
+    def _start_containers(self):
+        """Start the containerized environment."""
         logger.info("Starting containerized environment...")
 
         # Build environment variables
         env = os.environ.copy()
 
-        if codex_mode:
+        if self.mode == "codex":
             env.update(
                 {
                     "APP_NAME": self.app_name,
@@ -345,7 +398,7 @@ class MobileCybenchRunner:
             cmd = f"docker compose -f {self.agent_dir / 'docker-compose.yml'} up -d"
             cwd = self.project_root
         else:
-            env["AGENT_TYPE"] = "custom"
+            env["AGENT_TYPE"] = self.mode
             cmd = "docker compose up -d --wait"
             cwd = self.agent_dir
 
@@ -359,7 +412,7 @@ class MobileCybenchRunner:
                 logger.debug(f"Docker compose output: {result.stdout}")
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to start containers: {e}")
-            if codex_mode:
+            if self.mode == "codex":
                 raise
             else:
                 self._exit_with_error("Failed to start containers")
@@ -370,7 +423,7 @@ class MobileCybenchRunner:
 
         # Validate MCP server functionality
         # For codex mode, use localhost directly instead of ngrok
-        mcp_base_url = "http://localhost:8000" if codex_mode else None
+        mcp_base_url = "http://localhost:8000" if self.mode == "codex" else None
         self._validate_mcp_server(base_url=mcp_base_url)
 
         try:
@@ -503,8 +556,8 @@ class MobileCybenchRunner:
             }
 
     def run_agent(self):
-        """Run the agent - custom or codex based on mode"""
-        agent_type = "CODEX AGENT" if self.codex_mode else "CUSTOM AGENT"
+        """Run the agent - custom, codex, or supervisor based on mode"""
+        agent_type = f"{self.mode.upper()} AGENT"
         log_banner(f"RUNNING {agent_type}")
 
         # If in dry-run mode, use interactive shell instead
@@ -514,7 +567,25 @@ class MobileCybenchRunner:
         logger.info(f"Starting {agent_type.lower()} execution...")
 
         try:
-            if self.codex_mode:
+            if self.mode == "supervisor":
+                from agent.hierarchical_agent import create_and_run_supervisor_system
+
+                logger.info("Initializing supervisor agent system...")
+                logger.info("Starting supervisor agent execution...")
+
+                result = create_and_run_supervisor_system(
+                    model=self.config.model,
+                    max_iterations=self.config.max_iterations,
+                    allowed_tools=self.config.allowed_tools,
+                )
+
+                log_banner("SUPERVISOR AGENT EXECUTION RESULTS")
+                logger.info(f"Status: {result.get('status', 'Unknown')}")
+                logger.info(f"Turns: {result.get('turns', 0)}")
+
+                return result
+
+            elif self.mode == "codex":
                 # Import and use CodexAgent
                 from agent.codex_agent import CodexAgent
 
@@ -565,21 +636,26 @@ class MobileCybenchRunner:
                 )
 
             # This can take a while for actual LLM calls
-            result = agent.run()
+            # (Skip for supervisor mode as it's already run above)
+            if self.mode != "supervisor":
+                result = agent.run()
 
-            log_banner("AGENT EXECUTION RESULTS")
-            logger.info(f"Status: {result.get('status', 'Unknown')}")
-            logger.info(f"Turns: {result.get('turns', 0)}")
-            logger.info(f"Log file: {result.get('log_file', 'None')}")
+                log_banner("AGENT EXECUTION RESULTS")
+                logger.info(f"Status: {result.get('status', 'Unknown')}")
+                logger.info(f"Turns: {result.get('turns', 0)}")
+                logger.info(f"Log file: {result.get('log_file', 'None')}")
 
-            if result.get("final_message"):
-                logger.info("Final Message:")
-                logger.info(f"  {result['final_message']}")
+                if result.get("final_message"):
+                    logger.info("Final Message:")
+                    logger.info(f"  {result['final_message']}")
 
             return result
 
         except Exception as e:
-            logger.error(f"Failed to run custom agent: {e}")
+            logger.error(f"Failed to run agent: {e}")
+            import traceback
+
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return {
                 "status": f"error: {str(e)}",
                 "turns": 0,
@@ -670,8 +746,10 @@ class MobileCybenchRunner:
             self._exit_with_error(f"Failed to run cleanup script: {e}")
 
     def _check_and_save_agent_exploit(self):
-        """Check if agent created exploit.sh and log its contents"""
-        logger.info("Checking for agent-generated exploit.sh...")
+        """Ensure exploit.sh exists, log it, and copy the entire exploit_files directory to host."""
+        logger.info(
+            "Checking for agent-generated exploit.sh and exploit_files directory..."
+        )
         exploit_path = "/app/exploit_files/exploit.sh"
 
         try:
@@ -681,28 +759,54 @@ class MobileCybenchRunner:
                 text=True,
             )
 
-            if check_result.returncode == 0:
-                logger.info("Found exploit.sh in Kali container, reading contents...")
-                read_result = subprocess.run(
-                    ["docker", "exec", "kali-container", "cat", exploit_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
-
-                if read_result.returncode == 0:
-                    logger.info(f"exploit.sh contents:\n{read_result.stdout}")
-                    return True
-                else:
-                    logger.warning(f"Failed to read exploit.sh: {read_result.stderr}")
-                    return False
-            else:
+            if check_result.returncode != 0:
                 logger.info(
                     "No exploit.sh file found - agent did not create an exploit script"
                 )
                 return False
+
+            logger.info("Found exploit.sh in Kali container, reading contents...")
+            read_result = subprocess.run(
+                ["docker", "exec", "kali-container", "cat", exploit_path],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            if read_result.returncode == 0:
+                logger.info(f"exploit.sh contents:\n{read_result.stdout}")
+            else:
+                logger.warning(f"Failed to read exploit.sh: {read_result.stderr}")
+
+            # Copy entire exploit_files directory to host (includes supporting files)
+            host_logs_dir = logger_manager.get_logs_dir()
+            host_exploit_dir = host_logs_dir / "exploit_files"
+            host_exploit_dir.mkdir(parents=True, exist_ok=True)
+
+            copy_result = subprocess.run(
+                [
+                    "docker",
+                    "cp",
+                    "kali-container:/app/exploit_files/.",
+                    str(host_exploit_dir),
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if copy_result.returncode != 0:
+                logger.warning(
+                    "Failed to copy exploit_files directory from container: %s",
+                    copy_result.stderr,
+                )
+            else:
+                logger.info(
+                    "Copied exploit_files directory from container to %s",
+                    host_exploit_dir,
+                )
+
+            return True
         except Exception as e:
-            logger.warning(f"Error checking for exploit.sh in Kali container: {e}")
+            logger.warning(f"Error checking/copying exploit artifacts: {e}")
             return False
 
     def _run_agent_exploit(self) -> Path:
@@ -863,7 +967,7 @@ class MobileCybenchRunner:
                     log_file_path=dummy_log_path
                 )
 
-                self.setup_agent_environment(codex_mode=self.codex_mode)
+                self.setup_agent_environment()
                 self.run_agent()
 
                 agent_log_filename = logger_manager.get_agent_log_file_name()
@@ -919,9 +1023,35 @@ class MobileCybenchRunner:
                 )
             else:
                 logger.info("No probe results collected")
+
+            # Clean up agent_codebase to prevent state from leaking across runs
+            if hasattr(self, "agent_env") and self.agent_env is not None:
+                log_banner("CLEANING UP AGENT CODEBASE")
+                try:
+                    # Save the state (git diff) for debugging/analysis
+                    diff = self.agent_env.save_agent_codebase_state()
+                    if diff:
+                        logger.info(
+                            "Agent made changes to codebase - diff has been captured"
+                        )
+                        logger.info("=" * 80)
+                        logger.info("AGENT CODEBASE DIFF START")
+                        logger.info("=" * 80)
+                        # Log diff line by line to preserve formatting
+                        for line in diff.splitlines():
+                            logger.info(line)
+                        logger.info("=" * 80)
+                        logger.info("AGENT CODEBASE DIFF END")
+                        logger.info("=" * 80)
+
+                    # Reset agent_codebase to original state
+                    self.agent_env.delete_agent_codebase()
+                    logger.info("Agent codebase cleaned up successfully")
+                except Exception as e:
+                    logger.error(f"Failed to cleanup agent_codebase: {e}")
+
             # TODO: Add cleanup for app cleanup.sh, Kali container, and MCP server
             # Should run docker compose down in agent_dir and cleanup.sh in app_dir
-            # The AgentEnvironment will also need a cleanup step
 
 
 def main():
@@ -936,9 +1066,9 @@ def main():
         # Add agent_type selection
         parser.add_argument(
             "--agent-type",
-            choices=["custom", "codex"],
+            choices=["custom", "codex", "supervisor"],
             default="custom",
-            help="Agent type to use: 'custom' (OpenAI API) or 'codex' (Codex CLI). Default: custom.",
+            help="Agent type to use: 'custom' (OpenAI API), 'codex' (Codex CLI), or 'supervisor' (hierarchical multi-agent). Default: custom.",
         )
 
         parser.add_argument(
@@ -970,8 +1100,7 @@ def main():
         config = RunnerConfig.from_file(config_path)
 
         # Create and run the runner
-        codex_mode = args.agent_type == "codex"
-        runner = MobileCybenchRunner(args.app_name, config, codex_mode)
+        runner = MobileCybenchRunner(args.app_name, config, mode=args.agent_type)
         result = runner.run()
 
         return result

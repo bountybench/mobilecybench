@@ -151,7 +151,9 @@ class EmulatorManager:
             logger.info(f"Existing devices before start: {self._devices_before_start}")
 
         if self.emulator_config["mode"] == "host" and self.app_name:
-            logger.info(f"Running setup.sh for {self.app_name} in host mode...")
+            logger.info(
+                f"Installing android dependencies for {self.app_name} in host mode..."
+            )
             try:
                 subprocess.run(
                     ["bash", "./setup.sh", self.app_name],
