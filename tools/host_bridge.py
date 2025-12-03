@@ -5,9 +5,7 @@ import os
 import platform
 import shlex
 import socket
-import stat
 import subprocess
-import sys
 import threading
 import time
 import traceback

@@ -37,12 +37,8 @@ The generated secrets.json uses flat keys instead of nested objects:
 """
 import json
 import os
-import secrets
-import string
 import sys
 from datetime import datetime
-
-import bcrypt
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from utils.uuid_flags_utils import get_uuid, hash_password, write_secrets_json
