@@ -1,8 +1,6 @@
 #!/bin/bash
 set -e
 
-# Testing SSRF vuln
-
 # Function to remove config files with proper permissions in CI environments
 remove_config_files_for_ci() {
     # Only use sudo in CI/GitHub Actions environments where we need elevated permissions

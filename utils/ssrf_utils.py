@@ -297,9 +297,8 @@ def check_ssrf_requests_from_backends(container_names: list) -> tuple:
     backend_ips = get_backend_container_ips(container_names)
 
     if not backend_ips:
-        # No backend containers configured, return all requests
-        return all_requests, set()
-
+        # No backend containers configured, return no requests
+        return list(), set()
     filtered = filter_ssrf_requests_by_source(all_requests, backend_ips)
     return filtered, backend_ips
 

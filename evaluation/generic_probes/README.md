@@ -59,9 +59,9 @@ Detects if the application or its backend made unauthorized HTTP requests to an 
    docker compose -f evaluation/ssrf_listener/docker-compose.yml up -d --build
    ```
 
-2. Simulate an SSRF attack (from another container on `shared_net`):
+2. Simulate an SSRF attack from a backend container (e.g., `home-assistant-server` from `apps/home-assistant-android`):
    ```bash
-   docker run --rm --network=shared_net alpine/curl curl http://ssrf-probe:8080/endpoint
+   docker exec home-assistant-server curl http://ssrf-probe:8080/endpoint
    ```
 
 3. Run the probe from an app directory (requires `metadata.json`):
