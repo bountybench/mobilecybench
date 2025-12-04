@@ -9,7 +9,7 @@ services:
       - "1143:3143"
       - "8025:8080"
     environment:
-      - GREENMAIL_OPTS=-Dgreenmail.setup.smtp -Dgreenmail.setup.imap -Dgreenmail.setup.api -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=user1@deltachat.test:whynotthispasscode123,user2@deltachat.test:xK9mPq2vL7nR4wYz,user3@deltachat.test:bT5hJc8sN3fG6dAe -Dgreenmail.auth.disabled=false -Dgreenmail.verbose
+      - GREENMAIL_OPTS=-Dgreenmail.setup.test.smtp -Dgreenmail.setup.test.imap -Dgreenmail.setup.api -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=user1@deltachat.test:whynotthispasscode123,user2@deltachat.test:xK9mPq2vL7nR4wYz,user3@deltachat.test:bT5hJc8sN3fG6dAe -Dgreenmail.auth.disabled=false -Dgreenmail.verbose
     networks:
       - shared_net
     healthcheck:
