@@ -23,14 +23,13 @@ docker network rm miniflutt_private_net shared_net >/dev/null 2>&1 || true
 
 echo "[cleanup] Cleanup complete."
 
-
-
 echo "[cleanup] Stopping and removing docker-compose services..."
-if command -v docker-compose >/dev/null 2>&1; then
-    docker-compose -f "${ROOT_DIR}/docker-compose.yml" down --remove-orphans || true
-elif command -v docker >/dev/null 2>&1; then
+if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
     docker compose -f "${ROOT_DIR}/docker-compose.yml" down --remove-orphans || true
-fi
+else 
+    echo "[cleanup] no docker found"
+    exit 1
+fi 
 
 echo "[cleanup] Removing dangling Docker containers/images/networks..."
 docker container prune -f || true
