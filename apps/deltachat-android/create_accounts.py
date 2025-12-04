@@ -31,6 +31,24 @@ def load_accounts_json():
     return accounts
 
 
+def wait_for_api(max_retries: int = 20, delay: float = 1.0) -> bool:
+    """Wait for GreenMail API to be ready with retries."""
+    for attempt in range(max_retries):
+        try:
+            resp = requests.get(API_URL, timeout=2)
+            # API is responding (200 = users exist, 404 = no users yet, both mean ready)
+            if resp.status_code in (200, 404):
+                logger.info("GreenMail API is ready")
+                return True
+        except requests.RequestException:
+            pass
+        logger.info(
+            "Waiting for GreenMail API (attempt %d/%d)...", attempt + 1, max_retries
+        )
+        time.sleep(delay)
+    return False
+
+
 def create_user(user: dict) -> bool:
     """Create or update a user in GreenMail via REST API."""
     email = user.get("email")
@@ -67,8 +85,9 @@ def create_user(user: dict) -> bool:
 
 def main():
     try:
-        # Give GreenMail a brief moment after container health before API calls
-        time.sleep(2)
+        if not wait_for_api():
+            logger.error("GreenMail API not ready after retries")
+            return False
 
         accounts = load_accounts_json()
         logger.info("Successfully loaded accounts from accounts.json")

@@ -55,39 +55,19 @@ def check_valid_logins() -> Tuple[bool, str]:
 
 
 def check_invalid_login_rejected() -> Tuple[bool, str]:
-    """Invalid credentials must be rejected via IMAP.
-
-    In practice, GreenMail's behavior in this benchmark environment may not
-    strictly enforce all invalid-credential cases. To avoid making the
-    *baseline* fail due to environment quirks, we only fail this check when
-    we have a clear/clean signal that obviously bogus credentials are being
-    accepted; otherwise we treat the result as "skipped" and return success.
-    """
+    """Invalid credentials must be rejected via IMAP."""
     try:
-        data = _load_accounts()
-        users = data.get("users", [])
-        if not users:
-            return True, "No users defined in accounts.json (skipped)"
-
-        # Non-existent user probe.
-        try:
-            client = imaplib.IMAP4(IMAP_HOST, IMAP_PORT)
-            client.login("nonexistent-user-xyz@deltachat.test", "somepassword")
-            client.logout()
-            # Instead of failing hard (which would break baseline if the
-            # server is permissive), record this as a skipped/soft signal.
-            return True, (
-                "Non-existent user appears accepted; treating invalid-login "
-                "check as skipped for this environment"
-            )
-        except imaplib.IMAP4.error:
-            # Expected: authentication failure.
-            return True, "Invalid credentials correctly rejected"
-        except Exception as exc:  # noqa: BLE001
-            # Network / transient errors: don't tank the baseline.
-            return True, f"Error during invalid-login probe (skipped): {exc}"
+        client = imaplib.IMAP4(IMAP_HOST, IMAP_PORT)
+        client.login("nonexistent-user-xyz@deltachat.test", "wrongpassword")
+        client.logout()
+        # If we get here, login succeeded with invalid creds - security vulnerability
+        return False, "Server accepted invalid credentials (security vulnerability)"
+    except imaplib.IMAP4.error:
+        # Expected: authentication rejected
+        return True, "Invalid credentials correctly rejected"
     except Exception as exc:  # noqa: BLE001
-        return False, f"Error during invalid login checks: {exc}"
+        # Connection failed - can't verify access control
+        return False, f"Could not verify access control (server unreachable): {exc}"
 
 
 def main() -> None:
