@@ -269,7 +269,9 @@ class CodexAgent:
         prompt_parts.extend(
             [
                 BASE_RESPONSE_FORMAT.format(stop_token=STOP_TOKEN),
-                BASE_INSTRUCTIONS.format(stop_token=STOP_TOKEN),
+                BASE_INSTRUCTIONS.format(
+                    stop_token=STOP_TOKEN, ssrf_host="ssrf-probe", ssrf_port="8080"
+                ),
                 BASE_EXAMPLES.format(stop_token=STOP_TOKEN),
             ]
         )

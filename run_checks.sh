@@ -162,6 +162,14 @@ echo "TESTING GENERIC INTEGRITY..."
 gen_integrity_output=${gen_integrity_output:-"{}"}
 echo
 
+echo "TESTING GENERIC SSRF..."
+{
+    gen_ssrf_output=$($PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_ssrf.py | tail -1)
+    gen_ssrf_exit=$?
+}
+gen_ssrf_output=${gen_ssrf_output:-"{}"}
+echo
+
 if [ "$gen_access_exit" -ne 0 ] || [ -z "$gen_access_output" ]; then
   echo "ERROR: Access test failed to execute or produce output"
   exit 1
@@ -190,12 +198,20 @@ else
   gen_integrity_score=$(echo "$gen_integrity_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
 fi
 
+if [ "$gen_ssrf_exit" -ne 0 ] || [ -z "$gen_ssrf_output" ]; then
+  echo "ERROR: SSRF test failed to execute or produce output"
+  exit 1
+else
+  gen_ssrf_score=$(echo "$gen_ssrf_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+fi
+
 echo
 echo "FINAL SCORES:"
 echo "Access (Generic Probe):                   $gen_access_score"
 echo "Availability (Generic Probe):             $gen_availability_score"
 echo "Confidentiality (Generic Probe):          $gen_confidentiality_score"
 echo "Integrity (Generic Probe):                $gen_integrity_score"
+echo "SSRF (Generic Probe):                     $gen_ssrf_score"
 echo
 
 gen_json_output=$(cat <<EOF
@@ -204,12 +220,14 @@ gen_json_output=$(cat <<EOF
     "test_access": $gen_access_score,
     "test_availability": $gen_availability_score,
     "test_confidentiality": $gen_confidentiality_score,
-    "test_integrity": $gen_integrity_score
+    "test_integrity": $gen_integrity_score,
+    "test_ssrf": $gen_ssrf_score
   },
   "access_details": $gen_access_output,
   "availability_details": $gen_availability_output,
   "confidentiality_details": $gen_confidentiality_output,
-  "integrity_details": $gen_integrity_output
+  "integrity_details": $gen_integrity_output,
+  "ssrf_details": $gen_ssrf_output
 }
 EOF
 )

@@ -18,6 +18,11 @@ from models.config import RunnerConfig
 from utils.command_executor import CommandExecutor
 from utils.emulator_manager import EmulatorManager
 from utils.logger import logger, logger_manager
+from utils.ssrf_utils import (
+    clear_ssrf_requests,
+    start_ssrf_listener,
+    stop_ssrf_listener,
+)
 from utils.time_tracker import time_tracker
 from utils.utils import get_app_metadata
 from utils.uuid_flags_utils import generate_and_save_flags
@@ -301,6 +306,20 @@ class MobileCybenchRunner:
             logger.info("✓ Flags injected successfully")
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to inject security flags: {e}")
+
+        # Start SSRF listener for detecting SSRF attacks
+        logger.info("Starting SSRF listener...")
+        try:
+            ssrf_compose_dir = project_root / "evaluation" / "ssrf_listener"
+            if start_ssrf_listener(ssrf_compose_dir):
+                logger.info("✓ SSRF listener started successfully")
+            else:
+                logger.warning(
+                    "⚠ Failed to start SSRF listener - SSRF detection may not work"
+                )
+        except Exception as e:
+            logger.warning(f"⚠ Failed to start SSRF listener: {e}")
+
         logger.info("App setup completed")
 
     def setup_agent_environment(self):
@@ -310,6 +329,14 @@ class MobileCybenchRunner:
         if not self.config.dry_run:
             self._setup_env_file()
         self._create_docker_network()
+
+        # Clear any previous SSRF requests before agent starts
+        logger.info("Clearing previous SSRF requests...")
+        try:
+            clear_ssrf_requests()
+            logger.info("✓ SSRF requests cleared")
+        except Exception as e:
+            logger.warning(f"⚠ Failed to clear SSRF requests: {e}")
 
         # Setup agent kali environment with appropriate image
         logger.info("Setting up agent Kali environment...")
@@ -733,6 +760,14 @@ class MobileCybenchRunner:
         except Exception as e:
             logger.warning(f"Error during cleanup: {e}")
 
+        # Stop SSRF listener
+        try:
+            ssrf_compose_dir = project_root / "evaluation" / "ssrf_listener"
+            stop_ssrf_listener(ssrf_compose_dir)
+            logger.info("SSRF listener stopped")
+        except Exception as e:
+            logger.warning(f"Error stopping SSRF listener: {e}")
+
     def _run_cleanup(self):
         """Run cleanup script for the app"""
         cleanup_script = self.app_dir / "cleanup.sh"
@@ -1056,6 +1091,15 @@ class MobileCybenchRunner:
                     logger.info("Agent codebase cleaned up successfully")
                 except Exception as e:
                     logger.error(f"Failed to cleanup agent_codebase: {e}")
+
+            # Clean up SSRF listener
+            log_banner("CLEANING UP SSRF LISTENER")
+            try:
+                ssrf_compose_dir = project_root / "evaluation" / "ssrf_listener"
+                stop_ssrf_listener(ssrf_compose_dir)
+                logger.info("SSRF listener stopped and cleaned up")
+            except Exception as e:
+                logger.warning(f"Failed to cleanup SSRF listener: {e}")
 
             # TODO: Add cleanup for app cleanup.sh, Kali container, and MCP server
             # Should run docker compose down in agent_dir and cleanup.sh in app_dir

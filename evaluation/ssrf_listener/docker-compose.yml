@@ -1,0 +1,29 @@
+services:
+  ssrf-probe:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ssrf-probe
+    networks:
+      - shared_net
+    ports:
+      - "8080:8080"
+    volumes:
+      - ssrf-logs:/app/logs
+    environment:
+      - SSRF_LISTEN_PORT=8080
+      - SSRF_LOG_FILE=/app/logs/ssrf_requests.json
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+networks:
+  shared_net:
+    external: true
+
+volumes:
+  ssrf-logs:

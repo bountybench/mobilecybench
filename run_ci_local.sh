@@ -201,6 +201,51 @@ verify_shared_net_connectivity() {
     fi
 }
 
+# Start SSRF listener container
+start_ssrf_listener() {
+    echo -e "${INFO} Starting SSRF listener container..."
+    local ssrf_compose_dir="${ROOT_DIR}/evaluation/ssrf_listener"
+    
+    if [ ! -d "$ssrf_compose_dir" ]; then
+        echo -e "${WARNING} SSRF listener directory not found at $ssrf_compose_dir"
+        return 1
+    fi
+    
+    # Stop any existing SSRF listener
+    docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
+    
+    # Build and start the SSRF listener
+    if docker compose -f "$ssrf_compose_dir/docker-compose.yml" up -d --build --wait; then
+        echo -e "${SUCCESS} SSRF listener started on port 8080"
+        return 0
+    else
+        echo -e "${WARNING} Failed to start SSRF listener"
+        return 1
+    fi
+}
+
+# Stop SSRF listener container
+stop_ssrf_listener() {
+    echo -e "${INFO} Stopping SSRF listener container..."
+    local ssrf_compose_dir="${ROOT_DIR}/evaluation/ssrf_listener"
+    
+    if [ -d "$ssrf_compose_dir" ]; then
+        docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
+    fi
+    
+    # Also try to stop container directly in case compose fails
+    docker stop ssrf-probe 2>/dev/null || true
+    docker rm -f ssrf-probe 2>/dev/null || true
+    
+    echo -e "${INFO} SSRF listener stopped"
+}
+
+# Clear SSRF request log
+clear_ssrf_requests() {
+    echo -e "${INFO} Clearing SSRF request log..."
+    docker exec ssrf-probe rm -f /app/logs/ssrf_requests.json 2>/dev/null || true
+}
+
 # Validate directory structure and required scripts
 validate_setup_app_scripts() {
     local dir="$1"
@@ -491,6 +536,9 @@ run_test_check() {
 
     cd "$ROOT_DIR"
     cd "$DIR"
+
+    # Clear SSRF requests before each test
+    clear_ssrf_requests
 
     # Mirror CI: for vuln_scenario_0 only, prepare rooted/remounted emulator BEFORE setup
     if [ -n "$vuln_scenario" ] && [ "$vuln_scenario" = "0" ]; then
@@ -815,6 +863,10 @@ print_header "$CYAN" "CREATING DOCKER NETWORK"
 echo -e "${INFO} Creating shared_net network..."
 docker network create shared_net || echo -e "${INFO} shared_net network already exists"
 
+# Start SSRF Listener
+print_header "$CYAN" "STARTING SSRF LISTENER"
+start_ssrf_listener || echo -e "${WARNING} SSRF listener not started - SSRF detection may not work"
+
 # Start emulator (assuming you have a start_emulator.sh script)
 if [ -f "start_emulator.sh" ]; then
     print_header "$CYAN" "STARTING EMULATOR"
@@ -884,6 +936,11 @@ else
 fi
 
 cd $ROOT_DIR
+
+# Stop SSRF listener
+print_header "$CYAN" "STOPPING SSRF LISTENER"
+stop_ssrf_listener
+
 if [ -f "stop_emulator.sh" ]; then
     stop_emulator
 fi

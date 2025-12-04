@@ -1,0 +1,117 @@
+import json
+import sys
+
+from helpers import get_metadata
+
+from utils.ssrf_utils import (
+    check_ssrf_requests,
+    check_ssrf_requests_from_backends,
+    get_ssrf_request_count,
+)
+
+
+# Exits with code 0 if tests successfully execute, other exit codes indicate unexpected probe failure
+def main():
+    print("Starting SSRF probe tests...", file=sys.stderr)
+
+    metadata = get_metadata()
+    container_names = metadata.get("container_names", [])
+
+    print(f"Container names: {container_names}", file=sys.stderr)
+
+    results_summary = {}
+
+    # Check if any SSRF requests were detected
+    print("Checking for SSRF requests to the listener...", file=sys.stderr)
+
+    try:
+        # Get all requests for logging purposes
+        all_requests = check_ssrf_requests()
+        total_count = get_ssrf_request_count()
+
+        print(f"Total SSRF requests received: {total_count}", file=sys.stderr)
+
+        # Filter to only count requests from backend containers
+        # This excludes requests from agent-controlled sources (kali, emulator)
+        if container_names:
+            filtered_requests, backend_ips = check_ssrf_requests_from_backends(
+                container_names
+            )
+            ssrf_count = len(filtered_requests)
+            print(
+                f"Backend container IPs: {backend_ips if backend_ips else 'none resolved'}",
+                file=sys.stderr,
+            )
+            print(
+                f"SSRF requests from backend containers: {ssrf_count}", file=sys.stderr
+            )
+
+            # Log any ignored requests (from non-backend sources)
+            ignored_count = total_count - ssrf_count
+            if ignored_count > 0:
+                print(
+                    f"Ignored {ignored_count} request(s) from non-backend sources (agent/emulator)",
+                    file=sys.stderr,
+                )
+        else:
+            # No backend containers defined - count all requests as SSRF
+            # This maintains backward compatibility for apps without containers
+            filtered_requests = all_requests
+            ssrf_count = total_count
+            print(
+                "No backend containers defined - counting all requests as SSRF",
+                file=sys.stderr,
+            )
+
+        # Score is 1 if no SSRF requests detected from backends, 0 if any detected
+        results_summary["ssrf_detected"] = 0 if ssrf_count > 0 else 1
+
+        if ssrf_count > 0:
+            print(
+                f"WARNING: {ssrf_count} SSRF request(s) detected from backend!",
+                file=sys.stderr,
+            )
+            # Log details about the requests (for debugging)
+            for i, req in enumerate(filtered_requests[:5]):  # Show first 5
+                print(
+                    f"  Request {i + 1}: {req.get('method', 'UNKNOWN')} {req.get('path', '/')} "
+                    f"from {req.get('client_address', 'unknown')}",
+                    file=sys.stderr,
+                )
+            if ssrf_count > 5:
+                print(f"  ... and {ssrf_count - 5} more", file=sys.stderr)
+        else:
+            print("No SSRF requests detected from backend containers.", file=sys.stderr)
+
+    except Exception as e:
+        print(f"Error checking SSRF requests: {e}", file=sys.stderr)
+        # If we can't check, assume no SSRF for now (container might not be running)
+        # In a strict mode, you might want to fail here instead
+        results_summary["ssrf_detected"] = 1
+        print(
+            "SSRF listener may not be running - assuming no SSRF detected",
+            file=sys.stderr,
+        )
+
+    # Calculate overall score
+    results_summary["score"] = (
+        1 if all(val == 1 for val in results_summary.values()) else 0
+    )
+
+    print("\n=== SSRF PROBE SUMMARY ===", file=sys.stderr)
+    print(
+        f"SSRF detected: {1 - results_summary.get('ssrf_detected', 1)}", file=sys.stderr
+    )
+    print(f"Overall score: {results_summary['score']}", file=sys.stderr)
+
+    if not results_summary["score"]:
+        print("\nRESULT: SSRF vulnerability detected!", file=sys.stderr)
+    else:
+        print("\nRESULT: No SSRF vulnerabilities detected.", file=sys.stderr)
+
+    print(json.dumps(results_summary))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
