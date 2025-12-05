@@ -1,9 +1,15 @@
+"""
+Verify mail accounts are configured for docker-mailserver.
+
+This script checks that the postfix-accounts.cf file exists and contains
+the expected user accounts. Accounts are pre-configured in setup.sh before
+the container starts.
+"""
+
 import json
 import logging
 import os
-import subprocess
 import sys
-import time
 
 logger = logging.getLogger("mobilecybench.deltachat.create_accounts")
 logger.setLevel("INFO")
@@ -11,8 +17,6 @@ _handler = logging.StreamHandler(stream=sys.stderr)
 _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 logger.handlers[:] = [_handler]
 logger.propagate = False
-
-CONTAINER_NAME = "deltachat-mailserver"
 
 
 def load_accounts_json():
@@ -28,105 +32,45 @@ def load_accounts_json():
     return accounts
 
 
-def wait_for_container(max_retries: int = 30, delay: float = 2.0) -> bool:
-    """Wait for docker-mailserver container to be ready."""
-    for attempt in range(max_retries):
-        try:
-            # Check if dovecot is running inside the container
-            result = subprocess.run(
-                ["docker", "exec", CONTAINER_NAME, "test", "-f", "/var/run/dovecot/master.pid"],
-                capture_output=True,
-                timeout=5,
-            )
-            if result.returncode == 0:
-                logger.info("docker-mailserver is ready")
-                return True
-        except (subprocess.TimeoutExpired, subprocess.SubprocessError):
-            pass
-        logger.info(
-            "Waiting for docker-mailserver (attempt %d/%d)...", attempt + 1, max_retries
-        )
-        time.sleep(delay)
-    return False
-
-
-def create_user(user: dict) -> bool:
-    """Create a user in docker-mailserver via setup command."""
-    email = user.get("email")
-    password = user.get("password")
-
-    if not email or not password:
-        logger.warning("Skipping invalid user entry without email/password: %r", user)
+def verify_accounts_config() -> bool:
+    """Verify that the postfix-accounts.cf file exists with expected users."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_file = os.path.join(script_dir, "docker-data", "config", "postfix-accounts.cf")
+    
+    if not os.path.exists(config_file):
+        logger.error("postfix-accounts.cf not found at %s", config_file)
+        logger.error("Run setup.sh to create the mail accounts configuration")
         return False
-
-    try:
-        # docker-mailserver uses setup email add command
-        result = subprocess.run(
-            ["docker", "exec", CONTAINER_NAME, "setup", "email", "add", email, password],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        
-        if result.returncode == 0:
-            logger.info("Configured docker-mailserver user: %s", email)
-            return True
-        
-        # Check if user already exists (exit code 1 with specific message)
-        if "already exists" in result.stderr.lower() or "already exists" in result.stdout.lower():
-            logger.info("User %s already exists, updating password...", email)
-            # Try to update the user's password
-            update_result = subprocess.run(
-                ["docker", "exec", CONTAINER_NAME, "setup", "email", "update", email, password],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if update_result.returncode == 0:
-                logger.info("Updated password for user: %s", email)
-                return True
-        
-        logger.error(
-            "Failed to configure user %s: returncode=%s stdout=%s stderr=%s",
-            email,
-            result.returncode,
-            result.stdout.strip(),
-            result.stderr.strip(),
-        )
-        return False
-    except subprocess.TimeoutExpired:
-        logger.error("Timeout configuring user %s", email)
-        return False
-    except Exception as exc:
-        logger.error("Error configuring user %s: %s", email, exc)
-        return False
+    
+    with open(config_file, "r") as f:
+        content = f.read()
+    
+    accounts = load_accounts_json()
+    users = accounts.get("users", [])
+    
+    all_ok = True
+    for user in users:
+        email = user.get("email")
+        if email and email in content:
+            logger.info("Found account configuration for: %s", email)
+        else:
+            logger.error("Missing account configuration for: %s", email)
+            all_ok = False
+    
+    return all_ok
 
 
 def main():
     try:
-        if not wait_for_container():
-            logger.error("docker-mailserver not ready after retries")
+        if verify_accounts_config():
+            logger.info("All mail accounts are configured")
+            return True
+        else:
+            logger.error("Some mail accounts are missing from configuration")
             return False
 
-        accounts = load_accounts_json()
-        logger.info("Successfully loaded accounts from accounts.json")
-        users = accounts.get("users", [])
-        logger.info("Found %d user accounts to configure", len(users))
-
-        all_ok = True
-        for user in users:
-            if not create_user(user):
-                all_ok = False
-
-        if all_ok:
-            logger.info("All docker-mailserver accounts configured successfully")
-        else:
-            logger.error("Some docker-mailserver accounts failed to configure")
-
-        return all_ok
-
     except Exception as e:
-        logger.error("Failed to load accounts: %s", e)
+        logger.error("Failed to verify accounts: %s", e)
         return False
 
 

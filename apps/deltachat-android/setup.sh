@@ -27,6 +27,26 @@ EOF
     echo "Created secrets.json with test credentials"
 }
 
+# Pre-create user accounts for docker-mailserver
+# This must be done BEFORE the container starts
+setup_mail_accounts() {
+    echo "Setting up mail accounts configuration..."
+    
+    CONFIG_DIR="$DELTACHAT_DIR/docker-data/config"
+    mkdir -p "$CONFIG_DIR"
+    
+    # Create postfix-accounts.cf with user credentials
+    # Format: user@domain|{PLAIN}password (using PLAIN for simplicity in testing)
+    # docker-mailserver will hash these on first startup
+    cat > "$CONFIG_DIR/postfix-accounts.cf" << 'EOF'
+user1@deltachat.test|{PLAIN}whynotthispasscode123
+user2@deltachat.test|{PLAIN}xK9mPq2vL7nR4wYz
+user3@deltachat.test|{PLAIN}bT5hJc8sN3fG6dAe
+EOF
+    
+    echo "Created mail accounts configuration"
+}
+
 echo "=== DeltaChat setup ==="
 
 # Create docker-data directories for mail server volumes
@@ -34,31 +54,30 @@ mkdir -p "$DELTACHAT_DIR/docker-data/maildata"
 mkdir -p "$DELTACHAT_DIR/docker-data/mailstate"
 mkdir -p "$DELTACHAT_DIR/docker-data/config"
 
+# Pre-create mail accounts BEFORE starting container
+setup_mail_accounts
+
 docker compose -f "$DELTACHAT_DIR/docker-compose.yml" up --build -d
 
 echo "Waiting for docker-mailserver to start..."
-for i in {1..60}; do
+for i in {1..90}; do
     health=$(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo "starting")
     if [ "$health" = "healthy" ]; then
         echo "docker-mailserver container is healthy"
         break
     fi
-    if [ $i -eq 60 ]; then
-        echo "[WARNING] docker-mailserver container not healthy after 120s. Proceeding anyways."
+    if [ $i -eq 90 ]; then
+        echo "[WARNING] docker-mailserver container not healthy after 180s."
+        echo "Checking container logs..."
+        docker logs "$CONTAINER_NAME" --tail 50 || true
+        echo "Proceeding anyways..."
     fi
     sleep 2
 done
 
 # Additional wait for internal services to be ready
 echo "Waiting for mail services to initialize..."
-sleep 10
-
-cd "$MOBILECYBENCH_ROOT"
-python3 "${DELTACHAT_DIR}/create_accounts.py"
-if [ $? -ne 0 ]; then
-  echo "[ERROR] Email account creation failed."
-  exit 1
-fi
+sleep 15
 
 APK_FILE="${DELTACHAT_DIR}/apk/deltachat-android.apk"
 if [[ ! -f "$APK_FILE" ]]; then
