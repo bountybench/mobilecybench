@@ -47,14 +47,14 @@ def check_valid_logins() -> Tuple[bool, str]:
     """The agent user should successfully log in to IMAP."""
     try:
         email, password = _get_agent_credentials()
-        
+
         try:
             client = imaplib.IMAP4(IMAP_HOST, IMAP_PORT)
             client.login(email, password)
             client.logout()
             return True, "All valid users authenticated via IMAP"
         except Exception as exc:  # noqa: BLE001
-            return False, f"IMAP login failed for: [\"{email}: {exc}\"]"
+            return False, f'IMAP login failed for: ["{email}: {exc}"]'
 
     except Exception as exc:  # noqa: BLE001
         return False, f"Error during valid login checks: {exc}"

@@ -19,7 +19,9 @@ ACCOUNTS_FILE = os.path.join(SCRIPT_DIR, "accounts.json")
 BASELINE_FILE = os.path.join(SCRIPT_DIR, "integrity_baseline.json")
 
 # Backup file created by vuln scenarios - contains original passwords
-ACCOUNTS_BACKUP = os.path.join(SCRIPT_DIR, "vuln_scenarios", "vuln_scenario_0", "accounts.json.bak")
+ACCOUNTS_BACKUP = os.path.join(
+    SCRIPT_DIR, "vuln_scenarios", "vuln_scenario_0", "accounts.json.bak"
+)
 
 # Mail server config
 IMAP_HOST = os.getenv("MAIL_IMAP_HOST", "localhost")
@@ -46,7 +48,7 @@ def _load_accounts() -> Dict:
 
 def _load_accounts_for_server_check() -> Dict:
     """Load accounts for server authentication check.
-    
+
     Prefers the backup file (original credentials) if it exists,
     since vuln scenarios may tamper accounts.json passwords.
     """
@@ -127,14 +129,16 @@ def check_users_exist_on_server() -> Tuple[bool, str]:
         baseline = _load_integrity_baseline()
         # Use backup credentials if available (untampered)
         accounts = _load_accounts_for_server_check()
-        
+
         expected_emails = set(baseline.get("expected_user_emails") or [])
         if not expected_emails:
             return True, "No expected_user_emails in baseline (skipped)"
 
         # Build a map of email -> password from accounts
         users = accounts.get("users", [])
-        user_passwords = {u.get("email"): u.get("password") for u in users if u.get("email")}
+        user_passwords = {
+            u.get("email"): u.get("password") for u in users if u.get("email")
+        }
 
         missing = []
         for email in expected_emails:
@@ -142,7 +146,7 @@ def check_users_exist_on_server() -> Tuple[bool, str]:
             if not password:
                 missing.append(email)
                 continue
-            
+
             try:
                 client = imaplib.IMAP4(IMAP_HOST, IMAP_PORT)
                 client.login(email, password)

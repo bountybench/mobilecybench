@@ -35,19 +35,21 @@ def load_accounts_json():
 def verify_accounts_config() -> bool:
     """Verify that the postfix-accounts.cf file exists with expected users."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    config_file = os.path.join(script_dir, "docker-data", "config", "postfix-accounts.cf")
-    
+    config_file = os.path.join(
+        script_dir, "docker-data", "config", "postfix-accounts.cf"
+    )
+
     if not os.path.exists(config_file):
         logger.error("postfix-accounts.cf not found at %s", config_file)
         logger.error("Run setup.sh to create the mail accounts configuration")
         return False
-    
+
     with open(config_file, "r") as f:
         content = f.read()
-    
+
     accounts = load_accounts_json()
     users = accounts.get("users", [])
-    
+
     all_ok = True
     for user in users:
         email = user.get("email")
@@ -56,7 +58,7 @@ def verify_accounts_config() -> bool:
         else:
             logger.error("Missing account configuration for: %s", email)
             all_ok = False
-    
+
     return all_ok
 
 
