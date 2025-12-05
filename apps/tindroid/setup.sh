@@ -6,80 +6,26 @@
 #   3. Wait for container health
 #   4. Install required Python packages
 #   5. Generate secrets and seed database
-#   6. Install Android app 
-#        - By default: build from source and install (setup_app_source.sh)
-#        - With --fast or FAST=1: install via APK link (setup_app_apklink.sh)
+#   6. Install Android app (expects APK at apps/tindroid/apk/tindroid.apk)
 #   7. Run login test
 # Usage:
-#   ./setup.sh [--fast] [--apk-url URL]
-#   FAST=1 ./setup.sh                    # Fast path (APK link)
+#   ./setup.sh
+# Note: APK should be built/downloaded before running this script:
+#   - Build from source: ./setup_app_source.sh
+#   - Download from link: python ../../setup_app_apklink.py tindroid
 set -euo pipefail
 IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)"
-APK_LINK_SCRIPT="${SCRIPT_DIR}/setup_app_apklink.sh"
-APP_SOURCE_SCRIPT="${SCRIPT_DIR}/setup_app_source.sh"
 CODEBASE_DIR="${SCRIPT_DIR}/codebase"
 LOG_PREFIX="[setup]"
 
 TARGET_PACKAGE="co.tinode.tindroidx"
 
-# Defaults and CLI flags
-INSTALL_MODE="source"   # source | apk
-APK_URL="${APK_URL:-}"
-
 # Logging functions
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
 fail(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*" >&2; exit 1; }
-
-parse_args(){
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --fast|-f)
-        INSTALL_MODE="apk"
-        shift
-        ;;
-      --apk-url)
-        if [[ -z "${2:-}" ]]; then
-          fail "--apk-url requires a URL argument"
-        fi
-        APK_URL="$2"
-        INSTALL_MODE="apk"
-        shift 2
-        ;;
-      -h|--help)
-        cat << EOF
-Usage: $0 [OPTIONS]
-
-Options:
-  --fast, -f         Use APK download instead of building from source
-  --apk-url URL      Download APK from specific URL (implies --fast)
-  -h, --help         Show this help message
-
-Environment Variables:
-  FAST=1             Same as --fast flag
-  APK_URL=URL        Same as --apk-url option
-
-Examples:
-  $0                 # Build from source (default)
-  $0 --fast          # Download and install APK
-  FAST=1 $0          # Same as --fast
-  $0 --apk-url https://example.com/app.apk
-EOF
-        exit 0
-        ;;
-      *)
-        fail "Unknown option: $1. Use --help for usage information."
-        ;;
-    esac
-  done
-
-  # Environment variable overrides
-  if [[ "${FAST:-}" == "1" ]]; then
-    INSTALL_MODE="apk"
-  fi
-}
 
 # Function to run commands with timeout
 run_with_timeout() {
@@ -169,7 +115,7 @@ FLUSH PRIVILEGES;
 EOF
 
     echo "Running docker compose up to start the db and tinode-server containers..."
-    docker compose up -d
+    docker compose -p tindroid up -d # Use tindroid as the project name
 
     echo "Waiting for the containers to be ready"
     echo "==================="
@@ -195,8 +141,8 @@ EOF
     done
             echo "Tinode server is ready!"
 
-    echo "Seeding database with seed_secrets.sql..."
-    docker compose exec -T db mysql -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE < seed_secrets.sql
+    echo "Seeding database with seed_db.sql..."
+    docker compose exec -T db mysql -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE < seed_db.sql
 
     if [ $? -eq 0 ]; then
                 echo "Database seeded successfully!"
@@ -212,27 +158,26 @@ EOF
 pkg_name="co.tinode.tindroidx"
 
 install_tindroid(){
-  info "Installing Tindroid on Android device from source-built artifact"
+  info "Installing Tindroid on Android device"
   adb wait-for-device
   if ! adb get-state >/dev/null 2>&1; then
     fail "No adb device detected; ensure emulator is running"
   fi
 
-  if [[ ! -d "$CODEBASE_DIR" ]]; then
-    fail "Codebase not found at $CODEBASE_DIR"
-  fi
 
-  local apk
-  apk=$(find "$CODEBASE_DIR/app/build/outputs/apk/debug/" -name "*-debug.apk" -type f 2>/dev/null | head -1)
+  # Look for APK in the tindroid/apk directory
+  local apk="${SCRIPT_DIR}/apk/tindroid.apk"
 
-  if [[ -z "$apk" ]]; then
-    fail "Could not find built APK. IMPORTANT: Run $APP_SOURCE_SCRIPT before launching the emulator."
+  if [[ ! -f "$apk" ]]; then
+    fail "Could not find APK at $apk. IMPORTANT: Build or download APK first:" \
+         "  - Build from source: ./setup_app_source.sh" \
+         "  - Download from link: python ../../setup_app_apklink.py tindroid"
   fi
 
   info "Installing APK: $apk"
-  adb install "$apk"
+  adb install -r "$apk"
   
-  info "Tindroid installed successfully from source build."
+  info "Tindroid installed successfully."
 }
 
 launch_tindroid(){
@@ -252,45 +197,19 @@ install_app(){
   if ! command -v adb >/dev/null 2>&1; then
     fail "adb not found; cannot install Android app"
   fi
-  case "$INSTALL_MODE" in
-    source)
-      # Expect APK to be already built by setup_app_source.sh (pre-emulator)
-      install_tindroid
-      launch_tindroid
-      ;;
-    apk)
-      if [[ -x "$APK_LINK_SCRIPT" ]]; then
-        info "Installing app via APK link (--fast)"
-        if [[ -n "$APK_URL" ]]; then
-          "$APK_LINK_SCRIPT" "$APK_URL" || fail "APK link install script failed"
-        else
-          "$APK_LINK_SCRIPT" || fail "APK link install script failed"
-        fi
-      else
-        fail "APK link script missing or not executable: $APK_LINK_SCRIPT"
-      fi
-      ;;
-    *)
-      fail "Unknown install mode: $INSTALL_MODE"
-      ;;
-  esac
+  install_tindroid
+  launch_tindroid
 }
 
 main(){
-  parse_args "$@"
-  
   echo === RUNNING setup.sh ===
-  info "Install mode: $INSTALL_MODE"
-  if [[ "$INSTALL_MODE" == "apk" && -n "$APK_URL" ]]; then
-    info "APK URL: $APK_URL"
-  fi
 
   # Setup Python virtual environment and install packages
   log_info "=== Setting up Python environment ==="
   setup_python_env
 
   log_info "=== Generating secrets ==="
-  if python3 generate_secrets.py; then
+  if python3 seed_secrets_and_db.py; then
       log_success "Secrets generated successfully"
   else
       log_error "Secrets generation failed"
@@ -308,8 +227,8 @@ main(){
 
   log_info "=== Logging in to the Tindroid app ==="
 
-  # Test the app setup by running a quick tindroid login test
-  if python3 tindroid_login.py --username user_a --password user_a123 --logout-after; then
+  # Verify app setup by testing WebSocket login using user_a's credentials
+  if python3 -c "from tindroid_login import test_tinode_login; success, msg = test_tinode_login('user_a', 'user_a123'); exit(0 if success else 1)"; then
       log_success "Login test successful"
   else
       log_info "Warning: Login test failed"

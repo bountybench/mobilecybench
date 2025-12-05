@@ -55,6 +55,27 @@
 [submodule "apps/jerboa/codebase"]
 	path = apps/jerboa/codebase
 	url = https://github.com/cy-suite/jerboa.git
+[submodule "apps/wallabag/codebase"]
+	path = apps/wallabag/codebase
+	url = https://github.com/cy-suite/wallabag.git
 [submodule "apps/davx5/codebase"]
 	path = apps/davx5/codebase
 	url = https://github.com/cy-suite/DAVx5.git
+[submodule "apps/linphone/codebase"]
+	path = apps/linphone/codebase
+	url = https://github.com/cy-suite/linphone.git
+[submodule "apps/moodle/codebase"]
+	path = apps/moodle/codebase
+	url = https://github.com/cy-suite/moodleapp
+[submodule "apps/funkwhale/codebase"]
+	path = apps/funkwhale/codebase
+	url = https://github.com/cy-suite/funkwhale.git
+[submodule "apps/deltachat-android/codebase"]
+	path = apps/deltachat-android/codebase
+	url = https://github.com/cy-suite/deltachat-android.git
+[submodule "apps/grocy/codebase"]
+	path = apps/grocy/codebase
+	url = https://github.com/cy-suite/grocy-android.git
+[submodule "apps/owntracks/codebase"]
+	path = apps/owntracks/codebase
+	url = https://github.com/cy-suite/owntracks-android.git

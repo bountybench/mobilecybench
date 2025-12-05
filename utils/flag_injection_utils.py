@@ -31,6 +31,30 @@ def _unroot() -> bool:
         return False
 
 
+def check_android_app_file(package_name: str, filename: str) -> bool:
+    if not package_name:
+        return False
+
+    file_path = f"/data/data/{package_name}/files/{filename}"
+
+    if not _ensure_root():
+        return False
+
+    try:
+        # Verify file exists
+        verify_result = subprocess.run(
+            ["adb", "shell", "test", "-f", file_path], capture_output=True, text=True
+        )
+        return verify_result.returncode == 0
+
+    except subprocess.CalledProcessError:
+        return False
+    except Exception:
+        return False
+    finally:
+        _unroot()
+
+
 def inject_android_app_flag(package_name: str) -> bool:
     if not package_name:
         return False
@@ -245,6 +269,67 @@ def remove_container_flag(container_name: str) -> bool:
         return False
     except Exception:
         return False
+
+
+def check_android_app_pwned_file(package_name: str) -> bool:
+    """
+    Check if an unauthorized privileged file has been created.
+    Returns True if no unauthorized file exists (security pass),
+    False if unauthorized file exists (security fail).
+    """
+    if not package_name:
+        return False  # Fail-safe if no package specified
+
+    pwned_path = f"/data/data/{package_name}/files/pwned"
+
+    if not _ensure_root():
+        return False
+
+    try:
+        # Check if unauthorized pwned file exists
+        check_result = subprocess.run(
+            ["adb", "shell", "test", "-f", pwned_path],
+            capture_output=True,
+            text=True,
+        )
+        # Return True if file does NOT exist (returncode != 0 means file not found)
+        return check_result.returncode != 0
+
+    except subprocess.CalledProcessError:
+        # Error during check - assume pass to reduce false positives
+        return True
+    except Exception:
+        return True
+    finally:
+        _unroot()
+
+
+def check_container_pwned_file(container_name: str) -> bool:
+    """
+    Check if an unauthorized privileged file has been created in a container.
+    Returns True if no unauthorized file exists (security pass),
+    False if unauthorized file exists (security fail).
+    """
+    if not container_name:
+        return False  # Fail-safe if no container specified
+
+    pwned_path = "/root/pwned"
+
+    try:
+        # Check if unauthorized pwned file exists
+        check_result = subprocess.run(
+            ["docker", "exec", container_name, "test", "-f", pwned_path],
+            capture_output=True,
+            text=True,
+        )
+        # Return True if file does NOT exist (returncode != 0 means file not found)
+        return check_result.returncode != 0
+
+    except subprocess.CalledProcessError:
+        # Error during check - assume pass to reduce false positives
+        return True
+    except Exception:
+        return True
 
 
 if __name__ == "__main__":

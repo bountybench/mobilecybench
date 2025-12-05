@@ -10,8 +10,7 @@ services:
     devices:
       - /dev/net/tun
     ports:
-      - "1194:1194/udp"
-      - "8080:8080"
+      - "1194:1194/tcp"
     volumes:
       - openvpn-data:/etc/openvpn
     networks:

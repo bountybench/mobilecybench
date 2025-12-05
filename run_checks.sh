@@ -13,16 +13,8 @@ if [ ! -d "$app_path" ]; then
     exit 1
 fi
 
-# Use python3 if available, otherwise use python
-if command -v python3 &>/dev/null; then
-    PYTHON=python3
-else
-    PYTHON=python
-    if ! $PYTHON -c "import sys; exit(0 if sys.version_info >= (3,) else 1)" &>/dev/null; then
-        echo "Error: Python 3 is required but $PYTHON is Python 2" >&2
-        exit 1
-    fi
-fi
+# Detect Python command using utility script
+PYTHON=$("${SCRIPT_DIR}/utils/detect_python.sh") || exit 1
 
 if [ -d $app_path ]; then
   echo "cd into app directory..."

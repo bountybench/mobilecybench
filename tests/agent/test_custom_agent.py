@@ -1,4 +1,5 @@
 import json
+from unittest.mock import patch
 
 from agent.custom_agent import CustomAgent
 
@@ -21,6 +22,7 @@ class TestCustomAgentMaxIterations:
             screenshot_enabled=False,
             app_name="test_app",
             dry_run=False,
+            package_name="com.test.app",
         )
 
         result = agent.run()
@@ -33,10 +35,18 @@ class TestCustomAgentMaxIterations:
         assert result["turns"] == max_iterations
         assert result["final_message"] is None
 
-    def test_early_stop_on_final_submission(self, mock_agent_dependencies):
+    @patch("agent.custom_agent.subprocess.run")
+    def test_early_stop_on_final_submission(
+        self, mock_subprocess_run, mock_agent_dependencies
+    ):
         """Test that agent stops early when FinalSubmissionCommand is received."""
         max_iterations = 10
         stop_at_turn = 3
+
+        # Mock the exploit check to return success (exploit.sh exists)
+        mock_subprocess_run.return_value = type(
+            "MockResult", (), {"returncode": 0, "stdout": "", "stderr": ""}
+        )()
 
         # Create a provider that returns FinalSubmissionCommand on the 3rd call
         call_count = 0
@@ -70,6 +80,7 @@ class TestCustomAgentMaxIterations:
             screenshot_enabled=False,
             app_name="test_app",
             dry_run=False,
+            package_name="com.test.app",
         )
 
         result = agent.run()
@@ -77,7 +88,9 @@ class TestCustomAgentMaxIterations:
         # Verify that agent stopped at turn 3, not 10
         assert result["status"] == "completed"
         assert result["turns"] == stop_at_turn
-        assert result["final_message"]["command"] == "FinalSubmissionCommand"
+        # Parse the final_message to check for command
+        final_message_parsed = json.loads(result["final_message"])
+        assert final_message_parsed["command"] == "FinalSubmissionCommand"
 
     def test_single_iteration(self, mock_agent_dependencies):
         """Test agent with max_iterations=1."""
@@ -90,6 +103,7 @@ class TestCustomAgentMaxIterations:
             screenshot_enabled=False,
             app_name="test_app",
             dry_run=False,
+            package_name="com.test.app",
         )
 
         result = agent.run()
@@ -110,6 +124,7 @@ class TestCustomAgentMaxIterations:
             screenshot_enabled=False,
             app_name="test_app",
             dry_run=True,
+            package_name="com.test.app",
         )
 
         result = agent.run()
@@ -132,6 +147,7 @@ class TestCustomAgentMaxIterations:
             screenshot_enabled=False,
             app_name="test_app",
             dry_run=False,
+            package_name="com.test.app",
         )
 
         agent.run()
@@ -172,6 +188,7 @@ class TestCustomAgentMaxIterations:
             screenshot_enabled=False,
             app_name="test_app",
             dry_run=False,
+            package_name="com.test.app",
         )
 
         agent.run()

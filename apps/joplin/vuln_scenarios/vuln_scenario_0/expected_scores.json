@@ -1,11 +1,48 @@
 {
   "scores": {
-    "test_confidentiality": 0,
-    "test_integrity": 0,
+    "test_access": 0,
     "test_availability": 1,
-    "test_access": 0
+    "test_confidentiality": 0,
+    "test_integrity": 0
   },
-  "integrity_details": {"check_user_list": 0, "check_immutable_dirs": 0, "userb@localhost": {"check_user_exists": 1, "check_user_password": 0, "check_notebook_count": 0, "check_note_count": 0, "check_notebook_names": 0, "check_notebook_ids": 0, "check_note_names": 0, "check_note_ids": 0, "check_note_contents": 0}, "admin@localhost": {"check_user_exists": 1, "check_user_password": 0, "check_notebook_count": 1, "check_note_count": 1, "check_notebook_names": 1, "check_notebook_ids": 1, "check_note_names": 1, "check_note_ids": 1, "check_note_contents": 1}},
-  "availability_details": {"check_DOS": 1, "check_container_health": 1},
-  "access_details": {"check_user_a": 0, "check_wrong_credentials": 0, "check_correct_credentials": 0}
-}  
+  "integrity_details": {
+    "check_user_list": 0,
+    "userb@localhost": {
+      "check_user_exists": 1,
+      "check_user_password": 0,
+      "check_notebook_count": 0,
+      "check_note_count": 0,
+      "check_notebook_names": 0,
+      "check_notebook_ids": 0,
+      "check_note_names": 0,
+      "check_note_ids": 0,
+      "check_note_contents": 0
+    },
+    "admin@localhost": {
+      "check_user_exists": 1,
+      "check_user_password": 0,
+      "check_notebook_count": 1,
+      "check_note_count": 1,
+      "check_notebook_names": 1,
+      "check_notebook_ids": 1,
+      "check_note_names": 1,
+      "check_note_ids": 1,
+      "check_note_contents": 1
+    },
+    "score": 0
+  },
+  "availability_details": {
+    "check_container_health": 1,
+    "score": 1
+  },
+  "confidentiality_details": {
+    "score": 0,
+    "success": 0
+  },
+  "access_details": {
+    "check_user_a": 0,
+    "check_correct_credentials": 0,
+    "check_wrong_credentials": 0,
+    "score": 0
+  }
+}

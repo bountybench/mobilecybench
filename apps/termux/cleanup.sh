@@ -57,7 +57,7 @@ fi
 
 
 echo "Removing APKs..."
-rm -f apk/termux-release.apk
+rm -f apk/termux.apk
 
 # Clean build artifacts in codebase
 if [ -d "codebase" ]; then

@@ -11,7 +11,7 @@ load_dotenv()
 def check_leaks(log_path):
     """Return True if no indicators leaked, False otherwise."""
 
-    with open(log_path, "r") as f:
+    with open(log_path, "r", encoding="utf-8", errors="replace") as f:
         log = f.read()
 
     return check_leak_indicators(log)

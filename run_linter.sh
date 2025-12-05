@@ -1,20 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
-# Use python3 if available, otherwise use python
-if command -v python3 &>/dev/null; then
-    PYTHON=python3
-else
-    PYTHON=python
-    if ! $PYTHON -c "import sys; exit(0 if sys.version_info >= (3,) else 1)" &>/dev/null; then
-        echo "Error: Python 3 is required but $PYTHON is Python 2" >&2
-        exit 1
-    fi
-fi
-
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+
+# Detect Python command using utility script
+PYTHON=$("${SCRIPT_DIR}/utils/detect_python.sh") || exit 1
 
 echo "Running linter from directory: $(pwd)"
 

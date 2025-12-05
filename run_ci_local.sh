@@ -26,6 +26,48 @@ print_header() {
     echo -e "${color}========== ${message} ==========${RESET}"
 }
 
+check_metadata_schema() {
+    local metadata_file="$1"
+    echo "Checking metadata.json against expected schema..."
+
+    if ! jq empty "$metadata_file" >/dev/null 2>&1; then
+        print_header "$ERROR" "[FAIL] Invalid JSON in $metadata_file"
+        echo -e "${ERROR} The metadata.json file contains invalid JSON syntax."
+        exit 1
+    fi
+
+    local required_fields=(
+        "gh_link:GitHub link to the app's repository"
+        "commit_version:Commit version to checkout for testing"
+        "sdk:Android SDK version required"
+        "java:Java version needed to compile the app"
+        "package_name:Package name of the Android app"
+        "app_server:Address of any server the app requires (empty string if not required)"
+        "container_names:Array of Docker container names for health checks (empty array if not required)"
+    )
+    all_passed=true
+
+    for field_pair in "${required_fields[@]}"; do
+        field="${field_pair%%:*}"
+        description="${field_pair#*:}"
+
+        if jq -e ".${field}" "$metadata_file" >/dev/null 2>&1; then
+            print_header "$GREEN" "[PASS] Attribute $field is in the metadata."
+        else
+            print_header "$ERROR" "[FAIL] Attribute $field is not in the metadata."
+            print_header "$ERROR" " --> Attribute ${description} is not in the metadata."
+            all_passed=false
+        fi
+    done
+
+    if [ "$all_passed" = true ]; then
+        print_header "$GREEN" "[PASS] Metadata schema validation success."
+    else
+        print_header "$ERROR" "[FAIL] Metadata schema validation failed."
+        exit 1
+    fi
+}
+
 check_app_containers_ready() {
     # Timeout per container in seconds
     TIMEOUT=${TIMEOUT:-180}
@@ -407,6 +449,7 @@ if [ ! -f "$metadata" ]; then
     echo -e "${ERROR} $metadata not found"
     exit 1
 fi
+check_metadata_schema "$metadata"
 
 sdk=$(jq -r '.sdk' "$metadata")
 if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
@@ -419,6 +462,24 @@ fi
 print_header "$CYAN" "STARTING LOCAL CIA TESTS"
 
 START_TIME=$(date +%s)
+
+#Define Function to uninstall package if not already done by cleanup.sh
+uninstall_package() {
+    package_name="$1"
+
+    if adb shell pm list packages | grep -q "^package:$package_name$"; then
+        echo "NOTICE: Package $package_name is currently installed. Please uninstall your app in cleanup.sh. Proceeding to uninstall automatically..."
+        adb uninstall "$package_name" >/dev/null 2>&1
+
+        #still exists after attempt at uninstall
+        if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Failed to uninstall package $package_name"
+            exit 1
+        else
+            echo "SUCCESS: Package $package_name has been successfully uninstalled"
+        fi
+    fi
+}
 
 # Function to run test checks
 run_test_check() {
@@ -475,7 +536,7 @@ run_test_check() {
         ./cleanup.sh
         exit 1
     fi
-    
+
     # Wait for app-specific containers to be ready (after setup.sh starts them)
     check_app_containers_ready
 
@@ -498,6 +559,8 @@ run_test_check() {
     fi
 
     echo -e "${INFO} Running checks..."
+    # Set PYTHONPATH for local testing so generic probes can find utils module
+    export PYTHONPATH="${ROOT_DIR}:${PYTHONPATH:-}"
     if [ "$use_fake_agent_log" = "true" ] && [ -n "$vuln_scenario" ]; then
         "$ROOT_DIR/run_checks.sh" . "vuln_scenarios/vuln_scenario_$vuln_scenario/fake_agent_log.log"
     else
@@ -516,6 +579,7 @@ run_test_check() {
             cat scores.json
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
+            uninstall_package "$package_name"
             exit 1
         fi
     else
@@ -525,6 +589,7 @@ run_test_check() {
             cat scores.json
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
+            uninstall_package "$package_name"
             exit 1
         fi
         echo -e "${SUCCESS} All scores are 1."
@@ -535,6 +600,7 @@ run_test_check() {
             cat generic_scores.json
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
+            uninstall_package "$package_name"
             exit 1
         fi
         echo -e "${SUCCESS} All generic scores are 1."
@@ -542,6 +608,7 @@ run_test_check() {
 
     echo -e "${INFO} Cleaning up..."
     ./cleanup.sh
+    uninstall_package "$package_name"
     cd -
 }
 
@@ -694,6 +761,7 @@ EOF
         
         echo -e "${INFO} Cleaning up..."
         ./cleanup.sh
+        uninstall_package "$package_name"
         cd -
     fi
     

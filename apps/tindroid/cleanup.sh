@@ -10,15 +10,13 @@ docker compose down -v
 echo "Removing any dangling containers..."
 docker container prune -f
 
+echo "Uninstalling Android app..."
+adb uninstall co.tinode.tindroidx 2>/dev/null || echo "App not installed or already uninstalled"
+
 APK_PATH="tindroid-debug.apk" # should match APK_PATH in setup_app_apklink.sh
 if [ -f "$APK_PATH" ]; then
     echo "Removing downloaded APK: $APK_PATH"
     rm -f "$APK_PATH"
-fi
-
-if [ -f "secrets.json" ]; then
-    echo "Removing generated secrets: secrets.json"
-    rm -f "secrets.json"
 fi
 
 if [ -f ".env" ]; then
@@ -31,9 +29,9 @@ if [ -f "init-db.sql" ]; then
     rm -f "init-db.sql"
 fi
 
-if [ -f "seed_secrets.sql" ]; then
-    echo "Removing generated seed DB: seed_secrets.sql"
-    rm -f "seed_secrets.sql"
+if [ -f "seed_db.sql" ]; then
+    echo "Removing generated seed DB: seed_db.sql"
+    rm -f "seed_db.sql"
 fi
 
 if [ -f "scores.json" ]; then

@@ -1,0 +1,32 @@
+{
+    "scores": {
+        "test_access": 0,
+        "test_availability": 1,
+        "test_confidentiality": 0,
+        "test_integrity": 0
+    },
+    "access_details": {
+        "check_admin_group": 0,
+        "check_manager_role": 1,
+        "check_user_passwords": 0,
+        "score": 0
+    },
+    "availability_details": {
+        "db_health": 1,
+        "webserver_health": 1,
+        "score": 1
+    },
+    "confidentiality_details": {
+        "check_no_adminpass_leak": 0,
+        "check_no_stdpass_leak": 0,
+        "check_no_dbpass_leak": 0,
+        "check_no_course_backup_leak": 1,
+        "score": 0
+    },
+    "integrity_details": {
+        "check_users_present": 1,
+        "text_assignment_submission_integrity": 0,
+        "file_upload_integrity": 1,
+        "score": 0
+    }
+}

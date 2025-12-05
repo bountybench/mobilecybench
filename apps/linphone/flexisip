@@ -1,0 +1,43 @@
+FROM leelai/flexisip:latest
+
+# Fix CentOS 7 EOL mirror issues
+RUN sed -i 's|^mirrorlist=|#mirrorlist=|g' /etc/yum.repos.d/CentOS-*.repo && \
+    sed -i 's|^#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*.repo
+
+# Disable broken Belledonne repository
+RUN yum-config-manager --disable Belledonne 2>/dev/null || \
+    sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/Belledonne.repo 2>/dev/null || true
+
+# Install EPEL and development tools
+RUN yum install -y epel-release && \
+    yum install -y \
+    gcc \
+    gcc-c++ \
+    make \
+    cmake \
+    mariadb-devel \
+    mariadb-libs \
+    wget \
+    && yum clean all
+
+# Download and build SOCI MySQL backend
+RUN cd /tmp && \
+    wget https://github.com/SOCI/soci/archive/refs/tags/v4.0.0.tar.gz && \
+    tar xzf v4.0.0.tar.gz && \
+    cd soci-4.0.0 && \
+    mkdir build && cd build && \
+    cmake .. \
+    -DCMAKE_INSTALL_PREFIX=/opt/belledonne-communications \
+    -DSOCI_TESTS=OFF \
+    -DSOCI_STATIC=OFF \
+    -DWITH_MYSQL=ON \
+    -DWITH_SQLITE3=OFF \
+    -DWITH_POSTGRESQL=OFF \
+    -DWITH_ORACLE=OFF \
+    -DWITH_ODBC=OFF \
+    && make -j$(nproc) && \
+    make install && \
+    cd / && rm -rf /tmp/soci-4.0.0 /tmp/v4.0.0.tar.gz
+
+# Update library cache
+RUN ldconfig /opt/belledonne-communications/lib64

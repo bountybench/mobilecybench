@@ -29,6 +29,7 @@ class RunnerConfig(BaseModel):
     # optional
     custom_system_prompt: Optional[str] = None
     allowed_tools: Optional[List[str]] = None
+    codex_agent_image: Optional[str] = "cybench/mobilecybench:codex"
 
     @classmethod
     def from_file(cls, config_path: Path) -> "RunnerConfig":

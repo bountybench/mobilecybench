@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+ANDROID_HOME="${HOME}/.android-sdk"
+source "$ROOT_DIR/utils/android.sh"
+
 APP_NAME=${APP_NAME:-}
 
 KARAF_TCP_TIMEOUT=${KARAF_TCP_TIMEOUT:-120}
@@ -15,11 +20,13 @@ read_secrets() {
   local secrets_file="$SCRIPT_DIR/secrets.json"
   if [ -f "$secrets_file" ] && command -v jq >/dev/null 2>&1; then
     # Extract user credentials from secrets.json
+    ADMINUSER_USERNAME=$(jq -r '.adminuser_username' "$secrets_file" 2>/dev/null || echo "adminuser")
     ADMINUSER_PASSWORD=$(jq -r '.adminuser_password' "$secrets_file" 2>/dev/null || echo "")
+    NONADMINUSER_USERNAME=$(jq -r '.nonadminuser_username' "$secrets_file" 2>/dev/null || echo "nonadminuser")
     NONADMINUSER_PASSWORD=$(jq -r '.nonadminuser_password' "$secrets_file" 2>/dev/null || echo "")
     
     # Set users (will be handled by setup_karaf.sh)
-    export ADMINUSER_PASSWORD NONADMINUSER_PASSWORD
+    export ADMINUSER_USERNAME ADMINUSER_PASSWORD NONADMINUSER_USERNAME NONADMINUSER_PASSWORD
   else
     LOG "Warning: secrets.json not found or jq not available, using default users"
   fi
@@ -301,6 +308,69 @@ setup_karaf() {
   fi
 }
 
+########## Direcory hash helpers ##########
+compute_dir_hash() {
+  local path="$1"
+  # Find all files, compute sha256sum, sort, and hash the list
+  find "$path" -type f -exec sha256sum {} + | awk '{print $1}' | sort | sha256sum | awk '{print $1}'
+}
+
+wait_for_filesystem_stable() {
+  local dir="$1"
+  local max_wait=${2:-30}  # seconds
+  local check_interval=2
+  local stable_duration=5  # seconds of no changes needed
+  
+  LOG "Waiting for filesystem activity to stabilize in $dir..."
+  
+  local last_hash=""
+  local stable_since=0
+  local start_time=$(date +%s)
+  
+  while true; do
+    local current_hash=$(compute_dir_hash "$dir")
+    local now=$(date +%s)
+    
+    if [ "$current_hash" = "$last_hash" ]; then
+      # Hash unchanged, increase stable counter
+      stable_since=$((stable_since + check_interval))
+      
+      if [ $stable_since -ge $stable_duration ]; then
+        LOG "Filesystem stable for ${stable_duration}s in $dir"
+        return 0
+      fi
+    else
+      # Hash changed, reset counter
+      stable_since=0
+      last_hash="$current_hash"
+    fi
+    
+    # Timeout check
+    if [ $((now - start_time)) -ge $max_wait ]; then
+      LOG "WARNING: Filesystem did not stabilize within ${max_wait}s"
+      return 1
+    fi
+    
+    sleep $check_interval
+  done
+}
+
+hash_immutable_files() {
+  local baseline="$SCRIPT_DIR/baseline.json"
+  LOG "Waiting for files to stabilize before hashing..."
+
+  # Wait for files to be stable
+  wait_for_filesystem_stable "$SCRIPT_DIR/openhab_userdata/"
+
+  LOG "Hashing immutable directories and saving to $baseline"
+  
+  cat > "$baseline" << EOF
+{
+ "openhab_userdata/jsondb/users.json": "$(compute_dir_hash "$SCRIPT_DIR/openhab_userdata/jsondb/users.json")"
+}
+EOF
+}
+
 ########## Environment file creation helper ##########
 
 create_env_file() {
@@ -375,8 +445,11 @@ main() {
   # Setup SSH key for Karaf authentication and create test users
   setup_karaf
 
-  # Setup APK on device
+  # Install APK on connected device if available
   setup_apk_device
+
+  # Hash immutable files and save baseline
+  hash_immutable_files
   
   LOG "Setup completed."
 }
