@@ -128,7 +128,7 @@ fi
 
 # Launch the app
 print_status "Launching FairEmail..."
-adb shell am start -n eu.faircode.email/.ui.ActivityMain
+adb shell am start -n eu.faircode.email/.ActivityMain
 
 print_success "Setup complete! FairEmail should now be running on your emulator."
 print_status "You can find the app in your emulator's app drawer."
