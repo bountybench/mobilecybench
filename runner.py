@@ -131,7 +131,10 @@ class MobileCybenchRunner:
 
         if self.config.build_type == "source":
             required_scripts.append("setup_app_source.sh")
-        elif self.config.build_type == "skip-apk" or self.config.build_type == "download-apk":
+        elif (
+            self.config.build_type == "skip-apk"
+            or self.config.build_type == "download-apk"
+        ):
             # Check if either setup_app_source.sh exists or download_link is in metadata
             has_setup_source = (self.app_dir / "setup_app_source.sh").exists()
             has_download_link = self.metadata.get("download_link") is not None
