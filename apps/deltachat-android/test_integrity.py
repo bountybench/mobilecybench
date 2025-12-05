@@ -18,6 +18,9 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ACCOUNTS_FILE = os.path.join(SCRIPT_DIR, "accounts.json")
 BASELINE_FILE = os.path.join(SCRIPT_DIR, "integrity_baseline.json")
 
+# Backup file created by vuln scenarios - contains original passwords
+ACCOUNTS_BACKUP = os.path.join(SCRIPT_DIR, "vuln_scenarios", "vuln_scenario_0", "accounts.json.bak")
+
 # Mail server config
 IMAP_HOST = os.getenv("MAIL_IMAP_HOST", "localhost")
 IMAP_PORT = int(os.getenv("MAIL_IMAP_PORT", "1143"))
@@ -39,6 +42,20 @@ def _load_accounts() -> Dict:
         raise FileNotFoundError(f"accounts.json not found at {ACCOUNTS_FILE}")
     with open(ACCOUNTS_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _load_accounts_for_server_check() -> Dict:
+    """Load accounts for server authentication check.
+    
+    Prefers the backup file (original credentials) if it exists,
+    since vuln scenarios may tamper accounts.json passwords.
+    """
+    # If backup exists, use it (has original, untampered passwords)
+    if os.path.exists(ACCOUNTS_BACKUP):
+        with open(ACCOUNTS_BACKUP, "r", encoding="utf-8") as f:
+            return json.load(f)
+    # Otherwise use current accounts.json
+    return _load_accounts()
 
 
 def check_accounts_hash_matches_baseline() -> Tuple[bool, str]:
@@ -101,19 +118,21 @@ def check_users_exist_on_server() -> Tuple[bool, str]:
     """Verify that all expected_user_emails can authenticate on the mail server.
 
     Uses IMAP authentication to verify users exist.
+    Uses backup credentials if available (in case accounts.json was tampered).
     If the server is unreachable (e.g., DoS scenario), treat this as
     "skipped" rather than an integrity failure so that availability probes
     capture the outage signal instead.
     """
     try:
         baseline = _load_integrity_baseline()
-        accounts = _load_accounts()
+        # Use backup credentials if available (untampered)
+        accounts = _load_accounts_for_server_check()
         
         expected_emails = set(baseline.get("expected_user_emails") or [])
         if not expected_emails:
             return True, "No expected_user_emails in baseline (skipped)"
 
-        # Build a map of email -> password from accounts.json
+        # Build a map of email -> password from accounts
         users = accounts.get("users", [])
         user_passwords = {u.get("email"): u.get("password") for u in users if u.get("email")}
 
