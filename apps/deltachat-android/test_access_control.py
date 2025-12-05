@@ -1,4 +1,4 @@
-"""Access control checks for DeltaChat + GreenMail.
+"""Access control checks for DeltaChat + docker-mailserver.
 
 Verifies:
   - Valid credentials from accounts.json can authenticate via IMAP.
@@ -14,8 +14,8 @@ from typing import Dict, Tuple
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ACCOUNTS_FILE = os.path.join(SCRIPT_DIR, "accounts.json")
 
-IMAP_HOST = os.getenv("GREENMAIL_IMAP_HOST", "localhost")
-IMAP_PORT = int(os.getenv("GREENMAIL_IMAP_PORT", "1143"))
+IMAP_HOST = os.getenv("MAIL_IMAP_HOST", "localhost")
+IMAP_PORT = int(os.getenv("MAIL_IMAP_PORT", "1143"))
 
 
 def _load_accounts() -> Dict:
@@ -55,12 +55,7 @@ def check_valid_logins() -> Tuple[bool, str]:
 
 
 def check_invalid_login_rejected() -> Tuple[bool, str]:
-    """Wrong password for existing user must be rejected via IMAP.
-
-    Note: GreenMail auto-creates users on first login, so we can't test
-    rejection of non-existent users. Instead, we test that an existing
-    user with a wrong password is rejected.
-    """
+    """Wrong password for existing user must be rejected via IMAP."""
     try:
         data = _load_accounts()
         users = data.get("users", [])

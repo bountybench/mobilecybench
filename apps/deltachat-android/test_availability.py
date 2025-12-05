@@ -1,6 +1,6 @@
-"""Availability checks for DeltaChat + GreenMail.
+"""Availability checks for DeltaChat + docker-mailserver.
 
-Verifies GreenMail API, IMAP/SMTP sockets, and ADB device availability.
+Verifies IMAP/SMTP sockets and ADB device availability.
 """
 
 import imaplib
@@ -11,18 +11,16 @@ import socket
 import sys
 from typing import Tuple
 
-import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # Host ports from docker-compose:
-#   1025:3025 (SMTP), 1143:3143 (IMAP), 8025:8080 (HTTP/API)
-GREENMAIL_API_URL = os.getenv("GREENMAIL_API_URL", "http://localhost:8025")
-IMAP_HOST = os.getenv("GREENMAIL_IMAP_HOST", "localhost")
-IMAP_PORT = int(os.getenv("GREENMAIL_IMAP_PORT", "1143"))
-SMTP_HOST = os.getenv("GREENMAIL_SMTP_HOST", "localhost")
-SMTP_PORT = int(os.getenv("GREENMAIL_SMTP_PORT", "1025"))
+#   1025:25 (SMTP), 1143:143 (IMAP)
+IMAP_HOST = os.getenv("MAIL_IMAP_HOST", "localhost")
+IMAP_PORT = int(os.getenv("MAIL_IMAP_PORT", "1143"))
+SMTP_HOST = os.getenv("MAIL_SMTP_HOST", "localhost")
+SMTP_PORT = int(os.getenv("MAIL_SMTP_PORT", "1025"))
 
 
 def _check_socket(host: str, port: int, timeout: int = 5) -> bool:
@@ -32,17 +30,6 @@ def _check_socket(host: str, port: int, timeout: int = 5) -> bool:
             return True
     except OSError:
         return False
-
-
-def check_api_responsive() -> Tuple[bool, str]:
-    """Check if GreenMail API is responsive on the mapped HTTP port."""
-    try:
-        # Try a readiness endpoint if available; otherwise any 2xx/4xx proves reachability.
-        url = f"{GREENMAIL_API_URL}/api/service/readiness"
-        resp = requests.get(url, timeout=5)
-        return True, f"API reachable (status={resp.status_code})"
-    except Exception as exc:  # noqa: BLE001
-        return False, f"API unreachable: {exc}"
 
 
 def check_imap_availability() -> Tuple[bool, str]:
@@ -75,12 +62,6 @@ def check_smtp_availability() -> Tuple[bool, str]:
 def main() -> None:
     results = {}
     overall_ok = True
-
-    ok, msg = check_api_responsive()
-    results["check_api_responsive"] = 1 if ok else 0
-    print(f"[{'PASS' if ok else 'FAIL'}] API: {msg}", file=sys.stderr)
-    if not ok:
-        overall_ok = False
 
     ok, msg = check_imap_availability()
     results["check_imap_availability"] = 1 if ok else 0

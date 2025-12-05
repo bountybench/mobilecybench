@@ -1,10 +1,9 @@
 import json
 import logging
 import os
+import subprocess
 import sys
 import time
-
-import requests
 
 logger = logging.getLogger("mobilecybench.deltachat.create_accounts")
 logger.setLevel("INFO")
@@ -13,9 +12,7 @@ _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 logger.handlers[:] = [_handler]
 logger.propagate = False
 
-
-# GreenMail API (mapped to 8025 on host -> 8080 in container)
-API_URL = "http://localhost:8025/api/user"
+CONTAINER_NAME = "deltachat-mailserver"
 
 
 def load_accounts_json():
@@ -31,26 +28,30 @@ def load_accounts_json():
     return accounts
 
 
-def wait_for_api(max_retries: int = 20, delay: float = 1.0) -> bool:
-    """Wait for GreenMail API to be ready with retries."""
+def wait_for_container(max_retries: int = 30, delay: float = 2.0) -> bool:
+    """Wait for docker-mailserver container to be ready."""
     for attempt in range(max_retries):
         try:
-            resp = requests.get(API_URL, timeout=2)
-            # API is responding (200 = users exist, 404 = no users yet, both mean ready)
-            if resp.status_code in (200, 404):
-                logger.info("GreenMail API is ready")
+            # Check if dovecot is running inside the container
+            result = subprocess.run(
+                ["docker", "exec", CONTAINER_NAME, "test", "-f", "/var/run/dovecot/master.pid"],
+                capture_output=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                logger.info("docker-mailserver is ready")
                 return True
-        except requests.RequestException:
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError):
             pass
         logger.info(
-            "Waiting for GreenMail API (attempt %d/%d)...", attempt + 1, max_retries
+            "Waiting for docker-mailserver (attempt %d/%d)...", attempt + 1, max_retries
         )
         time.sleep(delay)
     return False
 
 
 def create_user(user: dict) -> bool:
-    """Create or update a user in GreenMail via REST API."""
+    """Create a user in docker-mailserver via setup command."""
     email = user.get("email")
     password = user.get("password")
 
@@ -58,35 +59,53 @@ def create_user(user: dict) -> bool:
         logger.warning("Skipping invalid user entry without email/password: %r", user)
         return False
 
-    payload = {
-        "email": email,
-        "login": email,
-        "password": password,
-    }
-
     try:
-        # GreenMail API: POST /api/user creates or updates a user
-        resp = requests.post(API_URL, json=payload, timeout=5)
-        if resp.status_code == 200:
-            logger.info("Configured GreenMail user: %s", email)
+        # docker-mailserver uses setup email add command
+        result = subprocess.run(
+            ["docker", "exec", CONTAINER_NAME, "setup", "email", "add", email, password],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        
+        if result.returncode == 0:
+            logger.info("Configured docker-mailserver user: %s", email)
             return True
-
+        
+        # Check if user already exists (exit code 1 with specific message)
+        if "already exists" in result.stderr.lower() or "already exists" in result.stdout.lower():
+            logger.info("User %s already exists, updating password...", email)
+            # Try to update the user's password
+            update_result = subprocess.run(
+                ["docker", "exec", CONTAINER_NAME, "setup", "email", "update", email, password],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if update_result.returncode == 0:
+                logger.info("Updated password for user: %s", email)
+                return True
+        
         logger.error(
-            "Failed to configure user %s: status=%s body=%s",
+            "Failed to configure user %s: returncode=%s stdout=%s stderr=%s",
             email,
-            resp.status_code,
-            resp.text.strip(),
+            result.returncode,
+            result.stdout.strip(),
+            result.stderr.strip(),
         )
         return False
-    except Exception as exc:  # noqa: BLE001
+    except subprocess.TimeoutExpired:
+        logger.error("Timeout configuring user %s", email)
+        return False
+    except Exception as exc:
         logger.error("Error configuring user %s: %s", email, exc)
         return False
 
 
 def main():
     try:
-        if not wait_for_api():
-            logger.error("GreenMail API not ready after retries")
+        if not wait_for_container():
+            logger.error("docker-mailserver not ready after retries")
             return False
 
         accounts = load_accounts_json()
@@ -100,9 +119,9 @@ def main():
                 all_ok = False
 
         if all_ok:
-            logger.info("All GreenMail accounts configured successfully")
+            logger.info("All docker-mailserver accounts configured successfully")
         else:
-            logger.error("Some GreenMail accounts failed to configure")
+            logger.error("Some docker-mailserver accounts failed to configure")
 
         return all_ok
 

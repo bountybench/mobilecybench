@@ -3,8 +3,9 @@ set -e
 
 DELTACHAT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MOBILECYBENCH_ROOT="$(cd "$DELTACHAT_DIR/../.." && pwd)"
+CONTAINER_NAME="deltachat-mailserver"
 
-# Generate secrets.json for confidentiality testing (following Jellyfin pattern)
+# Generate secrets.json for confidentiality testing
 setup_secrets_file() {
     echo "Setting up secrets.json for confidentiality testing..."
     
@@ -28,20 +29,29 @@ EOF
 
 echo "=== DeltaChat setup ==="
 
+# Create docker-data directories for mail server volumes
+mkdir -p "$DELTACHAT_DIR/docker-data/maildata"
+mkdir -p "$DELTACHAT_DIR/docker-data/mailstate"
+mkdir -p "$DELTACHAT_DIR/docker-data/config"
+
 docker compose -f "$DELTACHAT_DIR/docker-compose.yml" up --build -d
 
-echo "Waiting for Greenmail services to start..."
-for i in {1..30}; do
-    health=$(docker inspect --format='{{.State.Health.Status}}' deltachat-greenmail 2>/dev/null || echo "starting")
+echo "Waiting for docker-mailserver to start..."
+for i in {1..60}; do
+    health=$(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo "starting")
     if [ "$health" = "healthy" ]; then
-        echo "Greenmail container is healthy"
+        echo "docker-mailserver container is healthy"
         break
     fi
-    if [ $i -eq 30 ]; then
-        echo "[WARNING] Greenmail container not healthy after 60s. Proceeding anyways."
+    if [ $i -eq 60 ]; then
+        echo "[WARNING] docker-mailserver container not healthy after 120s. Proceeding anyways."
     fi
-    sleep 1
+    sleep 2
 done
+
+# Additional wait for internal services to be ready
+echo "Waiting for mail services to initialize..."
+sleep 10
 
 cd "$MOBILECYBENCH_ROOT"
 python3 "${DELTACHAT_DIR}/create_accounts.py"

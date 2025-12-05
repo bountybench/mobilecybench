@@ -1,26 +1,26 @@
-"""Integrity checks for DeltaChat + GreenMail.
+"""Integrity checks for DeltaChat + docker-mailserver.
 
 Verifies:
   - Local accounts.json integrity against integrity_baseline.json
-  - Presence of expected users on the GreenMail server
+  - Presence of expected users on the mail server (via IMAP auth)
   - Basic Android internal directory accessibility
 """
 
 import hashlib
+import imaplib
 import json
 import os
 import subprocess
 import sys
 from typing import Dict, Tuple
 
-import requests
-
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ACCOUNTS_FILE = os.path.join(SCRIPT_DIR, "accounts.json")
 BASELINE_FILE = os.path.join(SCRIPT_DIR, "integrity_baseline.json")
 
-# GreenMail API (host port mapped to container 8080)
-GREENMAIL_API_URL = os.getenv("GREENMAIL_API_URL", "http://localhost:8025")
+# Mail server config
+IMAP_HOST = os.getenv("MAIL_IMAP_HOST", "localhost")
+IMAP_PORT = int(os.getenv("MAIL_IMAP_PORT", "1143"))
 
 # Android config
 ANDROID_PACKAGE = os.getenv("ANDROID_TARGET_PACKAGE", "com.b44t.messenger")
@@ -98,34 +98,46 @@ def check_expected_users_in_accounts() -> Tuple[bool, str]:
 
 
 def check_users_exist_on_server() -> Tuple[bool, str]:
-    """Verify that all expected_user_emails exist on the GreenMail server.
+    """Verify that all expected_user_emails can authenticate on the mail server.
 
-    If the GreenMail API is unreachable (e.g., DoS scenario), treat this as
+    Uses IMAP authentication to verify users exist.
+    If the server is unreachable (e.g., DoS scenario), treat this as
     "skipped" rather than an integrity failure so that availability probes
     capture the outage signal instead.
     """
     try:
         baseline = _load_integrity_baseline()
+        accounts = _load_accounts()
+        
         expected_emails = set(baseline.get("expected_user_emails") or [])
         if not expected_emails:
             return True, "No expected_user_emails in baseline (skipped)"
 
-        url = f"{GREENMAIL_API_URL}/api/user"
-        try:
-            resp = requests.get(url, timeout=5)
-        except Exception as exc:  # noqa: BLE001
-            return True, f"GreenMail API unavailable (skipped): {exc}"
+        # Build a map of email -> password from accounts.json
+        users = accounts.get("users", [])
+        user_passwords = {u.get("email"): u.get("password") for u in users if u.get("email")}
 
-        if resp.status_code != 200:
-            return True, f"GreenMail API returned {resp.status_code} (skipped)"
+        missing = []
+        for email in expected_emails:
+            password = user_passwords.get(email)
+            if not password:
+                missing.append(email)
+                continue
+            
+            try:
+                client = imaplib.IMAP4(IMAP_HOST, IMAP_PORT)
+                client.login(email, password)
+                client.logout()
+            except imaplib.IMAP4.error:
+                # Authentication failed - user doesn't exist or wrong password
+                missing.append(email)
+            except Exception:  # noqa: BLE001
+                # Connection failed - server might be down, skip this check
+                return True, "Mail server unavailable (skipped)"
 
-        users = resp.json() or []
-        server_emails = {u.get("email") for u in users if u.get("email")}
-
-        missing = expected_emails - server_emails
         if missing:
             return False, f"Missing users on server: {sorted(missing)}"
-        return True, "All expected users present on GreenMail"
+        return True, "All expected users present on mail server"
     except Exception as exc:  # noqa: BLE001
         return False, f"Error checking users on server: {exc}"
 

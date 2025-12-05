@@ -11,7 +11,6 @@
     "score": 0
   },
   "availability_details": {
-    "check_api_responsive": 0,
     "check_imap_availability": 0,
     "check_smtp_availability": 0,
     "score": 0
