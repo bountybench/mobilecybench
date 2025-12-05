@@ -317,12 +317,12 @@ def create_and_run_supervisor_system(
         EXPLOIT_TOOLS,
         EXPLOIT_WORKER_SYSTEM_PROMPT,
     )
-    from agent.hierarchical_agent.static_analysis_worker import (
-        STATIC_ANALYSIS_SYSTEM_PROMPT,
-    )
     from agent.hierarchical_agent.git_history_worker import (
         GIT_HISTORY_SYSTEM_PROMPT,
         GIT_HISTORY_TOOLS,
+    )
+    from agent.hierarchical_agent.static_analysis_worker import (
+        STATIC_ANALYSIS_SYSTEM_PROMPT,
     )
     from utils.mcp_tools import create_mcp_tools
 
