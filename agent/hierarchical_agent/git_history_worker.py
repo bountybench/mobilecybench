@@ -126,6 +126,7 @@ Begin your forensic analysis now."""
 
     return prompt
 
+
 __all__ = [
     "GIT_HISTORY_SYSTEM_PROMPT",
     "GIT_HISTORY_TOOLS",

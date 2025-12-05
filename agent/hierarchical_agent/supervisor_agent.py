@@ -349,7 +349,6 @@ def create_and_run_supervisor_system(
         name="exploit_worker",
         description="Creates executable exploit.sh scripts based on vulnerability reports. Takes input from Static Analysis worker and generates working exploits that demonstrate high severity vulnerabilities. Has access to bash commands for methodical testing and validation.",
         system_prompt=EXPLOIT_WORKER_SYSTEM_PROMPT,
-
         tools=EXPLOIT_TOOLS,
     )
 
