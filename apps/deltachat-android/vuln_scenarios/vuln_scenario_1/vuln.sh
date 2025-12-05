@@ -5,7 +5,7 @@ IFS=$'\n\t'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LOG_PREFIX="[deltachat-vuln1]"
-CONTAINER_NAME="${DELTACHAT_CONTAINER_NAME:-deltachat-greenmail}"
+CONTAINER_NAME="${DELTACHAT_CONTAINER_NAME:-deltachat-mailserver}"
 
 log(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*" >&2; }
