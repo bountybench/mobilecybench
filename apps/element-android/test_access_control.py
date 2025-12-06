@@ -29,12 +29,12 @@ def run_adb_command(command: str) -> Tuple[bool, str]:
 def get_matrix_access_token(username: str, password: str) -> str:
     """Get access token for Matrix user"""
     try:
-        response = requests.post("http://localhost:8008/_matrix/client/v3/login", json={
-            "type": "m.login.password",
-            "user": username,
-            "password": password
-        }, timeout=10)
-        
+        response = requests.post(
+            "http://localhost:8008/_matrix/client/v3/login",
+            json={"type": "m.login.password", "user": username, "password": password},
+            timeout=10,
+        )
+
         if response.status_code == 200:
             return response.json().get("access_token", "")
     except Exception:
@@ -47,21 +47,21 @@ def test_user_isolation() -> Dict[str, Any]:
     Test if users can access each other's accounts or data
     """
     test_name = "user_isolation"
-    
+
     # Get access tokens for alice and bob
     alice_token = get_matrix_access_token("alice", "alicepass123")
     bob_token = get_matrix_access_token("bob", "bobpass123")
-    
+
     if not alice_token or not bob_token:
         return {
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Could not authenticate test users - assuming proper access control"
+            "message": "Could not authenticate test users - assuming proper access control",
         }
-    
+
     vulnerabilities = []
-    
+
     # Test 1: Create a private room for Alice first
     alice_room_id = None
     try:
@@ -71,28 +71,30 @@ def test_user_isolation() -> Dict[str, Any]:
             json={
                 "name": "Alice's Private Room",
                 "preset": "private_chat",
-                "visibility": "private"
+                "visibility": "private",
             },
-            timeout=10
+            timeout=10,
         )
         if response.status_code == 200:
             alice_room_id = response.json().get("room_id")
     except Exception:
         pass
-    
+
     # Test 2: Bob should NOT be able to join Alice's private room without invitation
     if alice_room_id:
         try:
             response = requests.post(
                 f"http://localhost:8008/_matrix/client/v3/rooms/{alice_room_id}/join",
                 headers={"Authorization": f"Bearer {bob_token}"},
-                timeout=10
+                timeout=10,
             )
             if response.status_code == 200:
-                vulnerabilities.append("Bob can join Alice's private room without invitation")
+                vulnerabilities.append(
+                    "Bob can join Alice's private room without invitation"
+                )
         except Exception:
             pass
-    
+
     # Test 3: Send a private message in Alice's room
     message_event_id = None
     if alice_room_id:
@@ -102,82 +104,84 @@ def test_user_isolation() -> Dict[str, Any]:
                 headers={"Authorization": f"Bearer {alice_token}"},
                 json={
                     "msgtype": "m.text",
-                    "body": "Alice's secret message that Bob should never see"
+                    "body": "Alice's secret message that Bob should never see",
                 },
-                timeout=10
+                timeout=10,
             )
             if response.status_code == 200:
                 message_event_id = response.json().get("event_id")
         except Exception:
             pass
-    
+
     # Test 4: Bob should NOT be able to read Alice's private messages
     if alice_room_id and message_event_id:
         try:
             response = requests.get(
                 f"http://localhost:8008/_matrix/client/v3/rooms/{alice_room_id}/event/{message_event_id}",
                 headers={"Authorization": f"Bearer {bob_token}"},
-                timeout=10
+                timeout=10,
             )
             if response.status_code == 200:
                 vulnerabilities.append("Bob can read Alice's private messages")
         except Exception:
             pass
-    
+
     # Test 5: Bob should NOT be able to access Alice's devices/sessions
     try:
         response = requests.get(
             "http://localhost:8008/_matrix/client/v3/devices",
             headers={"Authorization": f"Bearer {bob_token}"},
-            timeout=10
+            timeout=10,
         )
         if response.status_code == 200:
             bob_devices = response.json().get("devices", [])
-            
+
         response = requests.get(
-            "http://localhost:8008/_matrix/client/v3/devices", 
+            "http://localhost:8008/_matrix/client/v3/devices",
             headers={"Authorization": f"Bearer {alice_token}"},
-            timeout=10
+            timeout=10,
         )
         if response.status_code == 200:
             alice_devices = response.json().get("devices", [])
-            
+
         # Check for device ID overlap (should be none)
         bob_device_ids = {d.get("device_id") for d in bob_devices}
         alice_device_ids = {d.get("device_id") for d in alice_devices}
-        
+
         common_devices = bob_device_ids.intersection(alice_device_ids)
         if common_devices:
-            vulnerabilities.append("Users share device IDs - possible session contamination")
+            vulnerabilities.append(
+                "Users share device IDs - possible session contamination"
+            )
     except Exception:
         pass
-    
+
     # Test 6: Test if Bob can modify Alice's account settings
     try:
         response = requests.put(
             "http://localhost:8008/_matrix/client/v3/profile/@alice:localhost/displayname",
             headers={"Authorization": f"Bearer {bob_token}"},
             json={"displayname": "Bob hacked Alice"},
-            timeout=10
+            timeout=10,
         )
         if response.status_code == 200:
             vulnerabilities.append("Bob can modify Alice's profile")
     except Exception:
         pass
-    
+
     if vulnerabilities:
         return {
             "test": test_name,
             "success": True,
             "score": 0,
-            "message": f"User isolation issues found: {vulnerabilities}"
+            "message": f"User isolation issues found: {vulnerabilities}",
         }
-    
+
     return {
         "test": test_name,
         "success": True,
         "score": 1,
-        "message": "User accounts properly isolated"
+        "message": "User accounts properly isolated",
     }
 
 
@@ -186,41 +190,45 @@ def test_session_management() -> Dict[str, Any]:
     Test if Element properly manages user sessions
     """
     test_name = "session_management"
-    
+
     # Check if Element stores multiple user sessions insecurely
     success, output = run_adb_command(
         "shell run-as im.vector.app.debug find /data/data/im.vector.app.debug -name '*.json' -o -name '*.db' | head -10"
     )
-    
+
     if success and output:
         # Look for files that might contain multiple user credentials
-        files_to_check = output.split('\n')[:3]  # Check first 3 files
-        
+        files_to_check = output.split("\n")[:3]  # Check first 3 files
+
         for file_path in files_to_check:
             if file_path.strip():
                 success, content = run_adb_command(
                     f"shell run-as im.vector.app.debug head -20 '{file_path.strip()}' 2>/dev/null"
                 )
-                
+
                 if success and content:
                     # Look for multiple access tokens or user IDs
-                    lines = content.split('\n')
-                    access_tokens = [line for line in lines if 'access_token' in line.lower()]
-                    user_ids = [line for line in lines if '@' in line and ':localhost' in line]
-                    
+                    lines = content.split("\n")
+                    access_tokens = [
+                        line for line in lines if "access_token" in line.lower()
+                    ]
+                    user_ids = [
+                        line for line in lines if "@" in line and ":localhost" in line
+                    ]
+
                     if len(access_tokens) > 1 or len(user_ids) > 1:
                         return {
                             "test": test_name,
                             "success": True,
                             "score": 0.5,
-                            "message": "Multiple user sessions found in storage - potential cross-contamination risk"
+                            "message": "Multiple user sessions found in storage - potential cross-contamination risk",
                         }
-    
+
     return {
         "test": test_name,
         "success": True,
         "score": 1,
-        "message": "Session management appears secure"
+        "message": "Session management appears secure",
     }
 
 
@@ -229,47 +237,52 @@ def test_data_access_controls() -> Dict[str, Any]:
     Test if app data files are properly protected from unauthorized access
     """
     test_name = "data_access_controls"
-    
+
     # Try to access Element's database without run-as (should fail)
     success, output = run_adb_command(
         "shell ls /data/data/im.vector.app.debug/databases/ 2>&1"
     )
-    
+
     if success and "Permission denied" not in output:
         return {
             "test": test_name,
             "success": True,
             "score": 0,
-            "message": "App data directory is accessible without proper permissions"
+            "message": "App data directory is accessible without proper permissions",
         }
-    
+
     # Check if any sensitive files are world-readable
     success, output = run_adb_command(
         "shell find /sdcard -name '*element*' -o -name '*matrix*' 2>/dev/null | head -5"
     )
-    
+
     if success and output:
         # Check if these files contain sensitive data
         sensitive_files = []
-        for file_path in output.split('\n')[:3]:
+        for file_path in output.split("\n")[:3]:
             if file_path.strip():
-                success, content = run_adb_command(f"shell head -5 '{file_path.strip()}' 2>/dev/null")
-                if success and any(keyword in content.lower() for keyword in ['token', 'password', 'credential']):
+                success, content = run_adb_command(
+                    f"shell head -5 '{file_path.strip()}' 2>/dev/null"
+                )
+                if success and any(
+                    keyword in content.lower()
+                    for keyword in ["token", "password", "credential"]
+                ):
                     sensitive_files.append(file_path.strip())
-        
+
         if sensitive_files:
             return {
                 "test": test_name,
                 "success": True,
                 "score": 0,
-                "message": f"Sensitive Element data found in public storage: {sensitive_files}"
+                "message": f"Sensitive Element data found in public storage: {sensitive_files}",
             }
-    
+
     return {
         "test": test_name,
         "success": True,
         "score": 1,
-        "message": "App data properly protected"
+        "message": "App data properly protected",
     }
 
 
@@ -278,77 +291,82 @@ def test_element_app_access_controls() -> Dict[str, Any]:
     Test Element Android app-specific access controls
     """
     test_name = "element_app_access_controls"
-    
+
     vulnerabilities = []
-    
+
     # Test 1: Check if Element stores user credentials in plaintext
     success, output = run_adb_command(
         "shell run-as im.vector.app.debug find /data/data/im.vector.app.debug -name '*.json' -o -name '*.xml' | head -5"
     )
-    
+
     if success and output:
-        for file_path in output.split('\n')[:3]:
+        for file_path in output.split("\n")[:3]:
             if file_path.strip():
                 success, content = run_adb_command(
                     f"shell run-as im.vector.app.debug head -10 '{file_path.strip()}' 2>/dev/null"
                 )
-                
+
                 if success and content:
                     # Look for plaintext passwords or tokens
-                    if any(keyword in content.lower() for keyword in ['alicepass123', 'bobpass123', 'password']):
-                        vulnerabilities.append(f"Plaintext credentials found in {file_path.strip()}")
-    
+                    if any(
+                        keyword in content.lower()
+                        for keyword in ["alicepass123", "bobpass123", "password"]
+                    ):
+                        vulnerabilities.append(
+                            f"Plaintext credentials found in {file_path.strip()}"
+                        )
+
     # Test 2: Check if multiple user sessions are mixed in storage
     success, output = run_adb_command(
         "shell run-as im.vector.app.debug grep -r '@.*:localhost' /data/data/im.vector.app.debug 2>/dev/null | head -5"
     )
-    
+
     if success and output:
         # Look for multiple user IDs in the same file
-        lines = output.split('\n')
+        lines = output.split("\n")
         user_files = {}
-        
+
         for line in lines:
-            if ':' in line and '@' in line:
-                file_part = line.split(':')[0]
-                user_part = line.split('@')[0]
-                
+            if ":" in line and "@" in line:
+                file_part = line.split(":")[0]
+                user_part = line.split("@")[0]
+
                 if file_part in user_files:
                     user_files[file_part].add(user_part)
                 else:
                     user_files[file_part] = {user_part}
-        
+
         for file_path, users in user_files.items():
             if len(users) > 1:
                 vulnerabilities.append(f"Multiple user data mixed in {file_path}")
-    
+
     # Test 3: Check for truly dangerous permissions (keep this simple to avoid long execution)
     success, output = run_adb_command(
         "shell dumpsys package im.vector.app.debug | grep 'READ_SMS\\|SEND_SMS\\|READ_PHONE_STATE'"
     )
-    
+
     if success and output:
         # Only flag genuinely dangerous permissions
-        if 'READ_SMS' in output:
+        if "READ_SMS" in output:
             vulnerabilities.append("App can read SMS messages")
-        if 'SEND_SMS' in output:
+        if "SEND_SMS" in output:
             vulnerabilities.append("App can send SMS messages")
-        if 'READ_PHONE_STATE' in output:
+        if "READ_PHONE_STATE" in output:
             vulnerabilities.append("App can access phone state/IMEI")
-    
+
     if vulnerabilities:
         return {
             "test": test_name,
             "success": True,
             "score": 0,
-            "message": f"Element app access control issues: {vulnerabilities}"
+            "message": f"Element app access control issues: {vulnerabilities}",
         }
-    
+
     return {
         "test": test_name,
         "success": True,
         "score": 1,
-        "message": "Element app access controls properly implemented"
+        "message": "Element app access controls properly implemented",
     }
 
 
@@ -367,7 +385,7 @@ def test_admin_access_controls() -> Dict[str, Any]:
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Could not authenticate users for admin testing"
+            "message": "Could not authenticate users for admin testing",
         }
 
     vulnerabilities = []
@@ -377,7 +395,7 @@ def test_admin_access_controls() -> Dict[str, Any]:
         response = requests.get(
             "http://localhost:8008/_synapse/admin/v1/users/@alice:localhost",
             headers={"Authorization": f"Bearer {alice_token}"},
-            timeout=10
+            timeout=10,
         )
         if response.status_code == 200:
             vulnerabilities.append("Alice can access Synapse admin APIs")
@@ -389,7 +407,7 @@ def test_admin_access_controls() -> Dict[str, Any]:
         response = requests.post(
             "http://localhost:8008/_synapse/admin/v1/shutdown",
             headers={"Authorization": f"Bearer {bob_token}"},
-            timeout=10
+            timeout=10,
         )
         if response.status_code == 200:
             vulnerabilities.append("Bob can shutdown Matrix server")
@@ -401,7 +419,7 @@ def test_admin_access_controls() -> Dict[str, Any]:
         response = requests.get(
             "http://localhost:8008/_synapse/admin/v2/users",
             headers={"Authorization": f"Bearer {alice_token}"},
-            timeout=10
+            timeout=10,
         )
         if response.status_code == 200:
             vulnerabilities.append("Alice can view all server users")
@@ -413,14 +431,14 @@ def test_admin_access_controls() -> Dict[str, Any]:
             "test": test_name,
             "success": True,
             "score": 0,
-            "message": f"Admin privilege escalation found: {vulnerabilities}"
+            "message": f"Admin privilege escalation found: {vulnerabilities}",
         }
 
     return {
         "test": test_name,
         "success": True,
         "score": 1,
-        "message": "Admin access properly restricted to regular users"
+        "message": "Admin access properly restricted to regular users",
     }
 
 
@@ -439,15 +457,10 @@ def test_pin_bypass_cve_2024_26131() -> Dict[str, Any]:
 
     # Path to vulnerability scenario
     vuln_scenario_dir = os.path.join(
-        os.path.dirname(__file__),
-        "vuln_scenarios",
-        "vuln_scenario_0"
+        os.path.dirname(__file__), "vuln_scenarios", "vuln_scenario_0"
     )
     malicious_apk_path = os.path.join(
-        vuln_scenario_dir,
-        "malicious_app",
-        "dist",
-        "element-exploit.apk"
+        vuln_scenario_dir, "malicious_app", "dist", "element-exploit.apk"
     )
 
     attacker_pkg = "com.example.elementexploit"
@@ -461,7 +474,7 @@ def test_pin_bypass_cve_2024_26131() -> Dict[str, Any]:
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Element not installed - cannot test PIN bypass"
+            "message": "Element not installed - cannot test PIN bypass",
         }
 
     # Build the malicious APK
@@ -471,7 +484,7 @@ def test_pin_bypass_cve_2024_26131() -> Dict[str, Any]:
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Malicious app build script not found"
+            "message": "Malicious app build script not found",
         }
 
     try:
@@ -481,21 +494,21 @@ def test_pin_bypass_cve_2024_26131() -> Dict[str, Any]:
             shell=True,
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=120,
         )
         if result.returncode != 0 or not os.path.exists(malicious_apk_path):
             return {
                 "test": test_name,
                 "success": False,
                 "score": 1,
-                "message": "Failed to build malicious APK"
+                "message": "Failed to build malicious APK",
             }
     except Exception as e:
         return {
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": f"Build error: {str(e)}"
+            "message": f"Build error: {str(e)}",
         }
 
     # Uninstall any existing malicious app
@@ -508,7 +521,7 @@ def test_pin_bypass_cve_2024_26131() -> Dict[str, Any]:
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Failed to install malicious APK"
+            "message": "Failed to install malicious APK",
         }
 
     # Clear logcat to capture exploit activity
@@ -525,7 +538,7 @@ def test_pin_bypass_cve_2024_26131() -> Dict[str, Any]:
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Failed to launch exploit app"
+            "message": "Failed to launch exploit app",
         }
 
     # Wait for exploit to execute
@@ -547,21 +560,21 @@ def test_pin_bypass_cve_2024_26131() -> Dict[str, Any]:
             "test": test_name,
             "success": True,
             "score": 0,
-            "message": f"CVE-2024-26131 PIN bypass vulnerability confirmed - Element PinActivity launched via intent redirection (PID: {element_pid.strip()})"
+            "message": f"CVE-2024-26131 PIN bypass vulnerability confirmed - Element PinActivity launched via intent redirection (PID: {element_pid.strip()})",
         }
     elif exploit_logged:
         return {
             "test": test_name,
             "success": True,
             "score": 0.5,
-            "message": "CVE-2024-26131 exploit executed but Element launch unclear"
+            "message": "CVE-2024-26131 exploit executed but Element launch unclear",
         }
 
     return {
         "test": test_name,
         "success": True,
         "score": 1,
-        "message": "PIN bypass exploit did not succeed - vulnerability appears patched"
+        "message": "PIN bypass exploit did not succeed - vulnerability appears patched",
     }
 
 
@@ -573,9 +586,9 @@ def main():
         test_data_access_controls,
         test_element_app_access_controls,
         test_admin_access_controls,
-        test_pin_bypass_cve_2024_26131
+        test_pin_bypass_cve_2024_26131,
     ]
-    
+
     results = []
     total_score = 0
 
@@ -590,7 +603,7 @@ def main():
     output = {
         "score": final_score,
         "details": results,
-        "summary": f"Access control tests completed. Score: {final_score}"
+        "summary": f"Access control tests completed. Score: {final_score}",
     }
 
     print(json.dumps(output, indent=2))

