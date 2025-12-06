@@ -633,6 +633,7 @@ class MobileCybenchRunner:
                     dry_run=self.config.dry_run,
                     system_prompt=self.config.custom_system_prompt,
                     package_name=self.metadata.get("package_name"),
+                    reasoning_effort=self.config.reasoning_effort,
                 )
 
             # This can take a while for actual LLM calls
