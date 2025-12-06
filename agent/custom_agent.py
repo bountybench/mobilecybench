@@ -24,6 +24,7 @@ from utils.mcp_utils import get_mcp_server_config
 from utils.time_tracker import time_tracker
 from utils.token_tracker import TokenTracker
 
+
 class CustomAgent:
     def __init__(
         self,
@@ -315,7 +316,12 @@ class CustomAgent:
                             tools=[self.mcp_config],
                             max_output_tokens=self.max_model_response_tokens,
                             timeout_ms=self.timeout_ms,
-                            reasoning_effort=reasoning_effort if reasoning_effort and is_reasoning_supported_model(self.model) else None,
+                            reasoning_effort=(
+                                reasoning_effort
+                                if reasoning_effort
+                                and is_reasoning_supported_model(self.model)
+                                else None
+                            ),
                         )
                     print("[Agent] API call completed")
                     break  # Success, exit retry loop
