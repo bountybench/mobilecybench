@@ -120,7 +120,9 @@ def test_duplicate_user(container, existing_login):
         "--user_pass=DummyPass",
     )
     if ret == 0:
-        print(f"Duplicate user creation succeeded for {existing_login}", file=sys.stderr)
+        print(
+            f"Duplicate user creation succeeded for {existing_login}", file=sys.stderr
+        )
         return False
     return True
 

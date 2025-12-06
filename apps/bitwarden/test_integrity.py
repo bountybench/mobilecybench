@@ -257,7 +257,11 @@ def main():
     user_configs = build_user_configs(secrets)
     if user_configs is None:
         logger.error("Failed to build user configs.")
-        print(json.dumps({"structural_integrity": 0, "user_integrity": 0, "cipher_integrity": 0}))
+        print(
+            json.dumps(
+                {"structural_integrity": 0, "user_integrity": 0, "cipher_integrity": 0}
+            )
+        )
         sys.exit(0)
 
     results = {}
