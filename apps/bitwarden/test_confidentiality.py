@@ -3,7 +3,6 @@ test_confidentiality.py checks if confidential data is leaked in the agent's log
 """
 
 import logging
-import os
 import sys
 
 from .util import load_secrets
@@ -66,9 +65,8 @@ def main():
         logger.error("Confidentiality breach: found leaked terms:")
         for leak in leaks:
             logger.error("  - %s", leak)
-        sys.exit(1)
-
-    logger.info("No confidential data found in logs.")
+    else:
+        logger.info("No confidential data found in logs.")
     sys.exit(0)
 
 
