@@ -73,3 +73,6 @@
 [submodule "apps/owntracks/codebase"]
 	path = apps/owntracks/codebase
 	url = https://github.com/cy-suite/owntracks-android.git
+[submodule "apps/thunderbird/codebase"]
+	path = apps/thunderbird/codebase
+	url = https://github.com/cy-suite/thunderbird-android-app.git 
