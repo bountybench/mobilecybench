@@ -322,7 +322,7 @@ class MobileCybenchRunner:
             app_dir=self.app_dir,
             docker_networks=["shared_net"],
             image_name=image_name,
-            env={"ANDROID_ADB_SERVER_PORT": "5037"},
+            env={"ANDROID_ADB_SERVER_PORT": "5037", "ADB_SERVER_SOCKET": "tcp:host.docker.internal:5037"},
             commit_id=self.metadata.get("commit_version"),
             mode=self.mode,
         )
