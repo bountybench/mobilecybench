@@ -219,6 +219,7 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
     # STEP 1: Create attacker-controlled room using Bob's account
     # This simulates the attacker setting up their exfiltration infrastructure
     import os as os_module
+
     import requests
 
     # Try to create attacker room via Matrix API
@@ -236,7 +237,7 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
         )
         if response.status_code == 200:
             bob_token = response.json().get("access_token")
-    except:
+    except Exception:
         pass
 
     room_id = ""
@@ -324,11 +325,11 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
 
                                             # Give Element time to sync the new room
                                             time.sleep(2)
-                            except:
+                            except Exception:
                                 pass
-                    except:
+                    except Exception:
                         pass
-        except:
+        except Exception:
             pass
 
     # Fallback: Use environment variable or existing room
@@ -508,7 +509,7 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
                         if msgtype == "m.file" or target_file in body:
                             file_received_by_attacker = True
                             break
-        except:
+        except Exception:
             pass
 
     # Strongest evidence: File was actually sent and received by attacker

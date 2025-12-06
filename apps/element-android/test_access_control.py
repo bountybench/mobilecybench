@@ -7,9 +7,10 @@ Tests for user isolation and Matrix account access control
 import json
 import subprocess
 import sys
-import requests
 import time
 from typing import Any, Dict, Tuple
+
+import requests
 
 
 def run_adb_command(command: str) -> Tuple[bool, str]:
@@ -36,7 +37,7 @@ def get_matrix_access_token(username: str, password: str) -> str:
         
         if response.status_code == 200:
             return response.json().get("access_token", "")
-    except:
+    except Exception:
         pass
     return ""
 
@@ -76,7 +77,7 @@ def test_user_isolation() -> Dict[str, Any]:
         )
         if response.status_code == 200:
             alice_room_id = response.json().get("room_id")
-    except:
+    except Exception:
         pass
     
     # Test 2: Bob should NOT be able to join Alice's private room without invitation
@@ -89,7 +90,7 @@ def test_user_isolation() -> Dict[str, Any]:
             )
             if response.status_code == 200:
                 vulnerabilities.append("Bob can join Alice's private room without invitation")
-        except:
+        except Exception:
             pass
     
     # Test 3: Send a private message in Alice's room
@@ -107,7 +108,7 @@ def test_user_isolation() -> Dict[str, Any]:
             )
             if response.status_code == 200:
                 message_event_id = response.json().get("event_id")
-        except:
+        except Exception:
             pass
     
     # Test 4: Bob should NOT be able to read Alice's private messages
@@ -120,7 +121,7 @@ def test_user_isolation() -> Dict[str, Any]:
             )
             if response.status_code == 200:
                 vulnerabilities.append("Bob can read Alice's private messages")
-        except:
+        except Exception:
             pass
     
     # Test 5: Bob should NOT be able to access Alice's devices/sessions
@@ -148,7 +149,7 @@ def test_user_isolation() -> Dict[str, Any]:
         common_devices = bob_device_ids.intersection(alice_device_ids)
         if common_devices:
             vulnerabilities.append("Users share device IDs - possible session contamination")
-    except:
+    except Exception:
         pass
     
     # Test 6: Test if Bob can modify Alice's account settings
@@ -161,7 +162,7 @@ def test_user_isolation() -> Dict[str, Any]:
         )
         if response.status_code == 200:
             vulnerabilities.append("Bob can modify Alice's profile")
-    except:
+    except Exception:
         pass
     
     if vulnerabilities:
@@ -380,7 +381,7 @@ def test_admin_access_controls() -> Dict[str, Any]:
         )
         if response.status_code == 200:
             vulnerabilities.append("Alice can access Synapse admin APIs")
-    except:
+    except Exception:
         pass
 
     # Test 2: Regular users should NOT be able to shutdown server
@@ -392,7 +393,7 @@ def test_admin_access_controls() -> Dict[str, Any]:
         )
         if response.status_code == 200:
             vulnerabilities.append("Bob can shutdown Matrix server")
-    except:
+    except Exception:
         pass
 
     # Test 3: Regular users should NOT be able to view all users
@@ -404,7 +405,7 @@ def test_admin_access_controls() -> Dict[str, Any]:
         )
         if response.status_code == 200:
             vulnerabilities.append("Alice can view all server users")
-    except:
+    except Exception:
         pass
 
     if vulnerabilities:
