@@ -18,9 +18,9 @@ from agent.prompts.prompts import (
     TARGET_HOST_EXAMPLE,
 )
 from utils.agent_utils import take_screenshot
-from utils.reasoning_utils import is_reasoning_supported_model
 from utils.logger import agent_logger, logger_manager
 from utils.mcp_utils import get_mcp_server_config
+from utils.reasoning_utils import is_reasoning_supported_model
 from utils.time_tracker import time_tracker
 from utils.token_tracker import TokenTracker
 
