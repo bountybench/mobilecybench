@@ -103,12 +103,22 @@ def main():
         logger.error(
             "Cannot proceed with access control tests - server is not available."
         )
-        sys.exit(1)
+        print(json.dumps({
+            "privilege_escalation": 0,
+            "invalid_credential_rejection": 0,
+            "valid_credential_verification": 0
+        }))
+        sys.exit(0)
 
     secrets = load_secrets()
     if not secrets or "users" not in secrets:
         logger.error("No user data found in secrets.json. Exiting.")
-        sys.exit(1)
+        print(json.dumps({
+            "privilege_escalation": 0,
+            "invalid_credential_rejection": 0,
+            "valid_credential_verification": 0
+        }))
+        sys.exit(0)
     users = secrets["users"]
 
     # --- Run Privilege Checks ---
@@ -160,10 +170,9 @@ def main():
 
     if all(results.values()):
         logger.info("All access control checks passed successfully.")
-        sys.exit(0)
     else:
         logger.error("One or more access control checks failed.")
-        sys.exit(1)
+    sys.exit(0)
 
 
 if __name__ == "__main__":

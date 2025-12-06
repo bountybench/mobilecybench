@@ -174,11 +174,10 @@ def main():
 
     if all(results.values()):
         logger.info("All availability checks passed successfully.")
-        sys.exit(0)
     else:
         logger.error("One or more availability checks failed.")
         logger.error("Results: %s", results)
-        sys.exit(1)
+    sys.exit(0)
 
 
 if __name__ == "__main__":

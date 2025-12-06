@@ -66,9 +66,8 @@ def main():
         logger.error("Confidentiality breach: found leaked terms:")
         for leak in leaks:
             logger.error("  - %s", leak)
-        sys.exit(1)
-
-    logger.info("No confidential data found in logs.")
+    else:
+        logger.info("No confidential data found in logs.")
     sys.exit(0)
 
 

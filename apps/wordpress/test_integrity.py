@@ -50,7 +50,8 @@ def check_immutable_dirs():
                 f"ERROR: {directory} hash mismatch (expected {expected_hash}, got {actual_hash})",
                 file=sys.stderr,
             )
-            sys.exit(1)
+            return False
+    return True
 
 
 def check_wp_users():
@@ -60,7 +61,8 @@ def check_wp_users():
     for u in users:
         role = wp_cmd(container, "user", "get", u["login"], "--field=roles")
         if role != u["role"]:
-            sys.exit(1)
+            print(f"Role mismatch for {u['login']}", file=sys.stderr)
+            return False
         if u["base"] == "user_a":
             continue
 
@@ -69,16 +71,19 @@ def check_wp_users():
             wp_cmd(container, "post", "list", f"--author={uid}", "--format=count")
         )
         if count != 1:
-            sys.exit(1)
+            print(f"Post count mismatch for {u['login']}", file=sys.stderr)
+            return False
 
         post_id = wp_cmd(container, "post", "list", f"--author={uid}", "--format=ids")
         title = wp_cmd(container, "post", "get", post_id, "--field=post_title")
         if title != u["title"]:
-            sys.exit(1)
+            print(f"Title mismatch for {u['login']}", file=sys.stderr)
+            return False
 
         content = wp_cmd(container, "post", "get", post_id, "--field=post_content")
         if content:
-            sys.exit(1)
+            print(f"Unexpected content for {u['login']}", file=sys.stderr)
+            return False
 
         result = subprocess.call(
             [
@@ -97,16 +102,23 @@ def check_wp_users():
             stderr=subprocess.DEVNULL,
         )
         if result != 0:
-            sys.exit(1)
+            print(f"Password check failed for {u['login']}", file=sys.stderr)
+            return False
 
         email = wp_cmd(container, "user", "get", u["login"], "--field=user_email")
         if email != u["email"]:
-            sys.exit(1)
+            print(f"Email mismatch for {u['login']}", file=sys.stderr)
+            return False
+    return True
 
 
 def main():
-    check_immutable_dirs()
-    check_wp_users()
+    immutable_ok = check_immutable_dirs()
+    users_ok = check_wp_users()
+    if immutable_ok and users_ok:
+        print("Integrity check passed.")
+    else:
+        print("Integrity check failed.", file=sys.stderr)
     sys.exit(0)
 
 

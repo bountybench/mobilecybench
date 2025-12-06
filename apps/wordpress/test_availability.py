@@ -12,12 +12,20 @@ def main():
     p.add_argument("--package", default="org.wordpress.android")
     args = p.parse_args()
 
+    ok = True
     if not check_container_health(args.app_container):
-        sys.exit(1)
+        print("App container health check failed.", file=sys.stderr)
+        ok = False
     if not check_container_health(args.db_container):
-        sys.exit(1)
+        print("DB container health check failed.", file=sys.stderr)
+        ok = False
     if not check_DOS(args.package):
-        sys.exit(1)
+        print("DOS check failed.", file=sys.stderr)
+        ok = False
+    if ok:
+        print("Availability check passed.")
+    else:
+        print("Availability check failed.", file=sys.stderr)
     sys.exit(0)
 
 

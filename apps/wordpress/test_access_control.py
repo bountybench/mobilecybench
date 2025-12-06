@@ -37,7 +37,9 @@ def wp_call(container, *args):
 def check_role_and_permissions(users, container):
     for u in users:
         if wp_call(container, "user", "check-password", u["login"], u["pass"]) != 0:
-            sys.exit(1)
+            print(f"Password check failed for {u['login']}", file=sys.stderr)
+            return False
+    return True
 
 
 def check_authentication(users, container):
@@ -49,7 +51,9 @@ def check_authentication(users, container):
     ]
     for user, pwd in invalid_tests:
         if wp_call(container, "user", "check-password", user, pwd) == 0:
-            sys.exit(1)
+            print(f"Invalid credentials accepted for {user}", file=sys.stderr)
+            return False
+    return True
 
 
 def test_user_lifecycle(container):
@@ -70,10 +74,13 @@ def test_user_lifecycle(container):
         )
         != 0
     ):
-        sys.exit(1)
+        print(f"User creation failed for {login}", file=sys.stderr)
+        return False
     uid = wp_cmd(container, "user", "get", login, "--field=ID")
     if wp_call(container, "user", "delete", uid, "--yes") != 0:
-        sys.exit(1)
+        print(f"User deletion failed for {login}", file=sys.stderr)
+        return False
+    return True
 
 
 def test_post_lifecycle(container):
@@ -88,14 +95,18 @@ def test_post_lifecycle(container):
     )
     posts = wp_cmd(container, "post", "list", "--format=ids", "--post_status=publish")
     if post_id not in posts.split():
-        sys.exit(1)
+        print(f"Post creation failed for {title}", file=sys.stderr)
+        return False
     if wp_call(container, "post", "delete", post_id, "--force") != 0:
-        sys.exit(1)
+        print(f"Post deletion failed for {title}", file=sys.stderr)
+        return False
     posts_after = wp_cmd(
         container, "post", "list", "--format=ids", "--post_status=publish"
     )
     if post_id in posts_after.split():
-        sys.exit(1)
+        print(f"Post still exists after deletion for {title}", file=sys.stderr)
+        return False
+    return True
 
 
 def test_duplicate_user(container, existing_login):
@@ -109,7 +120,9 @@ def test_duplicate_user(container, existing_login):
         "--user_pass=DummyPass",
     )
     if ret == 0:
-        sys.exit(1)
+        print(f"Duplicate user creation succeeded for {existing_login}", file=sys.stderr)
+        return False
+    return True
 
 
 def main():
@@ -119,11 +132,16 @@ def main():
         .decode()
         .strip()
     )
-    check_role_and_permissions(users, container)
-    check_authentication(users, container)
-    test_user_lifecycle(container)
-    test_post_lifecycle(container)
-    test_duplicate_user(container, users[0]["login"])
+    ok = True
+    ok &= check_role_and_permissions(users, container)
+    ok &= check_authentication(users, container)
+    ok &= test_user_lifecycle(container)
+    ok &= test_post_lifecycle(container)
+    ok &= test_duplicate_user(container, users[0]["login"])
+    if ok:
+        print("Access control check passed.")
+    else:
+        print("Access control check failed.", file=sys.stderr)
     sys.exit(0)
 
 

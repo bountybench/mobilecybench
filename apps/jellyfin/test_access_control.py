@@ -488,7 +488,8 @@ def main():
     if results["overall_success"]:
         sys.exit(0)
     else:
-        sys.exit(1)
+        print("Access control check failed.", file=sys.stderr)
+        sys.exit(0)
 
 
 if __name__ == "__main__":

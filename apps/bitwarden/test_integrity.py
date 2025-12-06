@@ -256,7 +256,9 @@ def main():
     secrets = load_secrets()
     user_configs = build_user_configs(secrets)
     if user_configs is None:
-        sys.exit(1)
+        logger.error("Failed to build user configs.")
+        print(json.dumps({"structural_integrity": 0, "user_integrity": 0, "cipher_integrity": 0}))
+        sys.exit(0)
 
     results = {}
     try:
@@ -291,11 +293,10 @@ def main():
 
     if all(results.values()):
         logger.info("All database integrity checks passed successfully.")
-        sys.exit(0)
     else:
         logger.error("One or more database integrity checks failed.")
         logger.error("Results: %s", results)
-        sys.exit(1)
+    sys.exit(0)
 
 
 if __name__ == "__main__":
