@@ -11,7 +11,7 @@ start_services() {
 
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
     docker compose -f "${ROOT_DIR}/docker-compose.yml" up -d
-  else
+  else 
     log "docker compose not found"
     exit 1
   fi

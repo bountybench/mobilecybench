@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+COMPOSE_FILE="${PROJECT_ROOT}/apps/miniflutt/docker-compose.yml"
 
 echo "[cleanup] Cleaning up Android emulator APKs..."
 
@@ -31,11 +33,15 @@ else
     exit 1
 fi 
 
-echo "[cleanup] Removing dangling Docker containers/images/networks..."
-docker container prune -f || true
-docker network prune -f || true
-docker volume prune -f || true
-docker image prune -f || true
+echo "[cleanup] Stopping Docker"
+if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  docker compose -f "$COMPOSE_FILE" down --remove-orphans --volumes || true
+elif command -v docker-compose >/dev/null 2>&1; then
+  docker-compose -f "$COMPOSE_FILE" down --remove-orphans --volumes || true
+else
+  echo "[cleanup] WARNING: docker compose / docker-compose not found; skipping compose cleanup."
+fi
+
 
 echo "[cleanup] Cleaning build artifacts from codebase..."
 CODEBASE_DIR="${ROOT_DIR}/codebase"
