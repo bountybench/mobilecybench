@@ -12,17 +12,16 @@ FDROID_DEBUG_APK_DIR="$CODEBASE_DIR/app/build/outputs/apk/fdroid/debug"
 APK_PATH=""
 
 create_user_properties() {
-    echo "[DEBUG] GITHUB_TOKEN is: $GITHUB_TOKEN"
     # Create user.properties if missing (Bitwarden specific)
     USER_PROPERTIES="$BITWARDEN_DIR/codebase/user.properties"
     if [ ! -f "$USER_PROPERTIES" ]; then
         echo "[INFO] Creating user.properties in codebase/"
-        if [ -z "$GITHUB_TOKEN" ]; then
-            read -p "Enter your GitHub Personal Access Token (with read:packages scope): " GITHUB_TOKEN
+        if [ -z "$GH_TOKEN" ]; then
+            read -p "Enter your GitHub Personal Access Token (with read:packages scope): " GH_TOKEN
         else
-            echo "[INFO] Using GITHUB_TOKEN from environment."
+            echo "[INFO] Using GH_TOKEN from environment."
         fi
-        echo "gitHubToken=$GITHUB_TOKEN" > "$USER_PROPERTIES"
+        echo "gitHubToken=$GH_TOKEN" > "$USER_PROPERTIES"
         echo "localSdk=false" >> "$USER_PROPERTIES"
         echo "[INFO] user.properties created."
     else
