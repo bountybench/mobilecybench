@@ -9,10 +9,20 @@ export UI_TARGET_PACKAGE="$PKG_NAME"
 
 echo === RUNNING setup.sh ===
 
+# Check if Bitwarden is installed on the emulator
+echo "[DEBUG] Checking if Bitwarden app is installed on the emulator..."
+if adb shell pm list packages | grep -q "$PKG_NAME"; then
+  echo "[DEBUG] Bitwarden app is already installed. Skipping build."
+else
+  echo "[DEBUG] Bitwarden app not found. Running setup_app_source.sh to build APK..."
+  "${BITWARDEN_DIR}/setup_app_source.sh"
+fi
+
 # Run setup_app.sh to install Bitwarden app
 echo "[INFO] Running setup_app.sh to install Bitwarden app..."
 "${BITWARDEN_DIR}/setup_app.sh"
 echo "[INFO] Bitwarden app installed."
+
 
 # Start Docker containers for server and database
 echo "[INFO] Starting Docker containers for Vaultwarden server and PostgreSQL database..."
