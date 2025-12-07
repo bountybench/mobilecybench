@@ -8,4 +8,7 @@
   "app_server": "http://jellyfin-server:8096",
   "username": "testuser",
   "password": "testuser123"
+  ,
+  "package_name": "org.jellyfin.mobile",
+  "container_names": []
 }
