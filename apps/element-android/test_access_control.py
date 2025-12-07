@@ -606,7 +606,7 @@ def main():
         "summary": f"Access control tests completed. Score: {final_score}",
     }
 
-    print(json.dumps(output, indent=2))
+    print(json.dumps(output))
     sys.exit(0)
 
 
