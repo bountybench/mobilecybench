@@ -8,7 +8,7 @@ MALICIOUS_APP_DIR="$SCRIPT_DIR/malicious_app"
 APK_PATH="$MALICIOUS_APP_DIR/dist/element-exploit.apk"
 ATTACKER_PKG="com.example.elementexploit"
 ATTACKER_ACTIVITY="com.example.elementexploit.MainActivity"
-ELEMENT_PKG="im.vector.app.debug"
+ELEMENT_PKG="im.vector.app"
 
 # Debug function
 debug_log() {
