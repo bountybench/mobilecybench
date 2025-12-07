@@ -177,6 +177,13 @@ main() {
     setup_environment
     build_jellyfin
 
+    # Copy all signed APKs to apk/ directory
+    APK_SRC_DIR="$CODEBASE_DIR/app/build/outputs/apk/libre/release"
+    APK_DST_DIR="$SCRIPT_DIR/apk"
+    mkdir -p "$APK_DST_DIR"
+    find "$APK_SRC_DIR" -name "*-release.apk" -not -name "*unsigned*" -type f -exec cp {} "$APK_DST_DIR" \;
+    info "Copied signed APKs to $APK_DST_DIR"
+
     echo ""
     echo "=========================================="
     info "Jellyfin Build complete! Jellyfin is ready to be installed"

@@ -48,13 +48,13 @@ install_jellyfin(){
   arch=$(get_emulator_arch)
 
   local apk
-  local apk_dir="$CODEBASE_DIR/app/build/outputs/apk/libre/release"
+  local apk_dir="$SCRIPT_DIR/apk"
+  local fallback_apk_dir="$CODEBASE_DIR/app/build/outputs/apk/libre/release"
 
-  # Try architecture-specific signed APK first
   apk=$(find "$apk_dir" -name "*-$arch-release.apk" -not -name "*unsigned*" -type f 2>/dev/null | head -1)
 
   if [[ -z "$apk" ]]; then
-    warn "No signed $arch APK found, trying any signed APK"
+    warn "No signed $arch APK found in apk/, trying any signed APK in apk/"
     apk=$(find "$apk_dir" -name "*-release.apk" -not -name "*unsigned*" -type f 2>/dev/null | head -1)
   fi
 
