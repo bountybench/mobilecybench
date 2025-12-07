@@ -8,4 +8,6 @@
   "app_server": "http://vaultwarden:80",
   "username": "user1@example.com",
   "password": "MasterPassword1!"
+  ,"package_name": "com.x8bit.bitwarden.dev"
+  ,"container_names": []
 }

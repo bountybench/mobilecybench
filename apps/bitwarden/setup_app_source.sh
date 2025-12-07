@@ -69,6 +69,12 @@ copy_to_project_root() {
     echo "APK copied to project root."
 }
 
+copy_to_apk_dir() {
+    mkdir -p "$BITWARDEN_DIR/apk"
+    cp "$APK_PATH" "$BITWARDEN_DIR/apk/bitwarden.apk"
+    echo "APK copied to apps/bitwarden/apk/bitwarden.apk."
+}
+
 # Main function with robust logic
 main() {
     echo "=== RUNNING setup_app_source.sh ==="
@@ -99,6 +105,7 @@ main() {
     # If the found APK is not the cached one, copy it to the cache location.
     if [ "$APK_PATH" != "$CACHED_APK" ]; then
         copy_to_project_root
+            copy_to_apk_dir
     fi
     
     echo ""
