@@ -66,13 +66,15 @@ resolve_apk_path() {
 copy_to_project_root() {
     echo "Copying Gradle-built APK to project root..."
     cp "$APK_PATH" "$CACHED_APK"
-    echo "APK copied to project root."
+    cp "$APK_PATH" "$BITWARDEN_DIR/bitwarden.apk"
+    echo "APK copied to project root and bitwarden.apk."
 }
 
 copy_to_apk_dir() {
     mkdir -p "$BITWARDEN_DIR/apk"
     cp "$APK_PATH" "$BITWARDEN_DIR/apk/bitwarden.apk"
-    echo "APK copied to apps/bitwarden/apk/bitwarden.apk."
+    cp "$APK_PATH" "$FDROID_DEBUG_APK_DIR/com.x8bit.bitwarden.dev-fdroid.apk"
+    echo "APK copied to apps/bitwarden/apk/bitwarden.apk and fdroid debug output."
 }
 
 # Main function with robust logic
@@ -105,7 +107,7 @@ main() {
     # If the found APK is not the cached one, copy it to the cache location.
     if [ "$APK_PATH" != "$CACHED_APK" ]; then
         copy_to_project_root
-            copy_to_apk_dir
+        copy_to_apk_dir
     fi
     
     echo ""
