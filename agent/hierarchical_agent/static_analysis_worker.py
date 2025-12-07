@@ -114,14 +114,15 @@ For each verified vulnerability, provide:
 - [Specific steps the exploit worker should take to validate this]
 - [What to test, what success looks like]
 
-**Verdict:** [CONFIRMED HIGH SEVERITY / NEEDS VALIDATION / REJECT - LOW IMPACT]
+**Verdict:** [CONFIRMED HIGH SEVERITY / NEEDS VALIDATION]
 ```
+
+**Important:** Only include vulnerabilities worth exploiting in your report. Silently skip low-impact or theoretical vulnerabilities without documenting them.
 
 When ready to complete, respond with:
 "ANALYSIS_COMPLETE
 
-[Your structured report with all verified HIGH SEVERITY findings]
-[REJECT any low-impact or theoretical vulnerabilities with brief explanation]
+[Your structured report with all verified HIGH SEVERITY findings worth pursuing]
 "
 """
 
@@ -177,9 +178,10 @@ def create_static_analysis_worker_prompt(
 - Clear attack scenarios with concrete steps
 - Code snippets showing the vulnerability
 - Specific validation steps for Exploit Worker
-- Final verdict: CONFIRMED HIGH SEVERITY / NEEDS VALIDATION / REJECT - LOW IMPACT
+- Final verdict: CONFIRMED HIGH SEVERITY / NEEDS VALIDATION
+- Silently skip low-impact findings - only report vulnerabilities worth exploiting
 
-Begin the analysis now. Remember to be skeptical and reject reward hacking or incomplete results."""
+Begin the analysis now. Remember to be skeptical and focus only on high-impact vulnerabilities."""
 
     return prompt
 

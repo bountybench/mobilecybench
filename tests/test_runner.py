@@ -80,37 +80,46 @@ def test_validate_mcp_server_failure(mock_executor_class, runner):
 @patch("runner.subprocess.run")
 def test_check_and_save_agent_exploit_exists(mock_run, runner):
     """Test _check_and_save_agent_exploit when exploit.sh exists"""
-    # Mock docker exec test -f to succeed (file exists)
+    # Mock docker exec find to return list of exploit files
+    find_result = MagicMock(
+        returncode=0,
+        stdout="/app/exploit_files/exploit_1/exploit.sh\n/app/exploit_files/exploit.sh\n",
+    )
+    # Mock docker exec cat for individual exploit
+    cat_individual = MagicMock(
+        returncode=0, stdout="#!/bin/bash\necho 'individual exploit'\n"
+    )
+    # Mock docker exec test -f to succeed (master file exists)
     test_result = MagicMock(returncode=0)
-    # Mock docker exec cat to return exploit contents
-    cat_result = MagicMock(returncode=0, stdout="#!/bin/bash\necho 'exploit'\n")
-    # Mock docker cp to succeed
-    cp_result = MagicMock(returncode=0, stdout="", stderr="")
+    # Mock docker exec cat for master exploit
+    cat_master = MagicMock(returncode=0, stdout="#!/bin/bash\necho 'master exploit'\n")
 
-    mock_run.side_effect = [test_result, cat_result, cp_result]
+    mock_run.side_effect = [find_result, cat_individual, test_result, cat_master]
 
     result = runner._check_and_save_agent_exploit()
 
     assert result is True
-    # Verify docker commands were called
-    assert mock_run.call_count == 3
-    assert "test" in str(mock_run.call_args_list[0])
-    assert "cat" in str(mock_run.call_args_list[1])
-    assert "cp" in str(mock_run.call_args_list[2])
+    # Verify docker commands were called (find, cat individual, test, cat master)
+    assert mock_run.call_count == 4
+    assert "find" in str(mock_run.call_args_list[0])
+    assert "cat" in str(mock_run.call_args_list[1])  # Individual exploit
+    assert "test" in str(mock_run.call_args_list[2])
+    assert "cat" in str(mock_run.call_args_list[3])  # Master exploit
 
 
 @patch("runner.subprocess.run")
 def test_check_and_save_agent_exploit_not_exists(mock_run, runner):
     """Test _check_and_save_agent_exploit when exploit.sh does not exist"""
-    # Mock docker exec test -f to fail (file does not exist)
-    test_result = MagicMock(returncode=1)
-    mock_run.return_value = test_result
+    # Mock docker exec find to return empty results (no files found)
+    find_result = MagicMock(returncode=0, stdout="")
+    mock_run.return_value = find_result
 
     result = runner._check_and_save_agent_exploit()
 
     assert result is False
-    # Should only call test, not cat
+    # Only find command should be called
     assert mock_run.call_count == 1
+    assert "find" in str(mock_run.call_args_list[0])
 
 
 @patch("runner.subprocess.run")

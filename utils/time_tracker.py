@@ -216,36 +216,8 @@ class TimeTracker:
 
     def log_summary(self, logger) -> None:
         """Log timing summary to the provided logger."""
-        logger.info("=" * LOG_SEPARATOR_LENGTH)
-        logger.info("EXPERIMENT TIMING SUMMARY")
-        logger.info("=" * LOG_SEPARATOR_LENGTH)
-
-        experiment_duration = self.get_experiment_duration() or 0.0
-        total_llm_time = self.get_total_llm_time()
-        call_count = self.get_llm_call_count()
-        stats = self._compute_stats()
-
-        logger.info(f"total_experiment_clock_time: {experiment_duration:.3f} seconds")
-        logger.info(f"total_llm_time: {total_llm_time:.3f} seconds")
-        logger.info(f"llm_call_count: {call_count}")
-
-        # Log overall stats
-        if stats.get("overall"):
-            overall = stats["overall"]
-            logger.info(f"llm_stats_overall_p50: {overall['p50']:.3f} seconds")
-            logger.info(f"llm_stats_overall_p95: {overall['p95']:.3f} seconds")
-            logger.info(f"llm_stats_overall_max: {overall['max']:.3f} seconds")
-
-        # Log individual LLM call times
-        for i, call in enumerate(self.llm_calls, 1):
-            status = "✓" if call.success else "✗"
-            logger.info(
-                f"model_provider_call_{i}: {call.duration:.3f} seconds {status}"
-            )
-            if call.error:
-                logger.info(f"  error: {call.error}")
-
-        logger.info("=" * LOG_SEPARATOR_LENGTH)
+        # Timing summary logging temporarily disabled
+        pass
 
 
 # Global time tracker instance

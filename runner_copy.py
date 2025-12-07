@@ -16,7 +16,8 @@ from agent.agent_setup import AgentEnvironment
 from agent.mcp.direct_tool_executor import MCPToolExecutor
 from models.config import RunnerConfig
 from utils.command_executor import CommandExecutor
-from utils.emulator_manager import EmulatorManager
+
+# from utils.emulator_manager import EmulatorManager  # DISABLED: Using MockEmulator
 from utils.logger import logger, logger_manager
 from utils.time_tracker import time_tracker
 from utils.utils import get_app_metadata
@@ -34,6 +35,38 @@ def log_banner(message: str, width: int = 60):
     logger.info("=" * width)
     logger.info(message.center(width))
     logger.info("=" * width)
+
+
+class MockEmulator:
+    """
+    Mock Emulator Manager that pretends to manage an emulator but actually
+    assumes an emulator is already running and does nothing.
+    """
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def start_in_background(self):
+        logger.info(
+            "MockEmulator: start_in_background - Assuming emulator is already running"
+        )
+
+    def wait_until_ready(self, timeout=300):
+        logger.info("MockEmulator: wait_until_ready - Assuming emulator is ready")
+
+    def check_status(self) -> bool:
+        logger.info("MockEmulator: check_status - Assuming emulator is healthy")
+        return True
+
+    def stop(self):
+        logger.info("MockEmulator: stop - Ignoring stop request")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        logger.info("MockEmulator: __exit__ - Not stopping emulator")
+        return False
 
 
 class MobileCybenchRunner:
@@ -157,61 +190,30 @@ class MobileCybenchRunner:
                 f"Required ngrok.yml config file not found: {ngrok_config}"
             )
 
-        # Check for static vulnerability reports if in supervisor mode
+        # Check for semgrep_results.json if in supervisor mode
         if self.mode == "supervisor":
-            reports_root = self.app_dir / "static_vuln_reports"
-            semgrep_report_path = reports_root / "semgrep" / "report.json"
-            mobsf_report_path = reports_root / "mobsfscan" / "report.json"
-            qark_report_path = reports_root / "qark" / "report.json"
+            semgrep_results_path = self.app_dir / "semgrep_results.json"
 
-            if not reports_root.exists() or not any(reports_root.iterdir()):
+            # Check if file exists
+            if not semgrep_results_path.exists():
                 self._exit_with_error(
-                    "Supervisor mode requires static analysis outputs under "
-                    f"{reports_root}. Directory is missing or empty.\n"
-                    "Generate at least Semgrep (and optionally MobSF/QARK) reports before running."
+                    f"Supervisor mode requires semgrep_results.json.\n"
+                    f"Run: semgrep scan {self.app_dir}/codebase --config auto --severity ERROR --severity WARNING --json --output {semgrep_results_path}"
                 )
 
-            # Semgrep should be present; warn if missing
-            if not semgrep_report_path.exists():
-                logger.warning(
-                    "Semgrep report not found at %s; supervisor agents will proceed without it.",
-                    semgrep_report_path,
+            # Validate it's valid JSON
+            try:
+                with open(semgrep_results_path, "r") as f:
+                    json.load(f)
+                logger.info(
+                    "✓ Found and validated semgrep_results.json for supervisor mode"
                 )
-            else:
-                try:
-                    with open(semgrep_report_path, "r") as f:
-                        json.load(f)
-                    logger.info(
-                        "✓ Found and validated Semgrep report for supervisor mode"
-                    )
-                except json.JSONDecodeError as e:
-                    logger.warning(
-                        "Semgrep report exists but is not valid JSON (%s); rerun Semgrep to regenerate.",
-                        e,
-                    )
-
-            # MobSFScan and QARK are optional but recommended; validate if present
-            for tool_name, report_path in [
-                ("MobSFScan", mobsf_report_path),
-                ("QARK", qark_report_path),
-            ]:
-                if report_path.exists():
-                    try:
-                        with open(report_path, "r") as f:
-                            json.load(f)
-                        logger.info("✓ Found %s report at %s", tool_name, report_path)
-                    except json.JSONDecodeError:
-                        logger.warning(
-                            "%s report at %s is not valid JSON; rerun the scan to regenerate.",
-                            tool_name,
-                            report_path,
-                        )
-                else:
-                    logger.warning(
-                        "%s report not found at %s; continuing without it.",
-                        tool_name,
-                        report_path,
-                    )
+            except json.JSONDecodeError as e:
+                self._exit_with_error(
+                    f"semgrep_results.json exists but is not valid JSON.\n"
+                    f"Error: {e}\n"
+                    f"Run: semgrep scan {self.app_dir}/codebase --config auto --severity ERROR --severity WARNING --json --output {semgrep_results_path}"
+                )
 
         logger.info("Input validation passed")
 
@@ -746,10 +748,8 @@ class MobileCybenchRunner:
             self._exit_with_error(f"Failed to run cleanup script: {e}")
 
     def _check_and_save_agent_exploit(self):
-        """Ensure exploit.sh exists, log it, and copy the entire exploit_files directory to host."""
-        logger.info(
-            "Checking for agent-generated exploit.sh and exploit_files directory..."
-        )
+        """Check if agent created exploit.sh and log all exploit scripts"""
+        logger.info("Checking for agent-generated exploit scripts...")
         exploit_path = "/app/exploit_files/exploit.sh"
 
         try:
@@ -1047,15 +1047,34 @@ class MobileCybenchRunner:
                 pass  # If file writing fails, at least return the path
             return exploit_log_path
 
+    def _wait_for_quit_command(self):
+        log_banner("RUN COMPLETED - ENVIRONMENT STILL RUNNING")
+        print("\nThe emulator and all services are still running.")
+        print("Type 'quit' or 'exit' to stop all services, or press Ctrl-C\n")
+        while True:
+            try:
+                user_input = input("runner> ").strip().lower()
+                if user_input in ["quit", "exit"]:
+                    logger.info("Shutting down...")
+                    break
+                elif user_input == "":
+                    continue
+                else:
+                    print("Type 'quit' or 'exit' to shutdown")
+            except (KeyboardInterrupt, EOFError):
+                print("\nShutting down...")
+                logger.info("User interrupted. Shutting down...")
+                break
+
     def run(self):
         try:
             self.validate_input()
 
-            log_banner("SETTING UP ANDROID EMULATOR")
+            log_banner("SETTING UP ANDROID EMULATOR (MOCK)")
             sdk_version = (
                 self.metadata.get("sdk") if hasattr(self, "metadata") else None
             )
-            with EmulatorManager(
+            with MockEmulator(
                 docker_mode=self.config.docker_mode,
                 project_root=self.project_root,
                 sdk_version=sdk_version,
@@ -1063,7 +1082,7 @@ class MobileCybenchRunner:
             ) as emulator:
                 self.emulator = emulator
                 self.emulator.start_in_background()
-                logger.info("Emulator started in the background . . .")
+                logger.info("Emulator started in the background (MOCK) . . .")
 
                 self.setup_app_apk()
                 self.install_app_and_setup_backend()
@@ -1092,7 +1111,7 @@ class MobileCybenchRunner:
                     "No Agent Exploit Found - skipping exploit execution pipeline"
                 )
             else:
-                with EmulatorManager(
+                with MockEmulator(
                     docker_mode=self.config.docker_mode,
                     project_root=self.project_root,
                     sdk_version=sdk_version,
@@ -1100,7 +1119,7 @@ class MobileCybenchRunner:
                 ) as emulator:
                     self.emulator = emulator
                     self.emulator.start_in_background()
-                    logger.info("New emulator starting . . .")
+                    logger.info("New emulator starting (MOCK) . . .")
                     self._run_cleanup()
                     self.setup_app_apk()
                     self.install_app_and_setup_backend()

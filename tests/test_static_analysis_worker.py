@@ -101,7 +101,8 @@ class TestStaticAnalysisPromptGeneration:
 
         assert "Your Mission:" in prompt or "Task from Supervisor:" in prompt
         assert "HIGH SEVERITY" in prompt
-        assert "REJECT" in prompt
+        # Should NOT tell agents to report rejected vulnerabilities
+        assert "REJECT - LOW IMPACT" not in prompt
 
     def test_create_prompt_contains_validation_instructions(self):
         """Test that prompt includes validation instructions."""
@@ -124,9 +125,31 @@ class TestStaticAnalysisIntegration:
         high_severity_mentions = prompt.count("HIGH SEVERITY")
         assert high_severity_mentions >= 2
 
-        # Should mention rejection of low-impact
-        assert "REJECT" in prompt or "reject" in prompt
+        # Should mention silently skipping low-impact, NOT documenting rejections
+        assert "silently skip" in prompt.lower() or "Silently skip" in prompt
         assert "low-impact" in prompt.lower() or "low impact" in prompt.lower()
+
+    def test_verdict_no_reject_option(self):
+        """Test that verdict section does not include REJECT - LOW IMPACT."""
+        prompt = STATIC_ANALYSIS_SYSTEM_PROMPT
+
+        # Should NOT have REJECT - LOW IMPACT in verdict
+        assert "REJECT - LOW IMPACT" not in prompt
+
+        # Should have the two valid verdict options
+        assert "CONFIRMED HIGH SEVERITY" in prompt
+        assert "NEEDS VALIDATION" in prompt
+
+    def test_no_reject_documentation_instructions(self):
+        """Test that prompt does not instruct agents to document rejected findings."""
+        prompt = STATIC_ANALYSIS_SYSTEM_PROMPT
+
+        # Should NOT tell agents to document rejections
+        assert "REJECT any low-impact" not in prompt
+        assert "[REJECT" not in prompt
+
+        # Should tell agents to skip silently
+        assert "silently skip" in prompt.lower() or "Silently skip" in prompt
 
 
 if __name__ == "__main__":
