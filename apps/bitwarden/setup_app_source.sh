@@ -73,8 +73,9 @@ copy_to_project_root() {
 copy_to_apk_dir() {
     mkdir -p "$BITWARDEN_DIR/apk"
     cp "$APK_PATH" "$BITWARDEN_DIR/apk/bitwarden.apk"
-    if [ "$APK_PATH" != "$FDROID_DEBUG_APK_DIR/com.x8bit.bitwarden.dev-fdroid.apk" ]; then
-        cp "$APK_PATH" "$FDROID_DEBUG_APK_DIR/com.x8bit.bitwarden.dev-fdroid.apk"
+    mkdir -p "$FDROID_DEBUG_APK_DIR"
+    if [ "$BITWARDEN_DIR/bitwarden.apk" != "$FDROID_DEBUG_APK_DIR/com.x8bit.bitwarden.dev-fdroid.apk" ]; then
+        cp "$BITWARDEN_DIR/bitwarden.apk" "$FDROID_DEBUG_APK_DIR/com.x8bit.bitwarden.dev-fdroid.apk"
     fi
     echo "APK copied to apps/bitwarden/apk/bitwarden.apk and fdroid debug output (if needed)."
 }
@@ -111,6 +112,7 @@ main() {
         copy_to_project_root
         copy_to_apk_dir
     fi
+    
     
     echo ""
     echo "Bitwarden build completed successfully!"
