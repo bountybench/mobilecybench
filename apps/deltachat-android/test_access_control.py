@@ -12,18 +12,10 @@ import sys
 from typing import Dict, Tuple
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ACCOUNTS_FILE = os.path.join(SCRIPT_DIR, "accounts.json")
 METADATA_FILE = os.path.join(SCRIPT_DIR, "metadata.json")
 
 IMAP_HOST = os.getenv("MAIL_IMAP_HOST", "localhost")
 IMAP_PORT = int(os.getenv("MAIL_IMAP_PORT", "1143"))
-
-
-def _load_accounts() -> Dict:
-    if not os.path.exists(ACCOUNTS_FILE):
-        raise FileNotFoundError(f"accounts.json not found at {ACCOUNTS_FILE}")
-    with open(ACCOUNTS_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
 
 
 def _load_metadata() -> Dict:
