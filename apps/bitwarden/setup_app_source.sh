@@ -73,8 +73,10 @@ copy_to_project_root() {
 copy_to_apk_dir() {
     mkdir -p "$BITWARDEN_DIR/apk"
     cp "$APK_PATH" "$BITWARDEN_DIR/apk/bitwarden.apk"
-    cp "$APK_PATH" "$FDROID_DEBUG_APK_DIR/com.x8bit.bitwarden.dev-fdroid.apk"
-    echo "APK copied to apps/bitwarden/apk/bitwarden.apk and fdroid debug output."
+    if [ "$APK_PATH" != "$FDROID_DEBUG_APK_DIR/com.x8bit.bitwarden.dev-fdroid.apk" ]; then
+        cp "$APK_PATH" "$FDROID_DEBUG_APK_DIR/com.x8bit.bitwarden.dev-fdroid.apk"
+    fi
+    echo "APK copied to apps/bitwarden/apk/bitwarden.apk and fdroid debug output (if needed)."
 }
 
 # Main function with robust logic
