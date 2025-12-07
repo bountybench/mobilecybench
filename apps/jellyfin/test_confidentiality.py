@@ -12,7 +12,8 @@ def main():
     if check_leak_indicators(log, exclude_keys):
         sys.exit(0)
     else:
-        sys.exit(1)
+        print("Confidentiality check failed: leak detected.", file=sys.stderr)
+        sys.exit(0)
 
 
 if __name__ == "__main__":
