@@ -67,10 +67,10 @@ for i in {1..90}; do
         break
     fi
     if [ $i -eq 90 ]; then
-        echo "[WARNING] docker-mailserver container not healthy after 180s."
+        echo "[ERROR] docker-mailserver container not healthy after 180s."
         echo "Checking container logs..."
         docker logs "$CONTAINER_NAME" --tail 50 || true
-        echo "Proceeding anyways..."
+        exit 1
     fi
     sleep 2
 done
