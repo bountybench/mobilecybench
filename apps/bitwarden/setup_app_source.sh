@@ -12,6 +12,7 @@ FDROID_DEBUG_APK_DIR="$CODEBASE_DIR/app/build/outputs/apk/fdroid/debug"
 APK_PATH=""
 
 create_user_properties() {
+    echo "[DEBUG] GITHUB_TOKEN is: $GITHUB_TOKEN"
     # Create user.properties if missing (Bitwarden specific)
     USER_PROPERTIES="$BITWARDEN_DIR/codebase/user.properties"
     if [ ! -f "$USER_PROPERTIES" ]; then
