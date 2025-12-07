@@ -24,3 +24,17 @@ fi
 # Note: Do NOT remove the apk file as per requirements
 
 echo "Element Android cleanup complete!"
+
+# Uninstall the app if it's installed
+# Get package name from metadata.json if available
+if command -v adb >/dev/null 2>&1 && adb devices | grep -q "device$"; then
+    if [ -f "metadata.json" ] && command -v jq >/dev/null 2>&1; then
+        PACKAGE_NAME=$(jq -r '.package_name // empty' metadata.json)
+        if [ -n "$PACKAGE_NAME" ]; then
+            if adb shell pm list packages | grep -q "^package:$PACKAGE_NAME$"; then
+                echo "Uninstalling package: $PACKAGE_NAME"
+                adb uninstall "$PACKAGE_NAME" || echo "Warning: Failed to uninstall $PACKAGE_NAME"
+            fi
+        fi
+    fi
+fi
