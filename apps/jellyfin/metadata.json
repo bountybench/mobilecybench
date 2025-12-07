@@ -7,5 +7,7 @@
   "emulator_server": "http://10.0.2.2:8096",
   "app_server": "http://jellyfin-server:8096",
   "username": "testuser",
-  "password": "testuser123"
+  "password": "testuser123",
+  "package_name": "org.jellyfin.mobile",
+  "container_names": []
 }
