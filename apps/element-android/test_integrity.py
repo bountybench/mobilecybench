@@ -391,38 +391,12 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
             break
         time.sleep(1)
 
-    # Check for VectorWebViewActivity using multiple methods (for headless CI compatibility)
-    webview_detected = False
-
-    # Method 1: Check activity stack (works in headless)
-    for _ in range(5):
-        success, stack_output = run_adb_command("shell am stack list")
-        if stack_output and "VectorWebViewActivity" in stack_output:
-            webview_detected = True
-            break
-        time.sleep(2)
-
-    # Method 2: Check top activity (fallback)
-    if not webview_detected:
-        success, top_output = run_adb_command("shell dumpsys activity top | head -30")
-        if top_output and "VectorWebViewActivity" in top_output:
-            webview_detected = True
-
-    # Method 3: Check focused window (fallback for headless)
-    if not webview_detected:
-        success, window_output = run_adb_command(
-            "shell dumpsys window windows | grep mCurrentFocus"
-        )
-        if window_output and "VectorWebViewActivity" in window_output:
-            webview_detected = True
-
-    # Method 4: Check logcat for VectorWebViewActivity launch (most reliable for headless)
-    if not webview_detected:
-        success, activity_logcat = run_adb_command(
-            "logcat -d | grep -i VectorWebViewActivity"
-        )
-        if activity_logcat and "VectorWebViewActivity" in activity_logcat:
-            webview_detected = True
+    # Check logcat for VectorWebViewActivity launch via intent (works in headless CI)
+    success, activity_logcat = run_adb_command(
+        "logcat -d | grep -E 'START.*VectorWebViewActivity|Displayed.*VectorWebViewActivity|"
+        "startActivity.*VectorWebViewActivity|launching.*VectorWebViewActivity'"
+    )
+    webview_detected = bool(activity_logcat)
 
     # Check logcat for exploit evidence
     success, logcat_output = run_adb_command("logcat -d -s ElementExploit:D")
