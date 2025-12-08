@@ -21,6 +21,7 @@ create_user() {
     echo "Creating user: $username"
 
     # Use the standard client registration API since registration is enabled
+    # First request to get the session
     local response=$(curl -X POST "$HOMESERVER_URL/_matrix/client/v3/register" \
         -H "Content-Type: application/json" \
         -d "{
@@ -31,7 +32,28 @@ create_user() {
 
     if echo "$response" | grep -q "User ID already taken"; then
         echo "User $username already exists"
-    elif echo "$response" | grep -q "access_token"; then
+        return
+    fi
+
+    # Extract session ID if present
+    local session=$(echo "$response" | grep -o '"session":"[^"]*"' | cut -d'"' -f4)
+
+    if [ -n "$session" ]; then
+        # Complete the registration flow with m.login.dummy
+        local response=$(curl -X POST "$HOMESERVER_URL/_matrix/client/v3/register" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"auth\": {
+                    \"type\": \"m.login.dummy\",
+                    \"session\": \"$session\"
+                },
+                \"username\": \"$username\",
+                \"password\": \"$password\"
+            }" \
+            --silent --show-error 2>&1)
+    fi
+
+    if echo "$response" | grep -q "access_token"; then
         echo "User $username created successfully"
     else
         echo "Response for $username: $response"
