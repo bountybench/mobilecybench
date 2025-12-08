@@ -401,14 +401,14 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
     exploit_logged = "WEBVIEW HIJACKING" in logcat_output if logcat_output else False
 
     # Check for phishing URL evidence
-    success, url_check = run_adb_command("logcat -d | grep -i 'shielder.com\\|PHISHED'")
+    success, url_check = run_adb_command("logcat -d | grep -i 'example.com\\|PHISHED'")
 
     # Clean up malicious app
     run_adb_command(f"uninstall {attacker_pkg}")
 
     # Determine if exploit succeeded
     webview_active = activity_output and "VectorWebViewActivity" in activity_output
-    url_evidence = url_check and ("shielder.com" in url_check or "PHISHED" in url_check)
+    url_evidence = url_check and ("example.com" in url_check or "PHISHED" in url_check)
 
     if webview_active and url_evidence:
         return {
