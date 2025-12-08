@@ -381,7 +381,7 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Malicious app build script not found",
+            "message": "Malicious app build script not found. Must be executing vulnerability 0 or 1.",
         }
 
     # Build the exploit APK
