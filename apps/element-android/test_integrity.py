@@ -108,7 +108,7 @@ def test_code_injection_vulnerability() -> Dict[str, Any]:
             time.sleep(2)
 
             # Check if app is still running
-            success, ps_output = run_adb_command("shell pidof im.vector.app.debug")
+            success, ps_output = run_adb_command("shell pidof im.vector.app")
             if not success or not ps_output:
                 vulnerabilities_found += 1
                 break
@@ -386,10 +386,15 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
     # Check if Element was launched
     success, element_pid = run_adb_command(f"shell pidof {element_pkg}")
 
-    # Check for VectorWebViewActivity in activity stack
-    success, activity_output = run_adb_command(
-        "shell dumpsys activity activities | grep -A 15 VectorWebViewActivity"
-    )
+    # Check for VectorWebViewActivity in activity stack (with retries for slower CI)
+    activity_output = ""
+    for attempt in range(3):
+        success, activity_output = run_adb_command(
+            "shell dumpsys activity activities | grep -A 15 VectorWebViewActivity"
+        )
+        if activity_output and "VectorWebViewActivity" in activity_output:
+            break
+        time.sleep(2)
 
     # Check logcat for exploit evidence
     success, logcat_output = run_adb_command("logcat -d -s ElementExploit:D")
