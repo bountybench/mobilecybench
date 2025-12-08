@@ -465,7 +465,7 @@ def test_pin_bypass_cve_2024_26131() -> Dict[str, Any]:
 
     attacker_pkg = "com.example.elementexploit"
     attacker_activity = "com.example.elementexploit.MainActivity"
-    element_pkg = "im.vector.app.debug"
+    element_pkg = "im.vector.app"
 
     # Check if Element is installed
     success, output = run_adb_command("shell pm list packages | grep im.vector.app")

@@ -25,7 +25,7 @@ create_user() {
         -H "Content-Type: application/json" \
         -d "{
             \"username\": \"$username\",
-            \"password\": \"$password\",
+            \"password\": \"$password\"
         }" \
         --silent --show-error 2>&1)
 
@@ -42,8 +42,8 @@ create_user() {
 echo "Creating test users..."
 
 # Regular users for testing
-create_user "alice" "alicepass123" "false"
-create_user "bob" "bobpass123" "false"
+create_user "alice" "alicepass123"
+create_user "bob" "bobpass123"
 
 echo "All users created successfully!"
 echo ""
