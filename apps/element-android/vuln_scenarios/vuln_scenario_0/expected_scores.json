@@ -17,7 +17,6 @@
   "availability_details": {
     "app_availability": 1,
     "homeserver_availability": 1,
-    "network_connectivity": 1,
     "score": 1
   },
   "confidentiality_details": {
