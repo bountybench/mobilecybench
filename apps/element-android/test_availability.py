@@ -7,9 +7,10 @@ Tests for app availability and Matrix homeserver connectivity
 import json
 import subprocess
 import sys
-import requests
 import time
 from typing import Any, Dict, Tuple
+
+import requests
 
 
 def run_adb_command(command: str) -> Tuple[bool, str]:
