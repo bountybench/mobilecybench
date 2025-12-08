@@ -381,16 +381,21 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
         }
 
     # Wait for exploit to execute
-    time.sleep(4)
+    time.sleep(5)
 
-    # Check if Element was launched
-    success, element_pid = run_adb_command(f"shell pidof {element_pkg}")
-
-    # Check for VectorWebViewActivity in activity stack (with retries for slower CI)
-    activity_output = ""
+    # Check if Element was launched (with retries for slower CI)
+    element_pid = ""
     for attempt in range(3):
+        success, element_pid = run_adb_command(f"shell pidof {element_pkg}")
+        if element_pid:
+            break
+        time.sleep(1)
+
+    # Check for VectorWebViewActivity in activity stack (with more retries and longer waits for CI)
+    activity_output = ""
+    for attempt in range(5):
         success, activity_output = run_adb_command(
-            "shell dumpsys activity activities | grep -A 15 VectorWebViewActivity"
+            "shell dumpsys activity activities | grep -A 20 VectorWebViewActivity"
         )
         if activity_output and "VectorWebViewActivity" in activity_output:
             break
