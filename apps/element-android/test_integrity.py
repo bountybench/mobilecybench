@@ -416,6 +416,14 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
         if window_output and "VectorWebViewActivity" in window_output:
             webview_detected = True
 
+    # Method 4: Check logcat for VectorWebViewActivity launch (most reliable for headless)
+    if not webview_detected:
+        success, activity_logcat = run_adb_command(
+            "logcat -d | grep -i VectorWebViewActivity"
+        )
+        if activity_logcat and "VectorWebViewActivity" in activity_logcat:
+            webview_detected = True
+
     # Check logcat for exploit evidence
     success, logcat_output = run_adb_command("logcat -d -s ElementExploit:D")
     exploit_logged = "WEBVIEW HIJACKING" in logcat_output if logcat_output else False
