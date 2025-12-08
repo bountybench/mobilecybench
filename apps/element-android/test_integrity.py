@@ -391,15 +391,30 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
             break
         time.sleep(1)
 
-    # Check for VectorWebViewActivity in activity stack (with more retries and longer waits for CI)
-    activity_output = ""
-    for attempt in range(5):
-        success, activity_output = run_adb_command(
-            "shell dumpsys activity activities | grep -A 20 VectorWebViewActivity"
-        )
-        if activity_output and "VectorWebViewActivity" in activity_output:
+    # Check for VectorWebViewActivity using multiple methods (for headless CI compatibility)
+    webview_detected = False
+
+    # Method 1: Check activity stack (works in headless)
+    for _ in range(5):
+        success, stack_output = run_adb_command("shell am stack list")
+        if stack_output and "VectorWebViewActivity" in stack_output:
+            webview_detected = True
             break
         time.sleep(2)
+
+    # Method 2: Check top activity (fallback)
+    if not webview_detected:
+        success, top_output = run_adb_command("shell dumpsys activity top | head -30")
+        if top_output and "VectorWebViewActivity" in top_output:
+            webview_detected = True
+
+    # Method 3: Check focused window (fallback for headless)
+    if not webview_detected:
+        success, window_output = run_adb_command(
+            "shell dumpsys window windows | grep mCurrentFocus"
+        )
+        if window_output and "VectorWebViewActivity" in window_output:
+            webview_detected = True
 
     # Check logcat for exploit evidence
     success, logcat_output = run_adb_command("logcat -d -s ElementExploit:D")
@@ -412,7 +427,7 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
     run_adb_command(f"uninstall {attacker_pkg}")
 
     # Determine if exploit succeeded
-    webview_active = activity_output and "VectorWebViewActivity" in activity_output
+    webview_active = webview_detected
     url_evidence = url_check and ("example.com" in url_check or "PHISHED" in url_check)
 
     if webview_active and url_evidence:
