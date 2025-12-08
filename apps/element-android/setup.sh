@@ -31,6 +31,9 @@ for service in element-postgres element-synapse; do
     fi
 done
 
+echo "Seeding test users (alice, bob)..."
+./seed-users.sh
+
 echo "Building Element Android APK..."
 ./setup_app_apklink.sh
 
