@@ -45,7 +45,7 @@ def test_app_availability() -> Dict[str, Any]:
 
     # Try to launch the app
     success, output = run_adb_command(
-        "shell am start -n im.vector.app.debug/im.vector.application.features.Alias"
+        "shell am start -n im.vector.app/im.vector.application.features.Alias"
     )
 
     if not success:
@@ -59,10 +59,10 @@ def test_app_availability() -> Dict[str, Any]:
     # Wait a moment and check if app is running
     time.sleep(3)
     success, running_output = run_adb_command(
-        "shell dumpsys activity activities | grep im.vector.app.debug"
+        "shell dumpsys activity activities | grep im.vector.app"
     )
 
-    if success and "im.vector.app.debug" in running_output:
+    if success and "im.vector.app" in running_output:
         return {
             "test": test_name,
             "success": True,
