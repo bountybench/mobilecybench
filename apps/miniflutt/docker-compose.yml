@@ -1,0 +1,53 @@
+services:
+  miniflux-db:
+    image: postgres:16-alpine
+    container_name: miniflux-db
+    restart: always
+    environment:
+      POSTGRES_USER: miniflux
+      POSTGRES_PASSWORD: miniflux
+      POSTGRES_DB: miniflux
+    volumes:
+      - miniflux-db-data:/var/lib/postgresql/data
+    networks:
+      - private_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U miniflux -d miniflux"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  miniflux-app:
+    image: miniflux/miniflux:latest
+    container_name: miniflux-app
+    restart: always
+    depends_on:
+      miniflux-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://miniflux:miniflux@miniflux-db/miniflux?sslmode=disable
+      RUN_MIGRATIONS: "1"
+      CREATE_ADMIN: "1"
+      ADMIN_USERNAME: "MINIFLUX_ADMIN_USER"
+      ADMIN_PASSWORD: "MINIFLUX_ADMIN_PASSWORD"
+      LISTEN_ADDR: "0.0.0.0:8080"
+    ports:
+      - "8080:8080"
+    networks:
+      - private_net
+      - shared_net
+    healthcheck:
+      test: ["CMD", "/usr/bin/miniflux", "-healthcheck", "auto"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  miniflux-db-data:
+
+
+networks:
+  shared_net:
+    external: true
+  private_net:
+    driver: bridge     
