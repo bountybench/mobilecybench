@@ -209,8 +209,6 @@ def test_jellyfin_container_running_when_docker_present():
     assert running, f"Jellyfin container not running: {detail}"
 
 
-
-
 def main():
     """Run all availability tests and return JSON results."""
     import json
