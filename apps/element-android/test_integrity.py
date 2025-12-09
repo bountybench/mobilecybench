@@ -5,7 +5,6 @@ Tests for data tampering, code injection, and integrity verification
 """
 
 import json
-import os
 import subprocess
 import sys
 from typing import Any, Dict, Tuple
@@ -308,58 +307,14 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
             "message": "Element not installed - cannot test WebView hijacking",
         }
 
-    # Use the malicious app from vuln_scenario_0 (same as PIN bypass)
-    vuln_scenario_dir = os.path.join(
-        os.path.dirname(__file__), "vuln_scenarios", "vuln_scenario_0"
-    )
-    malicious_apk_path = os.path.join(
-        vuln_scenario_dir, "malicious_app", "dist", "element-exploit.apk"
-    )
-    build_script = os.path.join(vuln_scenario_dir, "malicious_app", "build.sh")
-
-    if not os.path.exists(build_script):
+    # Check if malicious app is already installed (by vuln.sh in vulnerability scenarios)
+    success, output = run_adb_command(f"shell pm list packages | grep {attacker_pkg}")
+    if not success or attacker_pkg not in output:
         return {
             "test": test_name,
-            "success": False,
+            "success": True,
             "score": 1,
-            "message": "Malicious app build script not found",
-        }
-
-    # Build the exploit APK
-    try:
-        result = subprocess.run(
-            f"cd '{os.path.dirname(build_script)}' && ./build.sh",
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        if result.returncode != 0 or not os.path.exists(malicious_apk_path):
-            return {
-                "test": test_name,
-                "success": False,
-                "score": 1,
-                "message": "Failed to build malicious APK",
-            }
-    except Exception as e:
-        return {
-            "test": test_name,
-            "success": False,
-            "score": 1,
-            "message": f"Build error: {str(e)}",
-        }
-
-    # Uninstall any existing malicious app
-    run_adb_command(f"uninstall {attacker_pkg}")
-
-    # Install the malicious APK
-    success, output = run_adb_command(f"install '{malicious_apk_path}'")
-    if not success:
-        return {
-            "test": test_name,
-            "success": False,
-            "score": 1,
-            "message": "Failed to install malicious APK",
+            "message": "Malicious app not installed - WebView hijacking exploit not active (baseline mode)",
         }
 
     # Clear logcat to capture exploit activity
@@ -371,8 +326,6 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
         f"--es exploit_type webview_hijack"
     )
     if not success:
-        # Clean up
-        run_adb_command(f"uninstall {attacker_pkg}")
         return {
             "test": test_name,
             "success": False,
@@ -385,7 +338,7 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
 
     # Check if Element was launched (with retries for slower CI)
     element_pid = ""
-    for attempt in range(3):
+    for _ in range(3):
         success, element_pid = run_adb_command(f"shell pidof {element_pkg}")
         if element_pid:
             break
@@ -404,9 +357,6 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
 
     # Check for phishing URL evidence
     success, url_check = run_adb_command("logcat -d | grep -i 'example.com\\|PHISHED'")
-
-    # Clean up malicious app
-    run_adb_command(f"uninstall {attacker_pkg}")
 
     # Determine if exploit succeeded
     webview_active = webview_detected

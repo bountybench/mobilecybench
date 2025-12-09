@@ -21,20 +21,27 @@ if [ -d "synapse-data" ]; then
     mkdir -p synapse-data
 fi
 
-# Note: Do NOT remove the apk file as per requirements
-
-echo "Element Android cleanup complete!"
-
 # Uninstall the app if it's installed
-# Get package name from metadata.json if available
-if command -v adb >/dev/null 2>&1 && adb devices | grep -q "device$"; then
-    if [ -f "metadata.json" ] && command -v jq >/dev/null 2>&1; then
-        PACKAGE_NAME=$(jq -r '.package_name // empty' metadata.json)
-        if [ -n "$PACKAGE_NAME" ]; then
-            if adb shell pm list packages | grep -q "^package:$PACKAGE_NAME$"; then
-                echo "Uninstalling package: $PACKAGE_NAME"
-                adb uninstall "$PACKAGE_NAME" || echo "Warning: Failed to uninstall $PACKAGE_NAME"
-            fi
+if command -v adb >/dev/null 2>&1 && [ -f "metadata.json" ] && command -v jq >/dev/null 2>&1; then
+    PACKAGE_NAME=$(jq -r '.package_name // empty' metadata.json)
+    if [ -n "$PACKAGE_NAME" ]; then
+        # Check if package is installed
+        if adb shell pm list packages 2>/dev/null | grep -q "^package:$PACKAGE_NAME$"; then
+            echo "Uninstalling package: $PACKAGE_NAME"
+            adb uninstall "$PACKAGE_NAME"
         fi
     fi
 fi
+
+# Uninstall malicious exploit app if it's installed (from vulnerability scenarios)
+if command -v adb >/dev/null 2>&1; then
+    MALICIOUS_PKG="com.example.elementexploit"
+    if adb shell pm list packages 2>/dev/null | grep -q "^package:$MALICIOUS_PKG$"; then
+        echo "Uninstalling malicious exploit app: $MALICIOUS_PKG"
+        adb uninstall "$MALICIOUS_PKG"
+    fi
+fi
+
+# Note: Do NOT remove the apk file as per requirements
+
+echo "Element Android cleanup complete!"

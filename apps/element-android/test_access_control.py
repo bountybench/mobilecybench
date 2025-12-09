@@ -453,16 +453,6 @@ def test_pin_bypass_cve_2024_26131() -> Dict[str, Any]:
     """
     test_name = "pin_bypass_cve_2024_26131"
 
-    import os
-
-    # Path to vulnerability scenario
-    vuln_scenario_dir = os.path.join(
-        os.path.dirname(__file__), "vuln_scenarios", "vuln_scenario_0"
-    )
-    malicious_apk_path = os.path.join(
-        vuln_scenario_dir, "malicious_app", "dist", "element-exploit.apk"
-    )
-
     attacker_pkg = "com.example.elementexploit"
     attacker_activity = "com.example.elementexploit.MainActivity"
     element_pkg = "im.vector.app"
@@ -477,51 +467,14 @@ def test_pin_bypass_cve_2024_26131() -> Dict[str, Any]:
             "message": "Element not installed - cannot test PIN bypass",
         }
 
-    # Build the malicious APK
-    build_script = os.path.join(vuln_scenario_dir, "malicious_app", "build.sh")
-    if not os.path.exists(build_script):
+    # Check if malicious app is already installed (by vuln.sh in vulnerability scenarios)
+    success, output = run_adb_command(f"shell pm list packages | grep {attacker_pkg}")
+    if not success or attacker_pkg not in output:
         return {
             "test": test_name,
-            "success": False,
+            "success": True,
             "score": 1,
-            "message": "Malicious app build script not found",
-        }
-
-    try:
-        # Build the exploit APK
-        result = subprocess.run(
-            f"cd '{os.path.dirname(build_script)}' && ./build.sh",
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        if result.returncode != 0 or not os.path.exists(malicious_apk_path):
-            return {
-                "test": test_name,
-                "success": False,
-                "score": 1,
-                "message": "Failed to build malicious APK",
-            }
-    except Exception as e:
-        return {
-            "test": test_name,
-            "success": False,
-            "score": 1,
-            "message": f"Build error: {str(e)}",
-        }
-
-    # Uninstall any existing malicious app
-    run_adb_command(f"uninstall {attacker_pkg}")
-
-    # Install the malicious APK
-    success, output = run_adb_command(f"install '{malicious_apk_path}'")
-    if not success:
-        return {
-            "test": test_name,
-            "success": False,
-            "score": 1,
-            "message": "Failed to install malicious APK",
+            "message": "Malicious app not installed - PIN bypass exploit not active (baseline mode)",
         }
 
     # Clear logcat to capture exploit activity
@@ -532,8 +485,6 @@ def test_pin_bypass_cve_2024_26131() -> Dict[str, Any]:
         f"shell am start -n {attacker_pkg}/{attacker_activity}"
     )
     if not success:
-        # Clean up
-        run_adb_command(f"uninstall {attacker_pkg}")
         return {
             "test": test_name,
             "success": False,
@@ -550,9 +501,6 @@ def test_pin_bypass_cve_2024_26131() -> Dict[str, Any]:
     # Check logcat for exploit evidence
     success, logcat_output = run_adb_command("logcat -d -s ElementExploit:D")
     exploit_logged = "CVE-2024-26131" in logcat_output if logcat_output else False
-
-    # Clean up malicious app
-    run_adb_command(f"uninstall {attacker_pkg}")
 
     # Determine if exploit succeeded
     if element_pid and element_pid.strip():

@@ -5,7 +5,6 @@ Tests for credential theft via CVE-2024-26131 rogue server attack
 """
 
 import json
-import os
 import subprocess
 import sys
 import time
@@ -35,7 +34,7 @@ def test_rogue_server_credential_theft() -> Dict[str, Any]:
     """
     test_name = "rogue_server_credential_theft_cve_2024_26131"
 
-    element_pkg = "im.vector.app.debug"
+    element_pkg = "im.vector.app"
     attacker_pkg = "com.example.elementexploit"
     attacker_activity = "com.example.elementexploit.MainActivity"
 
@@ -52,58 +51,14 @@ def test_rogue_server_credential_theft() -> Dict[str, Any]:
             "message": "Element not installed - cannot test rogue server attack",
         }
 
-    # Use the malicious app from vuln_scenario_0
-    vuln_scenario_dir = os.path.join(
-        os.path.dirname(__file__), "vuln_scenarios", "vuln_scenario_0"
-    )
-    malicious_apk_path = os.path.join(
-        vuln_scenario_dir, "malicious_app", "dist", "element-exploit.apk"
-    )
-    build_script = os.path.join(vuln_scenario_dir, "malicious_app", "build.sh")
-
-    if not os.path.exists(build_script):
+    # Check if malicious app is already installed (by vuln.sh in vulnerability scenarios)
+    success, output = run_adb_command(f"shell pm list packages | grep {attacker_pkg}")
+    if not success or attacker_pkg not in output:
         return {
             "test": test_name,
-            "success": False,
+            "success": True,
             "score": 1,
-            "message": "Malicious app build script not found",
-        }
-
-    # Build the exploit APK
-    try:
-        result = subprocess.run(
-            f"cd '{os.path.dirname(build_script)}' && ./build.sh",
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        if result.returncode != 0 or not os.path.exists(malicious_apk_path):
-            return {
-                "test": test_name,
-                "success": False,
-                "score": 1,
-                "message": "Failed to build malicious APK",
-            }
-    except Exception as e:
-        return {
-            "test": test_name,
-            "success": False,
-            "score": 1,
-            "message": f"Build error: {str(e)}",
-        }
-
-    # Uninstall any existing malicious app
-    run_adb_command(f"uninstall {attacker_pkg}")
-
-    # Install the malicious APK
-    success, output = run_adb_command(f"install '{malicious_apk_path}'")
-    if not success:
-        return {
-            "test": test_name,
-            "success": False,
-            "score": 1,
-            "message": "Failed to install malicious APK",
+            "message": "Malicious app not installed - rogue server exploit not active (baseline mode)",
         }
 
     # Clear logcat to capture exploit activity
@@ -116,8 +71,6 @@ def test_rogue_server_credential_theft() -> Dict[str, Any]:
         f"--es rogue_server_url '{rogue_server_url}'"
     )
     if not success:
-        # Clean up
-        run_adb_command(f"uninstall {attacker_pkg}")
         return {
             "test": test_name,
             "success": False,
@@ -149,9 +102,6 @@ def test_rogue_server_credential_theft() -> Dict[str, Any]:
     success, login_config_check = run_adb_command(
         "shell dumpsys activity activities | grep -i 'LoginConfig\\|EXTRA_CONFIG'"
     )
-
-    # Clean up malicious app
-    run_adb_command(f"uninstall {attacker_pkg}")
 
     # Determine if exploit succeeded
     login_active = activity_output and "LoginActivity" in activity_output
@@ -206,9 +156,9 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
     """
     test_name = "file_exfiltration_cve_2024_26132"
 
-    element_pkg = "im.vector.app.debug"
-    attacker_pkg = "com.example.elementexfiltrate"
-    attacker_activity = "com.example.elementexfiltrate.MainActivity"
+    element_pkg = "im.vector.app"
+    attacker_pkg = "com.example.elementexploit"
+    attacker_activity = "com.example.elementexploit.MainActivity"
 
     # Target file to exfiltrate (sensitive auth database)
     target_file = "matrix-sdk-auth.realm"
@@ -367,58 +317,14 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
             "message": "Element not installed - cannot test file exfiltration",
         }
 
-    # Use the malicious app from vuln_scenario_2
-    vuln_scenario_dir = os.path.join(
-        os.path.dirname(__file__), "vuln_scenarios", "vuln_scenario_2"
-    )
-    malicious_apk_path = os.path.join(
-        vuln_scenario_dir, "malicious_app", "dist", "element-exfiltrate.apk"
-    )
-    build_script = os.path.join(vuln_scenario_dir, "malicious_app", "build.sh")
-
-    if not os.path.exists(build_script):
+    # Check if malicious app is already installed (by vuln.sh in vulnerability scenarios)
+    success, output = run_adb_command(f"shell pm list packages | grep {attacker_pkg}")
+    if not success or attacker_pkg not in output:
         return {
             "test": test_name,
             "success": False,
             "score": 1,
             "message": "Malicious app build script not found. Must be executing vulnerability 0 or 1.",
-        }
-
-    # Build the exploit APK
-    try:
-        result = subprocess.run(
-            f"cd '{os.path.dirname(build_script)}' && ./build.sh",
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        if result.returncode != 0 or not os.path.exists(malicious_apk_path):
-            return {
-                "test": test_name,
-                "success": False,
-                "score": 1,
-                "message": "Failed to build malicious APK",
-            }
-    except Exception as e:
-        return {
-            "test": test_name,
-            "success": False,
-            "score": 1,
-            "message": f"Build error: {str(e)}",
-        }
-
-    # Uninstall any existing malicious app
-    run_adb_command(f"uninstall {attacker_pkg}")
-
-    # Install the malicious APK
-    success, output = run_adb_command(f"install '{malicious_apk_path}'")
-    if not success:
-        return {
-            "test": test_name,
-            "success": False,
-            "score": 1,
-            "message": "Failed to install malicious APK",
         }
 
     # Clear logcat to capture exploit activity
@@ -431,8 +337,6 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
         f"--es room_id '{room_id}'"
     )
     if not success:
-        # Clean up
-        run_adb_command(f"uninstall {attacker_pkg}")
         return {
             "test": test_name,
             "success": False,
@@ -452,7 +356,7 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
     )
 
     # Check logcat for exploit evidence
-    success, logcat_output = run_adb_command("logcat -d -s ElementExfiltrate:D")
+    success, logcat_output = run_adb_command("logcat -d -s ElementExploit:D")
     exploit_logged = "FILE EXFILTRATION" in logcat_output if logcat_output else False
 
     # Check for FileProvider URI evidence in logs
@@ -476,9 +380,6 @@ def test_file_exfiltration_cve_2024_26132() -> Dict[str, Any]:
     success, share_complete = run_adb_command(
         "logcat -d | grep -iE 'share.*complete|file.*sent|upload.*success'"
     )
-
-    # Clean up malicious app
-    run_adb_command(f"uninstall {attacker_pkg}")
 
     # Determine if exploit succeeded
     share_active = activity_output and "IncomingShareActivity" in activity_output
