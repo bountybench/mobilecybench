@@ -308,17 +308,24 @@ class MobileCybenchRunner:
             self._exit_with_error(f"Failed to inject security flags: {e}")
 
         # Start SSRF listener for detecting SSRF attacks
-        logger.info("Starting SSRF listener...")
-        try:
-            ssrf_compose_dir = project_root / "evaluation" / "ssrf_listener"
-            if start_ssrf_listener(ssrf_compose_dir):
-                logger.info("✓ SSRF listener started successfully")
-            else:
-                logger.warning(
-                    "⚠ Failed to start SSRF listener - SSRF detection may not work"
-                )
-        except Exception as e:
-            logger.warning(f"⚠ Failed to start SSRF listener: {e}")
+        # Check if app has backend containers
+        metadata = get_app_metadata(self.app_name)
+        container_names = metadata.get("container_names", [])
+
+        if container_names:
+            logger.info("Starting SSRF listener...")
+            try:
+                ssrf_compose_dir = project_root / "evaluation" / "ssrf_listener"
+                if start_ssrf_listener(ssrf_compose_dir):
+                    logger.info("✓ SSRF listener started successfully")
+                else:
+                    logger.warning(
+                        "⚠ Failed to start SSRF listener - SSRF detection may not work"
+                    )
+            except Exception as e:
+                logger.warning(f"⚠ Failed to start SSRF listener: {e}")
+        else:
+            logger.info("No backend containers defined - skipping SSRF listener setup")
 
         logger.info("App setup completed")
 
@@ -631,6 +638,10 @@ class MobileCybenchRunner:
                     check_reachability=False,
                 )
 
+                # Check if we should include SSRF instructions
+                container_names = self.metadata.get("container_names", [])
+                include_ssrf = bool(container_names)
+
                 agent = CodexAgent(
                     max_conversation_turns=self.config.max_iterations,
                     screenshot_enabled=self.config.screenshot_mode,
@@ -641,6 +652,7 @@ class MobileCybenchRunner:
                     package_name=self.metadata.get("package_name"),
                     username=self.metadata.get("username"),
                     password=self.metadata.get("password"),
+                    include_ssrf=include_ssrf,
                 )
             else:
                 # Import and use CustomAgent
@@ -650,6 +662,10 @@ class MobileCybenchRunner:
                 # Set dry_run=False for actual AI execution
                 logger.info("Initializing custom agent...")
                 logger.info("Creating CustomAgent instance")
+
+                # Check if we should include SSRF instructions
+                container_names = self.metadata.get("container_names", [])
+                include_ssrf = bool(container_names)
 
                 agent = CustomAgent(
                     model=self.config.model,
@@ -667,6 +683,7 @@ class MobileCybenchRunner:
                     package_name=self.metadata.get("package_name"),
                     username=self.metadata.get("username"),
                     password=self.metadata.get("password"),
+                    include_ssrf=include_ssrf,
                 )
 
             # This can take a while for actual LLM calls
@@ -706,13 +723,16 @@ class MobileCybenchRunner:
         log_path = Path(log_file_path)
         if log_path.exists() and log_path.is_file():
             command = f"{command} {shlex.quote(str(log_path))}"
-            logger.info(f"Passing log file to probe checks: {log_path}")
-        else:
-            logger.error(
-                f"Log file path does not exist: {log_path}, running without it. This may limit the quality of the probes checks."
-            )
+
+        # Check if we should skip SSRF check
+        metadata = get_app_metadata(self.app_name)
+        container_names = metadata.get("container_names", [])
+        env = os.environ.copy()
+        if not container_names:
+            env["SKIP_SSRF_CHECK"] = "1"
+
         try:
-            result = self.cmd.run(command, cwd=self.project_root, check=False)
+            result = self.cmd.run(command, cwd=self.project_root, check=False, env=env)
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to run probe checks: {e}")
             result = e

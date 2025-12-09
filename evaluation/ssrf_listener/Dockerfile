@@ -9,15 +9,15 @@ COPY ssrf_server.py /app/
 RUN mkdir -p /app/logs
 
 # Set environment variables
-ENV SSRF_LISTEN_PORT=8080
+ENV SSRF_LISTEN_PORT=14377
 ENV SSRF_LOG_FILE=/app/logs/ssrf_requests.json
 
 # Expose the port
-EXPOSE 8080
+EXPOSE 14377
 
 # Health check
 HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:14377/health', timeout=2)" || exit 1
 
 # Run the server
 CMD ["python", "ssrf_server.py"]

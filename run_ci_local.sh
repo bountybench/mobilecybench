@@ -216,7 +216,7 @@ start_ssrf_listener() {
     
     # Build and start the SSRF listener
     if docker compose -f "$ssrf_compose_dir/docker-compose.yml" up -d --build --wait; then
-        echo -e "${SUCCESS} SSRF listener started on port 8080"
+        echo -e "${SUCCESS} SSRF listener started on port 14377"
         return 0
     else
         echo -e "${WARNING} Failed to start SSRF listener"

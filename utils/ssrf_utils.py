@@ -11,10 +11,11 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+from agent.prompts.prompts import SSRF_PROBE_HOST, SSRF_PROBE_PORT
+
 # Configuration
-SSRF_CONTAINER_NAME = "ssrf-probe"
-SSRF_LISTENER_PORT = int(os.environ.get("SSRF_LISTEN_PORT", 8080))
-SSRF_LISTENER_HOST = os.environ.get("SSRF_LISTENER_HOST", "ssrf-probe")
+SSRF_LISTENER_PORT = int(os.environ.get("SSRF_LISTEN_PORT", SSRF_PROBE_PORT))
+SSRF_LISTENER_HOST = os.environ.get("SSRF_LISTENER_HOST", SSRF_PROBE_HOST)
 SSRF_LOG_FILE = "/app/logs/ssrf_requests.json"
 SSRF_COMPOSE_DIR = Path(__file__).parent.parent / "evaluation" / "ssrf_listener"
 
@@ -94,12 +95,12 @@ def stop_ssrf_listener(compose_dir: Optional[Path] = None) -> bool:
         if result.returncode != 0:
             # Try stopping the container directly
             subprocess.run(
-                ["docker", "stop", SSRF_CONTAINER_NAME],
+                ["docker", "stop", SSRF_PROBE_HOST],
                 capture_output=True,
                 timeout=30,
             )
             subprocess.run(
-                ["docker", "rm", "-f", SSRF_CONTAINER_NAME],
+                ["docker", "rm", "-f", SSRF_PROBE_HOST],
                 capture_output=True,
                 timeout=30,
             )
@@ -125,7 +126,7 @@ def is_ssrf_listener_running() -> bool:
                 "inspect",
                 "--format",
                 "{{.State.Running}}",
-                SSRF_CONTAINER_NAME,
+                SSRF_PROBE_HOST,
             ],
             capture_output=True,
             text=True,
@@ -149,7 +150,7 @@ def get_ssrf_requests_from_container() -> dict:
     """
     try:
         result = subprocess.run(
-            ["docker", "exec", SSRF_CONTAINER_NAME, "cat", SSRF_LOG_FILE],
+            ["docker", "exec", SSRF_PROBE_HOST, "cat", SSRF_LOG_FILE],
             capture_output=True,
             text=True,
             timeout=10,
@@ -196,7 +197,7 @@ def clear_ssrf_requests() -> bool:
     """
     try:
         result = subprocess.run(
-            ["docker", "exec", SSRF_CONTAINER_NAME, "rm", "-f", SSRF_LOG_FILE],
+            ["docker", "exec", SSRF_PROBE_HOST, "rm", "-f", SSRF_LOG_FILE],
             capture_output=True,
             text=True,
             timeout=10,
@@ -220,14 +221,14 @@ def check_ssrf_from_source(source_ip: str) -> bool:
     return any(req.get("client_address") == source_ip for req in requests)
 
 
-def get_container_ip(container_name: str) -> Optional[str]:
-    """Get the IP address of a container on the shared_net network.
+def get_container_ips(container_name: str) -> list:
+    """Get the IP addresses of a container on all attached networks.
 
     Args:
         container_name: The name of the container.
 
     Returns:
-        Optional[str]: The container's IP address, or None if not found.
+        list: List of IP addresses, or empty list if not found.
     """
     try:
         result = subprocess.run(
@@ -235,7 +236,7 @@ def get_container_ip(container_name: str) -> Optional[str]:
                 "docker",
                 "inspect",
                 "--format",
-                "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
+                "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}",
                 container_name,
             ],
             capture_output=True,
@@ -244,11 +245,11 @@ def get_container_ip(container_name: str) -> Optional[str]:
         )
 
         if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
-        return None
+            return result.stdout.strip().split()
+        return []
 
     except Exception:
-        return None
+        return []
 
 
 def get_backend_container_ips(container_names: list) -> set:
@@ -262,9 +263,9 @@ def get_backend_container_ips(container_names: list) -> set:
     """
     ips = set()
     for name in container_names:
-        ip = get_container_ip(name)
-        if ip:
-            ips.add(ip)
+        container_ips = get_container_ips(name)
+        if container_ips:
+            ips.update(container_ips)
     return ips
 
 

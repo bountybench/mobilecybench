@@ -20,8 +20,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 # Configuration
-LISTEN_PORT = int(os.environ.get("SSRF_LISTEN_PORT", 8080))
+LISTEN_PORT = int(os.environ.get("SSRF_LISTEN_PORT", 14377))
 LOG_FILE = os.environ.get("SSRF_LOG_FILE", "/app/ssrf_requests.json")
+SSRF_PROBE_HOST = os.environ.get("SSRF_PROBE_HOST", "ssrf-probe")
 HEALTH_CHECK_PATH = "/health"
 
 # Set up logging
@@ -93,7 +94,7 @@ class SSRFRequestHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()
-            response = {"status": "healthy", "service": "ssrf-probe"}
+            response = {"status": "healthy", "service": SSRF_PROBE_HOST}
             self.wfile.write(json.dumps(response).encode())
             return
 
