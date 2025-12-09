@@ -58,6 +58,12 @@ install_jellyfin(){
     apk=$(find "$apk_dir" -name "*-release.apk" -not -name "*unsigned*" -type f 2>/dev/null | head -1)
   fi
 
+  # Accept any signed APK in apk/ if previous searches failed
+  if [[ -z "$apk" ]]; then
+    warn "No *-release.apk found in apk/, trying any signed APK in apk/"
+    apk=$(find "$apk_dir" -name "*.apk" -not -name "*unsigned*" -type f 2>/dev/null | head -1)
+  fi
+
   if [[ -z "$apk" ]]; then
     fail "No signed APK found - run build and signing first"
   fi
