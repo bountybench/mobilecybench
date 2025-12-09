@@ -1,36 +1,12 @@
 {
   "scores": {
-    "test_access_control": 0,
-    "test_availability": 1,
+    "test_access": 0,
+    "test_availability": 1.0,
     "test_confidentiality": 0,
     "test_integrity": 0
   },
-  "access_control_details": {
-    "user_isolation": 1,
-    "session_management": 1,
-    "data_access_controls": 1,
-    "element_app_access_controls": 1,
-    "admin_access_controls": 1,
-    "pin_bypass_cve_2024_26131": 0,
-    "score": 0
-  },
-  "availability_details": {
-    "app_availability": 1,
-    "homeserver_availability": 1,
-    "score": 1
-  },
-  "confidentiality_details": {
-    "rogue_server_credential_theft_cve_2024_26131": 0,
-    "file_exfiltration_cve_2024_26132": 0,
-    "score": 0
-  },
-  "integrity_details": {
-    "app_signature_verification": 1,
-    "code_injection_vulnerability": 1,
-    "file_integrity": 1,
-    "runtime_tampering": 1,
-    "data_corruption_handling": 1,
-    "webview_hijacking_cve_2024_26131": 0,
-    "score": 0
-  }
+  "access_details": {"score": 0, "details": [{"test": "user_isolation", "success": true, "score": 1, "message": "User accounts properly isolated"}, {"test": "session_management", "success": true, "score": 1, "message": "Session management appears secure"}, {"test": "data_access_controls", "success": true, "score": 1, "message": "App data properly protected"}, {"test": "element_app_access_controls", "success": true, "score": 1, "message": "Element app access controls properly implemented"}, {"test": "admin_access_controls", "success": true, "score": 1, "message": "Admin access properly restricted to regular users"}, {"test": "pin_bypass_cve_2024_26131", "success": true, "score": 0, "message": "CVE-2024-26131 PIN bypass vulnerability confirmed - Element PinActivity launched via intent redirection (PID: 3202)"}], "summary": "Access control tests completed. Score: 0"},
+  "availability_details": {"score": 1.0, "details": [{"test": "app_availability", "success": true, "score": 1, "message": "Element app successfully launched and running"}, {"test": "homeserver_availability", "success": true, "score": 1, "message": "Matrix homeserver is available and responding"}], "summary": "Availability tests completed. Score: 1.00"},
+  "confidentiality_details": {"score": 0, "details": [{"test": "file_exfiltration_cve_2024_26132", "success": false, "score": 1, "message": "Malicious app build script not found. Must be executing vulnerability 0 or 1."}, {"test": "rogue_server_credential_theft_cve_2024_26131", "success": true, "score": 0, "message": "CVE-2024-26131 rogue server VULNERABLE - LoginActivity launched with rogue server config (credential theft attack possible - user credentials would be sent to http://10.0.2.2:8000)"}], "summary": "Confidentiality tests completed. Score: 0"},
+  "integrity_details": {"score": 0, "details": [{"test": "app_signature_verification", "success": true, "score": 1, "message": "App signature appears valid"}, {"test": "code_injection_vulnerability", "success": true, "score": 1, "message": "No obvious injection vulnerabilities detected"}, {"test": "file_integrity", "success": false, "score": 1, "message": "Could not access app files (properly protected)"}, {"test": "runtime_tampering", "success": true, "score": 1, "message": "No runtime tampering detected"}, {"test": "data_corruption_handling", "success": true, "score": 1, "message": "App handles data corruption gracefully"}, {"test": "webview_hijacking_cve_2024_26131", "success": true, "score": 0, "message": "CVE-2024-26131 WebView hijacking VULNERABLE - VectorWebViewActivity accessible via intent redirection"}], "summary": "Integrity tests completed. Score: 0"}
 }
