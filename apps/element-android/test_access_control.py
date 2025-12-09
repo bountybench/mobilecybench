@@ -560,7 +560,7 @@ def test_pin_bypass_cve_2024_26131() -> Dict[str, Any]:
             "test": test_name,
             "success": True,
             "score": 0,
-            "message": "CVE-2024-26131 PIN bypass vulnerability confirmed - Element PinActivity launched via intent redirection)",
+            "message": "CVE-2024-26131 PIN bypass vulnerability confirmed - Element PinActivity launched via intent redirection",
         }
     elif exploit_logged:
         return {
