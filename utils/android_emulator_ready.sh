@@ -58,6 +58,11 @@ root_and_remount() {
   local sdk
   sdk="$(adb shell "getprop ro.build.version.sdk" 2>/dev/null | tr -d $'\r')"
   echo "Device SDK = ${sdk:-unknown}" >&2
+  # Increase boot timeout for newer SDKs
+  if [ "${sdk:-0}" -ge 33 ]; then
+    TIMEOUT_BOOT=90
+    echo "Increased TIMEOUT_BOOT to $TIMEOUT_BOOT for SDK $sdk" >&2
+  fi
 
   if [ "${sdk:-0}" -gt 28 ]; then
     echo "Disabling AVB verification (avbctl)..." >&2
