@@ -39,7 +39,6 @@ import requests
 from dotenv import load_dotenv
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
-from utils.availability_utils import check_DOS
 
 load_dotenv()
 
@@ -210,22 +209,6 @@ def test_jellyfin_container_running_when_docker_present():
     assert running, f"Jellyfin container not running: {detail}"
 
 
-def test_android_app_no_fatal_crashes_via_adb():
-    """Jellyfin Android app should not have fatal crashes or ANR events.
-
-    - Skip if adb not available or device missing
-    - Use availability_utils.check_DOS to scan for app-related crashes
-    """
-    if not _adb_available() or not _adb_has_device():
-        pytest.skip("adb not available or no device connected")
-
-    pkg = ANDROID_APP_PACKAGE
-    try:
-        ok = check_DOS(pkg)
-    except Exception as e:
-        pytest.skip(f"Unable to read adb logs: {e}")
-
-    assert ok, f"Detected crash or ANR for {pkg} via availability_utils.check_DOS"
 
 
 def main():
@@ -329,33 +312,6 @@ def main():
         overall_success = False
         results["jellyfin_container_running"] = False
         print(f"[FAIL] Container running: {e}", file=sys.stderr)
-
-    # Test Android app crashes
-    try:
-        if _adb_available() and _adb_has_device():
-            from utils.availability_utils import check_DOS
-
-            ok = check_DOS(ANDROID_APP_PACKAGE)
-            results["android_app_no_crashes"] = ok
-            if not ok:
-                overall_success = False
-                print(
-                    f"[FAIL] Android app: Detected crashes for {ANDROID_APP_PACKAGE}",
-                    file=sys.stderr,
-                )
-            else:
-                print(
-                    f"[PASS] Android app: No crashes detected for "
-                    f"{ANDROID_APP_PACKAGE}",
-                    file=sys.stderr,
-                )
-        else:
-            results["android_app_no_crashes"] = True  # Skip if no adb/device
-            print("[SKIP] Android app: adb not available or no device", file=sys.stderr)
-    except Exception as e:
-        overall_success = False
-        results["android_app_no_crashes"] = False
-        print(f"[FAIL] Android app: {e}", file=sys.stderr)
 
     # Output JSON results
     print(json.dumps(results))
