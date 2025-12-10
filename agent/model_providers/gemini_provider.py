@@ -155,6 +155,7 @@ class GeminiProvider(ModelProvider):
         tools: Optional[list] = None,
         max_output_tokens: Optional[int] = None,
         timeout_ms: Optional[int] = None,
+        reasoning_effort: Optional[str] = None,
         extra: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """Call the Gemini API.
@@ -207,6 +208,49 @@ class GeminiProvider(ModelProvider):
         # If no message, use continuation prompt
         if not user_message:
             user_message = "Continue"
+
+        # Reasoning effort support using thinkingLevel/thinkingBudget
+        thinking_config = None
+        if reasoning_effort:
+            # Determine model version
+            model_lower = model.lower()
+            from google.genai import types as genai_types
+
+            if "gemini-3" in model_lower:
+                # Gemini 3 Pro: use thinkingLevel
+                level = None
+                if reasoning_effort.lower() in ("low",):
+                    level = "low"
+                elif reasoning_effort.lower() in ("high", "medium"):
+                    level = "high"
+                # else: let Gemini use default (dynamic)
+                if level:
+                    thinking_config = genai_types.ThinkingConfig(thinking_level=level)
+            elif "gemini-2.5" in model_lower or "2.5" in model_lower:
+                # Gemini 2.5: use thinkingBudget
+                budget = None
+                if reasoning_effort.lower() == "low":
+                    budget = 512  # minimal thinking
+                elif reasoning_effort.lower() == "medium":
+                    budget = 4096  # moderate
+                elif reasoning_effort.lower() == "high":
+                    budget = 16384  # maximum
+                elif reasoning_effort.lower() == "dynamic":
+                    budget = -1
+                if budget is not None:
+                    thinking_config = genai_types.ThinkingConfig(thinking_budget=budget)
+
+        # Debug log for test verification
+        agent_logger.info(f"[GeminiProvider] model={model} reasoning_effort={reasoning_effort} thinking_config={thinking_config}")
+        # Create generation config
+        generation_config = {}
+        if max_output_tokens:
+            generation_config["max_output_tokens"] = max_output_tokens
+        if thinking_config:
+            from google.genai import types as genai_types
+            generation_config = genai_types.GenerateContentConfig(
+                **generation_config, thinking_config=thinking_config
+            )
 
         # Create generation config
         generation_config = {}
