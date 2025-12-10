@@ -1,4 +1,6 @@
+import asyncio
 import json
+import logging
 import os
 import shlex
 from functools import lru_cache
@@ -12,6 +14,10 @@ from ui_connection import get_ui_state
 
 from tools.token_truncator import TokenTruncator
 from utils.logger import logger
+
+# Reduce verbosity of HTTP libraries
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 """
 MCP Server Tools:
@@ -77,7 +83,7 @@ async def health_check(request: Request) -> PlainTextResponse:
     return PlainTextResponse("OK")
 
 
-def _execute_command_internal(command: str) -> str:
+async def _execute_command_internal(command: str) -> str:
     """
     Internal helper function that executes commands and returns truncated command output.
     """
@@ -93,8 +99,9 @@ def _execute_command_internal(command: str) -> str:
         # Use retry function for ADB commands
         label = "ADB Command"
         try:
-            exit_code, output = execute_adb_command_with_retry(command, start_dir)
-            combined_output = output
+            exit_code, stdout, stderr = execute_adb_command_with_retry(
+                command, start_dir
+            )
         except Exception as e:
             # Provide clear error message for connection issues
             error_msg = str(e)
@@ -111,15 +118,49 @@ def _execute_command_internal(command: str) -> str:
         label = "Command"
 
         # Safely quote the entire command for bash -c execution inside Docker
-        result = container.exec_run(
-            f"bash -c {shlex.quote(full_cmd)}", stdout=True, stderr=True
+        # Run blocking Docker call in a separate thread to avoid blocking the event loop
+        result = await asyncio.to_thread(
+            container.exec_run,
+            f"bash -c {shlex.quote(full_cmd)}",
+            stdout=True,
+            stderr=True,
+            demux=True,
         )
         exit_code = result.exit_code
-        output = result.output.decode("utf-8", errors="replace")
-        combined_output = output
+        stdout = (
+            result.output[0].decode("utf-8", errors="replace")
+            if result.output[0]
+            else ""
+        )
+        stderr = (
+            result.output[1].decode("utf-8", errors="replace")
+            if result.output[1]
+            else ""
+        )
 
-    # Separate header and body for proper truncation
-    header = f"{label}: {command}\nExit Code: {exit_code}\nOutput:\n"
+    # Log error if command failed
+    if exit_code != 0:
+        logger.error(
+            f"Command failed: {command}\nExit Code: {exit_code}\nStderr: {stderr}"
+        )
+
+    # Format output with separate sections
+    header = f"{label}: {command}\nExit Code: {exit_code}\n"
+
+    # Construct body with Stdout and Stderr sections
+    body_parts = []
+    if stdout:
+        body_parts.append(f"Stdout:\n{stdout}")
+    if stderr:
+        body_parts.append(f"Stderr:\n{stderr}")
+
+    if not body_parts:
+        body = "Output: (None)\n"
+    else:
+        body = "\n".join(body_parts) + "\n"
+
+    # Combine for truncation
+    # full_response = header + body
 
     truncator = _get_token_truncator()
     header_tokens = truncator.count_tokens(header)
@@ -128,7 +169,7 @@ def _execute_command_internal(command: str) -> str:
     if body_budget <= 0:
         truncated_body = "[TRUNCATED]"
     else:
-        tr = truncator.truncate_output(combined_output, budget=body_budget)
+        tr = truncator.truncate_output(body, budget=body_budget)
         if tr.was_truncated:
             logger.info(
                 "Kali output truncated: %s -> %s tokens (kept=%s, removed=%s, method=%s)",
@@ -152,13 +193,13 @@ if "execute_command" in ALLOWED_TOOLS:
     @mcp.tool(
         description="Execute terminal command and return text output only (no UI state). Use for security scans, file operations, and system commands."
     )
-    def execute_command(command: str) -> str:
+    async def execute_command(command: str) -> str:
         """
         Execute command and return only text output - no UI state included.
         Optimized for security testing, file operations, and system commands.
         """
         try:
-            return _execute_command_internal(command)
+            return await _execute_command_internal(command)
         except Exception as e:
             return f"Error: {str(e)}"
 
@@ -169,13 +210,13 @@ if "get_current_ui_state" in ALLOWED_TOOLS:
     @mcp.tool(
         description="Get current UI elements from Android emulator screen without executing any command."
     )
-    def get_current_ui_state() -> dict:
+    async def get_current_ui_state() -> dict:
         """
         Get current UI state with all interactive elements from the Android emulator.
         Returns UI elements with coordinates for interaction.
         """
         try:
-            return get_ui_state()
+            return await asyncio.to_thread(get_ui_state)
         except Exception as e:
             return {"error": f"Failed to get UI state: {str(e)}", "ui_elements": []}
 
@@ -186,18 +227,18 @@ if "execute_command_with_ui_state" in ALLOWED_TOOLS:
     @mcp.tool(
         description="Execute terminal command and include current UI state. Use when you need both command output and UI context."
     )
-    def execute_command_with_ui_state(command: str) -> dict:
+    async def execute_command_with_ui_state(command: str) -> dict:
         """
         Execute command and return both text output and current UI state.
         Use when you need to see the effect of commands on the UI or for UI interaction commands.
         """
         try:
-            command_output = _execute_command_internal(command)
-            ui_data = get_ui_state()
+            command_output = await _execute_command_internal(command)
+            ui_data = await asyncio.to_thread(get_ui_state)
             ui_data["result"] = command_output
             return ui_data
         except Exception as e:
-            ui_data = get_ui_state()
+            ui_data = await asyncio.to_thread(get_ui_state)
             ui_data["result"] = f"Error: {str(e)}"
             return ui_data
 

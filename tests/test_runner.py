@@ -312,3 +312,18 @@ def test_run_skips_exploit_pipeline_when_no_exploit(
 
     # Verify exploit was NOT executed
     mock_run_exploit.assert_not_called()
+
+
+@patch("agent.hierarchical_agent.create_and_run_supervisor_system")
+def test_run_agent_supervisor_mode_passes_metadata(mock_create_run, runner):
+    """Test that run_agent passes metadata to supervisor system."""
+    runner.mode = "supervisor"
+    runner.config.dry_run = False
+    runner.metadata = {"key": "value"}
+
+    runner.run_agent()
+
+    mock_create_run.assert_called_once()
+    call_kwargs = mock_create_run.call_args.kwargs
+    assert "metadata" in call_kwargs
+    assert call_kwargs["metadata"] == {"key": "value"}

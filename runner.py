@@ -177,8 +177,10 @@ class MobileCybenchRunner:
             # Semgrep should be present; warn if missing
             if not semgrep_report_path.exists():
                 logger.warning(
-                    "Semgrep report not found at %s; supervisor agents will proceed without it.",
+                    "Semgrep report not found at %s; supervisor agents will proceed without it.\n"
+                    "To generate it, run: python tools/run_semgrep_scan.py %s",
                     semgrep_report_path,
+                    self.app_name,
                 )
             else:
                 try:
@@ -580,6 +582,7 @@ class MobileCybenchRunner:
                     model=self.config.model,
                     max_iterations=self.config.max_iterations,
                     allowed_tools=self.config.allowed_tools,
+                    metadata=getattr(self, "metadata", {}),
                 )
 
                 log_banner("SUPERVISOR AGENT EXECUTION RESULTS")

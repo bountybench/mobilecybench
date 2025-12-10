@@ -33,7 +33,7 @@ def execute_adb_command_with_retry(
         max_retries: Maximum number of retry attempts
 
     Returns:
-        Tuple of (exit_code, output_string)
+        Tuple of (exit_code, stdout_string, stderr_string)
 
     Raises:
         Exception: If command fails after all retries
@@ -50,21 +50,27 @@ def execute_adb_command_with_retry(
                 f"bash -c {shlex.quote(full_cmd_base)}",
                 stdout=True,
                 stderr=True,
-                timeout=300,
+                demux=True,
             )
 
-            output = (
-                result.output.decode("utf-8", errors="replace")
-                if isinstance(result.output, bytes)
-                else str(result.output)
+            stdout = (
+                result.output[0].decode("utf-8", errors="replace")
+                if result.output[0]
+                else ""
+            )
+            stderr = (
+                result.output[1].decode("utf-8", errors="replace")
+                if result.output[1]
+                else ""
             )
             exit_code = result.exit_code
 
             # Check for "no devices/emulators found" error
-            output_lower = output.lower()
-            is_no_devices = "no devices/emulators found" in output_lower
-            has_daemon_msg = "daemon" in output_lower and (
-                "not running" in output_lower or "started" in output_lower
+            # Combine stdout and stderr for checking errors
+            combined_output = (stdout + stderr).lower()
+            is_no_devices = "no devices/emulators found" in combined_output
+            has_daemon_msg = "daemon" in combined_output and (
+                "not running" in combined_output or "started" in combined_output
             )
 
             # If we get "no devices" with daemon messages, it's likely a connection issue
@@ -78,13 +84,12 @@ def execute_adb_command_with_retry(
                     f"bash -c {shlex.quote(reconnect_cmd)}",
                     stdout=True,
                     stderr=True,
-                    timeout=10,
                 )
                 time.sleep(1)
                 continue
 
             # Return result (success or other error)
-            return exit_code, output
+            return exit_code, stdout, stderr
 
         except Exception as e:
             last_exception = e
