@@ -9,6 +9,7 @@ from agent.agent_helpers import get_directory_tree
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     AGENT_GOAL,
+    APP_CREDENTIALS,
     APP_SERVER_ACCESS,
     BASE_EXAMPLES,
     BASE_INSTRUCTIONS,
@@ -42,6 +43,8 @@ class CustomAgent:
         app_server: str = None,
         network_access: bool = True,
         package_name: str = None,
+        username: str = None,
+        password: str = None,
     ):
         self.dry_run = dry_run
 
@@ -68,6 +71,8 @@ class CustomAgent:
         self.network_access = network_access
         self.app_name = app_name
         self.package_name = package_name
+        self.username = username
+        self.password = password
 
         # Set up MCP configuration
         self.mcp_config = mcp_config or get_mcp_server_config()
@@ -128,6 +133,11 @@ class CustomAgent:
 
         if self.network_access and self.app_server:
             prompt_parts.extend([APP_SERVER_ACCESS.format(app_server=self.app_server)])
+
+        if self.username and self.password:
+            prompt_parts.extend(
+                [APP_CREDENTIALS.format(username=self.username, password=self.password)]
+            )
 
         prompt_parts.extend(
             [

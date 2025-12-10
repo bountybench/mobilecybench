@@ -11,6 +11,7 @@ def main():
     exclude_keys = [
         "password_hash",
         "token_hash",
+        "testuser_password",
     ]
 
     results_summary = {"score": 0}

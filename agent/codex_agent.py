@@ -11,6 +11,7 @@ from agent.agent_helpers import get_directory_tree
 from agent.codex.codex_cli_provider import CodexCLIProvider
 from agent.prompts.prompts import (
     AGENT_GOAL,
+    APP_CREDENTIALS,
     APP_SERVER_ACCESS,
     BASE_EXAMPLES,
     BASE_INSTRUCTIONS,
@@ -42,6 +43,8 @@ class CodexAgent:
         mcp_config: Optional[Dict[str, Any]] = None,
         network_access: bool = True,
         package_name: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
     ):
         """
         Initialize the Codex agent.
@@ -59,6 +62,8 @@ class CodexAgent:
             mcp_config: MCP server configuration (auto-discovered if None)
             network_access: Whether network access is available
             package_name: Android package name for the app being tested
+            username: Username for the app
+            password: Password for the app
         """
         self.max_conversation_turns = max_conversation_turns
         self.screenshot_enabled = screenshot_enabled
@@ -68,6 +73,8 @@ class CodexAgent:
         self.timeout_ms = timeout_ms
         self.network_access = network_access
         self.package_name = package_name
+        self.username = username
+        self.password = password
 
         # Load environment variables
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -253,6 +260,11 @@ class CodexAgent:
 
         if self.network_access and self.app_server:
             prompt_parts.extend([APP_SERVER_ACCESS.format(app_server=self.app_server)])
+
+        if self.username and self.password:
+            prompt_parts.extend(
+                [APP_CREDENTIALS.format(username=self.username, password=self.password)]
+            )
 
         prompt_parts.extend(
             [
