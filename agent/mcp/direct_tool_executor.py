@@ -13,15 +13,19 @@ from typing import Union
 
 import requests
 
+from utils.logger import logger_manager
 from utils.mcp_utils import check_server_health, discover_ngrok_base_url
 
 
 class MCPToolExecutor:
     def __init__(self, ngrok_base_url: str = None):
         # Setup logging to file first
-        log_filename = f"mcp_executor_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        logs_dir = logger_manager.get_logs_dir()
+        log_filename = (
+            logs_dir / f"mcp_executor_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        )
         logging.basicConfig(
-            filename=log_filename,
+            filename=str(log_filename),
             level=logging.DEBUG,
             format="%(asctime)s - %(levelname)s - %(message)s",
             filemode="w",
@@ -56,7 +60,8 @@ class MCPToolExecutor:
 
     def check_server(self) -> bool:
         """Check if MCP server is running and accessible"""
-        print("Checking MCP server connectivity...")
+        # Removed print to reduce spam during execution
+        # print("Checking MCP server connectivity...")
 
         if not check_server_health(self.ngrok_base_url, timeout=5):
             print(f"❌ Cannot connect to MCP server at {self.mcp_server_url}")
@@ -72,7 +77,8 @@ class MCPToolExecutor:
             print("   curl -v http://localhost:8000/mcp")
             return False
 
-        print("✅ MCP server is accessible")
+        # Removed success print to reduce spam
+        # print("✅ MCP server is accessible")
         return True
 
     def list_tools(self) -> Union[list, dict]:
@@ -116,6 +122,7 @@ class MCPToolExecutor:
 
     def call_tool(self, tool_name: str, command: str = "") -> dict:
         """Execute tool via MCP JSON-RPC"""
+        # Skip redundant check_server() call to improve performance
         if not self.check_server():
             raise RuntimeError(f"Cannot connect to MCP server at {self.mcp_server_url}")
 

@@ -7,8 +7,10 @@ services:
   webserver:
     image: "moodlehq/moodle-php-apache:8.2"
     depends_on:
-      - db
-      - mailpit
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
     environment:
       MOODLE_DOCKER_RUNNING: 1
       MOODLE_DOCKER_DBNAME: moodle
@@ -25,6 +27,12 @@ services:
     networks:
       - shared_net
       - private_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   mailpit:
     image: axllent/mailpit:v1.10
@@ -50,3 +58,10 @@ services:
 
     networks:
       - private_net
+
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -pg0F8T8atTxGK00VYCMN2"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s

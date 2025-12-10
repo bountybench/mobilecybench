@@ -412,9 +412,9 @@ sign_apk() {
 sign_apk "$APK"
 
 mkdir -p ../apk
-cp "$APK" ../apk/termux-release.apk
-echo "APK built successfully: apk/termux-release.apk"
-echo "APK size: $(du -h ../apk/termux-release.apk | cut -f1)"
+cp "$APK" ../apk/termux.apk
+echo "APK built successfully: apk/termux.apk"
+echo "APK size: $(du -h ../apk/termux.apk | cut -f1)"
 echo "APK type: $(basename "$APK")"
 
 cd ..

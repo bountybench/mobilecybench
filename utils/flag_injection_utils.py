@@ -166,6 +166,8 @@ def inject_container_flag(container_name: str) -> bool:
     if not container_name:
         return False
 
+    container_name = container_name.strip()
+
     flag_path = "/tmp/flag.txt"
 
     # Get the flag for this container

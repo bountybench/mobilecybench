@@ -14,6 +14,7 @@
 ## Quick Health Check
 
 Verify the MCP server is responding:
+# TODO - update this to give instructions for setting up the kali container + validate
 
 ```bash
 docker exec mcp-server curl http://localhost:4040/api/tunnels
@@ -34,6 +35,14 @@ The MobileCybench AI Agent enables an LM agent to perform security testing of An
 - **Time Tracking**: Comprehensive timing and performance monitoring
 - **Model Providers**: Flexible AI model provider architecture
 - **Token Tracking**: Cost and usage monitoring for AI API calls 
+
+### LangGraph Supervisor/Worker Mode
+- **Supervisor Agent (LangGraph)**: Coordinates worker agents and enforces tool-call limits.
+- **Static Analysis Worker**: Consumes pre-generated static reports (Semgrep, MobSFScan, QARK) from `/app/codebase/static_vuln_reports/...`, prioritizes high severity, deduplicates across tools, and produces validated findings.
+- **Exploit Worker**: Builds an executable `exploit.sh` under `/app/exploit_files/` (with any supporting files in the same directory) to validate high-severity findings identified by the supervisor.
+
+### LangGraph Semgrep Agent (standalone)
+- `agent/langgraph/semgrep_agent.py` and `semgrep_tools.py` define a LangGraph agent that runs Semgrep live via the `run_semgrep_scan` tool and verifies findings in-code. This is separate from the supervisor flow, which reads pre-generated reports under `static_vuln_reports/`.
 
 ## Directory Structure
 
@@ -61,9 +70,13 @@ agent/
 │   ├── base.py                 # Base provider interface
 │   ├── factory.py              # Provider factory pattern
 │   └── openai_provider.py      # OpenAI API provider
-└── prompts/                    # AI agent prompt templates
-    ├── __init__.py
-    └── prompts.py              # Prompt definitions and templates
+├── prompts/                    # AI agent prompt templates
+│   ├── __init__.py
+│   └── prompts.py              # Prompt definitions and templates
+└── tools/                      # Static analysis helper scripts (run outside container)
+    ├── run_semgrep_scan.py     # writes static_vuln_reports/semgrep/report.json
+    ├── run_mobsfscan.py        # writes static_vuln_reports/mobsfscan/report.json
+    └── generate_qark_report.py # writes static_vuln_reports/qark/report.json
 ```
 
 ## Utils Dependencies
@@ -108,6 +121,29 @@ Before setting up the agent environment, ensure you have:
 - **OpenAI API Key** for AI agent functionality (Reach out to Thomas or Nardos if you need one)
 - **Ngrok Account** and auth token
 - **Android SDK** and emulator setup (handled by main project)
+
+## Static Analysis Reports (Semgrep, MobSFScan, QARK)
+
+The LangGraph supervisor mode consumes pre-generated static reports under `apps/<app>/static_vuln_reports/`:
+- Semgrep: `static_vuln_reports/semgrep/report.json` (expected)
+- MobSFScan: `static_vuln_reports/mobsfscan/report.json` (optional but recommended)
+- QARK: `static_vuln_reports/qark/report.json` (optional but recommended)
+
+Install tools from `requirements.txt` (includes Semgrep, MobSFScan, QARK) and generate reports from the project root. These scans can take several minutes on large APKs/codebases:
+```bash
+# Semgrep (writes static_vuln_reports/semgrep/report.json)
+python tools/run_semgrep_scan.py <app_name> --source-dir apps/<app_name>/codebase
+
+# MobSFScan (writes static_vuln_reports/mobsfscan/report.json)
+python tools/run_mobsfscan.py <app_name> --source-dir apps/<app_name>/codebase
+
+# QARK (writes static_vuln_reports/qark/report.json)
+python tools/generate_qark_report.py <app_name> --apk apps/<app_name>/apk/<app_name>.apk
+```
+
+When running in supervisor mode, the `static_vuln_reports` directory is copied into the agent container so the static-analysis worker can consume these reports.
+
+**Note:** The heavy static-analysis dependencies (Semgrep, MobSFScan, QARK) are commented out in `requirements.txt` to keep CI lean. Uncomment them locally before running the scan scripts above.
 
 ## Agent Environment Setup
 
@@ -254,11 +290,18 @@ This runs the complete pipeline:
 1. Initializes **kali-container**, the Kali Linux environment with security tools
 2. Sets up Android emulator
 3. Builds and installs the target app
-4. Runs initial security checks
+4. Runs initial security checks (pre-agent-run probes)
 5. Starts the AI agent with time tracking
 6. Executes AI-driven security testing
-7. Runs final security validation
-8. Generates timing reports and performance statistics
+7. Runs post-agent security validation (post-agent-run probes)
+8. Checks for agent-generated exploit script (`/app/exploit_files/exploit.sh`)
+9. If exploit found, restarts environment and executes exploit:
+   - Runs `cleanup.sh` to reset the environment
+   - Rebuilds and reinstalls the app
+   - Runs pre-exploit probes
+   - Executes the agent-generated exploit script
+   - Runs post-exploit probes
+10. Generates timing reports and performance statistics
 
 ### Time Tracking and Performance Monitoring
 
@@ -271,6 +314,30 @@ The agent now includes comprehensive timing and performance monitoring:
 - **Cost Tracking**: Token usage and API costs per model
 
 Timing data is automatically logged and saved for analysis and CI integration.
+
+### Agent Exploit Execution Workflow
+
+After the agent completes its security testing, the runner automatically checks for any exploit scripts generated by the agent. If an exploit script is found at `/app/exploit_files/exploit.sh` in the kali container, the following workflow is executed:
+
+1. **Exploit Detection**: The runner checks if the agent created an exploit script
+2. **Environment Reset**: 
+   - Runs `cleanup.sh` to clean up Docker containers and reset the environment
+   - Starts a fresh emulator instance
+   - Rebuilds and reinstalls the app
+3. **Pre-Exploit Baseline**: Runs security probes to establish a baseline state
+4. **Exploit Execution**: 
+   - Reads the exploit script contents
+   - Executes the exploit script in the kali container
+   - Captures all output (stdout, stderr, exit code) to a timestamped log file (`exploit_log_YYYYMMDD_HHMMSS.log`)
+5. **Post-Exploit Validation**: Runs security probes again to detect any violations caused by the exploit
+
+**Probe Results Tracking**: The runner tracks probe results at four key stages:
+- `pre_agent_run`: Baseline before agent execution
+- `post_agent_run`: After agent completes testing
+- `pre_agent_exploit`: Baseline before exploit execution
+- `post_agent_exploit`: After exploit execution
+
+All probe results are stored in `runner.probe_results` dictionary and can be used for analysis and reporting.
 
 ## Troubleshooting
 
