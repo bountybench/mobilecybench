@@ -241,13 +241,16 @@ class GeminiProvider(ModelProvider):
                     thinking_config = genai_types.ThinkingConfig(thinking_budget=budget)
 
         # Debug log for test verification
-        agent_logger.info(f"[GeminiProvider] model={model} reasoning_effort={reasoning_effort} thinking_config={thinking_config}")
+        agent_logger.info(
+            f"[GeminiProvider] model={model} reasoning_effort={reasoning_effort} thinking_config={thinking_config}"
+        )
         # Create generation config
         generation_config = {}
         if max_output_tokens:
             generation_config["max_output_tokens"] = max_output_tokens
         if thinking_config:
             from google.genai import types as genai_types
+
             generation_config = genai_types.GenerateContentConfig(
                 **generation_config, thinking_config=thinking_config
             )

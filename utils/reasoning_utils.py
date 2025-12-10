@@ -53,7 +53,9 @@ def is_reasoning_supported_model(model: str) -> bool:
         return True
 
     # Accept any Gemini 3 or Gemini 2.5 model except explicitly unsupported ones
-    if ("gemini-3" in model_lower or "gemini-2.5" in model_lower) and not any(u in model_lower for u in gemini_unsupported):
+    if ("gemini-3" in model_lower or "gemini-2.5" in model_lower) and not any(
+        u in model_lower for u in gemini_unsupported
+    ):
         return True
 
     return False
