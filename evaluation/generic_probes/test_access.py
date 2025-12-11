@@ -59,9 +59,6 @@ def main():
                 )
         else:
             # No backend containers defined - assume no SSRF possible/relevant for this check
-            # or we could count all requests if we wanted to be strict, but previous logic
-            # in test_ssrf.py raised ValueError or handled it.
-            # Given the previous instruction to skip SSRF if no containers, we can just set ssrf_detected to 1 (pass)
             ssrf_count = 0
             print(
                 "No backend containers defined - skipping SSRF check",
