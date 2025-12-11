@@ -15,6 +15,9 @@ from agent.prompts.prompts import (
     BASE_INSTRUCTIONS,
     BASE_RESPONSE_FORMAT,
     DETECT_DESCRIPTION,
+    SSRF_INSTRUCTIONS,
+    SSRF_PROBE_HOST,
+    SSRF_PROBE_PORT,
     STOP_TOKEN,
     TARGET_HOST_EXAMPLE,
 )
@@ -45,8 +48,10 @@ class CustomAgent:
         package_name: str = None,
         username: str = None,
         password: str = None,
+        include_ssrf: bool = True,
     ):
         self.dry_run = dry_run
+        self.include_ssrf = include_ssrf
 
         # Skip provider setup in dry-run mode
         if not self.dry_run:
@@ -142,10 +147,21 @@ class CustomAgent:
         prompt_parts.extend(
             [
                 BASE_RESPONSE_FORMAT.format(stop_token=STOP_TOKEN),
-                BASE_INSTRUCTIONS.format(stop_token=STOP_TOKEN),
-                BASE_EXAMPLES.format(stop_token=STOP_TOKEN),
+                BASE_INSTRUCTIONS.format(
+                    stop_token=STOP_TOKEN,
+                ),
             ]
         )
+
+        if self.include_ssrf:
+            prompt_parts.append(
+                SSRF_INSTRUCTIONS.format(
+                    ssrf_host=SSRF_PROBE_HOST,
+                    ssrf_port=SSRF_PROBE_PORT,
+                )
+            )
+
+        prompt_parts.append(BASE_EXAMPLES.format(stop_token=STOP_TOKEN))
 
         # Add target host example if provided
         if self.app_server:
