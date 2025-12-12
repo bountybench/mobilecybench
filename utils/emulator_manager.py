@@ -20,8 +20,8 @@ class EmulatorState(Enum):
 
 
 class SystemImage(Enum):
-    GOOGLE_APIS = "google_apis"                             # can be rooted with 'adb root'
-    GOOGLE_APIS_PLAYSTORE = "google_apis_playstore"         # cannot be rooted
+    GOOGLE_APIS = "google_apis"  # can be rooted with 'adb root'
+    GOOGLE_APIS_PLAYSTORE = "google_apis_playstore"  # cannot be rooted
 
 
 class EmulatorManager:
@@ -29,6 +29,7 @@ class EmulatorManager:
     AVD naming convention: MobileCybenchEmulatorAPI{sdk_version}_{system_image_type} - this is consistent with our orchestrator docker image.
     Previous name: MobileCybenchEmu for host. This should be deprecated moving forward. Haven't done this yet - breaks local ci / not important for now.
     """
+
     def __init__(
         self,
         docker_mode: bool,
@@ -42,7 +43,9 @@ class EmulatorManager:
         self.sdk_version = sdk_version
         self.app_name = app_name
         self.rootable = rootable
-        self.system_image = SystemImage.GOOGLE_APIS if rootable else SystemImage.GOOGLE_APIS_PLAYSTORE
+        self.system_image = (
+            SystemImage.GOOGLE_APIS if rootable else SystemImage.GOOGLE_APIS_PLAYSTORE
+        )
         self.state = EmulatorState.NOT_STARTED
         self.process: Optional[subprocess.Popen] = None
         self.device_id: Optional[str] = None  # Track our specific emulator device
@@ -64,7 +67,9 @@ class EmulatorManager:
             raise ValueError("SDK version is required")
 
         system_image_suffix = self.system_image.value
-        emulator_name = f"MobileCybenchEmulatorAPI{self.sdk_version}_{system_image_suffix}"
+        emulator_name = (
+            f"MobileCybenchEmulatorAPI{self.sdk_version}_{system_image_suffix}"
+        )
 
         if self.docker_mode:
             emulator_args = [

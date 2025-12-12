@@ -30,7 +30,9 @@ def list_avds():
             logger.error("Failed to list AVDs")
             return 1
 
-        avds = [line.strip() for line in result.stdout.strip().split("\n") if line.strip()]
+        avds = [
+            line.strip() for line in result.stdout.strip().split("\n") if line.strip()
+        ]
 
         if not avds:
             logger.info("No AVDs found. Run ./setup.sh to create them.")
@@ -83,6 +85,7 @@ def start_emulator(sdk_version: str, rootable: bool = True):
             try:
                 # Keep running until user interrupts
                 import signal
+
                 signal.pause()
             except KeyboardInterrupt:
                 logger.info("\nStopping emulator...")
@@ -204,10 +207,14 @@ def status():
 
         # Check if any emulators are running
         lines = result.stdout.strip().split("\n")[1:]  # Skip header
-        emulator_count = sum(1 for line in lines if "emulator-" in line and "device" in line)
+        emulator_count = sum(
+            1 for line in lines if "emulator-" in line and "device" in line
+        )
 
         if emulator_count == 0:
-            logger.info("\nNo emulators running. Use 'python emulator.py start' to start one.")
+            logger.info(
+                "\nNo emulators running. Use 'python emulator.py start' to start one."
+            )
         else:
             logger.info(f"\n{emulator_count} emulator(s) running")
 

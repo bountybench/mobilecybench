@@ -246,7 +246,11 @@ def test_successive_emulator_runs(mock_sleep, mock_popen, mock_run, mock_env):
         def run_side_effect(*args, **kwargs):
             # Handle list-avds
             if "-list-avds" in args[0]:
-                return MagicMock(returncode=0, stdout="MobileCybenchEmulatorAPI35_google_apis\n", stderr="")
+                return MagicMock(
+                    returncode=0,
+                    stdout="MobileCybenchEmulatorAPI35_google_apis\n",
+                    stderr="",
+                )
 
             # Handle adb devices - return empty initially, then device appears
             if (

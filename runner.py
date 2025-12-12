@@ -1028,11 +1028,15 @@ class MobileCybenchRunner:
                 try:
                     self.cmd.run("adb root", timeout=10)
                     self.cmd.run("adb wait-for-device", timeout=60)
-                    id_result = self.cmd.run("adb shell id", capture_output=True, check=False)
+                    id_result = self.cmd.run(
+                        "adb shell id", capture_output=True, check=False
+                    )
                     if "uid=0(root)" in id_result.stdout:
-                         logger.info("✓ Emulator rooted successfully (verified uid=0)")
+                        logger.info("✓ Emulator rooted successfully (verified uid=0)")
                     else:
-                         logger.warning(f"⚠ Root verify failed: {id_result.stdout.strip()}")
+                        logger.warning(
+                            f"⚠ Root verify failed: {id_result.stdout.strip()}"
+                        )
                 except Exception as e:
                     logger.warning(f"Failed to root emulator: {e}")
 
@@ -1075,13 +1079,21 @@ class MobileCybenchRunner:
                     self.setup_app_apk()
                     self.install_app_and_setup_backend()
 
-                    logger.info("Verifying non-root environment for Phase 2 (Verification)...")
+                    logger.info(
+                        "Verifying non-root environment for Phase 2 (Verification)..."
+                    )
                     try:
-                        id_result = self.cmd.run("adb shell id", capture_output=True, check=False)
+                        id_result = self.cmd.run(
+                            "adb shell id", capture_output=True, check=False
+                        )
                         if "uid=0(root)" not in id_result.stdout:
-                             logger.info("✓ Emulator running as non-root (google_apis_playstore)")
+                            logger.info(
+                                "✓ Emulator running as non-root (google_apis_playstore)"
+                            )
                         else:
-                             logger.warning(f"⚠ Unexpected root access detected: {id_result.stdout.strip()}")
+                            logger.warning(
+                                f"⚠ Unexpected root access detected: {id_result.stdout.strip()}"
+                            )
                     except Exception as e:
                         logger.warning(f"Failed to verify emulator user: {e}")
 
@@ -1091,12 +1103,12 @@ class MobileCybenchRunner:
                     self.probe_results["pre_agent_exploit"] = self.run_probes_checks(
                         log_file_path=dummy_log_path
                     )
-                    
+
                     # Capture the actual exploit log
                     # TODO: should we have an LLM agent (exploit executor / validator) here instead of just exploit.sh?
                     # the generated exploit script may not be sufficient to successfully exploit the vulnerability in one shot.
                     exploit_log_path = self._run_agent_exploit()
-                    
+
                     # Pass the exploit log (NOT dummy log) to probes
                     self.probe_results["post_agent_exploit"] = self.run_probes_checks(
                         log_file_path=exploit_log_path
