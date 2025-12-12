@@ -73,7 +73,7 @@ def execute_adb_command_with_retry(
                     f"ADB connection issue detected (attempt {attempt + 1}/{max_retries + 1}), retrying..."
                 )
                 # Try to reconnect by starting server and waiting
-                reconnect_cmd = f"cd {start_dir} && export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb start-server && sleep 1"
+                reconnect_cmd = f"cd {start_dir} && export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb -a start-server && sleep 1"
                 container.exec_run(
                     f"bash -c {shlex.quote(reconnect_cmd)}",
                     stdout=True,

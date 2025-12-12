@@ -476,7 +476,7 @@ class EmulatorManager:
                 )
                 time.sleep(1)
                 subprocess.run(
-                    ["adb", "start-server"],
+                    ["adb", "-a", "start-server"],
                     capture_output=True,
                     timeout=10,
                 )
