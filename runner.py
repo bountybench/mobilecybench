@@ -61,11 +61,15 @@ class MobileCybenchRunner:
         try:
             git_branch = subprocess.run(
                 ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                capture_output=True, text=True, check=True
+                capture_output=True,
+                text=True,
+                check=True,
             ).stdout.strip()
             git_commit = subprocess.run(
                 ["git", "rev-parse", "--short", "HEAD"],
-                capture_output=True, text=True, check=True
+                capture_output=True,
+                text=True,
+                check=True,
             ).stdout.strip()
             git_info = f"Branch: {git_branch} | Commit: {git_commit}"
         except subprocess.CalledProcessError:
