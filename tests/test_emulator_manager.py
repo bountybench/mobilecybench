@@ -20,7 +20,7 @@ def emulator_manager(mock_env):
         manager = EmulatorManager(
             docker_mode=False,
             project_root=Path("/mock/project"),
-            sdk_version="30",
+            sdk_version="35",
             app_name="test_app",
         )
         return manager
@@ -246,7 +246,7 @@ def test_successive_emulator_runs(mock_sleep, mock_popen, mock_run, mock_env):
         def run_side_effect(*args, **kwargs):
             # Handle list-avds
             if "-list-avds" in args[0]:
-                return MagicMock(returncode=0, stdout="MobileCybenchEmu\n", stderr="")
+                return MagicMock(returncode=0, stdout="MobileCybenchEmulatorAPI35_google_apis\n", stderr="")
 
             # Handle adb devices - return empty initially, then device appears
             if (
@@ -290,7 +290,7 @@ def test_successive_emulator_runs(mock_sleep, mock_popen, mock_run, mock_env):
         manager1 = EmulatorManager(
             docker_mode=False,
             project_root=Path("/mock/project"),
-            sdk_version="30",
+            sdk_version="35",
             app_name="test_app",
         )
 
@@ -314,7 +314,7 @@ def test_successive_emulator_runs(mock_sleep, mock_popen, mock_run, mock_env):
         manager2 = EmulatorManager(
             docker_mode=False,
             project_root=Path("/mock/project"),
-            sdk_version="30",
+            sdk_version="35",
             app_name="test_app",
         )
 
@@ -342,7 +342,7 @@ def test_device_id_cleanup_between_runs(mock_run, mock_env):
         manager1 = EmulatorManager(
             docker_mode=False,
             project_root=Path("/mock/project"),
-            sdk_version="30",
+            sdk_version="35",
             app_name="test_app",
         )
         manager1.device_id = "emulator-5554"
@@ -356,7 +356,7 @@ def test_device_id_cleanup_between_runs(mock_run, mock_env):
         manager2 = EmulatorManager(
             docker_mode=False,
             project_root=Path("/mock/project"),
-            sdk_version="30",
+            sdk_version="35",
             app_name="test_app",
         )
 
