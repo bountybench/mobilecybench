@@ -582,6 +582,9 @@ echo "This may take a few minutes on first boot..."
 echo "Emulator started in background"
 echo "Waiting for device to be ready..."
 
+adb kill-server
+adb -a start-server
+
 # Wait for device
 "$ANDROID_HOME/platform-tools/adb" wait-for-device
 
