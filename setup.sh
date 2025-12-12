@@ -508,7 +508,7 @@ create_avd() {
         -d "pixel_2" \
         --force >/dev/null
 
-t    local avd_config="$HOME/.android/avd/${avd_name_google_apis}.avd/config.ini"
+    local avd_config="$HOME/.android/avd/${avd_name_google_apis}.avd/config.ini"
     if [[ -f "$avd_config" ]]; then
         {
             echo "hw.ramSize=2048"
