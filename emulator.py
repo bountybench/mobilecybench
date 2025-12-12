@@ -77,6 +77,7 @@ def start_emulator(sdk_version: str, rootable: bool = True):
             try:
                 # Keep running until user interrupts
                 import signal
+
                 signal.pause()
             except KeyboardInterrupt:
                 logger.info("\nStopping emulator...")
