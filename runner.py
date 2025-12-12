@@ -18,6 +18,11 @@ from models.config import RunnerConfig
 from utils.command_executor import CommandExecutor
 from utils.emulator_manager import EmulatorManager
 from utils.logger import logger, logger_manager
+from utils.ssrf_utils import (
+    clear_ssrf_requests,
+    start_ssrf_listener,
+    stop_ssrf_listener,
+)
 from utils.time_tracker import time_tracker
 from utils.utils import get_app_metadata
 from utils.uuid_flags_utils import generate_and_save_flags
@@ -131,7 +136,10 @@ class MobileCybenchRunner:
 
         if self.config.build_type == "source":
             required_scripts.append("setup_app_source.sh")
-        elif self.config.build_type == "skip-apk":
+        elif (
+            self.config.build_type == "skip-apk"
+            or self.config.build_type == "download-apk"
+        ):
             # Check if either setup_app_source.sh exists or download_link is in metadata
             has_setup_source = (self.app_dir / "setup_app_source.sh").exists()
             has_download_link = self.metadata.get("download_link") is not None
@@ -298,6 +306,27 @@ class MobileCybenchRunner:
             logger.info("✓ Flags injected successfully")
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to inject security flags: {e}")
+
+        # Start SSRF listener for detecting SSRF attacks
+        # Check if app has backend containers
+        metadata = get_app_metadata(self.app_name)
+        container_names = metadata.get("container_names", [])
+
+        if container_names:
+            logger.info("Starting SSRF listener...")
+            try:
+                ssrf_compose_dir = project_root / "evaluation" / "ssrf_listener"
+                if start_ssrf_listener(ssrf_compose_dir):
+                    logger.info("✓ SSRF listener started successfully")
+                else:
+                    logger.warning(
+                        "⚠ Failed to start SSRF listener - SSRF detection may not work"
+                    )
+            except Exception as e:
+                logger.warning(f"⚠ Failed to start SSRF listener: {e}")
+        else:
+            logger.info("No backend containers defined - skipping SSRF listener setup")
+
         logger.info("App setup completed")
 
     def setup_agent_environment(self):
@@ -307,6 +336,14 @@ class MobileCybenchRunner:
         if not self.config.dry_run:
             self._setup_env_file()
         self._create_docker_network()
+
+        # Clear any previous SSRF requests before agent starts
+        logger.info("Clearing previous SSRF requests...")
+        try:
+            clear_ssrf_requests()
+            logger.info("✓ SSRF requests cleared")
+        except Exception as e:
+            logger.warning(f"⚠ Failed to clear SSRF requests: {e}")
 
         # Setup agent kali environment with appropriate image
         logger.info("Setting up agent Kali environment...")
@@ -601,6 +638,10 @@ class MobileCybenchRunner:
                     check_reachability=False,
                 )
 
+                # Check if we should include SSRF instructions
+                container_names = self.metadata.get("container_names", [])
+                include_ssrf = bool(container_names)
+
                 agent = CodexAgent(
                     max_conversation_turns=self.config.max_iterations,
                     screenshot_enabled=self.config.screenshot_mode,
@@ -609,6 +650,9 @@ class MobileCybenchRunner:
                     dry_run=self.config.dry_run,
                     mcp_config=mcp_config,
                     package_name=self.metadata.get("package_name"),
+                    username=self.metadata.get("username"),
+                    password=self.metadata.get("password"),
+                    include_ssrf=include_ssrf,
                 )
             else:
                 # Import and use CustomAgent
@@ -618,6 +662,10 @@ class MobileCybenchRunner:
                 # Set dry_run=False for actual AI execution
                 logger.info("Initializing custom agent...")
                 logger.info("Creating CustomAgent instance")
+
+                # Check if we should include SSRF instructions
+                container_names = self.metadata.get("container_names", [])
+                include_ssrf = bool(container_names)
 
                 agent = CustomAgent(
                     model=self.config.model,
@@ -633,6 +681,9 @@ class MobileCybenchRunner:
                     dry_run=self.config.dry_run,
                     system_prompt=self.config.custom_system_prompt,
                     package_name=self.metadata.get("package_name"),
+                    username=self.metadata.get("username"),
+                    password=self.metadata.get("password"),
+                    include_ssrf=include_ssrf,
                 )
 
             # This can take a while for actual LLM calls
@@ -672,13 +723,16 @@ class MobileCybenchRunner:
         log_path = Path(log_file_path)
         if log_path.exists() and log_path.is_file():
             command = f"{command} {shlex.quote(str(log_path))}"
-            logger.info(f"Passing log file to probe checks: {log_path}")
-        else:
-            logger.error(
-                f"Log file path does not exist: {log_path}, running without it. This may limit the quality of the probes checks."
-            )
+
+        # Check if we should skip SSRF check
+        metadata = get_app_metadata(self.app_name)
+        container_names = metadata.get("container_names", [])
+        env = os.environ.copy()
+        if not container_names:
+            env["SKIP_SSRF_CHECK"] = "1"
+
         try:
-            result = self.cmd.run(command, cwd=self.project_root, check=False)
+            result = self.cmd.run(command, cwd=self.project_root, check=False, env=env)
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to run probe checks: {e}")
             result = e
@@ -725,6 +779,14 @@ class MobileCybenchRunner:
             logger.warning(f"Error during cleanup: {e}")
         except Exception as e:
             logger.warning(f"Error during cleanup: {e}")
+
+        # Stop SSRF listener
+        try:
+            ssrf_compose_dir = project_root / "evaluation" / "ssrf_listener"
+            stop_ssrf_listener(ssrf_compose_dir)
+            logger.info("SSRF listener stopped")
+        except Exception as e:
+            logger.warning(f"Error stopping SSRF listener: {e}")
 
     def _run_cleanup(self):
         """Run cleanup script for the app"""
@@ -1049,6 +1111,15 @@ class MobileCybenchRunner:
                     logger.info("Agent codebase cleaned up successfully")
                 except Exception as e:
                     logger.error(f"Failed to cleanup agent_codebase: {e}")
+
+            # Clean up SSRF listener
+            log_banner("CLEANING UP SSRF LISTENER")
+            try:
+                ssrf_compose_dir = project_root / "evaluation" / "ssrf_listener"
+                stop_ssrf_listener(ssrf_compose_dir)
+                logger.info("SSRF listener stopped and cleaned up")
+            except Exception as e:
+                logger.warning(f"Failed to cleanup SSRF listener: {e}")
 
             # TODO: Add cleanup for app cleanup.sh, Kali container, and MCP server
             # Should run docker compose down in agent_dir and cleanup.sh in app_dir

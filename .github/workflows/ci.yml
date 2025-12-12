@@ -603,6 +603,50 @@ jobs:
             fi
           }
 
+          start_ssrf_listener() {
+            echo "Starting SSRF listener container..."
+            local root_dir="${GITHUB_WORKSPACE:-$(pwd)}"
+            local ssrf_compose_dir="$root_dir/evaluation/ssrf_listener"
+            
+            if [ ! -d "$ssrf_compose_dir" ]; then
+              echo "WARNING: SSRF listener directory not found at $ssrf_compose_dir"
+              return 1
+            fi
+            
+            # Stop any existing SSRF listener
+            docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
+            
+            # Build and start the SSRF listener
+            if docker compose -f "$ssrf_compose_dir/docker-compose.yml" up -d --build --wait; then
+              echo "SSRF listener started on port 14377"
+              return 0
+            else
+              echo "WARNING: Failed to start SSRF listener"
+              return 1
+            fi
+          }
+
+          stop_ssrf_listener() {
+            echo "Stopping SSRF listener container..."
+            local root_dir="${GITHUB_WORKSPACE:-$(pwd)}"
+            local ssrf_compose_dir="$root_dir/evaluation/ssrf_listener"
+            
+            if [ -d "$ssrf_compose_dir" ]; then
+              docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
+            fi
+            
+            # Also try to stop container directly in case compose fails
+            docker stop ssrf-probe 2>/dev/null || true
+            docker rm -f ssrf-probe 2>/dev/null || true
+            
+            echo "SSRF listener stopped"
+          }
+
+          clear_ssrf_requests() {
+            echo "Clearing SSRF request log..."
+            docker exec ssrf-probe rm -f /app/logs/ssrf_requests.json 2>/dev/null || true
+          }
+
           EOF
           chmod +x /tmp/shared_functions.sh
 
@@ -627,6 +671,11 @@ jobs:
 
       - name: Create Docker Network
         run: docker network create shared_net || true
+
+      - name: Start SSRF Listener
+        run: |
+          source /tmp/shared_functions.sh
+          start_ssrf_listener || echo "WARNING: SSRF listener not started - SSRF detection may not work"
 
       - name: Enable KVM
         run: |
@@ -1036,6 +1085,12 @@ jobs:
         if: always()
         run: df -h
 
+      - name: Stop SSRF Listener
+        if: always()
+        run: |
+          source /tmp/shared_functions.sh
+          stop_ssrf_listener || true
+
       - name: Docker Cleanup after tests
         if: always()
         run: |
@@ -1243,6 +1298,50 @@ jobs:
               echo "No metadata.json found, skipping connectivity check"
             fi
           }
+
+          start_ssrf_listener() {
+            echo "Starting SSRF listener container..."
+            local root_dir="${GITHUB_WORKSPACE:-$(pwd)}"
+            local ssrf_compose_dir="$root_dir/evaluation/ssrf_listener"
+            
+            if [ ! -d "$ssrf_compose_dir" ]; then
+              echo "WARNING: SSRF listener directory not found at $ssrf_compose_dir"
+              return 1
+            fi
+            
+            # Stop any existing SSRF listener
+            docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
+            
+            # Build and start the SSRF listener
+            if docker compose -f "$ssrf_compose_dir/docker-compose.yml" up -d --build --wait; then
+              echo "SSRF listener started on port 14377"
+              return 0
+            else
+              echo "WARNING: Failed to start SSRF listener"
+              return 1
+            fi
+          }
+
+          stop_ssrf_listener() {
+            echo "Stopping SSRF listener container..."
+            local root_dir="${GITHUB_WORKSPACE:-$(pwd)}"
+            local ssrf_compose_dir="$root_dir/evaluation/ssrf_listener"
+            
+            if [ -d "$ssrf_compose_dir" ]; then
+              docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
+            fi
+            
+            # Also try to stop container directly in case compose fails
+            docker stop ssrf-probe 2>/dev/null || true
+            docker rm -f ssrf-probe 2>/dev/null || true
+            
+            echo "SSRF listener stopped"
+          }
+
+          clear_ssrf_requests() {
+            echo "Clearing SSRF request log..."
+            docker exec ssrf-probe rm -f /app/logs/ssrf_requests.json 2>/dev/null || true
+          }
           EOF
           chmod +x /tmp/shared_functions.sh
 
@@ -1267,6 +1366,11 @@ jobs:
 
       - name: Create Docker Network
         run: docker network create shared_net || true
+
+      - name: Start SSRF Listener
+        run: |
+          source /tmp/shared_functions.sh
+          start_ssrf_listener || echo "WARNING: SSRF listener not started - SSRF detection may not work"
 
       - name: Enable KVM
         run: |
@@ -1438,6 +1542,12 @@ jobs:
       - name: Display disk space after tests
         if: always()
         run: df -h
+
+      - name: Stop SSRF Listener
+        if: always()
+        run: |
+          source /tmp/shared_functions.sh
+          stop_ssrf_listener || true
 
       - name: Docker Cleanup after tests
         if: always()

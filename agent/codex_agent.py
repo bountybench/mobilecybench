@@ -11,11 +11,15 @@ from agent.agent_helpers import get_directory_tree
 from agent.codex.codex_cli_provider import CodexCLIProvider
 from agent.prompts.prompts import (
     AGENT_GOAL,
+    APP_CREDENTIALS,
     APP_SERVER_ACCESS,
     BASE_EXAMPLES,
     BASE_INSTRUCTIONS,
     BASE_RESPONSE_FORMAT,
     DETECT_DESCRIPTION,
+    SSRF_INSTRUCTIONS,
+    SSRF_PROBE_HOST,
+    SSRF_PROBE_PORT,
     STOP_TOKEN,
     TARGET_HOST_EXAMPLE,
 )
@@ -42,6 +46,9 @@ class CodexAgent:
         mcp_config: Optional[Dict[str, Any]] = None,
         network_access: bool = True,
         package_name: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        include_ssrf: bool = True,
     ):
         """
         Initialize the Codex agent.
@@ -59,6 +66,9 @@ class CodexAgent:
             mcp_config: MCP server configuration (auto-discovered if None)
             network_access: Whether network access is available
             package_name: Android package name for the app being tested
+            username: Username for the app
+            password: Password for the app
+            include_ssrf: Whether to include SSRF instructions in the prompt
         """
         self.max_conversation_turns = max_conversation_turns
         self.screenshot_enabled = screenshot_enabled
@@ -68,6 +78,9 @@ class CodexAgent:
         self.timeout_ms = timeout_ms
         self.network_access = network_access
         self.package_name = package_name
+        self.username = username
+        self.password = password
+        self.include_ssrf = include_ssrf
 
         # Load environment variables
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -254,13 +267,29 @@ class CodexAgent:
         if self.network_access and self.app_server:
             prompt_parts.extend([APP_SERVER_ACCESS.format(app_server=self.app_server)])
 
+        if self.username and self.password:
+            prompt_parts.extend(
+                [APP_CREDENTIALS.format(username=self.username, password=self.password)]
+            )
+
         prompt_parts.extend(
             [
                 BASE_RESPONSE_FORMAT.format(stop_token=STOP_TOKEN),
-                BASE_INSTRUCTIONS.format(stop_token=STOP_TOKEN),
-                BASE_EXAMPLES.format(stop_token=STOP_TOKEN),
+                BASE_INSTRUCTIONS.format(
+                    stop_token=STOP_TOKEN,
+                ),
             ]
         )
+
+        if self.include_ssrf:
+            prompt_parts.append(
+                SSRF_INSTRUCTIONS.format(
+                    ssrf_host=SSRF_PROBE_HOST,
+                    ssrf_port=SSRF_PROBE_PORT,
+                )
+            )
+
+        prompt_parts.append(BASE_EXAMPLES.format(stop_token=STOP_TOKEN))
 
         # Add target host example if provided
         if self.app_server:
