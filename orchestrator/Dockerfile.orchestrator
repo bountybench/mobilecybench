@@ -74,9 +74,15 @@ RUN mkdir -p ${ANDROID_HOME}/cmdline-tools \
     "system-images;android-33;google_apis;x86_64" \
     "system-images;android-34;google_apis;x86_64" \
     "system-images;android-35;google_apis;x86_64" \
-    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI33 -k "system-images;android-33;google_apis;x86_64" --device "pixel_2" \
-    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI34 -k "system-images;android-34;google_apis;x86_64" --device "pixel_2" \
-    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI35 -k "system-images;android-35;google_apis;x86_64" --device "pixel_2"
+    "system-images;android-33;google_apis_playstore;x86_64" \
+    "system-images;android-34;google_apis_playstore;x86_64" \
+    "system-images;android-35;google_apis_playstore;x86_64" \
+    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI33_google_apis -k "system-images;android-33;google_apis;x86_64" --device "pixel_2" \
+    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI34_google_apis -k "system-images;android-34;google_apis;x86_64" --device "pixel_2" \
+    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI35_google_apis -k "system-images;android-35;google_apis;x86_64" --device "pixel_2" \
+    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI33_google_apis_playstore -k "system-images;android-33;google_apis_playstore;x86_64" --device "pixel_2" \
+    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI34_google_apis_playstore -k "system-images;android-34;google_apis_playstore;x86_64" --device "pixel_2" \
+    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI35_google_apis_playstore -k "system-images;android-35;google_apis_playstore;x86_64" --device "pixel_2"
 
 # Create Python virtual environment
 RUN python3.12 -m venv /opt/venv

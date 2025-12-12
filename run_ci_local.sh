@@ -870,7 +870,7 @@ start_ssrf_listener || echo -e "${WARNING} SSRF listener not started - SSRF dete
 # Start emulator (assuming you have a start_emulator.sh script)
 if [ -f "start_emulator.sh" ]; then
     print_header "$CYAN" "STARTING EMULATOR"
-    start_emulator
+    bash ./start_emulator.sh || echo -e "${WARNING} Failed to start emulator"
 
     echo "Waiting for emulator to boot..."
 
@@ -942,7 +942,7 @@ print_header "$CYAN" "STOPPING SSRF LISTENER"
 stop_ssrf_listener
 
 if [ -f "stop_emulator.sh" ]; then
-    stop_emulator
+    bash ./stop_emulator.sh
 fi
 
 # Run linter

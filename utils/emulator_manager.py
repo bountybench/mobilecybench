@@ -19,25 +19,42 @@ class EmulatorState(Enum):
     STOPPED = "stopped"
 
 
+class SystemImage(Enum):
+    GOOGLE_APIS = "google_apis"  # can be rooted with 'adb root'
+    GOOGLE_APIS_PLAYSTORE = "google_apis_playstore"  # cannot be rooted
+
+
 class EmulatorManager:
+    """
+    AVD naming convention: MobileCybenchEmulatorAPI{sdk_version}_{system_image_type} - this is consistent with our orchestrator docker image.
+    Previous name: MobileCybenchEmu for host. This should be deprecated moving forward. Haven't done this yet - breaks local ci / not important for now.
+    """
+
     def __init__(
         self,
         docker_mode: bool,
         project_root: Path,
         sdk_version: Optional[str] = None,
         app_name: Optional[str] = None,
+        rootable: bool = True,
     ):
         self.docker_mode = docker_mode
         self.project_root = project_root
         self.sdk_version = sdk_version
         self.app_name = app_name
+        self.rootable = rootable
+        self.system_image = (
+            SystemImage.GOOGLE_APIS if rootable else SystemImage.GOOGLE_APIS_PLAYSTORE
+        )
         self.state = EmulatorState.NOT_STARTED
         self.process: Optional[subprocess.Popen] = None
         self.device_id: Optional[str] = None  # Track our specific emulator device
         self.emulator_config = self._build_emulator_config()
 
+        emulator_type = "rootable" if rootable else "non-rootable"
         logger.info(
-            f"EmulatorManager initialized in {'docker' if docker_mode else 'host'} mode"
+            f"EmulatorManager initialized in {'docker' if docker_mode else 'host'} mode "
+            f"({emulator_type})"
         )
 
     def _build_emulator_config(self) -> dict:
@@ -46,11 +63,15 @@ class EmulatorManager:
             raise EnvironmentError("ANDROID_HOME environment variable is not set")
         emulator_bin = Path(android_home) / "emulator" / "emulator"
 
-        if self.docker_mode:
-            if not self.sdk_version:
-                raise ValueError("SDK version required for docker mode")
+        if not self.sdk_version:
+            raise ValueError("SDK version is required")
 
-            emulator_name = f"MobileCybenchEmulatorAPI{self.sdk_version}"
+        system_image_suffix = self.system_image.value
+        emulator_name = (
+            f"MobileCybenchEmulatorAPI{self.sdk_version}_{system_image_suffix}"
+        )
+
+        if self.docker_mode:
             emulator_args = [
                 str(emulator_bin),
                 "-avd",
@@ -66,7 +87,6 @@ class EmulatorManager:
                 "-read-only",
             ]
         else:
-            emulator_name = "MobileCybenchEmu"
             emulator_args = [
                 str(emulator_bin),
                 "-avd",
@@ -86,6 +106,7 @@ class EmulatorManager:
             "emulator_name": emulator_name,
             "emulator_args": emulator_args,
             "android_home": android_home,
+            "system_image": system_image_suffix,
         }
 
     def _verify_avd_exists(self):

@@ -37,7 +37,7 @@ start_emulator() {
         return 0
     fi
     log_info "Starting Android emulator..."
-    local avd_name=${1:-"Pixel_2_API_28"}
+    local avd_name=${1:-"Pixel_2_API_28"}      # TODO: fix - looks like all our previous local ci emulators were Pixel_2_API_28 
     if [[ -z "$avd_name" ]]; then
         fatal "start_emulator requires AVD name"
     fi
