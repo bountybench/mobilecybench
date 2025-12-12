@@ -547,14 +547,12 @@ create_avd() {
     log "  - $avd_name_playstore (non-rootable, production-like)"
 }
 
-# Create helper scripts (legacy - use emulator.py for new projects)
 create_helper_scripts() {
-    log "Creating helper scripts (legacy)..."
+    log "Creating helper scripts..."
 
     # Start emulator script - defaults to rootable (google_apis)
     cat > "${SCRIPT_DIR}/start_emulator.sh" << EOF
 #!/bin/bash
-# Start Android emulator (legacy script - consider using: python emulator.py start)
 
 ANDROID_HOME="\${HOME}/.android-sdk"
 SDK_VERSION="${SDK_VERSION}"
@@ -597,7 +595,6 @@ EOF
     # Stop emulator script
     cat > "${SCRIPT_DIR}/stop_emulator.sh" << 'EOF'
 #!/bin/bash
-# Stop Android emulator (legacy script - consider using: python emulator.py stop)
 
 echo "Stopping Android emulator..."
 adb emu kill
@@ -607,7 +604,6 @@ EOF
     # Device check script
     cat > "${SCRIPT_DIR}/check_device.sh" << 'EOF'
 #!/bin/bash
-# Check if Android device is ready (legacy script - consider using: python emulator.py status)
 
 ANDROID_HOME="${HOME}/.android-sdk"
 
@@ -732,7 +728,7 @@ main() {
     echo "  python emulator.py list                                          # List available AVDs"
     echo "  python emulator.py stop                                          # Stop running emulator"
     echo ""
-    echo "Or use legacy bash scripts:"
+    echo "Or use bash scripts:"
     echo "  ./start_emulator.sh [google_apis|google_apis_playstore]          # Start emulator"
     echo "  ./check_device.sh                                                # Check device status"
     echo "  ./stop_emulator.sh                                               # Stop emulator"

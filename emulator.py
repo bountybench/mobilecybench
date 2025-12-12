@@ -13,19 +13,16 @@ def list_avds():
     try:
         android_home = Path.home() / ".android-sdk"
         emulator_bin = android_home / "emulator" / "emulator"
-
         if not emulator_bin.exists():
             logger.error(f"Emulator binary not found at {emulator_bin}")
             logger.error("Please run ./setup.sh first")
             return 1
-
         result = subprocess.run(
             [str(emulator_bin), "-list-avds"],
             capture_output=True,
             text=True,
             timeout=10,
         )
-
         if result.returncode != 0:
             logger.error("Failed to list AVDs")
             return 1
@@ -33,11 +30,9 @@ def list_avds():
         avds = [
             line.strip() for line in result.stdout.strip().split("\n") if line.strip()
         ]
-
         if not avds:
             logger.info("No AVDs found. Run ./setup.sh to create them.")
             return 0
-
         logger.info("Available AVDs:")
         for avd in avds:
             if "google_apis_playstore" in avd:
@@ -46,9 +41,7 @@ def list_avds():
                 avd_type = "rootable"
             else:
                 avd_type = "unknown"
-
             logger.info(f"  • {avd} ({avd_type})")
-
         return 0
 
     except Exception as e:
@@ -79,17 +72,14 @@ def start_emulator(sdk_version: str, rootable: bool = True):
 
             if rootable:
                 logger.info("You can now use 'adb root' to get root access")
-
             logger.info("\nPress Ctrl+C to stop the emulator...")
 
             try:
                 # Keep running until user interrupts
                 import signal
-
                 signal.pause()
             except KeyboardInterrupt:
                 logger.info("\nStopping emulator...")
-
         return 0
 
     except Exception as e:
@@ -109,7 +99,6 @@ def stop_emulator():
         if result.returncode != 0:
             logger.error("Failed to check running emulators")
             return 1
-
         lines = result.stdout.strip().split("\n")[1:]  # Skip header
         emulators = []
 
@@ -118,7 +107,6 @@ def stop_emulator():
                 device_id = line.split("\t")[0].strip()
                 if device_id.startswith("emulator-"):
                     emulators.append(device_id)
-
         if not emulators:
             logger.info("No running emulators found")
             return 0
@@ -197,11 +185,9 @@ def status():
             text=True,
             timeout=10,
         )
-
         if result.returncode != 0:
             logger.error("Failed to check emulator status")
             return 1
-
         logger.info("Running devices:")
         print(result.stdout)
 
@@ -210,14 +196,12 @@ def status():
         emulator_count = sum(
             1 for line in lines if "emulator-" in line and "device" in line
         )
-
         if emulator_count == 0:
             logger.info(
                 "\nNo emulators running. Use 'python emulator.py start' to start one."
             )
         else:
             logger.info(f"\n{emulator_count} emulator(s) running")
-
         return 0
 
     except FileNotFoundError:
