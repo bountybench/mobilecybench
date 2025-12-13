@@ -29,7 +29,7 @@ docker container prune -f
 echo "Removing Docker image..."
 docker image rm -f ghcr.io/home-assistant/home-assistant:stable -f || true
 
-adb uninstall io.homeassistant.companion.android.minimal
+adb uninstall io.homeassistant.companion.android.minimal || true
 
 APK_PATH="Home Assistant.apk"
 if [ -f "$APK_PATH" ]; then
