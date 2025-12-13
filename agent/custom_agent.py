@@ -55,7 +55,7 @@ class CustomAgent:
         self.dry_run = dry_run
         self.reasoning_effort = reasoning_effort
         self.include_ssrf = include_ssrf
-        
+
         # Skip provider setup in dry-run mode
         if not self.dry_run:
             # Load environment variables from .env file in the agent directory
