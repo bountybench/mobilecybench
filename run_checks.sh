@@ -162,6 +162,7 @@ echo "TESTING GENERIC INTEGRITY..."
 gen_integrity_output=${gen_integrity_output:-"{}"}
 echo
 
+
 if [ "$gen_access_exit" -ne 0 ] || [ -z "$gen_access_output" ]; then
   echo "ERROR: Access test failed to execute or produce output"
   exit 1

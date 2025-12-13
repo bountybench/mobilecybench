@@ -205,7 +205,7 @@ def test_radicale_config_integrity():
 
     match = (
         deterministic_hash(config_file.read_text())
-        == "c7e3524f9747d2fbe58d137e446c6a3327952c9a3a85a25fc347db6bad2f1ca8"
+        == "4ecbbf8b5cbf402d78feedfbdf8b1fbaac15201c6899360aeb87d145a823dc2a"
     )
 
     if not match:

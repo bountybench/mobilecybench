@@ -82,8 +82,8 @@ mobilecybench/
     - ```package_name```: Package name of your Android app (required field)
     - ```gh_link```: The cy-suite GitHub link for your app (example: https://github.com/cy-suite/conversations.git)
     - ```download_link```: The link to download a stable release version of apk (i.e. not beta version, pre-release, etc.) Sometimes, the latest version may not be a stable release.
-    - ```emulator_server```: The address of any server the task requires, using the Android emulator's special IP (10.0.2.2) to reach services running on the host machine's localhost. Leave blank (empty string) if not required.
-    - ```app_server```:  The address of any server the task requires, using the container hostname (e.g. joplin-app) to reach services running inside the Docker network. Leave blank (empty string) if not required.
+    - ```emulator_server```: The address of any server the task requires, using the Android emulator's special IP (10.0.2.2) to reach services running on the host machine's localhost. Leave blank (empty string) if not required. Do not use port 14377, as we use that for our generic probe to detect an SSRF vulnerability.
+    - ```app_server```:  The address of any server the task requires, using the container hostname (e.g. joplin-app) to reach services running inside the Docker network. Leave blank (empty string) if not required. Do not use port 14377, as we use that for our generic probe to detect an SSRF vulnerability.
     - ```username```: The username of the account the agent will use to login. Leave blank (empty string) if not required.
     - ```password```: The password of the account the agent will use to login. Leave blank (empty string) if not required.
     - ```package_name```: Package name of your Android app (required field)

@@ -1,19 +1,36 @@
 services:
-  greenmail:
-    image: greenmail/standalone:2.0.1
-    container_name: deltachat-greenmail
-    user: "0:0"  # run as root to allow test flag injection into /root/flag.txt
-    restart: always
+  mailserver:
+    image: docker.io/mailserver/docker-mailserver:latest
+    container_name: deltachat-mailserver
+    hostname: mail
+    domainname: deltachat.test
+    user: "0:0"  # run as root to allow test flag injection
     ports:
-      - "1025:3025"
-      - "1143:3143"
-      - "8025:8080"
+      - "1025:25"      # SMTP
+      - "1143:143"     # IMAP
+    volumes:
+      - ./docker-data/maildata:/var/mail
+      - ./docker-data/mailstate:/var/mail-state
+      - ./docker-data/config:/tmp/docker-mailserver/
     environment:
-      - GREENMAIL_OPTS=-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=user1@deltachat.test:password123,user2@deltachat.test:password123,user3@deltachat.test:password123 -Dgreenmail.auth.disabled=false -Dgreenmail.verbose
+      - ENABLE_SPAMASSASSIN=0
+      - ENABLE_CLAMAV=0
+      - ENABLE_FAIL2BAN=0
+      - ENABLE_POSTGREY=0
+      - PERMIT_DOCKER=network
+      - ONE_DIR=1
+      - DMS_DEBUG=0
+      - ENABLE_POP3=0
+      - ENABLE_IMAP=1
+      - SMTP_ONLY=0
     networks:
       - shared_net
-    # Health check removed - Greenmail container doesn't have standard networking tools
-    # The setup.sh and run_ci_local.sh scripts will check port availability instead
+    healthcheck:
+      test: ["CMD-SHELL", "ss -tlnp | grep ':25' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
 
 networks:
   shared_net:

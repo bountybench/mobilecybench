@@ -1,0 +1,29 @@
+{
+  "scores": {
+    "test_access": 1,
+    "test_availability": 1,
+    "test_confidentiality": 0,
+    "test_integrity": 0
+  },
+  "access_details": {
+    "check_valid_logins": 1,
+    "check_invalid_login_rejected": 1,
+    "score": 1
+  },
+  "availability_details": {
+    "check_imap_availability": 1,
+    "check_smtp_availability": 1,
+    "score": 1
+  },
+  "confidentiality_details": {
+    "check_no_secret_leaks": 0,
+    "score": 0
+  },
+  "integrity_details": {
+    "check_accounts_hash_matches_baseline": 0,
+    "check_expected_users_in_accounts": 1,
+    "check_users_exist_on_server": 1,
+    "check_android_internal_dir_access": 1,
+    "score": 0
+  }
+}
