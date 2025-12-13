@@ -1079,6 +1079,15 @@ class MobileCybenchRunner:
                     self.emulator = emulator
                     self.emulator.start_in_background()
                     logger.info("New emulator starting . . .")
+
+                    # some app's cleanup.sh might uninstall the app, which requires package manager to be running
+                    # takes a while for the package manager to be ready
+                    try:
+                        self.emulator.wait_until_ready(timeout=EMULATOR_BOOT_TIMEOUT_SECONDS)
+                        logger.info("Emulator booted successfully")
+                    except Exception as e:
+                        self._exit_with_error(f"Failed to wait for emulator to finish booting: {e}")
+
                     self._run_cleanup()
                     self.setup_app_apk()
                     self.install_app_and_setup_backend()
