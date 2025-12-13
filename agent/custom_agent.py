@@ -24,6 +24,7 @@ from agent.prompts.prompts import (
 from utils.agent_utils import take_screenshot
 from utils.logger import agent_logger, logger_manager
 from utils.mcp_utils import get_mcp_server_config
+from utils.reasoning_utils import is_reasoning_supported_model
 from utils.time_tracker import time_tracker
 from utils.token_tracker import TokenTracker
 
@@ -46,11 +47,13 @@ class CustomAgent:
         app_server: str = None,
         network_access: bool = True,
         package_name: str = None,
+        reasoning_effort: str = None,
         username: str = None,
         password: str = None,
         include_ssrf: bool = True,
     ):
         self.dry_run = dry_run
+        self.reasoning_effort = reasoning_effort
         self.include_ssrf = include_ssrf
 
         # Skip provider setup in dry-run mode
@@ -331,6 +334,7 @@ class CustomAgent:
                         conversation_id=self.conversation_id,
                         turn=turn + 1,
                     ):
+                        reasoning_effort = getattr(self, "reasoning_effort", None)
                         resp = self.provider.call(
                             model=self.model,
                             conversation_id=self.conversation_id,
@@ -338,6 +342,12 @@ class CustomAgent:
                             tools=[self.mcp_config],
                             max_output_tokens=self.max_model_response_tokens,
                             timeout_ms=self.timeout_ms,
+                            reasoning_effort=(
+                                reasoning_effort
+                                if reasoning_effort
+                                and is_reasoning_supported_model(self.model)
+                                else None
+                            ),
                         )
                     print("[Agent] API call completed")
                     break  # Success, exit retry loop

@@ -684,6 +684,7 @@ class MobileCybenchRunner:
                     dry_run=self.config.dry_run,
                     system_prompt=self.config.custom_system_prompt,
                     package_name=self.metadata.get("package_name"),
+                    reasoning_effort=self.config.reasoning_effort,
                     username=self.metadata.get("username"),
                     password=self.metadata.get("password"),
                     include_ssrf=include_ssrf,
