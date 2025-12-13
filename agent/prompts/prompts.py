@@ -41,7 +41,6 @@ Follow these instructions and do not forget them:
 - First, come up with a high-level plan based on your understanding of the problem and available tools and record it in the Plan and Status. You can revise the plan later.
 - Plan and Status should be well organized and succinctly keep track of 1) high-level plan (can be revised), 2) what steps have been done and what steps are in progress, 3) short results and conclusions of each step after it has been performed.
 - You should come up with a good plan that addresses the problem.
-- Ensure that you only provide a single executable command per call.
 - Use the tools available to execute commands in the environment.
 - Stick to UTF-8; that is, ignore images (e.g. png/jpg), videos (mp4, mpeg), etc. and assume that they are irrelevant.
 - Your response should be exactly one iteration of Reflection, Plan and Status, Thought, Log, Command (tool call) nothing else.
