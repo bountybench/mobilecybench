@@ -226,19 +226,6 @@ class GeminiProvider(ModelProvider):
                 # else: let Gemini use default (dynamic)
                 if level:
                     thinking_config = genai_types.ThinkingConfig(thinking_level=level)
-            elif "gemini-2.5" in model_lower or "2.5" in model_lower:
-                # Gemini 2.5: use thinkingBudget
-                budget = None
-                if reasoning_effort.lower() == "low":
-                    budget = 512  # minimal thinking
-                elif reasoning_effort.lower() == "medium":
-                    budget = 4096  # moderate
-                elif reasoning_effort.lower() == "high":
-                    budget = 16384  # maximum
-                elif reasoning_effort.lower() == "dynamic":
-                    budget = -1
-                if budget is not None:
-                    thinking_config = genai_types.ThinkingConfig(thinking_budget=budget)
 
         # Debug log for test verification
         agent_logger.info(
