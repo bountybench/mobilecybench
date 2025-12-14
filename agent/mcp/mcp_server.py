@@ -99,8 +99,8 @@ async def _execute_command_internal(command: str) -> str:
         # Use retry function for ADB commands
         label = "ADB Command"
         try:
-            exit_code, stdout, stderr = execute_adb_command_with_retry(
-                command, start_dir
+            exit_code, stdout, stderr = await asyncio.to_thread(
+                execute_adb_command_with_retry, command, start_dir
             )
         except Exception as e:
             # Provide clear error message for connection issues
