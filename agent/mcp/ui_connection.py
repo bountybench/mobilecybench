@@ -14,7 +14,7 @@ def run_adb_shell(command: str) -> str:
     """
     try:
         start_dir = "/app/codebase"
-        _, output = execute_adb_command_with_retry(f"adb shell {command}", start_dir)
+        _, output, _ = execute_adb_command_with_retry(f"adb shell {command}", start_dir)
         return output
     except Exception as e:
         logger.error(f"Error executing ADB shell command: {e}")
@@ -29,7 +29,7 @@ def run_adb_pull(remote_path: str, local_path: str) -> bool:
     """
     try:
         start_dir = "/app/codebase"
-        exit_code, output = execute_adb_command_with_retry(
+        exit_code, output, _ = execute_adb_command_with_retry(
             f"adb shell cat {remote_path}", start_dir
         )
 

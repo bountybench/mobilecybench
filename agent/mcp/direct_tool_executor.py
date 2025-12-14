@@ -48,6 +48,29 @@ class MCPToolExecutor:
         self.mcp_server_url = f"{self.ngrok_base_url}/mcp"
 
         self.session = requests.Session()
+
+        # Configure robust retries
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+
+        retry_strategy = Retry(
+            total=5,  # Total number of retries
+            backoff_factor=1,  # Wait 1s, 2s, 4s, 8s, 16s...
+            status_forcelist=[429, 500, 502, 503, 504],  # Retry on these status codes
+            allowed_methods=[
+                "HEAD",
+                "GET",
+                "POST",
+                "PUT",
+                "DELETE",
+                "OPTIONS",
+                "TRACE",
+            ],
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
+
         # Set required headers for FastMCP Streamable HTTP transport
         self.session.headers.update(
             {
@@ -94,7 +117,7 @@ class MCPToolExecutor:
             "params": {},
         }
         try:
-            response = self.session.post(self.mcp_server_url, json=payload, timeout=30)
+            response = self.session.post(self.mcp_server_url, json=payload, timeout=300)
             response.raise_for_status()
 
             if response.headers.get("content-type", "").startswith("text/event-stream"):
@@ -141,7 +164,7 @@ class MCPToolExecutor:
         }
 
         try:
-            response = self.session.post(self.mcp_server_url, json=payload, timeout=30)
+            response = self.session.post(self.mcp_server_url, json=payload, timeout=300)
             response.raise_for_status()
 
             # Handle streaming response from FastMCP

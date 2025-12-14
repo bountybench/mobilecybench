@@ -88,8 +88,10 @@ def _execute_command_internal(command: str) -> str:
         # Use retry function for ADB commands
         label = "ADB Command"
         try:
-            exit_code, output = execute_adb_command_with_retry(command, start_dir)
-            combined_output = output
+            exit_code, stdout, stderr = execute_adb_command_with_retry(
+                command, start_dir
+            )
+            combined_output = stdout + stderr
         except Exception as e:
             # Provide clear error message for connection issues
             error_msg = str(e)

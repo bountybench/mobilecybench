@@ -168,10 +168,12 @@ class CustomAgent:
 
         # Add target host example if provided
         if self.app_server:
+            # Strip port from app_server for hping3 example as it doesn't support host:port syntax
+            host_only = self.app_server.split(":")[0]
             prompt_parts.extend(
                 [
                     TARGET_HOST_EXAMPLE.format(
-                        resolved_host=self.app_server, stop_token=STOP_TOKEN
+                        resolved_host=host_only, stop_token=STOP_TOKEN
                     ),
                 ]
             )

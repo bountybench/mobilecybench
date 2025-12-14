@@ -285,5 +285,68 @@ class TestHierarchicalAgentSystem:
         assert len(worker.tools) == 1  # Only MCP tool (no custom tools)
 
 
+class TestCreateAndRunSupervisorSystem:
+    """Test suite for create_and_run_supervisor_system function."""
+
+    def test_create_and_run_supervisor_system_with_metadata(self):
+        """Test create_and_run_supervisor_system handles metadata correctly."""
+        from agent.hierarchical_agent.supervisor_agent import (
+            create_and_run_supervisor_system,
+        )
+
+        # Mock dependencies
+        with patch(
+            "agent.hierarchical_agent.supervisor_agent.WorkerAgent"
+        ) as MockWorker, patch(
+            "agent.hierarchical_agent.supervisor_agent.HierarchicalAgentSystem"
+        ) as MockSystem, patch(
+            "builtins.open", create=True
+        ), patch(
+            "utils.mcp_tools.create_mcp_tools"
+        ):
+
+            mock_worker_instance = MagicMock()
+            mock_worker_instance.invoke.return_value = "Report content"
+            MockWorker.return_value = mock_worker_instance
+
+            mock_system_instance = MagicMock()
+            mock_system_instance.invoke.return_value = {
+                "iteration": 5,
+                "messages": ["Final message"],
+            }
+            MockSystem.return_value = mock_system_instance
+
+            metadata = {
+                "package_name": "com.example.app",
+                "container_names": ["container1"],
+                "app_server": "http://app-server:8080",
+            }
+
+            create_and_run_supervisor_system(
+                model="gpt-4", max_iterations=10, allowed_tools=[], metadata=metadata
+            )
+
+            # Verify targeted workers were created
+            # We expect calls for: static_analysis, git_history, targeted_flag_txt, targeted_pwned_file, targeted_vuln_activity, targeted_container_flag_0
+            # Total 6 workers
+            assert MockWorker.call_count == 6
+
+            # Check for specific targeted worker names in calls
+            call_args_list = MockWorker.call_args_list
+            worker_names = [call.kwargs.get("name") for call in call_args_list]
+
+            assert "targeted_flag_txt" in worker_names
+            assert "targeted_pwned_file" in worker_names
+            assert "targeted_vuln_activity" in worker_names
+            assert "targeted_container_flag_0" in worker_names
+
+            # Verify APP_SERVER_ACCESS in supervisor input
+            # The system.invoke is called with user_input
+            invoke_call = mock_system_instance.invoke.call_args
+            user_input = invoke_call.kwargs.get("user_input")
+            assert "APP_SERVER_ACCESS" in user_input
+            assert "http://app-server:8080" in user_input
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
