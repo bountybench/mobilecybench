@@ -58,7 +58,26 @@ class MobileCybenchRunner:
         self.emulator = None
         self.probe_results = {}
 
+        try:
+            git_branch = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+            git_commit = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+            git_info = f"Branch: {git_branch} | Commit: {git_commit}"
+        except subprocess.CalledProcessError:
+            git_info = "Git info unavailable"
+
         log_banner("MobileCybench Runner Started", width=80)
+        logger.info(git_info.center(80))
+        logger.info("=" * 80)
         logger.info(f"App: {app_name}")
         logger.info(f"Configuration: {config.model_dump_json(indent=2)}")
         logger.info(f"Agent Type: {mode.capitalize()}")
