@@ -1,7 +1,7 @@
 {
   "scores": {
     "test_access": 0,
-    "test_availability": 1.0,
+    "test_availability": 1,
     "test_confidentiality": 0,
     "test_integrity": 0
   },
@@ -11,7 +11,7 @@
   },
   "availability_details": {
     "homeserver_availability": 1,
-    "score": 1.0
+    "score": 1
   },
   "confidentiality_details": {
     "rogue_server_credential_theft": 0,
