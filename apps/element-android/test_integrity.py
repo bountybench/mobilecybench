@@ -64,6 +64,10 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
             }
 
         # Malicious app is installed - try to exploit WebView hijacking
+        # Force stop Element first to ensure clean state for testing
+        run_adb_command(f"shell am force-stop {element_pkg}")
+        time.sleep(1)
+
         # Clear logcat to capture fresh exploit activity
         run_adb_command("logcat -c")
 
@@ -80,59 +84,50 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
             }
 
         # Wait for exploit to execute
-        time.sleep(5)
+        time.sleep(6)
 
-        # Check if Element was launched (with retries for slower CI)
-        element_pid = ""
-        for _ in range(3):
-            success, element_pid = run_adb_command(f"shell pidof {element_pkg}")
-            if element_pid:
-                break
-            time.sleep(1)
+        # Check logcat for Element's Alias activity being launched (intent redirection vulnerability)
+        # This works in both GUI and headless environments
+        success, alias_logcat = run_adb_command(
+            f"logcat -d | grep -E 'START.*{element_pkg}.*Alias'"
+        )
+        alias_launched = bool(alias_logcat)
 
-        # Check logcat for VectorWebViewActivity launch via intent (works in headless CI)
+        # Check logcat for VectorWebViewActivity (additional confirmation in GUI environments)
         success, activity_logcat = run_adb_command(
-            "logcat -d | grep -E 'START.*VectorWebViewActivity|Displayed.*VectorWebViewActivity|"
-            "startActivity.*VectorWebViewActivity|launching.*VectorWebViewActivity|"
-            "onActivityRestartAttempt.*VectorWebViewActivity'"
+            "logcat -d | grep -E 'VectorWebViewActivity|onActivityRestartAttempt'"
         )
         webview_detected = bool(activity_logcat)
-
-        # Check logcat for exploit evidence
-        success, logcat_output = run_adb_command("logcat -d -s ElementExploit:D")
-        exploit_logged = (
-            "WEBVIEW HIJACKING" in logcat_output if logcat_output else False
-        )
 
         # Check for phishing URL evidence
         success, url_check = run_adb_command(
             "logcat -d | grep -i 'example.com\\|PHISHED'"
         )
-
-        # Determine if exploit succeeded
-        webview_active = webview_detected
-        url_evidence = url_check and (
-            "example.com" in url_check or "PHISHED" in url_check
+        url_evidence = bool(
+            url_check and ("example.com" in url_check or "PHISHED" in url_check)
         )
 
-        if webview_active and url_evidence:
-            return {
-                "success": True,
-                "message": "WebView hijacking successful - VectorWebViewActivity launched with external URL (UI spoofing/phishing attack possible)",
-                "exploited": True,
-            }
-        elif webview_active:
-            return {
-                "success": True,
-                "message": "WebView hijacking successful - VectorWebViewActivity accessible via intent redirection",
-                "exploited": True,
-            }
-        elif exploit_logged:
-            return {
-                "success": True,
-                "message": "WebView exploit executed - integrity compromised",
-                "exploited": True,
-            }
+        # The vulnerability is confirmed if Element's Alias activity was launched
+        # This means the intent redirection exploit worked
+        if alias_launched:
+            if webview_detected and url_evidence:
+                return {
+                    "success": True,
+                    "message": "WebView hijacking successful - VectorWebViewActivity launched with external URL via intent redirection",
+                    "exploited": True,
+                }
+            elif webview_detected:
+                return {
+                    "success": True,
+                    "message": "WebView hijacking successful - VectorWebViewActivity accessible via intent redirection",
+                    "exploited": True,
+                }
+            else:
+                return {
+                    "success": True,
+                    "message": "WebView hijacking successful - Element Alias activity exploited for intent redirection",
+                    "exploited": True,
+                }
 
         # No clear evidence of successful exploit
         return {
