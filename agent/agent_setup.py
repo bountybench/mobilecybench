@@ -54,6 +54,15 @@ class AgentEnvironment:
         """Set up the agent kali environment container."""
         container_name = "kali-container"
 
+        # Remove existing container FIRST, before any setup work
+        try:
+            existing_container = self.client.containers.get(container_name)
+            logger.info(f"Removing existing container: {container_name}")
+            existing_container.remove(force=True)
+        except docker.errors.NotFound:
+            # no need to raise if container doesn't exist
+            pass
+
         print(f"Checking for image {self.image_name}...")
         logger.info(f"Ensuring image {self.image_name} is available...")
 
@@ -108,55 +117,59 @@ class AgentEnvironment:
                 logger.error(f"Unexpected error pulling image: {e}")
                 raise
 
-        # Remove existing container with the same name if it exists
-        # TODO: long term fix is to append random id to container so it
-        try:
-            existing_container = self.client.containers.get(container_name)
-            logger.info(f"Removing existing container: {container_name}")
-            existing_container.remove(force=True)
-        except docker.errors.NotFound:
-            # no need to raise if container doesn't exist
-            pass
-
         environment = self.env
         extra_hosts = {"host.docker.internal": "host-gateway"}
         command = '/bin/bash -c "while true; do sleep 30; done"'
         network = self.docker_networks[0] if self.docker_networks else None
 
         # Setup agent codebase and get volume mapping
-        volumes = self._setup_agent_codebase()
+        volumes = None
+        try:
+            volumes = self._setup_agent_codebase()
 
-        self.container = self.client.containers.run(
-            image=self.image_name,
-            name=container_name,
-            command=command,
-            environment=environment,
-            extra_hosts=extra_hosts,
-            network=network,
-            volumes=volumes,
-            stdin_open=True,
-            tty=True,
-            detach=True,
-        )
+            self.container = self.client.containers.run(
+                image=self.image_name,
+                name=container_name,
+                command=command,
+                environment=environment,
+                extra_hosts=extra_hosts,
+                network=network,
+                volumes=volumes,
+                stdin_open=True,
+                tty=True,
+                detach=True,
+            )
 
-        # Connect to additional networks if any
-        for additional_network in self.docker_networks[1:]:
-            network_obj = self.client.networks.get(additional_network)
-            network_obj.connect(self.container)
+            # Connect to additional networks if any
+            for additional_network in self.docker_networks[1:]:
+                network_obj = self.client.networks.get(additional_network)
+                network_obj.connect(self.container)
 
-        # Create exploit_files directory
-        logger.info("Creating exploit_files directory in container")
-        self.container.exec_run("mkdir -p /app/exploit_files")
+            # Create exploit_files directory
+            logger.info("Creating exploit_files directory in container")
+            self.container.exec_run("mkdir -p /app/exploit_files")
+
+        except Exception as e:
+            logger.error(f"Setup failed: {e}")
+            # Remove container if it was created
+            if self.container:
+                try:
+                    self.container.remove(force=True)
+                    self.container = None
+                except Exception:
+                    pass
+            raise
 
     def _setup_agent_codebase(self):
         """Create a copy of codebase, prune all branches / future commits, copy into agent env"""
         original_codebase = self.app_dir / "codebase"
         agent_codebase = self.app_dir / "agent_codebase"
+        staging_dir = self.app_dir / "agent_codebase.staging"
 
-        # Always recreate agent_codebase to avoid contamination
-        if agent_codebase.exists():
-            logger.info(f"Removing existing agent_codebase at {agent_codebase}")
-            shutil.rmtree(agent_codebase)
+        # Always clean up staging directory first to ensure fresh start
+        if staging_dir.exists():
+            logger.info(f"Removing existing staging directory at {staging_dir}")
+            shutil.rmtree(staging_dir)
 
         # Check if original_codebase is empty, if so use git_submodule_update
         if not original_codebase.exists() or not any(original_codebase.iterdir()):
@@ -186,24 +199,22 @@ class AgentEnvironment:
         logger.info(f"Checking out commit {self.commit_id} in {original_codebase}")
         git_checkout(original_codebase, self.commit_id, force=True)
 
-        # Create agent_codebase directory
-        logger.info(f"Creating agent_codebase directory at {agent_codebase}")
-        agent_codebase.mkdir(parents=True, exist_ok=True)
+        # Create staging directory and perform all setup there
+        logger.info(f"Creating staging directory at {staging_dir}")
+        staging_dir.mkdir(parents=True, exist_ok=True)
 
-        # Copy original_codebase to agent_codebase with ignore_git=False
-        logger.info(f"Copying {original_codebase} to {agent_codebase}")
-        self.copy_files(original_codebase, agent_codebase, ignore_git=False)
+        # Copy original_codebase to staging directory with ignore_git=False
+        logger.info(f"Copying {original_codebase} to {staging_dir}")
+        self.copy_files(original_codebase, staging_dir, ignore_git=False)
 
-        # Run git_setup_dev_branch
-        logger.info("Setting up dev branch in agent_codebase")
-        git_setup_dev_branch(agent_codebase)
+        # Run git_setup_dev_branch in staging directory
+        logger.info("Setting up dev branch in staging directory")
+        git_setup_dev_branch(staging_dir)
 
-        logger.info(f"Agent codebase setup complete at {agent_codebase}")
-
-        # Copy pre-generated static vulnerability reports into agent_codebase if in supervisor mode
+        # Copy pre-generated static vulnerability reports into staging directory if in supervisor mode
         if self.mode == "supervisor":
             static_reports_src = self.app_dir / "static_vuln_reports"
-            static_reports_dest = agent_codebase / "static_vuln_reports"
+            static_reports_dest = staging_dir / "static_vuln_reports"
             if static_reports_src.exists():
                 logger.info(
                     f"Copying static vulnerability reports from {static_reports_src} to {static_reports_dest}"
@@ -211,11 +222,23 @@ class AgentEnvironment:
                 shutil.copytree(
                     static_reports_src, static_reports_dest, dirs_exist_ok=True
                 )
-                logger.info("✓ Copied static vulnerability reports into agent_codebase")
+                logger.info(
+                    "✓ Copied static vulnerability reports into staging directory"
+                )
             else:
                 logger.warning(
                     "static_vuln_reports directory not found; supervisor agents will not see pre-generated static reports"
                 )
+
+        # Clean up any existing agent_codebase directory
+        if agent_codebase.exists():
+            logger.info(f"Removing existing agent_codebase at {agent_codebase}")
+            shutil.rmtree(agent_codebase)
+
+        # Move staging directory to agent_codebase
+        logger.info(f"Moving staging directory to {agent_codebase}")
+        shutil.move(str(staging_dir), str(agent_codebase))
+        logger.info("✓ Agent codebase ready for mounting")
 
         # Return volume mapping for bind mount
         return {str(agent_codebase): {"bind": "/app/codebase", "mode": "rw"}}

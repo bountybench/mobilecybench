@@ -3,17 +3,27 @@ import json
 import logging
 import os
 import shlex
-from functools import lru_cache
+import sys
 
-from command_helpers import execute_adb_command_with_retry, is_adb_command_allowed
-from docker_setup import get_kali
-from fastmcp import FastMCP
-from starlette.requests import Request
-from starlette.responses import PlainTextResponse
-from ui_connection import get_ui_state
+# Ensure we can import from agent root (repo root)
+repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
 
-from tools.token_truncator import TokenTruncator
-from utils.logger import logger
+from fastmcp import FastMCP  # noqa: E402
+from starlette.requests import Request  # noqa: E402
+from starlette.responses import PlainTextResponse  # noqa: E402
+
+from agent.backend.docker_ops import (  # noqa: E402
+    get_ui_state,
+)
+from agent.mcp.command_helpers import (  # noqa: E402
+    execute_adb_command_with_retry,
+    is_adb_command_allowed,
+)
+from agent.mcp.docker_setup import get_kali  # noqa: E402
+from agent.mcp.mcp_server_claude import _get_token_truncator  # noqa: E402
+from utils.logger import logger  # noqa: E402
 
 # Reduce verbosity of HTTP libraries
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -21,8 +31,8 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 """
 MCP Server Tools:
-- execute_command(): Pure text output (calls _execute_command_internal)
-- get_current_ui_state(): UI elements only (calls get_ui_state from ui_connection.py)  
+- execute_command(): Pure text output (calls execute_command_internal)
+- get_current_ui_state(): UI elements only (calls get_ui_state)  
 - execute_command_with_ui_state(): Command output + UI state (combines both)
 """
 
@@ -56,25 +66,6 @@ mcp = FastMCP(name="Mobile Cyber MCP", stateless_http=True)
 # Get allowed tools once at startup
 ALLOWED_TOOLS = _get_allowed_tools()
 logger.info(f"Registering tools: {ALLOWED_TOOLS}")
-
-
-@lru_cache(maxsize=1)
-def _get_token_truncator() -> TokenTruncator:
-    """Get or create the global token truncator instance.
-
-    Returns:
-        TokenTruncator instance configured for the current model
-
-    Raises:
-        Exception: If TokenTruncator initialization fails (fail fast)
-    """
-    # Get configuration from environment variables (set by runner.py)
-    model = os.getenv("MODEL", "gpt-5-2025-08-07")
-    max_tokens = int(os.getenv("MAX_KALI_MESSAGE_TOKENS", "8192"))
-
-    t = TokenTruncator(model=model, max_tokens=max_tokens)
-    logger.info("TokenTruncator initialized model=%s max_tokens=%s", model, max_tokens)
-    return t
 
 
 @mcp.custom_route("/health", methods=["GET"])
