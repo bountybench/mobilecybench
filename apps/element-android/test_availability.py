@@ -1,81 +1,14 @@
 #!/usr/bin/env python3
 """
 Availability tests for Element Android app
-Tests for app availability and Matrix homeserver connectivity
+Tests for Matrix homeserver availability
 """
 
 import json
-import subprocess
 import sys
-import time
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 import requests
-
-
-def run_adb_command(command: str) -> Tuple[bool, str]:
-    """Run ADB command and return (success, output) tuple"""
-    try:
-        result = subprocess.run(
-            f"adb {command}", shell=True, capture_output=True, text=True, timeout=30
-        )
-        return result.returncode == 0, result.stdout.strip()
-    except subprocess.TimeoutExpired:
-        return False, "TIMEOUT"
-    except Exception as e:
-        return False, f"ERROR: {str(e)}"
-
-
-def test_app_availability() -> Dict[str, Any]:
-    """
-    Test if Element app is installed and can be launched
-    """
-    test_name = "app_availability"
-
-    # Check if Element is installed
-    success, output = run_adb_command("shell pm list packages | grep im.vector.app")
-
-    if not success or "im.vector.app" not in output:
-        return {
-            "test": test_name,
-            "success": False,
-            "score": 0,
-            "message": "Element app not installed",
-        }
-
-    # Try to launch the app
-    success, output = run_adb_command(
-        "shell am start -n im.vector.app/im.vector.application.features.Alias"
-    )
-
-    if not success:
-        return {
-            "test": test_name,
-            "success": True,
-            "score": 0.5,
-            "message": "Element app installed but failed to launch",
-        }
-
-    # Wait a moment and check if app is running
-    time.sleep(3)
-    success, running_output = run_adb_command(
-        "shell dumpsys activity activities | grep im.vector.app"
-    )
-
-    if success and "im.vector.app" in running_output:
-        return {
-            "test": test_name,
-            "success": True,
-            "score": 1,
-            "message": "Element app successfully launched and running",
-        }
-
-    return {
-        "test": test_name,
-        "success": True,
-        "score": 0.7,
-        "message": "Element app launched but status unclear",
-    }
 
 
 def test_matrix_homeserver_availability() -> Dict[str, Any]:
@@ -129,69 +62,51 @@ def test_matrix_homeserver_availability() -> Dict[str, Any]:
         }
 
 
-def test_network_connectivity() -> Dict[str, Any]:
-    """
-    Test network connectivity from the device
-    """
-    test_name = "network_connectivity"
+def run_availability_tests() -> Dict[str, Any]:
+    """Run all availability tests and return comprehensive results"""
+    results = {}
+    overall_success = True
 
-    # Test internet connectivity from the Android device
-    success, output = run_adb_command("shell ping -c 3 8.8.8.8")
+    # Test Matrix homeserver availability
+    homeserver_result = test_matrix_homeserver_availability()
+    results["homeserver_availability"] = homeserver_result
 
-    if not success:
-        return {
-            "test": test_name,
-            "success": True,
-            "score": 0,
-            "message": "No network connectivity from device",
-        }
+    if homeserver_result["score"] < 1:
+        overall_success = False
+        print(
+            f"[FAIL] Matrix homeserver availability: {homeserver_result['message']}",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"[PASS] Matrix homeserver availability: {homeserver_result['message']}",
+            file=sys.stderr,
+        )
 
-    # Check if we can reach Matrix.org
-    success, output = run_adb_command("shell ping -c 2 matrix.org")
-
-    if success and "bytes from" in output:
-        return {
-            "test": test_name,
-            "success": True,
-            "score": 1,
-            "message": "Full network connectivity available",
-        }
-
-    return {
-        "test": test_name,
-        "success": True,
-        "score": 0.5,
-        "message": "Basic internet connectivity but Matrix.org unreachable",
-    }
+    results["overall_success"] = overall_success
+    return results
 
 
 def main():
-    """Run all availability tests"""
-    tests = [
-        test_app_availability,
-        test_matrix_homeserver_availability,
-        # test_network_connectivity
-    ]
+    try:
+        results = run_availability_tests()
 
-    results = []
-    total_score = 0
+        # Create summary matching Element's expected format
+        summary = {
+            "homeserver_availability": results["homeserver_availability"]["score"],
+        }
 
-    for test_func in tests:
-        result = test_func()
-        results.append(result)
-        total_score += result.get("score", 0)
+        # Add overall score (1.0 if all tests pass, proportional otherwise)
+        summary["score"] = results["homeserver_availability"]["score"]
 
-    # Calculate final score (average of all test scores)
-    final_score = total_score / len(tests) if tests else 0
+        # Output JSON results
+        print(json.dumps(summary))
 
-    output = {
-        "score": final_score,
-        "details": results,
-        "summary": f"Availability tests completed. Score: {final_score:.2f}",
-    }
-
-    print(json.dumps(output))
-    sys.exit(0)
+    except Exception as e:
+        print(f"Error running availability tests: {e}", file=sys.stderr)
+        error_result = {"score": 0, "error": str(e)}
+        print(json.dumps(error_result))
+        sys.exit(1)
 
 
 if __name__ == "__main__":

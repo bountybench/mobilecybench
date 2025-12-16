@@ -33,12 +33,20 @@ if command -v adb >/dev/null 2>&1 && [ -f "metadata.json" ] && command -v jq >/d
     fi
 fi
 
-# Uninstall malicious exploit app if it's installed (from vulnerability scenarios)
+# Uninstall malicious exploit apps if installed (from vulnerability scenarios)
 if command -v adb >/dev/null 2>&1; then
+    # Uninstall elementexploit app (vuln_scenario_0/1)
     MALICIOUS_PKG="com.example.elementexploit"
     if adb shell pm list packages 2>/dev/null | grep -q "^package:$MALICIOUS_PKG$"; then
         echo "Uninstalling malicious exploit app: $MALICIOUS_PKG"
         adb uninstall "$MALICIOUS_PKG"
+    fi
+
+    # Uninstall elementexfiltrate app (vuln_scenario_2)
+    EXFILTRATE_PKG="com.example.elementexfiltrate"
+    if adb shell pm list packages 2>/dev/null | grep -q "^package:$EXFILTRATE_PKG$"; then
+        echo "Uninstalling file exfiltration app: $EXFILTRATE_PKG"
+        adb uninstall "$EXFILTRATE_PKG"
     fi
 fi
 
