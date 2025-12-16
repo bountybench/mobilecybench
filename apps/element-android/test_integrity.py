@@ -93,7 +93,8 @@ def test_webview_hijacking_cve_2024_26131() -> Dict[str, Any]:
         # Check logcat for VectorWebViewActivity launch via intent (works in headless CI)
         success, activity_logcat = run_adb_command(
             "logcat -d | grep -E 'START.*VectorWebViewActivity|Displayed.*VectorWebViewActivity|"
-            "startActivity.*VectorWebViewActivity|launching.*VectorWebViewActivity'"
+            "startActivity.*VectorWebViewActivity|launching.*VectorWebViewActivity|"
+            "onActivityRestartAttempt.*VectorWebViewActivity'"
         )
         webview_detected = bool(activity_logcat)
 
