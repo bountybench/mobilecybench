@@ -17,7 +17,6 @@ def get_directory_tree() -> str:
     try:
         agent_logger.info("Fetching directory tree structure for initial context...")
 
-        # Use execute_command_internal directly to avoid MCP server dependency
         tree_cmd = "tree -L 2 2>/dev/null || (ls -la . && echo '---' && find . -maxdepth 2 -type d | head -50)"
 
         # execute_command_internal returns the formatted string directly

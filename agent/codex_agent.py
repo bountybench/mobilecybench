@@ -24,7 +24,8 @@ from agent.prompts.prompts import (
     TARGET_HOST_EXAMPLE,
 )
 from utils.logger import logger, logger_manager
-from utils.mcp_utils import get_mcp_server_config
+
+# from utils.mcp_utils import get_mcp_server_config
 
 
 class CodexAgent:
@@ -89,11 +90,7 @@ class CodexAgent:
             load_dotenv(env_file, override=True)
 
         # Initialize MCP configuration
-        try:
-            self.mcp_config = mcp_config or get_mcp_server_config()
-        except Exception as e:
-            logger.warning(f"Failed to get MCP config: {e}")
-            self.mcp_config = {}
+        self.mcp_config = mcp_config or {}
 
         # Get initial directory tree context
         self._initial_tree_context = get_directory_tree()

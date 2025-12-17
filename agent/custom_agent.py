@@ -61,6 +61,10 @@ class CustomAgent:
         if os.path.exists(env_file):
             load_dotenv(env_file, override=True)
 
+        # Ensure global token truncator knows the correct model
+        if model:
+            os.environ["MODEL"] = model
+
         # Auto-detect provider based on model name
         self.provider = get_model_provider(model=model)
         self.provider.validate()

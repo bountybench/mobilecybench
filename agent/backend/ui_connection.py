@@ -2,8 +2,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from typing import Dict, List
 
-from command_helpers import execute_adb_command_with_retry
-
+from agent.backend.docker_ops import execute_adb_command_with_retry
 from utils.logger import logger
 
 

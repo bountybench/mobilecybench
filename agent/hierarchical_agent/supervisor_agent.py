@@ -94,7 +94,7 @@ class WorkerAgent:
         description: str,
         system_prompt: str = None,
         tools: List = None,
-        mcp_tools: List = None,
+        runtime_tools: List = None,
         model: str = None,
         # token_tracker: TokenTracker = None,
     ):
@@ -106,7 +106,7 @@ class WorkerAgent:
             description: Description of what this worker does (helps supervisor decide when to use it)
             system_prompt: Instructions for this worker
             tools: List of custom tools this worker can use (optional)
-            mcp_tools: List of MCP tool objects for execute_command and other MCP tools
+            runtime_tools: List of tool objects for execute_command and other runtime tools
             model: OpenAI model to use (should be passed from runner_config.json)
             # token_tracker: TokenTracker instance for tracking usage
         """
@@ -117,10 +117,10 @@ class WorkerAgent:
             or f"You are a {name} specialist. TODO: Define specific instructions."
         )
 
-        # Combine custom tools with MCP tools
+        # Combine custom tools with Runtime tools
         all_tools = tools or []
-        if mcp_tools:
-            all_tools.extend(mcp_tools)
+        if runtime_tools:
+            all_tools.extend(runtime_tools)
         self.tools = all_tools
 
         if model is None:
@@ -201,7 +201,7 @@ class HierarchicalAgentSystem:
         supervisor_prompt: str = None,
         model: str = None,
         global_tool_limit: int = 50,
-        mcp_tools: List = None,
+        runtime_tools: List = None,
     ):
         """
         Initialize the hierarchical agent system.
@@ -210,7 +210,7 @@ class HierarchicalAgentSystem:
             supervisor_prompt: System prompt for the supervisor
             model: OpenAI model to use for all agents (should be passed from runner_config.json)
             global_tool_limit: Maximum number of tool calls allowed globally
-            mcp_tools: List of MCP tool objects for execute_command and other MCP tools
+            runtime_tools: List of tool objects for execute_command and other runtime tools
         """
         if model is None:
             raise ValueError(
@@ -218,7 +218,7 @@ class HierarchicalAgentSystem:
             )
         self.model = model
         self.global_tool_limit = global_tool_limit
-        self.mcp_tools = mcp_tools
+        self.runtime_tools = runtime_tools
         # self.token_tracker = token_tracker
         self.supervisor_prompt = (
             supervisor_prompt
@@ -258,7 +258,7 @@ class HierarchicalAgentSystem:
             description=description,
             system_prompt=system_prompt,
             tools=tools,
-            mcp_tools=self.mcp_tools,  # Pass MCP tools from system
+            runtime_tools=self.runtime_tools,  # Pass runtime tools from system
             model=self.model,
             # token_tracker=self.token_tracker,
         )
@@ -302,10 +302,10 @@ class HierarchicalAgentSystem:
         """
         llm = ChatOpenAI(model=self.model, temperature=0)
 
-        # Combine worker tools with MCP tools
+        # Combine worker tools with Runtime tools
         all_supervisor_tools = self.supervisor_tools.copy()
-        if self.mcp_tools:
-            all_supervisor_tools.extend(self.mcp_tools)
+        if self.runtime_tools:
+            all_supervisor_tools.extend(self.runtime_tools)
 
         # Create supervisor using LangChain's create_agent
         # Note: Tool call limiting is handled via config at invoke time
@@ -396,10 +396,10 @@ def create_and_run_supervisor_system(
     from agent.hierarchical_agent.static_analysis_worker import (
         STATIC_ANALYSIS_SYSTEM_PROMPT,
     )
-    from utils.mcp_tools import create_mcp_tools
+    from utils.runtime_tools import create_runtime_tools
 
-    # Get MCP tools
-    mcp_tools = create_mcp_tools(allowed_tools=allowed_tools)
+    # Get Runtime tools (formerly MCP)
+    runtime_tools = create_runtime_tools(allowed_tools=allowed_tools)
 
     # Initialize TokenTracker
     # token_tracker = TokenTracker()
@@ -503,7 +503,7 @@ def create_and_run_supervisor_system(
             description=config["description"],
             system_prompt=config["system_prompt"],
             tools=config["tools"],
-            mcp_tools=mcp_tools,
+            runtime_tools=runtime_tools,
             model=model,
             # token_tracker=token_tracker,
         )
@@ -541,7 +541,7 @@ def create_and_run_supervisor_system(
         supervisor_prompt=DEFAULT_SUPERVISOR_PROMPT,
         model=model,
         global_tool_limit=max_iterations,
-        mcp_tools=mcp_tools,
+        runtime_tools=runtime_tools,
         # token_tracker=token_tracker,
     )
 

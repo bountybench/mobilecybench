@@ -12,7 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from agent.agent_setup import AgentEnvironment
-from agent.mcp.direct_tool_executor import MCPToolExecutor
+from agent.tools.runtime import ToolRuntime
 from models.config import RunnerConfig
 from utils.command_executor import CommandExecutor
 from utils.emulator_manager import EmulatorManager
@@ -385,9 +385,6 @@ class MobileCybenchRunner:
         agent_env.setup()
         self.agent_env = agent_env
 
-        # TODO: Only used for codex mode, which is broken (MCP server is being removed)
-        # self._start_containers()
-
         logger.info("Agent environment setup completed")
 
     def _setup_env_file(self):
@@ -422,24 +419,6 @@ class MobileCybenchRunner:
             logger.error(f"Failed to create docker network: {e}")
             self._exit_with_error("Failed to create docker network 'shared_net'")
 
-    def _start_containers(self):
-        logger.info("Starting containerized environment...")
-
-        env = os.environ.copy()
-
-        if self.mode == "codex":
-            # Codex mode is deprecated
-            env.update(
-                {
-                    "APP_NAME": self.app_name,
-                    "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
-                    "AGENT_TYPE": "codex",
-                    # MCP_COMMAND removed
-                }
-            )
-        else:
-            env["AGENT_TYPE"] = self.mode
-
     def run_interactive_shell(self):
         log_banner("RUNNING INTERACTIVE SHELL (DRY-RUN MODE)")
 
@@ -450,11 +429,11 @@ class MobileCybenchRunner:
         print()
 
         try:
-            mcp_executor = MCPToolExecutor()
+            tool_runtime = ToolRuntime()
 
             # List available tools
             logger.info("Checking available tools...")
-            tools = mcp_executor.list_tools()
+            tools = tool_runtime.get_tool_definitions()
 
             print("=" * 80)
             print("DRY-RUN MODE: Interactive Shell")
@@ -467,7 +446,7 @@ class MobileCybenchRunner:
             print("  - Any shell command will be executed in the kali container")
             print("  - 'exit' or 'quit' to exit the shell")
             print("  - 'help' for this help message")
-            print("  - 'tools' to list available MCP tools")
+            print("  - 'tools' to list available tools")
             print("=" * 80)
             print()
 
@@ -491,38 +470,32 @@ class MobileCybenchRunner:
                         )
                         print("  - 'exit' or 'quit' to exit the shell")
                         print("  - 'help' for this help message")
-                        print("  - 'tools' to list available MCP tools")
+                        print("  - 'tools' to list available tools")
                         continue
                     elif user_input.lower() == "tools":
-                        tools = mcp_executor.list_tools()
-                        if tools and not isinstance(tools, dict):
+                        tools = tool_runtime.get_tool_definitions()
+                        if tools and isinstance(tools, list):
                             print(f"Available tools ({len(tools)}):")
                             for tool in tools:
-                                print(
-                                    f"  - {tool.get('name', 'unknown')}: {tool.get('description', 'No description')}"
-                                )
+                                name = tool.get("name", "unknown")
+                                desc = tool.get("description", "No description")
+                                print(f"  - {name}: {desc}")
                         else:
                             print("Could not list tools or no tools available")
                         continue
 
-                    # Execute command via MCP
+                    # Execute command via Runtime
                     command_count += 1
                     logger.info(f"Executing command {command_count}: {user_input}")
 
-                    result = mcp_executor.call_tool("execute_command", user_input)
+                    result = tool_runtime.execute(
+                        "execute_command", {"command": user_input}
+                    )
 
                     # Display result
-                    if "error" in result:
-                        print(f"ERROR: {result['error']}")
-                        logger.error(
-                            f"Command {command_count} failed: {result['error']}"
-                        )
-                    elif "result" in result and "structuredContent" in result["result"]:
-                        structured = result["result"]["structuredContent"]
-                        if "response" in structured:
-                            print(structured["response"])
-                        else:
-                            print(result)
+                    if isinstance(result, str) and result.startswith("Error"):
+                        print(result)
+                        logger.error(f"Command {command_count} failed: {result}")
                     else:
                         print(result)
 
@@ -558,10 +531,8 @@ class MobileCybenchRunner:
         agent_type = f"{self.mode.upper()} AGENT"
         log_banner(f"RUNNING {agent_type}")
 
-        # If in dry-run mode, use interactive shell instead
         if self.config.dry_run:
             return self.run_interactive_shell()
-            return
 
         logger.info(f"Starting {agent_type.lower()} execution...")
 
@@ -601,15 +572,6 @@ class MobileCybenchRunner:
 
             # logger.info("Initializing codex agent...")
             # logger.info("Creating CodexAgent instance")
-
-            # For codex mode, use localhost MCP server instead of ngrok
-            # from utils.mcp_utils import get_mcp_server_config
-
-            # mcp_config = get_mcp_server_config(
-            #     ngrok_base_url="http://localhost:8000",
-            #     allowed_tools=self.config.allowed_tools,
-            #     check_reachability=False,
-            # )
 
             # agent = CodexAgent(
             #     max_conversation_turns=self.config.max_iterations,
