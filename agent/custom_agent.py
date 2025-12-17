@@ -506,40 +506,6 @@ class CustomAgent:
                         f"Queued {len(tool_results)} tool outputs for next turn"
                     )
 
-            # Log MCP interactions if any (Legacy/Fallback)
-            if hasattr(resp, "output") and resp.output:
-                agent_logger.info("[MCP INTERACTIONS]")
-
-                for output_item in resp.output:
-                    if (
-                        hasattr(output_item, "type")
-                        and output_item.type == "mcp_list_tools"
-                    ):
-                        tools_count = len(getattr(output_item, "tools", []))
-
-                        agent_logger.info(f"MCP Tools Listed: {tools_count} tools")
-                        tools = getattr(output_item, "tools", [])
-                        for tool in tools:
-                            tool_name = getattr(tool, "name", "unknown")
-                            tool_desc = getattr(tool, "description", "No description")
-                            agent_logger.info(f"  - {tool_name}: {tool_desc}")
-
-                    elif (
-                        hasattr(output_item, "type") and output_item.type == "mcp_call"
-                    ):
-                        name = getattr(output_item, "name", "unknown")
-                        arguments = getattr(output_item, "arguments", "")
-                        output = getattr(output_item, "output", "")
-                        error = getattr(output_item, "error", None)
-
-                        agent_logger.info(f"MCP Call: {name}")
-                        agent_logger.info(f"  Arguments: {arguments}")
-                        agent_logger.info(f"  Output: {output}")
-                        if error:
-                            agent_logger.info(f"  Error: {error}")
-
-                agent_logger.info("-" * 40)
-
             # Check for final submission command
             if assistant_response.strip():
                 # Check if the response ends with FinalSubmissionCommand or contains it in JSON format

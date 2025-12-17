@@ -161,7 +161,7 @@ class GeminiProvider(ModelProvider):
             model: Gemini model name (e.g., 'gemini-3-pro-preview')
             input_messages: String or list of message dicts
             conversation_id: Not used for Gemini (conversations managed externally)
-            tools: MCP tools configuration (converted to Gemini function calling format)
+            tools: tools configuration (converted to Gemini function calling format)
             max_output_tokens: Maximum tokens in response
             timeout_ms: Request timeout (unused, not directly supported by Gemini SDK)
             extra: Provider-specific parameters (unused)
@@ -208,21 +208,21 @@ class GeminiProvider(ModelProvider):
 
         # Reasoning effort support using thinkingLevel/thinkingBudget
         thinking_config = None
-        # if reasoning_effort:
-        # Determine model version
-        # model_lower = model.lower()
-        # from google.genai import types as genai_types
+        if reasoning_effort:
+            # Determine model version
+            model_lower = model.lower()
+            from google.genai import types as genai_types
 
-        # if "gemini-3" in model_lower:
-        # Gemini 3 Pro: use thinkingLevel
-        # level = None
-        # if reasoning_effort.lower() in ("low",):
-        #    level = "low"
-        # elif reasoning_effort.lower() in ("high", "medium"):
-        #    level = "high"
-        # else: let Gemini use default (dynamic)
-        # if level:
-        #    thinking_config = genai_types.ThinkingConfig(thinking_level=level)
+            if "gemini-3" in model_lower:
+                # Gemini 3 Pro: use thinkingLevel
+                level = None
+                if reasoning_effort.lower() in ("low",):
+                    level = "low"
+                elif reasoning_effort.lower() in ("high", "medium"):
+                    level = "high"
+                # else: let Gemini use default (dynamic)
+                if level:
+                    thinking_config = genai_types.ThinkingConfig(thinking_level=level)
 
         # Debug log for test verification
         agent_logger.info(
@@ -232,12 +232,12 @@ class GeminiProvider(ModelProvider):
         generation_config = {}
         if max_output_tokens:
             generation_config["max_output_tokens"] = max_output_tokens
-        # if thinking_config:
-        #    from google.genai import types as genai_types
-        #
-        #    generation_config = genai_types.GenerateContentConfig(
-        #        **generation_config, thinking_config=thinking_config
-        #    )
+        if thinking_config:
+            from google.genai import types as genai_types
+
+            generation_config = genai_types.GenerateContentConfig(
+                **generation_config, thinking_config=thinking_config
+            )
 
         # Create generation config
         generation_config = {}
@@ -707,6 +707,6 @@ class GeminiProvider(ModelProvider):
                     },
                 )(),
                 "tool_outputs": [],
-                "output": [],  # MCP calls are added by call() method
+                "output": [],
             },
         )()

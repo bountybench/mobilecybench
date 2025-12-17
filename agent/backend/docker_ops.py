@@ -3,7 +3,6 @@ import shlex
 import time
 from functools import lru_cache
 
-# Handle imports from moved mcp files
 from agent.backend.docker_setup import HOST_ADB_SERVER, get_kali
 from tools.token_truncator import TokenTruncator
 from utils.logger import logger

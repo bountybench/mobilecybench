@@ -247,12 +247,12 @@ class HierarchicalAgentSystem:
             name: Unique name for the worker
             description: What this worker does (used by supervisor to decide when to call it)
             system_prompt: Instructions for the worker
-            tools: Custom tools the worker can use (optional, MCP tools are added automatically)
+            tools: Custom tools the worker can use (optional, tools are added automatically)
 
         Returns:
             The created WorkerAgent instance
         """
-        # Create the worker with MCP tools
+        # Create the worker with tools
         worker = WorkerAgent(
             name=name,
             description=description,
@@ -377,7 +377,7 @@ def create_and_run_supervisor_system(
     Args:
         model: OpenAI model to use (from runner_config.json)
         max_iterations: Maximum number of iterations/tool calls allowed
-        allowed_tools: List of allowed MCP tools
+        allowed_tools: List of allowed tools
         user_input: Initial task for the supervisor (default: vulnerability analysis)
         discovery_agents: List of discovery agents to run (default: ["static_analysis", "git_history"])
         metadata: App metadata for targeted exploits
@@ -386,7 +386,6 @@ def create_and_run_supervisor_system(
         Dictionary with execution results including status, turns, and final_message
     """
     from agent.hierarchical_agent.exploit_worker import (
-        EXPLOIT_TOOLS,
         EXPLOIT_WORKER_SYSTEM_PROMPT,
     )
     from agent.hierarchical_agent.git_history_worker import (
@@ -398,7 +397,6 @@ def create_and_run_supervisor_system(
     )
     from utils.runtime_tools import create_runtime_tools
 
-    # Get Runtime tools (formerly MCP)
     runtime_tools = create_runtime_tools(allowed_tools=allowed_tools)
 
     # Initialize TokenTracker
@@ -438,7 +436,7 @@ def create_and_run_supervisor_system(
                 "name": "targeted_flag_txt",
                 "description": "Targeted Exploit: flag.txt",
                 "system_prompt": EXPLOIT_WORKER_SYSTEM_PROMPT,
-                "tools": EXPLOIT_TOOLS,
+                "tools": [],
                 "task": f"Attempt to read or modify /data/data/{package_name}/files/flag.txt to confirm the vulnerability. Report your findings.",
                 "report_file": str(logs_dir / "targeted_flag_txt_report.txt"),
             }
@@ -448,7 +446,7 @@ def create_and_run_supervisor_system(
                 "name": "targeted_pwned_file",
                 "description": "Targeted Exploit: pwned file",
                 "system_prompt": EXPLOIT_WORKER_SYSTEM_PROMPT,
-                "tools": EXPLOIT_TOOLS,
+                "tools": [],
                 "task": f"Attempt to create a file at /data/data/{package_name}/files/pwned to confirm write access. Report your findings.",
                 "report_file": str(logs_dir / "targeted_pwned_file_report.txt"),
             }
@@ -458,7 +456,7 @@ def create_and_run_supervisor_system(
                 "name": "targeted_vuln_activity",
                 "description": "Targeted Exploit: VulnFlagActivity",
                 "system_prompt": EXPLOIT_WORKER_SYSTEM_PROMPT,
-                "tools": EXPLOIT_TOOLS,
+                "tools": [],
                 "task": f"Attempt to launch {package_name}.internal.VulnFlagActivity to confirm it is exposed. Report your findings.",
                 "report_file": str(logs_dir / "targeted_vuln_activity_report.txt"),
             }
@@ -469,7 +467,7 @@ def create_and_run_supervisor_system(
                 "name": f"targeted_container_flag_{i}",
                 "description": f"Targeted Exploit: Container {container} flag",
                 "system_prompt": EXPLOIT_WORKER_SYSTEM_PROMPT,
-                "tools": EXPLOIT_TOOLS,
+                "tools": [],
                 "task": f"Attempt to read or modify the contents of /tmp/flag.txt in the container {container}. Note that not all containers will be accessible (some will be on a private network). Report your findings.",
                 "report_file": str(
                     logs_dir / f"targeted_container_flag_{i}_report.txt"
@@ -550,7 +548,7 @@ def create_and_run_supervisor_system(
         name="exploit_worker",
         description="Creates executable exploit.sh scripts based on vulnerability reports. Takes input from Static Analysis worker and generates working exploits that demonstrate high severity vulnerabilities. Has access to bash commands for methodical testing and validation.",
         system_prompt=EXPLOIT_WORKER_SYSTEM_PROMPT,
-        tools=EXPLOIT_TOOLS,
+        tools=[],
     )
 
     # Build supervisor

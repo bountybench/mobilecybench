@@ -126,8 +126,6 @@ class CodexCLIProvider:
                 allowed_hosts = [
                     "localhost",
                     "127.0.0.1",
-                    "mcp-server",
-                    "ngrok-free.dev",
                 ]
                 if not any(host in server_url for host in allowed_hosts):
                     logger.warning(f"Rejecting non-secure MCP server: {server_url}")

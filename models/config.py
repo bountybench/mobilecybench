@@ -53,7 +53,7 @@ class RunnerConfig(BaseModel):
     def validate_allowed_tools(cls, value: Optional[List[str]]) -> Optional[List[str]]:
         if value is None:
             return None
-        # TODO: should consider a single truth of source MCP tools registry or constants file
+        # TODO: should consider a single truth of source tools registry or constants file
         # currently hardcode as we don't have that file yet
         valid_tools = {
             "execute_command",
