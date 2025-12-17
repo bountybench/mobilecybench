@@ -94,7 +94,7 @@ class WorkerAgent:
         description: str,
         system_prompt: str = None,
         tools: List = None,
-        mcp_tools: List = None,
+        runtime_tools: List = None,
         model: str = None,
         # token_tracker: TokenTracker = None,
     ):
@@ -106,7 +106,7 @@ class WorkerAgent:
             description: Description of what this worker does (helps supervisor decide when to use it)
             system_prompt: Instructions for this worker
             tools: List of custom tools this worker can use (optional)
-            mcp_tools: List of MCP tool objects for execute_command and other MCP tools
+            runtime_tools: List of tool objects for execute_command and other runtime tools
             model: OpenAI model to use (should be passed from runner_config.json)
             # token_tracker: TokenTracker instance for tracking usage
         """
@@ -117,10 +117,10 @@ class WorkerAgent:
             or f"You are a {name} specialist. TODO: Define specific instructions."
         )
 
-        # Combine custom tools with MCP tools
+        # Combine custom tools with Runtime tools
         all_tools = tools or []
-        if mcp_tools:
-            all_tools.extend(mcp_tools)
+        if runtime_tools:
+            all_tools.extend(runtime_tools)
         self.tools = all_tools
 
         if model is None:
@@ -201,7 +201,7 @@ class HierarchicalAgentSystem:
         supervisor_prompt: str = None,
         model: str = None,
         global_tool_limit: int = 50,
-        mcp_tools: List = None,
+        runtime_tools: List = None,
     ):
         """
         Initialize the hierarchical agent system.
@@ -210,7 +210,7 @@ class HierarchicalAgentSystem:
             supervisor_prompt: System prompt for the supervisor
             model: OpenAI model to use for all agents (should be passed from runner_config.json)
             global_tool_limit: Maximum number of tool calls allowed globally
-            mcp_tools: List of MCP tool objects for execute_command and other MCP tools
+            runtime_tools: List of tool objects for execute_command and other runtime tools
         """
         if model is None:
             raise ValueError(
@@ -218,7 +218,7 @@ class HierarchicalAgentSystem:
             )
         self.model = model
         self.global_tool_limit = global_tool_limit
-        self.mcp_tools = mcp_tools
+        self.runtime_tools = runtime_tools
         # self.token_tracker = token_tracker
         self.supervisor_prompt = (
             supervisor_prompt
@@ -247,18 +247,18 @@ class HierarchicalAgentSystem:
             name: Unique name for the worker
             description: What this worker does (used by supervisor to decide when to call it)
             system_prompt: Instructions for the worker
-            tools: Custom tools the worker can use (optional, MCP tools are added automatically)
+            tools: Custom tools the worker can use (optional, tools are added automatically)
 
         Returns:
             The created WorkerAgent instance
         """
-        # Create the worker with MCP tools
+        # Create the worker with tools
         worker = WorkerAgent(
             name=name,
             description=description,
             system_prompt=system_prompt,
             tools=tools,
-            mcp_tools=self.mcp_tools,  # Pass MCP tools from system
+            runtime_tools=self.runtime_tools,  # Pass runtime tools from system
             model=self.model,
             # token_tracker=self.token_tracker,
         )
@@ -302,10 +302,10 @@ class HierarchicalAgentSystem:
         """
         llm = ChatOpenAI(model=self.model, temperature=0)
 
-        # Combine worker tools with MCP tools
+        # Combine worker tools with Runtime tools
         all_supervisor_tools = self.supervisor_tools.copy()
-        if self.mcp_tools:
-            all_supervisor_tools.extend(self.mcp_tools)
+        if self.runtime_tools:
+            all_supervisor_tools.extend(self.runtime_tools)
 
         # Create supervisor using LangChain's create_agent
         # Note: Tool call limiting is handled via config at invoke time
@@ -377,7 +377,7 @@ def create_and_run_supervisor_system(
     Args:
         model: OpenAI model to use (from runner_config.json)
         max_iterations: Maximum number of iterations/tool calls allowed
-        allowed_tools: List of allowed MCP tools
+        allowed_tools: List of allowed tools
         user_input: Initial task for the supervisor (default: vulnerability analysis)
         discovery_agents: List of discovery agents to run (default: ["static_analysis", "git_history"])
         metadata: App metadata for targeted exploits
@@ -386,7 +386,6 @@ def create_and_run_supervisor_system(
         Dictionary with execution results including status, turns, and final_message
     """
     from agent.hierarchical_agent.exploit_worker import (
-        EXPLOIT_TOOLS,
         EXPLOIT_WORKER_SYSTEM_PROMPT,
     )
     from agent.hierarchical_agent.git_history_worker import (
@@ -396,10 +395,9 @@ def create_and_run_supervisor_system(
     from agent.hierarchical_agent.static_analysis_worker import (
         STATIC_ANALYSIS_SYSTEM_PROMPT,
     )
-    from utils.mcp_tools import create_mcp_tools
+    from utils.runtime_tools import create_runtime_tools
 
-    # Get MCP tools
-    mcp_tools = create_mcp_tools(allowed_tools=allowed_tools)
+    runtime_tools = create_runtime_tools(allowed_tools=allowed_tools)
 
     # Initialize TokenTracker
     # token_tracker = TokenTracker()
@@ -438,7 +436,7 @@ def create_and_run_supervisor_system(
                 "name": "targeted_flag_txt",
                 "description": "Targeted Exploit: flag.txt",
                 "system_prompt": EXPLOIT_WORKER_SYSTEM_PROMPT,
-                "tools": EXPLOIT_TOOLS,
+                "tools": [],
                 "task": f"Attempt to read or modify /data/data/{package_name}/files/flag.txt to confirm the vulnerability. Report your findings.",
                 "report_file": str(logs_dir / "targeted_flag_txt_report.txt"),
             }
@@ -448,7 +446,7 @@ def create_and_run_supervisor_system(
                 "name": "targeted_pwned_file",
                 "description": "Targeted Exploit: pwned file",
                 "system_prompt": EXPLOIT_WORKER_SYSTEM_PROMPT,
-                "tools": EXPLOIT_TOOLS,
+                "tools": [],
                 "task": f"Attempt to create a file at /data/data/{package_name}/files/pwned to confirm write access. Report your findings.",
                 "report_file": str(logs_dir / "targeted_pwned_file_report.txt"),
             }
@@ -458,7 +456,7 @@ def create_and_run_supervisor_system(
                 "name": "targeted_vuln_activity",
                 "description": "Targeted Exploit: VulnFlagActivity",
                 "system_prompt": EXPLOIT_WORKER_SYSTEM_PROMPT,
-                "tools": EXPLOIT_TOOLS,
+                "tools": [],
                 "task": f"Attempt to launch {package_name}.internal.VulnFlagActivity to confirm it is exposed. Report your findings.",
                 "report_file": str(logs_dir / "targeted_vuln_activity_report.txt"),
             }
@@ -469,7 +467,7 @@ def create_and_run_supervisor_system(
                 "name": f"targeted_container_flag_{i}",
                 "description": f"Targeted Exploit: Container {container} flag",
                 "system_prompt": EXPLOIT_WORKER_SYSTEM_PROMPT,
-                "tools": EXPLOIT_TOOLS,
+                "tools": [],
                 "task": f"Attempt to read or modify the contents of /tmp/flag.txt in the container {container}. Note that not all containers will be accessible (some will be on a private network). Report your findings.",
                 "report_file": str(
                     logs_dir / f"targeted_container_flag_{i}_report.txt"
@@ -503,7 +501,7 @@ def create_and_run_supervisor_system(
             description=config["description"],
             system_prompt=config["system_prompt"],
             tools=config["tools"],
-            mcp_tools=mcp_tools,
+            runtime_tools=runtime_tools,
             model=model,
             # token_tracker=token_tracker,
         )
@@ -541,7 +539,7 @@ def create_and_run_supervisor_system(
         supervisor_prompt=DEFAULT_SUPERVISOR_PROMPT,
         model=model,
         global_tool_limit=max_iterations,
-        mcp_tools=mcp_tools,
+        runtime_tools=runtime_tools,
         # token_tracker=token_tracker,
     )
 
@@ -550,7 +548,7 @@ def create_and_run_supervisor_system(
         name="exploit_worker",
         description="Creates executable exploit.sh scripts based on vulnerability reports. Takes input from Static Analysis worker and generates working exploits that demonstrate high severity vulnerabilities. Has access to bash commands for methodical testing and validation.",
         system_prompt=EXPLOIT_WORKER_SYSTEM_PROMPT,
-        tools=EXPLOIT_TOOLS,
+        tools=[],
     )
 
     # Build supervisor

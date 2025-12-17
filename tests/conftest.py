@@ -29,6 +29,7 @@ class MockModelProvider:
         response = Mock()
         response.output_text = json.dumps({"command": "ActionCommand", "action": "ls"})
         response.tool_outputs = []
+        response.tool_calls = []
         response.output = []
         return response
 
@@ -45,23 +46,17 @@ def mock_agent_dependencies(mock_model_provider):
     with patch(
         "agent.custom_agent.get_model_provider", return_value=mock_model_provider
     ):
-        with patch(
-            "agent.custom_agent.get_mcp_server_config",
-            return_value={"server_url": "http://test-mcp-server"},
-        ):
-            with patch("agent.custom_agent.TokenTracker") as mock_tracker:
-                with patch("agent.custom_agent.agent_logger"):
-                    with patch("agent.custom_agent.logger_manager") as mock_logger_mgr:
-                        mock_logger_mgr.get_log_file_name.return_value = (
-                            "test_agent.log"
-                        )
-                        mock_tracker_instance = Mock()
-                        mock_tracker_instance.record_from_openai_response = Mock()
-                        mock_tracker_instance.totals = Mock(
-                            return_value={"input_tokens": 100, "output_tokens": 50}
-                        )
-                        mock_tracker.return_value = mock_tracker_instance
-                        yield {
-                            "provider": mock_model_provider,
-                            "tracker": mock_tracker_instance,
-                        }
+        with patch("agent.custom_agent.TokenTracker") as mock_tracker:
+            with patch("agent.custom_agent.agent_logger"):
+                with patch("agent.custom_agent.logger_manager") as mock_logger_mgr:
+                    mock_logger_mgr.get_log_file_name.return_value = "test_agent.log"
+                    mock_tracker_instance = Mock()
+                    mock_tracker_instance.record_from_openai_response = Mock()
+                    mock_tracker_instance.totals = Mock(
+                        return_value={"input_tokens": 100, "output_tokens": 50}
+                    )
+                    mock_tracker.return_value = mock_tracker_instance
+                    yield {
+                        "provider": mock_model_provider,
+                        "tracker": mock_tracker_instance,
+                    }

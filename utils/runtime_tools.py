@@ -1,11 +1,11 @@
 """
-MCP Tool Wrappers for LangChain Agents
+Tool Wrappers for LangChain Agents
 
-This module provides LangChain-compatible tool wrappers for MCP (Model Context Protocol)
-server tools. These tools enable agents to execute commands and interact with the Android
-emulator environment through the MCP server.
+This module provides LangChain-compatible tool wrappers for local tool runtime.
+These tools enable agents to execute commands and interact with the Android
+emulator environment.
 
-The tools wrap MCPToolExecutor to provide a clean interface for LangChain agents.
+The tools wrap ToolRuntime to provide a clean interface for LangChain agents.
 """
 
 from typing import List, Optional
@@ -13,19 +13,19 @@ from typing import List, Optional
 from langchain_core.tools import BaseTool, tool
 from pydantic import BaseModel, Field
 
-from agent.mcp.direct_tool_executor import MCPToolExecutor
+from agent.tools.runtime import ToolRuntime
 from utils.logger import agent_logger
 
-# Global executor instance to prevent creating new connections/logs for every tool call
-_executor_instance = None
+# Global runtime instance
+_runtime_instance = None
 
 
-def _get_executor() -> MCPToolExecutor:
-    """Get or create the shared MCPToolExecutor instance."""
-    global _executor_instance
-    if _executor_instance is None:
-        _executor_instance = MCPToolExecutor()
-    return _executor_instance
+def _get_runtime() -> ToolRuntime:
+    """Get or create the shared ToolRuntime instance."""
+    global _runtime_instance
+    if _runtime_instance is None:
+        _runtime_instance = ToolRuntime()
+    return _runtime_instance
 
 
 class ExecuteCommandInput(BaseModel):
@@ -70,17 +70,14 @@ def execute_command(command: str) -> str:
         - "grep -r 'vulnerable_function' /app/codebase"
     """
     try:
-        agent_logger.debug(f"Executing command via MCP: {command}")
-        executor = _get_executor()
-        result = executor.call_tool("execute_command", command)
-        success, message = executor._extract_result(result)
+        agent_logger.debug(f"Executing command via ToolRuntime: {command}")
+        runtime = _get_runtime()
+        # ToolRuntime.execute takes name and args(dict or str)
+        result = runtime.execute("execute_command", {"command": command})
 
-        if success:
-            agent_logger.debug(f"Command succeeded: {command[:100]}...")
-            return message
-        else:
-            agent_logger.warning(f"Command failed: {command[:100]}... - {message}")
-            return f"Error executing command: {message}"
+        # result is directly the string output for execute_command
+        agent_logger.debug("Command succeeded/executed")
+        return result
 
     except Exception as e:
         error_msg = f"Error executing command: {str(e)}"
@@ -101,17 +98,14 @@ def get_current_ui_state() -> str:
         JSON string containing the UI state information
     """
     try:
-        agent_logger.debug("Getting current UI state via MCP")
-        executor = _get_executor()
-        result = executor.call_tool("get_current_ui_state", "")
-        success, message = executor._extract_result(result)
+        agent_logger.debug("Getting current UI state via Runtime")
+        runtime = _get_runtime()
+        result = runtime.execute("get_current_ui_state", {})
 
-        if success:
-            agent_logger.debug("UI state retrieved successfully")
-            return message
-        else:
-            agent_logger.warning(f"Failed to get UI state: {message}")
-            return f"Error getting UI state: {message}"
+        # result is a dict, we should converting to string for LangChain tool return
+        import json
+
+        return json.dumps(result, indent=2)
 
     except Exception as e:
         error_msg = f"Error getting UI state: {str(e)}"
@@ -135,16 +129,13 @@ def execute_command_with_ui_state(command: str) -> str:
     """
     try:
         agent_logger.debug(f"Executing command with UI state: {command}")
-        executor = _get_executor()
-        result = executor.call_tool("execute_command_with_ui_state", command)
-        success, message = executor._extract_result(result)
+        runtime = _get_runtime()
+        result = runtime.execute("execute_command_with_ui_state", {"command": command})
 
-        if success:
-            agent_logger.debug("Command with UI state succeeded")
-            return message
-        else:
-            agent_logger.warning(f"Command with UI state failed: {message}")
-            return f"Error executing command with UI state: {message}"
+        # result is a dict
+        import json
+
+        return json.dumps(result, indent=2)
 
     except Exception as e:
         error_msg = f"Error executing command with UI state: {str(e)}"
@@ -152,31 +143,30 @@ def execute_command_with_ui_state(command: str) -> str:
         return error_msg
 
 
-def create_mcp_tools(
+def create_runtime_tools(
     allowed_tools: Optional[List[str]] = None, ngrok_base_url: Optional[str] = None
 ) -> List[BaseTool]:
     """
-    Factory function to create MCP tool objects for LangChain agents.
+    Factory function to create tool objects for LangChain agents.
 
     This function creates and returns a list of LangChain-compatible tool objects
-    that wrap the MCP server functionality. Tools can be filtered using the
+    that wrap the functionality. Tools can be filtered using the
     allowed_tools parameter.
 
     Args:
         allowed_tools: Optional list of tool names to include. If None, all tools are included.
                       Valid tool names: "execute_command", "get_current_ui_state",
                       "execute_command_with_ui_state"
-        ngrok_base_url: Optional ngrok base URL for MCP server connection.
-                       If None, will auto-discover from ngrok API.
+        ngrok_base_url: Optional (unused in local runtime but kept for compatibility).
 
     Returns:
         List of BaseTool objects ready to be used with LangChain agents
 
     Example:
-        >>> tools = create_mcp_tools(allowed_tools=["execute_command", "get_current_ui_state"])
+        >>> tools = create_runtime_tools(allowed_tools=["execute_command", "get_current_ui_state"])
         >>> agent = create_agent(model=llm, tools=tools, system_prompt=prompt)
     """
-    # All available MCP tools
+    # All available tools
     all_tools = [
         execute_command,
         get_current_ui_state,
@@ -187,16 +177,14 @@ def create_mcp_tools(
     if allowed_tools is not None:
         filtered_tools = [t for t in all_tools if t.name in allowed_tools]
         agent_logger.info(
-            f"Created {len(filtered_tools)} MCP tools (filtered from {len(all_tools)}): "
+            f"Created {len(filtered_tools)} tools (filtered from {len(all_tools)}): "
             f"{[t.name for t in filtered_tools]}"
         )
         return filtered_tools
 
-    agent_logger.info(
-        f"Created {len(all_tools)} MCP tools: {[t.name for t in all_tools]}"
-    )
+    agent_logger.info(f"Created {len(all_tools)} tools: {[t.name for t in all_tools]}")
     return all_tools
 
 
 # Export tools for direct import
-MCP_TOOLS = [execute_command, get_current_ui_state, execute_command_with_ui_state]
+RUNTIME_TOOLS = [execute_command, get_current_ui_state, execute_command_with_ui_state]

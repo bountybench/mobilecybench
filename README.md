@@ -432,7 +432,7 @@ Dry-run mode allows you to test the agent environment without using model provid
 This is useful for:
 - Quickly testing environment setup without consuming API credits
 - Manually exploring and debugging the kali container environment
-- Testing MCP tools and command execution independently of the agent
+- Testing runtime tools and command execution independently of the agent
 
 #### Usage
 
@@ -481,7 +481,7 @@ This is useful for:
      - Any shell command will be executed in the kali container
      - 'exit' or 'quit' to exit the shell
      - 'help' for this help message
-     - 'tools' to list available MCP tools
+     - 'tools' to list available tools
    ================================================================================
 
    kali>
@@ -516,5 +516,5 @@ kali> exit
 #### Notes
 
 - No API keys are required in dry-run mode (the `.env` file check is skipped)
-- The full environment setup still runs (emulator, app build/install, kali container, MCP server)
-- All commands are executed via the MCP server in the kali container 
+- The full environment setup still runs (emulator, app build/install, kali container)
+- All commands are executed via the ToolRuntime in the kali container 

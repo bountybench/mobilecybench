@@ -227,24 +227,24 @@ class TestHierarchicalAgentSystem:
 
     @patch("agent.hierarchical_agent.supervisor_agent.ChatOpenAI")
     @patch("agent.hierarchical_agent.supervisor_agent.create_agent")
-    def test_mcp_tools_integration(self, mock_create, mock_openai):
-        """Test that MCP tools are properly integrated into the system."""
+    def test_runtime_tools_integration(self, mock_create, mock_openai):
+        """Test that Runtime tools are properly integrated into the system."""
         mock_openai.return_value = MagicMock()
         mock_create.return_value = MagicMock()
 
-        # Create mock MCP tools
-        mock_mcp_tool1 = Mock()
-        mock_mcp_tool1.name = "execute_command"
-        mock_mcp_tool2 = Mock()
-        mock_mcp_tool2.name = "get_current_ui_state"
-        mcp_tools = [mock_mcp_tool1, mock_mcp_tool2]
+        # Create mock Runtime tools
+        mock_runtime_tool1 = Mock()
+        mock_runtime_tool1.name = "execute_command"
+        mock_runtime_tool2 = Mock()
+        mock_runtime_tool2.name = "get_current_ui_state"
+        runtime_tools = [mock_runtime_tool1, mock_runtime_tool2]
 
-        # Initialize system with MCP tools
-        system = HierarchicalAgentSystem(model="gpt-4", mcp_tools=mcp_tools)
+        # Initialize system with Runtime tools
+        system = HierarchicalAgentSystem(model="gpt-4", runtime_tools=runtime_tools)
 
-        # Verify MCP tools are stored
-        assert system.mcp_tools == mcp_tools
-        assert len(system.mcp_tools) == 2
+        # Verify Runtime tools are stored
+        assert system.runtime_tools == runtime_tools
+        assert len(system.runtime_tools) == 2
 
         # Register a worker
         system.register_worker(name="test_worker", description="Test worker", tools=[])
@@ -252,37 +252,37 @@ class TestHierarchicalAgentSystem:
         # Build supervisor
         system.build_supervisor()
 
-        # Verify that create_agent was called with tools that include MCP tools
-        # The supervisor should be built with both worker tools and MCP tools
+        # Verify that create_agent was called with tools that include Runtime tools
+        # The supervisor should be built with both worker tools and Runtime tools
         call_args = mock_create.call_args_list[-1]  # Get last call (supervisor)
         tools_passed = call_args[1]["tools"]  # Get keyword arg 'tools'
 
-        # Should have 1 worker tool + 2 MCP tools = 3 total
+        # Should have 1 worker tool + 2 Runtime tools = 3 total
         assert len(tools_passed) == 3
 
     @patch("agent.hierarchical_agent.supervisor_agent.ChatOpenAI")
     @patch("agent.hierarchical_agent.supervisor_agent.create_agent")
-    def test_worker_receives_mcp_tools(self, mock_create, mock_openai):
-        """Test that workers receive MCP tools from the system."""
+    def test_worker_receives_runtime_tools(self, mock_create, mock_openai):
+        """Test that workers receive Runtime tools from the system."""
         mock_openai.return_value = MagicMock()
         mock_create.return_value = MagicMock()
 
-        # Create mock MCP tools
-        mock_mcp_tool = Mock()
-        mock_mcp_tool.name = "execute_command"
-        mcp_tools = [mock_mcp_tool]
+        # Create mock Runtime tools
+        mock_runtime_tool = Mock()
+        mock_runtime_tool.name = "execute_command"
+        runtime_tools = [mock_runtime_tool]
 
-        # Initialize system with MCP tools
-        system = HierarchicalAgentSystem(model="gpt-4", mcp_tools=mcp_tools)
+        # Initialize system with Runtime tools
+        system = HierarchicalAgentSystem(model="gpt-4", runtime_tools=runtime_tools)
 
         # Register a worker
         worker = system.register_worker(
             name="test_worker", description="Test worker", tools=[]
         )
 
-        # Verify worker received MCP tools
-        assert mock_mcp_tool in worker.tools
-        assert len(worker.tools) == 1  # Only MCP tool (no custom tools)
+        # Verify worker received Runtime tools
+        assert mock_runtime_tool in worker.tools
+        assert len(worker.tools) == 1  # Only Runtime tool (no custom tools)
 
 
 class TestCreateAndRunSupervisorSystem:
@@ -302,7 +302,7 @@ class TestCreateAndRunSupervisorSystem:
         ) as MockSystem, patch(
             "builtins.open", create=True
         ), patch(
-            "utils.mcp_tools.create_mcp_tools"
+            "utils.runtime_tools.create_runtime_tools"
         ):
 
             mock_worker_instance = MagicMock()
