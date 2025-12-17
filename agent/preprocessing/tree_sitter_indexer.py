@@ -60,12 +60,14 @@ class CodebaseIndexer:
                 source_code = f.read()
 
             symbols_found = []
-            
+
             if file_path.endswith(".kt"):
                 self.parser.language = self.kotlin_language
                 tree = self.parser.parse(source_code)
                 root_node = tree.root_node
-                self._extract_kotlin_symbols(root_node, file_path, source_code, symbols_found)
+                self._extract_kotlin_symbols(
+                    root_node, file_path, source_code, symbols_found
+                )
             else:
                 self.parser.language = self.java_language
                 tree = self.parser.parse(source_code)
@@ -293,7 +295,6 @@ class CodebaseIndexer:
         """Recursively extract method calls from a method body."""
         if node.type == "method_invocation":
             method_name = None
-            obj_name = None
 
             # Pattern: object.method() or method()
             for child in node.children:
@@ -313,7 +314,7 @@ class CodebaseIndexer:
 
             if method_name:
                 # Add edge to call graph
-                # Optimistic linking: We store the simple name. 
+                # Optimistic linking: We store the simple name.
                 # Later, the agent can resolve "foo" to "com.example.full.foo" locally.
                 self.call_graph[caller_name].append(method_name)
 
@@ -426,7 +427,9 @@ class CodebaseIndexer:
                 field_name = symbol.name.split(".")[-1]
                 self.fields[field_name].append(symbol)
 
-        logger.info(f"Index loaded: {len(self.symbols)} symbols from {len(self.files)} files")
+        logger.info(
+            f"Index loaded: {len(self.symbols)} symbols from {len(self.files)} files"
+        )
 
     def get_stats(self) -> Dict:
         """Get indexing statistics."""
@@ -442,22 +445,26 @@ class CodebaseIndexer:
         self, node, file_path: str, source_code: bytes, symbols_found: List[Symbol]
     ):
         """Extract Kotlin symbols recursively."""
-        
+
         if node.type == "class_declaration":
             class_name = None
             modifiers = []
-            
+
             for child in node.children:
                 if child.type == "identifier" or child.type == "type_identifier":
-                    class_name = source_code[child.start_byte : child.end_byte].decode("utf-8")
+                    class_name = source_code[child.start_byte : child.end_byte].decode(
+                        "utf-8"
+                    )
                 elif child.type == "modifiers":
-                     modifiers = [
+                    modifiers = [
                         source_code[m.start_byte : m.end_byte].decode("utf-8")
                         for m in child.children
                     ]
                 elif child.type == "class_body":
                     if class_name:
-                         self._extract_kotlin_members(child, file_path, source_code, class_name, symbols_found)
+                        self._extract_kotlin_members(
+                            child, file_path, source_code, class_name, symbols_found
+                        )
 
             if class_name:
                 symbol = Symbol(
@@ -471,16 +478,20 @@ class CodebaseIndexer:
                 self.symbols[class_name] = symbol
                 self.classes[class_name] = symbol
                 symbols_found.append(symbol)
-                
+
         elif node.type == "object_declaration":
             obj_name = None
             for child in node.children:
                 if child.type == "identifier":
-                    obj_name = source_code[child.start_byte : child.end_byte].decode("utf-8")
+                    obj_name = source_code[child.start_byte : child.end_byte].decode(
+                        "utf-8"
+                    )
                 elif child.type == "class_body":
                     if obj_name:
-                         self._extract_kotlin_members(child, file_path, source_code, obj_name, symbols_found)
-            
+                        self._extract_kotlin_members(
+                            child, file_path, source_code, obj_name, symbols_found
+                        )
+
             if obj_name:
                 symbol = Symbol(
                     name=obj_name,
@@ -497,7 +508,12 @@ class CodebaseIndexer:
             self._extract_kotlin_symbols(child, file_path, source_code, symbols_found)
 
     def _extract_kotlin_members(
-        self, body_node, file_path: str, source_code: bytes, parent: str, symbols_found: List[Symbol]
+        self,
+        body_node,
+        file_path: str,
+        source_code: bytes,
+        parent: str,
+        symbols_found: List[Symbol],
     ):
         for child in body_node.children:
             # Function
@@ -505,26 +521,32 @@ class CodebaseIndexer:
                 func_name = None
                 modifiers = []
                 params = []
-                
+
                 for grand in child.children:
                     if grand.type == "identifier":
-                        func_name = source_code[grand.start_byte : grand.end_byte].decode("utf-8")
+                        func_name = source_code[
+                            grand.start_byte : grand.end_byte
+                        ].decode("utf-8")
                     elif grand.type == "modifiers":
-                         modifiers = [
+                        modifiers = [
                             source_code[m.start_byte : m.end_byte].decode("utf-8")
                             for m in grand.children
                         ]
                     elif grand.type == "function_value_parameters":
                         # Extract params: (a: Int, b: String)
-                         for param in grand.children:
-                             if param.type == "parameter":
-                                 # parameter -> identifier, user_type
-                                 p_type = None
-                                 for p_child in param.children:
-                                     if "type" in p_child.type: # user_type, nullable_type
-                                         p_type = source_code[p_child.start_byte : p_child.end_byte].decode("utf-8")
-                                 if p_type:
-                                     params.append(p_type)
+                        for param in grand.children:
+                            if param.type == "parameter":
+                                # parameter -> identifier, user_type
+                                p_type = None
+                                for p_child in param.children:
+                                    if (
+                                        "type" in p_child.type
+                                    ):  # user_type, nullable_type
+                                        p_type = source_code[
+                                            p_child.start_byte : p_child.end_byte
+                                        ].decode("utf-8")
+                                if p_type:
+                                    params.append(p_type)
 
                 if func_name:
                     full_name = f"{parent}.{func_name}"
@@ -536,12 +558,12 @@ class CodebaseIndexer:
                         line_end=child.end_point[0] + 1,
                         parent=parent,
                         modifiers=modifiers,
-                        parameters=params
+                        parameters=params,
                     )
                     self.symbols[full_name] = symbol
                     self.methods[func_name].append(symbol)
                     symbols_found.append(symbol)
-                    
+
                     # Call graph extraction for Kotlin
                     self._extract_kotlin_calls(child, full_name, source_code)
 
@@ -559,8 +581,10 @@ class CodebaseIndexer:
                     elif grand.type == "variable_declaration":
                         for var_child in grand.children:
                             if var_child.type == "identifier":
-                                prop_name = source_code[var_child.start_byte : var_child.end_byte].decode("utf-8")
-                
+                                prop_name = source_code[
+                                    var_child.start_byte : var_child.end_byte
+                                ].decode("utf-8")
+
                 if prop_name:
                     full_name = f"{parent}.{prop_name}"
                     symbol = Symbol(
@@ -570,7 +594,7 @@ class CodebaseIndexer:
                         line_start=child.start_point[0] + 1,
                         line_end=child.end_point[0] + 1,
                         parent=parent,
-                        modifiers=modifiers
+                        modifiers=modifiers,
                     )
                     self.symbols[full_name] = symbol
                     self.fields[prop_name].append(symbol)
@@ -584,20 +608,25 @@ class CodebaseIndexer:
             # call_expression -> identifier/navigation_expression -> ...
             callee = None
             for child in node.children:
-                 if child.type == "identifier":
-                     callee = source_code[child.start_byte : child.end_byte].decode("utf-8")
-                 elif child.type == "navigation_expression":
-                     # obj.method
-                     # last child is usually the selector (method name)
-                     if child.children:
-                         last = child.children[-1]
-                         if last.type == "navigation_suffix":
-                             # navigation_suffix -> simple_identifier
-                             callee = source_code[last.start_byte : last.end_byte].decode("utf-8").lstrip(".")
-            
+                if child.type == "identifier":
+                    callee = source_code[child.start_byte : child.end_byte].decode(
+                        "utf-8"
+                    )
+                elif child.type == "navigation_expression":
+                    # obj.method
+                    # last child is usually the selector (method name)
+                    if child.children:
+                        last = child.children[-1]
+                        if last.type == "navigation_suffix":
+                            # navigation_suffix -> simple_identifier
+                            callee = (
+                                source_code[last.start_byte : last.end_byte]
+                                .decode("utf-8")
+                                .lstrip(".")
+                            )
+
             if callee:
                 self.call_graph[caller_name].append(callee)
 
         for child in node.children:
             self._extract_kotlin_calls(child, caller_name, source_code)
-
