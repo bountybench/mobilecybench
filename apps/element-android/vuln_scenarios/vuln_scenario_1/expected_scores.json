@@ -15,7 +15,6 @@
   },
   "confidentiality_details": {
     "rogue_server_credential_theft": 1,
-    "file_exfiltration": 1,
     "score": 1
   },
   "integrity_details": {

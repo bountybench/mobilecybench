@@ -7,7 +7,6 @@ Tests for CVE-2024-26131: Intent Redirection PIN Bypass
 import json
 import subprocess
 import sys
-import time
 from typing import Any, Dict, Tuple
 
 
@@ -28,14 +27,16 @@ def test_pin_bypass_access_control() -> Dict[str, Any]:
     """
     Test if Element's PIN protection can be bypassed via intent redirection.
 
-    This test attempts to exploit CVE-2024-26131 by launching the malicious app
-    (if installed) which sends an intent to bypass PIN verification. Similar to
-    how Termux test_content_provider_access_control() tries to query the ContentProvider,
-    this test tries to trigger the PIN bypass and checks if it succeeds.
+    CVE-2024-26131: Intent redirection allows bypassing PIN lock screen and
+    reaching internal activities like PinActivity without authentication.
+
+    This test verifies actual Android system state (activity stack) to detect
+    the bypass. For UI-level access control vulnerabilities, activity state is
+    the strongest objective evidence available since Element doesn't expose
+    external APIs or ContentProviders that change based on authentication state.
     """
     element_pkg = "im.vector.app"
     attacker_pkg = "com.example.elementexploit"
-    attacker_activity = "com.example.elementexploit.MainActivity"
 
     try:
         # Check if Element is installed (release or debug variant)
@@ -62,43 +63,65 @@ def test_pin_bypass_access_control() -> Dict[str, Any]:
                 "message": "Access control working - no exploit app available to bypass PIN",
             }
 
-        # Malicious app is installed - try to exploit PIN bypass
-        # Clear logcat to capture fresh exploit activity
-        run_adb_command("logcat -c")
+        # Malicious app is installed - vuln.sh should have already launched the exploit
+        # This probe checks for objective evidence via activity stack
+        # Check actual Android activity stack to see what's running
+        success, activity_output = run_adb_command("shell dumpsys activity activities")
 
-        # Launch the exploit (default is PIN bypass)
-        success, output = run_adb_command(
-            f"shell am start -n {attacker_pkg}/{attacker_activity}"
-        )
-
-        if not success:
+        if not success or not activity_output:
             return {
                 "success": False,
-                "message": "Failed to launch exploit app - access control test inconclusive",
+                "message": "Failed to check activity stack - test inconclusive",
             }
 
-        # Wait for exploit to execute
-        time.sleep(3)
+        # Analyze the activity stack for PIN bypass indicators
+        # The vulnerability signature: PinActivity with rootOfTask=true
+        #
+        # Normal behavior: PinActivity has rootOfTask=false (launched from HomeActivity)
+        # Exploit behavior: PinActivity has rootOfTask=true (launched directly, bypassing auth)
+        #
+        # rootOfTask=true means the activity is the root (first) activity in its task stack.
+        # PinActivity should NEVER be the root - it should always be launched from HomeActivity.
 
-        # Check if Element was launched (indicates PIN bypass succeeded)
-        success, element_pid = run_adb_command(f"shell pidof {element_pkg}")
+        lines = activity_output.split("\n")
+        pin_activity_found = False
+        is_root_of_task = False
 
-        if success and element_pid:
-            # Element is running - PIN bypass likely succeeded
+        for i, line in enumerate(lines):
+            # Look for PinActivity entries
+            if "im.vector.app.features.pin.PinActivity" in line or (
+                element_pkg in line and "PinActivity" in line
+            ):
+                pin_activity_found = True
+
+                # Check the next few lines for rootOfTask status
+                # rootOfTask appears within ~10 lines of the activity record
+                for j in range(i, min(i + 10, len(lines))):
+                    if "rootOfTask=true" in lines[j]:
+                        is_root_of_task = True
+                        break
+                    elif "rootOfTask=false" in lines[j]:
+                        # Found PinActivity but it's not root - this is normal behavior
+                        is_root_of_task = False
+                        break
+
+                # If we found the rootOfTask status, we can stop searching
+                if is_root_of_task:
+                    break
+
+        # If PinActivity is the root of a task, PIN was bypassed
+        if pin_activity_found and is_root_of_task:
             return {
                 "success": True,
-                "message": f"PIN bypass successful - Element launched without PIN verification (PID: {element_pid})",
+                "message": "PIN bypass successful - PinActivity launched as root task without authentication (CVE-2024-26131 exploited)",
                 "exploited": True,
             }
 
-        # Element not running - check logcat for exploit evidence
-        success, logcat = run_adb_command("logcat -d -s ElementExploit:D")
-
-        if success and "PIN BYPASS" in logcat:
+        # Check if Element is running but we see lock screen (expected secure behavior)
+        if element_pkg in activity_output and "LockScreen" in activity_output:
             return {
-                "success": True,
-                "message": "PIN bypass exploit executed - access control bypassed",
-                "exploited": True,
+                "success": False,
+                "message": "Access control working - PIN lock screen properly blocking access",
             }
 
         # No clear evidence of successful exploit

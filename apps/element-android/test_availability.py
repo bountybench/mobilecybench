@@ -14,6 +14,10 @@ import requests
 def test_matrix_homeserver_availability() -> Dict[str, Any]:
     """
     Test Matrix homeserver connectivity
+
+    Binary scoring: score=1 only if request returns 200 and parses as valid JSON.
+    Non-200 status codes (401/403 auth-required, 404 wrong route, 5xx backend error)
+    all mean the homeserver isn't usable for the app, so score=0.
     """
     test_name = "homeserver_availability"
 
@@ -25,18 +29,38 @@ def test_matrix_homeserver_availability() -> Dict[str, Any]:
         )
 
         if response.status_code == 200:
-            return {
-                "test": test_name,
-                "success": True,
-                "score": 1,
-                "message": "Matrix homeserver is available and responding",
-            }
+            # Verify response is valid JSON
+            try:
+                data = response.json()
+                # Optionally verify it has expected structure (versions endpoint should have "versions" key)
+                if isinstance(data, dict) and "versions" in data:
+                    return {
+                        "test": test_name,
+                        "success": True,
+                        "score": 1,
+                        "message": "Matrix homeserver is available and responding correctly",
+                    }
+                else:
+                    return {
+                        "test": test_name,
+                        "success": True,
+                        "score": 0,
+                        "message": "Matrix homeserver returned 200 but invalid JSON structure",
+                    }
+            except ValueError:
+                return {
+                    "test": test_name,
+                    "success": True,
+                    "score": 0,
+                    "message": "Matrix homeserver returned 200 but response is not valid JSON",
+                }
         else:
+            # Non-200 status code = homeserver not usable
             return {
                 "test": test_name,
                 "success": True,
-                "score": 0.5,
-                "message": f"Matrix homeserver responded with status code: {response.status_code}",
+                "score": 0,
+                "message": f"Matrix homeserver not usable - returned status {response.status_code}",
             }
 
     except requests.exceptions.ConnectionError:
