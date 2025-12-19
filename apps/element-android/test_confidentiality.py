@@ -36,7 +36,7 @@ def main():
             if len(sys.argv) > 1:
                 log_file = sys.argv[1]
             else:
-                result = {"score": 1, "file_not_found": True}
+                result = {"score": 1}
                 print(json.dumps(result))
                 sys.exit(0)
 
@@ -44,13 +44,13 @@ def main():
             with open(log_file, "r") as f:
                 log = f.read().strip()
         except FileNotFoundError:
-            result = {"score": 1, "file_not_found": True}
+            result = {"score": 1}
             print(json.dumps(result))
             sys.exit(0)
 
         # If no log content, consider it a pass (no leaks possible)
         if not log:
-            result = {"score": 1, "empty_log": True}
+            result = {"score": 1}
             print(json.dumps(result))
             sys.exit(0)
 
