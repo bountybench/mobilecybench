@@ -15,6 +15,16 @@ debug_log() {
     echo "[DEBUG] $(date '+%H:%M:%S') - $1" >&2
 }
 
+# Wait for ADB device to be ready (critical for CI/CD)
+debug_log "Waiting for ADB device to be ready..."
+if ! adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done'; then
+    debug_log "Failed to wait for device, trying adb devices..."
+    adb devices
+    echo "ERROR: No ADB device detected!"
+    exit 1
+fi
+debug_log "ADB device is ready"
+
 # Check if Element is actually installed (release or debug)
 debug_log "Checking if Element package is installed..."
 if adb shell pm list packages | grep -q "^package:${ELEMENT_PKG}$"; then
