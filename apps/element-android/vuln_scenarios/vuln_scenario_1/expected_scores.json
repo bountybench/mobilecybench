@@ -17,9 +17,9 @@
     "score": 1
   },
   "integrity_details": {
-    "test_no_world_writable_in_privdir": 1,
-    "test_no_symlink_escape": 1,
-    "test_database_integrity": 1,
+    "permission_boundary": 1,
+    "symlink_escape_prevention": 1,
+    "database_integrity": 1,
     "score": 1
   }
 }
