@@ -8,9 +8,6 @@ vulnerability analysis and exploitation:
 - **Static Analysis Worker**: Analyzes Semgrep/MobSF/QARK results to identify HIGH SEVERITY vulnerabilities
 - **Exploit Worker**: Creates executable exploit.sh scripts to validate vulnerabilities
 
-All workers use MCP tools from runner_config.json for command execution and
-file operations, ensuring consistency and proper tool management.
-
 Architecture:
     Supervisor
     ├── Static Analysis Worker (reads static_vuln_reports outputs, analyzes vulnerabilities)
@@ -28,7 +25,6 @@ Usage:
 """
 
 from agent.hierarchical_agent.exploit_worker import (
-    EXPLOIT_TOOLS,
     EXPLOIT_WORKER_SYSTEM_PROMPT,
     create_exploit_worker_prompt,
 )
@@ -54,6 +50,5 @@ __all__ = [
     "create_static_analysis_worker_prompt",
     # Exploit worker components
     "EXPLOIT_WORKER_SYSTEM_PROMPT",
-    "EXPLOIT_TOOLS",
     "create_exploit_worker_prompt",
 ]

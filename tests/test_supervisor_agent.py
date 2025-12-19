@@ -227,24 +227,24 @@ class TestHierarchicalAgentSystem:
 
     @patch("agent.hierarchical_agent.supervisor_agent.ChatOpenAI")
     @patch("agent.hierarchical_agent.supervisor_agent.create_agent")
-    def test_mcp_tools_integration(self, mock_create, mock_openai):
-        """Test that MCP tools are properly integrated into the system."""
+    def test_runtime_tools_integration(self, mock_create, mock_openai):
+        """Test that Runtime tools are properly integrated into the system."""
         mock_openai.return_value = MagicMock()
         mock_create.return_value = MagicMock()
 
-        # Create mock MCP tools
-        mock_mcp_tool1 = Mock()
-        mock_mcp_tool1.name = "execute_command"
-        mock_mcp_tool2 = Mock()
-        mock_mcp_tool2.name = "get_current_ui_state"
-        mcp_tools = [mock_mcp_tool1, mock_mcp_tool2]
+        # Create mock Runtime tools
+        mock_runtime_tool1 = Mock()
+        mock_runtime_tool1.name = "execute_command"
+        mock_runtime_tool2 = Mock()
+        mock_runtime_tool2.name = "get_current_ui_state"
+        runtime_tools = [mock_runtime_tool1, mock_runtime_tool2]
 
-        # Initialize system with MCP tools
-        system = HierarchicalAgentSystem(model="gpt-4", mcp_tools=mcp_tools)
+        # Initialize system with Runtime tools
+        system = HierarchicalAgentSystem(model="gpt-4", runtime_tools=runtime_tools)
 
-        # Verify MCP tools are stored
-        assert system.mcp_tools == mcp_tools
-        assert len(system.mcp_tools) == 2
+        # Verify Runtime tools are stored
+        assert system.runtime_tools == runtime_tools
+        assert len(system.runtime_tools) == 2
 
         # Register a worker
         system.register_worker(name="test_worker", description="Test worker", tools=[])
@@ -252,37 +252,100 @@ class TestHierarchicalAgentSystem:
         # Build supervisor
         system.build_supervisor()
 
-        # Verify that create_agent was called with tools that include MCP tools
-        # The supervisor should be built with both worker tools and MCP tools
+        # Verify that create_agent was called with tools that include Runtime tools
+        # The supervisor should be built with both worker tools and Runtime tools
         call_args = mock_create.call_args_list[-1]  # Get last call (supervisor)
         tools_passed = call_args[1]["tools"]  # Get keyword arg 'tools'
 
-        # Should have 1 worker tool + 2 MCP tools = 3 total
+        # Should have 1 worker tool + 2 Runtime tools = 3 total
         assert len(tools_passed) == 3
 
     @patch("agent.hierarchical_agent.supervisor_agent.ChatOpenAI")
     @patch("agent.hierarchical_agent.supervisor_agent.create_agent")
-    def test_worker_receives_mcp_tools(self, mock_create, mock_openai):
-        """Test that workers receive MCP tools from the system."""
+    def test_worker_receives_runtime_tools(self, mock_create, mock_openai):
+        """Test that workers receive Runtime tools from the system."""
         mock_openai.return_value = MagicMock()
         mock_create.return_value = MagicMock()
 
-        # Create mock MCP tools
-        mock_mcp_tool = Mock()
-        mock_mcp_tool.name = "execute_command"
-        mcp_tools = [mock_mcp_tool]
+        # Create mock Runtime tools
+        mock_runtime_tool = Mock()
+        mock_runtime_tool.name = "execute_command"
+        runtime_tools = [mock_runtime_tool]
 
-        # Initialize system with MCP tools
-        system = HierarchicalAgentSystem(model="gpt-4", mcp_tools=mcp_tools)
+        # Initialize system with Runtime tools
+        system = HierarchicalAgentSystem(model="gpt-4", runtime_tools=runtime_tools)
 
         # Register a worker
         worker = system.register_worker(
             name="test_worker", description="Test worker", tools=[]
         )
 
-        # Verify worker received MCP tools
-        assert mock_mcp_tool in worker.tools
-        assert len(worker.tools) == 1  # Only MCP tool (no custom tools)
+        # Verify worker received Runtime tools
+        assert mock_runtime_tool in worker.tools
+        assert len(worker.tools) == 1  # Only Runtime tool (no custom tools)
+
+
+class TestCreateAndRunSupervisorSystem:
+    """Test suite for create_and_run_supervisor_system function."""
+
+    def test_create_and_run_supervisor_system_with_metadata(self):
+        """Test create_and_run_supervisor_system handles metadata correctly."""
+        from agent.hierarchical_agent.supervisor_agent import (
+            create_and_run_supervisor_system,
+        )
+
+        # Mock dependencies
+        with patch(
+            "agent.hierarchical_agent.supervisor_agent.WorkerAgent"
+        ) as MockWorker, patch(
+            "agent.hierarchical_agent.supervisor_agent.HierarchicalAgentSystem"
+        ) as MockSystem, patch(
+            "builtins.open", create=True
+        ), patch(
+            "utils.runtime_tools.create_runtime_tools"
+        ):
+
+            mock_worker_instance = MagicMock()
+            mock_worker_instance.invoke.return_value = "Report content"
+            MockWorker.return_value = mock_worker_instance
+
+            mock_system_instance = MagicMock()
+            mock_system_instance.invoke.return_value = {
+                "iteration": 5,
+                "messages": ["Final message"],
+            }
+            MockSystem.return_value = mock_system_instance
+
+            metadata = {
+                "package_name": "com.example.app",
+                "container_names": ["container1"],
+                "app_server": "http://app-server:8080",
+            }
+
+            create_and_run_supervisor_system(
+                model="gpt-4", max_iterations=10, allowed_tools=[], metadata=metadata
+            )
+
+            # Verify targeted workers were created
+            # We expect calls for: static_analysis, git_history, targeted_flag_txt, targeted_pwned_file, targeted_vuln_activity, targeted_container_flag_0
+            # Total 6 workers
+            assert MockWorker.call_count == 6
+
+            # Check for specific targeted worker names in calls
+            call_args_list = MockWorker.call_args_list
+            worker_names = [call.kwargs.get("name") for call in call_args_list]
+
+            assert "targeted_flag_txt" in worker_names
+            assert "targeted_pwned_file" in worker_names
+            assert "targeted_vuln_activity" in worker_names
+            assert "targeted_container_flag_0" in worker_names
+
+            # Verify APP_SERVER_ACCESS in supervisor input
+            # The system.invoke is called with user_input
+            invoke_call = mock_system_instance.invoke.call_args
+            user_input = invoke_call.kwargs.get("user_input")
+            assert "APP_SERVER_ACCESS" in user_input
+            assert "http://app-server:8080" in user_input
 
 
 if __name__ == "__main__":

@@ -9,6 +9,11 @@
     "output": 10.0,
     "cache_input": 0.125
   },
+  "gpt-5.2": {
+    "input": 1.75,
+    "output": 14.0,
+    "cache_input": 0.175
+  },
   "gpt-5-mini": {
     "input": 0.25,
     "output": 2.0,

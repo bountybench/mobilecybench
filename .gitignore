@@ -5,12 +5,14 @@ setup.log
 .DS_Store
 *.apk
 .venv/
+venv/
 pycache/
 *.log
 baseline_manifest.json
 .pytest_cache/
 __pycache__/
 .reports/
+logs/
 scores.json
 generic_scores.json
 baseline.json

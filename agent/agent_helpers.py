@@ -5,7 +5,7 @@ This module contains utility functions that are used across different agent type
 (CustomAgent, CodexAgent, etc.) to avoid code duplication.
 """
 
-from agent.mcp.direct_tool_executor import MCPToolExecutor
+from agent.backend.docker_ops import execute_command_internal
 from utils.logger import agent_logger
 
 
@@ -17,19 +17,10 @@ def get_directory_tree() -> str:
     try:
         agent_logger.info("Fetching directory tree structure for initial context...")
 
-        # Use MCPToolExecutor to get the tree output
-        mcp_executor = MCPToolExecutor()
-
-        # Try tree command with depth 2, fallback to ls if tree is not available
         tree_cmd = "tree -L 2 2>/dev/null || (ls -la . && echo '---' && find . -maxdepth 2 -type d | head -50)"
-        result = mcp_executor.call_tool("execute_command", tree_cmd)
 
-        # Extract the tree output from the result
-        success, tree_output = mcp_executor._extract_result(result)
-
-        if not success:
-            agent_logger.warning(f"Failed to get directory tree: {tree_output}")
-            return ""
+        # execute_command_internal returns the formatted string directly
+        tree_output = execute_command_internal(tree_cmd)
 
         if tree_output:
             lines = tree_output.split("\n")

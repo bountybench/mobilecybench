@@ -30,6 +30,7 @@ class RunnerConfig(BaseModel):
     custom_system_prompt: Optional[str] = None
     allowed_tools: Optional[List[str]] = None
     codex_agent_image: Optional[str] = "cybench/mobilecybench:codex"
+    reasoning_effort: Optional[str] = None
 
     @classmethod
     def from_file(cls, config_path: Path) -> "RunnerConfig":
@@ -52,7 +53,7 @@ class RunnerConfig(BaseModel):
     def validate_allowed_tools(cls, value: Optional[List[str]]) -> Optional[List[str]]:
         if value is None:
             return None
-        # TODO: should consider a single truth of source MCP tools registry or constants file
+        # TODO: should consider a single truth of source tools registry or constants file
         # currently hardcode as we don't have that file yet
         valid_tools = {
             "execute_command",

@@ -449,43 +449,47 @@ get_system_image() {
 # Install required Android packages
 install_android_packages() {
     local arch="$1"
-    local system_image=$(get_system_image "$arch" "$SYSTEM_IMAGE_TYPE")
-    
+    local system_image_google_apis=$(get_system_image "$arch" "google_apis")
+    local system_image_playstore=$(get_system_image "$arch" "google_apis_playstore")
+
     log "Installing required Android packages for $arch architecture"
-    log "SDK version: $SDK_VERSION, System image: $SYSTEM_IMAGE_TYPE"
-    log "Full system image: $system_image"
-    
+    log "SDK version: $SDK_VERSION"
+    log "Installing BOTH system image types: google_apis and google_apis_playstore"
+    log "This may take a few minutes if you are installing for the first time..."
+
     local sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-    
+
     # Fix path for Windows MinGW users
     if [[ "$OSTYPE" == "msys" ]]; then
         {
             sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager.bat"
         }
     fi
-    
+
     # Accept licenses
     yes | "$sdkmanager" --licenses >/dev/null 2>&1 || true
-    
-    # Install essential packages
+
+    # Install essential packages including BOTH system images
     "$sdkmanager" \
         "platform-tools" \
         "emulator" \
         "platforms;android-${SDK_VERSION}" \
-        "$system_image" \
+        "$system_image_google_apis" \
+        "$system_image_playstore" \
         >/dev/null
-    
-    log "Android packages installed successfully"
+
+    log "Android packages installed successfully (both google_apis and google_apis_playstore)"
 }
 
 # Create Android Virtual Device
 create_avd() {
     local arch="$1"
-    local system_image=$(get_system_image "$arch" "$SYSTEM_IMAGE_TYPE")
-    
-    log "Creating Android Virtual Device: $EMULATOR_NAME for $arch"
-    log "SDK version: $SDK_VERSION, System image: $SYSTEM_IMAGE_TYPE"
-    
+    local system_image_google_apis=$(get_system_image "$arch" "google_apis")
+    local system_image_playstore=$(get_system_image "$arch" "google_apis_playstore")
+
+    log "Creating Android Virtual Devices for SDK $SDK_VERSION ($arch architecture)"
+    log "Will create BOTH: google_apis (rootable) and google_apis_playstore (non-rootable)"
+
     local avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
 
     # Fix path for Windows MinGW users
@@ -494,18 +498,18 @@ create_avd() {
             avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager.bat"
         }
     fi
-    
-    # Create AVD
+
+    # Create google_apis AVD (rootable)
+    local avd_name_google_apis="MobileCybenchEmulatorAPI${SDK_VERSION}_google_apis"
+    log "Creating AVD: $avd_name_google_apis"
     echo "no" | "$avdmanager" create avd \
-        -n "$EMULATOR_NAME" \
-        -k "$system_image" \
+        -n "$avd_name_google_apis" \
+        -k "$system_image_google_apis" \
         -d "pixel_2" \
         --force >/dev/null
-    
-    # Configure AVD
-    local avd_config="$HOME/.android/avd/${EMULATOR_NAME}.avd/config.ini"
+
+    local avd_config="$HOME/.android/avd/${avd_name_google_apis}.avd/config.ini"
     if [[ -f "$avd_config" ]]; then
-        # Optimize for development
         {
             echo "hw.ramSize=2048"
             echo "hw.gpu.enabled=yes"
@@ -515,75 +519,74 @@ create_avd() {
             echo "skin.dynamic=yes"
         } >> "$avd_config"
     fi
-    
-    log "Android Virtual Device created successfully"
+
+    # Create google_apis_playstore AVD (non-rootable)
+    local avd_name_playstore="MobileCybenchEmulatorAPI${SDK_VERSION}_google_apis_playstore"
+    log "Creating AVD: $avd_name_playstore"
+    echo "no" | "$avdmanager" create avd \
+        -n "$avd_name_playstore" \
+        -k "$system_image_playstore" \
+        -d "pixel_2" \
+        --force >/dev/null
+
+    # Configure playstore AVD
+    local avd_config_playstore="$HOME/.android/avd/${avd_name_playstore}.avd/config.ini"
+    if [[ -f "$avd_config_playstore" ]]; then
+        {
+            echo "hw.ramSize=2048"
+            echo "hw.gpu.enabled=yes"
+            echo "hw.gpu.mode=host"
+            echo "hw.keyboard=yes"
+            echo "showDeviceFrame=no"
+            echo "skin.dynamic=yes"
+        } >> "$avd_config_playstore"
+    fi
+
+    log "Android Virtual Devices created successfully:"
+    log "  - $avd_name_google_apis (rootable with 'adb root')"
+    log "  - $avd_name_playstore (non-rootable, production-like)"
 }
 
-# Create helper scripts
 create_helper_scripts() {
     log "Creating helper scripts..."
-    
-    # Start emulator script
-    cat > "${SCRIPT_DIR}/start_emulator.sh" << 'EOF'
+
+    # Start emulator script - defaults to rootable (google_apis)
+    cat > "${SCRIPT_DIR}/start_emulator.sh" << EOF
 #!/bin/bash
-# Start Android emulator
 
-ANDROID_HOME="${HOME}/.android-sdk"
-EMULATOR_NAME="MobileCybenchEmu"
+ANDROID_HOME="\${HOME}/.android-sdk"
+SDK_VERSION="${SDK_VERSION}"
+SYSTEM_IMAGE="\${1:-google_apis}"  # Default to google_apis (rootable)
 
-# Check if emulator is already running
-check_running_emulator() {
-    local running_emulators
-    if command -v adb >/dev/null 2>&1; then
-        running_emulators=$(adb devices | grep -E "emulator-[0-9]+.*device$" | wc -l)
-    elif [[ -f "$ANDROID_HOME/platform-tools/adb" ]]; then
-        running_emulators=$("$ANDROID_HOME/platform-tools/adb" devices | grep -E "emulator-[0-9]+.*device$" | wc -l)
-    else
-        echo "Warning: ADB not found, cannot check for running emulators"
-        return 0
-    fi
-    
-    if [[ $running_emulators -gt 0 ]]; then
-        echo "Warning: There are $running_emulators Android emulator(s) already running."
-        echo "Starting another emulator may cause performance issues or conflicts."
-        echo ""
-        echo "Current running emulators:"
-        if command -v adb >/dev/null 2>&1; then
-            adb devices | grep -E "emulator-[0-9]+.*device$"
-        else
-            "$ANDROID_HOME/platform-tools/adb" devices | grep -E "emulator-[0-9]+.*device$"
-        fi
-        echo ""
-        read -p "Do you want to proceed anyway? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo "Emulator start cancelled."
-            echo "To stop the currently running emulators, you can use: ./stop_emulator.sh"
-            exit 0
-        fi
-    fi
-}
+EMULATOR_NAME="MobileCybenchEmulatorAPI\${SDK_VERSION}_\${SYSTEM_IMAGE}"
 
-# Check for running emulators before starting
-check_running_emulator
+# Check if AVD exists
+if ! "\$ANDROID_HOME/emulator/emulator" -list-avds | grep -q "^\$EMULATOR_NAME\$"; then
+    echo "Error: AVD '\$EMULATOR_NAME' not found"
+    echo ""
+    echo "Available AVDs:"
+    "\$ANDROID_HOME/emulator/emulator" -list-avds
+    echo ""
+    echo "Usage: \$0 [google_apis|google_apis_playstore]"
+    exit 1
+fi
 
-echo "Starting Android emulator: $EMULATOR_NAME"
+echo "Starting Android emulator: \$EMULATOR_NAME"
 echo "This may take a few minutes on first boot..."
 
-"$ANDROID_HOME/emulator/emulator" \
-    -avd "$EMULATOR_NAME" \
-    -no-snapshot-save \
-    -wipe-data \
-    -gpu host \
-    -skin 1080x1920 \
-    -memory 2048 \
+"\$ANDROID_HOME/emulator/emulator" \\
+    -avd "\$EMULATOR_NAME" \\
+    -no-snapshot-save \\
+    -wipe-data \\
+    -gpu host \\
+    -skin 1080x1920 \\
+    -memory 2048 \\
     &
 
 echo "Emulator started in background"
 echo "Waiting for device to be ready..."
 
-# Wait for device
-"$ANDROID_HOME/platform-tools/adb" wait-for-device
+"\$ANDROID_HOME/platform-tools/adb" wait-for-device
 
 echo "Device ready!"
 echo "To check device status: adb devices"
@@ -592,7 +595,6 @@ EOF
     # Stop emulator script
     cat > "${SCRIPT_DIR}/stop_emulator.sh" << 'EOF'
 #!/bin/bash
-# Stop Android emulator
 
 echo "Stopping Android emulator..."
 adb emu kill
@@ -602,13 +604,11 @@ EOF
     # Device check script
     cat > "${SCRIPT_DIR}/check_device.sh" << 'EOF'
 #!/bin/bash
-# Check if Android device is ready
 
 ANDROID_HOME="${HOME}/.android-sdk"
 
 echo "Checking Android device status..."
 
-# Check if ADB is available
 if ! command -v adb >/dev/null 2>&1; then
     if [[ -f "$ANDROID_HOME/platform-tools/adb" ]]; then
         export PATH="$ANDROID_HOME/platform-tools:$PATH"
@@ -618,37 +618,32 @@ if ! command -v adb >/dev/null 2>&1; then
     fi
 fi
 
-# Check for connected devices
 devices=$(adb devices | grep -v "List of devices" | grep -E "device$|emulator")
 
 if [[ -z "$devices" ]]; then
     echo "No Android devices found."
-    echo "Run ./start_emulator.sh to start the emulator."
+    echo "Run ./start_emulator.sh or python emulator.py start to start the emulator."
     exit 1
 fi
 
 echo "Connected devices:"
 echo "$devices"
 
-# Test device connectivity
 device_id=$(echo "$devices" | head -n1 | awk '{print $1}')
 echo "Testing device connectivity..."
 
 if adb -s "$device_id" shell echo "test" >/dev/null 2>&1; then
     echo "Device is ready!"
-    
-    # Check Android version
+
     android_version=$(adb -s "$device_id" shell getprop ro.build.version.release)
     echo "Android version: $android_version"
-    
-    # Check SDK version (API level)
+
     sdk_version=$(adb -s "$device_id" shell getprop ro.build.version.sdk)
     echo "SDK version (API level): $sdk_version"
-    
-    # Check architecture
+
     arch=$(adb -s "$device_id" shell getprop ro.product.cpu.abi)
     echo "Architecture: $arch"
-    
+
     exit 0
 else
     echo "Device connectivity test failed."
@@ -656,9 +651,8 @@ else
 fi
 EOF
 
-    # Make scripts executable
     chmod +x "${SCRIPT_DIR}"/{start_emulator,stop_emulator,check_device}.sh
-    
+
     log "Helper scripts created successfully"
 }
 
@@ -702,38 +696,42 @@ main() {
     
     # Install Android packages
     install_android_packages "$arch"
-    
+
     # Create AVD
     create_avd "$arch"
-    
+
     # Create helper scripts
     create_helper_scripts
-    
+
     log "Setup completed successfully!"
     echo ""
-    echo "Android Emulator is ready!"
+    echo "======================================================================"
+    echo "                 Android Emulator Setup Complete!                    "
+    echo "======================================================================"
     echo ""
-    echo "Configuration:"
-    echo "  SDK Version: $SDK_VERSION"
-    echo "  System Image: $SYSTEM_IMAGE_TYPE"
-    echo "  Architecture: $arch"
+    echo "Created AVDs:"
+    echo "  1. MobileCybenchEmulatorAPI${SDK_VERSION}_google_apis"
+    echo "     - Rootable with 'adb root' (for security testing)"
+    echo ""
+    echo "  2. MobileCybenchEmulatorAPI${SDK_VERSION}_google_apis_playstore"
+    echo "     - Non-rootable (production-like environment)"
+    echo ""
     if [[ "$APP_NAME" == "deltachat-android" ]]; then
-        echo "  Note: Forced ARM64 architecture for DeltaChat APK compatibility"
+        echo "  Note: ARM64 architecture (required for DeltaChat)"
     elif [[ "$arch" == "arm64" ]]; then
-        echo "  Note: Using ARM64 system image for Apple Silicon compatibility"
+        echo "  Note: ARM64 architecture (Apple Silicon)"
     fi
     echo ""
-    echo "Next steps:"
-    echo "1. Start emulator: ./start_emulator.sh"
-    echo "2. Check device:   ./check_device.sh"
-    echo "3. Install APKs:   adb install app.apk"
+    echo "Quick Start (Python CLI - Recommended):"
+    echo "  python emulator.py start --sdk ${SDK_VERSION}                    # Start rootable emulator (default)"
+    echo "  python emulator.py start --sdk ${SDK_VERSION} --no-rootable      # Start non-rootable emulator"
+    echo "  python emulator.py list                                          # List available AVDs"
+    echo "  python emulator.py stop                                          # Stop running emulator"
     echo ""
-    echo "Useful commands:"
-    echo "  ./start_emulator.sh   - Start the Android emulator"
-    echo "  ./stop_emulator.sh    - Stop the Android emulator"
-    echo "  ./check_device.sh     - Check device status"
-    echo "  adb devices           - List connected devices"
-    echo "  adb shell             - Open device shell"
+    echo "Or use bash scripts:"
+    echo "  ./start_emulator.sh [google_apis|google_apis_playstore]          # Start emulator"
+    echo "  ./check_device.sh                                                # Check device status"
+    echo "  ./stop_emulator.sh                                               # Stop emulator"
     echo ""
     echo "Note: You may need to restart your terminal or run:"
     echo "  source ~/.bashrc  (or ~/.zshrc)"

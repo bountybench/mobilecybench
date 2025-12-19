@@ -4,9 +4,9 @@
   "sdk": "34",
   "java": "17",
   "package_name": "com.b44t.messenger",
-  "container_names": ["deltachat-greenmail"],
+  "container_names": ["deltachat-mailserver"],
   "emulator_server": "10.0.2.2:1025",
-  "app_server": "deltachat-greenmail:3025",
+  "app_server": "deltachat-mailserver:25",
   "username": "user1@deltachat.test",
-  "password": "unguessable_password_7861"
+  "password": "whynotthispasscode123"
 }

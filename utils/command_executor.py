@@ -131,6 +131,7 @@ class CommandExecutor:
         start_time = time.time()
 
         try:
+            # TODO: Fix run_with_progress to stream stdout to terminal in real-time
             process = subprocess.Popen(
                 args,
                 cwd=cwd,

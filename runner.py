@@ -7,17 +7,21 @@ import os
 import shlex
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 from agent.agent_setup import AgentEnvironment
-from agent.mcp.direct_tool_executor import MCPToolExecutor
+from agent.tools.runtime import ToolRuntime
 from models.config import RunnerConfig
 from utils.command_executor import CommandExecutor
 from utils.emulator_manager import EmulatorManager
 from utils.logger import logger, logger_manager
+from utils.ssrf_utils import (
+    clear_ssrf_requests,
+    start_ssrf_listener,
+    stop_ssrf_listener,
+)
 from utils.time_tracker import time_tracker
 from utils.utils import get_app_metadata
 from utils.uuid_flags_utils import generate_and_save_flags
@@ -53,7 +57,26 @@ class MobileCybenchRunner:
         self.emulator = None
         self.probe_results = {}
 
+        try:
+            git_branch = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+            git_commit = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+            git_info = f"Branch: {git_branch} | Commit: {git_commit}"
+        except subprocess.CalledProcessError:
+            git_info = "Git info unavailable"
+
         log_banner("MobileCybench Runner Started", width=80)
+        logger.info(git_info.center(80))
+        logger.info("=" * 80)
         logger.info(f"App: {app_name}")
         logger.info(f"Configuration: {config.model_dump_json(indent=2)}")
         logger.info(f"Agent Type: {mode.capitalize()}")
@@ -96,7 +119,7 @@ class MobileCybenchRunner:
         except Exception as e:
             self._exit_with_error(f"OpenAI API key validation failed: {e}")
 
-    def validate_input(self):
+    def _validate_input(self):
         """Validate app name and required files"""
         logger.info("Validating input...")
 
@@ -127,34 +150,37 @@ class MobileCybenchRunner:
             self._exit_with_error(f"Failed to generate random flags: {e}")
 
         # Check for required scripts
-        required_scripts = ["setup.sh"]
-
-        if self.config.build_type == "source":
-            required_scripts.append("setup_app_source.sh")
-        elif self.config.build_type == "skip-apk":
-            # Check if either setup_app_source.sh exists or download_link is in metadata
-            has_setup_source = (self.app_dir / "setup_app_source.sh").exists()
-            has_download_link = self.metadata.get("download_link") is not None
-
-            if not (has_setup_source or has_download_link):
+        if self.config.build_type == "skip-apk":
+            # Check if any .apk file exists in app_dir/apk/
+            apk_dir = self.app_dir / "apk"
+            apk_exists = any(apk_dir.glob("*.apk")) if apk_dir.exists() else False
+            if not apk_exists:
                 self._exit_with_error(
-                    "For build_type 'skip-apk', either setup_app_source.sh must exist or download_link must be in metadata.json"
+                    f"For build_type 'skip-apk', an APK file must exist in {apk_dir}"
                 )
+
+        elif self.config.build_type == "source":
+            # Check for setup_app_source.sh
+            if not (self.app_dir / "setup_app_source.sh").exists():
+                self._exit_with_error(
+                    "For build_type 'source', setup_app_source.sh must exist in the app directory"
+                )
+
+        elif self.config.build_type == "download-apk":
+            # Check for download_link in metadata
+            if not self.metadata.get("download_link"):
+                self._exit_with_error(
+                    "For build_type 'download-apk', 'download_link' must be present in metadata.json"
+                )
+
         else:
             self._exit_with_error(
                 f"Unsupported Build Type Detected: {self.config.build_type}"
             )
 
-        for script in required_scripts:
-            script_path = self.app_dir / script
-            if not script_path.exists():
-                self._exit_with_error(f"Required script not found: {script_path}")
-
-        # Check for required ngrok.yml config file
-        ngrok_config = self.agent_dir / "mcp" / "ngrok.yml"
-        if not ngrok_config.exists():
+        if self.mode == "codex":
             self._exit_with_error(
-                f"Required ngrok.yml config file not found: {ngrok_config}"
+                "Codex mode is currently broken. Please use 'custom' or 'supervisor' mode instead."
             )
 
         # Check for static vulnerability reports if in supervisor mode
@@ -174,8 +200,10 @@ class MobileCybenchRunner:
             # Semgrep should be present; warn if missing
             if not semgrep_report_path.exists():
                 logger.warning(
-                    "Semgrep report not found at %s; supervisor agents will proceed without it.",
+                    "Semgrep report not found at %s; supervisor agents will proceed without it.\n"
+                    "To generate it, run: python tools/run_semgrep_scan.py %s",
                     semgrep_report_path,
+                    self.app_name,
                 )
             else:
                 try:
@@ -215,7 +243,7 @@ class MobileCybenchRunner:
 
         logger.info("Input validation passed")
 
-    def setup_app_apk(self):
+    def _setup_app_apk(self):
         """APK Handling - Download, Build, or Skip"""
         if self.config.build_type == "skip-apk":
             log_banner("SKIPPING APK HANDLING STEP")
@@ -260,7 +288,8 @@ class MobileCybenchRunner:
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to repackage APK with repackage_apk.sh: {e}")
 
-        # ensures emulator is fully booted and ready
+    def _install_app_and_setup_backend(self):
+        """Setup app backend and install APK"""
         try:
             self.emulator.wait_until_ready(timeout=EMULATOR_BOOT_TIMEOUT_SECONDS)
             logger.info("Emulator booted successfully")
@@ -270,13 +299,10 @@ class MobileCybenchRunner:
         if not self.emulator.check_status():
             self._exit_with_error("Emulator status check failed")
         logger.info("Emulator status verified")
-
-    def install_app_and_setup_backend(self):
-        """Setup app backend and install APK"""
-        # Setup app (setup backend, install apk, etc.)
         log_banner(
             "SETTING UP THE BACKEND(RUNTIME SERVERS, DATABASES, SEEDS, etc.) AND INSTALLING APK"
         )
+
         try:
             self.cmd.run_with_progress(
                 "bash ./setup.sh",
@@ -298,15 +324,42 @@ class MobileCybenchRunner:
             logger.info("✓ Flags injected successfully")
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to inject security flags: {e}")
+
+        # Start SSRF listener for detecting SSRF attacks
+        # Check if app has backend containers
+        metadata = get_app_metadata(self.app_name)
+        container_names = metadata.get("container_names", [])
+
+        if container_names:
+            logger.info("Starting SSRF listener...")
+            try:
+                ssrf_compose_dir = project_root / "evaluation" / "ssrf_listener"
+                if start_ssrf_listener(ssrf_compose_dir):
+                    logger.info("✓ SSRF listener started successfully")
+                else:
+                    logger.warning(
+                        "⚠ Failed to start SSRF listener - SSRF detection may not work"
+                    )
+            except Exception as e:
+                logger.warning(f"⚠ Failed to start SSRF listener: {e}")
+        else:
+            logger.info("No backend containers defined - skipping SSRF listener setup")
+
         logger.info("App setup completed")
 
-    def setup_agent_environment(self):
+    def _setup_agent_environment(self):
         """Configure agent environment and start services"""
         log_banner("SETTING UP AGENT ENVIRONMENT")
 
-        if not self.config.dry_run:
-            self._setup_env_file()
         self._create_docker_network()
+
+        # Clear any previous SSRF requests before agent starts
+        logger.info("Clearing previous SSRF requests...")
+        try:
+            clear_ssrf_requests()
+            logger.info("✓ SSRF requests cleared")
+        except Exception as e:
+            logger.warning(f"⚠ Failed to clear SSRF requests: {e}")
 
         # Setup agent kali environment with appropriate image
         logger.info("Setting up agent Kali environment...")
@@ -322,14 +375,15 @@ class MobileCybenchRunner:
             app_dir=self.app_dir,
             docker_networks=["shared_net"],
             image_name=image_name,
-            env={"ANDROID_ADB_SERVER_PORT": "5037"},
+            env={
+                "ANDROID_ADB_SERVER_PORT": "5037",
+                "ADB_SERVER_SOCKET": "tcp:host.docker.internal:5037",
+            },
             commit_id=self.metadata.get("commit_version"),
             mode=self.mode,
         )
         agent_env.setup()
         self.agent_env = agent_env
-
-        self._start_containers()
 
         logger.info("Agent environment setup completed")
 
@@ -365,84 +419,7 @@ class MobileCybenchRunner:
             logger.error(f"Failed to create docker network: {e}")
             self._exit_with_error("Failed to create docker network 'shared_net'")
 
-    def _validate_mcp_server(self, base_url=None):
-        """Validate MCP server is functional by testing command execution"""
-        logger.info("Validating MCP server with 'ls' command...")
-
-        mcp_executor = MCPToolExecutor(ngrok_base_url=base_url)
-        result = mcp_executor.call_tool("execute_command", "ls /app")
-
-        if "codebase" not in str(result):
-            self._exit_with_error(
-                f"MCP server validation failed: 'codebase' directory not found - response: {result}"
-            )
-
-        logger.info("✓ MCP server validation passed: 'codebase' directory found")
-
-    def _start_containers(self):
-        """Start the containerized environment."""
-        logger.info("Starting containerized environment...")
-
-        # Build environment variables
-        env = os.environ.copy()
-
-        if self.mode == "codex":
-            env.update(
-                {
-                    "APP_NAME": self.app_name,
-                    "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
-                    "AGENT_TYPE": "codex",
-                    "MCP_COMMAND": "python3 mcp_server.py",  # Skip ngrok for codex
-                }
-            )
-            cmd = f"docker compose -f {self.agent_dir / 'docker-compose.yml'} up -d"
-            cwd = self.project_root
-        else:
-            env["AGENT_TYPE"] = self.mode
-            cmd = "docker compose up -d --wait"
-            cwd = self.agent_dir
-
-        logger.info("Starting containers with docker compose...")
-
-        # Execute docker compose
-        try:
-            result = self.cmd.run(cmd, cwd=cwd, env=env)
-            logger.info("✓ Containers started successfully")
-            if result.stdout:
-                logger.debug(f"Docker compose output: {result.stdout}")
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to start containers: {e}")
-            if self.mode == "codex":
-                raise
-            else:
-                self._exit_with_error("Failed to start containers")
-
-        # Container verification
-        logger.info("Waiting for MCP server to initialize...")
-        time.sleep(5)
-
-        # Validate MCP server functionality
-        # For codex mode, use localhost directly instead of ngrok
-        mcp_base_url = "http://localhost:8000" if self.mode == "codex" else None
-        self._validate_mcp_server(base_url=mcp_base_url)
-
-        try:
-            result = self.cmd.run("docker compose ps", cwd=self.agent_dir)
-        except subprocess.CalledProcessError as e:
-            logger.warning(f"Failed to check container status: {e}")
-            result = None
-
-        if result:
-            logger.debug(f"Container status:\n{result.stdout}")
-
-            # Verify specific containers are running
-            if "mcp-server" in result.stdout:
-                logger.info("✓ Both MCP server and Kali container are running")
-            else:
-                logger.warning("⚠ Warning: Some containers may not be running properly")
-
     def run_interactive_shell(self):
-        """Run interactive shell for manual command execution (dry-run mode)"""
         log_banner("RUNNING INTERACTIVE SHELL (DRY-RUN MODE)")
 
         logger.info("Starting interactive shell for manual command execution...")
@@ -452,11 +429,11 @@ class MobileCybenchRunner:
         print()
 
         try:
-            mcp_executor = MCPToolExecutor()
+            tool_runtime = ToolRuntime()
 
             # List available tools
             logger.info("Checking available tools...")
-            tools = mcp_executor.list_tools()
+            tools = tool_runtime.get_tool_definitions()
 
             print("=" * 80)
             print("DRY-RUN MODE: Interactive Shell")
@@ -469,7 +446,7 @@ class MobileCybenchRunner:
             print("  - Any shell command will be executed in the kali container")
             print("  - 'exit' or 'quit' to exit the shell")
             print("  - 'help' for this help message")
-            print("  - 'tools' to list available MCP tools")
+            print("  - 'tools' to list available tools")
             print("=" * 80)
             print()
 
@@ -493,38 +470,32 @@ class MobileCybenchRunner:
                         )
                         print("  - 'exit' or 'quit' to exit the shell")
                         print("  - 'help' for this help message")
-                        print("  - 'tools' to list available MCP tools")
+                        print("  - 'tools' to list available tools")
                         continue
                     elif user_input.lower() == "tools":
-                        tools = mcp_executor.list_tools()
-                        if tools and not isinstance(tools, dict):
+                        tools = tool_runtime.get_tool_definitions()
+                        if tools and isinstance(tools, list):
                             print(f"Available tools ({len(tools)}):")
                             for tool in tools:
-                                print(
-                                    f"  - {tool.get('name', 'unknown')}: {tool.get('description', 'No description')}"
-                                )
+                                name = tool.get("name", "unknown")
+                                desc = tool.get("description", "No description")
+                                print(f"  - {name}: {desc}")
                         else:
                             print("Could not list tools or no tools available")
                         continue
 
-                    # Execute command via MCP
+                    # Execute command via Runtime
                     command_count += 1
                     logger.info(f"Executing command {command_count}: {user_input}")
 
-                    result = mcp_executor.call_tool("execute_command", user_input)
+                    result = tool_runtime.execute(
+                        "execute_command", {"command": user_input}
+                    )
 
                     # Display result
-                    if "error" in result:
-                        print(f"ERROR: {result['error']}")
-                        logger.error(
-                            f"Command {command_count} failed: {result['error']}"
-                        )
-                    elif "result" in result and "structuredContent" in result["result"]:
-                        structured = result["result"]["structuredContent"]
-                        if "response" in structured:
-                            print(structured["response"])
-                        else:
-                            print(result)
+                    if isinstance(result, str) and result.startswith("Error"):
+                        print(result)
+                        logger.error(f"Command {command_count} failed: {result}")
                     else:
                         print(result)
 
@@ -555,12 +526,11 @@ class MobileCybenchRunner:
                 "log_file": None,
             }
 
-    def run_agent(self):
+    def _run_agent(self):
         """Run the agent - custom, codex, or supervisor based on mode"""
         agent_type = f"{self.mode.upper()} AGENT"
         log_banner(f"RUNNING {agent_type}")
 
-        # If in dry-run mode, use interactive shell instead
         if self.config.dry_run:
             return self.run_interactive_shell()
 
@@ -577,6 +547,7 @@ class MobileCybenchRunner:
                     model=self.config.model,
                     max_iterations=self.config.max_iterations,
                     allowed_tools=self.config.allowed_tools,
+                    metadata=getattr(self, "metadata", {}),
                 )
 
                 log_banner("SUPERVISOR AGENT EXECUTION RESULTS")
@@ -586,38 +557,42 @@ class MobileCybenchRunner:
                 return result
 
             elif self.mode == "codex":
-                # Import and use CodexAgent
-                from agent.codex_agent import CodexAgent
-
-                logger.info("Initializing codex agent...")
-                logger.info("Creating CodexAgent instance")
-
-                # For codex mode, use localhost MCP server instead of ngrok
-                from utils.mcp_utils import get_mcp_server_config
-
-                mcp_config = get_mcp_server_config(
-                    ngrok_base_url="http://localhost:8000",
-                    allowed_tools=self.config.allowed_tools,
-                    check_reachability=False,
+                # Codex mode is deprecated and broken
+                logger.error(
+                    "Codex mode is deprecated and files are removed. Cannot run."
                 )
+                return {
+                    "status": "error",
+                    "turns": 0,
+                    "final_message": "Codex mode is deprecated",
+                    "log_file": None,
+                }
+            # Import and use CodexAgent
+            # from agent.codex_agent import CodexAgent
 
-                agent = CodexAgent(
-                    max_conversation_turns=self.config.max_iterations,
-                    screenshot_enabled=self.config.screenshot_mode,
-                    app_name=self.app_name,
-                    app_server=getattr(self, "metadata", {}).get("app_server", None),
-                    dry_run=self.config.dry_run,
-                    mcp_config=mcp_config,
-                    package_name=self.metadata.get("package_name"),
-                )
+            # logger.info("Initializing codex agent...")
+            # logger.info("Creating CodexAgent instance")
+
+            # agent = CodexAgent(
+            #     max_conversation_turns=self.config.max_iterations,
+            #     screenshot_enabled=self.config.screenshot_mode,
+            #     app_name=self.app_name,
+            #     app_server=getattr(self, "metadata", {}).get("app_server", None),
+            #     dry_run=self.config.dry_run,
+            #     mcp_config=mcp_config,
+            #     package_name=self.metadata.get("package_name"),
+            #     username=self.metadata.get("username"),
+            #     password=self.metadata.get("password"),
+            # )
             else:
-                # Import and use CustomAgent
                 from agent.custom_agent import CustomAgent
 
-                # Create agent instance with dry_run mode for infrastructure testing
-                # Set dry_run=False for actual AI execution
                 logger.info("Initializing custom agent...")
                 logger.info("Creating CustomAgent instance")
+
+                # Check if we should include SSRF instructions
+                container_names = self.metadata.get("container_names", [])
+                include_ssrf = bool(container_names)
 
                 agent = CustomAgent(
                     model=self.config.model,
@@ -628,11 +603,13 @@ class MobileCybenchRunner:
                     screenshot_enabled=self.config.screenshot_mode,
                     app_name=self.app_name,
                     app_server=getattr(self, "metadata", {}).get("app_server", None),
-                    # TODO - create proper dry run mode
-                    # https://github.com/bountybench/mobilecybench/issues/322
                     dry_run=self.config.dry_run,
                     system_prompt=self.config.custom_system_prompt,
                     package_name=self.metadata.get("package_name"),
+                    reasoning_effort=self.config.reasoning_effort,
+                    username=self.metadata.get("username"),
+                    password=self.metadata.get("password"),
+                    include_ssrf=include_ssrf,
                 )
 
             # This can take a while for actual LLM calls
@@ -672,13 +649,16 @@ class MobileCybenchRunner:
         log_path = Path(log_file_path)
         if log_path.exists() and log_path.is_file():
             command = f"{command} {shlex.quote(str(log_path))}"
-            logger.info(f"Passing log file to probe checks: {log_path}")
-        else:
-            logger.error(
-                f"Log file path does not exist: {log_path}, running without it. This may limit the quality of the probes checks."
-            )
+
+        # Check if we should skip SSRF check
+        metadata = get_app_metadata(self.app_name)
+        container_names = metadata.get("container_names", [])
+        env = os.environ.copy()
+        if not container_names:
+            env["SKIP_SSRF_CHECK"] = "1"
+
         try:
-            result = self.cmd.run(command, cwd=self.project_root, check=False)
+            result = self.cmd.run(command, cwd=self.project_root, check=False, env=env)
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to run probe checks: {e}")
             result = e
@@ -725,6 +705,14 @@ class MobileCybenchRunner:
             logger.warning(f"Error during cleanup: {e}")
         except Exception as e:
             logger.warning(f"Error during cleanup: {e}")
+
+        # Stop SSRF listener
+        try:
+            ssrf_compose_dir = project_root / "evaluation" / "ssrf_listener"
+            stop_ssrf_listener(ssrf_compose_dir)
+            logger.info("SSRF listener stopped")
+        except Exception as e:
+            logger.warning(f"Error stopping SSRF listener: {e}")
 
     def _run_cleanup(self):
         """Run cleanup script for the app"""
@@ -942,8 +930,9 @@ class MobileCybenchRunner:
 
     def run(self):
         try:
-            self.validate_input()
-
+            self._validate_input()
+            if not self.config.dry_run:
+                self._setup_env_file()
             log_banner("SETTING UP ANDROID EMULATOR")
             sdk_version = (
                 self.metadata.get("sdk") if hasattr(self, "metadata") else None
@@ -953,13 +942,14 @@ class MobileCybenchRunner:
                 project_root=self.project_root,
                 sdk_version=sdk_version,
                 app_name=self.app_name,
+                rootable=True,  # Phase 1: Use google_apis (rootable) for discovery
             ) as emulator:
                 self.emulator = emulator
                 self.emulator.start_in_background()
                 logger.info("Emulator started in the background . . .")
 
-                self.setup_app_apk()
-                self.install_app_and_setup_backend()
+                self._setup_app_apk()
+                self._install_app_and_setup_backend()
                 dummy_log_path = Path(DUMMY_LOG_FILENAME)
                 if not dummy_log_path.exists():
                     dummy_log_path.touch()
@@ -967,8 +957,8 @@ class MobileCybenchRunner:
                     log_file_path=dummy_log_path
                 )
 
-                self.setup_agent_environment()
-                self.run_agent()
+                self._setup_agent_environment()
+                self._run_agent()
 
                 agent_log_filename = logger_manager.get_agent_log_file_name()
                 log_path = Path(agent_log_filename)
@@ -990,22 +980,61 @@ class MobileCybenchRunner:
                     project_root=self.project_root,
                     sdk_version=sdk_version,
                     app_name=self.app_name,
+                    rootable=False,  # Phase 2: Use google_apis_playstore (non-rootable) for verification
                 ) as emulator:
                     self.emulator = emulator
                     self.emulator.start_in_background()
                     logger.info("New emulator starting . . .")
+
+                    # some app's cleanup.sh might uninstall the app, which requires package manager to be running
+                    # takes a while for the package manager to be ready
+                    try:
+                        self.emulator.wait_until_ready(
+                            timeout=EMULATOR_BOOT_TIMEOUT_SECONDS
+                        )
+                        logger.info("Emulator booted successfully")
+                    except Exception as e:
+                        self._exit_with_error(
+                            f"Failed to wait for emulator to finish booting: {e}"
+                        )
+
                     self._run_cleanup()
-                    self.setup_app_apk()
-                    self.install_app_and_setup_backend()
+                    self._setup_app_apk()
+                    self._install_app_and_setup_backend()
+
+                    logger.info(
+                        "Verifying non-root environment for Phase 2 (Verification)..."
+                    )
+                    try:
+                        id_result = self.cmd.run(
+                            "adb shell id", capture_output=True, check=False
+                        )
+                        if "uid=0(root)" not in id_result.stdout:
+                            logger.info(
+                                "✓ Emulator running as non-root (google_apis_playstore)"
+                            )
+                        else:
+                            logger.warning(
+                                f"⚠ Unexpected root access detected: {id_result.stdout.strip()}"
+                            )
+                    except Exception as e:
+                        logger.warning(f"Failed to verify emulator user: {e}")
+
                     dummy_log_path = Path(DUMMY_LOG_FILENAME)
                     if not dummy_log_path.exists():
                         dummy_log_path.touch()
                     self.probe_results["pre_agent_exploit"] = self.run_probes_checks(
                         log_file_path=dummy_log_path
                     )
-                    self._run_agent_exploit()
+
+                    # Capture the actual exploit log
+                    # TODO: should we have an LLM agent (exploit executor / validator) here instead of just exploit.sh?
+                    # the generated exploit script may not be sufficient to successfully exploit the vulnerability in one shot.
+                    exploit_log_path = self._run_agent_exploit()
+
+                    # Pass the exploit log (NOT dummy log) to probes
                     self.probe_results["post_agent_exploit"] = self.run_probes_checks(
-                        log_file_path=dummy_log_path
+                        log_file_path=exploit_log_path
                     )
                     log_banner("Agent Exploit done")
 
@@ -1049,6 +1078,15 @@ class MobileCybenchRunner:
                     logger.info("Agent codebase cleaned up successfully")
                 except Exception as e:
                     logger.error(f"Failed to cleanup agent_codebase: {e}")
+
+            # Clean up SSRF listener
+            log_banner("CLEANING UP SSRF LISTENER")
+            try:
+                ssrf_compose_dir = project_root / "evaluation" / "ssrf_listener"
+                stop_ssrf_listener(ssrf_compose_dir)
+                logger.info("SSRF listener stopped and cleaned up")
+            except Exception as e:
+                logger.warning(f"Failed to cleanup SSRF listener: {e}")
 
             # TODO: Add cleanup for app cleanup.sh, Kali container, and MCP server
             # Should run docker compose down in agent_dir and cleanup.sh in app_dir

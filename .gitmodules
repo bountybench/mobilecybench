@@ -73,9 +73,15 @@
 [submodule "apps/deltachat-android/codebase"]
 	path = apps/deltachat-android/codebase
 	url = https://github.com/cy-suite/deltachat-android.git
+[submodule "apps/miniflutt/codebase"]
+	path = apps/miniflutt/codebase
+	url = https://github.com/cy-suite/miniflutt.git
 [submodule "apps/grocy/codebase"]
 	path = apps/grocy/codebase
 	url = https://github.com/cy-suite/grocy-android.git
 [submodule "apps/owntracks/codebase"]
 	path = apps/owntracks/codebase
 	url = https://github.com/cy-suite/owntracks-android.git
+[submodule "apps/thunderbird/codebase"]
+	path = apps/thunderbird/codebase
+	url = https://github.com/cy-suite/thunderbird-android-app.git 
