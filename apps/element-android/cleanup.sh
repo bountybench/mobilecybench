@@ -6,50 +6,52 @@ cd "$SCRIPT_DIR"
 
 echo "Cleaning up Element Android environment..."
 
-# Stop and remove Docker resources for this project
+# Stop and remove Docker containers
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
     echo "Stopping Docker containers..."
     docker compose down -v --remove-orphans
 else
-    echo "docker compose not available; skipping container shutdown."
+    echo "docker compose not available; skipping."
 fi
 
 # Reset synapse data directory
 if [ -d "synapse-data" ]; then
-    echo "Resetting synapse data directory..."
+    echo "Resetting synapse data..."
     rm -rf synapse-data
     mkdir -p synapse-data
 fi
 
-# Uninstall the app if it's installed
+# Uninstall Element app
 if command -v adb >/dev/null 2>&1 && [ -f "metadata.json" ] && command -v jq >/dev/null 2>&1; then
     PACKAGE_NAME=$(jq -r '.package_name // empty' metadata.json)
-    if [ -n "$PACKAGE_NAME" ]; then
-        # Check if package is installed
-        if adb shell pm list packages 2>/dev/null | grep -q "^package:$PACKAGE_NAME$"; then
-            echo "Uninstalling package: $PACKAGE_NAME"
-            adb uninstall "$PACKAGE_NAME"
-        fi
+    if [ -n "$PACKAGE_NAME" ] && adb shell pm list packages 2>/dev/null | grep -q "^package:$PACKAGE_NAME$"; then
+        echo "Uninstalling $PACKAGE_NAME"
+        adb uninstall "$PACKAGE_NAME" 2>/dev/null || true
     fi
 fi
 
-# Uninstall malicious exploit apps if installed (from vulnerability scenarios)
+# Uninstall malicious app
 if command -v adb >/dev/null 2>&1; then
-    # Uninstall elementexploit app (vuln_scenario_0/1)
-    MALICIOUS_PKG="com.example.elementexploit"
-    if adb shell pm list packages 2>/dev/null | grep -q "^package:$MALICIOUS_PKG$"; then
-        echo "Uninstalling malicious exploit app: $MALICIOUS_PKG"
-        adb uninstall "$MALICIOUS_PKG"
+    PKG="com.example.elementexploit"
+    if adb shell pm list packages 2>/dev/null | grep -q "^package:$PKG$"; then
+        echo "Uninstalling $PKG"
+        adb uninstall "$PKG" 2>/dev/null || true
     fi
 
-    # Uninstall elementexfiltrate app (vuln_scenario_2)
-    EXFILTRATE_PKG="com.example.elementexfiltrate"
-    if adb shell pm list packages 2>/dev/null | grep -q "^package:$EXFILTRATE_PKG$"; then
-        echo "Uninstalling file exfiltration app: $EXFILTRATE_PKG"
-        adb uninstall "$EXFILTRATE_PKG"
-    fi
+    # Clean up test artifacts from device
+    echo "Cleaning test artifacts..."
+    adb shell rm -f /sdcard/*.stolen 2>/dev/null || true
+    adb shell rm -f /sdcard/element*.txt 2>/dev/null || true
 fi
 
-# Note: Do NOT remove the apk file as per requirements
+# Clean up test logs and evidence files
+echo "Cleaning local test artifacts..."
+rm -f exploit_evidence.txt 2>/dev/null || true
+rm -f vuln_scenarios/*/fake_agent_log.log 2>/dev/null || true
+rm -f /tmp/element*.stolen 2>/dev/null || true
+rm -f /tmp/element_stolen_data.txt 2>/dev/null || true
 
-echo "Element Android cleanup complete!"
+# Kill any lingering background processes
+pkill -f "rogue_server.py" 2>/dev/null || true
+
+echo "Cleanup complete!"

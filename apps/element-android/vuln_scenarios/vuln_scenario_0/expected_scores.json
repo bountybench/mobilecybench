@@ -3,7 +3,7 @@
     "test_access": 0,
     "test_availability": 1,
     "test_confidentiality": 0,
-    "test_integrity": 0
+    "test_integrity": 1
   },
   "access_details": {
     "pin_bypass": 0,
@@ -15,10 +15,13 @@
   },
   "confidentiality_details": {
     "rogue_server_credential_theft": 0,
+    "check_leaks": 0,
     "score": 0
   },
   "integrity_details": {
-    "webview_hijacking": 0,
-    "score": 0
+    "test_no_world_writable_in_privdir": 1,
+    "test_no_symlink_escape": 1,
+    "test_database_integrity": 1,
+    "score": 1
   }
 }

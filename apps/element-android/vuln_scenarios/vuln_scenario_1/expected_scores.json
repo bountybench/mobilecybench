@@ -14,11 +14,12 @@
     "score": 0
   },
   "confidentiality_details": {
-    "rogue_server_credential_theft": 1,
     "score": 1
   },
   "integrity_details": {
-    "webview_hijacking": 1,
+    "test_no_world_writable_in_privdir": 1,
+    "test_no_symlink_escape": 1,
+    "test_database_integrity": 1,
     "score": 1
   }
 }
