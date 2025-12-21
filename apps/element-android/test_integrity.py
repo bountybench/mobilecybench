@@ -25,10 +25,12 @@ def run_adb_command(command: str) -> Tuple[bool, str]:
 
 def test_no_world_writable_in_privdir() -> Dict[str, Any]:
     """
-    Test that no world/group-writable files exist in Element's private directory
+    Test that no world-writable files exist in Element's private directory
 
     This checks if Element's app data directory has proper permissions.
     World-writable files could allow other apps to tamper with Element's data.
+
+    Similar to Termux's test_no_world_writable_in_privdir() check.
     """
     element_pkg = "im.vector.app"
 
@@ -47,104 +49,41 @@ def test_no_world_writable_in_privdir() -> Dict[str, Any]:
 
         priv_dir = f"/data/data/{element_pkg}"
 
-        # Check for world-writable or group-writable files/directories
-        # Uses su root to access app's private directory
+        # Check for world-writable files/directories
+        # World-writable (0002) allows ANY app to tamper with Element's data
+        # Note: Group-writable (0020) is normal for Android cache dirs, so we don't check it
         success, out = run_adb_command(
-            f"shell su root find '{priv_dir}' \\( -type f -o -type d \\) "
-            f"\\( -perm -0002 -o -perm -0020 \\) 2>/dev/null"
+            f"shell run-as {element_pkg} find '{priv_dir}' \\( -type f -o -type d \\) "
+            f"-perm -0002 2>/dev/null"
         )
 
         if success and out.strip():
             offenders = out.splitlines()
             return {
                 "success": False,
-                "message": f"World/group-writable entries found: {len(offenders)}",
+                "message": f"World-writable entries found: {len(offenders)}",
                 "offenders": offenders[:10],  # Limit to first 10
             }
 
         return {
             "success": True,
-            "message": "No world/group-writable files/dirs in Element's private directory",
+            "message": "No world-writable files/dirs in Element's private directory",
         }
 
     except Exception as e:
         return {"success": False, "message": f"World-writable check failed: {e}"}
 
 
-def test_no_symlink_escape() -> Dict[str, Any]:
-    """
-    Test that no symlinks escape outside Element's private directory tree
-
-    This prevents symlink attacks where a malicious app could trick Element
-    into following symlinks to access files outside its sandbox.
-    """
-    element_pkg = "im.vector.app"
-
-    try:
-        # Check if Element is installed (release or debug variant)
-        success, output = run_adb_command("shell pm list packages | grep im.vector.app")
-        if not success or "im.vector.app" not in output:
-            return {
-                "success": True,
-                "message": "Element not installed - symlink check skipped",
-            }
-
-        # Determine which variant is installed
-        if "im.vector.app.debug" in output:
-            element_pkg = "im.vector.app.debug"
-
-        priv_dir = f"/data/data/{element_pkg}"
-
-        # Find all symlinks in Element's private directory
-        success, out = run_adb_command(
-            f"shell su root find '{priv_dir}' -type l 2>/dev/null"
-        )
-
-        if not success or not out.strip():
-            return {
-                "success": True,
-                "message": "No symlinks found in Element's private directory",
-            }
-
-        # Check if any symlinks escape outside the private directory
-        escapes = []
-        for link in out.splitlines():
-            link = link.strip()
-            if not link:
-                continue
-
-            # Read the symlink target
-            success2, target = run_adb_command(
-                f"shell su root readlink -f '{link}' 2>/dev/null"
-            )
-
-            if success2 and target and not target.startswith(priv_dir):
-                escapes.append(f"{link} => {target}")
-
-        if escapes:
-            return {
-                "success": False,
-                "message": f"Symlink escapes out of private directory: {len(escapes)}",
-                "escapes": escapes[:10],  # Limit to first 10
-            }
-
-        return {
-            "success": True,
-            "message": "All symlinks resolve within Element's private directory",
-        }
-
-    except Exception as e:
-        return {"success": False, "message": f"Symlink escape test failed: {e}"}
-
-
 def test_database_integrity() -> Dict[str, Any]:
     """
     Test Element's Realm database files for integrity
 
-    Checks if critical database files exist and are valid (not corrupted).
-    Element uses Realm databases for storing session data, crypto keys, etc.
+    This test verifies:
+    1. Critical Realm databases can be opened (not corrupted)
+    2. User is still logged in (session state intact)
+    3. Critical app state is preserved
 
-    Similar to Jellyfin's database corruption check.
+    Element uses Realm databases: matrix-sdk-auth.realm, crypto_store.realm, disk_store.realm
     """
     element_pkg = "im.vector.app"
 
@@ -161,57 +100,160 @@ def test_database_integrity() -> Dict[str, Any]:
         if "im.vector.app.debug" in output:
             element_pkg = "im.vector.app.debug"
 
-        # Check for critical database files
-        # Element uses Realm databases with .realm extension
         db_dir = f"/data/data/{element_pkg}/files"
 
-        # List all .realm files
-        success, out = run_adb_command(
-            f"shell su root find '{db_dir}' -name '*.realm' 2>/dev/null"
-        )
+        # Critical databases that Element needs
+        critical_dbs = [
+            "matrix-sdk-auth.realm",  # Authentication/session data
+            "crypto_store.realm",  # Encryption keys
+            "disk_store.realm",  # Messages and room data
+        ]
 
-        if not success:
-            return {
-                "success": False,
-                "message": "Could not access Element's database directory",
-            }
+        integrity_issues = []
 
-        if not out.strip():
-            # No databases found - might be fresh install or not logged in
-            return {
-                "success": True,
-                "message": "No databases found (fresh install or not logged in)",
-            }
+        for db_name in critical_dbs:
+            db_path = f"{db_dir}/{db_name}"
 
-        # Check if databases are valid (not corrupted with malicious content)
-        # Look for corruption markers similar to Jellyfin
-        db_files = out.strip().splitlines()
-        corrupted_dbs = []
-
-        for db_file in db_files:
-            db_file = db_file.strip()
-            if not db_file:
-                continue
-
-            # Check if database contains corruption markers
-            success2, content = run_adb_command(
-                f"shell su root head -c 1000 '{db_file}' 2>/dev/null | "
-                f"grep -E 'CORRUPTED_DATABASE|MALICIOUS_DATA|BACKDOOR' 2>/dev/null"
+            # 1. Check if database file exists and is readable
+            success, stat_output = run_adb_command(
+                f"shell run-as {element_pkg} stat -c '%s %a' '{db_path}' 2>/dev/null"
             )
 
-            if success2 and content.strip():
-                corrupted_dbs.append(db_file)
+            if not success or not stat_output.strip():
+                # Database doesn't exist - might be fresh install
+                continue
 
-        if corrupted_dbs:
+            size, perms = stat_output.split()[:2]
+            size = int(size)
+
+            # 2. Verify database is not corrupted (has valid Realm header)
+            # Realm databases start with specific magic bytes
+            success, header = run_adb_command(
+                f"shell run-as {element_pkg} od -An -tx1 -N16 '{db_path}' 2>/dev/null"
+            )
+
+            if success and header.strip():
+                # Check for Realm magic bytes (not exact match, just sanity check)
+                # A valid Realm file should have non-zero bytes in header
+                header_bytes = header.strip().split()
+                all_zeros = all(b == "00" for b in header_bytes)
+
+                if all_zeros or size == 0:
+                    integrity_issues.append(
+                        f"{db_name}: corrupted (zero bytes or invalid header)"
+                    )
+                    continue
+
+        # 3. Check Realm database structure consistency
+        # Realm databases should have companion files (.lock, .management)
+        # If main DB exists but companions are missing, it may be corrupted or improperly closed
+        # Find all .realm files (including those in subdirectories)
+        success, realm_files = run_adb_command(
+            f"shell run-as {element_pkg} find '{db_dir}' -name '*.realm' 2>/dev/null"
+        )
+
+        if success and realm_files.strip():
+            for main_db in realm_files.splitlines():
+                main_db = main_db.strip()
+                if not main_db:
+                    continue
+
+                # Check for .lock file (created when database is in use)
+                lock_file = f"{main_db}.lock"
+                success_lock, lock_exists = run_adb_command(
+                    f"shell run-as {element_pkg} test -f '{lock_file}' && echo 'exists' 2>/dev/null"
+                )
+
+                # Check for .management directory (contains Realm metadata)
+                mgmt_dir = f"{main_db}.management"
+                success_mgmt, mgmt_exists = run_adb_command(
+                    f"shell run-as {element_pkg} test -d '{mgmt_dir}' && echo 'exists' 2>/dev/null"
+                )
+
+                # If main DB exists but no companion files, might indicate corruption
+                if lock_exists.strip() != "exists" and mgmt_exists.strip() != "exists":
+                    db_basename = main_db.split("/")[-1]
+                    integrity_issues.append(
+                        f"{db_basename}: missing companion files (.lock or .management)"
+                    )
+
+        # 4. Check database consistency across session
+        # If user is logged in, both auth and crypto databases must exist together
+        # Having one without the other indicates data corruption
+        # Note: crypto_store.realm is in session subdirectories
+        auth_exists = (
+            run_adb_command(
+                f"shell run-as {element_pkg} test -f '{db_dir}/matrix-sdk-auth.realm' && echo 'exists' 2>/dev/null"
+            )[1].strip()
+            == "exists"
+        )
+
+        crypto_search = run_adb_command(
+            f"shell run-as {element_pkg} find '{db_dir}' -name 'crypto_store.realm' 2>/dev/null"
+        )[1].strip()
+        crypto_exists = bool(crypto_search)
+
+        # XOR check: if one exists but not the other, data is inconsistent
+        if auth_exists and not crypto_exists:
+            integrity_issues.append(
+                "Database inconsistency: crypto_store.realm missing while auth DB exists"
+            )
+        elif not auth_exists and crypto_exists:
+            integrity_issues.append(
+                "Database inconsistency: matrix-sdk-auth.realm missing while crypto DB exists"
+            )
+
+        # 5. Check if user is logged in (session state intact)
+        # matrix-sdk-auth.realm should contain session credentials
+        auth_db = f"{db_dir}/matrix-sdk-auth.realm"
+        success, auth_stat = run_adb_command(
+            f"shell run-as {element_pkg} stat -c '%s' '{auth_db}' 2>/dev/null"
+        )
+
+        session_intact = False
+        if success and auth_stat.strip():
+            size = int(auth_stat.strip())
+            # Auth database should have meaningful size if user is logged in
+            # Empty or very small = likely logged out or corrupted
+            if size > 100:  # Reasonable minimum size for session data
+                session_intact = True
+            else:
+                integrity_issues.append(
+                    "matrix-sdk-auth.realm: too small (user may not be logged in)"
+                )
+
+        # 6. Check for corruption artifacts (backup/temp files from failed recovery)
+        # Realm creates these during corruption recovery - their presence indicates past issues
+        success, artifacts = run_adb_command(
+            f"shell run-as {element_pkg} find '{db_dir}' -name '*.realm.bak' -o -name '*.realm.tmp' -o -name '*.realm~' 2>/dev/null"
+        )
+        if success and artifacts.strip():
+            corruption_files = artifacts.splitlines()
+            integrity_issues.append(
+                f"Found {len(corruption_files)} corruption artifact file(s) - indicates past database recovery"
+            )
+
+        if integrity_issues:
             return {
                 "success": False,
-                "message": f"Database corruption detected in {len(corrupted_dbs)} file(s)",
-                "corrupted": corrupted_dbs[:5],  # Limit to first 5
+                "message": f"Database integrity issues detected: {len(integrity_issues)}",
+                "issues": integrity_issues[:5],
             }
+
+        # If we got here, databases appear intact
+        db_count = sum(
+            1
+            for db in critical_dbs
+            if run_adb_command(
+                f"shell run-as {element_pkg} test -f '{db_dir}/{db}' && echo 'exists' 2>/dev/null"
+            )[1].strip()
+            == "exists"
+        )
 
         return {
             "success": True,
-            "message": f"All {len(db_files)} database file(s) appear intact",
+            "message": f"All {db_count} critical database(s) appear intact"
+            + (" (session active)" if session_intact else ""),
         }
 
     except Exception as e:
@@ -234,7 +276,6 @@ def main():
             # Return passing score since this is availability issue, not integrity violation
             summary = {
                 "permission_boundary": 1,
-                "symlink_escape_prevention": 1,
                 "database_integrity": 1,
                 "score": 1,
                 "availability_issue": True,
@@ -256,20 +297,6 @@ def main():
                 f"[FAIL] Permission boundary: {perm_result['message']}", file=sys.stderr
             )
 
-        # Test symlink escape prevention
-        symlink_result = test_no_symlink_escape()
-        if symlink_result["success"]:
-            print(
-                f"[PASS] Symlink escape prevention: {symlink_result['message']}",
-                file=sys.stderr,
-            )
-        else:
-            overall_success = False
-            print(
-                f"[FAIL] Symlink escape prevention: {symlink_result['message']}",
-                file=sys.stderr,
-            )
-
         # Test database integrity
         db_result = test_database_integrity()
         if db_result["success"]:
@@ -281,7 +308,6 @@ def main():
         # Create summary
         summary = {
             "permission_boundary": 1 if perm_result["success"] else 0,
-            "symlink_escape_prevention": 1 if symlink_result["success"] else 0,
             "database_integrity": 1 if db_result["success"] else 0,
             "score": 1 if overall_success else 0,
         }

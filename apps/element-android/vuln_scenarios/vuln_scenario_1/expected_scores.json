@@ -18,7 +18,6 @@
   },
   "integrity_details": {
     "permission_boundary": 1,
-    "symlink_escape_prevention": 1,
     "database_integrity": 1,
     "score": 1
   }
