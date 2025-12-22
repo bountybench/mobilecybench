@@ -6,8 +6,8 @@ import os
 import subprocess
 import tempfile
 import time
+import uuid
 from dataclasses import dataclass
-from pathlib import Path
 from typing import List, Optional
 
 from utils.logger import logger, logger_manager
@@ -53,13 +53,30 @@ class CodexCLIProvider:
         Initialize the Codex CLI provider.
         """
         self.codex_binary = "codex"
+        self.container_name = "kali-container"
         self.session_id = None  # Track the Codex session ID for resumption
 
     def validate(self) -> bool:
         """Validate that Codex CLI is available and accessible."""
         try:
+            # Check if container is running first
+            container_check = subprocess.run(
+                ["docker", "ps", "-q", "-f", f"name={self.container_name}"],
+                capture_output=True,
+                text=True,
+            )
+            if not container_check.stdout.strip():
+                logger.error(f"Container {self.container_name} is not running")
+                return False
+
             result = subprocess.run(
-                [self.codex_binary, "--version"],
+                [
+                    "docker",
+                    "exec",
+                    self.container_name,
+                    self.codex_binary,
+                    "--version",
+                ],
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -91,7 +108,6 @@ class CodexCLIProvider:
     def execute(
         self,
         prompt: str,
-        mcp_config: dict,
         timeout_ms: int = 1_200_000,
         max_iterations: int = 30,
     ) -> CodexCLIResult:
@@ -105,7 +121,6 @@ class CodexCLIProvider:
 
         Args:
             prompt: The initial instructions for the agent
-            mcp_config: MCP server configuration
             timeout_ms: Timeout in milliseconds for entire execution
             max_iterations: Maximum number of turns to execute
 
@@ -116,28 +131,8 @@ class CodexCLIProvider:
 
         try:
             # Get configuration
-            app_codebase_dir = (
-                mcp_config.get("app_codebase_dir", "/tmp") if mcp_config else "/tmp"
-            )
-            server_url = mcp_config.get("server_url") if mcp_config else None
-
-            # Validate MCP server URL
-            if server_url:
-                allowed_hosts = [
-                    "localhost",
-                    "127.0.0.1",
-                ]
-                if not any(host in server_url for host in allowed_hosts):
-                    logger.warning(f"Rejecting non-secure MCP server: {server_url}")
-                    return CodexCLIResult(
-                        success=False,
-                        output_text="",
-                        tool_outputs=[],
-                        execution_time=time.time() - start_time,
-                        stderr="Security policy: Only secure MCP servers allowed",
-                        session_id=self.session_id,
-                    )
-                logger.info(f"Using MCP server: {server_url}")
+            # Default to /app/codebase inside container if not specified
+            app_codebase_dir = "/app/codebase"
 
             # Check if this is a new session or resuming existing one
             is_new_session = self.session_id is None
@@ -266,11 +261,11 @@ class CodexCLIProvider:
         is_initial: bool,
     ) -> CodexCLIResult:
         """
-        Run a single Codex turn (either initial exec or resume).
+        Run a single Codex turn (either initial exec or resume) inside the container.
 
         Args:
             prompt: Initial prompt for exec
-            app_codebase_dir: Working directory
+            app_codebase_dir: Working directory inside container
             timeout_ms: Timeout in milliseconds
             is_initial: True for new session, False for resume
 
@@ -279,78 +274,212 @@ class CodexCLIProvider:
         """
         turn_start = time.time()
 
-        # Create temp files for output
-        output_file = tempfile.NamedTemporaryFile(
-            mode="w+", suffix=".txt", delete=False
-        )
+        # Create temp file for JSONL output on host
         jsonl_file = tempfile.NamedTemporaryFile(
             mode="w+", suffix=".jsonl", delete=False
         )
 
+        # Generate a unique path for output inside the container
+        container_output_path = f"/tmp/codex_output_{uuid.uuid4()}.txt"
+
         try:
+            # Construct the base docker exec command
+            # We inject PYTHONUNBUFFERED=1 to ensure Python flushing if codex is Python-based
+            cmd = [
+                "docker",
+                "exec",
+                "-i",
+                "-e",
+                "PYTHONUNBUFFERED=1",
+                self.container_name,
+            ]
+
+            # Use stdbuf to force line buffering for real-time visibility
+            # This is critical because docker exec is non-interactive and defaults to block buffering
+            cmd.extend(["stdbuf", "-oL", "-eL", self.codex_binary])
+
+            # Note: API keys are now injected into the container environment by runner.py
+            # So we don't need to pass them explicitly via -e here.
+
             if is_initial:
                 # Build codex exec command for new session
-                cmd = [
-                    self.codex_binary,
-                    "exec",
-                    "--dangerously-bypass-approvals-and-sandbox",
-                    "--skip-git-repo-check",
-                    "--json",
-                    "-o",
-                    output_file.name,
-                    "-C",
-                    app_codebase_dir,
-                    prompt,
-                ]
-                logger.info(f"Executing new session: {' '.join(cmd)}")
+                cmd.extend(
+                    [
+                        "exec",
+                        "--dangerously-bypass-approvals-and-sandbox",
+                        "--skip-git-repo-check",
+                        "--json",
+                        "-o",
+                        container_output_path,
+                        "-C",
+                        app_codebase_dir,
+                        prompt,
+                    ]
+                )
+                logger.info(f"Executing new session in container: {' '.join(cmd)}")
             else:
                 # Build codex exec command with experimental_resume to continue session
-                # Find the session file for our session_id
+                # Find the session file for our session_id inside the container
                 session_file_path = self._find_session_file(self.session_id)
                 if not session_file_path:
                     raise Exception(
-                        f"Could not find session file for ID: {self.session_id}"
+                        f"Could not find session file for ID: {self.session_id} in container"
                     )
 
-                cmd = [
-                    self.codex_binary,
-                    "-c",
-                    f"experimental_resume={session_file_path}",
-                    "exec",
-                    "--dangerously-bypass-approvals-and-sandbox",
-                    "--skip-git-repo-check",
-                    "--json",
-                    "-o",
-                    output_file.name,
-                    "-C",
-                    app_codebase_dir,
-                    prompt,  # Empty prompt to continue
-                ]
+                cmd.extend(
+                    [
+                        "-c",
+                        f"experimental_resume={session_file_path}",
+                        "exec",
+                        "--dangerously-bypass-approvals-and-sandbox",
+                        "--skip-git-repo-check",
+                        "--json",
+                        "-o",
+                        container_output_path,
+                        "-C",
+                        app_codebase_dir,
+                        prompt,  # Empty prompt to continue usually, checks logic below
+                    ]
+                )
+                # TODO Remove session logic - is no longer needed
                 logger.info(
                     f"Resuming session {self.session_id} from: {session_file_path}"
                 )
 
             # Execute command
-            env = os.environ.copy()
+            # Execute command with streaming and strict timeout
+            process = subprocess.Popen(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,  # Line buffered
+                universal_newlines=True,
+            )
+
+            import selectors
+
+            selector = selectors.DefaultSelector()
+            selector.register(process.stdout, selectors.EVENT_READ)
+            selector.register(process.stderr, selectors.EVENT_READ)
+
+            stderr_output = []
+
             with open(jsonl_file.name, "w") as jsonl_out:
-                result = subprocess.run(
-                    cmd,
-                    stdin=subprocess.DEVNULL,  # Close stdin to prevent waiting
-                    stdout=jsonl_out,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    timeout=timeout_ms / 1000,
-                    env=env,
-                )
+                start_time = time.time()
+                while True:
+                    # 1. Enforce Absolute Timeout
+                    if time.time() - start_time > (timeout_ms / 1000):
+                        process.kill()
+                        selector.close()
+                        raise subprocess.TimeoutExpired(cmd, timeout_ms / 1000)
+
+                    # 2. Monitor I/O with short interval to allow timeout checks
+                    # Wait max 0.1s for data
+                    events = selector.select(timeout=0.1)
+
+                    for key, mask in events:
+                        fileobj = key.fileobj
+                        line = fileobj.readline()
+
+                        if fileobj == process.stdout:
+                            if line:
+                                # Write to file for later processing
+                                jsonl_out.write(line)
+                                jsonl_out.flush()
+
+                                # Parse and log for real-time visibility
+                                try:
+                                    data = json.loads(line)
+                                    event_type = data.get("type")
+                                    if event_type == "log":
+                                        content = data.get("content", "").strip()
+                                        if content:
+                                            logger.info(f"[Codex Log] {content}")
+                                    elif event_type == "tool_use":
+                                        tool = data.get("name", "unknown")
+                                        logger.info(f"[Codex Tool] Using tool: {tool}")
+                                    elif event_type == "assistant_message":
+                                        content = data.get("content", "")
+                                        if content:
+                                            preview = (
+                                                content[:200] + "..."
+                                                if len(content) > 200
+                                                else content
+                                            )
+                                            logger.info(f"[Codex Message] {preview}")
+                                except json.JSONDecodeError:
+                                    if line.strip():
+                                        logger.info(f"[Codex Raw] {line.strip()}")
+                            else:
+                                # EOF on stdout
+                                selector.unregister(process.stdout)
+
+                        elif fileobj == process.stderr:
+                            if line:
+                                stderr_output.append(line)
+                            else:
+                                # EOF on stderr
+                                selector.unregister(process.stderr)
+
+                    # 3. Check exit condition
+                    # Only exit if process is dead AND our pipes are drained (unregistered)
+                    if process.poll() is not None:
+                        # Process ended, but are pipes empty?
+                        # If selector keys are empty, we are done reading
+                        if not selector.get_map():
+                            break
+
+            selector.close()
+            returncode = process.poll()
+            stderr_content = "".join(stderr_output)
+
+            # Create a result object similar to subprocess.run structure
+            result = type(
+                "obj", (object,), {"returncode": returncode, "stderr": stderr_content}
+            )
 
             execution_time = time.time() - turn_start
 
-            # Read outputs (reopen files to get subprocess writes)
-            with open(output_file.name, "r") as f:
-                final_output = f.read()
-
+            # Read JSONL output
             with open(jsonl_file.name, "r") as f:
                 jsonl_content = f.read()
+
+            # Retrieve text output from container
+            final_output = ""
+            cp_result = subprocess.run(
+                [
+                    "docker",
+                    "cp",
+                    f"{self.container_name}:{container_output_path}",
+                    "-",  # output to stdout
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            if cp_result.returncode == 0:
+                final_output = cp_result.stdout
+            else:
+                # If the command failed, the output file might not exist or be empty
+                logger.warning(
+                    f"Failed to retrieve output file from container: {cp_result.stderr}"
+                )
+
+            # Cleanup container output file
+            subprocess.run(
+                [
+                    "docker",
+                    "exec",
+                    self.container_name,
+                    "rm",
+                    "-f",
+                    container_output_path,
+                ],
+                capture_output=True,
+                check=False,
+            )
 
             # Parse JSONL events to extract tool outputs and session ID
             tool_outputs = []
@@ -446,44 +575,56 @@ class CodexCLIProvider:
             )
         finally:
             # Cleanup temp files
-            output_file.close()
             jsonl_file.close()
             try:
-                os.unlink(output_file.name)
                 os.unlink(jsonl_file.name)
             except Exception as e:
                 logger.warning(f"Failed to cleanup temp files: {e}")
 
     def _find_session_file(self, session_id: str) -> Optional[str]:
         """
-        Find the session file path for a given session ID.
+        Find the session file path for a given session ID inside the container.
 
         Args:
             session_id: The session ID to find
 
         Returns:
-            Full path to session file, or None if not found
+            Full path to session file inside container, or None if not found
         """
         try:
-            from datetime import datetime
+            # Calculate date-based path components
+            # Session files are stored in ~/.codex/sessions/YYYY/MM/DD/
+            # We need to find where ~ maps to in the container.
+            # Assuming root, it's /root/.codex/sessions...
+            # But let's try to just use `find` command to be sure or check both /root and /home/kali
 
-            sessions_base = Path.home() / ".codex" / "sessions"
+            # Simple approach: Search in likely locations
+            # The pattern is rollout-*-<session_id>.jsonl
+            search_pattern = f"rollout-*-{session_id}.jsonl"
 
-            # Session files are named: rollout-YYYY-MM-DDTHH-MM-SS-<session_id>.jsonl
-            # They're stored in: ~/.codex/sessions/YYYY/MM/DD/
-            # Search today's directory
-            now = datetime.now()
-            today_path = (
-                sessions_base / str(now.year) / f"{now.month:02d}" / f"{now.day:02d}"
+            # Construct find command
+            # We search in /root/.codex and /home/kali/.codex just in case
+            find_cmd = [
+                "docker",
+                "exec",
+                self.container_name,
+                "find",
+                "/root/.codex/sessions",
+                "/home/kali/.codex/sessions",
+                "-name",
+                search_pattern,
+            ]
+
+            result = subprocess.run(find_cmd, capture_output=True, text=True)
+
+            if result.returncode == 0 and result.stdout.strip():
+                # Take the first match
+                first_match = result.stdout.strip().split("\n")[0]
+                return first_match
+
+            logger.warning(
+                f"Session file not found for ID: {session_id} inside container"
             )
-
-            if today_path.exists():
-                pattern = f"rollout-*-{session_id}.jsonl"
-                matches = list(today_path.glob(pattern))
-                if matches:
-                    return str(matches[0])
-
-            logger.warning(f"Session file not found for ID: {session_id}")
             return None
 
         except Exception as e:

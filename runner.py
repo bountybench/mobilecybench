@@ -104,7 +104,7 @@ class MobileCybenchRunner:
                 f"No existing .env file found at {env_file}. Please create one with OPENAI_API_KEY."
             )
 
-        # Check if API key exists in environment
+        # TODO - check api key based on model, potentially want to refactor this into model class
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             self._exit_with_error("OPENAI_API_KEY not found in environment or .env")
@@ -176,11 +176,6 @@ class MobileCybenchRunner:
         else:
             self._exit_with_error(
                 f"Unsupported Build Type Detected: {self.config.build_type}"
-            )
-
-        if self.mode == "codex":
-            self._exit_with_error(
-                "Codex mode is currently broken. Please use 'custom' or 'supervisor' mode instead."
             )
 
         # Check for static vulnerability reports if in supervisor mode
@@ -364,21 +359,31 @@ class MobileCybenchRunner:
         # Setup agent kali environment with appropriate image
         logger.info("Setting up agent Kali environment...")
 
-        # Select image based on agent type
+        image_name = self.config.agent_image
+        logger.info(f"Using agent image: {image_name}")
+        # Prepare environment variables
+        env_vars = {
+            "ANDROID_ADB_SERVER_PORT": "5037",
+            "ADB_SERVER_SOCKET": "tcp:host.docker.internal:5037",
+        }
+
+        # In codex mode, pass OPENAI_API_KEY as CODEX_API_KEY to the container
         if self.mode == "codex":
-            image_name = self.config.codex_agent_image or "cybench/mobilecybench:codex"
-            logger.info(f"Using Codex agent image: {image_name}")
-        else:
-            image_name = self.config.agent_image
-            logger.info(f"Using custom agent image: {image_name}")
+            # OPENAI_API_KEY should have been loaded by _setup_env_file or _validate_api_key
+            openai_key = os.getenv("OPENAI_API_KEY")
+            if openai_key:
+                env_vars["CODEX_API_KEY"] = openai_key
+                logger.info("Injected CODEX_API_KEY into agent container environment")
+            else:
+                logger.warning(
+                    "OPENAI_API_KEY not found, skipping CODEX_API_KEY injection"
+                )
+
         agent_env = AgentEnvironment(
             app_dir=self.app_dir,
             docker_networks=["shared_net"],
             image_name=image_name,
-            env={
-                "ANDROID_ADB_SERVER_PORT": "5037",
-                "ADB_SERVER_SOCKET": "tcp:host.docker.internal:5037",
-            },
+            env=env_vars,
             commit_id=self.metadata.get("commit_version"),
             mode=self.mode,
         )
@@ -557,33 +562,22 @@ class MobileCybenchRunner:
                 return result
 
             elif self.mode == "codex":
-                # Codex mode is deprecated and broken
-                logger.error(
-                    "Codex mode is deprecated and files are removed. Cannot run."
+                from agent.codex_agent import CodexAgent
+
+                logger.info("Initializing codex agent...")
+                logger.info("Creating CodexAgent instance")
+
+                agent = CodexAgent(
+                    max_conversation_turns=self.config.max_iterations,
+                    screenshot_enabled=self.config.screenshot_mode,
+                    app_name=self.app_name,
+                    app_server=getattr(self, "metadata", {}).get("app_server", None),
+                    dry_run=self.config.dry_run,
+                    package_name=self.metadata.get("package_name"),
+                    username=self.metadata.get("username"),
+                    password=self.metadata.get("password"),
                 )
-                return {
-                    "status": "error",
-                    "turns": 0,
-                    "final_message": "Codex mode is deprecated",
-                    "log_file": None,
-                }
-            # Import and use CodexAgent
-            # from agent.codex_agent import CodexAgent
 
-            # logger.info("Initializing codex agent...")
-            # logger.info("Creating CodexAgent instance")
-
-            # agent = CodexAgent(
-            #     max_conversation_turns=self.config.max_iterations,
-            #     screenshot_enabled=self.config.screenshot_mode,
-            #     app_name=self.app_name,
-            #     app_server=getattr(self, "metadata", {}).get("app_server", None),
-            #     dry_run=self.config.dry_run,
-            #     mcp_config=mcp_config,
-            #     package_name=self.metadata.get("package_name"),
-            #     username=self.metadata.get("username"),
-            #     password=self.metadata.get("password"),
-            # )
             else:
                 from agent.custom_agent import CustomAgent
 

@@ -29,13 +29,6 @@ from utils.logger import logger, logger_manager
 
 
 class CodexAgent:
-    """
-    Codex agent for mobile security testing.
-
-    Uses Codex CLI with MCP server integration to conduct comprehensive
-    security assessments of Android applications.
-    """
-
     def __init__(
         self,
         max_conversation_turns: int = 30,
@@ -44,7 +37,6 @@ class CodexAgent:
         dry_run: bool = False,
         app_server: Optional[str] = None,
         timeout_ms: int = 1_200_000,
-        mcp_config: Optional[Dict[str, Any]] = None,
         network_access: bool = True,
         package_name: Optional[str] = None,
         username: Optional[str] = None,
@@ -64,7 +56,6 @@ class CodexAgent:
             dry_run: If True, skip actual execution for testing
             app_server: Optional app server URL for network testing
             timeout_ms: Timeout for Codex CLI calls in milliseconds
-            mcp_config: MCP server configuration (auto-discovered if None)
             network_access: Whether network access is available
             package_name: Android package name for the app being tested
             username: Username for the app
@@ -88,9 +79,6 @@ class CodexAgent:
         env_file = os.path.join(agent_dir, ".env")
         if os.path.exists(env_file):
             load_dotenv(env_file, override=True)
-
-        # Initialize MCP configuration
-        self.mcp_config = mcp_config or {}
 
         # Get initial directory tree context
         self._initial_tree_context = get_directory_tree()
@@ -123,7 +111,6 @@ class CodexAgent:
                 f"Screenshot Enabled: {screenshot_enabled}",
                 f"App Server: {app_server or 'None'}",
                 f"Dry Run: {dry_run}",
-                f"MCP Server: {self.mcp_config.get('server_url', 'Not configured')}",
                 f"Session ID: {self.provider.session_id}",
             ],
         )
@@ -170,7 +157,6 @@ class CodexAgent:
             # Single call to execute() handles all turns automatically
             result = self.provider.execute(
                 prompt=initial_prompt,
-                mcp_config=self.mcp_config,
                 timeout_ms=self.timeout_ms,
                 max_iterations=self.max_conversation_turns,
             )
@@ -309,7 +295,6 @@ class CodexAgent:
             "turns": 0,
             "final_message": f"DRY RUN: Codex Agent configured for {self.app_name}",
             "log_file": self.log_file,
-            "mcp_config": self.mcp_config,
             "app_name": self.app_name,
             "session_info": self.provider.get_session_info(),
         }
