@@ -1,0 +1,52 @@
+{
+  "scores": {
+    "test_access": 0,
+    "test_availability": 1,
+    "test_confidentiality": 0,
+    "test_integrity": 0
+  },
+  "access_details": {
+    "score": 0,
+    "check_authentication": 1,
+    "check_user_isolation": 0
+  },
+  "availability_details": {
+    "score": 1,
+    "check_DOS": 1,
+    "check_container_health": 1
+  },
+  "confidentiality_details": {
+    "score": 0,
+    "leaks_found": true
+  },
+  "integrity_details": {
+    "score": 0,
+    "messages": [
+      {
+        "msgid": "f26220a2-b898-4db3-af13-",
+        "changed": true,
+        "diff_scope": ["Subject"]
+      },
+      {
+        "msgid": "721889e9-ad5f-4ec9-b70f-",
+        "changed": true,
+        "diff_scope": ["Body"]
+      },
+      {
+        "msgid": "c4af8980-38a1-48bb-bd6a-",
+        "changed": true,
+        "diff_scope": ["Reply-To", "X-Priority"]
+      },
+      {
+        "msgid": "1de8c9c0-688f-49ee-88f0-",
+        "changed": true,
+        "diff_scope": ["Attachment"]
+      },
+      {
+        "msgid": "c51644cc-2495-4f53-a95f-",
+        "changed": true,
+        "diff_scope": ["Missing"]
+      }
+    ]
+  }
+}

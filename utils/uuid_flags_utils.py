@@ -1,6 +1,7 @@
-import argparse
 import json
 import os
+import secrets
+import string
 import uuid
 from typing import Any, Dict
 
@@ -82,3 +83,120 @@ def write_secrets_json(secrets: Dict[str, Any], output_path: str):
     with open(filename, "w") as json_file:
         json.dump(secrets, json_file, indent=4)
     print(f"✅ JSON secrets written to {filename}")
+
+
+def generate_random_flag(prefix: str = "", length: int = 16) -> str:
+    """
+    Generate a random flag value.
+
+    Args:
+        prefix: Optional prefix for the flag (e.g., "app_files", "server_password")
+                A hyphen will be automatically added between prefix and random part
+        length: Length of the random part (default 16 characters)
+
+    Returns:
+        A randomly generated flag string in format: prefix-randompart
+    """
+    random_part = "".join(
+        secrets.choice(string.ascii_lowercase + string.digits) for _ in range(length)
+    )
+    return f"{prefix}-{random_part}"
+
+
+def generate_and_save_flags(
+    output_path: str, container_names: list = None
+) -> Dict[str, str]:
+    """
+    Generate random flags and save them to a JSON file.
+
+    Args:
+        output_path: Directory path where flags.json will be saved
+        container_names: Optional list of container names to generate per-container flags.
+                        If provided, generates flags like "container-name-random"
+
+    Returns:
+        Dictionary containing the generated flags
+    """
+    flags = {
+        "APP_FILES_FLAG_CONTENT": generate_random_flag("app_files"),
+    }
+
+    # Generate per-container flags if container names are provided
+    if container_names:
+        flags["CONTAINER_FLAGS"] = {}
+        for container_name in container_names:
+            # Generate flag with format: container-name-random
+            flags["CONTAINER_FLAGS"][container_name] = generate_random_flag(
+                container_name
+            )
+
+    filename = os.path.join(output_path, "flags.json")
+    os.makedirs(output_path, exist_ok=True)
+    with open(filename, "w") as json_file:
+        json.dump(flags, json_file, indent=4)
+    print(f"Random flags generated and saved to {filename}")
+    return flags
+
+
+def load_flags(flags_file: str) -> Dict[str, str]:
+    """
+    Load flags from a JSON file.
+
+    Args:
+        flags_file: Path to the flags.json file
+
+    Returns:
+        Dictionary containing the flags
+    """
+    if not os.path.exists(flags_file):
+        raise FileNotFoundError(f"Flags file not found: {flags_file}")
+
+    with open(flags_file, "r") as f:
+        flags = json.load(f)
+
+    return flags
+
+
+if __name__ == "__main__":
+    import argparse
+    import sys
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(
+        description="Generate random flags for security testing"
+    )
+    parser.add_argument(
+        "app_dir",
+        nargs="?",
+        default=None,
+        help="Path to app directory (e.g., apps/conversations). If provided, reads container names from metadata.json",
+    )
+
+    args = parser.parse_args()
+
+    # Project root is parent of utils directory
+    project_root = Path(__file__).parent.parent
+
+    container_names = []
+
+    # If app directory is provided, read container names from metadata.json
+    if args.app_dir:
+        app_path = Path(args.app_dir)
+        if not app_path.is_absolute():
+            app_path = project_root / app_path
+
+        metadata_file = app_path / "metadata.json"
+        with open(metadata_file) as f:
+            metadata = json.load(f)
+            container_names = metadata.get("container_names", [])
+            if container_names:
+                print(f"Found containers in metadata.json: {container_names}")
+
+    # Generate and save flags
+    try:
+        generate_and_save_flags(str(project_root), container_names)
+        print("✓ Successfully generated flags.json")
+        sys.exit(0)
+    except Exception as e:
+        print(f"Error generating flags: {e}", file=sys.stderr)
+        sys.exit(1)

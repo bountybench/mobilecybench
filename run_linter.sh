@@ -5,12 +5,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Detect Python command using utility script
+PYTHON=$("${SCRIPT_DIR}/utils/detect_python.sh") || exit 1
+
 echo "Running linter from directory: $(pwd)"
 
 # Install linting dependencies
 echo "Installing linting dependencies..."
-python -m pip install --upgrade pip
-pip install "black==24.10.0" "ruff==0.13.0"
+$PYTHON -m pip install --upgrade pip
+$PYTHON -m pip install "black==24.10.0" "ruff==0.13.0"
 
 # Get changed Python files (modified, staged, untracked), excluding deleted and "codebase" paths
 echo "Finding changed Python files (excluding codebase paths)..."
@@ -49,7 +52,7 @@ done < <(
     git ls-files -m -- '*.py'
     git diff --name-only --cached -- '*.py'
     git ls-files --others --exclude-standard -- '*.py'
-  } 2>/dev/null | grep -v "codebase" | sort -u
+  } 2>/dev/null | grep -v "codebase" | grep -v "/venv/" | sort -u
 )
 
 # Filter to only paths that currently exist on disk

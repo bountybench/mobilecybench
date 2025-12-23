@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""
-Mobile Cybench Runner Script
-
-This script orchestrates the complete pipeline for running cybersecurity tests
-on Android applications using AI agents.
-"""
 
 import argparse
 import datetime
@@ -13,220 +7,80 @@ import os
 import shlex
 import subprocess
 import sys
-import time
 from pathlib import Path
-from selectors import EVENT_READ, DefaultSelector
-from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 
+from agent.agent_setup import AgentEnvironment
+from agent.tools.runtime import ToolRuntime
+from models.config import RunnerConfig
+from utils.command_executor import CommandExecutor
+from utils.emulator_manager import EmulatorManager
 from utils.logger import logger, logger_manager
+from utils.ssrf_utils import (
+    clear_ssrf_requests,
+    start_ssrf_listener,
+    stop_ssrf_listener,
+)
+from utils.time_tracker import time_tracker
 from utils.utils import get_app_metadata
+from utils.uuid_flags_utils import generate_and_save_flags
 
 load_dotenv()
 project_root = Path(__file__).parent
 
+EMULATOR_BOOT_TIMEOUT_SECONDS = 300  # 5 minutes
+BUILD_COMMAND_TIMEOUT = 600  # 10 minutes
+DUMMY_LOG_FILENAME = "dummy_log.txt"
 
-class CommandExecutor:
-    def __init__(self):
-        pass
 
-    def run(
-        self,
-        command: str,
-        cwd: Optional[Path] = None,
-        check: bool = True,
-        capture_output: bool = True,
-        live_output: bool = False,
-        env: Optional[Dict[str, str]] = None,
-    ) -> subprocess.CompletedProcess:
-        """
-        Runs a shell command securely.
-
-        Args:
-            command: The command string to execute.
-            cwd: The working directory for the command.
-            check: If True, raises an exception on non-zero exit codes.
-            capture_output: If True, captures stdout and stderr.
-            live_output: If True, streams command output to the logger in real-time.
-            env: Optional environment variables for the subprocess.
-
-        Returns:
-            A CompletedProcess object.
-        """
-        args = shlex.split(command)
-        logger.info(f"Preparing command: `{' '.join(args)}` in `{cwd or '.'}`")
-
-        try:
-            if live_output:
-                return self._run_with_live_output(args, cwd, check, env)
-
-            result = subprocess.run(
-                args,
-                cwd=cwd,
-                capture_output=capture_output,
-                text=True,
-                check=False,  # We handle the check manually
-                env=env,
-            )
-
-            if result.stdout:
-                logger.debug(f"STDOUT:\n{result.stdout.strip()}")
-            if result.stderr:
-                logger.warning(f"STDERR:\n{result.stderr.strip()}")
-
-            if check and result.returncode != 0:
-                raise subprocess.CalledProcessError(
-                    result.returncode, args, result.stdout, result.stderr
-                )
-
-            return result
-
-        except FileNotFoundError:
-            logger.error(f"Command not found: {args[0]}")
-            raise
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Command failed with exit code {e.returncode}: `{command}`")
-            logger.error(f"STDERR: {e.stderr.strip() if e.stderr else 'N/A'}")
-            raise
-        except Exception as e:
-            logger.error(
-                f"An unexpected error occurred while running command `{command}`: {e}"
-            )
-            raise
-
-    def start_background_process(
-        self,
-        command: str,
-        cwd: Optional[Path] = None,
-        env: Optional[Dict[str, str]] = None,
-    ) -> subprocess.Popen:
-        """
-        Starts a background process without waiting for it to complete.
-
-        Args:
-            command: The command string to execute.
-            cwd: The working directory for the command.
-            env: Optional environment variables for the subprocess.
-
-        Returns:
-            A Popen object for the background process.
-        """
-        args = shlex.split(command)
-        logger.info(
-            f"Starting background process: `{' '.join(args)}` in `{cwd or '.'}`"
-        )
-
-        try:
-            process = subprocess.Popen(
-                args,
-                cwd=cwd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                env=env,
-            )
-            logger.info(f"Background process started with PID: {process.pid}")
-            return process
-        except FileNotFoundError:
-            logger.error(f"Command not found: {args[0]}")
-            raise
-        except Exception as e:
-            logger.error(
-                f"An unexpected error occurred while starting background process `{command}`: {e}"
-            )
-            raise
-
-    def _run_with_live_output(
-        self,
-        args: List[str],
-        cwd: Optional[Path],
-        check: bool,
-        env: Optional[Dict[str, str]],
-    ) -> subprocess.CompletedProcess:
-        """Helper to stream output in real-time."""
-        stdout_lines = []
-        stderr_lines = []
-
-        process = subprocess.Popen(
-            args,
-            cwd=cwd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env,
-        )
-
-        selector = DefaultSelector()
-        selector.register(process.stdout, EVENT_READ)
-        selector.register(process.stderr, EVENT_READ)
-
-        while process.poll() is None and selector.get_map():
-            events = selector.select(timeout=0.1)
-            for key, _ in events:
-                line = key.fileobj.readline()
-                if not line:
-                    selector.unregister(key.fileobj)
-                    continue
-
-                if key.fileobj == process.stdout:
-                    logger.info(line.strip())
-                    stdout_lines.append(line)
-                else:
-                    logger.warning(line.strip())
-                    stderr_lines.append(line)
-
-        stdout, stderr = process.communicate()
-        if stdout:
-            for line in stdout.splitlines():
-                logger.info(line.strip())
-                stdout_lines.append(line + "\n")
-        if stderr:
-            for line in stderr.splitlines():
-                logger.warning(line.strip())
-                stderr_lines.append(line + "\n")
-
-        if check and process.returncode != 0:
-            raise subprocess.CalledProcessError(
-                process.returncode, args, "".join(stdout_lines), "".join(stderr_lines)
-            )
-
-        return subprocess.CompletedProcess(
-            args=args,
-            returncode=process.returncode,
-            stdout="".join(stdout_lines),
-            stderr="".join(stderr_lines),
-        )
+def log_banner(message: str, width: int = 60):
+    logger.info("=" * width)
+    logger.info(message.center(width))
+    logger.info("=" * width)
 
 
 class MobileCybenchRunner:
-    def __init__(self, app_name: str, config: dict):
-        self.app_name = app_name
+    def __init__(
+        self,
+        app_name: str,
+        config: RunnerConfig,
+        mode: str = "custom",
+    ):
+        self.app_name = Path(app_name).name
         self.config = config
+        self.mode = mode
         self.project_root = project_root
-        self.app_dir = self.project_root / "apps" / app_name
+        self.app_dir = self.project_root / "apps" / self.app_name
         self.agent_dir = self.project_root / "agent"
         self.cmd = CommandExecutor()
+        self.emulator = None
+        self.probe_results = {}
 
+        try:
+            git_branch = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+            git_commit = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+            git_info = f"Branch: {git_branch} | Commit: {git_commit}"
+        except subprocess.CalledProcessError:
+            git_info = "Git info unavailable"
+
+        log_banner("MobileCybench Runner Started", width=80)
+        logger.info(git_info.center(80))
         logger.info("=" * 80)
-        logger.info("MobileCybench Runner Started")
         logger.info(f"App: {app_name}")
-        logger.info("Configuration:")
-        logger.info(f"  Server Access: {config['server_access']}")
-        logger.info(f"  Build Type: {config['build_type']}")
-        logger.info(f"  ADB Access: {config['adb_access']}")
-        logger.info(f"  Max Iterations: {config['max_iterations']}")
-        logger.info(f"  Max Kali Message Tokens: {config['max_kali_message_tokens']}")
-        logger.info(
-            f"  Max Model Response Tokens: {config['max_model_response_tokens']}"
-        )
-        logger.info(f"  Max Context Length: {config['max_context_length']}")
-        logger.info(f"  Model: {config['model']}")
-        logger.info(f"  Screenshot Mode: {config['screenshot_mode']}")
-        logger.info(f"  Headless Mode: {config['headless_mode']}")
-        logger.info(f"  Dry Run: {config['dry_run']}")
+        logger.info(f"Configuration: {config.model_dump_json(indent=2)}")
+        logger.info(f"Agent Type: {mode.capitalize()}")
         logger.info(f"Timestamp: {datetime.datetime.now()}")
-        logger.info("=" * 80)
 
     def _exit_with_error(self, message: str):
         """Log error and exit"""
@@ -236,10 +90,42 @@ class MobileCybenchRunner:
         # for example, if we fail after starting containers, we should stop them
         sys.exit(1)
 
-    def validate_input(self):
+    def _validate_api_key(self):
+        """Validate OpenAI API key early in the pipeline"""
+        logger.info("Validating OpenAI API key...")
+
+        # Load .env file from agent directory
+        env_file = self.agent_dir / ".env"
+        if env_file.exists():
+            logger.info(f"Loading existing environment from {env_file}")
+            load_dotenv(dotenv_path=env_file, override=False)
+        else:
+            self._exit_with_error(
+                f"No existing .env file found at {env_file}. Please create one with OPENAI_API_KEY."
+            )
+
+        # Check if API key exists in environment
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            self._exit_with_error("OPENAI_API_KEY not found in environment or .env")
+
+        # Validate the API key works by making a test call
+        try:
+            from agent.model_providers import get_model_provider
+
+            provider = get_model_provider("openai")
+            provider.validate()
+            logger.info("✓ OpenAI API key validated successfully")
+        except Exception as e:
+            self._exit_with_error(f"OpenAI API key validation failed: {e}")
+
+    def _validate_input(self):
         """Validate app name and required files"""
-        # TODO: Implement API key validation
         logger.info("Validating input...")
+
+        # Validate API key early (before starting emulator and app servers)
+        if not self.config.dry_run:
+            self._validate_api_key()
 
         # Check if app directory exists
         if not self.app_dir.exists():
@@ -252,162 +138,265 @@ class MobileCybenchRunner:
         except Exception as e:
             self._exit_with_error(f"Invalid metadata.json: {e}")
 
+        # Generate random flags for this test run
+        logger.info("Generating random flags for this test run...")
+        try:
+            container_names = self.metadata.get("container_names", [])
+            logger.info(f"Found containers: {container_names}")
+
+            generate_and_save_flags(str(self.project_root), container_names)
+            logger.info("✓ Random flags generated successfully")
+        except Exception as e:
+            self._exit_with_error(f"Failed to generate random flags: {e}")
+
         # Check for required scripts
-        required_scripts = ["setup.sh", "run_checks.sh"]
-        if self.config["build_type"] == "source":
-            required_scripts.append("setup_app_source.sh")
-        elif self.config["build_type"] == "download-apk":
-            required_scripts.append("setup_app_apklink.sh")
-        elif self.config["build_type"] == "skip-apk":
-            possible_setup_scripts = ["setup_app_source.sh", "setup_app_apklink.sh"]
-            # do not allow skip-apk if neither script exists
-            if not any(
-                (self.app_dir / script).exists() for script in possible_setup_scripts
-            ):
+        if self.config.build_type == "skip-apk":
+            # Check if any .apk file exists in app_dir/apk/
+            apk_dir = self.app_dir / "apk"
+            apk_exists = any(apk_dir.glob("*.apk")) if apk_dir.exists() else False
+            if not apk_exists:
                 self._exit_with_error(
-                    f"At least one setup script required for build_type 'skip-apk' not found: {possible_setup_scripts}"
+                    f"For build_type 'skip-apk', an APK file must exist in {apk_dir}"
                 )
+
+        elif self.config.build_type == "source":
+            # Check for setup_app_source.sh
+            if not (self.app_dir / "setup_app_source.sh").exists():
+                self._exit_with_error(
+                    "For build_type 'source', setup_app_source.sh must exist in the app directory"
+                )
+
+        elif self.config.build_type == "download-apk":
+            # Check for download_link in metadata
+            if not self.metadata.get("download_link"):
+                self._exit_with_error(
+                    "For build_type 'download-apk', 'download_link' must be present in metadata.json"
+                )
+
         else:
             self._exit_with_error(
-                f"Unsupported Build Type Detected: {self.config["build_type"]}"
+                f"Unsupported Build Type Detected: {self.config.build_type}"
             )
 
-        for script in required_scripts:
-            script_path = self.app_dir / script
-            if not script_path.exists():
-                self._exit_with_error(f"Required script not found: {script_path}")
-
-        # Check for required ngrok.yml config file
-        ngrok_config = self.agent_dir / "mcp" / "ngrok.yml"
-        if not ngrok_config.exists():
+        if self.mode == "codex":
             self._exit_with_error(
-                f"Required ngrok.yml config file not found: {ngrok_config}"
+                "Codex mode is currently broken. Please use 'custom' or 'supervisor' mode instead."
             )
+
+        # Check for static vulnerability reports if in supervisor mode
+        if self.mode == "supervisor":
+            reports_root = self.app_dir / "static_vuln_reports"
+            semgrep_report_path = reports_root / "semgrep" / "report.json"
+            mobsf_report_path = reports_root / "mobsfscan" / "report.json"
+            qark_report_path = reports_root / "qark" / "report.json"
+
+            if not reports_root.exists() or not any(reports_root.iterdir()):
+                self._exit_with_error(
+                    "Supervisor mode requires static analysis outputs under "
+                    f"{reports_root}. Directory is missing or empty.\n"
+                    "Generate at least Semgrep (and optionally MobSF/QARK) reports before running."
+                )
+
+            # Semgrep should be present; warn if missing
+            if not semgrep_report_path.exists():
+                logger.warning(
+                    "Semgrep report not found at %s; supervisor agents will proceed without it.\n"
+                    "To generate it, run: python tools/run_semgrep_scan.py %s",
+                    semgrep_report_path,
+                    self.app_name,
+                )
+            else:
+                try:
+                    with open(semgrep_report_path, "r") as f:
+                        json.load(f)
+                    logger.info(
+                        "✓ Found and validated Semgrep report for supervisor mode"
+                    )
+                except json.JSONDecodeError as e:
+                    logger.warning(
+                        "Semgrep report exists but is not valid JSON (%s); rerun Semgrep to regenerate.",
+                        e,
+                    )
+
+            # MobSFScan and QARK are optional but recommended; validate if present
+            for tool_name, report_path in [
+                ("MobSFScan", mobsf_report_path),
+                ("QARK", qark_report_path),
+            ]:
+                if report_path.exists():
+                    try:
+                        with open(report_path, "r") as f:
+                            json.load(f)
+                        logger.info("✓ Found %s report at %s", tool_name, report_path)
+                    except json.JSONDecodeError:
+                        logger.warning(
+                            "%s report at %s is not valid JSON; rerun the scan to regenerate.",
+                            tool_name,
+                            report_path,
+                        )
+                else:
+                    logger.warning(
+                        "%s report not found at %s; continuing without it.",
+                        tool_name,
+                        report_path,
+                    )
 
         logger.info("Input validation passed")
 
-    def setup_emulator(self):
-        """Start and check Android emulator"""
-        logger.info("Setting up Android emulator...")
-        try:
-            self.cmd.run(f"./setup.sh {self.app_name}", cwd=self.project_root)
-        except subprocess.CalledProcessError as e:
-            self._exit_with_error(f"Failed to setup emulator: {e}")
-
-        # Start emulator (runs in background - continuous output like docker without detached mode)
-        logger.info("Starting emulator in background...")
-        # Use --yes to auto-confirm starting another emulator if already running
-        self.cmd.start_background_process(
-            "bash ./start_emulator.sh --yes",
-            cwd=self.project_root,
-        )
-        logger.info(
-            "Emulator setup started, waiting for it to be ready while setting up the app..."
-        )
-
-    def setup_app(self):
-        """APK Handling, App Backend Setup, and App Installation"""
-        if self.config["build_type"] == "skip-apk":
-            logger.info("=" * 60)
-            logger.info("SKIPPING APK HANDLING STEP")
-            logger.info("=" * 60)
-        elif self.config["build_type"] == "download-apk":
-            logger.info("=" * 60)
-            logger.info("FETCHING APK USING APKLINK")
-            logger.info("=" * 60)
+    def _setup_app_apk(self):
+        """APK Handling - Download, Build, or Skip"""
+        if self.config.build_type == "skip-apk":
+            log_banner("SKIPPING APK HANDLING STEP")
+        elif self.config.build_type == "download-apk":
+            log_banner("FETCHING APK USING APKLINK")
             try:
-                self.cmd.run(
-                    "./setup_app_apklink.sh", cwd=self.app_dir, live_output=True
+                setup_script = self.project_root / "setup_app_apklink.py"
+                self.cmd.run_with_progress(
+                    f"python3 {setup_script} {self.app_name}",
+                    timeout=BUILD_COMMAND_TIMEOUT,
+                    message="Downloading APK",
+                    cwd=self.project_root,
                 )
             except subprocess.CalledProcessError as e:
                 self._exit_with_error(
-                    f"Failed to setup app APK with setup_app_apklink.sh: {e}"
+                    f"Failed to setup app APK with setup_app_apklink.py: {e}"
                 )
         else:  # source
-            logger.info("=" * 60)
-            logger.info("BUILDING APK FROM SOURCE")
-            logger.info("=" * 60)
+            log_banner("BUILDING APK FROM SOURCE")
             try:
-                self.cmd.run(
-                    "./setup_app_source.sh", cwd=self.app_dir, live_output=True
+                self.cmd.run_with_progress(
+                    "bash ./setup_app_source.sh",
+                    timeout=BUILD_COMMAND_TIMEOUT,
+                    message="Building APK from source",
+                    cwd=self.app_dir,
                 )
             except subprocess.CalledProcessError as e:
                 self._exit_with_error(
                     f"Failed to setup app source with setup_app_source.sh: {e}"
                 )
 
-        logger.info("=" * 60)
-        logger.info("CHECKING EMULATOR STATUS")
-        logger.info("=" * 60)
-        logger.info("Waiting for emulator to finish booting...")
+        # In the future, once APKs uploaded to GitHub Releases include the honeypot activity,
+        # we only need to inject when building from source
+        log_banner("REPACKAGING APK WITH HONEYPOT ACTIVITY INJECTION")
         try:
-            self.cmd.run(
-                'bash -lc "source utils/wait.sh && wait_for_device_boot 300"',
-                cwd=self.project_root,
-                live_output=True,
+            self.cmd.run_with_progress(
+                f"bash ../../utils/repackage_apk.sh apk/{self.app_name}.apk",
+                timeout=BUILD_COMMAND_TIMEOUT,
+                message="Repackaging APK",
+                cwd=self.app_dir,
             )
         except subprocess.CalledProcessError as e:
-            self._exit_with_error(f"Failed to wait for emulator boot: {e}")
+            self._exit_with_error(f"Failed to repackage APK with repackage_apk.sh: {e}")
 
-        logger.info("Emulator booted. Running ./check_device.sh to verify...")
+    def _install_app_and_setup_backend(self):
+        """Setup app backend and install APK"""
         try:
-            self.cmd.run("./check_device.sh", cwd=self.project_root, live_output=True)
-        except subprocess.CalledProcessError as e:
-            self._exit_with_error(f"Failed to check emulator status: {e}")
+            self.emulator.wait_until_ready(timeout=EMULATOR_BOOT_TIMEOUT_SECONDS)
+            logger.info("Emulator booted successfully")
+        except Exception as e:
+            self._exit_with_error(f"Failed to wait for emulator to finish booting: {e}")
 
-        # Setup app (setup backend, install apk, etc.)
-        logger.info("=" * 60)
-        logger.info(
+        if not self.emulator.check_status():
+            self._exit_with_error("Emulator status check failed")
+        logger.info("Emulator status verified")
+        log_banner(
             "SETTING UP THE BACKEND(RUNTIME SERVERS, DATABASES, SEEDS, etc.) AND INSTALLING APK"
         )
-        logger.info("=" * 60)
+
         try:
-            self.cmd.run("./setup.sh", cwd=self.app_dir, live_output=True)
+            self.cmd.run_with_progress(
+                "bash ./setup.sh",
+                timeout=BUILD_COMMAND_TIMEOUT,
+                message="Setting up backend and installing APK",
+                cwd=self.app_dir,
+            )
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to setup app: {e}")
 
+        logger.info("Injecting security flags...")
+        try:
+            inject_flags_path = project_root / "inject_flags.sh"
+            self.cmd.run(
+                f"bash {inject_flags_path}",
+                cwd=self.app_dir,
+                timeout=30,
+            )
+            logger.info("✓ Flags injected successfully")
+        except subprocess.CalledProcessError as e:
+            self._exit_with_error(f"Failed to inject security flags: {e}")
+
+        # Start SSRF listener for detecting SSRF attacks
+        # Check if app has backend containers
+        metadata = get_app_metadata(self.app_name)
+        container_names = metadata.get("container_names", [])
+
+        if container_names:
+            logger.info("Starting SSRF listener...")
+            try:
+                ssrf_compose_dir = project_root / "evaluation" / "ssrf_listener"
+                if start_ssrf_listener(ssrf_compose_dir):
+                    logger.info("✓ SSRF listener started successfully")
+                else:
+                    logger.warning(
+                        "⚠ Failed to start SSRF listener - SSRF detection may not work"
+                    )
+            except Exception as e:
+                logger.warning(f"⚠ Failed to start SSRF listener: {e}")
+        else:
+            logger.info("No backend containers defined - skipping SSRF listener setup")
+
         logger.info("App setup completed")
 
-    def setup_agent(self):
+    def _setup_agent_environment(self):
         """Configure agent environment and start services"""
-        logger.info("=" * 60)
-        logger.info("SETTING UP AGENT ENVIRONMENT")
-        logger.info("=" * 60)
-        logger.info("Setting up agent environment...")
+        log_banner("SETTING UP AGENT ENVIRONMENT")
 
-        self._setup_env_file()
         self._create_docker_network()
-        self._start_containers()
-        self._copy_codebase_to_kali()
+
+        # Clear any previous SSRF requests before agent starts
+        logger.info("Clearing previous SSRF requests...")
+        try:
+            clear_ssrf_requests()
+            logger.info("✓ SSRF requests cleared")
+        except Exception as e:
+            logger.warning(f"⚠ Failed to clear SSRF requests: {e}")
+
+        # Setup agent kali environment with appropriate image
+        logger.info("Setting up agent Kali environment...")
+
+        # Select image based on agent type
+        if self.mode == "codex":
+            image_name = self.config.codex_agent_image or "cybench/mobilecybench:codex"
+            logger.info(f"Using Codex agent image: {image_name}")
+        else:
+            image_name = self.config.agent_image
+            logger.info(f"Using custom agent image: {image_name}")
+        agent_env = AgentEnvironment(
+            app_dir=self.app_dir,
+            docker_networks=["shared_net"],
+            image_name=image_name,
+            env={
+                "ANDROID_ADB_SERVER_PORT": "5037",
+                "ADB_SERVER_SOCKET": "tcp:host.docker.internal:5037",
+            },
+            commit_id=self.metadata.get("commit_version"),
+            mode=self.mode,
+        )
+        agent_env.setup()
+        self.agent_env = agent_env
 
         logger.info("Agent environment setup completed")
-        logger.info("✓ Agent environment setup completed")
 
     def _setup_env_file(self):
-        """Handle .env file creation/update for OpenAI API key"""
-        logger.info("Setting up environment file...")
+        """Load environment file for OpenAI API key (already validated)"""
+        logger.info("Loading environment file...")
 
         env_file = self.agent_dir / ".env"
-        api_key = None
-
-        # Load existing .env
-        if env_file.exists():
-            logger.info(f"Loading existing environment from {env_file}")
-            load_dotenv(dotenv_path=env_file, override=False)
-        else:
-            logger.error(
-                f"No existing .env file found at {env_file}. Please create one with OPENAI_API_KEY."
-            )
-            self._exit_with_error("Missing .env file with OPENAI_API_KEY")
-
+        # We know the file exists and key is valid from earlier validation
+        load_dotenv(dotenv_path=env_file, override=False)
         api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            logger.error("OPENAI_API_KEY not found in environment or .env; exiting.")
-            self._exit_with_error("OPENAI_API_KEY missing")
-        else:
-            logger.info("✓ Using OPENAI_API_KEY from environment/.env (no prompt mode)")
-
         os.environ["OPENAI_API_KEY"] = api_key
+        logger.info("✓ Environment loaded with OPENAI_API_KEY")
 
     def _create_docker_network(self):
         """Create shared docker network or print already created if it exists"""
@@ -430,157 +419,220 @@ class MobileCybenchRunner:
             logger.error(f"Failed to create docker network: {e}")
             self._exit_with_error("Failed to create docker network 'shared_net'")
 
-    def _start_containers(self):
-        """Start MCP server and Kali container"""
-        logger.info("Starting containers...")
-        logger.info("Starting MCP server and Kali container...")
+    def run_interactive_shell(self):
+        log_banner("RUNNING INTERACTIVE SHELL (DRY-RUN MODE)")
 
-        # Set environment variable for docker-compose
-        env = os.environ.copy()
-        start_dir = f"/tmp/{self.app_name}_app"
-        env["START_DIR"] = start_dir
-
-        logger.info(f"Setting START_DIR environment variable: {start_dir}")
-        logger.info(f"Environment variable START_DIR set to: {start_dir}")
-        logger.info("Starting containers with docker compose...")
+        logger.info("Starting interactive shell for manual command execution...")
+        logger.info("You can now execute commands in the kali container.")
+        logger.info("Type 'exit' or 'quit' to stop the interactive shell.")
+        logger.info("Type 'help' for available commands.")
+        print()
 
         try:
-            self.cmd.run("docker compose up -d", cwd=self.agent_dir, env=env)
-        except subprocess.CalledProcessError as e:
-            logger.error(
-                f"Docker-compose failed: {e.stderr if hasattr(e, 'stderr') else e}"
-            )
-            self._exit_with_error("Failed to start containers")
+            tool_runtime = ToolRuntime()
 
-        logger.info("✓ Containers started successfully")
-        logger.info("Containers started successfully")
+            # List available tools
+            logger.info("Checking available tools...")
+            tools = tool_runtime.get_tool_definitions()
 
-        logger.info("Waiting for containers to initialize...")
-        logger.info("Waiting for containers to initialize...")
-        time.sleep(5)
-        # TODO: Implement a more robust check to ensure services are up and running
-        # Container healt
+            print("=" * 80)
+            print("DRY-RUN MODE: Interactive Shell")
+            print("=" * 80)
+            print(f"App: {self.app_name}")
+            print("Environment is fully set up (emulator, app servers, kali container)")
+            print("You can now manually execute commands to test the environment.")
+            print()
+            print("Available commands:")
+            print("  - Any shell command will be executed in the kali container")
+            print("  - 'exit' or 'quit' to exit the shell")
+            print("  - 'help' for this help message")
+            print("  - 'tools' to list available tools")
+            print("=" * 80)
+            print()
 
-        # Check container status
-        logger.info("Checking container status...")
-        try:
-            result = self.cmd.run("docker compose ps", cwd=self.agent_dir)
-        except subprocess.CalledProcessError as e:
-            logger.warning(f"Failed to check container status: {e}")
-            result = None
+            command_count = 0
+            while True:
+                try:
+                    # Get user input
+                    user_input = input("kali> ").strip()
 
-        if result:
-            logger.info("Container Status:")
-            logger.info(result.stdout)
-            logger.info(f"Container status:\n{result.stdout}")
+                    if not user_input:
+                        continue
 
-            # Verify specific containers are running
-            if "mcp-server" in result.stdout and "kali-container" in result.stdout:
-                logger.info("✓ Both MCP server and Kali container are running")
-                logger.info("Both MCP server and Kali container confirmed running")
-            else:
-                logger.warning("Some containers may not be running properly")
-                logger.warning("⚠ Warning: Some containers may not be running properly")
+                    # Handle special commands
+                    if user_input.lower() in ["exit", "quit"]:
+                        print("Exiting interactive shell...")
+                        break
+                    elif user_input.lower() == "help":
+                        print("Available commands:")
+                        print(
+                            "  - Any shell command will be executed in the kali container"
+                        )
+                        print("  - 'exit' or 'quit' to exit the shell")
+                        print("  - 'help' for this help message")
+                        print("  - 'tools' to list available tools")
+                        continue
+                    elif user_input.lower() == "tools":
+                        tools = tool_runtime.get_tool_definitions()
+                        if tools and isinstance(tools, list):
+                            print(f"Available tools ({len(tools)}):")
+                            for tool in tools:
+                                name = tool.get("name", "unknown")
+                                desc = tool.get("description", "No description")
+                                print(f"  - {name}: {desc}")
+                        else:
+                            print("Could not list tools or no tools available")
+                        continue
 
-    def _copy_codebase_to_kali(self):
-        """Copy app codebase to Kali container"""
-        logger.info("Copying app codebase to Kali container...")
-        logger.info("Copying app codebase to Kali container...")
+                    # Execute command via Runtime
+                    command_count += 1
+                    logger.info(f"Executing command {command_count}: {user_input}")
 
-        source_path = self.app_dir / "codebase"
-        container_name = "kali-container"
-        target_path = f"/tmp/{self.app_name}_app"
-        # TODO: Make target path to be the directory that the agent has access to
+                    result = tool_runtime.execute(
+                        "execute_command", {"command": user_input}
+                    )
 
-        if not source_path.exists():
-            logger.warning(f"⚠ Warning: Codebase directory not found at {source_path}")
-            logger.warning(f"Codebase directory not found: {source_path}")
-            return
+                    # Display result
+                    if isinstance(result, str) and result.startswith("Error"):
+                        print(result)
+                        logger.error(f"Command {command_count} failed: {result}")
+                    else:
+                        print(result)
 
-        logger.info(f"Source: {source_path}")
-        logger.info(f"Target: {container_name}:{target_path}")
-        logger.info(f"Copying from {source_path} to {container_name}:{target_path}")
+                except KeyboardInterrupt:
+                    print("\nUse 'exit' or 'quit' to exit the shell")
+                    continue
+                except EOFError:
+                    print("\nExiting interactive shell...")
+                    break
+                except Exception as e:
+                    print(f"Error: {e}")
+                    logger.error(f"Error in interactive shell: {e}")
 
-        try:
-            # Create target directory in container
-            try:
-                self.cmd.run(f"docker exec {container_name} mkdir -p {target_path}")
-            except subprocess.CalledProcessError as e:
-                logger.warning(f"Could not create directory in container: {e}")
-                logger.warning("⚠ Warning: Could not create directory in container")
-                return
+            log_banner("INTERACTIVE SHELL SESSION COMPLETED")
+            logger.info(f"Total commands executed: {command_count}")
 
-            # Copy files to container
-            try:
-                self.cmd.run(
-                    f"docker cp {source_path}/. {container_name}:{target_path}/"
-                )
-                logger.info(f"✓ Codebase copied successfully to {target_path}")
-                logger.info(f"Codebase copied successfully to {target_path}")
-            except subprocess.CalledProcessError as e:
-                logger.error(f"Failed to copy codebase: {e}")
-                logger.error("ERROR: Failed to copy codebase to container")
+            return {
+                "status": "completed",
+                "commands_executed": command_count,
+                "log_file": None,
+            }
 
         except Exception as e:
-            logger.warning(f"Exception during codebase copy: {e}")
-            logger.warning(f"⚠ Warning: Exception during codebase copy: {e}")
+            logger.error(f"Failed to run interactive shell: {e}")
+            return {
+                "status": f"error: {str(e)}",
+                "commands_executed": 0,
+                "log_file": None,
+            }
 
-    def run_agent(self):
-        """Run the custom agent - custom_agent.py"""
-        logger.info("=" * 60)
-        logger.info("RUNNING CUSTOM AGENT")
-        logger.info("=" * 60)
-        logger.info("Starting custom agent execution...")
+    def _run_agent(self):
+        """Run the agent - custom, codex, or supervisor based on mode"""
+        agent_type = f"{self.mode.upper()} AGENT"
+        log_banner(f"RUNNING {agent_type}")
+
+        if self.config.dry_run:
+            return self.run_interactive_shell()
+
+        logger.info(f"Starting {agent_type.lower()} execution...")
 
         try:
-            # Import the CustomAgent class
-            from agent.custom_agent import CustomAgent
+            if self.mode == "supervisor":
+                from agent.hierarchical_agent import create_and_run_supervisor_system
 
-            # Create agent instance with dry_run mode for infrastructure testing
-            # Set dry_run=False for actual AI execution
-            logger.info("Initializing custom agent...")
-            logger.info("Creating CustomAgent instance")
+                logger.info("Initializing supervisor agent system...")
+                logger.info("Starting supervisor agent execution...")
 
-            agent = CustomAgent(
-                model=self.config["model"],
-                max_iterations=self.config["max_iterations"],
-                max_model_response_tokens=self.config["max_model_response_tokens"],
-                max_kali_message_tokens=self.config["max_kali_message_tokens"],
-                max_context_length=self.config["max_context_length"],
-                screenshot_enabled=self.config["screenshot_mode"],
-                app_name=self.app_name,
-                dry_run=self.config["dry_run"],
-                app_server=self.metadata.get("app_server", None),
-            )
+                result = create_and_run_supervisor_system(
+                    model=self.config.model,
+                    max_iterations=self.config.max_iterations,
+                    allowed_tools=self.config.allowed_tools,
+                    metadata=getattr(self, "metadata", {}),
+                )
 
-            logger.info("Running agent...")
-            logger.info("Executing agent.run()")
+                log_banner("SUPERVISOR AGENT EXECUTION RESULTS")
+                logger.info(f"Status: {result.get('status', 'Unknown')}")
+                logger.info(f"Turns: {result.get('turns', 0)}")
+
+                return result
+
+            elif self.mode == "codex":
+                # Codex mode is deprecated and broken
+                logger.error(
+                    "Codex mode is deprecated and files are removed. Cannot run."
+                )
+                return {
+                    "status": "error",
+                    "turns": 0,
+                    "final_message": "Codex mode is deprecated",
+                    "log_file": None,
+                }
+            # Import and use CodexAgent
+            # from agent.codex_agent import CodexAgent
+
+            # logger.info("Initializing codex agent...")
+            # logger.info("Creating CodexAgent instance")
+
+            # agent = CodexAgent(
+            #     max_conversation_turns=self.config.max_iterations,
+            #     screenshot_enabled=self.config.screenshot_mode,
+            #     app_name=self.app_name,
+            #     app_server=getattr(self, "metadata", {}).get("app_server", None),
+            #     dry_run=self.config.dry_run,
+            #     mcp_config=mcp_config,
+            #     package_name=self.metadata.get("package_name"),
+            #     username=self.metadata.get("username"),
+            #     password=self.metadata.get("password"),
+            # )
+            else:
+                from agent.custom_agent import CustomAgent
+
+                logger.info("Initializing custom agent...")
+                logger.info("Creating CustomAgent instance")
+
+                # Check if we should include SSRF instructions
+                container_names = self.metadata.get("container_names", [])
+                include_ssrf = bool(container_names)
+
+                agent = CustomAgent(
+                    model=self.config.model,
+                    max_iterations=self.config.max_iterations,
+                    max_model_response_tokens=self.config.max_model_response_tokens,
+                    max_kali_message_tokens=self.config.max_kali_message_tokens,
+                    max_context_length=self.config.max_context_length,
+                    screenshot_enabled=self.config.screenshot_mode,
+                    app_name=self.app_name,
+                    app_server=getattr(self, "metadata", {}).get("app_server", None),
+                    dry_run=self.config.dry_run,
+                    system_prompt=self.config.custom_system_prompt,
+                    package_name=self.metadata.get("package_name"),
+                    reasoning_effort=self.config.reasoning_effort,
+                    username=self.metadata.get("username"),
+                    password=self.metadata.get("password"),
+                    include_ssrf=include_ssrf,
+                )
 
             # This can take a while for actual LLM calls
-            result = agent.run()
+            # (Skip for supervisor mode as it's already run above)
+            if self.mode != "supervisor":
+                result = agent.run()
 
-            # Log and display results
-            logger.info("Agent execution completed")
-            logger.info(f"Agent result: {result}")
+                log_banner("AGENT EXECUTION RESULTS")
+                logger.info(f"Status: {result.get('status', 'Unknown')}")
+                logger.info(f"Turns: {result.get('turns', 0)}")
+                logger.info(f"Log file: {result.get('log_file', 'None')}")
 
-            logger.info("=" * 60)
-            logger.info("AGENT EXECUTION RESULTS")
-            logger.info("=" * 60)
-            logger.info(f"Status: {result.get('status', 'Unknown')}")
-            logger.info(f"Turns: {result.get('turns', 0)}")
-            logger.info(f"Log file: {result.get('log_file', 'None')}")
-
-            if result.get("final_message"):
-                logger.info("Final Message:")
-                logger.info(f"  {result['final_message']}")
-
-            logger.info("=" * 60)
+                if result.get("final_message"):
+                    logger.info("Final Message:")
+                    logger.info(f"  {result['final_message']}")
 
             return result
 
         except Exception as e:
-            logger.error(f"Error running custom agent: {e}")
-            logger.error(f"ERROR: Failed to run custom agent: {e}")
+            logger.error(f"Failed to run agent: {e}")
+            import traceback
+
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return {
                 "status": f"error: {str(e)}",
                 "turns": 0,
@@ -588,24 +640,25 @@ class MobileCybenchRunner:
                 "log_file": None,
             }
 
-    def run_probes_checks(self, log_file_path: Optional[Path] = None):
-        logger.info("=" * 60)
-        logger.info("RUNNING PROBE CHECKS")
-        logger.info("=" * 60)
+    def run_probes_checks(self, log_file_path: Path):
+        log_banner("RUNNING PROBE CHECKS")
 
-        command = "./run_checks.sh"
-        if log_file_path:
-            log_path = Path(log_file_path)
-            if log_path.exists():
-                relative_log_path = Path("../../") / log_path
-                command = f"{command} {shlex.quote(str(relative_log_path))}"
-                logger.info(f"Passing log file to probe checks: {relative_log_path}")
-            else:
-                logger.error(
-                    f"Log file path does not exist in repo/ directory: {log_path}, running without it. This may limit the quality of the probes checks."
-                )
+        app_relative_path = f"apps/{self.app_name}"
+        command = f"bash ./run_checks.sh {shlex.quote(app_relative_path)}"
+
+        log_path = Path(log_file_path)
+        if log_path.exists() and log_path.is_file():
+            command = f"{command} {shlex.quote(str(log_path))}"
+
+        # Check if we should skip SSRF check
+        metadata = get_app_metadata(self.app_name)
+        container_names = metadata.get("container_names", [])
+        env = os.environ.copy()
+        if not container_names:
+            env["SKIP_SSRF_CHECK"] = "1"
+
         try:
-            result = self.cmd.run(command, cwd=self.app_dir, check=False)
+            result = self.cmd.run(command, cwd=self.project_root, check=False, env=env)
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to run probe checks: {e}")
             result = e
@@ -623,21 +676,20 @@ class MobileCybenchRunner:
 
         # Check for scores.json file
         scores_file = self.app_dir / "scores.json"
+        scores_dict = None
         if scores_file.exists():
             try:
                 with open(scores_file, "r") as f:
-                    scores_content = f.read()
-                logger.info(f"Scores found: {scores_content}")
+                    scores_dict = json.load(f)
+                logger.info(f"Scores found: {json.dumps(scores_dict, indent=2)}")
 
             except Exception as e:
                 logger.error(f"Error reading scores.json: {e}")
-                logger.error(f"Error reading scores.json: {e}")
+                scores_dict = None
         else:
-            logger.info("No scores.json file was created")
             logger.info("No scores.json file found")
 
-        logger.info(f"Probe checks completed with exit code: {return_code}")
-        return return_code == 0
+        return scores_dict
 
     def cleanup(self):
         """Clean up services"""
@@ -654,152 +706,460 @@ class MobileCybenchRunner:
         except Exception as e:
             logger.warning(f"Error during cleanup: {e}")
 
-    def run(self):
-        """Run the complete pipeline"""
+        # Stop SSRF listener
         try:
-            self.validate_input()
-            self.setup_emulator()
-            self.setup_app()
-            self.run_probes_checks()  # Probes consider it a pass if no log file is provided
+            ssrf_compose_dir = project_root / "evaluation" / "ssrf_listener"
+            stop_ssrf_listener(ssrf_compose_dir)
+            logger.info("SSRF listener stopped")
+        except Exception as e:
+            logger.warning(f"Error stopping SSRF listener: {e}")
 
-            self.setup_agent()
-            self.run_agent()
+    def _run_cleanup(self):
+        """Run cleanup script for the app"""
+        cleanup_script = self.app_dir / "cleanup.sh"
 
-            agent_log_filename = logger_manager.get_log_file_name()
-            log_path = Path(agent_log_filename) if agent_log_filename else None
-            logger.info(f"Agent log file path: {log_path}")
-            self.run_probes_checks(log_file_path=log_path)
+        if not cleanup_script.exists():
+            self._exit_with_error(
+                f"Required cleanup script not found: {cleanup_script}"
+            )
 
-            logger.info("=" * 60)
-            logger.info("PIPELINE COMPLETED SUCCESSFULLY")
-            logger.info("=" * 60)
-            logger.info(f"App: {self.app_name}")
+        try:
+            self.cmd.run_with_progress(
+                "bash ./cleanup.sh",
+                timeout=BUILD_COMMAND_TIMEOUT,
+                message="Running cleanup script",
+                cwd=self.app_dir,
+            )
+        except subprocess.CalledProcessError as e:
+            self._exit_with_error(f"Failed to run cleanup script: {e}")
 
-            logger.info("Pipeline completed successfully")
-            return 0
+    def _check_and_save_agent_exploit(self):
+        """Ensure exploit.sh exists, log it, and copy the entire exploit_files directory to host."""
+        logger.info(
+            "Checking for agent-generated exploit.sh and exploit_files directory..."
+        )
+        exploit_path = "/app/exploit_files/exploit.sh"
+
+        try:
+            check_result = subprocess.run(
+                ["docker", "exec", "kali-container", "test", "-f", exploit_path],
+                capture_output=True,
+                text=True,
+            )
+
+            if check_result.returncode != 0:
+                logger.info(
+                    "No exploit.sh file found - agent did not create an exploit script"
+                )
+                return False
+
+            logger.info("Found exploit.sh in Kali container, reading contents...")
+            read_result = subprocess.run(
+                ["docker", "exec", "kali-container", "cat", exploit_path],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            if read_result.returncode == 0:
+                logger.info(f"exploit.sh contents:\n{read_result.stdout}")
+            else:
+                logger.warning(f"Failed to read exploit.sh: {read_result.stderr}")
+
+            # Copy entire exploit_files directory to host (includes supporting files)
+            host_logs_dir = logger_manager.get_logs_dir()
+            host_exploit_dir = host_logs_dir / "exploit_files"
+            host_exploit_dir.mkdir(parents=True, exist_ok=True)
+
+            copy_result = subprocess.run(
+                [
+                    "docker",
+                    "cp",
+                    "kali-container:/app/exploit_files/.",
+                    str(host_exploit_dir),
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if copy_result.returncode != 0:
+                logger.warning(
+                    "Failed to copy exploit_files directory from container: %s",
+                    copy_result.stderr,
+                )
+            else:
+                logger.info(
+                    "Copied exploit_files directory from container to %s",
+                    host_exploit_dir,
+                )
+
+            return True
+        except Exception as e:
+            logger.warning(f"Error checking/copying exploit artifacts: {e}")
+            return False
+
+    def _run_agent_exploit(self) -> Path:
+        """Run the agent-generated exploit script and log output.
+
+        Returns:
+            Path to the exploit log file.
+        """
+        logger.info("Running agent exploit script...")
+
+        # Path to exploit script in container
+        exploit_script_path = "/app/exploit_files/exploit.sh"
+
+        # Create exploit log file path
+        logs_dir = logger_manager.get_logs_dir()
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        exploit_log_path = logs_dir / f"exploit_execution_{timestamp}.log"
+
+        try:
+            # Step 1: Dump the exploit script contents
+            logger.info("Reading exploit script contents...")
+            cat_result = subprocess.run(
+                ["docker", "exec", "kali-container", "cat", exploit_script_path],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            # Step 2: Log exploit script contents (to both logger and file)
+            script_contents = cat_result.stdout
+            logger.info("=" * 80)
+            logger.info("EXPLOIT SCRIPT CONTENTS")
+            logger.info("=" * 80)
+            logger.info(script_contents)
+            logger.info("=" * 80)
+
+            # Write to log file
+            with open(exploit_log_path, "w") as log_file:
+                log_file.write("=" * 80 + "\n")
+                log_file.write("EXPLOIT SCRIPT CONTENTS\n")
+                log_file.write("=" * 80 + "\n")
+                log_file.write(script_contents)
+                log_file.write("\n" + "=" * 80 + "\n")
+
+            # Step 3: Execute the exploit script and capture output
+            logger.info("Executing exploit script...")
+            exec_result = subprocess.run(
+                ["docker", "exec", "kali-container", "bash", exploit_script_path],
+                capture_output=True,
+                text=True,
+                timeout=300,  # 5 minute timeout for exploit execution
+            )
+
+            # Step 4: Log execution output (stdout and stderr) to both logger and file
+            logger.info("=" * 80)
+            logger.info("EXPLOIT EXECUTION OUTPUT")
+            logger.info("=" * 80)
+            if exec_result.stdout:
+                logger.info("STDOUT:")
+                logger.info(exec_result.stdout)
+
+            if exec_result.stderr:
+                logger.info("STDERR:")
+                logger.info(exec_result.stderr)
+
+            logger.info("=" * 80)
+            logger.info(f"EXIT CODE: {exec_result.returncode}")
+            logger.info("=" * 80)
+
+            logger.info(
+                f"Exploit execution completed with exit code: {exec_result.returncode}"
+            )
+
+            # Append execution output to log file
+            with open(exploit_log_path, "a") as log_file:
+                log_file.write("\n" + "=" * 80 + "\n")
+                log_file.write("EXPLOIT EXECUTION OUTPUT\n")
+                log_file.write("=" * 80 + "\n")
+                if exec_result.stdout:
+                    log_file.write("STDOUT:\n")
+                    log_file.write(exec_result.stdout)
+                    log_file.write("\n")
+                if exec_result.stderr:
+                    log_file.write("STDERR:\n")
+                    log_file.write(exec_result.stderr)
+                    log_file.write("\n")
+                log_file.write("=" * 80 + "\n")
+                log_file.write(f"EXIT CODE: {exec_result.returncode}\n")
+                log_file.write("=" * 80 + "\n")
+
+            return exploit_log_path
+
+        except subprocess.TimeoutExpired as e:
+            logger.error(f"Exploit execution timed out: {e}")
+            # Write timeout error to log file (create file if it doesn't exist)
+            try:
+                mode = "a" if exploit_log_path.exists() else "w"
+                with open(exploit_log_path, mode) as log_file:
+                    if mode == "w":
+                        # If file didn't exist, write header first
+                        log_file.write("=" * 80 + "\n")
+                        log_file.write("EXPLOIT EXECUTION LOG\n")
+                        log_file.write("=" * 80 + "\n")
+                    log_file.write("\n" + "=" * 80 + "\n")
+                    log_file.write("EXPLOIT EXECUTION TIMED OUT\n")
+                    log_file.write("=" * 80 + "\n")
+                    log_file.write(f"Error: {e}\n")
+                    log_file.write("Command timed out after 300 seconds\n")
+                    log_file.write("=" * 80 + "\n")
+            except Exception:
+                pass  # If file writing fails, at least return the path
+            return exploit_log_path
+
+        except Exception as e:
+            logger.error(f"Failed to run agent exploit: {e}")
+            # Write error to log file (create file if it doesn't exist)
+            try:
+                mode = "a" if exploit_log_path.exists() else "w"
+                with open(exploit_log_path, mode) as log_file:
+                    if mode == "w":
+                        # If file didn't exist, write header first
+                        log_file.write("=" * 80 + "\n")
+                        log_file.write("EXPLOIT EXECUTION LOG\n")
+                        log_file.write("=" * 80 + "\n")
+                    log_file.write("\n" + "=" * 80 + "\n")
+                    log_file.write("EXPLOIT EXECUTION FAILED\n")
+                    log_file.write("=" * 80 + "\n")
+                    log_file.write(f"Error: {e}\n")
+                    log_file.write("=" * 80 + "\n")
+            except Exception:
+                pass  # If file writing fails, at least return the path
+            return exploit_log_path
+
+    def run(self):
+        try:
+            self._validate_input()
+            if not self.config.dry_run:
+                self._setup_env_file()
+            log_banner("SETTING UP ANDROID EMULATOR")
+            sdk_version = (
+                self.metadata.get("sdk") if hasattr(self, "metadata") else None
+            )
+            with EmulatorManager(
+                docker_mode=self.config.docker_mode,
+                project_root=self.project_root,
+                sdk_version=sdk_version,
+                app_name=self.app_name,
+                rootable=True,  # Phase 1: Use google_apis (rootable) for discovery
+            ) as emulator:
+                self.emulator = emulator
+                self.emulator.start_in_background()
+                logger.info("Emulator started in the background . . .")
+
+                self._setup_app_apk()
+                self._install_app_and_setup_backend()
+                dummy_log_path = Path(DUMMY_LOG_FILENAME)
+                if not dummy_log_path.exists():
+                    dummy_log_path.touch()
+                self.probe_results["pre_agent_run"] = self.run_probes_checks(
+                    log_file_path=dummy_log_path
+                )
+
+                self._setup_agent_environment()
+                self._run_agent()
+
+                agent_log_filename = logger_manager.get_agent_log_file_name()
+                log_path = Path(agent_log_filename)
+                logger.info(f"Agent log file path: {log_path}")
+
+                self.probe_results["post_agent_run"] = self.run_probes_checks(
+                    log_file_path=log_path
+                )
+                log_banner("Restarting services, running agent exploit")
+
+            exploit_exists = self._check_and_save_agent_exploit()
+            if not exploit_exists:
+                logger.info(
+                    "No Agent Exploit Found - skipping exploit execution pipeline"
+                )
+            else:
+                with EmulatorManager(
+                    docker_mode=self.config.docker_mode,
+                    project_root=self.project_root,
+                    sdk_version=sdk_version,
+                    app_name=self.app_name,
+                    rootable=False,  # Phase 2: Use google_apis_playstore (non-rootable) for verification
+                ) as emulator:
+                    self.emulator = emulator
+                    self.emulator.start_in_background()
+                    logger.info("New emulator starting . . .")
+
+                    # some app's cleanup.sh might uninstall the app, which requires package manager to be running
+                    # takes a while for the package manager to be ready
+                    try:
+                        self.emulator.wait_until_ready(
+                            timeout=EMULATOR_BOOT_TIMEOUT_SECONDS
+                        )
+                        logger.info("Emulator booted successfully")
+                    except Exception as e:
+                        self._exit_with_error(
+                            f"Failed to wait for emulator to finish booting: {e}"
+                        )
+
+                    self._run_cleanup()
+                    self._setup_app_apk()
+                    self._install_app_and_setup_backend()
+
+                    logger.info(
+                        "Verifying non-root environment for Phase 2 (Verification)..."
+                    )
+                    try:
+                        id_result = self.cmd.run(
+                            "adb shell id", capture_output=True, check=False
+                        )
+                        if "uid=0(root)" not in id_result.stdout:
+                            logger.info(
+                                "✓ Emulator running as non-root (google_apis_playstore)"
+                            )
+                        else:
+                            logger.warning(
+                                f"⚠ Unexpected root access detected: {id_result.stdout.strip()}"
+                            )
+                    except Exception as e:
+                        logger.warning(f"Failed to verify emulator user: {e}")
+
+                    dummy_log_path = Path(DUMMY_LOG_FILENAME)
+                    if not dummy_log_path.exists():
+                        dummy_log_path.touch()
+                    self.probe_results["pre_agent_exploit"] = self.run_probes_checks(
+                        log_file_path=dummy_log_path
+                    )
+
+                    # Capture the actual exploit log
+                    # TODO: should we have an LLM agent (exploit executor / validator) here instead of just exploit.sh?
+                    # the generated exploit script may not be sufficient to successfully exploit the vulnerability in one shot.
+                    exploit_log_path = self._run_agent_exploit()
+
+                    # Pass the exploit log (NOT dummy log) to probes
+                    self.probe_results["post_agent_exploit"] = self.run_probes_checks(
+                        log_file_path=exploit_log_path
+                    )
+                    log_banner("Agent Exploit done")
 
         except KeyboardInterrupt:
-            logger.info("⚠ Runner interrupted by user")
             logger.info("Runner interrupted by user")
             return 1
         except Exception as e:
-            logger.error(f"❌ Unexpected error: {e}")
-            logger.error("Full log available in the log file.")
             logger.error(f"Unexpected error: {e}")
             return 1
         finally:
-            pass
-            # self.cleanup()
+            log_banner("PROBE RESULTS SUMMARY")
+            if self.probe_results:
+                logger.info(
+                    f"Probe results: {json.dumps(self.probe_results, indent=2)}"
+                )
+            else:
+                logger.info("No probe results collected")
 
+            # Clean up agent_codebase to prevent state from leaking across runs
+            if hasattr(self, "agent_env") and self.agent_env is not None:
+                log_banner("CLEANING UP AGENT CODEBASE")
+                try:
+                    # Save the state (git diff) for debugging/analysis
+                    diff = self.agent_env.save_agent_codebase_state()
+                    if diff:
+                        logger.info(
+                            "Agent made changes to codebase - diff has been captured"
+                        )
+                        logger.info("=" * 80)
+                        logger.info("AGENT CODEBASE DIFF START")
+                        logger.info("=" * 80)
+                        # Log diff line by line to preserve formatting
+                        for line in diff.splitlines():
+                            logger.info(line)
+                        logger.info("=" * 80)
+                        logger.info("AGENT CODEBASE DIFF END")
+                        logger.info("=" * 80)
 
-def load_config(config_path: Path) -> dict:
-    """Load and validate configuration from JSON file"""
-    if not config_path.exists():
-        logger.error(f"Config file not found: {config_path}")
-        sys.exit(1)
+                    # Reset agent_codebase to original state
+                    self.agent_env.delete_agent_codebase()
+                    logger.info("Agent codebase cleaned up successfully")
+                except Exception as e:
+                    logger.error(f"Failed to cleanup agent_codebase: {e}")
 
-    try:
-        with open(config_path, "r") as f:
-            config = json.load(f)
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in config file: {e}")
-        sys.exit(1)
-    except Exception as e:
-        logger.error(f"Error reading config file: {e}")
-        sys.exit(1)
+            # Clean up SSRF listener
+            log_banner("CLEANING UP SSRF LISTENER")
+            try:
+                ssrf_compose_dir = project_root / "evaluation" / "ssrf_listener"
+                stop_ssrf_listener(ssrf_compose_dir)
+                logger.info("SSRF listener stopped and cleaned up")
+            except Exception as e:
+                logger.warning(f"Failed to cleanup SSRF listener: {e}")
 
-    # Validate required fields
-    required_fields = [
-        "server_access",
-        "build_type",
-        # TODO - implement adb allowlist based on this
-        "adb_access",
-        "max_iterations",
-        "max_kali_message_tokens",
-        "max_model_response_tokens",
-        "max_context_length",
-        "model",
-        "screenshot_mode",
-        "headless_mode",
-        "dry_run",
-    ]
-
-    missing_fields = [field for field in required_fields if field not in config]
-    if missing_fields:
-        logger.error(f"Missing required config fields: {missing_fields}")
-        sys.exit(1)
-
-    # Validate field values
-    valid_choices = {
-        "build_type": ["source", "download-apk", "skip-apk"],
-        "adb_access": ["none", "limited", "full"],
-    }
-
-    for field, choices in valid_choices.items():
-        if config[field] not in choices:
-            logger.error(
-                f"Invalid value for {field}: {config[field]}. Must be one of: {choices}"
-            )
-            sys.exit(1)
-
-    # Validate boolean fields
-    bool_fields = ["server_access", "screenshot_mode", "headless_mode", "dry_run"]
-    for field in bool_fields:
-        if not isinstance(config[field], bool):
-            logger.error(f"Field {field} must be a boolean (true/false)")
-            sys.exit(1)
-
-    # Validate integer fields
-    int_fields = [
-        "max_iterations",
-        "max_kali_message_tokens",
-        "max_model_response_tokens",
-        "max_context_length",
-    ]
-    for field in int_fields:
-        if not isinstance(config[field], int) or config[field] <= 0:
-            logger.error(f"Field {field} must be a positive integer")
-            sys.exit(1)
-
-    # Validate model field
-    if not isinstance(config["model"], str) or not config["model"].strip():
-        logger.error("Field 'model' must be a non-empty string")
-        sys.exit(1)
-
-    logger.info("Configuration validation passed")
-    return config
+            # TODO: Add cleanup for app cleanup.sh, Kali container, and MCP server
+            # Should run docker compose down in agent_dir and cleanup.sh in app_dir
 
 
 def main():
-    """Main entry point"""
-    parser = argparse.ArgumentParser(
-        description="MobileCybench Runner - Orchestrates AI-driven mobile app security testing"
-    )
-    parser.add_argument(
-        "app_name", help="Name of the app to test (must exist in apps/ directory)"
-    )
-    parser.add_argument(
-        "config_file",
-        nargs="?",
-        default="runner_config.json",
-        help="Path to JSON configuration file (default: runner_config.json)",
-    )
+    # Start timing the experiment
+    time_tracker.start_experiment()
 
-    args = parser.parse_args()
+    try:
+        parser = argparse.ArgumentParser(
+            description="MobileCybench Runner - Orchestrates AI-driven mobile app security testing"
+        )
 
-    # Load configuration from file
-    # If relative path, make it relative to the script directory
-    config_file = args.config_file
-    if not os.path.isabs(config_file):
-        config_path = project_root / config_file
-    else:
-        config_path = Path(config_file)
+        # Add agent_type selection
+        parser.add_argument(
+            "--agent-type",
+            choices=["custom", "codex", "supervisor"],
+            default="custom",
+            help="Agent type to use: 'custom' (OpenAI API), 'codex' (Codex CLI), or 'supervisor' (hierarchical multi-agent). Default: custom.",
+        )
 
-    config = load_config(config_path)
+        parser.add_argument(
+            "app_name",
+            help="Name of the app to test (must exist in apps/ directory). Required.",
+        )
 
-    # Create and run the runner
-    runner = MobileCybenchRunner(args.app_name, config)
-    return runner.run()
+        # Add config_file as optional
+        parser.add_argument(
+            "config_file",
+            nargs="?",
+            default="runner_config.json",
+            help="Path to JSON configuration file (default: runner_config.json)",
+        )
+
+        args = parser.parse_args()
+
+        # Update experiment with app name
+        time_tracker._app_name = args.app_name
+
+        # Load configuration from file
+        # If relative path, make it relative to the script directory
+        config_file = args.config_file
+        if not os.path.isabs(config_file):
+            config_path = project_root / config_file
+        else:
+            config_path = Path(config_file)
+
+        config = RunnerConfig.from_file(config_path)
+
+        # Create and run the runner
+        runner = MobileCybenchRunner(args.app_name, config, mode=args.agent_type)
+        result = runner.run()
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to run experiment: {e}")
+        return 1
+    finally:
+        # Always end timing and log summary, regardless of success/failure
+        time_tracker.end_experiment()
+        try:
+            time_tracker.log_summary(logger)
+
+            # Save structured JSON output
+            logs_dir = logger_manager.get_logs_dir()
+            json_path = logs_dir / f"timings_{time_tracker._experiment_id}.json"
+            time_tracker.save_json(json_path)
+            logger.info(f"Timing data saved to: {json_path}")
+
+        except Exception as e:
+            logger.error(f"Failed to log timing summary: {e}")
 
 
 if __name__ == "__main__":

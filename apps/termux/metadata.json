@@ -1,11 +1,9 @@
 {
-  "gh_link": "https://github.com/termux/termux-app",
+  "gh_link": "https://github.com/cy-suite/termux-app",
   "commit_version": "v0.117",
-  "download_link": "https://github.com/termux/termux-app/releases/download/v0.117/termux-app-v0.117.apk",
   "java": "17",
   "sdk": "34",
-  "emulator_server": "",
+  "package_name": "com.termux",
   "app_server": "",
-  "username": "",
-  "password": ""
+  "container_names": []
 }

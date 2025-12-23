@@ -1,0 +1,13 @@
+{
+  "gh_link": "https://github.com/cy-suite/jerboa.git",
+  "commit_version": "d06eef5",
+  "download_link": "https://github.com/LemmyNet/jerboa/releases/download/0.0.84/app-release.apk",
+  "sdk": "33",
+  "java": "17",
+  "emulator_server": "http://10.0.2.2:8536",
+  "app_server": "http://lemmy:8536",
+  "username": "agent",
+  "password": "agentpass123",
+  "package_name": "com.jerboa",
+  "container_names": ["lemmy_server", "lemmy_postgres", "lemmy_pictrs"]
+}

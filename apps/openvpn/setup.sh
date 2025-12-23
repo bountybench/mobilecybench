@@ -18,17 +18,6 @@ elif ! docker ps >/dev/null 2>&1; then
     exit 1
 fi
 
-# Check ADB
-if ! command -v adb >/dev/null 2>&1; then
-    MISSING_DEPS+=("adb")
-fi
-
-# Check Android SDK emulator
-ANDROID_HOME="${ANDROID_HOME:-$HOME/.android-sdk}"
-if [ ! -f "$ANDROID_HOME/emulator/emulator" ]; then
-    MISSING_DEPS+=("android-emulator")
-fi
-
 # Check Python3
 if ! command -v python3 >/dev/null 2>&1; then
     MISSING_DEPS+=("python3")
@@ -40,62 +29,13 @@ if [ ${#MISSING_DEPS[@]} -ne 0 ]; then
     exit 1
 fi
 
-# Add Android SDK to PATH
-export PATH="$PATH:$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools"
-
-# Check if emulator is running, if not start one
-echo "Checking Android emulator..."
-if ! adb devices | grep -q "emulator"; then
-    echo "No emulator running, starting one..."
-    
-    # List available AVDs using proper SDK tool
-    AVD_LIST=$($ANDROID_HOME/emulator/emulator -list-avds)
-    if [ -z "$AVD_LIST" ]; then
-        echo "Error: No Android Virtual Devices found. Please create one first."
-        exit 1
-    fi
-    
-    # Use the first available AVD
-    AVD_NAME=$(echo "$AVD_LIST" | head -n 1)
-    echo "Starting emulator: $AVD_NAME"
-    
-    # Start emulator in background with optimization flags
-    $ANDROID_HOME/emulator/emulator -avd "$AVD_NAME" -no-audio -no-window -no-boot-anim -memory 2048 -partition-size 4096 -wipe-data &
-    EMULATOR_PID=$!
-    
-    # Wait for emulator to boot
-    echo "Waiting for emulator to boot..."
-    timeout=300
-    while [ $timeout -gt 0 ]; do
-        if adb shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
-            echo "Emulator booted successfully"
-            break
-        fi
-        echo "Waiting for emulator... (${timeout}s remaining)"
-        sleep 5
-        timeout=$((timeout-5))
-    done
-    
-    if [ $timeout -eq 0 ]; then
-        echo "Error: Emulator failed to boot within timeout"
-        kill $EMULATOR_PID 2>/dev/null || true
-        exit 1
-    fi
-else
-    echo "Emulator already running"
+# Verify secrets file exists
+echo "Checking secrets..."
+if [ ! -f "secrets.json" ]; then
+    echo "Error: secrets.json not found. This file should be checked into git."
+    exit 1
 fi
-
-# Generate random secrets for testing
-echo "Generating secrets..."
-mkdir -p secrets
-cat > secrets/secrets.json <<EOF
-{
-  "ca_passphrase": "test-ca-$(openssl rand -hex 8)",
-  "admin_password": "admin-$(openssl rand -base64 16)",
-  "test_user_password": "user-$(openssl rand -base64 12)",
-  "client_cert_id": "android-client-$(openssl rand -hex 6)"
-}
-EOF
+echo "Using secrets from secrets.json"
 
 # Create necessary directories
 mkdir -p logs client-configs
@@ -116,21 +56,33 @@ echo "Starting OpenVPN server..."
 docker run -d --name openvpn-server \
     --cap-add=NET_ADMIN \
     --device=/dev/net/tun \
-    -p 1194:1194/udp \
+    -p 1194:1194/tcp \
     --network=shared_net \
     --restart=unless-stopped \
     --sysctl net.ipv4.ip_forward=1 \
     openvpn-cve-server
 
-# Wait for server to be ready
-echo "Waiting for OpenVPN server to initialize..."
-for i in {1..30}; do
-    if docker exec openvpn-server echo "Server ready" 2>/dev/null; then
+# Wait for server to be healthy
+echo "Waiting for OpenVPN server to become healthy..."
+TIMEOUT=60
+ELAPSED=0
+while [ $ELAPSED -lt $TIMEOUT ]; do
+    HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' openvpn-server 2>/dev/null || echo "starting")
+    if [ "$HEALTH_STATUS" = "healthy" ]; then
+        echo "OpenVPN server is healthy and ready"
         break
     fi
-    echo "Waiting... ($i/30)"
+    echo "Health status: $HEALTH_STATUS (${ELAPSED}s elapsed)"
     sleep 2
+    ELAPSED=$((ELAPSED + 2))
 done
+
+if [ $ELAPSED -ge $TIMEOUT ]; then
+    echo "Error: OpenVPN server failed to become healthy within ${TIMEOUT}s"
+    echo "Container logs:"
+    docker logs openvpn-server
+    exit 1
+fi
 
 # Generate client configurations
 echo "Generating client configurations..."
@@ -140,7 +92,7 @@ for client in android-client test-user-1 test-user-2; do
     cat > "client-configs/$client.ovpn" <<EOF
 client
 dev tun
-proto udp
+proto tcp
 remote 10.0.2.2 1194
 resolv-retry infinite
 nobind
@@ -163,44 +115,40 @@ $(docker exec openvpn-server cat /etc/openvpn/easy-rsa/pki/private/$client.key)
 EOF
 done
 
-# Install and setup Android app
-echo "Setting up Android app..."
-if [ -f "./setup_app_source.sh" ]; then
-    ./setup_app_source.sh
-elif [ -d "output" ] && [ "$(ls -A output/*.apk 2>/dev/null)" ]; then
-    echo "Installing built APK from output directory..."
-    # Find the universal APK or any available APK
-    APK_FILE=$(ls output/*universal*.apk 2>/dev/null | head -1)
-    if [ -z "$APK_FILE" ]; then
-        APK_FILE=$(ls output/*.apk 2>/dev/null | head -1)
-    fi
-    
-    if [ -n "$APK_FILE" ]; then
-        echo "Installing APK: $APK_FILE"
+echo ""
+echo "OpenVPN server setup complete!"
+echo ""
+echo "Server Details:"
+echo "  - Docker container: openvpn-server"
+echo "  - Server address: 10.0.2.2:1194 (for emulator)"
+echo "  - Client configs: client-configs/"
+echo ""
+echo "To build the Android app:"
+echo "  ./setup_app_source.sh"
+echo ""
+
+# Auto-install APK if emulator is running and APK exists
+if adb devices 2>/dev/null | grep -q "emulator"; then
+    echo "Emulator detected - checking for APK to install..."
+
+    if [ -f "apk/openvpn.apk" ]; then
+        echo "Installing OpenVPN APK on emulator..."
         adb uninstall de.blinkt.openvpn 2>/dev/null || echo "No existing app to uninstall"
-        adb install "$APK_FILE"
-        
-        # Copy client config if available
+        adb install apk/openvpn.apk
+
         if [ -f "client-configs/android-client.ovpn" ]; then
+            echo "Copying OpenVPN client config to emulator..."
             adb push client-configs/android-client.ovpn /sdcard/Download/
-            echo "OpenVPN config copied to /sdcard/Download/android-client.ovpn"
+            echo "✓ OpenVPN app installed and config copied"
+        else
+            echo "✓ OpenVPN app installed (client config not yet generated)"
         fi
-        
-        # Launch the app
-        echo "Launching OpenVPN app..."
-        adb shell am start -n de.blinkt.openvpn/de.blinkt.openvpn.LaunchVPN
     else
-        echo "Error: No APK files found"
-        exit 1
+        echo "No APK found at apk/openvpn.apk - skipping installation"
+        echo "Run ./setup_app_source.sh or ./setup_app_apklink.sh to build/download the APK"
     fi
 else
-    echo "Warning: No setup script or APK files found. Install app manually."
-    echo "APK files are available in output/ directory"
+    echo "To install the APK (requires adb and emulator):"
+    echo "  adb install apk/openvpn.apk"
+    echo "  adb push client-configs/android-client.ovpn /sdcard/Download/"
 fi
-
-echo ""
-echo "OpenVPN environment setup complete!"
-echo "Server running on 10.0.2.2:1194"
-echo "Client configs available in client-configs/"
-echo "Docker container: openvpn-server"
-echo "Emulator running with OpenVPN app installed"

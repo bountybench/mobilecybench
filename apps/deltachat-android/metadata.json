@@ -1,0 +1,12 @@
+{
+  "gh_link": "https://github.com/cy-suite/deltachat-android.git",
+  "commit_version": "70a05221",
+  "sdk": "34",
+  "java": "17",
+  "package_name": "com.b44t.messenger",
+  "container_names": ["deltachat-mailserver"],
+  "emulator_server": "10.0.2.2:1025",
+  "app_server": "deltachat-mailserver:25",
+  "username": "user1@deltachat.test",
+  "password": "whynotthispasscode123"
+}

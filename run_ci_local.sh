@@ -26,14 +26,71 @@ print_header() {
     echo -e "${color}========== ${message} ==========${RESET}"
 }
 
-check_server_ready() {
+check_metadata_schema() {
+    local metadata_file="$1"
+    echo "Checking metadata.json against expected schema..."
+
+    if ! jq empty "$metadata_file" >/dev/null 2>&1; then
+        print_header "$ERROR" "[FAIL] Invalid JSON in $metadata_file"
+        echo -e "${ERROR} The metadata.json file contains invalid JSON syntax."
+        exit 1
+    fi
+
+    local required_fields=(
+        "gh_link:GitHub link to the app's repository"
+        "commit_version:Commit version to checkout for testing"
+        "sdk:Android SDK version required"
+        "java:Java version needed to compile the app"
+        "package_name:Package name of the Android app"
+        "app_server:Address of any server the app requires (empty string if not required)"
+        "container_names:Array of Docker container names for health checks (empty array if not required)"
+    )
+    all_passed=true
+
+    for field_pair in "${required_fields[@]}"; do
+        field="${field_pair%%:*}"
+        description="${field_pair#*:}"
+
+        if jq -e ".${field}" "$metadata_file" >/dev/null 2>&1; then
+            print_header "$GREEN" "[PASS] Attribute $field is in the metadata."
+        else
+            print_header "$ERROR" "[FAIL] Attribute $field is not in the metadata."
+            print_header "$ERROR" " --> Attribute ${description} is not in the metadata."
+            all_passed=false
+        fi
+    done
+
+    if [ "$all_passed" = true ]; then
+        print_header "$GREEN" "[PASS] Metadata schema validation success."
+    else
+        print_header "$ERROR" "[FAIL] Metadata schema validation failed."
+        exit 1
+    fi
+}
+
+check_app_containers_ready() {
     # Timeout per container in seconds
     TIMEOUT=${TIMEOUT:-180}
     # Interval between checks in seconds
     INTERVAL=${INTERVAL:-1}
 
-    # Get all running containers
-    containers=$(docker ps --format '{{.Names}}')
+    # Get app-specific containers from metadata.json
+    containers=""
+    if [ -f "metadata.json" ]; then
+        # Check for explicit container_names field
+        container_names=$(jq -r '.container_names[]? // empty' metadata.json 2>/dev/null)
+        if [ -n "$container_names" ]; then
+            containers="$container_names"
+            echo "Found explicit container_names in metadata.json: $containers"
+        fi
+    fi
+
+    if [ -z "$containers" ]; then
+        echo "No app-specific containers found in metadata.json - skipping container readiness check"
+        return 0
+    fi
+
+    echo "Checking readiness for app-specific containers: $containers"
 
     for container in $containers; do
         echo "Checking readiness for $container..."
@@ -104,7 +161,7 @@ check_server_ready() {
         fi
     done
 
-    echo "All containers are ready!"
+    echo "App-specific containers are ready!"
 }
 
 verify_shared_net_connectivity() {
@@ -144,21 +201,75 @@ verify_shared_net_connectivity() {
     fi
 }
 
+# Start SSRF listener container
+start_ssrf_listener() {
+    echo -e "${INFO} Starting SSRF listener container..."
+    local ssrf_compose_dir="${ROOT_DIR}/evaluation/ssrf_listener"
+    
+    if [ ! -d "$ssrf_compose_dir" ]; then
+        echo -e "${WARNING} SSRF listener directory not found at $ssrf_compose_dir"
+        return 1
+    fi
+    
+    # Stop any existing SSRF listener
+    docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
+    
+    # Build and start the SSRF listener
+    if docker compose -f "$ssrf_compose_dir/docker-compose.yml" up -d --build --wait; then
+        echo -e "${SUCCESS} SSRF listener started on port 14377"
+        return 0
+    else
+        echo -e "${WARNING} Failed to start SSRF listener"
+        return 1
+    fi
+}
+
+# Stop SSRF listener container
+stop_ssrf_listener() {
+    echo -e "${INFO} Stopping SSRF listener container..."
+    local ssrf_compose_dir="${ROOT_DIR}/evaluation/ssrf_listener"
+    
+    if [ -d "$ssrf_compose_dir" ]; then
+        docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
+    fi
+    
+    # Also try to stop container directly in case compose fails
+    docker stop ssrf-probe 2>/dev/null || true
+    docker rm -f ssrf-probe 2>/dev/null || true
+    
+    echo -e "${INFO} SSRF listener stopped"
+}
+
+# Clear SSRF request log
+clear_ssrf_requests() {
+    echo -e "${INFO} Clearing SSRF request log..."
+    docker exec ssrf-probe rm -f /app/logs/ssrf_requests.json 2>/dev/null || true
+}
+
 # Validate directory structure and required scripts
 validate_setup_app_scripts() {
     local dir="$1"
-    
+
     if [ ! -d "$dir" ]; then
         echo -e "${ERROR} Directory '$dir' does not exist" >&2
         return 1
     fi
-    
+
     local source_script="$dir/setup_app_source.sh"
-    local apklink_script="$dir/setup_app_apklink.sh"
-    if [ ! -f "$source_script" ] && [ ! -f "$apklink_script" ]; then
-        # fail if neither script exists
-        echo -e "${ERROR} No setup scripts found in $dir" >&2
-        echo -e "${ERROR} Expected: setup_app_source.sh or setup_app_apklink.sh" >&2
+    local has_download_link=false
+
+    # Check if download_link exists in metadata.json
+    if [ -f "$dir/metadata.json" ]; then
+        download_link=$(jq -r '.download_link // empty' "$dir/metadata.json")
+        if [ -n "$download_link" ]; then
+            has_download_link=true
+        fi
+    fi
+
+    if [ ! -f "$source_script" ] && [ "$has_download_link" = false ]; then
+        # fail if neither option exists
+        echo -e "${ERROR} No setup options found in $dir" >&2
+        echo -e "${ERROR} Expected: setup_app_source.sh or download_link in metadata.json" >&2
         return 1
     fi
     return 0
@@ -168,7 +279,7 @@ validate_setup_app_scripts() {
 discover_available_modes() {
     local dir="$1"
     local modes=""
-    
+
     # If --skip-apk is specified, only offer apk_skip mode
     if [ "$SKIP_APK" = true ]; then
         modes="apk_skip"
@@ -178,9 +289,13 @@ discover_available_modes() {
             modes="$modes source"
             echo -e "${INFO} Found setup_app_source.sh (build mode)" >&2
         fi
-        if [ -f "$dir/setup_app_apklink.sh" ]; then
-            modes="$modes apklink"
-            echo -e "${INFO} Found setup_app_apklink.sh (download mode)" >&2
+        # Check if download_link exists in metadata.json
+        if [ -f "$dir/metadata.json" ]; then
+            download_link=$(jq -r '.download_link // empty' "$dir/metadata.json")
+            if [ -n "$download_link" ]; then
+                modes="$modes apklink"
+                echo -e "${INFO} Found download_link in metadata.json (download mode)" >&2
+            fi
         fi
     fi
 
@@ -287,6 +402,7 @@ checkout_commit() {
 SKIP_BUILD=false
 SKIP_DOWNLOAD=false
 SKIP_APK=false
+RUN_UNIT_TESTS=false
 
 show_usage() {
     echo "Usage: $0 <dir> [options]"
@@ -298,13 +414,15 @@ show_usage() {
     echo "  --skip-build      Skip build mode (source setup)"
     echo "  --skip-download   Skip download mode (apklink setup)"
     echo "  --skip-apk        Skip APK operations. Install from existing APK."
+    echo "  --unit-tests      Run unit tests (opt-in)"
     echo "  -h, --help        Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0 apps/joplin                    # Run both build and download modes"
+    echo "  $0 apps/joplin                   # Run both build and download modes"
     echo "  $0 apps/joplin --skip-build      # Run only download mode"
     echo "  $0 apps/joplin --skip-download   # Run only build mode"
     echo "  $0 apps/joplin --skip-apk        # Skip APK operations. Install from existing APK."
+    echo "  $0 apps/joplin --unit-tests      # Run unit tests"
     echo ""
     echo "By default, both build mode (source) and download mode (apklink) are run"
     echo "when both setup scripts are available."
@@ -325,6 +443,10 @@ while [[ $# -gt 0 ]]; do
             SKIP_APK=true
             SKIP_BUILD=true
             SKIP_DOWNLOAD=true
+            shift
+            ;;
+        --unit-tests)
+            RUN_UNIT_TESTS=true
             shift
             ;;
         -h|--help)
@@ -372,6 +494,7 @@ if [ ! -f "$metadata" ]; then
     echo -e "${ERROR} $metadata not found"
     exit 1
 fi
+check_metadata_schema "$metadata"
 
 sdk=$(jq -r '.sdk' "$metadata")
 if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
@@ -385,6 +508,24 @@ print_header "$CYAN" "STARTING LOCAL CIA TESTS"
 
 START_TIME=$(date +%s)
 
+#Define Function to uninstall package if not already done by cleanup.sh
+uninstall_package() {
+    package_name="$1"
+
+    if adb shell pm list packages | grep -q "^package:$package_name$"; then
+        echo "NOTICE: Package $package_name is currently installed. Please uninstall your app in cleanup.sh. Proceeding to uninstall automatically..."
+        adb uninstall "$package_name" >/dev/null 2>&1
+
+        #still exists after attempt at uninstall
+        if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Failed to uninstall package $package_name"
+            exit 1
+        else
+            echo "SUCCESS: Package $package_name has been successfully uninstalled"
+        fi
+    fi
+}
+
 # Function to run test checks
 run_test_check() {
     local test_name="$1"
@@ -396,8 +537,64 @@ run_test_check() {
     cd "$ROOT_DIR"
     cd "$DIR"
 
+    # Clear SSRF requests before each test
+    clear_ssrf_requests
+
+    # Mirror CI: for vuln_scenario_0 only, prepare rooted/remounted emulator BEFORE setup
+    if [ -n "$vuln_scenario" ] && [ "$vuln_scenario" = "0" ]; then
+        echo -e "${INFO} Preparing rooted/remounted emulator (CI parity for vuln_scenario_0)"
+        if [ -f "utils/android_emulator_ready.sh" ]; then
+            utils/android_emulator_ready.sh --remount || true
+        else
+            adb get-state 1>/dev/null 2>&1 || adb wait-for-device
+            adb root || true
+            adb wait-for-device
+            adb shell avbctl disable-verification || true
+            adb reboot || true
+            adb wait-for-device
+            adb root || true
+            adb remount || true
+        fi
+        adb logcat -c || true
+    fi
+    
+    # Get package_name from metadata.json (required field) and verify before setup
+    package_name=$(jq -r '.package_name' metadata.json)
+    echo -e "${INFO} Found package_name in metadata.json: $package_name"
+    
+    # Check if package is NOT installed before setup
+    if adb shell pm list packages | grep -q "^package:$package_name$"; then
+        echo -e "${ERROR} Package $package_name is already installed before setup.sh"
+        echo -e "${ERROR} This test expects the package to be uninstalled initially"
+        exit 1
+    else
+        echo -e "${SUCCESS} Package $package_name is not installed (as expected before setup)"
+    fi
+
     echo -e "${INFO} Running setup..."
     { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+
+    # Verify the specific package is installed after setup
+    if adb shell pm list packages | grep -q "^package:$package_name$"; then
+        echo -e "${SUCCESS} Package $package_name is installed after setup.sh"
+    else
+        echo -e "${ERROR} Package $package_name is not installed after setup.sh"
+        echo -e "${ERROR} This indicates setup.sh failed to install the expected package"
+        echo -e "${INFO} Cleaning up..."
+        ./cleanup.sh
+        exit 1
+    fi
+
+    # Wait for app-specific containers to be ready (after setup.sh starts them)
+    check_app_containers_ready
+
+    echo -e "${INFO} Generating flags..."
+    cd "$ROOT_DIR"
+    { python -m utils.uuid_flags_utils "$DIR"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
+    cd "$DIR"
+
+    echo -e "${INFO} Injecting flags..."
+    { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
     verify_shared_net_connectivity
     adb logcat -c
 
@@ -410,10 +607,12 @@ run_test_check() {
     fi
 
     echo -e "${INFO} Running checks..."
+    # Set PYTHONPATH for local testing so generic probes can find utils module
+    export PYTHONPATH="${ROOT_DIR}:${PYTHONPATH:-}"
     if [ "$use_fake_agent_log" = "true" ] && [ -n "$vuln_scenario" ]; then
-        ./run_checks.sh "vuln_scenarios/vuln_scenario_$vuln_scenario/fake_agent_log.log"
+        "$ROOT_DIR/run_checks.sh" . "vuln_scenarios/vuln_scenario_$vuln_scenario/fake_agent_log.log"
     else
-        ./run_checks.sh "$ROOT_DIR/dummy_log.log"
+        "$ROOT_DIR/run_checks.sh" . "$ROOT_DIR/dummy_log.log"
     fi
 
     if [ -n "$vuln_scenario" ]; then
@@ -428,6 +627,7 @@ run_test_check() {
             cat scores.json
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
+            uninstall_package "$package_name"
             exit 1
         fi
     else
@@ -437,13 +637,26 @@ run_test_check() {
             cat scores.json
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
+            uninstall_package "$package_name"
             exit 1
         fi
         echo -e "${SUCCESS} All scores are 1."
+
+        # Check that all generic scores are 1
+        if ! jq -e '[.. | select(type == "number")] | all(. == 1)' generic_scores.json > /dev/null; then
+            echo -e "${ERROR} generic_scores.json does not contain all 1s."
+            cat generic_scores.json
+            echo -e "${INFO} Cleaning up..."
+            ./cleanup.sh
+            uninstall_package "$package_name"
+            exit 1
+        fi
+        echo -e "${SUCCESS} All generic scores are 1."
     fi
 
     echo -e "${INFO} Cleaning up..."
     ./cleanup.sh
+    uninstall_package "$package_name"
     cd -
 }
 
@@ -459,14 +672,14 @@ run_tests_for_mode() {
     # Skip this step if you want to persist your apk
     checkout_commit "$dir"
     
-    # Check if run_checks.sh exists to determine test strategy and required scripts
-    if [ -f "run_checks.sh" ]; then
-        echo -e "${INFO} run_checks.sh found - running full vulnerability scenario tests"
-        local has_run_checks=true
-        required_files=("setup.sh" "run_checks.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
+    # Check if test_X.py exists to determine test strategy and required scripts
+    if [ -f "test_access_control.py" ] || [ -f "test_availability.py" ] || [ -f "test_confidentiality.py" ] || [ -f "test_integrity.py" ]; then
+        echo -e "${INFO} test_X.py probe found - running full vulnerability scenario tests"
+        local has_probes=true
+        required_files=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
     else
-        echo -e "${INFO} run_checks.sh not found - running simplified APK installation test"
-        local has_run_checks=false
+        echo -e "${INFO} test_X.py probe not found - running simplified APK installation test"
+        local has_probes=false
         required_files=("setup.sh" "cleanup.sh")
     fi
     
@@ -483,15 +696,36 @@ run_tests_for_mode() {
         echo -e "${INFO} Skipping APK setup (apk_skip mode) - proceeding directly to setup.sh"
     elif [ "$setup_mode" = "apklink" ]; then
         echo -e "${INFO} Setting up app from APK link."
-        { ./setup_app_apklink.sh; } || { echo -e "${ERROR} setup_app_apklink.sh failed"; exit 1; }
+        app_name=$(basename "$dir")
+        cd "$ROOT_DIR"
+        { python setup_app_apklink.py "$app_name"; } || { echo -e "${ERROR} setup_app_apklink.py failed"; exit 1; }
+        cd "$ROOT_DIR/$dir"
     else
         echo -e "${INFO} Setting up app from source..."
         { ./setup_app_source.sh; } || { echo -e "${ERROR} setup_app_source.sh failed"; exit 1; }
     fi
     
+    # Validate APK structure
+    echo -e "${INFO} Validating APK structure..."
+    APK_DIR="$ROOT_DIR/$dir/apk"
+    if [ ! -d "$APK_DIR" ]; then
+        echo -e "${ERROR} APK directory not found at $APK_DIR"
+        echo -e "${ERROR} APKs must be placed in ${dir}/apk/"
+        exit 1
+    fi
+
+    APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+    if [ "$APK_COUNT" -eq 0 ]; then
+        echo -e "${ERROR} No APK found in $APK_DIR/"
+        echo -e "${ERROR} setup_app_source.sh or setup_app_apklink.py must place APKs in ${dir}/apk/"
+        exit 1
+    fi
+
+    echo -e "${SUCCESS} APK structure validated - found $APK_COUNT APK(s) in $APK_DIR/"
+
     cd "$ROOT_DIR"
     
-    if [ "$has_run_checks" = true ]; then
+    if [ "$has_probes" = true ]; then
         # Create dummy file for test confidentiality
         cat > "$ROOT_DIR/dummy_log.log" <<'EOF'
 # Dummy log file for testing purposes
@@ -505,7 +739,25 @@ EOF
         # Run the three test scenarios
         run_test_check "TEST CHECKS BEFORE VULNERABLE SCENARIOS" "" "false"
         run_test_check "TEST CHECKS AFTER NON-DOS VULNERABLE SCENARIO" "0" "true"
-        run_test_check "TEST CHECKS AFTER DOS VULNERABLE SCENARIO" "1" "false"
+        
+        # DoS testing is OPTIONAL - only run if app has server/container components
+        # Check if app_server field is not an empty string
+        cd "$ROOT_DIR/$DIR"
+        if [ -f "metadata.json" ]; then
+            app_server=$(jq -r '.app_server // empty' metadata.json)
+            if [ -n "$app_server" ]; then
+                echo -e "${INFO} App has server components ($app_server) - running DoS testing..."
+                run_test_check "TEST CHECKS AFTER DOS VULNERABLE SCENARIO" "1" "false"
+                DOS_TESTED=true
+            else
+                echo -e "${INFO} App has no server components (app_server is empty) - skipping DoS testing (not applicable)"
+                DOS_TESTED=false
+            fi
+        else
+            echo -e "${INFO} No metadata.json found - skipping DoS testing (not applicable)"
+            DOS_TESTED=false
+        fi
+        cd "$ROOT_DIR"
     else
         # Run simplified test
         print_header "$CYAN" "RUNNING SIMPLIFIED APK INSTALLATION TEST"
@@ -515,33 +767,49 @@ EOF
         
         echo -e "${INFO} Simple APK build and install test - no vulnerability scenarios"
         
-        # Check packages before setup
-        packages_before=$(adb shell pm list packages | wc -l)
-        echo -e "${INFO} Packages before setup: $packages_before"
+        # Get package_name from metadata.json (required field) and verify before setup
+        package_name=$(jq -r '.package_name' metadata.json)
+        echo -e "${INFO} Found package_name in metadata.json: $package_name"
+        
+        # Check if package is NOT installed before setup
+        if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo -e "${ERROR} Package $package_name is already installed before setup.sh"
+            echo -e "${ERROR} This test expects the package to be uninstalled initially"
+            exit 1
+        else
+            echo -e "${SUCCESS} Package $package_name is not installed (as expected before setup)"
+        fi
         
         echo -e "${INFO} Running setup..."
         { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
-        verify_shared_net_connectivity
-        adb logcat -c
-        
-        # Check packages after setup
-        packages_after=$(adb shell pm list packages | wc -l)
-        echo -e "${INFO} Packages after setup: $packages_after"
-        
-        if [ "$packages_after" -gt "$packages_before" ]; then
-            echo -e "${SUCCESS} Package count increased ($packages_before -> $packages_after) - app installation verified"
-        elif [ "$packages_after" -eq "$packages_before" ]; then
-            echo -e "${WARNING} Package count unchanged - setup may not have installed new packages"
-            echo -e "${WARNING} This could be expected if app was already installed or uses system components"
+
+         # Verify the specific package is installed after setup
+        if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo -e "${SUCCESS} Package $package_name is installed after setup.sh"
         else
-            echo -e "${ERROR} Package count decreased ($packages_before -> $packages_after) - unexpected behavior"
+            echo -e "${ERROR} Package $package_name is not installed after setup.sh"
+            echo -e "${ERROR} This indicates setup.sh failed to install the expected package"
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
             exit 1
         fi
         
+        # Wait for app-specific containers to be ready (after setup.sh starts them)
+        check_app_containers_ready
+
+        echo -e "${INFO} Generating flags..."
+        cd "$ROOT_DIR"
+        { python -m utils.uuid_flags_utils "$dir"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
+        cd "$dir"
+
+        echo -e "${INFO} Injecting flags..."
+        { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
+        verify_shared_net_connectivity
+        adb logcat -c
+        
         echo -e "${INFO} Cleaning up..."
         ./cleanup.sh
+        uninstall_package "$package_name"
         cd -
     fi
     
@@ -565,11 +833,28 @@ if [ $? -ne 0 ] || [ -z "$SETUP_MODES" ]; then
     exit 1
 fi
 
-# Check if any setup mode has run_checks.sh to determine overall strategy
+# Install mobilecybench utils
+pip install -e .
+
+# Run unit tests (only if --unit-tests flag is provided)
+if [ "$RUN_UNIT_TESTS" = true ]; then
+    print_header "$CYAN" "RUNNING UNIT TESTS"
+    echo -e "${INFO} Running unit tests..."
+    if pytest tests/ -v --tb=short; then
+        echo -e "${SUCCESS} Unit tests passed"
+    else
+        echo -e "${ERROR} Unit tests failed"
+        exit 1
+    fi
+else
+    echo -e "${INFO} Skipping unit tests (use --unit-tests flag to run them)"
+fi
+
+# Check if any setup mode has test_X.py to determine overall strategy
 cd "$DIR"
-HAS_RUN_CHECKS=false
-if [ -f "run_checks.sh" ]; then
-    HAS_RUN_CHECKS=true
+HAS_PROBES=false
+if [ -f "test_access_control.py" ] || [ -f "test_availability.py" ] || [ -f "test_confidentiality.py" ] || [ -f "test_integrity.py" ]; then
+    HAS_PROBES=true
 fi
 cd "$ROOT_DIR"
 
@@ -578,10 +863,14 @@ print_header "$CYAN" "CREATING DOCKER NETWORK"
 echo -e "${INFO} Creating shared_net network..."
 docker network create shared_net || echo -e "${INFO} shared_net network already exists"
 
+# Start SSRF Listener
+print_header "$CYAN" "STARTING SSRF LISTENER"
+start_ssrf_listener || echo -e "${WARNING} SSRF listener not started - SSRF detection may not work"
+
 # Start emulator (assuming you have a start_emulator.sh script)
 if [ -f "start_emulator.sh" ]; then
     print_header "$CYAN" "STARTING EMULATOR"
-    start_emulator
+    bash ./start_emulator.sh || echo -e "${WARNING} Failed to start emulator"
 
     echo "Waiting for emulator to boot..."
 
@@ -590,9 +879,6 @@ if [ -f "start_emulator.sh" ]; then
 
     wait_for_device_boot 300
     echo "Emulator booted successfully."
-    
-    # Wait for servers to be ready
-    check_server_ready
 else
     echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
 fi
@@ -610,13 +896,17 @@ SECONDS=$((DURATION % 60))
 
 SETUP_MODE_COUNT=$(echo $SETUP_MODES | wc -w)
 
-if [ "$HAS_RUN_CHECKS" = true ]; then
+if [ "$HAS_PROBES" = true ]; then
     print_header "$GREEN" "ALL TESTS PASSED"
     print_header "$GREEN" "FULL CI COMPLETED SUCCESSFULLY"
     echo -e "${SUCCESS} Complete vulnerability testing performed:"
     echo -e "${SUCCESS} ✓ Baseline scenario"  
     echo -e "${SUCCESS} ✓ Vulnerability scenario 0 (non-DoS)"
-    echo -e "${SUCCESS} ✓ Vulnerability scenario 1 (DoS)"
+    if [ "$DOS_TESTED" = true ]; then
+        echo -e "${SUCCESS} ✓ Vulnerability scenario 1 (DoS) - server components detected"
+    else
+        echo -e "${INFO} Vulnerability scenario 1 (DoS) - skipped (no server components)"
+    fi
     echo -e "${SUCCESS} ✓ All CIAA (Confidentiality, Integrity, Availability, Access Control) checks"
     if [ "$SETUP_MODE_COUNT" -gt 1 ]; then
         echo -e "${SUCCESS} ✓ Tested with multiple setup modes: $SETUP_MODES"
@@ -632,12 +922,12 @@ else
     echo -e "${WARNING} ⚠️  Full vulnerability scenario testing was NOT run"
     echo ""  
     echo -e "${INFO} To enable full CI testing, this app needs:"
-    echo -e "${INFO} • run_checks.sh script"
+    echo -e "${INFO} • Any test_access_control.py, test_availability.py, test_confidentiality.py, test_integrity.py probe script"
     echo -e "${INFO} • Vulnerability scenario implementations"
     echo -e "${INFO} • Full CIAA security test coverage"
     echo ""
     echo -e "${CYAN} The GitHub CI will also run in simplified mode for this app"
-    echo -e "${CYAN} until run_checks.sh is added."
+    echo -e "${CYAN} until a test_X.py probe script is added."
     if [ "$SETUP_MODE_COUNT" -gt 1 ]; then
         echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s (Setup modes: $SETUP_MODES)"
     else
@@ -646,8 +936,13 @@ else
 fi
 
 cd $ROOT_DIR
+
+# Stop SSRF listener
+print_header "$CYAN" "STOPPING SSRF LISTENER"
+stop_ssrf_listener
+
 if [ -f "stop_emulator.sh" ]; then
-    stop_emulator
+    bash ./stop_emulator.sh
 fi
 
 # Run linter
@@ -662,11 +957,11 @@ fi
 
 # Final Timing and Summary
 print_header "$CYAN" "FINAL TIMING AND SUMMARY"
-if [ "$HAS_RUN_CHECKS" = true ]; then
+if [ "$HAS_PROBES" = true ]; then
     print_header "$GREEN" "LOCAL CIA TESTS COMPLETED SUCCESSFULLY"
     prefix="${SUCCESS}"
 else
-    print_header "$YELLOW" "LOCAL BASIC TESTS COMPLETED - ADD run_checks.sh FOR FULL CI"
+    print_header "$YELLOW" "LOCAL BASIC TESTS COMPLETED - ADD test_X.py probe script FOR FULL CI"
     prefix="${INFO}"
 fi
 

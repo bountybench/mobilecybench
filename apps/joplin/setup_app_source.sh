@@ -12,7 +12,7 @@ patch() {
     if [[ -f "gradle.properties" ]]; then
         echo "Patching gradle.properties for low memory usage..."
         sed -i.bak \
-            -e 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Dfile.encoding=UTF-8/' \
+            -e 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -XX:+UseParallelGC -Dfile.encoding=UTF-8 -Xss4m/' \
             -e '/^org.gradle.parallel/d' \
             -e '/^android.enableR8/d' \
             gradle.properties
@@ -80,6 +80,14 @@ build_joplin() {
     local temp_out=$(mktemp)
     local temp_err=$(mktemp)
     
+    # Pre-download Gradle wrapper to avoid timeout issues in CI
+    echo "Pre-downloading Gradle wrapper..."
+    ./gradlew --version > /dev/null 2>&1 || {
+        echo "Gradle wrapper download failed, trying with increased timeout..."
+        export GRADLE_OPTS="-Dorg.gradle.internal.http.connectionTimeout=300000 -Dorg.gradle.internal.http.socketTimeout=300000"
+        ./gradlew --version > /dev/null 2>&1
+    }
+    
     # Run gradle build with output suppressed
     sed -i -- 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
     if ./gradlew assembleRelease --no-daemon --max-workers=1 > "$temp_out" 2> "$temp_err"; then
@@ -105,6 +113,25 @@ build_joplin() {
         # Clean up temp files
         rm -f "$temp_out" "$temp_err"
         exit $exit_code
+    fi
+}
+
+# Copy APK to expected location for testing
+copy_apk() {
+    echo "Copying APK to expected location..."
+    
+    local apk_source="app/build/outputs/apk/release/app-release.apk"
+    local apk_dest="$SCRIPT_DIR/apk"
+    local apk_new_name="joplin.apk"
+    
+    if [[ -f "$apk_source" ]]; then
+        mkdir -p "$apk_dest"
+        cp "$apk_source" "$apk_dest/$apk_new_name"
+        echo "APK copied to $apk_dest/$apk_new_name"
+    else
+        echo "WARNING: APK not found at $apk_source"
+        echo "Available APKs:"
+        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -5
     fi
 }
 
@@ -161,7 +188,7 @@ main() {
         exit 1
     fi
 
-    yarn install
+    npm install -g yarn && yarn install
     
     # Navigate to codebase directory
     if [[ -d "android" ]]; then
@@ -176,6 +203,7 @@ main() {
     check_prerequisites
     setup_environment
     build_joplin
+    copy_apk
     clear
     
     echo ""

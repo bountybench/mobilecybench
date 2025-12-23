@@ -12,12 +12,13 @@ install_home_assistant() {
         exit 1
     fi
 
-    APK_PATH="codebase/app/build/outputs/apk/minimal/debug/app-minimal-debug.apk"
+    APK_PATH="apk/home-assistant-android.apk"
 
     if [[ ! -f $APK_PATH ]]; then
         echo "ERROR: APK not found at $APK_PATH"
         echo "Available APKs:"
-        find codebase/app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
+        find apk -name "*.apk" -type f 2>/dev/null | head -10
+        echo "If no APKs found, run setup_app_source.sh first to build the APK."
         exit 1
     fi
 
@@ -140,8 +141,46 @@ seed_home_assistant_config() {
     fi
 }
 
+wait_for_container_healthy() {
+    local container_name="home-assistant-server"
+    local max_wait_time=120
+    local check_interval=10
+    local elapsed_time=0
+    
+    echo "Waiting for container '$container_name' to be healthy..."
+    
+    while [ $elapsed_time -lt $max_wait_time ]; do
+        if docker ps --format "table {{.Names}}\t{{.Status}}" | grep -q "$container_name"; then
+            local health_status=$(docker inspect --format='{{.State.Health.Status}}' "$container_name" 2>/dev/null || echo "no-healthcheck")
+            case "$health_status" in
+                "healthy")
+                    echo "Container '$container_name' is now healthy!"
+                    return 0
+                    ;;
+                "unhealthy")
+                    echo "[ERROR] Container '$container_name' is unhealthy."
+                    exit 1
+                    ;;
+                "starting"|"no-healthcheck")
+                    echo "Container health status: $health_status (waiting...)"
+                    ;;
+                *)
+                    echo "Container health status: $health_status (waiting...)"
+                    ;;
+            esac
+        else
+            echo "Container '$container_name' not found, checking if it's starting..."
+        fi
+        
+        sleep $check_interval
+        elapsed_time=$((elapsed_time + check_interval))
+    done
+    
+    echo "[ERROR] Container '$container_name' was not healthy."
+    exit 1
+}
+
 main() {
-    install_python_package "uiautomator2"
     install_python_package "websocket-client"
     install_python_package "playwright"
     
@@ -149,10 +188,9 @@ main() {
     echo "Installing Playwright browsers..."
     run_with_timeout "playwright install chromium"
 
-    # Setup user accounts and generate secrets
+    # Setup user accounts
     echo "Setting up user accounts and credentials..."
     python3 setup_accounts.py
-    python3 generate_secrets.py
 
     # Seed files BEFORE starting container so directory mount contains them
     seed_home_assistant_config
@@ -161,6 +199,8 @@ main() {
 
     docker compose up --build -d
 
+    wait_for_container_healthy
+
     # Don't favor APK-link installation. In the future, we can add this as a flag for this file.
     # ./setup_app_apklink.sh
 
@@ -168,19 +208,6 @@ main() {
     install_home_assistant
 
     launch_home_assistant
-    if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
-        if python3 setup_home_assistant.py --username testuser --hostname home-assistant-server; then
-            echo "Setting-up test successful"
-        else
-            echo "Warning: Setting-up test failed"
-        fi
-    else
-        if python3 setup_home_assistant.py --username testuser --hostname 10.0.2.2; then
-            echo "Setting-up test successful"
-        else
-            echo "Warning: Setting-up test failed"
-        fi
-    fi
 }
 
 main "$@"

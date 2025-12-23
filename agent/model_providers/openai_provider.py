@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from openai import OpenAI
+
+from utils.logger import agent_logger
 
 from .base import ModelProvider
 
@@ -17,11 +19,20 @@ class OpenAIProvider(ModelProvider):
     def __init__(self) -> None:
         # Client is initialized lazily to avoid issues if validation fails
         self._client: Optional[OpenAI] = None
+        self._validated: bool = False
 
     def _client_or_init(self) -> OpenAI:
         if self._client is None:
             self._client = OpenAI()
         return self._client
+
+    @property
+    def client(self) -> OpenAI:
+        if not self._validated:
+            raise RuntimeError(
+                "OpenAI provider not validated. Call validate() before accessing client."
+            )
+        return self._client_or_init()
 
     def _test_api_key_connectivity(self) -> None:
         """Attempt a minimal API call to verify the key works."""
@@ -38,6 +49,7 @@ class OpenAIProvider(ModelProvider):
             )
         try:
             self._test_api_key_connectivity()
+            self._validated = True
         except Exception as e:
             raise ValueError(
                 f"Failed to validate OpenAI API key: {e}. Please ensure your API key is valid."
@@ -47,24 +59,38 @@ class OpenAIProvider(ModelProvider):
         self,
         *,
         model: str,
-        input_text: str,
+        input_messages: Optional[Union[str, list]] = None,
+        conversation_id: Optional[str] = None,
         tools: Optional[list] = None,
         max_output_tokens: Optional[int] = None,
         timeout_ms: Optional[int] = None,
+        reasoning_effort: Optional[str] = None,
         extra: Optional[Dict[str, Any]] = None,
     ) -> Any:
         client = self._client_or_init()
         kwargs: Dict[str, Any] = {
             "model": model,
-            "input": input_text,
         }
+
+        if conversation_id:
+            kwargs["conversation"] = {"id": conversation_id}
+            kwargs["input"] = input_messages or []
+        elif input_messages:
+            kwargs["input"] = input_messages
+        else:
+            raise ValueError("Must provide either input_messages or conversation_id")
+
         if tools is not None:
             kwargs["tools"] = tools
         if max_output_tokens is not None:
             kwargs["max_output_tokens"] = max_output_tokens
+        kwargs["max_tool_calls"] = 1
         if timeout_ms is not None:
             kwargs["timeout"] = timeout_ms
+        if reasoning_effort:
+            kwargs["reasoning"] = {"effort": reasoning_effort}
         if extra:
             kwargs.update(extra)
 
+        agent_logger.info(f"OpenAI API request kwargs: {kwargs}")
         return client.responses.create(**kwargs)

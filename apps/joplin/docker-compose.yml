@@ -37,6 +37,8 @@ services:
             - APP_PORT=22300
             - DB_CLIENT=pg
             - POSTGRES_HOST=db
+            - MAX_TIME_DRIFT=0
+            - APP_BASE_URL=http://localhost:22300
         healthcheck:
             test: ["CMD-SHELL", "nc -z localhost 22300 || exit 1"]
             interval: 30s

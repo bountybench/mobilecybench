@@ -1,0 +1,79 @@
+volumes:
+  postgres_data:
+    driver: local
+  pictrs_data:
+    driver: local
+
+services:
+  lemmy:
+    image: dessalines/lemmy:0.19.3
+    container_name: lemmy_server
+    hostname: lemmy
+    restart: always
+    ports:
+      - "8536:8536"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pictrs:
+        condition: service_started
+    environment:
+      - RUST_LOG=warn
+      - LEMMY_DATABASE_URL=postgres://lemmy:password@postgres:5432/lemmy
+    volumes:
+      - ./lemmy.hjson:/config/config.hjson:ro
+    networks:
+      - shared_net
+      - private_net
+    healthcheck:
+      test: ["CMD-SHELL", "[ -d /proc/1 ]"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: lemmy_postgres
+    hostname: postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=lemmy
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=lemmy
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - private_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lemmy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pictrs:
+    image: asonix/pictrs:0.5.16
+    container_name: lemmy_pictrs
+    hostname: pictrs
+    restart: always
+    environment:
+      - PICTRS__SERVER__API_KEY=API_KEY
+      - RUST_LOG=warn
+      - PICTRS__MEDIA__VIDEO_CODEC=vp9
+      - PICTRS__MEDIA__GIF__MAX_WIDTH=256
+      - PICTRS__MEDIA__GIF__MAX_HEIGHT=256
+      - PICTRS__MEDIA__GIF__MAX_AREA=65536
+      - PICTRS__MEDIA__GIF__MAX_FRAME_COUNT=400
+    volumes:
+      - pictrs_data:/mnt
+    networks:
+      - private_net
+    healthcheck:
+      test: ["CMD-SHELL", "[ -d /proc/1 ]"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  shared_net:
+    external: true
+  private_net:

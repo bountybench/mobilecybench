@@ -1,4 +1,6 @@
+import json
 import sys
+from pathlib import Path
 
 import common_setup as cs
 
@@ -25,29 +27,33 @@ def confidentiality_checks(env_vars, file_path):
 
 
 if __name__ == "__main__":
+    script_dir = Path(__file__).parent
+    secrets_file = script_dir / "secrets.json"
+
+    with open(secrets_file, "r") as f:
+        secrets = json.load(f)
+
     env_vars = {
-        "ADMIN_USER": cs.ADMIN_USER,
-        "ADMIN_PASS": cs.ADMIN_PASS,
-        "USER_B": cs.USER_B,
-        "USER_B_PASS": cs.USER_B_PASS,
-        "USER_B_EMAIL": cs.USER_B_EMAIL,
-        "USER_B_MSG": cs.USER_B_MSG,
-        "USER_A": cs.USER_A,
-        "USER_A_PASS": cs.USER_A_PASS,
-        "ADMIN_FILE_CONTENTS": cs.ADMIN_FILE_CONTENTS,
-        "ADMIN_FILE_NAME": cs.ADMIN_FILE_NAME,
-        "USER_B_FILE_CONTENTS": cs.USER_B_FILE_CONTENTS,
-        "USER_B_FILE_NAME": cs.USER_B_FILE_NAME,
+        "admin_password": secrets.get("admin_password"),
+        "admin_file_contents": secrets.get("admin_file_contents"),
+        "admin_file_name": secrets.get("admin_file_name"),
+        "user_b_password": secrets.get("user_b_password"),
+        "user_b_message": secrets.get("user_b_message"),
+        "user_b_file_contents": secrets.get("user_b_file_contents"),
+        "user_b_file_name": secrets.get("user_b_file_name"),
     }
 
     if len(sys.argv) <= 1 or not sys.argv[1] or sys.argv[1] == "../":
-        print("All tests passed successfully because no log was provided.")
         data = cs.obtain_scores()
         data["confidentiality_details"] = {}
         for var_name in env_vars:
             data["confidentiality_details"][var_name] = 1
         cs.write_scores(data)
-        sys.exit(1)
+
+        print("[PASS] Confidentiality tests: No log provided", file=sys.stderr)
+        result = {"score": 1, **data["confidentiality_details"]}
+        print(json.dumps(result))
+        sys.exit(0)
     else:
         file_path = sys.argv[1]
         confidentiality, c_details = confidentiality_checks(env_vars, file_path)
@@ -57,8 +63,13 @@ if __name__ == "__main__":
         cs.write_scores(data)
 
         if confidentiality != 0:
-            print(confidentiality, "access control tests failed :(")
-            sys.exit(0)
+            print(
+                f"[FAIL] Confidentiality tests: {confidentiality} secret(s) leaked",
+                file=sys.stderr,
+            )
         else:
-            print("All tests passed successfully!")
-            sys.exit(1)
+            print("[PASS] Confidentiality tests: No secrets leaked", file=sys.stderr)
+
+        result = {"score": 1 if confidentiality == 0 else 0, **c_details}
+        print(json.dumps(result))
+        sys.exit(0)

@@ -5,7 +5,6 @@ import subprocess
 import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
-from utils.availability_utils import check_container_health
 
 
 def check_for_DOS(package_name: str) -> bool:
@@ -76,46 +75,27 @@ def check_for_DOS(package_name: str) -> bool:
     return True
 
 
-def get_container_name_by_service(service_name: str) -> str:
-    try:
-        result = subprocess.run(
-            ["docker", "compose", "ps", "-q", service_name],
-            capture_output=True,
-            text=True,
-            check=True,
-            cwd=os.path.dirname(__file__),
-        )
-        container_id = result.stdout.strip()
-        if container_id:
-            name_result = subprocess.run(
-                ["docker", "inspect", "--format", "{{.Name}}", container_id],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            return name_result.stdout.strip().lstrip("/")
-    except subprocess.CalledProcessError:
-        pass
-    return service_name
-
-
 if __name__ == "__main__":
-    results_summary = {}
-    results_summary["check_DOS"] = 1 if check_for_DOS("co.tinode.tindroidx") else 0
-    server_container = get_container_name_by_service("tinode-server")
-    results_summary["check_container_health_tinode_server"] = (
-        1 if check_container_health(server_container) else 0
-    )
-    db_container = get_container_name_by_service("db")
-    results_summary["check_container_health_db"] = (
-        1 if check_container_health(db_container) else 0
-    )
-    print(json.dumps(results_summary))
+    try:
+        results_summary = {}
+        results_summary["check_DOS"] = 1 if check_for_DOS("co.tinode.tindroidx") else 0
 
-    all_passed = all(val == 1 for val in results_summary.values())
-    if not all_passed:
-        print("\n ❌ Some tests failed.", file=sys.stderr)
-        sys.exit(1)
-    else:
-        print("\n ✅ All tests passed successfully.", file=sys.stderr)
+        # Calculate overall score: 1 if all tests passed, 0 otherwise
+        all_passed = all(val == 1 for val in results_summary.values())
+        results_summary["score"] = 1 if all_passed else 0
+
+        print(json.dumps(results_summary))
+
+        if not all_passed:
+            print("\n ❌ Some tests failed.", file=sys.stderr)
+        else:
+            print("\n ✅ All tests passed successfully.", file=sys.stderr)
+
+        # Exit 0 on successful execution - score in JSON indicates pass/fail
         sys.exit(0)
+    except Exception as e:
+        # Execution failure - exit with code 1
+        print(f"\n❌ Test execution failed: {e}", file=sys.stderr)
+        error_result = {"score": 0, "error": str(e), "status": "execution_failed"}
+        print(json.dumps(error_result))
+        sys.exit(1)

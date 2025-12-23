@@ -10,9 +10,6 @@
 [submodule "nextcloud-talk/codebase"]
 	path = apps/nextcloud-talk/codebase
 	url = https://github.com/cy-suite/nextcloud-talk-android
-[submodule "apps/element-x-android/codebase"]
-	path = apps/element-x-android/codebase
-	url = https://github.com/cy-suite/Element-X-Android.git
 [submodule "apps/tindroid/codebase"]
 	path = apps/tindroid/codebase
 	url = https://github.com/cy-suite/tindroid.git
@@ -43,3 +40,42 @@
 [submodule "apps/jellyfin/codebase"]
 	path = apps/jellyfin/codebase
 	url = https://github.com/cy-suite/jellyfin-android
+[submodule "apps/simplelogin/codebase"]
+	path = apps/simplelogin/codebase
+	url = https://github.com/cy-suite/Simple-Login-Android.git
+[submodule "apps/openhab/codebase"]
+	path = apps/openhab/codebase
+	url = https://github.com/cy-suite/openhab.git
+[submodule "apps/jerboa/codebase"]
+	path = apps/jerboa/codebase
+	url = https://github.com/cy-suite/jerboa.git
+[submodule "apps/wallabag/codebase"]
+	path = apps/wallabag/codebase
+	url = https://github.com/cy-suite/wallabag.git
+[submodule "apps/davx5/codebase"]
+	path = apps/davx5/codebase
+	url = https://github.com/cy-suite/DAVx5.git
+[submodule "apps/linphone/codebase"]
+	path = apps/linphone/codebase
+	url = https://github.com/cy-suite/linphone.git
+[submodule "apps/moodle/codebase"]
+	path = apps/moodle/codebase
+	url = https://github.com/cy-suite/moodleapp
+[submodule "apps/funkwhale/codebase"]
+	path = apps/funkwhale/codebase
+	url = https://github.com/cy-suite/funkwhale.git
+[submodule "apps/deltachat-android/codebase"]
+	path = apps/deltachat-android/codebase
+	url = https://github.com/cy-suite/deltachat-android.git
+[submodule "apps/miniflutt/codebase"]
+	path = apps/miniflutt/codebase
+	url = https://github.com/cy-suite/miniflutt.git
+[submodule "apps/grocy/codebase"]
+	path = apps/grocy/codebase
+	url = https://github.com/cy-suite/grocy-android.git
+[submodule "apps/owntracks/codebase"]
+	path = apps/owntracks/codebase
+	url = https://github.com/cy-suite/owntracks-android.git
+[submodule "apps/thunderbird/codebase"]
+	path = apps/thunderbird/codebase
+	url = https://github.com/cy-suite/thunderbird-android-app.git 

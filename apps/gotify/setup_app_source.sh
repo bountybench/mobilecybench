@@ -5,7 +5,7 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_PREFIX="[setup_app_source]"
 CODEBASE_DIR="$SCRIPT_DIR/codebase"
-DIST_DIR="$SCRIPT_DIR/dist"
+APK_DIR="$SCRIPT_DIR/apk"
 
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*" >&2; }
@@ -171,8 +171,8 @@ export_artifacts() {
     error "No release APK found."
   }
 
-  mkdir -p "$DIST_DIR"
-  out="$DIST_DIR/app.apk"
+  mkdir -p "$APK_DIR"
+  out="$APK_DIR/gotify.apk"
   cp -f "$apk" "$out"
 
   info "APK ready: $out"
@@ -188,7 +188,7 @@ main() {
   validate_target_sdk
   build_gotify
   export_artifacts
-  info "✅ Build complete: $DIST_DIR/app.apk"
+  info "✅ Build complete: $APK_DIR/gotify.apk"
 }
 
 main "$@"

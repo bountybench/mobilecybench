@@ -14,11 +14,13 @@ jobs:
     outputs:
       modified_dirs: ${{ steps.modified-dirs.outputs.modified_dirs }}
       should_exit: ${{ steps.modified-dirs.outputs.should_exit }}
+      has_non_app_changes: ${{ steps.modified-dirs.outputs.has_non_app_changes }}
       sdk: ${{ steps.get-sdk-java.outputs.sdk }}
       java: ${{ steps.get-sdk-java.outputs.java }}
       system_image: ${{ steps.get-sdk-java.outputs.system_image }}
-      has_run_checks: ${{ steps.check-run-checks.outputs.has_run_checks }}
+      has_probes: ${{ steps.check-run-checks.outputs.has_probes }}
       setup_modes: ${{ steps.setup-strategy.outputs.setup_modes }}
+      has_server: ${{ steps.check-server-components.outputs.has_server }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -40,13 +42,27 @@ jobs:
           get_modified_dirs() {
             git diff --diff-filter=ACMDR --name-only origin/main...HEAD |
               grep '^apps/' |
-              xargs -n1 dirname |   
+              xargs -n1 dirname |
               awk -F/ 'NF>=2 {print $1"/"$2}' |
               sort -u
           }
           EOF
           chmod +x /tmp/shared_functions.sh
           source /tmp/shared_functions.sh
+
+          # Check if there are any changes outside apps/ directory
+          all_changes=$(git diff --diff-filter=ACMDR --name-only origin/main...HEAD)
+          non_app_changes=$(echo "$all_changes" | grep -v '^apps/' || true)
+
+          if [ -n "$non_app_changes" ]; then
+            echo "Detected changes outside apps/ directory:"
+            echo "$non_app_changes"
+            echo "has_non_app_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "All changes are within apps/ directory"
+            echo "has_non_app_changes=false" >> $GITHUB_OUTPUT
+          fi
+
           modified_dirs=$(get_modified_dirs)
           if [ -z "$modified_dirs" ]; then
             echo "No modified directories with essential changes found. Skipping further steps."
@@ -54,7 +70,7 @@ jobs:
           else
             echo "Modified directories:"
             echo "$modified_dirs"
-          
+
             readarray -t dirs <<< "$modified_dirs"
             count=${#dirs[@]}
             if [ "$count" -gt 1 ]; then
@@ -93,7 +109,7 @@ jobs:
 
           java=$(jq -r '.java' $metadata)
           if [ "$?" -ne 0 ] || [ "$java" = "null" ] || [ -z "$java" ]; then
-              echo "${ERROR} Could not extract Java version from $metadata. Use default (17)."
+              echo "ERROR: Could not extract Java version from $metadata. Use default (17)."
               java=17
           else 
               echo "Java version: $java"
@@ -110,17 +126,17 @@ jobs:
           echo "java=$java" >> "$GITHUB_OUTPUT"
           echo "system_image=$system_image" >> "$GITHUB_OUTPUT"
 
-      - name: Check if run_checks.sh exists
+      - name: Check if test_X.py probes exist
         if: steps.modified-dirs.outputs.should_exit != 'true'
         id: check-run-checks
         run: |
           dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
-          if [ -f "$dir/run_checks.sh" ]; then
-            echo "run_checks.sh found in $dir"
-            echo "has_run_checks=true" >> "$GITHUB_OUTPUT"
+          if [ -f "$dir/test_access_control.py" ] || [ -f "$dir/test_availability.py" ] || [ -f "$dir/test_confidentiality.py" ] || [ -f "$dir/test_integrity.py" ]; then
+            echo "test_X.py probe found in $dir"
+            echo "has_probes=true" >> "$GITHUB_OUTPUT"
           else
-            echo "run_checks.sh not found in $dir - will run simplified CI"
-            echo "has_run_checks=false" >> "$GITHUB_OUTPUT"
+            echo "test_X.py probe not found in $dir - will run simplified CI"
+            echo "has_probes=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Determine app setup strategy
@@ -132,20 +148,24 @@ jobs:
           # Check for both setup scripts
           has_source=false
           has_apklink=false
-          
+
           if [ -f "$dir/setup_app_source.sh" ]; then
             has_source=true
             echo "Found setup_app_source.sh"
           fi
-          
-          if [ -f "$dir/setup_app_apklink.sh" ]; then
-            has_apklink=true
-            echo "Found setup_app_apklink.sh"
+
+          # Check if download_link exists in metadata.json
+          if [ -f "$dir/metadata.json" ]; then
+            download_link=$(jq -r '.download_link // empty' "$dir/metadata.json")
+            if [ -n "$download_link" ]; then
+              has_apklink=true
+              echo "Found download_link in metadata.json"
+            fi
           fi
-          
+
           # Validate at least one exists
           if [ "$has_source" = false ] && [ "$has_apklink" = false ]; then
-            echo "ERROR: Neither setup_app_source.sh nor setup_app_apklink.sh found in $dir"
+            echo "ERROR: Neither setup_app_source.sh nor download_link in metadata.json found in $dir"
             exit 1
           fi
           
@@ -154,7 +174,7 @@ jobs:
           
           # Check which specific scripts were modified
           source_modified=$(git diff --name-only origin/main...HEAD | grep -q "$dir/setup_app_source.sh" && echo "true" || echo "false")
-          apklink_modified=$(git diff --name-only origin/main...HEAD | grep -q "$dir/setup_app_apklink.sh" && echo "true" || echo "false")
+          apklink_modified=$(git diff --name-only origin/main...HEAD | grep -q "$dir/metadata.json" && echo "true" || echo "false")
           
           echo "source modified: $source_modified, apklink modified: $apklink_modified"
           
@@ -184,14 +204,22 @@ jobs:
           echo "Selected setup modes: $setup_modes"
           echo "setup_modes=$setup_modes" >> "$GITHUB_OUTPUT"
 
-      - name: Install dependencies
-        if: steps.modified-dirs.outputs.should_exit != 'true'
+      - name: Install test dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libpulse0
           python -m pip install --upgrade pip -q
           pip install -r requirements.txt -q
-          export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
+          pip install -e .
+
+      - name: Run unit tests
+        if: steps.modified-dirs.outputs.has_non_app_changes == 'true'
+        run: |
+          echo "Running unit tests..."
+          pytest tests/ -v --tb=short
+
+      - name: Skip unit tests
+        if: steps.modified-dirs.outputs.has_non_app_changes == 'false'
+        run: |
+          echo "Skipping unit tests - all changes are in apps/ directory"
 
       - name: Check metadata.json
         if: steps.modified-dirs.outputs.should_exit != 'true'
@@ -207,19 +235,40 @@ jobs:
               --dirs "$dir"
           else
             echo "metadata.json not modified in $dir. Skipping test."
+          fi
+
+      - name: Check if app has server components
+        if: steps.modified-dirs.outputs.should_exit != 'true'
+        id: check-server-components
+        run: |
+          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
+          metadata="$dir/metadata.json"
+          
+          # Check if app has server components for DoS testing
+          # App has server if app_server field is not an empty string
+          if [ -f "$metadata" ]; then
+            app_server=$(jq -r '.app_server // empty' "$metadata")
+            if [ -n "$app_server" ]; then
+              echo "App has server components ($app_server) - DoS testing (vuln_scenario_1) will be included"
+              echo "has_server=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "App has no server components (app_server is empty or missing) - DoS testing (vuln_scenario_1) will be skipped"
+              echo "has_server=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "No metadata.json found - assuming no server components"
+            echo "has_server=false" >> "$GITHUB_OUTPUT"
           fi      
 
-  test_full:
+  handle_apk:
     needs: setup
-    if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_run_checks == 'true'
+    if: needs.setup.outputs.should_exit != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 30
     strategy:
       matrix:
-        test_type: [baseline, vuln_scenario_0, vuln_scenario_1]
         setup_mode: ${{ fromJson(needs.setup.outputs.setup_modes) }}
-      fail-fast: false  
-      max-parallel: 3 
+      fail-fast: false
     
     steps:
       - name: Free Disk Space (Ubuntu)
@@ -229,7 +278,151 @@ jobs:
           android: false
           dotnet: true
           haskell: true
-          large-packages: true
+          large-packages: true # revert back to true if an app build fails due to disk space
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Disable Git ownership check
+        run: git config --global --add safe.directory '*'
+
+      - name: Initialize submodule
+        run: |
+          modified_dirs=${{ needs.setup.outputs.modified_dirs }}
+          echo "Initialize submodule for $modified_dirs"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$modified_dirs"
+
+      - name: Checkout commit from metadata
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir"
+          
+          if [[ -f "metadata.json" ]]; then
+            commit=$(jq -r '.["commit_version"]' "metadata.json")
+            
+            if [[ -n "$commit" && "$commit" != "null" ]]; then
+              echo "Found commit: $commit"
+              cd codebase
+              git reset --hard HEAD
+              sudo git clean -fdx
+              git checkout "$commit"
+              cd ..
+            else
+              echo "No commit version found in metadata.json"
+              exit 1
+            fi
+          else
+            echo "No metadata.json file found"
+            exit 1
+          fi
+          
+      - name: Check for Gradle files
+        if: matrix.setup_mode == 'source'
+        id: check-gradle
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir"
+          
+          # Check for any build.gradle* files in app directory or codebase subdirectory
+          if find . -name "build.gradle*" -type f | grep -q .; then
+            echo "Gradle build files found"
+            echo "has_gradle=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No Gradle build files found"
+            echo "has_gradle=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: "${{ needs.setup.outputs.java }}"
+          cache: ${{ steps.check-gradle.outputs.has_gradle == 'true' && 'gradle' || ''}}
+
+      - name: Build or download APK
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          setup_mode="${{ matrix.setup_mode }}"
+          
+          cd "$modified_dir"
+          
+          echo "Setup mode: $setup_mode"
+          
+          if [ "$setup_mode" = "apklink" ]; then
+            echo "Downloading APK from link..."
+            app_name=$(basename "$modified_dir")
+            cd ../..
+            python setup_app_apklink.py "$app_name"
+            cd "$modified_dir"
+          else
+            echo "Building APK from source (this may take 10+ minutes)..."
+            ./setup_app_source.sh
+          fi
+          
+          # Validate APK Path
+          echo "Validating APK path..."
+          APK_DIR="apk"
+          if [ ! -d "$APK_DIR" ]; then
+            echo "ERROR: APK directory not found at $APK_DIR"
+            echo "ERROR: APKs must be placed in ${modified_dir}/apk/"
+            exit 1
+          fi
+          
+          APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+          if [ "$APK_COUNT" -eq 0 ]; then
+            echo "ERROR: No APK found in $APK_DIR/"
+            echo "ERROR: setup_app_source.sh or setup_app_apklink.py must place APKs in ${modified_dir}/apk/"
+            exit 1
+          fi
+          
+          echo "APK path validated - found $APK_COUNT APK(s) in $APK_DIR/"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ matrix.setup_mode }}-${{ github.run_id }}
+          path: ${{ needs.setup.outputs.modified_dirs }}/apk/*.apk
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Cleanup Gradle daemons
+        if: always()
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir" || true
+          (cd codebase && ./gradlew --stop) || true
+          pkill -f GradleDaemon || true
+          pkill -f kotlin.daemon.KotlinCompileDaemon || true
+
+  test_full:
+    needs: [setup, handle_apk]
+    if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_probes == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    strategy:
+      matrix:
+        test_type: ${{ fromJson(needs.setup.outputs.has_server == 'true' && '["baseline", "vuln_scenario_0", "vuln_scenario_1"]' || '["baseline", "vuln_scenario_0"]') }}
+        setup_mode: ${{ fromJson(needs.setup.outputs.setup_modes) }}
+      fail-fast: false
+    
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true # revert back to true if an app build fails due to disk space
           docker-images: true
           swap-storage: true
 
@@ -246,14 +439,29 @@ jobs:
       - name: Create shared functions
         run: |
           cat << 'EOF' > /tmp/shared_functions.sh
-          check_server_ready() {
+          check_app_containers_ready() {
             # Timeout per container in seconds
             TIMEOUT=${TIMEOUT:-180}
             # Interval between checks in seconds
             INTERVAL=${INTERVAL:-1}
 
-            # Get all running containers
-            containers=$(docker ps --format '{{.Names}}')
+            # Get app-specific containers from metadata.json
+            containers=""
+            if [ -f "metadata.json" ]; then
+              # Check for explicit container_names field
+              container_names=$(jq -r '.container_names[]? // empty' metadata.json 2>/dev/null)
+              if [ -n "$container_names" ]; then
+                containers="$container_names"
+                echo "Found explicit container_names in metadata.json: $containers"
+              fi
+            fi
+
+            if [ -z "$containers" ]; then
+              echo "No app-specific containers found in metadata.json - skipping container readiness check"
+              return 0
+            fi
+
+            echo "Checking readiness for app-specific containers: $containers"
 
             for container in $containers; do
               echo "Checking readiness for $container..."
@@ -324,7 +532,7 @@ jobs:
               fi
             done
 
-            echo "All containers are ready!"
+            echo "App-specific containers are ready!"
           }
 
           checkout_commit() {
@@ -395,6 +603,50 @@ jobs:
             fi
           }
 
+          start_ssrf_listener() {
+            echo "Starting SSRF listener container..."
+            local root_dir="${GITHUB_WORKSPACE:-$(pwd)}"
+            local ssrf_compose_dir="$root_dir/evaluation/ssrf_listener"
+            
+            if [ ! -d "$ssrf_compose_dir" ]; then
+              echo "WARNING: SSRF listener directory not found at $ssrf_compose_dir"
+              return 1
+            fi
+            
+            # Stop any existing SSRF listener
+            docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
+            
+            # Build and start the SSRF listener
+            if docker compose -f "$ssrf_compose_dir/docker-compose.yml" up -d --build --wait; then
+              echo "SSRF listener started on port 14377"
+              return 0
+            else
+              echo "WARNING: Failed to start SSRF listener"
+              return 1
+            fi
+          }
+
+          stop_ssrf_listener() {
+            echo "Stopping SSRF listener container..."
+            local root_dir="${GITHUB_WORKSPACE:-$(pwd)}"
+            local ssrf_compose_dir="$root_dir/evaluation/ssrf_listener"
+            
+            if [ -d "$ssrf_compose_dir" ]; then
+              docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
+            fi
+            
+            # Also try to stop container directly in case compose fails
+            docker stop ssrf-probe 2>/dev/null || true
+            docker rm -f ssrf-probe 2>/dev/null || true
+            
+            echo "SSRF listener stopped"
+          }
+
+          clear_ssrf_requests() {
+            echo "Clearing SSRF request log..."
+            docker exec ssrf-probe rm -f /app/logs/ssrf_requests.json 2>/dev/null || true
+          }
+
           EOF
           chmod +x /tmp/shared_functions.sh
 
@@ -402,17 +654,11 @@ jobs:
           echo "Initialize submodule for $modified_dirs"
           git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$modified_dirs"
           
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: "${{ needs.setup.outputs.java }}"
-          cache: gradle
-            
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
@@ -420,10 +666,16 @@ jobs:
           sudo apt-get install -y libpulse0
           python -m pip install --upgrade pip -q
           pip install -r requirements.txt -q
+          pip install -e .
           export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
 
       - name: Create Docker Network
         run: docker network create shared_net || true
+
+      - name: Start SSRF Listener
+        run: |
+          source /tmp/shared_functions.sh
+          start_ssrf_listener || echo "WARNING: SSRF listener not started - SSRF detection may not work"
 
       - name: Enable KVM
         run: |
@@ -439,7 +691,6 @@ jobs:
           #!/bin/bash
           set -e
           source /tmp/shared_functions.sh
-          check_server_ready
           adb devices
           EOF
           
@@ -462,45 +713,160 @@ jobs:
           DUMMY_EOF
 
           cd "$dir"
+          
+          # Get package_name from metadata.json (required field) and verify before setup
+          package_name=$(jq -r '.package_name' metadata.json)
+          echo "Found package_name in metadata.json: $package_name"
+          
+          # Check if package is NOT installed before setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "This test expects the package to be uninstalled initially"
+            exit 1
+          else
+            echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
+          fi
+          
           echo "Running setup..."
           ./setup.sh
+
+          #Define Function to uninstall package if not already done by cleanup.sh
+          uninstall_package() {
+            package_name="$1"
+
+            if adb shell pm list packages | grep -q "^package:$package_name$"; then
+              echo "NOTICE: Package $package_name is currently installed. Please uninstall your app in cleanup.sh. Proceeding to uninstall automatically..."
+              adb uninstall "$package_name" >/dev/null 2>&1
+
+              #still exists after attempt at uninstall
+              if adb shell pm list packages | grep -q "^package:$package_name$"; then
+                echo "::warning::ERROR: Failed to uninstall package $package_name"
+              else
+                echo "SUCCESS: Package $package_name has been successfully uninstalled"
+              fi
+            fi
+          }
+
+          # Verify the specific package is installed after setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "SUCCESS: Package $package_name is installed after setup.sh"
+          else
+            echo "ERROR: Package $package_name is not installed after setup.sh"
+            echo "This indicates setup.sh failed to install the expected package"
+            ./cleanup.sh
+            exit 1
+          fi
+          
+          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          check_app_containers_ready
+          
           verify_shared_net_connectivity
           adb logcat -c
-          
-          echo "Running baseline checks..."
-          ./run_checks.sh "/tmp/dummy_log.log"
+
+          echo "Generating flags..."
+          cd ../..
+          python -m utils.uuid_flags_utils "$dir"
+          cd "$dir"
+
+          echo "Injecting flags..."
+          ../../inject_flags.sh
+
+          echo "Running baseline and generic probe checks..."
+          ../../run_checks.sh . "/tmp/dummy_log.log"
           
           if ! jq -e '[.. | select(type == "number")] | all(. == 1)' scores.json > /dev/null; then
             echo "ERROR: Baseline scores.json does not contain all 1s."
             cat scores.json
             ./cleanup.sh
+            uninstall_package "$package_name"
             exit 1
           fi
+
+          if ! jq -e '[.. | select(type == "number")] | all(. == 1)' generic_scores.json > /dev/null; then
+              echo "ERROR: generic_scores.json does not contain all 1s."
+              cat generic_scores.json
+              ./cleanup.sh
+              uninstall_package "$package_name"
+              exit 1
+          fi
           
-          echo "Baseline checks passed. Cleaning up..."
+          echo "Baseline and generic probe checks passed. Cleaning up..."
+
           ./cleanup.sh
+          uninstall_package "$package_name"
           EOF
               ;;
             "vuln_scenario_0")
               cat <<'EOF' >> test_checks.sh
-          
+
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-          
+
           cd "$dir"
+
+          # Get package_name from metadata.json (required field) and verify before setup
+          package_name=$(jq -r '.package_name' metadata.json)
+          echo "Found package_name in metadata.json: $package_name"
+
+          uninstall_package() {
+            package_name="$1"
+
+            if adb shell pm list packages | grep -q "^package:$package_name$"; then
+              echo "NOTICE: Package $package_name is currently installed. Please uninstall your app in cleanup.sh. Proceeding to uninstall automatically..."
+              adb uninstall "$package_name" >/dev/null 2>&1
+
+              if adb shell pm list packages | grep -q "^package:$package_name$"; then
+                echo "::warning::ERROR: Failed to uninstall package $package_name"
+              else
+                echo "SUCCESS: Package $package_name has been successfully uninstalled"
+              fi
+            fi
+          }
+          
+          # Check if package is NOT installed before setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "This test expects the package to be uninstalled initially"
+            exit 1
+          else
+            echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
+          fi
+          
           echo "Running setup..."
           ./setup.sh
+
+          # Verify the specific package is installed after setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "SUCCESS: Package $package_name is installed after setup.sh"
+          else
+            echo "ERROR: Package $package_name is not installed after setup.sh"
+            echo "This indicates setup.sh failed to install the expected package"
+            ./cleanup.sh
+            exit 1
+          fi
+          
+          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          check_app_containers_ready
+          
           verify_shared_net_connectivity
           adb logcat -c
-          
+
+          echo "Generating flags..."
+          cd ../..
+          python -m utils.uuid_flags_utils "$dir"
+          cd "$dir"
+
+          echo "Injecting flags..."
+          ../../inject_flags.sh
+
           echo "Creating vulnerable scenario 0..."
           cd vuln_scenarios/vuln_scenario_0
           ./vuln.sh
           cd -
           
           echo "Running checks..."
-          ./run_checks.sh "vuln_scenarios/vuln_scenario_0/fake_agent_log.log"
+          ../../run_checks.sh . "vuln_scenarios/vuln_scenario_0/fake_agent_log.log"
           
           score1="vuln_scenarios/vuln_scenario_0/expected_scores.json"
           score2="scores.json"
@@ -508,10 +874,12 @@ jobs:
           if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
             echo "Vuln scenario 0 scores match. Cleaning up..."
             ./cleanup.sh
+            uninstall_package "$package_name"
           else
             echo "ERROR: Vuln scenario 0 scores do not match"
             cat scores.json
             ./cleanup.sh
+            uninstall_package "$package_name"
             exit 1
           fi
           EOF
@@ -532,20 +900,71 @@ jobs:
           ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-          
+
           cd "$dir"
+
+          # Get package_name from metadata.json (required field) and verify before setup
+          package_name=$(jq -r '.package_name' metadata.json)
+          echo "Found package_name in metadata.json: $package_name"
+
+          uninstall_package() {
+            package_name="$1"
+
+            if adb shell pm list packages | grep -q "^package:$package_name$"; then
+              echo "NOTICE: Package $package_name is currently installed. Please uninstall your app in cleanup.sh. Proceeding to uninstall automatically..."
+              adb uninstall "$package_name" >/dev/null 2>&1
+
+              if adb shell pm list packages | grep -q "^package:$package_name$"; then
+                echo "::warning::ERROR: Failed to uninstall package $package_name"
+              else
+                echo "SUCCESS: Package $package_name has been successfully uninstalled"
+              fi
+            fi
+          }
+          
+          # Check if package is NOT installed before setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "This test expects the package to be uninstalled initially"
+            exit 1
+          else
+            echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
+          fi
+          
           echo "Running setup..."
           ./setup.sh
+
+          # Verify the specific package is installed after setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "SUCCESS: Package $package_name is installed after setup.sh"
+          else
+            echo "ERROR: Package $package_name is not installed after setup.sh"
+            echo "This indicates setup.sh failed to install the expected package"
+            ./cleanup.sh
+            exit 1
+          fi
+          
+          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          check_app_containers_ready
+          
           verify_shared_net_connectivity
           adb logcat -c
-          
+
+          echo "Generating flags..."
+          cd ../..
+          python -m utils.uuid_flags_utils "$dir"
+          cd "$dir"
+
+          echo "Injecting flags..."
+          ../../inject_flags.sh
+
           echo "Creating vulnerable scenario 1..."
           cd vuln_scenarios/vuln_scenario_1
           ./vuln.sh
           cd -
           
           echo "Running checks..."
-          ./run_checks.sh "/tmp/dummy_log.log"
+          ../../run_checks.sh . "/tmp/dummy_log.log"
           
           score1="vuln_scenarios/vuln_scenario_1/expected_scores.json"
           score2="scores.json"
@@ -553,10 +972,12 @@ jobs:
           if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
             echo "Vuln scenario 1 scores match. Cleaning up..."
             ./cleanup.sh
+            uninstall_package "$package_name"
           else
             echo "ERROR: Vuln scenario 1 scores do not match"
             cat scores.json
             ./cleanup.sh
+            uninstall_package "$package_name"
             exit 1
           fi
           EOF
@@ -565,88 +986,44 @@ jobs:
           
           chmod +x test_checks.sh
 
-      - name: Create build script
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-          GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: apk-${{ matrix.setup_mode }}-${{ github.run_id }}
+          path: ${{ needs.setup.outputs.modified_dirs }}/apk/
+
+      - name: Verify downloaded APK
         run: |
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
           setup_mode="${{ matrix.setup_mode }}"
-
-          cat << 'EOF' > build_script.sh
-          #!/bin/bash
-          set -e
-          git config --global --add safe.directory '*'
           
-          source /tmp/shared_functions.sh
-          check_server_ready
-          EOF
-          echo "dir=\"$modified_dir\"" >> build_script.sh
-          echo "setup_mode=\"$setup_mode\"" >> build_script.sh
-          cat <<'EOF' >> build_script.sh
-          cd "$dir"
-          checkout_commit "$dir"
+          echo "Verifying APK downloaded for setup_mode: $setup_mode"
+          ls -lh "$modified_dir/apk/"
+          
+          APK_COUNT=$(find "$modified_dir/apk/" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+          if [ "$APK_COUNT" -eq 0 ]; then
+            echo "ERROR: No APK found after download"
+            exit 1
+          fi
+          
+          echo "Successfully downloaded $APK_COUNT APK(s)"
 
+      - name: Verify required test files
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir"
+          
           required_files=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
-
-          echo "Setup mode: $setup_mode"
-          echo "Checking for required files..."
+          
+          echo "Checking for required test files..."
           for script in "${required_files[@]}"; do
             if [[ ! -f "$script" ]]; then
-              echo "ERROR: Required script '$script' not found."
+              echo "ERROR: Required file '$script' not found."
               exit 1
             fi
           done
-
-          # Run appropriate setup script based on mode
-          if [ "$setup_mode" = "apklink" ]; then
-            echo "Setting up app from APK link."
-            ./setup_app_apklink.sh
-          else
-            echo "Setting up app from source..."
-            ./setup_app_source.sh
-          fi
-          EOF
-          chmod +x build_script.sh
-          free -h
-          ./build_script.sh
-                
-      - name: Stabilize runner after build
-        run: |
-          echo "Memory usage immediately after build:"
-          free -h
-          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
-          cd "$modified_dir" || true
           
-          (cd codebase && ./gradlew --stop) || true
-          pkill -f GradleDaemon || true
-          pkill -f kotlin.daemon.KotlinCompileDaemon || true
-          jps -v | grep -E 'GradleDaemon|Kotlin' || true
-          echo "Memory usage after stopping Gradle daemons:"
-          free -h
-          set -euo pipefail
-          THRESHOLD=4096 # 4GB
-          MAX_TRIES=24  # 2 minutes at 5s interval
-          TRIES=0
-          INTERVAL=5
-          echo "Waiting for available memory to exceed ${THRESHOLD}MB..."
-          while ((TRIES < MAX_TRIES)); do
-            AVAILABLE_MEM=$(awk '/MemAvailable/ { printf "%d", $2/1024 }' /proc/meminfo)
-            echo "Current available memory on attempt ${TRIES}/${MAX_TRIES}: ${AVAILABLE_MEM}MB"
-            if (( AVAILABLE_MEM > THRESHOLD )); then
-              echo "Memory threshold of ${THRESHOLD}MB crossed. Continuing..."
-              break
-            fi
-            echo "Retrying in ${INTERVAL} seconds..."
-            (( ++TRIES ))
-            sleep "${INTERVAL}"
-          done
-          if (( TRIES >= MAX_TRIES )); then
-            echo "Timeout waiting for memory to exceed ${THRESHOLD}MB"; 
-            exit 1
-          fi
-          echo "Final memory usage:"
-          free -h
+          echo "All required test files present"
 
       - name: Pre-emulator Resource Check
         run: |
@@ -684,7 +1061,7 @@ jobs:
           profile: pixel_2
           ram-size: 2048    
           force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none -writable-system
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated -writable-system
           disable-animations: true
           script: |
             utils/android_emulator_ready.sh --remount
@@ -700,13 +1077,19 @@ jobs:
           profile: pixel_2
           ram-size: 2048    
           force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated
           disable-animations: true
           script: ./test_checks.sh
 
       - name: Display disk space after tests
         if: always()
         run: df -h
+
+      - name: Stop SSRF Listener
+        if: always()
+        run: |
+          source /tmp/shared_functions.sh
+          stop_ssrf_listener || true
 
       - name: Docker Cleanup after tests
         if: always()
@@ -718,15 +1101,14 @@ jobs:
         run: df -h
 
   test_simple:
-    needs: setup
-    if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_run_checks == 'false'
+    needs: [setup, handle_apk]
+    if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_probes == 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       matrix:
         setup_mode: ${{ fromJson(needs.setup.outputs.setup_modes) }}
-      fail-fast: false  
-      max-parallel: 3
+      fail-fast: false
     
     steps:
       - name: Free Disk Space (Ubuntu)
@@ -736,7 +1118,7 @@ jobs:
           android: false
           dotnet: true
           haskell: true
-          large-packages: true
+          large-packages: true # revert back to true if an app build fails due to disk space
           docker-images: true
           swap-storage: true
 
@@ -753,6 +1135,102 @@ jobs:
       - name: Create shared functions
         run: |
           cat << 'EOF' > /tmp/shared_functions.sh
+          check_app_containers_ready() {
+            # Timeout per container in seconds
+            TIMEOUT=${TIMEOUT:-180}
+            # Interval between checks in seconds
+            INTERVAL=${INTERVAL:-1}
+
+            # Get app-specific containers from metadata.json
+            containers=""
+            if [ -f "metadata.json" ]; then
+              # Check for explicit container_names field
+              container_names=$(jq -r '.container_names[]? // empty' metadata.json 2>/dev/null)
+              if [ -n "$container_names" ]; then
+                containers="$container_names"
+                echo "Found explicit container_names in metadata.json: $containers"
+              fi
+            fi
+
+            if [ -z "$containers" ]; then
+              echo "No app-specific containers found in metadata.json - skipping container readiness check"
+              return 0
+            fi
+
+            echo "Checking readiness for app-specific containers: $containers"
+
+            for container in $containers; do
+              echo "Checking readiness for $container..."
+
+              # Check if container has a health check
+              has_health=$(docker inspect --format '{{if .Config.Healthcheck}}true{{else}}false{{end}}' "$container")
+              if [ "$has_health" = "true" ]; then
+                echo "Container has a health check. Waiting to become healthy..."
+                elapsed=0
+                success=0
+                while [ $elapsed -lt $TIMEOUT ]; do
+                  status=$(docker inspect --format '{{.State.Health.Status}}' "$container" 2>/dev/null)
+                  if [ "$status" == "healthy" ]; then
+                    success=1
+                    break
+                  fi
+                  sleep "$INTERVAL"
+                  elapsed=$((elapsed + INTERVAL))
+                done
+                if [ $success -eq 1 ]; then
+                  echo "$container is healthy."
+                  continue
+                else
+                  echo "Timeout: $container did not become healthy within $TIMEOUT seconds." >&2
+                  exit 1
+                fi
+              else
+                # Get exposed TCP ports
+                ports=$(docker inspect --format '{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{.HostPort}} {{end}}{{end}}' "$container")
+                if [ -z "$ports" ]; then
+                  echo "No exposed ports for $container. Skipping readiness check." >&2
+                  continue
+                fi
+
+                elapsed=0
+                all_success=0
+                while [ $elapsed -lt $TIMEOUT ]; do
+                  success=1
+                  for port_spec in $ports; do
+                    port=$(echo "$port_spec" | cut -d'/' -f1)
+                    proto=$(echo "$port_spec" | cut -d'/' -f2)
+                    if [ "$proto" != "tcp" ]; then
+                      continue  # Skip non-TCP ports
+                    fi
+
+                    # Perform TCP check
+                    if ! nc -z -w 1 localhost "$port" &>/dev/null; then
+                      success=0
+                      break
+                    fi
+                  done
+
+                  if [ $success -eq 1 ]; then
+                    all_success=1
+                    break
+                  fi
+
+                  sleep "$INTERVAL"
+                  elapsed=$((elapsed + INTERVAL))
+                done
+
+                if [ $all_success -eq 1 ]; then
+                  echo "$container is ready via port check on all ports."
+                else
+                  echo "Timeout: $container not ready after $TIMEOUT seconds." >&2
+                  exit 1
+                fi
+              fi
+            done
+
+            echo "App-specific containers are ready!"
+          }
+
           checkout_commit() {
             pwd
             if [[ -f "metadata.json" ]]; then
@@ -820,6 +1298,50 @@ jobs:
               echo "No metadata.json found, skipping connectivity check"
             fi
           }
+
+          start_ssrf_listener() {
+            echo "Starting SSRF listener container..."
+            local root_dir="${GITHUB_WORKSPACE:-$(pwd)}"
+            local ssrf_compose_dir="$root_dir/evaluation/ssrf_listener"
+            
+            if [ ! -d "$ssrf_compose_dir" ]; then
+              echo "WARNING: SSRF listener directory not found at $ssrf_compose_dir"
+              return 1
+            fi
+            
+            # Stop any existing SSRF listener
+            docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
+            
+            # Build and start the SSRF listener
+            if docker compose -f "$ssrf_compose_dir/docker-compose.yml" up -d --build --wait; then
+              echo "SSRF listener started on port 14377"
+              return 0
+            else
+              echo "WARNING: Failed to start SSRF listener"
+              return 1
+            fi
+          }
+
+          stop_ssrf_listener() {
+            echo "Stopping SSRF listener container..."
+            local root_dir="${GITHUB_WORKSPACE:-$(pwd)}"
+            local ssrf_compose_dir="$root_dir/evaluation/ssrf_listener"
+            
+            if [ -d "$ssrf_compose_dir" ]; then
+              docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
+            fi
+            
+            # Also try to stop container directly in case compose fails
+            docker stop ssrf-probe 2>/dev/null || true
+            docker rm -f ssrf-probe 2>/dev/null || true
+            
+            echo "SSRF listener stopped"
+          }
+
+          clear_ssrf_requests() {
+            echo "Clearing SSRF request log..."
+            docker exec ssrf-probe rm -f /app/logs/ssrf_requests.json 2>/dev/null || true
+          }
           EOF
           chmod +x /tmp/shared_functions.sh
 
@@ -827,17 +1349,11 @@ jobs:
           echo "Initialize submodule for $modified_dirs"
           git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$modified_dirs"
           
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: "${{ needs.setup.outputs.java }}"
-          cache: gradle
-            
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
@@ -845,10 +1361,16 @@ jobs:
           sudo apt-get install -y libpulse0
           python -m pip install --upgrade pip -q
           pip install -r requirements.txt -q
+          pip install -e .
           export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
 
       - name: Create Docker Network
         run: docker network create shared_net || true
+
+      - name: Start SSRF Listener
+        run: |
+          source /tmp/shared_functions.sh
+          start_ssrf_listener || echo "WARNING: SSRF listener not started - SSRF detection may not work"
 
       - name: Enable KVM
         run: |
@@ -873,116 +1395,108 @@ jobs:
           cd "$dir"
           echo "Simple APK build and install test - no vulnerability scenarios"
           
-          # Check packages before setup
-          packages_before=$(adb shell pm list packages | wc -l)
-          echo "Packages before setup: $packages_before"
+          # Get package_name from metadata.json (required field) and verify before setup
+          package_name=$(jq -r '.package_name' metadata.json)
+          echo "Found package_name in metadata.json: $package_name"
+          
+          # Check if package is NOT installed before setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "This test expects the package to be uninstalled initially"
+            exit 1
+          else
+            echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
+          fi
           
           echo "Running setup..."
           ./setup.sh
-          verify_shared_net_connectivity
-          adb logcat -c
-          
-          # Check packages after setup
-          packages_after=$(adb shell pm list packages | wc -l)
-          echo "Packages after setup: $packages_after"
-          
-          if [ "$packages_after" -gt "$packages_before" ]; then
-            echo "SUCCESS: Package count increased ($packages_before -> $packages_after) - app installation verified"
-          elif [ "$packages_after" -eq "$packages_before" ]; then
-            echo "WARNING: Package count unchanged - setup may not have installed new packages"
-            echo "This could be expected if app was already installed or uses system components"
+
+          #Define Function to uninstall package if not already done by cleanup.sh
+          uninstall_package() {
+            package_name="$1"
+
+            if adb shell pm list packages | grep -q "^package:$package_name$"; then
+              echo "NOTICE: Package $package_name is currently installed. Please uninstall your app in cleanup.sh. Proceeding to uninstall automatically..."
+              adb uninstall "$package_name" >/dev/null 2>&1
+
+              #still exists after attempt at uninstall
+              if adb shell pm list packages | grep -q "^package:$package_name$"; then
+                echo "::warning::ERROR: Failed to uninstall package $package_name"
+              else
+                echo "SUCCESS: Package $package_name has been successfully uninstalled"
+              fi
+            fi
+          }
+
+          # Verify the specific package is installed after setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "SUCCESS: Package $package_name is installed after setup.sh"
           else
-            echo "ERROR: Package count decreased ($packages_before -> $packages_after) - unexpected behavior"
+            echo "ERROR: Package $package_name is not installed after setup.sh"
+            echo "This indicates setup.sh failed to install the expected package"
+            ./cleanup.sh
             exit 1
           fi
           
+          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          check_app_containers_ready
+          
+          verify_shared_net_connectivity
+          adb logcat -c
+
+          echo "Generating flags..."
+          cd ../..
+          python -m utils.uuid_flags_utils "$dir"
+          cd "$dir"
+
+          echo "Injecting flags..."
+          ../../inject_flags.sh
+
           echo "Cleaning up..."
           ./cleanup.sh
+          uninstall_package "$package_name"
           EOF
           
           chmod +x simple_test.sh
 
-      - name: Create build script
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-          GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: apk-${{ matrix.setup_mode }}-${{ github.run_id }}
+          path: ${{ needs.setup.outputs.modified_dirs }}/apk/
+
+      - name: Verify downloaded APK
         run: |
           modified_dir="${{ needs.setup.outputs.modified_dirs }}"
           setup_mode="${{ matrix.setup_mode }}"
-
-          cat << 'EOF' > build_script.sh
-          #!/bin/bash
-          set -e
-          git config --global --add safe.directory '*'
           
-          source /tmp/shared_functions.sh
-          EOF
-          echo "dir=\"$modified_dir\"" >> build_script.sh
-          echo "setup_mode=\"$setup_mode\"" >> build_script.sh
-          cat <<'EOF' >> build_script.sh
-          cd "$dir"
-          checkout_commit "$dir"
+          echo "Verifying APK downloaded for setup_mode: $setup_mode"
+          ls -lh "$modified_dir/apk/"
+          
+          APK_COUNT=$(find "$modified_dir/apk/" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+          if [ "$APK_COUNT" -eq 0 ]; then
+            echo "ERROR: No APK found after download"
+            exit 1
+          fi
+          
+          echo "Successfully downloaded $APK_COUNT APK(s)"
 
+      - name: Verify required test files
+        run: |
+          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
+          cd "$modified_dir"
+          
           required_scripts=("setup.sh" "cleanup.sh")
-
-          echo "Setup mode: $setup_mode"
-          echo "Checking for required scripts..."
+          
+          echo "Checking for required test scripts..."
           for script in "${required_scripts[@]}"; do
             if [[ ! -f "$script" ]]; then
               echo "ERROR: Required script '$script' not found."
               exit 1
             fi
           done
-
-          # Run appropriate setup script based on mode
-          if [ "$setup_mode" = "apklink" ]; then
-            echo "Setting up app from APK link."
-            ./setup_app_apklink.sh
-          else
-            echo "Setting up app from source..."
-            ./setup_app_source.sh
-          fi
-          EOF
-          chmod +x build_script.sh
-          free -h
-          ./build_script.sh
-                
-      - name: Stabilize runner after build
-        run: |
-          echo "Memory usage immediately after build:"
-          free -h
-          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
-          cd "$modified_dir" || true
           
-          (cd codebase && ./gradlew --stop) || true
-          pkill -f GradleDaemon || true
-          pkill -f kotlin.daemon.KotlinCompileDaemon || true
-          jps -v | grep -E 'GradleDaemon|Kotlin' || true
-          echo "Memory usage after stopping Gradle daemons:"
-          free -h
-          set -euo pipefail
-          THRESHOLD=4096 # 4GB
-          MAX_TRIES=24  # 2 minutes at 5s interval
-          TRIES=0
-          INTERVAL=5
-          echo "Waiting for available memory to exceed ${THRESHOLD}MB..."
-          while ((TRIES < MAX_TRIES)); do
-            AVAILABLE_MEM=$(awk '/MemAvailable/ { printf "%d", $2/1024 }' /proc/meminfo)
-            echo "Current available memory on attempt ${TRIES}/${MAX_TRIES}: ${AVAILABLE_MEM}MB"
-            if (( AVAILABLE_MEM > THRESHOLD )); then
-              echo "Memory threshold of ${THRESHOLD}MB crossed. Continuing..."
-              break
-            fi
-            echo "Retrying in ${INTERVAL} seconds..."
-            (( ++TRIES ))
-            sleep "${INTERVAL}"
-          done
-          if (( TRIES >= MAX_TRIES )); then
-            echo "Timeout waiting for memory to exceed ${THRESHOLD}MB"; 
-            exit 1
-          fi
-          echo "Final memory usage:"
-          free -h
+          echo "All required test scripts present"
 
       - name: Pre-emulator Resource Check
         run: |
@@ -1019,7 +1533,7 @@ jobs:
           profile: pixel_2
           ram-size: 2048    
           force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back none
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated
           disable-animations: true
           script: |
             utils/android_emulator_ready.sh
@@ -1029,6 +1543,12 @@ jobs:
         if: always()
         run: df -h
 
+      - name: Stop SSRF Listener
+        if: always()
+        run: |
+          source /tmp/shared_functions.sh
+          stop_ssrf_listener || true
+
       - name: Docker Cleanup after tests
         if: always()
         run: |
@@ -1037,3 +1557,4 @@ jobs:
       - name: Display disk space after cleanup
         if: always()
         run: df -h
+# Force CI refresh

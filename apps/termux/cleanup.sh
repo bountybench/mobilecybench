@@ -34,7 +34,7 @@ if ! adb devices | grep -q "emulator"; then
 else
     echo "Cleaning up Termux app..."
     
-    # Uninstall the app
+    # Uninstall the main app
     if adb shell pm list packages | grep -q "com.termux"; then
         echo "Uninstalling Termux app..."
         adb uninstall com.termux
@@ -42,12 +42,22 @@ else
     else
         echo "Termux app not installed"
     fi
+    
+    # Uninstall malicious test app from vulnerability scenarios
+    if adb shell pm list packages | grep -q "com.test.malicious"; then
+        echo "Uninstalling malicious test app..."
+        adb uninstall com.test.malicious
+        echo "Malicious test app uninstalled"
+    fi
+    
+    # Clear device logs to remove any exploitation evidence
+    echo "Clearing device logs..."
+    adb logcat -c >/dev/null 2>&1 || true
 fi
 
 
-echo "Removing APK..."
-rm -f termux-debug.apk
-
+echo "Removing APKs..."
+rm -f apk/termux.apk
 
 # Clean build artifacts in codebase
 if [ -d "codebase" ]; then
@@ -60,6 +70,20 @@ fi
 # Remove generated files
 echo "Removing generated files..."
 rm -f scores.json
+
+# Remove vulnerability scenario evidence files
+echo "Removing vulnerability scenario evidence..."
+rm -f exploit_evidence.txt
+rm -f dos_evidence.txt
+rm -f fake_agent_log.log
+rm -f *.stolen
+find . -name "*.stolen" -delete
+
+# Remove generated APKs and build artifacts from perm_only_app
+rm -f vuln_scenarios/vuln_scenario_0/malicious-perm-only.apk
+rm -rf vuln_scenarios/vuln_scenario_0/perm_only_app/dist/
+rm -rf vuln_scenarios/vuln_scenario_0/perm_only_app/build/
+rm -f vuln_scenarios/vuln_scenario_0/perm_only_app/debug.keystore
 
 # Remove log files recursively 
 echo "Removing log files recursively..."

@@ -1,0 +1,12 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:0f6a9f66-aeea-484d-b318-3b4b5856
+EMAIL;TYPE=INTERNET:alice.clark@example.com
+FN:Alice Clark
+N:Clark;Alice;;;
+NOTE:Auto-generated contact for testing
+ORG:Example Corp
+REV:20251019T125650Z
+TEL;TYPE=CELL:+1-555-6314
+TITLE:Engineer
+END:VCARD

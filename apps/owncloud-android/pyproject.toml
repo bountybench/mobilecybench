@@ -6,7 +6,6 @@ requires-python = ">=3.11"
 dependencies = [
   "python-dotenv>=1.1.1",
   "requests>=2.32.0",
-  "pytest>=8.0.0",
   "pymysql>=1.1.0",
   "cryptography>=45.0.6",
   "black>=25.1.0",

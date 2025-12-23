@@ -1,0 +1,105 @@
+FROM --platform=linux/amd64 python:3.12-bookworm
+
+LABEL description="Docker in Docker. Android SDK (33 - 35)."
+
+WORKDIR /mobilecybench
+
+# Install system packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Docker dependencies
+    ca-certificates \
+    curl \
+    gnupg \
+    lsb-release \
+    iptables \
+    # Build tools and utilities
+    git \
+    wget \
+    unzip \
+    openjdk-17-jdk \
+    build-essential \
+    libpq-dev \
+    procps \
+    netcat-openbsd \
+    jq \
+    bc \
+    apktool \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+    && chmod a+r /etc/apt/keyrings/docker.asc \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+    docker-ce \
+    docker-ce-cli \
+    containerd.io \
+    docker-buildx-plugin \
+    docker-compose-plugin \
+    && ln -s /usr/lib/jvm/java-17-openjdk-amd64 /usr/lib/jvm/java-17-openjdk \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Java 21 and Node.js
+RUN wget -q https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.5%2B11/OpenJDK21U-jdk_x64_linux_hotspot_21.0.5_11.tar.gz -O /tmp/jdk21.tar.gz \
+    && mkdir -p /usr/lib/jvm/java-21-openjdk-amd64 \
+    && tar -xzf /tmp/jdk21.tar.gz -C /usr/lib/jvm/java-21-openjdk-amd64 --strip-components=1 \
+    && rm /tmp/jdk21.tar.gz \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g yarn \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set environment variables
+ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 \
+    ANDROID_HOME=/root/.android-sdk \
+    PATH="${JAVA_HOME}/bin:/root/.android-sdk/emulator:/root/.android-sdk/cmdline-tools/latest/bin:/root/.android-sdk/platform-tools:${PATH}"
+
+# Install Android SDK and create AVDs
+RUN mkdir -p ${ANDROID_HOME}/cmdline-tools \
+    && wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip \
+    && unzip -q /tmp/cmdline-tools.zip -d ${ANDROID_HOME}/cmdline-tools \
+    && mv ${ANDROID_HOME}/cmdline-tools/cmdline-tools ${ANDROID_HOME}/cmdline-tools/latest \
+    && rm /tmp/cmdline-tools.zip \
+    && yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses \
+    && ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
+    "platform-tools" \
+    "emulator" \
+    "build-tools;35.0.0" \
+    "build-tools;34.0.0" \
+    "build-tools;33.0.3" \
+    "platforms;android-35" \
+    "platforms;android-34" \
+    "platforms;android-33" \
+    "system-images;android-33;google_apis;x86_64" \
+    "system-images;android-34;google_apis;x86_64" \
+    "system-images;android-35;google_apis;x86_64" \
+    "system-images;android-33;google_apis_playstore;x86_64" \
+    "system-images;android-34;google_apis_playstore;x86_64" \
+    "system-images;android-35;google_apis_playstore;x86_64" \
+    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI33_google_apis -k "system-images;android-33;google_apis;x86_64" --device "pixel_2" \
+    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI34_google_apis -k "system-images;android-34;google_apis;x86_64" --device "pixel_2" \
+    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI35_google_apis -k "system-images;android-35;google_apis;x86_64" --device "pixel_2" \
+    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI33_google_apis_playstore -k "system-images;android-33;google_apis_playstore;x86_64" --device "pixel_2" \
+    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI34_google_apis_playstore -k "system-images;android-34;google_apis_playstore;x86_64" --device "pixel_2" \
+    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI35_google_apis_playstore -k "system-images;android-35;google_apis_playstore;x86_64" --device "pixel_2"
+
+# Create Python virtual environment
+RUN python3.12 -m venv /opt/venv
+
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/opt/venv
+
+# Install Python dependencies
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir -r /tmp/requirements.txt \
+    && rm /tmp/requirements.txt
+RUN git config --global --add safe.directory '*'
+
+# Copy and set up entrypoint
+COPY orchestrator/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

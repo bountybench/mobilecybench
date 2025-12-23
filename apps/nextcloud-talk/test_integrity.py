@@ -1,5 +1,4 @@
 import json
-import os
 import sys
 
 import common_setup as cs
@@ -164,6 +163,8 @@ def check_b_file_integrity():
 
 
 if __name__ == "__main__":
+    import json
+
     tests = [
         make_new_user,
         change_usernames,
@@ -182,8 +183,10 @@ if __name__ == "__main__":
     cs.write_scores(data)
 
     if integrity != 0:
-        print(integrity, "access control tests failed :(")
-        sys.exit(0)
+        print(f"[FAIL] Integrity tests: {integrity} test(s) failed", file=sys.stderr)
     else:
-        print("All tests passed successfully!")
-        sys.exit(1)
+        print("[PASS] Integrity tests: All tests passed", file=sys.stderr)
+
+    result = {"score": 1 if integrity == 0 else 0, **i_tests}
+    print(json.dumps(result))
+    sys.exit(0)
