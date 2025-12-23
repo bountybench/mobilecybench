@@ -101,6 +101,7 @@ class CodexCLIProvider:
             logger.info(f"Timeout: {timeout_ms}ms")
 
             # Default headless configuration
+            # TODO: Move these Codex-specific configurations to runner_config.json to avoid duplication and allow overrides
             config = {
                 "history.persistence": "none",
                 "tui.animations": False,

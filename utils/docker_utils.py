@@ -88,7 +88,8 @@ def run_command_in_container(
             if not exec_info["Running"]:
                 exit_code = exec_info.get("ExitCode", 0)
                 break
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to inspect exec: {e}")
             break
 
         if time.time() - start_time > timeout:
@@ -98,7 +99,13 @@ def run_command_in_container(
             break
         time.sleep(1)
 
-    stop_event.set()
-    stream_thread.join(timeout=2)
+    # If the process finished naturally, we wait for the stream to close on its own.
+    # If we timed out or errored, stop_event is already set.
+    stream_thread.join(timeout=5)
+
+    # Ensure thread is stopped if join timed out
+    if stream_thread.is_alive():
+        stop_event.set()
+        stream_thread.join(timeout=1)
 
     return "".join(stdout_chunks), "".join(stderr_chunks), exit_code
