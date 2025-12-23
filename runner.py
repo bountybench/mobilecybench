@@ -369,15 +369,13 @@ class MobileCybenchRunner:
 
         # In codex mode, pass OPENAI_API_KEY as CODEX_API_KEY to the container
         if self.mode == "codex":
-            # OPENAI_API_KEY should have been loaded by _setup_env_file or _validate_api_key
             openai_key = os.getenv("OPENAI_API_KEY")
             if openai_key:
                 env_vars["CODEX_API_KEY"] = openai_key
                 logger.info("Injected CODEX_API_KEY into agent container environment")
             else:
-                logger.warning(
-                    "OPENAI_API_KEY not found, skipping CODEX_API_KEY injection"
-                )
+                logger.error("No OPENAI_API_KEY, exiting")
+                sys.exit(1)
 
         agent_env = AgentEnvironment(
             app_dir=self.app_dir,
@@ -568,11 +566,9 @@ class MobileCybenchRunner:
                 logger.info("Creating CodexAgent instance")
 
                 agent = CodexAgent(
-                    max_conversation_turns=self.config.max_iterations,
-                    screenshot_enabled=self.config.screenshot_mode,
                     app_name=self.app_name,
-                    app_server=getattr(self, "metadata", {}).get("app_server", None),
                     dry_run=self.config.dry_run,
+                    app_server=getattr(self, "metadata", {}).get("app_server", None),
                     package_name=self.metadata.get("package_name"),
                     username=self.metadata.get("username"),
                     password=self.metadata.get("password"),

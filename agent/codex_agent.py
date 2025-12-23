@@ -31,13 +31,10 @@ from utils.logger import logger, logger_manager
 class CodexAgent:
     def __init__(
         self,
-        max_conversation_turns: int = 30,
-        screenshot_enabled: bool = False,
         app_name: str = "",
         dry_run: bool = False,
         app_server: Optional[str] = None,
         timeout_ms: int = 1_200_000,
-        network_access: bool = True,
         package_name: Optional[str] = None,
         username: Optional[str] = None,
         password: Optional[str] = None,
@@ -47,28 +44,19 @@ class CodexAgent:
         Initialize the Codex agent.
 
         Args:
-            max_conversation_turns: Maximum number of continuation prompts to send to Codex CLI session.
-                Each turn allows Codex CLI to run multiple internal iterations, where an iteration is
-                one or more tool calls involving the language model executing on a single step of its
-                self-generated plan.
-            screenshot_enabled: Whether screenshot capability is available
             app_name: Name of the mobile application being tested
             dry_run: If True, skip actual execution for testing
             app_server: Optional app server URL for network testing
             timeout_ms: Timeout for Codex CLI calls in milliseconds
-            network_access: Whether network access is available
             package_name: Android package name for the app being tested
             username: Username for the app
             password: Password for the app
             include_ssrf: Whether to include SSRF instructions in the prompt
         """
-        self.max_conversation_turns = max_conversation_turns
-        self.screenshot_enabled = screenshot_enabled
         self.app_name = app_name
         self.dry_run = dry_run
         self.app_server = app_server
         self.timeout_ms = timeout_ms
-        self.network_access = network_access
         self.package_name = package_name
         self.username = username
         self.password = password
@@ -104,14 +92,12 @@ class CodexAgent:
 
         # Log initialization
         self._log_section(
-            "CODEX AGENT INITIALIZED",
+            "AGENT CONFIGURATION",
             [
-                f"App: {app_name}",
-                f"Max Conversation Turns: {max_conversation_turns}",
-                f"Screenshot Enabled: {screenshot_enabled}",
+                f"App: {self.app_name}",
+                f"Package: {self.package_name}",
                 f"App Server: {app_server or 'None'}",
                 f"Dry Run: {dry_run}",
-                f"Session ID: {self.provider.session_id}",
             ],
         )
 
@@ -158,7 +144,6 @@ class CodexAgent:
             result = self.provider.execute(
                 prompt=initial_prompt,
                 timeout_ms=self.timeout_ms,
-                max_iterations=self.max_conversation_turns,
             )
 
             if not result.success:
@@ -183,7 +168,6 @@ class CodexAgent:
                     "final_output": result.output_text,
                     "tool_outputs": result.tool_outputs,
                     "execution_time": result.execution_time,
-                    "session_id": result.session_id,
                     "turns": result.turns,
                 }
             )
@@ -224,7 +208,6 @@ class CodexAgent:
             ),
             "log_file": self.log_file,
             "conversation_history": self.conversation_history,
-            "session_info": self.provider.get_session_info(),
         }
 
         if error:
@@ -235,7 +218,6 @@ class CodexAgent:
             logger.info("Status: Completed")
             logger.info(f"Turns: {turns}")
             logger.info(f"Log file: {self.log_file}")
-            logger.info(f"Session ID: {self.provider.session_id}")
 
         return result
 
@@ -247,7 +229,7 @@ class CodexAgent:
             ),
         ]
 
-        if self.network_access and self.app_server:
+        if self.app_server:
             prompt_parts.extend([APP_SERVER_ACCESS.format(app_server=self.app_server)])
 
         if self.username and self.password:
@@ -296,15 +278,9 @@ class CodexAgent:
             "final_message": f"DRY RUN: Codex Agent configured for {self.app_name}",
             "log_file": self.log_file,
             "app_name": self.app_name,
-            "session_info": self.provider.get_session_info(),
         }
 
     def _signal_handler(self, _sig, _frame):
         """Handle Ctrl-C (SIGINT) for graceful cleanup."""
-        logger.info("\nCtrl-C received, performing session cleanup...")
-        try:
-            self.provider.cleanup()
-            logger.info("Session cleanup completed")
-        except Exception as e:
-            logger.warning(f"Session cleanup warning: {e}")
+        logger.info("\nCtrl-C received, exiting...")
         sys.exit(0)
