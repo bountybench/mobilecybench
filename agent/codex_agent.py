@@ -124,13 +124,6 @@ class CodexAgent:
         except Exception as e:
             logger.error(f"Codex Agent execution failed: {e}")
             return self._create_result("error", str(e))
-        finally:
-            # Cleanup session after completion
-            if not self.dry_run:
-                try:
-                    self.provider.cleanup()
-                except Exception as e:
-                    logger.warning(f"Session cleanup warning: {e}")
 
     def _execute_analysis(self, initial_prompt: str) -> Dict[str, Any]:
         """
