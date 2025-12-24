@@ -149,6 +149,16 @@ class AgentEnvironment:
             logger.info("Creating exploit_files directory in container")
             self.container.exec_run("mkdir -p /app/exploit_files")
 
+            if self.mode == "codex":
+                logger.info("Logging in to Codex CLI with API key...")
+                result = self.container.exec_run(
+                    "bash -c 'echo $CODEX_API_KEY | codex login --with-api-key'"
+                )
+                if result.exit_code == 0:
+                    logger.info("Codex CLI logged in successfully")
+                else:
+                    logger.error(f"Codex login failed: {result.output.decode()}")
+
         except Exception as e:
             logger.error(f"Setup failed: {e}")
             # Remove container if it was created

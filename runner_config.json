@@ -12,8 +12,7 @@
   "headless_mode": false,
   "dry_run": false,
   "custom_system_prompt": null,
-  "agent_image": "cybench/mobilecybench:latest",
-  "codex_agent_image": "cybench/mobilecybench:codex",
+  "agent_image": "cybench/mobilecybench-codex:latest",
   "docker_mode": false,
   "allowed_tools": [
     "execute_command",
