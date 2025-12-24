@@ -4,6 +4,8 @@ import os
 import shlex
 import subprocess
 import time
+import queue as queue_module
+import threading
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -123,6 +125,12 @@ class CommandExecutor:
         check: bool = True,
         env: Optional[Dict[str, str]] = None,
     ) -> subprocess.CompletedProcess:
+        
+        def enqueue_output(stream, q: queue_module.Queue):
+            for line in stream:
+                q.put(line)
+            stream.close()
+
         # Use posix=False on Windows to preserve backslashes
         args = shlex.split(command, posix=(os.name != "nt"))
         args = self._fix_bash_command(args)
@@ -140,16 +148,27 @@ class CommandExecutor:
                 text=True,
                 env=env,
             )
+
+            q = queue_module.Queue()
+            t = threading.Thread(target=enqueue_output, args=(process.stdout, q))
+            t.start()
+
             # animation while running
             spinner_idx = 0
-            while True:
-                if process.poll() is not None:  # process finished
-                    break
+            while process.poll() is None or not q.empty():
 
                 elapsed = time.time() - start_time
                 if elapsed > timeout:
                     process.kill()
                     raise subprocess.TimeoutExpired(args, timeout)
+
+                while True:
+                    try:
+                        line = q.get_nowait()
+                    except queue_module.Empty:
+                        break
+                    print("\r" + line, end="")
+
 
                 spinner = spinner_chars[spinner_idx % len(spinner_chars)]
                 time_str = self._format_elapsed_time(elapsed)
@@ -157,10 +176,12 @@ class CommandExecutor:
                 spinner_idx += 1
                 time.sleep(0.1)
 
-            stdout, stderr = process.communicate()
             elapsed = time.time() - start_time
             print("\r" + " " * 80 + "\r", end="", flush=True)  # clear spinner
             time_str = self._format_elapsed_time(elapsed)
+
+            stdout = process.stdout
+            stderr = process.stderr
 
             if process.returncode != 0:
                 logger.error(f"{message}... failed! ({time_str})")
