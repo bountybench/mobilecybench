@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
 import os
+import queue
 import shlex
 import subprocess
-import time
-import queue
 import threading
+import time
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -125,13 +125,13 @@ class CommandExecutor:
         check: bool = True,
         env: Optional[Dict[str, str]] = None,
     ) -> subprocess.CompletedProcess:
-        
+
         def clear_line() -> None:
             print("\r" + " " * 80 + "\r", end="", flush=True)
 
-        def drain_queue(q: queue.Queue, error=False, accumulator: str="") -> str:
+        def drain_queue(q: queue.Queue, error=False, accumulator: str = "") -> str:
             log = logger.info
-            if (error):
+            if error:
                 log = logger.error
             while True:
                 try:
@@ -160,12 +160,11 @@ class CommandExecutor:
                 time_str = self._format_elapsed_time(elapsed)
                 print(f"\r{message} {spinner} ({time_str})", end="", flush=True)
 
-                if (elapsed - timestamp > 0.1):
+                if elapsed - timestamp > 0.1:
                     timestamp = elapsed
                     idx += 1
-            
+
             return update
-        
 
         # Use posix=False on Windows to preserve backslashes
         args = shlex.split(command, posix=(os.name != "nt"))
@@ -186,8 +185,12 @@ class CommandExecutor:
 
             stdout_q = queue.Queue()
             stderr_q = queue.Queue()
-            stdout_t = threading.Thread(target=enqueue_output, args=(process.stdout, stdout_q))
-            stderr_t = threading.Thread(target=enqueue_output, args=(process.stderr, stderr_q))
+            stdout_t = threading.Thread(
+                target=enqueue_output, args=(process.stdout, stdout_q)
+            )
+            stderr_t = threading.Thread(
+                target=enqueue_output, args=(process.stderr, stderr_q)
+            )
             stdout_t.start()
             stderr_t.start()
             stdout = ""
@@ -231,7 +234,7 @@ class CommandExecutor:
                 stdout=stdout,
                 stderr=stderr,
             )
-        
+
         except subprocess.TimeoutExpired:
             stdout_t.join()
             stderr_t.join()
