@@ -125,8 +125,25 @@ class CommandExecutor:
         check: bool = True,
         env: Optional[Dict[str, str]] = None,
     ) -> subprocess.CompletedProcess:
+        
+        def clear_line() -> None:
+            print("\r" + " " * 80 + "\r", end="", flush=True)
 
-        def enqueue_output(stream, q: queue.Queue):
+        def drain_queue(q: queue.Queue, error=False, accumulator: str="") -> str:
+            log = logger.info
+            if (error):
+                log = logger.error
+            while True:
+                try:
+                    line: str = q.get_nowait()
+                except queue.Empty:
+                    break
+                clear_line()
+                log(line.rstrip("\n"))
+                accumulator += line
+            return accumulator
+
+        def enqueue_output(stream, q: queue.Queue) -> None:
             for line in stream:
                 q.put(line)
             stream.close()
@@ -149,30 +166,13 @@ class CommandExecutor:
             
             return update
         
-        update_spinner = spinner()
-        
-        def clear_line():
-            print("\r" + " " * 80 + "\r", end="", flush=True)
-        
-        def drain_queue(q: queue.Queue, error=False, accumulator: str=""):
-            log = logger.info
-            if (error):
-                log = logger.error
-            while True:
-                try:
-                    line: str = q.get_nowait()
-                except queue.Empty:
-                    break
-                clear_line()
-                log(line.rstrip("\n"))
-                accumulator += line
-            return accumulator
 
         # Use posix=False on Windows to preserve backslashes
         args = shlex.split(command, posix=(os.name != "nt"))
         args = self._fix_bash_command(args)
         logger.info(f"{message}...")
         start_time = time.time()
+        update_spinner = spinner()
 
         try:
             process = subprocess.Popen(
@@ -231,6 +231,7 @@ class CommandExecutor:
                 stdout=stdout,
                 stderr=stderr,
             )
+        
         except subprocess.TimeoutExpired:
             stdout_t.join()
             stderr_t.join()
@@ -244,6 +245,7 @@ class CommandExecutor:
             logger.error(f"{message}... timeout! ({elapsed:.0f}s / {timeout}s)")
             logger.error(f"Command: {' '.join(args)}")
             raise
+
         except FileNotFoundError:
             print("\r" + " " * 80 + "\r", end="", flush=True)
             logger.error(f"Command not found: {args[0]}")
