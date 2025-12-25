@@ -4,7 +4,7 @@ import os
 import shlex
 import subprocess
 import time
-import queue as queue_module
+import queue
 import threading
 from pathlib import Path
 from typing import Dict, Optional
@@ -125,21 +125,56 @@ class CommandExecutor:
         check: bool = True,
         env: Optional[Dict[str, str]] = None,
     ) -> subprocess.CompletedProcess:
-        
-        def enqueue_output(stream, q: queue_module.Queue):
+
+        def enqueue_output(stream, q: queue.Queue):
             for line in stream:
                 q.put(line)
             stream.close()
+
+        def spinner():
+            spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+            idx = 0
+            timestamp = 0.0
+
+            def update(elapsed: float) -> int:
+                nonlocal timestamp, idx
+
+                spinner = spinner_chars[idx % len(spinner_chars)]
+                time_str = self._format_elapsed_time(elapsed)
+                print(f"\r{message} {spinner} ({time_str})", end="", flush=True)
+
+                if (elapsed - timestamp > 0.1):
+                    timestamp = elapsed
+                    idx += 1
+            
+            return update
+        
+        update_spinner = spinner()
+        
+        def clear_line():
+            print("\r" + " " * 80 + "\r", end="", flush=True)
+        
+        def drain_queue(q: queue.Queue, error=False, accumulator: str=""):
+            log = logger.info
+            if (error):
+                log = logger.error
+            while True:
+                try:
+                    line: str = q.get_nowait()
+                except queue.Empty:
+                    break
+                clear_line()
+                log(line.rstrip("\n"))
+                accumulator += line
+            return accumulator
 
         # Use posix=False on Windows to preserve backslashes
         args = shlex.split(command, posix=(os.name != "nt"))
         args = self._fix_bash_command(args)
         logger.info(f"{message}...")
-        spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         start_time = time.time()
 
         try:
-            # TODO: Fix run_with_progress to stream stdout to terminal in real-time
             process = subprocess.Popen(
                 args,
                 cwd=cwd,
@@ -149,48 +184,40 @@ class CommandExecutor:
                 env=env,
             )
 
-            q = queue_module.Queue()
-            t = threading.Thread(target=enqueue_output, args=(process.stdout, q))
-            t.start()
+            stdout_q = queue.Queue()
+            stderr_q = queue.Queue()
+            stdout_t = threading.Thread(target=enqueue_output, args=(process.stdout, stdout_q))
+            stderr_t = threading.Thread(target=enqueue_output, args=(process.stderr, stderr_q))
+            stdout_t.start()
+            stderr_t.start()
+            stdout = ""
+            stderr = ""
 
-            # animation while running
-            spinner_idx = 0
-            while process.poll() is None or not q.empty():
+            while process.poll() is None:
 
                 elapsed = time.time() - start_time
                 if elapsed > timeout:
                     process.kill()
                     raise subprocess.TimeoutExpired(args, timeout)
 
-                while True:
-                    try:
-                        line = q.get_nowait()
-                    except queue_module.Empty:
-                        break
-                    print("\r" + line, end="")
+                stdout += drain_queue(stdout_q)
+                stderr += drain_queue(stderr_q, True)
+                update_spinner(elapsed)
 
+            stdout_t.join()
+            stderr_t.join()
 
-                spinner = spinner_chars[spinner_idx % len(spinner_chars)]
-                time_str = self._format_elapsed_time(elapsed)
-                print(f"\r{message} {spinner} ({time_str})", end="", flush=True)
-                spinner_idx += 1
-                time.sleep(0.1)
+            stdout += drain_queue(stdout_q)
+            stderr += drain_queue(stderr_q)
 
             elapsed = time.time() - start_time
-            print("\r" + " " * 80 + "\r", end="", flush=True)  # clear spinner
+            clear_line()
             time_str = self._format_elapsed_time(elapsed)
-
-            stdout = process.stdout
-            stderr = process.stderr
 
             if process.returncode != 0:
                 logger.error(f"{message}... failed! ({time_str})")
                 logger.error(f"Command: {' '.join(args)}")
                 logger.error(f"Exit code: {process.returncode}")
-                if stdout:
-                    logger.error(f"STDOUT:\n{stdout}")
-                if stderr:
-                    logger.error(f"STDERR:\n{stderr}")
                 if check:
                     raise subprocess.CalledProcessError(
                         process.returncode, args, stdout, stderr
@@ -205,15 +232,17 @@ class CommandExecutor:
                 stderr=stderr,
             )
         except subprocess.TimeoutExpired:
-            stdout, stderr = process.communicate()
+            stdout_t.join()
+            stderr_t.join()
+
+            stdout += drain_queue(stdout_q)
+            stderr += drain_queue(stderr_q)
+
             elapsed = time.time() - start_time
-            print("\r" + " " * 80 + "\r", end="", flush=True)  # clear spinner
+            clear_line()
+
             logger.error(f"{message}... timeout! ({elapsed:.0f}s / {timeout}s)")
             logger.error(f"Command: {' '.join(args)}")
-            if stdout:
-                logger.error(f"STDOUT:\n{stdout}")
-            if stderr:
-                logger.error(f"STDERR:\n{stderr}")
             raise
         except FileNotFoundError:
             print("\r" + " " * 80 + "\r", end="", flush=True)
