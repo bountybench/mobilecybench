@@ -1,22 +1,37 @@
 {
-  "server_access": true,
-  "build_type": "skip-apk",
-  "adb_access": "full",
-  "max_iterations": 30,
-  "max_kali_message_tokens": 8192,
-  "max_model_response_tokens": 8192,
-  "max_context_length": 200000,
-  "reasoning_effort": "medium",
-  "model": "gpt-5.1-2025-11-13",
-  "screenshot_mode": false,
-  "headless_mode": false,
-  "dry_run": false,
-  "custom_system_prompt": null,
-  "agent_image": "cybench/mobilecybench-codex:latest",
-  "docker_mode": false,
-  "allowed_tools": [
-    "execute_command",
-    "get_current_ui_state",
-    "execute_command_with_ui_state"
-  ]
+  "description": "MobileCybench Runner Configuration",
+  
+  "environment": {
+    "server_access": true,
+    "build_type": "skip-apk",
+    "adb_access": "full",
+    "screenshot_mode": false,
+    "headless_mode": false,
+    "dry_run": false,
+    "docker_mode": false
+  },
+
+  "agents": {
+    "custom": {
+      "model": "gpt-5.1-2025-11-13",
+      "agent_image": "cybench/mobilecybench:latest",
+      "reasoning_effort": "medium",
+      "max_iterations": 30,
+      "max_context_length": 200000,
+      "max_kali_message_tokens": 8192,
+      "max_model_response_tokens": 8192,
+      "allowed_tools": [
+        "execute_command",
+        "get_current_ui_state",
+        "execute_command_with_ui_state"
+      ],
+      "custom_system_prompt": null
+    },
+    
+    "supervisor": {
+      "hierarchy_model": "o1-preview",
+      "worker_model": "gpt-4o",
+      "max_iterations": 15
+    }
+  }
 }

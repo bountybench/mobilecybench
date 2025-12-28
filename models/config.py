@@ -27,7 +27,8 @@ class CustomAgentConfig(BaseModel):
 
 class SupervisorAgentConfig(BaseModel):
     # Example fields for supervisor
-    model: str
+    hierarchy_model: str
+    worker_model: str
     max_iterations: int = 10
 
 class RunnerConfig(BaseModel):
