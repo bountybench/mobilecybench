@@ -124,7 +124,7 @@ class MobileCybenchRunner:
         logger.info("Validating input...")
 
         # Validate API key early (before starting emulator and app servers)
-        if not self.config.dry_run:
+        if not self.config.environment.dry_run:
             self._validate_api_key()
 
         # Check if app directory exists
@@ -150,7 +150,7 @@ class MobileCybenchRunner:
             self._exit_with_error(f"Failed to generate random flags: {e}")
 
         # Check for required scripts
-        if self.config.build_type == "skip-apk":
+        if self.config.environment.build_type == "skip-apk":
             # Check if any .apk file exists in app_dir/apk/
             apk_dir = self.app_dir / "apk"
             apk_exists = any(apk_dir.glob("*.apk")) if apk_dir.exists() else False
@@ -159,14 +159,14 @@ class MobileCybenchRunner:
                     f"For build_type 'skip-apk', an APK file must exist in {apk_dir}"
                 )
 
-        elif self.config.build_type == "source":
+        elif self.config.environment.build_type == "source":
             # Check for setup_app_source.sh
             if not (self.app_dir / "setup_app_source.sh").exists():
                 self._exit_with_error(
                     "For build_type 'source', setup_app_source.sh must exist in the app directory"
                 )
 
-        elif self.config.build_type == "download-apk":
+        elif self.config.environment.build_type == "download-apk":
             # Check for download_link in metadata
             if not self.metadata.get("download_link"):
                 self._exit_with_error(
@@ -175,7 +175,7 @@ class MobileCybenchRunner:
 
         else:
             self._exit_with_error(
-                f"Unsupported Build Type Detected: {self.config.build_type}"
+                f"Unsupported Build Type Detected: {self.config.environment.build_type}"
             )
 
         # Check for static vulnerability reports if in supervisor mode
@@ -240,9 +240,9 @@ class MobileCybenchRunner:
 
     def _setup_app_apk(self):
         """APK Handling - Download, Build, or Skip"""
-        if self.config.build_type == "skip-apk":
+        if self.config.environment.build_type == "skip-apk":
             log_banner("SKIPPING APK HANDLING STEP")
-        elif self.config.build_type == "download-apk":
+        elif self.config.environment.build_type == "download-apk":
             log_banner("FETCHING APK USING APKLINK")
             try:
                 setup_script = self.project_root / "setup_app_apklink.py"
@@ -359,7 +359,7 @@ class MobileCybenchRunner:
         # Setup agent kali environment with appropriate image
         logger.info("Setting up agent Kali environment...")
 
-        image_name = self.config.agent_image
+        image_name = self.config.agents[self.mode].agent_image
         logger.info(f"Using agent image: {image_name}")
         # Prepare environment variables
         env_vars = {
@@ -534,7 +534,7 @@ class MobileCybenchRunner:
         agent_type = f"{self.mode.upper()} AGENT"
         log_banner(f"RUNNING {agent_type}")
 
-        if self.config.dry_run:
+        if self.config.environment.dry_run:
             return self.run_interactive_shell()
 
         logger.info(f"Starting {agent_type.lower()} execution...")
@@ -547,9 +547,9 @@ class MobileCybenchRunner:
                 logger.info("Starting supervisor agent execution...")
 
                 result = create_and_run_supervisor_system(
-                    model=self.config.model,
-                    max_iterations=self.config.max_iterations,
-                    allowed_tools=self.config.allowed_tools,
+                    model=self.config.agents[self.mode].model,
+                    max_iterations=self.config.agents[self.mode].max_iterations,
+                    allowed_tools=self.config.agents[self.mode].allowed_tools,
                     metadata=getattr(self, "metadata", {}),
                 )
 
@@ -567,7 +567,7 @@ class MobileCybenchRunner:
 
                 agent = CodexAgent(
                     app_name=self.app_name,
-                    dry_run=self.config.dry_run,
+                    dry_run=self.config.environment.dry_run,
                     app_server=getattr(self, "metadata", {}).get("app_server", None),
                     package_name=self.metadata.get("package_name"),
                     username=self.metadata.get("username"),
@@ -585,18 +585,10 @@ class MobileCybenchRunner:
                 include_ssrf = bool(container_names)
 
                 agent = CustomAgent(
-                    model=self.config.model,
-                    max_iterations=self.config.max_iterations,
-                    max_model_response_tokens=self.config.max_model_response_tokens,
-                    max_kali_message_tokens=self.config.max_kali_message_tokens,
-                    max_context_length=self.config.max_context_length,
-                    screenshot_enabled=self.config.screenshot_mode,
+                    config=self.config,
                     app_name=self.app_name,
                     app_server=getattr(self, "metadata", {}).get("app_server", None),
-                    dry_run=self.config.dry_run,
-                    system_prompt=self.config.custom_system_prompt,
                     package_name=self.metadata.get("package_name"),
-                    reasoning_effort=self.config.reasoning_effort,
                     username=self.metadata.get("username"),
                     password=self.metadata.get("password"),
                     include_ssrf=include_ssrf,
@@ -921,14 +913,14 @@ class MobileCybenchRunner:
     def run(self):
         try:
             self._validate_input()
-            if not self.config.dry_run:
+            if not self.config.environment.dry_run:
                 self._setup_env_file()
             log_banner("SETTING UP ANDROID EMULATOR")
             sdk_version = (
                 self.metadata.get("sdk") if hasattr(self, "metadata") else None
             )
             with EmulatorManager(
-                docker_mode=self.config.docker_mode,
+                docker_mode=self.config.environment.docker_mode,
                 project_root=self.project_root,
                 sdk_version=sdk_version,
                 app_name=self.app_name,
@@ -966,7 +958,7 @@ class MobileCybenchRunner:
                 )
             else:
                 with EmulatorManager(
-                    docker_mode=self.config.docker_mode,
+                    docker_mode=self.config.environment.docker_mode,
                     project_root=self.project_root,
                     sdk_version=sdk_version,
                     app_name=self.app_name,

@@ -22,6 +22,7 @@ from agent.prompts.prompts import (
     TARGET_HOST_EXAMPLE,
 )
 from agent.tools.runtime import ToolRuntime
+from models.config import RunnerConfig
 from utils.agent_utils import take_screenshot
 from utils.logger import agent_logger, logger_manager
 from utils.reasoning_utils import is_reasoning_supported_model
@@ -32,27 +33,17 @@ from utils.token_tracker import TokenTracker
 class CustomAgent:
     def __init__(
         self,
-        model: str,
-        max_iterations: int,
-        max_model_response_tokens: int,
-        max_kali_message_tokens: int,
+        config: RunnerConfig,
         # TODO need to enforce this before sending off requests
-        max_context_length: int,
-        screenshot_enabled: bool,
         app_name: str,
-        dry_run: bool,
-        system_prompt: str = None,
         timeout_ms: int = 600_000,
         app_server: str = None,
         network_access: bool = True,
         package_name: str = None,
-        reasoning_effort: str = None,
         username: str = None,
         password: str = None,
         include_ssrf: bool = True,
     ):
-        self.dry_run = dry_run
-        self.reasoning_effort = reasoning_effort
         self.include_ssrf = include_ssrf
 
         # Load environment variables from .env file in the agent directory
@@ -62,23 +53,19 @@ class CustomAgent:
             load_dotenv(env_file, override=True)
 
         # Ensure global token truncator knows the correct model
+        model = config.agents["custom"].model
         if model:
             os.environ["MODEL"] = model
 
         # Auto-detect provider based on model name
         self.provider = get_model_provider(model=model)
         self.provider.validate()
-
-        self.model = model
-        self.max_iterations = max_iterations
-        self.max_model_response_tokens = max_model_response_tokens
-        self.max_kali_message_tokens = max_kali_message_tokens
-        self.max_context_length = max_context_length
+        
+        self.config = config
         self.timeout_ms = timeout_ms
-        self.screenshot_enabled = screenshot_enabled
         self.app_server = app_server
-        self.network_access = network_access
         self.app_name = app_name
+        self.network_access = network_access
         self.package_name = package_name
         self.username = username
         self.password = password
@@ -90,7 +77,8 @@ class CustomAgent:
         self.conversation_id = None
         self._initial_tree_context = get_directory_tree()
 
-        if not self.dry_run:
+        if not self.config.environment.dry_run:
+            system_prompt = self.config.agents["custom"].custom_system_prompt
             if system_prompt:
                 self.system_prompt = {
                     "role": "system",
@@ -103,7 +91,7 @@ class CustomAgent:
             # Initialize conversation with system prompt
             system_content = self.system_prompt["content"][0]["text"]
             conversation = self.provider.client.conversations.create(
-                metadata={"app_name": self.app_name, "model": self.model},
+                metadata={"app_name": self.app_name, "model": model},
                 items=[
                     {"type": "message", "role": "system", "content": system_content}
                 ],
@@ -127,8 +115,8 @@ class CustomAgent:
 
         agent_logger.info("Agent Run Started")
 
-        agent_logger.info(f"Model: {self.model}")
-        agent_logger.info(f"Max Iterations: {self.max_iterations}")
+        agent_logger.info(f"Model: {model}")
+        agent_logger.info(f"Max Iterations: {self.config.agents['custom'].max_iterations}")
         agent_logger.info("=" * 80)
 
     def _get_default_system_prompt(self) -> dict:
@@ -258,7 +246,7 @@ class CustomAgent:
             agent_logger.warning(f"Failed to archive conversation before deletion: {e}")
 
     def run(self) -> dict:
-        if self.dry_run:
+        if self.config.environment.dry_run:
             agent_logger.info("Dry run: Quick return without execution")
             return {
                 "status": "This is a dry run. No OpenAI API calls were made.",
@@ -267,14 +255,14 @@ class CustomAgent:
                 "log_file": self.log_file,
             }
 
-        for turn in range(self.max_iterations):
+        for turn in range(self.config.agents["custom"].max_iterations):
             agent_logger.info(
-                f"{'=' * 20} TURN {turn + 1}/{self.max_iterations} {'=' * 20}"
+                f"{'=' * 20} TURN {turn + 1}/{self.config.agents["custom"].max_iterations} {'=' * 20}"
             )
 
             agent_logger.info("-" * 40)
 
-            if self.screenshot_enabled:
+            if self.config.environment.screenshot_mode:
                 try:
                     screenshot_result = take_screenshot()
                     if screenshot_result.get("success"):
@@ -332,7 +320,7 @@ class CustomAgent:
             for attempt in range(max_retries):
                 try:
                     with time_tracker.llm_timing(
-                        model=self.model,
+                        model=self.config.agents["custom"].model,
                         conversation_id=self.conversation_id,
                         turn=turn + 1,
                     ):
@@ -342,16 +330,16 @@ class CustomAgent:
                         self.next_turn_inputs = []
 
                         resp = self.provider.call(
-                            model=self.model,
+                            model=self.config.agents["custom"].model,
                             conversation_id=self.conversation_id,
                             input_messages=current_inputs,
                             tools=self.runtime.get_tool_definitions(),
-                            max_output_tokens=self.max_model_response_tokens,
+                            max_output_tokens=self.config.agents["custom"].max_model_response_tokens,
                             timeout_ms=self.timeout_ms,
                             reasoning_effort=(
                                 reasoning_effort
                                 if reasoning_effort
-                                and is_reasoning_supported_model(self.model)
+                                and is_reasoning_supported_model(self.config.agents["custom"].model)
                                 else None
                             ),
                         )
@@ -408,7 +396,7 @@ class CustomAgent:
 
             # Record token usage and cost
             try:
-                self.token_tracker.record_from_openai_response(resp, model=self.model)
+                self.token_tracker.record_from_openai_response(resp, model=self.config.agents["custom"].model)
             except Exception as e:
                 agent_logger.warning(f"Token tracking failed: {e}")
 
@@ -648,7 +636,7 @@ class CustomAgent:
 
         return {
             "status": "max_iterations_reached",
-            "turns": self.max_iterations,
+            "turns": self.config.agents["custom"].max_iterations,
             "final_message": None,
             "token_totals": self.token_tracker.totals(),
             "log_file": self.log_file,

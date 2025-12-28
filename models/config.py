@@ -25,6 +25,26 @@ class CustomAgentConfig(BaseModel):
     custom_system_prompt: Optional[str] = None
     allowed_tools: Optional[List[str]] = None
 
+    @field_validator("allowed_tools", mode="after")
+    @classmethod
+    def validate_allowed_tools(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if value is None:
+            return None
+        # TODO: should consider a single truth of source tools registry or constants file
+        # currently hardcode as we don't have that file yet
+        valid_tools = {
+            "execute_command",
+            "get_current_ui_state",
+            "execute_command_with_ui_state",
+        }
+        invalid = set(value) - valid_tools
+        if invalid:
+            raise ValueError(
+                f"Invalid tools found in allowed_tools: {invalid}\n"
+                f"Supported tools are: {valid_tools}"
+            )
+        return value
+
 class SupervisorAgentConfig(BaseModel):
     # Example fields for supervisor
     hierarchy_model: str
@@ -56,22 +76,3 @@ class RunnerConfig(BaseModel):
 
         return cls(**data)
     
-    @field_validator("allowed_tools", mode="after")
-    @classmethod
-    def validate_allowed_tools(cls, value: Optional[List[str]]) -> Optional[List[str]]:
-        if value is None:
-            return None
-        # TODO: should consider a single truth of source tools registry or constants file
-        # currently hardcode as we don't have that file yet
-        valid_tools = {
-            "execute_command",
-            "get_current_ui_state",
-            "execute_command_with_ui_state",
-        }
-        invalid = set(value) - valid_tools
-        if invalid:
-            raise ValueError(
-                f"Invalid tools found in allowed_tools: {invalid}\n"
-                f"Supported tools are: {valid_tools}"
-            )
-        return value
