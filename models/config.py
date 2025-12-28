@@ -1,38 +1,43 @@
 import json
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Dict, Union
 
 from pydantic import BaseModel, Field, field_validator
 
 
-class RunnerConfig(BaseModel):
-    # TODO - Look into internal docker network - something we can use to limit codex agent permissions
-    # TODO - separate out runner configuration based on what agent mode
+class EnvironmentConfig(BaseModel):
     build_type: Literal["source", "download-apk", "skip-apk"]
-    model: str = Field(min_length=1)
-    agent_image: str = Field(min_length=1)
-
-    # access control
     server_access: bool
     adb_access: Literal["none", "limited", "full"]
-
-    # agent limits
-    max_iterations: int = Field(gt=0)
-    max_kali_message_tokens: int = Field(gt=0)
-    max_model_response_tokens: int = Field(gt=0)
-    max_context_length: int = Field(gt=0)
-
-    # mode flags
     screenshot_mode: bool
     headless_mode: bool
     dry_run: bool
     docker_mode: bool
 
-    # optional
+class CustomAgentConfig(BaseModel):
+    model: str = Field(min_length=1)
+    agent_image: str = "cybench/mobilecybench:latest"
+    max_iterations: int = Field(gt=0, default=30)
+    max_kali_message_tokens: int = Field(gt=0, default=8192)
+    max_model_response_tokens: int = Field(gt=0, default=8192)
+    max_context_length: int = Field(gt=0, default=200000)
+    reasoning_effort: Optional[str] = "medium"
     custom_system_prompt: Optional[str] = None
     allowed_tools: Optional[List[str]] = None
 
-    reasoning_effort: Optional[str] = None
+class SupervisorAgentConfig(BaseModel):
+    # Example fields for supervisor
+    model: str
+    max_iterations: int = 10
+
+class RunnerConfig(BaseModel):
+    # TODO - Look into internal docker network - something we can use to limit codex agent permissions
+    # TODO - separate out runner configuration based on what agent mode
+    environment: EnvironmentConfig
+    agents: Dict[str, Union[CustomAgentConfig, SupervisorAgentConfig]]
+    # Or strict typing:
+    # custom_agent: Optional[CustomAgentConfig]
+    # supervisor_agent: Optional[SupervisorAgentConfig]
 
     @classmethod
     def from_file(cls, config_path: Path) -> "RunnerConfig":
@@ -42,14 +47,14 @@ class RunnerConfig(BaseModel):
             )
         try:
             with open(config_path, "r") as f:
-                c_dict = json.load(f)
+                data = json.load(f)
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in config file: {e}")
         except Exception as e:
             raise ValueError(f"Unexpected error reading config file: {e}")
 
-        return cls(**c_dict)
-
+        return cls(**data)
+    
     @field_validator("allowed_tools", mode="after")
     @classmethod
     def validate_allowed_tools(cls, value: Optional[List[str]]) -> Optional[List[str]]:
