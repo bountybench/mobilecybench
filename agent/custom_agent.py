@@ -620,7 +620,7 @@ class CustomAgent:
         # Log completion
         agent_logger.info(f"{'=' * 20} RUN COMPLETED {'=' * 20}")
         agent_logger.info("Status: Maximum iterations reached")
-        agent_logger.info(f"Total turns: {self.max_iterations}")
+        agent_logger.info(f"Total turns: {self.config.agents["custom"].max_iterations}")
         agent_logger.info(f"Token totals: {json.dumps(self.token_tracker.totals())}")
         agent_logger.info(f"Log file: {self.log_file}")
 
