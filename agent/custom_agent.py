@@ -60,7 +60,7 @@ class CustomAgent:
         # Auto-detect provider based on model name
         self.provider = get_model_provider(model=model)
         self.provider.validate()
-        
+
         self.config = config
         self.timeout_ms = timeout_ms
         self.app_server = app_server
@@ -116,7 +116,9 @@ class CustomAgent:
         agent_logger.info("Agent Run Started")
 
         agent_logger.info(f"Model: {model}")
-        agent_logger.info(f"Max Iterations: {self.config.agents['custom'].max_iterations}")
+        agent_logger.info(
+            f"Max Iterations: {self.config.agents['custom'].max_iterations}"
+        )
         agent_logger.info("=" * 80)
 
     def _get_default_system_prompt(self) -> dict:
@@ -334,12 +336,16 @@ class CustomAgent:
                             conversation_id=self.conversation_id,
                             input_messages=current_inputs,
                             tools=self.runtime.get_tool_definitions(),
-                            max_output_tokens=self.config.agents["custom"].max_model_response_tokens,
+                            max_output_tokens=self.config.agents[
+                                "custom"
+                            ].max_model_response_tokens,
                             timeout_ms=self.timeout_ms,
                             reasoning_effort=(
                                 reasoning_effort
                                 if reasoning_effort
-                                and is_reasoning_supported_model(self.config.agents["custom"].model)
+                                and is_reasoning_supported_model(
+                                    self.config.agents["custom"].model
+                                )
                                 else None
                             ),
                         )
@@ -396,7 +402,9 @@ class CustomAgent:
 
             # Record token usage and cost
             try:
-                self.token_tracker.record_from_openai_response(resp, model=self.config.agents["custom"].model)
+                self.token_tracker.record_from_openai_response(
+                    resp, model=self.config.agents["custom"].model
+                )
             except Exception as e:
                 agent_logger.warning(f"Token tracking failed: {e}")
 

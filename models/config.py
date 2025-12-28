@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import List, Literal, Optional, Dict, Union
+from typing import Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -13,6 +13,7 @@ class EnvironmentConfig(BaseModel):
     headless_mode: bool
     dry_run: bool
     docker_mode: bool
+
 
 class CustomAgentConfig(BaseModel):
     model: str = Field(min_length=1)
@@ -45,11 +46,13 @@ class CustomAgentConfig(BaseModel):
             )
         return value
 
+
 class SupervisorAgentConfig(BaseModel):
     # Example fields for supervisor
     hierarchy_model: str
     worker_model: str
     max_iterations: int = 10
+
 
 class RunnerConfig(BaseModel):
     # TODO - Look into internal docker network - something we can use to limit codex agent permissions
@@ -75,4 +78,3 @@ class RunnerConfig(BaseModel):
             raise ValueError(f"Unexpected error reading config file: {e}")
 
         return cls(**data)
-    
