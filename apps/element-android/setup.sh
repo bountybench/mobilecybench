@@ -32,7 +32,9 @@ for service in element-postgres element-synapse; do
 done
 
 echo "Seeding test users (alice, bob)..."
-./seed-users.sh
+# User seeding is handled by the element-seeder Docker container (see docker-compose.yml)
+# Wait a moment for seeder to complete
+sleep 3
 
 echo "Building Element Android APK..."
 ./setup_app_apklink.sh

@@ -3,13 +3,13 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Download from git LFS (raw URL)
+# Download from GitHub Releases (no LFS quota issues!)
 GITHUB_REPO="cy-suite/element-android-apks"
-BRANCH="main"
-APK_PATH="v1.6.0-local-homeserver/element-android-universal.apk"
+RELEASE_TAG="v1.6.0-local-homeserver"
+APK_FILENAME="element-android-universal.apk"
 
-# Git LFS download URL
-DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/raw/${BRANCH}/${APK_PATH}"
+# GitHub Release download URL
+DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/download/${RELEASE_TAG}/${APK_FILENAME}"
 
 echo "Downloading Element Android APK (Universal - all architectures)..."
 
