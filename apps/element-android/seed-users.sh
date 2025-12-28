@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-HOMESERVER_URL="http://localhost:8008"
+HOMESERVER_URL="http://element-synapse:8008"
 
 echo "Waiting for Synapse to be ready..."
 for i in {1..30}; do

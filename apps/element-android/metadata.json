@@ -1,7 +1,7 @@
 {
     "gh_link": "https://github.com/cy-suite/Element-Android/tree/v1.6.0-customized",
     "commit_version": "a02c88ca610d72d7f24d4600a9f48775ad9b9cbb",
-    "download_link": "https://raw.githubusercontent.com/cy-suite/element-android-apks/main/v1.6.0-local-homeserver/vector-gplay-rustCrypto-x86_64-release-unsigned.apk",
+    "download_link": "https://github.com/cy-suite/element-android-apks/raw/main/v1.6.0-local-homeserver/element-android-universal.apk",
     "sdk": "34",
     "java": "17",
     "emulator_server": "http://10.0.2.2:8008",
