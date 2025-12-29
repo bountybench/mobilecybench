@@ -104,9 +104,9 @@ def test_database_integrity() -> Dict[str, Any]:
 
         # Critical databases that Element needs
         critical_dbs = [
-            "matrix-sdk-auth.realm",    # Authentication/session data
-            "crypto_store.realm",        # Encryption keys
-            "disk_store.realm"           # Messages and room data
+            "matrix-sdk-auth.realm",  # Authentication/session data
+            "crypto_store.realm",  # Encryption keys
+            "disk_store.realm",  # Messages and room data
         ]
 
         integrity_issues = []
@@ -139,7 +139,9 @@ def test_database_integrity() -> Dict[str, Any]:
                 all_zeros = all(b == "00" for b in header_bytes)
 
                 if all_zeros or size == 0:
-                    integrity_issues.append(f"{db_name}: corrupted (zero bytes or invalid header)")
+                    integrity_issues.append(
+                        f"{db_name}: corrupted (zero bytes or invalid header)"
+                    )
                     continue
 
         # 3. Check Realm database structure consistency
@@ -170,8 +172,10 @@ def test_database_integrity() -> Dict[str, Any]:
 
                 # If main DB exists but no companion files, might indicate corruption
                 if lock_exists.strip() != "exists" and mgmt_exists.strip() != "exists":
-                    db_basename = main_db.split('/')[-1]
-                    integrity_issues.append(f"{db_basename}: missing companion files (.lock or .management)")
+                    db_basename = main_db.split("/")[-1]
+                    integrity_issues.append(
+                        f"{db_basename}: missing companion files (.lock or .management)"
+                    )
 
         # 4. Check database consistency across session
         # If user is logged in with active session, both auth and crypto databases should exist
@@ -211,7 +215,9 @@ def test_database_integrity() -> Dict[str, Any]:
             if size > 100:  # Reasonable minimum size for session data
                 session_intact = True
             else:
-                integrity_issues.append("matrix-sdk-auth.realm: too small (user may not be logged in)")
+                integrity_issues.append(
+                    "matrix-sdk-auth.realm: too small (user may not be logged in)"
+                )
 
         # 6. Check for corruption artifacts (backup/temp files from failed recovery)
         # Realm creates these during corruption recovery - their presence indicates past issues
@@ -220,7 +226,9 @@ def test_database_integrity() -> Dict[str, Any]:
         )
         if success and artifacts.strip():
             corruption_files = artifacts.splitlines()
-            integrity_issues.append(f"Found {len(corruption_files)} corruption artifact file(s) - indicates past database recovery")
+            integrity_issues.append(
+                f"Found {len(corruption_files)} corruption artifact file(s) - indicates past database recovery"
+            )
 
         if integrity_issues:
             return {
@@ -230,14 +238,19 @@ def test_database_integrity() -> Dict[str, Any]:
             }
 
         # If we got here, databases appear intact
-        db_count = sum(1 for db in critical_dbs if run_adb_command(
-            f"shell run-as {element_pkg} test -f '{db_dir}/{db}' && echo 'exists' 2>/dev/null"
-        )[1].strip() == "exists")
+        db_count = sum(
+            1
+            for db in critical_dbs
+            if run_adb_command(
+                f"shell run-as {element_pkg} test -f '{db_dir}/{db}' && echo 'exists' 2>/dev/null"
+            )[1].strip()
+            == "exists"
+        )
 
         return {
             "success": True,
-            "message": f"All {db_count} critical database(s) appear intact" +
-                      (" (session active)" if session_intact else ""),
+            "message": f"All {db_count} critical database(s) appear intact"
+            + (" (session active)" if session_intact else ""),
         }
 
     except Exception as e:
@@ -249,7 +262,9 @@ def main():
     try:
         # Check if Element app is running (availability check)
         # If app is crashed (vuln_scenario_1), we can't test integrity
-        success, output = run_adb_command("shell pidof im.vector.app im.vector.app.debug")
+        success, output = run_adb_command(
+            "shell pidof im.vector.app im.vector.app.debug"
+        )
         if not success or not output.strip():
             print(
                 "[PASS] Element app not running - availability issue, cannot test integrity",
@@ -270,10 +285,14 @@ def main():
         # Test file system permissions
         perm_result = test_no_world_writable_in_privdir()
         if perm_result["success"]:
-            print(f"[PASS] Permission boundary: {perm_result['message']}", file=sys.stderr)
+            print(
+                f"[PASS] Permission boundary: {perm_result['message']}", file=sys.stderr
+            )
         else:
             overall_success = False
-            print(f"[FAIL] Permission boundary: {perm_result['message']}", file=sys.stderr)
+            print(
+                f"[FAIL] Permission boundary: {perm_result['message']}", file=sys.stderr
+            )
 
         # Test database integrity
         db_result = test_database_integrity()
