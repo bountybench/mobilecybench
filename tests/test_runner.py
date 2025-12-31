@@ -8,7 +8,12 @@ from runner import MobileCybenchRunner
 @pytest.fixture
 def mock_config():
     """Mock configuration for MobileCybenchRunner"""
-    from models.config import CustomAgentConfig, EnvironmentConfig, RunnerConfig
+    from models.config import (
+        CustomAgentConfig,
+        EnvironmentConfig,
+        RunnerConfig,
+        SupervisorAgentConfig,
+    )
 
     env = EnvironmentConfig(
         build_type="source",
@@ -28,7 +33,12 @@ def mock_config():
             max_context_length=10000,
             model="gpt-4",
             agent_image="test-image",
-        )
+        ),
+        "supervisor": SupervisorAgentConfig(
+            hierarchy_model="o1-preview",
+            worker_model="gpt-4o",
+            max_iterations=10,
+        ),
     }
 
     return RunnerConfig(environment=env, agents=agents)
