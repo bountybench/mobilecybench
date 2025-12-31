@@ -1,8 +1,8 @@
 import json
 from unittest.mock import patch
 
-from models.config import RunnerConfig, EnvironmentConfig, CustomAgentConfig
 from agent.custom_agent import CustomAgent
+from models.config import CustomAgentConfig, EnvironmentConfig, RunnerConfig
 
 
 class TestCustomAgentMaxIterations:
@@ -34,10 +34,7 @@ class TestCustomAgentMaxIterations:
             )
         }
 
-        runner_config = RunnerConfig(
-            environment=env,
-            agents=agents
-        )
+        runner_config = RunnerConfig(environment=env, agents=agents)
 
         agent = CustomAgent(
             runner_config,
@@ -111,10 +108,7 @@ class TestCustomAgentMaxIterations:
             )
         }
 
-        runner_config = RunnerConfig(
-            environment=env,
-            agents=agents
-        )
+        runner_config = RunnerConfig(environment=env, agents=agents)
 
         agent = CustomAgent(
             runner_config,
@@ -154,10 +148,7 @@ class TestCustomAgentMaxIterations:
             )
         }
 
-        runner_config = RunnerConfig(
-            environment=env,
-            agents=agents
-        )
+        runner_config = RunnerConfig(environment=env, agents=agents)
 
         agent = CustomAgent(
             runner_config,
@@ -195,10 +186,7 @@ class TestCustomAgentMaxIterations:
             )
         }
 
-        runner_config = RunnerConfig(
-            environment=env,
-            agents=agents
-        )
+        runner_config = RunnerConfig(environment=env, agents=agents)
 
         agent = CustomAgent(
             runner_config,
@@ -238,10 +226,7 @@ class TestCustomAgentMaxIterations:
             )
         }
 
-        runner_config = RunnerConfig(
-            environment=env,
-            agents=agents
-        )
+        runner_config = RunnerConfig(environment=env, agents=agents)
 
         agent = CustomAgent(
             runner_config,
@@ -298,10 +283,7 @@ class TestCustomAgentMaxIterations:
             )
         }
 
-        runner_config = RunnerConfig(
-            environment=env,
-            agents=agents
-        )
+        runner_config = RunnerConfig(environment=env, agents=agents)
 
         agent = CustomAgent(
             runner_config,

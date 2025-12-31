@@ -8,7 +8,7 @@ from runner import MobileCybenchRunner
 @pytest.fixture
 def mock_config():
     """Mock configuration for MobileCybenchRunner"""
-    from models.config import RunnerConfig, EnvironmentConfig, CustomAgentConfig
+    from models.config import CustomAgentConfig, EnvironmentConfig, RunnerConfig
 
     env = EnvironmentConfig(
         build_type="source",
@@ -17,7 +17,7 @@ def mock_config():
         screenshot_mode=False,
         headless_mode=True,
         dry_run=True,
-        docker_mode=False
+        docker_mode=False,
     )
 
     agents = {
@@ -31,10 +31,7 @@ def mock_config():
         )
     }
 
-    return RunnerConfig(
-        environment=env,
-        agents=agents
-    )
+    return RunnerConfig(environment=env, agents=agents)
 
 
 @pytest.fixture
