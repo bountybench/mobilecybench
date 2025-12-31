@@ -6,6 +6,8 @@
     "java": "17",
     "emulator_server": "http://10.0.2.2:8080",
     "app_server": "ntfy-server:8080",
+    "username": "",
+    "password": "",
     "package_name": "io.heckel.ntfy",
     "container_names": ["ntfy-server"]
 }

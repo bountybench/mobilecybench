@@ -27,13 +27,12 @@ ANDROID_BASELINE_FILE="${SCRIPT_DIR}/baseline_android_dir.txt"
 NTFY_URL="http://localhost:8080" # Host perspective
 EMULATOR_GATEWAY="http://10.0.2.2:8080" # Emulator perspective
 
-# --- Helpers ---
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*" >&2; }
 fail(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*" >&2; exit 1; }
 command_exists(){ command -v "$1" >/dev/null 2>&1; }
 
-ensure_prereqs(){
+ensure_prereqs() {
   info "Checking prerequisites"
   command_exists docker || fail "docker is required"
   command_exists adb || fail "adb is required"
@@ -43,7 +42,8 @@ ensure_prereqs(){
     export PATH="$HOME/.local/bin:$PATH"
   fi
 }
-compose(){
+
+compose() {
   if docker compose version >/dev/null 2>&1; then
     docker compose -f "$COMPOSE_FILE" "$@"
   elif command_exists docker-compose; then
@@ -53,12 +53,12 @@ compose(){
   fi
 }
 
-start_stack(){
+start_stack() {
   info "Starting ntfy-server"
   compose up -d --remove-orphans >/dev/null 2>&1
 }
 
-wait_for_health(){
+wait_for_health() {
   info "Waiting for ntfy-server health (timeout ${HEALTH_TIMEOUT}s)"
   local start; start=$(date +%s)
   while true; do
@@ -76,7 +76,7 @@ wait_for_health(){
   done
 }
 
-install_app(){
+install_app() {
   info "Installing ntfy-android from local APK folder"
   adb wait-for-device >/dev/null 2>&1
   if ! adb get-state >/dev/null 2>&1; then
@@ -93,14 +93,14 @@ install_app(){
   info "APK installed successfully"
 }
 
-configure_app_defaults(){
+configure_app_defaults() {
   info "Pointing app to local Docker server..."
   
-  # 1. Kill app AND clear the specific cached prefs from the system
+  # 1. Kill app and clear the specific cached prefs from the system
   adb shell "am force-stop $TARGET_PACKAGE" >/dev/null 2>&1
-  local pref_file_name="MainPreferences.xml"
   
   # 2. Inject the DefaultBaseURL key (as defined in Repository.SHARED_PREFS_DEFAULT_BASE_URL)
+  local pref_file_name="MainPreferences.xml"
   cat <<EOF > "$pref_file_name"
 <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <map>
@@ -135,25 +135,25 @@ EOF
 
   rm "$pref_file_name"
   
-  # 5. Wait a beat before launching to let the OS sync the file system
+  # 5. Wait before launching to let the OS sync the file system
   sleep 1
   info "App preferences updated. DefaultBaseURL set to $EMULATOR_GATEWAY"
 }
 
-launch_app(){
+launch_app() {
   info "Launching ntfy..."
   adb shell am start -n "$TARGET_PACKAGE/.ui.MainActivity" >/dev/null 2>&1
   sleep 2
 }
 
-capture_baseline(){
+capture_baseline() {
   info "Capturing Android baseline -> $ANDROID_BASELINE_FILE"
   # Requirement for Integrity Probes: List all files in the app's internal storage
   adb shell su 0 find "$TARGET_DIR" 2>/dev/null | tr -d '\r' | sort > "$ANDROID_BASELINE_FILE" || warn "Baseline capture failed"
 }
 
-# --- Main Flow ---
-main(){
+
+main() {
   ensure_prereqs
   start_stack
   wait_for_health
