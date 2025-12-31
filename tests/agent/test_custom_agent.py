@@ -1,6 +1,7 @@
 import json
 from unittest.mock import patch
 
+from models.config import RunnerConfig, EnvironmentConfig, CustomAgentConfig
 from agent.custom_agent import CustomAgent
 
 
@@ -13,15 +14,34 @@ class TestCustomAgentMaxIterations:
         """Test that agent stops after max_iterations when no final submission is received."""
         max_iterations = 3
 
-        agent = CustomAgent(
-            model="gpt-4o-mini",
-            max_iterations=max_iterations,
-            max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
-            screenshot_enabled=False,
-            app_name="test_app",
+        env = EnvironmentConfig(
+            build_type="skip-apk",
+            server_access=True,
+            adb_access="full",
+            headless_mode=False,
+            docker_mode=False,
             dry_run=False,
+            screenshot_mode=False,
+        )
+
+        agents = {
+            "custom": CustomAgentConfig(
+                model="gpt-4o-mini",
+                max_iterations=max_iterations,
+                max_model_response_tokens=1000,
+                max_kali_message_tokens=500,
+                max_context_length=10000,
+            )
+        }
+
+        runner_config = RunnerConfig(
+            environment=env,
+            agents=agents
+        )
+
+        agent = CustomAgent(
+            runner_config,
+            app_name="test_app",
             package_name="com.test.app",
         )
 
@@ -71,15 +91,34 @@ class TestCustomAgentMaxIterations:
 
         mock_agent_dependencies["provider"].call = mock_call
 
-        agent = CustomAgent(
-            model="gpt-4o-mini",
-            max_iterations=max_iterations,
-            max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
-            screenshot_enabled=False,
-            app_name="test_app",
+        env = EnvironmentConfig(
+            build_type="skip-apk",
+            server_access=True,
+            adb_access="full",
+            headless_mode=False,
+            docker_mode=False,
             dry_run=False,
+            screenshot_mode=False,
+        )
+
+        agents = {
+            "custom": CustomAgentConfig(
+                model="gpt-4o-mini",
+                max_iterations=max_iterations,
+                max_model_response_tokens=1000,
+                max_kali_message_tokens=500,
+                max_context_length=10000,
+            )
+        }
+
+        runner_config = RunnerConfig(
+            environment=env,
+            agents=agents
+        )
+
+        agent = CustomAgent(
+            runner_config,
+            app_name="test_app",
             package_name="com.test.app",
         )
 
@@ -94,15 +133,35 @@ class TestCustomAgentMaxIterations:
 
     def test_single_iteration(self, mock_agent_dependencies):
         """Test agent with max_iterations=1."""
-        agent = CustomAgent(
-            model="gpt-4o-mini",
-            max_iterations=1,
-            max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
-            screenshot_enabled=False,
-            app_name="test_app",
+
+        env = EnvironmentConfig(
+            build_type="skip-apk",
+            server_access=True,
+            adb_access="full",
+            headless_mode=False,
+            docker_mode=False,
             dry_run=False,
+            screenshot_mode=False,
+        )
+
+        agents = {
+            "custom": CustomAgentConfig(
+                model="gpt-4o-mini",
+                max_iterations=1,
+                max_model_response_tokens=1000,
+                max_kali_message_tokens=500,
+                max_context_length=10000,
+            )
+        }
+
+        runner_config = RunnerConfig(
+            environment=env,
+            agents=agents
+        )
+
+        agent = CustomAgent(
+            runner_config,
+            app_name="test_app",
             package_name="com.test.app",
         )
 
@@ -115,15 +174,35 @@ class TestCustomAgentMaxIterations:
 
     def test_dry_run_mode(self, mock_agent_dependencies):
         """Test that dry run mode returns immediately without making API calls."""
-        agent = CustomAgent(
-            model="gpt-4o-mini",
-            max_iterations=10,
-            max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
-            screenshot_enabled=False,
-            app_name="test_app",
+
+        env = EnvironmentConfig(
+            build_type="skip-apk",
+            server_access=True,
+            adb_access="full",
+            headless_mode=False,
+            docker_mode=False,
             dry_run=True,
+            screenshot_mode=False,
+        )
+
+        agents = {
+            "custom": CustomAgentConfig(
+                model="gpt-4o-mini",
+                max_iterations=10,
+                max_model_response_tokens=1000,
+                max_kali_message_tokens=500,
+                max_context_length=10000,
+            )
+        }
+
+        runner_config = RunnerConfig(
+            environment=env,
+            agents=agents
+        )
+
+        agent = CustomAgent(
+            runner_config,
+            app_name="test_app",
             package_name="com.test.app",
         )
 
@@ -138,15 +217,35 @@ class TestCustomAgentMaxIterations:
 
     def test_conversation_cleanup_on_max_iterations(self, mock_agent_dependencies):
         """Test that conversation is deleted when max iterations is reached."""
-        agent = CustomAgent(
-            model="gpt-4o-mini",
-            max_iterations=2,
-            max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
-            screenshot_enabled=False,
-            app_name="test_app",
+
+        env = EnvironmentConfig(
+            build_type="skip-apk",
+            server_access=True,
+            adb_access="full",
+            headless_mode=False,
+            docker_mode=False,
             dry_run=False,
+            screenshot_mode=False,
+        )
+
+        agents = {
+            "custom": CustomAgentConfig(
+                model="gpt-4o-mini",
+                max_iterations=2,
+                max_model_response_tokens=1000,
+                max_kali_message_tokens=500,
+                max_context_length=10000,
+            )
+        }
+
+        runner_config = RunnerConfig(
+            environment=env,
+            agents=agents
+        )
+
+        agent = CustomAgent(
+            runner_config,
+            app_name="test_app",
             package_name="com.test.app",
         )
 
@@ -179,15 +278,34 @@ class TestCustomAgentMaxIterations:
 
         mock_agent_dependencies["provider"].call = mock_call
 
-        agent = CustomAgent(
-            model="gpt-4o-mini",
-            max_iterations=10,
-            max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
-            screenshot_enabled=False,
-            app_name="test_app",
+        env = EnvironmentConfig(
+            build_type="skip-apk",
+            server_access=True,
+            adb_access="full",
+            headless_mode=False,
+            docker_mode=False,
             dry_run=False,
+            screenshot_mode=False,
+        )
+
+        agents = {
+            "custom": CustomAgentConfig(
+                model="gpt-4o-mini",
+                max_iterations=10,
+                max_model_response_tokens=1000,
+                max_kali_message_tokens=500,
+                max_context_length=10000,
+            )
+        }
+
+        runner_config = RunnerConfig(
+            environment=env,
+            agents=agents
+        )
+
+        agent = CustomAgent(
+            runner_config,
+            app_name="test_app",
             package_name="com.test.app",
         )
 

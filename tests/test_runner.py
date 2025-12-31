@@ -8,22 +8,32 @@ from runner import MobileCybenchRunner
 @pytest.fixture
 def mock_config():
     """Mock configuration for MobileCybenchRunner"""
-    from models.config import RunnerConfig
+    from models.config import RunnerConfig, EnvironmentConfig, CustomAgentConfig
 
-    return RunnerConfig(
-        server_access=True,
+    env = EnvironmentConfig(
         build_type="source",
+        server_access=True,
         adb_access="full",
-        max_iterations=10,
-        max_kali_message_tokens=1000,
-        max_model_response_tokens=1000,
-        max_context_length=10000,
-        model="gpt-4",
         screenshot_mode=False,
         headless_mode=True,
         dry_run=True,
-        agent_image="test-image",
-        docker_mode=False,
+        docker_mode=False
+    )
+
+    agents = {
+        "custom": CustomAgentConfig(
+            max_iterations=10,
+            max_kali_message_tokens=1000,
+            max_model_response_tokens=1000,
+            max_context_length=10000,
+            model="gpt-4",
+            agent_image="test-image",
+        )
+    }
+
+    return RunnerConfig(
+        environment=env,
+        agents=agents
     )
 
 
