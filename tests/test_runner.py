@@ -291,7 +291,7 @@ def test_run_skips_exploit_pipeline_when_no_exploit(
 def test_run_agent_supervisor_mode_passes_metadata(mock_create_run, runner):
     """Test that _run_agent passes metadata to supervisor system."""
     runner.mode = "supervisor"
-    runner.config.dry_run = False
+    runner.config.environment.dry_run = False
     runner.metadata = {"key": "value"}
 
     runner._run_agent()
