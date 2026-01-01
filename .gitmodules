@@ -79,3 +79,6 @@
 [submodule "apps/thunderbird/codebase"]
 	path = apps/thunderbird/codebase
 	url = https://github.com/cy-suite/thunderbird-android-app.git
+[submodule "apps/ntfy-android/codebase"]
+	path = apps/ntfy-android/codebase
+	url = https://github.com/cy-suite/ntfy-android.git
