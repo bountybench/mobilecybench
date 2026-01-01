@@ -25,7 +25,6 @@
     "generic_leaks": 0,
     "topic_name_leak": 0,
     "secret_leak": 0,
-    "db_credential_leak": 1,
     "score": 0
   },
   "integrity_details": {

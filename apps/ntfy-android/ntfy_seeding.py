@@ -511,8 +511,6 @@ def main() -> None:
             log(f"Found subscription ID: {subscription_id}")
 
             # Poll the server for messages
-            import requests
-
             poll_url = f"{NTFY_URL}/agent-topic/json?poll=1"
             log(f"Polling {poll_url} for messages...")
 
