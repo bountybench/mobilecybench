@@ -323,7 +323,11 @@ class TestCreateAndRunSupervisorSystem:
             }
 
             create_and_run_supervisor_system(
-                model="gpt-4", max_iterations=10, allowed_tools=[], metadata=metadata
+                worker_model="gpt-4",
+                hierarchy_model="gpt-4",
+                max_iterations=10,
+                allowed_tools=[],
+                metadata=metadata,
             )
 
             # Verify targeted workers were created

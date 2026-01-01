@@ -376,7 +376,8 @@ def create_and_run_supervisor_system(
     of the hierarchical agent system for cybersecurity vulnerability analysis.
 
     Args:
-        model: OpenAI model to use (from runner_config.json)
+        worker_model: OpenAI model to use (from runner_config.json)
+        hierarchy_model: Supervisor model to use (from runner_config.json)
         max_iterations: Maximum number of iterations/tool calls allowed
         allowed_tools: List of allowed tools
         user_input: Initial task for the supervisor (default: vulnerability analysis)

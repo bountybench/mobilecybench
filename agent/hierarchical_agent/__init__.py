@@ -17,7 +17,8 @@ Usage:
     from agent.hierarchical_agent import create_and_run_supervisor_system
 
     result = create_and_run_supervisor_system(
-        model="gpt-5.1-2025-11-13",
+        worker_model="gpt-5.1-2025-11-13",
+        hierarchy_model="o1-preview"
         max_iterations=30,
         allowed_tools=["execute_command", "get_current_ui_state"],
         user_input="Analyze the codebase for vulnerabilities"
