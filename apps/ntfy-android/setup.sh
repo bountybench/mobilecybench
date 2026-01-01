@@ -135,15 +135,48 @@ EOF
 
   rm "$pref_file_name"
   
-  # 5. Wait before launching to let the OS sync the file system
-  sleep 1
+  # 5. Force filesystem sync and verify file exists
+  adb shell sync >/dev/null 2>&1
+  
+  # Poll for file existence with timeout
+  local pref_path="/data/data/$TARGET_PACKAGE/shared_prefs/$pref_file_name"
+  local max_attempts=10
+  local attempt=0
+  while [ $attempt -lt $max_attempts ]; do
+    if adb shell su 0 test -f "$pref_path" >/dev/null 2>&1; then
+      break
+    fi
+    attempt=$((attempt + 1))
+    sleep 0.2
+  done
+  
+  if [ $attempt -eq $max_attempts ]; then
+    warn "Preferences file may not be synced, but continuing..."
+  fi
+  
   info "App preferences updated. DefaultBaseURL set to $EMULATOR_GATEWAY"
 }
 
 launch_app() {
   info "Launching ntfy..."
-  adb shell am start -n "$TARGET_PACKAGE/.ui.MainActivity" >/dev/null 2>&1
-  sleep 2
+  if ! adb shell am start -n "$TARGET_PACKAGE/.ui.MainActivity" >/dev/null 2>&1; then
+    fail "Failed to launch app"
+  fi
+  
+  # Poll for app process to ensure it's running
+  local max_attempts=15
+  local attempt=0
+  while [ $attempt -lt $max_attempts ]; do
+    if adb shell pidof "$TARGET_PACKAGE" >/dev/null 2>&1; then
+      break
+    fi
+    attempt=$((attempt + 1))
+    sleep 0.2
+  done
+  
+  if [ $attempt -eq $max_attempts ]; then
+    warn "App may not have started, but continuing..."
+  fi
 }
 
 capture_baseline() {
