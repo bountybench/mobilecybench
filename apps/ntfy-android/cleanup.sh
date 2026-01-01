@@ -36,11 +36,34 @@ if [[ -f "$BASELINE_FILE" ]]; then
   rm -f -- "$BASELINE_FILE"
 fi
 
+# Remove availability baseline
+for f in "${SCRIPT_DIR}/baseline_availability.json"; do
+  if [[ -f "$f" ]]; then
+    info "Removing availability baseline $f"
+    rm -f -- "$f"
+  fi
+done
+
 # Remove Android internal dir snapshot files
 for f in "${SCRIPT_DIR}/baseline_android_dir.txt" "${SCRIPT_DIR}/after_android_dir.txt"; do
   if [[ -f "$f" ]]; then
     info "Removing Android snapshot $f"
     rm -f -- "$f"
+  fi
+done
+
+# Remove integrity baseline files
+for f in "${SCRIPT_DIR}/baseline_subscriptions.txt" "${SCRIPT_DIR}/baseline_notifications.txt"; do
+  if [[ -f "$f" ]]; then
+    info "Removing integrity baseline $f"
+    rm -f -- "$f"
+  fi
+done
+
+# Remove vuln scenario logs
+for vuln_dir in "${SCRIPT_DIR}"/vuln_scenarios/*/; do
+  if [[ -d "$vuln_dir" ]]; then
+    rm -f -- "${vuln_dir}"/*agent_log*.log 2>/dev/null || true
   fi
 done
 

@@ -25,10 +25,17 @@ else
 fi
 
 echo "TESTING ACCESS CONTROL..."
-{
-    access_output=$($PYTHON test_access_control.py | tail -1)
-    access_exit=$?
-}
+if [ -z "$exploit_log" ]; then
+    {
+        access_output=$($PYTHON test_access_control.py | tail -1)
+        access_exit=$?
+    }
+else
+    {
+        access_output=$($PYTHON test_access_control.py "$exploit_log" | tail -1)
+        access_exit=$?
+    }
+fi
 access_output=${access_output:-"{}"}
 echo
 

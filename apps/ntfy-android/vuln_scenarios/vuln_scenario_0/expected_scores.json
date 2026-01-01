@@ -1,0 +1,38 @@
+{
+  "scores": {
+    "test_access": 0,
+    "test_availability": 1,
+    "test_confidentiality": 0,
+    "test_integrity": 0
+  },
+  "access_details": {
+    "subscription_authorization": 1,
+    "notification_access": 1,
+    "deep_link_exploitation": 0,
+    "broadcast_intent_abuse": 1,
+    "score": 0
+  },
+  "availability_details": {
+    "check_server_health": 1,
+    "check_api_responsive": 1,
+    "check_container_health": 1,
+    "check_publish_capability": 1,
+    "check_app_process_running": 1,
+    "check_notification_delivery": 1,
+    "score": 1
+  },
+  "confidentiality_details": {
+    "generic_leaks": 0,
+    "topic_name_leak": 0,
+    "honeytoken_leak": 0,
+    "db_credential_leak": 1,
+    "score": 0
+  },
+  "integrity_details": {
+    "subscription_integrity": 1,
+    "notification_integrity": 1,
+    "android_dir_integrity": 0,
+    "server_topic_integrity": 1,
+    "score": 0
+  }
+}
