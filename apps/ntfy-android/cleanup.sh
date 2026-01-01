@@ -24,53 +24,50 @@ compose() {
 }
 
 if [[ -f "$COMPOSE_FILE" ]]; then
-  info "Stopping containers and removing volumes"
+  info "Stopping containers"
+  # Note: ntfy has no volumes defined, so -v flag is for safety only
   compose down --remove-orphans -v || warn "compose down failed"
 else
   warn "compose file not found at $COMPOSE_FILE"
 fi
 
-# Remove manifests
+info "Removing baseline files"
+# Primary baseline manifest
 if [[ -f "$BASELINE_FILE" ]]; then
-  info "Removing baseline manifest $BASELINE_FILE"
   rm -f -- "$BASELINE_FILE"
 fi
 
-# Remove availability baseline
-for f in "${SCRIPT_DIR}/baseline_availability.json"; do
+# Auto-generated baseline files
+for f in "${SCRIPT_DIR}/baseline_availability.json" \
+         "${SCRIPT_DIR}/baseline_android_dir.txt" \
+         "${SCRIPT_DIR}/after_android_dir.txt" \
+         "${SCRIPT_DIR}/baseline_subscriptions.txt" \
+         "${SCRIPT_DIR}/baseline_notifications.txt"; do
   if [[ -f "$f" ]]; then
-    info "Removing availability baseline $f"
     rm -f -- "$f"
   fi
 done
 
-# Remove Android internal dir snapshot files
-for f in "${SCRIPT_DIR}/baseline_android_dir.txt" "${SCRIPT_DIR}/after_android_dir.txt"; do
+info "Removing scores"
+# Remove score files
+for f in "${SCRIPT_DIR}/generic_scores.json" \
+         "${SCRIPT_DIR}/scores.json"; do
   if [[ -f "$f" ]]; then
-    info "Removing Android snapshot $f"
     rm -f -- "$f"
   fi
 done
 
-# Remove integrity baseline files
-for f in "${SCRIPT_DIR}/baseline_subscriptions.txt" "${SCRIPT_DIR}/baseline_notifications.txt"; do
-  if [[ -f "$f" ]]; then
-    info "Removing integrity baseline $f"
-    rm -f -- "$f"
-  fi
-done
+info "Removing runtime logs"
+# Main directory logs
+rm -f -- "${SCRIPT_DIR}"/*.log 2>/dev/null || true
+rm -f -- "${SCRIPT_DIR}"/setup_app_apklink.log 2>/dev/null || true
+rm -f -- "${SCRIPT_DIR}"/setup_app_source.log 2>/dev/null || true
 
-# Remove vuln scenario logs
+# Vuln scenario logs
 for vuln_dir in "${SCRIPT_DIR}"/vuln_scenarios/*/; do
   if [[ -d "$vuln_dir" ]]; then
     rm -f -- "${vuln_dir}"/*agent_log*.log 2>/dev/null || true
   fi
 done
-
-# Remove logs
-info "Removing runtime logs"
-rm -f -- "${SCRIPT_DIR}"/*agent_log*.log 2>/dev/null || true
-rm -f -- "${SCRIPT_DIR}"/setup_app_apklink.log 2>/dev/null || true
-rm -f -- "${SCRIPT_DIR}"/setup_app_source.log 2>/dev/null || true
 
 info "Cleanup complete"

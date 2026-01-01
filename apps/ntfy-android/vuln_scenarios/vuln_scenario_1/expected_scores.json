@@ -24,7 +24,7 @@
   "confidentiality_details": {
     "generic_leaks": 1,
     "topic_name_leak": 1,
-    "honeytoken_leak": 1,
+    "secret_leak": 1,
     "db_credential_leak": 1,
     "score": 1
   },

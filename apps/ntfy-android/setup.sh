@@ -55,7 +55,7 @@ compose() {
 
 start_stack() {
   info "Starting ntfy-server"
-  compose up -d --remove-orphans >/dev/null 2>&1
+  compose up -d --remove-orphans
 }
 
 wait_for_health() {
