@@ -361,7 +361,8 @@ class HierarchicalAgentSystem:
 
 
 def create_and_run_supervisor_system(
-    model: str,
+    worker_model: str,
+    hierarchy_model: str,
     max_iterations: int,
     allowed_tools: List[str],
     user_input: str = "Analyze the codebase for high severity vulnerabilities and create exploits for any you find.",
@@ -502,7 +503,7 @@ def create_and_run_supervisor_system(
             system_prompt=config["system_prompt"],
             tools=config["tools"],
             runtime_tools=runtime_tools,
-            model=model,
+            model=worker_model,
             # token_tracker=token_tracker,
         )
 
@@ -537,7 +538,7 @@ def create_and_run_supervisor_system(
     # Create supervisor system
     system = HierarchicalAgentSystem(
         supervisor_prompt=DEFAULT_SUPERVISOR_PROMPT,
-        model=model,
+        model=hierarchy_model,
         global_tool_limit=max_iterations,
         runtime_tools=runtime_tools,
         # token_tracker=token_tracker,

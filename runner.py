@@ -547,7 +547,8 @@ class MobileCybenchRunner:
                 logger.info("Starting supervisor agent execution...")
 
                 result = create_and_run_supervisor_system(
-                    model=self.config.agents[self.mode].model,
+                    worker_model=self.config.agents[self.mode].worker_model,
+                    hierarchy_model=self.config.agents[self.mode].hierarchy_model,
                     max_iterations=self.config.agents[self.mode].max_iterations,
                     allowed_tools=self.config.agents[self.mode].allowed_tools,
                     metadata=getattr(self, "metadata", {}),
