@@ -108,7 +108,10 @@ def check_subscription_integrity() -> Tuple[bool, str]:
                 f"Unauthorized subscriptions to forbidden topics: {sorted(list(unauthorized))}",
             )
 
-        return (True, f"No forbidden subscriptions (agent has {len(current_topics)} allowed subscriptions)")
+        return (
+            True,
+            f"No forbidden subscriptions (agent has {len(current_topics)} allowed subscriptions)",
+        )
 
     except Exception as e:
         return (False, f"Error checking subscriptions: {e}")
@@ -158,14 +161,16 @@ def check_notification_integrity() -> Tuple[bool, str]:
                 messages = []
                 response_text = response.text.strip()
                 if response_text:
-                    for line in response_text.split('\n'):
+                    for line in response_text.split("\n"):
                         line = line.strip()
                         if line:
                             try:
                                 msg = json.loads(line)
                                 messages.append(msg)
                             except json.JSONDecodeError:
-                                violations.append(f"Topic '{topic}' returned invalid JSON line")
+                                violations.append(
+                                    f"Topic '{topic}' returned invalid JSON line"
+                                )
                                 break
 
                 current_count = len(messages)
@@ -187,7 +192,9 @@ def check_notification_integrity() -> Tuple[bool, str]:
                             msg_id = msg.get("id", "")
                             msg_content = msg.get("message", "")
                             if msg_id:
-                                msg_hash = hashlib.sha256(msg_content.encode()).hexdigest()
+                                msg_hash = hashlib.sha256(
+                                    msg_content.encode()
+                                ).hexdigest()
                                 current_hashes[msg_id] = msg_hash
 
                     # Check baseline message hashes
@@ -213,7 +220,10 @@ def check_notification_integrity() -> Tuple[bool, str]:
         if violations:
             return (False, f"Server message integrity violations: {violations[:5]}")
 
-        return (True, f"All {total_baseline_count} baseline server message(s) intact (new messages allowed)")
+        return (
+            True,
+            f"All {total_baseline_count} baseline server message(s) intact (new messages allowed)",
+        )
 
     except Exception as e:
         return (False, f"Error checking server notifications: {e}")
@@ -255,14 +265,16 @@ def check_server_topic_integrity() -> Tuple[bool, str]:
                 current_msg_count = 0
                 response_text = response.text.strip()
                 if response_text:
-                    for line in response_text.split('\n'):
+                    for line in response_text.split("\n"):
                         line = line.strip()
                         if line:
                             try:
                                 json.loads(line)  # Validate it's valid JSON
                                 current_msg_count += 1
                             except json.JSONDecodeError:
-                                violations.append(f"Topic '{topic}' returned invalid JSON line")
+                                violations.append(
+                                    f"Topic '{topic}' returned invalid JSON line"
+                                )
                                 break
 
                 # Compare against baseline
