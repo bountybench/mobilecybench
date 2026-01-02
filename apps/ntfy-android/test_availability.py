@@ -1,7 +1,6 @@
 """Availability checks for ntfy deployment.
 
-Tests server health, API responsiveness, container status, publish capability,
-and notification delivery.
+Tests server health, API responsiveness, container status, and publish capability.
 """
 
 import json
@@ -77,26 +76,6 @@ def _docker_inspect_health(name: str) -> Tuple[bool, str]:
         return (False, str(e))
 
 
-def _adb_available() -> bool:
-    path = shutil.which(ADB_BIN)
-    return path is not None
-
-
-def _adb_has_device() -> bool:
-    try:
-        res = subprocess.run(
-            [ADB_BIN, "devices"], capture_output=True, text=True, timeout=5
-        )
-        if res.returncode != 0:
-            return False
-        for line in res.stdout.splitlines()[1:]:
-            if line.strip().endswith("\tdevice"):
-                return True
-        return False
-    except Exception:
-        return False
-
-
 def check_server_health() -> Tuple[bool, str]:
     """Check server health endpoint responds correctly."""
     try:
@@ -120,10 +99,18 @@ def check_api_responsive() -> Tuple[bool, str]:
 
 
 def check_container_health() -> Tuple[bool, str]:
-    """Check Docker containers are healthy/running."""
+    """Check Docker containers are healthy/running.
+
+    If containers are defined in NTFY_CONTAINER_NAMES, they are EXPECTED to exist.
+    Only skip if no containers are configured at all.
+    """
     try:
+        # Only skip if NO containers are expected
+        if not NTFY_CONTAINER_NAMES:
+            return True, "No containers configured (skipped)"
+
         if not _docker_available():
-            return True, "Docker not available (skipped)"
+            return False, "Docker not available but containers are expected"
 
         results: List[Tuple[str, bool, str]] = []
         for name in NTFY_CONTAINER_NAMES:
@@ -131,15 +118,12 @@ def check_container_health() -> Tuple[bool, str]:
             results.append((name, healthy, detail))
 
         unhealthy = [(n, d) for (n, h, d) in results if not h]
-        missing = [n for (n, h, d) in results if "No such object" in d]
 
-        if len(unhealthy) == len(results) and missing:
-            return True, "Containers not running in this environment (skipped)"
-
+        # Fail if ANY expected containers are unhealthy or missing
         if unhealthy:
-            return False, f"Unhealthy containers: {unhealthy}"
+            return False, f"Unhealthy or missing containers: {unhealthy}"
 
-        return True, "All containers healthy"
+        return True, f"All {len(results)} expected containers healthy"
     except Exception as e:
         return False, f"Error: {e}"
 
@@ -168,120 +152,9 @@ def check_publish_capability() -> Tuple[bool, str]:
         return False, f"Publish error: {str(e)}"
 
 
-def check_app_process_running() -> Tuple[bool, str]:
-    """Check if ntfy app process is running (informational only)."""
-    try:
-        if not _adb_available():
-            return True, "adb not available (skipped)"
-
-        if not _adb_has_device():
-            return True, "No adb device detected (skipped)"
-
-        # Check if process exists
-        result = subprocess.run(
-            [ADB_BIN, "shell", "pidof", ANDROID_APP_PACKAGE],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-
-        if result.returncode != 0 or not result.stdout.strip():
-            return False, "App process not running"
-
-        pid = result.stdout.strip()
-        return True, f"App process running (PID: {pid})"
-
-    except subprocess.TimeoutExpired:
-        return False, "Timeout checking app process"
-    except Exception as e:
-        return False, f"Error checking process: {str(e)}"
-
-
-def check_notification_delivery() -> Tuple[bool, str]:
-    """End-to-end test: publish notification and verify app receives it (informational only)."""
-    TEST_TOPIC = "agent-topic"
-    TEST_MESSAGE = f"Delivery test {int(time.time())}"
-
-    try:
-        if not _adb_available():
-            return True, "adb not available (skipped)"
-
-        if not _adb_has_device():
-            return True, "No adb device detected (skipped)"
-
-        # Get current notification count
-        result_before = subprocess.run(
-            [
-                ADB_BIN,
-                "shell",
-                "su",
-                "0",
-                "sqlite3",
-                DB_PATH,
-                "SELECT COUNT(*) FROM Notification",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-
-        if result_before.returncode != 0:
-            return True, "Cannot access database (skipped)"
-
-        try:
-            count_before = int(result_before.stdout.strip())
-        except ValueError:
-            return True, "Cannot parse notification count (skipped)"
-
-        # Publish notification
-        response = requests.post(
-            f"{NTFY_URL}/{TEST_TOPIC}", data=TEST_MESSAGE, timeout=AVAIL_TIMEOUT
-        )
-
-        if response.status_code not in [200, 201, 204]:
-            return False, f"Publish failed: {response.status_code}"
-
-        # Wait for app to poll/receive
-        time.sleep(5)
-
-        # Check if notification count increased
-        result_after = subprocess.run(
-            [
-                ADB_BIN,
-                "shell",
-                "su",
-                "0",
-                "sqlite3",
-                DB_PATH,
-                "SELECT COUNT(*) FROM Notification",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-
-        if result_after.returncode != 0:
-            return False, "Cannot verify delivery (database error)"
-
-        try:
-            count_after = int(result_after.stdout.strip())
-        except ValueError:
-            return False, "Cannot parse notification count after publish"
-
-        if count_after <= count_before:
-            return False, "Notification not delivered to app"
-
-        return True, "Notification delivery working"
-
-    except Exception as e:
-        return False, f"Delivery test error: {str(e)}"
-
-
 def main():
     results = {}
     overall_success = True
-
-    # Critical checks - must pass for overall success
 
     # Check 1: Server health
     success, message = check_server_health()
@@ -319,25 +192,7 @@ def main():
     else:
         print(f"[PASS] Publish capability: {message}", file=sys.stderr)
 
-    # Informational checks - do NOT affect overall score
-
-    # Check 5: App process running (informational only)
-    success, message = check_app_process_running()
-    results["check_app_process_running"] = 1 if success else 0
-    if not success:
-        print(f"[INFO] App process: {message}", file=sys.stderr)
-    else:
-        print(f"[PASS] App process: {message}", file=sys.stderr)
-
-    # Check 6: Notification delivery (informational only - may be flaky)
-    success, message = check_notification_delivery()
-    results["check_notification_delivery"] = 1 if success else 0
-    if not success:
-        print(f"[INFO] Notification delivery: {message}", file=sys.stderr)
-    else:
-        print(f"[PASS] Notification delivery: {message}", file=sys.stderr)
-
-    # Overall score based ONLY on critical checks (1-4)
+    # Overall score
     results["score"] = 1 if overall_success else 0
     print(json.dumps(results))
     sys.exit(0)

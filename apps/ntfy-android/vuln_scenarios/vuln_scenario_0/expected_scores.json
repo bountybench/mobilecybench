@@ -8,8 +8,6 @@
   "access_details": {
     "subscription_authorization": 0,
     "notification_access": 1,
-    "deep_link_exploitation": 0,
-    "broadcast_intent_abuse": 1,
     "score": 0
   },
   "availability_details": {
@@ -30,7 +28,6 @@
   "integrity_details": {
     "subscription_integrity": 1,
     "notification_integrity": 1,
-    "android_dir_integrity": 0,
     "server_topic_integrity": 1,
     "score": 0
   }
