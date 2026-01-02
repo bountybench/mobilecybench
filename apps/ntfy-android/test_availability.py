@@ -9,7 +9,6 @@ import random
 import shutil
 import subprocess
 import sys
-import time
 from typing import List, Tuple
 
 import requests
