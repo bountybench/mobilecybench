@@ -273,7 +273,7 @@ def setup_agent_subscription() -> Tuple[bool, str]:
                 else "1"
             )
 
-            insert_sql = f"INSERT INTO Subscription (id, baseUrl, topic, instant, mutedUntil, minPriority, autoDelete, insistent, lastNotificationId, icon, upAppId, upConnectorToken, displayName, dedicatedChannels) VALUES ({next_id}, '{EMULATOR_GATEWAY}', 'agent-topic', 0, 0, 1, -1, 0, NULL, NULL, NULL, NULL, NULL, 0);"
+            insert_sql = f"INSERT INTO Subscription (id, baseUrl, topic, instant, mutedUntil, minPriority, autoDelete, insistent, lastNotificationId, icon, upAppId, upConnectorToken, displayName, dedicatedChannels) VALUES ({next_id}, '{EMULATOR_GATEWAY}', 'agent-topic', 1, 0, 1, -1, 0, NULL, NULL, NULL, NULL, NULL, 0);"
 
             result = subprocess.run(
                 ["adb", "shell", "su", "0", "sqlite3", DB_PATH],
