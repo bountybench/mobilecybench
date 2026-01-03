@@ -11,6 +11,7 @@ import json
 import sys
 
 from constants import OPENHAB_USERSDB_PATH
+
 from utils.utils import get_app_metadata
 
 try:

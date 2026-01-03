@@ -5,6 +5,7 @@ from urllib.parse import urljoin
 import requests
 from constants import BASE_URL, OPENHAB_USERSDB_PATH
 from requests.auth import HTTPBasicAuth
+
 from utils.utils import get_app_metadata
 
 # Config
