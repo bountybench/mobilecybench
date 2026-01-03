@@ -15,8 +15,6 @@
     "check_api_responsive": 1,
     "check_container_health": 1,
     "check_publish_capability": 1,
-    "check_app_process_running": 1,
-    "check_notification_delivery": 1,
     "score": 1
   },
   "confidentiality_details": {
