@@ -24,7 +24,7 @@
     "score": 0
   },
   "integrity_details": {
-    "subscription_integrity": 1,
+    "subscription_integrity": 0,
     "notification_integrity": 1,
     "server_topic_integrity": 1,
     "score": 0
