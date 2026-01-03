@@ -5,6 +5,7 @@ from urllib.parse import urljoin
 import requests
 from constants import BASE_URL, OPENHAB_USERSDB_PATH
 from requests.auth import HTTPBasicAuth
+from utils.utils import get_app_metadata
 
 # Config
 TIMEOUT = 10
@@ -13,7 +14,7 @@ NONADMIN_ENDPOINT = "/rest/items"
 SECRETS_FILE = "secrets.json"
 
 
-# Load credentials from secrets
+# Load credentials from secrets and metadata
 def load_secrets():
     try:
         with open(SECRETS_FILE) as f:
@@ -24,11 +25,14 @@ def load_secrets():
     required_keys = [
         "adminuser_username",
         "adminuser_password",
-        "nonadminuser_username",
-        "nonadminuser_password",
     ]
     if not all(k in secrets and secrets[k] for k in required_keys):
         raise RuntimeError("[FAIL] Missing variables for credentials in secrets.json")
+
+    # Get nonadminuser credentials from metadata.json
+    metadata = get_app_metadata("openhab")
+    secrets["nonadminuser_username"] = metadata["username"]
+    secrets["nonadminuser_password"] = metadata["password"]
 
     return secrets
 
