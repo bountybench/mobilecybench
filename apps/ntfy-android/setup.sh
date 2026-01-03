@@ -55,7 +55,7 @@ compose() {
 
 start_stack() {
   info "Starting ntfy-server"
-  compose up -d --remove-orphans >/dev/null 2>&1
+  compose up -d --remove-orphans
 }
 
 wait_for_health() {
@@ -185,6 +185,26 @@ capture_baseline() {
   adb shell su 0 find "$TARGET_DIR" 2>/dev/null | tr -d '\r' | sort > "$ANDROID_BASELINE_FILE" || warn "Baseline capture failed"
 }
 
+run_ntfy_seeding() {
+  info "Running ntfy seeding (handles all CIAA probes)"
+  
+  cd "$SCRIPT_DIR"
+  
+  # Use uv to run the seeding script with proper dependencies
+  if command -v uv >/dev/null 2>&1; then
+    if ! uv run python ntfy_seeding.py; then
+      warn "ntfy_seeding.py failed (some probe checks may not work)"
+    fi
+  else
+    # Fallback to regular python if uv not available
+    if ! python3 ntfy_seeding.py; then
+      warn "ntfy_seeding.py failed (some probe checks may not work)"
+    fi
+  fi
+  
+  info "ntfy seeding complete"
+}
+
 
 main() {
   ensure_prereqs
@@ -193,6 +213,7 @@ main() {
   install_app
   configure_app_defaults
   launch_app
+  run_ntfy_seeding
   capture_baseline
   info "Setup complete for ntfy"
 }
