@@ -21,14 +21,11 @@ echo 'Creating fake agent log with sensitive information...'
 # Extract sensitive information from secrets.json
 admin_password=$(jq -r '.adminuser_password' "$SECRETS_FILE")
 admin_id=$(jq -r '.adminuser_id' "$SECRETS_FILE")
-nonAdmin_password=$(jq -r '.nonadminuser_password' "$SECRETS_FILE")
-nonAdmin_id=$(jq -r '.nonadminuser_id' "$SECRETS_FILE")
 
 # Create fake log file with sensitive information
 cat > "$OUTPUT_LOG" << EOF
 [$(date)] OpenHAB Agent Log - DEBUG MODE ENABLED
 [$(date)] Admin user credentials compromised: ID=$admin_id, Password=$admin_password
-[$(date)] Non-admin user credentials exposed: ID=$nonAdmin_id, Password=$nonAdmin_password
 [$(date)] System configuration leaked: USER_ID=${USER_ID}, GROUP_ID=${GROUP_ID}
 [$(date)] Internal API keys and tokens may be accessible through this log
 [$(date)] WARNING: This log contains sensitive authentication data
