@@ -88,7 +88,7 @@ setup_environment() {
 
 build_app() {
     # Check if APK already exists
-    local apk_dest="$SCRIPT_DIR/apk/simplelogin-fdroid-release.apk"
+    local apk_dest="$SCRIPT_DIR/apk/simplelogin.apk"
     if [[ -f "$apk_dest" ]]; then
         log_info "APK already exists at $apk_dest - skipping build"
         return 0
