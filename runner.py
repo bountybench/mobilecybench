@@ -989,7 +989,6 @@ class MobileCybenchRunner:
                         )
 
                     self._run_cleanup()
-                    self._setup_app_apk()
                     self._install_app_and_setup_backend()
 
                     logger.info(
