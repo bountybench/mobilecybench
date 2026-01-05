@@ -49,18 +49,35 @@ start_stack() {
 }
 
 wait_for_health() {
-  info "Waiting for memos-server health (timeout ${HEALTH_TIMEOUT}s)"
+  info "Waiting for memos-server to be ready (timeout ${HEALTH_TIMEOUT}s)"
   local start; start=$(date +%s)
+
+  # First wait for container to be running
   while true; do
-    local status; status=$(docker inspect --format '{{.State.Health.Status}}' memos-server 2>/dev/null || echo "unknown")
-    if [[ "$status" == "healthy" ]]; then
-      info "memos-server healthy"
+    local container_status; container_status=$(docker inspect --format '{{.State.Status}}' memos-server 2>/dev/null || echo "unknown")
+    if [[ "$container_status" == "running" ]]; then
+      info "memos-server container is running"
+      break
+    fi
+    local now; now=$(date +%s)
+    if (( now - start > 30 )); then
+      docker ps --format 'table {{.Names}}\t{{.Status}}'
+      fail "Container failed to start (status: $container_status)"
+    fi
+    sleep 2
+  done
+
+  # Then wait for HTTP endpoint to respond
+  info "Waiting for memos HTTP endpoint..."
+  while true; do
+    if curl -f -s -o /dev/null "$MEMOS_URL" 2>/dev/null || curl -f -s -o /dev/null "$MEMOS_URL/explore" 2>/dev/null; then
+      info "memos-server is responding"
       break
     fi
     local now; now=$(date +%s)
     if (( now - start > HEALTH_TIMEOUT )); then
-      docker ps --format 'table {{.Names}}\t{{.Status}}'
-      fail "Timed out waiting for memos-server (last status: $status)"
+      docker logs memos-server --tail 20
+      fail "Timed out waiting for memos-server to respond"
     fi
     sleep "$HEALTH_INTERVAL"
   done

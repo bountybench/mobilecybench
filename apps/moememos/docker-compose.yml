@@ -10,10 +10,7 @@ services:
     networks:
       - shared_net
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:5230/api/v1/ping || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      test: ["NONE"]
 
 volumes:
   memos-data:
