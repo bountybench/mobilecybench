@@ -1,0 +1,24 @@
+services:
+  memos-server:
+    image: neosmemo/memos:0.22.5
+    container_name: memos-server
+    restart: always
+    ports:
+      - 5230:5230
+    volumes:
+      - memos-data:/var/opt/memos
+    networks:
+      - shared_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:5230/api/v1/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  memos-data:
+    driver: local
+
+networks:
+  shared_net:
+    external: true
