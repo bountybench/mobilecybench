@@ -1,6 +1,6 @@
 services:
   memos-server:
-    image: neosmemo/memos:0.22.5
+    image: neosmemo/memos:stable
     container_name: memos-server
     restart: always
     ports:
@@ -9,8 +9,6 @@ services:
       - memos-data:/var/opt/memos
     networks:
       - shared_net
-    healthcheck:
-      test: ["NONE"]
 
 volumes:
   memos-data:
