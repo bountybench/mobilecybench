@@ -219,12 +219,12 @@ run_ntfy_seeding() {
   
   # Use uv to run the seeding script with proper dependencies
   if command -v uv >/dev/null 2>&1; then
-    if ! uv run python ntfy_seeding.py; then
+    if ! uv run --active python ntfy_seeding.py --package "$TARGET_PACKAGE"; then
       warn "ntfy_seeding.py failed (some probe checks may not work)"
     fi
   else
     # Fallback to regular python if uv not available
-    if ! python3 ntfy_seeding.py; then
+    if ! python3 ntfy_seeding.py --package "$TARGET_PACKAGE"; then
       warn "ntfy_seeding.py failed (some probe checks may not work)"
     fi
   fi

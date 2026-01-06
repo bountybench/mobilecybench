@@ -3,6 +3,7 @@
 Seeds baseline topics/messages and emits manifest for verification.
 """
 
+import argparse
 import json
 import logging
 import os
@@ -43,6 +44,35 @@ if not logger.handlers:
 def log(msg: str) -> None:
     """Log message at INFO level."""
     logger.info(msg)
+
+
+def detect_target_package(preferred: str = None) -> str:
+    """Detect debug vs release package; prefer explicit override."""
+    if preferred:
+        return preferred
+    try:
+        result = subprocess.run(
+            ["adb", "shell", "pm", "list", "packages"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            if "io.heckel.ntfy.debug" in result.stdout:
+                return "io.heckel.ntfy.debug"
+            if "io.heckel.ntfy" in result.stdout:
+                return "io.heckel.ntfy"
+    except Exception:
+        pass
+    return TARGET_PACKAGE
+
+
+def init_target_package(preferred: str = None) -> None:
+    """Initialize global package and DB path."""
+    global TARGET_PACKAGE, DB_PATH
+    TARGET_PACKAGE = detect_target_package(preferred)
+    DB_PATH = f"/data/data/{TARGET_PACKAGE}/databases/AppDatabase"
+    log(f"Using package: {TARGET_PACKAGE}")
 
 
 def write_json(filepath: str, data: Any) -> None:
@@ -389,6 +419,11 @@ def capture_baseline_data() -> Dict[str, Any]:
 
 def main() -> None:
     """Run ntfy seeding for CIAA probes."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--package", default=None)
+    args = parser.parse_args()
+    init_target_package(args.package)
+
     log(f"Starting ntfy seeding -> {NTFY_URL}")
 
     # Load secrets
