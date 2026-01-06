@@ -24,6 +24,7 @@ LOG_PREFIX="[setup-ntfy]"
 TARGET_PACKAGE="io.heckel.ntfy"
 TARGET_DIR="/data/data/${TARGET_PACKAGE}"
 ANDROID_BASELINE_FILE="${SCRIPT_DIR}/baseline_android_dir.txt"
+ANDROID_BASELINE_EXPANDED_FILE="${SCRIPT_DIR}/baseline_android_dir_expanded.txt"
 NTFY_URL="http://localhost:8080" # Host perspective
 EMULATOR_GATEWAY="http://10.0.2.2:8080" # Emulator perspective
 
@@ -76,6 +77,20 @@ wait_for_health() {
   done
 }
 
+detect_package() {
+  local debug_pkg="io.heckel.ntfy.debug"
+  local release_pkg="io.heckel.ntfy"
+  TARGET_PACKAGE="$release_pkg"
+
+  if adb shell pm list packages | grep -q "^package:${debug_pkg}$"; then
+    if adb shell "su 0 test -d /data/data/${debug_pkg} || su 0 test -d /data/user/0/${debug_pkg}" >/dev/null 2>&1; then
+      TARGET_PACKAGE="$debug_pkg"
+    fi
+  fi
+
+  TARGET_DIR="/data/data/${TARGET_PACKAGE}"
+}
+
 install_app() {
   info "Installing ntfy-android from local APK folder"
   adb wait-for-device >/dev/null 2>&1
@@ -86,7 +101,8 @@ install_app() {
   local apk="${SCRIPT_DIR}/apk/ntfy-android.apk"
   [[ -f "$apk" ]] || fail "APK not found at $apk"
   
-  adb uninstall "$TARGET_PACKAGE" >/dev/null 2>&1 || true
+  adb uninstall "io.heckel.ntfy" >/dev/null 2>&1 || true
+  adb uninstall "io.heckel.ntfy.debug" >/dev/null 2>&1 || true
   if ! adb install -r "$apk" >/dev/null 2>&1; then
     fail "Failed to install APK"
   fi
@@ -159,7 +175,7 @@ EOF
 
 launch_app() {
   info "Launching ntfy..."
-  if ! adb shell am start -n "$TARGET_PACKAGE/.ui.MainActivity" >/dev/null 2>&1; then
+  if ! adb shell am start -n "$TARGET_PACKAGE/io.heckel.ntfy.ui.MainActivity" >/dev/null 2>&1; then
     fail "Failed to launch app"
   fi
   
@@ -181,8 +197,19 @@ launch_app() {
 
 capture_baseline() {
   info "Capturing Android baseline -> $ANDROID_BASELINE_FILE"
+  detect_package
   # Requirement for Integrity Probes: List all files in the app's internal storage
-  adb shell su 0 find "$TARGET_DIR" 2>/dev/null | tr -d '\r' | sort > "$ANDROID_BASELINE_FILE" || warn "Baseline capture failed"
+  DATA_DIR=$(adb shell dumpsys package "$TARGET_PACKAGE" | grep -m1 "dataDir=" | sed 's/.*dataDir=//')
+  if [ -z "$DATA_DIR" ]; then
+    DATA_DIR="$TARGET_DIR"
+  fi
+  adb shell "su 0 sh -c 'cd \"$DATA_DIR\" 2>/dev/null || cd \"/data/user/0/$TARGET_PACKAGE\" 2>/dev/null || exit 2; find .'" 2>/dev/null | tr -d '\r' | sort > "$ANDROID_BASELINE_FILE" || warn "Baseline capture failed"
+
+  info "Capturing expanded Android baseline -> $ANDROID_BASELINE_EXPANDED_FILE"
+  python3 "$SCRIPT_DIR/ntfy_capture_baseline.py" \
+    --package "$TARGET_PACKAGE" \
+    --target-dir "$TARGET_DIR" \
+    --baseline-file "$ANDROID_BASELINE_EXPANDED_FILE" || warn "Expanded baseline capture failed"
 }
 
 run_ntfy_seeding() {
@@ -211,6 +238,8 @@ main() {
   start_stack
   wait_for_health
   install_app
+  detect_package
+  adb shell pm grant "$TARGET_PACKAGE" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
   configure_app_defaults
   launch_app
   run_ntfy_seeding

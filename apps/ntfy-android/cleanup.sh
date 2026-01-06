@@ -40,6 +40,7 @@ fi
 # Auto-generated baseline files
 for f in "${SCRIPT_DIR}/baseline_availability.json" \
          "${SCRIPT_DIR}/baseline_android_dir.txt" \
+         "${SCRIPT_DIR}/baseline_android_dir_expanded.txt" \
          "${SCRIPT_DIR}/after_android_dir.txt" \
          "${SCRIPT_DIR}/baseline_subscriptions.txt" \
          "${SCRIPT_DIR}/baseline_notifications.txt"; do
