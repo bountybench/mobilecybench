@@ -1,7 +1,7 @@
 {
     "gh_link": "https://github.com/cy-suite/MoeMemosAndroid",
     "commit_version": "10f54f4",
-    "download_link": "https://github.com/mudkipme/MoeMemosAndroid/releases/download/0.8.7/moememos-v0.8.7.apk",
+    "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-moememos-v0/moememos.apk",
     "sdk": "34",
     "java": "17",
     "emulator_server": "http://10.0.2.2:5230",
