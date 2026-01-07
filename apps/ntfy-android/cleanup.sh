@@ -38,12 +38,9 @@ if [[ -f "$BASELINE_FILE" ]]; then
 fi
 
 # Auto-generated baseline files
-for f in "${SCRIPT_DIR}/baseline_availability.json" \
+for f in "${SCRIPT_DIR}/baseline_access_control.json" \
          "${SCRIPT_DIR}/baseline_android_dir.txt" \
-         "${SCRIPT_DIR}/baseline_android_dir_expanded.txt" \
-         "${SCRIPT_DIR}/after_android_dir.txt" \
-         "${SCRIPT_DIR}/baseline_subscriptions.txt" \
-         "${SCRIPT_DIR}/baseline_notifications.txt"; do
+         "${SCRIPT_DIR}/baseline_android_dir_expanded.txt"; do
   if [[ -f "$f" ]]; then
     rm -f -- "$f"
   fi

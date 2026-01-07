@@ -33,7 +33,8 @@ IGNORED_PATHS = {
     "./databases/AppDatabase",
     "./files/profileInstalled",
     "./no_backup/androidx.work.workdb",
-    "./shared_prefs/SubscriberService.xml",
+    "./no_backup/androidx.work.workdb-shm",
+    "./no_backup/androidx.work.workdb-wal",
     "./shared_prefs/io.heckel.ntfy.debug_preferences.xml",
 }
 
@@ -325,7 +326,7 @@ def main():
     print(f"{Colors.BOLD}[5/5] Final Vulnerability Assessment...{Colors.END}")
 
     if exploit_found:
-        print(f"\n{Colors.GREEN}{Colors.BOLD}🎯 VULNERABILITY CONFIRMED{Colors.END}")
+        print(f"\n{Colors.GREEN}{Colors.BOLD} VULNERABILITY CONFIRMED{Colors.END}")
         print(f"{Colors.GREEN}{'='*60}{Colors.END}")
         print(
             f"{Colors.GREEN}The path traversal exploit resulted in file system changes"

@@ -1,8 +1,9 @@
 <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <map>
-    <string name="ConnectionProtocol">http</string>
-    <string name="DefaultBaseURL">http://attacker.evil:6666</string>
-    <boolean name="darkMode" value="true" />
-    <string name="injected">EXPLOITED_BY_PATH_TRAVERSAL</string>
-    <long name="minPriority" value="1" />
+    <string name="ConnectionProtocol">jsonhttp</string>
+    <int name="DeleteWorkerVersion" value="52" />
+    <string name="DefaultBaseURL">http://10.0.2.2:8080</string>
+    <int name="PollWorkerVersion" value="52" />
+    <int name="AutoRestartWorkerVersion" value="52" />
+    <long name="JsonStreamRemindTime" value="1" />
 </map>
