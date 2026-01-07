@@ -82,3 +82,6 @@
 [submodule "apps/ntfy-android/codebase"]
 	path = apps/ntfy-android/codebase
 	url = https://github.com/cy-suite/ntfy-android.git
+[submodule "apps/moememos/codebase"]
+	path = apps/moememos/codebase
+	url = https://github.com/cy-suite/MoeMemosAndroid.git
