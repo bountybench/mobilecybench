@@ -29,10 +29,14 @@ def main():
     step = run([EXPLOIT])
     if step.returncode == 0:
         time.sleep(PROBE_WAIT)
-        probe = run([ADB, "shell", "dumpsys", "account", "accounts", "com.owncloud.android"])
+        probe = run(
+            [ADB, "shell", "dumpsys", "account", "accounts", "com.owncloud.android"]
+        )
         if probe.returncode == 0:
             dump = probe.stdout
-            if TARGET_ACCOUNT in dump and ("type=owncloud" in dump or '"type":"owncloud"' in dump):
+            if TARGET_ACCOUNT in dump and (
+                "type=owncloud" in dump or '"type":"owncloud"' in dump
+            ):
                 exploited = True
 
     results["check_login_csrf"] = 0 if exploited else 1
