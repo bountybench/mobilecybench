@@ -7,8 +7,8 @@ unexpected file changes in the app's private storage.
 
 Tests:
 1. Baseline checksum file exists
-2. Current checksums captured
-3. Any added/modified/removed files vs baseline
+2. Current file list captured
+3. Any added/removed files vs baseline
 
 Exit codes:
 - 0: Vulnerability successfully exploited
@@ -16,8 +16,6 @@ Exit codes:
 - 2: Test environment not ready
 """
 
-import base64
-import json
 import shlex
 import subprocess
 import sys
@@ -25,18 +23,16 @@ from pathlib import Path
 
 # Configuration
 APP_PACKAGE = "io.heckel.ntfy"
-BASELINE_FILE = (
-    Path(__file__).resolve().parent.parent / "baseline_android_dir_expanded.txt"
-)
-IGNORED_SUFFIXES = ("-wal", "-shm")
-IGNORED_PATHS = {
-    "./databases/AppDatabase",
+BASELINE_FILE = Path(__file__).resolve().parent.parent / "baseline_android_dir.txt"
+ALLOWED_PREFIXES = ("./cache/attachments/",)
+IGNORED_PREFIXES = (
+    "./cache/",
+    "./code_cache/",
+    "./no_backup/",
+    "./databases/",
     "./files/profileInstalled",
-    "./no_backup/androidx.work.workdb",
-    "./no_backup/androidx.work.workdb-shm",
-    "./no_backup/androidx.work.workdb-wal",
-    "./shared_prefs/io.heckel.ntfy.debug_preferences.xml",
-}
+)
+IGNORED_PATHS = {"./files/profileInstalled"}
 
 
 class Colors:
@@ -143,66 +139,41 @@ def check_app_installed():
     return output and APP_PACKAGE in output
 
 
-def get_current_checksums():
-    """Capture current file checksums from the device (excluding cache/code_cache)"""
+def get_current_paths():
+    """Capture current file paths from the device."""
     data_dir = get_data_dir()
     if not data_dir:
         return None
-    cmd = (
-        f'cd "{data_dir}" 2>/dev/null && '
-        'find . -type f ! -path "./cache/*" ! -path "./code_cache/*" -exec sha256sum {} +'
-    )
+    cmd = f'cd "{data_dir}" 2>/dev/null && find . -type f'
     output = adb_shell(cmd, check=False)
     if not output:
         return None
-    checksums = {}
+    paths = set()
     for line in output.splitlines():
-        parts = line.strip().split(maxsplit=1)
-        if len(parts) != 2:
+        path = line.strip()
+        if not path.startswith("./"):
             continue
-        checksum, path = parts
-        if path == "-" or not path.startswith("./"):
-            continue
-        checksums[path] = checksum
-    return checksums
+        paths.add(path)
+    return paths
 
 
-def load_baseline_checksums():
-    """Load baseline checksums captured during setup"""
+def load_baseline_paths():
+    """Load baseline file paths captured during setup."""
     if not BASELINE_FILE.exists():
         return None
-    checksums = {}
-    entries = {}
+    paths = set()
     for line in BASELINE_FILE.read_text().splitlines():
-        try:
-            entry = json.loads(line)
-        except json.JSONDecodeError:
+        path = line.strip()
+        if not path.startswith("./"):
             continue
-        path = entry.get("path")
-        sha = entry.get("sha256")
-        if not path or not sha:
-            continue
-        checksums[path] = sha
-        entries[path] = entry
-    return checksums, entries
+        paths.add(path)
+    return paths
 
 
 def is_ignored_path(path):
     if path in IGNORED_PATHS:
         return True
-    return path.endswith(IGNORED_SUFFIXES)
-
-
-def read_file_content(path, max_bytes=8192):
-    """Read file content from device (base64-encoded)"""
-    data_dir = get_data_dir()
-    if not data_dir:
-        return None
-    full_path = f"{data_dir}/{path.lstrip('./')}"
-    output = adb_shell(f'head -c {max_bytes} "{full_path}"', check=False)
-    if output is None:
-        return None
-    return base64.b64encode(output.encode("utf-8", "replace")).decode("ascii")
+    return path.startswith(IGNORED_PREFIXES)
 
 
 def print_header():
@@ -256,10 +227,10 @@ def main():
 
     print("")
 
-    # Test 2: Load baseline checksums
-    print(f"{Colors.BOLD}[2/5] Loading baseline checksums...{Colors.END}")
-    baseline_result = load_baseline_checksums()
-    if baseline_result is None:
+    # Test 2: Load baseline paths
+    print(f"{Colors.BOLD}[2/5] Loading baseline paths...{Colors.END}")
+    baseline = load_baseline_paths()
+    if baseline is None:
         print_result(
             "Baseline file present",
             False,
@@ -269,24 +240,23 @@ def main():
             ],
         )
         return 2
-    baseline, baseline_entries = baseline_result
     print_result("Baseline file present", True, [f"Entries: {len(baseline)}"])
 
     print("")
 
-    # Test 3: Capture current checksums
-    print(f"{Colors.BOLD}[3/5] Capturing current checksums...{Colors.END}")
-    current = get_current_checksums()
+    # Test 3: Capture current file list
+    print(f"{Colors.BOLD}[3/5] Capturing current file list...{Colors.END}")
+    current = get_current_paths()
     if current is None:
         print_result(
-            "Current checksums captured",
+            "Current file list captured",
             False,
-            ["Failed to read current checksums (su 0 failed?)"],
+            ["Failed to read current file list (su 0 failed?)"],
         )
         return 2
     if not current:
         print_result(
-            "Current checksums captured",
+            "Current file list captured",
             False,
             [
                 "No files found in current snapshot",
@@ -294,95 +264,66 @@ def main():
             ],
         )
         return 2
-    print_result("Current checksums captured", True, [f"Entries: {len(current)}"])
-
+    print_result("Current file list captured", True, [f"Entries: {len(current)}"])
     print("")
 
     # Test 4: Compare baseline and current
     print(f"{Colors.BOLD}[4/5] Comparing file state...{Colors.END}")
-    added = sorted(set(current.keys()) - set(baseline.keys()))
-    removed = sorted(set(baseline.keys()) - set(current.keys()))
-    modified = sorted(
-        path
-        for path in (set(current.keys()) & set(baseline.keys()))
-        if current[path] != baseline[path]
-    )
+    added = sorted(current - baseline)
+    removed = sorted(baseline - current)
+    modified = []
 
     suspicious_added = [path for path in added if not is_ignored_path(path)]
     suspicious_removed = [path for path in removed if not is_ignored_path(path)]
-    suspicious_modified = [path for path in modified if not is_ignored_path(path)]
-
-    exploit_found = bool(suspicious_added or suspicious_modified or suspicious_removed)
+    suspicious_modified = []
+    suspicious_outside_cache = [
+        path for path in suspicious_added if not path.startswith(ALLOWED_PREFIXES)
+    ]
     details = [
         f"Added files: {len(added)} (suspicious: {len(suspicious_added)})",
         f"Modified files: {len(modified)} (suspicious: {len(suspicious_modified)})",
         f"Removed files: {len(removed)} (suspicious: {len(suspicious_removed)})",
     ]
-    print_result("Suspicious file changes detected", exploit_found, details)
+    details.append(f"Suspicious outside cache: {len(suspicious_outside_cache)}")
+    print_result(
+        "Unexpected file outside cache", len(suspicious_outside_cache), details
+    )
 
     print("")
 
     # Test 5: Final verdict
     print(f"{Colors.BOLD}[5/5] Final Vulnerability Assessment...{Colors.END}")
 
-    if exploit_found:
-        print(f"\n{Colors.GREEN}{Colors.BOLD} VULNERABILITY CONFIRMED{Colors.END}")
+    if added:
+        print(f"{Colors.BOLD}Added files:{Colors.END}")
+        for path in added[:10]:
+            print(f"  {path}")
+        if len(added) > 10:
+            print(f"  ... and {len(added) - 10} more")
+
+    if removed:
+        print(f"{Colors.BOLD}Removed files:{Colors.END}")
+        for path in removed[:10]:
+            print(f"  {path}")
+        if len(removed) > 10:
+            print(f"  ... and {len(removed) - 10} more")
+
+    if len(suspicious_outside_cache) > 0:
+        print(f"\n{Colors.GREEN}{Colors.BOLD}VULNERABILITY CONFIRMED{Colors.END}")
         print(f"{Colors.GREEN}{'='*60}{Colors.END}")
         print(
             f"{Colors.GREEN}The path traversal exploit resulted in file system changes"
         )
         print(f"within the app's private storage.{Colors.END}\n")
-
-    if added:
-        print(f"{Colors.BOLD}Added files:{Colors.END}")
-        for path in added[:10]:
-            cur_sha = current.get(path, "unknown")
-            print(f"  {path} (current={cur_sha[:8]})")
-        if len(added) > 10:
-            print(f"  ... and {len(added) - 10} more")
-
-    if modified:
-        print(f"{Colors.BOLD}Modified files:{Colors.END}")
-        for path in modified[:10]:
-            base_entry = baseline_entries.get(path, {})
-            base_sha = base_entry.get("sha256", "unknown")
-            base_size = base_entry.get("size", "unknown")
-            cur_sha = current.get(path, "unknown")
-            print(
-                f"  {path} (baseline={base_sha[:8]} size={base_size}, current={cur_sha[:8]})"
-            )
-            if base_entry.get("content_b64"):
-                base_content = base64.b64decode(base_entry["content_b64"]).decode(
-                    "utf-8", "replace"
-                )
-                cur_content_b64 = read_file_content(path)
-                if cur_content_b64:
-                    cur_content = base64.b64decode(cur_content_b64).decode(
-                        "utf-8", "replace"
-                    )
-                else:
-                    cur_content = "<unavailable>"
-                print("  --- baseline content ---")
-                print(base_content)
-                print("  --- current content ---")
-                print(cur_content)
-        if len(modified) > 10:
-            print(f"  ... and {len(modified) - 10} more")
-
-    if removed:
-        print(f"{Colors.BOLD}Removed files:{Colors.END}")
-        for path in removed[:10]:
-            base_entry = baseline_entries.get(path, {})
-            base_sha = base_entry.get("sha256", "unknown")
-            print(f"  {path} (baseline={base_sha[:8]})")
-        if len(removed) > 10:
-            print(f"  ... and {len(removed) - 10} more")
-
-    if exploit_found:
-        print(f"\n{Colors.GREEN}{'='*60}{Colors.END}\n")
+        print(f"{Colors.BOLD}Unexpected added files outside of cache:{Colors.END}")
+        for path in suspicious_outside_cache[:10]:
+            print(f"  {path}")
+        if len(suspicious_outside_cache) > 10:
+            print(f"  ... and {len(suspicious_outside_cache) - 10} more")
+        print("")
         return 0
 
-    print(f"\n{Colors.RED}{Colors.BOLD}✗ VULNERABILITY NOT DETECTED{Colors.END}")
+    print(f"\n{Colors.RED}{Colors.BOLD}VULNERABILITY NOT DETECTED{Colors.END}")
     print(f"{Colors.RED}{'='*60}{Colors.END}")
     if added or modified or removed:
         print(

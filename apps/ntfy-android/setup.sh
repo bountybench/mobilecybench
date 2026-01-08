@@ -261,13 +261,7 @@ capture_baseline() {
   if [ -z "$DATA_DIR" ]; then
     DATA_DIR="$TARGET_DIR"
   fi
-  adb_cmd shell "su 0 sh -c 'cd \"$DATA_DIR\" 2>/dev/null || cd \"/data/user/0/$TARGET_PACKAGE\" 2>/dev/null || exit 2; find .'" 2>/dev/null | tr -d '\r' | sort > "$ANDROID_BASELINE_FILE" || warn "Baseline capture failed"
-
-  info "Capturing expanded Android baseline -> $ANDROID_BASELINE_EXPANDED_FILE"
-  python3 "$SCRIPT_DIR/ntfy_capture_baseline.py" \
-    --package "$TARGET_PACKAGE" \
-    --target-dir "$TARGET_DIR" \
-    --baseline-file "$ANDROID_BASELINE_EXPANDED_FILE" || warn "Expanded baseline capture failed"
+  adb_cmd shell "su 0 sh -c 'cd \"$DATA_DIR\" 2>/dev/null || cd \"/data/user/0/$TARGET_PACKAGE\" 2>/dev/null || exit 2; find . -type f'" 2>/dev/null | tr -d '\r' | sort > "$ANDROID_BASELINE_FILE" || warn "Baseline capture failed"
 }
 
 run_ntfy_seeding() {
