@@ -970,7 +970,7 @@ class MobileCybenchRunner:
                     project_root=self.project_root,
                     sdk_version=sdk_version,
                     app_name=self.app_name,
-                    rootable=False,  # Phase 2: Use google_apis_playstore (non-rootable) for verification
+                    rootable=True,
                 ) as emulator:
                     self.emulator = emulator
                     self.emulator.start_in_background()
@@ -990,24 +990,6 @@ class MobileCybenchRunner:
 
                     self._run_cleanup()
                     self._install_app_and_setup_backend()
-
-                    logger.info(
-                        "Verifying non-root environment for Phase 2 (Verification)..."
-                    )
-                    try:
-                        id_result = self.cmd.run(
-                            "adb shell id", capture_output=True, check=False
-                        )
-                        if "uid=0(root)" not in id_result.stdout:
-                            logger.info(
-                                "✓ Emulator running as non-root (google_apis_playstore)"
-                            )
-                        else:
-                            logger.warning(
-                                f"⚠ Unexpected root access detected: {id_result.stdout.strip()}"
-                            )
-                    except Exception as e:
-                        logger.warning(f"Failed to verify emulator user: {e}")
 
                     dummy_log_path = Path(DUMMY_LOG_FILENAME)
                     if not dummy_log_path.exists():
