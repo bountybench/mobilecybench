@@ -153,7 +153,7 @@ class CommandExecutor:
             idx = 0
             timestamp = 0.0
 
-            def update(elapsed: float) -> int:
+            def update(elapsed: float) -> None:
                 nonlocal timestamp, idx
 
                 spinner = spinner_chars[idx % len(spinner_chars)]
@@ -206,6 +206,7 @@ class CommandExecutor:
                 stdout += drain_queue(stdout_q)
                 stderr += drain_queue(stderr_q, True)
                 update_spinner(elapsed)
+                time.sleep(0.1)
 
             stdout_t.join()
             stderr_t.join()
