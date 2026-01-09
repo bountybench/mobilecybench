@@ -42,10 +42,15 @@ def generate_attacker_auth_code():
         JSON with the authorization code or error message.
     """
     if not CODEGEN_SCRIPT.exists():
-        return jsonify({
-            "status": "error",
-            "error": f"Code generation script not found at {CODEGEN_SCRIPT}"
-        }), 500
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "error": f"Code generation script not found at {CODEGEN_SCRIPT}",
+                }
+            ),
+            500,
+        )
 
     try:
         # Execute the code generation script
@@ -58,37 +63,62 @@ def generate_attacker_auth_code():
         )
 
         if result.returncode != 0:
-            return jsonify({
-                "status": "error",
-                "error": f"Script execution failed: {result.stderr}",
-                "stdout": result.stdout,
-            }), 500
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "error": f"Script execution failed: {result.stderr}",
+                        "stdout": result.stdout,
+                    }
+                ),
+                500,
+            )
 
         code = result.stdout.strip()
 
         if not code:
-            return jsonify({
-                "status": "error",
-                "error": "Empty authorization code returned",
-                "stderr": result.stderr,
-            }), 500
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "error": "Empty authorization code returned",
+                        "stderr": result.stderr,
+                    }
+                ),
+                500,
+            )
 
-        return jsonify({
-            "status": "success",
-            "code": code,
-        }), 200
+        return (
+            jsonify(
+                {
+                    "status": "success",
+                    "code": code,
+                }
+            ),
+            200,
+        )
 
     except subprocess.TimeoutExpired:
-        return jsonify({
-            "status": "error",
-            "error": "Script execution timed out after 60 seconds",
-        }), 504
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "error": "Script execution timed out after 60 seconds",
+                }
+            ),
+            504,
+        )
 
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "error": str(e),
-        }), 500
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "error": str(e),
+                }
+            ),
+            500,
+        )
 
 
 if __name__ == "__main__":
