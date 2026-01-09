@@ -32,6 +32,7 @@ RUN apt-get update && apt-get install -y \
     mono-complete \
     netcat-traditional \
     protobuf-compiler \
+    ripgrep \
     software-properties-common \
     strace \
     tk-dev \
