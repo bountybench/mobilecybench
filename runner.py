@@ -56,6 +56,7 @@ class MobileCybenchRunner:
         self.cmd = CommandExecutor()
         self.emulator = None
         self.probe_results = {}
+        self.synthetic_prompt_text = None
 
         try:
             git_branch = subprocess.run(
@@ -178,6 +179,21 @@ class MobileCybenchRunner:
                 f"Unsupported Build Type Detected: {self.config.build_type}"
             )
 
+        # Synthetic vulnerability workflow constraints
+        if self.config.synthetic_vuln:
+            if self.config.build_type != "source":
+                self._exit_with_error(
+                    "Synthetic vulnerability mode requires build_type 'source'."
+                )
+            patch_path = (
+                self.app_dir / "synthetic_vulnerabilities" / "vulnerability.patch"
+            )
+            if not patch_path.exists():
+                self._exit_with_error(
+                    f"Synthetic vulnerability patch not found at {patch_path}"
+                )
+            self.synthetic_patch_path = patch_path
+
         # Check for static vulnerability reports if in supervisor mode
         if self.mode == "supervisor":
             reports_root = self.app_dir / "static_vuln_reports"
@@ -237,6 +253,50 @@ class MobileCybenchRunner:
                     )
 
         logger.info("Input validation passed")
+
+    def _apply_synthetic_patch(self):
+        patch_path = getattr(self, "synthetic_patch_path", None)
+        if not patch_path:
+            return
+
+        codebase_dir = self.app_dir / "codebase"
+        if not codebase_dir.exists():
+            codebase_dir = self.app_dir
+
+        logger.info(f"Applying synthetic patch: {patch_path}")
+        result = subprocess.run(
+            ["git", "apply", str(patch_path)],
+            cwd=codebase_dir,
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            logger.info(f"Patch did not apply: {result.stderr.strip()}")
+            logger.info("This is fine if patch is already applied or codebase is dirty")
+        else:
+            logger.info("Patch applied successfully")
+
+    def _load_synthetic_scenario(self):
+        if not self.config.synthetic_vuln:
+            return
+
+        scenario_file = self.app_dir / "synthetic_vulnerabilities" / "scenario.json"
+        if not scenario_file.exists():
+            logger.warning("scenario.json not found")
+            return
+
+        try:
+            with open(scenario_file) as f:
+                scenario = json.load(f)
+
+            self.synthetic_prompt_text = (
+                "SYNTHETIC VULNERABILITY SCENARIO (PRIORITIZE THIS FIRST):\n"
+                f"{json.dumps(scenario, indent=2)}"
+            )
+            logger.info("Loaded synthetic scenario")
+        except Exception as e:
+            logger.warning(f"Failed to load scenario.json: {e}")
 
     def _setup_app_apk(self):
         """APK Handling - Download, Build, or Skip"""
@@ -384,6 +444,7 @@ class MobileCybenchRunner:
             env=env_vars,
             commit_id=self.metadata.get("commit_version"),
             mode=self.mode,
+            synthetic_vuln=self.config.synthetic_vuln,
         )
         agent_env.setup()
         self.agent_env = agent_env
@@ -594,7 +655,14 @@ class MobileCybenchRunner:
                     app_name=self.app_name,
                     app_server=getattr(self, "metadata", {}).get("app_server", None),
                     dry_run=self.config.dry_run,
-                    system_prompt=self.config.custom_system_prompt,
+                    system_prompt=(
+                        (self.config.custom_system_prompt or "")
+                        + (
+                            "\n\n" + self.synthetic_prompt_text
+                            if self.synthetic_prompt_text
+                            else ""
+                        )
+                    ),
                     package_name=self.metadata.get("package_name"),
                     reasoning_effort=self.config.reasoning_effort,
                     username=self.metadata.get("username"),
@@ -616,7 +684,10 @@ class MobileCybenchRunner:
                     logger.info("Final Message:")
                     logger.info(f"  {result['final_message']}")
 
-            return result
+                return result
+
+            # Supervisor mode already returned above, but satisfy type checker
+            return {"status": "error", "turns": 0, "final_message": None, "log_file": None}
 
         except Exception as e:
             logger.error(f"Failed to run agent: {e}")
@@ -646,6 +717,9 @@ class MobileCybenchRunner:
         env = os.environ.copy()
         if not container_names:
             env["SKIP_SSRF_CHECK"] = "1"
+        if getattr(self.config, "synthetic_vuln", False):
+            env["SYNTHETIC_VULN"] = "1"
+            env["APP_UNDER_TEST"] = self.app_name
 
         try:
             result = self.cmd.run(command, cwd=self.project_root, check=False, env=env)
@@ -832,7 +906,13 @@ class MobileCybenchRunner:
             # Step 3: Execute the exploit script and capture output
             logger.info("Executing exploit script...")
             exec_result = subprocess.run(
-                ["docker", "exec", "kali-container", "bash", exploit_script_path],
+                [
+                    "docker",
+                    "exec",
+                    "kali-container",
+                    "bash",
+                    exploit_script_path,
+                ],
                 capture_output=True,
                 text=True,
                 timeout=300,  # 5 minute timeout for exploit execution
@@ -923,6 +1003,9 @@ class MobileCybenchRunner:
             self._validate_input()
             if not self.config.dry_run:
                 self._setup_env_file()
+            if self.config.synthetic_vuln:
+                self._apply_synthetic_patch()
+                self._load_synthetic_scenario()
             log_banner("SETTING UP ANDROID EMULATOR")
             sdk_version = (
                 self.metadata.get("sdk") if hasattr(self, "metadata") else None
@@ -976,8 +1059,6 @@ class MobileCybenchRunner:
                     self.emulator.start_in_background()
                     logger.info("New emulator starting . . .")
 
-                    # some app's cleanup.sh might uninstall the app, which requires package manager to be running
-                    # takes a while for the package manager to be ready
                     try:
                         self.emulator.wait_until_ready(
                             timeout=EMULATOR_BOOT_TIMEOUT_SECONDS
@@ -1016,6 +1097,8 @@ class MobileCybenchRunner:
             logger.error(f"Unexpected error: {e}")
             return 1
         finally:
+            # TODO: clean up synthetic patch automatically.
+
             log_banner("PROBE RESULTS SUMMARY")
             if self.probe_results:
                 logger.info(

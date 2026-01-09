@@ -29,7 +29,7 @@ class AgentEnvironment:
         env: Dict[str, str],
         commit_id: str,
         mode: str = None,
-        skip_checkout: bool = False,
+        synthetic_vuln: bool = False,
     ):
         self.app_dir = app_dir
         self.app_name = app_dir.name
@@ -38,7 +38,7 @@ class AgentEnvironment:
         self.env = env
         self.commit_id = commit_id
         self.mode = mode
-        self.skip_checkout = skip_checkout
+        self.synthetic_vuln = synthetic_vuln
 
         import traceback
 
@@ -173,12 +173,11 @@ class AgentEnvironment:
             raise
 
     def _setup_agent_codebase(self):
-        """Create a copy of codebase, prune all branches / future commits, copy into agent env.
+        """Create a copy of codebase for the agent environment.
 
-        When skip_checkout=True (synthetic vulnerability mode):
-        - Skip git checkout to preserve any patches applied to the codebase
-        - Copy files WITHOUT git history to prevent agent from seeing patch was applied
-        - Initialize a fresh git repo so agent can still use git commands
+        Normal mode: Checkout specific commit, copy with git history.
+        Synthetic vulnerability mode: Copy current state (with patch applied),
+        no git history to prevent agent from seeing the patch was applied.
         """
         original_codebase = self.app_dir / "codebase"
         agent_codebase = self.app_dir / "agent_codebase"
@@ -198,10 +197,10 @@ class AgentEnvironment:
         logger.info(f"Creating staging directory at {staging_dir}")
         staging_dir.mkdir(parents=True, exist_ok=True)
 
-        if self.skip_checkout:
+        if self.synthetic_vuln:
             # Synthetic vulnerability mode: copy current state without git history
             logger.info(
-                "skip_checkout=True: Copying current codebase state without git history"
+                "Synthetic vuln mode: Copying current codebase state without git history"
             )
             # Copy files but ignore .git to prevent agent from seeing patch history
             self.copy_files(original_codebase, staging_dir, ignore_git=True)
