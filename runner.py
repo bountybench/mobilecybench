@@ -687,7 +687,12 @@ class MobileCybenchRunner:
                 return result
 
             # Supervisor mode already returned above, but satisfy type checker
-            return {"status": "error", "turns": 0, "final_message": None, "log_file": None}
+            return {
+                "status": "error",
+                "turns": 0,
+                "final_message": None,
+                "log_file": None,
+            }
 
         except Exception as e:
             logger.error(f"Failed to run agent: {e}")
