@@ -14,6 +14,7 @@ Complete flow (verified manually):
 """
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -34,10 +35,14 @@ from ui_automation_utils import (
 
 SCRIPT_NAME = "login_ui"
 
+# Get script directory for relative paths
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_SECRETS_PATH = os.path.join(SCRIPT_DIR, "../../secrets.json")
+
 # Parse arguments
 parser = argparse.ArgumentParser(description="Conversations XMPP login automation")
 parser.add_argument(
-    "--secrets", default="../../secrets.json", help="Path to secrets.json"
+    "--secrets", default=DEFAULT_SECRETS_PATH, help="Path to secrets.json"
 )
 parser.add_argument("--username", default="user1@10.0.2.2", help="XMPP username")
 parser.add_argument("--user-key", default="user1_password", help="Key in secrets.json")
