@@ -195,6 +195,185 @@ class CustomAgent:
         if not self.conversation_id:
             return
 
+        def _safe_get(obj, key, default=None):
+            if isinstance(obj, dict):
+                return obj.get(key, default)
+            return getattr(obj, key, default)
+
+        def _serialize_obj(obj):
+            if hasattr(obj, "model_dump"):
+                return obj.model_dump()
+            if hasattr(obj, "to_dict"):
+                return obj.to_dict()
+            try:
+                return json.loads(json.dumps(obj, default=str))
+            except Exception:
+                return str(obj)
+
+        def _normalize_messages(items) -> list:
+            messages = []
+            for item in items:
+                item_type = _safe_get(item, "type")
+                if item_type != "message":
+                    continue
+                role = _safe_get(item, "role")
+                content = _safe_get(item, "content", []) or []
+                for part in content:
+                    part_type = _safe_get(part, "type")
+                    text = _safe_get(part, "text")
+                    if not text:
+                        continue
+                    if part_type in {"input_text", "output_text"}:
+                        messages.append(
+                            {
+                                "role": role,
+                                "type": part_type,
+                                "text": text,
+                            }
+                        )
+            return messages
+
+        def _build_turns(items) -> list:
+            turns = []
+            call_index = {}
+            pending_inputs = []
+            user_since_last_assistant = False
+            system_turn = {
+                "turn": 0,
+                "role": "system",
+                "inputs": [],
+                "response": [],
+                "tool_calls": [],
+                "warnings": [],
+            }
+            next_turn = 1
+            last_assistant_turn = None
+
+            def _append_text(entries, role, part_type, text):
+                entry = {"role": role, "type": part_type, "text": text}
+                entries.append(entry)
+
+            def _new_assistant_turn(response_parts):
+                nonlocal next_turn
+                turn = {
+                    "turn": next_turn,
+                    "role": "assistant",
+                    "inputs": pending_inputs[:],
+                    "response": response_parts,
+                    "tool_calls": [],
+                    "warnings": [],
+                }
+                next_turn += 1
+                return turn
+
+            for item in items:
+                item_type = _safe_get(item, "type")
+                if item_type == "message":
+                    role = _safe_get(item, "role")
+                    parts = []
+                    for part in _safe_get(item, "content", []) or []:
+                        part_type = _safe_get(part, "type")
+                        text = _safe_get(part, "text")
+                        if not text or part_type not in {"input_text", "output_text"}:
+                            continue
+                        parts.append({"type": part_type, "text": text})
+
+                    if role == "system":
+                        for p in parts:
+                            _append_text(system_turn["inputs"], role, p["type"], p["text"])
+                    elif role == "user":
+                        user_since_last_assistant = True
+                        # If this is a system-generated warning about missing tool calls, attach to last assistant turn
+                        warning_texts = [
+                            p["text"]
+                            for p in parts
+                            if isinstance(p.get("text"), str)
+                            and p.get("text", "").strip().upper().startswith("WARNING: TURN")
+                        ]
+                        if warning_texts and last_assistant_turn is not None:
+                            last_assistant_turn["warnings"].extend(warning_texts)
+                            continue
+                        if warning_texts and last_assistant_turn is None:
+                            system_turn["warnings"].extend(warning_texts)
+                            continue
+                        for p in parts:
+                            _append_text(pending_inputs, role, p["type"], p["text"])
+                    else:
+                        turn = _new_assistant_turn(parts)
+                        turns.append(turn)
+                        last_assistant_turn = turn
+                        pending_inputs.clear()
+                        user_since_last_assistant = False
+                    continue
+
+                if item_type == "function_call":
+                    if not turns:
+                        turn = _new_assistant_turn([])
+                        turns.append(turn)
+                        last_assistant_turn = turn
+                        pending_inputs.clear()
+                        user_since_last_assistant = False
+                    elif user_since_last_assistant:
+                        turn = _new_assistant_turn([])
+                        turns.append(turn)
+                        last_assistant_turn = turn
+                        pending_inputs.clear()
+                        user_since_last_assistant = False
+                    tool_call = {
+                        "name": _safe_get(item, "name"),
+                        "arguments": _safe_get(item, "arguments"),
+                        "call_id": _safe_get(item, "call_id"),
+                        "outputs": [],
+                    }
+                    turns[-1]["tool_calls"].append(tool_call)
+                    if tool_call["call_id"]:
+                        call_index[tool_call["call_id"]] = tool_call
+                    continue
+
+                if item_type in {"function_call_output", "tool_output"}:
+                    output = (
+                        _safe_get(item, "output")
+                        or _safe_get(item, "result")
+                        or _safe_get(item, "content")
+                    )
+                    call_id = _safe_get(item, "call_id")
+                    target = call_index.get(call_id)
+                    if target is None:
+                        if not turns:
+                            turn = _new_assistant_turn([])
+                            turns.append(turn)
+                            last_assistant_turn = turn
+                            pending_inputs.clear()
+                            user_since_last_assistant = False
+                        target = {
+                            "name": None,
+                            "arguments": None,
+                            "call_id": call_id,
+                            "outputs": [],
+                        }
+                        turns[-1]["tool_calls"].append(target)
+                        if call_id:
+                            call_index[call_id] = target
+                    target["outputs"].append(output)
+                    continue
+
+            if system_turn["inputs"]:
+                turns.insert(0, system_turn)
+
+            if pending_inputs:
+                turns.append(
+                    {
+                        "turn": next_turn,
+                        "role": "assistant",
+                        "inputs": pending_inputs,
+                        "response": [],
+                        "tool_calls": [],
+                        "warnings": [],
+                    }
+                )
+
+            return turns
+
         try:
             # Fetch full conversation history with all items (messages)
             conversation_data = self.provider.client.conversations.retrieve(
@@ -254,6 +433,36 @@ class CustomAgent:
                 agent_logger.info(f"{json.dumps(item, indent=2, default=str)}")
 
             agent_logger.info("\n" + "=" * 60)
+
+            # Write structured conversation files for summaries
+            try:
+                logs_dir = logger_manager.get_logs_dir()
+                raw_items_path = logs_dir / "conversation_items.json"
+                raw_items_filtered_path = logs_dir / "conversation_items_filtered.json"
+                messages_path = logs_dir / "conversation_messages.json"
+                turns_path = logs_dir / "conversation_turns.json"
+
+                raw_items = [_serialize_obj(item) for item in all_items]
+                with open(raw_items_path, "w") as f:
+                    json.dump(raw_items, f, indent=2)
+
+                filtered_items = [
+                    _serialize_obj(item)
+                    for item in all_items
+                    if _safe_get(item, "type") != "reasoning"
+                ]
+                with open(raw_items_filtered_path, "w") as f:
+                    json.dump(filtered_items, f, indent=2)
+
+                messages = _normalize_messages(all_items)
+                with open(messages_path, "w") as f:
+                    json.dump(messages, f, indent=2)
+
+                turns = _build_turns(all_items)
+                with open(turns_path, "w") as f:
+                    json.dump(turns, f, indent=2)
+            except Exception as e:
+                agent_logger.warning(f"Failed to write conversation exports: {e}")
         except Exception as e:
             agent_logger.warning(f"Failed to archive conversation before deletion: {e}")
 

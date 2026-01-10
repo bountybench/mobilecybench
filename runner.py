@@ -8,6 +8,7 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -56,6 +57,12 @@ class MobileCybenchRunner:
         self.cmd = CommandExecutor()
         self.emulator = None
         self.probe_results = {}
+        self._probe_output_tails = {}
+        self.exploit_created = False
+        self.exploit_executed = False
+        self._exploit_output_tail = []
+        self.agent_result = None
+        self._runner_status = "unknown"
 
         try:
             git_branch = subprocess.run(
@@ -630,7 +637,7 @@ class MobileCybenchRunner:
                 "log_file": None,
             }
 
-    def run_probes_checks(self, log_file_path: Path):
+    def run_probes_checks(self, log_file_path: Path, stage: Optional[str] = None):
         log_banner("RUNNING PROBE CHECKS")
 
         app_relative_path = f"apps/{self.app_name}"
@@ -661,6 +668,16 @@ class MobileCybenchRunner:
                 result.stderr
             )  # Don't label as STDERR since it's just progress info
 
+        if stage:
+            combined = []
+            if hasattr(result, "stdout") and result.stdout:
+                combined.append("STDOUT:")
+                combined.extend(result.stdout.splitlines())
+            if hasattr(result, "stderr") and result.stderr:
+                combined.append("STDERR:")
+                combined.extend(result.stderr.splitlines())
+            self._probe_output_tails[stage] = self._tail_lines(combined)
+
         return_code = getattr(result, "returncode", 1)
         logger.info(f"✓ Probe checks completed (exit code: {return_code})")
 
@@ -680,6 +697,176 @@ class MobileCybenchRunner:
             logger.info("No scores.json file found")
 
         return scores_dict
+
+    def _tail_lines(self, lines: list, max_lines: int = 50) -> list:
+        if len(lines) <= max_lines:
+            return lines
+        return lines[-max_lines:]
+
+    def _tail_text(self, text: str, max_lines: int = 50) -> list:
+        if not text:
+            return []
+        return self._tail_lines(text.splitlines(), max_lines=max_lines)
+
+    def _tail_file(self, path: Path, max_lines: int = 50) -> list:
+        if not path or not path.exists():
+            return []
+        try:
+            content = path.read_text(errors="replace")
+        except Exception:
+            return []
+        return self._tail_text(content, max_lines=max_lines)
+
+    def _load_json(self, path: Path):
+        if not path.exists():
+            return None
+        try:
+            with open(path, "r") as f:
+                return json.load(f)
+        except Exception:
+            return None
+
+    def _build_evaluation_summary(self) -> str:
+        parts = []
+        if self.exploit_created:
+            parts.append("Exploit created")
+        else:
+            parts.append("No exploit created")
+        if self.exploit_executed:
+            parts.append("exploit executed")
+        if self.probe_results:
+            parts.append("probe results recorded")
+        return "; ".join(parts)
+
+    def _write_experiment_summaries(self):
+        logs_dir = logger_manager.get_logs_dir()
+
+        # Copy scores.json into logs to avoid overwrites between runs
+        scores_src = self.app_dir / "scores.json"
+        scores_dst = logs_dir / "scores.json"
+        if scores_src.exists():
+            try:
+                import shutil
+
+                shutil.copy2(scores_src, scores_dst)
+            except Exception:
+                pass
+
+        agent_status = None
+        turns = None
+        if isinstance(self.agent_result, dict):
+            agent_status = self.agent_result.get("status")
+            turns = self.agent_result.get("turns")
+
+        stop_reason = None
+        if self._runner_status == "interrupted":
+            stop_reason = "interrupt"
+        elif self._runner_status == "error":
+            stop_reason = "error"
+        elif agent_status == "completed":
+            stop_reason = "final_submission"
+        elif agent_status == "max_iterations_reached":
+            stop_reason = "max_iterations"
+        elif isinstance(agent_status, str) and agent_status.startswith("error"):
+            stop_reason = "error"
+
+        completed = self._runner_status == "completed"
+        success = False
+        success_reason = "no_score"
+        post_exploit = self.probe_results.get("post_agent_exploit")
+        if isinstance(post_exploit, dict) and "score" in post_exploit:
+            success = post_exploit.get("score") == 0
+            success_reason = "score==0"
+        elif not self.exploit_executed:
+            success_reason = "exploit_not_executed"
+        elif not completed:
+            success_reason = "runner_incomplete"
+
+        status = {
+            "completed": completed,
+            "success": success,
+            "success_reason": success_reason,
+            "runner_status": self._runner_status,
+            "agent_status": agent_status,
+            "stop_reason": stop_reason,
+            "turns": turns,
+            "exploit_created": self.exploit_created,
+            "exploit_executed": self.exploit_executed,
+            "evaluation_summary": self._build_evaluation_summary(),
+        }
+
+        metadata = {
+            "app_name": self.app_name,
+            "agent_type": self.mode,
+            "model": self.config.model,
+            "timestamp": os.environ.get("MOBILECYBENCH_SESSION_ID"),
+        }
+        try:
+            metadata["run_config"] = self.config.model_dump()
+        except Exception:
+            metadata["run_config"] = {}
+
+        try:
+            metadata["git"] = {
+                "branch": subprocess.run(
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                ).stdout.strip(),
+                "commit": subprocess.run(
+                    ["git", "rev-parse", "--short", "HEAD"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                ).stdout.strip(),
+            }
+        except Exception:
+            metadata["git"] = {"branch": None, "commit": None}
+
+        conversation_messages = logs_dir / "conversation_messages.json"
+        conversation_turns = logs_dir / "conversation_turns.json"
+
+        conversation = {
+            "messages": self._load_json(conversation_messages) or [],
+            "format": "messages",
+            "tools_omitted": True,
+            "source": str(conversation_messages),
+        }
+
+        evaluate = {
+            "exploit_output_tail": self._exploit_output_tail,
+            "probe_output_tail": self._probe_output_tails,
+        }
+
+        summary = {
+            "status": status,
+            "probe_results": self.probe_results,
+            "metadata": metadata,
+            "conversation": conversation,
+            "evaluate": evaluate,
+        }
+
+        summary_path = logs_dir / "experiment_summary.json"
+        with open(summary_path, "w") as f:
+            json.dump(summary, f, indent=2)
+
+        summary_with_tools = {
+            "status": status,
+            "probe_results": self.probe_results,
+            "metadata": metadata,
+            "conversation": {
+                "turns": self._load_json(conversation_turns) or [],
+                "format": "turns",
+                "tools_omitted": False,
+                "source": str(conversation_turns),
+            },
+            "evaluate": evaluate,
+        }
+
+        summary_tools_path = logs_dir / "experiment_summary_with_tools.json"
+        with open(summary_tools_path, "w") as f:
+            json.dump(summary_with_tools, f, indent=2)
 
     def cleanup(self):
         """Clean up services"""
@@ -944,22 +1131,25 @@ class MobileCybenchRunner:
                 if not dummy_log_path.exists():
                     dummy_log_path.touch()
                 self.probe_results["pre_agent_run"] = self.run_probes_checks(
-                    log_file_path=dummy_log_path
+                    log_file_path=dummy_log_path,
+                    stage="pre_agent_run",
                 )
 
                 self._setup_agent_environment()
-                self._run_agent()
+                self.agent_result = self._run_agent()
 
                 agent_log_filename = logger_manager.get_agent_log_file_name()
                 log_path = Path(agent_log_filename)
                 logger.info(f"Agent log file path: {log_path}")
 
                 self.probe_results["post_agent_run"] = self.run_probes_checks(
-                    log_file_path=log_path
+                    log_file_path=log_path,
+                    stage="post_agent_run",
                 )
                 log_banner("Restarting services, running agent exploit")
 
             exploit_exists = self._check_and_save_agent_exploit()
+            self.exploit_created = exploit_exists
             if not exploit_exists:
                 logger.info(
                     "No Agent Exploit Found - skipping exploit execution pipeline"
@@ -995,25 +1185,33 @@ class MobileCybenchRunner:
                     if not dummy_log_path.exists():
                         dummy_log_path.touch()
                     self.probe_results["pre_agent_exploit"] = self.run_probes_checks(
-                        log_file_path=dummy_log_path
+                        log_file_path=dummy_log_path,
+                        stage="pre_agent_exploit",
                     )
 
                     # Capture the actual exploit log
                     # TODO: should we have an LLM agent (exploit executor / validator) here instead of just exploit.sh?
                     # the generated exploit script may not be sufficient to successfully exploit the vulnerability in one shot.
                     exploit_log_path = self._run_agent_exploit()
+                    self._exploit_output_tail = self._tail_file(exploit_log_path)
+                    self.exploit_executed = True
 
                     # Pass the exploit log (NOT dummy log) to probes
                     self.probe_results["post_agent_exploit"] = self.run_probes_checks(
-                        log_file_path=exploit_log_path
+                        log_file_path=exploit_log_path,
+                        stage="post_agent_exploit",
                     )
                     log_banner("Agent Exploit done")
 
+            self._runner_status = "completed"
+
         except KeyboardInterrupt:
             logger.info("Runner interrupted by user")
+            self._runner_status = "interrupted"
             return 1
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
+            self._runner_status = "error"
             return 1
         finally:
             log_banner("PROBE RESULTS SUMMARY")
@@ -1058,6 +1256,11 @@ class MobileCybenchRunner:
                 logger.info("SSRF listener stopped and cleaned up")
             except Exception as e:
                 logger.warning(f"Failed to cleanup SSRF listener: {e}")
+
+            try:
+                self._write_experiment_summaries()
+            except Exception as e:
+                logger.warning(f"Failed to write experiment summaries: {e}")
 
             # TODO: Add cleanup for app cleanup.sh, Kali container, and MCP server
             # Should run docker compose down in agent_dir and cleanup.sh in app_dir
