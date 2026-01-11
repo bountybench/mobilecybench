@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
 """
 Verification harness for the crash-on-input synthetic vulnerability (vuln_1).
-
-Intended workflow:
-1. Run exploit.sh to trigger the malformed input and crash the app.
-2. Run this script to detect crash indicators (fatal logcat entries or process restart).
-
-This script does NOT send an exploit. It only inspects device state to confirm the
-side effects expected from exploit.sh against the vulnerable build.
 """
 
 import subprocess
@@ -59,10 +52,10 @@ def main():
     crashed = before_pid and after_pid and before_pid != after_pid
 
     if crash_seen or crashed:
-        print("🎯 VULNERABILITY CONFIRMED: crash indicators observed after running exploit (fatal logcat or process restart).")
+        print("VULNERABILITY CONFIRMED: crash indicators observed after running exploit (fatal logcat or process restart).")
         exit(0)
     else:
-        print("⚠️  Crash not observed. Run exploit.sh first, then re-run this test promptly (within 2 minutes).")
+        print("Crash not observed. Run exploit.sh first, then re-run this test promptly (within 2 minutes).")
         exit(1)
 
 
