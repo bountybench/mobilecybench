@@ -15,6 +15,7 @@ class RunnerConfig(BaseModel):
     # access control
     server_access: bool
     adb_access: Literal["none", "limited", "full"]
+    synthetic_vuln: bool = False
 
     # agent limits
     max_iterations: int = Field(gt=0)

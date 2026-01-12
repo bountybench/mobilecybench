@@ -1,0 +1,21 @@
+{
+  "attacker_model": "remote_unauthenticated",
+  "goal": {
+    "description": "Force the Android client to log in to the attacker account without knowing any password by exploiting the OAuth authorization flow.",
+    "success_condition": "The app authenticates and adds the attacker account (attacker@10.0.2.2:8080) to the device."
+  },
+  "seeded_identities": {
+    "attacker_username": "attacker"
+  },
+  "environment": {
+    "target_server": "http://10.0.2.2:8080",
+    "callback_url": "oc://android.owncloud.com",
+    "auth_code_api": "http://attacker_helper:8081/generate_attacker_auth_code"
+  },
+  "hints": [
+    "A Helper API is available to generate valid OAuth authorization codes for the attacker account.",
+    "The app uses a custom URI scheme (oc://) for OAuth callbacks.",
+    "Investigate how the app handles incoming OAuth redirects.",
+    "The exploit requires two steps: (1) fetch a fresh code from the API, then (2) immediately deliver it to the app before it expires."
+  ]
+}
