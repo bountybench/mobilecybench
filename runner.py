@@ -7,6 +7,7 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -620,6 +621,32 @@ class MobileCybenchRunner:
 
                 return result
 
+            elif self.mode == "discex":
+                from agent.langgraph.discex_agent import run_discex_agent
+
+                logger.info("Initializing DiscEx agent (Discovery + Exploit)...")
+
+                result = run_discex_agent(
+                    app_path=str(self.app_dir),
+                    package_name=self.metadata.get("package_name"),
+                    app_server=self.metadata.get("app_server"),
+                    username=self.metadata.get("username"),
+                    password=self.metadata.get("password"),
+                    synthetic_prompt=self.synthetic_prompt_text,
+                    model=self.config.model,
+                    discovery_reasoning=self.config.reasoning_effort or "medium",
+                    exploit_reasoning=self.config.reasoning_effort or "medium",
+                    max_discovery_iterations=100,
+                    max_exploit_iterations=50,
+                )
+
+                log_banner("DISCEX AGENT RESULTS")
+                logger.info(f"Status: {result.get('status')}")
+                logger.info(f"Vulnerability Found: {bool(result.get('vulnerability_info'))}")
+                logger.info(f"Exploit Path: {result.get('exploit_script_path', 'N/A')}")
+
+                return result
+
             elif self.mode == "codex":
                 from agent.codex_agent import CodexAgent
 
@@ -1026,14 +1053,14 @@ class MobileCybenchRunner:
                 self.emulator.start_in_background()
                 logger.info("Emulator started in the background . . .")
 
-                self._setup_app_apk()
+                # self._setup_app_apk()
                 self._install_app_and_setup_backend()
-                dummy_log_path = Path(DUMMY_LOG_FILENAME)
-                if not dummy_log_path.exists():
-                    dummy_log_path.touch()
-                self.probe_results["pre_agent_run"] = self.run_probes_checks(
-                    log_file_path=dummy_log_path
-                )
+                # dummy_log_path = Path(DUMMY_LOG_FILENAME)
+                # if not dummy_log_path.exists():
+                #    dummy_log_path.touch()
+                # self.probe_results["pre_agent_run"] = self.run_probes_checks(
+                #     log_file_path=dummy_log_path
+                # )
 
                 self._setup_agent_environment()
                 self._run_agent()
@@ -1094,6 +1121,11 @@ class MobileCybenchRunner:
                         log_file_path=exploit_log_path
                     )
                     log_banner("Agent Exploit done")
+                    try:
+                        while True:
+                            time.sleep(1)
+                    except KeyboardInterrupt:
+                        logger.info("Exit requested, shutting down runner.")
 
         except KeyboardInterrupt:
             logger.info("Runner interrupted by user")
@@ -1150,7 +1182,6 @@ class MobileCybenchRunner:
             # TODO: Add cleanup for app cleanup.sh, Kali container, and MCP server
             # Should run docker compose down in agent_dir and cleanup.sh in app_dir
 
-
 def main():
     # Start timing the experiment
     time_tracker.start_experiment()
@@ -1163,9 +1194,9 @@ def main():
         # Add agent_type selection
         parser.add_argument(
             "--agent-type",
-            choices=["custom", "codex", "supervisor"],
+            choices=["custom", "codex", "supervisor", "discex"],
             default="custom",
-            help="Agent type to use: 'custom' (OpenAI API), 'codex' (Codex CLI), or 'supervisor' (hierarchical multi-agent). Default: custom.",
+            help="Agent type to use: 'custom' (OpenAI API), 'codex' (Codex CLI), 'supervisor' (hierarchical multi-agent), or 'discex' (LangGraph Discovery+Exploit). Default: custom.",
         )
 
         parser.add_argument(

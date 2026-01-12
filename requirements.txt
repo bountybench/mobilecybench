@@ -79,6 +79,14 @@ langchain>=0.3.7
 langchain-core>=0.3.15
 langchain-openai>=0.3.26
 langgraph>=0.2.50
+
+# RAG and preprocessing dependencies for DiscEx agent
+lancedb>=0.26.0
+tree-sitter==0.25.2
+tree-sitter-java==0.23.5
+tree-sitter-kotlin==1.1.0
+langsmith>=0.3.0
+
 # The static analysis toolchain is commented out to keep CI install times manageable.
 # Uncomment locally when you need to generate static_vuln_reports (Semgrep/MobSFScan/QARK).
 # semgrep>=1.95.0

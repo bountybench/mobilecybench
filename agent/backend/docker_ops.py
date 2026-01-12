@@ -176,24 +176,25 @@ def execute_command_internal(command: str) -> str:
     # Separate header and body for proper truncation
     header = f"{label}: {command}\nExit Code: {exit_code}\nOutput:\n"
 
-    truncator = get_token_truncator()
-    header_tokens = truncator.count_tokens(header)
-    body_budget = max(0, truncator.max_tokens - header_tokens)
+    # truncator = get_token_truncator()
+    # header_tokens = truncator.count_tokens(header)
+    # body_budget = max(0, truncator.max_tokens - header_tokens)
 
-    if body_budget <= 0:
-        truncated_body = "[TRUNCATED]"
-    else:
-        tr = truncator.truncate_output(combined_output, budget=body_budget)
-        if tr.was_truncated:
-            logger.info(
-                "Kali output truncated: %s -> %s tokens (kept=%s, removed=%s, method=%s)",
-                tr.original_tokens,
-                tr.final_tokens,
-                tr.content_tokens_kept,
-                tr.tokens_removed_from_original,
-                tr.truncation_method,
-            )
-        truncated_body = tr.truncated_output
+    # if body_budget <= 0:
+    #     truncated_body = "[TRUNCATED]"
+    # else:
+    #     tr = truncator.truncate_output(combined_output, budget=body_budget)
+    #     if tr.was_truncated:
+    #         logger.info(
+    #             "Kali output truncated: %s -> %s tokens (kept=%s, removed=%s, method=%s)",
+    #             tr.original_tokens,
+    #             tr.final_tokens,
+    #             tr.content_tokens_kept,
+    #             tr.tokens_removed_from_original,
+    #             tr.truncation_method,
+    #         )
+    #     truncated_body = tr.truncated_output
+    truncated_body = combined_output
 
     # formatted and truncated command output
     truncated_response = header + truncated_body

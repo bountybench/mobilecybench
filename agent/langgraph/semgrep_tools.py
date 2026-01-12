@@ -3,17 +3,22 @@ Semgrep tool wrappers for LangGraph agents.
 
 This module provides tool functions that wrap Semgrep functionality
 for use in LangGraph-based agents.
+
+IMPORTANT: All tools execute inside the kali-container for security isolation.
+The codebase is available at /app/codebase inside the container.
 """
 
 import json
-import subprocess
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
+from agent.backend.docker_ops import execute_command_internal
 from utils.logger import agent_logger
+
+# Container paths
+CONTAINER_CODEBASE_PATH = "/app/codebase"
 
 
 class SemgrepScanInput(BaseModel):
@@ -82,7 +87,7 @@ def run_semgrep_scan(
     exclude: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
-    Run Semgrep static analysis on the specified path.
+    Run Semgrep static analysis on the specified path inside the kali-container.
 
     Returns a dictionary with:
     - success: bool indicating if scan completed
@@ -91,117 +96,101 @@ def run_semgrep_scan(
     - summary: high-level summary of findings
     """
     try:
-        agent_logger.info(f"Running Semgrep scan on: {path} with config: {config}")
+        # Normalize path to container codebase
+        scan_path = f"{CONTAINER_CODEBASE_PATH}/{path}" if path != "." else CONTAINER_CODEBASE_PATH
+        agent_logger.info(f"Running Semgrep scan on: {scan_path} with config: {config}")
 
-        # Build semgrep command
-        cmd = ["semgrep", "scan", path, "--config", config, "--json"]
+        # Build semgrep command for container execution
+        cmd_parts = ["semgrep", "scan", scan_path, "--config", config, "--json"]
 
         # Add severity filters
         if severity:
             for sev in severity:
-                cmd.extend(["--severity", sev])
+                cmd_parts.extend(["--severity", sev])
 
         # Add exclusions
         if exclude:
             for pattern in exclude:
-                cmd.extend(["--exclude", pattern])
+                cmd_parts.extend(["--exclude", pattern])
 
-        # Run semgrep
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=300,  # 5 minute timeout
-        )
+        cmd = " ".join(cmd_parts)
 
-        # Parse JSON output
-        if result.stdout:
-            output = json.loads(result.stdout)
-            findings = output.get("results", [])
+        # Execute inside kali-container
+        output_str = execute_command_internal(cmd)
 
-            # Summarize findings by severity and rule
-            summary = {
-                "total_findings": len(findings),
-                "by_severity": {},
-                "by_rule": {},
-            }
+        # Parse the output - execute_command_internal returns formatted output
+        # Extract JSON from the command output
+        json_start = output_str.find("{")
+        json_end = output_str.rfind("}") + 1
 
-            for finding in findings:
-                sev = finding.get("extra", {}).get("severity", "UNKNOWN")
-                rule_id = finding.get("check_id", "unknown")
-
-                summary["by_severity"][sev] = summary["by_severity"].get(sev, 0) + 1
-                summary["by_rule"][rule_id] = summary["by_rule"].get(rule_id, 0) + 1
-
-            agent_logger.info(f"Semgrep scan completed: {len(findings)} findings found")
-
-            # Return only top priority findings to avoid overwhelming LLM
-            # Prioritize: ERROR > WARNING > INFO
-            # Limit to top 20 findings per severity level
-            priority_findings = []
-
-            # Sort by severity
-            severity_order = {"ERROR": 0, "WARNING": 1, "INFO": 2, "UNKNOWN": 3}
-            sorted_findings = sorted(
-                findings,
-                key=lambda f: (
-                    severity_order.get(
-                        f.get("extra", {}).get("severity", "UNKNOWN"), 4
-                    ),
-                    f.get("check_id", ""),
-                ),
-            )
-
-            # Group by rule and take representative samples
-            rule_samples = {}
-            for finding in sorted_findings:
-                rule_id = finding.get("check_id", "unknown")
-                if rule_id not in rule_samples:
-                    rule_samples[rule_id] = []
-                # Keep max 3 examples per rule
-                if len(rule_samples[rule_id]) < 3:
-                    rule_samples[rule_id].append(finding)
-
-            # Flatten back to list, limit total to 50 findings
-            for samples in rule_samples.values():
-                priority_findings.extend(samples)
-                if len(priority_findings) >= 50:
-                    break
-
-            priority_findings = priority_findings[:50]
-
-            agent_logger.info(
-                f"Returning {len(priority_findings)} priority findings out of {len(findings)} total"
-            )
-
-            return {
-                "success": True,
-                "findings": priority_findings,  # Only return prioritized subset
-                "errors": output.get("errors", []),
-                "summary": summary,
-                "note": f"Showing {len(priority_findings)} priority findings out of {len(findings)} total. "
-                f"Use read_code_file to examine specific issues.",
-            }
-        else:
-            # No output or error
-            error_msg = result.stderr or "Unknown error running Semgrep"
-            agent_logger.error(f"Semgrep scan failed: {error_msg}")
+        if json_start == -1 or json_end == 0:
+            agent_logger.error(f"No JSON output from Semgrep: {output_str[:500]}")
             return {
                 "success": False,
                 "findings": [],
-                "errors": [error_msg],
+                "errors": [f"No JSON output from Semgrep. Raw output: {output_str[:500]}"],
                 "summary": {},
             }
 
-    except subprocess.TimeoutExpired:
-        error_msg = "Semgrep scan timed out after 5 minutes"
-        agent_logger.error(error_msg)
-        return {
-            "success": False,
-            "findings": [],
-            "errors": [error_msg],
-            "summary": {},
+        json_str = output_str[json_start:json_end]
+        output = json.loads(json_str)
+        findings = output.get("results", [])
+
+        # Summarize findings by severity and rule
+        summary = {
+            "total_findings": len(findings),
+            "by_severity": {},
+            "by_rule": {},
         }
+
+        for finding in findings:
+            sev = finding.get("extra", {}).get("severity", "UNKNOWN")
+            rule_id = finding.get("check_id", "unknown")
+            summary["by_severity"][sev] = summary["by_severity"].get(sev, 0) + 1
+            summary["by_rule"][rule_id] = summary["by_rule"].get(rule_id, 0) + 1
+
+        agent_logger.info(f"Semgrep scan completed: {len(findings)} findings found")
+
+        # Prioritize findings: ERROR > WARNING > INFO
+        severity_order = {"ERROR": 0, "WARNING": 1, "INFO": 2, "UNKNOWN": 3}
+        sorted_findings = sorted(
+            findings,
+            key=lambda f: (
+                severity_order.get(f.get("extra", {}).get("severity", "UNKNOWN"), 4),
+                f.get("check_id", ""),
+            ),
+        )
+
+        # Group by rule and take representative samples (max 3 per rule)
+        rule_samples: Dict[str, List] = {}
+        for finding in sorted_findings:
+            rule_id = finding.get("check_id", "unknown")
+            if rule_id not in rule_samples:
+                rule_samples[rule_id] = []
+            if len(rule_samples[rule_id]) < 3:
+                rule_samples[rule_id].append(finding)
+
+        # Flatten to list, limit total to 50
+        priority_findings = []
+        for samples in rule_samples.values():
+            priority_findings.extend(samples)
+            if len(priority_findings) >= 50:
+                break
+        priority_findings = priority_findings[:50]
+
+        agent_logger.info(
+            f"Returning {len(priority_findings)} priority findings out of {len(findings)} total"
+        )
+
+        return {
+            "success": True,
+            "findings": priority_findings,
+            "errors": output.get("errors", []),
+            "summary": summary,
+            "note": f"Showing {len(priority_findings)} priority findings out of {len(findings)} total. "
+            f"Use read_code_file to examine specific issues.",
+        }
+
     except json.JSONDecodeError as e:
         error_msg = f"Failed to parse Semgrep JSON output: {e}"
         agent_logger.error(error_msg)
@@ -212,7 +201,7 @@ def run_semgrep_scan(
             "summary": {},
         }
     except Exception as e:
-        error_msg = f"Unexpected error running Semgrep: {e}"
+        error_msg = f"Error running Semgrep: {e}"
         agent_logger.error(error_msg)
         return {
             "success": False,
@@ -227,7 +216,7 @@ def read_code_file(
     file_path: str, start_line: Optional[int] = None, end_line: Optional[int] = None
 ) -> Dict[str, Any]:
     """
-    Read a code file to verify Semgrep findings.
+    Read a code file inside the kali-container to verify Semgrep findings.
 
     Returns a dictionary with:
     - success: bool indicating if file was read
@@ -236,41 +225,37 @@ def read_code_file(
     - error: error message if failed
     """
     try:
-        path = Path(file_path)
+        # Normalize path to container codebase
+        full_path = f"{CONTAINER_CODEBASE_PATH}/{file_path}"
 
-        if not path.exists():
-            return {
-                "success": False,
-                "content": "",
-                "line_count": 0,
-                "error": f"File not found: {file_path}",
-            }
+        # Get line count first
+        wc_output = execute_command_internal(f"wc -l < {full_path}")
+        # Extract number from output
+        try:
+            total_lines = int(wc_output.split("Output:")[-1].strip().split()[0])
+        except (ValueError, IndexError):
+            total_lines = 0
 
-        # Read file
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
-            lines = f.readlines()
-
-        total_lines = len(lines)
-
-        # Extract specified range
+        # Build read command based on line range
         if start_line is not None and end_line is not None:
-            # Convert to 0-indexed
-            start_idx = max(0, start_line - 1)
-            end_idx = min(total_lines, end_line)
-            content_lines = lines[start_idx:end_idx]
-            content = "".join(content_lines)
+            cmd = f"sed -n '{start_line},{end_line}p' {full_path}"
         elif start_line is not None:
-            start_idx = max(0, start_line - 1)
-            content_lines = lines[start_idx : min(total_lines, start_idx + 20)]
-            content = "".join(content_lines)
+            end = start_line + 20
+            cmd = f"sed -n '{start_line},{end}p' {full_path}"
         else:
-            # Return full file (limit to reasonable size)
-            if total_lines > 1000:
-                content = (
-                    "".join(lines[:1000]) + f"\n... ({total_lines - 1000} more lines)"
-                )
-            else:
-                content = "".join(lines)
+            # Read full file with limit
+            cmd = f"head -n 1000 {full_path}"
+
+        output = execute_command_internal(cmd)
+
+        # Extract content from formatted output
+        if "Output:" in output:
+            content = output.split("Output:", 1)[1].strip()
+        else:
+            content = output
+
+        if total_lines > 1000 and start_line is None:
+            content += f"\n... ({total_lines - 1000} more lines)"
 
         return {
             "success": True,
@@ -296,7 +281,7 @@ def search_codebase(
     case_sensitive: bool = False,
 ) -> Dict[str, Any]:
     """
-    Search for patterns in the codebase using grep.
+    Search for patterns in the codebase inside the kali-container using ripgrep.
 
     Returns a dictionary with:
     - success: bool indicating if search completed
@@ -305,53 +290,46 @@ def search_codebase(
     - error: error message if failed
     """
     try:
+        # Normalize path to container codebase
+        search_path = f"{CONTAINER_CODEBASE_PATH}/{path}" if path != "." else CONTAINER_CODEBASE_PATH
         agent_logger.info(f"Searching codebase for pattern: {pattern}")
 
-        # Build grep command
-        cmd = ["grep", "-r", "-n"]  # recursive, with line numbers
+        # Build ripgrep command (rg is faster and better than grep)
+        # Escape single quotes in pattern
+        pattern_escaped = pattern.replace("'", "'\\''")
+        cmd_parts = ["rg", "-n"]  # line numbers
 
         if not case_sensitive:
-            cmd.append("-i")  # case insensitive
+            cmd_parts.append("-i")
 
-        # Add file pattern if specified
         if file_pattern:
-            cmd.extend(["--include", file_pattern])
+            file_pattern_escaped = file_pattern.replace("'", "'\\''")
+            cmd_parts.extend(["--glob", f"'{file_pattern_escaped}'"])
 
-        # Exclude common non-source directories
-        cmd.extend(
-            [
-                "--exclude-dir=.git",
-                "--exclude-dir=node_modules",
-                "--exclude-dir=build",
-                "--exclude-dir=.gradle",
-            ]
-        )
+        cmd_parts.extend([f"'{pattern_escaped}'", search_path])
+        cmd = " ".join(cmd_parts)
 
-        cmd.extend([pattern, path])
+        # Execute inside container
+        output = execute_command_internal(cmd)
 
-        # Run grep
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=30,  # 30 second timeout
-        )
-
-        # Parse results (grep returns non-zero if no matches, which is fine)
+        # Parse results
         matches = []
-        if result.stdout:
-            lines = result.stdout.strip().split("\n")
-            for line in lines[:100]:  # Limit to 100 matches
-                # Format: file:line:content
-                parts = line.split(":", 2)
-                if len(parts) >= 3:
-                    matches.append(
-                        {
-                            "file": parts[0],
-                            "line": parts[1],
-                            "content": parts[2].strip(),
-                        }
-                    )
+        if "Output:" in output:
+            result_lines = output.split("Output:", 1)[1].strip().split("\n")
+        else:
+            result_lines = output.strip().split("\n")
+
+        for line in result_lines[:100]:
+            if not line.strip():
+                continue
+            # Format: file:line:content
+            parts = line.split(":", 2)
+            if len(parts) >= 3:
+                matches.append({
+                    "file": parts[0],
+                    "line": parts[1],
+                    "content": parts[2].strip(),
+                })
 
         agent_logger.info(f"Found {len(matches)} matches")
 
@@ -363,15 +341,6 @@ def search_codebase(
             "error": None,
         }
 
-    except subprocess.TimeoutExpired:
-        error_msg = "Search timed out after 30 seconds"
-        agent_logger.error(error_msg)
-        return {
-            "success": False,
-            "matches": [],
-            "total_matches": 0,
-            "error": error_msg,
-        }
     except Exception as e:
         error_msg = f"Error searching codebase: {e}"
         agent_logger.error(error_msg)
@@ -390,7 +359,7 @@ def find_definition(
     path: str = ".",
 ) -> Dict[str, Any]:
     """
-    Find class, method, or function definitions in the codebase.
+    Find class, method, or function definitions in the codebase inside the kali-container.
 
     Returns a dictionary with:
     - success: bool indicating if search completed
@@ -398,71 +367,60 @@ def find_definition(
     - error: error message if failed
     """
     try:
+        # Normalize path to container codebase
+        search_path = f"{CONTAINER_CODEBASE_PATH}/{path}" if path != "." else CONTAINER_CODEBASE_PATH
         agent_logger.info(f"Finding definition for: {name}")
 
         # Build search patterns based on type hint
         patterns = []
         if type_hint == "class" or type_hint is None:
-            # Java/Kotlin class patterns
-            patterns.extend(
-                [
-                    f"class {name}",
-                    f"class {name} ",
-                    f"interface {name}",
-                    f"object {name}",
-                ]
-            )
-        if type_hint == "method" or type_hint == "function" or type_hint is None:
-            # Method/function patterns
-            patterns.extend(
-                [
-                    f"fun {name}",  # Kotlin
-                    f"def {name}",  # Python
-                    f"function {name}",  # JavaScript
-                    f"void {name}",  # Java/C++
-                    f"public {name}",  # Java
-                    f"private {name}",  # Java
-                ]
-            )
+            patterns.extend([
+                f"class {name}",
+                f"interface {name}",
+                f"object {name}",
+            ])
+        if type_hint in ("method", "function", None):
+            patterns.extend([
+                f"fun {name}",      # Kotlin
+                f"def {name}",      # Python
+                f"function {name}", # JavaScript
+                f"void {name}",     # Java/C++
+                f"public.*{name}",  # Java methods
+                f"private.*{name}", # Java methods
+            ])
 
         all_matches = []
         for pattern in patterns:
-            cmd = [
-                "grep",
-                "-r",
-                "-n",
-                "-i",
-                "--include=*.java",
-                "--include=*.kt",
-                "--include=*.py",
-                "--include=*.js",
-                "--include=*.ts",
-                "--exclude-dir=.git",
-                "--exclude-dir=node_modules",
-                "--exclude-dir=build",
-                "--exclude-dir=.gradle",
-                pattern,
-                path,
-            ]
+            # Use ripgrep for faster searching
+            pattern_escaped = pattern.replace("'", "'\\''")
+            cmd = f"rg -n -i --glob '*.java' --glob '*.kt' --glob '*.py' --glob '*.js' --glob '*.ts' '{pattern_escaped}' {search_path}"
 
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            try:
+                output = execute_command_internal(cmd)
 
-            if result.stdout:
-                lines = result.stdout.strip().split("\n")
-                for line in lines[:20]:  # Limit per pattern
+                # Parse results
+                if "Output:" in output:
+                    result_lines = output.split("Output:", 1)[1].strip().split("\n")
+                else:
+                    result_lines = output.strip().split("\n")
+
+                for line in result_lines[:20]:  # Limit per pattern
+                    if not line.strip():
+                        continue
                     parts = line.split(":", 2)
                     if len(parts) >= 3:
-                        all_matches.append(
-                            {
-                                "file": parts[0],
-                                "line": parts[1],
-                                "content": parts[2].strip(),
-                                "matched_pattern": pattern,
-                            }
-                        )
+                        all_matches.append({
+                            "file": parts[0],
+                            "line": parts[1],
+                            "content": parts[2].strip(),
+                            "matched_pattern": pattern,
+                        })
+            except Exception:
+                # Pattern may not match anything, continue to next
+                continue
 
         # Deduplicate by file:line
-        seen = set()
+        seen: set = set()
         unique_matches = []
         for match in all_matches:
             key = f"{match['file']}:{match['line']}"
@@ -474,20 +432,11 @@ def find_definition(
 
         return {
             "success": True,
-            "definitions": unique_matches[:50],  # Limit to 50 total
+            "definitions": unique_matches[:50],
             "total_found": len(unique_matches),
             "error": None,
         }
 
-    except subprocess.TimeoutExpired:
-        error_msg = "Search timed out after 30 seconds"
-        agent_logger.error(error_msg)
-        return {
-            "success": False,
-            "definitions": [],
-            "total_found": 0,
-            "error": error_msg,
-        }
     except Exception as e:
         error_msg = f"Error finding definition: {e}"
         agent_logger.error(error_msg)

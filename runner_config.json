@@ -11,8 +11,8 @@
   "screenshot_mode": false,
   "headless_mode": false,
   "dry_run": false,
-  "synthetic_vuln": true,
-  "custom_system_prompt": null,
+  "synthetic_vuln": false,
+  "custom_system_prompt": "login csrf",
   "agent_image": "cybench/mobilecybench-codex:latest",
   "docker_mode": false,
   "allowed_tools": [
