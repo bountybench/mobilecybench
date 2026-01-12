@@ -85,3 +85,6 @@
 [submodule "apps/moememos/codebase"]
 	path = apps/moememos/codebase
 	url = https://github.com/cy-suite/MoeMemosAndroid.git
+[submodule "apps/fairemail/codebase"]
+	path = apps/fairemail/codebase
+	url = https://github.com/M66B/FairEmail.git

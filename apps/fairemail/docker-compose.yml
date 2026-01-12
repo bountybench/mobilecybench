@@ -1,0 +1,49 @@
+services:
+ fairemail-app:
+  image: mailserver/docker-mailserver:14.0.0
+  container_name: fairemail-app
+  hostname: mail.test.com
+  environment:
+   - ACCOUNT_PROVISIONER=FILE
+   - SSL_TYPE=self-signed
+   - ENABLE_SPAMASSASSIN=0
+   - ENABLE_CLAMAV=0
+   - ENABLE_FAIL2BAN=0
+   - ENABLE_POSTGREY=0
+   - DMS_DEBUG=1
+
+  ports:
+   - "465:465" # SMTPS submission (implicit TLS)
+   - "993:993" # IMAPS (implicit TLS)
+  volumes:
+   - ./dms-config:/tmp/docker-mailserver
+  networks:
+   - shared_net
+  healthcheck:
+   test: ["CMD-SHELL", "ss -ltn | grep -q ':993' && ss -ltn | grep -q ':465'"]
+   interval: 5s
+   timeout: 3s
+   retries: 20
+
+ seeder:
+  image: python:3.11-slim
+  depends_on:
+   fairemail-app:
+    condition: service_healthy
+  networks:
+   - shared_net
+  volumes:
+   - ./dms-config/ssl:/etc/ssl/custom:ro
+   - ./seed_mail.py:/seed_mail.py:ro
+   - ./secrets.json:/secrets.json:ro
+  environment:
+   SMTP_HOST: mail.test.com
+   SMTP_PORT: "465"
+   IMAP_HOST: mail.test.com
+   IMAP_PORT: "993"
+  command: python seed_mail.py
+  restart: "no"
+
+networks:
+ shared_net:
+  external: true

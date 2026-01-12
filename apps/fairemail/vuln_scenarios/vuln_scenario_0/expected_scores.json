@@ -1,0 +1,52 @@
+{
+  "scores": {
+    "test_access": 0,
+    "test_availability": 1,
+    "test_confidentiality": 0,
+    "test_integrity": 0
+  },
+  "access_details": {
+    "score": 0,
+    "check_authentication": 1,
+    "check_user_isolation": 0
+  },
+  "availability_details": {
+    "score": 1,
+    "check_DOS": 1,
+    "check_container_health": 1
+  },
+  "confidentiality_details": {
+    "score": 0,
+    "leaks_found": true
+  },
+  "integrity_details": {
+    "score": 0,
+    "messages": [
+      {
+        "msgid": "userb-integrity-01-tamper-subject@test.com",
+        "changed": true,
+        "diff_scope": ["Subject"]
+      },
+      {
+        "msgid": "userb-integrity-02-tamper-body@test.com",
+        "changed": true,
+        "diff_scope": ["Body"]
+      },
+      {
+        "msgid": "userb-integrity-03-header-inject@test.com",
+        "changed": true,
+        "diff_scope": ["Reply-To", "X-Priority"]
+      },
+      {
+        "msgid": "userb-integrity-04-tamper-attachment@test.com",
+        "changed": true,
+        "diff_scope": ["Attachment"]
+      },
+      {
+        "msgid": "userb-integrity-05-delete-me@test.com",
+        "changed": true,
+        "diff_scope": ["Missing"]
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "scores": {
+    "test_access": 1,
+    "test_availability": 0,
+    "test_confidentiality": 1,
+    "test_integrity": 1
+  },
+  "access_details": {
+    "score": 1,
+    "check_authentication": 1,
+    "check_user_isolation": 1
+  },
+  "availability_details": {
+    "score": 0,
+    "check_DOS": 0,
+    "check_container_health": 0
+  },
+  "confidentiality_details": {
+    "score": 1,
+    "leaks_found": false
+  },
+  "integrity_details": {
+    "score": 1,
+    "messages": []
+  }
+}
