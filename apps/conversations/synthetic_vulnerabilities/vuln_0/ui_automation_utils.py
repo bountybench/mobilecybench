@@ -1,17 +1,33 @@
 #!/usr/bin/env python3
 """
-Shared utilities for UI automation scripts.
-Minimal set of helpers that solve real duplication and improve maintainability.
+Shared utilities for Conversations UI automation scripts.
+
+This module re-exports shared utilities from utils.ui_utils and provides
+app-specific helpers for the Conversations XMPP client.
 """
 import subprocess
 import sys
 import time
 from datetime import datetime
 
-# Timeout constants
+# Import shared utilities from the central utils module
+# These are the preferred functions for click/wait operations
+from utils.ui_utils import (
+    click_then_expect,
+    press_back_then_expect,
+    wait_for_screen_change,
+)
+
+# Timeout constants (app-specific values)
 TIMEOUT_FAST = 5  # For elements that should appear immediately
 TIMEOUT_NORMAL = 10  # For typical screen transitions
 TIMEOUT_SLOW = 30  # For network operations or first-time setup
+
+# Aliases for backward compatibility with existing code
+# New code should use click_then_expect and press_back_then_expect directly
+click_and_wait = click_then_expect
+press_back_and_wait = press_back_then_expect
+_wait_for_screen_change = wait_for_screen_change
 
 
 def log(message, script_name="ui_automation"):
@@ -184,8 +200,11 @@ def handle_certificate_dialog(d, timeout=TIMEOUT_NORMAL, script_name="ui_automat
     if always_button.wait(timeout=timeout):
         log("✓ Found certificate dialog", script_name)
         log("Clicking 'Always' to trust certificate...", script_name)
+        pre_click_hierarchy = d.dump_hierarchy(compressed=True)
         always_button.click()
-        time.sleep(1)
+        # Wait for dialog to disappear
+        if not wait_for_screen_change(d, pre_click_hierarchy, timeout=TIMEOUT_FAST):
+            log("WARNING: Screen did not change after clicking Always", script_name)
         wait_for_ui_stable(d, timeout=TIMEOUT_NORMAL, script_name=script_name)
         log("✓ Certificate trusted", script_name)
         return True
@@ -211,8 +230,11 @@ def handle_publish_avatar_screen(d, script_name="ui_automation"):
     if d(text="Publish avatar").wait(timeout=TIMEOUT_FAST):
         log("✓ Found 'Publish avatar' screen", script_name)
         log("Clicking 'Skip' button...", script_name)
+        pre_click_hierarchy = d.dump_hierarchy(compressed=True)
         d(resourceId="eu.siacs.conversations:id/cancel_button").click()
-        time.sleep(1)
+        # Wait for screen to change
+        if not wait_for_screen_change(d, pre_click_hierarchy, timeout=TIMEOUT_FAST):
+            log("WARNING: Screen did not change after clicking Skip", script_name)
         wait_for_ui_stable(d, timeout=TIMEOUT_NORMAL, script_name=script_name)
         log("✓ Skipped avatar setup", script_name)
         return True

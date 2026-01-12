@@ -23,13 +23,16 @@ import uiautomator2 as u2
 
 # Import shared utilities
 from ui_automation_utils import (
+    TIMEOUT_FAST,
     TIMEOUT_NORMAL,
     TIMEOUT_SLOW,
     capture_failure_context,
+    click_then_expect,
     fill_login_form,
     handle_certificate_dialog,
     handle_publish_avatar_screen,
     log,
+    wait_for_screen_change,
     wait_for_ui_stable,
 )
 
@@ -100,9 +103,13 @@ def handle_welcome_screen():
 
     log("✓ Found welcome screen", SCRIPT_NAME)
     log("Clicking 'I already have an account'...", SCRIPT_NAME)
-    use_existing_button.click()
-    time.sleep(1)
-    wait_for_ui_stable(d, timeout=TIMEOUT_NORMAL, script_name=SCRIPT_NAME)
+    # Wait for login form to appear after clicking
+    jid_field = d(resourceId="eu.siacs.conversations:id/account_jid")
+    if not click_then_expect(d, use_existing_button, jid_field, timeout=TIMEOUT_NORMAL):
+        log(
+            "WARNING: Login form did not appear after clicking welcome button",
+            SCRIPT_NAME,
+        )
     return True
 
 
@@ -115,9 +122,16 @@ def submit_login():
         log("[ERROR] Save button not found", SCRIPT_NAME)
         return False
 
+    # For login submission, we can't predict what appears next (certificate dialog,
+    # avatar screen, etc.) - so just click and let the caller handle what comes next
+    pre_click_hierarchy = d.dump_hierarchy(compressed=True)
     save_button.click()
     log("✓ Clicked Save button", SCRIPT_NAME)
-    time.sleep(1)
+
+    # Wait for screen to change (login is processing)
+    if not wait_for_screen_change(d, pre_click_hierarchy, timeout=TIMEOUT_NORMAL):
+        log("WARNING: Screen did not change after submit", SCRIPT_NAME)
+
     return True
 
 
@@ -135,7 +149,10 @@ def handle_permissions(max_permissions=3):
     permissions_handled = 0
 
     for attempt in range(max_permissions):
-        time.sleep(0.5)
+        # Wait for UI to stabilize before checking for permission dialog
+        wait_for_ui_stable(
+            d, timeout=TIMEOUT_FAST, interval=0.3, script_name=SCRIPT_NAME
+        )
 
         # Check if we're on a permission dialog
         result = subprocess.run(
@@ -162,6 +179,8 @@ def handle_permissions(max_permissions=3):
 
         # Try to click Allow button (try both cases)
         clicked = False
+        pre_click_hierarchy = d.dump_hierarchy(compressed=True)
+
         if d(text="Allow").exists:
             log("Clicking 'Allow'...", SCRIPT_NAME)
             d(text="Allow").click()
@@ -173,7 +192,9 @@ def handle_permissions(max_permissions=3):
 
         if clicked:
             permissions_handled += 1
-            time.sleep(1)
+            # Wait for dialog to disappear (screen to change)
+            if not wait_for_screen_change(d, pre_click_hierarchy, timeout=TIMEOUT_FAST):
+                log("WARNING: Screen did not change after clicking Allow", SCRIPT_NAME)
         else:
             log(
                 "WARNING: Permission dialog present but no 'Allow' button found",
@@ -224,8 +245,32 @@ def main():
             sys.exit(1)
 
         # Step 4: Handle certificate dialog (appears immediately after submit)
+        # After trusting cert, connection may fail and need retry
         log("\n--- Step 4: Handle certificate dialog ---", SCRIPT_NAME)
-        handle_certificate_dialog(d, timeout=TIMEOUT_NORMAL, script_name=SCRIPT_NAME)
+        for cert_attempt in range(3):
+            handle_certificate_dialog(
+                d, timeout=TIMEOUT_NORMAL, script_name=SCRIPT_NAME
+            )
+
+            # Give the connection a moment to complete
+            time.sleep(2)
+
+            # Check if we made it past the login form
+            if d(text="Publish avatar").exists or check_if_logged_in():
+                log("✓ Connection succeeded after certificate trust", SCRIPT_NAME)
+                break
+
+            # Still on login form - need to retry
+            save_button = d(resourceId="eu.siacs.conversations:id/save_button")
+            if save_button.exists:
+                log(
+                    f"Connection failed, retrying... (attempt {cert_attempt + 2}/3)",
+                    SCRIPT_NAME,
+                )
+                save_button.click()
+                time.sleep(1)
+            else:
+                break  # Not on login form, proceed
 
         # Step 5: Handle publish avatar screen (appears after certificate)
         log("\n--- Step 5: Handle post-login setup ---", SCRIPT_NAME)
@@ -237,7 +282,7 @@ def main():
 
         # Step 7: Final verification
         log("\n--- Step 7: Final verification ---", SCRIPT_NAME)
-        time.sleep(1)
+        wait_for_ui_stable(d, timeout=TIMEOUT_FAST, script_name=SCRIPT_NAME)
 
         if check_if_logged_in():
             log("\n" + "=" * 60, SCRIPT_NAME)

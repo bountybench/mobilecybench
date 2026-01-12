@@ -21,13 +21,17 @@ import uiautomator2 as u2
 
 # Import shared utilities
 from ui_automation_utils import (
+    TIMEOUT_FAST,
     TIMEOUT_NORMAL,
     TIMEOUT_SLOW,
     capture_failure_context,
+    click_then_expect,
     fill_login_form,
     handle_certificate_dialog,
     handle_publish_avatar_screen,
     log,
+    press_back_then_expect,
+    wait_for_screen_change,
     wait_for_ui_stable,
 )
 
@@ -73,25 +77,27 @@ def check_if_user1_already_added():
         log("Overflow menu not found", SCRIPT_NAME)
         return "not_found"
 
-    overflow_menu.click()
-    time.sleep(0.5)
-
-    # Click "Manage accounts"
     manage_accounts = d(text="Manage accounts")
-    if not manage_accounts.exists:
-        log("'Manage accounts' option not found", SCRIPT_NAME)
+    if not click_then_expect(d, overflow_menu, manage_accounts, timeout=TIMEOUT_FAST):
+        log("'Manage accounts' option not found after clicking overflow", SCRIPT_NAME)
         return "not_found"
 
-    manage_accounts.click()
-    time.sleep(1)
-    wait_for_ui_stable(d, timeout=TIMEOUT_NORMAL, script_name=SCRIPT_NAME)
+    # Click "Manage accounts" - wait for manage accounts screen (add button appears)
+    add_account_button = d(resourceId="eu.siacs.conversations:id/action_add_account")
+    if not click_then_expect(
+        d, manage_accounts, add_account_button, timeout=TIMEOUT_NORMAL
+    ):
+        log("Failed to navigate to Manage accounts screen", SCRIPT_NAME)
+        return "not_found"
 
     # Check if user1@10.0.2.2 exists in the account list
     if d(text=args.username).exists:
         log(f"✓ User {args.username} is already added!", SCRIPT_NAME)
         # Go back to main screen
-        d.press("back")
-        time.sleep(0.5)
+        if not press_back_then_expect(
+            d, d(description="More options"), timeout=TIMEOUT_FAST
+        ):
+            log("WARNING: Could not verify return to main screen", SCRIPT_NAME)
         return "already_added"
     else:
         log(f"User {args.username} not found in account list", SCRIPT_NAME)
@@ -112,9 +118,11 @@ def navigate_to_add_account_from_manage_accounts():
         return False
 
     log("Tapping 'Add account' button...", SCRIPT_NAME)
-    add_account_button.click()
-    time.sleep(1)
-    wait_for_ui_stable(d, timeout=TIMEOUT_NORMAL, script_name=SCRIPT_NAME)
+    # Wait for login form to appear (account_jid field)
+    jid_field = d(resourceId="eu.siacs.conversations:id/account_jid")
+    if not click_then_expect(d, add_account_button, jid_field, timeout=TIMEOUT_NORMAL):
+        log("[ERROR] Login form did not appear after clicking Add account", SCRIPT_NAME)
+        return False
 
     log("✓ Successfully navigated to Add Account screen", SCRIPT_NAME)
     return True
@@ -134,30 +142,30 @@ def navigate_to_add_account():
         return False
 
     log("Opening overflow menu...", SCRIPT_NAME)
-    overflow_menu.click()
-    time.sleep(0.5)
-
-    # Click "Manage accounts"
     manage_accounts = d(text="Manage accounts")
-    if not manage_accounts.exists:
-        log("[ERROR] 'Manage accounts' option not found", SCRIPT_NAME)
+    if not click_then_expect(d, overflow_menu, manage_accounts, timeout=TIMEOUT_FAST):
+        log(
+            "[ERROR] 'Manage accounts' option not found after clicking overflow",
+            SCRIPT_NAME,
+        )
         return False
 
     log("Tapping 'Manage accounts'...", SCRIPT_NAME)
-    manage_accounts.click()
-    time.sleep(1)
-    wait_for_ui_stable(d, timeout=TIMEOUT_NORMAL, script_name=SCRIPT_NAME)
-
-    # Click Add account button using resource ID (stable)
     add_account_button = d(resourceId="eu.siacs.conversations:id/action_add_account")
-    if not add_account_button.exists:
-        log("[ERROR] 'Add account' button not found", SCRIPT_NAME)
+    if not click_then_expect(
+        d, manage_accounts, add_account_button, timeout=TIMEOUT_NORMAL
+    ):
+        log(
+            "[ERROR] 'Add account' button not found on Manage accounts screen",
+            SCRIPT_NAME,
+        )
         return False
 
     log("Tapping 'Add account' button...", SCRIPT_NAME)
-    add_account_button.click()
-    time.sleep(1)
-    wait_for_ui_stable(d, timeout=TIMEOUT_NORMAL, script_name=SCRIPT_NAME)
+    jid_field = d(resourceId="eu.siacs.conversations:id/account_jid")
+    if not click_then_expect(d, add_account_button, jid_field, timeout=TIMEOUT_NORMAL):
+        log("[ERROR] Login form did not appear after clicking Add account", SCRIPT_NAME)
+        return False
 
     log("✓ Successfully navigated to Add Account screen", SCRIPT_NAME)
     return True
@@ -172,9 +180,16 @@ def submit_login():
         log("[ERROR] Next button not found", SCRIPT_NAME)
         return False
 
+    # For login submission, we can't predict what appears next (certificate dialog,
+    # avatar screen, etc.) - so just click and let the caller handle what comes next
+    pre_click_hierarchy = d.dump_hierarchy(compressed=True)
     save_button.click()
     log("✓ Clicked Next button", SCRIPT_NAME)
-    time.sleep(1)
+
+    # Wait for screen to change (login is processing)
+    if not wait_for_screen_change(d, pre_click_hierarchy, timeout=TIMEOUT_NORMAL):
+        log("WARNING: Screen did not change after submit", SCRIPT_NAME)
+
     return True
 
 
@@ -185,34 +200,33 @@ def verify_account_added():
     """
     log("Verifying account was added...", SCRIPT_NAME)
 
-    # Wait a bit for the UI to settle
-    time.sleep(1)
-
     # Open overflow menu
     overflow_menu = d(description="More options")
     if not overflow_menu.exists:
         log("[ERROR] Overflow menu not found for verification", SCRIPT_NAME)
         return False
 
-    overflow_menu.click()
-    time.sleep(0.5)
-
-    # Click "Manage accounts"
     manage_accounts = d(text="Manage accounts")
-    if not manage_accounts.exists:
-        log("[ERROR] 'Manage accounts' not found for verification", SCRIPT_NAME)
+    if not click_then_expect(d, overflow_menu, manage_accounts, timeout=TIMEOUT_FAST):
+        log("[ERROR] 'Manage accounts' not found after clicking overflow", SCRIPT_NAME)
         return False
 
-    manage_accounts.click()
-    time.sleep(1)
-    wait_for_ui_stable(d, timeout=TIMEOUT_NORMAL, script_name=SCRIPT_NAME)
+    # Click "Manage accounts" - wait for add account button (indicates we're on the screen)
+    add_account_button = d(resourceId="eu.siacs.conversations:id/action_add_account")
+    if not click_then_expect(
+        d, manage_accounts, add_account_button, timeout=TIMEOUT_NORMAL
+    ):
+        log("[ERROR] Failed to navigate to Manage accounts screen", SCRIPT_NAME)
+        return False
 
     # Check if user1 exists
     if d(text=args.username).exists:
         log(f"✓ Verified: {args.username} is in account list", SCRIPT_NAME)
         # Go back to main screen
-        d.press("back")
-        time.sleep(0.5)
+        if not press_back_then_expect(
+            d, d(description="More options"), timeout=TIMEOUT_FAST
+        ):
+            log("WARNING: Could not verify return to main screen", SCRIPT_NAME)
         return True
     else:
         log(f"[ERROR] {args.username} not found in account list", SCRIPT_NAME)
@@ -276,8 +290,35 @@ def main():
             sys.exit(1)
 
         # Step 4: Handle certificate dialog (appears immediately after submit)
+        # After trusting cert, connection may fail and need retry
         log("\n--- Step 4: Handle certificate dialog ---", SCRIPT_NAME)
-        handle_certificate_dialog(d, timeout=TIMEOUT_NORMAL, script_name=SCRIPT_NAME)
+        for cert_attempt in range(3):
+            handle_certificate_dialog(
+                d, timeout=TIMEOUT_NORMAL, script_name=SCRIPT_NAME
+            )
+
+            # Give the connection a moment to complete
+            time.sleep(2)
+
+            # Check if we made it past the login form
+            if (
+                d(text="Publish avatar").exists
+                or d(resourceId="eu.siacs.conversations:id/speed_dial").exists
+            ):
+                log("✓ Connection succeeded after certificate trust", SCRIPT_NAME)
+                break
+
+            # Still on login form - need to retry
+            save_button = d(resourceId="eu.siacs.conversations:id/save_button")
+            if save_button.exists:
+                log(
+                    f"Connection failed, retrying... (attempt {cert_attempt + 2}/3)",
+                    SCRIPT_NAME,
+                )
+                save_button.click()
+                time.sleep(1)
+            else:
+                break  # Not on login form, proceed
 
         # Step 5: Handle publish avatar screen (appears after certificate)
         log("\n--- Step 5: Handle post-login setup ---", SCRIPT_NAME)
