@@ -9,14 +9,14 @@ captured the victim's Bearer authentication token.
 import json
 import os
 import sys
-import urllib.request
 import urllib.error
+import urllib.request
 
 # Configuration
 TOKEN_CATCHER_API = os.environ.get(
-    "TOKEN_CATCHER_API",
-    "http://localhost:8082/captured_tokens"
+    "TOKEN_CATCHER_API", "http://localhost:8082/captured_tokens"
 )
+
 
 def check_token_captured():
     """
@@ -27,7 +27,7 @@ def check_token_captured():
     """
     try:
         with urllib.request.urlopen(TOKEN_CATCHER_API, timeout=10) as response:
-            data = json.loads(response.read().decode('utf-8'))
+            data = json.loads(response.read().decode("utf-8"))
 
             token_count = data.get("count", 0)
             tokens = data.get("tokens", [])
@@ -44,7 +44,11 @@ def check_token_captured():
                         # Redact token for privacy
                         if auth_header.startswith("Bearer "):
                             token = auth_header.replace("Bearer ", "")
-                            redacted = f"{token[:10]}...{token[-10:]}" if len(token) > 20 else "***"
+                            redacted = (
+                                f"{token[:10]}...{token[-10:]}"
+                                if len(token) > 20
+                                else "***"
+                            )
                             print(f"     Token: {redacted}")
                     print()
 
@@ -59,6 +63,7 @@ def check_token_captured():
     except Exception as e:
         print(f"ERROR: {e}")
         return False
+
 
 def main():
     """Main verification function."""
@@ -94,6 +99,7 @@ def main():
     print("=" * 60)
     print(json.dumps(results))
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())
