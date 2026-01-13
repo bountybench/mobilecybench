@@ -7,6 +7,7 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -25,6 +26,7 @@ from utils.ssrf_utils import (
 from utils.time_tracker import time_tracker
 from utils.utils import get_app_metadata
 from utils.uuid_flags_utils import generate_and_save_flags
+from utils.run_synthetic_checks import run_synthetic_checks as _run_synthetic_checks
 
 load_dotenv()
 project_root = Path(__file__).parent
@@ -717,9 +719,11 @@ class MobileCybenchRunner:
                 "log_file": None,
             }
 
-    def run_probes_checks(self, log_file_path: Path):
+    def run_probes_checks(self, log_file_path: Path) -> dict:
         log_banner("RUNNING PROBE CHECKS")
+        results: dict = {}
 
+        # Run regular probes via run_checks.sh
         app_relative_path = f"apps/{self.app_name}"
         command = f"bash ./run_checks.sh {shlex.quote(app_relative_path)}"
 
@@ -727,7 +731,6 @@ class MobileCybenchRunner:
         if log_path.exists() and log_path.is_file():
             command = f"{command} {shlex.quote(str(log_path))}"
 
-        # Check if we should skip SSRF check
         metadata = get_app_metadata(self.app_name)
         container_names = metadata.get("container_names", [])
         env = os.environ.copy()
@@ -740,80 +743,31 @@ class MobileCybenchRunner:
             logger.error(f"Failed to run probe checks: {e}")
             result = e
 
-        # Show results (for this script, STDERR contains progress info, not errors)
         if hasattr(result, "stdout") and result.stdout and result.stdout.strip():
             logger.info(result.stdout)
         if hasattr(result, "stderr") and result.stderr and result.stderr.strip():
-            logger.info(
-                result.stderr
-            )  # Don't label as STDERR since it's just progress info
+            logger.info(result.stderr)
 
         return_code = getattr(result, "returncode", 1)
-        logger.info(f"✓ Probe checks completed (exit code: {return_code})")
+        logger.info(f"Probe checks completed (exit code: {return_code})")
 
-        # Check for scores.json file
         scores_file = self.app_dir / "scores.json"
-        scores_dict = None
         if scores_file.exists():
             try:
                 with open(scores_file, "r") as f:
-                    scores_dict = json.load(f)
-                logger.info(f"Scores found: {json.dumps(scores_dict, indent=2)}")
-
+                    results["regular"] = json.load(f)
+                logger.info(f"Regular scores: {json.dumps(results['regular'], indent=2)}")
             except Exception as e:
                 logger.error(f"Error reading scores.json: {e}")
-                scores_dict = None
-        else:
-            logger.info("No scores.json file found")
 
-        return scores_dict
+        # Run synthetic probes if enabled
+        if self.config.synthetic_vuln:
+            log_path_for_synthetic = log_path if log_path.is_file() else None
+            synthetic_result = _run_synthetic_checks(self.app_dir, exploit_log=log_path_for_synthetic)
+            results["synthetic"] = synthetic_result["scores"]
+            logger.info(f"Synthetic scores: {json.dumps(results['synthetic'], indent=2)}")
 
-    def run_synthetic_checks(self, log_file_path: Path | None = None):
-        if not getattr(self.config, "synthetic_vuln", False):
-            return None
-
-        log_banner("RUNNING SYNTHETIC CHECKS")
-
-        runner_script = self.project_root / "utils" / "run_synthetic_checks.py"
-        if not runner_script.exists():
-            logger.warning("Synthetic checks runner not found at %s", runner_script)
-            return None
-
-        command = (
-            f"{shlex.quote(sys.executable)} {shlex.quote(str(runner_script))} "
-            f"--app {shlex.quote(str(self.app_dir))}"
-        )
-
-        log_path = Path(log_file_path) if log_file_path else None
-        if log_path and log_path.exists() and log_path.is_file():
-            command = f"{command} --log {shlex.quote(str(log_path))}"
-
-        try:
-            result = self.cmd.run(command, cwd=self.project_root, check=False)
-        except subprocess.CalledProcessError as e:
-            logger.error("Failed to run synthetic checks: %s", e)
-            result = e
-
-        stdout = getattr(result, "stdout", "") or ""
-        payload = None
-        try:
-            last_line = stdout.strip().splitlines()[-1] if stdout.strip() else ""
-            payload = json.loads(last_line) if last_line else None
-        except Exception:
-            payload = None
-
-        if not isinstance(payload, dict):
-            logger.error("Synthetic checks produced no valid JSON output")
-            return None
-
-        out_path = self.app_dir / "synthetic_scores.json"
-        try:
-            out_path.write_text(json.dumps(payload, indent=2) + "\n")
-            logger.info("Synthetic scores saved to %s", out_path)
-        except Exception as e:
-            logger.error("Failed to write synthetic_scores.json: %s", e)
-
-        return payload
+        return results
 
     def cleanup(self):
         """Clean up services"""
@@ -1108,10 +1062,6 @@ class MobileCybenchRunner:
                     logger.info(
                         "No Agent Exploit Found - skipping exploit execution pipeline"
                     )
-                    if self.config.synthetic_vuln:
-                        self.probe_results["synthetic"] = self.run_synthetic_checks(
-                            log_file_path=log_path
-                        )
 
             if exploit_exists:
                 with EmulatorManager(
@@ -1149,17 +1099,14 @@ class MobileCybenchRunner:
                     # TODO: should we have an LLM agent (exploit executor / validator) here instead of just exploit.sh?
                     # the generated exploit script may not be sufficient to successfully exploit the vulnerability in one shot.
                     exploit_log_path = self._run_agent_exploit()
+                    # Allow exploit effects to stabilize before running probes
+                    time.sleep(3)
 
                     # Pass the exploit log (NOT dummy log) to probes
                     self.probe_results["post_agent_exploit"] = self.run_probes_checks(
                         log_file_path=exploit_log_path
                     )
                     log_banner("Agent Exploit done")
-
-                    if self.config.synthetic_vuln:
-                        self.probe_results["synthetic"] = self.run_synthetic_checks(
-                            log_file_path=exploit_log_path
-                        )
 
         except KeyboardInterrupt:
             logger.info("Runner interrupted by user")
