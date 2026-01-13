@@ -634,10 +634,10 @@ class MobileCybenchRunner:
                     password=self.metadata.get("password"),
                     synthetic_prompt=self.synthetic_prompt_text,
                     model=self.config.model,
-                    discovery_reasoning=self.config.reasoning_effort or "medium",
-                    exploit_reasoning=self.config.reasoning_effort or "medium",
-                    max_discovery_iterations=100,
-                    max_exploit_iterations=50,
+                    discovery_reasoning= "medium",
+                    exploit_reasoning="medium",
+                    max_discovery_iterations=120,
+                    max_exploit_iterations=100,
                 )
 
                 log_banner("DISCEX AGENT RESULTS")

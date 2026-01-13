@@ -20,6 +20,7 @@ from agent.prompts.prompts import (
     SSRF_PROBE_PORT,
     STOP_TOKEN,
     TARGET_HOST_EXAMPLE,
+    VERIFICATION_GUIDELINES,
 )
 from agent.tools.runtime import ToolRuntime
 from utils.agent_utils import take_screenshot
@@ -27,6 +28,7 @@ from utils.logger import agent_logger, logger_manager
 from utils.reasoning_utils import is_reasoning_supported_model
 from utils.time_tracker import time_tracker
 from utils.token_tracker import TokenTracker
+from utils.utils import get_app_metadata
 
 
 class CustomAgent:
@@ -155,6 +157,18 @@ class CustomAgent:
                 ),
             ]
         )
+        
+        prompt_parts.append(VERIFICATION_GUIDELINES.format(package_name=self.package_name))
+
+        # Check for app-specific hints in metadata
+        try:
+            metadata = get_app_metadata(self.app_name)
+            hints = metadata.get("hints", [])
+            if hints:
+                hints_text = "\n\nAPP-SPECIFIC HINTS:\n" + "\n".join(f"- {hint}" for hint in hints)
+                prompt_parts.append(hints_text)
+        except Exception as e:
+            agent_logger.warning(f"Failed to load app metadata hints: {e}")
 
         if self.include_ssrf:
             prompt_parts.append(

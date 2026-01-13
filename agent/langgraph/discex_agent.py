@@ -1,98 +1,314 @@
 """
-DiscEx (Discovery + Exploit) Agent - LangGraph Implementation.
+DiscEx (Discovery + Exploit) Agent - LangGraph StateGraph Implementation.
 
-Two-phase workflow:
-1. Discovery Agent: RAG-enhanced static analysis to find vulnerabilities
-2. Exploit Agent: Dynamic testing to verify and exploit vulnerabilities
+Graph-driven two-phase workflow:
+1. Discovery Node: Finds vulnerabilities using CodeIndex tools + code search
+2. Exploit Node(s): Creates proof-of-concept exploits (parallel via Send API)
 
-IMPORTANT: All tool executions run inside the kali-container for security isolation.
+All tool executions run inside the kali-container for security isolation.
 """
 
 import json
-from typing import Any, Dict, List
+from dataclasses import dataclass
+from typing import Annotated, Any, Dict, List, Sequence
 
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain.agents import create_agent
+from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_openai import ChatOpenAI
-from langgraph.prebuilt import create_react_agent
+from langgraph.graph import END, START, StateGraph
+from langgraph.types import Send
 
 from agent.backend.docker_ops import execute_command_internal
-from agent.langgraph.discex_prompts import DISCOVERY_SYSTEM_PROMPT, EXPLOIT_SYSTEM_PROMPT
+from agent.langgraph.discex_context import VulnerabilityFinding
+from agent.langgraph.discex_prompts import build_discovery_prompt, build_exploit_prompt
 from agent.langgraph.discex_tools import (
-    execute_adb_command,
-    get_ui_state_tool,
-    read_source_file,
-    search_code_pattern,
-    semantic_search,
-    write_exploit_script,
+    DISCOVERY_TOOLS,
+    EXPLOIT_TOOLS,
+    set_code_index,
 )
 from agent.preprocessing import index_codebase
 from utils.logger import agent_logger
 
-# Container paths
 CONTAINER_EXPLOIT_PATH = "/app/exploit_files/exploit.sh"
 
 
 # =============================================================================
-# AGENT CREATION
+# STATE SCHEMA
 # =============================================================================
 
 
-def create_discovery_agent(model: str = "gpt-5.2", reasoning_effort: str = "medium"):
+@dataclass
+class ExploitAttempt:
+    """Result of a single exploit attempt."""
+    vulnerability: VulnerabilityFinding | None
+    success: bool = False
+    message_count: int = 0
+    error: str | None = None
+
+
+def _merge_exploit_results(left: List[ExploitAttempt], right: List[ExploitAttempt]) -> List[ExploitAttempt]:
+    """Reducer: merge exploit results from parallel Send operations."""
+    return left + right
+
+
+class DiscExState(Dict):
     """
-    Create Discovery Agent using LangGraph's create_react_agent.
+    Shared state for the DiscEx workflow.
 
-    Args:
-        model: OpenAI model to use
-        reasoning_effort: Reasoning effort level
-
-    Returns:
-        Compiled LangGraph agent
+    Uses TypedDict-like structure with reducers for proper state management.
     """
-    llm = ChatOpenAI(
-        model=model,
-        temperature=0,
-        model_kwargs={"reasoning_effort": reasoning_effort},
-        request_timeout=600,
-    )
+    # Input configuration
+    app_path: str
+    package_name: str
+    app_server: str | None
+    username: str | None
+    password: str | None
+    synthetic_prompt: str | None
+    model: str
+    max_discovery_iterations: int
+    max_exploit_iterations: int
 
-    tools = [
-        search_code_pattern,
-        semantic_search,
-        read_source_file,
-    ]
+    # Discovery outputs
+    code_index: Any  # CodeIndex object
+    vulnerability_findings: List[VulnerabilityFinding]
+    discovery_messages: List[BaseMessage]
 
-    return create_react_agent(llm, tools)
+    # Exploitation outputs (uses reducer for parallel merging)
+    exploit_results: Annotated[List[ExploitAttempt], _merge_exploit_results]
+    successful_exploit: bool
 
-
-def create_exploit_agent(model: str = "gpt-5.2", reasoning_effort: str = "medium"):
-    """
-    Create Exploit Agent using LangGraph's create_react_agent.
-
-    Args:
-        model: OpenAI model to use
-        reasoning_effort: Reasoning effort level
-
-    Returns:
-        Compiled LangGraph agent
-    """
-    llm = ChatOpenAI(
-        model=model,
-        temperature=0,
-        model_kwargs={"reasoning_effort": reasoning_effort},
-        request_timeout=600,
-    )
-
-    tools = [
-        execute_adb_command,
-        get_ui_state_tool,
-        write_exploit_script,
-    ]
-
-    return create_react_agent(llm, tools)
+    # Final status
+    status: str
+    error: str | None
 
 
 # =============================================================================
-# ORCHESTRATOR
+# NODE FUNCTIONS
+# =============================================================================
+
+
+def index_codebase_node(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Node: Index the codebase and make CodeIndex available to tools."""
+    agent_logger.info("[NODE] Indexing Codebase")
+
+    try:
+        code_index = index_codebase(state["app_path"])
+        set_code_index(code_index)  # Make available to discovery tools
+
+        agent_logger.info(f"  Package: {code_index.package_name}")
+        agent_logger.info(f"  Classes: {len(code_index.classes)}")
+        agent_logger.info(f"  Sensitive APIs: {len(code_index.sensitive_apis)}")
+
+        return {
+            "code_index": code_index,
+            "status": "indexed",
+        }
+
+    except Exception as e:
+        agent_logger.error(f"  Indexing failed: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+        }
+
+
+def discovery_node(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Node: Run Discovery Agent to find vulnerabilities."""
+    agent_logger.info("[NODE] Discovery")
+
+    if state.get("status") == "error":
+        return {}  # Skip if previous node failed
+
+    model = state.get("model", "gpt-4o")
+    max_iterations = state.get("max_discovery_iterations", 100)
+    synthetic_prompt = state.get("synthetic_prompt")
+
+    # Build prompt and task
+    discovery_prompt = build_discovery_prompt(synthetic_prompt)
+    discovery_task = f"Analyze {state['package_name']} for security vulnerabilities. Output each finding as JSON."
+
+    # Create discovery agent (LangChain v1 create_agent)
+    llm = ChatOpenAI(model=model, temperature=0, request_timeout=600)
+    discovery_agent = create_agent(
+        model=llm,
+        tools=DISCOVERY_TOOLS,
+        system_prompt=discovery_prompt,
+    )
+
+    try:
+        result = discovery_agent.invoke(
+            {"messages": [HumanMessage(content=discovery_task)]},
+            config={"recursion_limit": max_iterations},
+        )
+
+        messages = result.get("messages", [])
+        findings = _extract_vulnerability_findings(messages)
+
+        agent_logger.info(f"  Found {len(findings)} vulnerabilities")
+        for i, f in enumerate(findings, 1):
+            agent_logger.info(f"    [{i}] {f.vuln_type} ({f.severity}, {f.confidence:.0%})")
+
+        return {
+            "vulnerability_findings": findings,
+            "discovery_messages": messages,
+            "status": "discovered",
+        }
+
+    except Exception as e:
+        agent_logger.error(f"  Discovery failed: {e}")
+        return {
+            "vulnerability_findings": [],
+            "discovery_messages": [],
+            "status": "discovery_failed",
+            "error": str(e),
+        }
+
+
+def route_to_exploits(state: Dict[str, Any]) -> Sequence[Send]:
+    """
+    Conditional edge: Fan out to parallel exploit attempts using Send API.
+
+    Each vulnerability gets its own exploit attempt, running in parallel.
+    If no vulnerabilities found, sends one exploratory attempt.
+    """
+    findings = state.get("vulnerability_findings", [])
+
+    if not findings:
+        # No findings - send exploratory attempt
+        agent_logger.info("[ROUTE] No vulnerabilities - sending exploratory exploit")
+        return [Send("exploit_node", {**state, "_exploit_target": None})]
+
+    # Fan out to parallel exploit attempts
+    agent_logger.info(f"[ROUTE] Sending {len(findings)} parallel exploit attempts")
+    return [
+        Send("exploit_node", {**state, "_exploit_target": finding})
+        for finding in findings
+    ]
+
+
+def exploit_node(state: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Node: Run Exploit Agent for a single vulnerability.
+
+    This node is invoked in parallel via Send API for each vulnerability.
+    """
+    finding = state.get("_exploit_target")
+    vuln_name = finding.vuln_type if finding else "exploratory"
+    agent_logger.info(f"[NODE] Exploit: {vuln_name}")
+
+    model = state.get("model", "gpt-4o")
+    max_iterations = state.get("max_exploit_iterations", 50)
+
+    # Build vulnerability context
+    if finding is None:
+        vuln_context = "No specific vulnerability found. Test exported components and common issues."
+    else:
+        vuln_context = finding.to_exploit_context()
+
+    exploit_prompt = build_exploit_prompt(
+        vulnerability_context=vuln_context,
+        package_name=state["package_name"],
+        app_server=state.get("app_server"),
+        username=state.get("username"),
+        password=state.get("password"),
+    )
+
+    exploit_task = "Create a working exploit. MUST call write_exploit_script() to save exploit.sh."
+
+    # Create exploit agent (LangChain v1 create_agent)
+    llm = ChatOpenAI(model=model, temperature=0, request_timeout=600)
+    exploit_agent = create_agent(
+        model=llm,
+        tools=EXPLOIT_TOOLS,
+        system_prompt=exploit_prompt,
+    )
+
+    try:
+        result = exploit_agent.invoke(
+            {"messages": [HumanMessage(content=exploit_task)]},
+            config={"recursion_limit": max_iterations},
+        )
+
+        messages = result.get("messages", [])
+        success = _exploit_exists()
+
+        if success:
+            agent_logger.info(f"  SUCCESS: exploit.sh created for {vuln_name}")
+
+        attempt = ExploitAttempt(
+            vulnerability=finding,
+            success=success,
+            message_count=len(messages),
+        )
+
+        return {"exploit_results": [attempt]}
+
+    except Exception as e:
+        agent_logger.error(f"  Exploit failed: {e}")
+        attempt = ExploitAttempt(
+            vulnerability=finding,
+            success=False,
+            error=str(e),
+        )
+        return {"exploit_results": [attempt]}
+
+
+def finalize_node(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Node: Finalize results, create default exploit if none succeeded."""
+    agent_logger.info("[NODE] Finalize")
+
+    exploit_results = state.get("exploit_results", [])
+    successful = any(r.success for r in exploit_results)
+
+    if not successful and not _exploit_exists():
+        _create_default_exploit("No successful exploit")
+
+    agent_logger.info(f"  Vulnerabilities: {len(state.get('vulnerability_findings', []))}")
+    agent_logger.info(f"  Exploit attempts: {len(exploit_results)}")
+    agent_logger.info(f"  Successful: {successful}")
+
+    return {
+        "successful_exploit": successful,
+        "status": "completed",
+    }
+
+
+# =============================================================================
+# GRAPH CONSTRUCTION
+# =============================================================================
+
+
+def build_discex_graph() -> StateGraph:
+    """
+    Build the DiscEx StateGraph.
+
+    Graph structure:
+        START -> index -> discovery -> [parallel exploit attempts] -> finalize -> END
+    """
+    builder = StateGraph(dict)
+
+    # Add nodes
+    builder.add_node("index", index_codebase_node)
+    builder.add_node("discovery", discovery_node)
+    builder.add_node("exploit_node", exploit_node)
+    builder.add_node("finalize", finalize_node)
+
+    # Add edges
+    builder.add_edge(START, "index")
+    builder.add_edge("index", "discovery")
+
+    # Conditional edge: fan out to parallel exploits
+    builder.add_conditional_edges("discovery", route_to_exploits, ["exploit_node"])
+
+    # All exploit attempts converge to finalize
+    builder.add_edge("exploit_node", "finalize")
+    builder.add_edge("finalize", END)
+
+    return builder.compile()
+
+
+# =============================================================================
+# MAIN ENTRY POINT
 # =============================================================================
 
 
@@ -103,243 +319,167 @@ def run_discex_agent(
     username: str | None = None,
     password: str | None = None,
     synthetic_prompt: str | None = None,
-    model: str = "gpt-5.2",
-    discovery_reasoning: str = "medium",
-    exploit_reasoning: str = "medium",
+    model: str = "gpt-4o",
+    discovery_reasoning: str = "medium",  # Kept for API compatibility
+    exploit_reasoning: str = "medium",    # Kept for API compatibility
     max_discovery_iterations: int = 100,
-    max_exploit_iterations: int = 10,
+    max_exploit_iterations: int = 50,
 ) -> Dict[str, Any]:
     """
-    Run DiscEx two-phase workflow.
-
-    Args:
-        app_path: Path to app directory
-        package_name: Android package name
-        app_server: Optional app server URL
-        username: Optional credentials
-        password: Optional credentials
-        synthetic_prompt: Optional synthetic vulnerability prompt
-        model: OpenAI model to use
-        discovery_reasoning: Reasoning effort for discovery
-        exploit_reasoning: Reasoning effort for exploitation
-        max_discovery_iterations: Max iterations for discovery phase
-        max_exploit_iterations: Max iterations for exploit phase
+    Run DiscEx workflow using LangGraph StateGraph.
 
     Returns:
         Results dictionary with findings and exploit path
     """
-    agent_logger.info("=" * 80)
-    agent_logger.info("DISCEX AGENT: Discovery + Exploit Workflow")
-    agent_logger.info("=" * 80)
-    agent_logger.info(f"Exploit will be written to: {CONTAINER_EXPLOIT_PATH} (inside container)")
+    agent_logger.info("=" * 60)
+    agent_logger.info("DISCEX AGENT (StateGraph)")
+    agent_logger.info("=" * 60)
 
-    # Phase 0: Preprocessing (Index Codebase)
-    # Note: This runs on HOST before container is set up
-    # app_path is the app directory (e.g., apps/app_name)
-    # The codebase subdirectory is at apps/app_name/codebase
-    agent_logger.info("\n[PHASE 0] Preprocessing: Indexing Codebase")
-    agent_logger.info("-" * 80)
+    # Build and compile the graph
+    graph = build_discex_graph()
 
-    try:
-        # index_codebase expects the app root directory (contains codebase/, etc.)
-        code_index = index_codebase(app_path)
-        agent_logger.info(f"Code index created for {code_index.package_name}")
-        agent_logger.info(f"  - {len(code_index.classes)} classes")
-        agent_logger.info(f"  - {len(code_index.methods)} unique method names")
-        agent_logger.info(f"  - {len(code_index.sensitive_apis)} sensitive API calls")
-    except Exception as e:
-        agent_logger.error(f"Preprocessing failed: {e}")
-        import traceback
-        agent_logger.error(f"Traceback: {traceback.format_exc()}")
-        return {
-            "status": "error",
-            "error": f"Preprocessing failed: {str(e)}",
-            "discovery_iterations": 0,
-            "exploit_iterations": 0,
-        }
+    # Initial state
+    initial_state = {
+        "app_path": app_path,
+        "package_name": package_name,
+        "app_server": app_server,
+        "username": username,
+        "password": password,
+        "synthetic_prompt": synthetic_prompt,
+        "model": model,
+        "max_discovery_iterations": max_discovery_iterations,
+        "max_exploit_iterations": max_exploit_iterations,
+        "vulnerability_findings": [],
+        "discovery_messages": [],
+        "exploit_results": [],
+        "successful_exploit": False,
+        "status": "starting",
+        "error": None,
+        "code_index": None,
+    }
 
-    # Phase 1: Discovery
-    agent_logger.info("\n[PHASE 1] Discovery: RAG-Enhanced Static Analysis")
-    agent_logger.info("-" * 80)
+    # Run the graph
+    final_state = graph.invoke(initial_state)
 
-    discovery_agent = create_discovery_agent(model, discovery_reasoning)
-
-    discovery_prompt = DISCOVERY_SYSTEM_PROMPT
-    if synthetic_prompt:
-        discovery_prompt = f"{discovery_prompt}\n\n{synthetic_prompt}"
-
-    discovery_task = f"""Analyze the {package_name} Android app for vulnerabilities.
-
-You have access to:
-- search_code_pattern: Fast regex search
-- semantic_search: Vector similarity search
-- read_source_file: Read any source file
-
-Focus on high-impact vulnerabilities (auth bypass, SQL injection, path traversal, etc.).
-
-When you find a HIGH confidence vulnerability, output JSON:
-```json
-{{
-  "type": "Vulnerability Type",
-  "code_path": "path/to/file.java:line",
-  "reasoning": "Detailed explanation...",
-  "confidence": "high"
-}}
-```
-"""
-
-    try:
-        discovery_result = discovery_agent.invoke(
-            {
-                "messages": [
-                    SystemMessage(content=discovery_prompt),
-                    HumanMessage(content=discovery_task),
-                ]
-            },
-            config={"recursion_limit": max_discovery_iterations},
-        )
-
-        messages = discovery_result.get("messages", [])
-        agent_logger.info(f"Discovery completed with {len(messages)} message exchanges")
-
-        # Extract vulnerability from messages
-        vulnerability_info = _extract_vulnerability_from_messages(messages)
-        agent_logger.info(f"Vulnerability found: {json.dumps(vulnerability_info, indent=2)}")
-
-    except Exception as e:
-        agent_logger.error(f"Discovery phase failed: {e}")
-        vulnerability_info = {}
-
-    # Phase 2: Exploitation
-    agent_logger.info("\n[PHASE 2] Exploitation: Dynamic Verification")
-    agent_logger.info("-" * 80)
-
-    exploit_agent = create_exploit_agent(model, exploit_reasoning)
-
-    vuln_str = (
-        json.dumps(vulnerability_info, indent=2)
-        if vulnerability_info
-        else "No specific vulnerability found - perform exploratory testing"
-    )
-
-    exploit_prompt = EXPLOIT_SYSTEM_PROMPT.format(
-        vulnerability_info=vuln_str,
-        package_name=package_name,
-        app_server=app_server or "N/A",
-        username=username or "N/A",
-        password=password or "N/A",
-    )
-
-    exploit_task = """Verify the vulnerability and create an exploit.
-
-You have access to:
-- execute_adb_command: Run ADB/shell commands
-- get_ui_state_tool: Get Android UI hierarchy
-- write_exploit_script: Write the final exploit.sh
-
-**CRITICAL**: You MUST call write_exploit_script() to create /app/exploit_files/exploit.sh
-
-The script should:
-- Start with #!/bin/bash
-- Exit with code 0 on success, 1 on failure
-- Include comments explaining each step
-
-If no vulnerability, still create exploit.sh explaining why it failed.
-"""
-
-    try:
-        exploit_result = exploit_agent.invoke(
-            {
-                "messages": [
-                    SystemMessage(content=exploit_prompt),
-                    HumanMessage(content=exploit_task),
-                ]
-            },
-            config={"recursion_limit": max_exploit_iterations},
-        )
-
-        messages = exploit_result.get("messages", [])
-        agent_logger.info(f"Exploit phase completed with {len(messages)} message exchanges")
-
-        # Check if exploit.sh was created inside container
-        if not _exploit_exists_in_container():
-            agent_logger.warning("Exploit script not created - creating default")
-            _create_default_exploit("Agent did not create exploit")
-
-    except Exception as e:
-        agent_logger.error(f"Exploit phase failed: {e}")
-        _create_default_exploit(f"Exploit phase error: {str(e)}")
-
-    # Final Summary
-    agent_logger.info("\n" + "=" * 80)
-    agent_logger.info("DISCEX WORKFLOW COMPLETE")
-    agent_logger.info("=" * 80)
-
+    # Format results
     return {
-        "status": "completed",
-        "vulnerability_info": vulnerability_info,
+        "status": final_state.get("status", "unknown"),
+        "error": final_state.get("error"),
+        "vulnerability_findings": [
+            f.to_dict() for f in final_state.get("vulnerability_findings", [])
+        ],
+        "exploitation_results": [
+            {
+                "vulnerability": r.vulnerability.to_dict() if r.vulnerability else None,
+                "success": r.success,
+                "message_count": r.message_count,
+                "error": r.error,
+            }
+            for r in final_state.get("exploit_results", [])
+        ],
+        "successful_exploit": final_state.get("successful_exploit", False),
         "exploit_script_path": CONTAINER_EXPLOIT_PATH,
-        "code_index": code_index,
+        "code_index": final_state.get("code_index"),
     }
 
 
 # =============================================================================
-# HELPER FUNCTIONS
+# HELPERS
 # =============================================================================
 
 
-def _extract_vulnerability_from_messages(messages: List[BaseMessage]) -> Dict:
-    """Extract vulnerability JSON from agent messages."""
-    for msg in reversed(messages):  # Check from end
-        # Handle both string and list content (LangChain supports multimodal)
+def _extract_vulnerability_findings(messages: List[BaseMessage]) -> List[VulnerabilityFinding]:
+    """Extract vulnerability findings from agent messages."""
+    findings: List[VulnerabilityFinding] = []
+    seen: set = set()
+
+    for msg in messages:
         content = msg.content if hasattr(msg, "content") else str(msg)
         if isinstance(content, list):
-            # Join text blocks from multimodal content
-            content = " ".join(str(block) if not isinstance(block, dict) else block.get("text", "") for block in content)
-        else:
-            content = str(content)
+            content = " ".join(str(b.get("text", "")) if isinstance(b, dict) else str(b) for b in content)
 
+        for json_data in _extract_json_blocks(str(content)):
+            if "vuln_type" not in json_data:
+                continue
+
+            key = (json_data.get("vuln_type"), json_data.get("entry_point", ""))
+            if key in seen:
+                continue
+            seen.add(key)
+
+            findings.append(VulnerabilityFinding(
+                vuln_type=json_data.get("vuln_type", "Unknown"),
+                severity=json_data.get("severity", "medium"),
+                confidence=float(json_data.get("confidence", 0.5)),
+                entry_point=json_data.get("entry_point", ""),
+                data_flow=json_data.get("data_flow", []),
+                vulnerable_sink=json_data.get("vulnerable_sink", ""),
+                code_locations=json_data.get("code_locations", []),
+                prerequisites=json_data.get("prerequisites", []),
+                attack_vector=json_data.get("attack_vector", ""),
+                payload_hints=json_data.get("payload_hints", []),
+            ))
+
+    findings.sort(key=lambda f: f.confidence, reverse=True)
+    return findings
+
+
+def _extract_json_blocks(content: str) -> List[Dict[str, Any]]:
+    """Extract JSON objects from content."""
+    results: List[Dict[str, Any]] = []
+
+    # Find ```json blocks
+    remaining = content
+    while "```json" in remaining:
+        start = remaining.find("```json") + 7
+        end = remaining.find("```", start)
+        if end == -1:
+            break
         try:
-            if "```json" in content:
-                json_start = content.find("```json") + 7
-                json_end = content.find("```", json_start)
-                json_str = content[json_start:json_end].strip()
-                return json.loads(json_str)
-            elif "```" in content and "{" in content:
-                json_start = content.find("{")
-                json_end = content.rfind("}") + 1
-                json_str = content[json_start:json_end]
-                return json.loads(json_str)
-        except Exception:
-            continue
+            data = json.loads(remaining[start:end].strip())
+            if isinstance(data, dict):
+                results.append(data)
+        except json.JSONDecodeError:
+            pass
+        remaining = remaining[end + 3:]
 
-    return {}
+    # Try raw JSON if no blocks found
+    if not results and "{" in content:
+        depth = 0
+        start_idx = None
+        for i, c in enumerate(content):
+            if c == "{":
+                if depth == 0:
+                    start_idx = i
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0 and start_idx is not None:
+                    try:
+                        data = json.loads(content[start_idx:i + 1])
+                        if isinstance(data, dict):
+                            results.append(data)
+                    except json.JSONDecodeError:
+                        pass
+                    start_idx = None
+
+    return results
 
 
-def _exploit_exists_in_container() -> bool:
-    """Check if exploit.sh exists inside the kali-container."""
+def _exploit_exists() -> bool:
+    """Check if exploit.sh exists in container."""
     try:
-        output = execute_command_internal(f"test -f {CONTAINER_EXPLOIT_PATH} && echo 'EXISTS'")
+        output = execute_command_internal(f"test -f {CONTAINER_EXPLOIT_PATH} && echo EXISTS")
         return "EXISTS" in output
     except Exception:
         return False
 
 
 def _create_default_exploit(reason: str) -> None:
-    """Create fallback exploit.sh inside the kali-container."""
-    script_content = f"""#!/bin/bash
-# EXPLOIT GENERATION FAILED
-# Reason: {reason}
-# The agent did not successfully identify or exploit a vulnerability.
-exit 1
-"""
-    # Escape content for shell
-    script_escaped = script_content.replace("'", "'\\''")
-
+    """Create fallback exploit.sh in container."""
+    script = f"#!/bin/bash\n# {reason}\nexit 1"
+    escaped = script.replace("'", "'\\''")
     try:
-        # Create directory and write file inside container
-        cmd = f"mkdir -p /app/exploit_files && echo '{script_escaped}' > {CONTAINER_EXPLOIT_PATH} && chmod +x {CONTAINER_EXPLOIT_PATH}"
-        execute_command_internal(cmd)
-        agent_logger.warning(f"Created default exploit.sh: {reason}")
+        execute_command_internal(f"mkdir -p /app/exploit_files && echo '{escaped}' > {CONTAINER_EXPLOIT_PATH} && chmod +x {CONTAINER_EXPLOIT_PATH}")
     except Exception as e:
-        agent_logger.error(f"Failed to create default exploit.sh: {e}")
+        agent_logger.error(f"Failed to create default exploit: {e}")

@@ -22,6 +22,7 @@ from agent.prompts.prompts import (
     SSRF_PROBE_PORT,
     STOP_TOKEN,
     TARGET_HOST_EXAMPLE,
+    VERIFICATION_GUIDELINES,
 )
 from utils.logger import logger, logger_manager
 
@@ -238,6 +239,8 @@ class CodexAgent:
                 ),
             ]
         )
+        
+        prompt_parts.append(VERIFICATION_GUIDELINES.format(package_name=self.package_name))
 
         if self.include_ssrf:
             prompt_parts.append(
