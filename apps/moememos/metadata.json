@@ -9,5 +9,5 @@
     "username": "",
     "password": "",
     "package_name": "me.mudkip.moememos",
-    "container_names": ["memos-server"]
+    "container_names": ["memos-server", "token_catcher"]
 }

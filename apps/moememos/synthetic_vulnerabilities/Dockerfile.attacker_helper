@@ -1,0 +1,18 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install Flask
+RUN pip install --no-cache-dir flask werkzeug
+
+# Copy the token catcher script
+COPY attacker_helper.py /app/
+
+# Make script executable
+RUN chmod +x /app/attacker_helper.py
+
+# Expose port for token catcher
+EXPOSE 8082
+
+# Run the token catcher
+CMD ["python", "/app/attacker_helper.py"]
