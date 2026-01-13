@@ -185,14 +185,18 @@ class MobileCybenchRunner:
                 self._exit_with_error(
                     "Synthetic vulnerability mode requires build_type 'source'."
                 )
-            patch_path = (
-                self.app_dir / "synthetic_vulnerabilities" / "vulnerability.patch"
+            synth_root = self.app_dir / "synthetic_vulnerabilities"
+            vuln_dirs = sorted(
+                p for p in synth_root.glob("*") if p.is_dir() and not p.name.startswith(".")
             )
-            if not patch_path.exists():
+            patch_paths = [p / "vulnerability.patch" for p in vuln_dirs]
+            patch_paths = [p for p in patch_paths if p.exists()]
+            if not patch_paths:
                 self._exit_with_error(
-                    f"Synthetic vulnerability patch not found at {patch_path}"
+                    f"No synthetic vulnerability patches found under {synth_root}/<vuln_id>/vulnerability.patch"
                 )
-            self.synthetic_patch_path = patch_path
+            self.synthetic_patch_paths = patch_paths
+            self.synthetic_vuln_dirs = [p.parent for p in patch_paths]
 
         # Check for static vulnerability reports if in supervisor mode
         if self.mode == "supervisor":
@@ -255,48 +259,55 @@ class MobileCybenchRunner:
         logger.info("Input validation passed")
 
     def _apply_synthetic_patch(self):
-        patch_path = getattr(self, "synthetic_patch_path", None)
-        if not patch_path:
+        patch_paths = getattr(self, "synthetic_patch_paths", None)
+        if not patch_paths:
             return
 
         codebase_dir = self.app_dir / "codebase"
         if not codebase_dir.exists():
             codebase_dir = self.app_dir
 
-        logger.info(f"Applying synthetic patch: {patch_path}")
-        result = subprocess.run(
-            ["git", "apply", str(patch_path)],
-            cwd=codebase_dir,
-            capture_output=True,
-            text=True,
-        )
+        for patch_path in patch_paths:
+            logger.info(f"Applying synthetic patch: {patch_path}")
+            result = subprocess.run(
+                ["git", "apply", str(patch_path)],
+                cwd=codebase_dir,
+                capture_output=True,
+                text=True,
+            )
 
-        if result.returncode != 0:
-            logger.info(f"Patch did not apply: {result.stderr.strip()}")
-            logger.info("This is fine if patch is already applied or codebase is dirty")
-        else:
-            logger.info("Patch applied successfully")
+            if result.returncode != 0:
+                logger.info(f"Patch did not apply: {result.stderr.strip()}")
+                logger.info("This is fine if patch is already applied or codebase is dirty")
+            else:
+                logger.info("Patch applied successfully")
 
     def _load_synthetic_scenario(self):
         if not self.config.synthetic_vuln:
             return
 
-        scenario_file = self.app_dir / "synthetic_vulnerabilities" / "scenario.json"
-        if not scenario_file.exists():
-            logger.warning("scenario.json not found")
-            return
+        vuln_dirs = getattr(self, "synthetic_vuln_dirs", None) or []
 
         try:
-            with open(scenario_file) as f:
-                scenario = json.load(f)
+            scenarios = {}
+            for vuln_dir in vuln_dirs:
+                scenario_file = Path(vuln_dir) / "scenario.json"
+                if not scenario_file.exists():
+                    continue
+                with open(scenario_file) as f:
+                    scenarios[scenario_file.parent.name] = json.load(f)
+
+            if not scenarios:
+                logger.warning("No synthetic scenario.json files found")
+                return
 
             self.synthetic_prompt_text = (
-                "SYNTHETIC VULNERABILITY SCENARIO (PRIORITIZE THIS FIRST):\n"
-                f"{json.dumps(scenario, indent=2)}"
+                "SYNTHETIC VULNERABILITY SCENARIOS (PRIORITIZE THESE FIRST):\n"
+                f"{json.dumps(scenarios, indent=2)}"
             )
-            logger.info("Loaded synthetic scenario")
+            logger.info("Loaded synthetic scenarios")
         except Exception as e:
-            logger.warning(f"Failed to load scenario.json: {e}")
+            logger.warning(f"Failed to load synthetic scenarios: {e}")
 
     def _setup_app_apk(self):
         """APK Handling - Download, Build, or Skip"""
@@ -722,9 +733,6 @@ class MobileCybenchRunner:
         env = os.environ.copy()
         if not container_names:
             env["SKIP_SSRF_CHECK"] = "1"
-        if getattr(self.config, "synthetic_vuln", False):
-            env["SYNTHETIC_VULN"] = "1"
-            env["APP_UNDER_TEST"] = self.app_name
 
         try:
             result = self.cmd.run(command, cwd=self.project_root, check=False, env=env)
@@ -759,6 +767,53 @@ class MobileCybenchRunner:
             logger.info("No scores.json file found")
 
         return scores_dict
+
+    def run_synthetic_checks(self, log_file_path: Path | None = None):
+        if not getattr(self.config, "synthetic_vuln", False):
+            return None
+
+        log_banner("RUNNING SYNTHETIC CHECKS")
+
+        runner_script = self.project_root / "utils" / "run_synthetic_checks.py"
+        if not runner_script.exists():
+            logger.warning("Synthetic checks runner not found at %s", runner_script)
+            return None
+
+        command = (
+            f"{shlex.quote(sys.executable)} {shlex.quote(str(runner_script))} "
+            f"--app {shlex.quote(str(self.app_dir))}"
+        )
+
+        log_path = Path(log_file_path) if log_file_path else None
+        if log_path and log_path.exists() and log_path.is_file():
+            command = f"{command} --log {shlex.quote(str(log_path))}"
+
+        try:
+            result = self.cmd.run(command, cwd=self.project_root, check=False)
+        except subprocess.CalledProcessError as e:
+            logger.error("Failed to run synthetic checks: %s", e)
+            result = e
+
+        stdout = getattr(result, "stdout", "") or ""
+        payload = None
+        try:
+            last_line = stdout.strip().splitlines()[-1] if stdout.strip() else ""
+            payload = json.loads(last_line) if last_line else None
+        except Exception:
+            payload = None
+
+        if not isinstance(payload, dict):
+            logger.error("Synthetic checks produced no valid JSON output")
+            return None
+
+        out_path = self.app_dir / "synthetic_scores.json"
+        try:
+            out_path.write_text(json.dumps(payload, indent=2) + "\n")
+            logger.info("Synthetic scores saved to %s", out_path)
+        except Exception as e:
+            logger.error("Failed to write synthetic_scores.json: %s", e)
+
+        return payload
 
     def cleanup(self):
         """Clean up services"""
@@ -1005,6 +1060,7 @@ class MobileCybenchRunner:
 
     def run(self):
         try:
+            exploit_exists = False
             self._validate_input()
             if not self.config.dry_run:
                 self._setup_env_file()
@@ -1047,12 +1103,17 @@ class MobileCybenchRunner:
                 )
                 log_banner("Restarting services, running agent exploit")
 
-            exploit_exists = self._check_and_save_agent_exploit()
-            if not exploit_exists:
-                logger.info(
-                    "No Agent Exploit Found - skipping exploit execution pipeline"
-                )
-            else:
+                exploit_exists = self._check_and_save_agent_exploit()
+                if not exploit_exists:
+                    logger.info(
+                        "No Agent Exploit Found - skipping exploit execution pipeline"
+                    )
+                    if self.config.synthetic_vuln:
+                        self.probe_results["synthetic"] = self.run_synthetic_checks(
+                            log_file_path=log_path
+                        )
+
+            if exploit_exists:
                 with EmulatorManager(
                     docker_mode=self.config.docker_mode,
                     project_root=self.project_root,
@@ -1094,6 +1155,11 @@ class MobileCybenchRunner:
                         log_file_path=exploit_log_path
                     )
                     log_banner("Agent Exploit done")
+
+                    if self.config.synthetic_vuln:
+                        self.probe_results["synthetic"] = self.run_synthetic_checks(
+                            log_file_path=exploit_log_path
+                        )
 
         except KeyboardInterrupt:
             logger.info("Runner interrupted by user")

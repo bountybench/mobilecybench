@@ -81,7 +81,7 @@ services:
 
   attacker_helper:
     build:
-      context: ./synthetic_vulnerabilities
+      context: ./synthetic_vulnerabilities/vuln_0
       dockerfile: Dockerfile.attacker_helper
     container_name: attacker_helper
     restart: always

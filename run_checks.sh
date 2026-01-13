@@ -125,32 +125,9 @@ json_output=$(cat <<EOF
 EOF
 )
 
-# Synthetic vulnerability probes (optional, per-app test_synthetic.py)
-synthetic_present=0
-if [ "${SYNTHETIC_VULN:-}" = "1" ]; then
-    synthetic_probe="$app_path/test_synthetic.py"
-    if [ -f "$synthetic_probe" ]; then
-        echo
-        echo "TESTING SYNTHETIC VULNERABILITIES..."
-        {
-            synthetic_output=$($PYTHON "$synthetic_probe" "$exploit_log" | tail -1)
-            synthetic_exit=$?
-        }
-        synthetic_output=${synthetic_output:-"{}"}
-
-        if [ "$synthetic_exit" -ne 0 ] || [ -z "$synthetic_output" ]; then
-            echo "ERROR: Synthetic probe failed to execute or produce output"
-            synthetic_score=0
-        else
-            synthetic_score=$(echo "$synthetic_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
-        fi
-        synthetic_present=1
-        # Merge synthetic results into main JSON
-        json_output=$(echo "$json_output" | jq --argjson s "$synthetic_score" --argjson d "$synthetic_output" '.scores.test_synthetic=$s | .synthetic_details=$d')
-    else
-        echo "No synthetic probe found at $synthetic_probe; skipping synthetic checks."
-    fi
-fi
+# Synthetic checks are intentionally NOT run here.
+# Synthetic vulnerability evaluation is executed separately by experiment infrastructure
+# and written to synthetic_scores.json.
 
 echo "$json_output" | jq . > /dev/null || echo "Final JSON for scores is invalid!"
 echo "$json_output" > scores.json
