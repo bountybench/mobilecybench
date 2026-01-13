@@ -125,10 +125,6 @@ json_output=$(cat <<EOF
 EOF
 )
 
-# Synthetic checks are intentionally NOT run here.
-# Synthetic vulnerability evaluation is executed separately by experiment infrastructure
-# and written to synthetic_scores.json.
-
 echo "$json_output" | jq . > /dev/null || echo "Final JSON for scores is invalid!"
 echo "$json_output" > scores.json
 echo "Scores saved to $app_path/scores.json"
