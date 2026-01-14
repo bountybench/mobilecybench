@@ -18,6 +18,7 @@ from models.config import RunnerConfig
 from utils.command_executor import CommandExecutor
 from utils.emulator_manager import EmulatorManager
 from utils.logger import logger, logger_manager
+from utils.run_synthetic_checks import run_synthetic_checks as _run_synthetic_checks
 from utils.ssrf_utils import (
     clear_ssrf_requests,
     start_ssrf_listener,
@@ -26,7 +27,6 @@ from utils.ssrf_utils import (
 from utils.time_tracker import time_tracker
 from utils.utils import get_app_metadata
 from utils.uuid_flags_utils import generate_and_save_flags
-from utils.run_synthetic_checks import run_synthetic_checks as _run_synthetic_checks
 
 load_dotenv()
 project_root = Path(__file__).parent
@@ -189,7 +189,9 @@ class MobileCybenchRunner:
                 )
             synth_root = self.app_dir / "synthetic_vulnerabilities"
             vuln_dirs = sorted(
-                p for p in synth_root.glob("*") if p.is_dir() and not p.name.startswith(".")
+                p
+                for p in synth_root.glob("*")
+                if p.is_dir() and not p.name.startswith(".")
             )
             patch_paths = [p / "vulnerability.patch" for p in vuln_dirs]
             patch_paths = [p for p in patch_paths if p.exists()]
@@ -280,7 +282,9 @@ class MobileCybenchRunner:
 
             if result.returncode != 0:
                 logger.info(f"Patch did not apply: {result.stderr.strip()}")
-                logger.info("This is fine if patch is already applied or codebase is dirty")
+                logger.info(
+                    "This is fine if patch is already applied or codebase is dirty"
+                )
             else:
                 logger.info("Patch applied successfully")
 
@@ -658,6 +662,13 @@ class MobileCybenchRunner:
                 container_names = self.metadata.get("container_names", [])
                 include_ssrf = bool(container_names)
 
+                # Build additional context from custom prompt and synthetic scenarios
+                additional_parts = []
+                if self.config.custom_system_prompt:
+                    additional_parts.append(self.config.custom_system_prompt)
+                if self.synthetic_prompt_text:
+                    additional_parts.append(self.synthetic_prompt_text)
+
                 agent = CustomAgent(
                     model=self.config.model,
                     max_iterations=self.config.max_iterations,
@@ -668,13 +679,8 @@ class MobileCybenchRunner:
                     app_name=self.app_name,
                     app_server=getattr(self, "metadata", {}).get("app_server", None),
                     dry_run=self.config.dry_run,
-                    system_prompt=(
-                        (self.config.custom_system_prompt or "")
-                        + (
-                            "\n\n" + self.synthetic_prompt_text
-                            if self.synthetic_prompt_text
-                            else ""
-                        )
+                    additional_context=(
+                        "\n\n".join(additional_parts) if additional_parts else None
                     ),
                     package_name=self.metadata.get("package_name"),
                     reasoning_effort=self.config.reasoning_effort,
@@ -755,16 +761,22 @@ class MobileCybenchRunner:
             try:
                 with open(scores_file, "r") as f:
                     results["regular"] = json.load(f)
-                logger.info(f"Regular scores: {json.dumps(results['regular'], indent=2)}")
+                logger.info(
+                    f"Regular scores: {json.dumps(results['regular'], indent=2)}"
+                )
             except Exception as e:
                 logger.error(f"Error reading scores.json: {e}")
 
         # Run synthetic probes if enabled
         if self.config.synthetic_vuln:
             log_path_for_synthetic = log_path if log_path.is_file() else None
-            synthetic_result = _run_synthetic_checks(self.app_dir, exploit_log=log_path_for_synthetic)
-            results["synthetic"] = synthetic_result["scores"]
-            logger.info(f"Synthetic scores: {json.dumps(results['synthetic'], indent=2)}")
+            synthetic_result = _run_synthetic_checks(
+                self.app_dir, exploit_log=log_path_for_synthetic
+            )
+            results["synthetic"] = synthetic_result
+            logger.info(
+                f"Synthetic scores: {json.dumps(synthetic_result['scores'], indent=2)}"
+            )
 
         return results
 
@@ -1096,7 +1108,9 @@ class MobileCybenchRunner:
                     # TODO: should we have an LLM agent (exploit executor / validator) here instead of just exploit.sh?
                     # the generated exploit script may not be sufficient to successfully exploit the vulnerability in one shot.
                     exploit_log_path = self._run_agent_exploit()
-                    time.sleep(3) # Allow exploit effects to stabilize before running probes
+                    time.sleep(
+                        3
+                    )  # Allow exploit effects to stabilize before running probes
 
                     # Pass the exploit log (NOT dummy log) to probes
                     self.probe_results["post_agent_exploit"] = self.run_probes_checks(

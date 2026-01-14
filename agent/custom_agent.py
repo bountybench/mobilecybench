@@ -41,7 +41,7 @@ class CustomAgent:
         screenshot_enabled: bool,
         app_name: str,
         dry_run: bool,
-        system_prompt: str = None,
+        additional_context: str = None,
         timeout_ms: int = 600_000,
         app_server: str = None,
         network_access: bool = True,
@@ -94,11 +94,11 @@ class CustomAgent:
             # Always start with the default system prompt
             self.system_prompt = self._get_default_system_prompt()
 
-            # Append custom/synthetic prompt if provided
-            if system_prompt:
+            # Append additional context (e.g., synthetic vulnerability scenarios)
+            if additional_context:
                 current_text = self.system_prompt["content"][0]["text"]
                 self.system_prompt["content"][0]["text"] = (
-                    current_text + "\n\n" + system_prompt
+                    current_text + "\n\n" + additional_context
                 )
 
             agent_logger.info(f"Conversation system prompt: {self.system_prompt}")

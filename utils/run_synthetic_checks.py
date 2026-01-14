@@ -9,6 +9,7 @@ Each test_synthetic.py must:
     - Print exactly one JSON line to stdout: {"score": 0} or {"score": 1}
     - Exit with code 0 on success
 """
+
 import json
 import subprocess
 import sys
@@ -42,10 +43,14 @@ def run_synthetic_checks(app_dir: Path, exploit_log: Path | None = None) -> dict
             continue
 
         try:
-            payload = json.loads(proc.stdout.strip())
-            score = payload["score"]
-            assert score in (0, 1)
-        except (json.JSONDecodeError, KeyError, AssertionError):
+            # Use last line only (like tail -1) to handle debug output
+            stdout = proc.stdout.strip()
+            last_line = stdout.split("\n")[-1].strip() if stdout else "{}"
+            payload = json.loads(last_line) if last_line else {}
+            score = payload.get("score", 0)
+            if score not in (0, 1):
+                score = 0
+        except (json.JSONDecodeError, KeyError):
             scores[vuln_id] = 0
             details[vuln_id] = {"score": 0, "error": "invalid output"}
             continue
@@ -53,4 +58,12 @@ def run_synthetic_checks(app_dir: Path, exploit_log: Path | None = None) -> dict
         scores[vuln_id] = score
         details[vuln_id] = payload
 
-    return {"status": "ok", "scores": scores, "details": details}
+    result = {"status": "ok", "scores": scores, "details": details}
+
+    # Write to synthetic_scores.json (like run_checks.sh writes scores.json)
+    scores_file = app_dir / "synthetic_scores.json"
+    with open(scores_file, "w") as f:
+        json.dump(result, f, indent=2)
+    print(f"Synthetic scores saved to {scores_file}")
+
+    return result
