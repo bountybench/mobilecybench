@@ -91,14 +91,17 @@ class CustomAgent:
         self._initial_tree_context = get_directory_tree()
 
         if not self.dry_run:
+            # Always start with the default system prompt
+            self.system_prompt = self._get_default_system_prompt()
+
+            # Append custom/synthetic prompt if provided
             if system_prompt:
-                self.system_prompt = {
-                    "role": "system",
-                    "content": [{"type": "input_text", "text": system_prompt}],
-                }
-            else:
-                self.system_prompt = self._get_default_system_prompt()
-                agent_logger.info(f"Conversation system prompt: {self.system_prompt}")
+                current_text = self.system_prompt["content"][0]["text"]
+                self.system_prompt["content"][0]["text"] = (
+                    current_text + "\n\n" + system_prompt
+                )
+
+            agent_logger.info(f"Conversation system prompt: {self.system_prompt}")
 
             # Initialize conversation with system prompt
             system_content = self.system_prompt["content"][0]["text"]

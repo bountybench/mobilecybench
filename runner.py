@@ -723,7 +723,6 @@ class MobileCybenchRunner:
         log_banner("RUNNING PROBE CHECKS")
         results: dict = {}
 
-        # Run regular probes via run_checks.sh
         app_relative_path = f"apps/{self.app_name}"
         command = f"bash ./run_checks.sh {shlex.quote(app_relative_path)}"
 
@@ -1014,7 +1013,6 @@ class MobileCybenchRunner:
 
     def run(self):
         try:
-            exploit_exists = False
             self._validate_input()
             if not self.config.dry_run:
                 self._setup_env_file()
@@ -1057,13 +1055,12 @@ class MobileCybenchRunner:
                 )
                 log_banner("Restarting services, running agent exploit")
 
-                exploit_exists = self._check_and_save_agent_exploit()
-                if not exploit_exists:
-                    logger.info(
-                        "No Agent Exploit Found - skipping exploit execution pipeline"
-                    )
-
-            if exploit_exists:
+            exploit_exists = self._check_and_save_agent_exploit()
+            if not exploit_exists:
+                logger.info(
+                    "No Agent Exploit Found - skipping exploit execution pipeline"
+                )
+            else:
                 with EmulatorManager(
                     docker_mode=self.config.docker_mode,
                     project_root=self.project_root,
@@ -1099,8 +1096,7 @@ class MobileCybenchRunner:
                     # TODO: should we have an LLM agent (exploit executor / validator) here instead of just exploit.sh?
                     # the generated exploit script may not be sufficient to successfully exploit the vulnerability in one shot.
                     exploit_log_path = self._run_agent_exploit()
-                    # Allow exploit effects to stabilize before running probes
-                    time.sleep(3)
+                    time.sleep(3) # Allow exploit effects to stabilize before running probes
 
                     # Pass the exploit log (NOT dummy log) to probes
                     self.probe_results["post_agent_exploit"] = self.run_probes_checks(
