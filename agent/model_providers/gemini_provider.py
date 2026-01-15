@@ -7,6 +7,14 @@ from typing import Any, Dict, Optional, Union
 import google.generativeai as genai
 from google.generativeai.types import GenerateContentResponse
 
+try:
+    from google.genai import types as genai_types
+
+    HAS_GENAI_TYPES = True
+except ImportError:
+    HAS_GENAI_TYPES = False
+    genai_types = None  # type: ignore
+
 from agent.tools.runtime import ToolRuntime
 from utils.logger import agent_logger
 
@@ -208,10 +216,10 @@ class GeminiProvider(ModelProvider):
 
         # Reasoning effort support using thinkingLevel/thinkingBudget
         thinking_config = None
-        if reasoning_effort:
+        if reasoning_effort and HAS_GENAI_TYPES:
+            assert genai_types is not None  # Type guard for type checker
             # Determine model version
             model_lower = model.lower()
-            from google.genai import types as genai_types
 
             if "gemini-3" in model_lower:
                 # Gemini 3 Pro: use thinkingLevel
@@ -229,20 +237,14 @@ class GeminiProvider(ModelProvider):
             f"[GeminiProvider] model={model} reasoning_effort={reasoning_effort} thinking_config={thinking_config}"
         )
         # Create generation config
-        generation_config = {}
+        generation_config: Dict[str, Any] = {}
         if max_output_tokens:
             generation_config["max_output_tokens"] = max_output_tokens
-        if thinking_config:
-            from google.genai import types as genai_types
-
+        if thinking_config and HAS_GENAI_TYPES:
+            assert genai_types is not None  # Type guard for type checker
             generation_config = genai_types.GenerateContentConfig(
                 **generation_config, thinking_config=thinking_config
             )
-
-        # Create generation config
-        generation_config = {}
-        if max_output_tokens:
-            generation_config["max_output_tokens"] = max_output_tokens
 
         # Convert tools to Gemini function declarations
         gemini_tools = None
@@ -488,7 +490,9 @@ class GeminiProvider(ModelProvider):
             agent_logger.error(f"Gemini API call failed: {e}")
             raise
 
-    def _convert_json_schema_to_gemini(self, json_schema: dict) -> dict:
+    def _convert_json_schema_to_gemini(
+        self, json_schema: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Convert JSON schema to Gemini parameter format.
 
         Args:
@@ -511,7 +515,7 @@ class GeminiProvider(ModelProvider):
         schema_type = json_schema.get("type", "object").lower()
         gemini_type = type_mapping.get(schema_type, "OBJECT")
 
-        gemini_schema = {
+        gemini_schema: Dict[str, Any] = {
             "type_": gemini_type,
         }
 
@@ -521,7 +525,7 @@ class GeminiProvider(ModelProvider):
 
         # Convert properties recursively if present
         if "properties" in json_schema:
-            gemini_properties = {}
+            gemini_properties: Dict[str, Any] = {}
             for prop_name, prop_schema in json_schema["properties"].items():
                 # Recursively convert nested schemas
                 if isinstance(prop_schema, dict):
@@ -597,7 +601,7 @@ class GeminiProvider(ModelProvider):
 
     def _convert_response(
         self, response: GenerateContentResponse, request_id: str = "gemini-response"
-    ) -> Dict[str, Any]:
+    ) -> Any:
         """Convert Gemini response to OpenAI Responses API compatible format.
 
         Args:
