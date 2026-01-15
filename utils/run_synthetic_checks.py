@@ -1,13 +1,13 @@
 """
-Run synthetic vulnerability checks.
+Run synthetic vulnerability checks and collect scores.
 
 Expected structure:
     <app_dir>/synthetic_vulnerabilities/<vuln_id>/test_synthetic.py
 
 Each test_synthetic.py must:
     - Accept optional log file path as first argument
-    - Print exactly one JSON line to stdout: {"score": 0} or {"score": 1}
-    - Exit with code 0 on success
+    - Print JSON with "score" key (0 or 1) as the last line of stdout
+    - Exit with code 0 on success (non-zero exit → score defaults to 0)
 """
 
 import json
@@ -17,7 +17,6 @@ from pathlib import Path
 
 
 def run_synthetic_checks(app_dir: Path, exploit_log: Path | None = None) -> dict:
-    """Run all synthetic probes and collect scores."""
     synth_dir = app_dir / "synthetic_vulnerabilities"
     if not synth_dir.is_dir():
         return {"status": "no_probes_found", "scores": {}, "details": {}}
@@ -60,7 +59,6 @@ def run_synthetic_checks(app_dir: Path, exploit_log: Path | None = None) -> dict
 
     result = {"status": "ok", "scores": scores, "details": details}
 
-    # Write to synthetic_scores.json (like run_checks.sh writes scores.json)
     scores_file = app_dir / "synthetic_scores.json"
     with open(scores_file, "w") as f:
         json.dump(result, f, indent=2)
