@@ -7,6 +7,7 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -17,6 +18,7 @@ from models.config import RunnerConfig
 from utils.command_executor import CommandExecutor
 from utils.emulator_manager import EmulatorManager
 from utils.logger import logger, logger_manager
+from utils.run_synthetic_checks import run_synthetic_checks as _run_synthetic_checks
 from utils.ssrf_utils import (
     clear_ssrf_requests,
     start_ssrf_listener,
@@ -185,14 +187,20 @@ class MobileCybenchRunner:
                 self._exit_with_error(
                     "Synthetic vulnerability mode requires build_type 'source'."
                 )
-            patch_path = (
-                self.app_dir / "synthetic_vulnerabilities" / "vulnerability.patch"
+            synth_root = self.app_dir / "synthetic_vulnerabilities"
+            vuln_dirs = sorted(
+                p
+                for p in synth_root.glob("*")
+                if p.is_dir() and not p.name.startswith(".")
             )
-            if not patch_path.exists():
+            patch_paths = [p / "vulnerability.patch" for p in vuln_dirs]
+            patch_paths = [p for p in patch_paths if p.exists()]
+            if not patch_paths:
                 self._exit_with_error(
-                    f"Synthetic vulnerability patch not found at {patch_path}"
+                    f"No synthetic vulnerability patches found under {synth_root}/<vuln_id>/vulnerability.patch"
                 )
-            self.synthetic_patch_path = patch_path
+            self.synthetic_patch_paths = patch_paths
+            self.synthetic_vuln_dirs = [p.parent for p in patch_paths]
 
         # Check for static vulnerability reports if in supervisor mode
         if self.mode == "supervisor":
@@ -255,48 +263,57 @@ class MobileCybenchRunner:
         logger.info("Input validation passed")
 
     def _apply_synthetic_patch(self):
-        patch_path = getattr(self, "synthetic_patch_path", None)
-        if not patch_path:
+        patch_paths = getattr(self, "synthetic_patch_paths", None)
+        if not patch_paths:
             return
 
         codebase_dir = self.app_dir / "codebase"
         if not codebase_dir.exists():
             codebase_dir = self.app_dir
 
-        logger.info(f"Applying synthetic patch: {patch_path}")
-        result = subprocess.run(
-            ["git", "apply", str(patch_path)],
-            cwd=codebase_dir,
-            capture_output=True,
-            text=True,
-        )
+        for patch_path in patch_paths:
+            logger.info(f"Applying synthetic patch: {patch_path}")
+            result = subprocess.run(
+                ["git", "apply", str(patch_path)],
+                cwd=codebase_dir,
+                capture_output=True,
+                text=True,
+            )
 
-        if result.returncode != 0:
-            logger.info(f"Patch did not apply: {result.stderr.strip()}")
-            logger.info("This is fine if patch is already applied or codebase is dirty")
-        else:
-            logger.info("Patch applied successfully")
+            if result.returncode != 0:
+                logger.info(f"Patch did not apply: {result.stderr.strip()}")
+                logger.info(
+                    "This is fine if patch is already applied or codebase is dirty"
+                )
+            else:
+                logger.info("Patch applied successfully")
 
     def _load_synthetic_scenario(self):
         if not self.config.synthetic_vuln:
             return
 
-        scenario_file = self.app_dir / "synthetic_vulnerabilities" / "scenario.json"
-        if not scenario_file.exists():
-            logger.warning("scenario.json not found")
-            return
+        vuln_dirs = getattr(self, "synthetic_vuln_dirs", None) or []
 
         try:
-            with open(scenario_file) as f:
-                scenario = json.load(f)
+            scenarios = {}
+            for vuln_dir in vuln_dirs:
+                scenario_file = Path(vuln_dir) / "scenario.json"
+                if not scenario_file.exists():
+                    continue
+                with open(scenario_file) as f:
+                    scenarios[scenario_file.parent.name] = json.load(f)
+
+            if not scenarios:
+                logger.warning("No synthetic scenario.json files found")
+                return
 
             self.synthetic_prompt_text = (
-                "SYNTHETIC VULNERABILITY SCENARIO (PRIORITIZE THIS FIRST):\n"
-                f"{json.dumps(scenario, indent=2)}"
+                "SYNTHETIC VULNERABILITY SCENARIOS (PRIORITIZE THESE FIRST):\n"
+                f"{json.dumps(scenarios, indent=2)}"
             )
-            logger.info("Loaded synthetic scenario")
+            logger.info("Loaded synthetic scenarios")
         except Exception as e:
-            logger.warning(f"Failed to load scenario.json: {e}")
+            logger.warning(f"Failed to load synthetic scenarios: {e}")
 
     def _setup_app_apk(self):
         """APK Handling - Download, Build, or Skip"""
@@ -645,6 +662,13 @@ class MobileCybenchRunner:
                 container_names = self.metadata.get("container_names", [])
                 include_ssrf = bool(container_names)
 
+                # Build additional context from custom prompt and synthetic scenarios
+                additional_parts = []
+                if self.config.custom_system_prompt:
+                    additional_parts.append(self.config.custom_system_prompt)
+                if self.synthetic_prompt_text:
+                    additional_parts.append(self.synthetic_prompt_text)
+
                 agent = CustomAgent(
                     model=self.config.model,
                     max_iterations=self.config.max_iterations,
@@ -655,13 +679,8 @@ class MobileCybenchRunner:
                     app_name=self.app_name,
                     app_server=getattr(self, "metadata", {}).get("app_server", None),
                     dry_run=self.config.dry_run,
-                    system_prompt=(
-                        (self.config.custom_system_prompt or "")
-                        + (
-                            "\n\n" + self.synthetic_prompt_text
-                            if self.synthetic_prompt_text
-                            else ""
-                        )
+                    additional_context=(
+                        "\n\n".join(additional_parts) if additional_parts else None
                     ),
                     package_name=self.metadata.get("package_name"),
                     reasoning_effort=self.config.reasoning_effort,
@@ -706,8 +725,9 @@ class MobileCybenchRunner:
                 "log_file": None,
             }
 
-    def run_probes_checks(self, log_file_path: Path):
+    def run_probes_checks(self, log_file_path: Path) -> dict:
         log_banner("RUNNING PROBE CHECKS")
+        results: dict = {}
 
         app_relative_path = f"apps/{self.app_name}"
         command = f"bash ./run_checks.sh {shlex.quote(app_relative_path)}"
@@ -716,15 +736,11 @@ class MobileCybenchRunner:
         if log_path.exists() and log_path.is_file():
             command = f"{command} {shlex.quote(str(log_path))}"
 
-        # Check if we should skip SSRF check
         metadata = get_app_metadata(self.app_name)
         container_names = metadata.get("container_names", [])
         env = os.environ.copy()
         if not container_names:
             env["SKIP_SSRF_CHECK"] = "1"
-        if getattr(self.config, "synthetic_vuln", False):
-            env["SYNTHETIC_VULN"] = "1"
-            env["APP_UNDER_TEST"] = self.app_name
 
         try:
             result = self.cmd.run(command, cwd=self.project_root, check=False, env=env)
@@ -732,33 +748,37 @@ class MobileCybenchRunner:
             logger.error(f"Failed to run probe checks: {e}")
             result = e
 
-        # Show results (for this script, STDERR contains progress info, not errors)
         if hasattr(result, "stdout") and result.stdout and result.stdout.strip():
             logger.info(result.stdout)
         if hasattr(result, "stderr") and result.stderr and result.stderr.strip():
-            logger.info(
-                result.stderr
-            )  # Don't label as STDERR since it's just progress info
+            logger.info(result.stderr)
 
         return_code = getattr(result, "returncode", 1)
-        logger.info(f"✓ Probe checks completed (exit code: {return_code})")
+        logger.info(f"Probe checks completed (exit code: {return_code})")
 
-        # Check for scores.json file
         scores_file = self.app_dir / "scores.json"
-        scores_dict = None
         if scores_file.exists():
             try:
                 with open(scores_file, "r") as f:
-                    scores_dict = json.load(f)
-                logger.info(f"Scores found: {json.dumps(scores_dict, indent=2)}")
-
+                    results["regular"] = json.load(f)
+                logger.info(
+                    f"Regular scores: {json.dumps(results['regular'], indent=2)}"
+                )
             except Exception as e:
                 logger.error(f"Error reading scores.json: {e}")
-                scores_dict = None
-        else:
-            logger.info("No scores.json file found")
 
-        return scores_dict
+        # Run synthetic probes if enabled
+        if self.config.synthetic_vuln:
+            log_path_for_synthetic = log_path if log_path.is_file() else None
+            synthetic_result = _run_synthetic_checks(
+                self.app_dir, exploit_log=log_path_for_synthetic
+            )
+            results["synthetic"] = synthetic_result
+            logger.info(
+                f"Synthetic scores: {json.dumps(synthetic_result['scores'], indent=2)}"
+            )
+
+        return results
 
     def cleanup(self):
         """Clean up services"""
@@ -1088,6 +1108,9 @@ class MobileCybenchRunner:
                     # TODO: should we have an LLM agent (exploit executor / validator) here instead of just exploit.sh?
                     # the generated exploit script may not be sufficient to successfully exploit the vulnerability in one shot.
                     exploit_log_path = self._run_agent_exploit()
+                    time.sleep(
+                        3
+                    )  # Allow exploit effects to stabilize before running probes
 
                     # Pass the exploit log (NOT dummy log) to probes
                     self.probe_results["post_agent_exploit"] = self.run_probes_checks(

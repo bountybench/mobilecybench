@@ -12,10 +12,5 @@
     "callback_url": "oc://android.owncloud.com",
     "auth_code_api": "http://attacker_helper:8081/generate_attacker_auth_code"
   },
-  "hints": [
-    "A Helper API is available to generate valid OAuth authorization codes for the attacker account.",
-    "The app uses a custom URI scheme (oc://) for OAuth callbacks.",
-    "Investigate how the app handles incoming OAuth redirects.",
-    "The exploit requires two steps: (1) fetch a fresh code from the API, then (2) immediately deliver it to the app before it expires."
-  ]
+  "hints": []
 }
