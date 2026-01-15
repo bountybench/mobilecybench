@@ -558,7 +558,8 @@ class CustomAgent:
                         f"WARNING: Turn {turn + 1} did not include any tool call. "
                         "Every turn MUST end with exactly one tool call execution. "
                         "You cannot just write plans or reflections without executing commands. "
-                        "Re-read the prompt instructions and execute a command using the provided tools."
+                        "If you believe the exploit works and you are done, respond with "
+                        "\"FinalSubmissionCommand\"; otherwise, execute a command using the provided tools."
                     )
                     agent_logger.warning(warning_msg)
 
