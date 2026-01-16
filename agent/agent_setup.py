@@ -15,6 +15,7 @@ from utils.git_utils import (
     git_submodule_update,
     initialize_git_repository,
     prepare_git_directory,
+    onerror
 )
 
 logger = logging.getLogger(__name__)
@@ -169,7 +170,7 @@ class AgentEnvironment:
         # Always clean up staging directory first to ensure fresh start
         if staging_dir.exists():
             logger.info(f"Removing existing staging directory at {staging_dir}")
-            shutil.rmtree(staging_dir)
+            shutil.rmtree(staging_dir, onerror=onerror)
 
         # Check if original_codebase is empty, if so use git_submodule_update
         if not original_codebase.exists() or not any(original_codebase.iterdir()):
@@ -233,7 +234,7 @@ class AgentEnvironment:
         # Clean up any existing agent_codebase directory
         if agent_codebase.exists():
             logger.info(f"Removing existing agent_codebase at {agent_codebase}")
-            shutil.rmtree(agent_codebase)
+            shutil.rmtree(agent_codebase, onerror=onerror)
 
         # Move staging directory to agent_codebase
         logger.info(f"Moving staging directory to {agent_codebase}")
@@ -482,7 +483,7 @@ class AgentEnvironment:
         try:
             # Simple approach: delete the entire directory
             logger.info(f"Deleting agent_codebase directory at {agent_codebase}")
-            shutil.rmtree(agent_codebase)
+            shutil.rmtree(agent_codebase, onerror=onerror)
             logger.info("Successfully deleted agent_codebase directory")
 
         except Exception as e:

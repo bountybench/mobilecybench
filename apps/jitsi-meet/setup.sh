@@ -2,6 +2,8 @@
 
 #! all the documentation for how I set it up is from here: https://jitsi.github.io/handbook/docs/devops-guide/devops-guide-docker
 
+export MSYS_NO_PATHCONV=1 # Prevent Git Bash from doing Windows Pathing Conversion
+
 setup_executable(){
     echo "Making setup.sh files executable"
     chmod +x ./cleanup.sh
