@@ -86,7 +86,6 @@ def git_checkout(
         raise
 
 
-
 def onerror(func, path, exc_info):
     """
     Error handler for shutil.rmtree.
@@ -95,12 +94,14 @@ def onerror(func, path, exc_info):
     Otherwise, re-raise the original exception.
     """
     import stat
+
     if not os.access(path, os.W_OK):
         os.chmod(path, stat.S_IWRITE)
         func(path)
     else:
         raise
-    
+
+
 def prepare_git_directory(dest_git_path):
     """Prepare the destination .git directory by removing existing one if needed."""
     if dest_git_path.exists():
