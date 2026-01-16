@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-import json
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from datetime import datetime
 import argparse
-import sys
-import os
+import json
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # Try to import pyngrok for integrated tunneling
 try:
@@ -13,6 +11,9 @@ except ImportError:
     print("Pyngrok not found. Install it with: pip install pyngrok")
 
 class LemmyHandler(BaseHTTPRequestHandler):
+    # Class variable to store tunnel status
+    use_tunnel = False
+
     def log_message(self, format, *args):
         pass
 
@@ -63,7 +64,7 @@ class LemmyHandler(BaseHTTPRequestHandler):
         # 1. Discovery phase
         if '/.well-known/nodeinfo' in self.path:
             # Detect if we should use http or https based on the request
-            protocol = "https" if "https" in self.path or args.tunnel else "http"
+            protocol = "https" if "https" in self.path or self.use_tunnel else "http"
             self._send_json({
                 "links": [
                     {
@@ -253,7 +254,7 @@ class LemmyHandler(BaseHTTPRequestHandler):
                 "registration_created": False,
                 "verify_email_sent": False
             })
-        except Exception as e:
+        except Exception:
             self._send_json({"error": "invalid_request"}, 400)
 
     def _send_json(self, data, status=200):
@@ -275,6 +276,7 @@ def main():
     # Handle Tunneling
     public_url = f"http://localhost:{args.port}"
     if args.tunnel:
+        LemmyHandler.use_tunnel = True
         try:
             # Ensure you have set your authtoken: ngrok config add-authtoken <token>
             tunnel = ngrok.connect(args.port)
@@ -284,7 +286,7 @@ def main():
             print(f"[!] Could not start tunnel: {e}")
 
     print(f"[*] Server listening on port {args.port}")
-    
+
     server = HTTPServer(('0.0.0.0', args.port), LemmyHandler)
     try:
         server.serve_forever()

@@ -3,10 +3,10 @@
 Jerboa login automation using UI Automator
 """
 
+import argparse
 import subprocess
 import sys
 import time
-import argparse
 
 
 def run_adb(cmd):
@@ -118,7 +118,7 @@ def dismiss_dialogs():
                         return True
 
                 return False
-            except:
+            except Exception:
                 pass
 
     return False
@@ -149,7 +149,7 @@ def find_element_bounds(text):
                     content = f.read()
                     if len(content) > 0:
                         break
-            except:
+            except Exception:
                 time.sleep(0.5)
                 continue
 
@@ -194,7 +194,7 @@ def find_clickable_element(text=None, content_desc=None):
                     content = f.read()
                     if len(content) > 0:
                         break
-            except:
+            except Exception:
                 time.sleep(0.5)
                 continue
 
@@ -231,7 +231,7 @@ def login_to_jerboa(instance, username, password):
         username: Username
         password: Password
     """
-    print(f"Starting Jerboa login automation...")
+    print("Starting Jerboa login automation...")
     print(f"Instance: {instance}")
     print(f"Username: {username}")
 
@@ -379,7 +379,7 @@ def login_to_jerboa(instance, username, password):
             time.sleep(0.5)
 
             # Password field
-            print(f"  Entering password...")
+            print("  Entering password...")
             dismiss_dialogs()
             focus_and_clear_field(fields[2][0], fields[2][1])
             if dismiss_dialogs():
