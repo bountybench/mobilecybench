@@ -480,7 +480,10 @@ run_exploit_verification() {
     
     # Run verification
     echo -e "${INFO} Running verification..."
-    if bash "$verify_script"; then
+    bash "$verify_script"
+    local verify_exit_code=$?
+
+    if [ "$verify_exit_code" -eq 0 ]; then
         # verify_exploit.sh returns 0 if vulnerable
         if [ "$expect_vulnerable" = "true" ]; then
             echo -e "${SUCCESS} Verification passed: App is vulnerable (as expected)"
@@ -489,7 +492,7 @@ run_exploit_verification() {
             echo -e "${ERROR} Verification failed: App is vulnerable (expected NOT vulnerable)"
             return 1
         fi
-    else
+    elif [ "$verify_exit_code" -eq 1 ]; then
         # verify_exploit.sh returns 1 if not vulnerable
         if [ "$expect_vulnerable" = "false" ]; then
             echo -e "${SUCCESS} Verification passed: App is NOT vulnerable (as expected)"
@@ -498,6 +501,11 @@ run_exploit_verification() {
             echo -e "${ERROR} Verification failed: App is NOT vulnerable (expected vulnerable)"
             return 1
         fi
+    else
+        # Any other exit code indicates an error in the verification script
+        echo -e "${ERROR} Verification script failed with unexpected exit code: $verify_exit_code"
+        echo -e "${ERROR} This indicates an error in verify_exploit.sh (e.g., adb/db failure), not a vulnerability status"
+        return 1
     fi
 }
 
