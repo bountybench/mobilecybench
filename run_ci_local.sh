@@ -398,11 +398,115 @@ checkout_commit() {
     fi
 }
 
+# Apply a vulnerability patch to the codebase
+apply_vulnerability_patch() {
+    local patch_file="$1"
+    
+    echo -e "${INFO} Applying vulnerability patch: $patch_file"
+    
+    if [ ! -f "$patch_file" ]; then
+        echo -e "${ERROR} Patch file not found: $patch_file"
+        return 1
+    fi
+    
+    cd "codebase" || return 1
+    
+    if git apply --check "$patch_file" 2>&1; then
+        echo -e "${INFO} Patch validation successful"
+        if git apply "$patch_file"; then
+            echo -e "${SUCCESS} Patch applied successfully"
+            cd - || return 1
+            return 0
+        else
+            echo -e "${ERROR} Failed to apply patch"
+            cd - || return 1
+            return 1
+        fi
+    else
+        echo -e "${ERROR} Patch validation failed"
+        cd - || return 1
+        return 1
+    fi
+}
+
+# Run exploit and verification for synthetic vulnerability
+run_exploit_verification() {
+    local vuln_dir="$1"
+    local expect_vulnerable="$2"  # "true" or "false"
+
+    echo -e "${INFO} Running exploit from: $vuln_dir"
+
+    # Check required files
+    local exploit_files_dir="$vuln_dir/exploit_files"
+    local exploit_script="$exploit_files_dir/exploit.sh"
+    local verify_script="$vuln_dir/verify_exploit.sh"
+
+    if [ ! -f "$exploit_script" ]; then
+        echo -e "${ERROR} Exploit script not found: $exploit_script"
+        return 1
+    fi
+
+    if [ ! -f "$verify_script" ]; then
+        echo -e "${ERROR} Verification script not found: $verify_script"
+        return 1
+    fi
+
+    # Run exploit in container
+    echo -e "${INFO} Executing exploit in container..."
+    local container_name="mobilecybench-exploit-$$"
+    local exploit_image="${EXPLOIT_IMAGE:-cybench/mobilecybench:latest}"
+    local exploit_files_abs_path
+    exploit_files_abs_path="$(cd "$exploit_files_dir" && pwd)"
+
+    # Start container with exploit_files mounted at /app/exploit_files
+    echo -e "${INFO} Starting exploit container: $container_name"
+    docker run -d \
+        --name "$container_name" \
+        --network=shared_net \
+        -v "$exploit_files_abs_path:/app/exploit_files" \
+        "$exploit_image" \
+        tail -f /dev/null
+
+    # Run the exploit script inside the container
+    if docker exec "$container_name" bash /app/exploit_files/exploit.sh; then
+        echo -e "${SUCCESS} Exploit executed successfully"
+    else
+        echo -e "${WARNING} Exploit execution returned non-zero exit code (may be expected)"
+    fi
+
+    # Stop and remove the container
+    echo -e "${INFO} Cleaning up exploit container..."
+    docker rm -f "$container_name" 2>/dev/null || true
+    
+    # Run verification
+    echo -e "${INFO} Running verification..."
+    if bash "$verify_script"; then
+        # verify_exploit.sh returns 0 if vulnerable
+        if [ "$expect_vulnerable" = "true" ]; then
+            echo -e "${SUCCESS} Verification passed: App is vulnerable (as expected)"
+            return 0
+        else
+            echo -e "${ERROR} Verification failed: App is vulnerable (expected NOT vulnerable)"
+            return 1
+        fi
+    else
+        # verify_exploit.sh returns 1 if not vulnerable
+        if [ "$expect_vulnerable" = "false" ]; then
+            echo -e "${SUCCESS} Verification passed: App is NOT vulnerable (as expected)"
+            return 0
+        else
+            echo -e "${ERROR} Verification failed: App is NOT vulnerable (expected vulnerable)"
+            return 1
+        fi
+    fi
+}
+
 # Parse command line arguments
 SKIP_BUILD=false
 SKIP_DOWNLOAD=false
 SKIP_APK=false
 RUN_UNIT_TESTS=false
+TEST_SYNTHETIC_VULN=""
 
 show_usage() {
     echo "Usage: $0 <dir> [options]"
@@ -415,6 +519,8 @@ show_usage() {
     echo "  --skip-download   Skip download mode (apklink setup)"
     echo "  --skip-apk        Skip APK operations. Install from existing APK."
     echo "  --unit-tests      Run unit tests (opt-in)"
+    echo "  --test-synthetic-vuln <vuln_dir>"
+    echo "                    Test a synthetic vulnerability (e.g., synthetic_vulnerabilities/vuln_0)"
     echo "  -h, --help        Show this help message"
     echo ""
     echo "Examples:"
@@ -423,6 +529,8 @@ show_usage() {
     echo "  $0 apps/joplin --skip-download   # Run only build mode"
     echo "  $0 apps/joplin --skip-apk        # Skip APK operations. Install from existing APK."
     echo "  $0 apps/joplin --unit-tests      # Run unit tests"
+    echo "  $0 apps/conversations --test-synthetic-vuln synthetic_vulnerabilities/vuln_0"
+    echo "                                   # Test synthetic vulnerability"
     echo ""
     echo "By default, both build mode (source) and download mode (apklink) are run"
     echo "when both setup scripts are available."
@@ -448,6 +556,15 @@ while [[ $# -gt 0 ]]; do
         --unit-tests)
             RUN_UNIT_TESTS=true
             shift
+            ;;
+        --test-synthetic-vuln)
+            if [ -z "$2" ] || [[ "$2" == -* ]]; then
+                echo "Error: --test-synthetic-vuln requires a vulnerability directory argument"
+                show_usage
+                exit 1
+            fi
+            TEST_SYNTHETIC_VULN="$2"
+            shift 2
             ;;
         -h|--help)
             show_usage
@@ -822,6 +939,147 @@ EOF
     print_header "$GREEN" "SETUP MODE $setup_mode COMPLETED SUCCESSFULLY"
 }
 
+# Test synthetic vulnerability - both clean and vulnerable builds
+run_synthetic_vuln_test() {
+    local vuln_dir="$1"
+    local app_dir="$2"
+    
+    print_header "$CYAN" "TESTING SYNTHETIC VULNERABILITY: $vuln_dir"
+    
+    # Validate synthetic vulnerability structure
+    echo -e "${INFO} Validating synthetic vulnerability structure..."
+    
+    local patch_file="$ROOT_DIR/$app_dir/$vuln_dir/vulnerability.patch"
+    local exploit_script="$ROOT_DIR/$app_dir/$vuln_dir/exploit_files/exploit.sh"
+    local verify_script="$ROOT_DIR/$app_dir/$vuln_dir/verify_exploit.sh"
+    
+    if [ ! -f "$patch_file" ]; then
+        echo -e "${ERROR} Patch file not found: $patch_file"
+        exit 1
+    fi
+    
+    if [ ! -f "$exploit_script" ]; then
+        echo -e "${ERROR} Exploit script not found: $exploit_script"
+        exit 1
+    fi
+    
+    if [ ! -f "$verify_script" ]; then
+        echo -e "${ERROR} Verification script not found: $verify_script"
+        exit 1
+    fi
+    
+    echo -e "${SUCCESS} Synthetic vulnerability structure validated"
+    
+    # Get package name from metadata
+    local package_name=$(jq -r '.package_name' "$app_dir/metadata.json")
+    echo -e "${INFO} Testing package: $package_name"
+    
+    # Phase 1: Test clean build (should NOT be vulnerable)
+    print_header "$CYAN" "PHASE 1: Testing Clean Build (Baseline)"
+    
+    cd "$ROOT_DIR/$app_dir"
+    
+    # Clean checkout
+    echo -e "${INFO} Checking out clean commit..."
+    checkout_commit
+    
+    # Clear APK directory to ensure fresh build
+    echo -e "${INFO} Clearing APK directory..."
+    rm -rf apk/*
+    
+    # Build clean APK
+    echo -e "${INFO} Building clean APK..."
+    if [ -f "setup_app_source.sh" ]; then
+        ./setup_app_source.sh || { echo -e "${ERROR} Failed to build clean APK"; exit 1; }
+    else
+        echo -e "${ERROR} setup_app_source.sh not found"
+        exit 1
+    fi
+    
+    # Install and setup
+    echo -e "${INFO} Installing clean APK..."
+    ./setup.sh || { echo -e "${ERROR} Failed to install clean APK"; exit 1; }
+    
+    # Wait for containers
+    check_app_containers_ready
+    
+    # Run exploit and verify (should NOT be vulnerable)
+    cd "$ROOT_DIR/$app_dir"
+    run_exploit_verification "$vuln_dir" "false" || {
+        echo -e "${ERROR} Phase 1 failed: Clean build verification failed"
+        ./cleanup.sh
+        uninstall_package "$package_name"
+        exit 1
+    }
+    
+    # Cleanup
+    echo -e "${INFO} Cleaning up Phase 1..."
+    ./cleanup.sh
+    uninstall_package "$package_name"
+    
+    print_header "$GREEN" "PHASE 1 PASSED: Clean build is NOT vulnerable"
+    
+    # Phase 2: Test vulnerable build (should BE vulnerable)
+    print_header "$CYAN" "PHASE 2: Testing Vulnerable Build (With Patch)"
+    
+    cd "$ROOT_DIR/$app_dir"
+    
+    # Clean checkout
+    echo -e "${INFO} Checking out clean commit..."
+    checkout_commit
+    
+    # Apply vulnerability patch
+    echo -e "${INFO} Applying vulnerability patch..."
+    apply_vulnerability_patch "$patch_file" || {
+        echo -e "${ERROR} Failed to apply vulnerability patch"
+        exit 1
+    }
+    
+    # Clear APK directory to ensure fresh build
+    echo -e "${INFO} Clearing APK directory..."
+    rm -rf apk/*
+    
+    # Build vulnerable APK
+    echo -e "${INFO} Building vulnerable APK..."
+    if [ -f "setup_app_source.sh" ]; then
+        ./setup_app_source.sh || { echo -e "${ERROR} Failed to build vulnerable APK"; exit 1; }
+    else
+        echo -e "${ERROR} setup_app_source.sh not found"
+        exit 1
+    fi
+    
+    # Install and setup
+    echo -e "${INFO} Installing vulnerable APK..."
+    ./setup.sh || { echo -e "${ERROR} Failed to install vulnerable APK"; exit 1; }
+    
+    # Wait for containers
+    check_app_containers_ready
+    
+    # Run exploit and verify (should BE vulnerable)
+    cd "$ROOT_DIR/$app_dir"
+    run_exploit_verification "$vuln_dir" "true" || {
+        echo -e "${ERROR} Phase 2 failed: Vulnerable build verification failed"
+        ./cleanup.sh
+        uninstall_package "$package_name"
+        exit 1
+    }
+    
+    # Cleanup
+    echo -e "${INFO} Cleaning up Phase 2..."
+    ./cleanup.sh
+    uninstall_package "$package_name"
+    
+    print_header "$GREEN" "PHASE 2 PASSED: Vulnerable build is vulnerable"
+    
+    # Final cleanup - restore clean state
+    cd "$ROOT_DIR/$app_dir"
+    echo -e "${INFO} Restoring clean state..."
+    checkout_commit
+    
+    print_header "$GREEN" "SYNTHETIC VULNERABILITY TEST COMPLETED SUCCESSFULLY"
+    echo -e "${SUCCESS} ✓ Clean build: NOT vulnerable (as expected)"
+    echo -e "${SUCCESS} ✓ Vulnerable build: VULNERABLE (as expected)"
+}
 
 
 # Main Script Starts Here
@@ -883,10 +1141,31 @@ else
     echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
 fi
 
-# Run tests for each setup mode
-for SETUP_MODE in $SETUP_MODES; do
-    run_tests_for_mode "$SETUP_MODE" "$DIR"
-done
+# Check if we're running synthetic vulnerability tests
+if [ -n "$TEST_SYNTHETIC_VULN" ]; then
+    print_header "$CYAN" "RUNNING SYNTHETIC VULNERABILITY TEST MODE"
+    
+    # Validate that the vulnerability directory exists
+    if [ ! -d "$DIR/$TEST_SYNTHETIC_VULN" ]; then
+        echo -e "${ERROR} Synthetic vulnerability directory not found: $DIR/$TEST_SYNTHETIC_VULN"
+        exit 1
+    fi
+    
+    # Run synthetic vulnerability test
+    run_synthetic_vuln_test "$TEST_SYNTHETIC_VULN" "$DIR"
+    
+    # Skip normal test flow
+    SKIP_NORMAL_TESTS=true
+else
+    SKIP_NORMAL_TESTS=false
+fi
+
+# Run tests for each setup mode (unless we're in synthetic vuln test mode)
+if [ "$SKIP_NORMAL_TESTS" = false ]; then
+    for SETUP_MODE in $SETUP_MODES; do
+        run_tests_for_mode "$SETUP_MODE" "$DIR"
+    done
+fi
 
 # Calculate total runtime
 END_TIME=$(date +%s)
@@ -896,7 +1175,14 @@ SECONDS=$((DURATION % 60))
 
 SETUP_MODE_COUNT=$(echo $SETUP_MODES | wc -w)
 
-if [ "$HAS_PROBES" = true ]; then
+# Handle synthetic vulnerability test results
+if [ -n "$TEST_SYNTHETIC_VULN" ]; then
+    print_header "$GREEN" "SYNTHETIC VULNERABILITY TEST COMPLETED"
+    echo -e "${SUCCESS} Tested vulnerability: $TEST_SYNTHETIC_VULN"
+    echo -e "${SUCCESS} ✓ Clean build verification passed"
+    echo -e "${SUCCESS} ✓ Vulnerable build verification passed"
+    echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s"
+elif [ "$HAS_PROBES" = true ]; then
     print_header "$GREEN" "ALL TESTS PASSED"
     print_header "$GREEN" "FULL CI COMPLETED SUCCESSFULLY"
     echo -e "${SUCCESS} Complete vulnerability testing performed:"
@@ -957,12 +1243,13 @@ fi
 
 # Final Timing and Summary
 print_header "$CYAN" "FINAL TIMING AND SUMMARY"
-if [ "$HAS_PROBES" = true ]; then
+if [ -n "$TEST_SYNTHETIC_VULN" ]; then
+    print_header "$GREEN" "SYNTHETIC VULNERABILITY TEST COMPLETED SUCCESSFULLY"
+    echo -e "${SUCCESS} Total execution time: ${MINUTES}m ${SECONDS}s"
+elif [ "$HAS_PROBES" = true ]; then
     print_header "$GREEN" "LOCAL CIA TESTS COMPLETED SUCCESSFULLY"
-    prefix="${SUCCESS}"
+    echo -e "${SUCCESS} Total execution time: ${MINUTES}m ${SECONDS}s using modes: $SETUP_MODES"
 else
     print_header "$YELLOW" "LOCAL BASIC TESTS COMPLETED - ADD test_X.py probe script FOR FULL CI"
-    prefix="${INFO}"
+    echo -e "${INFO} Total execution time: ${MINUTES}m ${SECONDS}s using modes: $SETUP_MODES"
 fi
-
-echo -e "${prefix} Total execution time: ${MINUTES}m ${SECONDS}s using modes: $SETUP_MODES"
