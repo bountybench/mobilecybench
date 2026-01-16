@@ -12,10 +12,7 @@ import time
 def run_adb(cmd):
     """Run adb command and return output"""
     result = subprocess.run(
-        f"adb shell {cmd}",
-        shell=True,
-        capture_output=True,
-        text=True
+        f"adb shell {cmd}", shell=True, capture_output=True, text=True
     )
     return result.stdout.strip()
 
@@ -55,7 +52,7 @@ def input_text(text):
     """Input text using direct adb input with proper encoding"""
     # Encode special characters for adb shell
     # Replace spaces with %s for proper encoding
-    encoded_text = text.replace(' ', '%s')
+    encoded_text = text.replace(" ", "%s")
 
     # Use shell quoting to handle special characters
     run_adb(f'input text "{encoded_text}"')
@@ -75,13 +72,18 @@ def dismiss_dialogs():
 
     # Get current UI
     for _ in range(3):
-        result = subprocess.run("adb shell uiautomator dump", shell=True, capture_output=True)
+        result = subprocess.run(
+            "adb shell uiautomator dump", shell=True, capture_output=True
+        )
         if result.returncode != 0:
             time.sleep(0.5)
             continue
 
-        result = subprocess.run("adb pull /sdcard/window_dump.xml /tmp/ui_dialog_check.xml",
-                               shell=True, capture_output=True)
+        result = subprocess.run(
+            "adb pull /sdcard/window_dump.xml /tmp/ui_dialog_check.xml",
+            shell=True,
+            capture_output=True,
+        )
         if result.returncode != 0:
             time.sleep(0.5)
             continue
@@ -131,13 +133,18 @@ def find_element_bounds(text):
     # Retry UI dump up to 3 times
     for _ in range(3):
         # Dump UI
-        result = subprocess.run("adb shell uiautomator dump", shell=True, capture_output=True)
+        result = subprocess.run(
+            "adb shell uiautomator dump", shell=True, capture_output=True
+        )
         if result.returncode != 0:
             time.sleep(0.5)
             continue
 
-        result = subprocess.run("adb pull /sdcard/window_dump.xml /tmp/ui_jerboa.xml",
-                               shell=True, capture_output=True)
+        result = subprocess.run(
+            "adb pull /sdcard/window_dump.xml /tmp/ui_jerboa.xml",
+            shell=True,
+            capture_output=True,
+        )
         if result.returncode != 0:
             time.sleep(0.5)
             continue
@@ -159,6 +166,7 @@ def find_element_bounds(text):
 
     # Find element with matching text
     import re
+
     pattern = f'text="{re.escape(text)}"[^>]*bounds="\\[([0-9]+),([0-9]+)\\]\\[([0-9]+),([0-9]+)\\]"'
     match = re.search(pattern, content)
 
@@ -177,13 +185,18 @@ def find_clickable_element(text=None, content_desc=None):
 
     # Retry UI dump up to 3 times
     for _ in range(3):
-        result = subprocess.run("adb shell uiautomator dump", shell=True, capture_output=True)
+        result = subprocess.run(
+            "adb shell uiautomator dump", shell=True, capture_output=True
+        )
         if result.returncode != 0:
             time.sleep(0.5)
             continue
 
-        result = subprocess.run("adb pull /sdcard/window_dump.xml /tmp/ui_jerboa.xml",
-                               shell=True, capture_output=True)
+        result = subprocess.run(
+            "adb pull /sdcard/window_dump.xml /tmp/ui_jerboa.xml",
+            shell=True,
+            capture_output=True,
+        )
         if result.returncode != 0:
             time.sleep(0.5)
             continue
@@ -246,13 +259,17 @@ def login_to_jerboa(instance, username, password):
 
     # Set keyboard to Google keyboard (not stylus) for text input to work
     print("  Setting input method to Google keyboard...")
-    run_adb("ime set com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME")
+    run_adb(
+        "ime set com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME"
+    )
     time.sleep(0.5)
 
     # Disable stylus IME to prevent "Try out your stylus" dialog
     print("  Disabling stylus features...")
     run_adb("settings put secure stylus_ever_used 1")  # Pretend stylus was already used
-    run_adb("settings put global stylus_pointer_icon_enabled 0")  # Disable stylus features
+    run_adb(
+        "settings put global stylus_pointer_icon_enabled 0"
+    )  # Disable stylus features
     time.sleep(0.3)
 
     run_adb("am start -n com.jerboa.debug/com.jerboa.MainActivity")
@@ -328,9 +345,14 @@ def login_to_jerboa(instance, username, password):
 
     # Get all EditText fields
     import os
+
     for _ in range(3):
         subprocess.run("adb shell uiautomator dump", shell=True, capture_output=True)
-        subprocess.run("adb pull /sdcard/window_dump.xml /tmp/ui_form.xml", shell=True, capture_output=True)
+        subprocess.run(
+            "adb pull /sdcard/window_dump.xml /tmp/ui_form.xml",
+            shell=True,
+            capture_output=True,
+        )
         if os.path.exists("/tmp/ui_form.xml"):
             break
         time.sleep(0.5)
@@ -341,13 +363,16 @@ def login_to_jerboa(instance, username, password):
 
         # Find all EditText bounds
         import re
+
         pattern = r'class="android.widget.EditText"[^>]*bounds="\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]"'
         matches = re.findall(pattern, ui_content)
 
         if len(matches) >= 3:
             # Calculate center coordinates for each field
             fields = []
-            for match in matches[:4]:  # Get first 4 fields (instance, username, password, 2FA)
+            for match in matches[
+                :4
+            ]:  # Get first 4 fields (instance, username, password, 2FA)
                 x1, y1, x2, y2 = map(int, match)
                 center_x = (x1 + x2) // 2
                 center_y = (y1 + y2) // 2
@@ -405,7 +430,11 @@ def login_to_jerboa(instance, username, password):
     # Dismiss any final dialogs before clicking login
     dismiss_dialogs()
 
-    coords = find_element_bounds("Login") or find_element_bounds("Sign in") or find_element_bounds("Log in")
+    coords = (
+        find_element_bounds("Login")
+        or find_element_bounds("Sign in")
+        or find_element_bounds("Log in")
+    )
     if coords:
         tap(*coords)
         print("  Login submitted!")
