@@ -7,6 +7,7 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -17,6 +18,7 @@ from models.config import RunnerConfig
 from utils.command_executor import CommandExecutor
 from utils.emulator_manager import EmulatorManager
 from utils.logger import logger, logger_manager
+from utils.run_synthetic_checks import run_synthetic_checks as _run_synthetic_checks
 from utils.ssrf_utils import (
     clear_ssrf_requests,
     start_ssrf_listener,
@@ -56,6 +58,7 @@ class MobileCybenchRunner:
         self.cmd = CommandExecutor()
         self.emulator = None
         self.probe_results = {}
+        self.synthetic_prompt_text = None
 
         try:
             git_branch = subprocess.run(
@@ -104,7 +107,7 @@ class MobileCybenchRunner:
                 f"No existing .env file found at {env_file}. Please create one with OPENAI_API_KEY."
             )
 
-        # Check if API key exists in environment
+        # TODO - check api key based on model, potentially want to refactor this into model class
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             self._exit_with_error("OPENAI_API_KEY not found in environment or .env")
@@ -178,10 +181,26 @@ class MobileCybenchRunner:
                 f"Unsupported Build Type Detected: {self.config.build_type}"
             )
 
-        if self.mode == "codex":
-            self._exit_with_error(
-                "Codex mode is currently broken. Please use 'custom' or 'supervisor' mode instead."
+        # Synthetic vulnerability workflow constraints
+        if self.config.synthetic_vuln:
+            if self.config.build_type != "source":
+                self._exit_with_error(
+                    "Synthetic vulnerability mode requires build_type 'source'."
+                )
+            synth_root = self.app_dir / "synthetic_vulnerabilities"
+            vuln_dirs = sorted(
+                p
+                for p in synth_root.glob("*")
+                if p.is_dir() and not p.name.startswith(".")
             )
+            patch_paths = [p / "vulnerability.patch" for p in vuln_dirs]
+            patch_paths = [p for p in patch_paths if p.exists()]
+            if not patch_paths:
+                self._exit_with_error(
+                    f"No synthetic vulnerability patches found under {synth_root}/<vuln_id>/vulnerability.patch"
+                )
+            self.synthetic_patch_paths = patch_paths
+            self.synthetic_vuln_dirs = [p.parent for p in patch_paths]
 
         # Check for static vulnerability reports if in supervisor mode
         if self.mode == "supervisor":
@@ -242,6 +261,59 @@ class MobileCybenchRunner:
                     )
 
         logger.info("Input validation passed")
+
+    def _apply_synthetic_patch(self):
+        patch_paths = getattr(self, "synthetic_patch_paths", None)
+        if not patch_paths:
+            return
+
+        codebase_dir = self.app_dir / "codebase"
+        if not codebase_dir.exists():
+            codebase_dir = self.app_dir
+
+        for patch_path in patch_paths:
+            logger.info(f"Applying synthetic patch: {patch_path}")
+            result = subprocess.run(
+                ["git", "apply", str(patch_path)],
+                cwd=codebase_dir,
+                capture_output=True,
+                text=True,
+            )
+
+            if result.returncode != 0:
+                logger.info(f"Patch did not apply: {result.stderr.strip()}")
+                logger.info(
+                    "This is fine if patch is already applied or codebase is dirty"
+                )
+            else:
+                logger.info("Patch applied successfully")
+
+    def _load_synthetic_scenario(self):
+        if not self.config.synthetic_vuln:
+            return
+
+        vuln_dirs = getattr(self, "synthetic_vuln_dirs", None) or []
+
+        try:
+            scenarios = {}
+            for vuln_dir in vuln_dirs:
+                scenario_file = Path(vuln_dir) / "scenario.json"
+                if not scenario_file.exists():
+                    continue
+                with open(scenario_file) as f:
+                    scenarios[scenario_file.parent.name] = json.load(f)
+
+            if not scenarios:
+                logger.warning("No synthetic scenario.json files found")
+                return
+
+            self.synthetic_prompt_text = (
+                "SYNTHETIC VULNERABILITY SCENARIOS (PRIORITIZE THESE FIRST):\n"
+                f"{json.dumps(scenarios, indent=2)}"
+            )
+            logger.info("Loaded synthetic scenarios")
+        except Exception as e:
+            logger.warning(f"Failed to load synthetic scenarios: {e}")
 
     def _setup_app_apk(self):
         """APK Handling - Download, Build, or Skip"""
@@ -364,23 +436,32 @@ class MobileCybenchRunner:
         # Setup agent kali environment with appropriate image
         logger.info("Setting up agent Kali environment...")
 
-        # Select image based on agent type
+        image_name = self.config.agent_image
+        logger.info(f"Using agent image: {image_name}")
+        # Prepare environment variables
+        env_vars = {
+            "ANDROID_ADB_SERVER_PORT": "5037",
+            "ADB_SERVER_SOCKET": "tcp:host.docker.internal:5037",
+        }
+
+        # In codex mode, pass OPENAI_API_KEY as CODEX_API_KEY to the container
         if self.mode == "codex":
-            image_name = self.config.codex_agent_image or "cybench/mobilecybench:codex"
-            logger.info(f"Using Codex agent image: {image_name}")
-        else:
-            image_name = self.config.agent_image
-            logger.info(f"Using custom agent image: {image_name}")
+            openai_key = os.getenv("OPENAI_API_KEY")
+            if openai_key:
+                env_vars["CODEX_API_KEY"] = openai_key
+                logger.info("Injected CODEX_API_KEY into agent container environment")
+            else:
+                logger.error("No OPENAI_API_KEY, exiting")
+                sys.exit(1)
+
         agent_env = AgentEnvironment(
             app_dir=self.app_dir,
             docker_networks=["shared_net"],
             image_name=image_name,
-            env={
-                "ANDROID_ADB_SERVER_PORT": "5037",
-                "ADB_SERVER_SOCKET": "tcp:host.docker.internal:5037",
-            },
+            env=env_vars,
             commit_id=self.metadata.get("commit_version"),
             mode=self.mode,
+            synthetic_vuln=self.config.synthetic_vuln,
         )
         agent_env.setup()
         self.agent_env = agent_env
@@ -557,33 +638,20 @@ class MobileCybenchRunner:
                 return result
 
             elif self.mode == "codex":
-                # Codex mode is deprecated and broken
-                logger.error(
-                    "Codex mode is deprecated and files are removed. Cannot run."
+                from agent.codex_agent import CodexAgent
+
+                logger.info("Initializing codex agent...")
+                logger.info("Creating CodexAgent instance")
+
+                agent = CodexAgent(
+                    app_name=self.app_name,
+                    dry_run=self.config.dry_run,
+                    app_server=getattr(self, "metadata", {}).get("app_server", None),
+                    package_name=self.metadata.get("package_name"),
+                    username=self.metadata.get("username"),
+                    password=self.metadata.get("password"),
                 )
-                return {
-                    "status": "error",
-                    "turns": 0,
-                    "final_message": "Codex mode is deprecated",
-                    "log_file": None,
-                }
-            # Import and use CodexAgent
-            # from agent.codex_agent import CodexAgent
 
-            # logger.info("Initializing codex agent...")
-            # logger.info("Creating CodexAgent instance")
-
-            # agent = CodexAgent(
-            #     max_conversation_turns=self.config.max_iterations,
-            #     screenshot_enabled=self.config.screenshot_mode,
-            #     app_name=self.app_name,
-            #     app_server=getattr(self, "metadata", {}).get("app_server", None),
-            #     dry_run=self.config.dry_run,
-            #     mcp_config=mcp_config,
-            #     package_name=self.metadata.get("package_name"),
-            #     username=self.metadata.get("username"),
-            #     password=self.metadata.get("password"),
-            # )
             else:
                 from agent.custom_agent import CustomAgent
 
@@ -593,6 +661,13 @@ class MobileCybenchRunner:
                 # Check if we should include SSRF instructions
                 container_names = self.metadata.get("container_names", [])
                 include_ssrf = bool(container_names)
+
+                # Build additional context from custom prompt and synthetic scenarios
+                additional_parts = []
+                if self.config.custom_system_prompt:
+                    additional_parts.append(self.config.custom_system_prompt)
+                if self.synthetic_prompt_text:
+                    additional_parts.append(self.synthetic_prompt_text)
 
                 agent = CustomAgent(
                     model=self.config.model,
@@ -604,7 +679,9 @@ class MobileCybenchRunner:
                     app_name=self.app_name,
                     app_server=getattr(self, "metadata", {}).get("app_server", None),
                     dry_run=self.config.dry_run,
-                    system_prompt=self.config.custom_system_prompt,
+                    additional_context=(
+                        "\n\n".join(additional_parts) if additional_parts else None
+                    ),
                     package_name=self.metadata.get("package_name"),
                     reasoning_effort=self.config.reasoning_effort,
                     username=self.metadata.get("username"),
@@ -626,7 +703,15 @@ class MobileCybenchRunner:
                     logger.info("Final Message:")
                     logger.info(f"  {result['final_message']}")
 
-            return result
+                return result
+
+            # Supervisor mode already returned above, but satisfy type checker
+            return {
+                "status": "error",
+                "turns": 0,
+                "final_message": None,
+                "log_file": None,
+            }
 
         except Exception as e:
             logger.error(f"Failed to run agent: {e}")
@@ -640,8 +725,9 @@ class MobileCybenchRunner:
                 "log_file": None,
             }
 
-    def run_probes_checks(self, log_file_path: Path):
+    def run_probes_checks(self, log_file_path: Path) -> dict:
         log_banner("RUNNING PROBE CHECKS")
+        results: dict = {}
 
         app_relative_path = f"apps/{self.app_name}"
         command = f"bash ./run_checks.sh {shlex.quote(app_relative_path)}"
@@ -650,7 +736,6 @@ class MobileCybenchRunner:
         if log_path.exists() and log_path.is_file():
             command = f"{command} {shlex.quote(str(log_path))}"
 
-        # Check if we should skip SSRF check
         metadata = get_app_metadata(self.app_name)
         container_names = metadata.get("container_names", [])
         env = os.environ.copy()
@@ -663,33 +748,37 @@ class MobileCybenchRunner:
             logger.error(f"Failed to run probe checks: {e}")
             result = e
 
-        # Show results (for this script, STDERR contains progress info, not errors)
         if hasattr(result, "stdout") and result.stdout and result.stdout.strip():
             logger.info(result.stdout)
         if hasattr(result, "stderr") and result.stderr and result.stderr.strip():
-            logger.info(
-                result.stderr
-            )  # Don't label as STDERR since it's just progress info
+            logger.info(result.stderr)
 
         return_code = getattr(result, "returncode", 1)
-        logger.info(f"✓ Probe checks completed (exit code: {return_code})")
+        logger.info(f"Probe checks completed (exit code: {return_code})")
 
-        # Check for scores.json file
         scores_file = self.app_dir / "scores.json"
-        scores_dict = None
         if scores_file.exists():
             try:
                 with open(scores_file, "r") as f:
-                    scores_dict = json.load(f)
-                logger.info(f"Scores found: {json.dumps(scores_dict, indent=2)}")
-
+                    results["regular"] = json.load(f)
+                logger.info(
+                    f"Regular scores: {json.dumps(results['regular'], indent=2)}"
+                )
             except Exception as e:
                 logger.error(f"Error reading scores.json: {e}")
-                scores_dict = None
-        else:
-            logger.info("No scores.json file found")
 
-        return scores_dict
+        # Run synthetic probes if enabled
+        if self.config.synthetic_vuln:
+            log_path_for_synthetic = log_path if log_path.is_file() else None
+            synthetic_result = _run_synthetic_checks(
+                self.app_dir, exploit_log=log_path_for_synthetic
+            )
+            results["synthetic"] = synthetic_result
+            logger.info(
+                f"Synthetic scores: {json.dumps(synthetic_result['scores'], indent=2)}"
+            )
+
+        return results
 
     def cleanup(self):
         """Clean up services"""
@@ -842,7 +931,13 @@ class MobileCybenchRunner:
             # Step 3: Execute the exploit script and capture output
             logger.info("Executing exploit script...")
             exec_result = subprocess.run(
-                ["docker", "exec", "kali-container", "bash", exploit_script_path],
+                [
+                    "docker",
+                    "exec",
+                    "kali-container",
+                    "bash",
+                    exploit_script_path,
+                ],
                 capture_output=True,
                 text=True,
                 timeout=300,  # 5 minute timeout for exploit execution
@@ -933,6 +1028,9 @@ class MobileCybenchRunner:
             self._validate_input()
             if not self.config.dry_run:
                 self._setup_env_file()
+            if self.config.synthetic_vuln:
+                self._apply_synthetic_patch()
+                self._load_synthetic_scenario()
             log_banner("SETTING UP ANDROID EMULATOR")
             sdk_version = (
                 self.metadata.get("sdk") if hasattr(self, "metadata") else None
@@ -980,14 +1078,12 @@ class MobileCybenchRunner:
                     project_root=self.project_root,
                     sdk_version=sdk_version,
                     app_name=self.app_name,
-                    rootable=False,  # Phase 2: Use google_apis_playstore (non-rootable) for verification
+                    rootable=True,
                 ) as emulator:
                     self.emulator = emulator
                     self.emulator.start_in_background()
                     logger.info("New emulator starting . . .")
 
-                    # some app's cleanup.sh might uninstall the app, which requires package manager to be running
-                    # takes a while for the package manager to be ready
                     try:
                         self.emulator.wait_until_ready(
                             timeout=EMULATOR_BOOT_TIMEOUT_SECONDS
@@ -999,26 +1095,7 @@ class MobileCybenchRunner:
                         )
 
                     self._run_cleanup()
-                    self._setup_app_apk()
                     self._install_app_and_setup_backend()
-
-                    logger.info(
-                        "Verifying non-root environment for Phase 2 (Verification)..."
-                    )
-                    try:
-                        id_result = self.cmd.run(
-                            "adb shell id", capture_output=True, check=False
-                        )
-                        if "uid=0(root)" not in id_result.stdout:
-                            logger.info(
-                                "✓ Emulator running as non-root (google_apis_playstore)"
-                            )
-                        else:
-                            logger.warning(
-                                f"⚠ Unexpected root access detected: {id_result.stdout.strip()}"
-                            )
-                    except Exception as e:
-                        logger.warning(f"Failed to verify emulator user: {e}")
 
                     dummy_log_path = Path(DUMMY_LOG_FILENAME)
                     if not dummy_log_path.exists():
@@ -1031,6 +1108,9 @@ class MobileCybenchRunner:
                     # TODO: should we have an LLM agent (exploit executor / validator) here instead of just exploit.sh?
                     # the generated exploit script may not be sufficient to successfully exploit the vulnerability in one shot.
                     exploit_log_path = self._run_agent_exploit()
+                    time.sleep(
+                        3
+                    )  # Allow exploit effects to stabilize before running probes
 
                     # Pass the exploit log (NOT dummy log) to probes
                     self.probe_results["post_agent_exploit"] = self.run_probes_checks(
@@ -1045,6 +1125,8 @@ class MobileCybenchRunner:
             logger.error(f"Unexpected error: {e}")
             return 1
         finally:
+            # TODO: clean up synthetic patch automatically.
+
             log_banner("PROBE RESULTS SUMMARY")
             if self.probe_results:
                 logger.info(

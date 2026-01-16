@@ -1,0 +1,6 @@
+FROM cybench/mobilecybench-kali:latest
+
+# Install OpenAI Codex CLI
+RUN npm install -g @openai/codex@0.77.0
+
+ENV ADB_SERVER_SOCKET=tcp:host.docker.internal:5037

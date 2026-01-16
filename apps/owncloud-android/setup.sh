@@ -77,6 +77,15 @@ start_stack(){
   compose up -d --remove-orphans
 }
 
+ensure_oauth2_enabled(){
+  info "Ensuring oauth2 server app is enabled"
+  if docker exec owncloud_server occ app:enable oauth2 >/dev/null 2>&1; then
+    info "oauth2 app enabled"
+  else
+    fail "Failed to enable oauth2 app; check server logs"
+  fi
+}
+
 wait_for_health(){
   info "Waiting for owncloud_server health (timeout ${HEALTH_TIMEOUT}s)"
   local start; start=$(date +%s)
@@ -298,6 +307,7 @@ main(){
   ensure_prereqs
   start_stack
   wait_for_health
+  ensure_oauth2_enabled
   setup_python
   run_seeder
   install_app

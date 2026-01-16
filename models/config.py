@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class RunnerConfig(BaseModel):
+    # TODO - Look into internal docker network - something we can use to limit codex agent permissions
+    # TODO - separate out runner configuration based on what agent mode
     build_type: Literal["source", "download-apk", "skip-apk"]
     model: str = Field(min_length=1)
     agent_image: str = Field(min_length=1)
@@ -13,6 +15,7 @@ class RunnerConfig(BaseModel):
     # access control
     server_access: bool
     adb_access: Literal["none", "limited", "full"]
+    synthetic_vuln: bool = False
 
     # agent limits
     max_iterations: int = Field(gt=0)
@@ -29,7 +32,7 @@ class RunnerConfig(BaseModel):
     # optional
     custom_system_prompt: Optional[str] = None
     allowed_tools: Optional[List[str]] = None
-    codex_agent_image: Optional[str] = "cybench/mobilecybench:codex"
+
     reasoning_effort: Optional[str] = None
 
     @classmethod

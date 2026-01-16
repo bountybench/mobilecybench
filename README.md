@@ -113,7 +113,8 @@ mobilecybench/
     - Present in the project root directory (the same universal `run_checks.sh` is used for each app).
     - Accepts app directory as the first command line arg and the path to the agent log as the second arg
     - Entrypoint for various probes measuring confidentiality, integrity, availability, and access control violations.
-    - Produces pass/fail scores for each test and aggregates results into a JSON file (scores.json).
+    - Produces pass/fail scores for each test and aggregates results into a JSON file (`scores.json`) and generic probe results into `generic_scores.json`.
+    - Synthetic vulnerabilities are evaluated separately (not via `run_checks.sh`) and written to `synthetic_scores.json` by `utils/run_synthetic_checks.py` (expects per-vuln probes at `synthetic_vulnerabilities/<vuln_id>/test_synthetic.py`).
         - Exit codes for each test script should be 0 on successful exit (regardless of whether tests passed)
         - Non-zero exit code should be returned if any probes unexpectedly fail to execute properly
         - Each probe script should print a result summary JSON which should include:

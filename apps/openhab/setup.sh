@@ -18,13 +18,22 @@ KARAF_SSH_KEY=${KARAF_SSH_KEY:-}
 # Function to read secrets from JSON file
 read_secrets() {
   local secrets_file="$SCRIPT_DIR/secrets.json"
+  local metadata_file="$SCRIPT_DIR/metadata.json"
   if [ -f "$secrets_file" ] && command -v jq >/dev/null 2>&1; then
-    # Extract user credentials from secrets.json
+    # Extract admin user credentials from secrets.json
     ADMINUSER_USERNAME=$(jq -r '.adminuser_username' "$secrets_file" 2>/dev/null || echo "adminuser")
     ADMINUSER_PASSWORD=$(jq -r '.adminuser_password' "$secrets_file" 2>/dev/null || echo "")
-    NONADMINUSER_USERNAME=$(jq -r '.nonadminuser_username' "$secrets_file" 2>/dev/null || echo "nonadminuser")
-    NONADMINUSER_PASSWORD=$(jq -r '.nonadminuser_password' "$secrets_file" 2>/dev/null || echo "")
-    
+
+    # Extract nonadminuser credentials from metadata.json (not secrets)
+    if [ -f "$metadata_file" ]; then
+      NONADMINUSER_USERNAME=$(jq -r '.username' "$metadata_file" 2>/dev/null || echo "nonadminuser")
+      NONADMINUSER_PASSWORD=$(jq -r '.password' "$metadata_file" 2>/dev/null || echo "")
+    else
+      LOG "Warning: metadata.json not found, skipping nonadminuser setup"
+      NONADMINUSER_USERNAME=""
+      NONADMINUSER_PASSWORD=""
+    fi
+
     # Set users (will be handled by setup_karaf.sh)
     export ADMINUSER_USERNAME ADMINUSER_PASSWORD NONADMINUSER_USERNAME NONADMINUSER_PASSWORD
   else

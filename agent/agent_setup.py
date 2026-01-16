@@ -30,6 +30,7 @@ class AgentEnvironment:
         env: Dict[str, str],
         commit_id: str,
         mode: str = None,
+        synthetic_vuln: bool = False,
     ):
         self.app_dir = app_dir
         self.app_name = app_dir.name
@@ -38,6 +39,7 @@ class AgentEnvironment:
         self.env = env
         self.commit_id = commit_id
         self.mode = mode
+        self.synthetic_vuln = synthetic_vuln
 
         import traceback
 
@@ -150,6 +152,16 @@ class AgentEnvironment:
             logger.info("Creating exploit_files directory in container")
             self.container.exec_run("mkdir -p /app/exploit_files")
 
+            if self.mode == "codex":
+                logger.info("Logging in to Codex CLI with API key...")
+                result = self.container.exec_run(
+                    "bash -c 'echo $CODEX_API_KEY | codex login --with-api-key'"
+                )
+                if result.exit_code == 0:
+                    logger.info("Codex CLI logged in successfully")
+                else:
+                    logger.error(f"Codex login failed: {result.output.decode()}")
+
         except Exception as e:
             logger.error(f"Setup failed: {e}")
             # Remove container if it was created
@@ -162,7 +174,12 @@ class AgentEnvironment:
             raise
 
     def _setup_agent_codebase(self):
-        """Create a copy of codebase, prune all branches / future commits, copy into agent env"""
+        """Create a copy of codebase for the agent environment.
+
+        Normal mode: Checkout specific commit, copy with git history.
+        Synthetic vulnerability mode: Copy current state (with patch applied),
+        no git history to prevent agent from seeing the patch was applied.
+        """
         original_codebase = self.app_dir / "codebase"
         agent_codebase = self.app_dir / "agent_codebase"
         staging_dir = self.app_dir / "agent_codebase.staging"
@@ -177,40 +194,75 @@ class AgentEnvironment:
             logger.info("Original codebase is empty, initializing submodule")
             git_submodule_update(self.app_dir)
 
-        # Find the repository root (which contains .git)
-        repo_root = original_codebase
-        while repo_root.parent != repo_root:
-            if (repo_root / ".git").exists():
-                break
-            repo_root = repo_root.parent
-
-        # Remove git index lock files (cross-platform)
-        logger.info("Removing git index lock files")
-        git_dir = Path(repo_root) / ".git"
-        if git_dir.exists():
-            # Use Python's pathlib to find and remove index.lock files
-            for lock_file in git_dir.rglob("index.lock"):
-                try:
-                    lock_file.unlink()
-                    logger.debug(f"Removed lock file: {lock_file}")
-                except Exception as e:
-                    logger.warning(f"Failed to remove lock file {lock_file}: {e}")
-
-        # Checkout to commit_id in original_codebase
-        logger.info(f"Checking out commit {self.commit_id} in {original_codebase}")
-        git_checkout(original_codebase, self.commit_id, force=True)
-
-        # Create staging directory and perform all setup there
+        # Create staging directory
         logger.info(f"Creating staging directory at {staging_dir}")
         staging_dir.mkdir(parents=True, exist_ok=True)
 
-        # Copy original_codebase to staging directory with ignore_git=False
-        logger.info(f"Copying {original_codebase} to {staging_dir}")
-        self.copy_files(original_codebase, staging_dir, ignore_git=False)
+        if self.synthetic_vuln:
+            # Synthetic vulnerability mode: copy current state without git history
+            logger.info(
+                "Synthetic vuln mode: Copying current codebase state without git history"
+            )
+            # Copy files but ignore .git to prevent agent from seeing patch history
+            self.copy_files(original_codebase, staging_dir, ignore_git=True)
 
-        # Run git_setup_dev_branch in staging directory
-        logger.info("Setting up dev branch in staging directory")
-        git_setup_dev_branch(staging_dir)
+            # Initialize fresh git repo so agent can still use git commands
+            logger.info("Initializing fresh git repository in staging directory")
+            initialize_git_repository(staging_dir)
+
+            # Create initial commit with all files
+            subprocess.run(
+                ["git", "add", "-A"],
+                cwd=staging_dir,
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "commit", "-m", "Initial commit"],
+                cwd=staging_dir,
+                check=True,
+                capture_output=True,
+            )
+            # Create dev branch from this commit
+            subprocess.run(
+                ["git", "checkout", "-b", "dev"],
+                cwd=staging_dir,
+                check=True,
+                capture_output=True,
+            )
+            logger.info("Created fresh git repo with 'main' and 'dev' branches")
+        else:
+            # Normal mode: checkout specific commit and preserve git history
+            # Find the repository root (which contains .git)
+            repo_root = original_codebase
+            while repo_root.parent != repo_root:
+                if (repo_root / ".git").exists():
+                    break
+                repo_root = repo_root.parent
+
+            # Remove git index lock files (cross-platform)
+            logger.info("Removing git index lock files")
+            git_dir = Path(repo_root) / ".git"
+            if git_dir.exists():
+                # Use Python's pathlib to find and remove index.lock files
+                for lock_file in git_dir.rglob("index.lock"):
+                    try:
+                        lock_file.unlink()
+                        logger.debug(f"Removed lock file: {lock_file}")
+                    except Exception as e:
+                        logger.warning(f"Failed to remove lock file {lock_file}: {e}")
+
+            # Checkout to commit_id in original_codebase
+            logger.info(f"Checking out commit {self.commit_id} in {original_codebase}")
+            git_checkout(original_codebase, self.commit_id, force=True)
+
+            # Copy original_codebase to staging directory with git history
+            logger.info(f"Copying {original_codebase} to {staging_dir}")
+            self.copy_files(original_codebase, staging_dir, ignore_git=False)
+
+            # Run git_setup_dev_branch in staging directory
+            logger.info("Setting up dev branch in staging directory")
+            git_setup_dev_branch(staging_dir)
 
         # Copy pre-generated static vulnerability reports into staging directory if in supervisor mode
         if self.mode == "supervisor":
