@@ -14,8 +14,8 @@ from utils.git_utils import (
     git_setup_dev_branch,
     git_submodule_update,
     initialize_git_repository,
+    onerror,
     prepare_git_directory,
-    onerror
 )
 
 logger = logging.getLogger(__name__)

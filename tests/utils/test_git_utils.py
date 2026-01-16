@@ -44,6 +44,21 @@ def _create_basic_repo(tmp_path: Path) -> Path:
         capture_output=True,
         text=True,
     )
+    # set a local identity for CI/test environments
+    subprocess.run(
+        ["git", "config", "user.name", "ci_test"],
+        cwd=str(repo_dir),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "ci@test"],
+        cwd=str(repo_dir),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     subprocess.run(
         ["git", "commit", "-m", "initial commit"],
         cwd=str(repo_dir),
