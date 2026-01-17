@@ -445,7 +445,7 @@ run_exploit_verification() {
         echo -e "${ERROR} Exploit script not found: $exploit_script"
         return 1
     fi
-
+    
     if [ ! -f "$verify_script" ]; then
         echo -e "${ERROR} Verification script not found: $verify_script"
         return 1
