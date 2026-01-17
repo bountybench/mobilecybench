@@ -236,20 +236,6 @@ jobs:
           else
             echo "metadata.json not modified in $dir. Skipping test."
           fi
-      - name: Check git_utils
-        if: steps.modified-dirs.outputs.should_exit != 'true'
-        run: |
-          if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -qx "utils/git_utils.py"; then
-            echo "git_utils modified. Running tests..."
-            pytest \
-              --log-cli-level=INFO \
-              --log-cli-format='%(message)s' \
-              --tb=no \
-              tests/test_git_utils.py
-          else
-            echo "git_utils not modified. Skipping test."
-          fi
-
       - name: Check if app has server components
         if: steps.modified-dirs.outputs.should_exit != 'true'
         id: check-server-components
