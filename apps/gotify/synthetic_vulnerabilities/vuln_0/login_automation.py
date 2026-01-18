@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+import argparse
+import os
+import sys
+import time
+
+SCRIPT_DIR = os.path.dirname(__file__)
+sys.path.insert(0, SCRIPT_DIR)
+
+from ui_helper import (  # noqa: E402
+    clear_focused_text_field,
+    current_resumed_pkg,
+    input_text,
+    normalize_server_url,
+    run,
+    ui_tap_res,
+    ui_tap_text,
+    ui_text_for_res,
+    ui_wait_res,
+    ui_wait_text,
+)
+
+
+def ensure_logged_in(server_url, username, password):
+    if not ui_wait_res("com.github.gotify:id/gotify_url_editext", 10):
+        print("[-] ERROR: URL field not found on login screen")
+        return 1
+
+    if not ui_tap_res("com.github.gotify:id/gotify_url_editext"):
+        print("[-] ERROR: Failed to focus URL field")
+        return 1
+    time.sleep(0.5)
+    clear_focused_text_field()
+    input_text(server_url)
+    time.sleep(1)
+
+    url_value = ui_text_for_res("com.github.gotify:id/gotify_url_editext")
+    if server_url not in url_value:
+        clear_focused_text_field()
+        input_text(server_url)
+        time.sleep(0.8)
+
+    if not ui_wait_res("com.github.gotify:id/checkurl", 10):
+        print("[-] ERROR: Check URL button not found")
+        return 1
+
+    if not ui_tap_res("com.github.gotify:id/checkurl"):
+        print("[-] ERROR: Failed to tap Check URL button")
+        return 1
+
+    time.sleep(1)
+    for _ in range(30):
+        if ui_wait_res("com.github.gotify:id/username_editext", 1):
+            break
+        if (
+            ui_wait_text("I understand", 1)
+            or ui_wait_text("I Understand", 1)
+            or ui_wait_res("android:id/button1", 1)
+        ):
+            ui_tap_res("android:id/button1") or ui_tap_text(
+                "I Understand"
+            ) or ui_tap_text("I understand")
+        time.sleep(0.5)
+
+    if not ui_wait_res("com.github.gotify:id/username_editext", 10):
+        print("[-] ERROR: Username field not visible after URL check")
+        return 1
+
+    ui_tap_res("com.github.gotify:id/username_editext")
+    time.sleep(0.3)
+    clear_focused_text_field()
+    input_text(username)
+    time.sleep(0.3)
+
+    ui_tap_res("com.github.gotify:id/password_editext")
+    time.sleep(0.3)
+    clear_focused_text_field()
+    input_text(password)
+    time.sleep(0.3)
+
+    # Hide keyboard so the login button is visible/clickable.
+    run("adb shell input keyevent KEYCODE_BACK")
+    time.sleep(0.5)
+
+    if not ui_tap_res("com.github.gotify:id/login"):
+        print("[-] ERROR: Login button not found")
+        return 1
+    time.sleep(2)
+
+    # Client name dialog appears after successful login.
+    if (
+        ui_wait_text("Client Name", 20)
+        or ui_wait_res("android:id/button1", 1)
+        or ui_wait_text("Create", 1)
+    ):
+        ui_tap_res("android:id/button1") or ui_tap_text("Create")
+        time.sleep(1)
+
+    # Handle permission dialogs; prefer allow/grant to complete setup.
+    idle_rounds = 0
+    end_time = time.time() + 20
+    allow_texts = ["Allow", "Grant"]
+    deny_texts = ["Don't allow", "Deny", "Not now", "Cancel", "OK"]
+
+    while time.time() < end_time and idle_rounds < 6:
+        acted = False
+        if ui_wait_res("android:id/button1", 1):
+            ui_tap_res("android:id/button1")
+            acted = True
+        else:
+            for perm_text in allow_texts:
+                if ui_wait_text(perm_text, 1):
+                    ui_tap_text(perm_text)
+                    acted = True
+                    break
+        if not acted:
+            for perm_text in deny_texts:
+                if ui_wait_text(perm_text, 1):
+                    ui_tap_text(perm_text)
+                    acted = True
+                    break
+        if acted:
+            idle_rounds = 0
+            time.sleep(0.7)
+        else:
+            idle_rounds += 1
+            time.sleep(0.5)
+        if current_resumed_pkg() == "com.android.settings":
+            run("adb shell input keyevent KEYCODE_BACK")
+            time.sleep(0.5)
+
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--server-url", required=True)
+    parser.add_argument("--username", required=True)
+    parser.add_argument("--password", required=True)
+    args = parser.parse_args()
+
+    server_url = normalize_server_url(args.server_url)
+    sys.exit(ensure_logged_in(server_url, args.username, args.password))
+
+
+if __name__ == "__main__":
+    main()
