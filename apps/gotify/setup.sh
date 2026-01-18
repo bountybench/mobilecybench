@@ -155,6 +155,33 @@ wait_for_services() {
   done
 }
 
+create_agent_user() {
+  info "Ensuring non-admin agent user exists..."
+  local payload
+  local response
+  local code
+
+  payload='{"name":"agent","pass":"agentpass","admin":false}'
+  response=$(curl -s -u "${GOTIFY_ADMIN_USER}:${GOTIFY_ADMIN_PASS}" \
+    -H "Content-Type: application/json" \
+    -d "$payload" \
+    -w "\n%{http_code}" \
+    http://127.0.0.1:8080/user || true)
+
+  code=$(echo "$response" | tail -n 1)
+  case "$code" in
+    200|201)
+      info "Agent user created."
+      ;;
+    400|409)
+      info "Agent user already exists."
+      ;;
+    *)
+      warn "Failed to create agent user (HTTP $code)."
+      ;;
+  esac
+}
+
 # --- Print final status ---
 # --- Check for existing APK ---
 check_existing_apk() {
@@ -181,15 +208,81 @@ install_android_app() {
 
   info "Installing APK: $APK_PATH"
 
-  # Uninstall existing app first to avoid conflicts
-  adb uninstall "$TARGET_PACKAGE" 2>/dev/null || true
-
-  # Install the APK
-  if adb install "$APK_PATH"; then
-    info "APK installed successfully"
-  else
-    error "Failed to install APK"
+  # Ensure ADB server is running and device is connected
+  if ! adb devices | grep -q "device\|emulator"; then
+    error "No Android device/emulator found. Please ensure emulator is running."
   fi
+
+  # Wait for device to be fully ready
+  info "Waiting for device to be ready..."
+  adb wait-for-device
+  sleep 2
+
+  # Uninstall existing app first to avoid conflicts (with retries)
+  info "Uninstalling existing app (if present)..."
+  max_uninstall_attempts=3
+  uninstall_attempt=0
+  while [ $uninstall_attempt -lt $max_uninstall_attempts ]; do
+    if adb uninstall "$TARGET_PACKAGE" 2>/dev/null; then
+      info "App uninstalled successfully"
+      break
+    else
+      uninstall_attempt=$((uninstall_attempt + 1))
+      if [ $uninstall_attempt -lt $max_uninstall_attempts ]; then
+        warn "Uninstall attempt $uninstall_attempt failed, retrying..."
+        sleep 2
+        # Reset ADB connection
+        adb kill-server 2>/dev/null || true
+        sleep 1
+        adb start-server 2>/dev/null || true
+        adb wait-for-device
+      fi
+    fi
+  done
+
+  # Install the APK (with retries for transient errors)
+  max_install_attempts=3
+  install_attempt=0
+  
+  while [ $install_attempt -lt $max_install_attempts ]; do
+    install_attempt=$((install_attempt + 1))
+    
+    if [ $install_attempt -gt 1 ]; then
+      info "Install attempt $install_attempt/$max_install_attempts..."
+      # Reset ADB connection between retries
+      adb kill-server 2>/dev/null || true
+      sleep 2
+      adb start-server 2>/dev/null || true
+      adb wait-for-device
+      sleep 2
+    fi
+
+    # Try installation with streamed install for large APKs
+    if adb install -r "$APK_PATH" 2>&1 | tee /tmp/adb_install.log; then
+      info "APK installed successfully"
+      rm -f /tmp/adb_install.log
+      return 0
+    else
+      install_error=$(cat /tmp/adb_install.log 2>/dev/null || echo "unknown error")
+      rm -f /tmp/adb_install.log
+      
+      # Check for specific recoverable errors
+      if echo "$install_error" | grep -qiE "Broken pipe|DELETE_FAILED|device.*not found"; then
+        if [ $install_attempt -lt $max_install_attempts ]; then
+          warn "Transient error detected, retrying: $install_error"
+          sleep 3
+          continue
+        fi
+      fi
+      
+      # Non-recoverable error or max attempts reached
+      if [ $install_attempt -eq $max_install_attempts ]; then
+        error "Failed to install APK after $max_install_attempts attempts"
+        error "Last error: $install_error"
+        error "Try running: ./cleanup.sh && ./setup.sh"
+      fi
+    fi
+  done
 }
 
 # --- Launch the app ---
@@ -253,13 +346,14 @@ main() {
 
   pre_setup_cleanup
   check_prerequisites
+  check_existing_apk
   cleanup_existing
   load_env_vars
   verify_compose_file
   start_services
   wait_for_services
-  check_existing_apk
   install_android_app
+  create_agent_user
   launch_android_app
   print_status
 

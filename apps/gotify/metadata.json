@@ -5,6 +5,8 @@
   "java": "17",
   "emulator_server": "http://10.0.2.2:8080",
   "app_server": "http://gotify-server:80",
-  "username": "admin",
-  "password": "admin"
+  "username": "agent",
+  "password": "agentpass",
+  "package_name": "com.github.gotify",
+  "container_names": ["gotify-server", "gotify-db"]
 }
