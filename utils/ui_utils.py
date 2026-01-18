@@ -3,6 +3,22 @@ A collection of helpers for Android UI automation using uiautomator2.
 
 This module provides an API for common UI interactions like finding elements,
 clicking, and setting text, with built-in handling for ANRs and UI instability.
+
+PREFERRED FUNCTIONS (use these for new code):
+- click_then_expect(): Click and verify expected element appears (with retries)
+- press_back_then_expect(): Press back and verify expected screen
+- wait_for_screen_change(): Detect that UI changed after an action
+- wait_for_ui_stable(): Wait for UI to stop changing
+
+LEGACY FUNCTIONS (still work, but less robust for new code):
+- wait_and_click(): Clicks but doesn't verify what appears after
+  → Use click_then_expect() instead when you know what should appear
+
+MIGRATION STATUS (apps that need updating to preferred functions):
+- bitwarden: bw_workflows.py, create_accounts.py, test_availability.py, test_access_control.py
+- grocy: setup_grocy_ui.py (uses uiautomator2 directly, should migrate to shared utils)
+- linphone: synch_app.py (uses uiautomator2 directly)
+- audiobookshelf: synch_app.py (uses uiautomator2 directly)
 """
 
 import logging
@@ -11,7 +27,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import NoReturn, Optional
+from typing import Callable, NoReturn, Optional, Union
 
 import uiautomator2 as u2
 from uiautomator2 import Device, UiObject
@@ -21,6 +37,9 @@ __all__ = [
     "wait_and_click",
     "wait_and_set_text",
     "wait_for_ui_stable",
+    "wait_for_screen_change",
+    "click_then_expect",
+    "press_back_then_expect",
 ]
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -249,6 +268,248 @@ def wait_for_ui_stable(
         time.time() - start,
         min_consecutive,
     )
+    return False
+
+
+def wait_for_screen_change(
+    d: Device,
+    original_hierarchy: str,
+    timeout: float = 2.0,
+    interval: float = 0.2,
+) -> bool:
+    """Wait for screen to differ from original state.
+
+    This is useful for detecting that an action (click, back, etc.) had an effect
+    on the UI. Capture the hierarchy before the action, then call this function
+    to wait until the screen changes.
+
+    Args:
+        d: uiautomator2 device instance
+        original_hierarchy: UI hierarchy string captured before the action
+        timeout: Max wait time in seconds
+        interval: Polling interval in seconds
+
+    Returns:
+        True if screen changed, False if timeout
+    """
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            current = d.dump_hierarchy(compressed=True)
+            if current != original_hierarchy:
+                logger.debug("Screen changed after %.2fs", time.time() - start)
+                return True
+        except Exception as e:
+            logger.debug("Failed to dump hierarchy during screen change check: %s", e)
+        time.sleep(interval)
+
+    logger.debug("Screen did not change within %.1fs", timeout)
+    return False
+
+
+def click_then_expect(
+    d: Device,
+    element: UiObject,
+    expected: Union[UiObject, Callable[[], bool]],
+    timeout: int = SHORT_TIMEOUT,
+    retries: int = UI_RETRIES,
+) -> bool:
+    """Click element and verify expected result appears, with retry logic.
+
+    This function provides robust click handling by:
+    1. Verifying element exists before clicking
+    2. Capturing screen state before click
+    3. Clicking and waiting for screen to change
+    4. Waiting for expected element/condition
+    5. Retrying if click didn't register
+
+    Use this instead of wait_and_click() when you know what element should
+    appear after the click. This provides stronger verification that the
+    click had the intended effect.
+
+    Args:
+        d: uiautomator2 device instance
+        element: The element to click
+        expected: Element that should appear after click, OR callable returning True when valid
+        timeout: Max wait time per attempt (seconds)
+        retries: Number of retry attempts if click doesn't register
+
+    Returns:
+        True if click succeeded and expected state reached, False otherwise
+
+    Example:
+        # Click menu button and wait for menu item to appear
+        menu_btn = d(description="More options")
+        menu_item = d(text="Settings")
+        if click_then_expect(d, menu_btn, menu_item):
+            # Menu opened successfully, now click the menu item
+            ...
+
+        # Using a callable for complex conditions
+        def settings_screen_loaded():
+            return d(text="Settings").exists and d(text="Account").exists
+        click_then_expect(d, menu_btn, settings_screen_loaded)
+    """
+    for attempt in range(1, retries + 1):
+        # 1. Verify element exists
+        if not element.exists:
+            logger.debug(
+                "Element %s does not exist (attempt %s/%s)",
+                element.selector,
+                attempt,
+                retries,
+            )
+            time.sleep(RETRY_INTERVAL)
+            continue
+
+        # 2. Check if clickable (warn but proceed - some elements work despite this)
+        try:
+            info = element.info
+            if not info.get("clickable", False):
+                logger.debug(
+                    "Element %s exists but clickable=False, proceeding anyway",
+                    element.selector,
+                )
+        except Exception:
+            pass  # Info fetch failed, proceed anyway
+
+        # 3. Capture screen state before click
+        try:
+            pre_click_hierarchy = d.dump_hierarchy(compressed=True)
+        except Exception as e:
+            logger.debug("Failed to capture pre-click hierarchy: %s", e)
+            pre_click_hierarchy = None
+
+        # 4. Click
+        try:
+            element.click()
+            logger.debug(
+                "Clicked %s (attempt %s/%s)", element.selector, attempt, retries
+            )
+        except Exception as e:
+            logger.debug(
+                "Click failed for %s (attempt %s/%s): %s",
+                element.selector,
+                attempt,
+                retries,
+                e,
+            )
+            time.sleep(RETRY_INTERVAL)
+            continue
+
+        # 5. Wait for screen to change
+        if pre_click_hierarchy is not None:
+            changed = wait_for_screen_change(d, pre_click_hierarchy, timeout=2.0)
+            if not changed:
+                logger.debug(
+                    "Screen did not change after clicking %s (attempt %s/%s)",
+                    element.selector,
+                    attempt,
+                    retries,
+                )
+                continue
+
+        # 6. Wait for expected element/state
+        if callable(expected):
+            # Custom validation function - poll until true or timeout
+            start = time.time()
+            while time.time() - start < timeout:
+                try:
+                    if expected():
+                        logger.info(
+                            "Click on %s succeeded, expected condition met",
+                            element.selector,
+                        )
+                        return True
+                except Exception as e:
+                    logger.debug("Expected condition check failed: %s", e)
+                time.sleep(RETRY_INTERVAL)
+        else:
+            # Wait for element selector
+            if expected.wait(timeout=timeout):
+                logger.info(
+                    "Click on %s succeeded, expected element %s appeared",
+                    element.selector,
+                    expected.selector,
+                )
+                return True
+
+        logger.debug(
+            "Expected state not reached after clicking %s (attempt %s/%s)",
+            element.selector,
+            attempt,
+            retries,
+        )
+
+    logger.warning(
+        "Click on %s failed after %s attempts - expected state never reached",
+        element.selector,
+        retries,
+    )
+    return False
+
+
+def press_back_then_expect(
+    d: Device,
+    expected: Union[UiObject, Callable[[], bool]],
+    timeout: int = SHORT_TIMEOUT,
+) -> bool:
+    """Press back button and verify expected screen element appears.
+
+    Use this for navigation where you need to verify you landed on the
+    expected screen after pressing back.
+
+    Args:
+        d: uiautomator2 device instance
+        expected: Element that should appear after back, OR callable returning True when valid
+        timeout: Max wait time (seconds)
+
+    Returns:
+        True if back succeeded and expected state reached, False otherwise
+
+    Example:
+        # Press back and wait for main screen indicator
+        main_screen = d(description="More options")
+        if press_back_then_expect(d, main_screen):
+            # Successfully returned to main screen
+            ...
+    """
+    # Capture screen state before back
+    try:
+        pre_back_hierarchy = d.dump_hierarchy(compressed=True)
+    except Exception as e:
+        logger.debug("Failed to capture pre-back hierarchy: %s", e)
+        pre_back_hierarchy = None
+
+    # Press back
+    d.press("back")
+    logger.debug("Pressed back button")
+
+    # Wait for screen to change
+    if pre_back_hierarchy is not None:
+        changed = wait_for_screen_change(d, pre_back_hierarchy, timeout=2.0)
+        if not changed:
+            logger.debug("Screen did not change after pressing back")
+
+    # Wait for expected element/state
+    if callable(expected):
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                if expected():
+                    logger.debug("Back succeeded, expected condition met")
+                    return True
+            except Exception as e:
+                logger.debug("Expected condition check failed: %s", e)
+            time.sleep(RETRY_INTERVAL)
+    else:
+        if expected.wait(timeout=timeout):
+            logger.debug(
+                "Back succeeded, expected element %s appeared", expected.selector
+            )
+            return True
+
+    logger.warning("Back button did not result in expected state")
     return False
 
 

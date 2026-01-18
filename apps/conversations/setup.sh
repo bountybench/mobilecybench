@@ -102,6 +102,10 @@ setup_prosody_server(){
     return 0
   fi
   
+  # Stop and remove existing container to ensure a full restart
+  info "Stopping any existing Prosody server..."
+  docker compose down
+
   # Build and start Prosody server (certificates pre-generated in image)
   info "Building and starting Prosody server..."
   docker compose up -d --build
