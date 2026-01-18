@@ -1,6 +1,6 @@
 # Synthetic Vulnerabilities
 
-Synthetic mode provides the agent with the expected outcome (via `verify_exploit.sh`) and asks it to write an `exploit.sh` to achieve that outcome. For now, assume that the agent has readonly access to the `verify_exploit.sh` script.
+Synthetic mode provides the agent with the expected outcome (via `verify_exploit.sh`) and asks it to write an `exploit.sh` to achieve that outcome. For now, assume that the agent has readonly access to the `verify_exploit.sh` script. We recommend starting with a very simple vulnerability (removing a permission check) as the writing the exploit/verify scripts and understanding the vulnerability can be tricky. 
 
 ## Directory Structure
 
