@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+import argparse
+import re
+import subprocess
+import sys
+import time
+import xml.etree.ElementTree as ET
+from urllib.parse import urlparse
+
+
+def run(cmd):
+    return subprocess.run(
+        cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+
+
+def adb_shell(cmd):
+    result = run(f"adb shell {cmd}")
+    return result.stdout.strip()
+
+
+def ui_dump():
+    dump_file = "/sdcard/window_dump.xml"
+    run(f"adb shell uiautomator dump {dump_file} >/dev/null 2>&1")
+    time.sleep(0.2)
+    xml_content = adb_shell(f"cat {dump_file}")
+    if not xml_content:
+        xml_content = adb_shell("cat /sdcard/ui.xml")
+    if not xml_content:
+        return None
+    if not re.match(r"^\s*<\?xml|^\s*<hierarchy", xml_content):
+        return None
+    return xml_content
+
+
+def ui_find_center_by_res(res_id):
+    xml = ui_dump()
+    if not xml:
+        return None
+    try:
+        root = ET.fromstring(xml)
+    except Exception:
+        return None
+    for node in root.iter("node"):
+        if node.attrib.get("resource-id") != res_id:
+            continue
+        bounds = node.attrib.get("bounds", "")
+        m = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds)
+        if not m:
+            continue
+        x1, y1, x2, y2 = map(int, m.groups())
+        return (x1 + x2) // 2, (y1 + y2) // 2
+    return None
+
+
+def ui_tap_res(res_id):
+    coords = ui_find_center_by_res(res_id)
+    if not coords:
+        return False
+    x, y = coords
+    if x <= 0 or y <= 0:
+        return False
+    run(f"adb shell input tap {x} {y}")
+    return True
+
+
+def ui_wait_res(res_id, retries=20):
+    for _ in range(retries):
+        if ui_find_center_by_res(res_id):
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def ui_wait_text(text, retries=20):
+    for _ in range(retries):
+        xml = ui_dump() or ""
+        if f'text="{text}"' in xml:
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def ui_text_for_res(res_id):
+    xml = ui_dump()
+    if not xml:
+        return ""
+    try:
+        root = ET.fromstring(xml)
+    except Exception:
+        return ""
+    for node in root.iter("node"):
+        if node.attrib.get("resource-id") == res_id:
+            return node.attrib.get("text", "")
+    return ""
+
+
+def ui_tap_text(text):
+    xml = ui_dump()
+    if not xml:
+        return False
+    try:
+        root = ET.fromstring(xml)
+    except Exception:
+        return False
+    for node in root.iter("node"):
+        if node.attrib.get("text") != text:
+            continue
+        bounds = node.attrib.get("bounds", "")
+        m = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds)
+        if not m:
+            continue
+        x1, y1, x2, y2 = map(int, m.groups())
+        x = (x1 + x2) // 2
+        y = (y1 + y2) // 2
+        run(f"adb shell input tap {x} {y}")
+        return True
+    return False
+
+
+def escape_for_adb_input(text):
+    return text.replace(" ", "%s")
+
+
+def input_text(text):
+    escaped = escape_for_adb_input(text)
+    run(f'adb shell input text "{escaped}"')
+
+
+def clear_focused_text_field():
+    run("adb shell input keyevent KEYCODE_CTRL_A >/dev/null 2>&1 || true")
+    time.sleep(0.2)
+    run("adb shell input keyevent KEYCODE_DEL >/dev/null 2>&1 || true")
+    time.sleep(0.2)
+
+
+def current_resumed_pkg():
+    result = run("adb shell dumpsys activity activities")
+    if result.returncode != 0:
+        return ""
+    for line in result.stdout.splitlines():
+        if "mResumedActivity" in line:
+            parts = re.split(r"[ /}]", line.strip())
+            if len(parts) >= 5:
+                return parts[4]
+    return ""
+
+
+def is_emulator():
+    return adb_shell("getprop ro.kernel.qemu") == "1"
+
+
+def normalize_server_url(server_url):
+    if not is_emulator():
+        return server_url
+    parsed = urlparse(server_url)
+    if parsed.hostname not in ("localhost", "127.0.0.1"):
+        return server_url
+    port = parsed.port or 8080
+    return f"http://10.0.2.2:{port}"
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dump", action="store_true")
+    parser.add_argument("--tap-res")
+    parser.add_argument("--tap-text")
+    parser.add_argument("--find-center")
+    parser.add_argument("--wait-res")
+    parser.add_argument("--wait-text")
+    parser.add_argument("--text-for-res")
+    parser.add_argument("--retries", type=int, default=20)
+    args = parser.parse_args()
+
+    if args.dump:
+        xml = ui_dump()
+        if not xml:
+            sys.exit(1)
+        print(xml)
+        sys.exit(0)
+
+    if args.find_center:
+        coords = ui_find_center_by_res(args.find_center)
+        if not coords:
+            sys.exit(1)
+        x, y = coords
+        print(f"{x} {y}")
+        sys.exit(0)
+
+    if args.tap_res:
+        sys.exit(0 if ui_tap_res(args.tap_res) else 1)
+
+    if args.tap_text:
+        sys.exit(0 if ui_tap_text(args.tap_text) else 1)
+
+    if args.wait_res:
+        sys.exit(0 if ui_wait_res(args.wait_res, args.retries) else 1)
+
+    if args.wait_text:
+        sys.exit(0 if ui_wait_text(args.wait_text, args.retries) else 1)
+
+    if args.text_for_res:
+        text = ui_text_for_res(args.text_for_res)
+        if not text:
+            sys.exit(1)
+        print(text)
+        sys.exit(0)
+
+    parser.error("No action specified")
+
+
+if __name__ == "__main__":
+    main()
