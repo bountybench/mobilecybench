@@ -139,9 +139,7 @@ def capture_failure_context(
 def fill_login_form(d, username, password, script_name="ui_automation"):
     """
     Fill in the login form with username and password.
-    Shared function used by both login_first_time.py and login_additional_user.py.
-
-    Used by verification scripts in the main directory.
+    Used by login.py for both first-time and add-account flows.
 
     Args:
         d: uiautomator2 device instance
