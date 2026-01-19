@@ -459,13 +459,29 @@ run_exploit_verification() {
     exploit_files_abs_path="$(cd "$exploit_files_dir" && pwd)"
 
     # Start container with exploit_files mounted at /app/exploit_files
+    # For exploits that need ADB access to emulator on host:
+    # Restart host's ADB server to listen on all interfaces so containers can access it
+    echo -e "${INFO} Configuring ADB for container access..."
+    adb kill-server 2>/dev/null || true
+    adb -a -P 5037 start-server
+    sleep 2
+
     echo -e "${INFO} Starting exploit container: $container_name"
     docker run -d \
         --name "$container_name" \
         --network=shared_net \
+        --add-host=host.docker.internal:host-gateway \
+        -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
         -v "$exploit_files_abs_path:/app/exploit_files" \
         "$exploit_image" \
         tail -f /dev/null
+
+    echo -e "${INFO} Verifying connection to host ADB..."
+    if ! docker exec "$container_name" adb devices | grep -q "device$"; then
+        echo -e "${ERROR} Container cannot see the emulator. Check macOS Firewall or ADB status."
+        docker rm -f "$container_name"
+        return 1
+    fi
 
     # Run the exploit script inside the container
     if docker exec "$container_name" bash /app/exploit_files/exploit.sh; then
