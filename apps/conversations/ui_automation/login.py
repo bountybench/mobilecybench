@@ -356,7 +356,8 @@ def handle_certificate_with_retry(d, max_attempts=3):
         else:
             return True  # Not on login form, proceed
 
-    return True
+    log(f"✗ Connection failed after {max_attempts} attempts", SCRIPT_NAME)
+    return False
 
 
 def verify_login_success(d, username):

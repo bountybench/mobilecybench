@@ -374,6 +374,7 @@ def trigger_conversations():
     This should be called AFTER agentuser is logged into the app.
     """
     print("\n=== Triggering conversations for agentuser ===")
+    success = True
 
     # Send a message from admin to agentuser
     admin = XMPPClient("admin", ADMIN_PASSWORD)
@@ -383,6 +384,7 @@ def trigger_conversations():
         print("[trigger] Sent message from admin")
     else:
         print("[trigger] Failed to connect as admin")
+        success = False
 
     time.sleep(0.5)
 
@@ -394,9 +396,13 @@ def trigger_conversations():
         print("[trigger] Sent message from user1")
     else:
         print("[trigger] Failed to connect as user1")
+        success = False
 
-    print("Trigger messages sent - conversations should now appear in app")
-    return True
+    if success:
+        print("Trigger messages sent - conversations should now appear in app")
+    else:
+        print("Some trigger messages failed to send")
+    return success
 
 
 def main():
@@ -420,8 +426,7 @@ def main():
     print(f"Domain: {DOMAIN}")
 
     if args.trigger_only:
-        trigger_conversations()
-        return 0
+        return 0 if trigger_conversations() else 1
 
     success = True
 
