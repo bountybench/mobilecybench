@@ -221,6 +221,41 @@ def detect_impersonations():
     return False
 ```
 
+## Building APKs
+
+For synthetic vulnerability testing, use the repo-level `build_apk.sh` wrapper instead of calling `setup_app_source.sh` directly.
+
+### Regular Build
+```bash
+./build_apk.sh <app_name>
+# Output: apps/<app_name>/apk/<app_name>.apk
+```
+
+### Vulnerable Build
+```bash
+./build_apk.sh <app_name> --vuln vuln_0
+# Output: apps/<app_name>/apk/vuln_0/<app_name>.apk
+```
+
+### What the Wrapper Handles
+- Validates submodule is initialized
+- Checks out codebase to the commit specified in `metadata.json`
+- For `--vuln` builds:
+  - Backs up existing APKs (moved to temp directory)
+  - Applies the vulnerability patch
+  - Builds the APK
+  - Moves the vulnerable APK to `apk/<vuln_id>/`
+  - Restores original APKs
+  - Restores clean codebase state
+
+### APK Directory Structure
+```
+apps/<app_name>/apk/
+├── <app_name>.apk          # Regular (non-vulnerable) APK
+└── vuln_0/
+    └── <app_name>.apk      # Vulnerable APK with vuln_0 patch applied
+```
+
 ## Testing
 
 Local Testing: `setup_app_source.sh` is required. Two versions of the app are built, one with the `vulnerability.patch` applied to the codebase and one without. `app_name/setup.sh` will be run to set up the runtime environment, and we will attempt to run `exploit.sh` followed by `verify_exploit.sh`. The exploit should succeed on the vulnerable version and fail on the original codebase
