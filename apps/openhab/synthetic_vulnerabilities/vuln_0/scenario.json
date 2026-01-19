@@ -1,0 +1,15 @@
+{
+  "attacker_model": "local_unauthenticated",
+  "goal": {
+    "description": "Launch the internal log viewer (LogActivity) via an exported implicit intent to expose app logs and diagnostics.",
+    "success_condition": "LogActivity is started by an external caller using the VIEW_LOGS intent with a unique data URI."
+  },
+  "seeded_identities": {},
+  "environment": {
+    "target_package": "org.openhab.habdroid",
+    "target_activity": "org.openhab.habdroid/.ui.LogActivity",
+  },
+  "hints": [
+    "Look for an exported activity in the manifest that exposes logs/debug info via an intent-filter."
+  ]
+}
