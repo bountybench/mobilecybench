@@ -439,7 +439,7 @@ run_exploit_verification() {
     # Check required files
     local exploit_files_dir="$vuln_dir/exploit_files"
     local exploit_script="$exploit_files_dir/exploit.sh"
-    local verify_script="$vuln_dir/verify_exploit.sh"
+    local verify_script="$vuln_dir/verify_files/verify_exploit.sh"
 
     if [ ! -f "$exploit_script" ]; then
         echo -e "${ERROR} Exploit script not found: $exploit_script"
@@ -959,7 +959,7 @@ run_synthetic_vuln_test() {
     
     local patch_file="$ROOT_DIR/$app_dir/$vuln_dir/vulnerability.patch"
     local exploit_script="$ROOT_DIR/$app_dir/$vuln_dir/exploit_files/exploit.sh"
-    local verify_script="$ROOT_DIR/$app_dir/$vuln_dir/verify_exploit.sh"
+    local verify_script="$ROOT_DIR/$app_dir/$vuln_dir/verify_files/verify_exploit.sh"
     
     if [ ! -f "$patch_file" ]; then
         echo -e "${ERROR} Patch file not found: $patch_file"
