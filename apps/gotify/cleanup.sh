@@ -89,6 +89,8 @@ if [ -d codebase ]; then
     rm -rf codebase/.gradle 2>/dev/null || true
 fi
 
+adb uninstall com.github.gotify
+
 info "✅ Cleanup completed!"
 
 exit 0
