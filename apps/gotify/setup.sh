@@ -107,8 +107,8 @@ wait_for_services() {
   while [ $attempt -lt $max_attempts ]; do
     attempt=$((attempt + 1))
 
-    # Try health endpoint first, then fallback to root
-    if curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1 || curl -fsS http://127.0.0.1:8080/ >/dev/null 2>&1; then
+    # Try health endpoint first, then fallback to version endpoint
+    if curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1 || curl -fsS http://127.0.0.1:8080/version >/dev/null 2>&1; then
       info "Gotify server is ready!"
       break
     fi
