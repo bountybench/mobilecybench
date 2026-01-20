@@ -473,7 +473,6 @@ run_exploit_verification() {
     if ! docker exec "$container_name" adb devices 2>/dev/null | grep -q "device$"; then
         echo -e "${WARNING} Container cannot see the emulator via ADB."
         echo -e "${WARNING} This is OK for network-only exploits, but exploits requiring ADB may fail."
-        echo -e "${WARNING} If needed, check macOS Firewall settings for ADB port 5037."
     else
         echo -e "${SUCCESS} Container can access emulator via ADB"
     fi
