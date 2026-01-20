@@ -31,7 +31,7 @@ services:
       GOTIFY_DEFAULTUSER_NAME: ${GOTIFY_ADMIN_USER}
       GOTIFY_DEFAULTUSER_PASS: ${GOTIFY_ADMIN_PASS}
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost/health || curl -f http://localhost/ || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost/health || curl -f http://localhost/version || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
