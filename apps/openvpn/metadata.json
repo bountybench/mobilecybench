@@ -1,6 +1,6 @@
 {
   "gh_link": "https://github.com/cy-suite/OpenVPN-Android",
-  "commit_version": "5ee471cabca78cd5c5c9cd9fd28bc758a0d5e82e",
+  "commit_version": "58830678849a251296e1b0af7b781bfec9268c53",
   "download_link": "https://github.com/schwabe/ics-openvpn/releases/download/v0.7.61/ics-openvpn-0.7.61.apk",
   "sdk": "35",
   "java": "17",
