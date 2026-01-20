@@ -586,6 +586,11 @@ echo "This may take a few minutes on first boot..."
 echo "Emulator started in background"
 echo "Waiting for device to be ready..."
 
+# Start ADB server with -a flag to listen on all interfaces
+# This allows Docker containers to connect via host.docker.internal:5037
+echo "Starting ADB server (listening on all interfaces)..."
+"\$ANDROID_HOME/platform-tools/adb" -a start-server
+
 "\$ANDROID_HOME/platform-tools/adb" wait-for-device
 
 echo "Device ready!"

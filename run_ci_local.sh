@@ -459,13 +459,6 @@ run_exploit_verification() {
     exploit_files_abs_path="$(cd "$exploit_files_dir" && pwd)"
 
     # Start container with exploit_files mounted at /app/exploit_files
-    # For exploits that need ADB access to emulator on host:
-    # Restart host's ADB server to listen on all interfaces so containers can access it
-    echo -e "${INFO} Configuring ADB for container access..."
-    adb kill-server 2>/dev/null || true
-    adb -a -P 5037 start-server
-    sleep 2
-
     echo -e "${INFO} Starting exploit container: $container_name"
     docker run -d \
         --name "$container_name" \
@@ -476,11 +469,13 @@ run_exploit_verification() {
         "$exploit_image" \
         tail -f /dev/null
 
-    echo -e "${INFO} Verifying connection to host ADB..."
-    if ! docker exec "$container_name" adb devices | grep -q "device$"; then
-        echo -e "${ERROR} Container cannot see the emulator. Check macOS Firewall or ADB status."
-        docker rm -f "$container_name"
-        return 1
+    echo -e "${INFO} Verifying container→emulator ADB connection..."
+    if ! docker exec "$container_name" adb devices 2>/dev/null | grep -q "device$"; then
+        echo -e "${WARNING} Container cannot see the emulator via ADB."
+        echo -e "${WARNING} This is OK for network-only exploits, but exploits requiring ADB may fail."
+        echo -e "${WARNING} If needed, check macOS Firewall settings for ADB port 5037."
+    else
+        echo -e "${SUCCESS} Container can access emulator via ADB"
     fi
 
     # Run the exploit script inside the container
@@ -1163,6 +1158,24 @@ if [ -f "start_emulator.sh" ]; then
     echo "Emulator booted successfully."
 else
     echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
+fi
+
+# Ensure ADB server is listening on all interfaces for container access
+echo -e "${INFO} Ensuring ADB server is configured for container access..."
+if ! lsof -iTCP:5037 -sTCP:LISTEN 2>/dev/null | grep -q "\\*:5037"; then
+    echo -e "${INFO} ADB not listening on all interfaces, restarting with -a flag..."
+    adb kill-server 2>/dev/null || true
+    adb -a start-server
+    # Wait for reconnection
+    for i in {1..30}; do
+        if adb devices 2>/dev/null | grep -q "device$"; then
+            echo -e "${SUCCESS} ADB reconnected to emulator"
+            break
+        fi
+        sleep 1
+    done
+else
+    echo -e "${SUCCESS} ADB already configured correctly"
 fi
 
 # Check if we're running synthetic vulnerability tests
