@@ -83,3 +83,18 @@ RUN git config --global --add safe.directory '*'
 # Install semgrep for code analysis
 RUN /venv/bin/pip install semgrep && \
     ln -s /venv/bin/semgrep /usr/local/bin/semgrep
+
+# Minimal Android SDK for building exploit APKs
+# Tools: javac, d8, aapt, zipalign, apksigner, keytool
+ENV ANDROID_HOME=/opt/android-sdk
+ENV PATH="${ANDROID_HOME}/build-tools/34.0.0:${ANDROID_HOME}/cmdline-tools/latest/bin:${PATH}"
+
+RUN apt-get update && apt-get install -y --no-install-recommends openjdk-17-jdk-headless && \
+    rm -rf /var/lib/apt/lists/* && \
+    mkdir -p ${ANDROID_HOME} && \
+    curl -sL -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip && \
+    unzip -q /tmp/cmdtools.zip -d ${ANDROID_HOME}/cmdline-tools && \
+    mv ${ANDROID_HOME}/cmdline-tools/cmdline-tools ${ANDROID_HOME}/cmdline-tools/latest && \
+    yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 && \
+    ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-34" "build-tools;34.0.0" && \
+    rm -rf /tmp/cmdtools.zip ${ANDROID_HOME}/cmdline-tools/latest/lib/testing-* ${ANDROID_HOME}/.android
