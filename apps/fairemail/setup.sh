@@ -5,6 +5,8 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -30,10 +32,12 @@ print_error() {
 }
 
 # Check if we're in the right directory
-if [ ! -f "setup_app_source.sh" ]; then
+if [ ! -f "$SCRIPT_DIR/setup_app_source.sh" ]; then
     print_error "setup_app_source.sh not found. Please run this script from the BAIR-APPS directory."
     exit 1
 fi
+
+cd "$SCRIPT_DIR"
 
 print_status "Starting FairEmail setup..."
 
@@ -58,9 +62,8 @@ if [ -n "$ANDROID_HOME" ] && [ -d "$ANDROID_HOME" ]; then
         ls -t "$ANDROID_HOME/build-tools" | tail -n +2 | xargs -I {} rm -rf "$ANDROID_HOME/build-tools/{}" 2>/dev/null || true
     fi
 fi
-# Clean up temporary files
-rm -rf /tmp/* 2>/dev/null || true
-rm -rf /var/tmp/* 2>/dev/null || true
+# Clean up temporary files created by this app (if any)
+rm -rf "$SCRIPT_DIR/tmp" 2>/dev/null || true
 print_status "Disk space cleanup completed"
 
 # Check if Android SDK is available
