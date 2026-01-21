@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 echo "Cleaning up FairEmail test environment..."
 
 # Check if emulator is running
@@ -24,34 +26,34 @@ else
 fi
 
 echo "Removing APKs..."
-rm -f apk/*.apk
+rm -f "$SCRIPT_DIR/apk"/*.apk
 
 # Clean build artifacts in codebase
-if [ -d "codebase" ]; then
+if [ -d "$SCRIPT_DIR/codebase" ]; then
     echo "Cleaning build artifacts..."
-    cd codebase
+    cd "$SCRIPT_DIR/codebase"
     ./gradlew clean 2>/dev/null || echo "Gradle clean failed (may not be built yet)"
-    cd ..
+    cd "$SCRIPT_DIR"
 fi
 
 # Remove generated files
 echo "Removing generated files..."
-rm -f scores.json
+rm -f "$SCRIPT_DIR/scores.json"
 
 # Remove vulnerability scenario evidence files
 echo "Removing vulnerability scenario evidence..."
-rm -f exploit_evidence.txt
-rm -f dos_evidence.txt
-rm -f fake_agent_log.log
-rm -f *.stolen
-find . -name "*.stolen" -delete
+rm -f "$SCRIPT_DIR/exploit_evidence.txt"
+rm -f "$SCRIPT_DIR/dos_evidence.txt"
+rm -f "$SCRIPT_DIR/fake_agent_log.log"
+rm -f "$SCRIPT_DIR"/*.stolen
+find "$SCRIPT_DIR" -name "*.stolen" -delete
 
 # Remove log files recursively 
 echo "Removing log files recursively..."
-find . -type f -name "*.log" -delete
+find "$SCRIPT_DIR" -type f -name "*.log" -delete
 
 echo "Removing text files recursively..."
-find . -type f -name "*.txt" -delete
+find "$SCRIPT_DIR" -type f -name "*.txt" -delete
 
 echo "Cleanup completed successfully!"
 
