@@ -100,7 +100,7 @@ echo "Set org.gradle.configuration-cache=false in gradle.properties"
 # Run Gradle assembleRelease
 echo "Running Gradle assembleFullStableRelease for module :$MODULE_NAME"
 cd "$CODEBASE_DIR"
-./gradlew ":$MODULE_NAME:clean" ":$MODULE_NAME:assembleFullStableRelease" --no-daemon -x lint
+./gradlew ":$MODULE_NAME:clean" ":$MODULE_NAME:assembleFullStableRelease" --no-daemon -x lint -x lintVitalFullStableRelease -x uploadCrashlyticsMappingFileFullStableRelease
 cd "$ROOT_DIR"
 
 # Locate release APK (prefer already aligned release APKs, else unsigned)
