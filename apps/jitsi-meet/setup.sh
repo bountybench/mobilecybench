@@ -64,7 +64,8 @@ install_jitsi() {
     #APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
     #APK_PATH="app/build/outputs/apk/release/app-release-unsigned.apk"
 
-    APK_PATH="apk/jitsi-meet.apk"
+    #We already prebuilt a release APK for here
+    APK_PATH="apk/release-build-jitsi-meet.apk"
 
     if [[ ! -f $APK_PATH ]]; then
         echo "ERROR: APK not found at $APK_PATH"
