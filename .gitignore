@@ -26,12 +26,6 @@ ssh_key
 .env
 !apps/**/.env
 token_usage.jsonl
-node_modules
-yarn.lock
-*.egg-info
-submodule_size_report.txt
-.venv-wsl/
-agent/mcp/ngrok.yml
 *.code-workspace
 screenshots/*
 *.egg-info
@@ -41,4 +35,3 @@ benchmark.keystore
 agent_codebase/
 apps/*/static_vuln_reports/
 synthetic_scores.json
-.apk_backup_path

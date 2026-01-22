@@ -236,6 +236,7 @@ jobs:
           else
             echo "metadata.json not modified in $dir. Skipping test."
           fi
+
       - name: Check if app has server components
         if: steps.modified-dirs.outputs.should_exit != 'true'
         id: check-server-components
