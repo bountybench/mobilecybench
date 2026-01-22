@@ -41,3 +41,4 @@ benchmark.keystore
 agent_codebase/
 apps/*/static_vuln_reports/
 synthetic_scores.json
+.apk_backup_path

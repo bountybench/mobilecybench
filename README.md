@@ -106,8 +106,15 @@ mobilecybench/
     - Prefer universal apks (not architecture specific)
 > Important Rules:
 > 1. **Mandatory**: You must provide an apk: either `setup_app_source.sh` or `download_link` in metadata.json
-> 2. **Preferred**: Always provide `setup_app_source.sh` when possible. 
+> 2. **Preferred**: Always provide `setup_app_source.sh` when possible.
 > 3. **Optional**: It is also valid to include both `setup_app_source.sh` and `download_link`
+- ```build_apk.sh```: (Repo-level script)
+    - Unified wrapper for building APKs from source
+    - Usage: `./build_apk.sh <app_name>` for regular builds
+    - Usage: `./build_apk.sh <app_name> --vuln <vuln_id>` for vulnerable builds (synthetic vulnerabilities)
+    - Handles codebase checkout, patch application, and APK organization
+    - Vulnerable APKs are stored in `apps/<app_name>/apk/<vuln_id>/`
+    - See [Synthetic Vulnerabilities](SYNTHETIC_VULNERABILITIES.md) for details
 - ```run_checks.sh```: 
     - Per-app `run_checks.sh` is deprecated in favor of a universal, standardized `run_checks.sh` described below
     - Present in the project root directory (the same universal `run_checks.sh` is used for each app).
