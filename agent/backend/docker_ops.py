@@ -160,7 +160,7 @@ def execute_command_internal(command: str, timeout: int = 300) -> str:
         label = "ADB Command"
         try:
             exit_code, stdout, stderr = execute_adb_command_with_retry(
-                command, start_dir
+                command, start_dir, timeout=timeout
             )
             combined_output = stdout + stderr
         except Exception as e:
