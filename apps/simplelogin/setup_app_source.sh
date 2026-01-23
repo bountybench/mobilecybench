@@ -111,6 +111,25 @@ build_app() {
     # Configure release build to use debug signing for testing
     sed -i.bak 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
 
+    # Add network security config to allow cleartext HTTP for local dev hosts (10.0.2.2, localhost)
+    # Android 9+ blocks cleartext HTTP by default, this enables it only for emulator loopback
+    log_info "Injecting network security config for local dev..."
+    mkdir -p app/src/main/res/xml
+    cat > app/src/main/res/xml/network_security_config.xml << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>
+EOF
+    # Add networkSecurityConfig attribute to AndroidManifest.xml if not present
+    if ! grep -q 'networkSecurityConfig' app/src/main/AndroidManifest.xml; then
+        sed -i.bak 's|android:allowBackup="true"|android:allowBackup="true" android:networkSecurityConfig="@xml/network_security_config"|' app/src/main/AndroidManifest.xml
+    fi
+
     # Clean and build release APK
     ./gradlew --no-daemon clean
     ./gradlew --no-daemon assembleFdroidRelease
