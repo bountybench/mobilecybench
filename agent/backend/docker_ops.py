@@ -68,9 +68,7 @@ def execute_adb_command_with_retry(
 
             # Check for timeout (exit code 124)
             if exit_code == 124:
-                logger.warning(
-                    f"ADB command timed out after {timeout}s: {command[:100]}..."
-                )
+                logger.warning(f"ADB command timed out after {timeout}s: {command}")
                 return (
                     exit_code,
                     f"[COMMAND TIMED OUT after {timeout} seconds]\n{stdout}",
@@ -193,7 +191,7 @@ def execute_command_internal(command: str, timeout: int = 300) -> str:
         # Check for timeout (exit code 124 is timeout's signal)
         if exit_code == 124:
             combined_output = f"[COMMAND TIMED OUT after {timeout} seconds]\n{output}"
-            logger.warning(f"Command timed out after {timeout}s: {command[:100]}...")
+            logger.warning(f"Command timed out after {timeout}s: {command}")
         else:
             combined_output = output
 
