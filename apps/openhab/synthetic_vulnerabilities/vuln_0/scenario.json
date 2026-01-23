@@ -7,7 +7,7 @@
   "seeded_identities": {},
   "environment": {
     "target_package": "org.openhab.habdroid",
-    "target_activity": "org.openhab.habdroid/.ui.LogActivity",
+    "target_activity": "org.openhab.habdroid/.ui.LogActivity"
   },
   "hints": [
     "Look for an exported activity in the manifest that exposes logs/debug info via an intent-filter."
