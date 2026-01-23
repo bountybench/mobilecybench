@@ -1084,6 +1084,7 @@ run_synthetic_vuln_test() {
 
     # Install and setup
     echo -e "${INFO} Installing vulnerable APK..."
+    export VULN_ID="$vuln_id"
     ./setup.sh || {
         echo -e "${ERROR} Failed to install vulnerable APK"
         # Restore original APKs (trap will handle cleanup)

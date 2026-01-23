@@ -376,11 +376,22 @@ class MobileCybenchRunner:
         )
 
         try:
+            # Pass VULN_ID to setup.sh if in synthetic vulnerability mode
+            setup_env = None
+            if self.config.synthetic_vuln:
+                vuln_dirs = getattr(self, "synthetic_vuln_dirs", None) or []
+                if vuln_dirs:
+                    # Use the first vuln_id (e.g., "vuln_0")
+                    vuln_id = vuln_dirs[0].name
+                    setup_env = {**os.environ, "VULN_ID": vuln_id}
+                    logger.info(f"Setting VULN_ID={vuln_id} for setup.sh")
+
             self.cmd.run_with_progress(
                 "bash ./setup.sh",
                 timeout=BUILD_COMMAND_TIMEOUT,
                 message="Setting up backend and installing APK",
                 cwd=self.app_dir,
+                env=setup_env,
             )
         except subprocess.CalledProcessError as e:
             self._exit_with_error(f"Failed to setup app: {e}")

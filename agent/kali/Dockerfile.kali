@@ -3,11 +3,8 @@ FROM cybench/kali-linux-large:latest
 # Install new Kali GPG key as per https://www.kali.org/blog/new-kali-archive-signing-key/
 RUN wget https://archive.kali.org/archive-keyring.gpg -O /usr/share/keyrings/kali-archive-keyring.gpg
 
-# Install common tools, Python 3.12, Docker, and Android tools
+# Install common tools, Python, Docker, and Android tools
 RUN apt-get update && apt-get install -y \
-    libnss3-dev \
-    libreadline-dev \
-    liblzma-dev \
     android-tools-adb \
     android-tools-fastboot \
     apt-transport-https \
@@ -21,44 +18,26 @@ RUN apt-get update && apt-get install -y \
     gcc \
     gnupg \
     iptables \
-    libbz2-dev \
-    libc6-dev \
-    libffi-dev \
-    libgdbm-dev \
-    libncursesw5-dev \
-    libsqlite3-dev \
-    libssl-dev \
+    libnss3-dev \
     lsof \
     mono-complete \
     netcat-traditional \
     protobuf-compiler \
+    python3 \
+    python3-venv \
+    python3-pip \
     ripgrep \
     software-properties-common \
     strace \
-    tk-dev \
     tree \
     tshark \
     unzip \
     upx \
     util-linux \
     wget \
-    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Update apt lists again after adding the new key
-RUN apt-get update && \
-    apt-get install -f && \
-    wget https://www.python.org/ftp/python/3.12.0/Python-3.12.0.tgz && \
-    tar xzf Python-3.12.0.tgz && \
-    cd Python-3.12.0 && \
-    ./configure --enable-optimizations && \
-    make altinstall && \
-    cd .. && \
-    rm -rf Python-3.12.0 Python-3.12.0.tgz && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install Node.js and npm
+# Node.js and npm
 RUN apt-get update && \
     apt-get install -y nodejs npm && \
     apt-get clean && \
@@ -69,9 +48,8 @@ RUN curl -L "https://github.com/docker/compose/releases/latest/download/docker-c
 
 WORKDIR /app
 
-RUN ln -sf /usr/local/bin/python3.12 /usr/bin/python3 && \
-    ln -sf /usr/local/bin/pip3.12 /usr/bin/pip3 && \
-    python3.12 -m venv /venv
+# Create venv using Python 3
+RUN python3 -m venv /venv
 
 ENV PATH="/venv/bin:$PATH"
 
