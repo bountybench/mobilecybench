@@ -13,7 +13,6 @@
   },
   "hints": [
     "The vulnerability involves undocumented intent extras that bypass security checks",
-    "Look for compatibility mode flags in the RunCommandService",
-    "The bypass requires specific intent extra values to be set"
+    "Legacy compatibility features may have different security semantics"
   ]
 }

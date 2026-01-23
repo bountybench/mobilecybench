@@ -1,4 +1,4 @@
-"""Confirms the synthetic compat cache bypass was triggered."""
+"""Confirms the synthetic compat bridge bypass was triggered."""
 
 import json
 import re
