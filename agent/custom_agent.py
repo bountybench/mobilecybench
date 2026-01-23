@@ -8,18 +8,7 @@ from dotenv import load_dotenv
 from agent.agent_helpers import get_directory_tree
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
-    AGENT_GOAL,
-    APP_CREDENTIALS,
-    APP_SERVER_ACCESS,
-    BASE_EXAMPLES,
-    BASE_INSTRUCTIONS,
-    BASE_RESPONSE_FORMAT,
-    DETECT_DESCRIPTION,
-    SSRF_INSTRUCTIONS,
-    SSRF_PROBE_HOST,
-    SSRF_PROBE_PORT,
-    STOP_TOKEN,
-    TARGET_HOST_EXAMPLE,
+    build_detect_prompt,
 )
 from agent.tools.runtime import ToolRuntime
 from utils.agent_utils import take_screenshot
@@ -101,10 +90,13 @@ class CustomAgent:
                     current_text + "\n\n" + additional_context
                 )
 
-            agent_logger.info(f"Conversation system prompt: {self.system_prompt}")
-
             # Initialize conversation with system prompt
             system_content = self.system_prompt["content"][0]["text"]
+            agent_logger.info("=" * 60)
+            agent_logger.info("SYSTEM PROMPT")
+            agent_logger.info("=" * 60)
+            agent_logger.info(system_content)
+            agent_logger.info("=" * 60)
             conversation = self.provider.client.conversations.create(
                 metadata={"app_name": self.app_name, "model": self.model},
                 items=[
@@ -135,53 +127,20 @@ class CustomAgent:
         agent_logger.info("=" * 80)
 
     def _get_default_system_prompt(self) -> dict:
-        prompt_parts = [
-            DETECT_DESCRIPTION,
-            AGENT_GOAL.format(
-                package_name=self.package_name, codebase=self._initial_tree_context
-            ),
-        ]
-
-        if self.network_access and self.app_server:
-            prompt_parts.extend([APP_SERVER_ACCESS.format(app_server=self.app_server)])
-
-        if self.username and self.password:
-            prompt_parts.extend(
-                [APP_CREDENTIALS.format(username=self.username, password=self.password)]
-            )
-
-        prompt_parts.extend(
-            [
-                BASE_RESPONSE_FORMAT.format(stop_token=STOP_TOKEN),
-                BASE_INSTRUCTIONS.format(
-                    stop_token=STOP_TOKEN,
-                ),
-            ]
-        )
-
-        if self.include_ssrf:
-            prompt_parts.append(
-                SSRF_INSTRUCTIONS.format(
-                    ssrf_host=SSRF_PROBE_HOST,
-                    ssrf_port=SSRF_PROBE_PORT,
-                )
-            )
-
-        prompt_parts.append(BASE_EXAMPLES.format(stop_token=STOP_TOKEN))
-
-        # Add target host example if provided
+        # Strip port from app_server for hping3 example (doesn't support host:port)
+        resolved_host = None
         if self.app_server:
-            # Strip port from app_server for hping3 example as it doesn't support host:port syntax
-            host_only = self.app_server.split(":")[0]
-            prompt_parts.extend(
-                [
-                    TARGET_HOST_EXAMPLE.format(
-                        resolved_host=host_only, stop_token=STOP_TOKEN
-                    ),
-                ]
-            )
+            resolved_host = self.app_server.split(":")[0]
 
-        full_prompt = "".join(prompt_parts)
+        full_prompt = build_detect_prompt(
+            package_name=self.package_name,
+            codebase_tree=self._initial_tree_context,
+            app_server=self.app_server if self.network_access else None,
+            username=self.username,
+            password=self.password,
+            include_ssrf=self.include_ssrf,
+            resolved_host=resolved_host,
+        )
 
         return {
             "role": "system",
@@ -453,15 +412,25 @@ class CustomAgent:
 
             # Process response
             assistant_response = resp.output_text
-            agent_logger.info(f"[API RESPONSE - {len(assistant_response)} chars]")
-            agent_logger.info(assistant_response)
+            if assistant_response:
+                agent_logger.info(f"[API RESPONSE - {len(assistant_response)} chars]")
+                agent_logger.info(assistant_response)
+                agent_logger.info("-" * 40)
 
-            # DEBUG: Inspect response object structure
-            agent_logger.info(f"Response keys/attributes: {dir(resp)}")
-            if hasattr(resp, "output"):
-                agent_logger.info(f"resp.output: {resp.output}")
+            # Log reasoning summaries if available
+            if hasattr(resp, "output") and resp.output:
+                for item in resp.output:
+                    if getattr(item, "type", "") == "reasoning":
+                        summary_list = getattr(item, "summary", None)
+                        if summary_list:
+                            agent_logger.info("[REASONING SUMMARY]")
+                            for summary_item in summary_list:
+                                summary_text = getattr(
+                                    summary_item, "text", str(summary_item)
+                                )
+                                agent_logger.info(summary_text)
+                            agent_logger.info("-" * 40)
 
-            agent_logger.info("-" * 40)
             # Log all tool outputs from response
             if hasattr(resp, "tool_outputs") and resp.tool_outputs:
                 agent_logger.info(f"[TOOL OUTPUTS - {len(resp.tool_outputs)} outputs]")
