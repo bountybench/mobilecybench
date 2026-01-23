@@ -411,9 +411,9 @@ apply_vulnerability_patch() {
     
     cd "codebase" || return 1
     
-    if git apply --check "$patch_file" 2>&1; then
+    if git apply --check --allow-empty "$patch_file" 2>&1; then
         echo -e "${INFO} Patch validation successful"
-        if git apply "$patch_file"; then
+        if git apply --allow-empty "$patch_file"; then
             echo -e "${SUCCESS} Patch applied successfully"
             cd - || return 1
             return 0
