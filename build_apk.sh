@@ -178,15 +178,15 @@ apply_vulnerability_patch() {
 
     cd "$APP_DIR/codebase"
 
-    # Validate patch can be applied
-    if ! git apply --check "$patch_file" 2>&1; then
+    # Validate patch can be applied (--allow-empty for vulns that exist in codebase)
+    if ! git apply --check --allow-empty "$patch_file" 2>&1; then
         echo -e "${ERROR} Patch validation failed - patch cannot be applied cleanly"
         cd "$ROOT_DIR"
         return 1
     fi
 
     # Apply the patch
-    if ! git apply "$patch_file"; then
+    if ! git apply --allow-empty "$patch_file"; then
         echo -e "${ERROR} Failed to apply patch"
         cd "$ROOT_DIR"
         return 1
