@@ -81,14 +81,14 @@ def is_external_caller(line: str, app_uid: int) -> bool:
 def recent_external_intent(adb: List[str], cutoff: datetime, app_uid: int) -> bool:
     """
     Verify exploitation by checking for a START log entry from an external UID.
-    
+
     Android's ActivityManager logs a START event only when an activity successfully
     transitions through onCreate() and onStart() lifecycle callbacks. For LogActivity,
     this means:
     1. The activity was successfully launched (intent resolution passed)
     2. onCreate() completed (UI initialized, TextView created)
     3. onStart() completed (activity became visible)
-    
+
     Why this check is still sufficient:
     - The vulnerability is defined as "LogActivity is started by an external caller" (see
       scenario.json). The START event itself proves the vulnerability was triggered.
