@@ -130,17 +130,19 @@ def create_users_in_database(users):
             api_token = user["auth_token"]
             is_admin = user["is_admin"]
 
-            # Hash the password using bcrypt (same as SimpleLogin)
+            # Generate salt and hash password (SimpleLogin stores salt separately)
+            salt = bcrypt.gensalt().decode("utf-8")
             password_hash = bcrypt.hashpw(
-                password.encode("utf-8"), bcrypt.gensalt()
+                password.encode("utf-8"), salt.encode("utf-8")
             ).decode("utf-8")
 
             # SQL to insert user and API key
             sql_commands += f"""
-            INSERT INTO users (email, password, activated, created_at, updated_at, is_admin) 
-            VALUES ('{email}', '{password_hash}', true, NOW(), NOW(), {is_admin}) 
-            ON CONFLICT (email) DO UPDATE SET 
+            INSERT INTO users (email, password, salt, activated, created_at, updated_at, is_admin)
+            VALUES ('{email}', '{password_hash}', '{salt}', true, NOW(), NOW(), {is_admin})
+            ON CONFLICT (email) DO UPDATE SET
                 password = EXCLUDED.password,
+                salt = EXCLUDED.salt,
                 activated = true,
                 updated_at = NOW(),
                 is_admin = EXCLUDED.is_admin;
