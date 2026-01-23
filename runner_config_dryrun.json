@@ -11,6 +11,7 @@
   "screenshot_mode": false,
   "headless_mode": false,
   "dry_run": true,
+  "synthetic_vuln": false,
   "custom_system_prompt": null,
   "agent_image": "cybench/mobilecybench:latest",
   "docker_mode": false,

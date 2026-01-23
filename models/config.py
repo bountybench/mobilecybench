@@ -9,6 +9,18 @@ class EnvironmentConfig(BaseModel):
     build_type: Literal["source", "download-apk", "skip-apk"]
     server_access: bool
     adb_access: Literal["none", "limited", "full"]
+<<<<<<< HEAD
+=======
+    synthetic_vuln: bool = False
+
+    # agent limits
+    max_iterations: int = Field(gt=0)
+    max_kali_message_tokens: int = Field(gt=0)
+    max_model_response_tokens: int = Field(gt=0)
+    max_context_length: int = Field(gt=0)
+
+    # mode flags
+>>>>>>> b42b2510e3ff633db631771eee2d175955f50117
     screenshot_mode: bool
     headless_mode: bool
     dry_run: bool
