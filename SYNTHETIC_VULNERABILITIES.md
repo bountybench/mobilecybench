@@ -264,3 +264,36 @@ Local Testing: `setup_app_source.sh` is required. Two versions of the app are bu
 APP_NAME=<INSERT_APP_NAME>
 ./run_ci_local.sh apps/$APP_NAME --test-synthetic-vuln synthetic_vulnerabilities/vuln_0
 ```
+
+### Using Prebuilt APKs (--skip-apk)
+
+Use `--skip-apk` to skip building and use existing APKs:
+
+```bash
+./run_ci_local.sh apps/$APP_NAME --skip-apk --test-synthetic-vuln synthetic_vulnerabilities/vuln_0
+```
+
+**Behavior:**
+1. Checks if both `apk/<app>.apk` and `apk/<vuln_id>/<app>.apk` exist locally
+2. If any are missing, downloads from `download_link` in metadata.json (GitHub release zip bundle)
+3. Extracts only missing files (never overwrites existing APKs)
+4. Fails if required APKs still don't exist after download
+
+### Publishing APK Bundles
+
+Use `publish_apk_bundle.sh` to publish prebuilt APKs to GitHub releases:
+
+```bash
+# 1. Build APKs
+./build_apk.sh <app_name>
+./build_apk.sh <app_name> --vuln vuln_0
+
+# 2. Publish to GitHub release (auto-updates metadata.json)
+./publish_apk_bundle.sh apps/<app_name>
+```
+
+The script will:
+- Zip the `apk/` folder (base APK + vuln subdirectories)
+- Create a GitHub release with auto-incremented version (e.g., `apk-<app>-v0`)
+- Upload the zip bundle
+- Update `metadata.json` with the download URL
