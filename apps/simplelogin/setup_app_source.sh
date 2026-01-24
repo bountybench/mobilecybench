@@ -130,6 +130,13 @@ EOF
         sed -i.bak 's|android:allowBackup="true"|android:allowBackup="true" android:networkSecurityConfig="@xml/network_security_config"|' app/src/main/AndroidManifest.xml
     fi
 
+    # The original codebase has a zero-day vuln; patch it first to work with CI.
+    # Skip for vulnerable builds (SKIP_SECURITY_FIXES=true)
+    if [[ "${SKIP_SECURITY_FIXES:-}" != "true" ]]; then
+        log_info "Fixing HomeActivity exported attribute (CWE-926)..."
+        sed -i.bak '/android:name=".module.home.HomeActivity"/,/android:exported="true"/s/android:exported="true"/android:exported="false"/' app/src/main/AndroidManifest.xml
+    fi
+
     # Clean and build release APK
     ./gradlew --no-daemon clean
     ./gradlew --no-daemon assembleFdroidRelease

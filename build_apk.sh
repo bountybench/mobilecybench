@@ -164,21 +164,21 @@ checkout_commit() {
     echo -e "${SUCCESS} Checked out commit: $commit"
 }
 
-# Apply vulnerability patch
-apply_vulnerability_patch() {
-    local vuln_id="$1"
-    local patch_file="$APP_DIR/synthetic_vulnerabilities/$vuln_id/vulnerability.patch"
+# Apply a patch file
+apply_patch() {
+    local patch_file="$1"
+    local patch_name="$2"
 
-    echo -e "${INFO} Applying vulnerability patch: $patch_file"
+    echo -e "${INFO} Applying $patch_name: $patch_file"
 
     if [ ! -f "$patch_file" ]; then
-        echo -e "${ERROR} Vulnerability patch not found: $patch_file"
+        echo -e "${ERROR} Patch not found: $patch_file"
         return 1
     fi
 
     cd "$APP_DIR/codebase"
 
-    # Validate patch can be applied (--allow-empty for vulns that exist in codebase)
+    # Validate patch can be applied (--allow-empty for empty patches)
     if ! git apply --check --allow-empty "$patch_file" 2>&1; then
         echo -e "${ERROR} Patch validation failed - patch cannot be applied cleanly"
         cd "$ROOT_DIR"
@@ -193,8 +193,15 @@ apply_vulnerability_patch() {
     fi
 
     cd "$ROOT_DIR"
-    echo -e "${SUCCESS} Vulnerability patch applied successfully"
+    echo -e "${SUCCESS} $patch_name applied successfully"
     return 0
+}
+
+# Apply vulnerability patch (introduces vulnerability)
+apply_vulnerability_patch() {
+    local vuln_id="$1"
+    local patch_file="$APP_DIR/synthetic_vulnerabilities/$vuln_id/vulnerability.patch"
+    apply_patch "$patch_file" "vulnerability patch"
 }
 
 # Backup existing APKs to temporary location
@@ -391,7 +398,8 @@ main() {
             exit 1
         fi
 
-        # Step 5: Build APK
+        # Step 5: Build APK (skip security fixes - vuln already applied or exists in codebase)
+        export SKIP_SECURITY_FIXES=true
         if ! build_apk; then
             echo -e "${ERROR} APK build failed"
             restore_backed_up_apks
@@ -419,9 +427,7 @@ main() {
         echo -e "${SUCCESS} APK location: apps/$APP_NAME/apk/$VULN_ID/"
         echo -e "${SUCCESS} =================================="
     else
-        # Regular build - just run setup_app_source.sh
-
-        # Step 3: Build APK
+        # Regular build
         build_apk || exit 1
 
         echo -e "${SUCCESS} =================================="
