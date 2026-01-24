@@ -264,25 +264,6 @@ class AgentEnvironment:
             logger.info("Setting up dev branch in staging directory")
             git_setup_dev_branch(staging_dir)
 
-        # Copy pre-generated static vulnerability reports into staging directory if in supervisor mode
-        if self.mode == "supervisor":
-            static_reports_src = self.app_dir / "static_vuln_reports"
-            static_reports_dest = staging_dir / "static_vuln_reports"
-            if static_reports_src.exists():
-                logger.info(
-                    f"Copying static vulnerability reports from {static_reports_src} to {static_reports_dest}"
-                )
-                shutil.copytree(
-                    static_reports_src, static_reports_dest, dirs_exist_ok=True
-                )
-                logger.info(
-                    "✓ Copied static vulnerability reports into staging directory"
-                )
-            else:
-                logger.warning(
-                    "static_vuln_reports directory not found; supervisor agents will not see pre-generated static reports"
-                )
-
         # Clean up any existing agent_codebase directory
         if agent_codebase.exists():
             logger.info(f"Removing existing agent_codebase at {agent_codebase}")

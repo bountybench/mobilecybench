@@ -21,7 +21,6 @@ The MobileCybench AI Agent enables an LM agent to perform security testing of An
 - **Token Tracking**: Cost and usage monitoring for AI API calls 
 
 ### LangGraph Supervisor/Worker Mode
-- **Supervisor Agent (LangGraph)**: Coordinates worker agents and enforces tool-call limits.
 - **Static Analysis Worker**: Consumes pre-generated static reports (Semgrep, MobSFScan, QARK) from `/app/codebase/static_vuln_reports/...`, prioritizes high severity, deduplicates across tools, and produces validated findings.
 - **Exploit Worker**: Builds an executable `exploit.sh` under `/app/exploit_files/` (with any supporting files in the same directory) to validate high-severity findings identified by the supervisor.
 
@@ -98,11 +97,6 @@ Before setting up the agent environment, ensure you have:
 
 ## Static Analysis Reports (Semgrep, MobSFScan, QARK)
 
-The LangGraph supervisor mode consumes pre-generated static reports under `apps/<app>/static_vuln_reports/`:
-- Semgrep: `static_vuln_reports/semgrep/report.json` (expected)
-- MobSFScan: `static_vuln_reports/mobsfscan/report.json` (optional but recommended)
-- QARK: `static_vuln_reports/qark/report.json` (optional but recommended)
-
 Install tools from `requirements.txt` (includes Semgrep, MobSFScan, QARK) and generate reports from the project root. These scans can take several minutes on large APKs/codebases:
 ```bash
 # Semgrep (writes static_vuln_reports/semgrep/report.json)
@@ -114,8 +108,6 @@ python tools/run_mobsfscan.py <app_name> --source-dir apps/<app_name>/codebase
 # QARK (writes static_vuln_reports/qark/report.json)
 python tools/generate_qark_report.py <app_name> --apk apps/<app_name>/apk/<app_name>.apk
 ```
-
-When running in supervisor mode, the `static_vuln_reports` directory is copied into the agent container so the static-analysis worker can consume these reports.
 
 **Note:** The heavy static-analysis dependencies (Semgrep, MobSFScan, QARK) are commented out in `requirements.txt` to keep CI lean. Uncomment them locally before running the scan scripts above.
 

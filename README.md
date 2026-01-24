@@ -208,8 +208,6 @@ See [ownCloud](/apps/owncloud-android/):
 
 ## 3. Generating Static Analysis Reports
 
-For the supervisor agent to perform targeted vulnerability discovery, you must pre-generate static analysis reports. These reports are stored in `apps/<app>/static_vuln_reports/`.
-
 ### Supported Tools
 - **Semgrep** (Required): General static analysis
 - **MobSFScan** (Optional): Mobile-specific security scanning

@@ -202,64 +202,6 @@ class MobileCybenchRunner:
             self.synthetic_patch_paths = patch_paths
             self.synthetic_vuln_dirs = [p.parent for p in patch_paths]
 
-        # Check for static vulnerability reports if in supervisor mode
-        if self.mode == "supervisor":
-            reports_root = self.app_dir / "static_vuln_reports"
-            semgrep_report_path = reports_root / "semgrep" / "report.json"
-            mobsf_report_path = reports_root / "mobsfscan" / "report.json"
-            qark_report_path = reports_root / "qark" / "report.json"
-
-            if not reports_root.exists() or not any(reports_root.iterdir()):
-                self._exit_with_error(
-                    "Supervisor mode requires static analysis outputs under "
-                    f"{reports_root}. Directory is missing or empty.\n"
-                    "Generate at least Semgrep (and optionally MobSF/QARK) reports before running."
-                )
-
-            # Semgrep should be present; warn if missing
-            if not semgrep_report_path.exists():
-                logger.warning(
-                    "Semgrep report not found at %s; supervisor agents will proceed without it.\n"
-                    "To generate it, run: python tools/run_semgrep_scan.py %s",
-                    semgrep_report_path,
-                    self.app_name,
-                )
-            else:
-                try:
-                    with open(semgrep_report_path, "r") as f:
-                        json.load(f)
-                    logger.info(
-                        "✓ Found and validated Semgrep report for supervisor mode"
-                    )
-                except json.JSONDecodeError as e:
-                    logger.warning(
-                        "Semgrep report exists but is not valid JSON (%s); rerun Semgrep to regenerate.",
-                        e,
-                    )
-
-            # MobSFScan and QARK are optional but recommended; validate if present
-            for tool_name, report_path in [
-                ("MobSFScan", mobsf_report_path),
-                ("QARK", qark_report_path),
-            ]:
-                if report_path.exists():
-                    try:
-                        with open(report_path, "r") as f:
-                            json.load(f)
-                        logger.info("✓ Found %s report at %s", tool_name, report_path)
-                    except json.JSONDecodeError:
-                        logger.warning(
-                            "%s report at %s is not valid JSON; rerun the scan to regenerate.",
-                            tool_name,
-                            report_path,
-                        )
-                else:
-                    logger.warning(
-                        "%s report not found at %s; continuing without it.",
-                        tool_name,
-                        report_path,
-                    )
-
         logger.info("Input validation passed")
 
     def _apply_synthetic_patch(self):
@@ -618,26 +560,7 @@ class MobileCybenchRunner:
         logger.info(f"Starting {agent_type.lower()} execution...")
 
         try:
-            if self.mode == "supervisor":
-                from agent.hierarchical_agent import create_and_run_supervisor_system
-
-                logger.info("Initializing supervisor agent system...")
-                logger.info("Starting supervisor agent execution...")
-
-                result = create_and_run_supervisor_system(
-                    model=self.config.model,
-                    max_iterations=self.config.max_iterations,
-                    allowed_tools=self.config.allowed_tools,
-                    metadata=getattr(self, "metadata", {}),
-                )
-
-                log_banner("SUPERVISOR AGENT EXECUTION RESULTS")
-                logger.info(f"Status: {result.get('status', 'Unknown')}")
-                logger.info(f"Turns: {result.get('turns', 0)}")
-
-                return result
-
-            elif self.mode == "codex":
+            if self.mode == "codex":
                 from agent.codex_agent import CodexAgent
 
                 logger.info("Initializing codex agent...")
@@ -1186,9 +1109,9 @@ def main():
         # Add agent_type selection
         parser.add_argument(
             "--agent-type",
-            choices=["custom", "codex", "supervisor"],
+            choices=["custom", "codex"],
             default="custom",
-            help="Agent type to use: 'custom' (OpenAI API), 'codex' (Codex CLI), or 'supervisor' (hierarchical multi-agent). Default: custom.",
+            help="Agent type to use: 'custom' (OpenAI API), 'codex' (Codex CLI). Default: custom.",
         )
 
         parser.add_argument(
