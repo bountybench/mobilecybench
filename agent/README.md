@@ -20,12 +20,12 @@ The MobileCybench AI Agent enables an LM agent to perform security testing of An
 - **Model Providers**: Flexible AI model provider architecture
 - **Token Tracking**: Cost and usage monitoring for AI API calls 
 
-### LangGraph Supervisor/Worker Mode
+### LangGraph Worker Mode
 - **Static Analysis Worker**: Consumes pre-generated static reports (Semgrep, MobSFScan, QARK) from `/app/codebase/static_vuln_reports/...`, prioritizes high severity, deduplicates across tools, and produces validated findings.
-- **Exploit Worker**: Builds an executable `exploit.sh` under `/app/exploit_files/` (with any supporting files in the same directory) to validate high-severity findings identified by the supervisor.
+- **Exploit Worker**: Builds an executable `exploit.sh` under `/app/exploit_files/` (with any supporting files in the same directory) to validate high-severity findings identified.
 
 ### LangGraph Semgrep Agent (standalone)
-- `agent/langgraph/semgrep_agent.py` and `semgrep_tools.py` define a LangGraph agent that runs Semgrep live via the `run_semgrep_scan` tool and verifies findings in-code. This is separate from the supervisor flow, which reads pre-generated reports under `static_vuln_reports/`.
+- `agent/langgraph/semgrep_agent.py` and `semgrep_tools.py` define a LangGraph agent that runs Semgrep live via the `run_semgrep_scan` tool and verifies findings in-code.
 
 ## Directory Structure
 

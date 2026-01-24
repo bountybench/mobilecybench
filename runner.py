@@ -550,7 +550,7 @@ class MobileCybenchRunner:
             }
 
     def _run_agent(self):
-        """Run the agent - custom, codex, or supervisor based on mode"""
+        """Run the agent - custom, codex based on mode"""
         agent_type = f"{self.mode.upper()} AGENT"
         log_banner(f"RUNNING {agent_type}")
 
@@ -612,29 +612,18 @@ class MobileCybenchRunner:
                     include_ssrf=include_ssrf,
                 )
 
-            # This can take a while for actual LLM calls
-            # (Skip for supervisor mode as it's already run above)
-            if self.mode != "supervisor":
-                result = agent.run()
+            result = agent.run()
 
-                log_banner("AGENT EXECUTION RESULTS")
-                logger.info(f"Status: {result.get('status', 'Unknown')}")
-                logger.info(f"Turns: {result.get('turns', 0)}")
-                logger.info(f"Log file: {result.get('log_file', 'None')}")
+            log_banner("AGENT EXECUTION RESULTS")
+            logger.info(f"Status: {result.get('status', 'Unknown')}")
+            logger.info(f"Turns: {result.get('turns', 0)}")
+            logger.info(f"Log file: {result.get('log_file', 'None')}")
 
-                if result.get("final_message"):
-                    logger.info("Final Message:")
-                    logger.info(f"  {result['final_message']}")
+            if result.get("final_message"):
+                logger.info("Final Message:")
+                logger.info(f"  {result['final_message']}")
 
-                return result
-
-            # Supervisor mode already returned above, but satisfy type checker
-            return {
-                "status": "error",
-                "turns": 0,
-                "final_message": None,
-                "log_file": None,
-            }
+            return result
 
         except Exception as e:
             logger.error(f"Failed to run agent: {e}")

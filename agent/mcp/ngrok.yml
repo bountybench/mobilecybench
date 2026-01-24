@@ -1,6 +1,0 @@
-version: 2
-authtoken: 34Y1c8DuhjzAtCcMS1IS2P2b3nf_5HP5qhkYs5TL2RhxkzbX1
-tunnels:
-  web:
-    proto: http
-    addr: 8000
