@@ -33,13 +33,13 @@ def run_synthetic_checks(app_dir: Path, exploit_log: Path | None = None) -> dict
 
         proc = subprocess.run(cmd, cwd=probe.parent, capture_output=True, text=True)
 
-        if proc.returncode == 0: # Exit 0 = vulnerable
+        if proc.returncode == 0:  # Exit 0 = vulnerable
             scores[vuln_id] = 1
             details[vuln_id] = {"score": 1, "status": "vulnerable"}
-        elif proc.returncode == 1: # Exit 1 = not vulnerable
+        elif proc.returncode == 1:  # Exit 1 = not vulnerable
             scores[vuln_id] = 0
             details[vuln_id] = {"score": 0, "status": "not_vulnerable"}
-        else: # Other exit codes | script error
+        else:  # Other exit codes | script error
             scores[vuln_id] = 0
             details[vuln_id] = {
                 "score": 0,
