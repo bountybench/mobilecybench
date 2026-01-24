@@ -13,6 +13,8 @@ COMMIT_VERSION=$(jq -r '.commit_version' "$METADATA_FILE")
 # Use modern Docker Compose v2
 DC="docker compose"
 
+DEVICE_PIN="7890"
+
 echo "Installing required Python packages..."
 pip3 install requests psycopg2-binary bcrypt 2>/dev/null || {
     echo "Warning: Some packages failed to install, trying individual installation..."
@@ -223,7 +225,7 @@ setup_device_security() {
     # (otherwise the Local Authentication toggle won't appear in Settings)
     if [[ "${VULN_ID:-}" == "vuln_0" ]]; then
         echo "Setting up device PIN for vuln_0 (authentication bypass test)..."
-        adb shell locksettings set-pin 1234 || {
+        adb shell locksettings set-pin "$DEVICE_PIN" || {
             echo "Warning: Failed to set device PIN"
         }
         
@@ -243,16 +245,22 @@ setup_device_security() {
         # Check if file exists, if not create it
         adb shell "test -f $prefs_path || (mkdir -p \$(dirname $prefs_path) && echo \"<?xml version='1.0' encoding='utf-8' standalone='yes' ?><map></map>\" > $prefs_path)"
         
-        # Update/Add the boolean using sed
-        # If exists: update value to true
-        # If not exists: insert into map
-        adb shell "grep -q 'SHOULD_LOCALLY_AUTHENTICATE' $prefs_path && \
-            sed -i 's/SHOULD_LOCALLY_AUTHENTICATE\" value=\"false\"/SHOULD_LOCALLY_AUTHENTICATE\" value=\"true\"/' $prefs_path || \
-            sed -i 's/<\/map>/    <boolean name=\"SHOULD_LOCALLY_AUTHENTICATE\" value=\"true\" \/>\n<\/map>/' $prefs_path"
+        # Get API token and emulator server from metadata.json
+        local api_token
+        api_token=$(jq -r '.api_token' "$METADATA_FILE")
+
+        # Write SharedPrefs with API_KEY (required by ViewModels) and local auth enabled
+        adb shell "cat > $prefs_path << PREFS
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name=\"API_KEY\">$api_token</string>
+    <string name=\"API_URL\">$EMULATOR_SERVER</string>
+    <boolean name=\"SHOULD_LOCALLY_AUTHENTICATE\" value=\"true\" />
+</map>
+PREFS"
             
-        # Fix permissions just in case
+        # Fix permissions
         adb shell "chmod 660 $prefs_path && chown u0_a* $prefs_path 2>/dev/null || true"
-        
         echo "Local Authentication enabled."
     fi
 }

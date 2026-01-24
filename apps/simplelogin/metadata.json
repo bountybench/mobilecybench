@@ -7,6 +7,7 @@
   "app_server": "http://simplelogin-api:7777",
   "username": "testuser@gmail.com",
   "password": "P@ssw0rd!",
+  "api_token": "sl_x1kywjktwvmeutzmwg4qd5tdx1h0eoho",
   "package_name": "io.simplelogin.android.fdroid",
   "container_names": []
 }

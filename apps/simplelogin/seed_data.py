@@ -72,6 +72,13 @@ def generate_flat_secrets(users, api_host="http://localhost:7777"):
     # Map users by username for clarity
     users_by_name = {u["username"]: u for u in users}
 
+    # Test user (user_a / testuser@gmail.com)
+    if "user_a" in users_by_name:
+        ua = users_by_name["user_a"]
+        flat_secrets["user_a_email"] = ua["email"]
+        flat_secrets["user_a_password"] = ua["password"]
+        flat_secrets["user_a_auth_token"] = ua["auth_token"]
+
     # Secondary user (user_b)
     if "user_b" in users_by_name:
         ub = users_by_name["user_b"]

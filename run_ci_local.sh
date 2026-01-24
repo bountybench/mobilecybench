@@ -1019,6 +1019,7 @@ run_synthetic_vuln_test() {
 
     # Install and setup
     echo -e "${INFO} Installing clean APK..."
+    export VULN_ID="$vuln_id"
     ./setup.sh || { echo -e "${ERROR} Failed to install clean APK"; exit 1; }
 
     # Wait for containers
