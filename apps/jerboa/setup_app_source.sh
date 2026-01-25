@@ -74,8 +74,28 @@ setup_environment() {
     info "Environment configured."
 }
 
+apply_http_support_patch() {
+    info "Applying HTTP support patch for local development..."
+
+    local http_patch="$SCRIPT_DIR/synthetic_vulnerabilities/vuln_0/http_support.patch"
+
+    if [ -f "$http_patch" ]; then
+        if git apply --check "$http_patch" 2>/dev/null; then
+            git apply "$http_patch"
+            info "HTTP support patch applied successfully"
+        else
+            warn "HTTP support patch could not be applied (may already be applied)"
+        fi
+    else
+        warn "HTTP support patch not found at $http_patch - continuing without it"
+    fi
+}
+
 build_jerboa() {
     info "Building Jerboa from source (this may take several minutes)..."
+
+    # Apply HTTP support patch before building
+    apply_http_support_patch
 
     ./gradlew clean
     ./gradlew :app:assembleRelease
