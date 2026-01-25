@@ -32,7 +32,7 @@ load_dotenv()
 project_root = Path(__file__).parent
 
 EMULATOR_BOOT_TIMEOUT_SECONDS = 300  # 5 minutes
-BUILD_COMMAND_TIMEOUT = 600  # 10 minutes
+BUILD_COMMAND_TIMEOUT = 900  # 15 minutes
 DUMMY_LOG_FILENAME = "dummy_log.txt"
 
 
