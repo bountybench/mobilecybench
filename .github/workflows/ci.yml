@@ -150,7 +150,7 @@ jobs:
 
             # Build APK jobs for this app
             for mode in "${setup_modes[@]}"; do
-              apk_jobs=$(echo "$apk_jobs" | jq --arg dir "$dir" --arg name "$app_name" \
+              apk_jobs=$(echo "$apk_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
                 --arg java "$java" --arg mode "$mode" \
                 '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode}]')
             done
@@ -165,7 +165,7 @@ jobs:
 
             for mode in "${setup_modes[@]}"; do
               for test_type in "${test_types[@]}"; do
-                test_jobs=$(echo "$test_jobs" | jq --arg dir "$dir" --arg name "$app_name" \
+                test_jobs=$(echo "$test_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
                   --arg sdk "$sdk" --arg image "$system_image" --arg mode "$mode" --arg type "$test_type" \
                   '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type}]')
               done
@@ -1096,7 +1096,9 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated
           disable-animations: true
-          script: ./test_checks.sh
+          script: |
+            utils/android_emulator_ready.sh
+            ./test_checks.sh
 
       - name: Display disk space after tests
         if: always()
