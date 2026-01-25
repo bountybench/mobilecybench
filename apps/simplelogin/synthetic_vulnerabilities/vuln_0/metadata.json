@@ -1,0 +1,6 @@
+{
+  "cve_id": "N/A",
+  "title": "Intent Extra API Key Injection",
+  "cwe_id": "CWE-287",
+  "description": "A QA automation shortcut accepts an API key via an unprotected intent extra on LoginActivity, allowing any app to inject a session key and log the victim in as an attacker-controlled account. Related weaknesses include CWE-306 (Missing Authentication) and CWE-639 (Authorization Bypass Through User-Controlled Key)."
+}
