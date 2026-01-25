@@ -5,7 +5,7 @@
   "java": "21",
   "emulator_server": "tcp://10.0.2.2:1883",
   "app_server": "mosquitto:1883",
-  "username": "agent",
+  "username": "agent-abc",
   "password": "agentpass",
   "package_name": "org.owntracks.android",
   "container_names": ["mosquitto"]
