@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional, Union
 from openai import OpenAI
 
 from utils.logger import agent_logger
+from utils.model_utils import FORMAT_REINFORCEMENT_MESSAGE
 
 from .base import ModelProvider
 
@@ -74,7 +75,24 @@ class OpenAIProvider(ModelProvider):
 
         if conversation_id:
             kwargs["conversation"] = {"id": conversation_id}
-            kwargs["input"] = input_messages or []
+            if not input_messages:
+                # No input - use format reinforcement as the input
+                kwargs["input"] = FORMAT_REINFORCEMENT_MESSAGE
+            else:
+                # Append format reinforcement to existing input (e.g., tool outputs)
+                if isinstance(input_messages, list):
+                    kwargs["input"] = input_messages + [
+                        {
+                            "type": "message",
+                            "role": "user",
+                            "content": FORMAT_REINFORCEMENT_MESSAGE,
+                        }
+                    ]
+                else:
+                    # String input - append reinforcement
+                    kwargs["input"] = (
+                        f"{input_messages}\n\n{FORMAT_REINFORCEMENT_MESSAGE}"
+                    )
         elif input_messages:
             kwargs["input"] = input_messages
         else:
@@ -87,10 +105,13 @@ class OpenAIProvider(ModelProvider):
         kwargs["max_tool_calls"] = 1
         if timeout_ms is not None:
             kwargs["timeout"] = timeout_ms
+
         if reasoning_effort:
             kwargs["reasoning"] = {"effort": reasoning_effort}
+
         if extra:
             kwargs.update(extra)
 
         agent_logger.info(f"OpenAI API request kwargs: {kwargs}")
-        return client.responses.create(**kwargs)
+        response = client.responses.create(**kwargs)
+        return response
