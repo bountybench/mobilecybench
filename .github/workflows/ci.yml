@@ -127,8 +127,8 @@ jobs:
               exit 1
             fi
 
-            source_modified=$(git diff --name-only origin/main...HEAD | grep -q "$dir/setup_app_source.sh" && echo "true" || echo "false")
-            apklink_modified=$(git diff --name-only origin/main...HEAD | grep -q "$dir/metadata.json" && echo "true" || echo "false")
+            source_modified=$(git diff --name-only origin/main...HEAD | grep -qF "$dir/setup_app_source.sh" && echo "true" || echo "false")
+            apklink_modified=$(git diff --name-only origin/main...HEAD | grep -qF "$dir/metadata.json" && echo "true" || echo "false")
 
             setup_modes=()
             if [ "$has_source" = true ] && [ "$has_apklink" = true ]; then
@@ -994,6 +994,10 @@ jobs:
           ./cleanup.sh
           uninstall_package "$package_name"
           EOF
+              ;;
+            *)
+              echo "ERROR: Unknown test_type: ${{ matrix.test_type }}"
+              exit 1
               ;;
           esac
 
