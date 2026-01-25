@@ -206,13 +206,17 @@ def build_detect_prompt(
 
 def build_synthetic_prompt(
     package_name: str,
-    username: str,
-    password: str,
+    username: str = None,
+    password: str = None,
     app_server: str = None,
 ) -> str:
     """Build the system prompt for synthetic vulnerability mode."""
     server_access = f"- Server access at {app_server}" if app_server else ""
-    credentials = _CREDENTIALS_SECTION.format(username=username, password=password)
+    credentials = (
+        _CREDENTIALS_SECTION.format(username=username, password=password)
+        if username and password
+        else ""
+    )
 
     parts = [
         _SYNTHETIC_DESCRIPTION.format(
