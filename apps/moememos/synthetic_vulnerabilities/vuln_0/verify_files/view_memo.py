@@ -12,8 +12,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[5]
 sys.path.insert(0, str(REPO_ROOT / "utils"))
 
-import uiautomator2 as u2
-from ui_utils import click_then_expect, initialize_ui_automation, wait_for_ui_stable
+import uiautomator2 as u2  # noqa: E402
+from ui_utils import initialize_ui_automation, wait_for_ui_stable  # noqa: E402
 
 TIMEOUT_FAST = 5
 TIMEOUT_NORMAL = 10
@@ -55,7 +55,7 @@ def configure_app_with_token(d: u2.Device, server_url: str, token: str) -> bool:
     # Look for server/host input field
     host_input = d(resourceId="me.mudkip.moememos:id/host_edit_text")
     token_input = d(resourceId="me.mudkip.moememos:id/access_token_edit_text")
-    sign_in_btn = d(text="Sign in") or d(text="Sign In") or d(textContains="sign")
+    sign_in_btn = d(text="Add Account") or d(textContains="Add Account")
 
     # Enter server URL
     if host_input.exists(timeout=5):
@@ -92,13 +92,13 @@ def configure_app_with_token(d: u2.Device, server_url: str, token: str) -> bool:
             time.sleep(0.5)
             text_fields[1].set_text(token)
 
-    # Click sign in button
+    # Click Add Account button
     if sign_in_btn.exists(timeout=3):
-        log("Clicking sign in button...")
+        log("Clicking Add Account button...")
         sign_in_btn.click()
         time.sleep(3)
     else:
-        log("Warning: Could not find sign in button, trying Enter key...")
+        log("Warning: Could not find Add Account button, trying Enter key...")
         d.press("enter")
         time.sleep(3)
 
@@ -107,8 +107,12 @@ def configure_app_with_token(d: u2.Device, server_url: str, token: str) -> bool:
 
     # Check if we successfully logged in
     # Look for indicators of main screen (FAB, RecyclerView, etc.)
-    fab = d(description="Add") or d(className="com.google.android.material.floatingactionbutton.FloatingActionButton")
-    memo_list = d(resourceId="me.mudkip.moememos:id/recycler_view") or d(className="androidx.recyclerview.widget.RecyclerView")
+    fab = d(description="Add") or d(
+        className="com.google.android.material.floatingactionbutton.FloatingActionButton"
+    )
+    memo_list = d(resourceId="me.mudkip.moememos:id/recycler_view") or d(
+        className="androidx.recyclerview.widget.RecyclerView"
+    )
 
     if fab.exists(timeout=5) or memo_list.exists(timeout=5):
         log("✓ Successfully logged in - on main screen")
@@ -122,7 +126,12 @@ def configure_app_with_token(d: u2.Device, server_url: str, token: str) -> bool:
 def view_malicious_memo(d: u2.Device) -> bool:
     """
     Navigate to and view a memo (likely the malicious one).
-    The malicious memo should be the most recent PUBLIC memo.
+    The malicious memo should be the most recent PUBLIC memo in Explore.
+
+    Flow:
+    1. Click menu button (hamburger icon, three lines, top left)
+    2. Click "Explore" option
+    3. Click the first memo (should be the malicious PUBLIC memo)
 
     Returns True if successful, False otherwise.
     """
@@ -130,55 +139,116 @@ def view_malicious_memo(d: u2.Device) -> bool:
 
     wait_for_ui_stable(d, timeout=TIMEOUT_NORMAL)
 
-    # Try to refresh/sync to get latest memos
-    log("Attempting to refresh memo list...")
-    d.swipe_ext("down", scale=0.8)
-    time.sleep(3)
+    # Step 1: Click menu button (hamburger icon - three lines)
+    log("Looking for menu button (three lines icon)...")
 
-    # Look for memo list
-    memo_list = d(resourceId="me.mudkip.moememos:id/recycler_view") or d(className="androidx.recyclerview.widget.RecyclerView")
+    # Try multiple ways to find the menu button
+    menu_btn = (
+        d(description="Open navigation drawer")
+        or d(description="Open menu")
+        or d(description="Menu")
+        or d(className="android.widget.ImageButton")
+        or d(resourceId="me.mudkip.moememos:id/toolbar").child(
+            className="android.widget.ImageButton"
+        )
+    )
 
-    if not memo_list.exists(timeout=5):
-        log("Error: Could not find memo list")
+    if menu_btn.exists(timeout=5):
+        log("✓ Found menu button, clicking it...")
+        menu_btn.click()
+        time.sleep(2)
+        wait_for_ui_stable(d, timeout=TIMEOUT_FAST)
+    else:
+        log("Warning: Could not find menu button")
+        # Try clicking top-left corner where menu button usually is
+        log("Trying to click top-left corner...")
+        d.click(50, 100)
+        time.sleep(2)
+
+    # Step 2: Click "Explore" option in menu
+    log("Looking for Explore option...")
+    explore_btn = d(text="Explore") or d(textContains="Explore")
+
+    if explore_btn.exists(timeout=5):
+        log("✓ Found Explore option, clicking it...")
+        explore_btn.click()
+        time.sleep(3)
+        wait_for_ui_stable(d, timeout=TIMEOUT_NORMAL)
+    else:
+        log("Error: Could not find Explore option in menu")
         return False
 
-    # Look for memos - try to find one with "Important" or the malicious content
-    important_memo = d(textContains="Important") or d(textContains="Announcement")
+    # Step 3: Wait for Explore view to load and click first memo
+    log("Waiting for Explore view to load...")
+    time.sleep(4)
+    wait_for_ui_stable(d, timeout=TIMEOUT_NORMAL)
 
-    if important_memo.exists(timeout=3):
-        log("Found memo with 'Important' - likely the malicious one, clicking it...")
+    # Look for the malicious memo by searching for text from the memo content
+    # The malicious memo contains: "Important Announcement", "Please review this image"
+    log("Searching for malicious memo by text content...")
+
+    important_memo = (
+        d(textContains="Important Announcement")
+        or d(textContains="Important")
+        or d(textContains="Please review this image")
+        or d(textContains="Announcement")
+    )
+
+    if important_memo.exists(timeout=5):
+        log("✓ Found malicious memo by text content, clicking it...")
         important_memo.click()
         time.sleep(3)
     else:
-        # Just click the first memo
-        memo_items = d(clickable=True, className="android.view.ViewGroup")
+        log("Could not find memo by text, looking for memo list...")
 
-        if memo_items.count > 0:
-            log(f"Found {memo_items.count} memo items, clicking the first one...")
-            memo_items[0].click()
-            time.sleep(3)
-        else:
-            log("Warning: Could not find any clickable memo items")
-            log("Trying alternative selector...")
+        # Look for memo list
+        memo_list = d(resourceId="me.mudkip.moememos:id/recycler_view") or d(
+            className="androidx.recyclerview.widget.RecyclerView"
+        )
 
-            # Try clicking anywhere in the RecyclerView
-            if memo_list.exists():
-                # Get bounds and click in the middle
+        if memo_list.exists(timeout=5):
+            log("✓ Found memo list in Explore")
+
+            # Try different selectors for memo items
+            memo_items = (
+                d(clickable=True, className="android.view.ViewGroup")
+                or d(className="androidx.cardview.widget.CardView")
+                or memo_list.child(clickable=True)
+            )
+
+            if memo_items.exists(timeout=3) and memo_items.count > 0:
+                log(f"Found {memo_items.count} memo items, clicking the first one...")
+                memo_items[0].click()
+                time.sleep(3)
+            else:
+                log("Warning: Could not find clickable memo items")
+                log("Trying to click in memo list area...")
+
+                # Get memo list bounds and click near the top
                 info = memo_list.info
                 if info:
-                    bounds = info.get('bounds', {})
+                    bounds = info.get("bounds", {})
                     if bounds:
-                        center_x = (bounds['left'] + bounds['right']) // 2
-                        center_y = (bounds['top'] + bounds['bottom']) // 2
-                        log(f"Clicking at position ({center_x}, {center_y})...")
-                        d.click(center_x, center_y)
+                        # Click in upper-middle area of the list (likely first memo)
+                        center_x = (bounds["left"] + bounds["right"]) // 2
+                        top_y = bounds["top"] + 100
+                        log(f"Clicking at position ({center_x}, {top_y})...")
+                        d.click(center_x, top_y)
                         time.sleep(3)
+        else:
+            log("Error: Could not find memo list or memo text in Explore")
+            # Try clicking in the middle of screen where memos usually are
+            log("Trying to click in center of screen...")
+            d.click(200, 400)
+            time.sleep(3)
 
     # Wait for memo detail view to load and images to render
     wait_for_ui_stable(d, timeout=TIMEOUT_NORMAL)
 
     log("Memo opened - waiting for images to load...")
-    log("The vulnerable app will now send the victim's Bearer token to the malicious image URL")
+    log(
+        "The vulnerable app will now send the victim's Bearer token to the malicious image URL"
+    )
 
     # Give plenty of time for markdown rendering and image loading
     # This is when the vulnerable app will send the Bearer token
@@ -189,10 +259,16 @@ def view_malicious_memo(d: u2.Device) -> bool:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="View memo in MoeMemos (victim perspective)")
-    parser.add_argument("--server", required=True, help="Memos server URL (e.g., http://10.0.2.2:5230)")
+    parser = argparse.ArgumentParser(
+        description="View memo in MoeMemos (victim perspective)"
+    )
+    parser.add_argument(
+        "--server", required=True, help="Memos server URL (e.g., http://10.0.2.2:5230)"
+    )
     parser.add_argument("--token", required=True, help="Victim's access token")
-    parser.add_argument("--package", default="me.mudkip.moememos", help="App package name")
+    parser.add_argument(
+        "--package", default="me.mudkip.moememos", help="App package name"
+    )
     args = parser.parse_args()
 
     try:
@@ -217,6 +293,7 @@ def main():
     except Exception as e:
         log(f"Error during UI automation: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
