@@ -439,7 +439,7 @@ run_exploit_verification() {
     # Check required files
     local exploit_files_dir="$vuln_dir/exploit_files"
     local exploit_script="$exploit_files_dir/exploit.sh"
-    local verify_script="$vuln_dir/verify_exploit.sh"
+    local verify_script="$vuln_dir/verify_files/verify_exploit.sh"
 
     if [ ! -f "$exploit_script" ]; then
         echo -e "${ERROR} Exploit script not found: $exploit_script"
@@ -463,9 +463,19 @@ run_exploit_verification() {
     docker run -d \
         --name "$container_name" \
         --network=shared_net \
+        --add-host=host.docker.internal:host-gateway \
+        -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
         -v "$exploit_files_abs_path:/app/exploit_files" \
         "$exploit_image" \
         tail -f /dev/null
+
+    echo -e "${INFO} Verifying container→emulator ADB connection..."
+    if ! docker exec "$container_name" adb devices 2>/dev/null | grep -q "device$"; then
+        echo -e "${WARNING} Container cannot see the emulator via ADB."
+        echo -e "${WARNING} This is OK for network-only exploits, but exploits requiring ADB may fail."
+    else
+        echo -e "${SUCCESS} Container can access emulator via ADB"
+    fi
 
     # Run the exploit script inside the container
     if docker exec "$container_name" bash /app/exploit_files/exploit.sh; then
@@ -525,7 +535,7 @@ show_usage() {
     echo "Options:"
     echo "  --skip-build      Skip build mode (source setup)"
     echo "  --skip-download   Skip download mode (apklink setup)"
-    echo "  --skip-apk        Skip APK operations. Install from existing APK."
+    echo "  --skip-apk        Skip building APK. Use existing APK or download from metadata download_link."
     echo "  --unit-tests      Run unit tests (opt-in)"
     echo "  --test-synthetic-vuln <vuln_dir>"
     echo "                    Test a synthetic vulnerability (e.g., synthetic_vulnerabilities/vuln_0)"
@@ -535,7 +545,7 @@ show_usage() {
     echo "  $0 apps/joplin                   # Run both build and download modes"
     echo "  $0 apps/joplin --skip-build      # Run only download mode"
     echo "  $0 apps/joplin --skip-download   # Run only build mode"
-    echo "  $0 apps/joplin --skip-apk        # Skip APK operations. Install from existing APK."
+    echo "  $0 apps/joplin --skip-apk        # Use existing APK or download if missing"
     echo "  $0 apps/joplin --unit-tests      # Run unit tests"
     echo "  $0 apps/conversations --test-synthetic-vuln synthetic_vulnerabilities/vuln_0"
     echo "                                   # Test synthetic vulnerability"
@@ -818,7 +828,29 @@ run_tests_for_mode() {
     
     # Run appropriate setup script based on mode
     if [ "$setup_mode" = "apk_skip" ]; then
-        echo -e "${INFO} Skipping APK setup (apk_skip mode) - proceeding directly to setup.sh"
+        echo -e "${INFO} apk_skip mode - checking for existing APKs..."
+        app_name=$(basename "$dir")
+        APK_DIR="$ROOT_DIR/$dir/apk"
+
+        # Check if APKs exist locally
+        APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+        if [ "$APK_COUNT" -eq 0 ]; then
+            echo -e "${INFO} No local APKs found, attempting download from download_link..."
+            cd "$ROOT_DIR"
+            if python setup_app_apklink.py "$app_name"; then
+                echo -e "${SUCCESS} Downloaded APKs successfully"
+            else
+                echo -e "${ERROR} No local APKs and download failed."
+                echo -e "${ERROR} To fix: build APK and publish:"
+                echo -e "${ERROR}   ./build_apk.sh $app_name"
+                echo -e "${ERROR}   ./publish_apk_bundle.sh apps/$app_name"
+                echo -e "${ERROR} Or remove --skip-apk to build from source."
+                exit 1
+            fi
+            cd "$ROOT_DIR/$dir"
+        else
+            echo -e "${SUCCESS} Found $APK_COUNT existing APK(s) in $APK_DIR"
+        fi
     elif [ "$setup_mode" = "apklink" ]; then
         echo -e "${INFO} Setting up app from APK link."
         app_name=$(basename "$dir")
@@ -826,8 +858,11 @@ run_tests_for_mode() {
         { python setup_app_apklink.py "$app_name"; } || { echo -e "${ERROR} setup_app_apklink.py failed"; exit 1; }
         cd "$ROOT_DIR/$dir"
     else
-        echo -e "${INFO} Setting up app from source..."
-        { ./setup_app_source.sh; } || { echo -e "${ERROR} setup_app_source.sh failed"; exit 1; }
+        echo -e "${INFO} Setting up app from source using build_apk.sh..."
+        app_name=$(basename "$dir")
+        cd "$ROOT_DIR"
+        { ./build_apk.sh "$app_name"; } || { echo -e "${ERROR} build_apk.sh failed"; exit 1; }
+        cd "$ROOT_DIR/$dir"
     fi
     
     # Validate APK structure
@@ -951,66 +986,110 @@ EOF
 run_synthetic_vuln_test() {
     local vuln_dir="$1"
     local app_dir="$2"
-    
+
     print_header "$CYAN" "TESTING SYNTHETIC VULNERABILITY: $vuln_dir"
-    
+
+    # Extract vuln_id from vuln_dir (e.g., "synthetic_vulnerabilities/vuln_0" -> "vuln_0")
+    local vuln_id
+    vuln_id=$(basename "$vuln_dir")
+
     # Validate synthetic vulnerability structure
     echo -e "${INFO} Validating synthetic vulnerability structure..."
-    
+
     local patch_file="$ROOT_DIR/$app_dir/$vuln_dir/vulnerability.patch"
     local exploit_script="$ROOT_DIR/$app_dir/$vuln_dir/exploit_files/exploit.sh"
-    local verify_script="$ROOT_DIR/$app_dir/$vuln_dir/verify_exploit.sh"
+    local verify_script="$ROOT_DIR/$app_dir/$vuln_dir/verify_files/verify_exploit.sh"
     
     if [ ! -f "$patch_file" ]; then
         echo -e "${ERROR} Patch file not found: $patch_file"
         exit 1
     fi
-    
+
     if [ ! -f "$exploit_script" ]; then
         echo -e "${ERROR} Exploit script not found: $exploit_script"
         exit 1
     fi
-    
+
     if [ ! -f "$verify_script" ]; then
         echo -e "${ERROR} Verification script not found: $verify_script"
         exit 1
     fi
-    
+
     echo -e "${SUCCESS} Synthetic vulnerability structure validated"
-    
-    # Get package name from metadata
-    local package_name=$(jq -r '.package_name' "$app_dir/metadata.json")
+
+    # Get app name and package name from metadata
+    local app_name
+    app_name=$(basename "$app_dir")
+    local package_name
+    package_name=$(jq -r '.package_name' "$app_dir/metadata.json")
+    echo -e "${INFO} Testing app: $app_name"
     echo -e "${INFO} Testing package: $package_name"
-    
+
+    # Check for existing APKs when --skip-apk is set
+    local APK_DIR="$ROOT_DIR/$app_dir/apk"
+    local VULN_APK_DIR="$APK_DIR/$vuln_id"
+    local skip_build=false
+
+    if [ "$SKIP_APK" = true ]; then
+        echo -e "${INFO} --skip-apk: checking for existing APKs..."
+
+        # Check if base APK exists
+        local base_apk_count=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+        local vuln_apk_count=$(find "$VULN_APK_DIR" -name "*.apk" -type f 2>/dev/null | wc -l)
+
+        if [ "$base_apk_count" -eq 0 ] || [ "$vuln_apk_count" -eq 0 ]; then
+            echo -e "${INFO} Missing APKs (base: $base_apk_count, vuln: $vuln_apk_count), attempting download..."
+            cd "$ROOT_DIR"
+            if python setup_app_apklink.py "$app_name" 2>/dev/null; then
+                echo -e "${SUCCESS} Downloaded APKs"
+            fi
+            cd "$ROOT_DIR/$app_dir"
+
+            # Recheck after download
+            base_apk_count=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+            vuln_apk_count=$(find "$VULN_APK_DIR" -name "*.apk" -type f 2>/dev/null | wc -l)
+        fi
+
+        if [ "$base_apk_count" -gt 0 ] && [ "$vuln_apk_count" -gt 0 ]; then
+            echo -e "${SUCCESS} Found existing APKs: base=$base_apk_count, vuln=$vuln_apk_count"
+            skip_build=true
+        else
+            echo -e "${ERROR} --skip-apk requires both base APK and $vuln_id APK to exist"
+            echo -e "${ERROR} Base APK: $APK_DIR/*.apk ($base_apk_count found)"
+            echo -e "${ERROR} Vuln APK: $VULN_APK_DIR/*.apk ($vuln_apk_count found)"
+            echo -e "${ERROR} To fix: build APKs and publish:"
+            echo -e "${ERROR}   ./build_apk.sh $app_name"
+            echo -e "${ERROR}   ./build_apk.sh $app_name --vuln $vuln_id"
+            echo -e "${ERROR}   ./publish_apk_bundle.sh apps/$app_name"
+            exit 1
+        fi
+    fi
+
     # Phase 1: Test clean build (should NOT be vulnerable)
     print_header "$CYAN" "PHASE 1: Testing Clean Build (Baseline)"
-    
-    cd "$ROOT_DIR/$app_dir"
-    
-    # Clean checkout
-    echo -e "${INFO} Checking out clean commit..."
-    checkout_commit
-    
-    # Clear APK directory to ensure fresh build
-    echo -e "${INFO} Clearing APK directory..."
-    rm -rf apk/*
-    
-    # Build clean APK
-    echo -e "${INFO} Building clean APK..."
-    if [ -f "setup_app_source.sh" ]; then
-        ./setup_app_source.sh || { echo -e "${ERROR} Failed to build clean APK"; exit 1; }
+
+    cd "$ROOT_DIR"
+
+    # Build clean APK using the wrapper (skip if APKs exist)
+    if [ "$skip_build" = false ]; then
+        echo -e "${INFO} Building clean APK using build_apk.sh..."
+        if ! ./build_apk.sh "$app_name"; then
+            echo -e "${ERROR} Failed to build clean APK"
+            exit 1
+        fi
     else
-        echo -e "${ERROR} setup_app_source.sh not found"
-        exit 1
+        echo -e "${INFO} Using existing clean APK (--skip-apk)"
     fi
-    
+
+    cd "$ROOT_DIR/$app_dir"
+
     # Install and setup
     echo -e "${INFO} Installing clean APK..."
     ./setup.sh || { echo -e "${ERROR} Failed to install clean APK"; exit 1; }
-    
+
     # Wait for containers
     check_app_containers_ready
-    
+
     # Run exploit and verify (should NOT be vulnerable)
     cd "$ROOT_DIR/$app_dir"
     run_exploit_verification "$vuln_dir" "false" || {
@@ -1019,71 +1098,105 @@ run_synthetic_vuln_test() {
         uninstall_package "$package_name"
         exit 1
     }
-    
+
     # Cleanup
     echo -e "${INFO} Cleaning up Phase 1..."
     ./cleanup.sh
     uninstall_package "$package_name"
-    
+
     print_header "$GREEN" "PHASE 1 PASSED: Clean build is NOT vulnerable"
-    
+
     # Phase 2: Test vulnerable build (should BE vulnerable)
     print_header "$CYAN" "PHASE 2: Testing Vulnerable Build (With Patch)"
-    
-    cd "$ROOT_DIR/$app_dir"
-    
-    # Clean checkout
-    echo -e "${INFO} Checking out clean commit..."
-    checkout_commit
-    
-    # Apply vulnerability patch
-    echo -e "${INFO} Applying vulnerability patch..."
-    apply_vulnerability_patch "$patch_file" || {
-        echo -e "${ERROR} Failed to apply vulnerability patch"
-        exit 1
-    }
-    
-    # Clear APK directory to ensure fresh build
-    echo -e "${INFO} Clearing APK directory..."
-    rm -rf apk/*
-    
-    # Build vulnerable APK
-    echo -e "${INFO} Building vulnerable APK..."
-    if [ -f "setup_app_source.sh" ]; then
-        ./setup_app_source.sh || { echo -e "${ERROR} Failed to build vulnerable APK"; exit 1; }
+
+    cd "$ROOT_DIR"
+
+    # Build vulnerable APK using the wrapper (skip if APKs exist)
+    if [ "$skip_build" = false ]; then
+        echo -e "${INFO} Building vulnerable APK using build_apk.sh --vuln $vuln_id..."
+        if ! ./build_apk.sh "$app_name" --vuln "$vuln_id"; then
+            echo -e "${ERROR} Failed to build vulnerable APK"
+            exit 1
+        fi
     else
-        echo -e "${ERROR} setup_app_source.sh not found"
+        echo -e "${INFO} Using existing vulnerable APK (--skip-apk)"
+    fi
+
+    cd "$ROOT_DIR/$app_dir"
+
+    # Copy vulnerable APK to main apk directory for setup.sh to find
+    echo -e "${INFO} Preparing vulnerable APK for installation..."
+    local vuln_apk_dir="apk/$vuln_id"
+    if [ ! -d "$vuln_apk_dir" ]; then
+        echo -e "${ERROR} Vulnerable APK directory not found: $vuln_apk_dir"
         exit 1
     fi
-    
+
+    # Backup existing APKs and copy vulnerable APK
+    local temp_backup
+    temp_backup=$(mktemp -d)
+
+    # Set up trap to ensure cleanup on unexpected exit (SIGINT, SIGTERM, etc.)
+    cleanup_temp_backup() {
+        if [ -d "$temp_backup" ]; then
+            echo -e "${WARNING} Cleaning up temp backup on exit..."
+            rm -f apk/*.apk 2>/dev/null || true
+            mv "$temp_backup"/*.apk apk/ 2>/dev/null || true
+            rm -rf "$temp_backup"
+        fi
+    }
+    trap cleanup_temp_backup EXIT INT TERM
+
+    if [ -n "$(find apk -maxdepth 1 -name '*.apk' -type f 2>/dev/null)" ]; then
+        mv apk/*.apk "$temp_backup/" 2>/dev/null || true
+    fi
+    cp "$vuln_apk_dir"/*.apk apk/
+
     # Install and setup
     echo -e "${INFO} Installing vulnerable APK..."
-    ./setup.sh || { echo -e "${ERROR} Failed to install vulnerable APK"; exit 1; }
-    
+    ./setup.sh || {
+        echo -e "${ERROR} Failed to install vulnerable APK"
+        # Restore original APKs (trap will handle cleanup)
+        rm -f apk/*.apk 2>/dev/null || true
+        mv "$temp_backup"/*.apk apk/ 2>/dev/null || true
+        rm -rf "$temp_backup"
+        trap - EXIT INT TERM  # Clear trap before exit
+        exit 1
+    }
+
     # Wait for containers
     check_app_containers_ready
-    
+
     # Run exploit and verify (should BE vulnerable)
     cd "$ROOT_DIR/$app_dir"
     run_exploit_verification "$vuln_dir" "true" || {
         echo -e "${ERROR} Phase 2 failed: Vulnerable build verification failed"
         ./cleanup.sh
         uninstall_package "$package_name"
+        # Restore original APKs (trap will handle cleanup)
+        rm -f apk/*.apk 2>/dev/null || true
+        mv "$temp_backup"/*.apk apk/ 2>/dev/null || true
+        rm -rf "$temp_backup"
+        trap - EXIT INT TERM  # Clear trap before exit
         exit 1
     }
-    
+
     # Cleanup
     echo -e "${INFO} Cleaning up Phase 2..."
     ./cleanup.sh
     uninstall_package "$package_name"
-    
+
+    # Restore original APKs
+    echo -e "${INFO} Restoring original APKs..."
+    rm -f apk/*.apk 2>/dev/null || true
+    mv "$temp_backup"/*.apk apk/ 2>/dev/null || true
+    rm -rf "$temp_backup"
+
+    # Clear trap after successful cleanup
+    trap - EXIT INT TERM
+
     print_header "$GREEN" "PHASE 2 PASSED: Vulnerable build is vulnerable"
-    
-    # Final cleanup - restore clean state
-    cd "$ROOT_DIR/$app_dir"
-    echo -e "${INFO} Restoring clean state..."
-    checkout_commit
-    
+
     print_header "$GREEN" "SYNTHETIC VULNERABILITY TEST COMPLETED SUCCESSFULLY"
     echo -e "${SUCCESS} ✓ Clean build: NOT vulnerable (as expected)"
     echo -e "${SUCCESS} ✓ Vulnerable build: VULNERABLE (as expected)"
@@ -1147,6 +1260,24 @@ if [ -f "start_emulator.sh" ]; then
     echo "Emulator booted successfully."
 else
     echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
+fi
+
+# Ensure ADB server is listening on all interfaces for container access
+echo -e "${INFO} Ensuring ADB server is configured for container access..."
+if ! lsof -iTCP:5037 -sTCP:LISTEN 2>/dev/null | grep -q "\\*:5037"; then
+    echo -e "${INFO} ADB not listening on all interfaces, restarting with -a flag..."
+    adb kill-server 2>/dev/null || true
+    adb -a start-server
+    # Wait for reconnection
+    for i in {1..30}; do
+        if adb devices 2>/dev/null | grep -q "device$"; then
+            echo -e "${SUCCESS} ADB reconnected to emulator"
+            break
+        fi
+        sleep 1
+    done
+else
+    echo -e "${SUCCESS} ADB already configured correctly"
 fi
 
 # Check if we're running synthetic vulnerability tests

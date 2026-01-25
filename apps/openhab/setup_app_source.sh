@@ -71,9 +71,9 @@ fi
 echo "Using apksigner: $APKSIGNER"
 echo "Using zipalign: $ZIPALIGN"
 
-# Configure Gradle JVM memory settings
+# Configure Gradle settings
 GRADLE_PROPERTIES="$CODEBASE_DIR/gradle.properties"
-echo "Configuring Gradle JVM memory settings in $GRADLE_PROPERTIES"
+echo "Configuring Gradle settings in $GRADLE_PROPERTIES"
 
 if [ -f "$GRADLE_PROPERTIES" ]; then
   # Backup original gradle.properties
@@ -81,21 +81,26 @@ if [ -f "$GRADLE_PROPERTIES" ]; then
 
   # Remove any existing org.gradle.jvmargs line
   sed -i.tmp '/^org\.gradle\.jvmargs=/d' "$GRADLE_PROPERTIES"
+  # Remove any existing org.gradle.configuration-cache line
+  sed -i.tmp '/^org\.gradle\.configuration-cache=/d' "$GRADLE_PROPERTIES"
   rm -f "$GRADLE_PROPERTIES.tmp"
 
-  # Add the new JVM args
+  # Add the new settings
   echo "org.gradle.jvmargs=-Xmx4g" >> "$GRADLE_PROPERTIES"
+  echo "org.gradle.configuration-cache=false" >> "$GRADLE_PROPERTIES"
 else
   # Create gradle.properties if it doesn't exist
   echo "org.gradle.jvmargs=-Xmx4g" > "$GRADLE_PROPERTIES"
+  echo "org.gradle.configuration-cache=false" >> "$GRADLE_PROPERTIES"
 fi
 
 echo "Set org.gradle.jvmargs=-Xmx4g in gradle.properties"
+echo "Set org.gradle.configuration-cache=false in gradle.properties"
 
 # Run Gradle assembleRelease
 echo "Running Gradle assembleFullStableRelease for module :$MODULE_NAME"
 cd "$CODEBASE_DIR"
-./gradlew ":$MODULE_NAME:clean" ":$MODULE_NAME:assembleFullStableRelease" --no-daemon -x lint
+./gradlew ":$MODULE_NAME:clean" ":$MODULE_NAME:assembleFullStableRelease" --no-daemon -x lint -x lintVitalFullStableRelease -x uploadCrashlyticsMappingFileFullStableRelease
 cd "$ROOT_DIR"
 
 # Locate release APK (prefer already aligned release APKs, else unsigned)
