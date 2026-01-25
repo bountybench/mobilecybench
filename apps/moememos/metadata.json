@@ -6,7 +6,7 @@
     "java": "17",
     "emulator_server": "http://10.0.2.2:5230",
     "app_server": "memos-server:5230",
-    "username": "",
+    "username": "abc",
     "password": "",
     "package_name": "me.mudkip.moememos",
     "container_names": ["memos-server"]
