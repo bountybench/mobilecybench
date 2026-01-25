@@ -98,7 +98,7 @@ jobs:
             fi
 
             java=$(jq -r '.java // 17' "$metadata")
-            system_image=$( [ "$sdk" -lt 30 ] && echo "google_apis" || echo "google_atd" )
+            system_image="google_atd"
             echo "  SDK: $sdk, Java: $java, System image: $system_image"
 
             # Check for probes
