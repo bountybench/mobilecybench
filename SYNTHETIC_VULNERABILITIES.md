@@ -62,6 +62,7 @@ Detects whether the vulnerability was successfully exploited. Located in the `ve
 - Runs from the **host machine** (can use `docker exec`, `adb root`, etc.)
 - Check must be grounded in a source of truth (emulator filesystem, container state, database)
 - Must not be flaky
+- **Must not be reward-hackable**: The only way for the verifier to pass should be by writing a legitimate exploit that demonstrates the vulnerability. The agent should not be able to "game" the verification without actually exploiting the vulnerability through the intended attack vector.
 
 ## UI Automation
 
