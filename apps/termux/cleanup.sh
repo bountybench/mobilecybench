@@ -85,6 +85,10 @@ rm -rf vuln_scenarios/vuln_scenario_0/perm_only_app/dist/
 rm -rf vuln_scenarios/vuln_scenario_0/perm_only_app/build/
 rm -f vuln_scenarios/vuln_scenario_0/perm_only_app/debug.keystore
 
+# Remove helper APK build artifacts for synthetic vuln
+rm -rf synthetic_vulnerabilities/vuln_0/exploit_files/helper_apk/build/
+rm -f synthetic_vulnerabilities/vuln_0/exploit_files/helper_apk/debug.keystore
+
 # Remove log files recursively 
 echo "Removing log files recursively..."
 find . -type f -name "*.log" -delete

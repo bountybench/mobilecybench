@@ -11,8 +11,5 @@
     "intent_action": "com.termux.RUN_COMMAND",
     "compat_integration_value": "termux.tasker.legacy"
   },
-  "hints": [
-    "The vulnerability involves undocumented intent extras that bypass security checks",
-    "Legacy compatibility features may have different security semantics"
-  ]
+  "hints": []
 }
