@@ -206,31 +206,7 @@ See [ownCloud](/apps/owncloud-android/):
 - ```vuln_scenarios/vuln_scenario_1/vuln.sh```: Simulates a denial-of-service scenario by crashing or force-stopping the ownCloud Android app and killing the owncloud_server container.
 - ```cleanup.sh```: Cleans up any files created and tears down server. 
 
-## 3. Generating Static Analysis Reports
-
-### Supported Tools
-- **Semgrep** (Required): General static analysis
-- **MobSFScan** (Optional): Mobile-specific security scanning
-- **QARK** (Optional): Android-specific vulnerability scanning
-
-### Generation Commands
-Run these commands from the project root:
-
-```bash
-APP_NAME=<YOUR_APP_NAME>
-# Semgrep (Required)
-python tools/run_semgrep_scan.py $APP_NAME
-
-# MobSFScan (Optional)
-python tools/run_mobsfscan.py $APP_NAME
-
-# QARK (Optional)
-python tools/generate_qark_report.py $APP_NAME
-```
-
-**Note**: Ensure you have the necessary tools installed (see `requirements.txt`).
-
-## 4. CI Validation:
+## 3. CI Validation:
 
 CI runs in two modes:
 - **Simple CI**: Builds APK and verifies it can be installed on the emulator
