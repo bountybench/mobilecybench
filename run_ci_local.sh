@@ -1242,9 +1242,11 @@ print_header "$CYAN" "CREATING DOCKER NETWORK"
 echo -e "${INFO} Creating shared_net network..."
 docker network create shared_net || echo -e "${INFO} shared_net network already exists"
 
-# Start SSRF Listener
-print_header "$CYAN" "STARTING SSRF LISTENER"
-start_ssrf_listener || echo -e "${WARNING} SSRF listener not started - SSRF detection may not work"
+# Start SSRF Listener (not needed for synthetic vulnerability tests)
+if [ -z "$TEST_SYNTHETIC_VULN" ]; then
+    print_header "$CYAN" "STARTING SSRF LISTENER"
+    start_ssrf_listener || echo -e "${WARNING} SSRF listener not started - SSRF detection may not work"
+fi
 
 # Start emulator (assuming you have a start_emulator.sh script)
 if [ -f "start_emulator.sh" ]; then
@@ -1362,9 +1364,11 @@ fi
 
 cd $ROOT_DIR
 
-# Stop SSRF listener
-print_header "$CYAN" "STOPPING SSRF LISTENER"
-stop_ssrf_listener
+# Stop SSRF listener (only if it was started)
+if [ -z "$TEST_SYNTHETIC_VULN" ]; then
+    print_header "$CYAN" "STOPPING SSRF LISTENER"
+    stop_ssrf_listener
+fi
 
 if [ -f "stop_emulator.sh" ]; then
     bash ./stop_emulator.sh
