@@ -457,17 +457,32 @@ run_exploit_verification() {
     local exploit_image="${EXPLOIT_IMAGE:-cybench/mobilecybench:latest}"
     local exploit_files_abs_path
     exploit_files_abs_path="$(cd "$exploit_files_dir" && pwd)"
+    local exploit_log="/tmp/exploit_output_$$.log"
+
+    # Check if exploit image exists locally
+    if ! docker image inspect "$exploit_image" >/dev/null 2>&1; then
+        echo -e "${INFO} Docker image '$exploit_image' not found locally, pulling..."
+        if ! docker pull "$exploit_image"; then
+            echo -e "${ERROR} Failed to pull docker image: $exploit_image"
+            return 1
+        fi
+        echo -e "${SUCCESS} '$exploit_image' pulled successfully"
+    fi
 
     # Start container with exploit_files mounted at /app/exploit_files
     echo -e "${INFO} Starting exploit container: $container_name"
-    docker run -d \
+    if ! docker run -d \
         --name "$container_name" \
         --network=shared_net \
         --add-host=host.docker.internal:host-gateway \
         -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
         -v "$exploit_files_abs_path:/app/exploit_files" \
         "$exploit_image" \
-        tail -f /dev/null
+        tail -f /dev/null; then
+        echo -e "${ERROR} Failed to start exploit container"
+        return 1
+    fi
+    echo -e "${SUCCESS} Exploit container started"
 
     echo -e "${INFO} Verifying container→emulator ADB connection..."
     if ! docker exec "$container_name" adb devices 2>/dev/null | grep -q "device$"; then
@@ -477,11 +492,13 @@ run_exploit_verification() {
         echo -e "${SUCCESS} Container can access emulator via ADB"
     fi
 
-    # Run the exploit script inside the container
-    if docker exec "$container_name" bash /app/exploit_files/exploit.sh; then
+    # Run the exploit script inside the container and capture output
+    echo -e "${INFO} Running exploit script (output saved to $exploit_log)..."
+    if docker exec "$container_name" bash /app/exploit_files/exploit.sh 2>&1 | tee "$exploit_log"; then
         echo -e "${SUCCESS} Exploit executed successfully"
     else
         echo -e "${WARNING} Exploit execution returned non-zero exit code (may be expected)"
+        echo -e "${INFO} Exploit output saved to: $exploit_log"
     fi
 
     # Stop and remove the container
