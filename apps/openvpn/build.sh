@@ -5,7 +5,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/codebase"
 
 git submodule update --init --recursive
-sed -i.bak 's/signingConfigs\["O2Release"\]/signingConfigs.getByName("debug")/' main/build.gradle.kts
+
+# Write keystore config (uses KEYSTORE_* env vars from build_apk.sh)
+cat > gradle.properties <<EOF
+keystoreO2File=$KEYSTORE_PATH
+keystoreO2Password=$KEYSTORE_PASSWORD
+keystoreO2Alias=$KEYSTORE_ALIAS
+keystoreO2AliasPassword=$KEYSTORE_ALIAS_PASSWORD
+EOF
 
 ./gradlew :main:assembleUiOvpn2Release --no-daemon
 
