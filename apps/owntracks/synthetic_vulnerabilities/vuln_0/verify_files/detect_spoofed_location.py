@@ -6,8 +6,7 @@ If the app is vulnerable, it will process this message and we can detect it via 
 """
 import subprocess
 import sys
-import re
-from typing import List, Optional
+from typing import List
 
 
 def run_adb_command(command: List[str]) -> str:
