@@ -13,6 +13,7 @@ keystoreO2Password=$KEYSTORE_PASSWORD
 keystoreO2Alias=$KEYSTORE_ALIAS
 keystoreO2AliasPassword=$KEYSTORE_ALIAS_PASSWORD
 android.useAndroidX=true
+org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC
 EOF
 
 ./gradlew :main:assembleUiOvpn2Release --no-daemon
