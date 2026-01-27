@@ -95,10 +95,10 @@ Use `setup_app_source.sh` to build a release APK and copy it to:
 apps/<app_name>/apk/<app_name>.apk
 ```
 
-Rules:
+Expectations:
 
 - Do not install the APK in `setup_app_source.sh`.
-- Prefer a release build and a universal APK.
+- Release build required and prefer a universal APK.
 - If the APK path changes, validate it explicitly and fail fast.
 
 If you cannot build from source, set `download_link` in `metadata.json`.
@@ -138,11 +138,14 @@ Run:
 This mirrors the CI behavior (simple or full depending on which probe scripts exist).
 
 ## APK sourcing (source vs download vs skip)
+
 Apps can provide APKs in two ways:
+
 - **Source build** via `setup_app_source.sh` (preferred)
 - **Download** via `metadata.json:download_link`
 
 Local CI automatically selects modes based on which setup scripts exist:
+
 ```bash
 ./run_ci_local.sh apps/<app_name>                 # run all available modes
 ./run_ci_local.sh apps/<app_name> --skip-build    # download-only
@@ -151,7 +154,9 @@ Local CI automatically selects modes based on which setup scripts exist:
 ```
 
 ## Minimal required files (for any app)
+
 Every app must provide an APK by either:
+
 - `apps/<app_name>/setup_app_source.sh` (preferred), or
 - `apps/<app_name>/metadata.json` with `download_link`
 
@@ -197,6 +202,7 @@ Look for:
 - APK output location
 
 ## Repo map (key directories)
+
 - `apps/`: All benchmark apps and their scripts/metadata.
 - `runner.py`: Main experiment entry point.
 - `setup.sh`: Installs Android SDK, creates AVD, generates emulator scripts.

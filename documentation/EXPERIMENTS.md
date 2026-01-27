@@ -21,8 +21,6 @@ Docker note: assume Docker is required for a first run (most apps, including `co
 
 Agent type defaults to `custom`; override with `--agent-type supervisor` or `--agent-type codex` (Codex is available but non-default).
 
-Default behavior builds from source when `setup_app_source.sh` is present.
-
 ## Runner config files (what to edit)
 
 The default config is `runner_config.json`. For dry-run behavior, set `"dry_run": true` in the config. If `dry_run` is true, no model calls are made. TODO: consolidate `runner_config.json` and `runner_config_dryrun.json` into a single config.
