@@ -120,10 +120,9 @@ if [ -z "$OUTPUT_DIR" ]; then
     OUTPUT_DIR="$APP_DIR/apk"
 fi
 
-# Validate build script exists (prefer build.sh, fallback to setup_app_source.sh)
-if [ ! -f "$APP_DIR/build.sh" ] && [ ! -f "$APP_DIR/setup_app_source.sh" ]; then
-    echo -e "${ERROR} No build script found in $APP_DIR"
-    echo -e "${ERROR} Expected: build.sh or setup_app_source.sh"
+# Validate build script exists
+if [ ! -f "$APP_DIR/build.sh" ]; then
+    echo -e "${ERROR} build.sh not found in $APP_DIR"
     exit 1
 fi
 
@@ -352,28 +351,9 @@ run_build() {
     echo -e "${INFO} Running build script..."
 
     cd "$APP_DIR"
-
-    # Prefer build.sh, fallback to setup_app_source.sh during migration
-    if [[ -f "build.sh" ]]; then
-        echo -e "${INFO} Using build.sh"
-        chmod +x build.sh
-        if ! ./build.sh; then
-            echo -e "${ERROR} build.sh failed"
-            cd "$ROOT_DIR"
-            return 1
-        fi
-    elif [[ -f "setup_app_source.sh" ]]; then
-        echo -e "${WARNING} Using legacy setup_app_source.sh (migration pending)"
-        if ! ./setup_app_source.sh; then
-            echo -e "${ERROR} setup_app_source.sh failed"
-            cd "$ROOT_DIR"
-            return 1
-        fi
-        # Legacy script handles its own signing/copying, so we're done
-        cd "$ROOT_DIR"
-        return 0
-    else
-        echo -e "${ERROR} No build script found"
+    chmod +x build.sh
+    if ! ./build.sh; then
+        echo -e "${ERROR} build.sh failed"
         cd "$ROOT_DIR"
         return 1
     fi
@@ -389,6 +369,31 @@ build_and_package() {
     setup_java || return 1
     setup_android || return 1
 
+    # Setup unified keystore for apps that need signing during gradle build
+    local keystore="$ROOT_DIR/utils/benchmark.keystore"
+    local keystore_pass="password"
+    local key_alias="benchmark-key"
+
+    # Create keystore if it doesn't exist (needed before gradle build, not just signing)
+    if [[ ! -f "$keystore" ]]; then
+        echo -e "${INFO} Creating signing keystore..."
+        keytool -genkey -v -keystore "$keystore" \
+            -alias "$key_alias" -keyalg RSA -keysize 2048 \
+            -validity 10000 -storepass "$keystore_pass" -keypass "$keystore_pass" \
+            -dname "CN=MobileCyBench, OU=Test, O=Test, L=Test, S=Test, C=US"
+    fi
+
+    # Export env vars - single source of truth for all apps
+    export KEYSTORE_PATH="$keystore"
+    export KEYSTORE_PASSWORD="$keystore_pass"
+    export KEYSTORE_ALIAS="$key_alias"
+    export KEYSTORE_ALIAS_PASSWORD="$keystore_pass"
+    # Alternative env var names used by some apps
+    export ANDROID_KEYSTORE="$keystore"
+    export ANDROID_KEYSTORE_PASSWORD="$keystore_pass"
+    export ANDROID_KEY_ALIAS="$key_alias"
+    export ANDROID_KEY_PASSWORD="$keystore_pass"
+
     # Clean up any leftover unsigned APK
     cleanup_unsigned_apk
 
@@ -396,11 +401,6 @@ build_and_package() {
     if ! run_build; then
         cleanup_unsigned_apk
         return 1
-    fi
-
-    # If using legacy script, it handles everything - skip signing/copying
-    if [[ ! -f "$APP_DIR/build.sh" ]]; then
-        return 0
     fi
 
     # Check for unsigned APK (build.sh should have copied it here)

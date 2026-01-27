@@ -118,16 +118,17 @@ jobs:
             # Determine setup modes
             has_source=false
             has_apklink=false
-            [ -f "$dir/setup_app_source.sh" ] && has_source=true
+            [ -f "$dir/build.sh" ] && has_source=true
             download_link=$(jq -r '.download_link // empty' "$metadata")
             [ -n "$download_link" ] && has_apklink=true
 
             if [ "$has_source" = false ] && [ "$has_apklink" = false ]; then
-              echo "ERROR: Neither setup_app_source.sh nor download_link found in $dir"
+              echo "ERROR: Neither build.sh nor download_link found in $dir"
+              echo "If this app builds from source, create a build.sh file."
               exit 1
             fi
 
-            source_modified=$(git diff --name-only origin/main...HEAD | grep -qF "$dir/setup_app_source.sh" && echo "true" || echo "false")
+            source_modified=$(git diff --name-only origin/main...HEAD | grep -qF "$dir/build.sh" && echo "true" || echo "false")
             apklink_modified=$(git diff --name-only origin/main...HEAD | grep -qF "$dir/metadata.json" && echo "true" || echo "false")
 
             setup_modes=()
@@ -316,8 +317,29 @@ jobs:
             python setup_app_apklink.py "${{ matrix.app_name }}"
             cd "${{ matrix.app_dir }}"
           else
-            echo "Building APK from source (this may take 10+ minutes)..."
-            ./setup_app_source.sh
+            echo "Building APK from source..."
+            if [ -f "build.sh" ]; then
+              echo "Using new build system (build.sh + build_apk.sh)"
+              cd ../..
+              ./build_apk.sh "${{ matrix.app_name }}"
+              cd "${{ matrix.app_dir }}"
+            else
+              echo "ERROR: build.sh not found for ${{ matrix.app_name }}"
+              echo ""
+              echo "=============================================="
+              echo "MIGRATION REQUIRED"
+              echo "=============================================="
+              echo "This app still uses the legacy setup_app_source.sh."
+              echo "Please migrate to the new build system:"
+              echo ""
+              echo "1. Create apps/${{ matrix.app_name }}/build.sh with build commands"
+              echo "2. The script should output unsigned APK to \$SCRIPT_DIR/unsigned.apk"
+              echo "3. Signing is handled by build_apk.sh"
+              echo ""
+              echo "See apps/grocy/build.sh for an example."
+              echo "=============================================="
+              exit 1
+            fi
           fi
 
           # Validate APK Path
