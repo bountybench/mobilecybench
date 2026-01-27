@@ -283,13 +283,16 @@ checkout_commit() {
 
     cd "$APP_DIR/codebase"
 
-    # Clean the codebase
+    # Clean the codebase (including nested submodules)
     echo -e "${INFO} Cleaning codebase..."
     git reset --hard HEAD
     git clean -fdx
+    git submodule foreach --recursive git reset --hard HEAD 2>/dev/null || true
+    git submodule foreach --recursive git clean -fdx 2>/dev/null || true
 
     # Checkout the commit
     git checkout "$commit"
+    git submodule update --init --recursive 2>/dev/null || true
 
     cd "$ROOT_DIR"
     echo -e "${SUCCESS} Checked out commit: $commit"
@@ -507,8 +510,13 @@ main() {
 
         # Step 4: Build, sign, and package
         if ! build_and_package; then
+            checkout_commit || true
             exit 1
         fi
+
+        # Step 5: Restore clean codebase state
+        echo -e "${INFO} Restoring clean codebase state..."
+        checkout_commit || true
 
         echo -e "${SUCCESS} =================================="
         echo -e "${SUCCESS} APK build completed!"
