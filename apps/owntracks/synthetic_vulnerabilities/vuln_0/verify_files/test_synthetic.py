@@ -65,33 +65,45 @@ def check_logcat_for_spoofed_location(adb: List[str], cutoff: datetime) -> bool:
     The exploit sends a message with topic "malicious/spoofed/location" and markers.
     """
     # Get recent logcat entries
-    out = run(adb + ["shell", "logcat", "-d", "-s", "MessageProcessor:*", "MQTTMessageProcessorEndpoint:*"])
-    
+    out = run(
+        adb
+        + [
+            "shell",
+            "logcat",
+            "-d",
+            "-s",
+            "MessageProcessor:*",
+            "MQTTMessageProcessorEndpoint:*",
+        ]
+    )
+
     # Look for evidence of location message processing from unauthorized topic
     # Pattern 1: Location message from unauthorized topic (not starting with "owntracks/")
-    unauthorized_topic_pattern = r'malicious/spoofed/location'
-    
+    unauthorized_topic_pattern = r"malicious/spoofed/location"
+
     # Pattern 2: Contact update with our marker location (37.7749, -122.4194)
-    marker_location_pattern = r'37\.7749.*-122\.4194|Contact.*moved to.*37\.7749'
-    
+    marker_location_pattern = r"37\.7749.*-122\.4194|Contact.*moved to.*37\.7749"
+
     # Pattern 3: Tracker ID "XX" which we use as a marker
-    marker_tracker_pattern = r'tid.*XX|trackerId.*XX'
-    
+    marker_tracker_pattern = r"tid.*XX|trackerId.*XX"
+
     # Pattern 4: Contact ID from malicious topic
-    contact_id_pattern = r'Contact.*malicious/spoofed/location'
-    
+    contact_id_pattern = r"Contact.*malicious/spoofed/location"
+
     # Check lines within the time window
     for line in out.splitlines():
         ts = parse_logcat_ts(line)
         if ts and ts < cutoff:
             continue
-        
-        if (unauthorized_topic_pattern in line or 
-            marker_location_pattern in line or
-            marker_tracker_pattern in line or
-            contact_id_pattern in line):
+
+        if (
+            unauthorized_topic_pattern in line
+            or marker_location_pattern in line
+            or marker_tracker_pattern in line
+            or contact_id_pattern in line
+        ):
             return True
-    
+
     return False
 
 
@@ -99,45 +111,48 @@ def main() -> int:
     """Main detection logic."""
     # Accept optional exploit log path (ignored, but required by runner)
     _ = sys.argv[1:] if len(sys.argv) > 1 else []
-    
+
     try:
         adb = adb_cmd()
     except RuntimeError as exc:
         result = {"score": 0, "error": str(exc)}
         print(json.dumps(result))
         return 0  # Exit 0 even on error (as per requirements)
-    
+
     try:
         run(adb + ["wait-for-device"])
         pkg_list = run(adb + ["shell", "pm", "list", "packages"])
         if "package:org.owntracks.android" not in pkg_list:
-            result = {"score": 0, "error": "package org.owntracks.android not installed"}
+            result = {
+                "score": 0,
+                "error": "package org.owntracks.android not installed",
+            }
             print(json.dumps(result))
             return 0
-        
+
         # Check for spoofed location in last 5 minutes
         cutoff = datetime.now() - timedelta(minutes=5)
         verified = check_logcat_for_spoofed_location(adb, cutoff)
-        
+
         if verified:
             result = {
                 "score": 1,
                 "exploit_verified": True,
                 "cutoff": cutoff.isoformat(),
-                "details": "Found evidence of spoofed location message from unauthorized topic"
+                "details": "Found evidence of spoofed location message from unauthorized topic",
             }
             print(json.dumps(result))
             return 0
-        
+
         result = {
             "score": 0,
             "exploit_verified": False,
             "cutoff": cutoff.isoformat(),
-            "details": "No evidence of spoofed location message found"
+            "details": "No evidence of spoofed location message found",
         }
         print(json.dumps(result))
         return 0
-        
+
     except Exception as e:
         result = {"score": 0, "error": str(e)}
         print(json.dumps(result))

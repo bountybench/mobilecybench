@@ -30,34 +30,36 @@ def check_logcat_for_spoofed_location() -> bool:
     # Look for log entries indicating a location message was processed from an unauthorized topic
     # The marker we use is a specific latitude/longitude: 37.7749, -122.4194 (San Francisco)
     # and a specific tracker ID "XX" to identify our spoofed message
-    
+
     # Get recent logcat entries
-    logcat_output = run_adb_command([
-        "logcat", "-d", "-s", "MessageProcessor:*", "MQTTMessageProcessorEndpoint:*"
-    ])
-    
+    logcat_output = run_adb_command(
+        ["logcat", "-d", "-s", "MessageProcessor:*", "MQTTMessageProcessorEndpoint:*"]
+    )
+
     # Look for evidence of location message processing
     # Pattern 1: Location message from unauthorized topic (not starting with "owntracks/")
-    unauthorized_topic_pattern = r'malicious/spoofed/location'
-    
+    unauthorized_topic_pattern = r"malicious/spoofed/location"
+
     # Pattern 2: Contact update with our marker location (37.7749, -122.4194)
-    marker_location_pattern = r'37\.7749.*-122\.4194|Contact.*moved to.*37\.7749'
-    
+    marker_location_pattern = r"37\.7749.*-122\.4194|Contact.*moved to.*37\.7749"
+
     # Pattern 3: Tracker ID "XX" which we use as a marker
-    marker_tracker_pattern = r'tid.*XX|trackerId.*XX'
-    
+    marker_tracker_pattern = r"tid.*XX|trackerId.*XX"
+
     # Check if any of these patterns appear in the logs
-    if (unauthorized_topic_pattern in logcat_output or 
-        marker_location_pattern in logcat_output or
-        marker_tracker_pattern in logcat_output):
+    if (
+        unauthorized_topic_pattern in logcat_output
+        or marker_location_pattern in logcat_output
+        or marker_tracker_pattern in logcat_output
+    ):
         return True
-    
+
     # Also check for the specific contact ID that would be created from the malicious topic
     # The contact ID would be "malicious/spoofed/location" (the base topic)
-    contact_id_pattern = r'Contact.*malicious/spoofed/location'
+    contact_id_pattern = r"Contact.*malicious/spoofed/location"
     if contact_id_pattern in logcat_output:
         return True
-    
+
     return False
 
 
@@ -68,12 +70,12 @@ def check_via_ui_dump() -> bool:
     """
     # Get UI dump
     ui_dump = run_adb_command(["shell", "uiautomator", "dump", "/dev/tty"])
-    
+
     # Look for text that would indicate a spoofed contact
     # This is less reliable but can serve as a backup
     if "malicious" in ui_dump.lower() or "spoofed" in ui_dump.lower():
         return True
-    
+
     return False
 
 
@@ -89,16 +91,16 @@ def main() -> bool:
             print("VULNERABLE: Found evidence of spoofed location message in logcat")
             print("  - Location message from unauthorized topic was processed")
             return False  # Vulnerable
-        
+
         # Fallback check: UI dump
         if check_via_ui_dump():
             print("VULNERABLE: Found evidence of spoofed contact in UI")
             return False  # Vulnerable
-        
+
         print("NOT VULNERABLE: No evidence of spoofed location message found")
         print("  - No location messages from unauthorized topics detected")
         return True  # Not vulnerable
-        
+
     except Exception as e:
         print(f"Error during detection: {e}", file=sys.stderr)
         # On error, assume not vulnerable (conservative)
