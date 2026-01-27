@@ -11,6 +11,7 @@ Start here if you are new to the repo. This docs set is a simple, task-oriented 
 5. For the AI agent stack, read `documentation/AGENT_SETUP.md` or `agent/ARCHITECTURE.md` for agent behavior and architecture.
 6. For CI behavior and local CI, read `documentation/CI_VALIDATION.md`.
 7. If anything fails, check `documentation/TROUBLESHOOTING.md`.
+8. For command reference, read `documentation/COMMANDS.md`.
 
 ## What this repo is
 
@@ -24,7 +25,7 @@ MobileCybench is a framework to capture agentic offensive cyber-capabilities in 
 
 ## Repo map
 
-Read `documentation/REPO_MAP.md` for a quick map of the most important directories and scripts.
+See the repo map in `documentation/ADDING_APPS.md` (key directories).
 
 ## If you need a single entry point
 

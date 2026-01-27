@@ -36,11 +36,7 @@ python runner.py conversations runner_config_dryrun.json
 
 - Python 3.11+ (3.12 or lower recommended for agent dependencies)
 - Docker Desktop (for agent stack and some app environments)
-- Android SDK and emulator (installed by `setup.sh`)
-- Java 17+ (Android SDK requirement; app builds may require newer)
-- Git (for submodules)
-- jq (used by CI/setup scripts)
-- 8GB+ RAM and 16GB+ free disk (20GB+ recommended for comfort)
+- Java (required for Android builds; setup.sh enforces OpenJDK 17+)
 
 ## 2) Clone and create a Python environment
 
@@ -59,15 +55,8 @@ Use these to confirm system-level dependencies before running `setup.sh`.
 ```bash
 python3 --version
 java -version
-git --version
-jq --version
 docker --version
 ```
-
-If `jq` is missing:
-
-- macOS: `brew install jq`
-- Debian/Ubuntu: `sudo apt-get install jq`
 
 ## 3) Install Android SDK and emulator
 
@@ -136,16 +125,7 @@ If you only want to verify setup without running an LLM, use dry-run:
 python runner.py <app_name> runner_config_dryrun.json
 ```
 
-## 8) Required app files (minimal rule)
-
-Every app must provide an APK by either:
-
-- `apps/<app_name>/setup_app_source.sh` (preferred), or
-- `apps/<app_name>/metadata.json` with `download_link`
-
-At least one of these is mandatory.
-
-## 9) Submodules and Java version notes
+## 8) Submodules and Java version notes
 
 - Apps use a git submodule at `apps/<app_name>/codebase`. Initialize/update submodules if you are working with an existing app directory:
 
@@ -155,7 +135,7 @@ git submodule update --init apps/<app_name>/codebase
 
 - Java version for builds is app-specific (see `apps/<app_name>/metadata.json`).
 
-## 10) Where to go next
+## 9) Where to go next
 
 - To add a new app: `documentation/ADDING_APPS.md`
 - To run or configure the agent: `documentation/AGENT_SETUP.md`

@@ -15,6 +15,7 @@
 
 - Confirm `setup_app_source.sh` copies to `apps/<app_name>/apk/<app_name>.apk`.
 - Validate APK path and fail fast in `setup_app_source.sh`.
+- Synthetic vulnerability APKs are stored under `apps/<app_name>/apk/<vuln_id>/`.
 
 ## Build timeout (setup_app_source.sh)
 
@@ -25,7 +26,6 @@ If a build succeeds but the runner times out, build manually and then use `build
 
 - Ensure Docker Desktop is running.
 - Check container status: `docker ps`.
-- Restart the agent stack: `cd agent && docker-compose up --build -d`.
 
 ## CI failures
 

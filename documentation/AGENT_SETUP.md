@@ -12,38 +12,16 @@ This guide covers the AI agent runtime, model providers, and how to run agent mo
 Architecture reference: `agent/ARCHITECTURE.md`
 
 ## 1) Python environment
-
-```bash
-python -m venv .venv
-source .venv/bin/activate   # Windows: .\\.venv\\Scripts\\activate
-pip install --upgrade pip
-pip install -r requirements.txt
-```
+Use the setup from `documentation/GETTING_STARTED.md` (single source of truth).
 
 ## 2) API keys and providers
-
-The agent reads API keys from `agent/.env` (one `KEY=VALUE` per line). Supported model providers are determined by `agent/model_providers/factory.py`:
-
-- OpenAI (`OPENAI_API_KEY`)
-- Gemini (`GEMINI_API_KEY`)
-
-Create `agent/.env` with the key you plan to use:
-
+Copy the example file and fill in the providers you plan to use:
 ```bash
-echo "OPENAI_API_KEY=your_api_key_here" > agent/.env
+cp agent/.env.example agent/.env
 ```
+Supported model providers are listed in `agent/model_providers/factory.py`.
 
-For Gemini:
-
-```bash
-echo "GEMINI_API_KEY=your_api_key_here" > agent/.env
-```
-
-Codex CLI agent type uses `CODEX_API_KEY` (see `agent/codex`):
-
-```bash
-echo "CODEX_API_KEY=your_api_key_here" >> agent/.env
-```
+Codex is available but not the default path; see `agent/codex` if you intend to use it. TODO: refactor `codex_agent` to share provider config.
 
 ## 3) Start the agent runtime
 
@@ -53,7 +31,7 @@ The runner starts the agent environment (Kali container) automatically. Ensure D
 python runner.py <app_name>
 ```
 
-Agent type defaults to `custom`; override with `--agent-type supervisor`or `--agent-type codex`.
+Agent type defaults to `custom`; override with `--agent-type supervisor` or `--agent-type codex`.
 
 ## 4) Run in dry-run mode
 
@@ -87,7 +65,7 @@ Use `--agent-type` to select an agent implementation:
 ```bash
 python runner.py <app_name> --agent-type custom        # default
 python runner.py <app_name> --agent-type supervisor    # hierarchical agent
-python runner.py <app_name> --agent--type codex        # codex
+python runner.py <app_name> --agent-type codex         # codex (non-default)
 ```
 
 ## 7) Supervisor mode checklist

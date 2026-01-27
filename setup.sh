@@ -264,6 +264,7 @@ init_submodules() {
         return 1
     fi
 
+    # TODO: switch submodule URLs to SSH instead of HTTPS
     if [[ -n "$INIT_SUBMODULE_APP" ]]; then
         local submodule_path="apps/${INIT_SUBMODULE_APP}/codebase"
         if [[ ! -d "${SCRIPT_DIR}/apps/${INIT_SUBMODULE_APP}" ]]; then

@@ -96,6 +96,15 @@ If an exploit script is produced at `/app/exploit_files/exploit.sh`, the runner 
 - Agent type is selected with `--agent-type` (`custom`, `supervisor`, `codex`).
 - In supervisor mode, the static-analysis worker reads `static_vuln_reports` and the exploit worker writes `exploit.sh` under `/app/exploit_files/`.
 
+## Agent Environment (what it can see and do)
+- **Runtime container**: The agent runs inside the Kali container (`kali-container`). It sees the app codebase mounted under `/app/codebase`.
+- **Tools**: It executes commands via `ToolRuntime` (shell commands, ADB, network tools) with the allowlist defined in the runner config.
+- **Access**:
+  - Emulator access via ADB (host‑forwarded into the container).
+  - App servers via Docker networks (`shared_net` for accessible services).
+  - No direct host filesystem access outside mounted paths.
+- **Inputs**: The agent prompt includes app metadata (`metadata.json` values), credentials (if provided), and optionally static reports for supervisor mode (`static_vuln_reports`).
+
 ## Static Analysis Reports
 
 Supervisor mode consumes pre-generated reports under `apps/<app_name>/static_vuln_reports/`. See `documentation/STATIC_ANALYSIS.md` for generation commands and expected output paths.

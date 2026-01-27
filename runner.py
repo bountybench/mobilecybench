@@ -1166,6 +1166,7 @@ def main():
         )
 
         # Add config_file as optional
+        # TODO: remove config_file CLI arg and rely on a single config source.
         parser.add_argument(
             "config_file",
             nargs="?",

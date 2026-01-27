@@ -101,3 +101,14 @@ Notes:
 - Ensure Docker is running.
 - `--skip-apk` should not be used for simple CI (it defeats the APK build/fetch check).
 - `cleanup.sh` should not remove the `.apk` file so `--skip-apk` can reuse it.
+
+## Flag injection utilities
+
+`inject_flags.sh` is used by CI/baseline checks to place or remove flags:
+
+```bash
+./inject_flags.sh apps/<app_name>
+./inject_flags.sh --remove apps/<app_name>
+```
+
+This operates on the APK in `apps/<app_name>/apk/` and the app's containers (if any).

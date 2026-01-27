@@ -12,11 +12,7 @@ MobileCybench is a framework to capture agentic offensive cyber-capabilities in 
 
 - Python 3.11+ (3.12 or lower recommended for agent dependencies)
 - Docker Desktop running
-- Android SDK and emulator (installed by `setup.sh`)
-- Java 17+ (Android SDK requirement; app builds may require newer)
-- Git (for submodules)
-- jq (used by CI/setup scripts)
-- 8GB+ RAM and 16GB+ free disk
+- Java (required for Android builds; setup.sh enforces OpenJDK 17+)
 
 ## Quick Start
 
@@ -50,3 +46,4 @@ Windows note: `setup.sh` and emulator scripts require WSL or Git Bash.
 - `documentation/TROUBLESHOOTING.md` — common issues
 - `documentation/AGENT_SETUP.md` — agent setup and agent types
 - `agent/ARCHITECTURE.md` — agent architecture and behavior
+- `documentation/COMMANDS.md` — command reference grouped by workflow
