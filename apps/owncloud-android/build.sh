@@ -1,10 +1,4 @@
 #!/bin/bash
-#
-# ownCloud Android - Build Script
-#
-# This script only handles the build. Environment setup, signing, and
-# output handling are done by the root build_apk.sh wrapper.
-#
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
