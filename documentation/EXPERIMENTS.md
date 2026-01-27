@@ -76,4 +76,4 @@ The runner will execute it and log results to `logs/experiment_<timestamp>/explo
 
 ## Sharing logs
 
-If you need to share results, upload the entire `logs/experiment_<timestamp>/` folder and the app’s `scores.json`/`generic_scores.json` to your shared drive. This preserves the full trace and probe outputs.
+If you run experiments, please share the results by uploading the entire `logs/experiment_<timestamp>/` folder and the app’s `scores.json`/`generic_scores.json` to the [shared drive](https://drive.google.com/drive/u/1/folders/1i331aVPlEs8lnpkWPGPh_iW9dGiclFfW). This preserves the full trace and probe outputs.
