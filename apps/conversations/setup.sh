@@ -102,6 +102,10 @@ setup_prosody_server(){
     return 0
   fi
   
+  # Stop and remove existing container to ensure a full restart
+  info "Stopping any existing Prosody server..."
+  docker compose down
+
   # Build and start Prosody server (certificates pre-generated in image)
   info "Building and starting Prosody server..."
   docker compose up -d --build
@@ -177,6 +181,17 @@ setup_xmpp_users(){
   fi
 }
 
+seed_initial_messages(){
+  info "Seeding initial chat messages between users"
+
+  # Run the seed script directly (hits localhost:5281 which is exposed by docker-compose)
+  info "Running message seeding script..."
+  if python3 "${SCRIPT_DIR}/seed_messages.py"; then
+    info "Initial messages seeded successfully"
+  else
+    fail "Message seeding failed"
+  fi
+}
 
 install_and_launch_app(){
   if ! command_exists adb; then
@@ -187,9 +202,42 @@ install_and_launch_app(){
   launch_conversations
 }
 
+login_agentuser(){
+  info "Logging in as agentuser..."
+
+  # Pre-grant permissions to avoid permission dialogs
+  local app_package="$TARGET_PACKAGE"
+  adb shell pm grant "$app_package" android.permission.READ_CONTACTS 2>/dev/null || true
+  adb shell pm grant "$app_package" android.permission.POST_NOTIFICATIONS 2>/dev/null || true
+
+  # Run login automation
+  if python3 "${SCRIPT_DIR}/ui_automation/login.py" \
+      --username "agentuser@10.0.2.2" \
+      --password "agentpass"; then
+    info "agentuser logged in successfully"
+  else
+    fail "Failed to login agentuser"
+  fi
+}
+
+seed_data(){
+  info "Seeding conversation data..."
+
+  # Send trigger messages from other users to agentuser
+  if python3 "${SCRIPT_DIR}/seed_messages.py" --trigger-only; then
+    info "Conversation data seeded successfully"
+  else
+    warn "Failed to seed conversation data (non-fatal)"
+  fi
+
+  # Give the app a moment to receive messages
+  sleep 2
+}
+
 summary(){
   info "Setup complete"
-  info "Conversations is installed and ready for testing"
+  info "Conversations is installed with agentuser logged in"
+  info "Chat history with admin and user1 should be visible"
 }
 
 main(){
@@ -197,8 +245,11 @@ main(){
   setup_prosody_server
   load_credentials
   setup_xmpp_users
+  seed_initial_messages
   install_and_launch_app
+  login_agentuser
+  seed_data
   summary
 }
 
-main 
+main

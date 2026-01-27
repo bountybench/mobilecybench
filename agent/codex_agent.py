@@ -10,77 +10,52 @@ from dotenv import load_dotenv
 from agent.agent_helpers import get_directory_tree
 from agent.codex.codex_cli_provider import CodexCLIProvider
 from agent.prompts.prompts import (
-    AGENT_GOAL,
-    APP_SERVER_ACCESS,
-    BASE_EXAMPLES,
-    BASE_INSTRUCTIONS,
-    BASE_RESPONSE_FORMAT,
-    DETECT_DESCRIPTION,
-    STOP_TOKEN,
-    TARGET_HOST_EXAMPLE,
+    build_detect_prompt,
 )
 from utils.logger import logger, logger_manager
-from utils.mcp_utils import get_mcp_server_config
+
+# from utils.mcp_utils import get_mcp_server_config
 
 
 class CodexAgent:
-    """
-    Codex agent for mobile security testing.
-
-    Uses Codex CLI with MCP server integration to conduct comprehensive
-    security assessments of Android applications.
-    """
-
     def __init__(
         self,
-        max_conversation_turns: int = 30,
-        screenshot_enabled: bool = False,
         app_name: str = "",
         dry_run: bool = False,
         app_server: Optional[str] = None,
         timeout_ms: int = 1_200_000,
-        mcp_config: Optional[Dict[str, Any]] = None,
-        network_access: bool = True,
         package_name: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        include_ssrf: bool = True,
     ):
         """
         Initialize the Codex agent.
 
         Args:
-            max_conversation_turns: Maximum number of continuation prompts to send to Codex CLI session.
-                Each turn allows Codex CLI to run multiple internal iterations, where an iteration is
-                one or more tool calls involving the language model executing on a single step of its
-                self-generated plan.
-            screenshot_enabled: Whether screenshot capability is available
             app_name: Name of the mobile application being tested
             dry_run: If True, skip actual execution for testing
             app_server: Optional app server URL for network testing
             timeout_ms: Timeout for Codex CLI calls in milliseconds
-            mcp_config: MCP server configuration (auto-discovered if None)
-            network_access: Whether network access is available
             package_name: Android package name for the app being tested
+            username: Username for the app
+            password: Password for the app
+            include_ssrf: Whether to include SSRF instructions in the prompt
         """
-        self.max_conversation_turns = max_conversation_turns
-        self.screenshot_enabled = screenshot_enabled
         self.app_name = app_name
         self.dry_run = dry_run
         self.app_server = app_server
         self.timeout_ms = timeout_ms
-        self.network_access = network_access
         self.package_name = package_name
+        self.username = username
+        self.password = password
+        self.include_ssrf = include_ssrf
 
         # Load environment variables
         agent_dir = os.path.dirname(os.path.abspath(__file__))
         env_file = os.path.join(agent_dir, ".env")
         if os.path.exists(env_file):
             load_dotenv(env_file, override=True)
-
-        # Initialize MCP configuration
-        try:
-            self.mcp_config = mcp_config or get_mcp_server_config()
-        except Exception as e:
-            logger.warning(f"Failed to get MCP config: {e}")
-            self.mcp_config = {}
 
         # Get initial directory tree context
         self._initial_tree_context = get_directory_tree()
@@ -106,15 +81,12 @@ class CodexAgent:
 
         # Log initialization
         self._log_section(
-            "CODEX AGENT INITIALIZED",
+            "AGENT CONFIGURATION",
             [
-                f"App: {app_name}",
-                f"Max Conversation Turns: {max_conversation_turns}",
-                f"Screenshot Enabled: {screenshot_enabled}",
+                f"App: {self.app_name}",
+                f"Package: {self.package_name}",
                 f"App Server: {app_server or 'None'}",
                 f"Dry Run: {dry_run}",
-                f"MCP Server: {self.mcp_config.get('server_url', 'Not configured')}",
-                f"Session ID: {self.provider.session_id}",
             ],
         )
 
@@ -141,13 +113,6 @@ class CodexAgent:
         except Exception as e:
             logger.error(f"Codex Agent execution failed: {e}")
             return self._create_result("error", str(e))
-        finally:
-            # Cleanup session after completion
-            if not self.dry_run:
-                try:
-                    self.provider.cleanup()
-                except Exception as e:
-                    logger.warning(f"Session cleanup warning: {e}")
 
     def _execute_analysis(self, initial_prompt: str) -> Dict[str, Any]:
         """
@@ -160,9 +125,7 @@ class CodexAgent:
             # Single call to execute() handles all turns automatically
             result = self.provider.execute(
                 prompt=initial_prompt,
-                mcp_config=self.mcp_config,
                 timeout_ms=self.timeout_ms,
-                max_iterations=self.max_conversation_turns,
             )
 
             if not result.success:
@@ -187,7 +150,6 @@ class CodexAgent:
                     "final_output": result.output_text,
                     "tool_outputs": result.tool_outputs,
                     "execution_time": result.execution_time,
-                    "session_id": result.session_id,
                     "turns": result.turns,
                 }
             )
@@ -228,7 +190,6 @@ class CodexAgent:
             ),
             "log_file": self.log_file,
             "conversation_history": self.conversation_history,
-            "session_info": self.provider.get_session_info(),
         }
 
         if error:
@@ -239,40 +200,24 @@ class CodexAgent:
             logger.info("Status: Completed")
             logger.info(f"Turns: {turns}")
             logger.info(f"Log file: {self.log_file}")
-            logger.info(f"Session ID: {self.provider.session_id}")
 
         return result
 
     def _get_default_system_prompt(self) -> str:
-        prompt_parts = [
-            DETECT_DESCRIPTION,
-            AGENT_GOAL.format(
-                package_name=self.package_name, codebase=self._initial_tree_context
-            ),
-        ]
-
-        if self.network_access and self.app_server:
-            prompt_parts.extend([APP_SERVER_ACCESS.format(app_server=self.app_server)])
-
-        prompt_parts.extend(
-            [
-                BASE_RESPONSE_FORMAT.format(stop_token=STOP_TOKEN),
-                BASE_INSTRUCTIONS.format(stop_token=STOP_TOKEN),
-                BASE_EXAMPLES.format(stop_token=STOP_TOKEN),
-            ]
-        )
-
-        # Add target host example if provided
+        # Strip port from app_server for hping3 example (doesn't support host:port)
+        resolved_host = None
         if self.app_server:
-            prompt_parts.extend(
-                [
-                    TARGET_HOST_EXAMPLE.format(
-                        resolved_host=self.app_server, stop_token=STOP_TOKEN
-                    ),
-                ]
-            )
+            resolved_host = self.app_server.split(":")[0]
 
-        return "".join(prompt_parts)
+        return build_detect_prompt(
+            package_name=self.package_name,
+            codebase_tree=self._initial_tree_context,
+            app_server=self.app_server,
+            username=self.username,
+            password=self.password,
+            include_ssrf=self.include_ssrf,
+            resolved_host=resolved_host,
+        )
 
     def _create_dry_run_result(self) -> Dict[str, Any]:
         """Create a mock result for dry run mode."""
@@ -281,17 +226,10 @@ class CodexAgent:
             "turns": 0,
             "final_message": f"DRY RUN: Codex Agent configured for {self.app_name}",
             "log_file": self.log_file,
-            "mcp_config": self.mcp_config,
             "app_name": self.app_name,
-            "session_info": self.provider.get_session_info(),
         }
 
     def _signal_handler(self, _sig, _frame):
         """Handle Ctrl-C (SIGINT) for graceful cleanup."""
-        logger.info("\nCtrl-C received, performing session cleanup...")
-        try:
-            self.provider.cleanup()
-            logger.info("Session cleanup completed")
-        except Exception as e:
-            logger.warning(f"Session cleanup warning: {e}")
+        logger.info("\nCtrl-C received, exiting...")
         sys.exit(0)

@@ -5,9 +5,9 @@ import os
 from typing import Any, Dict, Optional, Union
 
 import google.generativeai as genai
-import requests
 from google.generativeai.types import GenerateContentResponse
 
+from agent.tools.runtime import ToolRuntime
 from utils.logger import agent_logger
 
 from .base import ModelProvider
@@ -91,19 +91,16 @@ class GeminiProvider(ModelProvider):
     Wraps client setup, env validation, and Gemini API calls.
     """
 
-    def __init__(self, max_tool_rounds_per_turn: int = 3) -> None:
+    def __init__(self, max_tool_rounds_per_turn: int = 1) -> None:
         # Configuration is done lazily to avoid issues if validation fails
         self._configured: bool = False
         self._validated: bool = False
         self._mock_client = GeminiClient()
-        self._mcp_request_id = 0  # JSON-RPC request ID counter for MCP calls
         self._gemini_call_id = 0  # Counter for unique Gemini response IDs
         self._max_tool_rounds = (
             max_tool_rounds_per_turn  # Allow multiple tool calls per turn
         )
-        self._tool_cache: Dict[str, list] = (
-            {}
-        )  # Cache for MCP tool definitions by server URL
+        self._runtime = ToolRuntime()
         self._chat_sessions: Dict[str, Any] = (
             {}
         )  # Cache ChatSession objects by conversation_id
@@ -155,6 +152,7 @@ class GeminiProvider(ModelProvider):
         tools: Optional[list] = None,
         max_output_tokens: Optional[int] = None,
         timeout_ms: Optional[int] = None,
+        reasoning_effort: Optional[str] = None,
         extra: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """Call the Gemini API.
@@ -163,7 +161,7 @@ class GeminiProvider(ModelProvider):
             model: Gemini model name (e.g., 'gemini-3-pro-preview')
             input_messages: String or list of message dicts
             conversation_id: Not used for Gemini (conversations managed externally)
-            tools: MCP tools configuration (converted to Gemini function calling format)
+            tools: tools configuration (converted to Gemini function calling format)
             max_output_tokens: Maximum tokens in response
             timeout_ms: Request timeout (unused, not directly supported by Gemini SDK)
             extra: Provider-specific parameters (unused)
@@ -208,19 +206,48 @@ class GeminiProvider(ModelProvider):
         if not user_message:
             user_message = "Continue"
 
+        # Reasoning effort support using thinkingLevel/thinkingBudget
+        thinking_config = None
+        if reasoning_effort:
+            # Determine model version
+            model_lower = model.lower()
+            from google.genai import types as genai_types
+
+            if "gemini-3" in model_lower:
+                # Gemini 3 Pro: use thinkingLevel
+                level = None
+                if reasoning_effort.lower() in ("low",):
+                    level = "low"
+                elif reasoning_effort.lower() in ("high", "medium"):
+                    level = "high"
+                # else: let Gemini use default (dynamic)
+                if level:
+                    thinking_config = genai_types.ThinkingConfig(thinking_level=level)
+
+        # Debug log for test verification
+        agent_logger.info(
+            f"[GeminiProvider] model={model} reasoning_effort={reasoning_effort} thinking_config={thinking_config}"
+        )
+        # Create generation config
+        generation_config = {}
+        if max_output_tokens:
+            generation_config["max_output_tokens"] = max_output_tokens
+        if thinking_config:
+            from google.genai import types as genai_types
+
+            generation_config = genai_types.GenerateContentConfig(
+                **generation_config, thinking_config=thinking_config
+            )
+
         # Create generation config
         generation_config = {}
         if max_output_tokens:
             generation_config["max_output_tokens"] = max_output_tokens
 
-        # Convert MCP tools to Gemini function declarations
+        # Convert tools to Gemini function declarations
         gemini_tools = None
-        mcp_server_url = None
         if tools and len(tools) > 0:
-            gemini_tools = self._convert_mcp_tools_to_gemini(tools)
-            # Store MCP server URL for tool execution
-            if isinstance(tools[0], dict) and tools[0].get("type") == "mcp":
-                mcp_server_url = tools[0].get("server_url")
+            gemini_tools = self._convert_tools_to_gemini(tools)
 
         # Get or create chat session
         chat_session = None
@@ -273,7 +300,7 @@ class GeminiProvider(ModelProvider):
             # Allow multiple rounds for autonomous chain-of-execution
             # Can be configured via max_tool_rounds_per_turn parameter
             tool_round = 0
-            mcp_calls_made = []
+            tool_calls_made = []
             intermediate_reasoning = []  # Collect all text generated during tool rounds
 
             while tool_round < self._max_tool_rounds:
@@ -328,79 +355,59 @@ class GeminiProvider(ModelProvider):
                             f"Function arguments: {json.dumps(function_args)}"
                         )
 
-                        # Execute via MCP if server URL is available
-                        if mcp_server_url:
-                            mcp_result = self._execute_mcp_tool(
-                                mcp_server_url, function_name, function_args
-                            )
+                        # Execute via Runtime
+                        tool_result = self._runtime.execute(
+                            function_name, function_args
+                        )
 
-                            # Track full MCP result for final response
-                            mcp_calls_made.append(
-                                {
-                                    "name": function_name,
-                                    "arguments": function_args,
-                                    "output": mcp_result,
-                                }
-                            )
+                        # Track full tool result for final response
+                        tool_calls_made.append(
+                            {
+                                "name": function_name,
+                                "arguments": function_args,
+                                "output": tool_result,
+                            }
+                        )
 
-                            # Extract simplified result for Gemini
-                            # MCP returns: {"content": [...], "structuredContent": {"result": "..."}}
-                            # Gemini needs just the result
-                            gemini_result = {}
-                            if isinstance(mcp_result, dict):
-                                # Prefer structuredContent.result - it's already clean
-                                if "structuredContent" in mcp_result:
-                                    gemini_result = mcp_result["structuredContent"]
-                                # Fallback: extract text from content array
-                                elif "content" in mcp_result and isinstance(
-                                    mcp_result["content"], list
-                                ):
-                                    if len(mcp_result["content"]) > 0:
-                                        first_item = mcp_result["content"][0]
-                                        if (
-                                            isinstance(first_item, dict)
-                                            and "text" in first_item
-                                        ):
-                                            gemini_result = {
-                                                "result": first_item["text"]
-                                            }
-                                        else:
-                                            gemini_result = {"result": str(first_item)}
-                                # Last resort: stringify the whole result
-                                else:
-                                    gemini_result = {"result": json.dumps(mcp_result)}
+                        # Extract simplified result for Gemini
+                        gemini_result = {}
+                        if isinstance(tool_result, dict):
+                            # Prefer structuredContent.result - it's already clean
+                            if "structuredContent" in tool_result:
+                                gemini_result = tool_result["structuredContent"]
+                            # Fallback: extract text from content array
+                            elif "content" in tool_result and isinstance(
+                                tool_result["content"], list
+                            ):
+                                if len(tool_result["content"]) > 0:
+                                    first_item = tool_result["content"][0]
+                                    if (
+                                        isinstance(first_item, dict)
+                                        and "text" in first_item
+                                    ):
+                                        gemini_result = {"result": first_item["text"]}
+                                    else:
+                                        gemini_result = {"result": str(first_item)}
+                            # Last resort: stringify the whole result
                             else:
-                                gemini_result = {"result": str(mcp_result)}
-
-                            agent_logger.debug(
-                                f"Simplified response for Gemini: {json.dumps(gemini_result)[:200]}..."
-                            )
-
-                            # Add function response for next Gemini call
-                            function_responses.append(
-                                {
-                                    "function_call": fc,
-                                    "function_response": {
-                                        "name": function_name,
-                                        "response": gemini_result,
-                                    },
-                                }
-                            )
+                                gemini_result = {"result": json.dumps(tool_result)}
                         else:
-                            agent_logger.error(
-                                f"Cannot execute function {function_name}: MCP server URL not available"
-                            )
-                            function_responses.append(
-                                {
-                                    "function_call": fc,
-                                    "function_response": {
-                                        "name": function_name,
-                                        "response": {
-                                            "error": "MCP server not configured"
-                                        },
-                                    },
-                                }
-                            )
+                            gemini_result = {"result": str(tool_result)}
+
+                        agent_logger.debug(
+                            f"Simplified response for Gemini: {json.dumps(gemini_result)[:200]}..."
+                        )
+
+                        # Add function response for next Gemini call
+                        function_responses.append(
+                            {
+                                "function_call": fc,
+                                "function_response": {
+                                    "name": function_name,
+                                    "response": gemini_result,
+                                },
+                            }
+                        )
 
                 # Build function response parts for chat session
                 function_response_parts = []
@@ -447,7 +454,7 @@ class GeminiProvider(ModelProvider):
             # Log summary if multiple tool rounds were used
             if tool_round > 0:
                 agent_logger.info(
-                    f"Completed {tool_round} tool calling round(s) with {len(mcp_calls_made)} total MCP call(s)"
+                    f"Completed {tool_round} tool calling round(s) with {len(tool_calls_made)} total tool call(s)"
                 )
 
             # Convert Gemini response to OpenAI-compatible format
@@ -455,19 +462,19 @@ class GeminiProvider(ModelProvider):
                 response, request_id=current_call_id
             )
 
-            # Add MCP call information to output
-            if mcp_calls_made:
+            # Add tool call information to output
+            if tool_calls_made:
                 output_items = list(getattr(converted_response, "output", []))
-                for mcp_call in mcp_calls_made:
+                for tool_call in tool_calls_made:
                     output_items.append(
                         type(
-                            "MCPItem",
+                            "ToolCallItem",
                             (),
                             {
-                                "type": "mcp_call",
-                                "name": mcp_call["name"],
-                                "arguments": json.dumps(mcp_call["arguments"]),
-                                "output": json.dumps(mcp_call["output"]),
+                                "type": "tool_call",
+                                "name": tool_call["name"],
+                                "arguments": json.dumps(tool_call["arguments"]),
+                                "output": json.dumps(tool_call["output"]),
                                 "error": None,
                             },
                         )()
@@ -481,134 +488,11 @@ class GeminiProvider(ModelProvider):
             agent_logger.error(f"Gemini API call failed: {e}")
             raise
 
-    def _parse_sse_response(self, response_text: str) -> dict:
-        """Parse Server-Sent Events format response.
+    def _convert_json_schema_to_gemini(self, json_schema: dict) -> dict:
+        """Convert JSON schema to Gemini parameter format.
 
         Args:
-            response_text: Raw SSE response text
-
-        Returns:
-            Parsed JSON data from SSE
-        """
-        lines = response_text.strip().split("\n")
-        for line in lines:
-            if line.startswith("data: "):
-                data_str = line[6:].strip()
-                try:
-                    return json.loads(data_str)
-                except json.JSONDecodeError:
-                    continue
-        raise ValueError("No valid JSON data found in Server-Sent Events response")
-
-    def _fetch_mcp_tools(self, server_url: str) -> list:
-        """Fetch tool definitions from MCP server.
-
-        Args:
-            server_url: MCP server URL (e.g., https://example.ngrok.io/mcp/)
-
-        Returns:
-            List of tool definitions from MCP server
-        """
-        try:
-            # Normalize URL - remove trailing slash
-            url = server_url.rstrip("/")
-
-            self._mcp_request_id += 1
-            # Use JSON-RPC 2.0 format for MCP protocol
-            payload = {
-                "jsonrpc": "2.0",
-                "id": self._mcp_request_id,
-                "method": "tools/list",
-                "params": {},
-            }
-
-            headers = {
-                "Content-Type": "application/json",
-                "Accept": "application/json, text/event-stream",
-            }
-
-            response = requests.post(url, json=payload, headers=headers, timeout=10)
-            response.raise_for_status()
-
-            # Handle both JSON and Server-Sent Events responses
-            content_type = response.headers.get("content-type", "")
-            if "text/event-stream" in content_type:
-                result = self._parse_sse_response(response.text)
-            else:
-                result = response.json()
-
-            # Extract tools from JSON-RPC response
-            if "result" in result and "tools" in result["result"]:
-                tools = result["result"]["tools"]
-                agent_logger.info(f"Fetched {len(tools)} tools from MCP server")
-                return tools
-            else:
-                agent_logger.warning(f"Unexpected MCP response format: {result}")
-                return []
-
-        except Exception as e:
-            agent_logger.error(
-                f"Failed to fetch tools from MCP server {server_url}: {e}"
-            )
-            return []
-
-    def _execute_mcp_tool(
-        self, server_url: str, tool_name: str, arguments: dict
-    ) -> dict:
-        """Execute a tool call via MCP server.
-
-        Args:
-            server_url: MCP server URL
-            tool_name: Name of the tool to call
-            arguments: Tool arguments
-
-        Returns:
-            Tool execution result
-        """
-        try:
-            # Normalize URL - remove trailing slash
-            url = server_url.rstrip("/")
-
-            self._mcp_request_id += 1
-            # Use JSON-RPC 2.0 format for MCP protocol
-            payload = {
-                "jsonrpc": "2.0",
-                "id": self._mcp_request_id,
-                "method": "tools/call",
-                "params": {"name": tool_name, "arguments": arguments},
-            }
-
-            headers = {
-                "Content-Type": "application/json",
-                "Accept": "application/json, text/event-stream",
-            }
-
-            response = requests.post(url, json=payload, headers=headers, timeout=30)
-            response.raise_for_status()
-
-            # Handle both JSON and Server-Sent Events responses
-            content_type = response.headers.get("content-type", "")
-            if "text/event-stream" in content_type:
-                result = self._parse_sse_response(response.text)
-            else:
-                result = response.json()
-
-            if "result" in result:
-                agent_logger.info(f"MCP tool {tool_name} executed successfully")
-                return result["result"]
-            else:
-                agent_logger.error(f"Unexpected MCP tool call response: {result}")
-                return {"error": "Unexpected response format"}
-
-        except Exception as e:
-            agent_logger.error(f"Failed to execute MCP tool {tool_name}: {e}")
-            return {"error": str(e)}
-
-    def _convert_mcp_schema_to_gemini(self, mcp_schema: dict) -> dict:
-        """Convert MCP JSON schema to Gemini parameter format.
-
-        Args:
-            mcp_schema: MCP tool input schema (JSON Schema format)
+            json_schema: Tool input schema (JSON Schema format)
 
         Returns:
             Gemini-compatible parameter schema
@@ -624,24 +508,24 @@ class GeminiProvider(ModelProvider):
             "array": "ARRAY",
         }
 
-        mcp_type = mcp_schema.get("type", "object").lower()
-        gemini_type = type_mapping.get(mcp_type, "OBJECT")
+        schema_type = json_schema.get("type", "object").lower()
+        gemini_type = type_mapping.get(schema_type, "OBJECT")
 
         gemini_schema = {
             "type_": gemini_type,
         }
 
         # Add description if present
-        if "description" in mcp_schema:
-            gemini_schema["description"] = mcp_schema["description"]
+        if "description" in json_schema:
+            gemini_schema["description"] = json_schema["description"]
 
         # Convert properties recursively if present
-        if "properties" in mcp_schema:
+        if "properties" in json_schema:
             gemini_properties = {}
-            for prop_name, prop_schema in mcp_schema["properties"].items():
+            for prop_name, prop_schema in json_schema["properties"].items():
                 # Recursively convert nested schemas
                 if isinstance(prop_schema, dict):
-                    gemini_properties[prop_name] = self._convert_mcp_schema_to_gemini(
+                    gemini_properties[prop_name] = self._convert_json_schema_to_gemini(
                         prop_schema
                     )
                 else:
@@ -650,81 +534,65 @@ class GeminiProvider(ModelProvider):
                     }  # Default fallback
             gemini_schema["properties"] = gemini_properties
 
-        if "required" in mcp_schema:
-            gemini_schema["required"] = mcp_schema["required"]
+        if "required" in json_schema:
+            gemini_schema["required"] = json_schema["required"]
 
         # Handle array items
-        if "items" in mcp_schema and isinstance(mcp_schema["items"], dict):
-            gemini_schema["items"] = self._convert_mcp_schema_to_gemini(
-                mcp_schema["items"]
+        if "items" in json_schema and isinstance(json_schema["items"], dict):
+            gemini_schema["items"] = self._convert_json_schema_to_gemini(
+                json_schema["items"]
             )
 
         return gemini_schema
 
-    def _convert_mcp_tools_to_gemini(self, tools: list) -> Optional[list]:
-        """Convert MCP tool configuration to Gemini function declarations.
+    def _convert_tools_to_gemini(self, tools: list) -> Optional[list]:
+        """Convert OpenAI-style tool definitions to Gemini function declarations.
 
         Args:
-            tools: List containing MCP configuration dict
+            tools: List containing tool definitions
 
         Returns:
             List of Gemini function declarations or None
         """
-        # Check if tools is an MCP configuration
-        if not tools or len(tools) == 0:
+        if not tools:
             return None
 
-        if not isinstance(tools[0], dict):
-            return None
+        # Check if it's already in Gemini format (list of FunctionDeclaration)
+        # or if it's our ToolRuntime format (OpenAI style)
 
-        tool_config = tools[0]
-        if tool_config.get("type") != "mcp":
-            agent_logger.warning("Tools provided but not in MCP format")
-            return None
-
-        server_url = tool_config.get("server_url")
-        if not server_url:
-            agent_logger.error("MCP configuration missing server_url")
-            return None
-
-        # Check cache first to avoid redundant fetches
-        if server_url in self._tool_cache:
-            cached_tools = self._tool_cache[server_url]
-            agent_logger.debug(
-                f"Using cached tools for {server_url} ({len(cached_tools)} tools)"
-            )
-            return cached_tools
-
-        # Fetch tools from MCP server
-        mcp_tools = self._fetch_mcp_tools(server_url)
-        if not mcp_tools:
-            agent_logger.warning("No tools available from MCP server")
-            return None
-
-        # Convert to Gemini function declarations
         gemini_functions = []
-        for tool in mcp_tools:
-            function_decl = {
-                "name": tool.get("name", ""),
-                "description": tool.get("description", ""),
-            }
+        for tool in tools:
+            # Handle OpenAI format: {"type": "function", "function": {"name": ..., "parameters": ...}}
+            if isinstance(tool, dict) and "function" in tool:
+                func_def = tool["function"]
+                function_decl = {
+                    "name": func_def.get("name", ""),
+                    "description": func_def.get("description", ""),
+                }
 
-            # Convert input schema if present
-            if "inputSchema" in tool:
-                function_decl["parameters"] = self._convert_mcp_schema_to_gemini(
-                    tool["inputSchema"]
-                )
-            else:
-                # No parameters
-                function_decl["parameters"] = {"type": "object", "properties": {}}
+                if "parameters" in func_def:
+                    function_decl["parameters"] = self._convert_json_schema_to_gemini(
+                        func_def["parameters"]
+                    )
+                else:
+                    function_decl["parameters"] = {"type": "object", "properties": {}}
 
-            gemini_functions.append(function_decl)
+                gemini_functions.append(function_decl)
 
-        # Cache the converted tools for future use
-        self._tool_cache[server_url] = gemini_functions
-        agent_logger.info(
-            f"Converted and cached {len(gemini_functions)} MCP tools to Gemini format"
-        )
+            # Handle dict but not wrapped in "function" (direct definition)
+            elif isinstance(tool, dict) and "name" in tool and "parameters" in tool:
+                function_decl = {
+                    "name": tool.get("name", ""),
+                    "description": tool.get("description", ""),
+                    "parameters": self._convert_json_schema_to_gemini(
+                        tool["parameters"]
+                    ),
+                }
+                gemini_functions.append(function_decl)
+
+        if not gemini_functions:
+            return None
+
         return gemini_functions
 
     def _convert_response(
@@ -839,6 +707,6 @@ class GeminiProvider(ModelProvider):
                     },
                 )(),
                 "tool_outputs": [],
-                "output": [],  # MCP calls are added by call() method
+                "output": [],
             },
         )()

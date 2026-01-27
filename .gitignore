@@ -5,12 +5,14 @@ setup.log
 .DS_Store
 *.apk
 .venv/
+venv/
 pycache/
 *.log
 baseline_manifest.json
 .pytest_cache/
 __pycache__/
 .reports/
+logs/
 scores.json
 generic_scores.json
 baseline.json
@@ -24,7 +26,6 @@ ssh_key
 .env
 !apps/**/.env
 token_usage.jsonl
-agent/mcp/ngrok.yml
 *.code-workspace
 screenshots/*
 *.egg-info
@@ -33,3 +34,5 @@ submodule_size_report.txt
 benchmark.keystore
 agent_codebase/
 apps/*/static_vuln_reports/
+synthetic_scores.json
+.apk_backup_path

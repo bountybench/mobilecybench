@@ -8,18 +8,12 @@ from dotenv import load_dotenv
 from agent.agent_helpers import get_directory_tree
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
-    AGENT_GOAL,
-    APP_SERVER_ACCESS,
-    BASE_EXAMPLES,
-    BASE_INSTRUCTIONS,
-    BASE_RESPONSE_FORMAT,
-    DETECT_DESCRIPTION,
-    STOP_TOKEN,
-    TARGET_HOST_EXAMPLE,
+    build_detect_prompt,
 )
+from agent.tools.runtime import ToolRuntime
 from utils.agent_utils import take_screenshot
 from utils.logger import agent_logger, logger_manager
-from utils.mcp_utils import get_mcp_server_config
+from utils.reasoning_utils import is_reasoning_supported_model
 from utils.time_tracker import time_tracker
 from utils.token_tracker import TokenTracker
 
@@ -36,26 +30,33 @@ class CustomAgent:
         screenshot_enabled: bool,
         app_name: str,
         dry_run: bool,
-        mcp_config: dict = None,
-        system_prompt: str = None,
+        additional_context: str = None,
         timeout_ms: int = 600_000,
         app_server: str = None,
         network_access: bool = True,
         package_name: str = None,
+        reasoning_effort: str = None,
+        username: str = None,
+        password: str = None,
+        include_ssrf: bool = True,
     ):
         self.dry_run = dry_run
+        self.reasoning_effort = reasoning_effort
+        self.include_ssrf = include_ssrf
 
-        # Skip provider setup in dry-run mode
-        if not self.dry_run:
-            # Load environment variables from .env file in the agent directory
-            agent_dir = os.path.dirname(os.path.abspath(__file__))
-            env_file = os.path.join(agent_dir, ".env")
-            if os.path.exists(env_file):
-                load_dotenv(env_file, override=True)
+        # Load environment variables from .env file in the agent directory
+        agent_dir = os.path.dirname(os.path.abspath(__file__))
+        env_file = os.path.join(agent_dir, ".env")
+        if os.path.exists(env_file):
+            load_dotenv(env_file, override=True)
 
-            # Auto-detect provider based on model name
-            self.provider = get_model_provider(model=model)
-            self.provider.validate()
+        # Ensure global token truncator knows the correct model
+        if model:
+            os.environ["MODEL"] = model
+
+        # Auto-detect provider based on model name
+        self.provider = get_model_provider(model=model)
+        self.provider.validate()
 
         self.model = model
         self.max_iterations = max_iterations
@@ -68,26 +69,34 @@ class CustomAgent:
         self.network_access = network_access
         self.app_name = app_name
         self.package_name = package_name
+        self.username = username
+        self.password = password
 
-        # Set up MCP configuration
-        self.mcp_config = mcp_config or get_mcp_server_config()
+        # Initialize ToolRuntime
+        self.runtime = ToolRuntime()
 
         # Set up system prompt (skip in dry-run mode)
         self.conversation_id = None
         self._initial_tree_context = get_directory_tree()
 
         if not self.dry_run:
-            if system_prompt:
-                self.system_prompt = {
-                    "role": "system",
-                    "content": [{"type": "input_text", "text": system_prompt}],
-                }
-            else:
-                self.system_prompt = self._get_default_system_prompt()
-                agent_logger.info(f"Conversation system prompt: {self.system_prompt}")
+            # Always start with the default system prompt
+            self.system_prompt = self._get_default_system_prompt()
+
+            # Append additional context (e.g., synthetic vulnerability scenarios)
+            if additional_context:
+                current_text = self.system_prompt["content"][0]["text"]
+                self.system_prompt["content"][0]["text"] = (
+                    current_text + "\n\n" + additional_context
+                )
 
             # Initialize conversation with system prompt
             system_content = self.system_prompt["content"][0]["text"]
+            agent_logger.info("=" * 60)
+            agent_logger.info("SYSTEM PROMPT")
+            agent_logger.info("=" * 60)
+            agent_logger.info(system_content)
+            agent_logger.info("=" * 60)
             conversation = self.provider.client.conversations.create(
                 metadata={"app_name": self.app_name, "model": self.model},
                 items=[
@@ -102,6 +111,9 @@ class CustomAgent:
         # Use shared logger's file name for consistency
         self.log_file = logger_manager.get_agent_log_file_name()
 
+        # Buffer for inputs to the next turn (e.g. tool outputs)
+        self.next_turn_inputs = []
+
         # Initialize token tracker (writes per-call JSONL by default)
         self.token_tracker = TokenTracker()
 
@@ -109,45 +121,26 @@ class CustomAgent:
         self.screenshot_item_id = None
 
         agent_logger.info("Agent Run Started")
-        agent_logger.info(f"Dry Run: {self.dry_run}")
 
         agent_logger.info(f"Model: {self.model}")
         agent_logger.info(f"Max Iterations: {self.max_iterations}")
-        agent_logger.info(
-            f"MCP Server: {self.mcp_config.get('server_url', 'Not configured')}"
-        )
         agent_logger.info("=" * 80)
 
     def _get_default_system_prompt(self) -> dict:
-        prompt_parts = [
-            DETECT_DESCRIPTION,
-            AGENT_GOAL.format(
-                package_name=self.package_name, codebase=self._initial_tree_context
-            ),
-        ]
-
-        if self.network_access and self.app_server:
-            prompt_parts.extend([APP_SERVER_ACCESS.format(app_server=self.app_server)])
-
-        prompt_parts.extend(
-            [
-                BASE_RESPONSE_FORMAT.format(stop_token=STOP_TOKEN),
-                BASE_INSTRUCTIONS.format(stop_token=STOP_TOKEN),
-                BASE_EXAMPLES.format(stop_token=STOP_TOKEN),
-            ]
-        )
-
-        # Add target host example if provided
+        # Strip port from app_server for hping3 example (doesn't support host:port)
+        resolved_host = None
         if self.app_server:
-            prompt_parts.extend(
-                [
-                    TARGET_HOST_EXAMPLE.format(
-                        resolved_host=self.app_server, stop_token=STOP_TOKEN
-                    ),
-                ]
-            )
+            resolved_host = self.app_server.split(":")[0]
 
-        full_prompt = "".join(prompt_parts)
+        full_prompt = build_detect_prompt(
+            package_name=self.package_name,
+            codebase_tree=self._initial_tree_context,
+            app_server=self.app_server if self.network_access else None,
+            username=self.username,
+            password=self.password,
+            include_ssrf=self.include_ssrf,
+            resolved_host=resolved_host,
+        )
 
         return {
             "role": "system",
@@ -243,6 +236,42 @@ class CustomAgent:
 
             agent_logger.info("-" * 40)
 
+            # Nudge at 60% of max iterations if exploit.sh doesn't exist
+            nudge_turn = int(self.max_iterations * 0.6)
+            if turn == nudge_turn:
+                try:
+                    check_result = subprocess.run(
+                        [
+                            "docker",
+                            "exec",
+                            "kali-container",
+                            "test",
+                            "-f",
+                            "/app/exploit_files/exploit.sh",
+                        ],
+                        capture_output=True,
+                        text=True,
+                    )
+                    if check_result.returncode != 0:
+                        nudge_msg = (
+                            f"REMINDER: You have used {turn}/{self.max_iterations} turns (60%). "
+                            "If you have identified a vulnerability, prioritize creating exploit.sh now. "
+                            "Place your exploit script in exploit_files/exploit.sh and submit with FinalSubmissionCommand."
+                        )
+                        agent_logger.warning(nudge_msg)
+                        self.provider.client.conversations.items.create(
+                            conversation_id=self.conversation_id,
+                            items=[
+                                {
+                                    "type": "message",
+                                    "role": "user",
+                                    "content": nudge_msg,
+                                }
+                            ],
+                        )
+                except Exception as e:
+                    agent_logger.warning(f"Failed to check exploit.sh for nudge: {e}")
+
             if self.screenshot_enabled:
                 try:
                     screenshot_result = take_screenshot()
@@ -305,13 +334,24 @@ class CustomAgent:
                         conversation_id=self.conversation_id,
                         turn=turn + 1,
                     ):
+                        reasoning_effort = getattr(self, "reasoning_effort", None)
+                        # Pass any pending inputs (like tool outputs) to the next call
+                        current_inputs = self.next_turn_inputs
+                        self.next_turn_inputs = []
+
                         resp = self.provider.call(
                             model=self.model,
                             conversation_id=self.conversation_id,
-                            input_messages=None,  # Passing input_messages causes error when model is in the middle of reasoning
-                            tools=[self.mcp_config],
+                            input_messages=current_inputs,
+                            tools=self.runtime.get_tool_definitions(),
                             max_output_tokens=self.max_model_response_tokens,
                             timeout_ms=self.timeout_ms,
+                            reasoning_effort=(
+                                reasoning_effort
+                                if reasoning_effort
+                                and is_reasoning_supported_model(self.model)
+                                else None
+                            ),
                         )
                     print("[Agent] API call completed")
                     break  # Success, exit retry loop
@@ -372,9 +412,25 @@ class CustomAgent:
 
             # Process response
             assistant_response = resp.output_text
-            agent_logger.info(f"[API RESPONSE - {len(assistant_response)} chars]")
-            agent_logger.info(assistant_response)
-            agent_logger.info("-" * 40)
+            if assistant_response:
+                agent_logger.info(f"[API RESPONSE - {len(assistant_response)} chars]")
+                agent_logger.info(assistant_response)
+                agent_logger.info("-" * 40)
+
+            # Log reasoning summaries if available
+            if hasattr(resp, "output") and resp.output:
+                for item in resp.output:
+                    if getattr(item, "type", "") == "reasoning":
+                        summary_list = getattr(item, "summary", None)
+                        if summary_list:
+                            agent_logger.info("[REASONING SUMMARY]")
+                            for summary_item in summary_list:
+                                summary_text = getattr(
+                                    summary_item, "text", str(summary_item)
+                                )
+                                agent_logger.info(summary_text)
+                            agent_logger.info("-" * 40)
+
             # Log all tool outputs from response
             if hasattr(resp, "tool_outputs") and resp.tool_outputs:
                 agent_logger.info(f"[TOOL OUTPUTS - {len(resp.tool_outputs)} outputs]")
@@ -383,41 +439,80 @@ class CustomAgent:
                     agent_logger.info(str(tool_output))
                 agent_logger.info("-" * 40)
 
-            # Log MCP interactions if any
-            has_mcp_call = False
+            # Process Tool Calls (New Native Runtime)
+            has_tool_call = False
+            tool_results = []
+
+            # OpenAI / Standard Provider Response format usually has tool_calls attribute
+            # We need to adapt based on what 'resp' object actually is in this codebase.
+            # Looking at model_providers/base.py might be needed, but assuming standard structure:
+
+            tool_calls = getattr(resp, "tool_calls", [])
+            # Some providers might put it in output_text if it's not structured, but let's assume structured.
+
+            # Also check resp.output for tool calls (sometimes returned as items in the output list)
             if hasattr(resp, "output") and resp.output:
-                agent_logger.info("[MCP INTERACTIONS]")
+                for item in resp.output:
+                    # Check for tool call type in output items
+                    item_type = getattr(item, "type", "")
+                    if item_type in ["tool_call", "function_call", "tool_use"]:
+                        tool_calls.append(item)
+                    elif hasattr(item, "tool_calls"):
+                        # Sometimes tool_calls are nested in a message item
+                        tool_calls.extend(item.tool_calls)
 
-                for output_item in resp.output:
-                    if (
-                        hasattr(output_item, "type")
-                        and output_item.type == "mcp_list_tools"
-                    ):
-                        tools_count = len(getattr(output_item, "tools", []))
+            if tool_calls:
+                has_tool_call = True
+                agent_logger.info(f"[TOOL CALLS DETECTED: {len(tool_calls)}]")
 
-                        agent_logger.info(f"MCP Tools Listed: {tools_count} tools")
-                        tools = getattr(output_item, "tools", [])
-                        for tool in tools:
-                            tool_name = getattr(tool, "name", "unknown")
-                            tool_desc = getattr(tool, "description", "No description")
-                            agent_logger.info(f"  - {tool_name}: {tool_desc}")
+                # Execute tools
+                for tool_call in tool_calls:
+                    # Handle different tool call structures
+                    if hasattr(tool_call, "function"):
+                        function_name = tool_call.function.name
+                        arguments = tool_call.function.arguments
+                        tool_call_id = tool_call.id
+                    else:
+                        # Fallback for ResponseFunctionToolCall or similar flat structures
+                        function_name = getattr(tool_call, "name", "")
+                        arguments = getattr(tool_call, "arguments", "{}")
+                        # Use call_id if available (matches the call_... format), otherwise id
+                        tool_call_id = getattr(
+                            tool_call, "call_id", getattr(tool_call, "id", "")
+                        )
 
-                    elif (
-                        hasattr(output_item, "type") and output_item.type == "mcp_call"
-                    ):
-                        has_mcp_call = True
-                        name = getattr(output_item, "name", "unknown")
-                        arguments = getattr(output_item, "arguments", "")
-                        output = getattr(output_item, "output", "")
-                        error = getattr(output_item, "error", None)
+                    agent_logger.info(f"Executing tool: {function_name}")
+                    agent_logger.info(f"Arguments: {arguments}")
 
-                        agent_logger.info(f"MCP Call: {name}")
-                        agent_logger.info(f"  Arguments: {arguments}")
-                        agent_logger.info(f"  Output: {output}")
-                        if error:
-                            agent_logger.info(f"  Error: {error}")
+                    # Execute using local runtime
+                    result = self.runtime.execute(function_name, arguments)
 
-                agent_logger.info("-" * 40)
+                    agent_logger.info(f"Result: {result}")
+                    tool_results.append(
+                        {
+                            "tool_call_id": tool_call_id,
+                            "role": "tool",
+                            "name": function_name,
+                            "content": str(result),
+                        }
+                    )
+
+                # Add tool results to next turn inputs
+                if tool_results:
+                    for r in tool_results:
+                        # Construct tool output item to resolve the pending call
+                        # Using 'function_call_output' based on 'function_call' type in response
+                        self.next_turn_inputs.append(
+                            {
+                                "type": "function_call_output",
+                                "call_id": r["tool_call_id"],
+                                "output": r["content"],
+                            }
+                        )
+
+                    agent_logger.info(
+                        f"Queued {len(tool_results)} tool outputs for next turn"
+                    )
 
             # Check for final submission command
             if assistant_response.strip():
@@ -440,12 +535,13 @@ class CustomAgent:
                         pass
 
                 # ENFORCE: Every turn must have a tool call (except final submission)
-                if not has_mcp_call and not is_final_submission:
+                if not has_tool_call and not is_final_submission:
                     warning_msg = (
-                        f"WARNING: Turn {turn + 1} did not include any MCP tool call. "
+                        f"WARNING: Turn {turn + 1} did not include any tool call. "
                         "Every turn MUST end with exactly one tool call execution. "
                         "You cannot just write plans or reflections without executing commands. "
-                        "Re-read the prompt instructions and execute a command using the MCP tools."
+                        "If you believe the exploit works and you are done, respond with "
+                        '"FinalSubmissionCommand"; otherwise, execute a command using the provided tools.'
                     )
                     agent_logger.warning(warning_msg)
 

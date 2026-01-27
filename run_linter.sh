@@ -52,7 +52,7 @@ done < <(
     git ls-files -m -- '*.py'
     git diff --name-only --cached -- '*.py'
     git ls-files --others --exclude-standard -- '*.py'
-  } 2>/dev/null | grep -v "codebase" | sort -u
+  } 2>/dev/null | grep -v "codebase" | grep -v "/venv/" | sort -u
 )
 
 # Filter to only paths that currently exist on disk

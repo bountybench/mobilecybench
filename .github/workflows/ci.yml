@@ -12,15 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      modified_dirs: ${{ steps.modified-dirs.outputs.modified_dirs }}
-      should_exit: ${{ steps.modified-dirs.outputs.should_exit }}
+      should_exit: ${{ steps.modified-dirs.outputs.should_exit || steps.build-matrices.outputs.should_exit }}
       has_non_app_changes: ${{ steps.modified-dirs.outputs.has_non_app_changes }}
-      sdk: ${{ steps.get-sdk-java.outputs.sdk }}
-      java: ${{ steps.get-sdk-java.outputs.java }}
-      system_image: ${{ steps.get-sdk-java.outputs.system_image }}
-      has_probes: ${{ steps.check-run-checks.outputs.has_probes }}
-      setup_modes: ${{ steps.setup-strategy.outputs.setup_modes }}
-      has_server: ${{ steps.check-server-components.outputs.has_server }}
+      apk_jobs: ${{ steps.build-matrices.outputs.apk_jobs }}
+      test_jobs: ${{ steps.build-matrices.outputs.test_jobs }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -70,139 +65,124 @@ jobs:
           else
             echo "Modified directories:"
             echo "$modified_dirs"
-
-            readarray -t dirs <<< "$modified_dirs"
-            count=${#dirs[@]}
-            if [ "$count" -gt 1 ]; then
-              echo "More than one modified directory detected: ${dirs[*]}"
-              echo "Each PR should only modify one app"
-              exit 1
-            fi
-
             echo "modified_dirs<<EOF" >> $GITHUB_OUTPUT
             echo "$modified_dirs" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
           fi
 
-      - name: Get API level & Java versions
+      - name: Build job matrices
         if: steps.modified-dirs.outputs.should_exit != 'true'
-        id: get-sdk-java
+        id: build-matrices
         run: |
           set -e
 
-          # Get the first directory from modified_dirs
-          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
+          apk_jobs="[]"
+          test_jobs="[]"
 
-          metadata="$dir/metadata.json"
-          if [ ! -f "$metadata" ]; then
-            echo "ERROR: $metadata not found"
-            exit 1
-          fi
+          while IFS= read -r dir; do
+            [ -z "$dir" ] && continue
+            app_name=$(basename "$dir")
+            echo "=== Processing $dir (app: $app_name) ==="
 
-          sdk=$(jq -r '.sdk' $metadata)
-          if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
-              echo "ERROR: Could not extract SDK from $metadata."
+            # Get SDK and Java from metadata.json
+            metadata="$dir/metadata.json"
+            if [ ! -f "$metadata" ]; then
+              echo "ERROR: $metadata not found"
               exit 1
-          else 
-              echo "SDK: $sdk"
-          fi
-
-          java=$(jq -r '.java' $metadata)
-          if [ "$?" -ne 0 ] || [ "$java" = "null" ] || [ -z "$java" ]; then
-              echo "ERROR: Could not extract Java version from $metadata. Use default (17)."
-              java=17
-          else 
-              echo "Java version: $java"
-          fi
-
-          if [ "$sdk" -lt 30 ]; then
-              system_image="google_apis"
-          else
-              system_image="google_atd"
-          fi
-          echo "System image: $system_image"
-
-          echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
-          echo "java=$java" >> "$GITHUB_OUTPUT"
-          echo "system_image=$system_image" >> "$GITHUB_OUTPUT"
-
-      - name: Check if test_X.py probes exist
-        if: steps.modified-dirs.outputs.should_exit != 'true'
-        id: check-run-checks
-        run: |
-          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
-          if [ -f "$dir/test_access_control.py" ] || [ -f "$dir/test_availability.py" ] || [ -f "$dir/test_confidentiality.py" ] || [ -f "$dir/test_integrity.py" ]; then
-            echo "test_X.py probe found in $dir"
-            echo "has_probes=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "test_X.py probe not found in $dir - will run simplified CI"
-            echo "has_probes=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Determine app setup strategy
-        if: steps.modified-dirs.outputs.should_exit != 'true'
-        id: setup-strategy
-        run: |
-          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
-          
-          # Check for both setup scripts
-          has_source=false
-          has_apklink=false
-
-          if [ -f "$dir/setup_app_source.sh" ]; then
-            has_source=true
-            echo "Found setup_app_source.sh"
-          fi
-
-          # Check if download_link exists in metadata.json
-          if [ -f "$dir/metadata.json" ]; then
-            download_link=$(jq -r '.download_link // empty' "$dir/metadata.json")
-            if [ -n "$download_link" ]; then
-              has_apklink=true
-              echo "Found download_link in metadata.json"
             fi
-          fi
 
-          # Validate at least one exists
-          if [ "$has_source" = false ] && [ "$has_apklink" = false ]; then
-            echo "ERROR: Neither setup_app_source.sh nor download_link in metadata.json found in $dir"
-            exit 1
-          fi
-          
-          # Determine which setup modes to test based on script existence and modifications
-          echo "has source: $has_source, has apklink: $has_apklink"
-          
-          # Check which specific scripts were modified
-          source_modified=$(git diff --name-only origin/main...HEAD | grep -q "$dir/setup_app_source.sh" && echo "true" || echo "false")
-          apklink_modified=$(git diff --name-only origin/main...HEAD | grep -q "$dir/metadata.json" && echo "true" || echo "false")
-          
-          echo "source modified: $source_modified, apklink modified: $apklink_modified"
-          
-          if [ "$has_source" = true ] && [ "$has_apklink" = true ]; then
-            # Both scripts exist - determine modes based on modifications
-            if [ "$source_modified" = "true" ] && [ "$apklink_modified" = "true" ]; then
-              echo "Both setup scripts modified - testing both modes"
-              setup_modes='["source", "apklink"]'
-            elif [ "$source_modified" = "true" ]; then
-              echo "Source script modified - using source mode"
-              setup_modes='["source"]'
-            elif [ "$apklink_modified" = "true" ]; then
-              echo "APK link script modified - using apklink mode"
-              setup_modes='["apklink"]'
+            sdk=$(jq -r '.sdk' "$metadata")
+            if [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
+              echo "ERROR: Could not extract SDK from $metadata"
+              exit 1
+            fi
+
+            java=$(jq -r '.java // 17' "$metadata")
+            system_image="google_atd"
+            echo "  SDK: $sdk, Java: $java, System image: $system_image"
+
+            # Check for probes
+            has_probes=false
+            if [ -f "$dir/test_access_control.py" ] || [ -f "$dir/test_availability.py" ] || \
+               [ -f "$dir/test_confidentiality.py" ] || [ -f "$dir/test_integrity.py" ]; then
+              has_probes=true
+            fi
+            echo "  Has probes: $has_probes"
+
+            # Check for server components
+            has_server=false
+            app_server=$(jq -r '.app_server // empty' "$metadata")
+            [ -n "$app_server" ] && has_server=true
+            echo "  Has server: $has_server"
+
+            # Determine setup modes
+            has_source=false
+            has_apklink=false
+            [ -f "$dir/setup_app_source.sh" ] && has_source=true
+            download_link=$(jq -r '.download_link // empty' "$metadata")
+            [ -n "$download_link" ] && has_apklink=true
+
+            if [ "$has_source" = false ] && [ "$has_apklink" = false ]; then
+              echo "ERROR: Neither setup_app_source.sh nor download_link found in $dir"
+              exit 1
+            fi
+
+            source_modified=$(git diff --name-only origin/main...HEAD | grep -qF "$dir/setup_app_source.sh" && echo "true" || echo "false")
+            apklink_modified=$(git diff --name-only origin/main...HEAD | grep -qF "$dir/metadata.json" && echo "true" || echo "false")
+
+            setup_modes=()
+            if [ "$has_source" = true ] && [ "$has_apklink" = true ]; then
+              if [ "$source_modified" = "true" ] && [ "$apklink_modified" = "true" ]; then
+                setup_modes=("source" "apklink")
+              elif [ "$source_modified" = "true" ]; then
+                setup_modes=("source")
+              elif [ "$apklink_modified" = "true" ]; then
+                setup_modes=("apklink")
+              else
+                setup_modes=("apklink")
+              fi
+            elif [ "$has_source" = true ]; then
+              setup_modes=("source")
             else
-              echo "Both scripts available and unmodified - preferring APK link for efficiency"
-              setup_modes='["apklink"]'
+              setup_modes=("apklink")
             fi
-          elif [ "$has_source" = true ] && [ "$has_apklink" = false ]; then
-            echo "Only source setup available - using source mode"
-            setup_modes='["source"]'
-          elif [ "$has_source" = false ] && [ "$has_apklink" = true ]; then
-            echo "Only APK link setup available - using apklink mode"
-            setup_modes='["apklink"]'
+            echo "  Setup modes: ${setup_modes[*]}"
+
+            # Build APK jobs for this app
+            for mode in "${setup_modes[@]}"; do
+              apk_jobs=$(echo "$apk_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
+                --arg java "$java" --arg mode "$mode" \
+                '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode}]')
+            done
+
+            # Build test jobs for this app
+            if [ "$has_probes" = true ]; then
+              test_types=("baseline" "vuln_scenario_0")
+              [ "$has_server" = true ] && test_types+=("vuln_scenario_1")
+            else
+              test_types=("simple")
+            fi
+
+            for mode in "${setup_modes[@]}"; do
+              for test_type in "${test_types[@]}"; do
+                test_jobs=$(echo "$test_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
+                  --arg sdk "$sdk" --arg image "$system_image" --arg mode "$mode" --arg type "$test_type" \
+                  '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type}]')
+              done
+            done
+          done <<< "${{ steps.modified-dirs.outputs.modified_dirs }}"
+
+          echo "APK jobs: $apk_jobs"
+          echo "Test jobs: $test_jobs"
+
+          if [ "$apk_jobs" = "[]" ]; then
+            echo "should_exit=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_exit=false" >> "$GITHUB_OUTPUT"
           fi
-          
-          echo "Selected setup modes: $setup_modes"
-          echo "setup_modes=$setup_modes" >> "$GITHUB_OUTPUT"
+
+          echo "apk_jobs=$apk_jobs" >> "$GITHUB_OUTPUT"
+          echo "test_jobs=$test_jobs" >> "$GITHUB_OUTPUT"
 
       - name: Install test dependencies
         run: |
@@ -224,41 +204,20 @@ jobs:
       - name: Check metadata.json
         if: steps.modified-dirs.outputs.should_exit != 'true'
         run: |
-          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
-          if git diff --name-only HEAD^ HEAD | grep -q "$dir/metadata.json"; then
-            echo "metadata.json was modified in $dir. Running test..."
-            pytest \
-              --log-cli-level=INFO \
-              --log-cli-format='%(message)s' \
-              --tb=no \
-              tests/test_metadata_json.py::test_app_metadata \
-              --dirs "$dir"
-          else
-            echo "metadata.json not modified in $dir. Skipping test."
-          fi
-
-      - name: Check if app has server components
-        if: steps.modified-dirs.outputs.should_exit != 'true'
-        id: check-server-components
-        run: |
-          dir=$(echo "${{ steps.modified-dirs.outputs.modified_dirs }}" | head -n1)
-          metadata="$dir/metadata.json"
-          
-          # Check if app has server components for DoS testing
-          # App has server if app_server field is not an empty string
-          if [ -f "$metadata" ]; then
-            app_server=$(jq -r '.app_server // empty' "$metadata")
-            if [ -n "$app_server" ]; then
-              echo "App has server components ($app_server) - DoS testing (vuln_scenario_1) will be included"
-              echo "has_server=true" >> "$GITHUB_OUTPUT"
+          while IFS= read -r dir; do
+            [ -z "$dir" ] && continue
+            if git diff --name-only HEAD^ HEAD | grep -q "$dir/metadata.json"; then
+              echo "metadata.json was modified in $dir. Running test..."
+              pytest \
+                --log-cli-level=INFO \
+                --log-cli-format='%(message)s' \
+                --tb=no \
+                tests/test_metadata_json.py::test_app_metadata \
+                --dirs "$dir"
             else
-              echo "App has no server components (app_server is empty or missing) - DoS testing (vuln_scenario_1) will be skipped"
-              echo "has_server=false" >> "$GITHUB_OUTPUT"
+              echo "metadata.json not modified in $dir. Skipping test."
             fi
-          else
-            echo "No metadata.json found - assuming no server components"
-            echo "has_server=false" >> "$GITHUB_OUTPUT"
-          fi      
+          done <<< "${{ steps.modified-dirs.outputs.modified_dirs }}"
 
   handle_apk:
     needs: setup
@@ -267,9 +226,9 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        setup_mode: ${{ fromJson(needs.setup.outputs.setup_modes) }}
+        include: ${{ fromJson(needs.setup.outputs.apk_jobs) }}
       fail-fast: false
-    
+
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
@@ -294,18 +253,16 @@ jobs:
 
       - name: Initialize submodule
         run: |
-          modified_dirs=${{ needs.setup.outputs.modified_dirs }}
-          echo "Initialize submodule for $modified_dirs"
-          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$modified_dirs"
+          echo "Initialize submodule for ${{ matrix.app_dir }}"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "${{ matrix.app_dir }}"
 
       - name: Checkout commit from metadata
         run: |
-          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
-          cd "$modified_dir"
-          
+          cd "${{ matrix.app_dir }}"
+
           if [[ -f "metadata.json" ]]; then
             commit=$(jq -r '.["commit_version"]' "metadata.json")
-            
+
             if [[ -n "$commit" && "$commit" != "null" ]]; then
               echo "Found commit: $commit"
               cd codebase
@@ -321,14 +278,13 @@ jobs:
             echo "No metadata.json file found"
             exit 1
           fi
-          
+
       - name: Check for Gradle files
         if: matrix.setup_mode == 'source'
         id: check-gradle
         run: |
-          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
-          cd "$modified_dir"
-          
+          cd "${{ matrix.app_dir }}"
+
           # Check for any build.gradle* files in app directory or codebase subdirectory
           if find . -name "build.gradle*" -type f | grep -q .; then
             echo "Gradle build files found"
@@ -342,7 +298,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: "${{ needs.setup.outputs.java }}"
+          java-version: "${{ matrix.java }}"
           cache: ${{ steps.check-gradle.outputs.has_gradle == 'true' && 'gradle' || ''}}
 
       - name: Build or download APK
@@ -350,70 +306,64 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
         run: |
-          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
-          setup_mode="${{ matrix.setup_mode }}"
-          
-          cd "$modified_dir"
-          
-          echo "Setup mode: $setup_mode"
-          
-          if [ "$setup_mode" = "apklink" ]; then
+          cd "${{ matrix.app_dir }}"
+
+          echo "Setup mode: ${{ matrix.setup_mode }}"
+
+          if [ "${{ matrix.setup_mode }}" = "apklink" ]; then
             echo "Downloading APK from link..."
-            app_name=$(basename "$modified_dir")
             cd ../..
-            python setup_app_apklink.py "$app_name"
-            cd "$modified_dir"
+            python setup_app_apklink.py "${{ matrix.app_name }}"
+            cd "${{ matrix.app_dir }}"
           else
             echo "Building APK from source (this may take 10+ minutes)..."
             ./setup_app_source.sh
           fi
-          
+
           # Validate APK Path
           echo "Validating APK path..."
           APK_DIR="apk"
           if [ ! -d "$APK_DIR" ]; then
             echo "ERROR: APK directory not found at $APK_DIR"
-            echo "ERROR: APKs must be placed in ${modified_dir}/apk/"
+            echo "ERROR: APKs must be placed in ${{ matrix.app_dir }}/apk/"
             exit 1
           fi
-          
+
           APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
           if [ "$APK_COUNT" -eq 0 ]; then
             echo "ERROR: No APK found in $APK_DIR/"
-            echo "ERROR: setup_app_source.sh or setup_app_apklink.py must place APKs in ${modified_dir}/apk/"
+            echo "ERROR: setup_app_source.sh or setup_app_apklink.py must place APKs in ${{ matrix.app_dir }}/apk/"
             exit 1
           fi
-          
+
           echo "APK path validated - found $APK_COUNT APK(s) in $APK_DIR/"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: apk-${{ matrix.setup_mode }}-${{ github.run_id }}
-          path: ${{ needs.setup.outputs.modified_dirs }}/apk/*.apk
+          name: apk-${{ matrix.app_name }}-${{ matrix.setup_mode }}-${{ github.run_id }}
+          path: ${{ matrix.app_dir }}/apk/*.apk
           retention-days: 1
           if-no-files-found: error
 
       - name: Cleanup Gradle daemons
         if: always()
         run: |
-          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
-          cd "$modified_dir" || true
+          cd "${{ matrix.app_dir }}" || true
           (cd codebase && ./gradlew --stop) || true
           pkill -f GradleDaemon || true
           pkill -f kotlin.daemon.KotlinCompileDaemon || true
 
-  test_full:
+  test:
     needs: [setup, handle_apk]
-    if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_probes == 'true'
+    if: needs.setup.outputs.should_exit != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     strategy:
       matrix:
-        test_type: ${{ fromJson(needs.setup.outputs.has_server == 'true' && '["baseline", "vuln_scenario_0", "vuln_scenario_1"]' || '["baseline", "vuln_scenario_0"]') }}
-        setup_mode: ${{ fromJson(needs.setup.outputs.setup_modes) }}
+        include: ${{ fromJson(needs.setup.outputs.test_jobs) }}
       fail-fast: false
-    
+
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
@@ -603,13 +553,56 @@ jobs:
             fi
           }
 
+          start_ssrf_listener() {
+            echo "Starting SSRF listener container..."
+            local root_dir="${GITHUB_WORKSPACE:-$(pwd)}"
+            local ssrf_compose_dir="$root_dir/evaluation/ssrf_listener"
+            
+            if [ ! -d "$ssrf_compose_dir" ]; then
+              echo "WARNING: SSRF listener directory not found at $ssrf_compose_dir"
+              return 1
+            fi
+            
+            # Stop any existing SSRF listener
+            docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
+            
+            # Build and start the SSRF listener
+            if docker compose -f "$ssrf_compose_dir/docker-compose.yml" up -d --build --wait; then
+              echo "SSRF listener started on port 14377"
+              return 0
+            else
+              echo "WARNING: Failed to start SSRF listener"
+              return 1
+            fi
+          }
+
+          stop_ssrf_listener() {
+            echo "Stopping SSRF listener container..."
+            local root_dir="${GITHUB_WORKSPACE:-$(pwd)}"
+            local ssrf_compose_dir="$root_dir/evaluation/ssrf_listener"
+            
+            if [ -d "$ssrf_compose_dir" ]; then
+              docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
+            fi
+            
+            # Also try to stop container directly in case compose fails
+            docker stop ssrf-probe 2>/dev/null || true
+            docker rm -f ssrf-probe 2>/dev/null || true
+            
+            echo "SSRF listener stopped"
+          }
+
+          clear_ssrf_requests() {
+            echo "Clearing SSRF request log..."
+            docker exec ssrf-probe rm -f /app/logs/ssrf_requests.json 2>/dev/null || true
+          }
+
           EOF
           chmod +x /tmp/shared_functions.sh
 
-          modified_dirs=${{ needs.setup.outputs.modified_dirs }}
-          echo "Initialize submodule for $modified_dirs"
-          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$modified_dirs"
-          
+          echo "Initialize submodule for ${{ matrix.app_dir }}"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "${{ matrix.app_dir }}"
+
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
         with:
@@ -628,6 +621,11 @@ jobs:
       - name: Create Docker Network
         run: docker network create shared_net || true
 
+      - name: Start SSRF Listener
+        run: |
+          source /tmp/shared_functions.sh
+          start_ssrf_listener || echo "WARNING: SSRF listener not started - SSRF detection may not work"
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -636,16 +634,14 @@ jobs:
 
       - name: Create test script for ${{ matrix.test_type }}
         run: |
-          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
-          
           cat << 'EOF' > test_checks.sh
           #!/bin/bash
           set -e
           source /tmp/shared_functions.sh
           adb devices
           EOF
-          
-          echo "dir=\"$modified_dir\"" >> test_checks.sh
+
+          echo "dir=\"${{ matrix.app_dir }}\"" >> test_checks.sh
           echo "test_type=\"${{ matrix.test_type }}\"" >> test_checks.sh
 
 
@@ -933,39 +929,109 @@ jobs:
           fi
           EOF
               ;;
+            "simple")
+              cat <<'EOF' >> test_checks.sh
+
+          cd "$dir"
+          echo "Simple APK build and install test - no vulnerability scenarios"
+
+          # Get package_name from metadata.json (required field) and verify before setup
+          package_name=$(jq -r '.package_name' metadata.json)
+          echo "Found package_name in metadata.json: $package_name"
+
+          # Check if package is NOT installed before setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "This test expects the package to be uninstalled initially"
+            exit 1
+          else
+            echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
+          fi
+
+          echo "Running setup..."
+          ./setup.sh
+
+          uninstall_package() {
+            package_name="$1"
+
+            if adb shell pm list packages | grep -q "^package:$package_name$"; then
+              echo "NOTICE: Package $package_name is currently installed. Please uninstall your app in cleanup.sh. Proceeding to uninstall automatically..."
+              adb uninstall "$package_name" >/dev/null 2>&1
+
+              if adb shell pm list packages | grep -q "^package:$package_name$"; then
+                echo "::warning::ERROR: Failed to uninstall package $package_name"
+              else
+                echo "SUCCESS: Package $package_name has been successfully uninstalled"
+              fi
+            fi
+          }
+
+          # Verify the specific package is installed after setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "SUCCESS: Package $package_name is installed after setup.sh"
+          else
+            echo "ERROR: Package $package_name is not installed after setup.sh"
+            echo "This indicates setup.sh failed to install the expected package"
+            ./cleanup.sh
+            exit 1
+          fi
+
+          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          check_app_containers_ready
+
+          verify_shared_net_connectivity
+          adb logcat -c
+
+          echo "Generating flags..."
+          cd ../..
+          python -m utils.uuid_flags_utils "$dir"
+          cd "$dir"
+
+          echo "Injecting flags..."
+          ../../inject_flags.sh
+
+          echo "Cleaning up..."
+          ./cleanup.sh
+          uninstall_package "$package_name"
+          EOF
+              ;;
+            *)
+              echo "ERROR: Unknown test_type: ${{ matrix.test_type }}"
+              exit 1
+              ;;
           esac
-          
+
           chmod +x test_checks.sh
 
       - name: Download APK artifact
         uses: actions/download-artifact@v4
         with:
-          name: apk-${{ matrix.setup_mode }}-${{ github.run_id }}
-          path: ${{ needs.setup.outputs.modified_dirs }}/apk/
+          name: apk-${{ matrix.app_name }}-${{ matrix.setup_mode }}-${{ github.run_id }}
+          path: ${{ matrix.app_dir }}/apk/
 
       - name: Verify downloaded APK
         run: |
-          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
-          setup_mode="${{ matrix.setup_mode }}"
-          
-          echo "Verifying APK downloaded for setup_mode: $setup_mode"
-          ls -lh "$modified_dir/apk/"
-          
-          APK_COUNT=$(find "$modified_dir/apk/" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+          echo "Verifying APK downloaded for ${{ matrix.app_name }} (setup_mode: ${{ matrix.setup_mode }})"
+          ls -lh "${{ matrix.app_dir }}/apk/"
+
+          APK_COUNT=$(find "${{ matrix.app_dir }}/apk/" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
           if [ "$APK_COUNT" -eq 0 ]; then
             echo "ERROR: No APK found after download"
             exit 1
           fi
-          
+
           echo "Successfully downloaded $APK_COUNT APK(s)"
 
       - name: Verify required test files
         run: |
-          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
-          cd "$modified_dir"
-          
-          required_files=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
-          
+          cd "${{ matrix.app_dir }}"
+
+          if [ "${{ matrix.test_type }}" = "simple" ]; then
+            required_files=("setup.sh" "cleanup.sh")
+          else
+            required_files=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
+          fi
+
           echo "Checking for required test files..."
           for script in "${required_files[@]}"; do
             if [[ ! -f "$script" ]]; then
@@ -973,7 +1039,7 @@ jobs:
               exit 1
             fi
           done
-          
+
           echo "All required test files present"
 
       - name: Pre-emulator Resource Check
@@ -1006,11 +1072,11 @@ jobs:
         if: matrix.test_type == 'vuln_scenario_0'
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: ${{ needs.setup.outputs.sdk }}
+          api-level: ${{ matrix.sdk }}
           arch: x86_64
-          target: ${{ needs.setup.outputs.system_image }} 
+          target: ${{ matrix.system_image }}
           profile: pixel_2
-          ram-size: 2048    
+          ram-size: 2048
           force-avd-creation: true
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated -writable-system
           disable-animations: true
@@ -1018,426 +1084,31 @@ jobs:
             utils/android_emulator_ready.sh --remount
             ./test_checks.sh
 
-      - name: Run emulator test with action (baseline and vuln_scenario_1)
+      - name: Run emulator test with action (other test types)
         if: matrix.test_type != 'vuln_scenario_0'
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: ${{ needs.setup.outputs.sdk }}
+          api-level: ${{ matrix.sdk }}
           arch: x86_64
-          target: ${{ needs.setup.outputs.system_image }} 
+          target: ${{ matrix.system_image }}
           profile: pixel_2
-          ram-size: 2048    
-          force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated
-          disable-animations: true
-          script: ./test_checks.sh
-
-      - name: Display disk space after tests
-        if: always()
-        run: df -h
-
-      - name: Docker Cleanup after tests
-        if: always()
-        run: |
-          docker system prune -af
-
-      - name: Display disk space after cleanup
-        if: always()
-        run: df -h
-
-  test_simple:
-    needs: [setup, handle_apk]
-    if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.has_probes == 'false'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      matrix:
-        setup_mode: ${{ fromJson(needs.setup.outputs.setup_modes) }}
-      fail-fast: false
-    
-    steps:
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
-          android: false
-          dotnet: true
-          haskell: true
-          large-packages: true # revert back to true if an app build fails due to disk space
-          docker-images: true
-          swap-storage: true
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: false
-          token: ${{ secrets.GH_TOKEN }}
-
-      - name: Disable Git ownership check
-        run: git config --global --add safe.directory '*'
-
-      - name: Create shared functions
-        run: |
-          cat << 'EOF' > /tmp/shared_functions.sh
-          check_app_containers_ready() {
-            # Timeout per container in seconds
-            TIMEOUT=${TIMEOUT:-180}
-            # Interval between checks in seconds
-            INTERVAL=${INTERVAL:-1}
-
-            # Get app-specific containers from metadata.json
-            containers=""
-            if [ -f "metadata.json" ]; then
-              # Check for explicit container_names field
-              container_names=$(jq -r '.container_names[]? // empty' metadata.json 2>/dev/null)
-              if [ -n "$container_names" ]; then
-                containers="$container_names"
-                echo "Found explicit container_names in metadata.json: $containers"
-              fi
-            fi
-
-            if [ -z "$containers" ]; then
-              echo "No app-specific containers found in metadata.json - skipping container readiness check"
-              return 0
-            fi
-
-            echo "Checking readiness for app-specific containers: $containers"
-
-            for container in $containers; do
-              echo "Checking readiness for $container..."
-
-              # Check if container has a health check
-              has_health=$(docker inspect --format '{{if .Config.Healthcheck}}true{{else}}false{{end}}' "$container")
-              if [ "$has_health" = "true" ]; then
-                echo "Container has a health check. Waiting to become healthy..."
-                elapsed=0
-                success=0
-                while [ $elapsed -lt $TIMEOUT ]; do
-                  status=$(docker inspect --format '{{.State.Health.Status}}' "$container" 2>/dev/null)
-                  if [ "$status" == "healthy" ]; then
-                    success=1
-                    break
-                  fi
-                  sleep "$INTERVAL"
-                  elapsed=$((elapsed + INTERVAL))
-                done
-                if [ $success -eq 1 ]; then
-                  echo "$container is healthy."
-                  continue
-                else
-                  echo "Timeout: $container did not become healthy within $TIMEOUT seconds." >&2
-                  exit 1
-                fi
-              else
-                # Get exposed TCP ports
-                ports=$(docker inspect --format '{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{.HostPort}} {{end}}{{end}}' "$container")
-                if [ -z "$ports" ]; then
-                  echo "No exposed ports for $container. Skipping readiness check." >&2
-                  continue
-                fi
-
-                elapsed=0
-                all_success=0
-                while [ $elapsed -lt $TIMEOUT ]; do
-                  success=1
-                  for port_spec in $ports; do
-                    port=$(echo "$port_spec" | cut -d'/' -f1)
-                    proto=$(echo "$port_spec" | cut -d'/' -f2)
-                    if [ "$proto" != "tcp" ]; then
-                      continue  # Skip non-TCP ports
-                    fi
-
-                    # Perform TCP check
-                    if ! nc -z -w 1 localhost "$port" &>/dev/null; then
-                      success=0
-                      break
-                    fi
-                  done
-
-                  if [ $success -eq 1 ]; then
-                    all_success=1
-                    break
-                  fi
-
-                  sleep "$INTERVAL"
-                  elapsed=$((elapsed + INTERVAL))
-                done
-
-                if [ $all_success -eq 1 ]; then
-                  echo "$container is ready via port check on all ports."
-                else
-                  echo "Timeout: $container not ready after $TIMEOUT seconds." >&2
-                  exit 1
-                fi
-              fi
-            done
-
-            echo "App-specific containers are ready!"
-          }
-
-          checkout_commit() {
-            pwd
-            if [[ -f "metadata.json" ]]; then
-              commit=$(jq -r '.["commit_version"]' "metadata.json")
-              
-              if [[ -n "$commit" ]]; then
-                echo "Found commit: $commit"
-
-                git submodule update --init codebase
-                echo "Cleaning repository to remove all changes and untracked files..."
-
-                cd "codebase" || exit 1
-
-                echo "Cleaning up the codebase"
-                git reset --hard HEAD
-                sudo git clean -fdx
-
-                # Update the submodule and checkout the commit
-                git checkout "$commit"
-
-                cd - || exit 1
-              else
-                echo "No commit version found in metadata.json"
-                exit 1
-              fi
-            else
-              echo "No metadata.json file found"
-              exit 1
-            fi
-          }
-
-          verify_shared_net_connectivity() {
-            # Verify shared_net connectivity after containers are started
-            echo "Verifying shared_net connectivity..."
-            if [ -f "metadata.json" ]; then
-              app_server=$(jq -r '.app_server // empty' "metadata.json")
-              if [ -n "$app_server" ]; then
-                echo "Testing connectivity to: $app_server"
-                
-                # Strip protocol prefix if present (http://, https://)
-                server_clean=$(echo "$app_server" | sed 's|^[^:]*://||')
-                echo "  Raw app_server: $app_server"
-                echo "  Cleaned server: $server_clean"
-                
-                # Parse host and port - require explicit port
-                if [[ "$server_clean" == *":"* ]]; then
-                  host=$(echo "$server_clean" | cut -d':' -f1)
-                  port=$(echo "$server_clean" | cut -d':' -f2)
-                  echo "  Parsed host: $host"
-                  echo "  Parsed port: $port"
-                else
-                  echo "ERROR: No port specified in app_server: $app_server"
-                  exit 1
-                fi
-                
-                echo "  Testing connection to $host:$port via shared_net..."
-                docker run --rm --network=shared_net alpine:latest \
-                  sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
-                
-                echo "shared_net connectivity verified"
-              else
-                echo "No app_server defined in metadata.json, skipping connectivity check"
-              fi
-            else
-              echo "No metadata.json found, skipping connectivity check"
-            fi
-          }
-          EOF
-          chmod +x /tmp/shared_functions.sh
-
-          modified_dirs=${{ needs.setup.outputs.modified_dirs }}
-          echo "Initialize submodule for $modified_dirs"
-          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "$modified_dirs"
-          
-      - name: Setup Python 3.12 environment
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libpulse0
-          python -m pip install --upgrade pip -q
-          pip install -r requirements.txt -q
-          pip install -e .
-          export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
-
-      - name: Create Docker Network
-        run: docker network create shared_net || true
-
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Create simple test script
-        run: |
-          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
-          
-          cat << 'EOF' > simple_test.sh
-          #!/bin/bash
-          set -e
-          source /tmp/shared_functions.sh
-          adb devices
-          EOF
-          
-          echo "dir=\"$modified_dir\"" >> simple_test.sh
-          cat <<'EOF' >> simple_test.sh
-          
-          cd "$dir"
-          echo "Simple APK build and install test - no vulnerability scenarios"
-          
-          # Get package_name from metadata.json (required field) and verify before setup
-          package_name=$(jq -r '.package_name' metadata.json)
-          echo "Found package_name in metadata.json: $package_name"
-          
-          # Check if package is NOT installed before setup
-          if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo "ERROR: Package $package_name is already installed before setup.sh"
-            echo "This test expects the package to be uninstalled initially"
-            exit 1
-          else
-            echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
-          fi
-          
-          echo "Running setup..."
-          ./setup.sh
-
-          #Define Function to uninstall package if not already done by cleanup.sh
-          uninstall_package() {
-            package_name="$1"
-
-            if adb shell pm list packages | grep -q "^package:$package_name$"; then
-              echo "NOTICE: Package $package_name is currently installed. Please uninstall your app in cleanup.sh. Proceeding to uninstall automatically..."
-              adb uninstall "$package_name" >/dev/null 2>&1
-
-              #still exists after attempt at uninstall
-              if adb shell pm list packages | grep -q "^package:$package_name$"; then
-                echo "::warning::ERROR: Failed to uninstall package $package_name"
-              else
-                echo "SUCCESS: Package $package_name has been successfully uninstalled"
-              fi
-            fi
-          }
-
-          # Verify the specific package is installed after setup
-          if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo "SUCCESS: Package $package_name is installed after setup.sh"
-          else
-            echo "ERROR: Package $package_name is not installed after setup.sh"
-            echo "This indicates setup.sh failed to install the expected package"
-            ./cleanup.sh
-            exit 1
-          fi
-          
-          # Wait for app-specific containers to be ready (after setup.sh starts them)
-          check_app_containers_ready
-          
-          verify_shared_net_connectivity
-          adb logcat -c
-
-          echo "Generating flags..."
-          cd ../..
-          python -m utils.uuid_flags_utils "$dir"
-          cd "$dir"
-
-          echo "Injecting flags..."
-          ../../inject_flags.sh
-
-          echo "Cleaning up..."
-          ./cleanup.sh
-          uninstall_package "$package_name"
-          EOF
-          
-          chmod +x simple_test.sh
-
-      - name: Download APK artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: apk-${{ matrix.setup_mode }}-${{ github.run_id }}
-          path: ${{ needs.setup.outputs.modified_dirs }}/apk/
-
-      - name: Verify downloaded APK
-        run: |
-          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
-          setup_mode="${{ matrix.setup_mode }}"
-          
-          echo "Verifying APK downloaded for setup_mode: $setup_mode"
-          ls -lh "$modified_dir/apk/"
-          
-          APK_COUNT=$(find "$modified_dir/apk/" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
-          if [ "$APK_COUNT" -eq 0 ]; then
-            echo "ERROR: No APK found after download"
-            exit 1
-          fi
-          
-          echo "Successfully downloaded $APK_COUNT APK(s)"
-
-      - name: Verify required test files
-        run: |
-          modified_dir="${{ needs.setup.outputs.modified_dirs }}"
-          cd "$modified_dir"
-          
-          required_scripts=("setup.sh" "cleanup.sh")
-          
-          echo "Checking for required test scripts..."
-          for script in "${required_scripts[@]}"; do
-            if [[ ! -f "$script" ]]; then
-              echo "ERROR: Required script '$script' not found."
-              exit 1
-            fi
-          done
-          
-          echo "All required test scripts present"
-
-      - name: Pre-emulator Resource Check
-        run: |
-          echo "=== Pre-Emulator Resource Check ==="
-          
-          # Check if CPU usage is acceptable
-          CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//' | cut -d'.' -f1)
-          if [ "$CPU_USAGE" -gt 25 ]; then
-            echo "WARNING: CPU usage too high ($CPU_USAGE%). Emulator may hang."
-            echo "Top processes:"
-            ps aux --sort=-%cpu | head -10
-            
-            # Try to kill more processes
-            sudo pkill -f chrome || true
-            sudo pkill -f firefox || true
-            sleep 10
-          fi
-          
-          # Check memory
-          AVAILABLE_MEM=$(free -m | awk 'NR==2{printf "%.0f", $7/1024}')
-          if [ "$AVAILABLE_MEM" -lt 2 ]; then
-            echo "WARNING: Low available memory (${AVAILABLE_MEM}GB)"
-            free -h
-          fi
-          
-          echo "System ready for emulator. CPU: ${CPU_USAGE}%, Available Memory: ${AVAILABLE_MEM}GB"
-
-      - name: Run emulator simple test
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: ${{ needs.setup.outputs.sdk }}
-          arch: x86_64
-          target: ${{ needs.setup.outputs.system_image }} 
-          profile: pixel_2
-          ram-size: 2048    
+          ram-size: 2048
           force-avd-creation: true
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated
           disable-animations: true
           script: |
             utils/android_emulator_ready.sh
-            ./simple_test.sh
+            ./test_checks.sh
 
       - name: Display disk space after tests
         if: always()
         run: df -h
+
+      - name: Stop SSRF Listener
+        if: always()
+        run: |
+          source /tmp/shared_functions.sh
+          stop_ssrf_listener || true
 
       - name: Docker Cleanup after tests
         if: always()
@@ -1447,4 +1118,3 @@ jobs:
       - name: Display disk space after cleanup
         if: always()
         run: df -h
-# Force CI refresh

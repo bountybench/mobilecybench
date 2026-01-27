@@ -82,8 +82,8 @@ mobilecybench/
     - ```package_name```: Package name of your Android app (required field)
     - ```gh_link```: The cy-suite GitHub link for your app (example: https://github.com/cy-suite/conversations.git)
     - ```download_link```: The link to download a stable release version of apk (i.e. not beta version, pre-release, etc.) Sometimes, the latest version may not be a stable release.
-    - ```emulator_server```: The address of any server the task requires, using the Android emulator's special IP (10.0.2.2) to reach services running on the host machine's localhost. Leave blank (empty string) if not required.
-    - ```app_server```:  The address of any server the task requires, using the container hostname (e.g. joplin-app) to reach services running inside the Docker network. Leave blank (empty string) if not required.
+    - ```emulator_server```: The address of any server the task requires, using the Android emulator's special IP (10.0.2.2) to reach services running on the host machine's localhost. Leave blank (empty string) if not required. Do not use port 14377, as we use that for our generic probe to detect an SSRF vulnerability.
+    - ```app_server```:  The address of any server the task requires, using the container hostname (e.g. joplin-app) to reach services running inside the Docker network. Leave blank (empty string) if not required. Do not use port 14377, as we use that for our generic probe to detect an SSRF vulnerability.
     - ```username```: The username of the account the agent will use to login. Leave blank (empty string) if not required.
     - ```password```: The password of the account the agent will use to login. Leave blank (empty string) if not required.
     - ```package_name```: Package name of your Android app (required field)
@@ -106,14 +106,22 @@ mobilecybench/
     - Prefer universal apks (not architecture specific)
 > Important Rules:
 > 1. **Mandatory**: You must provide an apk: either `setup_app_source.sh` or `download_link` in metadata.json
-> 2. **Preferred**: Always provide `setup_app_source.sh` when possible. 
+> 2. **Preferred**: Always provide `setup_app_source.sh` when possible.
 > 3. **Optional**: It is also valid to include both `setup_app_source.sh` and `download_link`
+- ```build_apk.sh```: (Repo-level script)
+    - Unified wrapper for building APKs from source
+    - Usage: `./build_apk.sh <app_name>` for regular builds
+    - Usage: `./build_apk.sh <app_name> --vuln <vuln_id>` for vulnerable builds (synthetic vulnerabilities)
+    - Handles codebase checkout, patch application, and APK organization
+    - Vulnerable APKs are stored in `apps/<app_name>/apk/<vuln_id>/`
+    - See [Synthetic Vulnerabilities](SYNTHETIC_VULNERABILITIES.md) for details
 - ```run_checks.sh```: 
     - Per-app `run_checks.sh` is deprecated in favor of a universal, standardized `run_checks.sh` described below
     - Present in the project root directory (the same universal `run_checks.sh` is used for each app).
     - Accepts app directory as the first command line arg and the path to the agent log as the second arg
     - Entrypoint for various probes measuring confidentiality, integrity, availability, and access control violations.
-    - Produces pass/fail scores for each test and aggregates results into a JSON file (scores.json).
+    - Produces pass/fail scores for each test and aggregates results into a JSON file (`scores.json`) and generic probe results into `generic_scores.json`.
+    - Synthetic vulnerabilities are evaluated separately (not via `run_checks.sh`) and written to `synthetic_scores.json` by `utils/run_synthetic_checks.py` (expects per-vuln probes at `synthetic_vulnerabilities/<vuln_id>/test_synthetic.py`).
         - Exit codes for each test script should be 0 on successful exit (regardless of whether tests passed)
         - Non-zero exit code should be returned if any probes unexpectedly fail to execute properly
         - Each probe script should print a result summary JSON which should include:
@@ -198,7 +206,33 @@ See [ownCloud](/apps/owncloud-android/):
 - ```vuln_scenarios/vuln_scenario_1/vuln.sh```: Simulates a denial-of-service scenario by crashing or force-stopping the ownCloud Android app and killing the owncloud_server container.
 - ```cleanup.sh```: Cleans up any files created and tears down server. 
 
-## 3. CI Validation:
+## 3. Generating Static Analysis Reports
+
+For the supervisor agent to perform targeted vulnerability discovery, you must pre-generate static analysis reports. These reports are stored in `apps/<app>/static_vuln_reports/`.
+
+### Supported Tools
+- **Semgrep** (Required): General static analysis
+- **MobSFScan** (Optional): Mobile-specific security scanning
+- **QARK** (Optional): Android-specific vulnerability scanning
+
+### Generation Commands
+Run these commands from the project root:
+
+```bash
+APP_NAME=<YOUR_APP_NAME>
+# Semgrep (Required)
+python tools/run_semgrep_scan.py $APP_NAME
+
+# MobSFScan (Optional)
+python tools/run_mobsfscan.py $APP_NAME
+
+# QARK (Optional)
+python tools/generate_qark_report.py $APP_NAME
+```
+
+**Note**: Ensure you have the necessary tools installed (see `requirements.txt`).
+
+## 4. CI Validation:
 
 CI runs in two modes:
 - **Simple CI**: Builds APK and verifies it can be installed on the emulator
@@ -406,7 +440,7 @@ Dry-run mode allows you to test the agent environment without using model provid
 This is useful for:
 - Quickly testing environment setup without consuming API credits
 - Manually exploring and debugging the kali container environment
-- Testing MCP tools and command execution independently of the agent
+- Testing runtime tools and command execution independently of the agent
 
 #### Usage
 
@@ -455,7 +489,7 @@ This is useful for:
      - Any shell command will be executed in the kali container
      - 'exit' or 'quit' to exit the shell
      - 'help' for this help message
-     - 'tools' to list available MCP tools
+     - 'tools' to list available tools
    ================================================================================
 
    kali>
@@ -490,5 +524,5 @@ kali> exit
 #### Notes
 
 - No API keys are required in dry-run mode (the `.env` file check is skipped)
-- The full environment setup still runs (emulator, app build/install, kali container, MCP server)
-- All commands are executed via the MCP server in the kali container 
+- The full environment setup still runs (emulator, app build/install, kali container)
+- All commands are executed via the ToolRuntime in the kali container 

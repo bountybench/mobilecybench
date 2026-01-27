@@ -39,40 +39,6 @@ def runner(mock_config):
 
 
 ##########################################
-#     MCP Server Validation Tests       #
-##########################################
-
-
-@patch("runner.MCPToolExecutor")
-def test_validate_mcp_server_success(mock_executor_class, runner):
-    """Test successful MCP server validation with codebase directory found"""
-    mock_executor = MagicMock()
-    mock_executor_class.return_value = mock_executor
-
-    mock_executor.call_tool.return_value = {
-        "result": {"structuredContent": {"result": "codebase\nfile1.txt\nfile2.txt"}}
-    }
-
-    runner._validate_mcp_server()
-
-    mock_executor.call_tool.assert_called_once_with("execute_command", "ls /app")
-
-
-@patch("runner.MCPToolExecutor")
-def test_validate_mcp_server_failure(mock_executor_class, runner):
-    """Test MCP server validation fails when codebase directory is not found"""
-    mock_executor = MagicMock()
-    mock_executor_class.return_value = mock_executor
-
-    mock_executor.call_tool.return_value = {
-        "result": {"structuredContent": {"result": "file1.txt\nfile2.txt\nother_dir"}}
-    }
-
-    with pytest.raises(SystemExit):
-        runner._validate_mcp_server()
-
-
-##########################################
 #     Exploit Workflow Tests            #
 ##########################################
 
@@ -186,11 +152,11 @@ def test_probe_results_structure(runner):
 
 
 @patch("runner.EmulatorManager")
-@patch.object(MobileCybenchRunner, "validate_input")
-@patch.object(MobileCybenchRunner, "setup_app_apk")
-@patch.object(MobileCybenchRunner, "install_app_and_setup_backend")
-@patch.object(MobileCybenchRunner, "setup_agent_environment")
-@patch.object(MobileCybenchRunner, "run_agent")
+@patch.object(MobileCybenchRunner, "_validate_input")
+@patch.object(MobileCybenchRunner, "_setup_app_apk")
+@patch.object(MobileCybenchRunner, "_install_app_and_setup_backend")
+@patch.object(MobileCybenchRunner, "_setup_agent_environment")
+@patch.object(MobileCybenchRunner, "_run_agent")
 @patch.object(MobileCybenchRunner, "run_probes_checks")
 @patch.object(MobileCybenchRunner, "_check_and_save_agent_exploit")
 @patch.object(MobileCybenchRunner, "_run_cleanup")
@@ -255,11 +221,11 @@ def test_run_two_emulator_workflow_with_exploit(
 
 
 @patch("runner.EmulatorManager")
-@patch.object(MobileCybenchRunner, "validate_input")
-@patch.object(MobileCybenchRunner, "setup_app_apk")
-@patch.object(MobileCybenchRunner, "install_app_and_setup_backend")
-@patch.object(MobileCybenchRunner, "setup_agent_environment")
-@patch.object(MobileCybenchRunner, "run_agent")
+@patch.object(MobileCybenchRunner, "_validate_input")
+@patch.object(MobileCybenchRunner, "_setup_app_apk")
+@patch.object(MobileCybenchRunner, "_install_app_and_setup_backend")
+@patch.object(MobileCybenchRunner, "_setup_agent_environment")
+@patch.object(MobileCybenchRunner, "_run_agent")
 @patch.object(MobileCybenchRunner, "run_probes_checks")
 @patch.object(MobileCybenchRunner, "_check_and_save_agent_exploit")
 @patch.object(MobileCybenchRunner, "_run_cleanup")
@@ -312,3 +278,18 @@ def test_run_skips_exploit_pipeline_when_no_exploit(
 
     # Verify exploit was NOT executed
     mock_run_exploit.assert_not_called()
+
+
+@patch("agent.hierarchical_agent.create_and_run_supervisor_system")
+def test_run_agent_supervisor_mode_passes_metadata(mock_create_run, runner):
+    """Test that _run_agent passes metadata to supervisor system."""
+    runner.mode = "supervisor"
+    runner.config.dry_run = False
+    runner.metadata = {"key": "value"}
+
+    runner._run_agent()
+
+    mock_create_run.assert_called_once()
+    call_kwargs = mock_create_run.call_args.kwargs
+    assert "metadata" in call_kwargs
+    assert call_kwargs["metadata"] == {"key": "value"}

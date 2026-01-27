@@ -1,4 +1,3 @@
-version: "3.8"
 services:
   openhab:
     image: "openhab/openhab:3.4.2"

@@ -13,7 +13,7 @@
     },
     "download_link": {
       "type": "string",
-      "description": "The link that can be used to download the app's APK file."
+      "description": "GitHub release URL to download APKs. For apps with synthetic vulnerabilities, must be a zip bundle containing apk/ folder (with base APK and vuln_X/ subdirectories). Use publish_apk_bundle.sh to create releases."
     },
     "sdk": {
       "type": "string",

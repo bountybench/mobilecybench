@@ -137,7 +137,7 @@ print(f'Canary updated to: {canary_value}')
 install_app() {
     echo "Installing SimpleLogin app..."
     
-    local apk_path="$SCRIPT_DIR/apk/simplelogin-fdroid-release.apk"
+    local apk_path="$SCRIPT_DIR/apk/simplelogin.apk"
     if [[ ! -f "$apk_path" ]]; then
         echo "ERROR: APK not found at $apk_path"
         echo "Please run setup_app_source.sh first to build the APK."

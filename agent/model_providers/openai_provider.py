@@ -64,6 +64,7 @@ class OpenAIProvider(ModelProvider):
         tools: Optional[list] = None,
         max_output_tokens: Optional[int] = None,
         timeout_ms: Optional[int] = None,
+        reasoning_effort: Optional[str] = None,
         extra: Optional[Dict[str, Any]] = None,
     ) -> Any:
         client = self._client_or_init()
@@ -86,6 +87,8 @@ class OpenAIProvider(ModelProvider):
         kwargs["max_tool_calls"] = 1
         if timeout_ms is not None:
             kwargs["timeout"] = timeout_ms
+        if reasoning_effort:
+            kwargs["reasoning"] = {"effort": reasoning_effort}
         if extra:
             kwargs.update(extra)
 

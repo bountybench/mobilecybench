@@ -1,5 +1,6 @@
 import datetime
 import logging
+import os
 import re
 import sys
 from pathlib import Path
@@ -54,7 +55,14 @@ class LoggerManager:
     def __init__(self, name: str = "MobileCyBench", config: dict = None) -> None:
         self._name = name
         self._config = config or self._default_config()
-        self._timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Use shared session ID if available, otherwise create new one
+        if "MOBILECYBENCH_SESSION_ID" in os.environ:
+            self._timestamp = os.environ["MOBILECYBENCH_SESSION_ID"]
+        else:
+            self._timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            os.environ["MOBILECYBENCH_SESSION_ID"] = self._timestamp
+
         self._log_level = self._get_log_level()
         self._logger = logging.getLogger(name)
         self._log_file: Optional[str] = None
