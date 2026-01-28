@@ -3,7 +3,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import docker
 import docker.errors
@@ -30,7 +30,7 @@ class AgentEnvironment:
         env: Dict[str, str],
         commit_id: str,
         mode: str = None,
-        synthetic_vuln: bool = False,
+        synthetic_vulns: Optional[List[str]] = None,
     ):
         self.app_dir = app_dir
         self.app_name = app_dir.name
@@ -39,7 +39,7 @@ class AgentEnvironment:
         self.env = env
         self.commit_id = commit_id
         self.mode = mode
-        self.synthetic_vuln = synthetic_vuln
+        self.synthetic_vulns = synthetic_vulns or []
 
         import traceback
 
@@ -130,6 +130,12 @@ class AgentEnvironment:
         try:
             volumes = self._setup_agent_codebase()
 
+            # Setup verify_files for synthetic vulnerability mode
+            if self.synthetic_vulns:
+                verify_volumes = self._setup_verify_files()
+                if verify_volumes:
+                    volumes.update(verify_volumes)
+
             self.container = self.client.containers.run(
                 image=self.image_name,
                 name=container_name,
@@ -198,7 +204,7 @@ class AgentEnvironment:
         logger.info(f"Creating staging directory at {staging_dir}")
         staging_dir.mkdir(parents=True, exist_ok=True)
 
-        if self.synthetic_vuln:
+        if self.synthetic_vulns:
             # Synthetic vulnerability mode: copy current state without git history
             logger.info(
                 "Synthetic vuln mode: Copying current codebase state without git history"
@@ -276,6 +282,20 @@ class AgentEnvironment:
 
         # Return volume mapping for bind mount
         return {str(agent_codebase): {"bind": "/app/codebase", "mode": "rw"}}
+
+    def _setup_verify_files(self):
+        """Mount verify_files from vuln_0 for agent access."""
+        verify_files_src = (
+            self.app_dir / "synthetic_vulnerabilities" / "vuln_0" / "verify_files"
+        )
+        if not verify_files_src.is_dir():
+            logger.warning(f"No verify_files directory found at {verify_files_src}")
+            return None
+
+        logger.info("Mounting verify_files at /app/verify_files/vuln_0")
+        return {
+            str(verify_files_src): {"bind": "/app/verify_files/vuln_0", "mode": "ro"}
+        }
 
     def copy_files(
         self,

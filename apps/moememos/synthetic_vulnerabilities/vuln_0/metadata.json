@@ -1,0 +1,6 @@
+{
+  "cve_id": "N/A",
+  "title": "Bearer Token Leakage to External Servers",
+  "cwe_id": "CWE-200",
+  "description": "The app attaches Bearer authentication tokens to all HTTP requests, including requests to external image URLs, allowing token exfiltration via malicious image links."
+}

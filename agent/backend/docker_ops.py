@@ -23,7 +23,7 @@ def is_adb_command_allowed(command):
 
 
 def execute_adb_command_with_retry(
-    command: str, start_dir: str, max_retries: int = 2
+    command: str, start_dir: str, max_retries: int = 2, timeout: int = 300
 ) -> tuple:
     """
     Execute an ADB command with automatic retry on connection errors.
@@ -32,6 +32,7 @@ def execute_adb_command_with_retry(
         command: ADB command to execute (must start with 'adb')
         start_dir: Directory to execute command from
         max_retries: Maximum number of retry attempts
+        timeout: Maximum time in seconds to wait for command completion (default: 300 / 5 min)
 
     Returns:
         Tuple of (exit_code, stdout_string, stderr_string)
@@ -40,9 +41,8 @@ def execute_adb_command_with_retry(
         Exception: If command fails after all retries
     """
     container = get_kali()
-    full_cmd_base = (
-        f"cd {start_dir} && export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && {command}"
-    )
+    # Wrap command with timeout to prevent hanging
+    full_cmd_base = f"cd {start_dir} && export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && timeout {timeout}s {command}"
     last_exception = None
 
     for attempt in range(max_retries + 1):
@@ -65,6 +65,15 @@ def execute_adb_command_with_retry(
                 else ""
             )
             exit_code = result.exit_code
+
+            # Check for timeout (exit code 124)
+            if exit_code == 124:
+                logger.warning(f"ADB command timed out after {timeout}s: {command}")
+                return (
+                    exit_code,
+                    f"[COMMAND TIMED OUT after {timeout} seconds]\n{stdout}",
+                    stderr,
+                )
 
             # Check for "no devices/emulators found" error
             # Combine stdout and stderr for checking errors
@@ -130,9 +139,13 @@ def get_ui_state() -> dict:
     return _get_ui_state()
 
 
-def execute_command_internal(command: str) -> str:
+def execute_command_internal(command: str, timeout: int = 300) -> str:
     """
     Internal helper function that executes commands and returns truncated command output.
+
+    Args:
+        command: The shell command to execute
+        timeout: Maximum time in seconds to wait for command completion (default: 300 / 5 min)
     """
     container = get_kali()
     start_dir = os.getenv("START_DIR", "/app")
@@ -147,7 +160,7 @@ def execute_command_internal(command: str) -> str:
         label = "ADB Command"
         try:
             exit_code, stdout, stderr = execute_adb_command_with_retry(
-                command, start_dir
+                command, start_dir, timeout=timeout
             )
             combined_output = stdout + stderr
         except Exception as e:
@@ -161,8 +174,11 @@ def execute_command_internal(command: str) -> str:
             logger.error(f"ADB command failed: {error_msg}")
             raise Exception(error_msg)
     else:
-        # Non-ADB command - execute normally
-        full_cmd = f"cd {start_dir} && {command}"
+        # Non-ADB command - execute normally with timeout
+        # Use the `timeout` command to enforce time limit (available in most Linux containers)
+        full_cmd = (
+            f"cd {start_dir} && timeout {timeout}s bash -c {shlex.quote(command)}"
+        )
         label = "Command"
 
         # Safely quote the entire command for bash -c execution inside Docker
@@ -171,7 +187,13 @@ def execute_command_internal(command: str) -> str:
         )
         exit_code = result.exit_code
         output = result.output.decode("utf-8", errors="replace")
-        combined_output = output
+
+        # Check for timeout (exit code 124 is timeout's signal)
+        if exit_code == 124:
+            combined_output = f"[COMMAND TIMED OUT after {timeout} seconds]\n{output}"
+            logger.warning(f"Command timed out after {timeout}s: {command}")
+        else:
+            combined_output = output
 
     # Separate header and body for proper truncation
     header = f"{label}: {command}\nExit Code: {exit_code}\nOutput:\n"

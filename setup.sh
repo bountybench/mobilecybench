@@ -72,10 +72,13 @@ warn_old_sdk_version() {
 APP_NAME=""
 SDK_VERSION="$DEFAULT_SDK_VERSION"
 SYSTEM_IMAGE_TYPE="$DEFAULT_SYSTEM_IMAGE"
+INIT_SUBMODULES="false"
+INIT_SUBMODULE_APP=""
 
 # Check if first argument is an app name (no dashes, exists in apps/ directory with valid metadata)
 if [[ $# -gt 0 && "$1" != -* && -d "${SCRIPT_DIR}/apps/$1" ]]; then
     APP_NAME="$1"
+    shift
     SDK_VERSION=$(load_app_metadata "$APP_NAME")
     
     # Validate metadata
@@ -98,6 +101,38 @@ if [[ $# -gt 0 && "$1" != -* && -d "${SCRIPT_DIR}/apps/$1" ]]; then
     fi
     
     warn_old_sdk_version "$SDK_VERSION" "App '$APP_NAME' uses Android SDK"
+
+    # Parse remaining flags (app mode)
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --init-submodules)
+                if [[ -n "$2" && "$2" != -* ]]; then
+                    INIT_SUBMODULE_APP="$2"
+                    shift 2
+                else
+                    INIT_SUBMODULES="true"
+                    shift
+                fi
+                ;;
+            --init-submodules=*)
+                INIT_SUBMODULE_APP="${1#*=}"
+                shift
+                ;;
+            -h|--help)
+                echo "Usage: $0 APP_NAME [--init-submodules [app_name]]"
+                echo ""
+                echo "Arguments:"
+                echo "  APP_NAME                       App name from apps/ directory (uses SDK from metadata)"
+                echo "  --init-submodules [app_name]   Initialize submodules (optionally only for one app)"
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1"
+                echo "Use -h or --help for usage information"
+                exit 1
+                ;;
+        esac
+    done
 else
     # Standard flag parsing mode
     while [[ $# -gt 0 ]]; do
@@ -120,10 +155,23 @@ else
                 SYSTEM_IMAGE_TYPE="${1#*=}"
                 shift
                 ;;
+            --init-submodules)
+                if [[ -n "$2" && "$2" != -* ]]; then
+                    INIT_SUBMODULE_APP="$2"
+                    shift 2
+                else
+                    INIT_SUBMODULES="true"
+                    shift
+                fi
+                ;;
+            --init-submodules=*)
+                INIT_SUBMODULE_APP="${1#*=}"
+                shift
+                ;;
             -h|--help)
                 echo "Usage: $0"
                 echo "   or: $0 APP_NAME"
-                echo "   or: $0 [--sdk SDK_VERSION] [--system-image SYSTEM_IMAGE_TYPE]"
+                echo "   or: $0 [--sdk SDK_VERSION] [--system-image SYSTEM_IMAGE_TYPE] [--init-submodules [app_name]]"
                 echo ""
                 echo "Mode 1: Use defaults (SDK $DEFAULT_SDK_VERSION, $DEFAULT_SYSTEM_IMAGE)"
                 echo "Mode 2: Auto-configure from app metadata (Recommended)"
@@ -133,6 +181,7 @@ else
                 echo "  APP_NAME                       App name from apps/ directory (uses SDK from metadata)"
                 echo "  --sdk SDK_VERSION              Android SDK version (default: $DEFAULT_SDK_VERSION)"
                 echo "  --system-image SYSTEM_IMAGE    System image type (default: $DEFAULT_SYSTEM_IMAGE)"
+                echo "  --init-submodules [app_name]   Initialize submodules (optionally only for one app)"
                 echo "  -h, --help                     Show this help message"
                 echo ""
                 echo "Available apps:"
@@ -178,6 +227,11 @@ else
     done
 fi
 
+# If app mode is used with --init-submodules (no app specified), default to that app
+if [[ "$INIT_SUBMODULES" == "true" && -n "$APP_NAME" && -z "$INIT_SUBMODULE_APP" ]]; then
+    INIT_SUBMODULE_APP="$APP_NAME"
+fi
+
 # Logging function
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
@@ -192,6 +246,39 @@ error_exit() {
 # Check if command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
+}
+
+# Initialize git submodules (optional)
+init_submodules() {
+    if [[ "$INIT_SUBMODULES" != "true" && -z "$INIT_SUBMODULE_APP" ]]; then
+        return 0
+    fi
+
+    if [[ ! -d "${SCRIPT_DIR}/.git" ]]; then
+        log "Skipping submodules: not a git repository"
+        return 0
+    fi
+
+    if ! command_exists git; then
+        log "ERROR: git not found in PATH"
+        return 1
+    fi
+
+    # TODO: switch submodule URLs to SSH instead of HTTPS
+    if [[ -n "$INIT_SUBMODULE_APP" ]]; then
+        local submodule_path="apps/${INIT_SUBMODULE_APP}/codebase"
+        if [[ ! -d "${SCRIPT_DIR}/apps/${INIT_SUBMODULE_APP}" ]]; then
+            log "ERROR: App directory not found: apps/${INIT_SUBMODULE_APP}"
+            return 1
+        fi
+        log "Initializing submodule: ${submodule_path}"
+        git submodule update --init "$submodule_path"
+        log "Submodule initialized: ${submodule_path}"
+    else
+        log "Initializing all submodules (recursive)..."
+        git submodule update --init --recursive
+        log "All submodules initialized"
+    fi
 }
 
 # Check Java installation and version
@@ -601,9 +688,75 @@ EOF
     cat > "${SCRIPT_DIR}/stop_emulator.sh" << 'EOF'
 #!/bin/bash
 
-echo "Stopping Android emulator..."
-adb emu kill
-echo "Emulator stopped"
+set -e
+
+usage() {
+    echo "Usage: $0 [-s <serial>] [-p <port>]"
+    echo "  -s <serial>   Stop a specific emulator (e.g., emulator-5554)"
+    echo "  -p <port>     Stop emulator by port (e.g., 5554)"
+    echo "If no -s/-p is provided, all running emulators are stopped."
+}
+
+if ! command -v adb >/dev/null 2>&1; then
+    echo "ERROR: adb not found in PATH"
+    exit 1
+fi
+
+SERIAL=""
+PORT=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -s)
+            SERIAL="$2"
+            shift 2
+            ;;
+        -p)
+            PORT="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown argument: $1"
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -n "$SERIAL" ]]; then
+    echo "Stopping Android emulator: $SERIAL"
+    adb -s "$SERIAL" emu kill
+    echo "Emulator stopped: $SERIAL"
+    exit 0
+fi
+
+if [[ -n "$PORT" ]]; then
+    if ! [[ "$PORT" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: Port must be numeric (e.g., 5554)"
+        exit 1
+    fi
+    SERIAL="emulator-$PORT"
+    echo "Stopping Android emulator: $SERIAL"
+    adb -s "$SERIAL" emu kill
+    echo "Emulator stopped: $SERIAL"
+    exit 0
+fi
+
+echo "Stopping all running Android emulators..."
+EMULATORS=$(adb devices | awk 'NR>1 && $1 ~ /^emulator-/ {print $1}')
+if [[ -z "$EMULATORS" ]]; then
+    echo "No running emulators found"
+    exit 0
+fi
+
+for emu in $EMULATORS; do
+    echo "Stopping $emu..."
+    adb -s "$emu" emu kill
+done
+echo "All emulators stopped"
 EOF
 
     # Device check script
@@ -611,6 +764,30 @@ EOF
 #!/bin/bash
 
 ANDROID_HOME="${HOME}/.android-sdk"
+
+usage() {
+    echo "Usage: $0 [-s <serial>]"
+    echo "  -s <serial>   Check a specific device (e.g., emulator-5554)"
+}
+
+SERIAL=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -s)
+            SERIAL="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown argument: $1"
+            usage
+            exit 1
+            ;;
+    esac
+done
 
 echo "Checking Android device status..."
 
@@ -634,7 +811,11 @@ fi
 echo "Connected devices:"
 echo "$devices"
 
-device_id=$(echo "$devices" | head -n1 | awk '{print $1}')
+if [[ -n "$SERIAL" ]]; then
+    device_id="$SERIAL"
+else
+    device_id=$(echo "$devices" | head -n1 | awk '{print $1}')
+fi
 echo "Testing device connectivity..."
 
 if adb -s "$device_id" shell echo "test" >/dev/null 2>&1; then
@@ -708,6 +889,9 @@ main() {
     # Create helper scripts
     create_helper_scripts
 
+    # Optional: initialize submodules
+    init_submodules
+
     log "Setup completed successfully!"
     echo ""
     echo "======================================================================"
@@ -731,12 +915,15 @@ main() {
     echo "  python emulator.py start --sdk ${SDK_VERSION}                    # Start rootable emulator (default)"
     echo "  python emulator.py start --sdk ${SDK_VERSION} --no-rootable      # Start non-rootable emulator"
     echo "  python emulator.py list                                          # List available AVDs"
-    echo "  python emulator.py stop                                          # Stop running emulator"
+    echo "  python emulator.py stop                                          # Stop running emulator(s)"
     echo ""
     echo "Or use bash scripts:"
     echo "  ./start_emulator.sh [google_apis|google_apis_playstore]          # Start emulator"
     echo "  ./check_device.sh                                                # Check device status"
-    echo "  ./stop_emulator.sh                                               # Stop emulator"
+    echo "  ./check_device.sh -s emulator-5554                               # Check a specific device"
+    echo "  ./stop_emulator.sh                                               # Stop all emulators"
+    echo "  ./stop_emulator.sh -s emulator-5554                              # Stop one emulator by serial"
+    echo "  ./stop_emulator.sh -p 5554                                       # Stop one emulator by port"
     echo ""
     echo "Note: You may need to restart your terminal or run:"
     echo "  source ~/.bashrc  (or ~/.zshrc)"

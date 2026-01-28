@@ -32,7 +32,7 @@ load_dotenv()
 project_root = Path(__file__).parent
 
 EMULATOR_BOOT_TIMEOUT_SECONDS = 300  # 5 minutes
-BUILD_COMMAND_TIMEOUT = 600  # 10 minutes
+BUILD_COMMAND_TIMEOUT = 900  # 15 minutes
 DUMMY_LOG_FILENAME = "dummy_log.txt"
 
 
@@ -58,7 +58,6 @@ class MobileCybenchRunner:
         self.cmd = CommandExecutor()
         self.emulator = None
         self.probe_results = {}
-        self.synthetic_prompt_text = None
 
         try:
             git_branch = subprocess.run(
@@ -230,33 +229,6 @@ class MobileCybenchRunner:
             else:
                 logger.info("Patch applied successfully")
 
-    def _load_synthetic_scenario(self):
-        if not self.config.synthetic_vuln:
-            return
-
-        vuln_dirs = getattr(self, "synthetic_vuln_dirs", None) or []
-
-        try:
-            scenarios = {}
-            for vuln_dir in vuln_dirs:
-                scenario_file = Path(vuln_dir) / "scenario.json"
-                if not scenario_file.exists():
-                    continue
-                with open(scenario_file) as f:
-                    scenarios[scenario_file.parent.name] = json.load(f)
-
-            if not scenarios:
-                logger.warning("No synthetic scenario.json files found")
-                return
-
-            self.synthetic_prompt_text = (
-                "SYNTHETIC VULNERABILITY SCENARIOS (PRIORITIZE THESE FIRST):\n"
-                f"{json.dumps(scenarios, indent=2)}"
-            )
-            logger.info("Loaded synthetic scenarios")
-        except Exception as e:
-            logger.warning(f"Failed to load synthetic scenarios: {e}")
-
     def _setup_app_apk(self):
         """APK Handling - Download, Build, or Skip"""
         if self.config.build_type == "skip-apk":
@@ -403,7 +375,7 @@ class MobileCybenchRunner:
             env=env_vars,
             commit_id=self.metadata.get("commit_version"),
             mode=self.mode,
-            synthetic_vuln=self.config.synthetic_vuln,
+            synthetic_vulns=["vuln_0"] if self.config.synthetic_vuln else None,
         )
         agent_env.setup()
         self.agent_env = agent_env
@@ -585,12 +557,10 @@ class MobileCybenchRunner:
                 container_names = self.metadata.get("container_names", [])
                 include_ssrf = bool(container_names)
 
-                # Build additional context from custom prompt and synthetic scenarios
+                # Build additional context from custom prompt
                 additional_parts = []
                 if self.config.custom_system_prompt:
                     additional_parts.append(self.config.custom_system_prompt)
-                if self.synthetic_prompt_text:
-                    additional_parts.append(self.synthetic_prompt_text)
 
                 agent = CustomAgent(
                     model=self.config.model,
@@ -942,7 +912,6 @@ class MobileCybenchRunner:
                 self._setup_env_file()
             if self.config.synthetic_vuln:
                 self._apply_synthetic_patch()
-                self._load_synthetic_scenario()
             log_banner("SETTING UP ANDROID EMULATOR")
             sdk_version = (
                 self.metadata.get("sdk") if hasattr(self, "metadata") else None
@@ -1109,6 +1078,7 @@ def main():
         )
 
         # Add config_file as optional
+        # TODO: remove config_file CLI arg and rely on a single config source.
         parser.add_argument(
             "config_file",
             nargs="?",
