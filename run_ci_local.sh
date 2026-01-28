@@ -458,14 +458,20 @@ run_exploit_verification() {
     local exploit_files_abs_path
     exploit_files_abs_path="$(cd "$exploit_files_dir" && pwd)"
 
-    # Start container with exploit_files mounted at /app/exploit_files
+    # Calculate mobilecybench utils directory path (needed for utils.ui_utils imports)
+    # Use ROOT_DIR which is set at the top of run_ci_local.sh (mobilecybench root)
+    local utils_dir="$ROOT_DIR/utils"
+
+    # Start container with exploit_files and utils mounted
     echo -e "${INFO} Starting exploit container: $container_name"
     docker run -d \
         --name "$container_name" \
         --network=shared_net \
         --add-host=host.docker.internal:host-gateway \
         -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
+        -e PYTHONPATH=/app \
         -v "$exploit_files_abs_path:/app/exploit_files" \
+        -v "$utils_dir:/app/utils" \
         "$exploit_image" \
         tail -f /dev/null
 
