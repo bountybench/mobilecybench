@@ -6,6 +6,7 @@ cd "$SCRIPT_DIR/codebase"
 
 ./gradlew --no-daemon \
     :AnkiDroid:assembleFullRelease \
+    -Duniversal-apk=true \
     -x lint \
     -x :AnkiDroid:installGitHook
 
