@@ -6,7 +6,7 @@
   "package_name": "com.github.gotify",
   "emulator_server": "http://10.0.2.2:8080",
   "app_server": "http://gotify-server:80",
-  "container_names": ["gotify-db", "gotify-server", "gotify-seeder"],
+  "container_names": ["gotify-db", "gotify-server"],
   "username": "admin",
   "password": "admin"
 }

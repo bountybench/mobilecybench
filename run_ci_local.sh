@@ -255,10 +255,13 @@ validate_setup_app_scripts() {
         return 1
     fi
 
-    local source_script="$dir/setup_app_source.sh"
+    local has_build_script=false
     local has_download_link=false
 
-    # Check if download_link exists in metadata.json
+    if [ -f "$dir/build.sh" ]; then
+        has_build_script=true
+    fi
+
     if [ -f "$dir/metadata.json" ]; then
         download_link=$(jq -r '.download_link // empty' "$dir/metadata.json")
         if [ -n "$download_link" ]; then
@@ -266,10 +269,9 @@ validate_setup_app_scripts() {
         fi
     fi
 
-    if [ ! -f "$source_script" ] && [ "$has_download_link" = false ]; then
-        # fail if neither option exists
+    if [ "$has_build_script" = false ] && [ "$has_download_link" = false ]; then
         echo -e "${ERROR} No setup options found in $dir" >&2
-        echo -e "${ERROR} Expected: setup_app_source.sh or download_link in metadata.json" >&2
+        echo -e "${ERROR} Expected: build.sh or download_link in metadata.json" >&2
         return 1
     fi
     return 0
@@ -285,11 +287,10 @@ discover_available_modes() {
         modes="apk_skip"
         echo -e "${INFO} --skip-apk specified - using apk_skip mode" >&2
     else
-        if [ -f "$dir/setup_app_source.sh" ]; then
+        if [ -f "$dir/build.sh" ]; then
             modes="$modes source"
-            echo -e "${INFO} Found setup_app_source.sh (build mode)" >&2
+            echo -e "${INFO} Found build.sh (build mode)" >&2
         fi
-        # Check if download_link exists in metadata.json
         if [ -f "$dir/metadata.json" ]; then
             download_link=$(jq -r '.download_link // empty' "$dir/metadata.json")
             if [ -n "$download_link" ]; then
