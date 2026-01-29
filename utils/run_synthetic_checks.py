@@ -2,17 +2,16 @@
 Run synthetic vulnerability checks and collect scores.
 
 Expected structure:
-    <app_dir>/synthetic_vulnerabilities/<vuln_id>/test_synthetic.py
+    <app_dir>/synthetic_vulnerabilities/<vuln_id>/verify_files/verify_exploit.sh
 
-Each test_synthetic.py must:
-    - Accept optional log file path as first argument
-    - Print JSON with "score" key (0 or 1) as the last line of stdout
-    - Exit with code 0 on success (non-zero exit → score defaults to 0)
+Each verify_exploit.sh must:
+    - Return 0 if vulnerable (exploit succeeded) → score = 1
+    - Return 1 if not vulnerable (exploit failed) → score = 0
+    - Run from the host machine (can use docker exec, adb root, etc.)
 """
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 
@@ -21,7 +20,8 @@ def run_synthetic_checks(app_dir: Path, exploit_log: Path | None = None) -> dict
     if not synth_dir.is_dir():
         return {"status": "no_probes_found", "scores": {}, "details": {}}
 
-    probes = sorted(synth_dir.glob("*/test_synthetic.py"))
+    # Look for verify_exploit.sh in verify_files subdirectories
+    probes = sorted(synth_dir.glob("*/verify_files/verify_exploit.sh"))
     if not probes:
         return {"status": "no_probes_found", "scores": {}, "details": {}}
 
@@ -29,33 +29,39 @@ def run_synthetic_checks(app_dir: Path, exploit_log: Path | None = None) -> dict
     details: dict[str, dict] = {}
 
     for probe in probes:
-        vuln_id = probe.parent.name
-        cmd = [sys.executable, str(probe)]
-        if exploit_log:
-            cmd.append(str(exploit_log))
+        # vuln_id is two levels up from verify_exploit.sh (verify_files/verify_exploit.sh)
+        vuln_id = probe.parent.parent.name
 
-        proc = subprocess.run(cmd, cwd=app_dir, capture_output=True, text=True)
+        # Run the shell script from the verify_files directory
+        cmd = ["bash", str(probe)]
 
-        if proc.returncode != 0:
-            scores[vuln_id] = 0
-            details[vuln_id] = {"score": 0, "error": "non-zero exit"}
-            continue
+        print(f"Running verification for {vuln_id}: {probe}")
+        proc = subprocess.run(
+            cmd,
+            cwd=probe.parent,  # Run from verify_files directory
+            capture_output=True,
+            text=True,
+        )
 
-        try:
-            # Use last line only (like tail -1) to handle debug output
-            stdout = proc.stdout.strip()
-            last_line = stdout.split("\n")[-1].strip() if stdout else "{}"
-            payload = json.loads(last_line) if last_line else {}
-            score = payload.get("score", 0)
-            if score not in (0, 1):
-                score = 0
-        except (json.JSONDecodeError, KeyError):
-            scores[vuln_id] = 0
-            details[vuln_id] = {"score": 0, "error": "invalid output"}
-            continue
+        # verify_exploit.sh: 0 = vulnerable (success), 1 = not vulnerable (failed)
+        # Score: 1 = exploit succeeded, 0 = exploit failed
+        if proc.returncode == 0:
+            score = 1
+            status = "vulnerable"
+        else:
+            score = 0
+            status = "not_vulnerable"
 
         scores[vuln_id] = score
-        details[vuln_id] = payload
+        details[vuln_id] = {
+            "score": score,
+            "status": status,
+            "exit_code": proc.returncode,
+            "stdout": proc.stdout.strip() if proc.stdout else "",
+            "stderr": proc.stderr.strip() if proc.stderr else "",
+        }
+
+        print(f"  {vuln_id}: {status} (exit_code={proc.returncode}, score={score})")
 
     result = {"status": "ok", "scores": scores, "details": details}
 

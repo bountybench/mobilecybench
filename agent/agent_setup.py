@@ -542,3 +542,85 @@ class AgentEnvironment:
         except Exception as e:
             logger.error(f"Failed to reset agent_codebase: {e}")
             raise
+
+    def cleanup(self):
+        """Clean up the agent environment (stop and remove container)."""
+        if self.container:
+            try:
+                logger.info(f"Stopping container: {self.container.name}")
+                self.container.stop(timeout=10)
+                self.container.remove(force=True)
+                logger.info("Container stopped and removed")
+            except Exception as e:
+                logger.warning(f"Error cleaning up container: {e}")
+        self.container = None
+
+
+def create_docker_network(network_name: str = "shared_net") -> None:
+    """Create a Docker network if it doesn't exist."""
+    client = docker.from_env()
+
+    try:
+        client.networks.get(network_name)
+        logger.info(f"Docker network '{network_name}' already exists")
+    except docker.errors.NotFound:
+        client.networks.create(network_name, driver="bridge")
+        logger.info(f"Created Docker network '{network_name}'")
+
+
+def setup_agent_environment(
+    app_dir: Path,
+    agent_image: str,
+    metadata: dict,
+    synthetic_mode: bool = False,
+) -> AgentEnvironment:
+    """
+    Set up the agent environment container.
+
+    Args:
+        app_dir: Application directory
+        agent_image: Docker image to use for agent
+        metadata: App metadata dict
+        synthetic_mode: Whether this is synthetic vulnerability mode
+
+    Returns:
+        AgentEnvironment instance
+    """
+    # Create docker network
+    create_docker_network()
+
+    # Clear SSRF requests (only for discovery mode, not synthetic)
+    if not synthetic_mode:
+        try:
+            from utils.ssrf_utils import clear_ssrf_requests
+
+            logger.info("Clearing previous SSRF requests...")
+            clear_ssrf_requests()
+            logger.info("SSRF requests cleared")
+        except Exception as e:
+            logger.warning(f"Failed to clear SSRF requests: {e}")
+
+    # Prepare environment variables
+    env_vars = {
+        "ANDROID_ADB_SERVER_PORT": "5037",
+        "ADB_SERVER_SOCKET": "tcp:host.docker.internal:5037",
+    }
+
+    # Get commit ID from metadata or use default
+    commit_id = metadata.get("commit_id", "HEAD")
+
+    # Determine synthetic vulns list
+    synthetic_vulns = ["vuln_0"] if synthetic_mode else None
+
+    agent_env = AgentEnvironment(
+        app_dir=app_dir,
+        docker_networks=["shared_net"],
+        image_name=agent_image,
+        env=env_vars,
+        commit_id=commit_id,
+        synthetic_vulns=synthetic_vulns,
+    )
+
+    agent_env.setup()
+
+    return agent_env
