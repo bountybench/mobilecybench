@@ -32,7 +32,7 @@ load_dotenv()
 project_root = Path(__file__).parent
 
 EMULATOR_BOOT_TIMEOUT_SECONDS = 300  # 5 minutes
-BUILD_COMMAND_TIMEOUT = 600  # 10 minutes
+BUILD_COMMAND_TIMEOUT = 900  # 15 minutes
 DUMMY_LOG_FILENAME = "dummy_log.txt"
 
 
@@ -58,7 +58,6 @@ class MobileCybenchRunner:
         self.cmd = CommandExecutor()
         self.emulator = None
         self.probe_results = {}
-        self.synthetic_prompt_text = None
 
         try:
             git_branch = subprocess.run(
@@ -202,64 +201,6 @@ class MobileCybenchRunner:
             self.synthetic_patch_paths = patch_paths
             self.synthetic_vuln_dirs = [p.parent for p in patch_paths]
 
-        # Check for static vulnerability reports if in supervisor mode
-        if self.mode == "supervisor":
-            reports_root = self.app_dir / "static_vuln_reports"
-            semgrep_report_path = reports_root / "semgrep" / "report.json"
-            mobsf_report_path = reports_root / "mobsfscan" / "report.json"
-            qark_report_path = reports_root / "qark" / "report.json"
-
-            if not reports_root.exists() or not any(reports_root.iterdir()):
-                self._exit_with_error(
-                    "Supervisor mode requires static analysis outputs under "
-                    f"{reports_root}. Directory is missing or empty.\n"
-                    "Generate at least Semgrep (and optionally MobSF/QARK) reports before running."
-                )
-
-            # Semgrep should be present; warn if missing
-            if not semgrep_report_path.exists():
-                logger.warning(
-                    "Semgrep report not found at %s; supervisor agents will proceed without it.\n"
-                    "To generate it, run: python tools/run_semgrep_scan.py %s",
-                    semgrep_report_path,
-                    self.app_name,
-                )
-            else:
-                try:
-                    with open(semgrep_report_path, "r") as f:
-                        json.load(f)
-                    logger.info(
-                        "✓ Found and validated Semgrep report for supervisor mode"
-                    )
-                except json.JSONDecodeError as e:
-                    logger.warning(
-                        "Semgrep report exists but is not valid JSON (%s); rerun Semgrep to regenerate.",
-                        e,
-                    )
-
-            # MobSFScan and QARK are optional but recommended; validate if present
-            for tool_name, report_path in [
-                ("MobSFScan", mobsf_report_path),
-                ("QARK", qark_report_path),
-            ]:
-                if report_path.exists():
-                    try:
-                        with open(report_path, "r") as f:
-                            json.load(f)
-                        logger.info("✓ Found %s report at %s", tool_name, report_path)
-                    except json.JSONDecodeError:
-                        logger.warning(
-                            "%s report at %s is not valid JSON; rerun the scan to regenerate.",
-                            tool_name,
-                            report_path,
-                        )
-                else:
-                    logger.warning(
-                        "%s report not found at %s; continuing without it.",
-                        tool_name,
-                        report_path,
-                    )
-
         logger.info("Input validation passed")
 
     def _apply_synthetic_patch(self):
@@ -287,33 +228,6 @@ class MobileCybenchRunner:
                 )
             else:
                 logger.info("Patch applied successfully")
-
-    def _load_synthetic_scenario(self):
-        if not self.config.synthetic_vuln:
-            return
-
-        vuln_dirs = getattr(self, "synthetic_vuln_dirs", None) or []
-
-        try:
-            scenarios = {}
-            for vuln_dir in vuln_dirs:
-                scenario_file = Path(vuln_dir) / "scenario.json"
-                if not scenario_file.exists():
-                    continue
-                with open(scenario_file) as f:
-                    scenarios[scenario_file.parent.name] = json.load(f)
-
-            if not scenarios:
-                logger.warning("No synthetic scenario.json files found")
-                return
-
-            self.synthetic_prompt_text = (
-                "SYNTHETIC VULNERABILITY SCENARIOS (PRIORITIZE THESE FIRST):\n"
-                f"{json.dumps(scenarios, indent=2)}"
-            )
-            logger.info("Loaded synthetic scenarios")
-        except Exception as e:
-            logger.warning(f"Failed to load synthetic scenarios: {e}")
 
     def _setup_app_apk(self):
         """APK Handling - Download, Build, or Skip"""
@@ -461,7 +375,7 @@ class MobileCybenchRunner:
             env=env_vars,
             commit_id=self.metadata.get("commit_version"),
             mode=self.mode,
-            synthetic_vuln=self.config.synthetic_vuln,
+            synthetic_vulns=["vuln_0"] if self.config.synthetic_vuln else None,
         )
         agent_env.setup()
         self.agent_env = agent_env
@@ -608,7 +522,7 @@ class MobileCybenchRunner:
             }
 
     def _run_agent(self):
-        """Run the agent - custom, codex, or supervisor based on mode"""
+        """Run the agent - custom, codex based on mode"""
         agent_type = f"{self.mode.upper()} AGENT"
         log_banner(f"RUNNING {agent_type}")
 
@@ -618,27 +532,7 @@ class MobileCybenchRunner:
         logger.info(f"Starting {agent_type.lower()} execution...")
 
         try:
-            if self.mode == "supervisor":
-                from agent.hierarchical_agent import create_and_run_supervisor_system
-
-                logger.info("Initializing supervisor agent system...")
-                logger.info("Starting supervisor agent execution...")
-
-                result = create_and_run_supervisor_system(
-                    worker_model=self.config.agents[self.mode].worker_model,
-                    hierarchy_model=self.config.agents[self.mode].hierarchy_model,
-                    max_iterations=self.config.agents[self.mode].max_iterations,
-                    allowed_tools=self.config.agents[self.mode].allowed_tools,
-                    metadata=getattr(self, "metadata", {}),
-                )
-
-                log_banner("SUPERVISOR AGENT EXECUTION RESULTS")
-                logger.info(f"Status: {result.get('status', 'Unknown')}")
-                logger.info(f"Turns: {result.get('turns', 0)}")
-
-                return result
-
-            elif self.mode == "codex":
+            if self.mode == "codex":
                 from agent.codex_agent import CodexAgent
 
                 logger.info("Initializing codex agent...")
@@ -663,53 +557,37 @@ class MobileCybenchRunner:
                 container_names = self.metadata.get("container_names", [])
                 include_ssrf = bool(container_names)
 
-                # Build additional context from custom prompt and synthetic scenarios
+                # Build additional context from custom prompt
                 additional_parts = []
                 if self.config.custom_system_prompt:
                     additional_parts.append(self.config.custom_system_prompt)
-                if self.synthetic_prompt_text:
-                    additional_parts.append(self.synthetic_prompt_text)
 
                 agent = CustomAgent(
                     config=self.config,
                     app_name=self.app_name,
                     app_server=getattr(self, "metadata", {}).get("app_server", None),
-<<<<<<< HEAD
-=======
                     dry_run=self.config.dry_run,
                     additional_context=(
                         "\n\n".join(additional_parts) if additional_parts else None
                     ),
->>>>>>> b42b2510e3ff633db631771eee2d175955f50117
                     package_name=self.metadata.get("package_name"),
                     username=self.metadata.get("username"),
                     password=self.metadata.get("password"),
                     include_ssrf=include_ssrf,
                 )
 
-            # This can take a while for actual LLM calls
-            # (Skip for supervisor mode as it's already run above)
-            if self.mode != "supervisor":
-                result = agent.run()
+            result = agent.run()
 
-                log_banner("AGENT EXECUTION RESULTS")
-                logger.info(f"Status: {result.get('status', 'Unknown')}")
-                logger.info(f"Turns: {result.get('turns', 0)}")
-                logger.info(f"Log file: {result.get('log_file', 'None')}")
+            log_banner("AGENT EXECUTION RESULTS")
+            logger.info(f"Status: {result.get('status', 'Unknown')}")
+            logger.info(f"Turns: {result.get('turns', 0)}")
+            logger.info(f"Log file: {result.get('log_file', 'None')}")
 
-                if result.get("final_message"):
-                    logger.info("Final Message:")
-                    logger.info(f"  {result['final_message']}")
+            if result.get("final_message"):
+                logger.info("Final Message:")
+                logger.info(f"  {result['final_message']}")
 
-                return result
-
-            # Supervisor mode already returned above, but satisfy type checker
-            return {
-                "status": "error",
-                "turns": 0,
-                "final_message": None,
-                "log_file": None,
-            }
+            return result
 
         except Exception as e:
             logger.error(f"Failed to run agent: {e}")
@@ -1028,7 +906,6 @@ class MobileCybenchRunner:
                 self._setup_env_file()
             if self.config.synthetic_vuln:
                 self._apply_synthetic_patch()
-                self._load_synthetic_scenario()
             log_banner("SETTING UP ANDROID EMULATOR")
             sdk_version = (
                 self.metadata.get("sdk") if hasattr(self, "metadata") else None
@@ -1184,9 +1061,9 @@ def main():
         # Add agent_type selection
         parser.add_argument(
             "--agent-type",
-            choices=["custom", "codex", "supervisor"],
+            choices=["custom", "codex"],
             default="custom",
-            help="Agent type to use: 'custom' (OpenAI API), 'codex' (Codex CLI), or 'supervisor' (hierarchical multi-agent). Default: custom.",
+            help="Agent type to use: 'custom' (OpenAI API), 'codex' (Codex CLI). Default: custom.",
         )
 
         parser.add_argument(
@@ -1195,6 +1072,7 @@ def main():
         )
 
         # Add config_file as optional
+        # TODO: remove config_file CLI arg and rely on a single config source.
         parser.add_argument(
             "config_file",
             nargs="?",

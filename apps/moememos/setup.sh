@@ -112,6 +112,31 @@ verify_installation() {
   info "Installation verified: $pkg"
 }
 
+configure_exploit_host_ip() {
+  info "Configuring exploit scripts with host IP"
+
+  # Detect host IP (needed for token_catcher to be reachable from emulator)
+  local host_ip
+  host_ip=$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -1)
+
+  if [[ -z "$host_ip" ]]; then
+    warn "Could not detect host IP, exploit may not work"
+    return
+  fi
+
+  info "Detected host IP: $host_ip"
+
+  # Update exploit script with actual host IP
+  local exploit_script="${SCRIPT_DIR}/synthetic_vulnerabilities/vuln_0/exploit_files/exploit.sh"
+  if [[ -f "$exploit_script" ]]; then
+    sed -i.bak "s/HOST_IP_PLACEHOLDER/$host_ip/g" "$exploit_script"
+    rm -f "${exploit_script}.bak"
+    info "Updated exploit script with host IP: $host_ip"
+  else
+    warn "Exploit script not found at $exploit_script"
+  fi
+}
+
 main() {
   info "Starting MoeMemos setup"
   echo "=============================="
@@ -121,6 +146,7 @@ main() {
   wait_for_health
   install_app
   verify_installation
+  configure_exploit_host_ip
 
   echo ""
   echo "=============================="

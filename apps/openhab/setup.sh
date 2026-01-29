@@ -65,7 +65,7 @@ fi
 ########## Core functions ##########
 
 find_apk() {
-  # Check local APK first, then APP_NAME location, then search
+  # Check local APK first, then APP_NAME location
   local candidates=(
     "$SCRIPT_DIR/apk/openhab.apk"
     "${APP_NAME:+$ROOT_DIR/apps/$APP_NAME/apk/$APP_NAME.apk}"
@@ -75,8 +75,7 @@ find_apk() {
     [ -n "$apk" ] && [ -f "$apk" ] && { printf "%s" "$apk"; return 0; }
   done
   
-  # Search pattern as fallback
-  find "$ROOT_DIR/apps" -name "*.apk" -path "*/apk/*" | head -1
+  return 1
 }
 
 find_adb() {
