@@ -265,9 +265,7 @@ def main():
         else:
             delta = abs(bypass_ts - fgs_ts)
             if delta > FGS_BYPASS_MAX_DELTA_SECONDS:
-                evidence.append(
-                    f"Bypass/FGS log time delta too large: {delta:.1f}s"
-                )
+                evidence.append(f"Bypass/FGS log time delta too large: {delta:.1f}s")
                 bypass_success = False
         if bypass_success:
             checks_passed += 1
