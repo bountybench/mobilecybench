@@ -9,8 +9,11 @@ from datetime import datetime, timedelta, timezone
 MARKER_FILE = "/data/data/com.termux/files/exploit_marker.txt"
 EXPECTED_CONTENT = "synthetic exploit uid="
 BYPASS_LOG_MESSAGE = "Compat bridge mode bypass activated"
+RUN_COMMAND_TAG_MARKER = "RunCommandService"
+HELPER_PACKAGE = "com.termux.synthetichelper"
 TERMUX_PACKAGE = "com.termux"
 RECENT_WINDOW_SECONDS = 300
+FGS_BYPASS_MAX_DELTA_SECONDS = 20
 
 
 def run_adb_command(command: str):
@@ -71,22 +74,96 @@ def parse_logcat_time_to_epoch(line: str, year: int, tzinfo: timezone):
         return None
 
 
+def get_package_pids(package_name: str):
+    success, output = run_adb_command(f"shell pidof {package_name}")
+    if success and output.strip():
+        return {pid for pid in output.strip().split() if pid.isdigit()}
+    success, output = run_adb_command("shell ps -A -o PID,NAME,ARGS")
+    pids = set()
+    if success:
+        for line in output.splitlines():
+            if package_name in line:
+                parts = line.strip().split(None, 2)
+                if parts and parts[0].isdigit():
+                    pids.add(parts[0])
+    return pids
+
+
+def pid_belongs_to_package(pid: str, package_name: str):
+    success, output = run_adb_command(f"shell su 0 cat /proc/{pid}/cmdline")
+    if success and package_name in output:
+        return True
+    success, output = run_adb_command("shell ps -A -o PID,NAME,ARGS")
+    if success:
+        for line in output.splitlines():
+            if package_name in line and line.strip().startswith(pid):
+                return True
+    return False
+
+
+def parse_threadtime_line(line: str):
+    match = re.match(
+        r"^(\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2}\.\d+)\s+(\d+)\s+\d+\s+[VDIWEF]\s+(\S+):\s+(.*)$",
+        line,
+    )
+    if not match:
+        return None, None, None, None, None
+    date_part, time_part, pid, tag, message = match.groups()
+    return f"{date_part} {time_part} ", pid, tag, message, line
+
+
 def check_bypass_in_logcat(cutoff_epoch):
-    """Verify the bypass was triggered by checking logcat for the bypass message."""
+    """Verify bypass log is recent and originates from Termux app PID."""
     year, tzinfo = get_device_time_info()
     if year is None or tzinfo is None:
         return False, "could not read device time info"
 
-    success, output = run_adb_command("logcat -d -b all -v time")
+    termux_pids = get_package_pids(TERMUX_PACKAGE)
+    success, output = run_adb_command("logcat -d -b all -v threadtime")
     if not success:
         return False, output
-    for line in output.splitlines():
-        if BYPASS_LOG_MESSAGE not in line:
+
+    for raw_line in output.splitlines():
+        if BYPASS_LOG_MESSAGE not in raw_line or RUN_COMMAND_TAG_MARKER not in raw_line:
             continue
-        ts = parse_logcat_time_to_epoch(line, year, tzinfo)
+        ts_line, pid, tag, message, full_line = parse_threadtime_line(raw_line)
+        if not ts_line or not pid:
+            continue
+        ts = parse_logcat_time_to_epoch(ts_line, year, tzinfo)
+        if not ts or ts < cutoff_epoch:
+            continue
+        if pid in termux_pids or pid_belongs_to_package(pid, TERMUX_PACKAGE):
+            return True, full_line, ts
+    return False, "no recent bypass log from Termux PID", None
+
+
+def check_run_command_fgs_log(cutoff_epoch):
+    """Verify system logs show helper-triggered RunCommandService start."""
+    year, tzinfo = get_device_time_info()
+    if year is None or tzinfo is None:
+        return False, "could not read device time info"
+
+    success, output = run_adb_command("logcat -d -b all -v threadtime")
+    if not success:
+        return False, output
+
+    required_substrings = [
+        "Background started FGS: Allowed",
+        f"callingPackage: {HELPER_PACKAGE}",
+        f"act={TERMUX_PACKAGE}.RUN_COMMAND",
+        f"pkg={TERMUX_PACKAGE}",
+    ]
+
+    for raw_line in output.splitlines():
+        if not all(s in raw_line for s in required_substrings):
+            continue
+        ts_line, _, _, _, full_line = parse_threadtime_line(raw_line)
+        if not ts_line:
+            continue
+        ts = parse_logcat_time_to_epoch(ts_line, year, tzinfo)
         if ts and ts >= cutoff_epoch:
-            return True, line
-    return False, "no recent bypass log"
+            return True, full_line, ts
+    return False, "no recent RunCommandService start from helper app", None
 
 
 def get_termux_uid():
@@ -179,15 +256,31 @@ def main():
     else:
         evidence.append(f"Marker file check failed: {output or 'file missing'}")
 
-    # Check 2: Verify bypass message in logcat (proves bypass mechanism was triggered)
-    logcat_success, logcat_output = check_bypass_in_logcat(cutoff_epoch)
-    if logcat_success:
-        checks_passed += 1
-        evidence.append("Bypass message found in logcat")
-    else:
-        evidence.append(
-            f"Bypass message not found in logcat: {logcat_output[:100] if logcat_output else 'no logcat output'}"
-        )
+    # Check 2: Verify bypass log from Termux PID and helper-triggered FGS start
+    bypass_success, bypass_output, bypass_ts = check_bypass_in_logcat(cutoff_epoch)
+    fgs_success, fgs_output, fgs_ts = check_run_command_fgs_log(cutoff_epoch)
+    if bypass_success and fgs_success:
+        if bypass_ts is None or fgs_ts is None:
+            evidence.append("Bypass/FGS timestamps missing for correlation")
+        else:
+            delta = abs(bypass_ts - fgs_ts)
+            if delta > FGS_BYPASS_MAX_DELTA_SECONDS:
+                evidence.append(
+                    f"Bypass/FGS log time delta too large: {delta:.1f}s"
+                )
+                bypass_success = False
+        if bypass_success:
+            checks_passed += 1
+            evidence.append("Bypass log verified from Termux PID with helper FGS start")
+    if not (bypass_success and fgs_success):
+        if not bypass_success:
+            evidence.append(
+                f"Bypass log missing/invalid: {bypass_output[:120] if bypass_output else 'no logcat output'}"
+            )
+        if not fgs_success:
+            evidence.append(
+                f"FGS start log missing: {fgs_output[:120] if fgs_output else 'no logcat output'}"
+            )
 
     # Check 3: Verify file ownership (proves command executed in Termux context)
     ownership_success, ownership_output = verify_file_ownership()
