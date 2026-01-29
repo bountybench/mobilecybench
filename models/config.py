@@ -18,6 +18,7 @@ class RunnerConfig(BaseModel):
 
     # workflow type
     workflow: Literal["discovery", "exploit"] = "discovery"
+    synthetic_vuln_id: str = "vuln_0"  # which vulnerability to test in exploit mode
 
     # agent limits
     max_iterations: int = Field(gt=0)

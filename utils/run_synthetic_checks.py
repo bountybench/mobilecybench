@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 
 
-def run_synthetic_checks(app_dir: Path, exploit_log: Path | None = None) -> dict:
+def run_synthetic_checks(app_dir: Path) -> dict:
     synth_dir = app_dir / "synthetic_vulnerabilities"
     if not synth_dir.is_dir():
         return {"status": "no_probes_found", "scores": {}, "details": {}}

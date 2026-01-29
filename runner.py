@@ -181,11 +181,7 @@ class MobileCybenchRunner:
             )
 
         # Synthetic vulnerability workflow constraints
-        if self.config.synthetic_vuln:
-            if self.config.build_type != "source":
-                self._exit_with_error(
-                    "Synthetic vulnerability mode requires build_type 'source'."
-                )
+        if self.config.workflow == "exploit":
             synth_root = self.app_dir / "synthetic_vulnerabilities"
             vuln_dirs = sorted(
                 p
@@ -375,7 +371,11 @@ class MobileCybenchRunner:
             env=env_vars,
             commit_id=self.metadata.get("commit_version"),
             mode=self.mode,
-            synthetic_vulns=["vuln_0"] if self.config.synthetic_vuln else None,
+            synthetic_vulns=(
+                [self.config.synthetic_vuln_id]
+                if self.config.workflow == "exploit"
+                else None
+            ),
         )
         agent_env.setup()
         self.agent_env = agent_env
@@ -650,7 +650,7 @@ class MobileCybenchRunner:
                 logger.error(f"Error reading scores.json: {e}")
 
         # Run synthetic probes if enabled
-        if self.config.synthetic_vuln:
+        if self.config.workflow == "exploit":
             log_path_for_synthetic = log_path if log_path.is_file() else None
             synthetic_result = _run_synthetic_checks(
                 self.app_dir, exploit_log=log_path_for_synthetic
@@ -910,7 +910,7 @@ class MobileCybenchRunner:
             self._validate_input()
             if not self.config.dry_run:
                 self._setup_env_file()
-            if self.config.synthetic_vuln:
+            if self.config.workflow == "exploit":
                 self._apply_synthetic_patch()
             log_banner("SETTING UP ANDROID EMULATOR")
             sdk_version = (
