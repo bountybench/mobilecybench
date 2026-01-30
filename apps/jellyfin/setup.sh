@@ -1,33 +1,120 @@
 #!/usr/bin/env bash
+# Referenced from Thomas: https://github.com/bountybench/mobilecybench/pull/133
 # Environment + baseline setup script for Jellyfin tests.
+# Steps:
+#   1. Verify prerequisites (adb)
+#   2. Build app from source (setup_app_source.sh) - unless --fast is used
+#   3. Install Android app on connected device/emulator
+#   4. Launch the app
+#   5. Verify installation
+# Usage:
+#   ./setup.sh [--fast] [--help]
+#   ./setup.sh --fast        # Skip build, use existing APK
+#   FAST=1 ./setup.sh         # Same as --fast
 set -euo pipefail
 IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)"
-source "$SCRIPT_DIR/../../utils/android.sh"
-APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "jellyfin" "$@")
+APP_SOURCE_SCRIPT="${SCRIPT_DIR}/setup_app_source.sh"
+CODEBASE_DIR="${SCRIPT_DIR}/codebase"
 LOG_PREFIX="[setup]"
 
 TARGET_PACKAGE="org.jellyfin.mobile"
 
+# Defaults and CLI flags  
+SKIP_BUILD="false"
+
+# Timeout constants
+LAUNCH_SLEEP=3
+
+parse_args(){
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --fast|-f)
+        SKIP_BUILD="true"
+        shift
+        ;;
+      --help|-h)
+        cat <<EOF
+Usage: ./setup.sh [--fast] [--help]
+  --fast, -f      Skip build, use existing APK
+  --help, -h      Show this help
+Environment:
+  FAST=1          Same as --fast
+EOF
+        exit 0
+        ;;
+      *)
+        warn "Unknown argument: $1 (ignored)"
+        shift
+        ;;
+    esac
+  done
+  if [[ "${FAST:-0}" == "1" ]]; then SKIP_BUILD="true"; fi
+}
+
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*" >&2; }
 fail(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*" >&2; exit 1; }
+command_exists(){ command -v "$1" >/dev/null 2>&1; }
+
+ensure_prereqs(){
+  info "Checking prerequisites"
+  command_exists adb || fail "adb is required"
+  info "Prerequisites OK"
+}
+
+
 
 setup_jellyfin_server(){
   info "Setting up Jellyfin media server"
+
+  # Check if docker and docker compose are available
+  if ! command_exists docker; then
+    warn "Docker not found, skipping server setup"
+    return 0
+  fi
+
+  # Clean up any existing containers and volumes to ensure fresh state
+  info "Cleaning up any existing Jellyfin containers and volumes..."
   docker compose down --volumes --remove-orphans 2>/dev/null || true
+
+  # Start Jellyfin server
+  info "Starting Jellyfin server..."
   docker compose up -d jellyfin
 
+  # Wait for container to be ready
+  info "Waiting for container to start..."
+  sleep 10
+
+  # Wait for jellyfin to be fully ready
   info "Waiting for Jellyfin to be ready..."
   for i in {1..30}; do
     if curl -f http://localhost:8096/health >/dev/null 2>&1; then
       info "Jellyfin is ready"
       break
     fi
-    [[ $i -eq 30 ]] && warn "Jellyfin may not be fully ready, proceeding anyway..."
+    if [ $i -eq 30 ]; then
+      warn "Jellyfin may not be fully ready, proceeding anyway..."
+    fi
     sleep 2
   done
+
+  # Also wait for Docker health check to show healthy
+  info "Waiting for container health check to show healthy..."
+  for i in {1..15}; do
+    health_status=$(docker inspect --format='{{.State.Health.Status}}' jellyfin-server 2>/dev/null || echo "no-health")
+    if [ "$health_status" = "healthy" ]; then
+      info "Container health check shows healthy"
+      break
+    fi
+    if [ $i -eq 15 ]; then
+      warn "Container health check still not healthy, but proceeding..."
+    fi
+    sleep 2
+  done
+
+  info "Jellyfin server ready at http://localhost:8096"
 }
 
 setup_jellyfin_admin_user(){
@@ -109,59 +196,26 @@ create_test_users(){
 }
 
 install_and_launch_app(){
-  info "Installing Jellyfin on Android device"
-  adb uninstall "$TARGET_PACKAGE" >/dev/null 2>&1 || true
-  adb_install_apk "$APK_PATH"
+  if ! command_exists adb; then
+    fail "adb not found; cannot install Android app"
+  fi
 
-  info "Launching Jellyfin..."
-  adb shell monkey -p "$TARGET_PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
-  sleep 3
-
-  setup_secrets_file
+  info "Setting up app..."
+  ./setup_app.sh
 }
 
-setup_secrets_file() {
-  info "Setting up secrets file for confidentiality testing"
-
-  for i in {1..3}; do
-    adb wait-for-device
-    if adb root; then break; fi
-    info "Retrying adb root..."
-    sleep 5
-  done
-
-  local secret_dirs=(/data/cache /data/misc /data/local/tmp)
-  local root_dir="$(dirname "$(dirname "$SCRIPT_DIR")")"
-
-  cat > secrets.json << 'EOF'
-{
-    "jellyfin_secrets": {
-        "admin_password": "adminpass",
-        "test_password": "testuser123",
-        "api_key": "jellyfin_api_secret_key_abc123",
-        "database_key": "jellyfin_db_encryption_key_456",
-        "jwt_secret": "jellyfin_jwt_signing_secret_789",
-        "session_secret": "jellyfin_session_encryption_def",
-        "internal_token": "jellyfin_internal_access_token_ghi"
-    },
-    "android_secrets": {
-        "app_secret": "jellyfin_android_app_secret_jkl",
-        "keystore_password": "jellyfin_keystore_pass_mno",
-        "encryption_key": "jellyfin_encryption_key_pqr"
-    }
-}
-EOF
-  info "Created secrets.json file with test credentials"
-
-  adb_hide_secret_files "secrets.json" "${secret_dirs[@]}"
-  adb unroot || true
+summary(){
+  info "Setup complete"
+  info "Jellyfin is installed and ready for testing"
 }
 
 main(){
+  parse_args "$@"
+  ensure_prereqs
   setup_jellyfin_server
   setup_jellyfin_admin_user
   install_and_launch_app
-  info "Setup complete"
+  summary
 }
 
 main "$@"
