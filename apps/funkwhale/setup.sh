@@ -191,9 +191,11 @@ main(){
     # Set up and start Funkwhale server (restores from snapshot)
     setup_server
 
-    # Find pre-built APK (do not rebuild from source)
-    info "Looking for pre-built APK to install"
-    APK_PATH=$(find_apk)
+    # Use pre-built APK from build_apk.sh
+    APK_PATH="$SCRIPT_DIR/apk/funkwhale.apk"
+    if [[ ! -f "$APK_PATH" ]]; then
+        fail "APK not found at $APK_PATH"
+    fi
 
     # Install the app
     install_app "$APK_PATH"

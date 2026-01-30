@@ -2,15 +2,16 @@
 #
 # APK Build Wrapper Script
 #
-# This script wraps setup_app_source.sh to provide a unified interface for building
-# APKs for both regular and synthetic vulnerability scenarios.
+# Unified build system that handles environment setup, building, signing,
+# and output for all apps.
 #
 # Usage:
-#   ./build_apk.sh <app_name> [--vuln <vuln_id>]
+#   ./build_apk.sh <app_name> [--output <dir>] [--vuln <vuln_id>]
 #
 # Examples:
 #   ./build_apk.sh conversations                    # Build regular APK
-#   ./build_apk.sh conversations --vuln vuln_0      # Build APK with vuln_0 patch applied
+#   ./build_apk.sh conversations --output ./out     # Build to custom output dir
+#   ./build_apk.sh conversations --vuln vuln_0      # Build with vulnerability patch
 #
 
 set -e
@@ -33,25 +34,28 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Variables
 APP_NAME=""
 VULN_ID=""
+OUTPUT_DIR=""
 
 show_usage() {
     echo "Usage: $0 <app_name> [options]"
     echo ""
     echo "Arguments:"
-    echo "  <app_name>          Name of the app to build (e.g., conversations, joplin)"
+    echo "  <app_name>          Name of the app to build (e.g., conversations, grocy)"
     echo ""
     echo "Options:"
+    echo "  --output <dir>      Output directory for the APK (default: apps/<app_name>/apk/)"
     echo "  --vuln <vuln_id>    Build APK with synthetic vulnerability patch applied"
     echo "                      (e.g., vuln_0, vuln_1)"
     echo "  -h, --help          Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0 conversations                    # Build regular APK"
-    echo "  $0 conversations --vuln vuln_0      # Build APK with vuln_0 patch"
+    echo "  $0 conversations                        # Build regular APK"
+    echo "  $0 conversations --output ./artifacts   # Build to custom dir"
+    echo "  $0 conversations --vuln vuln_0          # Build with vuln_0 patch"
     echo ""
-    echo "Output locations:"
-    echo "  Regular build:  apps/<app_name>/apk/<apk_files>"
-    echo "  Vuln build:     apps/<app_name>/apk/<vuln_id>/<apk_files>"
+    echo "Output naming:"
+    echo "  Regular build:  <app_name>.apk"
+    echo "  Vuln build:     <app_name>_<vuln_id>.apk"
 }
 
 # Parse arguments
@@ -64,6 +68,15 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             VULN_ID="$2"
+            shift 2
+            ;;
+        --output)
+            if [ -z "$2" ] || [[ "$2" == -* ]]; then
+                echo -e "${ERROR} --output requires a directory path"
+                show_usage
+                exit 1
+            fi
+            OUTPUT_DIR="$2"
             shift 2
             ;;
         -h|--help)
@@ -102,10 +115,14 @@ if [ ! -d "$APP_DIR" ]; then
     exit 1
 fi
 
-# Validate setup_app_source.sh exists
-if [ ! -f "$APP_DIR/setup_app_source.sh" ]; then
-    echo -e "${ERROR} setup_app_source.sh not found in $APP_DIR"
-    echo -e "${ERROR} This script requires setup_app_source.sh to build APKs from source"
+# Set default output directory
+if [ -z "$OUTPUT_DIR" ]; then
+    OUTPUT_DIR="$APP_DIR/apk"
+fi
+
+# Validate build script exists
+if [ ! -f "$APP_DIR/build.sh" ]; then
+    echo -e "${ERROR} build.sh not found in $APP_DIR"
     exit 1
 fi
 
@@ -130,6 +147,120 @@ check_submodule_initialized() {
     return 0
 }
 
+# Setup Java environment based on version from metadata.json
+setup_java() {
+    local java_version
+    java_version=$(jq -r '.java // "17"' "$APP_DIR/metadata.json")
+
+    echo -e "${INFO} Setting up Java $java_version..."
+
+    # Try common Java installation paths
+    if [[ -d "/opt/homebrew/opt/openjdk@${java_version}" ]]; then
+        export JAVA_HOME="/opt/homebrew/opt/openjdk@${java_version}/libexec/openjdk.jdk/Contents/Home"
+    elif [[ -d "/usr/lib/jvm/java-${java_version}-openjdk" ]]; then
+        export JAVA_HOME="/usr/lib/jvm/java-${java_version}-openjdk"
+    elif [[ -d "/usr/lib/jvm/java-${java_version}-openjdk-amd64" ]]; then
+        export JAVA_HOME="/usr/lib/jvm/java-${java_version}-openjdk-amd64"
+    elif command -v /usr/libexec/java_home &>/dev/null; then
+        export JAVA_HOME="$(/usr/libexec/java_home -v "$java_version" 2>/dev/null || true)"
+    fi
+
+    # Fallback to system Java
+    if [[ -z "$JAVA_HOME" || ! -d "$JAVA_HOME" ]]; then
+        export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
+    fi
+
+    if [[ -z "$JAVA_HOME" || ! -d "$JAVA_HOME" ]]; then
+        echo -e "${ERROR} Could not find Java $java_version"
+        return 1
+    fi
+
+    export PATH="$JAVA_HOME/bin:$PATH"
+    echo -e "${INFO} JAVA_HOME=$JAVA_HOME"
+}
+
+# Setup Android SDK environment
+setup_android() {
+    echo -e "${INFO} Setting up Android SDK..."
+
+    # Try common Android SDK paths
+    if [[ -n "$ANDROID_HOME" && -d "$ANDROID_HOME" ]]; then
+        : # Already set
+    elif [[ -d "$HOME/.android-sdk" ]]; then
+        export ANDROID_HOME="$HOME/.android-sdk"
+    elif [[ -d "/usr/local/lib/android/sdk" ]]; then
+        export ANDROID_HOME="/usr/local/lib/android/sdk"
+    elif [[ -d "$HOME/Android/Sdk" ]]; then
+        export ANDROID_HOME="$HOME/Android/Sdk"
+    else
+        echo -e "${ERROR} Android SDK not found"
+        return 1
+    fi
+
+    export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+    echo -e "${INFO} ANDROID_HOME=$ANDROID_HOME"
+
+    # Create local.properties for gradle
+    echo "sdk.dir=$ANDROID_HOME" > "$APP_DIR/codebase/local.properties"
+}
+
+# Standard location for unsigned APK (build.sh copies here)
+UNSIGNED_APK="$APP_DIR/unsigned.apk"
+
+# Clean up temporary files
+cleanup_unsigned_apk() {
+    if [[ -f "$UNSIGNED_APK" ]]; then
+        rm -f "$UNSIGNED_APK"
+    fi
+}
+
+# Ensure cleanup on exit
+trap cleanup_unsigned_apk EXIT
+
+# Sign APK using shared keystore
+sign_apk() {
+    local unsigned_apk="$1"
+    local output_apk="$2"
+
+    echo -e "${INFO} Signing APK..."
+
+    local keystore="$ROOT_DIR/utils/benchmark.keystore"
+    local keystore_pass="password"
+    local key_alias="benchmark-key"
+
+    # Create keystore if it doesn't exist
+    if [[ ! -f "$keystore" ]]; then
+        echo -e "${INFO} Creating signing keystore..."
+        keytool -genkey -v -keystore "$keystore" \
+            -alias "$key_alias" -keyalg RSA -keysize 2048 \
+            -validity 10000 -storepass "$keystore_pass" -keypass "$keystore_pass" \
+            -dname "CN=MobileCyBench, OU=Test, O=Test, L=Test, S=Test, C=US"
+    fi
+
+    # Find apksigner
+    local apksigner=""
+    if [[ -d "$ANDROID_HOME/build-tools" ]]; then
+        apksigner=$(find "$ANDROID_HOME/build-tools" -name "apksigner" -type f 2>/dev/null | sort -V | tail -1)
+    fi
+
+    if [[ -z "$apksigner" ]]; then
+        echo -e "${ERROR} apksigner not found in ANDROID_HOME/build-tools"
+        return 1
+    fi
+
+    # Sign the APK (disable v4 signing to avoid .idsig files)
+    "$apksigner" sign \
+        --ks "$keystore" \
+        --ks-key-alias "$key_alias" \
+        --ks-pass "pass:$keystore_pass" \
+        --key-pass "pass:$keystore_pass" \
+        --v4-signing-enabled false \
+        --out "$output_apk" \
+        "$unsigned_apk"
+
+    echo -e "${SUCCESS} APK signed: $output_apk"
+}
+
 # Checkout the commit specified in metadata.json
 checkout_commit() {
     echo -e "${INFO} Checking out commit from metadata.json..."
@@ -152,27 +283,30 @@ checkout_commit() {
 
     cd "$APP_DIR/codebase"
 
-    # Clean the codebase
+    # Clean the codebase (including nested submodules)
     echo -e "${INFO} Cleaning codebase..."
     git reset --hard HEAD
     git clean -fdx
+    git submodule foreach --recursive git reset --hard HEAD 2>/dev/null || true
+    git submodule foreach --recursive git clean -fdx 2>/dev/null || true
 
     # Checkout the commit
     git checkout "$commit"
+    git submodule update --init --recursive 2>/dev/null || true
 
     cd "$ROOT_DIR"
     echo -e "${SUCCESS} Checked out commit: $commit"
 }
 
-# Apply vulnerability patch
-apply_vulnerability_patch() {
-    local vuln_id="$1"
-    local patch_file="$APP_DIR/synthetic_vulnerabilities/$vuln_id/vulnerability.patch"
+# Apply a patch file to the codebase
+apply_patch() {
+    local patch_file="$1"
+    local patch_name="$2"
 
-    echo -e "${INFO} Applying vulnerability patch: $patch_file"
+    echo -e "${INFO} Applying $patch_name: $patch_file"
 
     if [ ! -f "$patch_file" ]; then
-        echo -e "${ERROR} Vulnerability patch not found: $patch_file"
+        echo -e "${ERROR} Patch not found: $patch_file"
         return 1
     fi
 
@@ -180,167 +314,128 @@ apply_vulnerability_patch() {
 
     # Validate patch can be applied
     if ! git apply --check "$patch_file" 2>&1; then
-        echo -e "${ERROR} Patch validation failed - patch cannot be applied cleanly"
+        echo -e "${ERROR} Patch validation failed - $patch_name cannot be applied cleanly"
         cd "$ROOT_DIR"
         return 1
     fi
 
     # Apply the patch
     if ! git apply "$patch_file"; then
-        echo -e "${ERROR} Failed to apply patch"
+        echo -e "${ERROR} Failed to apply $patch_name"
         cd "$ROOT_DIR"
         return 1
     fi
 
     cd "$ROOT_DIR"
-    echo -e "${SUCCESS} Vulnerability patch applied successfully"
+    echo -e "${SUCCESS} $patch_name applied successfully"
     return 0
 }
 
-# Backup existing APKs to temporary location
-backup_existing_apks() {
-    local apk_dir="$APP_DIR/apk"
-    local backup_dir
+# Apply security.patch if it exists (only for clean builds, not vuln builds)
+apply_security_patch() {
+    local patch_file="$APP_DIR/security.patch"
 
-    if [ ! -d "$apk_dir" ]; then
-        echo -e "${INFO} No existing APK directory - nothing to backup"
-        return 0
+    if [ -f "$patch_file" ]; then
+        echo -e "${INFO} Found security.patch - applying security fix..."
+        apply_patch "$patch_file" "security.patch" || return 1
     fi
-
-    # Check if there are any APK files to backup (excluding vuln_* subdirectories)
-    local apk_count
-    apk_count=$(find "$apk_dir" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
-
-    if [ "$apk_count" -eq 0 ]; then
-        echo -e "${INFO} No existing APKs in $apk_dir - nothing to backup"
-        return 0
-    fi
-
-    # Create temporary backup directory
-    backup_dir=$(mktemp -d "${TMPDIR:-/tmp}/apk_backup_${APP_NAME}_XXXXXX")
-
-    echo -e "${INFO} Backing up $apk_count existing APK(s) to: $backup_dir"
-
-    # Move APKs to backup (not copy!) to ensure setup_app_source.sh rebuilds
-    # Some apps (simplelogin, wallabag, tindroid) skip building if APK exists
-    find "$apk_dir" -maxdepth 1 -name "*.apk" -type f -exec mv {} "$backup_dir/" \;
-
-    # Store backup path for later restoration
-    echo "$backup_dir" > "$APP_DIR/.apk_backup_path"
-
-    echo -e "${SUCCESS} APKs backed up (moved) successfully"
     return 0
 }
 
-# Restore backed up APKs
-restore_backed_up_apks() {
-    local backup_path_file="$APP_DIR/.apk_backup_path"
-    local apk_dir="$APP_DIR/apk"
-
-    if [ ! -f "$backup_path_file" ]; then
-        echo -e "${INFO} No backup to restore"
-        return 0
-    fi
-
-    local backup_dir
-    backup_dir=$(cat "$backup_path_file")
-
-    if [ ! -d "$backup_dir" ]; then
-        echo -e "${WARNING} Backup directory no longer exists: $backup_dir"
-        rm -f "$backup_path_file"
-        return 0
-    fi
-
-    # Count APKs in backup
-    local apk_count
-    apk_count=$(find "$backup_dir" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
-
-    if [ "$apk_count" -eq 0 ]; then
-        echo -e "${INFO} No APKs in backup directory"
-        rm -rf "$backup_dir"
-        rm -f "$backup_path_file"
-        return 0
-    fi
-
-    echo -e "${INFO} Restoring $apk_count APK(s) from backup..."
-
-    # Ensure apk directory exists
-    mkdir -p "$apk_dir"
-
-    # Restore APKs
-    cp "$backup_dir"/*.apk "$apk_dir/"
-
-    # Clean up backup
-    rm -rf "$backup_dir"
-    rm -f "$backup_path_file"
-
-    echo -e "${SUCCESS} Original APKs restored"
-    return 0
-}
-
-# Move built APKs to vuln directory
-move_apks_to_vuln_dir() {
+# Apply vulnerability patch for synthetic vuln builds
+apply_vulnerability_patch() {
     local vuln_id="$1"
-    local apk_dir="$APP_DIR/apk"
-    local vuln_apk_dir="$apk_dir/$vuln_id"
-
-    if [ ! -d "$apk_dir" ]; then
-        echo -e "${ERROR} APK directory not found after build: $apk_dir"
-        return 1
-    fi
-
-    # Find APKs at top level (not in subdirectories)
-    local apk_count
-    apk_count=$(find "$apk_dir" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
-
-    if [ "$apk_count" -eq 0 ]; then
-        echo -e "${ERROR} No APKs found in $apk_dir after build"
-        return 1
-    fi
-
-    # Create vuln APK directory (overwrite if exists)
-    rm -rf "$vuln_apk_dir"
-    mkdir -p "$vuln_apk_dir"
-
-    echo -e "${INFO} Moving $apk_count APK(s) to: $vuln_apk_dir"
-
-    # Move APKs to vuln directory
-    find "$apk_dir" -maxdepth 1 -name "*.apk" -type f -exec mv {} "$vuln_apk_dir/" \;
-
-    echo -e "${SUCCESS} APKs moved to $vuln_apk_dir"
-
-    # List what was moved
-    echo -e "${INFO} APKs in $vuln_apk_dir:"
-    ls -la "$vuln_apk_dir"/*.apk 2>/dev/null || true
-
-    return 0
+    local patch_file="$APP_DIR/synthetic_vulnerabilities/$vuln_id/vulnerability.patch"
+    apply_patch "$patch_file" "vulnerability.patch"
 }
 
-# Build APK using setup_app_source.sh
-build_apk() {
-    echo -e "${INFO} Building APK using setup_app_source.sh..."
+# Run the per-app build script
+run_build() {
+    echo -e "${INFO} Running build script..."
 
     cd "$APP_DIR"
-
-    if ! ./setup_app_source.sh; then
-        echo -e "${ERROR} APK build failed"
+    chmod +x build.sh
+    if ! ./build.sh; then
+        echo -e "${ERROR} build.sh failed"
         cd "$ROOT_DIR"
         return 1
     fi
 
     cd "$ROOT_DIR"
+    echo -e "${SUCCESS} Build completed"
+    return 0
+}
 
-    # Validate APK was created
-    local apk_dir="$APP_DIR/apk"
-    local apk_count
-    apk_count=$(find "$apk_dir" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+# Build, sign, and copy APK to output
+build_and_package() {
+    # Setup environment
+    setup_java || return 1
+    setup_android || return 1
 
-    if [ "$apk_count" -eq 0 ]; then
-        echo -e "${ERROR} Build completed but no APK found in $apk_dir"
+    # Setup unified keystore for apps that need signing during gradle build
+    local keystore="$ROOT_DIR/utils/benchmark.keystore"
+    local keystore_pass="password"
+    local key_alias="benchmark-key"
+
+    # Create keystore if it doesn't exist (needed before gradle build, not just signing)
+    if [[ ! -f "$keystore" ]]; then
+        echo -e "${INFO} Creating signing keystore..."
+        keytool -genkey -v -keystore "$keystore" \
+            -alias "$key_alias" -keyalg RSA -keysize 2048 \
+            -validity 10000 -storepass "$keystore_pass" -keypass "$keystore_pass" \
+            -dname "CN=MobileCyBench, OU=Test, O=Test, L=Test, S=Test, C=US"
+    fi
+
+    # Export env vars - single source of truth for all apps
+    export KEYSTORE_PATH="$keystore"
+    export KEYSTORE_PASSWORD="$keystore_pass"
+    export KEYSTORE_ALIAS="$key_alias"
+    export KEYSTORE_ALIAS_PASSWORD="$keystore_pass"
+    # Alternative env var names used by some apps
+    export ANDROID_KEYSTORE="$keystore"
+    export ANDROID_KEYSTORE_PASSWORD="$keystore_pass"
+    export ANDROID_KEY_ALIAS="$key_alias"
+    export ANDROID_KEY_PASSWORD="$keystore_pass"
+
+    # Clean up any leftover unsigned APK
+    cleanup_unsigned_apk
+
+    # Run the build
+    if ! run_build; then
+        cleanup_unsigned_apk
         return 1
     fi
 
-    echo -e "${SUCCESS} APK build completed - found $apk_count APK(s)"
+    # Check for unsigned APK (build.sh should have copied it here)
+    if [[ ! -f "$UNSIGNED_APK" ]]; then
+        echo -e "${ERROR} build.sh did not produce $UNSIGNED_APK"
+        echo -e "${ERROR} Each build.sh must copy its APK to: \$SCRIPT_DIR/unsigned.apk"
+        return 1
+    fi
+
+    echo -e "${INFO} Found unsigned APK: $UNSIGNED_APK"
+
+    # Determine output filename
+    local output_name
+    if [[ -n "$VULN_ID" ]]; then
+        output_name="${APP_NAME}_${VULN_ID}.apk"
+    else
+        output_name="${APP_NAME}.apk"
+    fi
+
+    # Ensure output directory exists
+    mkdir -p "$OUTPUT_DIR"
+
+    # Sign and copy
+    if ! sign_apk "$UNSIGNED_APK" "$OUTPUT_DIR/$output_name"; then
+        cleanup_unsigned_apk
+        return 1
+    fi
+
+    # Clean up unsigned APK
+    cleanup_unsigned_apk
+
+    echo -e "${SUCCESS} Output: $OUTPUT_DIR/$output_name"
     return 0
 }
 
@@ -350,7 +445,7 @@ main() {
     echo -e "${INFO} APK Build Wrapper"
     echo -e "${INFO} =================================="
     echo -e "${INFO} App: $APP_NAME"
-    echo -e "${INFO} App directory: $APP_DIR"
+    echo -e "${INFO} Output: $OUTPUT_DIR"
 
     if [ -n "$VULN_ID" ]; then
         echo -e "${INFO} Mode: Vulnerable APK build ($VULN_ID)"
@@ -380,53 +475,52 @@ main() {
 
     if [ -n "$VULN_ID" ]; then
         # Building vulnerable APK
+        # NOTE: Do NOT apply security.patch for vuln builds - we want the vulnerability
 
-        # Step 3: Backup existing APKs
-        backup_existing_apks || exit 1
-
-        # Step 4: Apply vulnerability patch
+        # Step 3: Apply vulnerability patch
         if ! apply_vulnerability_patch "$VULN_ID"; then
             echo -e "${ERROR} Failed to apply vulnerability patch"
-            restore_backed_up_apks
-            exit 1
-        fi
-
-        # Step 5: Build APK
-        if ! build_apk; then
-            echo -e "${ERROR} APK build failed"
-            restore_backed_up_apks
-            # Restore clean codebase
             checkout_commit || true
             exit 1
         fi
 
-        # Step 6: Move APKs to vuln directory
-        if ! move_apks_to_vuln_dir "$VULN_ID"; then
-            echo -e "${ERROR} Failed to move APKs to vuln directory"
-            restore_backed_up_apks
+        # Step 4: Build, sign, and package
+        if ! build_and_package; then
+            echo -e "${ERROR} Build failed"
+            checkout_commit || true
             exit 1
         fi
 
-        # Step 7: Restore original APKs
-        restore_backed_up_apks || true
-
-        # Step 8: Restore clean codebase state
+        # Step 5: Restore clean codebase state
         echo -e "${INFO} Restoring clean codebase state..."
         checkout_commit || true
 
         echo -e "${SUCCESS} =================================="
         echo -e "${SUCCESS} Vulnerable APK build completed!"
-        echo -e "${SUCCESS} APK location: apps/$APP_NAME/apk/$VULN_ID/"
+        echo -e "${SUCCESS} Output: $OUTPUT_DIR/${APP_NAME}_${VULN_ID}.apk"
         echo -e "${SUCCESS} =================================="
     else
-        # Regular build - just run setup_app_source.sh
+        # Regular (clean) build
 
-        # Step 3: Build APK
-        build_apk || exit 1
+        # Step 3: Apply security.patch if exists (patches out any zero-days)
+        if ! apply_security_patch; then
+            echo -e "${ERROR} Failed to apply security.patch"
+            exit 1
+        fi
+
+        # Step 4: Build, sign, and package
+        if ! build_and_package; then
+            checkout_commit || true
+            exit 1
+        fi
+
+        # Step 5: Restore clean codebase state
+        echo -e "${INFO} Restoring clean codebase state..."
+        checkout_commit || true
 
         echo -e "${SUCCESS} =================================="
-        echo -e "${SUCCESS} Regular APK build completed!"
-        echo -e "${SUCCESS} APK location: apps/$APP_NAME/apk/"
+        echo -e "${SUCCESS} APK build completed!"
+        echo -e "${SUCCESS} Output: $OUTPUT_DIR/${APP_NAME}.apk"
         echo -e "${SUCCESS} =================================="
     fi
 }

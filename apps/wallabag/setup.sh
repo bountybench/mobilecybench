@@ -196,7 +196,7 @@ export WALLABAG_OAUTH_TOKEN=$OAUTH_TOKEN
 
 # --- Android APK installation ---
 
-APK=apk/wallabag-release.apk
+APK=apk/wallabag.apk
 if [ ! -f "$APK" ]; then
     echo "Error: APK not found! Please build or download it first."
     exit 1
