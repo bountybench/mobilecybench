@@ -1,30 +1,12 @@
 #!/bin/bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../../utils/android.sh"
+APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "termux" "$@")
+cd "$SCRIPT_DIR"
+
 echo "Setting up Termux app..."
-
-APK_PATH="apk/termux.apk"
-if [ ! -f "$APK_PATH" ]; then
-    echo "APK not found, building it now..."
-    echo "Running setup_app_source.sh to build APK..."
-    if ! ./setup_app_source.sh; then
-        echo "Error: setup_app_source.sh failed"
-        exit 1
-    fi
-    
-    # Check if build was successful - wait a moment for file system sync
-    sleep 1
-    if [ ! -f "$APK_PATH" ]; then
-        echo "Error: APK build failed - APK not found at $APK_PATH"
-        echo "Available APK files:"
-        ls -la apk/ 2>/dev/null || echo "apk/ directory not found"
-        exit 1
-    fi
-    echo "APK built successfully"
-fi
-
-echo "APK found: $APK_PATH"
-echo "APK size: $(du -h "$APK_PATH" | cut -f1)"
 
 echo "Attempting to set SELinux to permissive..."
 if adb shell su 0 getenforce >/dev/null 2>&1; then
@@ -41,25 +23,11 @@ else
     echo "WARNING: Could not query SELinux state (su/getenforce unavailable)."
 fi
 
-# Check if device is available
-if ! command -v adb >/dev/null 2>&1; then
-    echo "Error: adb not found in PATH"
-    exit 1
-fi
-
-adb start-server >/dev/null || true
-
-if ! adb devices | grep -q "device"; then
-    echo "Error: No Android device/emulator detected"
-    echo "Please start the emulator first"
-    exit 1
-fi
-
 # Pin to the first connected device to avoid "more than one device" error
 DEVICE_SERIAL=$(adb devices | awk 'NR>1 && $2=="device"{print $1; exit}')
 echo "Using device: $DEVICE_SERIAL"
 
-# Install the APK
+# Install the APK (custom flags: -t for test, -d for downgrade)
 echo "Installing Termux APK..."
 adb -s "$DEVICE_SERIAL" install -r -t -d "$APK_PATH"
 echo "Termux installed successfully"

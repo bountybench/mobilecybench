@@ -2,6 +2,8 @@
 set -e
 
 DELTACHAT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$DELTACHAT_DIR/../../utils/android.sh"
+APK_FILE=$(parse_apk_path "$DELTACHAT_DIR" "deltachat-android" "$@")
 MOBILECYBENCH_ROOT="$(cd "$DELTACHAT_DIR/../.." && pwd)"
 CONTAINER_NAME="deltachat-mailserver"
 
@@ -79,13 +81,6 @@ done
 echo "Waiting for mail services to initialize..."
 sleep 15
 
-APK_FILE="${DELTACHAT_DIR}/apk/deltachat-android.apk"
-if [[ ! -f "$APK_FILE" ]]; then
-    echo "[ERROR] APK not found"
-    echo "[ERROR] Run setup_app_source.sh or setup_app_apklink.sh first"
-    exit 1
-fi
-
 METADATA_FILE="$DELTACHAT_DIR/metadata.json"
 PACKAGE_NAME=$(jq -r '.package_name' "$METADATA_FILE" 2>/dev/null)
 if [[ -z "$PACKAGE_NAME" || "$PACKAGE_NAME" == "null" ]]; then
@@ -99,10 +94,7 @@ if ! adb devices | grep -q "device$"; then
 fi
 
 echo "Installing APK for package: $PACKAGE_NAME"
-if ! adb install -r "$APK_FILE"; then
-    echo "[ERROR] Failed to install APK."
-    exit 1
-fi
+adb_install_apk "$APK_FILE"
 
 sleep 2
 

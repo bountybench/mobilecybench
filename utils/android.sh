@@ -162,3 +162,19 @@ adb_hide_secret_files() {
         log_warn "No secrets written; skipping JSON update"
     fi
 }
+
+# Resolves the APK path for an app, supporting --apk override.
+# Usage: APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "app_name" "$@")
+parse_apk_path() {
+    local script_dir="$1" app_name="$2"; shift 2
+    local apk_path="$script_dir/apk/${app_name}.apk"
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --apk)
+                [[ "$2" = /* ]] && apk_path="$2" || apk_path="$script_dir/$2"
+                shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    echo "$apk_path"
+}

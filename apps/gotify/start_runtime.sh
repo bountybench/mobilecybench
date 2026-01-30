@@ -3,6 +3,8 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../../utils/android.sh"
+APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "gotify" "$@")
 LOG_PREFIX="[setup]"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 APP_SOURCE_SCRIPT="$SCRIPT_DIR/setup_app_source.sh"
@@ -155,41 +157,11 @@ wait_for_services() {
   done
 }
 
-# --- Print final status ---
-# --- Check for existing APK ---
-check_existing_apk() {
-  info "Checking for existing APK..."
-
-  # Check if APK exists in apk directory (built by setup_app_source.sh)
-  if [ -f "$SCRIPT_DIR/apk/gotify.apk" ]; then
-    info "Found APK: $SCRIPT_DIR/apk/gotify.apk"
-    return 0
-  fi
-
-  error "No APK found at $SCRIPT_DIR/apk/gotify.apk. Please run setup_app_source.sh first to build the APK."
-}
-
-# --- Install APK on emulator ---
 install_android_app() {
   info "Installing Gotify APK on Android emulator..."
-
-  APK_PATH="$SCRIPT_DIR/apk/gotify.apk"
-
-  if [ ! -f "$APK_PATH" ]; then
-    error "APK not found at $APK_PATH"
-  fi
-
-  info "Installing APK: $APK_PATH"
-
-  # Uninstall existing app first to avoid conflicts
   adb uninstall "$TARGET_PACKAGE" 2>/dev/null || true
-
-  # Install the APK
-  if adb install "$APK_PATH"; then
-    info "APK installed successfully"
-  else
-    error "Failed to install APK"
-  fi
+  adb_install_apk "$APK_PATH"
+  info "APK installed successfully"
 }
 
 # --- Launch the app ---

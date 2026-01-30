@@ -2,7 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APK_PATH="${SCRIPT_DIR}/apk/davx5.apk"
+source "$SCRIPT_DIR/../../utils/android.sh"
+APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "davx5" "$@")
 
 cd "${SCRIPT_DIR}"
 
