@@ -170,15 +170,6 @@ class LoggerManager:
         self._logger.addHandler(error_file_handler)
         self._logger.addHandler(self._error_buffer_handler)
 
-
-    def _create_error_file_handler(self, log_path: str) -> logging.Handler:
-        handler = logging.FileHandler(log_path, encoding="utf-8")
-        handler.setLevel(logging.ERROR)
-        handler.setFormatter(logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        ))
-        return handler
-
     
     def _setup_agent_logger(self) -> None:
         """Setup a separate logger for agent-specific logs.
