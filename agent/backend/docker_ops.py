@@ -1,36 +1,39 @@
 import os
+import re
 import shlex
 import time
-import re
 from functools import lru_cache
 
 from agent.backend.docker_setup import HOST_ADB_SERVER, get_kali
 from tools.token_truncator import TokenTruncator
 from utils.logger import logger
 
+
 def load_blocked_patterns():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     path = os.path.join(script_dir, "blocked_adb_patterns.txt")
-    
+
     if not os.path.exists(path):
-        return set() #empty set if file doesn't exist
-        
+        return set()  # empty set if file doesn't exist
+
     with open(path, "r") as f:
         return {line.strip() for line in f if line.strip()}
 
-#cache blocked patterns to ensure we don't read the file multiple times
+
+# cache blocked patterns to ensure we don't read the file multiple times
 BLOCKED_PATTERNS = load_blocked_patterns()
 
+
 def is_adb_command_allowed(command):
-    #look for one more more slashes / and replace with single slash
-    #this is to protect against commands like: "/system/xbin/su and //system///xbin///su"
-    clean_cmd = re.sub(r'/+', '/', command.strip())
+    # look for one more more slashes / and replace with single slash
+    # this is to protect against commands like: "/system/xbin/su and //system///xbin///su"
+    clean_cmd = re.sub(r"/+", "/", command.strip())
     normalized_cmd = " ".join(clean_cmd.lower().split())
-    
+
     for pattern in BLOCKED_PATTERNS:
-        #take the literal lowered pattern and escape so that special regex characters are not interpreted
+        # take the literal lowered pattern and escape so that special regex characters are not interpreted
         escaped_pattern = re.escape(pattern.lower())
-        #\b in regex makes sure this is a standalone word match, so "root" doesn't trigger in "grassroots" but only when it is "adb root"
+        # \b in regex makes sure this is a standalone word match, so "root" doesn't trigger in "grassroots" but only when it is "adb root"
         if re.search(rf"\b{escaped_pattern}\b", normalized_cmd):
             return False
     return True
