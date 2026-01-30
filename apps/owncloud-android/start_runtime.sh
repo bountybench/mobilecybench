@@ -9,13 +9,12 @@
 #   6. Run seeder (produces baseline manifest)
 #   7. Install Android app from: ./apk/<app-name>.apk (must exist before running)
 #   8. Verify Frida Gadget listens on port 27042 (owned by com.owncloud.android)
-# Usage:
-#   ./setup.sh
-#   SEED_OUTPUT=my_manifest.json ./setup.sh
 set -euo pipefail
 IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)"
+source "$SCRIPT_DIR/../../utils/android.sh"
+APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "owncloud-android" "$@")
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
 SEED_SCRIPT="${SCRIPT_DIR}/owncloud_setup.py"
 VENV_DIR="${SCRIPT_DIR}/.venv"
@@ -31,12 +30,6 @@ ANDROID_BASELINE_FILE="${SCRIPT_DIR}/baseline_android_dir.txt"
 
 # Defaults
 FRIDA_PORT=${FRIDA_PORT:-27042}
-
-parse_args(){
-  if [[ $# -gt 0 ]]; then
-    warn "Arguments are no longer supported. Ignoring: $*"
-  fi
-}
 
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*" >&2; }
@@ -61,20 +54,9 @@ ensure_prereqs(){
   info "Prerequisites OK"
 }
 
-compose(){
-  if command_exists docker && docker compose version >/dev/null 2>&1; then
-    docker compose -f "$COMPOSE_FILE" "$@"
-  elif command_exists docker-compose; then
-    docker-compose -f "$COMPOSE_FILE" "$@"
-  else
-    fail "docker compose plugin not available"
-  fi
-}
-
 start_stack(){
-  [[ -f "$COMPOSE_FILE" ]] || fail "docker-compose.yml not found at $COMPOSE_FILE"
   info "Starting docker stack"
-  compose up -d --remove-orphans
+  docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
 }
 
 ensure_oauth2_enabled(){
@@ -142,95 +124,14 @@ run_seeder(){
   info "Seeder produced $(ls -l "$SEED_OUTPUT" | awk '{print $5" bytes"}')"
 }
 
-install_owncloud(){
-  info "Installing ownCloud on Android device from local APK folder"
-  adb wait-for-device
-  if ! adb get-state >/dev/null 2>&1; then
-    fail "No adb device detected; ensure an emulator/device is running"
-  fi
-
-  local apk_dir apk
-  apk_dir="${SCRIPT_DIR}/apk"
-  if [[ ! -d "$apk_dir" ]]; then
-    fail "APK folder not found at $apk_dir. Place your app-name.apk there and re-run."
-  fi
-
-  # Pick the newest .apk in the folder (though ideally there should only be one)
-  apk=$(ls -1t "$apk_dir"/*.apk 2>/dev/null | head -n 1 || true)
-  if [[ -z "$apk" ]]; then
-    fail "No .apk found in $apk_dir. Place your app-name.apk there and re-run."
-  fi
-
-  info "Using APK: $(basename "$apk")"
-
-  # Uninstall existing versions
-  info "Uninstalling previous packages (if installed)"
-  adb uninstall com.owncloud.android >/dev/null 2>&1 || true
-  adb uninstall com.owncloud.android.debug >/dev/null 2>&1 || true
-
-  info "Installing APK: $apk"
-
-  # Add debugging information for CI troubleshooting
-  info "Device info for debugging:"
-  info "- SDK level: $(adb shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r' || echo 'unknown')"
-  info "- CPU ABI: $(adb shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r' || echo 'unknown')"
-  info "- Device model: $(adb shell getprop ro.product.model 2>/dev/null | tr -d '\r' || echo 'unknown')"
-
-  # Check APK info if aapt is available
-  if command -v aapt >/dev/null 2>&1; then
-    info "APK info: $(aapt dump badging "$apk" 2>/dev/null | grep -E '(package:|native-code:)' | head -2 || echo 'aapt info unavailable')"
-  fi
-
-  # Try installation with verbose output for debugging
-  info "Attempting installation with detailed error output..."
-  local install_output
-  if install_output=$(adb install -r "$apk" 2>&1); then
-    info "OwnCloud installed successfully"
-    info "Install output: $install_output"
-  else
-    fail "Failed to install APK via ADB. Error: $install_output"
-  fi
-}
-
-launch_owncloud() {
-    info "Launching ownCloud..."
-    
-    # Launch the app
-    if adb shell pm list packages | grep -q "com.owncloud.android" && ! adb shell pm list packages | grep -q "com.owncloud.android.debug"; then
-        info "Launching release version"
-        adb shell am start -n com.owncloud.android/com.owncloud.android.ui.activity.SplashActivity
-        PACKAGE_NAME="com.owncloud.android"
-    elif adb shell pm list packages | grep -q "com.owncloud.android.debug"; then
-        info "Launching debug version"
-        adb shell am start -n com.owncloud.android.debug/com.owncloud.android.ui.activity.SplashActivity
-        PACKAGE_NAME="com.owncloud.android.debug"
-    else
-        error "No ownCloud package found"
-    fi
-    
-    sleep 1
-    
-    # Verify the app is running by checking if the process exists
-    if adb shell pidof "$PACKAGE_NAME" >/dev/null 2>&1; then
-        info "ownCloud launched successfully (process running)"
-    else
-        warn "ownCloud may not have launched properly (process not found)."
-    fi
-}
-
 install_app(){
-  if ! command_exists adb; then
-    fail "adb not found; cannot install Android app"
-  fi
-  install_owncloud
-  launch_owncloud
-  # Basic verification
+  info "Installing ownCloud on Android device"
+  adb uninstall com.owncloud.android >/dev/null 2>&1 || true
+  adb_install_apk "$APK_PATH"
+
+  info "Launching ownCloud..."
+  adb shell am start -n com.owncloud.android/com.owncloud.android.ui.activity.SplashActivity >/dev/null 2>&1 || true
   sleep 2
-  if adb shell pm list packages | grep -q "com.owncloud.android"; then
-    info "Android app installed (com.owncloud.android)"
-  else
-    fail "Android app installation not verified"
-  fi
 }
 
 check_frida_gadget(){
@@ -267,29 +168,10 @@ check_frida_gadget(){
 }
 
 capture_android_dir_baseline(){
-  if ! command_exists adb; then
-    warn "adb not found; skipping Android baseline capture"
-    return 0
-  fi
   info "Capturing Android directory baseline -> $ANDROID_BASELINE_FILE"
-  # Ensure a device is connected and ready
-  adb wait-for-device >/dev/null 2>&1 || true
-  if ! adb get-state >/dev/null 2>&1; then
-    warn "No adb device detected; skipping Android baseline capture"
-    return 0
-  fi
-  # Get directory listing
-  if adb shell 'command -v su >/dev/null 2>&1' >/dev/null 2>&1; then
-    if adb shell su 0 find "$TARGET_DIR" 2>/dev/null \
-      | tr -d '\r' \
-      | LC_ALL=C sort -u > "$ANDROID_BASELINE_FILE"; then
-      info "Wrote $(wc -l < "$ANDROID_BASELINE_FILE") paths to $ANDROID_BASELINE_FILE"
-      return 0
-    else
-      warn "su 0 find failed"
-    fi
-  fi
-  warn "Unable to capture Android baseline"
+  adb shell su 0 find "$TARGET_DIR" 2>/dev/null \
+    | tr -d '\r' \
+    | LC_ALL=C sort -u > "$ANDROID_BASELINE_FILE" || warn "Unable to capture Android baseline"
 }
 
 summary(){
@@ -303,7 +185,6 @@ summary(){
 }
 
 main(){
-  parse_args "$@"
   ensure_prereqs
   start_stack
   wait_for_health

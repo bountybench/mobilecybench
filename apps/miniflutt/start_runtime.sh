@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APK_PATH="${ROOT_DIR}/apk/miniflutt.apk"
+source "$ROOT_DIR/../../utils/android.sh"
+APK_PATH=$(parse_apk_path "$ROOT_DIR" "miniflutt" "$@")
 
 log() { echo "[setup] $*"; }
 
@@ -35,33 +36,13 @@ wait_for_miniflux() {
 }
 
 install_apk() {
-  if [[ ! -f "${APK_PATH}" ]]; then
-    log "ERROR: APK not found at ${APK_PATH}"
-    exit 1
-  fi
-
-  log "Connected devices:"
-  adb devices || true
-
   log "Installing Miniflutt APK..."
-  adb install -r "${APK_PATH}" || {
-    log "WARNING: adb install failed; maybe app already installed? Trying with -d -t..."
-    adb install -r -d -t "${APK_PATH}"
-  }
-
+  adb_install_apk "$APK_PATH"
   log "APK installation step complete."
 }
 
 main() {
   log "Running miniflutt setup..."
-
-  # check emulator running
-  if ! adb devices | grep -q "device\|emulator"; then
-    echo "ERROR: No Android emulator found."
-    echo "Please start the emulator first."
-    exit 1
-  fi
-
   start_services
   wait_for_miniflux
   install_apk

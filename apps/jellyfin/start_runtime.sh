@@ -9,63 +9,25 @@ APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "jellyfin" "$@")
 LOG_PREFIX="[setup]"
 
 TARGET_PACKAGE="org.jellyfin.mobile"
-LAUNCH_SLEEP=3
 
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*" >&2; }
 fail(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*" >&2; exit 1; }
-command_exists(){ command -v "$1" >/dev/null 2>&1; }
-
 
 setup_jellyfin_server(){
   info "Setting up Jellyfin media server"
-
-  # Check if docker and docker compose are available
-  if ! command_exists docker; then
-    warn "Docker not found, skipping server setup"
-    return 0
-  fi
-
-  # Clean up any existing containers and volumes to ensure fresh state
-  info "Cleaning up any existing Jellyfin containers and volumes..."
   docker compose down --volumes --remove-orphans 2>/dev/null || true
-
-  # Start Jellyfin server
-  info "Starting Jellyfin server..."
   docker compose up -d jellyfin
 
-  # Wait for container to be ready
-  info "Waiting for container to start..."
-  sleep 10
-
-  # Wait for jellyfin to be fully ready
   info "Waiting for Jellyfin to be ready..."
   for i in {1..30}; do
     if curl -f http://localhost:8096/health >/dev/null 2>&1; then
       info "Jellyfin is ready"
       break
     fi
-    if [ $i -eq 30 ]; then
-      warn "Jellyfin may not be fully ready, proceeding anyway..."
-    fi
+    [[ $i -eq 30 ]] && warn "Jellyfin may not be fully ready, proceeding anyway..."
     sleep 2
   done
-
-  # Also wait for Docker health check to show healthy
-  info "Waiting for container health check to show healthy..."
-  for i in {1..15}; do
-    health_status=$(docker inspect --format='{{.State.Health.Status}}' jellyfin-server 2>/dev/null || echo "no-health")
-    if [ "$health_status" = "healthy" ]; then
-      info "Container health check shows healthy"
-      break
-    fi
-    if [ $i -eq 15 ]; then
-      warn "Container health check still not healthy, but proceeding..."
-    fi
-    sleep 2
-  done
-
-  info "Jellyfin server ready at http://localhost:8096"
 }
 
 setup_jellyfin_admin_user(){
@@ -148,28 +110,12 @@ create_test_users(){
 
 install_and_launch_app(){
   info "Installing Jellyfin on Android device"
-  adb wait-for-device
-  if ! adb get-state >/dev/null 2>&1; then
-    fail "No adb device detected; ensure emulator is running"
-  fi
-
   adb uninstall "$TARGET_PACKAGE" >/dev/null 2>&1 || true
   adb_install_apk "$APK_PATH"
 
   info "Launching Jellyfin..."
-  if adb shell pm list packages | grep -q "$TARGET_PACKAGE"; then
-    adb shell monkey -p "$TARGET_PACKAGE" -c android.intent.category.LAUNCHER 1
-  else
-    fail "Jellyfin package not found"
-  fi
-
-  sleep $LAUNCH_SLEEP
-
-  if adb shell dumpsys window | grep -q "mCurrentFocus.*$TARGET_PACKAGE"; then
-    info "Jellyfin launched successfully"
-  else
-    warn "Jellyfin may not have launched properly (focus not detected)."
-  fi
+  adb shell monkey -p "$TARGET_PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+  sleep 3
 
   setup_secrets_file
 }
@@ -211,16 +157,11 @@ EOF
   adb unroot || true
 }
 
-summary(){
-  info "Setup complete"
-  info "Jellyfin is installed and ready for testing"
-}
-
 main(){
   setup_jellyfin_server
   setup_jellyfin_admin_user
   install_and_launch_app
-  summary
+  info "Setup complete"
 }
 
 main "$@"

@@ -3,10 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
-ANDROID_HOME="${HOME}/.android-sdk"
 source "$ROOT_DIR/utils/android.sh"
-
-APP_NAME=${APP_NAME:-}
+APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "openhab" "$@")
 
 KARAF_TCP_TIMEOUT=${KARAF_TCP_TIMEOUT:-120}
 KARAF_READY_TIMEOUT=${KARAF_READY_TIMEOUT:-120}
@@ -45,18 +43,6 @@ read_secrets() {
 LOG()  { printf "%s\n" "$*" >&2; }
 ERR()  { printf "ERROR: %s\n" "$*" >&2; exit 1; }
 
-# CLI parsing (simple)
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --app=*) APP_NAME="${1#--app=}"; shift ;;
-    --help|-h) printf "Usage: %s [--app=name]\n" "$0"; exit 0 ;;
-    *) ERR "Unknown argument: $1" ;;
-  esac
-done
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-
 # If there's a repo-local karaf private key prefer that (non-invasive)
 if [ -z "${KARAF_SSH_KEY:-}" ] && [ -f "$SCRIPT_DIR/.ssh/openhab_karaf_id" ]; then
   KARAF_SSH_KEY="$SCRIPT_DIR/.ssh/openhab_karaf_id"
@@ -64,143 +50,25 @@ fi
 
 ########## Core functions ##########
 
-find_apk() {
-  # Check local APK first, then APP_NAME location
-  local candidates=(
-    "$SCRIPT_DIR/apk/openhab.apk"
-    "${APP_NAME:+$ROOT_DIR/apps/$APP_NAME/apk/$APP_NAME.apk}"
-  )
-  
-  for apk in "${candidates[@]}"; do
-    [ -n "$apk" ] && [ -f "$apk" ] && { printf "%s" "$apk"; return 0; }
-  done
-  
-  return 1
-}
-
-find_adb() {
-  command -v adb || printf "%s" "${ANDROID_SDK_ROOT:-${ANDROID_HOME}}/platform-tools/adb"
-}
-
-choose_device() {
-  local adb_bin="$1"
-  # Use ANDROID_SERIAL if set
-  [ -n "${ANDROID_SERIAL:-}" ] && { printf "%s" "$ANDROID_SERIAL"; return 0; }
-  
-  # Get first available device, prefer emulator
-  local devices=($("$adb_bin" devices | awk 'NR>1 && $2=="device" {print $1}'))
-  [ ${#devices[@]} -eq 0 ] && ERR "No adb devices found"
-  
-  # Return emulator if available, otherwise first device
-  for d in "${devices[@]}"; do
-    [[ "$d" == emulator-* ]] && { printf "%s" "$d"; return 0; }
-  done
-  printf "%s" "${devices[0]}"
-}
-
-wait_for_boot_completed() {
-  local adb_bin="$1" serial="$2" timeout=${3:-120} start_ts=$(date +%s)
-  local check_interval=1 last_check=0
-  
-  while ! "$adb_bin" -s "$serial" shell getprop sys.boot_completed 2>/dev/null | grep -q '^1'; do
-    local current_time=$(date +%s)
-    [ $((current_time - start_ts)) -ge $timeout ] && ERR "Boot timeout (>${timeout}s)"
-    "$adb_bin" -s "$serial" wait-for-device 2>/dev/null || true
-    
-    # Use adaptive polling - check more frequently initially, then back off
-    if [ $((current_time - last_check)) -ge $check_interval ]; then
-      last_check=$current_time
-      # Increase interval up to 5 seconds to reduce polling frequency
-      [ $check_interval -lt 5 ] && check_interval=$((check_interval + 1))
-    fi
-  done
-  LOG "Device $serial boot completed"
-}
-
-install_apk_on_device() {
-  local adb_bin="$1" serial="$2" apk="$3"
-  LOG "Installing APK $apk -> device $serial"
-  
-  # Try install with -r, then with -r -g if that fails
-  if ! "$adb_bin" -s "$serial" install -r "$apk" 2>/dev/null; then
-    LOG "Retrying with -g flag"
-    "$adb_bin" -s "$serial" install -r -g "$apk" || ERR "APK install failed"
-  fi
-  LOG "APK install completed"
-}
-
 setup_apk_device() {
-  # Find and install APK on device
-  local apk=$(find_apk) || { LOG "No APK found; skipping device setup"; return 0; }
-  local adb_bin=$(find_adb) || ERR "adb not found"
-  local serial=$(choose_device "$adb_bin")
-  local device=$(choose_device "$adb_bin")
-
-  
-  LOG "Found APK: $apk, Using adb: $adb_bin, Target device: $serial"
-  
-  # Wait for device and boot completion (for emulators)
-  "$adb_bin" -s "$serial" wait-for-device
-  [[ "$serial" == emulator-* ]] && wait_for_boot_completed "$adb_bin" "$serial" 180
-  
-  install_apk_on_device "$adb_bin" "$serial" "$apk"
-
+  LOG "Installing APK on device"
+  adb wait-for-device
+  adb_install_apk "$APK_PATH"
 }
 
-########## Readiness helpers ########## 
-
-# Wait for Docker container to be running and report healthy 
 wait_for_docker_container_ready() {
-    local timeout=${1:-300}       # seconds
+    local timeout=${1:-300}
     local container_name="${2:-openhab}"
     local start_time=$(date +%s)
 
-    LOG "Waiting for Docker container '$container_name' to be running (timeout: ${timeout}s)..."
-
-    # Wait for container to exist and be running
-    while ! docker ps --filter "name=$container_name" --filter "status=running" --format '{{.Names}}' \
-        | grep -qx "$container_name" 2>/dev/null; do
-
+    LOG "Waiting for container '$container_name' to be healthy (timeout: ${timeout}s)..."
+    while true; do
+        local status=$(docker inspect --format '{{.State.Health.Status}}' "$container_name" 2>/dev/null || echo "unknown")
+        [[ "$status" = "healthy" ]] && { LOG "Container '$container_name' is healthy"; return 0; }
         local now=$(date +%s)
-        if [ $((now - start_time)) -ge $timeout ]; then
-            ERR "Container '$container_name' did not start within ${timeout}s"
-        fi
-
-        # Passive 1s delay
-        read -t 1 -N 1 < /dev/null 2>/dev/null || true
+        [[ $((now - start_time)) -ge $timeout ]] && ERR "Timed out waiting for '$container_name' (status: $status)"
+        sleep 2
     done
-
-    LOG "Container '$container_name' is running, monitoring health status..."
-
-    # Poll Docker health status until it reports "healthy" or times out
-    local check_count=0
-    while :; do
-        local status
-        status=$(docker inspect --format '{{.State.Health.Status}}' "$container_name" 2>/dev/null || echo "unknown")
-        check_count=$((check_count + 1))
-
-        if [ "$status" = "healthy" ]; then
-            LOG "Container '$container_name' is healthy ✅"
-            break
-        elif [[ "$status" = "unhealthy" || "$status" = "starting" ]]; then
-            # Log every 5 checks so output isn't spammy
-            if (( check_count % 5 == 0 )); then
-                LOG "$(date '+%H:%M:%S') | Health check $check_count: still waiting (status=$status)"
-            fi
-        else
-            LOG "$(date '+%H:%M:%S') | Health check $check_count: unknown status '$status'"
-        fi
-
-        local now=$(date +%s)
-        if [ $((now - start_time)) -ge $timeout ]; then
-            ERR "Timed out waiting for container '$container_name' to become healthy after ${timeout}s"
-        fi
-
-        # Passive 1s delay
-        read -t 1 -N 1 < /dev/null 2>/dev/null || true
-    done
-
-    LOG "Docker container '$container_name' is ready."
 }
 
 ########## Runtime configuration helpers ##########
@@ -410,42 +278,17 @@ EOF
 ########## Main ##########
 
 main() {
-  LOG "Running setup.sh (script: $SCRIPT_DIR, root: $ROOT_DIR)"
+  LOG "Running start_runtime.sh (script: $SCRIPT_DIR, root: $ROOT_DIR)"
 
-  # Read secrets from JSON file
   read_secrets
-
-  # Define env_file path for use throughout main function
-  local env_file="$SCRIPT_DIR/.env"
-
-  # Create .env file for docker-compose
   create_env_file
 
   # Create Mosquitto configuration
   "$SCRIPT_DIR/setup_mosquitto.sh"
   # Start openhab via docker-compose
-  if [ -f "$SCRIPT_DIR/docker-compose.yml" ]; then
-    if command -v docker >/dev/null 2>&1; then
-      LOG "Starting docker compose services..."
-      
-      # Check if CLOUDFLARE_TUNNEL_TOKEN is set and not empty
-      local compose_profiles=""
-      if [ -f "$env_file" ]; then
-        # Source the .env file to get CLOUDFLARE_TUNNEL_TOKEN
-        source "$env_file"
-      fi
-      
-      if command -v docker-compose >/dev/null 2>&1; then
-        docker-compose -f "$SCRIPT_DIR/docker-compose.yml" $compose_profiles up -d
-      else
-        docker compose -f "$SCRIPT_DIR/docker-compose.yml" $compose_profiles up -d
-      fi
-      # Wait for OpenHAB service to be ready before proceeding
-      wait_for_docker_container_ready
-    else
-      LOG "docker not found; skipping docker start"
-    fi
-  fi
+  LOG "Starting docker compose services..."
+  docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d
+  wait_for_docker_container_ready
 
   # Update runtime.cfg to ensure proper SSH binding and REST auth settings
   update_runtime_cfg

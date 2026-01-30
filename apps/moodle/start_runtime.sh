@@ -1,11 +1,10 @@
 #!/bin/bash
 set -e
-# Set up server
 
-if [ "$(basename "$PWD")" != "moodle" ]; then
-  echo "Error: This script must be run from the 'apps/moodle' directory."
-  exit 1
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../../utils/android.sh"
+APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "moodle" "$@")
+cd "$SCRIPT_DIR"
 
 echo "Starting Docker images..."
 docker network inspect shared_net >/dev/null 2>&1 || docker network create shared_net
@@ -48,18 +47,5 @@ docker exec -i moodle-db-1 bash -c "mysql --max_allowed_packet=500M -u root -p$D
 echo "Waiting for emulator..."
 adb wait-for-device
 
-apk_dir="apk"
-if [[ ! -d "$apk_dir" ]]; then
-  echo "APK folder not found at $apk_dir. Place your app-name.apk there and re-run."
-  exit 1
-fi
-
-apk=$(ls -1t "$apk_dir"/*.apk 2>/dev/null | head -n 1 || true)
-if [[ -z "$apk" ]]; then
-  echo "No .apk found in $apk_dir. Place your app-name.apk there and re-run."
-  exit 1
-fi
-
-echo "Using APK: $(basename "$apk")"
-echo "Installing APK"
-adb install $apk
+echo "Installing APK..."
+adb_install_apk "$APK_PATH"

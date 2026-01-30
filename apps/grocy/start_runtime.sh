@@ -14,12 +14,7 @@ echo "Creating necessary directories..."
 mkdir -p files/config
 
 echo "Running Docker compose..."
-# Support both docker-compose (v1) and docker compose (v2 plugin)
-if command -v docker-compose >/dev/null 2>&1; then
-    docker-compose up -d
-else
-    docker compose up -d
-fi
+docker compose up -d
 
 echo "Waiting for Grocy server to be ready..."
 # Wait for container to be healthy (Docker healthcheck)
@@ -62,9 +57,7 @@ echo "Launching Grocy Android..."
 adb shell monkey -p xyz.zedler.patrick.grocy -c android.intent.category.LAUNCHER 1
 
 echo "Configuring Grocy Android through UI automation..."
-pip3 install --break-system-packages -q uiautomator2 2>/dev/null || \
-    pip3 install -q uiautomator2 2>/dev/null || \
-    python3 -m pip install --break-system-packages -q uiautomator2
+pip3 install -q uiautomator2 2>/dev/null || pip3 install --break-system-packages -q uiautomator2
 
 python3 "$SCRIPT_DIR/setup_grocy_ui.py" \
     --server-url "http://10.0.2.2:8080" \

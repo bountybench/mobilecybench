@@ -3,41 +3,14 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
-ANDROID_HOME="${HOME}/.android-sdk"
 source "$ROOT_DIR/utils/android.sh"
-command_exists(){ command -v "$1" >/dev/null 2>&1; }
-DOMAIN="localhost"
+APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "linphone" "$@")
 
+pip install uiautomator2 psycopg2-binary mysql-connector-python bcrypt pytest dotenv 2>/dev/null || true
 
-pip install uiautomator2
-pip install psycopg2-binary
-pip install mysql-connector-python
-pip install bcrypt
-pip install pytest
-pip install dotenv
-
-# Install on emulator
 install_linphone() {
     echo "Installing linphone on Android emulator..."
-    
-    # Check if emulator is running
-    if ! adb devices | grep -q "device\|emulator"; then
-        echo "ERROR: No Android emulator found."
-        echo "Please start the emulator first."
-        exit 1
-    fi
-    
-    # Install universal APK with correct path
-    APK_PATH="$SCRIPT_DIR/apk/linphone.apk"
-   
-    if [[ ! -f $APK_PATH ]]; then
-        echo "ERROR: APK not found at $APK_PATH"
-        echo "Available APKs:"
-        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -10
-        exit 1
-    fi
-    
-    adb install "$APK_PATH"
+    adb_install_apk "$APK_PATH"
     echo "linphone installed successfully."
 }
 
@@ -50,57 +23,32 @@ launch_linphone() {
 
 setup_linphone_server() {
   echo "Setting up Flexisip (Linphone SIP server)"
+  docker compose up -d --build account_db flexisip
 
-  # Check if docker and docker compose are available
-  if ! command_exists docker; then
-    echo "Docker not found, skipping server setup"
-    return 0
-  fi
-
-  # Build and start Flexisip server
-  echo "Building and starting Flexisip server..."
-  docker compose up -d --build account_db flexisip 
-  
-
-  # Wait for Docker health check (if you defined one in docker-compose.yml)
   echo "Waiting for Flexisip container health check..."
   for i in {1..15}; do
     health_status=$(docker inspect --format='{{.State.Health.Status}}' flexisip 2>/dev/null || echo "no-health")
-    if [ "$health_status" = "healthy" ]; then
-      echo "Flexisip container is healthy"
-      break
-    fi
-    if [ $i -eq 15 ]; then
-      echo "Flexisip health check still not healthy, proceeding anyway..."
-    fi
+    [[ "$health_status" = "healthy" ]] && { echo "Flexisip container is healthy"; break; }
+    [[ $i -eq 15 ]] && echo "Flexisip health check still not healthy, proceeding anyway..."
     sleep 2
   done
 
-  # Seed DB with test accounts
   docker exec -i account_db mysql -u flexisip -pzoSt4w4wreu flexisip_accounts < seed.sql
-
-  # Adjust this depending on your network and ports in docker-compose.yml
-  echo "Flexisip server ready at sip:10.0.2.2:5060 (UDP/TCP) and sip:10.0.2.2:5061 (TLS)"
+  echo "Flexisip server ready"
 }
 
 synch_with_server() {
     echo "Synching app with server..."
-    pip install uiautomator2
     python synch_app.py --username usera --password userAPW123
-    echo "Should now be synched with server."
 }
 
-# Main function
 main() {
     echo "linphone Android Setup"
-    echo "==================="
-    echo "Setting up linphone Android"
     setup_linphone_server
-    root_dir="$(pwd)"
-    cd codebase
+    cd "$SCRIPT_DIR/codebase"
     install_linphone
     launch_linphone
-    cd "$root_dir"
+    cd "$SCRIPT_DIR"
     synch_with_server
 
     for i in {1..3}; do
@@ -119,10 +67,7 @@ main() {
     adb_hide_secret_files "secrets.json" "${secret_dirs[@]}"
 
     adb unroot
-    
-    echo ""
-    echo "Setup complete! linphone is ready for testing."
+    echo "Setup complete!"
 }
 
-# Run main function
 main "$@"

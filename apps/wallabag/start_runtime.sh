@@ -1,117 +1,34 @@
 #!/bin/bash
 set -e
 
-echo "[Wallabag] MobileCybench setup begin..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../../utils/android.sh"
+APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "wallabag" "$@")
+cd "$SCRIPT_DIR"
 
-# Check required dependencies
-DEPENDENCIES=(adb docker curl)
-for dep in "${DEPENDENCIES[@]}"; do
-    if ! command -v $dep >/dev/null 2>&1; then
-        echo "Error: $dep is required but not installed."
-        exit 1
-    fi
-done
+echo "[Wallabag] Setup begin..."
 
-# Set Android SDK environment variables (adjust if needed)
-ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
-export ANDROID_HOME
-export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
-
-# Check if we're in GitHub Actions or CI environment
-if [ -n "$GITHUB_ACTIONS" ] || [ -n "$CI" ]; then
-    ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-    export ANDROID_HOME
-    export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
-fi
-
-# Start Docker backend services
-echo "[Wallabag] Starting backend stack (Docker Compose)..."
-# Stop any existing containers first
 docker compose down 2>/dev/null || true
-
-# Start all services with rebuild
 docker compose up --build -d
 
-# Wait until Postgres is ready inside the container
-echo "[Wallabag] Waiting for database to be ready..."
-DB_MAX_WAIT=60
-DB_WAITED=0
-while true; do
-    if docker exec wallabag-db-1 pg_isready -U wallabag >/dev/null 2>&1; then
-        break
-    fi
-    
-    if [ "$DB_WAITED" -ge "$DB_MAX_WAIT" ]; then
-        echo "[Wallabag] ERROR: Database not ready after $DB_MAX_WAIT seconds"
-        docker logs wallabag-db-1 --tail 20
-        exit 1
-    fi
-    
-    sleep 3
-    DB_WAITED=$((DB_WAITED + 3))
-done
-
-# Wait until Wallabag container reports healthy status
-echo "[Wallabag] Waiting for Wallabag container to be healthy..."
-MAX_WAIT=60
+# Wait for Wallabag container to be healthy
+echo "[Wallabag] Waiting for services to be ready..."
 WAITED=0
-while true; do
+while [ "$WAITED" -lt 120 ]; do
     STATUS=$(docker inspect --format='{{.State.Health.Status}}' wallabag 2>/dev/null || echo "unknown")
-    
-    if [ "$STATUS" == "healthy" ]; then
-        break
-    fi
-    
-    if [ "$WAITED" -ge "$MAX_WAIT" ]; then
-      echo "Wallabag container not healthy after $MAX_WAIT seconds."
-      docker logs wallabag --tail 50
-      exit 1
-    fi
+    [[ "$STATUS" == "healthy" ]] && break
+    [[ "$WAITED" -ge 120 ]] && { echo "[Wallabag] ERROR: Not healthy after 120s"; exit 1; }
     sleep 3
     WAITED=$((WAITED + 3))
 done
 
-# --- Web login and client creation ---
-
-# Wait for Wallabag web interface to be ready
-echo "[Wallabag] Waiting for web interface to be ready..."
-WEB_MAX_WAIT=60
-WEB_WAITED=0
-while true; do
-    if curl -s --connect-timeout 5 --max-time 10 http://localhost:8080/login > /dev/null 2>&1; then
-        echo "[Wallabag] Web interface is ready"
-        break
-    fi
-    
-    WEB_WAITED=$((WEB_WAITED + 5))
-    if [ "$WEB_WAITED" -ge "$WEB_MAX_WAIT" ]; then
-        echo "[Wallabag] ERROR: Web interface not ready after $WEB_MAX_WAIT seconds"
-        docker logs wallabag --tail 20
-        exit 1
-    fi
-    
-    echo "[Wallabag] Web interface not ready, waiting..."
-    sleep 2
-    WEB_WAITED=$((WEB_WAITED + 2))
+# Wait for web interface
+echo "[Wallabag] Waiting for web interface..."
+for i in $(seq 1 20); do
+    curl -s --connect-timeout 5 http://localhost:8080/login >/dev/null 2>&1 && break
+    [[ $i -eq 20 ]] && { echo "[Wallabag] ERROR: Web interface not ready"; exit 1; }
+    sleep 3
 done
-
-# Test connection with detailed error reporting
-CURL_OUTPUT=$(curl -s --connect-timeout 10 --max-time 30 -w "HTTP_CODE:%{http_code}" http://localhost:8080/login 2>&1)
-CURL_EXIT=$?
-
-if [ $CURL_EXIT -ne 0 ]; then
-    # Extract HTTP status from the curl output if possible
-    HTTP_STATUS=$(echo "$CURL_OUTPUT" | grep -o "HTTP_CODE:[0-9]*" | cut -d: -f2 2>/dev/null || echo "unknown")
-    
-    # If we got a 200 status, the connection actually worked
-    if [ "$HTTP_STATUS" = "200" ]; then
-        echo "[Wallabag] Connection successful"
-    else
-        echo "[Wallabag] ERROR: Cannot connect to Wallabag at http://localhost:8080/login"
-        docker logs wallabag --tail 20
-        exit 1
-    fi
-fi
 
 curl -c cookies.txt -s -L http://localhost:8080/login -o login.html
 if [ ! -f login.html ] || [ ! -s login.html ]; then
@@ -173,11 +90,7 @@ if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ]; then
     exit 1
 fi
 
-echo "New OAuth Client ID: $CLIENT_ID"
-echo "New OAuth Client Secret: $CLIENT_SECRET"
-
-# Obtain OAuth2 access token using the created client credentials
-echo "[Wallabag] Obtaining OAuth2 token for agent..."
+echo "[Wallabag] Obtaining OAuth2 token..."
 TOKEN_RESPONSE=$(curl -s -X POST http://localhost:8080/oauth/v2/token \
   -d grant_type=password \
   -d client_id="$CLIENT_ID" \
@@ -196,13 +109,7 @@ export WALLABAG_OAUTH_TOKEN=$OAUTH_TOKEN
 
 # --- Android APK installation ---
 
-APK=apk/wallabag.apk
-if [ ! -f "$APK" ]; then
-    echo "Error: APK not found! Please build or download it first."
-    exit 1
-fi
-
-adb install -r "$APK"
+adb_install_apk "$APK_PATH"
 
 echo "[Wallabag] APK installed successfully."
 echo "[Wallabag] Setup script complete."

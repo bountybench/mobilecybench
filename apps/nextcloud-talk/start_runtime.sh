@@ -1,3 +1,11 @@
+#!/bin/bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../../utils/android.sh"
+APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "nextcloud-talk" "$@")
+cd "$SCRIPT_DIR"
+
 docker compose up --build -d
 sleep 20
 
@@ -30,24 +38,6 @@ else
     echo "Config not ready yet; skipping trusted_domains update."
 fi
 
-install_nextcloud_talk() {
-    echo "Installing Nextcloud Talk APK..."
-
-    if ! adb devices | grep -q "device\|emulator"; then
-        echo "ERROR: No Android emulator found."
-        exit 1
-    fi
-
-    APK_PATH="apk/nextcloud-talk.apk"
-
-    if [[ ! -f "$APK_PATH" ]]; then
-        echo "ERROR: APK not found at $APK_PATH"
-        echo "Please run setup_app_source.sh first to build and sign the APK."
-        exit 1
-    fi
-
-    adb install -r "$APK_PATH" || { echo "Failed to install APK"; exit 1; }
-    echo "Nextcloud Talk installed successfully!"
-}
-
-install_nextcloud_talk
+echo "Installing Nextcloud Talk APK..."
+adb_install_apk "$APK_PATH"
+echo "Nextcloud Talk installed successfully!"

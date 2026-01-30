@@ -10,8 +10,8 @@ set -euo pipefail
 IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)"
-APP_SOURCE_SCRIPT="${SCRIPT_DIR}/setup_app_source.sh"
-CODEBASE_DIR="${SCRIPT_DIR}/codebase"
+source "$SCRIPT_DIR/../../utils/android.sh"
+APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "conversations" "$@")
 LOG_PREFIX="[setup]"
 
 TARGET_PACKAGE="eu.siacs.conversations"
@@ -20,112 +20,36 @@ TARGET_CONTAINER="conversations-prosody"
 info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
 warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*" >&2; }
 fail(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*" >&2; exit 1; }
-command_exists(){ command -v "$1" >/dev/null 2>&1; }
-
-ensure_prereqs(){
-  info "Checking prerequisites"
-  command_exists adb || fail "adb is required"
-  info "Prerequisites OK"
-}
-
 
 install_conversations(){
   info "Installing Conversations on Android device"
-  adb wait-for-device
-  if ! adb get-state >/dev/null 2>&1; then
-    fail "No adb device detected; ensure emulator is running"
-  fi
-
-  local apk_dir="$SCRIPT_DIR/apk"
-  local apk=$(find "$apk_dir" -name "*.apk" -type f 2>/dev/null | head -1)
-
-  if [[ -z "$apk" ]]; then
-    fail "No APK found in $apk_dir - run setup_app_source.sh first"
-  fi
-
-  info "Installing APK: $(basename "$apk")"
-
-  # Uninstall existing versions
-  info "Uninstalling previous packages (if installed)"
-  adb uninstall "$TARGET_PACKAGE" || true
-
-  info "Starting APK installation..."
-  start_time=$(date +%s.%N)
-
-  if adb install "$apk"; then
-    end_time=$(date +%s.%N)
-    duration=$(echo "$end_time - $start_time" | bc)
-    info "Conversations installed successfully in ${duration}s"
-  else
-    end_time=$(date +%s.%N)
-    duration=$(echo "$end_time - $start_time" | bc)
-    fail "Failed to install APK via ADB after ${duration}s. Check device connection and APK integrity."
-  fi
+  adb uninstall "$TARGET_PACKAGE" 2>/dev/null || true
+  adb_install_apk "$APK_PATH"
 }
 
 launch_conversations() {
     info "Launching Conversations..."
-    
-    # Launch the app using the package manager
-    if adb shell pm list packages | grep -q "$TARGET_PACKAGE"; then
-        info "Launching Conversations"
-        # Use monkey to launch the app instead of direct activity launch
-        adb shell monkey -p "$TARGET_PACKAGE" -c android.intent.category.LAUNCHER 1
+    adb shell monkey -p "$TARGET_PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+    sleep 3
+    if adb shell pidof "$TARGET_PACKAGE" >/dev/null 2>&1; then
+        info "Conversations launched successfully"
     else
-        fail "Conversations package not found"
+        warn "Conversations may not have launched properly"
     fi
-    
-    # Wait for app to be properly launched (poll for up to 30 seconds)
-    info "Waiting for app to launch..."
-    local timeout=30
-    local elapsed=0
-
-    while [ $elapsed -lt $timeout ]; do
-        if adb shell pidof "$TARGET_PACKAGE" >/dev/null 2>&1; then
-            info "Conversations launched successfully"
-            return 0
-        fi
-
-        sleep 2
-        elapsed=$((elapsed + 2))
-    done
-
-    warn "Conversations failed to launch within ${timeout}s."
 }
 
 setup_prosody_server(){
-  info "Setting up Prosody XMPP server with TLS certificates"
-  
-  # Check if docker and docker compose are available
-  if ! command_exists docker; then
-    warn "Docker not found, skipping server setup"
-    return 0
-  fi
-  
-  # Stop and remove existing container to ensure a full restart
-  info "Stopping any existing Prosody server..."
-  docker compose down
-
-  # Build and start Prosody server (certificates pre-generated in image)
-  info "Building and starting Prosody server..."
+  info "Setting up Prosody XMPP server"
+  docker compose down 2>/dev/null || true
   docker compose up -d --build
-  
-  # Also wait for Docker health check to show healthy
-  info "Waiting for container health check to show healthy..."
+
+  info "Waiting for container health check..."
   for i in {1..30}; do
-    health_status=$(docker inspect --format='{{.State.Health.Status}}' conversations-prosody 2>/dev/null || echo "no-health")
-    if [ "$health_status" = "healthy" ]; then
-      info "Container health check shows healthy"
-      break
-    fi
-    if [ $i -eq 30 ]; then
-      warn "Container health check still not healthy, exiting"
-      exit 1
-    fi
+    health_status=$(docker inspect --format='{{.State.Health.Status}}' "$TARGET_CONTAINER" 2>/dev/null || echo "no-health")
+    [[ "$health_status" = "healthy" ]] && { info "Prosody container healthy"; break; }
+    [[ $i -eq 30 ]] && { warn "Container health check not healthy, exiting"; exit 1; }
     sleep 2
   done
-  
-  info "Prosody server ready at 10.0.2.2:5222 with TLS enabled"
 }
 
 load_credentials(){
@@ -193,15 +117,6 @@ seed_initial_messages(){
   fi
 }
 
-install_and_launch_app(){
-  if ! command_exists adb; then
-    fail "adb not found; cannot install Android app"
-  fi
-
-  install_conversations
-  launch_conversations
-}
-
 login_agentuser(){
   info "Logging in as agentuser..."
 
@@ -234,22 +149,16 @@ seed_data(){
   sleep 2
 }
 
-summary(){
-  info "Setup complete"
-  info "Conversations is installed with agentuser logged in"
-  info "Chat history with admin and user1 should be visible"
-}
-
 main(){
-  ensure_prereqs
   setup_prosody_server
   load_credentials
   setup_xmpp_users
   seed_initial_messages
-  install_and_launch_app
+  install_conversations
+  launch_conversations
   login_agentuser
   seed_data
-  summary
+  info "Setup complete"
 }
 
 main

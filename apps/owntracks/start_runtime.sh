@@ -2,6 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../../utils/android.sh"
+APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "owntracks" "$@")
 LOG_PREFIX="[setup]"
 
 info() { printf '%s %s\n' "$LOG_PREFIX" "$*"; }
@@ -89,28 +91,9 @@ setup_mosquitto() {
 
 install_and_configure_app() {
     info "Installing OwnTracks on Android device"
-    
-    adb start-server >/dev/null 2>&1 || true
-    adb wait-for-device
-    
-    if ! adb get-state >/dev/null 2>&1; then
-        fail "No adb device detected; ensure emulator is running"
-    fi
-    
-    # Uninstall existing version
     adb uninstall "$PKG" >/dev/null 2>&1 || true
-    
-    # Install APK
-    info "Installing APK"
-    adb install -r -d "$SCRIPT_DIR/apk/owntracks.apk"
-    
-    # Verify installation
-    if ! adb shell pm list packages | grep -q "$PKG"; then
-        fail "Package $PKG not installed after setup"
-    fi
-    
-    info "OwnTracks installed successfully"
-    
+    adb_install_apk "$APK_PATH"
+
     # Configure the app with MQTT connection
     info "Configuring OwnTracks with MQTT broker settings"
     

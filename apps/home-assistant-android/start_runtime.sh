@@ -1,212 +1,70 @@
 #!/bin/bash
 set -e
 
-# Initialize installation of Home Assistant
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../../utils/android.sh"
+APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "home-assistant-android" "$@")
+cd "$SCRIPT_DIR"
+
 install_home_assistant() {
-    echo "Installing Home Assistant APK on connected device/emulator..."
-
-    # Check if emulator is running
-    if ! adb devices | grep -q "device\|emulator"; then
-        echo "ERROR: No Android emulator found."
-        echo "Please start the emulator first."
-        exit 1
-    fi
-
-    APK_PATH="apk/home-assistant-android.apk"
-
-    if [[ ! -f $APK_PATH ]]; then
-        echo "ERROR: APK not found at $APK_PATH"
-        echo "Available APKs:"
-        find apk -name "*.apk" -type f 2>/dev/null | head -10
-        echo "If no APKs found, run setup_app_source.sh first to build the APK."
-        exit 1
-    fi
-
-    # Install new APK (expected applicationId: io.homeassistant.companion.android.minimal)
-    adb install -r "$APK_PATH"
-    echo "Installed Home Assistant successfully."
+    echo "Installing Home Assistant APK..."
+    adb_install_apk "$APK_PATH"
 }
 
-# Some functions below are adapted from Tindroid setup
-
-# Function to run commands with timeout
-run_with_timeout() {
-    local timeout_seconds=300  # 5 minutes
-    local cmd="$1"
-    
-    echo "Running command with timeout (${timeout_seconds}s): $cmd"
-    
-    if timeout "$timeout_seconds" bash -c "$cmd"; then
-        echo "Command completed successfully"
-        return 0
-    else
-        local exit_code=$?
-        if [ $exit_code -eq 124 ]; then
-            echo "ERROR: Command timed out after ${timeout_seconds} seconds"
-        else
-            echo "ERROR: Command failed with exit code $exit_code"
-        fi
-        return $exit_code
-    fi
-}
-
-# Launch Home Assistant
 launch_home_assistant() {
     echo "Launching Home Assistant..."
-    adb shell pm list packages | grep -q "io.homeassistant.companion.android.minimal$" || {
-        echo "ERROR: Home Assistant package not found on device/emulator."
-        echo "Please ensure the app is installed correctly."
-        exit 1
-    }
-    adb shell pm grant io.homeassistant.companion.android.minimal android.permission.POST_NOTIFICATIONS
+    adb shell pm grant io.homeassistant.companion.android.minimal android.permission.POST_NOTIFICATIONS 2>/dev/null || true
     adb shell monkey -p io.homeassistant.companion.android.minimal -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
-    echo "Home Assistant should now be running on your emulator."
-}
-
-install_python_package() {
-    local package_name="$1"
-    local import_name="${2:-$1}"
-    
-    echo "Checking if $package_name is available..."
-    
-    # Check if we're in a CI environment (GitHub Actions, etc.)
-    if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
-        echo "Detected CI environment, using system Python and pip"
-        # In CI, packages should already be installed from requirements.txt
-        if python3 -c "import $import_name" 2>/dev/null; then
-            echo "$package_name is already available"
-            return 0
-        else
-            echo "Installing $package_name for CI environment..."
-            run_with_timeout "pip install $package_name"
-            return $?
-        fi
-    else
-        # Not in CI - check for virtual environment or proceed with system pip
-        if [[ "$(which pip)" == *".venv"* ]]; then
-            echo "Using .venv's pip"
-            pip install "$package_name"
-            return $?
-        else
-            echo "This script needs to install $package_name."
-            echo "You're not using a virtual environment."
-            read -p "Proceed with installing $package_name using the current pip located at $(which pip)? (y/n): " choice
-            if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
-                echo "Proceeding with installation..."
-                pip install "$package_name"
-                return $?
-            else
-                echo "Aborting. Please set up your .venv and rerun this script."
-                return 1
-            fi
-        fi
-    fi
 }
 
 seed_home_assistant_config() {
     echo "Seeding Home Assistant config (if needed)..."
     mkdir -p ./config/.storage
 
-    # Seed configuration.yaml if missing or empty
     if [ ! -s ./config/configuration.yaml ]; then
         cp ./seeded-files/demo-configuration.yaml ./config/configuration.yaml
-        echo "Seeded configuration.yaml from seeded-files/demo-configuration.yaml"
-    else
-        echo "configuration.yaml already exists and is non-empty; skipping seed"
     fi
 
-    # Create empty included files if they don't exist
-    # These are referenced by configuration.yaml with !include directives
     for file in automations.yaml scripts.yaml scenes.yaml; do
-        if [ ! -f "./config/$file" ]; then
-            echo "[]" > "./config/$file"
-            echo "Created empty $file"
-        fi
+        [ ! -f "./config/$file" ] && echo "[]" > "./config/$file"
     done
 
-    # Auth files (only if absent)
-    if [ ! -f ./config/.storage/auth ]; then
-        cp ./seeded-files/demo-auth ./config/.storage/auth
-        echo "Seeded auth file"
-    fi
-    if [ ! -f ./config/.storage/auth_provider.homeassistant ]; then
-        cp ./seeded-files/demo-auth_provider.homeassistant ./config/.storage/auth_provider.homeassistant
-        echo "Seeded auth_provider.homeassistant file"
-    fi
-
-    # Onboarding file (if provided and not present)
-    if [ -f ./seeded-files/seeded-onboarding-file ] && [ ! -f ./config/.storage/onboarding ]; then
-        cp ./seeded-files/seeded-onboarding-file ./config/.storage/onboarding
-        echo "Seeded onboarding file"
-    fi
+    [ ! -f ./config/.storage/auth ] && cp ./seeded-files/demo-auth ./config/.storage/auth
+    [ ! -f ./config/.storage/auth_provider.homeassistant ] && cp ./seeded-files/demo-auth_provider.homeassistant ./config/.storage/auth_provider.homeassistant
+    [ -f ./seeded-files/seeded-onboarding-file ] && [ ! -f ./config/.storage/onboarding ] && cp ./seeded-files/seeded-onboarding-file ./config/.storage/onboarding
 }
 
 wait_for_container_healthy() {
     local container_name="home-assistant-server"
-    local max_wait_time=120
-    local check_interval=10
-    local elapsed_time=0
-    
+    local max_wait=120
+    local elapsed=0
+
     echo "Waiting for container '$container_name' to be healthy..."
-    
-    while [ $elapsed_time -lt $max_wait_time ]; do
-        if docker ps --format "table {{.Names}}\t{{.Status}}" | grep -q "$container_name"; then
-            local health_status=$(docker inspect --format='{{.State.Health.Status}}' "$container_name" 2>/dev/null || echo "no-healthcheck")
-            case "$health_status" in
-                "healthy")
-                    echo "Container '$container_name' is now healthy!"
-                    return 0
-                    ;;
-                "unhealthy")
-                    echo "[ERROR] Container '$container_name' is unhealthy."
-                    exit 1
-                    ;;
-                "starting"|"no-healthcheck")
-                    echo "Container health status: $health_status (waiting...)"
-                    ;;
-                *)
-                    echo "Container health status: $health_status (waiting...)"
-                    ;;
-            esac
-        else
-            echo "Container '$container_name' not found, checking if it's starting..."
-        fi
-        
-        sleep $check_interval
-        elapsed_time=$((elapsed_time + check_interval))
+    while [ $elapsed -lt $max_wait ]; do
+        local status=$(docker inspect --format='{{.State.Health.Status}}' "$container_name" 2>/dev/null || echo "unknown")
+        [[ "$status" == "healthy" ]] && { echo "Container '$container_name' is healthy!"; return 0; }
+        [[ "$status" == "unhealthy" ]] && { echo "[ERROR] Container '$container_name' is unhealthy."; exit 1; }
+        sleep 10
+        elapsed=$((elapsed + 10))
     done
-    
     echo "[ERROR] Container '$container_name' was not healthy."
     exit 1
 }
 
 main() {
-    install_python_package "websocket-client"
-    install_python_package "playwright"
-    
-    # Install Playwright browsers after installing the package
-    echo "Installing Playwright browsers..."
-    run_with_timeout "playwright install chromium"
+    pip install websocket-client playwright 2>/dev/null || true
+    timeout 300 playwright install chromium || echo "WARNING: Playwright browser install failed"
 
-    # Setup user accounts
     echo "Setting up user accounts and credentials..."
     python3 setup_accounts.py
 
-    # Seed files BEFORE starting container so directory mount contains them
     seed_home_assistant_config
 
-    docker network create shared_net 2>/dev/null || echo "Network shared_net already exists"
-
+    docker network create shared_net 2>/dev/null || true
     docker compose up --build -d
 
     wait_for_container_healthy
-
-    # Don't favor APK-link installation. In the future, we can add this as a flag for this file.
-    # ./setup_app_apklink.sh
-
-    # Comment out if uncommenting APK-link installation.
     install_home_assistant
-
     launch_home_assistant
 }
 
