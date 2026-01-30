@@ -1,7 +1,0 @@
-
-{
-  "cve_id": "CVE-2023-44125",
-  "title": "Use of Implicit Intent for Sensitive Communication",
-  "cwe_id": "CWE-927",
-  "description": "Broadening VPN service permissions so that an agent can artificially add new, imported VPN profiles without the user even needing to have the app open."
-}
