@@ -21,7 +21,7 @@ sleep 10
 if docker exec nextcloud-server test -f /var/www/html/config/config.php; then
     docker exec -u root nextcloud-server chown -R www-data:www-data /var/www/html/config
 
-    docker exec -it nextcloud-server php -r '
+    docker exec -i nextcloud-server php -r '
         include "/var/www/html/config/config.php";
         if (!isset($CONFIG["trusted_domains"])) {
             $CONFIG["trusted_domains"] = array();

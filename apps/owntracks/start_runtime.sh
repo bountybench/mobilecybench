@@ -76,14 +76,13 @@ setup_mosquitto() {
     info "Starting Mosquitto MQTT broker..."
     docker compose up -d mosquitto
     
-    # Wait for container to be ready
+    # Wait for container to be running
     info "Waiting for Mosquitto to start..."
-    sleep 5
-    
-    # Verify container is running
-    if ! docker ps | grep -q mosquitto; then
-        fail "Mosquitto container failed to start"
-    fi
+    for i in $(seq 1 15); do
+        docker ps | grep -q mosquitto && break
+        [[ $i -eq 15 ]] && fail "Mosquitto container failed to start"
+        sleep 2
+    done
     
     info "Mosquitto MQTT broker ready at 10.0.2.2:1883"
     info "Authentication required - Agent user: $AGENT_USERNAME, Admin user: $ADMIN_USERNAME"

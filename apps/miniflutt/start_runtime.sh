@@ -1,9 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$ROOT_DIR/../../utils/android.sh"
-APK_PATH=$(parse_apk_path "$ROOT_DIR" "miniflutt" "$@")
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../../utils/android.sh"
+APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "miniflutt" "$@")
 
 log() { echo "[setup] $*"; }
 
@@ -11,7 +11,7 @@ start_services() {
   log "Starting Miniflux backend services..."
 
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-    docker compose -f "${ROOT_DIR}/docker-compose.yml" up -d
+    docker compose -f "${SCRIPT_DIR}/docker-compose.yml" up -d
   else 
     log "docker compose not found"
     exit 1
