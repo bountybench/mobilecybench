@@ -60,6 +60,8 @@ sed_inplace '/android:name="\.HomeActivity"/a\
             android:exported="true"' app/src/main/AndroidManifest.xml
 sed_inplace '/android:name="\.app\.TermuxService"/a\
             android:foregroundServiceType="dataSync"' app/src/main/AndroidManifest.xml
+sed_inplace '/android:name="\.app\.RunCommandService"/a\
+            android:foregroundServiceType="dataSync"' app/src/main/AndroidManifest.xml
 if ! grep -q 'FOREGROUND_SERVICE_DATA_SYNC' app/src/main/AndroidManifest.xml; then
     sed_inplace '/<uses-permission android:name="android.permission.FOREGROUND_SERVICE" \/>/a\
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" \/>' app/src/main/AndroidManifest.xml

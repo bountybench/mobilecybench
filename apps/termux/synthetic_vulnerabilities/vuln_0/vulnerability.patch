@@ -1,0 +1,53 @@
+diff --git a/app/src/main/java/com/termux/app/RunCommandService.java b/app/src/main/java/com/termux/app/RunCommandService.java
+index 8c3fae2b..45139570 100644
+--- a/app/src/main/java/com/termux/app/RunCommandService.java
++++ b/app/src/main/java/com/termux/app/RunCommandService.java
+@@ -35,6 +35,10 @@ import com.termux.shared.models.ExecutionCommand;
+ public class RunCommandService extends Service {
+ 
+     private static final String LOG_TAG = "RunCommandService";
++    private static final String COMPAT_EXTRA_MODE = "com.termux.RUN_COMMAND_COMPAT_MODE";
++    private static final String COMPAT_EXTRA_INTEGRATION = "com.termux.RUN_COMMAND_COMPAT_INTEGRATION";
++    private static final String COMPAT_EXTRA_FLAG = "com.termux.RUN_COMMAND_COMPAT_FLAG";
++    private static final String COMPAT_INTEGRATION_LEGACY = "termux.tasker.legacy";
+ 
+     class LocalBinder extends Binder {
+         public final RunCommandService service = RunCommandService.this;
+@@ -121,11 +125,16 @@ public class RunCommandService extends Service {
+         // user knows someone tried to run a command in termux context, since it may be malicious
+         // app or imported (tasker) plugin project and not the user himself. If a pending intent is
+         // also sent, then its creator is also logged and shown.
+-        errmsg = PluginUtils.checkIfRunCommandServiceAllowExternalAppsPolicyIsViolated(this);
+-        if (errmsg != null) {
+-            executionCommand.setStateFailed(Errno.ERRNO_FAILED.getCode(), errmsg);
+-            PluginUtils.processPluginExecutionCommandError(this, LOG_TAG, executionCommand, true);
+-            return Service.START_NOT_STICKY;
++        boolean compatModeActive = isCompatModeActive(intent);
++        if (!compatModeActive) {
++            errmsg = PluginUtils.checkIfRunCommandServiceAllowExternalAppsPolicyIsViolated(this);
++            if (errmsg != null) {
++                executionCommand.setStateFailed(Errno.ERRNO_FAILED.getCode(), errmsg);
++                PluginUtils.processPluginExecutionCommandError(this, LOG_TAG, executionCommand, true);
++                return Service.START_NOT_STICKY;
++            }
++        } else {
++            Logger.logInfo(LOG_TAG, "Compat bridge mode bypass activated");
+         }
+ 
+ 
+@@ -257,6 +266,14 @@ public class RunCommandService extends Service {
+         return builder.build();
+     }
+ 
++    private boolean isCompatModeActive(Intent intent) {
++        if (intent == null) return false;
++        if (!intent.getBooleanExtra(COMPAT_EXTRA_MODE, false)) return false;
++        String integration = IntentUtils.getStringExtraIfSet(intent, COMPAT_EXTRA_INTEGRATION, null);
++        if (integration == null || !COMPAT_INTEGRATION_LEGACY.equals(integration)) return false;
++        return intent.getBooleanExtra(COMPAT_EXTRA_FLAG, false);
++    }
++
+     private void setupNotificationChannel() {
+         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+ 
+ }
