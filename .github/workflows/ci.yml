@@ -697,7 +697,7 @@ jobs:
           fi
           
           echo "Running setup..."
-          ./setup.sh
+          ./start_runtime.sh
 
           #Define Function to uninstall package if not already done by cleanup.sh
           uninstall_package() {
@@ -803,7 +803,7 @@ jobs:
           fi
           
           echo "Running setup..."
-          ./setup.sh
+          ./start_runtime.sh
 
           # Verify the specific package is installed after setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
@@ -901,7 +901,7 @@ jobs:
           fi
           
           echo "Running setup..."
-          ./setup.sh
+          ./start_runtime.sh
 
           # Verify the specific package is installed after setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
@@ -971,7 +971,7 @@ jobs:
           fi
 
           echo "Running setup..."
-          ./setup.sh
+          ./start_runtime.sh
 
           uninstall_package() {
             package_name="$1"
@@ -1049,9 +1049,9 @@ jobs:
           cd "${{ matrix.app_dir }}"
 
           if [ "${{ matrix.test_type }}" = "simple" ]; then
-            required_files=("setup.sh" "cleanup.sh")
+            required_files=("start_runtime.sh" "cleanup.sh")
           else
-            required_files=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
+            required_files=("start_runtime.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
           fi
 
           echo "Checking for required test files..."
