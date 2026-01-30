@@ -48,6 +48,6 @@ Agent type defaults to `custom`; override with `--agent-type supervisor` or `--a
 
 ## More on apps
 
-- Every app must provide an APK via `setup_app_source.sh` or `metadata.json:download_link` (at least one is mandatory).
+- Every app must provide an APK via `build.sh` or `metadata.json:download_link` (at least one is mandatory).
 - Apps are git submodules under `apps/<app_name>/codebase`; initialize/update them if needed.
 - Some apps require Docker even without the agent stack; check if app has `container_names` defined in `apps/<app_name>/metadata.json`.

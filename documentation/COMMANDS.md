@@ -44,7 +44,7 @@ Details: `documentation/ADDING_APPS.md` and `documentation/SYNTHETIC_VULNERABILI
 
 Flags:
 
-- `./build_apk.sh <app_name> --vuln <vuln_id>`
+- `./build_apk.sh <app_name> [--vuln <vuln_id>] [--output <dir>]`
 
 ## Local CI validation
 

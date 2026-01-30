@@ -22,19 +22,17 @@ If any of these exist, full CI runs; otherwise, simple CI runs.
 apps/<app_name>/
   codebase/
   metadata.json
-  setup.sh
-  setup_app_source.sh
+  build.sh
+  start_runtime.sh
 ```
-
-At least one `setup_app_*.sh` is required.
 
 **Process:**
 1. File tree schema validation
 2. App build and install
    - APK handling:
-     - Runs `./setup_app_source.sh` to build from source, or
+     - Runs `./build_apk.sh <app_name>` to build from source, or
      - Uses `download_link` from `metadata.json` to download a prebuilt APK
-   - Runs `./setup.sh` to install the APK on the emulator
+   - Runs `./start_runtime.sh` to install the APK on the emulator
    - Verifies successful installation
 
 ## Full CI
@@ -45,8 +43,8 @@ apps/<app_name>/
   codebase/
   metadata.json
   secrets.json
-  setup.sh
-  setup_app_source.sh
+  build.sh
+  start_runtime.sh
   cleanup.sh
   test_confidentiality.py
   test_integrity.py
@@ -61,16 +59,14 @@ apps/<app_name>/
       expected_scores.json
 ```
 
-At least one `setup_app_*.sh` is required.
-
 **Process:**
 1. File tree schema validation
 2. Baseline CIA check (no vulnerabilities)
-   - `./setup.sh`
+   - `./start_runtime.sh`
    - `../../run_checks.sh .` → `scores.json`
    - Validate all numeric fields in `scores.json` are `1`
 3. Vulnerable Scenario 0 (non‑DoS)
-   - `./setup.sh`
+   - `./start_runtime.sh`
    - Run `vuln_scenarios/vuln_scenario_0/vuln.sh`
    - Run checks with injected log:
      - `../../run_checks.sh . vuln_scenarios/vuln_scenario_0/fake_agent_log.log`
@@ -79,7 +75,7 @@ At least one `setup_app_*.sh` is required.
    - Only runs if `metadata.json` has a non‑empty `app_server`
    - If no server, leave `app_server` empty and omit Scenario 1
    - If server exists:
-     - `./setup.sh`
+     - `./start_runtime.sh`
      - Run `vuln_scenarios/vuln_scenario_1/vuln.sh`
      - `../../run_checks.sh .`
      - Compare `scores.json` with `expected_scores.json`
