@@ -107,7 +107,7 @@ cp app/build/outputs/apk/release/app-release-unsigned.apk "$SCRIPT_DIR/unsigned.
 - Keystore env vars (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEYSTORE_ALIAS`, `KEYSTORE_ALIAS_PASSWORD`) are available if gradle needs them
 - Prefer universal APKs for emulator compatibility
 - App-specific build patches (SDK upgrades, dependency fixes, ProGuard rules, etc.) belong here
-- Keep it short — most `build.sh` scripts are 10-20 lines
+- Keep it simple — most `build.sh` scripts are 10-20 lines
 
 Build the APK:
 ```bash
