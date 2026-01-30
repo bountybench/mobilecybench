@@ -689,7 +689,7 @@ jobs:
           
           # Check if package is NOT installed before setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "ERROR: Package $package_name is already installed before start_runtime.sh"
             echo "This test expects the package to be uninstalled initially"
             exit 1
           else
@@ -718,15 +718,15 @@ jobs:
 
           # Verify the specific package is installed after setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo "SUCCESS: Package $package_name is installed after setup.sh"
+            echo "SUCCESS: Package $package_name is installed after start_runtime.sh"
           else
-            echo "ERROR: Package $package_name is not installed after setup.sh"
-            echo "This indicates setup.sh failed to install the expected package"
+            echo "ERROR: Package $package_name is not installed after start_runtime.sh"
+            echo "This indicates start_runtime.sh failed to install the expected package"
             ./cleanup.sh
             exit 1
           fi
           
-          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
           check_app_containers_ready
           
           verify_shared_net_connectivity
@@ -795,7 +795,7 @@ jobs:
           
           # Check if package is NOT installed before setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "ERROR: Package $package_name is already installed before start_runtime.sh"
             echo "This test expects the package to be uninstalled initially"
             exit 1
           else
@@ -807,15 +807,15 @@ jobs:
 
           # Verify the specific package is installed after setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo "SUCCESS: Package $package_name is installed after setup.sh"
+            echo "SUCCESS: Package $package_name is installed after start_runtime.sh"
           else
-            echo "ERROR: Package $package_name is not installed after setup.sh"
-            echo "This indicates setup.sh failed to install the expected package"
+            echo "ERROR: Package $package_name is not installed after start_runtime.sh"
+            echo "This indicates start_runtime.sh failed to install the expected package"
             ./cleanup.sh
             exit 1
           fi
           
-          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
           check_app_containers_ready
           
           verify_shared_net_connectivity
@@ -893,7 +893,7 @@ jobs:
           
           # Check if package is NOT installed before setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "ERROR: Package $package_name is already installed before start_runtime.sh"
             echo "This test expects the package to be uninstalled initially"
             exit 1
           else
@@ -905,15 +905,15 @@ jobs:
 
           # Verify the specific package is installed after setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo "SUCCESS: Package $package_name is installed after setup.sh"
+            echo "SUCCESS: Package $package_name is installed after start_runtime.sh"
           else
-            echo "ERROR: Package $package_name is not installed after setup.sh"
-            echo "This indicates setup.sh failed to install the expected package"
+            echo "ERROR: Package $package_name is not installed after start_runtime.sh"
+            echo "This indicates start_runtime.sh failed to install the expected package"
             ./cleanup.sh
             exit 1
           fi
           
-          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
           check_app_containers_ready
           
           verify_shared_net_connectivity
@@ -963,7 +963,7 @@ jobs:
 
           # Check if package is NOT installed before setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "ERROR: Package $package_name is already installed before start_runtime.sh"
             echo "This test expects the package to be uninstalled initially"
             exit 1
           else
@@ -990,15 +990,15 @@ jobs:
 
           # Verify the specific package is installed after setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo "SUCCESS: Package $package_name is installed after setup.sh"
+            echo "SUCCESS: Package $package_name is installed after start_runtime.sh"
           else
-            echo "ERROR: Package $package_name is not installed after setup.sh"
-            echo "This indicates setup.sh failed to install the expected package"
+            echo "ERROR: Package $package_name is not installed after start_runtime.sh"
+            echo "This indicates start_runtime.sh failed to install the expected package"
             ./cleanup.sh
             exit 1
           fi
 
-          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
           check_app_containers_ready
 
           verify_shared_net_connectivity
