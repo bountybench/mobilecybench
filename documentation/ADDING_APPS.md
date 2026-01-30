@@ -209,7 +209,7 @@ cat gradle/wrapper/gradle-wrapper.properties
 ./gradlew tasks --group=build
 ```
 
-Look for: build variants, required Java version, APK output location.
+Look for: build variants (debug, release, flavors), required Java version, APK output location.
 
 ## Repo map
 
