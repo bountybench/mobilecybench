@@ -56,7 +56,7 @@ class LoggerManager:
         self._name = name
         self._config = config or self._default_config()
 
-        #both of these are setup later, they are initialized
+        # both of these are setup later, they are initialized
         self._error_buffer_handler = None
         self._error_log_file = None
 
@@ -87,7 +87,6 @@ class LoggerManager:
         if self._should_filter_ui():
             self._setup_ui_debug_logger()
 
-    
     def _default_config(self) -> dict:
         return {"log_level": "info", "filter_ui_elements": True}
 
@@ -147,30 +146,26 @@ class LoggerManager:
         self._agent_logger.addHandler(debug_handler)  # Attach to agent_logger
 
     def _setup_error_logging(self) -> None:
-        #we have one error log here because the child log will automatically put into main log
+        # we have one error log here because the child log will automatically put into main log
         self._error_log_file = str(self._logs_dir / f"errors_{self._timestamp}.log")
 
-        #we want to pass in this formatter so errors are not stored as objects
-        summary_formatter = RedErrorFormatter(
-            "%(levelname)s - %(name)s - %(message)s"
-        )
+        # we want to pass in this formatter so errors are not stored as objects
+        summary_formatter = RedErrorFormatter("%(levelname)s - %(name)s - %(message)s")
 
         self._error_buffer_handler = ErrorBufferHandler(
-            formatter=summary_formatter,
-            max_errors=100
+            formatter=summary_formatter, max_errors=100
         )
 
         error_file_handler = logging.FileHandler(self._error_log_file, encoding="utf-8")
         error_file_handler.setLevel(logging.ERROR)
-        error_file_handler.setFormatter(logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        ))
+        error_file_handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        )
 
         # Attach handlers
         self._logger.addHandler(error_file_handler)
         self._logger.addHandler(self._error_buffer_handler)
 
-    
     def _setup_agent_logger(self) -> None:
         """Setup a separate logger for agent-specific logs.
 
@@ -243,10 +238,12 @@ class RedErrorFormatter(logging.Formatter):
         if record.levelno >= logging.ERROR:
             return f"{self.RED}{message}{self.RESET}"
         return message
+
+
 # create a new error handler for ERROR level logging
 class ErrorBufferHandler(logging.Handler):
-    #anything more than 100 errors would likely just mean some form of loop. we don't need to use up so much memory
-    #keep it conservative
+    # anything more than 100 errors would likely just mean some form of loop. we don't need to use up so much memory
+    # keep it conservative
     def __init__(self, formatter: logging.Formatter, max_errors: int = 100):
         super().__init__(level=logging.ERROR)
         self.formatter = formatter
