@@ -21,6 +21,10 @@ class DiscoveryWorkflow(Workflow):
         app_dir: Path,
         model: str,
         max_iterations: int,
+        max_model_response_tokens: int,
+        max_kali_message_tokens: int,
+        max_context_length: int,
+        screenshot_mode: bool = False,
         build_type: str = "source",
         agent_image: str = "cybench/mobilecybench:latest",
         project_root: Optional[Path] = None,
@@ -30,6 +34,10 @@ class DiscoveryWorkflow(Workflow):
         self.app_dir = app_dir
         self.model = model
         self.max_iterations = max_iterations
+        self.max_model_response_tokens = max_model_response_tokens
+        self.max_kali_message_tokens = max_kali_message_tokens
+        self.max_context_length = max_context_length
+        self.screenshot_mode = screenshot_mode
         self.build_type = build_type
         self.agent_image = agent_image
         self.project_root = project_root or Path(__file__).parent.parent
@@ -92,7 +100,7 @@ class DiscoveryWorkflow(Workflow):
             app_dir=self.app_dir,
             agent_image=self.agent_image,
             metadata=self.metadata,
-            synthetic_mode=False,
+            workflow="discovery",
         )
 
     def setup_agent(self) -> None:
@@ -112,10 +120,10 @@ class DiscoveryWorkflow(Workflow):
         self.agent = CustomAgent(
             model=self.model,
             max_iterations=self.max_iterations,
-            max_model_response_tokens=1000,  # TODO: make configurable
-            max_kali_message_tokens=1000,  # TODO: make configurable
-            max_context_length=10000,  # TODO: make configurable
-            screenshot_enabled=False,  # TODO: make configurable
+            max_model_response_tokens=self.max_model_response_tokens,
+            max_kali_message_tokens=self.max_kali_message_tokens,
+            max_context_length=self.max_context_length,
+            screenshot_enabled=self.screenshot_mode,
             app_name=self.app_name,
             dry_run=self.dry_run,
             app_server=self.metadata.get("app_server"),
@@ -123,7 +131,7 @@ class DiscoveryWorkflow(Workflow):
             username=self.metadata.get("username"),
             password=self.metadata.get("password"),
             include_ssrf=include_ssrf,
-            synthetic_mode=False,  # Discovery mode
+            workflow="discovery",
         )
         logger.info("Agent configured for discovery mode")
 

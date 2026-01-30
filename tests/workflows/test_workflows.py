@@ -6,6 +6,13 @@ from workflows.base import Workflow
 from workflows.discovery import DiscoveryWorkflow
 from workflows.exploit import ExploitWorkflow
 
+# Common agent config params used across all workflow tests
+AGENT_CONFIG = {
+    "max_model_response_tokens": 1000,
+    "max_kali_message_tokens": 1000,
+    "max_context_length": 10000,
+}
+
 
 class TestWorkflowBaseClass:
     """Tests for the Workflow abstract base class."""
@@ -43,6 +50,7 @@ class TestDiscoveryWorkflow:
             app_dir=tmp_path,
             model="gpt-4",
             max_iterations=10,
+            **AGENT_CONFIG,
         )
         assert workflow.app_name == "test_app"
         assert workflow.model == "gpt-4"
@@ -57,6 +65,8 @@ class TestDiscoveryWorkflow:
             app_dir=tmp_path,
             model="gpt-4",
             max_iterations=10,
+            **AGENT_CONFIG,
+            screenshot_mode=True,
             build_type="download-apk",
             agent_image="custom-image:latest",
             project_root=tmp_path,
@@ -66,6 +76,7 @@ class TestDiscoveryWorkflow:
         assert workflow.agent_image == "custom-image:latest"
         assert workflow.project_root == tmp_path
         assert workflow.dry_run is True
+        assert workflow.screenshot_mode is True
 
     def test_validate_arguments_fails_missing_app_dir(self, tmp_path):
         """validate_arguments raises error if app_dir doesn't exist."""
@@ -75,6 +86,7 @@ class TestDiscoveryWorkflow:
             app_dir=non_existent,
             model="gpt-4",
             max_iterations=10,
+            **AGENT_CONFIG,
         )
         with pytest.raises(ValueError, match="App directory not found"):
             workflow.validate_arguments()
@@ -86,6 +98,7 @@ class TestDiscoveryWorkflow:
             app_dir=tmp_path,
             model="gpt-4",
             max_iterations=10,
+            **AGENT_CONFIG,
         )
         with pytest.raises(ValueError, match="metadata.json not found"):
             workflow.validate_arguments()
@@ -105,6 +118,7 @@ class TestExploitWorkflow:
             app_dir=tmp_path,
             model="gpt-4",
             max_iterations=10,
+            **AGENT_CONFIG,
         )
         assert workflow.app_name == "test_app"
         assert workflow.model == "gpt-4"
@@ -119,35 +133,36 @@ class TestExploitWorkflow:
             app_dir=non_existent,
             model="gpt-4",
             max_iterations=10,
+            **AGENT_CONFIG,
         )
         with pytest.raises(ValueError, match="App directory not found"):
             workflow.validate_arguments()
 
-    def test_validate_arguments_fails_missing_synthetic_dir(self, tmp_path):
-        """validate_arguments raises error if synthetic_vulnerabilities doesn't exist."""
+    def test_validate_arguments_fails_missing_vuln_dir(self, tmp_path):
+        """validate_arguments raises error if target vulnerability dir doesn't exist."""
         (tmp_path / "metadata.json").write_text("{}")
         workflow = ExploitWorkflow(
             app_name="test_app",
             app_dir=tmp_path,
             model="gpt-4",
             max_iterations=10,
+            **AGENT_CONFIG,
         )
-        with pytest.raises(
-            ValueError, match="synthetic_vulnerabilities directory not found"
-        ):
+        with pytest.raises(ValueError, match="Vulnerability directory not found"):
             workflow.validate_arguments()
 
     def test_validate_arguments_fails_missing_verify_files(self, tmp_path):
         """validate_arguments raises error if verify_files doesn't exist."""
         (tmp_path / "metadata.json").write_text("{}")
-        synth_dir = tmp_path / "synthetic_vulnerabilities" / "vuln_0"
-        synth_dir.mkdir(parents=True)
+        vuln_dir = tmp_path / "synthetic_vulnerabilities" / "vuln_0"
+        vuln_dir.mkdir(parents=True)
 
         workflow = ExploitWorkflow(
             app_name="test_app",
             app_dir=tmp_path,
             model="gpt-4",
             max_iterations=10,
+            **AGENT_CONFIG,
         )
         with pytest.raises(ValueError, match="verify_files not found"):
             workflow.validate_arguments()
@@ -163,8 +178,9 @@ class TestExploitWorkflow:
             app_dir=tmp_path,
             model="gpt-4",
             max_iterations=10,
+            **AGENT_CONFIG,
         )
-        with pytest.raises(ValueError, match="No vulnerability.patch files found"):
+        with pytest.raises(ValueError, match="vulnerability.patch not found"):
             workflow.validate_arguments()
 
     def test_validate_arguments_fails_wrong_build_type(self, tmp_path):
@@ -180,6 +196,7 @@ class TestExploitWorkflow:
             app_dir=tmp_path,
             model="gpt-4",
             max_iterations=10,
+            **AGENT_CONFIG,
             build_type="download-apk",  # Invalid for synthetic mode
         )
         with pytest.raises(ValueError, match="requires build_type='source'"):

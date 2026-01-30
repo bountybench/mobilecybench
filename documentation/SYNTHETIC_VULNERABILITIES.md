@@ -309,12 +309,8 @@ Local Testing: `build.sh` is required. Two APKs are built via `build_apk.sh` —
 
 To evaluate an agent against a synthetic vulnerability:
 
-1. Build the vulnerable APK:
-   ```bash
-   ./build_apk.sh <app_name> --vuln vuln_0
-   ```
 
-2. Set exploit mode in `runner_config.json`:
+1. Set exploit mode in `runner_config.json`:
    ```json
    {
      "workflow": "exploit",
@@ -322,7 +318,7 @@ To evaluate an agent against a synthetic vulnerability:
    }
    ```
 
-3. Run the experiment:
+2. Run the experiment:
    ```bash
    python runner.py <app_name>
    ```
@@ -333,7 +329,7 @@ Results are in `apps/<app_name>/synthetic_scores.json`:
 
 ### CI Testing (Verification Only)
 
-To test that the exploit/verify scripts work correctly (without an agent):
+To test that the exploit/verify scripts work correctly:
 
 ```bash
 APP_NAME=<INSERT_APP_NAME>

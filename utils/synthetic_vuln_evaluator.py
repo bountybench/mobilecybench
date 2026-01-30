@@ -1,5 +1,5 @@
 """
-Run synthetic vulnerability checks and collect scores.
+Synthetic vulnerability evaluator - runs verification scripts and collects scores.
 
 Expected structure:
     <app_dir>/synthetic_vulnerabilities/<vuln_id>/verify_files/verify_exploit.sh
@@ -17,7 +17,16 @@ from pathlib import Path
 from utils.logger import logger
 
 
-def run_synthetic_checks(app_dir: Path) -> dict:
+def evaluate_synthetic_vulns(app_dir: Path) -> dict:
+    """
+    Run synthetic vulnerability verification scripts and collect scores.
+
+    Args:
+        app_dir: Application directory containing synthetic_vulnerabilities/
+
+    Returns:
+        dict with status, scores, and details for each vulnerability
+    """
     synth_dir = app_dir / "synthetic_vulnerabilities"
     if not synth_dir.is_dir():
         return {"status": "no_probes_found", "scores": {}, "details": {}}

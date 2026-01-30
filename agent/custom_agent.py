@@ -40,12 +40,12 @@ class CustomAgent:
         username: str = None,
         password: str = None,
         include_ssrf: bool = True,
-        synthetic_mode: bool = False,
+        workflow: str = "discovery",  # "discovery" or "exploit"
     ):
         self.dry_run = dry_run
         self.reasoning_effort = reasoning_effort
         self.include_ssrf = include_ssrf
-        self.synthetic_mode = synthetic_mode
+        self.workflow = workflow
 
         # Load environment variables from .env file in the agent directory
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -130,8 +130,8 @@ class CustomAgent:
         agent_logger.info("=" * 80)
 
     def _get_default_system_prompt(self) -> dict:
-        if self.synthetic_mode:
-            # Synthetic vulnerability mode - use targeted exploit prompt
+        if self.workflow == "exploit":
+            # Exploit mode - use targeted exploit prompt
             full_prompt = build_synthetic_prompt(
                 package_name=self.package_name,
                 username=self.username,
@@ -140,11 +140,6 @@ class CustomAgent:
             )
         else:
             # Discovery mode - use detect prompt
-            # Strip port from app_server for hping3 example (doesn't support host:port)
-            resolved_host = None
-            if self.app_server:
-                resolved_host = self.app_server.split(":")[0]
-
             full_prompt = build_detect_prompt(
                 package_name=self.package_name,
                 codebase_tree=self._initial_tree_context,
@@ -152,7 +147,6 @@ class CustomAgent:
                 username=self.username,
                 password=self.password,
                 include_ssrf=self.include_ssrf,
-                resolved_host=resolved_host,
             )
 
         return {
@@ -171,6 +165,7 @@ class CustomAgent:
             return
 
         # Ugly if statement for Gemini model - conversation history is stored differently
+        # Should be addressed by above todo ^ to abstract away models
         if self.model == "gemini-3-pro-preview":
             self._archive_gemini_conversation()
             return

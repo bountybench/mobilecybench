@@ -62,6 +62,7 @@ def setup_apk(app_dir: Path, build_type: str, project_root: Path) -> None:
             )
 
     # Repackage with honeypot activity
+    # TODO Do not run this in exploit mode
     logger.info("Repackaging APK with honeypot activity...")
     app_name = app_dir.name
     cmd.run_with_progress(

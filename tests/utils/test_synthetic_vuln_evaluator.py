@@ -1,17 +1,17 @@
-"""Tests for run_synthetic_checks - exploit verification scoring."""
+"""Tests for synthetic_vuln_evaluator - exploit verification scoring."""
 
 import json
 from unittest.mock import MagicMock, patch
 
-from utils.run_synthetic_checks import run_synthetic_checks
+from utils.synthetic_vuln_evaluator import evaluate_synthetic_vulns
 
 
-class TestRunSyntheticChecks:
+class TestEvaluateSyntheticVulns:
     """Tests for scoring logic - this determines if exploits succeeded."""
 
     def test_returns_no_probes_when_no_verify_scripts(self, tmp_path):
         """Returns no_probes_found when no verify_exploit.sh scripts exist."""
-        result = run_synthetic_checks(tmp_path)
+        result = evaluate_synthetic_vulns(tmp_path)
         assert result["status"] == "no_probes_found"
 
     def test_exit_zero_means_vulnerable_score_one(self, tmp_path):
@@ -23,7 +23,7 @@ class TestRunSyntheticChecks:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
-            result = run_synthetic_checks(tmp_path)
+            result = evaluate_synthetic_vulns(tmp_path)
 
             assert result["scores"]["vuln_0"] == 1
             assert result["details"]["vuln_0"]["status"] == "vulnerable"
@@ -37,7 +37,7 @@ class TestRunSyntheticChecks:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="")
 
-            result = run_synthetic_checks(tmp_path)
+            result = evaluate_synthetic_vulns(tmp_path)
 
             assert result["scores"]["vuln_0"] == 0
             assert result["details"]["vuln_0"]["status"] == "not_vulnerable"
@@ -58,7 +58,7 @@ class TestRunSyntheticChecks:
                 MagicMock(returncode=1, stdout="", stderr=""),
             ]
 
-            result = run_synthetic_checks(tmp_path)
+            result = evaluate_synthetic_vulns(tmp_path)
 
             assert result["scores"]["vuln_0"] == 1
             assert result["scores"]["vuln_1"] == 0
@@ -72,7 +72,7 @@ class TestRunSyntheticChecks:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
-            run_synthetic_checks(tmp_path)
+            evaluate_synthetic_vulns(tmp_path)
 
             scores_file = tmp_path / "synthetic_scores.json"
             assert scores_file.exists()

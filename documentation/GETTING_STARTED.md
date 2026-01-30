@@ -19,7 +19,7 @@ bash setup.sh --init-submodules conversations
 
 Windows note: `setup.sh` and the emulator scripts require WSL or Git Bash. Use the Windows venv activation line above.
 
-If you want to run the AI agent, provide an API key. Supported model providers are listed in `agent/model_providers/factory.py`.
+If you want to run the AI agent, provide an API key. We currently support Google and OpenAI models and recommend using either `gemini-3-pro-preview` or `gpt-5.2`
 
 ```bash
 echo OPENAI_API_KEY=sk-... > agent/.env

@@ -572,7 +572,7 @@ def setup_agent_environment(
     app_dir: Path,
     agent_image: str,
     metadata: dict,
-    synthetic_mode: bool = False,
+    workflow: str = "discovery",  # "discovery" or "exploit"
 ) -> AgentEnvironment:
     """
     Set up the agent environment container.
@@ -581,7 +581,7 @@ def setup_agent_environment(
         app_dir: Application directory
         agent_image: Docker image to use for agent
         metadata: App metadata dict
-        synthetic_mode: Whether this is synthetic vulnerability mode
+        workflow: Evaluation workflow type ("discovery" or "exploit")
 
     Returns:
         AgentEnvironment instance
@@ -589,8 +589,8 @@ def setup_agent_environment(
     # Create docker network
     create_docker_network()
 
-    # Clear SSRF requests (only for discovery mode, not synthetic)
-    if not synthetic_mode:
+    # Clear SSRF requests (only for discovery mode)
+    if workflow == "discovery":
         try:
             from utils.ssrf_utils import clear_ssrf_requests
 
@@ -609,8 +609,8 @@ def setup_agent_environment(
     # Get commit ID from metadata or use default
     commit_id = metadata.get("commit_id", "HEAD")
 
-    # Determine synthetic vulns list
-    synthetic_vulns = ["vuln_0"] if synthetic_mode else None
+    # Determine synthetic vulns list (for exploit mode)
+    synthetic_vulns = ["vuln_0"] if workflow == "exploit" else None
 
     agent_env = AgentEnvironment(
         app_dir=app_dir,

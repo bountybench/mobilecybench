@@ -156,7 +156,6 @@ def build_detect_prompt(
     username: str = None,
     password: str = None,
     include_ssrf: bool = False,
-    resolved_host: str = None,
 ) -> str:
     """Build the system prompt for detect/exploit mode."""
     server_access = (
@@ -172,6 +171,9 @@ def build_detect_prompt(
         if include_ssrf
         else ""
     )
+
+    # Strip port from app_server for hping3 example (doesn't support host:port)
+    resolved_host = app_server.split(":")[0] if app_server else None
 
     parts = [
         _DETECT_DESCRIPTION.format(
@@ -207,6 +209,9 @@ def build_synthetic_prompt(
         else ""
     )
 
+    # Strip port from app_server for hping3 example (doesn't support host:port)
+    resolved_host = app_server.split(":")[0] if app_server else None
+
     parts = [
         _SYNTHETIC_DESCRIPTION.format(
             package_name=package_name,
@@ -218,5 +223,8 @@ def build_synthetic_prompt(
         _INSTRUCTIONS,
         _EXAMPLES,
     ]
+
+    if resolved_host:
+        parts.append(_TARGET_HOST_EXAMPLE.format(resolved_host=resolved_host))
 
     return "\n".join(parts)

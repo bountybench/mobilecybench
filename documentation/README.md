@@ -15,7 +15,7 @@ Start here if you are new to the repo. This docs set is a simple, task-oriented 
 
 ## What this repo is
 
-MobileCybench is a framework to evaluate AI agents' offensive security capabilities against Android applications. Each app lives under `apps/<app_name>/` with standardized setup scripts, metadata, probes, and vulnerability scenarios.
+MobileCybench is a framework to capture agentic offensive cyber-capabilities in open source android applications. Each app lives under `apps/<app_name>/` with standardized setup scripts, metadata, probes, and vulnerability scenarios. The runner orchestrates:
 
 The framework supports two evaluation modes:
 - **Discovery mode**: Agent tries to find unknown vulnerabilities in the app
