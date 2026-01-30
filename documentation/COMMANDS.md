@@ -37,6 +37,7 @@ Flags:
 
 ```bash
 ./build_apk.sh conversations
+./build_apk.sh conversations --output apk/custom_folder
 ./build_apk.sh conversations --vuln vuln_0
 ```
 
