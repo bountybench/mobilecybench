@@ -19,6 +19,11 @@ wait_for_device_boot() {
       if [[ "${boot_val}" == "1" ]]; then
         echo
         log_info "Device ${device_id} reports boot completed."
+
+        # Also wait for package manager to be ready (critical for AOSP)
+        log_info "Waiting for package manager service..."
+        wait_for_package_manager 30
+
         return 0
       fi
     fi
@@ -28,6 +33,31 @@ wait_for_device_boot() {
     fi
     printf '.'
     sleep 0.5
+  done
+}
+
+# Wait for package manager service to be responsive
+# This is critical after boot, especially on AOSP images
+wait_for_package_manager() {
+  local timeout=${1:-30}
+  local start_time=$(date +%s)
+  local end_time=$((start_time + timeout))
+
+  while true; do
+    # Test if package manager can respond to queries
+    if adb shell pm path android >/dev/null 2>&1; then
+      log_info "Package manager is ready"
+      sleep 2  # Additional settling time
+      return 0
+    fi
+
+    if [ "$(date +%s)" -ge "$end_time" ]; then
+      log_error "Timed out waiting for package manager after ${timeout}s."
+      return 1
+    fi
+
+    printf '.'
+    sleep 1
   done
 }
 

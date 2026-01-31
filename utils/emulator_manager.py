@@ -82,7 +82,7 @@ class EmulatorManager:
                 "-gpu",
                 "off",
                 "-memory",
-                "2048",
+                "4096",
                 "-no-audio",
                 "-read-only",
             ]
@@ -98,7 +98,7 @@ class EmulatorManager:
                 "-skin",
                 "1080x1920",
                 "-memory",
-                "2048",
+                "4096",
             ]
 
         return {
