@@ -70,6 +70,12 @@ class DiscoveryWorkflow(Workflow):
         from utils.apk_utils import setup_apk
         from utils.emulator_manager import EmulatorManager
         from utils.setup_utils import install_app_and_setup_backend
+        from utils.uuid_flags_utils import generate_and_save_flags
+
+        # Generate fresh flags for this run (discovery mode only)
+        container_names = self.metadata.get("container_names", [])
+        logger.info(f"Generating flags for containers: {container_names}")
+        generate_and_save_flags(str(self.project_root), container_names)
 
         # Start emulator
         logger.info("Starting emulator...")

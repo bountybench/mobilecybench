@@ -30,7 +30,7 @@ class AgentEnvironment:
         env: Dict[str, str],
         commit_id: str,
         mode: str = None,
-        synthetic_vulns: Optional[List[str]] = None,
+        vuln_id: Optional[str] = None,
     ):
         self.app_dir = app_dir
         self.app_name = app_dir.name
@@ -39,7 +39,7 @@ class AgentEnvironment:
         self.env = env
         self.commit_id = commit_id
         self.mode = mode
-        self.synthetic_vulns = synthetic_vulns or []
+        self.vuln_id = vuln_id
 
         import traceback
 
@@ -131,7 +131,7 @@ class AgentEnvironment:
             volumes = self._setup_agent_codebase()
 
             # Setup verify_files for synthetic vulnerability mode
-            if self.synthetic_vulns:
+            if self.vuln_id:
                 verify_volumes = self._setup_verify_files()
                 if verify_volumes:
                     volumes.update(verify_volumes)
@@ -204,7 +204,7 @@ class AgentEnvironment:
         logger.info(f"Creating staging directory at {staging_dir}")
         staging_dir.mkdir(parents=True, exist_ok=True)
 
-        if self.synthetic_vulns:
+        if self.vuln_id:
             # Synthetic vulnerability mode: copy current state without git history
             logger.info(
                 "Synthetic vuln mode: Copying current codebase state without git history"
@@ -284,17 +284,20 @@ class AgentEnvironment:
         return {str(agent_codebase): {"bind": "/app/codebase", "mode": "rw"}}
 
     def _setup_verify_files(self):
-        """Mount verify_files from vuln_0 for agent access."""
+        """Mount verify_files for the synthetic vulnerability."""
         verify_files_src = (
-            self.app_dir / "synthetic_vulnerabilities" / "vuln_0" / "verify_files"
+            self.app_dir / "synthetic_vulnerabilities" / self.vuln_id / "verify_files"
         )
         if not verify_files_src.is_dir():
             logger.warning(f"No verify_files directory found at {verify_files_src}")
             return None
 
-        logger.info("Mounting verify_files at /app/verify_files/vuln_0")
+        logger.info(f"Mounting verify_files at /app/verify_files/{self.vuln_id}")
         return {
-            str(verify_files_src): {"bind": "/app/verify_files/vuln_0", "mode": "ro"}
+            str(verify_files_src): {
+                "bind": f"/app/verify_files/{self.vuln_id}",
+                "mode": "ro",
+            }
         }
 
     def copy_files(
@@ -573,6 +576,7 @@ def setup_agent_environment(
     agent_image: str,
     metadata: dict,
     workflow: str = "discovery",  # "discovery" or "exploit"
+    vuln_id: Optional[str] = None,
 ) -> AgentEnvironment:
     """
     Set up the agent environment container.
@@ -609,16 +613,13 @@ def setup_agent_environment(
     # Get commit ID from metadata or use default
     commit_id = metadata.get("commit_id", "HEAD")
 
-    # Determine synthetic vulns list (for exploit mode)
-    synthetic_vulns = ["vuln_0"] if workflow == "exploit" else None
-
     agent_env = AgentEnvironment(
         app_dir=app_dir,
         docker_networks=["shared_net"],
         image_name=agent_image,
         env=env_vars,
         commit_id=commit_id,
-        synthetic_vulns=synthetic_vulns,
+        vuln_id=vuln_id if workflow == "exploit" else None,
     )
 
     agent_env.setup()

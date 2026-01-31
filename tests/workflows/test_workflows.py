@@ -201,3 +201,135 @@ class TestExploitWorkflow:
         )
         with pytest.raises(ValueError, match="requires build_type='source'"):
             workflow.validate_arguments()
+
+    def test_exploit_workflow_stores_vuln_id(self, tmp_path):
+        """ExploitWorkflow stores the vuln_id parameter."""
+        workflow = ExploitWorkflow(
+            app_name="test_app",
+            app_dir=tmp_path,
+            model="gpt-4",
+            max_iterations=10,
+            **AGENT_CONFIG,
+            vuln_id="vuln_1",
+        )
+        assert workflow.vuln_id == "vuln_1"
+
+    def test_exploit_workflow_vuln_id_defaults_to_vuln_0(self, tmp_path):
+        """ExploitWorkflow defaults vuln_id to 'vuln_0'."""
+        workflow = ExploitWorkflow(
+            app_name="test_app",
+            app_dir=tmp_path,
+            model="gpt-4",
+            max_iterations=10,
+            **AGENT_CONFIG,
+        )
+        assert workflow.vuln_id == "vuln_0"
+
+    def test_validate_arguments_uses_configurable_vuln_id(self, tmp_path, mocker):
+        """validate_arguments checks for the configured vuln_id, not hardcoded 'vuln_0'."""
+        (tmp_path / "metadata.json").write_text("{}")
+        # Only create vuln_1, not vuln_0
+        vuln_dir = tmp_path / "synthetic_vulnerabilities" / "vuln_1"
+        verify_dir = vuln_dir / "verify_files"
+        verify_dir.mkdir(parents=True)
+        (vuln_dir / "vulnerability.patch").write_text("patch content")
+
+        # Mock get_app_metadata since it uses hardcoded project paths
+        mocker.patch("utils.utils.get_app_metadata", return_value={})
+
+        workflow = ExploitWorkflow(
+            app_name="test_app",
+            app_dir=tmp_path,
+            model="gpt-4",
+            max_iterations=10,
+            **AGENT_CONFIG,
+            vuln_id="vuln_1",
+        )
+        # Should pass validation since vuln_1 exists
+        workflow.validate_arguments()
+
+    def test_validate_arguments_fails_when_vuln_id_dir_missing(self, tmp_path):
+        """validate_arguments fails if the specified vuln_id directory doesn't exist."""
+        (tmp_path / "metadata.json").write_text("{}")
+        # Create vuln_0, but workflow is configured for vuln_1
+        vuln_dir = tmp_path / "synthetic_vulnerabilities" / "vuln_0"
+        verify_dir = vuln_dir / "verify_files"
+        verify_dir.mkdir(parents=True)
+        (vuln_dir / "vulnerability.patch").write_text("patch content")
+
+        workflow = ExploitWorkflow(
+            app_name="test_app",
+            app_dir=tmp_path,
+            model="gpt-4",
+            max_iterations=10,
+            **AGENT_CONFIG,
+            vuln_id="vuln_1",  # This doesn't exist
+        )
+        with pytest.raises(
+            ValueError, match="Vulnerability directory not found.*vuln_1"
+        ):
+            workflow.validate_arguments()
+
+
+class TestDiscoveryWorkflowFlagGeneration:
+    """Tests for flag generation in DiscoveryWorkflow."""
+
+    def test_discovery_workflow_generates_flags_on_setup(self, tmp_path, mocker):
+        """setup_runtime_environment generates fresh flags before install."""
+        # Create app structure
+        app_dir = tmp_path / "apps" / "test_app"
+        app_dir.mkdir(parents=True)
+        (app_dir / "metadata.json").write_text(
+            '{"container_names": ["redis", "postgres"]}'
+        )
+
+        workflow = DiscoveryWorkflow(
+            app_name="test_app",
+            app_dir=app_dir,
+            model="gpt-4",
+            max_iterations=10,
+            **AGENT_CONFIG,
+            project_root=tmp_path,
+        )
+        workflow.metadata = {"container_names": ["redis", "postgres"]}
+
+        # Mock the heavy dependencies (must mock at source module for lazy imports)
+        mock_generate = mocker.patch("utils.uuid_flags_utils.generate_and_save_flags")
+        mocker.patch("utils.emulator_manager.EmulatorManager")
+        mocker.patch("utils.apk_utils.setup_apk")
+        mocker.patch("utils.setup_utils.install_app_and_setup_backend")
+        mocker.patch("agent.agent_setup.setup_agent_environment")
+
+        workflow.setup_runtime_environment()
+
+        # Verify flags were generated with container names
+        mock_generate.assert_called_once_with(str(tmp_path), ["redis", "postgres"])
+
+    def test_discovery_workflow_generates_flags_with_empty_containers(
+        self, tmp_path, mocker
+    ):
+        """setup_runtime_environment generates flags even without containers."""
+        app_dir = tmp_path / "apps" / "test_app"
+        app_dir.mkdir(parents=True)
+        (app_dir / "metadata.json").write_text("{}")
+
+        workflow = DiscoveryWorkflow(
+            app_name="test_app",
+            app_dir=app_dir,
+            model="gpt-4",
+            max_iterations=10,
+            **AGENT_CONFIG,
+            project_root=tmp_path,
+        )
+        workflow.metadata = {}
+
+        mock_generate = mocker.patch("utils.uuid_flags_utils.generate_and_save_flags")
+        mocker.patch("utils.emulator_manager.EmulatorManager")
+        mocker.patch("utils.apk_utils.setup_apk")
+        mocker.patch("utils.setup_utils.install_app_and_setup_backend")
+        mocker.patch("agent.agent_setup.setup_agent_environment")
+
+        workflow.setup_runtime_environment()
+
+        # Verify flags were generated with empty container list
+        mock_generate.assert_called_once_with(str(tmp_path), [])
