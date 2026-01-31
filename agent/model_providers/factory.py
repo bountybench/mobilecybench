@@ -1,23 +1,25 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Optional
 
 from .base import ModelProvider
-from .gemini_provider import GeminiProvider
-from .openai_provider import OpenAIProvider
+from .litellm_provider import LiteLLMProvider
 
-# TODO: update the list as new providers are added
-ProviderName = Literal["openai", "gemini"]
+# Provider name type - now primarily uses litellm
+ProviderName = Literal["litellm", "openai", "gemini"]
 
 
 def detect_provider_from_model(model: str) -> str:
     """Detect the appropriate provider based on model name.
 
+    Note: This is now primarily used for API key validation.
+    All models are routed through LiteLLM which handles the actual provider routing.
+
     Args:
         model: Model identifier (e.g., 'gpt-4', 'gemini-3-pro-preview')
 
     Returns:
-        Provider name ('openai' or 'gemini')
+        Provider name ('openai', 'gemini', or 'anthropic')
     """
     model_lower = model.lower()
 
@@ -33,7 +35,11 @@ def detect_provider_from_model(model: str) -> str:
     ):
         return "gemini"
 
-    # OpenAI models
+    # Anthropic models
+    if any(prefix in model_lower for prefix in ["claude", "anthropic"]):
+        return "anthropic"
+
+    # OpenAI models (including o1, o3 reasoning models)
     if any(
         prefix in model_lower
         for prefix in [
@@ -53,34 +59,21 @@ def detect_provider_from_model(model: str) -> str:
 
 
 def get_model_provider(
-    name: ProviderName | None = None, model: str | None = None
+    name: Optional[ProviderName] = None, model: Optional[str] = None
 ) -> ModelProvider:
-    """Return a model provider instance based on name or model.
+    """Return a model provider instance.
+
+    This now returns a LiteLLM provider which provides a unified interface
+    to all supported model providers (OpenAI, Gemini, Anthropic, etc.).
 
     Args:
-        name: Explicit provider name ('openai', 'gemini')
-        model: Model identifier to auto-detect provider from
+        name: Explicit provider name (deprecated, ignored - always uses LiteLLM)
+        model: Model identifier for validation purposes
 
     Returns:
-        ModelProvider instance
-
-    - "openai" (default)
-    - "gemini" for Google Gemini models
+        LiteLLMProvider instance
     """
-    # If explicit name provided, use it
-    if name:
-        provider_name = name.lower()
-    # Otherwise detect from model
-    elif model:
-        provider_name = detect_provider_from_model(model)
-    else:
-        provider_name = "openai"  # default
-
-    if provider_name == "openai":
-        return OpenAIProvider()
-    elif provider_name == "gemini":
-        return GeminiProvider()
-
-    # TODO: add other providers here as elif branches
-
-    raise ValueError(f"Unsupported MODEL_PROVIDER: {provider_name}")
+    # Always use LiteLLM provider for unified model access
+    # The model name determines which API key to validate and which
+    # underlying provider LiteLLM will use
+    return LiteLLMProvider()

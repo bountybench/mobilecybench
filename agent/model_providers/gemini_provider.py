@@ -125,7 +125,7 @@ class GeminiProvider(ModelProvider):
         models = genai.list_models()
         list(models)  # Force evaluation
 
-    def validate(self) -> None:
+    def validate(self, model: str = None) -> None:
         """Validate that GEMINI_API_KEY is set and works."""
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key or not api_key.strip():

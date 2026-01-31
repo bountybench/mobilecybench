@@ -20,7 +20,7 @@ class MockModelProvider:
         # Make call a Mock so we can track call_count
         self.call = Mock(side_effect=self._mock_call)
 
-    def validate(self):
+    def validate(self, model: str = None):
         """Mock validate method."""
         pass
 

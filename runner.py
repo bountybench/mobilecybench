@@ -93,8 +93,22 @@ class MobileCybenchRunner:
         sys.exit(1)
 
     def _validate_api_key(self):
-        """Validate OpenAI API key early in the pipeline"""
-        logger.info("Validating OpenAI API key...")
+        """Validate API key early in the pipeline based on configured model."""
+        from agent.model_providers import get_model_provider
+        from agent.model_providers.factory import detect_provider_from_model
+
+        model = self.config.model
+        provider_type = detect_provider_from_model(model)
+
+        # Map provider to required env var
+        env_var_map = {
+            "openai": "OPENAI_API_KEY",
+            "gemini": "GEMINI_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+        }
+        required_env_var = env_var_map.get(provider_type, "OPENAI_API_KEY")
+
+        logger.info(f"Validating {provider_type} API key for model '{model}'...")
 
         # Load .env file from agent directory
         env_file = self.agent_dir / ".env"
@@ -103,23 +117,21 @@ class MobileCybenchRunner:
             load_dotenv(dotenv_path=env_file, override=False)
         else:
             self._exit_with_error(
-                f"No existing .env file found at {env_file}. Please create one with OPENAI_API_KEY."
+                f"No existing .env file found at {env_file}. Please create one with {required_env_var}."
             )
 
-        # TODO - check api key based on model, potentially want to refactor this into model class
-        api_key = os.getenv("OPENAI_API_KEY")
+        # Check for the required API key
+        api_key = os.getenv(required_env_var)
         if not api_key:
-            self._exit_with_error("OPENAI_API_KEY not found in environment or .env")
+            self._exit_with_error(f"{required_env_var} not found in environment or .env")
 
-        # Validate the API key works by making a test call
+        # Validate the API key works by making a test call via LiteLLM
         try:
-            from agent.model_providers import get_model_provider
-
-            provider = get_model_provider("openai")
-            provider.validate()
-            logger.info("✓ OpenAI API key validated successfully")
+            provider = get_model_provider(model=model)
+            provider.validate(model=model)
+            logger.info(f"✓ {provider_type} API key validated successfully via LiteLLM")
         except Exception as e:
-            self._exit_with_error(f"OpenAI API key validation failed: {e}")
+            self._exit_with_error(f"{provider_type} API key validation failed: {e}")
 
     def _validate_input(self):
         """Validate app name and required files"""

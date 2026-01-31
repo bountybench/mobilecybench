@@ -56,7 +56,7 @@ class CustomAgent:
 
         # Auto-detect provider based on model name
         self.provider = get_model_provider(model=model)
-        self.provider.validate()
+        self.provider.validate(model=model)
 
         self.model = model
         self.max_iterations = max_iterations

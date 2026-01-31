@@ -12,8 +12,11 @@ class ModelProvider(ABC):
     """
 
     @abstractmethod
-    def validate(self) -> None:
+    def validate(self, model: str = None) -> None:
         """Validate environment/configuration (e.g., API keys).
+
+        Args:
+            model: Optional model name to validate specific provider API key.
 
         Should raise a ValueError with a clear message if invalid/missing.
         """

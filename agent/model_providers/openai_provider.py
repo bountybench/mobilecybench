@@ -40,7 +40,7 @@ class OpenAIProvider(ModelProvider):
         client = self._client_or_init()
         client.models.list()
 
-    def validate(self) -> None:
+    def validate(self, model: str = None) -> None:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key or not api_key.strip():
             raise ValueError(

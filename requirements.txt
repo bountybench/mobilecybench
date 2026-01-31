@@ -69,6 +69,7 @@ flask==3.0.0
 uiautomator2==3.4.0
 bcrypt==4.3.0
 openai>=2.0.1
+litellm>=1.40.0
 pydantic>=2.0.0
 Pillow>=10.0.0
 pymysql>=1.1.0
