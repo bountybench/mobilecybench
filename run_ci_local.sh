@@ -247,18 +247,20 @@ start_ssrf_listener() {
         return 1
     fi
 
-    # Wait for healthy (mirrors compose --wait behavior)
+    # Wait for healthy status
     echo -e "${INFO} Waiting for SSRF listener to become healthy..."
-    for i in $(seq 1 30); do
-        status=$(docker inspect --format '{{.State.Health.Status}}' ssrf-probe 2>/dev/null)
-        if [ "$status" = "healthy" ]; then
+    local ssrf_status
+    for i in $(seq 1 60); do
+        # Use docker ps --format which is more reliable than inspect on Docker Desktop
+        ssrf_status=$(docker ps --filter name=ssrf-probe --format '{{.Status}}' 2>/dev/null)
+        if echo "$ssrf_status" | grep -q "(healthy)"; then
             echo -e "${SUCCESS} SSRF listener started on port 14377"
             return 0
         fi
         sleep 1
     done
 
-    echo -e "${WARNING} SSRF listener did not become healthy within 30s (status: $status)"
+    echo -e "${WARNING} SSRF listener did not become healthy within 60s (status: $ssrf_status)"
     return 1
 }
 
@@ -1372,9 +1374,6 @@ if [ -f "start_emulator.sh" ]; then
         }
 
         echo "Waiting for emulator to boot..."
-
-        # Wait for device to appear
-        adb wait-for-device
 
         wait_for_device_boot 300
         echo "Emulator booted successfully."
