@@ -19,7 +19,7 @@ The runner will:
 
 Docker note: assume Docker is required for a first run (most apps, including `conversations`, use containers). `runner.py` uses Docker when the app has `apps/<app_name>/docker-compose.yml` or when running the agent stack.
 
-Agent type defaults to `custom`; override with `--agent-type supervisor` or `--agent-type codex` (Codex is available but non-default).
+Agent type defaults to `custom`; use `--agent-type codex` for Codex mode.
 
 ## Runner config files (what to edit)
 

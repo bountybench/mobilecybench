@@ -38,8 +38,7 @@ agent/
 │   ├── base.py                 # Base provider interface
 │   ├── factory.py              # Provider factory pattern
 │   ├── openai_provider.py      # OpenAI API provider
-│   ├── gemini_provider.py      # Google Gemini provider
-│   └── claude_provider.py      # Anthropic Claude provider
+│   └── gemini_provider.py      # Google Gemini provider
 ├── prompts/                    # AI agent prompt templates
 │   ├── __init__.py
 │   └── prompts.py              # Prompt definitions and templates

@@ -31,7 +31,7 @@ The runner starts the agent environment (Kali container) automatically. Ensure D
 python runner.py <app_name>
 ```
 
-Agent type defaults to `custom`; override with `--agent-type supervisor` or `--agent-type codex`.
+Agent type defaults to `custom`; use `--agent-type codex` for Codex mode.
 
 ## 4) Run in dry-run mode
 
@@ -42,7 +42,7 @@ python runner.py <app_name> runner_config_dryrun.json
 ```
 
 You will get an interactive shell in the Kali container.
-Agent type defaults to `custom`; override with `--agent-type supervisor` or `--agent-type codex`.
+Agent type defaults to `custom`; use `--agent-type codex` for Codex mode.
 
 ## 5) Run the full agent pipeline
 
@@ -63,21 +63,6 @@ This will:
 Use `--agent-type` to select an agent implementation:
 
 ```bash
-python runner.py <app_name> --agent-type custom        # default
-python runner.py <app_name> --agent-type supervisor    # hierarchical agent
-python runner.py <app_name> --agent-type codex         # codex (non-default)
+python runner.py <app_name> --agent-type custom  # default
+python runner.py <app_name> --agent-type codex  # Codex mode
 ```
-
-## 7) Supervisor mode checklist
-
-Supervisor mode requires pre-generated static reports for the app:
-
-1. Generate reports (Semgrep required, MobSFScan/QARK optional): `documentation/STATIC_ANALYSIS.md`
-2. Confirm reports exist under `apps/<app_name>/static_vuln_reports/`
-3. Run the supervisor agent:
-
-```bash
-python runner.py <app_name> --agent-type supervisor
-```
-
-If reports are missing, the static-analysis worker will have no findings to prioritize.

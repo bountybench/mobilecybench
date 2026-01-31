@@ -44,7 +44,7 @@ python runner.py <app_name>
 ```
 
 Replace `<app_name>` with a directory under `apps/` (for example, `conversations`).
-Agent type defaults to `custom`; override with `--agent-type supervisor` or `--agent-type codex`.
+Agent type defaults to `custom`; use `--agent-type codex` for Codex mode.
 
 ## More on apps
 
