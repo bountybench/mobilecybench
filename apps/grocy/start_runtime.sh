@@ -37,8 +37,6 @@ log_info "Launching Grocy Android..."
 adb shell monkey -p xyz.zedler.patrick.grocy -c android.intent.category.LAUNCHER 1
 
 log_info "Configuring Grocy Android through UI automation..."
-pip3 install -q uiautomator2 2>/dev/null || pip3 install --break-system-packages -q uiautomator2
-
 python3 "$SCRIPT_DIR/setup_grocy_ui.py" \
     --server-url "http://10.0.2.2:8080" \
     --api-key "demo_api_key_for_testing"

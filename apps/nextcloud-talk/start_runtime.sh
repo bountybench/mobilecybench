@@ -9,11 +9,7 @@ cd "$SCRIPT_DIR"
 docker compose up --build -d
 sleep 20
 
-python3 -m venv ./venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-python server_setup.py
+python3 server_setup.py
 
 sleep 10
 

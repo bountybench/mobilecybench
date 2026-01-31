@@ -11,9 +11,6 @@ SECRETS_FILE="$SCRIPT_DIR/secrets.json"
 
 PACKAGE_NAME=$(jq -r '.package_name' "$METADATA_FILE")
 
-log_info "Installing required Python packages..."
-pip3 install requests psycopg2-binary bcrypt 2>/dev/null || pip3 install requests bcrypt 2>/dev/null || true
-
 setup_backend() {
     log_info "Setting up SimpleLogin backend..."
 

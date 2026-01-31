@@ -8,22 +8,6 @@ cd "$SCRIPT_DIR"
 
 TARGET_PACKAGE="co.tinode.tindroidx"
 
-setup_python_env() {
-    log_info "Setting up Python virtual environment..."
-
-    if [ ! -d "./venv" ]; then
-        log_info "Creating virtual environment..."
-        python3 -m venv ./venv
-    fi
-
-    source ./venv/bin/activate
-
-    log_info "Installing Python packages from requirements.txt..."
-    pip install -r requirements.txt
-
-    log_info "Python environment setup complete!"
-}
-
 setup_env() {
     log_info "Setting up Tinode environment..."
 
@@ -87,9 +71,6 @@ install_app(){
 }
 
 main(){
-  log_info "Setting up Python environment"
-  setup_python_env
-
   log_info "Generating secrets"
   python3 seed_secrets_and_db.py || fatal "Secrets generation failed"
 

@@ -83,12 +83,7 @@ capture_baseline() {
 
 run_ntfy_seeding() {
   log_info "Running ntfy seeding"
-  cd "$SCRIPT_DIR"
-  if command -v uv >/dev/null 2>&1; then
-    uv run python ntfy_seeding.py || log_warn "ntfy_seeding.py failed"
-  else
-    python3 ntfy_seeding.py || log_warn "ntfy_seeding.py failed"
-  fi
+  python3 ntfy_seeding.py || log_warn "ntfy_seeding.py failed"
 }
 
 main() {

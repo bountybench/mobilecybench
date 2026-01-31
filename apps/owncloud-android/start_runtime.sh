@@ -7,34 +7,15 @@ APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "owncloud-android" "$@")
 cd "$SCRIPT_DIR"
 
 SEED_SCRIPT="${SCRIPT_DIR}/owncloud_setup.py"
-VENV_DIR="${SCRIPT_DIR}/.venv"
 DEFAULT_OUTPUT="baseline_manifest.json"
 SEED_OUTPUT=${SEED_OUTPUT:-$DEFAULT_OUTPUT}
 HEALTH_TIMEOUT=${HEALTH_TIMEOUT:-180}
-HEALTH_INTERVAL=5
 
 TARGET_PACKAGE="com.owncloud.android"
 TARGET_DIR="/data/data/${TARGET_PACKAGE}"
 ANDROID_BASELINE_FILE="${SCRIPT_DIR}/baseline_android_dir.txt"
 
 FRIDA_PORT=${FRIDA_PORT:-27042}
-
-ensure_uv(){
-  if command -v uv >/dev/null 2>&1; then return 0; fi
-  log_warn "uv not found; installing (https://astral.sh/uv)"
-  command -v curl >/dev/null 2>&1 || fatal "curl required to install uv"
-  curl -Ls https://astral.sh/uv/install.sh | sh || fatal "uv install failed"
-  export PATH="$HOME/.local/bin:$PATH"
-  command -v uv >/dev/null 2>&1 || fatal "uv not found after install"
-}
-
-ensure_prereqs(){
-  log_info "Checking prerequisites"
-  command -v python3 >/dev/null 2>&1 || fatal "python3 is required"
-  command -v adb >/dev/null 2>&1 || fatal "adb is required"
-  ensure_uv
-  log_info "Prerequisites OK"
-}
 
 start_stack(){
   log_info "Starting docker stack"
@@ -54,35 +35,8 @@ wait_for_health(){
   wait_healthy owncloud_server "$HEALTH_TIMEOUT" || fatal "owncloud_server did not become healthy"
 }
 
-setup_python(){
-  log_info "Setting up Python environment via uv"
-  cd "$SCRIPT_DIR"
-  if [[ ! -d "$VENV_DIR" ]]; then
-    uv venv "$VENV_DIR"
-  fi
-  # shellcheck source=/dev/null
-  source "$VENV_DIR/bin/activate"
-  if [[ -f uv.lock ]]; then
-    uv sync --frozen || fatal "uv sync failed"
-  elif [[ -f pyproject.toml ]]; then
-    uv pip install -e . || true
-  fi
-  ensure_python_deps
-  log_info "Python environment ready"
-}
-
-ensure_python_deps(){
-  local pkgs=(requests python-dotenv)
-  for p in "${pkgs[@]}"; do
-    python -c "import $p" 2>/dev/null || uv pip install "$p" >/dev/null 2>&1 || fatal "Failed installing $p"
-  done
-}
-
 run_seeder(){
   log_info "Running seeding script -> $SEED_OUTPUT"
-  cd "$SCRIPT_DIR"
-  # shellcheck source=/dev/null
-  source "$VENV_DIR/bin/activate"
   SEED_OUTPUT_FILE="$SEED_OUTPUT" python3 "$SEED_SCRIPT" || fatal "Seeding failed"
   if [[ ! -f "$SEED_OUTPUT" ]]; then
     fatal "Expected manifest $SEED_OUTPUT not found"
@@ -150,11 +104,9 @@ summary(){
 }
 
 main(){
-  ensure_prereqs
   start_stack
   wait_for_health
   ensure_oauth2_enabled
-  setup_python
   run_seeder
   install_app
   check_frida_gadget

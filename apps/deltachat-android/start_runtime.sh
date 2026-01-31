@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../utils/android.sh"
-APK_FILE=$(parse_apk_path "$SCRIPT_DIR" "deltachat-android" "$@")
+APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "deltachat-android" "$@")
 cd "$SCRIPT_DIR"
 
 CONTAINER_NAME="deltachat-mailserver"
@@ -64,7 +64,7 @@ if [[ -z "$PACKAGE_NAME" || "$PACKAGE_NAME" == "null" ]]; then
 fi
 
 log_info "Installing APK for package: $PACKAGE_NAME"
-adb_install_apk "$APK_FILE"
+adb_install_apk "$APK_PATH"
 
 setup_secrets_file
 

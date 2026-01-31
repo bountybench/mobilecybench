@@ -39,7 +39,6 @@ wait_for_container_healthy() {
 }
 
 main() {
-    pip install websocket-client playwright 2>/dev/null || true
     timeout 300 playwright install chromium || log_warn "Playwright browser install failed"
 
     log_info "Setting up user accounts and credentials..."

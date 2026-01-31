@@ -6,8 +6,6 @@ source "$SCRIPT_DIR/../../utils/android.sh"
 APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "linphone" "$@")
 cd "$SCRIPT_DIR"
 
-pip install uiautomator2 psycopg2-binary mysql-connector-python bcrypt pytest dotenv 2>/dev/null || true
-
 install_linphone() {
     log_info "Installing linphone on Android emulator..."
     adb_install_apk "$APK_PATH"
