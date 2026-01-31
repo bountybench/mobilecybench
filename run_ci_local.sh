@@ -202,73 +202,41 @@ verify_shared_net_connectivity() {
 }
 
 # Start SSRF listener container
-# Uses plain docker commands instead of docker compose: compose subcommands
-# that contact the daemon hang on Docker Desktop (macOS).
 start_ssrf_listener() {
     echo -e "${INFO} Starting SSRF listener container..."
-    local ssrf_dir="${ROOT_DIR}/evaluation/ssrf_listener"
+    local ssrf_compose_dir="${ROOT_DIR}/evaluation/ssrf_listener"
 
-    if [ ! -d "$ssrf_dir" ]; then
-        echo -e "${WARNING} SSRF listener directory not found at $ssrf_dir"
+    if [ ! -d "$ssrf_compose_dir" ]; then
+        echo -e "${WARNING} SSRF listener directory not found at $ssrf_compose_dir"
         return 1
     fi
 
-    # Tear down any existing instance
-    docker stop ssrf-probe 2>/dev/null || true
-    docker rm -f ssrf-probe 2>/dev/null || true
+    # Stop any existing SSRF listener
+    docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
 
-    # Build image
-    if ! docker build -t ssrf-probe "$ssrf_dir"; then
-        echo -e "${WARNING} Failed to build SSRF listener image"
+    # Build and start the SSRF listener
+    if docker compose -f "$ssrf_compose_dir/docker-compose.yml" up -d --build --wait; then
+        echo -e "${SUCCESS} SSRF listener started on port 14377"
+        return 0
+    else
+        echo -e "${WARNING} Failed to start SSRF listener"
         return 1
     fi
-
-    # Ensure volume exists
-    docker volume create ssrf_listener_ssrf-logs 2>/dev/null || true
-
-    # Start container
-    docker run -d \
-        --name ssrf-probe \
-        --network shared_net \
-        -p 14377:14377 \
-        -v ssrf_listener_ssrf-logs:/app/logs \
-        -e SSRF_LISTEN_PORT=14377 \
-        -e SSRF_LOG_FILE=/app/logs/ssrf_requests.json \
-        --health-cmd 'python -c "import urllib.request; urllib.request.urlopen(\"http://localhost:14377/health\", timeout=2)"' \
-        --health-interval 5s \
-        --health-timeout 3s \
-        --health-retries 3 \
-        --health-start-period 5s \
-        --restart unless-stopped \
-        ssrf-probe
-
-    if [ $? -ne 0 ]; then
-        echo -e "${WARNING} Failed to start SSRF listener container"
-        return 1
-    fi
-
-    # Wait for healthy status
-    echo -e "${INFO} Waiting for SSRF listener to become healthy..."
-    local ssrf_status
-    for i in $(seq 1 60); do
-        # Use docker ps --format which is more reliable than inspect on Docker Desktop
-        ssrf_status=$(docker ps --filter name=ssrf-probe --format '{{.Status}}' 2>/dev/null)
-        if echo "$ssrf_status" | grep -q "(healthy)"; then
-            echo -e "${SUCCESS} SSRF listener started on port 14377"
-            return 0
-        fi
-        sleep 1
-    done
-
-    echo -e "${WARNING} SSRF listener did not become healthy within 60s (status: $ssrf_status)"
-    return 1
 }
 
 # Stop SSRF listener container
 stop_ssrf_listener() {
     echo -e "${INFO} Stopping SSRF listener container..."
+    local ssrf_compose_dir="${ROOT_DIR}/evaluation/ssrf_listener"
+
+    if [ -d "$ssrf_compose_dir" ]; then
+        docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
+    fi
+
+    # Also try to stop container directly in case compose fails
     docker stop ssrf-probe 2>/dev/null || true
     docker rm -f ssrf-probe 2>/dev/null || true
+
     echo -e "${INFO} SSRF listener stopped"
 }
 
@@ -693,49 +661,6 @@ uninstall_package() {
     fi
 }
 
-# Function to run setup.sh with retry logic and health checks
-run_setup_with_retry() {
-    local max_attempts=3
-    local attempt=0
-    local success=false
-
-    while [ $attempt -lt $max_attempts ]; do
-        attempt=$((attempt + 1))
-        echo -e "${INFO} Setup attempt $attempt/$max_attempts..."
-
-        # Check emulator health before attempting setup
-        if ! bash "$ROOT_DIR/utils/check_emulator_health.sh"; then
-            echo -e "${WARNING} Emulator unhealthy before setup attempt $attempt, recovering..."
-            if ! bash "$ROOT_DIR/utils/recover_emulator.sh"; then
-                echo -e "${ERROR} Failed to recover emulator"
-                return 1
-            fi
-        fi
-
-        if ./setup.sh; then
-            success=true
-            break
-        else
-            echo -e "${WARNING} setup.sh failed (attempt $attempt/$max_attempts)"
-            if [ $attempt -lt $max_attempts ]; then
-                echo -e "${INFO} Checking emulator health after failure..."
-                if ! bash "$ROOT_DIR/utils/check_emulator_health.sh"; then
-                    echo -e "${INFO} Emulator unhealthy, recovering before retry..."
-                    bash "$ROOT_DIR/utils/recover_emulator.sh" || true
-                fi
-                sleep 5
-            fi
-        fi
-    done
-
-    if [ "$success" != true ]; then
-        echo -e "${ERROR} setup.sh failed after $max_attempts attempts"
-        return 1
-    fi
-
-    return 0
-}
-
 # Function to run test checks
 run_test_check() {
     local test_name="$1"
@@ -782,7 +707,7 @@ run_test_check() {
     fi
 
     echo -e "${INFO} Running setup..."
-    run_setup_with_retry || { echo -e "${ERROR} setup.sh failed after retries"; exit 1; }
+    { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
 
     # Verify the specific package is installed after setup
     if adb shell pm list packages | grep -q "^package:$package_name$"; then
@@ -867,16 +792,6 @@ run_test_check() {
     echo -e "${INFO} Cleaning up..."
     ./cleanup.sh
     uninstall_package "$package_name"
-
-    # Check emulator health after test (for early detection of issues)
-    echo -e "${INFO} Checking emulator health after test..."
-    if ! bash "$ROOT_DIR/utils/check_emulator_health.sh"; then
-        echo -e "${WARNING} Emulator health degraded after test, recovering..."
-        bash "$ROOT_DIR/utils/recover_emulator.sh" || {
-            echo -e "${ERROR} Failed to recover emulator after test"
-            exit 1
-        }
-    fi
 
     cd -
 }
@@ -1027,7 +942,7 @@ EOF
         fi
         
         echo -e "${INFO} Running setup..."
-        run_setup_with_retry || { echo -e "${ERROR} setup.sh failed after retries"; exit 1; }
+        { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
 
          # Verify the specific package is installed after setup
         if adb shell pm list packages | grep -q "^package:$package_name$"; then
@@ -1171,7 +1086,7 @@ run_synthetic_vuln_test() {
 
     # Install and setup
     echo -e "${INFO} Installing clean APK..."
-    run_setup_with_retry || { echo -e "${ERROR} Failed to install clean APK after retries"; exit 1; }
+    ./setup.sh || { echo -e "${ERROR} Failed to install clean APK"; exit 1; }
 
     # Wait for containers
     check_app_containers_ready
@@ -1253,8 +1168,8 @@ run_synthetic_vuln_test() {
 
     # Install and setup
     echo -e "${INFO} Installing vulnerable APK..."
-    if ! run_setup_with_retry; then
-        echo -e "${ERROR} Failed to install vulnerable APK after retries"
+    if ! ./setup.sh; then
+        echo -e "${ERROR} Failed to install vulnerable APK"
         # Restore original APKs (trap will handle cleanup)
         rm -f apk/*.apk 2>/dev/null || true
         mv "$temp_backup"/*.apk apk/ 2>/dev/null || true
@@ -1352,88 +1267,17 @@ start_ssrf_listener || echo -e "${WARNING} SSRF listener not started - SSRF dete
 # Start emulator (assuming you have a start_emulator.sh script)
 if [ -f "start_emulator.sh" ]; then
     print_header "$CYAN" "STARTING EMULATOR"
+    bash ./start_emulator.sh || {
+        echo -e "${ERROR} Failed to start emulator"
+        exit 1
+    }
 
-    # Check if emulator is already running and healthy
-    if adb devices 2>/dev/null | grep -q "device$"; then
-        echo -e "${INFO} Emulator already running, checking health..."
-        if bash "$ROOT_DIR/utils/check_emulator_health.sh"; then
-            echo -e "${SUCCESS} Existing emulator is healthy, reusing it"
-        else
-            echo -e "${WARNING} Existing emulator is unhealthy, will restart with clean state"
-            if ! bash "$ROOT_DIR/utils/recover_emulator.sh"; then
-                echo -e "${ERROR} Failed to recover emulator"
-                exit 1
-            fi
-        fi
-    else
-        # No emulator running, start fresh with clean state for CI reliability
-        echo -e "${INFO} Starting fresh emulator with clean state (WIPE_DATA=true for CI reliability)..."
-        WIPE_DATA=true bash ./start_emulator.sh || {
-            echo -e "${ERROR} Failed to start emulator"
-            exit 1
-        }
+    echo "Waiting for emulator to boot..."
 
-        echo "Waiting for emulator to boot..."
-
-        wait_for_device_boot 300
-        echo "Emulator booted successfully."
-
-        # Optimize emulator by disabling Google bloatware (prevents resource contention ANRs)
-        echo -e "${INFO} Optimizing emulator (disabling unnecessary services)..."
-        if [ -f "$ROOT_DIR/optimize_emulator.sh" ]; then
-            bash "$ROOT_DIR/optimize_emulator.sh"
-        else
-            echo -e "${WARNING} optimize_emulator.sh not found, skipping optimization"
-        fi
-
-        # Give System UI extra time to stabilize after boot and optimization (prevents ANR dialogs)
-        echo -e "${INFO} Waiting for System UI to stabilize after boot..."
-        sleep 20
-
-        # Dismiss any ANR dialogs that appeared during boot
-        echo -e "${INFO} Dismissing any boot-time ANR dialogs..."
-        adb shell input keyevent KEYCODE_BACK 2>/dev/null || true
-        adb shell input keyevent KEYCODE_BACK 2>/dev/null || true
-        sleep 2
-
-        # Check if System UI is stable by querying window state a few times
-        for i in {1..5}; do
-            adb shell dumpsys window displays >/dev/null 2>&1 && break
-            echo -e "${INFO} System UI still settling... (attempt $i/5)"
-            sleep 3
-        done
-
-        # Verify no ANR dialog is showing before proceeding
-        if adb shell dumpsys window | grep -q "Application Not Responding"; then
-            echo -e "${WARNING} ANR dialog detected, attempting to dismiss..."
-            adb shell input keyevent KEYCODE_BACK 2>/dev/null || true
-            sleep 2
-        fi
-
-        echo -e "${SUCCESS} System UI stabilized and ready for testing"
-    fi
-
-    # Final health check before proceeding to tests
-    print_header "$CYAN" "FINAL EMULATOR HEALTH CHECK"
-    if ! bash "$ROOT_DIR/utils/check_emulator_health.sh"; then
-        echo -e "${ERROR} Emulator health check failed, attempting recovery..."
-        if bash "$ROOT_DIR/utils/recover_emulator.sh"; then
-            echo -e "${SUCCESS} Recovery successful, proceeding with tests"
-        else
-            echo -e "${ERROR} Recovery failed, cannot proceed with tests"
-            exit 1
-        fi
-    fi
-    echo -e "${SUCCESS} Emulator is healthy and ready for tests"
+    wait_for_device_boot 300
+    echo "Emulator booted successfully."
 else
     echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
-    echo -e "${INFO} Running health check on existing emulator..."
-    if bash "$ROOT_DIR/utils/check_emulator_health.sh"; then
-        echo -e "${SUCCESS} Emulator is healthy"
-    else
-        echo -e "${ERROR} Emulator is unhealthy and cannot be recovered (no start_emulator.sh)"
-        exit 1
-    fi
 fi
 
 # Reset emulator state before tests to prevent accumulation across runs
