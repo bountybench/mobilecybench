@@ -45,18 +45,7 @@ setup_apk_device() {
 }
 
 wait_for_docker_container_ready() {
-    local timeout=${1:-300}
-    local container_name="${2:-openhab}"
-    local start_time=$(date +%s)
-
-    log_info "Waiting for container '$container_name' to be healthy (timeout: ${timeout}s)..."
-    while true; do
-        local status=$(docker inspect --format '{{.State.Health.Status}}' "$container_name" 2>/dev/null || echo "unknown")
-        [[ "$status" = "healthy" ]] && { log_info "Container '$container_name' is healthy"; return 0; }
-        local now=$(date +%s)
-        [[ $((now - start_time)) -ge $timeout ]] && fatal "Timed out waiting for '$container_name' (status: $status)"
-        sleep 2
-    done
+    wait_healthy "${2:-openhab}" "${1:-300}" || fatal "Container '${2:-openhab}' did not become healthy"
 }
 
 update_runtime_cfg() {

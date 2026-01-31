@@ -31,13 +31,7 @@ setup_prosody_server(){
   docker compose down 2>/dev/null || true
   docker compose up -d --build
 
-  log_info "Waiting for container health check..."
-  for i in {1..30}; do
-    health_status=$(docker inspect --format='{{.State.Health.Status}}' "$TARGET_CONTAINER" 2>/dev/null || echo "no-health")
-    [[ "$health_status" = "healthy" ]] && { log_info "Prosody container healthy"; break; }
-    [[ $i -eq 30 ]] && { log_warn "Container health check not healthy, exiting"; exit 1; }
-    sleep 2
-  done
+  wait_healthy "$TARGET_CONTAINER" 60 || fatal "Prosody container did not become healthy"
 }
 
 load_credentials(){

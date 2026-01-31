@@ -11,15 +11,7 @@ log_info "Setup begin..."
 docker compose down 2>/dev/null || true
 docker compose up --build -d
 
-log_info "Waiting for services to be ready..."
-WAITED=0
-while [ "$WAITED" -lt 120 ]; do
-    STATUS=$(docker inspect --format='{{.State.Health.Status}}' wallabag 2>/dev/null || echo "unknown")
-    [[ "$STATUS" == "healthy" ]] && break
-    [[ "$WAITED" -ge 120 ]] && fatal "Not healthy after 120s"
-    sleep 3
-    WAITED=$((WAITED + 3))
-done
+wait_healthy wallabag 120 || fatal "wallabag not healthy after 120s"
 
 log_info "Waiting for web interface..."
 for i in $(seq 1 20); do

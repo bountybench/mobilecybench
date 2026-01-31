@@ -35,19 +35,7 @@ seed_home_assistant_config() {
 }
 
 wait_for_container_healthy() {
-    local container_name="home-assistant-server"
-    local max_wait=120
-    local elapsed=0
-
-    log_info "Waiting for container '$container_name' to be healthy..."
-    while [ $elapsed -lt $max_wait ]; do
-        local status=$(docker inspect --format='{{.State.Health.Status}}' "$container_name" 2>/dev/null || echo "unknown")
-        [[ "$status" == "healthy" ]] && { log_info "Container '$container_name' is healthy!"; return 0; }
-        [[ "$status" == "unhealthy" ]] && fatal "Container '$container_name' is unhealthy."
-        sleep 10
-        elapsed=$((elapsed + 10))
-    done
-    fatal "Container '$container_name' was not healthy."
+    wait_healthy home-assistant-server 120 || fatal "home-assistant-server did not become healthy"
 }
 
 main() {

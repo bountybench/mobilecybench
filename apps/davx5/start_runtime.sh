@@ -20,7 +20,7 @@ setup_backend() {
 
 install_davx5() {
     adb uninstall at.bitfire.davdroid 2>/dev/null || true
-    adb install -r -g "$APK_PATH"
+    adb_install_apk "$APK_PATH"
     log_info "DAVx5 installed successfully"
 }
 

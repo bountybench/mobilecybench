@@ -15,22 +15,7 @@ mkdir -p files/config
 log_info "Running Docker compose..."
 docker compose up -d
 
-log_info "Waiting for Grocy server to be ready..."
-max_wait=60
-elapsed=0
-while [ $elapsed -lt $max_wait ]; do
-    if docker inspect --format='{{.State.Health.Status}}' grocy-server 2>/dev/null | grep -q "healthy"; then
-        log_info "Server is healthy!"
-        break
-    fi
-    printf '.'
-    sleep 2
-    elapsed=$((elapsed + 2))
-done
-
-if [ $elapsed -ge $max_wait ]; then
-    log_warn "Server health check timed out, but continuing anyway..."
-fi
+wait_healthy grocy-server 60 || log_warn "Server health check timed out, continuing anyway..."
 
 log_info "Triggering Grocy database initialization..."
 curl -f -s "${GROCY_URL}" > /dev/null || true

@@ -52,18 +52,7 @@ setup_mail_accounts
 
 docker compose up --build -d
 
-log_info "Waiting for docker-mailserver to start..."
-for i in {1..90}; do
-    health=$(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo "starting")
-    if [ "$health" = "healthy" ]; then
-        log_info "docker-mailserver container is healthy"
-        break
-    fi
-    if [ $i -eq 90 ]; then
-        fatal "docker-mailserver container not healthy after 180s."
-    fi
-    sleep 2
-done
+wait_healthy "$CONTAINER_NAME" 180 || fatal "docker-mailserver not healthy after 180s"
 
 log_info "Waiting for mail services to initialize..."
 sleep 15

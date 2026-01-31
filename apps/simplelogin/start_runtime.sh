@@ -14,21 +14,6 @@ PACKAGE_NAME=$(jq -r '.package_name' "$METADATA_FILE")
 log_info "Installing required Python packages..."
 pip3 install requests psycopg2-binary bcrypt 2>/dev/null || pip3 install requests bcrypt 2>/dev/null || true
 
-wait_container_healthy() {
-    local container_name="$1"
-    local timeout="${2:-180}"
-    local start=$(date +%s)
-
-    log_info "Waiting for $container_name to be healthy..."
-    while true; do
-        local status=$(docker inspect --format '{{.State.Health.Status}}' "$container_name" 2>/dev/null || echo "unknown")
-        [[ "$status" == "healthy" ]] && { log_info "$container_name is healthy"; return 0; }
-        local now=$(date +%s)
-        (( now - start > timeout )) && { fatal "$container_name did not become healthy within ${timeout}s"; }
-        sleep 2
-    done
-}
-
 setup_backend() {
     log_info "Setting up SimpleLogin backend..."
 
@@ -37,7 +22,7 @@ setup_backend() {
     log_info "Starting backend services..."
     docker compose up -d || fatal "Failed to start backend services"
 
-    wait_container_healthy "simplelogin-api" 180
+    wait_healthy "simplelogin-api" 180 || fatal "simplelogin-api did not become healthy"
 }
 
 seed_test_data() {

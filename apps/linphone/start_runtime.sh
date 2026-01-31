@@ -24,13 +24,7 @@ setup_linphone_server() {
   log_info "Setting up Flexisip (Linphone SIP server)"
   docker compose up -d --build account_db flexisip
 
-  log_info "Waiting for Flexisip container health check..."
-  for i in {1..15}; do
-    health_status=$(docker inspect --format='{{.State.Health.Status}}' flexisip 2>/dev/null || echo "no-health")
-    [[ "$health_status" = "healthy" ]] && { log_info "Flexisip container is healthy"; break; }
-    [[ $i -eq 15 ]] && log_warn "Flexisip health check still not healthy, proceeding anyway..."
-    sleep 2
-  done
+  wait_healthy flexisip 30 || log_warn "Flexisip health check not healthy, proceeding anyway..."
 
   docker exec -i account_db mysql -u flexisip -pzoSt4w4wreu flexisip_accounts < seed.sql
   log_info "Flexisip server ready"

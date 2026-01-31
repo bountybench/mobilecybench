@@ -19,15 +19,7 @@ start_stack() {
 }
 
 wait_for_health() {
-  log_info "Waiting for ntfy-server health (timeout ${HEALTH_TIMEOUT}s)"
-  local start; start=$(date +%s)
-  while true; do
-    local status; status=$(docker inspect --format '{{.State.Health.Status}}' ntfy-server 2>/dev/null || echo "unknown")
-    [[ "$status" == "healthy" ]] && { log_info "ntfy-server healthy"; break; }
-    local now; now=$(date +%s)
-    (( now - start > HEALTH_TIMEOUT )) && fatal "Timed out waiting for ntfy-server (last status: $status)"
-    sleep 5
-  done
+  wait_healthy ntfy-server "$HEALTH_TIMEOUT" || fatal "ntfy-server did not become healthy"
 }
 
 install_app() {

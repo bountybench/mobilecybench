@@ -7,5 +7,5 @@ APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "ankidroid" "$@")
 cd "$SCRIPT_DIR"
 
 adb uninstall com.ichi2.anki >/dev/null 2>&1 || true
-adb install -r -d "$APK_PATH"  # -d allows downgrade
+adb_install_apk "$APK_PATH"
 log_info "AnkiDroid installed successfully."

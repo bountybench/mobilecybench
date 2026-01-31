@@ -51,21 +51,7 @@ ensure_oauth2_enabled(){
 }
 
 wait_for_health(){
-  log_info "Waiting for owncloud_server health (timeout ${HEALTH_TIMEOUT}s)"
-  local start; start=$(date +%s)
-  while true; do
-    local status; status=$(docker inspect --format '{{.State.Health.Status}}' owncloud_server 2>/dev/null || echo "unknown")
-    if [[ "$status" == "healthy" ]]; then
-      log_info "ownCloud container healthy"
-      break
-    fi
-    local now; now=$(date +%s)
-    if (( now - start > HEALTH_TIMEOUT )); then
-      docker ps --format 'table {{.Names}}\t{{.Status}}'
-      fatal "Timed out waiting for owncloud_server (last status: $status)"
-    fi
-    sleep "$HEALTH_INTERVAL"
-  done
+  wait_healthy owncloud_server "$HEALTH_TIMEOUT" || fatal "owncloud_server did not become healthy"
 }
 
 setup_python(){

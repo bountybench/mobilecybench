@@ -7,6 +7,7 @@ if [[ ! -f "/.dockerenv" ]]; then
 fi
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/wait.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/docker.sh"
 source "${ROOT_DIR}/tools/host_bridge.sh"
 
 
