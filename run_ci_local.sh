@@ -1306,8 +1306,12 @@ cd "$ROOT_DIR"
 
 # Create Docker Network
 print_header "$CYAN" "CREATING DOCKER NETWORK"
-echo -e "${INFO} Creating shared_net network..."
-docker network create shared_net || echo -e "${INFO} shared_net network already exists"
+if docker network inspect shared_net >/dev/null 2>&1; then
+    echo -e "${INFO} shared_net network already exists"
+else
+    echo -e "${INFO} Creating shared_net network..."
+    docker network create shared_net
+fi
 
 # Start SSRF Listener
 print_header "$CYAN" "STARTING SSRF LISTENER"
