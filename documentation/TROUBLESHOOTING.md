@@ -13,11 +13,10 @@
 
 ## APK not found
 
-- Confirm `setup_app_source.sh` copies to `apps/<app_name>/apk/<app_name>.apk`.
-- Validate APK path and fail fast in `setup_app_source.sh`.
+- Confirm `build.sh` outputs `$SCRIPT_DIR/unsigned.apk`. `build_apk.sh` signs it to `apk/<app_name>.apk` by default (or `--output <dir>`).
 - Synthetic vulnerability APKs are stored under `apps/<app_name>/apk/<vuln_id>/`.
 
-## Build timeout (setup_app_source.sh)
+## Build timeout (build_apk.sh)
 
 `runner.py` enforces a 15-minute build timeout. Some apps can take longer.
 If a build succeeds but the runner times out, build manually and then use `build_type: "skip-apk"` or increase the timeout in `runner.py`.
@@ -31,7 +30,7 @@ If a build succeeds but the runner times out, build manually and then use `build
 
 - Run local CI first: `./run_ci_local.sh apps/<app_name>`.
 - Check that `metadata.json` matches the actual commit and SDK.
-- Ensure `setup.sh` avoids flaky sleeps and uses health checks.
+- Ensure `start_runtime.sh` avoids flaky sleeps and uses health checks.
 
 ## Tooling and dependencies
 
