@@ -93,45 +93,34 @@ class MobileCybenchRunner:
         sys.exit(1)
 
     def _validate_api_key(self):
-        """Validate API key early in the pipeline based on configured model."""
+        """Validate API key early in the pipeline based on configured model.
+
+        Fails fast before starting containers/emulators if the API key is missing or invalid.
+        LiteLLM handles all the provider detection and validation internally.
+        """
         from agent.model_providers import get_model_provider
-        from agent.model_providers.factory import detect_provider_from_model
 
         model = self.config.model
-        provider_type = detect_provider_from_model(model)
-
-        # Map provider to required env var
-        env_var_map = {
-            "openai": "OPENAI_API_KEY",
-            "gemini": "GEMINI_API_KEY",
-            "anthropic": "ANTHROPIC_API_KEY",
-        }
-        required_env_var = env_var_map.get(provider_type, "OPENAI_API_KEY")
-
-        logger.info(f"Validating {provider_type} API key for model '{model}'...")
+        logger.info(f"Validating API key for model '{model}'...")
 
         # Load .env file from agent directory
         env_file = self.agent_dir / ".env"
         if env_file.exists():
-            logger.info(f"Loading existing environment from {env_file}")
+            logger.info(f"Loading environment from {env_file}")
             load_dotenv(dotenv_path=env_file, override=False)
         else:
             self._exit_with_error(
-                f"No existing .env file found at {env_file}. Please create one with {required_env_var}."
+                f"No .env file found at {env_file}. Please create one with the required API key "
+                f"(OPENAI_API_KEY, GEMINI_API_KEY, or ANTHROPIC_API_KEY depending on your model)."
             )
 
-        # Check for the required API key
-        api_key = os.getenv(required_env_var)
-        if not api_key:
-            self._exit_with_error(f"{required_env_var} not found in environment or .env")
-
-        # Validate the API key works by making a test call via LiteLLM
+        # Validate via LiteLLM provider (handles detection and validation internally)
         try:
             provider = get_model_provider(model=model)
             provider.validate(model=model)
-            logger.info(f"✓ {provider_type} API key validated successfully via LiteLLM")
+            logger.info(f"API key validated successfully for model '{model}'")
         except Exception as e:
-            self._exit_with_error(f"{provider_type} API key validation failed: {e}")
+            self._exit_with_error(f"API key validation failed: {e}")
 
     def _validate_input(self):
         """Validate app name and required files"""
