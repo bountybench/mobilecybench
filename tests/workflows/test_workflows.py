@@ -1,5 +1,7 @@
 """Tests for Workflow base class and implementations."""
 
+from unittest.mock import patch
+
 import pytest
 
 from workflows.base import Workflow
@@ -225,7 +227,7 @@ class TestExploitWorkflow:
         )
         assert workflow.vuln_id == "vuln_0"
 
-    def test_validate_arguments_uses_configurable_vuln_id(self, tmp_path, mocker):
+    def test_validate_arguments_uses_configurable_vuln_id(self, tmp_path):
         """validate_arguments checks for the configured vuln_id, not hardcoded 'vuln_0'."""
         (tmp_path / "metadata.json").write_text("{}")
         # Only create vuln_1, not vuln_0
@@ -233,9 +235,6 @@ class TestExploitWorkflow:
         verify_dir = vuln_dir / "verify_files"
         verify_dir.mkdir(parents=True)
         (vuln_dir / "vulnerability.patch").write_text("patch content")
-
-        # Mock get_app_metadata since it uses hardcoded project paths
-        mocker.patch("utils.utils.get_app_metadata", return_value={})
 
         workflow = ExploitWorkflow(
             app_name="test_app",
@@ -245,8 +244,11 @@ class TestExploitWorkflow:
             **AGENT_CONFIG,
             vuln_id="vuln_1",
         )
-        # Should pass validation since vuln_1 exists
-        workflow.validate_arguments()
+
+        # Mock get_app_metadata since it uses hardcoded project paths
+        with patch("utils.utils.get_app_metadata", return_value={}):
+            # Should pass validation since vuln_1 exists
+            workflow.validate_arguments()
 
     def test_validate_arguments_fails_when_vuln_id_dir_missing(self, tmp_path):
         """validate_arguments fails if the specified vuln_id directory doesn't exist."""
@@ -274,7 +276,7 @@ class TestExploitWorkflow:
 class TestDiscoveryWorkflowFlagGeneration:
     """Tests for flag generation in DiscoveryWorkflow."""
 
-    def test_discovery_workflow_generates_flags_on_setup(self, tmp_path, mocker):
+    def test_discovery_workflow_generates_flags_on_setup(self, tmp_path):
         """setup_runtime_environment generates fresh flags before install."""
         # Create app structure
         app_dir = tmp_path / "apps" / "test_app"
@@ -294,20 +296,21 @@ class TestDiscoveryWorkflowFlagGeneration:
         workflow.metadata = {"container_names": ["redis", "postgres"]}
 
         # Mock the heavy dependencies (must mock at source module for lazy imports)
-        mock_generate = mocker.patch("utils.uuid_flags_utils.generate_and_save_flags")
-        mocker.patch("utils.emulator_manager.EmulatorManager")
-        mocker.patch("utils.apk_utils.setup_apk")
-        mocker.patch("utils.setup_utils.install_app_and_setup_backend")
-        mocker.patch("agent.agent_setup.setup_agent_environment")
+        with patch(
+            "utils.uuid_flags_utils.generate_and_save_flags"
+        ) as mock_generate, patch("utils.emulator_manager.EmulatorManager"), patch(
+            "utils.apk_utils.setup_apk"
+        ), patch(
+            "utils.setup_utils.install_app_and_setup_backend"
+        ), patch(
+            "agent.agent_setup.setup_agent_environment"
+        ):
+            workflow.setup_runtime_environment()
 
-        workflow.setup_runtime_environment()
+            # Verify flags were generated with container names
+            mock_generate.assert_called_once_with(str(tmp_path), ["redis", "postgres"])
 
-        # Verify flags were generated with container names
-        mock_generate.assert_called_once_with(str(tmp_path), ["redis", "postgres"])
-
-    def test_discovery_workflow_generates_flags_with_empty_containers(
-        self, tmp_path, mocker
-    ):
+    def test_discovery_workflow_generates_flags_with_empty_containers(self, tmp_path):
         """setup_runtime_environment generates flags even without containers."""
         app_dir = tmp_path / "apps" / "test_app"
         app_dir.mkdir(parents=True)
@@ -323,13 +326,16 @@ class TestDiscoveryWorkflowFlagGeneration:
         )
         workflow.metadata = {}
 
-        mock_generate = mocker.patch("utils.uuid_flags_utils.generate_and_save_flags")
-        mocker.patch("utils.emulator_manager.EmulatorManager")
-        mocker.patch("utils.apk_utils.setup_apk")
-        mocker.patch("utils.setup_utils.install_app_and_setup_backend")
-        mocker.patch("agent.agent_setup.setup_agent_environment")
+        with patch(
+            "utils.uuid_flags_utils.generate_and_save_flags"
+        ) as mock_generate, patch("utils.emulator_manager.EmulatorManager"), patch(
+            "utils.apk_utils.setup_apk"
+        ), patch(
+            "utils.setup_utils.install_app_and_setup_backend"
+        ), patch(
+            "agent.agent_setup.setup_agent_environment"
+        ):
+            workflow.setup_runtime_environment()
 
-        workflow.setup_runtime_environment()
-
-        # Verify flags were generated with empty container list
-        mock_generate.assert_called_once_with(str(tmp_path), [])
+            # Verify flags were generated with empty container list
+            mock_generate.assert_called_once_with(str(tmp_path), [])
