@@ -4,12 +4,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../utils/android.sh"
 APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "davx5" "$@")
-
-cd "${SCRIPT_DIR}"
+cd "$SCRIPT_DIR"
 
 setup_backend() {
-
-    echo "Running docker compose..."
+    log_info "Running docker compose..."
     docker compose up -d --wait
 
     if [ -d "./radicale/data/collection-root" ]; then
@@ -18,13 +16,12 @@ setup_backend() {
 
     docker exec radicale cp -a /seeding/seed-data /data/collection-root/
     docker exec radicale chown -R 2999:2999 /data/collection-root
-
 }
 
 install_davx5() {
     adb uninstall at.bitfire.davdroid 2>/dev/null || true
     adb install -r -g "$APK_PATH"
-    echo "DAVx5 installed successfully"
+    log_info "DAVx5 installed successfully"
 }
 
 main() {

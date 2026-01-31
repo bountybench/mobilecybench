@@ -1,45 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
-IFS=$'\n\t'
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../utils/android.sh"
 APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "tindroid" "$@")
-LOG_PREFIX="[setup]"
+cd "$SCRIPT_DIR"
 
 TARGET_PACKAGE="co.tinode.tindroidx"
 
-info(){ printf '%s %s\n' "$LOG_PREFIX" "$*"; }
-warn(){ printf '%s[warn] %s\n' "$LOG_PREFIX" "$*"; }
-fail(){ printf '%s[error] %s\n' "$LOG_PREFIX" "$*" >&2; exit 1; }
-
-# Setup Python virtual environment
 setup_python_env() {
-    echo "Setting up Python virtual environment..."
-    
-    # Create virtual environment if it doesn't exist
+    log_info "Setting up Python virtual environment..."
+
     if [ ! -d "./venv" ]; then
-        echo "Creating virtual environment..."
+        log_info "Creating virtual environment..."
         python3 -m venv ./venv
     fi
-    
-    # Activate virtual environment
+
     source ./venv/bin/activate
-    
-    # Install requirements
-    echo "Installing Python packages from requirements.txt..."
+
+    log_info "Installing Python packages from requirements.txt..."
     pip install -r requirements.txt
-    
-    echo "Python environment setup complete!"
+
+    log_info "Python environment setup complete!"
 }
 
 setup_env() {
-    echo "Setting up Tinode environment..."
-    echo "==================="
+    log_info "Setting up Tinode environment..."
 
-    # Check if .env file exists
     if [ ! -f .env ]; then
-        echo "Creating .env file with default values..."
+        log_info "Creating .env file with default values..."
         cat > .env <<EOF
 # MySQL Configuration
 MYSQL_ROOT_PASSWORD=root
@@ -50,14 +39,12 @@ MYSQL_DATABASE=tinode
 # Tinode Server Configuration
 TINODE_MYSQL_DSN="tinode:tinode@tcp(db)/tinode"
 EOF
-        echo ".env file created with default values. You can modify it if needed, then re-run start_runtime.sh."
+        log_info ".env file created with default values. You can modify it if needed, then re-run start_runtime.sh."
     fi
 
-    # Load environment variables
     source .env
 
-    # Generate init-db.sql with environment variables
-    echo "Generating init-db.sql with environment variables..."
+    log_info "Generating init-db.sql with environment variables..."
     cat > init-db.sql <<EOF
 DROP DATABASE IF EXISTS ${MYSQL_DATABASE};
 DROP USER IF EXISTS '${MYSQL_USER}'@'%';
@@ -67,57 +54,56 @@ GRANT ALL PRIVILEGES ON ${MYSQL_DATABASE}.* TO '${MYSQL_USER}'@'%';
 FLUSH PRIVILEGES;
 EOF
 
-    echo "Running docker compose up to start the db and tinode-server containers..."
-    docker compose -p tindroid up -d # Use tindroid as the project name
+    log_info "Running docker compose up to start the db and tinode-server containers..."
+    docker compose -p tindroid up -d
 
-    echo "Waiting for the containers to be ready"
-    echo "==================="
+    log_info "Waiting for the containers to be ready"
 
     while ! docker compose exec -T db mysqladmin ping -h localhost -u $MYSQL_USER -p$MYSQL_PASSWORD --silent 2>/dev/null; do
-        echo "Waiting for MySQL to be ready..."
+        log_info "Waiting for MySQL to be ready..."
         sleep 2
     done
-    echo "MySQL is ready!"
+    log_info "MySQL is ready!"
 
     while ! docker compose exec -T tinode-server nc -z localhost 6060 2>/dev/null; do
-        echo "Waiting for Tinode server to be ready..."
+        log_info "Waiting for Tinode server to be ready..."
         sleep 2
     done
-    echo "Tinode server is ready!"
+    log_info "Tinode server is ready!"
 
-    echo "Seeding database with seed_db.sql..."
-    docker compose exec -T db mysql -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE < seed_db.sql || { echo "Error seeding database!"; exit 1; }
+    log_info "Seeding database with seed_db.sql..."
+    docker compose exec -T db mysql -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE < seed_db.sql || fatal "Error seeding database!"
 
-    echo "Environment setup complete!"
+    log_info "Environment setup complete!"
 }
 
 install_app(){
-  info "Installing Tindroid on Android device"
+  log_info "Installing Tindroid on Android device"
   adb_install_apk "$APK_PATH"
 
-  info "Launching Tindroid..."
+  log_info "Launching Tindroid..."
   adb shell am start -n co.tinode.tindroidx/co.tinode.tindroid.InitRouterActivity
   sleep 2
 }
 
 main(){
-  info "=== Setting up Python environment ==="
+  log_info "Setting up Python environment"
   setup_python_env
 
-  info "=== Generating secrets ==="
-  python3 seed_secrets_and_db.py || fail "Secrets generation failed"
+  log_info "Generating secrets"
+  python3 seed_secrets_and_db.py || fatal "Secrets generation failed"
 
-  info "=== Setting up docker containers ==="
-  setup_env || fail "Docker containers setup failed"
+  log_info "Setting up docker containers"
+  setup_env || fatal "Docker containers setup failed"
 
-  info "=== Setting up app ==="
+  log_info "Setting up app"
   install_app
 
-  info "=== Logging in to the Tindroid app ==="
+  log_info "Logging in to the Tindroid app"
   if python3 -c "from tindroid_login import test_tinode_login; success, msg = test_tinode_login('user_a', 'user_a123'); exit(0 if success else 1)"; then
-      info "Login test successful"
+      log_info "Login test successful"
   else
-      warn "Login test failed"
+      log_warn "Login test failed"
   fi
 }
 

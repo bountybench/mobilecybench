@@ -1,5 +1,5 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../utils/android.sh"
@@ -17,7 +17,6 @@ python server_setup.py
 
 sleep 10
 
-# Only proceed if Nextcloud has finished initial install and config exists
 if docker exec nextcloud-server test -f /var/www/html/config/config.php; then
     docker exec -u root nextcloud-server chown -R www-data:www-data /var/www/html/config
 
@@ -35,9 +34,9 @@ if docker exec nextcloud-server test -f /var/www/html/config/config.php; then
         file_put_contents("/var/www/html/config/config.php", $config_content);
     '
 else
-    echo "Config not ready yet; skipping trusted_domains update."
+    log_warn "Config not ready yet; skipping trusted_domains update."
 fi
 
-echo "Installing Nextcloud Talk APK..."
+log_info "Installing Nextcloud Talk APK..."
 adb_install_apk "$APK_PATH"
-echo "Nextcloud Talk installed successfully!"
+log_info "Nextcloud Talk installed successfully!"
