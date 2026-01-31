@@ -511,9 +511,9 @@ create_avd() {
     local avd_config="$HOME/.android/avd/${avd_name_google_apis}.avd/config.ini"
     if [[ -f "$avd_config" ]]; then
         {
-            echo "hw.ramSize=2048"
+            echo "hw.ramSize=4096"
             echo "hw.gpu.enabled=yes"
-            echo "hw.gpu.mode=host"
+            echo "hw.gpu.mode=off"
             echo "hw.keyboard=yes"
             echo "showDeviceFrame=no"
             echo "skin.dynamic=yes"
@@ -533,9 +533,9 @@ create_avd() {
     local avd_config_playstore="$HOME/.android/avd/${avd_name_playstore}.avd/config.ini"
     if [[ -f "$avd_config_playstore" ]]; then
         {
-            echo "hw.ramSize=2048"
+            echo "hw.ramSize=4096"
             echo "hw.gpu.enabled=yes"
-            echo "hw.gpu.mode=host"
+            echo "hw.gpu.mode=off"
             echo "hw.keyboard=yes"
             echo "showDeviceFrame=no"
             echo "skin.dynamic=yes"
@@ -574,13 +574,27 @@ fi
 echo "Starting Android emulator: \$EMULATOR_NAME"
 echo "This may take a few minutes on first boot..."
 
+# Kill any existing emulators to prevent "more than one device" errors
+if "\$ANDROID_HOME/platform-tools/adb" devices 2>/dev/null | grep -q "emulator"; then
+    echo "Killing existing emulator(s)..."
+    "\$ANDROID_HOME/platform-tools/adb" emu kill 2>/dev/null || true
+    sleep 2
+fi
+pkill -f "emulator.*-avd" 2>/dev/null || true
+sleep 1
+
+# Remove stale lock files that can block startup after an unclean shutdown
+find "\${HOME}/.android/avd/\${EMULATOR_NAME}.avd" -name "*.lock" -delete 2>/dev/null || true
+
 "\$ANDROID_HOME/emulator/emulator" \\
     -avd "\$EMULATOR_NAME" \\
     -no-snapshot-save \\
     -wipe-data \\
-    -gpu host \\
-    -skin 1080x1920 \\
-    -memory 2048 \\
+    -gpu off \\
+    -no-window \\
+    -memory 4096 \\
+    -no-audio \\
+    -no-boot-anim \\
     &
 
 echo "Emulator started in background"
@@ -591,10 +605,27 @@ echo "Waiting for device to be ready..."
 echo "Starting ADB server (listening on all interfaces)..."
 "\$ANDROID_HOME/platform-tools/adb" -a start-server
 
-"\$ANDROID_HOME/platform-tools/adb" wait-for-device
-
-echo "Device ready!"
-echo "To check device status: adb devices"
+BOOT_TIMEOUT=300
+START_TS=\$(date +%s)
+echo "Waiting up to \${BOOT_TIMEOUT}s for device to appear..."
+while true; do
+    if "\$ANDROID_HOME/platform-tools/adb" devices 2>/dev/null | grep -qE "emulator-[0-9]+\s+device"; then
+        echo "Device ready!"
+        echo "To check device status: adb devices"
+        exit 0
+    fi
+    ELAPSED=\$(( \$(date +%s) - START_TS ))
+    if [ "\$ELAPSED" -ge "\$BOOT_TIMEOUT" ]; then
+        echo "ERROR: Timed out after \${BOOT_TIMEOUT}s waiting for emulator device."
+        echo "Emulator processes:"
+        pgrep -f "emulator" || true
+        echo "ADB devices:"
+        "\$ANDROID_HOME/platform-tools/adb" devices 2>/dev/null || true
+        exit 1
+    fi
+    printf '.'
+    sleep 2
+done
 EOF
 
     # Stop emulator script
