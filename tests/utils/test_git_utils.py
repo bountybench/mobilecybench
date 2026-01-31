@@ -123,6 +123,7 @@ def test_delete_non_current_branches():
     print("Testing delete_non_current_branches...")
     with tempfile.TemporaryDirectory() as temp:
         repo = _create_basic_repo(Path(temp))
+        main_branch = _get_main_branch(repo)
 
         # create multiple branches
         subprocess.run(
@@ -139,7 +140,7 @@ def test_delete_non_current_branches():
         assert set(deleted) == {
             "a",
             "b",
-            "master",
+            main_branch,
         }, f"Unexpected deleted branches: {deleted}"
 
         # ensure branch c remains because it's current HEAD
