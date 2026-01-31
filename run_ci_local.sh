@@ -202,41 +202,71 @@ verify_shared_net_connectivity() {
 }
 
 # Start SSRF listener container
+# Uses plain docker commands instead of docker compose: compose subcommands
+# that contact the daemon hang on Docker Desktop (macOS).
 start_ssrf_listener() {
     echo -e "${INFO} Starting SSRF listener container..."
-    local ssrf_compose_dir="${ROOT_DIR}/evaluation/ssrf_listener"
-    
-    if [ ! -d "$ssrf_compose_dir" ]; then
-        echo -e "${WARNING} SSRF listener directory not found at $ssrf_compose_dir"
+    local ssrf_dir="${ROOT_DIR}/evaluation/ssrf_listener"
+
+    if [ ! -d "$ssrf_dir" ]; then
+        echo -e "${WARNING} SSRF listener directory not found at $ssrf_dir"
         return 1
     fi
-    
-    # Stop any existing SSRF listener
-    docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
-    
-    # Build and start the SSRF listener
-    if docker compose -f "$ssrf_compose_dir/docker-compose.yml" up -d --build --wait; then
-        echo -e "${SUCCESS} SSRF listener started on port 14377"
-        return 0
-    else
-        echo -e "${WARNING} Failed to start SSRF listener"
+
+    # Tear down any existing instance
+    docker stop ssrf-probe 2>/dev/null || true
+    docker rm -f ssrf-probe 2>/dev/null || true
+
+    # Build image
+    if ! docker build -t ssrf-probe "$ssrf_dir"; then
+        echo -e "${WARNING} Failed to build SSRF listener image"
         return 1
     fi
+
+    # Ensure volume exists
+    docker volume create ssrf_listener_ssrf-logs 2>/dev/null || true
+
+    # Start container
+    docker run -d \
+        --name ssrf-probe \
+        --network shared_net \
+        -p 14377:14377 \
+        -v ssrf_listener_ssrf-logs:/app/logs \
+        -e SSRF_LISTEN_PORT=14377 \
+        -e SSRF_LOG_FILE=/app/logs/ssrf_requests.json \
+        --health-cmd 'python -c "import urllib.request; urllib.request.urlopen(\"http://localhost:14377/health\", timeout=2)"' \
+        --health-interval 5s \
+        --health-timeout 3s \
+        --health-retries 3 \
+        --health-start-period 5s \
+        --restart unless-stopped \
+        ssrf-probe
+
+    if [ $? -ne 0 ]; then
+        echo -e "${WARNING} Failed to start SSRF listener container"
+        return 1
+    fi
+
+    # Wait for healthy (mirrors compose --wait behavior)
+    echo -e "${INFO} Waiting for SSRF listener to become healthy..."
+    for i in $(seq 1 30); do
+        status=$(docker inspect --format '{{.State.Health.Status}}' ssrf-probe 2>/dev/null)
+        if [ "$status" = "healthy" ]; then
+            echo -e "${SUCCESS} SSRF listener started on port 14377"
+            return 0
+        fi
+        sleep 1
+    done
+
+    echo -e "${WARNING} SSRF listener did not become healthy within 30s (status: $status)"
+    return 1
 }
 
 # Stop SSRF listener container
 stop_ssrf_listener() {
     echo -e "${INFO} Stopping SSRF listener container..."
-    local ssrf_compose_dir="${ROOT_DIR}/evaluation/ssrf_listener"
-    
-    if [ -d "$ssrf_compose_dir" ]; then
-        docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
-    fi
-    
-    # Also try to stop container directly in case compose fails
     docker stop ssrf-probe 2>/dev/null || true
     docker rm -f ssrf-probe 2>/dev/null || true
-    
     echo -e "${INFO} SSRF listener stopped"
 }
 
