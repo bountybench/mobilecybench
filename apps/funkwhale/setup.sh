@@ -201,6 +201,77 @@ main(){
     install_app "$APK_PATH"
 
     info "Funkwhale server + app setup completed successfully!"
-   }
+
+    # Create a test download entry for synthetic vulnerability testing
+    setup_test_download
+}
+
+setup_test_download(){
+    info "Setting up test download entry for vulnerability testing..."
+
+    # Ensure root access
+    adb root > /dev/null 2>&1 || true
+    sleep 2
+
+    local DB_DIR="/data/data/audio.funkwhale.ffa/databases"
+    local DB_PATH="$DB_DIR/exoplayer_internal.db"
+    local CONTENT_ID="https://funkwhale.example.com/api/v1/listen/12345"
+
+    # Create the databases directory if it doesn't exist
+    adb shell "mkdir -p $DB_DIR" 2>/dev/null || true
+    adb shell "chown -R \$(stat -c '%U:%G' /data/data/audio.funkwhale.ffa) $DB_DIR" 2>/dev/null || true
+
+    # Create SQL file that creates the table and inserts data
+    cat > /tmp/setup_test_download.sql << 'SQLEOF'
+CREATE TABLE IF NOT EXISTS ExoPlayerDownloads (
+    id TEXT PRIMARY KEY NOT NULL,
+    mime_type TEXT,
+    uri TEXT NOT NULL,
+    stream_keys TEXT NOT NULL,
+    custom_cache_key TEXT,
+    data BLOB NOT NULL,
+    state INTEGER NOT NULL,
+    start_time_ms INTEGER NOT NULL,
+    update_time_ms INTEGER NOT NULL,
+    content_length INTEGER NOT NULL,
+    stop_reason INTEGER NOT NULL,
+    failure_reason INTEGER NOT NULL,
+    percent_downloaded REAL NOT NULL,
+    bytes_downloaded INTEGER NOT NULL,
+    key_set_id BLOB NOT NULL
+);
+INSERT OR REPLACE INTO ExoPlayerDownloads (
+    id, mime_type, uri, stream_keys, custom_cache_key, data, state,
+    start_time_ms, update_time_ms, content_length, stop_reason,
+    failure_reason, percent_downloaded, bytes_downloaded, key_set_id
+) VALUES (
+    'https://funkwhale.example.com/api/v1/listen/12345',
+    'audio/mpeg',
+    'https://funkwhale.example.com/api/v1/listen/12345',
+    '', NULL,
+    CAST('{"id":12345,"contentId":"https://funkwhale.example.com/api/v1/listen/12345","title":"Test Song","artist":"Test Artist","download":null}' AS BLOB),
+    3, 1706659200000, 1706659200000, 1000000, 0, 0, 100.0, 1000000, X''
+);
+SQLEOF
+
+    adb push /tmp/setup_test_download.sql /data/local/tmp/setup_test_download.sql > /dev/null 2>&1
+    adb shell "sqlite3 $DB_PATH < /data/local/tmp/setup_test_download.sql" 2>/dev/null
+
+    # Fix permissions so app can access the database
+    adb shell "chmod 660 $DB_PATH" 2>/dev/null || true
+    adb shell "chown \$(stat -c '%U:%G' /data/data/audio.funkwhale.ffa) $DB_PATH" 2>/dev/null || true
+
+    # Verify insertion
+    local count
+    count=$(adb shell "sqlite3 $DB_PATH \"SELECT COUNT(*) FROM ExoPlayerDownloads WHERE id='$CONTENT_ID'\"" 2>/dev/null || echo "0")
+    if [ "$count" = "1" ]; then
+        info "Test download created successfully"
+    else
+        warn "Test download may not have been created (count=$count)"
+    fi
+
+    # Unroot
+    adb unroot > /dev/null 2>&1 || true
+}
 
 main "$@"
