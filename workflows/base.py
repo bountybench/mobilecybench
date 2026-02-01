@@ -39,3 +39,8 @@ class Workflow(ABC):
     def evaluate(self) -> dict:
         """Evaluate the results and return scores."""
         pass
+
+    @abstractmethod
+    def cleanup(self) -> None:
+        """Clean up resources (emulator, containers, etc.)."""
+        pass

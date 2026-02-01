@@ -36,12 +36,30 @@ def setup_apk(app_dir: Path, build_type: str, project_root: Path) -> None:
         )
     else:  # source
         logger.info("Building APK from source...")
-        cmd.run_with_progress(
-            "bash ./setup_app_source.sh",
-            timeout=BUILD_COMMAND_TIMEOUT,
-            message="Building APK from source",
-            cwd=app_dir,
-        )
+        # Prefer build.sh (new pattern), fall back to setup_app_source.sh (legacy)
+        build_script = app_dir / "build.sh"
+        legacy_script = app_dir / "setup_app_source.sh"
+
+        if build_script.exists():
+            cmd.run_with_progress(
+                "bash ./build.sh",
+                timeout=BUILD_COMMAND_TIMEOUT,
+                message="Building APK from source",
+                cwd=app_dir,
+            )
+        elif legacy_script.exists():
+            logger.info("Using legacy setup_app_source.sh")
+            cmd.run_with_progress(
+                "bash ./setup_app_source.sh",
+                timeout=BUILD_COMMAND_TIMEOUT,
+                message="Building APK from source",
+                cwd=app_dir,
+            )
+        else:
+            raise FileNotFoundError(
+                f"No build script found in {app_dir}. "
+                "Expected build.sh or setup_app_source.sh"
+            )
 
     # Repackage with honeypot activity
     logger.info("Repackaging APK with honeypot activity...")

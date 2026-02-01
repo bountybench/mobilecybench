@@ -14,6 +14,8 @@ import json
 import subprocess
 from pathlib import Path
 
+from utils.logger import logger
+
 
 def run_synthetic_checks(app_dir: Path) -> dict:
     synth_dir = app_dir / "synthetic_vulnerabilities"
@@ -35,7 +37,7 @@ def run_synthetic_checks(app_dir: Path) -> dict:
         # Run the shell script from the verify_files directory
         cmd = ["bash", str(probe)]
 
-        print(f"Running verification for {vuln_id}: {probe}")
+        logger.info(f"Running verification for {vuln_id}: {probe}")
         proc = subprocess.run(
             cmd,
             cwd=probe.parent,  # Run from verify_files directory
@@ -61,13 +63,15 @@ def run_synthetic_checks(app_dir: Path) -> dict:
             "stderr": proc.stderr.strip() if proc.stderr else "",
         }
 
-        print(f"  {vuln_id}: {status} (exit_code={proc.returncode}, score={score})")
+        logger.info(
+            f"  {vuln_id}: {status} (exit_code={proc.returncode}, score={score})"
+        )
 
     result = {"status": "ok", "scores": scores, "details": details}
 
     scores_file = app_dir / "synthetic_scores.json"
     with open(scores_file, "w") as f:
         json.dump(result, f, indent=2)
-    print(f"Synthetic scores saved to {scores_file}")
+    logger.info(f"Synthetic scores saved to {scores_file}")
 
     return result

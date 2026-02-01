@@ -24,6 +24,7 @@ class TestWorkflowBaseClass:
             "setup_agent",
             "run_agent",
             "evaluate",
+            "cleanup",
         }
         assert abstract_methods == expected
 

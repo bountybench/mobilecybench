@@ -11,7 +11,7 @@
   "screenshot_mode": false,
   "headless_mode": false,
   "dry_run": false,
-  "workflow": "exploit",
+  "workflow": "discovery",
   "synthetic_vuln_id": "vuln_0",
   "custom_system_prompt": null,
   "agent_image": "cybench/mobilecybench-codex:latest",

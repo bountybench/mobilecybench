@@ -37,14 +37,31 @@ def install_app_and_setup_backend(
         raise RuntimeError("Emulator status check failed")
     logger.info("Emulator status verified")
 
-    # Run setup.sh
+    # Prefer start_runtime.sh (new pattern), fall back to setup.sh (legacy)
+    runtime_script = app_dir / "start_runtime.sh"
+    legacy_script = app_dir / "setup.sh"
+
     logger.info("Setting up backend and installing APK...")
-    cmd.run_with_progress(
-        "bash ./setup.sh",
-        timeout=BUILD_COMMAND_TIMEOUT,
-        message="Setting up backend and installing APK",
-        cwd=app_dir,
-    )
+    if runtime_script.exists():
+        cmd.run_with_progress(
+            "bash ./start_runtime.sh",
+            timeout=BUILD_COMMAND_TIMEOUT,
+            message="Setting up backend and installing APK",
+            cwd=app_dir,
+        )
+    elif legacy_script.exists():
+        logger.info("Using legacy setup.sh")
+        cmd.run_with_progress(
+            "bash ./setup.sh",
+            timeout=BUILD_COMMAND_TIMEOUT,
+            message="Setting up backend and installing APK",
+            cwd=app_dir,
+        )
+    else:
+        raise FileNotFoundError(
+            f"No runtime script found in {app_dir}. "
+            "Expected start_runtime.sh or setup.sh"
+        )
 
     # Inject flags
     logger.info("Injecting security flags...")
