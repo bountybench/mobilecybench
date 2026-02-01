@@ -51,8 +51,18 @@ check_prerequisites() {
 setup_environment() {
     echo "Setting up build environment..."
     
-    # Set Java 17 - Windows path for gradlew (batch script)
-    export JAVA_HOME='C:\Program Files\Microsoft\jdk-17.0.17.10-hotspot'
+    # Set Java 17
+    if [[ -d "/opt/homebrew/opt/openjdk@17" ]]; then
+        export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+    elif [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
+        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+    elif command -v /usr/libexec/java_home &>/dev/null; then
+        export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
+    else
+        export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
+    fi
+    echo $JAVA_HOME
+    export PATH="$JAVA_HOME/bin:$PATH"
     
     # Set Android SDK
     export ANDROID_HOME="$ANDROID_HOME"
@@ -62,7 +72,6 @@ setup_environment() {
     echo "sdk.dir=$ANDROID_HOME" > local.properties
     
     echo "Environment configured."
-    echo "JAVA_HOME: $JAVA_HOME"
 }
 
 # Build joplin APK
