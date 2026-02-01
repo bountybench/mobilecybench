@@ -152,9 +152,7 @@ class LoggerManager:
         # we want to pass in this formatter so errors are not stored as objects
         summary_formatter = RedErrorFormatter("%(levelname)s - %(name)s - %(message)s")
 
-        self._error_buffer_handler = ErrorBufferHandler(
-            formatter=summary_formatter, max_errors=100
-        )
+        self._error_buffer_handler = ErrorBufferHandler(formatter=summary_formatter)
 
         error_file_handler = logging.FileHandler(self._error_log_file, encoding="utf-8")
         error_file_handler.setLevel(logging.ERROR)
@@ -244,15 +242,12 @@ class RedErrorFormatter(logging.Formatter):
 class ErrorBufferHandler(logging.Handler):
     # anything more than 100 errors would likely just mean some form of loop. we don't need to use up so much memory
     # keep it conservative
-    def __init__(self, formatter: logging.Formatter, max_errors: int = 100):
+    def __init__(self, formatter: logging.Formatter):
         super().__init__(level=logging.ERROR)
         self.formatter = formatter
-        self.max_errors = max_errors
         self.errors = []
 
     def emit(self, record):
-        if len(self.errors) >= self.max_errors:
-            return
         self.errors.append(self.format(record))
 
 
