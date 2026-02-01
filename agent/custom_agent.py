@@ -9,6 +9,7 @@ from agent.agent_helpers import get_directory_tree
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     build_detect_prompt,
+    build_synthetic_prompt,
 )
 from agent.tools.runtime import ToolRuntime
 from utils.agent_utils import take_screenshot
@@ -39,10 +40,12 @@ class CustomAgent:
         username: str = None,
         password: str = None,
         include_ssrf: bool = True,
+        workflow: str = "discovery",  # "discovery" or "exploit"
     ):
         self.dry_run = dry_run
         self.reasoning_effort = reasoning_effort
         self.include_ssrf = include_ssrf
+        self.workflow = workflow
 
         # Load environment variables from .env file in the agent directory
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -127,20 +130,24 @@ class CustomAgent:
         agent_logger.info("=" * 80)
 
     def _get_default_system_prompt(self) -> dict:
-        # Strip port from app_server for hping3 example (doesn't support host:port)
-        resolved_host = None
-        if self.app_server:
-            resolved_host = self.app_server.split(":")[0]
-
-        full_prompt = build_detect_prompt(
-            package_name=self.package_name,
-            codebase_tree=self._initial_tree_context,
-            app_server=self.app_server if self.network_access else None,
-            username=self.username,
-            password=self.password,
-            include_ssrf=self.include_ssrf,
-            resolved_host=resolved_host,
-        )
+        if self.workflow == "exploit":
+            # Exploit mode - use targeted exploit prompt
+            full_prompt = build_synthetic_prompt(
+                package_name=self.package_name,
+                username=self.username,
+                password=self.password,
+                app_server=self.app_server if self.network_access else None,
+            )
+        else:
+            # Discovery mode - use detect prompt
+            full_prompt = build_detect_prompt(
+                package_name=self.package_name,
+                codebase_tree=self._initial_tree_context,
+                app_server=self.app_server if self.network_access else None,
+                username=self.username,
+                password=self.password,
+                include_ssrf=self.include_ssrf,
+            )
 
         return {
             "role": "system",
@@ -155,6 +162,12 @@ class CustomAgent:
         to OpenAI's Conversations API). This logic should be moved to the provider layer.
         """
         if not self.conversation_id:
+            return
+
+        # Ugly if statement for Gemini model - conversation history is stored differently
+        # Should be addressed by above todo ^ to abstract away models
+        if self.model == "gemini-3-pro-preview":
+            self._archive_gemini_conversation()
             return
 
         try:
@@ -218,6 +231,100 @@ class CustomAgent:
             agent_logger.info("\n" + "=" * 60)
         except Exception as e:
             agent_logger.warning(f"Failed to archive conversation before deletion: {e}")
+
+    def _archive_gemini_conversation(self):
+        """Archive Gemini conversation history from the chat session.
+
+        Gemini uses a different conversation model - history is stored in the
+        ChatSession object rather than via a remote API.
+        """
+        try:
+            agent_logger.info("=" * 60)
+            agent_logger.info("FULL CONVERSATION ARCHIVE (GEMINI)")
+            agent_logger.info("=" * 60)
+            agent_logger.info(f"Conversation ID: {self.conversation_id}")
+
+            # Get the chat session from the provider
+            chat_session = self.provider._chat_sessions.get(self.conversation_id)
+
+            if not chat_session:
+                agent_logger.warning(
+                    f"No chat session found for conversation {self.conversation_id}"
+                )
+                return
+
+            # Log conversation metadata
+            conversation_dict = {
+                "id": self.conversation_id,
+                "model": self.model,
+                "history_length": len(chat_session.history),
+            }
+            agent_logger.info(
+                f"Conversation metadata: {json.dumps(conversation_dict, indent=2, default=str)}"
+            )
+
+            # Log all conversation items from chat session history
+            agent_logger.info(
+                f"\nTotal items in conversation: {len(chat_session.history)}"
+            )
+            agent_logger.info("\n" + "=" * 60)
+            agent_logger.info("CONVERSATION ITEMS (MESSAGES)")
+            agent_logger.info("=" * 60)
+
+            for idx, content in enumerate(chat_session.history, 1):
+                agent_logger.info(f"\n--- Item {idx} ---")
+
+                # Extract role
+                role = content.role if hasattr(content, "role") else "unknown"
+
+                # Extract parts (text, function calls, function responses)
+                parts_data = []
+                if hasattr(content, "parts"):
+                    for part in content.parts:
+                        part_dict = {}
+
+                        # Text content
+                        if hasattr(part, "text") and part.text:
+                            part_dict["type"] = "text"
+                            part_dict["text"] = part.text
+
+                        # Function call
+                        if hasattr(part, "function_call") and part.function_call:
+                            fc = part.function_call
+                            part_dict["type"] = "function_call"
+                            part_dict["name"] = fc.name if hasattr(fc, "name") else ""
+                            part_dict["args"] = (
+                                dict(fc.args) if hasattr(fc, "args") else {}
+                            )
+
+                        # Function response
+                        if (
+                            hasattr(part, "function_response")
+                            and part.function_response
+                        ):
+                            fr = part.function_response
+                            part_dict["type"] = "function_response"
+                            part_dict["name"] = fr.name if hasattr(fr, "name") else ""
+                            part_dict["response"] = (
+                                dict(fr.response) if hasattr(fr, "response") else {}
+                            )
+
+                        if part_dict:
+                            parts_data.append(part_dict)
+
+                item_dict = {
+                    "role": role,
+                    "parts": parts_data,
+                }
+
+                agent_logger.info(f"{json.dumps(item_dict, indent=2, default=str)}")
+
+            agent_logger.info("\n" + "=" * 60)
+
+        except Exception as e:
+            agent_logger.warning(
+                f"Failed to archive Gemini conversation before deletion: {e}"
+            )
 
     def run(self) -> dict:
         if self.dry_run:

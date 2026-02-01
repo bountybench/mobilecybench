@@ -75,8 +75,12 @@ class LoggerManager:
         self._ui_debug_log_file: Optional[str] = None
 
         # Setup logs directory with experiment-specific folder
-        self._project_root = Path(__file__).parent.parent
-        logs_base = self._project_root / "logs"
+        # Allow override via environment variable (useful for tests)
+        if "MOBILECYBENCH_LOGS_DIR" in os.environ:
+            logs_base = Path(os.environ["MOBILECYBENCH_LOGS_DIR"])
+        else:
+            self._project_root = Path(__file__).parent.parent
+            logs_base = self._project_root / "logs"
         logs_base.mkdir(exist_ok=True)
         self._logs_dir = logs_base / f"experiment_{self._timestamp}"
         self._logs_dir.mkdir(exist_ok=True)

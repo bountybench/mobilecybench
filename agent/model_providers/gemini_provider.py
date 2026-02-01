@@ -57,11 +57,13 @@ class GeminiConversationItems:
     def __init__(self, conversations):
         self._conversations = conversations
 
-    def create(self, conversation_id, input=None):
-        """Create a conversation item (e.g., add screenshot)."""
+    def create(self, conversation_id, input=None, items=None):
+        """Create a conversation item (e.g., add screenshot or message)."""
+        # Support both 'input' (single item) and 'items' (list) for API compatibility
+        content = input if input is not None else items
         if conversation_id in self._conversations:
             item_id = f"item-{len(self._conversations[conversation_id]['items'])}"
-            item = {"id": item_id, "input": input}
+            item = {"id": item_id, "input": content}
             self._conversations[conversation_id]["items"].append(item)
             return type(
                 "Response", (), {"items": [type("Item", (), {"id": item_id})()]}

@@ -17,11 +17,15 @@ Start here if you are new to the repo. This docs set is a simple, task-oriented 
 
 MobileCybench is a framework to capture agentic offensive cyber-capabilities in open source android applications. Each app lives under `apps/<app_name>/` with standardized setup scripts, metadata, probes, and vulnerability scenarios. The runner orchestrates:
 
+The framework supports two evaluation modes:
+- **Discovery mode**: Agent tries to find unknown vulnerabilities in the app
+- **Exploit mode**: Agent is given a known synthetic vulnerability and must write an exploit
+
+The runner orchestrates:
 - Android emulator setup
 - App build and install
-- Pre/post evaluation
-- Optional agent execution
-- Optional exploit execution and validation
+- Agent execution in a sandboxed Kali container
+- Evaluation (probes for discovery, verification scripts for exploit)
 
 ## Repo map
 
