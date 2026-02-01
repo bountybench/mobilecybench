@@ -66,7 +66,9 @@ Example 1:
     "id": "fc_12345xyz",
     "type": "bash_command",
     "name": "create_file",
-    "command": "cat << 'EOF' > print_file.py\\nprint('example of creating a file in python')\\nEOF"
+    "command": "cat << 'EOF' > print_file.py
+print('example of creating a file in python')
+EOF"
     "description": "Create a python file with a simple print statement.",
 }
 
