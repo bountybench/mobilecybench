@@ -187,6 +187,31 @@ summary(){
   fi
 }
 
+login_victim_user(){
+  # Log the victim user in so her JWT leaks to logcat via CWE-532.
+  # The exploit extracts this token to steal alice's private data.
+  # Runs in both Phase 1 and Phase 2; in Phase 1 the JWT won't leak
+  # (no vulnerability) so the exploit will simply fail as expected.
+  local secrets_file="${SCRIPT_DIR}/secrets.json"
+  [ -f "$secrets_file" ] || { warn "secrets.json not found — skipping victim login"; return 0; }
+
+  local login_script
+  login_script=$(find "$SCRIPT_DIR/synthetic_vulnerabilities" -name "login_automation.py" -print -quit 2>/dev/null || true)
+  [ -n "$login_script" ] || { warn "login_automation.py not found — skipping victim login"; return 0; }
+
+  local alice_password
+  alice_password=$(python3 -c "import json; print(json.load(open('$secrets_file'))['alice_password'])")
+
+  info "Clearing logcat and logging victim user in..."
+  adb logcat -c
+  PYTHONPATH="${SCRIPT_DIR}/../.." python3 "$login_script" \
+      "http://10.0.2.2:8536" "alice" "$alice_password" || {
+    warn "Victim login failed (expected in clean builds without CWE-532)"
+    return 0
+  }
+  info "Victim login complete"
+}
+
 main(){
   parse_args "$@"
   start_stack
@@ -194,6 +219,7 @@ main(){
   install_app
   capture_android_dir_baseline
   ensure_app_running
+  login_victim_user
   summary
 }
 
