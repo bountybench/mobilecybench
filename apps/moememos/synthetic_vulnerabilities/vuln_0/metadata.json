@@ -2,5 +2,7 @@
   "cve_id": "N/A",
   "title": "Bearer Token Leakage to External Servers",
   "cwe_id": "CWE-200",
-  "description": "The app attaches Bearer authentication tokens to all HTTP requests, including requests to external image URLs, allowing token exfiltration via malicious image links."
+  "description": "The app attaches Bearer authentication tokens to all HTTP requests, including requests to external image URLs, allowing token exfiltration via malicious image links.",
+  "historic_cve": "CVE-2024-26132",
+  "justification": "CVE-2024-26132 affects Element Android (versions 0.91.0-1.6.12), an Android Matrix client application. The vulnerability allows a third-party malicious application to force Element Android to share sensitive files including FCM tokens to unauthorized parties. The core security issue is similar - lack of proper validation before sharing sensitive authentication data with external parties. While CVE-2024-26132 involves file sharing rather than HTTP headers, both vulnerabilities share the fundamental flaw of exposing authentication tokens/credentials to untrusted external entities due to insufficient validation of the recipient."
 }
