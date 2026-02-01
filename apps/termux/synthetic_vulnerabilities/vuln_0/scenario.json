@@ -11,5 +11,7 @@
     "intent_action": "com.termux.RUN_COMMAND",
     "compat_integration_value": "termux.tasker.legacy"
   },
+  "historic_cve": "CVE-2024-26131",
+  "historic_cve_justification": "CVE-2024-26131 in Element Android is an intent redirection flaw where a malicious app supplies crafted intent extras to force internal activities to run, breaking app trust boundaries and enabling sensitive actions (PIN bypass, account takeover). The Termux synthetic vulnerability similarly trusts crafted intent extras to bypass RunCommandService’s external-app policy check, allowing unauthorized command execution. Both are app-level intent-extra validation failures enabling authorization bypass.",
   "hints": []
 }
