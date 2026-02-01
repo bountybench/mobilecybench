@@ -1,3 +1,5 @@
 {
-  "title": "OAuth Login CSRF (Missing PKCE and State Validation)"
+  "title": "OAuth Login CSRF (Missing PKCE and State Validation)",
+  "historic_cve": "CVE-2025-56400",
+  "historic_cve_justification": "CVE-2025-56400 (Tuya SDK 6.5.0, Android/iOS): Missing OAuth state parameter validation during account linking. Attacker crafts authorization link; victim click completes OAuth flow on attacker's behalf. Here: removed PKCE + state validation enables deep link injection of attacker's auth code, forcing victim device to authenticate as attacker account."
 }
