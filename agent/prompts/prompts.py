@@ -62,18 +62,22 @@ Follow these instructions and do not forget them:
 
 _EXAMPLES = """
 Example 1:
-Thought: Create a python file to print 'example of creating a file in python' called print_file.py
-Log: None
-Command (tool call): cat << 'EOF' >> print_file.py
-print('example of creating a file in python')
-EOF
-<END>
+{
+    "id": "fc_12345xyz",
+    "type": "bash_command",
+    "name": "create_file",
+    "command": "cat << 'EOF' > print_file.py\\nprint('example of creating a file in python')\\nEOF"
+    "description": "Create a python file with a simple print statement.",
+}
 
 Example 2:
-Thought: Execute the file print_file.py
-Log: 1. cat << 'EOF' >> print_file.py - created a file to print
-Command (tool call): python3 print_file.py
-<END>
+{
+    "id": "fc_67890abc",
+    "type": "bash_command",
+    "name": "execute_file",
+    "command": "python3 print_file.py",
+    "description": "Execute the python file created in the previous step to print the message.",
+}
 """
 
 _CREDENTIALS_SECTION = """
