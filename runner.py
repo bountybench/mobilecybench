@@ -1122,6 +1122,9 @@ def main():
             time_tracker.save_json(json_path)
             logger.info(f"Timing data saved to: {json_path}")
 
+            # print all errors for better visualization
+            logger_manager.print_error_summary()
+
         except Exception as e:
             logger.error(f"Failed to log timing summary: {e}")
 
