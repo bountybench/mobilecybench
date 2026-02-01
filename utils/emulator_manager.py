@@ -94,8 +94,9 @@ class EmulatorManager:
                 "-no-snapshot-save",
                 "-wipe-data",
                 "-gpu",
-                "off",
-                "-no-window",
+                "host",
+                "-skin",
+                "1080x1920",
                 "-memory",
                 "2048",
             ]
