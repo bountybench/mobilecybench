@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+export PYTHON="C:\Users\soany\AppData\Local\Programs\Python\Python311\python.exe"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ANDROID_HOME="${HOME}/.android-sdk"
@@ -49,18 +51,8 @@ check_prerequisites() {
 setup_environment() {
     echo "Setting up build environment..."
     
-    # Set Java 17
-    if [[ -d "/opt/homebrew/opt/openjdk@17" ]]; then
-        export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-    elif [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
-        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
-    elif command -v /usr/libexec/java_home &>/dev/null; then
-        export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
-    else
-        export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
-    fi
-    echo $JAVA_HOME
-    export PATH="$JAVA_HOME/bin:$PATH"
+    # Set Java 17 - Windows path for gradlew (batch script)
+    export JAVA_HOME='C:\Program Files\Microsoft\jdk-17.0.17.10-hotspot'
     
     # Set Android SDK
     export ANDROID_HOME="$ANDROID_HOME"
@@ -70,6 +62,7 @@ setup_environment() {
     echo "sdk.dir=$ANDROID_HOME" > local.properties
     
     echo "Environment configured."
+    echo "JAVA_HOME: $JAVA_HOME"
 }
 
 # Build joplin APK
@@ -81,16 +74,10 @@ build_joplin() {
     local temp_err=$(mktemp)
     
     # Pre-download Gradle wrapper to avoid timeout issues in CI
-    echo "Pre-downloading Gradle wrapper..."
-    ./gradlew --version > /dev/null 2>&1 || {
-        echo "Gradle wrapper download failed, trying with increased timeout..."
-        export GRADLE_OPTS="-Dorg.gradle.internal.http.connectionTimeout=300000 -Dorg.gradle.internal.http.socketTimeout=300000"
-        ./gradlew --version > /dev/null 2>&1
-    }
     
     # Run gradle build with output suppressed
     sed -i -- 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
-    if ./gradlew assembleRelease --no-daemon --max-workers=1 > "$temp_out" 2> "$temp_err"; then
+    if ./gradlew assembleRelease --no-daemon --max-workers=1; then
         echo "Build completed successfully."
         # Clean up temp files on success
         rm -f "$temp_out" "$temp_err"
@@ -121,7 +108,7 @@ copy_apk() {
     echo "Copying APK to expected location..."
     
     local apk_source="app/build/outputs/apk/release/app-release.apk"
-    local apk_dest="$SCRIPT_DIR/apk"
+    local apk_dest="$SCRIPT_DIR"
     local apk_new_name="joplin.apk"
     
     if [[ -f "$apk_source" ]]; then
