@@ -202,41 +202,73 @@ verify_shared_net_connectivity() {
 }
 
 # Start SSRF listener container
+# Uses plain docker commands instead of docker compose: compose subcommands
+# that contact the daemon hang on Docker Desktop (macOS).
 start_ssrf_listener() {
     echo -e "${INFO} Starting SSRF listener container..."
-    local ssrf_compose_dir="${ROOT_DIR}/evaluation/ssrf_listener"
-    
-    if [ ! -d "$ssrf_compose_dir" ]; then
-        echo -e "${WARNING} SSRF listener directory not found at $ssrf_compose_dir"
+    local ssrf_dir="${ROOT_DIR}/evaluation/ssrf_listener"
+
+    if [ ! -d "$ssrf_dir" ]; then
+        echo -e "${WARNING} SSRF listener directory not found at $ssrf_dir"
         return 1
     fi
-    
-    # Stop any existing SSRF listener
-    docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
-    
-    # Build and start the SSRF listener
-    if docker compose -f "$ssrf_compose_dir/docker-compose.yml" up -d --build --wait; then
-        echo -e "${SUCCESS} SSRF listener started on port 14377"
-        return 0
-    else
-        echo -e "${WARNING} Failed to start SSRF listener"
+
+    # Tear down any existing instance
+    docker stop ssrf-probe 2>/dev/null || true
+    docker rm -f ssrf-probe 2>/dev/null || true
+
+    # Build image
+    if ! docker build -t ssrf-probe "$ssrf_dir"; then
+        echo -e "${WARNING} Failed to build SSRF listener image"
         return 1
     fi
+
+    # Ensure volume exists
+    docker volume create ssrf_listener_ssrf-logs 2>/dev/null || true
+
+    # Start container
+    docker run -d \
+        --name ssrf-probe \
+        --network shared_net \
+        -p 14377:14377 \
+        -v ssrf_listener_ssrf-logs:/app/logs \
+        -e SSRF_LISTEN_PORT=14377 \
+        -e SSRF_LOG_FILE=/app/logs/ssrf_requests.json \
+        --health-cmd 'python -c "import urllib.request; urllib.request.urlopen(\"http://localhost:14377/health\", timeout=2)"' \
+        --health-interval 5s \
+        --health-timeout 3s \
+        --health-retries 3 \
+        --health-start-period 5s \
+        --restart unless-stopped \
+        ssrf-probe
+
+    if [ $? -ne 0 ]; then
+        echo -e "${WARNING} Failed to start SSRF listener container"
+        return 1
+    fi
+
+    # Wait for healthy status
+    echo -e "${INFO} Waiting for SSRF listener to become healthy..."
+    local ssrf_status
+    for i in $(seq 1 60); do
+        # Use docker ps --format which is more reliable than inspect on Docker Desktop
+        ssrf_status=$(docker ps --filter name=ssrf-probe --format '{{.Status}}' 2>/dev/null)
+        if echo "$ssrf_status" | grep -q "(healthy)"; then
+            echo -e "${SUCCESS} SSRF listener started on port 14377"
+            return 0
+        fi
+        sleep 1
+    done
+
+    echo -e "${WARNING} SSRF listener did not become healthy within 60s (status: $ssrf_status)"
+    return 1
 }
 
 # Stop SSRF listener container
 stop_ssrf_listener() {
     echo -e "${INFO} Stopping SSRF listener container..."
-    local ssrf_compose_dir="${ROOT_DIR}/evaluation/ssrf_listener"
-    
-    if [ -d "$ssrf_compose_dir" ]; then
-        docker compose -f "$ssrf_compose_dir/docker-compose.yml" down -v 2>/dev/null || true
-    fi
-    
-    # Also try to stop container directly in case compose fails
     docker stop ssrf-probe 2>/dev/null || true
     docker rm -f ssrf-probe 2>/dev/null || true
-    
     echo -e "${INFO} SSRF listener stopped"
 }
 
@@ -255,10 +287,13 @@ validate_setup_app_scripts() {
         return 1
     fi
 
-    local source_script="$dir/setup_app_source.sh"
+    local has_build_script=false
     local has_download_link=false
 
-    # Check if download_link exists in metadata.json
+    if [ -f "$dir/build.sh" ]; then
+        has_build_script=true
+    fi
+
     if [ -f "$dir/metadata.json" ]; then
         download_link=$(jq -r '.download_link // empty' "$dir/metadata.json")
         if [ -n "$download_link" ]; then
@@ -266,10 +301,9 @@ validate_setup_app_scripts() {
         fi
     fi
 
-    if [ ! -f "$source_script" ] && [ "$has_download_link" = false ]; then
-        # fail if neither option exists
+    if [ "$has_build_script" = false ] && [ "$has_download_link" = false ]; then
         echo -e "${ERROR} No setup options found in $dir" >&2
-        echo -e "${ERROR} Expected: setup_app_source.sh or download_link in metadata.json" >&2
+        echo -e "${ERROR} Expected: build.sh or download_link in metadata.json" >&2
         return 1
     fi
     return 0
@@ -285,11 +319,10 @@ discover_available_modes() {
         modes="apk_skip"
         echo -e "${INFO} --skip-apk specified - using apk_skip mode" >&2
     else
-        if [ -f "$dir/setup_app_source.sh" ]; then
+        if [ -f "$dir/build.sh" ]; then
             modes="$modes source"
-            echo -e "${INFO} Found setup_app_source.sh (build mode)" >&2
+            echo -e "${INFO} Found build.sh (build mode)" >&2
         fi
-        # Check if download_link exists in metadata.json
         if [ -f "$dir/metadata.json" ]; then
             download_link=$(jq -r '.download_link // empty' "$dir/metadata.json")
             if [ -n "$download_link" ]; then
@@ -705,7 +738,7 @@ run_test_check() {
     
     # Check if package is NOT installed before setup
     if adb shell pm list packages | grep -q "^package:$package_name$"; then
-        echo -e "${ERROR} Package $package_name is already installed before setup.sh"
+        echo -e "${ERROR} Package $package_name is already installed before start_runtime.sh"
         echo -e "${ERROR} This test expects the package to be uninstalled initially"
         exit 1
     else
@@ -713,20 +746,20 @@ run_test_check() {
     fi
 
     echo -e "${INFO} Running setup..."
-    { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+    { ./start_runtime.sh; } || { echo -e "${ERROR} start_runtime.sh failed"; exit 1; }
 
     # Verify the specific package is installed after setup
     if adb shell pm list packages | grep -q "^package:$package_name$"; then
-        echo -e "${SUCCESS} Package $package_name is installed after setup.sh"
+        echo -e "${SUCCESS} Package $package_name is installed after start_runtime.sh"
     else
-        echo -e "${ERROR} Package $package_name is not installed after setup.sh"
-        echo -e "${ERROR} This indicates setup.sh failed to install the expected package"
+        echo -e "${ERROR} Package $package_name is not installed after start_runtime.sh"
+        echo -e "${ERROR} This indicates start_runtime.sh failed to install the expected package"
         echo -e "${INFO} Cleaning up..."
         ./cleanup.sh
         exit 1
     fi
 
-    # Wait for app-specific containers to be ready (after setup.sh starts them)
+    # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
     check_app_containers_ready
 
     echo -e "${INFO} Generating flags..."
@@ -817,11 +850,11 @@ run_tests_for_mode() {
     if [ -f "test_access_control.py" ] || [ -f "test_availability.py" ] || [ -f "test_confidentiality.py" ] || [ -f "test_integrity.py" ]; then
         echo -e "${INFO} test_X.py probe found - running full vulnerability scenario tests"
         local has_probes=true
-        required_files=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
+        required_files=("start_runtime.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
     else
         echo -e "${INFO} test_X.py probe not found - running simplified APK installation test"
         local has_probes=false
-        required_files=("setup.sh" "cleanup.sh")
+        required_files=("start_runtime.sh" "cleanup.sh")
     fi
     
     echo -e "${INFO} Checking for required scripts..."
@@ -939,7 +972,7 @@ EOF
         
         # Check if package is NOT installed before setup
         if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo -e "${ERROR} Package $package_name is already installed before setup.sh"
+            echo -e "${ERROR} Package $package_name is already installed before start_runtime.sh"
             echo -e "${ERROR} This test expects the package to be uninstalled initially"
             exit 1
         else
@@ -947,20 +980,20 @@ EOF
         fi
         
         echo -e "${INFO} Running setup..."
-        { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+        { ./start_runtime.sh; } || { echo -e "${ERROR} start_runtime.sh failed"; exit 1; }
 
          # Verify the specific package is installed after setup
         if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo -e "${SUCCESS} Package $package_name is installed after setup.sh"
+            echo -e "${SUCCESS} Package $package_name is installed after start_runtime.sh"
         else
-            echo -e "${ERROR} Package $package_name is not installed after setup.sh"
-            echo -e "${ERROR} This indicates setup.sh failed to install the expected package"
+            echo -e "${ERROR} Package $package_name is not installed after start_runtime.sh"
+            echo -e "${ERROR} This indicates start_runtime.sh failed to install the expected package"
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
             exit 1
         fi
         
-        # Wait for app-specific containers to be ready (after setup.sh starts them)
+        # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
         check_app_containers_ready
 
         echo -e "${INFO} Generating flags..."
@@ -1091,7 +1124,7 @@ run_synthetic_vuln_test() {
 
     # Install and setup
     echo -e "${INFO} Installing clean APK..."
-    ./setup.sh || { echo -e "${ERROR} Failed to install clean APK"; exit 1; }
+    ./start_runtime.sh || { echo -e "${ERROR} Failed to install clean APK"; exit 1; }
 
     # Wait for containers
     check_app_containers_ready
@@ -1130,7 +1163,7 @@ run_synthetic_vuln_test() {
 
     cd "$ROOT_DIR/$app_dir"
 
-    # Copy vulnerable APK to main apk directory for setup.sh to find
+    # Copy vulnerable APK to main apk directory for start_runtime.sh to find
     echo -e "${INFO} Preparing vulnerable APK for installation..."
     local vuln_apk_dir="apk/$vuln_id"
     if [ ! -d "$vuln_apk_dir" ]; then
@@ -1160,7 +1193,7 @@ run_synthetic_vuln_test() {
 
     # Install and setup
     echo -e "${INFO} Installing vulnerable APK..."
-    ./setup.sh || {
+    ./start_runtime.sh || {
         echo -e "${ERROR} Failed to install vulnerable APK"
         # Restore original APKs (trap will handle cleanup)
         rm -f apk/*.apk 2>/dev/null || true
@@ -1245,8 +1278,12 @@ cd "$ROOT_DIR"
 
 # Create Docker Network
 print_header "$CYAN" "CREATING DOCKER NETWORK"
-echo -e "${INFO} Creating shared_net network..."
-docker network create shared_net || echo -e "${INFO} shared_net network already exists"
+if docker network inspect shared_net >/dev/null 2>&1; then
+    echo -e "${INFO} shared_net network already exists"
+else
+    echo -e "${INFO} Creating shared_net network..."
+    docker network create shared_net
+fi
 
 # Start SSRF Listener
 print_header "$CYAN" "STARTING SSRF LISTENER"
@@ -1259,11 +1296,11 @@ if [ -f "start_emulator.sh" ]; then
 
     echo "Waiting for emulator to boot..."
 
-    # Wait for device to appear
-    adb wait-for-device
-
     wait_for_device_boot 300
     echo "Emulator booted successfully."
+    # # Dismiss any ANR dialogs that appeared during boot (no-op if none showing)
+    # sleep 2
+    # adb shell input keyevent KEYCODE_BACK 2>/dev/null || true
 else
     echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
 fi

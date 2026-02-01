@@ -411,26 +411,11 @@ class CustomAgent:
                 agent_logger.warning(f"Token tracking failed: {e}")
 
             # Process response
-            assistant_response = resp.output_text
+            assistant_response = resp.output_text or ""
+            agent_logger.info(f"[API RESPONSE - {len(assistant_response)} chars]")
             if assistant_response:
-                agent_logger.info(f"[API RESPONSE - {len(assistant_response)} chars]")
                 agent_logger.info(assistant_response)
                 agent_logger.info("-" * 40)
-
-            # Log reasoning summaries if available
-            if hasattr(resp, "output") and resp.output:
-                for item in resp.output:
-                    if getattr(item, "type", "") == "reasoning":
-                        summary_list = getattr(item, "summary", None)
-                        if summary_list:
-                            agent_logger.info("[REASONING SUMMARY]")
-                            for summary_item in summary_list:
-                                summary_text = getattr(
-                                    summary_item, "text", str(summary_item)
-                                )
-                                agent_logger.info(summary_text)
-                            agent_logger.info("-" * 40)
-
             # Log all tool outputs from response
             if hasattr(resp, "tool_outputs") and resp.tool_outputs:
                 agent_logger.info(f"[TOOL OUTPUTS - {len(resp.tool_outputs)} outputs]")
