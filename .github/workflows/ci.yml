@@ -16,6 +16,7 @@ jobs:
       has_non_app_changes: ${{ steps.modified-dirs.outputs.has_non_app_changes }}
       apk_jobs: ${{ steps.build-matrices.outputs.apk_jobs }}
       test_jobs: ${{ steps.build-matrices.outputs.test_jobs }}
+      synthetic_vuln_jobs: ${{ steps.build-matrices.outputs.synthetic_vuln_jobs }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -185,6 +186,84 @@ jobs:
           echo "apk_jobs=$apk_jobs" >> "$GITHUB_OUTPUT"
           echo "test_jobs=$test_jobs" >> "$GITHUB_OUTPUT"
 
+          # Detect modified synthetic vulnerabilities
+          echo "=== Detecting modified synthetic vulnerabilities ==="
+          synthetic_vuln_jobs="[]"
+
+          # Find all modified files in synthetic_vulnerabilities directories
+          modified_synth_files=$(git diff --diff-filter=ACMDR --name-only origin/main...HEAD | grep 'apps/.*/synthetic_vulnerabilities/vuln_[0-9]*/') || true
+
+          if [ -n "$modified_synth_files" ]; then
+            echo "Modified synthetic vulnerability files:"
+            echo "$modified_synth_files"
+
+            # Extract unique app_dir/vuln_id combinations
+            synth_vulns=$(echo "$modified_synth_files" | \
+              sed -n 's|^\(apps/[^/]*/synthetic_vulnerabilities/vuln_[0-9]*\)/.*|\1|p' | \
+              sort -u)
+
+            while IFS= read -r vuln_path; do
+              [ -z "$vuln_path" ] && continue
+
+              # Extract app_dir and vuln_id
+              app_dir=$(echo "$vuln_path" | sed 's|/synthetic_vulnerabilities/vuln_[0-9]*$||')
+              vuln_id=$(basename "$vuln_path")
+              app_name=$(basename "$app_dir")
+
+              echo "=== Processing synthetic vulnerability: $app_name / $vuln_id ==="
+
+              # Validate required files exist
+              patch_file="$vuln_path/vulnerability.patch"
+              exploit_script="$vuln_path/exploit_files/exploit.sh"
+              verify_script="$vuln_path/verify_files/verify_exploit.sh"
+
+              if [ ! -f "$patch_file" ]; then
+                echo "ERROR: Patch file not found: $patch_file"
+                exit 1
+              fi
+
+              if [ ! -f "$exploit_script" ]; then
+                echo "ERROR: Exploit script not found: $exploit_script"
+                exit 1
+              fi
+
+              if [ ! -f "$verify_script" ]; then
+                echo "ERROR: Verification script not found: $verify_script"
+                exit 1
+              fi
+
+              # Get metadata from app
+              metadata="$app_dir/metadata.json"
+              if [ ! -f "$metadata" ]; then
+                echo "ERROR: $metadata not found"
+                exit 1
+              fi
+
+              sdk=$(jq -r '.sdk' "$metadata")
+              java=$(jq -r '.java // 17' "$metadata")
+              system_image="google_atd"
+
+              echo "  App: $app_name"
+              echo "  Vuln ID: $vuln_id"
+              echo "  SDK: $sdk, Java: $java"
+
+              # Add to synthetic_vuln_jobs matrix
+              synthetic_vuln_jobs=$(echo "$synthetic_vuln_jobs" | jq -c \
+                --arg dir "$app_dir" \
+                --arg name "$app_name" \
+                --arg vuln "$vuln_id" \
+                --arg sdk "$sdk" \
+                --arg java "$java" \
+                --arg image "$system_image" \
+                '. += [{"app_dir": $dir, "app_name": $name, "vuln_id": $vuln, "sdk": $sdk, "java": $java, "system_image": $image}]')
+            done <<< "$synth_vulns"
+          else
+            echo "No modified synthetic vulnerabilities found"
+          fi
+
+          echo "Synthetic vulnerability jobs: $synthetic_vuln_jobs"
+          echo "synthetic_vuln_jobs=$synthetic_vuln_jobs" >> "$GITHUB_OUTPUT"
+
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip -q
@@ -220,9 +299,10 @@ jobs:
             fi
           done <<< "${{ steps.modified-dirs.outputs.modified_dirs }}"
 
+  # Build regular APKs (skipped if synthetic vulnerabilities are detected for faster CI)
   handle_apk:
     needs: setup
-    if: needs.setup.outputs.should_exit != 'true'
+    if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.synthetic_vuln_jobs == '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -376,9 +456,154 @@ jobs:
           pkill -f GradleDaemon || true
           pkill -f kotlin.daemon.KotlinCompileDaemon || true
 
+  build_synthetic_vuln_apks:
+    needs: setup
+    if: needs.setup.outputs.synthetic_vuln_jobs != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.setup.outputs.synthetic_vuln_jobs) }}
+      fail-fast: false
+
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Disable Git ownership check
+        run: git config --global --add safe.directory '*'
+
+      - name: Initialize submodule
+        run: |
+          echo "Initialize submodule for ${{ matrix.app_dir }}"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "${{ matrix.app_dir }}"
+
+      - name: Checkout commit from metadata
+        run: |
+          cd "${{ matrix.app_dir }}"
+
+          if [[ -f "metadata.json" ]]; then
+            commit=$(jq -r '["commit_version"]' "metadata.json")
+
+            if [[ -n "$commit" && "$commit" != "null" ]]; then
+              echo "Found commit: $commit"
+              cd codebase
+              git reset --hard HEAD
+              sudo git clean -fdx
+              git checkout "$commit"
+              cd ..
+            else
+              echo "No commit version found in metadata.json"
+              exit 1
+            fi
+          else
+            echo "No metadata.json file found"
+            exit 1
+          fi
+
+      - name: Check for Gradle files
+        id: check-gradle
+        run: |
+          cd "${{ matrix.app_dir }}"
+
+          # Check for any build.gradle* files in app directory or codebase subdirectory
+          if find . -name "build.gradle*" -type f | grep -q .; then
+            echo "Gradle build files found"
+            echo "has_gradle=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No Gradle build files found"
+            echo "has_gradle=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: "${{ matrix.java }}"
+          cache: ${{ steps.check-gradle.outputs.has_gradle == 'true' && 'gradle' || ''}}
+
+      - name: Build clean APK
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
+        run: |
+          echo "Building clean APK for ${{ matrix.app_name }}"
+          ./build_apk.sh "${{ matrix.app_name }}"
+
+          # Validate clean APK
+          APK_DIR="${{ matrix.app_dir }}/apk"
+          APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+          if [ "$APK_COUNT" -eq 0 ]; then
+            echo "ERROR: No clean APK found in $APK_DIR/"
+            exit 1
+          fi
+          echo "Clean APK built successfully - found $APK_COUNT APK(s)"
+
+      - name: Upload clean APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-clean-${{ matrix.app_name }}-${{ matrix.vuln_id }}-${{ github.run_id }}
+          path: ${{ matrix.app_dir }}/apk/*.apk
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Build vulnerable APK
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
+        run: |
+          echo "Building vulnerable APK for ${{ matrix.app_name }} with ${{ matrix.vuln_id }}"
+          ./build_apk.sh "${{ matrix.app_name }}" --vuln "${{ matrix.vuln_id }}"
+
+          # Validate vulnerable APK
+          VULN_APK_DIR="${{ matrix.app_dir }}/apk/${{ matrix.vuln_id }}"
+          if [ ! -d "$VULN_APK_DIR" ]; then
+            echo "ERROR: Vulnerable APK directory not found at $VULN_APK_DIR"
+            exit 1
+          fi
+
+          APK_COUNT=$(find "$VULN_APK_DIR" -name "*.apk" -type f 2>/dev/null | wc -l)
+          if [ "$APK_COUNT" -eq 0 ]; then
+            echo "ERROR: No vulnerable APK found in $VULN_APK_DIR/"
+            exit 1
+          fi
+          echo "Vulnerable APK built successfully - found $APK_COUNT APK(s)"
+
+      - name: Upload vulnerable APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-vuln-${{ matrix.app_name }}-${{ matrix.vuln_id }}-${{ github.run_id }}
+          path: ${{ matrix.app_dir }}/apk/${{ matrix.vuln_id }}/*.apk
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Cleanup Gradle daemons
+        if: always()
+        run: |
+          cd "${{ matrix.app_dir }}" || true
+          (cd codebase && ./gradlew --stop) || true
+          pkill -f GradleDaemon || true
+          pkill -f kotlin.daemon.KotlinCompileDaemon || true
+
+  # Run regular vulnerability tests (skipped if synthetic vulnerabilities are detected for faster CI)
   test:
     needs: [setup, handle_apk]
-    if: needs.setup.outputs.should_exit != 'true'
+    if: needs.setup.outputs.should_exit != 'true' && needs.setup.outputs.synthetic_vuln_jobs == '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     strategy:
@@ -617,6 +842,95 @@ jobs:
           clear_ssrf_requests() {
             echo "Clearing SSRF request log..."
             docker exec ssrf-probe rm -f /app/logs/ssrf_requests.json 2>/dev/null || true
+          }
+
+          run_exploit_verification() {
+            local vuln_dir="$1"
+            local expect_vulnerable="$2"  # "true" or "false"
+
+            echo "Running exploit from: $vuln_dir"
+
+            # Check required files
+            local exploit_files_dir="$vuln_dir/exploit_files"
+            local exploit_script="$exploit_files_dir/exploit.sh"
+            local verify_script="$vuln_dir/verify_files/verify_exploit.sh"
+
+            if [ ! -f "$exploit_script" ]; then
+              echo "ERROR: Exploit script not found: $exploit_script"
+              return 1
+            fi
+
+            if [ ! -f "$verify_script" ]; then
+              echo "ERROR: Verification script not found: $verify_script"
+              return 1
+            fi
+
+            # Run exploit in container
+            echo "Executing exploit in container..."
+            local container_name="mobilecybench-exploit-$$"
+            local exploit_image="cybench/mobilecybench:latest"
+            local exploit_files_abs_path
+            exploit_files_abs_path="$(cd "$exploit_files_dir" && pwd)"
+
+            # Start container with exploit_files mounted at /app/exploit_files
+            echo "Starting exploit container: $container_name"
+            docker run -d \
+              --name "$container_name" \
+              --network=shared_net \
+              --add-host=host.docker.internal:host-gateway \
+              -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
+              -v "$exploit_files_abs_path:/app/exploit_files" \
+              "$exploit_image" \
+              tail -f /dev/null
+
+            echo "Verifying container→emulator ADB connection..."
+            if ! docker exec "$container_name" adb devices 2>/dev/null | grep -q "device$"; then
+              echo "WARNING: Container cannot see the emulator via ADB."
+              echo "WARNING: This is OK for network-only exploits, but exploits requiring ADB may fail."
+            else
+              echo "SUCCESS: Container can access emulator via ADB"
+            fi
+
+            # Run the exploit script inside the container
+            if docker exec "$container_name" bash /app/exploit_files/exploit.sh; then
+              echo "SUCCESS: Exploit executed successfully"
+            else
+              echo "WARNING: Exploit execution returned non-zero exit code (may be expected)"
+            fi
+
+            # Stop and remove the container
+            echo "Cleaning up exploit container..."
+            docker rm -f "$container_name" 2>/dev/null || true
+
+            # Run verification
+            echo "Running verification..."
+            bash "$verify_script"
+            local verify_exit_code=$?
+
+            if [ "$verify_exit_code" -eq 0 ]; then
+              # verify_exploit.sh returns 0 if vulnerable
+              if [ "$expect_vulnerable" = "true" ]; then
+                echo "SUCCESS: Verification passed: App is vulnerable (as expected)"
+                return 0
+              else
+                echo "ERROR: Verification failed: App is vulnerable (expected NOT vulnerable)"
+                return 1
+              fi
+            elif [ "$verify_exit_code" -eq 1 ]; then
+              # verify_exploit.sh returns 1 if not vulnerable
+              if [ "$expect_vulnerable" = "false" ]; then
+                echo "SUCCESS: Verification passed: App is NOT vulnerable (as expected)"
+                return 0
+              else
+                echo "ERROR: Verification failed: App is NOT vulnerable (expected vulnerable)"
+                return 1
+              fi
+            else
+              # Any other exit code indicates an error in the verification script
+              echo "ERROR: Verification script failed with unexpected exit code: $verify_exit_code"
+              echo "ERROR: This indicates an error in verify_exploit.sh (e.g., adb/db failure), not a vulnerability status"
+              return 1
+            fi
           }
 
           EOF
@@ -1131,6 +1445,456 @@ jobs:
         run: |
           source /tmp/shared_functions.sh
           stop_ssrf_listener || true
+
+      - name: Docker Cleanup after tests
+        if: always()
+        run: |
+          docker system prune -af
+
+      - name: Display disk space after cleanup
+        if: always()
+        run: df -h
+
+  test_synthetic_vuln:
+    needs: [setup, build_synthetic_vuln_apks]
+    if: needs.setup.outputs.synthetic_vuln_jobs != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.setup.outputs.synthetic_vuln_jobs) }}
+      fail-fast: false
+
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Disable Git ownership check
+        run: git config --global --add safe.directory '*'
+
+      - name: Create shared functions
+        run: |
+          cat << 'EOF' > /tmp/shared_functions.sh
+          check_app_containers_ready() {
+            # Timeout per container in seconds
+            TIMEOUT=${TIMEOUT:-180}
+            # Interval between checks in seconds
+            INTERVAL=${INTERVAL:-1}
+
+            # Get app-specific containers from metadata.json
+            containers=""
+            if [ -f "metadata.json" ]; then
+              # Check for explicit container_names field
+              container_names=$(jq -r '.container_names[]? // empty' metadata.json 2>/dev/null)
+              if [ -n "$container_names" ]; then
+                containers="$container_names"
+                echo "Found explicit container_names in metadata.json: $containers"
+              fi
+            fi
+
+            if [ -z "$containers" ]; then
+              echo "No app-specific containers found in metadata.json - skipping container readiness check"
+              return 0
+            fi
+
+            echo "Checking readiness for app-specific containers: $containers"
+
+            for container in $containers; do
+              echo "Checking readiness for $container..."
+
+              # Check if container has a health check
+              has_health=$(docker inspect --format '{{if .Config.Healthcheck}}true{{else}}false{{end}}' "$container")
+              if [ "$has_health" = "true" ]; then
+                echo "Container has a health check. Waiting to become healthy..."
+                elapsed=0
+                success=0
+                while [ $elapsed -lt $TIMEOUT ]; do
+                  status=$(docker inspect --format '{{.State.Health.Status}}' "$container" 2>/dev/null)
+                  if [ "$status" == "healthy" ]; then
+                    success=1
+                    break
+                  fi
+                  sleep "$INTERVAL"
+                  elapsed=$((elapsed + INTERVAL))
+                done
+                if [ $success -eq 1 ]; then
+                  echo "$container is healthy."
+                  continue
+                else
+                  echo "Timeout: $container did not become healthy within $TIMEOUT seconds." >&2
+                  exit 1
+                fi
+              else
+                # Get exposed TCP ports
+                ports=$(docker inspect --format '{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{.HostPort}} {{end}}{{end}}' "$container")
+                if [ -z "$ports" ]; then
+                  echo "No exposed ports for $container. Skipping readiness check." >&2
+                  continue
+                fi
+
+                elapsed=0
+                all_success=0
+                while [ $elapsed -lt $TIMEOUT ]; do
+                  success=1
+                  for port_spec in $ports; do
+                    port=$(echo "$port_spec" | cut -d'/' -f1)
+                    proto=$(echo "$port_spec" | cut -d'/' -f2)
+                    if [ "$proto" != "tcp" ]; then
+                      continue  # Skip non-TCP ports
+                    fi
+
+                    # Perform TCP check
+                    if ! nc -z -w 1 localhost "$port" &>/dev/null; then
+                      success=0
+                      break
+                    fi
+                  done
+
+                  if [ $success -eq 1 ]; then
+                    all_success=1
+                    break
+                  fi
+
+                  sleep "$INTERVAL"
+                  elapsed=$((elapsed + INTERVAL))
+                done
+
+                if [ $all_success -eq 1 ]; then
+                  echo "$container is ready via port check on all ports."
+                else
+                  echo "Timeout: $container not ready after $TIMEOUT seconds." >&2
+                  exit 1
+                fi
+              fi
+            done
+
+            echo "App-specific containers are ready!"
+          }
+
+          run_exploit_verification() {
+            local vuln_dir="$1"
+            local expect_vulnerable="$2"  # "true" or "false"
+
+            echo "Running exploit from: $vuln_dir"
+
+            # Check required files
+            local exploit_files_dir="$vuln_dir/exploit_files"
+            local exploit_script="$exploit_files_dir/exploit.sh"
+            local verify_script="$vuln_dir/verify_files/verify_exploit.sh"
+
+            if [ ! -f "$exploit_script" ]; then
+              echo "ERROR: Exploit script not found: $exploit_script"
+              return 1
+            fi
+
+            if [ ! -f "$verify_script" ]; then
+              echo "ERROR: Verification script not found: $verify_script"
+              return 1
+            fi
+
+            # Run exploit in container
+            echo "Executing exploit in container..."
+            local container_name="mobilecybench-exploit-$$"
+            local exploit_image="cybench/mobilecybench:latest"
+            local exploit_files_abs_path
+            exploit_files_abs_path="$(cd "$exploit_files_dir" && pwd)"
+
+            # Start container with exploit_files mounted at /app/exploit_files
+            echo "Starting exploit container: $container_name"
+            docker run -d \
+              --name "$container_name" \
+              --network=shared_net \
+              --add-host=host.docker.internal:host-gateway \
+              -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
+              -v "$exploit_files_abs_path:/app/exploit_files" \
+              "$exploit_image" \
+              tail -f /dev/null
+
+            echo "Verifying container→emulator ADB connection..."
+            if ! docker exec "$container_name" adb devices 2>/dev/null | grep -q "device$"; then
+              echo "WARNING: Container cannot see the emulator via ADB."
+              echo "WARNING: This is OK for network-only exploits, but exploits requiring ADB may fail."
+            else
+              echo "SUCCESS: Container can access emulator via ADB"
+            fi
+
+            # Run the exploit script inside the container
+            if docker exec "$container_name" bash /app/exploit_files/exploit.sh; then
+              echo "SUCCESS: Exploit executed successfully"
+            else
+              echo "WARNING: Exploit execution returned non-zero exit code (may be expected)"
+            fi
+
+            # Stop and remove the container
+            echo "Cleaning up exploit container..."
+            docker rm -f "$container_name" 2>/dev/null || true
+
+            # Run verification
+            echo "Running verification..."
+            bash "$verify_script"
+            local verify_exit_code=$?
+
+            if [ "$verify_exit_code" -eq 0 ]; then
+              # verify_exploit.sh returns 0 if vulnerable
+              if [ "$expect_vulnerable" = "true" ]; then
+                echo "SUCCESS: Verification passed: App is vulnerable (as expected)"
+                return 0
+              else
+                echo "ERROR: Verification failed: App is vulnerable (expected NOT vulnerable)"
+                return 1
+              fi
+            elif [ "$verify_exit_code" -eq 1 ]; then
+              # verify_exploit.sh returns 1 if not vulnerable
+              if [ "$expect_vulnerable" = "false" ]; then
+                echo "SUCCESS: Verification passed: App is NOT vulnerable (as expected)"
+                return 0
+              else
+                echo "ERROR: Verification failed: App is NOT vulnerable (expected vulnerable)"
+                return 1
+              fi
+            else
+              # Any other exit code indicates an error in the verification script
+              echo "ERROR: Verification script failed with unexpected exit code: $verify_exit_code"
+              echo "ERROR: This indicates an error in verify_exploit.sh (e.g., adb/db failure), not a vulnerability status"
+              return 1
+            fi
+          }
+
+          EOF
+          chmod +x /tmp/shared_functions.sh
+
+          echo "Initialize submodule for ${{ matrix.app_dir }}"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GH_TOKEN }}" | base64)" submodule update --init "${{ matrix.app_dir }}"
+
+      - name: Setup Python 3.12 environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpulse0
+          python -m pip install --upgrade pip -q
+          pip install -r requirements.txt -q
+          pip install -e .
+          export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
+
+      - name: Create Docker Network
+        run: docker network create shared_net || true
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Download clean APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: apk-clean-${{ matrix.app_name }}-${{ matrix.vuln_id }}-${{ github.run_id }}
+          path: ${{ matrix.app_dir }}/apk-clean/
+
+      - name: Download vulnerable APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: apk-vuln-${{ matrix.app_name }}-${{ matrix.vuln_id }}-${{ github.run_id }}
+          path: ${{ matrix.app_dir }}/apk-vuln/
+
+      - name: Verify downloaded APKs
+        run: |
+          echo "Verifying downloaded APKs for ${{ matrix.app_name }} (${{ matrix.vuln_id }})"
+
+          CLEAN_APK_COUNT=$(find "${{ matrix.app_dir }}/apk-clean/" -name "*.apk" -type f 2>/dev/null | wc -l)
+          VULN_APK_COUNT=$(find "${{ matrix.app_dir }}/apk-vuln/" -name "*.apk" -type f 2>/dev/null | wc -l)
+
+          if [ "$CLEAN_APK_COUNT" -eq 0 ]; then
+            echo "ERROR: No clean APK found"
+            exit 1
+          fi
+
+          if [ "$VULN_APK_COUNT" -eq 0 ]; then
+            echo "ERROR: No vulnerable APK found"
+            exit 1
+          fi
+
+          echo "Successfully downloaded clean ($CLEAN_APK_COUNT) and vulnerable ($VULN_APK_COUNT) APKs"
+
+      - name: Create synthetic vulnerability test script
+        run: |
+          cat << 'EOF' > test_synthetic_vuln.sh
+          #!/bin/bash
+          set -e
+          source /tmp/shared_functions.sh
+
+          app_dir="${{ matrix.app_dir }}"
+          vuln_id="${{ matrix.vuln_id }}"
+          vuln_path="$app_dir/synthetic_vulnerabilities/$vuln_id"
+
+          cd "$app_dir"
+
+          # Get package_name from metadata.json
+          package_name=$(jq -r '.package_name' metadata.json)
+          echo "Package name: $package_name"
+
+          uninstall_package() {
+            local pkg="$1"
+            if adb shell pm list packages | grep -q "^package:$pkg$"; then
+              echo "Uninstalling package $pkg..."
+              adb uninstall "$pkg" >/dev/null 2>&1 || true
+              if adb shell pm list packages | grep -q "^package:$pkg$"; then
+                echo "WARNING: Failed to uninstall package $pkg"
+              else
+                echo "SUCCESS: Package $pkg uninstalled"
+              fi
+            fi
+          }
+
+          #
+          # PHASE 1: Test Clean Build (Expect NOT Vulnerable)
+          #
+          echo "========================================="
+          echo "PHASE 1: Testing Clean Build (Baseline)"
+          echo "========================================="
+
+          # Prepare clean APK directory
+          rm -rf apk
+          mkdir -p apk
+          cp apk-clean/*.apk apk/
+
+          # Verify package NOT installed before setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name already installed before setup"
+            exit 1
+          fi
+
+          # Install clean APK
+          echo "Installing clean APK..."
+          ./start_runtime.sh
+
+          # Verify package IS installed after setup
+          if ! adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name not installed after start_runtime.sh"
+            ./cleanup.sh
+            exit 1
+          fi
+          echo "SUCCESS: Clean APK installed"
+
+          # Wait for containers
+          check_app_containers_ready
+
+          # Run exploit and verify (expect NOT vulnerable)
+          cd ../..
+          run_exploit_verification "$vuln_path" "false" || {
+            echo "ERROR: Phase 1 failed - clean build verification failed"
+            cd "$app_dir"
+            ./cleanup.sh
+            uninstall_package "$package_name"
+            exit 1
+          }
+
+          # Cleanup Phase 1
+          cd "$app_dir"
+          echo "Cleaning up Phase 1..."
+          ./cleanup.sh
+          uninstall_package "$package_name"
+
+          echo "SUCCESS: Phase 1 passed - clean build is NOT vulnerable"
+
+          #
+          # PHASE 2: Test Vulnerable Build (Expect Vulnerable)
+          #
+          echo "========================================="
+          echo "PHASE 2: Testing Vulnerable Build (With Patch)"
+          echo "========================================="
+
+          # Prepare vulnerable APK directory
+          rm -rf apk
+          mkdir -p apk
+          cp apk-vuln/*.apk apk/
+
+          # Verify package NOT installed before setup
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name already installed before setup"
+            exit 1
+          fi
+
+          # Install vulnerable APK
+          echo "Installing vulnerable APK..."
+          ./start_runtime.sh
+
+          # Verify package IS installed after setup
+          if ! adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name not installed after start_runtime.sh"
+            ./cleanup.sh
+            exit 1
+          fi
+          echo "SUCCESS: Vulnerable APK installed"
+
+          # Wait for containers
+          check_app_containers_ready
+
+          # Run exploit and verify (expect vulnerable)
+          cd ../..
+          run_exploit_verification "$vuln_path" "true" || {
+            echo "ERROR: Phase 2 failed - vulnerable build verification failed"
+            cd "$app_dir"
+            ./cleanup.sh
+            uninstall_package "$package_name"
+            exit 1
+          }
+
+          # Cleanup Phase 2
+          cd "$app_dir"
+          echo "Cleaning up Phase 2..."
+          ./cleanup.sh
+          uninstall_package "$package_name"
+
+          echo "SUCCESS: Phase 2 passed - vulnerable build is vulnerable"
+          echo ""
+          echo "========================================="
+          echo "SYNTHETIC VULNERABILITY TEST PASSED"
+          echo "========================================="
+          echo "✓ Clean build: NOT vulnerable (as expected)"
+          echo "✓ Vulnerable build: VULNERABLE (as expected)"
+
+          EOF
+          chmod +x test_synthetic_vuln.sh
+
+      - name: Run emulator test for synthetic vulnerability
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.sdk }}
+          arch: x86_64
+          target: ${{ matrix.system_image }}
+          profile: pixel_2
+          ram-size: 2048
+          force-avd-creation: true
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated
+          disable-animations: true
+          script: |
+            utils/android_emulator_ready.sh
+            ./test_synthetic_vuln.sh
+
+      - name: Display disk space after tests
+        if: always()
+        run: df -h
 
       - name: Docker Cleanup after tests
         if: always()
