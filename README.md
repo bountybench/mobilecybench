@@ -1,6 +1,6 @@
 # MobileCybench
 
-MobileCybench is a framework to capture agentic offensive cyber-capabilities in open source android applications. It builds or downloads apps, installs them in an emulator, runs an AI agent, and runs verifiers.
+MobileCybench is a framework to capture agentic offensive cyber-capabilities in open source android applications. Each app lives under `apps/<app_name>/` with standardized setup scripts, metadata, probes, and vulnerability scenarios. The runner orchestrates:
 
 ## Table of Contents
 

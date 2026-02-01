@@ -30,7 +30,7 @@ class AgentEnvironment:
         env: Dict[str, str],
         commit_id: str,
         mode: str = None,
-        synthetic_vulns: Optional[List[str]] = None,
+        vuln_id: Optional[str] = None,
     ):
         self.app_dir = app_dir
         self.app_name = app_dir.name
@@ -39,7 +39,7 @@ class AgentEnvironment:
         self.env = env
         self.commit_id = commit_id
         self.mode = mode
-        self.synthetic_vulns = synthetic_vulns or []
+        self.vuln_id = vuln_id
 
         import traceback
 
@@ -131,7 +131,7 @@ class AgentEnvironment:
             volumes = self._setup_agent_codebase()
 
             # Setup verify_files for synthetic vulnerability mode
-            if self.synthetic_vulns:
+            if self.vuln_id:
                 verify_volumes = self._setup_verify_files()
                 if verify_volumes:
                     volumes.update(verify_volumes)
@@ -204,7 +204,7 @@ class AgentEnvironment:
         logger.info(f"Creating staging directory at {staging_dir}")
         staging_dir.mkdir(parents=True, exist_ok=True)
 
-        if self.synthetic_vulns:
+        if self.vuln_id:
             # Synthetic vulnerability mode: copy current state without git history
             logger.info(
                 "Synthetic vuln mode: Copying current codebase state without git history"
@@ -284,17 +284,20 @@ class AgentEnvironment:
         return {str(agent_codebase): {"bind": "/app/codebase", "mode": "rw"}}
 
     def _setup_verify_files(self):
-        """Mount verify_files from vuln_0 for agent access."""
+        """Mount verify_files for the synthetic vulnerability."""
         verify_files_src = (
-            self.app_dir / "synthetic_vulnerabilities" / "vuln_0" / "verify_files"
+            self.app_dir / "synthetic_vulnerabilities" / self.vuln_id / "verify_files"
         )
         if not verify_files_src.is_dir():
             logger.warning(f"No verify_files directory found at {verify_files_src}")
             return None
 
-        logger.info("Mounting verify_files at /app/verify_files/vuln_0")
+        logger.info(f"Mounting verify_files at /app/verify_files/{self.vuln_id}")
         return {
-            str(verify_files_src): {"bind": "/app/verify_files/vuln_0", "mode": "ro"}
+            str(verify_files_src): {
+                "bind": f"/app/verify_files/{self.vuln_id}",
+                "mode": "ro",
+            }
         }
 
     def copy_files(
@@ -542,3 +545,83 @@ class AgentEnvironment:
         except Exception as e:
             logger.error(f"Failed to reset agent_codebase: {e}")
             raise
+
+    def cleanup(self):
+        """Clean up the agent environment (stop and remove container)."""
+        if self.container:
+            try:
+                logger.info(f"Stopping container: {self.container.name}")
+                self.container.stop(timeout=10)
+                self.container.remove(force=True)
+                logger.info("Container stopped and removed")
+            except Exception as e:
+                logger.warning(f"Error cleaning up container: {e}")
+        self.container = None
+
+
+def create_docker_network(network_name: str = "shared_net") -> None:
+    """Create a Docker network if it doesn't exist."""
+    client = docker.from_env()
+
+    try:
+        client.networks.get(network_name)
+        logger.info(f"Docker network '{network_name}' already exists")
+    except docker.errors.NotFound:
+        client.networks.create(network_name, driver="bridge")
+        logger.info(f"Created Docker network '{network_name}'")
+
+
+def setup_agent_environment(
+    app_dir: Path,
+    agent_image: str,
+    metadata: dict,
+    workflow: str = "discovery",  # "discovery" or "exploit"
+    vuln_id: Optional[str] = None,
+) -> AgentEnvironment:
+    """
+    Set up the agent environment container.
+
+    Args:
+        app_dir: Application directory
+        agent_image: Docker image to use for agent
+        metadata: App metadata dict
+        workflow: Evaluation workflow type ("discovery" or "exploit")
+
+    Returns:
+        AgentEnvironment instance
+    """
+    # Create docker network
+    create_docker_network()
+
+    # Clear SSRF requests (only for discovery mode)
+    if workflow == "discovery":
+        try:
+            from utils.ssrf_utils import clear_ssrf_requests
+
+            logger.info("Clearing previous SSRF requests...")
+            clear_ssrf_requests()
+            logger.info("SSRF requests cleared")
+        except Exception as e:
+            logger.warning(f"Failed to clear SSRF requests: {e}")
+
+    # Prepare environment variables
+    env_vars = {
+        "ANDROID_ADB_SERVER_PORT": "5037",
+        "ADB_SERVER_SOCKET": "tcp:host.docker.internal:5037",
+    }
+
+    # Get commit ID from metadata or use default
+    commit_id = metadata.get("commit_id", "HEAD")
+
+    agent_env = AgentEnvironment(
+        app_dir=app_dir,
+        docker_networks=["shared_net"],
+        image_name=agent_image,
+        env=env_vars,
+        commit_id=commit_id,
+        vuln_id=vuln_id if workflow == "exploit" else None,
+    )
+
+    agent_env.setup()
+
+    return agent_env
