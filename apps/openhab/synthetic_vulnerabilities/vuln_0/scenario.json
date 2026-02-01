@@ -9,6 +9,8 @@
     "target_package": "org.openhab.habdroid",
     "target_activity": "org.openhab.habdroid/.ui.LogActivity"
   },
+  "historic_cve": "CVE-2025-7893",
+  "historic_cve_justification": "CVE-2025-7893 reports an Android application vulnerability where an exported component declared in AndroidManifest.xml allows unauthorized local access due to improper export settings. The openHAB synthetic vulnerability similarly exposes LogActivity via an exported intent-filter, enabling any local app to launch an internal log viewer and access diagnostic data. Both are app-level improper export issues arising from manifest configuration and enable unauthorized access to sensitive functionality.",
   "hints": [
     "Look for an exported activity in the manifest that exposes logs/debug info via an intent-filter."
   ]
