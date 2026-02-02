@@ -15,6 +15,13 @@ class OpenAIProvider(ModelProvider):
     """OpenAI Responses API provider.
 
     Wraps client setup, env validation, and `responses.create` calls.
+
+    Uses a 2-phase approach for tool calls:
+    - Phase 1: Generate text output (no tools)
+    - Phase 2: Generate tool call (tools required)
+
+    This is necessary because OpenAI models treat text and tool calls as
+    mutually exclusive output channels, unlike Gemini which combines them.
     """
 
     def __init__(self) -> None:
@@ -69,19 +76,16 @@ class OpenAIProvider(ModelProvider):
         extra: Optional[Dict[str, Any]] = None,
     ) -> Any:
         client = self._client_or_init()
-        kwargs: Dict[str, Any] = {
-            "model": model,
-        }
+
+        base_kwargs: Dict[str, Any] = {"model": model}
 
         if conversation_id:
-            kwargs["conversation"] = {"id": conversation_id}
+            base_kwargs["conversation"] = {"id": conversation_id}
             if not input_messages:
-                # No input - use format reinforcement as the input
-                kwargs["input"] = FORMAT_REINFORCEMENT_MESSAGE
+                base_kwargs["input"] = FORMAT_REINFORCEMENT_MESSAGE
             else:
-                # Append format reinforcement to existing input (e.g., tool outputs)
                 if isinstance(input_messages, list):
-                    kwargs["input"] = input_messages + [
+                    base_kwargs["input"] = input_messages + [
                         {
                             "type": "message",
                             "role": "user",
@@ -89,29 +93,115 @@ class OpenAIProvider(ModelProvider):
                         }
                     ]
                 else:
-                    # String input - append reinforcement
-                    kwargs["input"] = (
+                    base_kwargs["input"] = (
                         f"{input_messages}\n\n{FORMAT_REINFORCEMENT_MESSAGE}"
                     )
         elif input_messages:
-            kwargs["input"] = input_messages
+            base_kwargs["input"] = input_messages
         else:
             raise ValueError("Must provide either input_messages or conversation_id")
 
-        if tools is not None:
-            kwargs["tools"] = tools
         if max_output_tokens is not None:
-            kwargs["max_output_tokens"] = max_output_tokens
-        kwargs["max_tool_calls"] = 1
+            base_kwargs["max_output_tokens"] = max_output_tokens
         if timeout_ms is not None:
-            kwargs["timeout"] = timeout_ms
+            base_kwargs["timeout"] = timeout_ms
 
         if reasoning_effort:
-            kwargs["reasoning"] = {"effort": reasoning_effort}
+            base_kwargs["reasoning"] = {"effort": reasoning_effort, "summary": "auto"}
+            base_kwargs["include"] = ["reasoning.encrypted_content"]
 
         if extra:
-            kwargs.update(extra)
+            base_kwargs.update(extra)
 
-        agent_logger.info(f"OpenAI API request kwargs: {kwargs}")
-        response = client.responses.create(**kwargs)
-        return response
+        if tools:
+            # Phase 1: Get text output (no tools)
+            phase1_kwargs = base_kwargs.copy()
+            agent_logger.info(f"OpenAI API Phase 1 (text): {phase1_kwargs}")
+            text_response = client.responses.create(**phase1_kwargs)
+
+            # Phase 2: Get tool call (with tools, force tool use)
+            phase2_kwargs = base_kwargs.copy()
+            phase2_kwargs["tools"] = tools
+            phase2_kwargs["tool_choice"] = "required"
+            phase2_kwargs["max_tool_calls"] = 1
+
+            # Feed Phase 1 output into Phase 2 input
+            if text_response.output_text:
+                if isinstance(phase2_kwargs["input"], list):
+                    # Append assistant message to list
+                    phase2_kwargs["input"] = list(phase2_kwargs["input"])
+                    phase2_kwargs["input"].append(
+                        {"role": "assistant", "content": text_response.output_text}
+                    )
+                elif isinstance(phase2_kwargs["input"], str):
+                    # Append text to string
+                    phase2_kwargs["input"] += f"\n\n{text_response.output_text}"
+
+            agent_logger.info(f"OpenAI API Phase 2 (tool): {phase2_kwargs}")
+            tool_response = client.responses.create(**phase2_kwargs)
+
+            # Merge: text from phase 1, tool calls from phase 2
+            return self._merge_responses(text_response, tool_response)
+        else:
+            # No tools - single phase
+            agent_logger.info(f"OpenAI API request kwargs: {base_kwargs}")
+            return client.responses.create(**base_kwargs)
+
+    def _merge_responses(self, text_response: Any, tool_response: Any) -> Any:
+        """Merge text response and tool response into a single response object."""
+
+        # Create a simple wrapper that combines both responses
+        class MergedResponse:
+            def __init__(self, text_resp, tool_resp):
+                self._text_resp = text_resp
+                self._tool_resp = tool_resp
+
+            @property
+            def output_text(self):
+                return self._text_resp.output_text
+
+            @property
+            def output(self):
+                # Combine output items from both responses
+                items = []
+                if hasattr(self._text_resp, "output") and self._text_resp.output:
+                    items.extend(self._text_resp.output)
+                if hasattr(self._tool_resp, "output") and self._tool_resp.output:
+                    items.extend(self._tool_resp.output)
+                return items
+
+            @property
+            def tool_calls(self):
+                return getattr(self._tool_resp, "tool_calls", [])
+
+            @property
+            def id(self):
+                return self._tool_resp.id
+
+            @property
+            def usage(self):
+                # Combine usage from both responses
+                text_usage = getattr(self._text_resp, "usage", None)
+                tool_usage = getattr(self._tool_resp, "usage", None)
+                if text_usage and tool_usage:
+
+                    class CombinedUsage:
+                        def __init__(self, u1, u2):
+                            self.input_tokens = getattr(
+                                u1, "input_tokens", 0
+                            ) + getattr(u2, "input_tokens", 0)
+                            self.output_tokens = getattr(
+                                u1, "output_tokens", 0
+                            ) + getattr(u2, "output_tokens", 0)
+                            self.total_tokens = getattr(
+                                u1, "total_tokens", 0
+                            ) + getattr(u2, "total_tokens", 0)
+
+                    return CombinedUsage(text_usage, tool_usage)
+                return tool_usage or text_usage
+
+            def __getattr__(self, name):
+                # Fallback to tool_response for any other attributes
+                return getattr(self._tool_resp, name)
+
+        return MergedResponse(text_response, tool_response)
