@@ -184,23 +184,14 @@ class LiteLLMProvider(ModelProvider):
     a single API.
     """
 
-    def __init__(self, max_tool_rounds_per_turn: int = 1) -> None:
+    def __init__(self) -> None:
         self._validated: bool = False
         self._mock_client: Optional[LiteLLMClient] = None
         self._call_id = 0
-        self._max_tool_rounds = max_tool_rounds_per_turn
-        self._runtime = None  # Lazy initialization
 
         # Configure LiteLLM settings
         litellm.drop_params = True  # Drop unsupported params instead of erroring
         litellm.set_verbose = False  # Reduce noise in logs
-
-    def _get_runtime(self):
-        """Lazily initialize and return the ToolRuntime."""
-        if self._runtime is None:
-            from agent.tools.runtime import ToolRuntime
-            self._runtime = ToolRuntime()
-        return self._runtime
 
     def _get_client(self) -> LiteLLMClient:
         """Get or create the mock client."""
@@ -316,6 +307,81 @@ class LiteLLMProvider(ModelProvider):
 
         return litellm_tools if litellm_tools else None
 
+    def _reorder_messages_for_tool_calls(self, messages: List[Dict]) -> List[Dict]:
+        """Reorder messages to ensure tool responses immediately follow assistant tool_calls.
+
+        OpenAI requires that tool messages must immediately follow the assistant message
+        with the corresponding tool_calls. If other messages (like user screenshots) are
+        interleaved, we need to reorder them.
+
+        Args:
+            messages: List of message dicts
+
+        Returns:
+            Reordered list of messages
+        """
+        if not messages:
+            return messages
+
+        result = []
+        pending_tool_responses = []  # Collect tool responses
+        pending_other_messages = []  # Collect non-tool messages that come after assistant with tool_calls
+
+        i = 0
+        while i < len(messages):
+            msg = messages[i]
+
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                # Found assistant message with tool_calls
+                result.append(msg)
+
+                # Collect expected tool_call_ids
+                expected_ids = set()
+                for tc in msg.get("tool_calls", []):
+                    tc_id = tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", None)
+                    if tc_id:
+                        expected_ids.add(tc_id)
+
+                # Look ahead for tool responses and other messages
+                j = i + 1
+                found_tool_responses = []
+                other_messages = []
+
+                while j < len(messages):
+                    next_msg = messages[j]
+                    if next_msg.get("role") == "tool":
+                        tool_call_id = next_msg.get("tool_call_id", "")
+                        if tool_call_id in expected_ids:
+                            found_tool_responses.append(next_msg)
+                            expected_ids.discard(tool_call_id)
+                        else:
+                            # Tool response for a different assistant message
+                            other_messages.append(next_msg)
+                    elif next_msg.get("role") == "assistant" and next_msg.get("tool_calls"):
+                        # Next assistant with tool_calls - stop looking
+                        break
+                    else:
+                        other_messages.append(next_msg)
+                    j += 1
+
+                # Add tool responses immediately after assistant
+                result.extend(found_tool_responses)
+
+                # Add other messages after tool responses
+                result.extend(other_messages)
+
+                i = j  # Skip processed messages
+            elif msg.get("role") == "tool":
+                # Standalone tool message - add it (might be orphaned)
+                result.append(msg)
+                i += 1
+            else:
+                # Regular message
+                result.append(msg)
+                i += 1
+
+        return result
+
     def call(
         self,
         *,
@@ -357,25 +423,37 @@ class LiteLLMProvider(ModelProvider):
             conv = self._mock_client.conversations._conversations.get(conversation_id)
             if conv:
                 for msg in conv.get("messages", []):
-                    messages.append({
+                    rebuilt_msg = {
                         "role": msg["role"],
-                        "content": msg["content"],
-                    })
+                        "content": msg.get("content", ""),
+                    }
+                    # Include tool_calls if present (for assistant messages)
+                    if "tool_calls" in msg:
+                        rebuilt_msg["tool_calls"] = msg["tool_calls"]
+                    # Include tool_call_id if present (for tool messages)
+                    if "tool_call_id" in msg:
+                        rebuilt_msg["tool_call_id"] = msg["tool_call_id"]
+                    messages.append(rebuilt_msg)
 
-        # Add new input messages
+        # Add new input messages and store them in conversation history
+        new_messages_for_history = []
         if input_messages:
             if isinstance(input_messages, str):
-                messages.append({"role": "user", "content": input_messages})
+                new_msg = {"role": "user", "content": input_messages}
+                messages.append(new_msg)
+                new_messages_for_history.append(new_msg)
             elif isinstance(input_messages, list):
                 for msg in input_messages:
                     if isinstance(msg, dict):
                         # Handle function_call_output format
                         if msg.get("type") == "function_call_output":
-                            messages.append({
+                            new_msg = {
                                 "role": "tool",
                                 "tool_call_id": msg.get("call_id", ""),
                                 "content": msg.get("output", ""),
-                            })
+                            }
+                            messages.append(new_msg)
+                            new_messages_for_history.append(new_msg)
                         elif "role" in msg:
                             content = msg.get("content", "")
                             if isinstance(content, list):
@@ -385,7 +463,15 @@ class LiteLLMProvider(ModelProvider):
                                     if isinstance(part, dict) and "text" in part:
                                         text_parts.append(part["text"])
                                 content = "\n".join(text_parts)
-                            messages.append({"role": msg["role"], "content": content})
+                            new_msg = {"role": msg["role"], "content": content}
+                            messages.append(new_msg)
+                            new_messages_for_history.append(new_msg)
+
+        # Store new input messages in conversation history
+        if conversation_id and self._mock_client and new_messages_for_history:
+            conv = self._mock_client.conversations._conversations.get(conversation_id)
+            if conv:
+                conv["messages"].extend(new_messages_for_history)
 
         # If no messages but we have a conversation, use continuation prompt
         if not messages and conversation_id:
@@ -393,6 +479,10 @@ class LiteLLMProvider(ModelProvider):
 
         if not messages:
             raise ValueError("Must provide either input_messages or conversation_id with history")
+
+        # Reorder messages to ensure tool responses immediately follow assistant tool_calls
+        # This is required by the OpenAI API
+        messages = self._reorder_messages_for_tool_calls(messages)
 
         # Build completion kwargs
         kwargs: Dict[str, Any] = {
@@ -439,88 +529,40 @@ class LiteLLMProvider(ModelProvider):
             # Make the completion call
             response = completion(**kwargs)
 
-            # Handle tool calls if present
-            tool_calls_made = []
-            tool_round = 0
-            current_messages = messages.copy()
-
-            while tool_round < self._max_tool_rounds:
-                # Check for tool calls in response
-                choice = response.choices[0] if response.choices else None
-                if not choice or not choice.message:
-                    break
-
-                tool_calls = getattr(choice.message, "tool_calls", None)
-                if not tool_calls:
-                    break
-
-                tool_round += 1
-                agent_logger.info(f"Tool calling round {tool_round}/{self._max_tool_rounds}")
-
-                # Add assistant message with tool calls to history
-                assistant_msg = {
-                    "role": "assistant",
-                    "content": choice.message.content or "",
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments,
-                            },
-                        }
-                        for tc in tool_calls
-                    ],
-                }
-                current_messages.append(assistant_msg)
-
-                # Execute tool calls
-                for tc in tool_calls:
-                    function_name = tc.function.name
-                    try:
-                        function_args = json.loads(tc.function.arguments)
-                    except json.JSONDecodeError:
-                        function_args = {}
-
-                    agent_logger.info(f"Executing function: {function_name}")
-                    agent_logger.info(f"Function arguments: {json.dumps(function_args)}")
-
-                    # Execute via Runtime
-                    tool_result = self._get_runtime().execute(function_name, function_args)
-
-                    tool_calls_made.append({
-                        "id": tc.id,
-                        "name": function_name,
-                        "arguments": function_args,
-                        "output": tool_result,
-                    })
-
-                    # Add tool result to messages
-                    result_content = json.dumps(tool_result) if isinstance(tool_result, dict) else str(tool_result)
-                    current_messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": result_content,
-                    })
-
-                # Continue conversation with tool results
-                kwargs["messages"] = current_messages
-                response = completion(**kwargs)
-
             # Convert response to OpenAI-compatible format
-            converted = self._convert_response(response, current_call_id, tool_calls_made)
+            converted = self._convert_response(response, current_call_id, [])
 
             # Update conversation history if we have a conversation_id
             if conversation_id and self._mock_client:
                 conv = self._mock_client.conversations._conversations.get(conversation_id)
                 if conv:
-                    # Add the final assistant message
-                    conv["messages"].append({
-                        "role": "assistant",
-                        "content": converted.output_text or "",
-                        "id": f"msg-{self._call_id}",
-                    })
+                    # Check if response has tool calls
+                    choice = response.choices[0] if response.choices else None
+                    tool_calls = getattr(choice.message, "tool_calls", None) if choice and choice.message else None
+
+                    if tool_calls:
+                        # Store assistant message with tool_calls for proper history
+                        conv["messages"].append({
+                            "role": "assistant",
+                            "content": choice.message.content or "",
+                            "tool_calls": [
+                                {
+                                    "id": tc.id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": tc.function.name,
+                                        "arguments": tc.function.arguments,
+                                    },
+                                }
+                                for tc in tool_calls
+                            ],
+                        })
+                    else:
+                        # No tool calls - just store content
+                        conv["messages"].append({
+                            "role": "assistant",
+                            "content": converted.output_text or "",
+                        })
 
             return converted
 
@@ -571,6 +613,15 @@ class LiteLLMProvider(ModelProvider):
             tc_list = getattr(choice.message, "tool_calls", None)
             if tc_list:
                 for tc in tc_list:
+                    # Create a function object to match OpenAI's format
+                    func_obj = type(
+                        "Function",
+                        (),
+                        {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    )()
                     response_tool_calls.append(
                         type(
                             "ToolCall",
@@ -579,6 +630,8 @@ class LiteLLMProvider(ModelProvider):
                                 "id": tc.id,
                                 "type": "function",
                                 "call_id": tc.id,
+                                "function": func_obj,
+                                # Also include flat attributes for compatibility
                                 "name": tc.function.name,
                                 "arguments": tc.function.arguments,
                             },
