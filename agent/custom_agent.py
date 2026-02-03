@@ -189,7 +189,9 @@ class CustomAgent:
                 content_copy = []
                 for item in msg_copy["content"]:
                     if isinstance(item, dict) and item.get("type") == "image_url":
-                        content_copy.append({"type": "image_url", "image_url": "[IMAGE DATA]"})
+                        content_copy.append(
+                            {"type": "image_url", "image_url": "[IMAGE DATA]"}
+                        )
                     else:
                         content_copy.append(item)
                 msg_copy["content"] = content_copy
@@ -408,11 +410,13 @@ class CustomAgent:
                     agent_logger.info(f"Result: {result}")
 
                     # Add tool result to message history
-                    self.messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call_id,
-                        "content": str(result),
-                    })
+                    self.messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call_id,
+                            "content": str(result),
+                        }
+                    )
 
             # Check for final submission command
             if assistant_content and assistant_content.strip():

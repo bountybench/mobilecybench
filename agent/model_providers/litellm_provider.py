@@ -108,7 +108,9 @@ class LiteLLMProvider(ModelProvider):
             )
 
         self._validated = True
-        agent_logger.info(f"{provider_name} API key found for model '{model or 'default'}'")
+        agent_logger.info(
+            f"{provider_name} API key found for model '{model or 'default'}'"
+        )
 
     def _convert_tools_to_litellm(self, tools: Optional[List]) -> Optional[List]:
         """Convert tool definitions to LiteLLM format.
@@ -126,14 +128,16 @@ class LiteLLMProvider(ModelProvider):
                     litellm_tools.append(tool)
                 elif "name" in tool and "parameters" in tool:
                     # Convert to OpenAI format
-                    litellm_tools.append({
-                        "type": "function",
-                        "function": {
-                            "name": tool["name"],
-                            "description": tool.get("description", ""),
-                            "parameters": tool["parameters"],
-                        },
-                    })
+                    litellm_tools.append(
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": tool["name"],
+                                "description": tool.get("description", ""),
+                                "parameters": tool["parameters"],
+                            },
+                        }
+                    )
 
         return litellm_tools if litellm_tools else None
 
@@ -205,7 +209,10 @@ class LiteLLMProvider(ModelProvider):
                     budget = 2048
                 elif "high" in reasoning_effort:
                     budget = 16384
-                completion_kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
+                completion_kwargs["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": budget,
+                }
 
             elif provider == "anthropic":
                 # Claude extended thinking (3.5+, future versions)

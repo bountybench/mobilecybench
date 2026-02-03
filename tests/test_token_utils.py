@@ -110,14 +110,20 @@ def test_get_pricing_for_model_with_provider_prefix():
     }
 
     # Test with gemini/ prefix
-    p = get_pricing_for_model("gemini/gemini-2.0-flash", pricing_map=pricing_map, warn=False)
+    p = get_pricing_for_model(
+        "gemini/gemini-2.0-flash", pricing_map=pricing_map, warn=False
+    )
     assert p.input == 0.1 and p.output == 0.4 and p.cache_input == 0.025
 
-    p = get_pricing_for_model("gemini/gemini-3-pro-preview", pricing_map=pricing_map, warn=False)
+    p = get_pricing_for_model(
+        "gemini/gemini-3-pro-preview", pricing_map=pricing_map, warn=False
+    )
     assert p.input == 2.0 and p.output == 12.0 and p.cache_input == 0.2
 
     # Test with anthropic/ prefix
-    p = get_pricing_for_model("anthropic/claude-3-opus", pricing_map=pricing_map, warn=False)
+    p = get_pricing_for_model(
+        "anthropic/claude-3-opus", pricing_map=pricing_map, warn=False
+    )
     assert p.input == 15.0 and p.output == 75.0 and p.cache_input == 1.5
 
     # Test without prefix still works
@@ -125,7 +131,9 @@ def test_get_pricing_for_model_with_provider_prefix():
     assert p.input == 0.1 and p.output == 0.4 and p.cache_input == 0.025
 
     # Test unknown model with prefix (should default to zeros)
-    p = get_pricing_for_model("gemini/unknown-model", pricing_map=pricing_map, warn=False)
+    p = get_pricing_for_model(
+        "gemini/unknown-model", pricing_map=pricing_map, warn=False
+    )
     assert p.input == 0.0 and p.output == 0.0 and p.cache_input == 0.0
 
 
