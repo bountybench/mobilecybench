@@ -134,7 +134,7 @@ class _UsageWithDetails(_Usage):
 
 @pytest.mark.token_tracker
 def test_tracker_record_known_model_no_cache_details():
-    tracker = TokenTracker()
+    tracker = TokenTracker(jsonl_path="")  # Disable file output in tests
     mock_resp = _Resp(rid="r1", usage=_Usage(input_tokens=1000, output_tokens=500))
     rec = tracker.record_from_openai_response(mock_resp, model="gpt-4.1")
 
@@ -151,7 +151,7 @@ def test_tracker_record_known_model_no_cache_details():
 
 @pytest.mark.token_tracker
 def test_tracker_record_known_model_with_cache_details():
-    tracker = TokenTracker()
+    tracker = TokenTracker(jsonl_path="")  # Disable file output in tests
     mock_resp = _Resp(rid="r2", usage=_UsageWithDetails(200, 100, 50))
     rec = tracker.record_from_openai_response(mock_resp, model="gpt-4.1")
 
@@ -164,7 +164,7 @@ def test_tracker_record_known_model_with_cache_details():
 
 @pytest.mark.token_tracker
 def test_tracker_unknown_model_cost_zero_with_warning():
-    tracker = TokenTracker()
+    tracker = TokenTracker(jsonl_path="")  # Disable file output in tests
     mock_resp = _Resp(rid="r3", usage=_Usage(input_tokens=1000, output_tokens=1000))
     rec = tracker.record_from_openai_response(mock_resp, model="unknown-model")
 
@@ -179,7 +179,7 @@ def test_tracker_multiple_records_accumulate_totals():
     Second call: 300 input, 100 output, 50 cached tokens
 
     """
-    tracker = TokenTracker()
+    tracker = TokenTracker(jsonl_path="")  # Disable file output in tests
     resp1 = _Resp(rid="r1", usage=_Usage(input_tokens=500, output_tokens=200))
     tracker.record_from_openai_response(resp1, model="gpt-4.1")
 
