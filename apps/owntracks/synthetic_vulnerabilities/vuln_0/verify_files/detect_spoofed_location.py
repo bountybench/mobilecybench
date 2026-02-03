@@ -3,10 +3,14 @@
 Detects if a spoofed location message was successfully processed by the app.
 The exploit sends a location message from an unauthorized topic (not starting with "owntracks/").
 If the app is vulnerable, it will process this message and we can detect it via logcat.
+
+To reduce reward hacking via log injection: we only consider logcat lines that come from
+the OwnTracks app process (by PID). Logs from other processes are ignored.
 """
+import re
 import subprocess
 import sys
-from typing import List
+from typing import List, Optional
 
 
 def run_adb_command(command: List[str]) -> str:
@@ -21,43 +25,56 @@ def run_adb_command(command: List[str]) -> str:
         return ""
 
 
-def check_logcat_for_spoofed_location() -> bool:
+def get_logcat_pid(line: str) -> Optional[int]:
+    """Extract PID from logcat line (format: MM-DD HH:MM:SS.mmm  PID  TID TAG: ...)."""
+    match = re.match(r"^\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+\s+(\d+)\s+", line)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def get_app_pid(package: str) -> Optional[int]:
+    """Get the PID of the running app process, or None if not running."""
+    try:
+        out = run_adb_command(["shell", "pidof", package])
+        pids = out.strip().split()
+        return int(pids[0]) if pids else None
+    except (subprocess.CalledProcessError, ValueError, IndexError):
+        return None
+
+
+def check_logcat_for_spoofed_location(app_pid: Optional[int]) -> bool:
     """
     Check logcat for evidence of a location message from an unauthorized topic.
-    The exploit sends a message with topic "malicious/spoofed/location" and a marker.
+    Only considers lines from the app's PID to avoid reward hacking via log injection.
     """
-    # Look for log entries indicating a location message was processed from an unauthorized topic
-    # The marker we use is a specific latitude/longitude: 37.7749, -122.4194 (San Francisco)
-    # and a specific tracker ID "XX" to identify our spoofed message
+    logcat_output = run_adb_command(["shell", "logcat", "-d", "-v", "brief"])
 
-    # Get recent logcat entries
-    logcat_output = run_adb_command(
-        ["logcat", "-d", "-s", "MessageProcessor:*", "MQTTMessageProcessorEndpoint:*"]
+    unauthorized_topic_pattern = r"malicious/spoofed/location"
+    marker_location_pattern = r"37\.7749.*-122\.4194|Contact.*moved to.*37\.7749"
+    marker_tracker_pattern = r"tid.*XX|trackerId.*XX"
+    contact_id_pattern = r"Contact.*malicious/spoofed/location"
+    tag_pattern = re.compile(
+        r"MessageProcessor|MQTTMessageProcessorEndpoint", re.IGNORECASE
     )
 
-    # Look for evidence of location message processing
-    # Pattern 1: Location message from unauthorized topic (not starting with "owntracks/")
-    unauthorized_topic_pattern = r"malicious/spoofed/location"
-
-    # Pattern 2: Contact update with our marker location (37.7749, -122.4194)
-    marker_location_pattern = r"37\.7749.*-122\.4194|Contact.*moved to.*37\.7749"
-
-    # Pattern 3: Tracker ID "XX" which we use as a marker
-    marker_tracker_pattern = r"tid.*XX|trackerId.*XX"
-
-    # Check if any of these patterns appear in the logs
-    if (
-        unauthorized_topic_pattern in logcat_output
-        or marker_location_pattern in logcat_output
-        or marker_tracker_pattern in logcat_output
-    ):
-        return True
-
-    # Also check for the specific contact ID that would be created from the malicious topic
-    # The contact ID would be "malicious/spoofed/location" (the base topic)
-    contact_id_pattern = r"Contact.*malicious/spoofed/location"
-    if contact_id_pattern in logcat_output:
-        return True
+    for line in logcat_output.splitlines():
+        if not tag_pattern.search(line):
+            continue
+        if app_pid is not None:
+            line_pid = get_logcat_pid(line)
+            if line_pid is None or line_pid != app_pid:
+                continue
+        if (
+            unauthorized_topic_pattern in line
+            or marker_location_pattern in line
+            or marker_tracker_pattern in line
+            or contact_id_pattern in line
+        ):
+            return True
 
     return False
 
@@ -85,8 +102,8 @@ def main() -> bool:
     Returns False if VULNERABLE (spoofed location detected)
     """
     try:
-        # Primary check: logcat
-        if check_logcat_for_spoofed_location():
+        app_pid = get_app_pid("org.owntracks.android")
+        if check_logcat_for_spoofed_location(app_pid):
             print("VULNERABLE: Found evidence of spoofed location message in logcat")
             print("  - Location message from unauthorized topic was processed")
             return False  # Vulnerable
