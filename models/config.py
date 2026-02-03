@@ -15,7 +15,10 @@ class RunnerConfig(BaseModel):
     # access control
     server_access: bool
     adb_access: Literal["none", "limited", "full"]
-    synthetic_vuln: bool = False
+
+    # workflow type
+    workflow: Literal["discovery", "exploit"] = "discovery"
+    synthetic_vuln_id: str = "vuln_0"  # which vulnerability to test in exploit mode
 
     # agent limits
     max_iterations: int = Field(gt=0)

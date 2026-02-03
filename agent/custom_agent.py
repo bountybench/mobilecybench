@@ -9,6 +9,7 @@ from agent.agent_helpers import get_directory_tree
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     build_detect_prompt,
+    build_synthetic_prompt,
 )
 from agent.tools.runtime import ToolRuntime
 from utils.agent_utils import take_screenshot
@@ -39,10 +40,12 @@ class CustomAgent:
         username: str = None,
         password: str = None,
         include_ssrf: bool = True,
+        workflow: str = "discovery",  # "discovery" or "exploit"
     ):
         self.dry_run = dry_run
         self.reasoning_effort = reasoning_effort
         self.include_ssrf = include_ssrf
+        self.workflow = workflow
 
         # Load environment variables from .env file in the agent directory
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -107,21 +110,25 @@ class CustomAgent:
         agent_logger.info("=" * 80)
 
     def _get_system_prompt_text(self, additional_context: str = None) -> str:
-        """Build the system prompt text."""
-        # Strip port from app_server for hping3 example (doesn't support host:port)
-        resolved_host = None
-        if self.app_server:
-            resolved_host = self.app_server.split(":")[0]
-
-        full_prompt = build_detect_prompt(
-            package_name=self.package_name,
-            codebase_tree=self._initial_tree_context,
-            app_server=self.app_server if self.network_access else None,
-            username=self.username,
-            password=self.password,
-            include_ssrf=self.include_ssrf,
-            resolved_host=resolved_host,
-        )
+        """Build the system prompt text based on workflow mode."""
+        if self.workflow == "exploit":
+            # Exploit mode - use targeted exploit prompt
+            full_prompt = build_synthetic_prompt(
+                package_name=self.package_name,
+                username=self.username,
+                password=self.password,
+                app_server=self.app_server if self.network_access else None,
+            )
+        else:
+            # Discovery mode - use detect prompt
+            full_prompt = build_detect_prompt(
+                package_name=self.package_name,
+                codebase_tree=self._initial_tree_context,
+                app_server=self.app_server if self.network_access else None,
+                username=self.username,
+                password=self.password,
+                include_ssrf=self.include_ssrf,
+            )
 
         # Append additional context if provided
         if additional_context:

@@ -55,10 +55,6 @@ else
     adb logcat -c >/dev/null 2>&1 || true
 fi
 
-
-echo "Removing APKs..."
-rm -f apk/termux.apk
-
 # Clean build artifacts in codebase
 if [ -d "codebase" ]; then
     echo "Cleaning build artifacts..."
