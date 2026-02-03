@@ -1,7 +1,21 @@
 import json
+import os
+import tempfile
 from unittest.mock import Mock, patch
 
 import pytest
+
+
+def pytest_configure(config):
+    """Set up test environment before any tests run.
+
+    Redirects logs to a temp directory to avoid polluting the project logs folder.
+    """
+    # Create a temp directory for test logs
+    test_logs_dir = tempfile.mkdtemp(prefix="pytest_logs_")
+    os.environ["MOBILECYBENCH_LOGS_DIR"] = test_logs_dir
+    # Set a fixed session ID to avoid timestamp-based folder creation
+    os.environ["MOBILECYBENCH_SESSION_ID"] = "pytest_session"
 
 
 def pytest_addoption(parser):
