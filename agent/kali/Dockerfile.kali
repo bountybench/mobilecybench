@@ -77,6 +77,10 @@ ENV PATH="/venv/bin:$PATH"
 
 RUN /venv/bin/pip install --upgrade pip
 
+# Copy and install Python dependencies from requirements.txt
+COPY requirements.txt /app/requirements.txt
+RUN /venv/bin/pip install -r /app/requirements.txt
+
 # Configure git to trust all directories (fixes bind mount ownership issues)
 RUN git config --global --add safe.directory '*'
 
