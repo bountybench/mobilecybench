@@ -284,24 +284,10 @@ class LiteLLMProvider(ModelProvider):
                 "or set the environment variable directly."
             )
 
-        # Test connectivity with a minimal call
-        try:
-            test_model = model or "gpt-4o-mini"
-            litellm_model = self._get_litellm_model_name(test_model)
-
-            # Use a simple completion to test connectivity
-            response = completion(
-                model=litellm_model,
-                messages=[{"role": "user", "content": "Hi"}],
-                max_tokens=5,
-            )
-            self._validated = True
-            agent_logger.info(f"LiteLLM provider validated successfully for {provider_name}")
-        except Exception as e:
-            raise ValueError(
-                f"Failed to validate {provider_name} API key via LiteLLM: {e}. "
-                "Please ensure your API key is valid."
-            )
+        # Mark as validated - actual API connectivity will be tested on first call
+        # This avoids wasting tokens on validation and handles models with different requirements
+        self._validated = True
+        agent_logger.info(f"{provider_name} API key found for model '{model or 'default'}'")
 
     def _convert_tools_to_litellm(self, tools: Optional[List]) -> Optional[List]:
         """Convert tool definitions to LiteLLM format.
