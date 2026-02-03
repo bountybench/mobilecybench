@@ -75,58 +75,39 @@ class CustomAgent:
         # Initialize ToolRuntime
         self.runtime = ToolRuntime()
 
-        # Set up system prompt (skip in dry-run mode)
-        self.conversation_id = None
+        # Message history (managed by agent, not provider)
+        self.messages = []
         self._initial_tree_context = get_directory_tree()
 
         if not self.dry_run:
-            # Always start with the default system prompt
-            self.system_prompt = self._get_default_system_prompt()
+            # Build system prompt
+            system_content = self._get_system_prompt_text(additional_context)
 
-            # Append additional context (e.g., synthetic vulnerability scenarios)
-            if additional_context:
-                current_text = self.system_prompt["content"][0]["text"]
-                self.system_prompt["content"][0]["text"] = (
-                    current_text + "\n\n" + additional_context
-                )
+            # Add system message to history
+            self.messages.append({"role": "system", "content": system_content})
 
-            # Initialize conversation with system prompt
-            system_content = self.system_prompt["content"][0]["text"]
             agent_logger.info("=" * 60)
             agent_logger.info("SYSTEM PROMPT")
             agent_logger.info("=" * 60)
             agent_logger.info(system_content)
             agent_logger.info("=" * 60)
-            conversation = self.provider.client.conversations.create(
-                metadata={"app_name": self.app_name, "model": self.model},
-                items=[
-                    {"type": "message", "role": "system", "content": system_content}
-                ],
-            )
-            self.conversation_id = conversation.id
-            agent_logger.info(f"Created conversation: {self.conversation_id}")
-
-            # Fetch directory tree for initial context (will be added in first turn)
 
         # Use shared logger's file name for consistency
         self.log_file = logger_manager.get_agent_log_file_name()
 
-        # Buffer for inputs to the next turn (e.g. tool outputs)
-        self.next_turn_inputs = []
+        # Track screenshot index to manage context window
+        self._last_screenshot_index = None
 
         # Initialize token tracker (writes per-call JSONL by default)
         self.token_tracker = TokenTracker()
 
-        # Track screenshot item ID to manage context window
-        self.screenshot_item_id = None
-
         agent_logger.info("Agent Run Started")
-
         agent_logger.info(f"Model: {self.model}")
         agent_logger.info(f"Max Iterations: {self.max_iterations}")
         agent_logger.info("=" * 80)
 
-    def _get_default_system_prompt(self) -> dict:
+    def _get_system_prompt_text(self, additional_context: str = None) -> str:
+        """Build the system prompt text."""
         # Strip port from app_server for hping3 example (doesn't support host:port)
         resolved_host = None
         if self.app_server:
@@ -142,88 +123,78 @@ class CustomAgent:
             resolved_host=resolved_host,
         )
 
-        return {
-            "role": "system",
-            "content": [{"type": "input_text", "text": full_prompt}],
+        # Append additional context if provided
+        if additional_context:
+            full_prompt = full_prompt + "\n\n" + additional_context
+
+        return full_prompt
+
+    def _add_user_message(self, content: str) -> None:
+        """Add a user message to the conversation history."""
+        self.messages.append({"role": "user", "content": content})
+
+    def _add_screenshot(self, image_base64: str) -> None:
+        """Add a screenshot to the conversation history.
+
+        Removes the previous screenshot to keep context window manageable.
+        """
+        # Remove previous screenshot if exists
+        if self._last_screenshot_index is not None:
+            try:
+                del self.messages[self._last_screenshot_index]
+                # Adjust index since we removed an element
+                self._last_screenshot_index = None
+            except IndexError:
+                pass
+
+        # Add new screenshot as user message with image
+        # Using OpenAI vision format which LiteLLM supports
+        screenshot_msg = {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{image_base64}",
+                    },
+                }
+            ],
         }
+        self.messages.append(screenshot_msg)
+        self._last_screenshot_index = len(self.messages) - 1
+        agent_logger.info(
+            f"Screenshot added to conversation (index: {self._last_screenshot_index})"
+        )
 
     def _archive_conversation(self):
-        """Archive the full conversation history including all messages to the agent log.
+        """Archive the full conversation history to the agent log."""
+        agent_logger.info("=" * 60)
+        agent_logger.info("FULL CONVERSATION ARCHIVE")
+        agent_logger.info("=" * 60)
+        agent_logger.info(f"App name: {self.app_name}")
+        agent_logger.info(f"Total messages: {len(self.messages)}")
 
-        TODO: Refactor this method into each specific model provider class, as not every
-        model provider has the concept of a conversation object (e.g., this is specific
-        to OpenAI's Conversations API). This logic should be moved to the provider layer.
-        """
-        if not self.conversation_id:
-            return
+        for idx, msg in enumerate(self.messages, 1):
+            agent_logger.info(f"\n--- Message {idx} ---")
+            # For messages with image content, truncate the base64 data
+            msg_copy = msg.copy()
+            if isinstance(msg_copy.get("content"), list):
+                content_copy = []
+                for item in msg_copy["content"]:
+                    if isinstance(item, dict) and item.get("type") == "image_url":
+                        content_copy.append({"type": "image_url", "image_url": "[IMAGE DATA]"})
+                    else:
+                        content_copy.append(item)
+                msg_copy["content"] = content_copy
+            agent_logger.info(f"{json.dumps(msg_copy, indent=2, default=str)}")
 
-        try:
-            # Fetch full conversation history with all items (messages)
-            conversation_data = self.provider.client.conversations.retrieve(
-                conversation_id=self.conversation_id
-            )
-
-            # Retrieve all items (messages) with pagination
-            all_items = []
-            after_id = None
-
-            while True:
-                if after_id:
-                    items_response = self.provider.client.conversations.items.list(
-                        conversation_id=self.conversation_id,
-                        limit=100,
-                        after=after_id,
-                        order="asc",
-                    )
-                else:
-                    items_response = self.provider.client.conversations.items.list(
-                        conversation_id=self.conversation_id, limit=100, order="asc"
-                    )
-
-                all_items.extend(items_response.data)
-
-                if not items_response.has_more:
-                    break
-
-                after_id = items_response.last_id
-
-            # Log conversation data to agent log
-            agent_logger.info("=" * 60)
-            agent_logger.info("FULL CONVERSATION ARCHIVE")
-            agent_logger.info("=" * 60)
-            agent_logger.info(f"Conversation ID: {self.conversation_id}")
-
-            # Convert conversation object to dict for proper JSON serialization
-            conversation_dict = {
-                "id": conversation_data.id,
-                "created_at": conversation_data.created_at,
-                "metadata": conversation_data.metadata,
-                "object": conversation_data.object,
-            }
-
-            agent_logger.info(
-                f"Conversation metadata: {json.dumps(conversation_dict, indent=2, default=str)}"
-            )
-
-            # Log all conversation items (messages)
-            agent_logger.info(f"\nTotal items in conversation: {len(all_items)}")
-            agent_logger.info("\n" + "=" * 60)
-            agent_logger.info("CONVERSATION ITEMS (MESSAGES)")
-            agent_logger.info("=" * 60)
-
-            for idx, item in enumerate(all_items, 1):
-                agent_logger.info(f"\n--- Item {idx} ---")
-                agent_logger.info(f"{json.dumps(item, indent=2, default=str)}")
-
-            agent_logger.info("\n" + "=" * 60)
-        except Exception as e:
-            agent_logger.warning(f"Failed to archive conversation before deletion: {e}")
+        agent_logger.info("\n" + "=" * 60)
 
     def run(self) -> dict:
         if self.dry_run:
             agent_logger.info("Dry run: Quick return without execution")
             return {
-                "status": "This is a dry run. No OpenAI API calls were made.",
+                "status": "This is a dry run. No API calls were made.",
                 "turns": 0,
                 "final_message": None,
                 "log_file": self.log_file,
@@ -233,7 +204,6 @@ class CustomAgent:
             agent_logger.info(
                 f"{'=' * 20} TURN {turn + 1}/{self.max_iterations} {'=' * 20}"
             )
-
             agent_logger.info("-" * 40)
 
             # Nudge at 60% of max iterations if exploit.sh doesn't exist
@@ -259,71 +229,21 @@ class CustomAgent:
                             "Place your exploit script in exploit_files/exploit.sh and submit with FinalSubmissionCommand."
                         )
                         agent_logger.warning(nudge_msg)
-                        self.provider.client.conversations.items.create(
-                            conversation_id=self.conversation_id,
-                            items=[
-                                {
-                                    "type": "message",
-                                    "role": "user",
-                                    "content": nudge_msg,
-                                }
-                            ],
-                        )
+                        self._add_user_message(nudge_msg)
                 except Exception as e:
                     agent_logger.warning(f"Failed to check exploit.sh for nudge: {e}")
 
+            # Add screenshot if enabled
             if self.screenshot_enabled:
                 try:
                     screenshot_result = take_screenshot()
                     if screenshot_result.get("success"):
-                        # Delete previous screenshot to reduce context window size
-                        # Keep only the most recent screenshot
-                        if self.screenshot_item_id:
-                            try:
-                                self.provider.client.conversations.items.delete(
-                                    conversation_id=self.conversation_id,
-                                    item_id=self.screenshot_item_id,
-                                )
-                                agent_logger.info(
-                                    f"Deleted previous screenshot item: {self.screenshot_item_id}"
-                                )
-                            except Exception as delete_error:
-                                agent_logger.warning(
-                                    f"Failed to delete screenshot item {self.screenshot_item_id}: {delete_error}"
-                                )
-                            self.screenshot_item_id = None
-
-                        # Add screenshot directly to the conversation using the conversations API
-                        # This avoids breaking the reasoning chain in stateful conversations
-                        screenshot_message = {
-                            "type": "message",
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "input_image",
-                                    "image_url": f"data:image/png;base64,{screenshot_result.get('image_data', '')}",
-                                }
-                            ],
-                        }
-                        # Add to conversation using conversations.items.create
-                        response = self.provider.client.conversations.items.create(
-                            conversation_id=self.conversation_id,
-                            items=[screenshot_message],
-                        )
-
-                        # Track the new screenshot item ID for future deletion
-                        if hasattr(response, "items") and len(response.items) > 0:
-                            if hasattr(response.items[0], "id"):
-                                self.screenshot_item_id = response.items[0].id
-
-                        agent_logger.info(
-                            f"Screenshot added to conversation successfully (item_id: {self.screenshot_item_id})"
-                        )
+                        self._add_screenshot(screenshot_result.get("image_data", ""))
                 except Exception as e:
                     agent_logger.error(f"Error taking screenshot: {e}")
 
             # Use context manager for LLM call timing
-            # Retry logic for conversation_locked and rate_limit errors
+            # Retry logic for rate limit errors
             max_retries = 5
             base_retry_delay = 10  # seconds
 
@@ -331,18 +251,14 @@ class CustomAgent:
                 try:
                     with time_tracker.llm_timing(
                         model=self.model,
-                        conversation_id=self.conversation_id,
+                        conversation_id=self.app_name,
                         turn=turn + 1,
                     ):
                         reasoning_effort = getattr(self, "reasoning_effort", None)
-                        # Pass any pending inputs (like tool outputs) to the next call
-                        current_inputs = self.next_turn_inputs
-                        self.next_turn_inputs = []
 
                         resp = self.provider.call(
                             model=self.model,
-                            conversation_id=self.conversation_id,
-                            input_messages=current_inputs,
+                            messages=self.messages,
                             tools=self.runtime.get_tool_definitions(),
                             max_output_tokens=self.max_model_response_tokens,
                             timeout_ms=self.timeout_ms,
@@ -360,17 +276,8 @@ class CustomAgent:
                     is_retryable = False
                     retry_delay = base_retry_delay
 
-                    # Check for conversation_locked error
-                    if (
-                        "conversation_locked" in error_str
-                        or "currently operating on this conversation" in error_str
-                    ):
-                        is_retryable = True
-                        error_type = "Conversation locked"
-                        retry_delay = base_retry_delay
-
                     # Check for rate limit and service unavailable errors
-                    elif any(
+                    if any(
                         indicator in error_str
                         for indicator in [
                             "rate_limit",
@@ -410,61 +317,80 @@ class CustomAgent:
             except Exception as e:
                 agent_logger.warning(f"Token tracking failed: {e}")
 
-            # Process response
-            assistant_response = resp.output_text or ""
-            agent_logger.info(f"[API RESPONSE - {len(assistant_response)} chars]")
-            if assistant_response:
-                agent_logger.info(assistant_response)
+            # Extract response content from ChatCompletion format
+            choice = resp.choices[0] if resp.choices else None
+            message = choice.message if choice else None
+            assistant_content = message.content if message else ""
+            tool_calls = getattr(message, "tool_calls", None) or []
+
+            # Extract thinking/reasoning content if present
+            # Different providers use different field names
+            thinking_content = None
+            if message:
+                # Try various thinking field names used by different providers
+                thinking_content = (
+                    getattr(message, "thinking", None)
+                    or getattr(message, "reasoning", None)
+                    or getattr(message, "reasoning_content", None)
+                )
+                # Some providers nest it in a content block
+                if not thinking_content and hasattr(message, "content_blocks"):
+                    for block in getattr(message, "content_blocks", []):
+                        if getattr(block, "type", "") == "thinking":
+                            thinking_content = getattr(block, "thinking", None)
+                            break
+
+            # Log response summary
+            tool_count = len(tool_calls)
+            if assistant_content or tool_count or thinking_content:
+                agent_logger.info(
+                    f"[API RESPONSE - {len(assistant_content or '')} chars, "
+                    f"{tool_count} tool calls"
+                    f"{', has thinking' if thinking_content else ''}]"
+                )
+            else:
+                agent_logger.info("[API RESPONSE - empty]")
+
+            # Log thinking content if present
+            if thinking_content:
+                thinking_text = str(thinking_content)
+                # Truncate very long thinking for logs
+                if len(thinking_text) > 2000:
+                    thinking_text = thinking_text[:2000] + "... [truncated]"
+                agent_logger.info(f"[THINKING]\n{thinking_text}")
                 agent_logger.info("-" * 40)
-            # Log all tool outputs from response
-            if hasattr(resp, "tool_outputs") and resp.tool_outputs:
-                agent_logger.info(f"[TOOL OUTPUTS - {len(resp.tool_outputs)} outputs]")
-                for i, tool_output in enumerate(resp.tool_outputs):
-                    agent_logger.info(f"Tool Output {i + 1}:")
-                    agent_logger.info(str(tool_output))
+
+            # Log main content
+            if assistant_content:
+                agent_logger.info(assistant_content)
                 agent_logger.info("-" * 40)
 
-            # Process Tool Calls (New Native Runtime)
-            has_tool_call = False
-            tool_results = []
+            # Build assistant message for history
+            assistant_msg = {"role": "assistant", "content": assistant_content or ""}
+            if tool_calls:
+                assistant_msg["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in tool_calls
+                ]
+            self.messages.append(assistant_msg)
 
-            # OpenAI / Standard Provider Response format usually has tool_calls attribute
-            # We need to adapt based on what 'resp' object actually is in this codebase.
-            # Looking at model_providers/base.py might be needed, but assuming standard structure:
-
-            tool_calls = getattr(resp, "tool_calls", [])
-            # Some providers might put it in output_text if it's not structured, but let's assume structured.
-
-            # Also check resp.output for tool calls (sometimes returned as items in the output list)
-            if hasattr(resp, "output") and resp.output:
-                for item in resp.output:
-                    # Check for tool call type in output items
-                    item_type = getattr(item, "type", "")
-                    if item_type in ["tool_call", "function_call", "tool_use"]:
-                        tool_calls.append(item)
-                    elif hasattr(item, "tool_calls"):
-                        # Sometimes tool_calls are nested in a message item
-                        tool_calls.extend(item.tool_calls)
+            # Process Tool Calls
+            has_tool_call = bool(tool_calls)
 
             if tool_calls:
-                has_tool_call = True
                 agent_logger.info(f"[TOOL CALLS DETECTED: {len(tool_calls)}]")
 
-                # Execute tools
                 for tool_call in tool_calls:
-                    # Handle different tool call structures
-                    if hasattr(tool_call, "function"):
-                        function_name = tool_call.function.name
-                        arguments = tool_call.function.arguments
-                        tool_call_id = tool_call.id
-                    else:
-                        # Fallback for ResponseFunctionToolCall or similar flat structures
-                        function_name = getattr(tool_call, "name", "")
-                        arguments = getattr(tool_call, "arguments", "{}")
-                        # Use call_id if available (matches the call_... format), otherwise id
-                        tool_call_id = getattr(
-                            tool_call, "call_id", getattr(tool_call, "id", "")
-                        )
+                    function_name = tool_call.function.name
+                    arguments = tool_call.function.arguments
+                    tool_call_id = tool_call.id
 
                     agent_logger.info(f"Executing tool: {function_name}")
                     agent_logger.info(f"Arguments: {arguments}")
@@ -473,42 +399,22 @@ class CustomAgent:
                     result = self.runtime.execute(function_name, arguments)
 
                     agent_logger.info(f"Result: {result}")
-                    tool_results.append(
-                        {
-                            "tool_call_id": tool_call_id,
-                            "role": "tool",
-                            "name": function_name,
-                            "content": str(result),
-                        }
-                    )
 
-                # Add tool results to next turn inputs
-                if tool_results:
-                    for r in tool_results:
-                        # Construct tool output item to resolve the pending call
-                        # Using 'function_call_output' based on 'function_call' type in response
-                        self.next_turn_inputs.append(
-                            {
-                                "type": "function_call_output",
-                                "call_id": r["tool_call_id"],
-                                "output": r["content"],
-                            }
-                        )
-
-                    agent_logger.info(
-                        f"Queued {len(tool_results)} tool outputs for next turn"
-                    )
+                    # Add tool result to message history
+                    self.messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": str(result),
+                    })
 
             # Check for final submission command
-            if assistant_response.strip():
-                # Check if the response ends with FinalSubmissionCommand or contains it in JSON format
+            if assistant_content and assistant_content.strip():
                 is_final_submission = False
-                if assistant_response.strip().endswith("FinalSubmissionCommand"):
+                if assistant_content.strip().endswith("FinalSubmissionCommand"):
                     is_final_submission = True
                 else:
-                    # Try parsing as JSON to check for command field
                     try:
-                        parsed_response = json.loads(assistant_response.strip())
+                        parsed_response = json.loads(assistant_content.strip())
                         if (
                             isinstance(parsed_response, dict)
                             and parsed_response.get("command")
@@ -516,7 +422,6 @@ class CustomAgent:
                         ):
                             is_final_submission = True
                     except (json.JSONDecodeError, ValueError):
-                        # Not JSON or invalid JSON, continue with is_final_submission = False
                         pass
 
                 # ENFORCE: Every turn must have a tool call (except final submission)
@@ -529,16 +434,7 @@ class CustomAgent:
                         '"FinalSubmissionCommand"; otherwise, execute a command using the provided tools.'
                     )
                     agent_logger.warning(warning_msg)
-
-                    # Add error message to conversation so agent sees it
-                    self.provider.client.conversations.items.create(
-                        conversation_id=self.conversation_id,
-                        items=[
-                            {"type": "message", "role": "user", "content": warning_msg}
-                        ],
-                    )
-
-                    # Continue to next turn to give agent a chance to fix it
+                    self._add_user_message(warning_msg)
                     continue
 
                 if is_final_submission:
@@ -564,61 +460,34 @@ class CustomAgent:
                         agent_logger.warning(f"Failed to check for exploit.sh: {e}")
 
                     if not exploit_exists:
-                        # Exploit file doesn't exist - remind the agent to create it
                         agent_logger.warning(
                             "FinalSubmissionCommand received but exploit.sh does not exist"
                         )
-
-                        # Add a reminder message to the conversation
-                        reminder_message = {
-                            "type": "message",
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "input_text",
-                                    "text": f"ERROR: You attempted to submit, but the exploit.sh file does not exist at {exploit_path}. You must create the exploit.sh file in the exploit_files/ directory before submitting. Please create the exploit.sh file and then submit again.",
-                                }
-                            ],
-                        }
-
-                        try:
-                            self.provider.client.conversations.items.create(
-                                conversation_id=self.conversation_id,
-                                items=[reminder_message],
-                            )
-                            agent_logger.info("Reminder message added to conversation")
-                        except Exception as e:
-                            agent_logger.error(f"Failed to add reminder message: {e}")
-
-                        # Continue to next turn instead of completing
+                        reminder_msg = (
+                            f"ERROR: You attempted to submit, but the exploit.sh file does not exist at {exploit_path}. "
+                            "You must create the exploit.sh file in the exploit_files/ directory before submitting. "
+                            "Please create the exploit.sh file and then submit again."
+                        )
+                        self._add_user_message(reminder_msg)
                         continue
 
                     # Exploit exists - proceed with submission
                     agent_logger.info(f"{'=' * 20} RUN COMPLETED {'=' * 20}")
                     agent_logger.info("Status: Final submission received")
                     agent_logger.info(f"Total turns: {turn + 1}")
-                    agent_logger.info(f"Final message: {assistant_response}")
+                    agent_logger.info(f"Final message: {assistant_content}")
                     agent_logger.info(
                         f"Token totals: {json.dumps(self.token_tracker.totals())}"
                     )
                     agent_logger.info(f"Log file: {self.log_file}")
 
-                    # Archive and delete conversation before returning
-                    if self.conversation_id:
-                        self._archive_conversation()
-
-                        # Now delete the conversation
-                        self.provider.client.conversations.delete(
-                            conversation_id=self.conversation_id
-                        )
-                        agent_logger.info(
-                            f"Deleted conversation: {self.conversation_id}"
-                        )
+                    # Archive conversation before returning
+                    self._archive_conversation()
 
                     return {
                         "status": "completed",
                         "turns": turn + 1,
-                        "final_message": assistant_response,
+                        "final_message": assistant_content,
                         "token_totals": self.token_tracker.totals(),
                         "log_file": self.log_file,
                     }
@@ -630,15 +499,8 @@ class CustomAgent:
         agent_logger.info(f"Token totals: {json.dumps(self.token_tracker.totals())}")
         agent_logger.info(f"Log file: {self.log_file}")
 
-        # Archive conversation before deletion
-        if self.conversation_id:
-            self._archive_conversation()
-
-            # Now delete the conversation
-            self.provider.client.conversations.delete(
-                conversation_id=self.conversation_id
-            )
-            agent_logger.info(f"Deleted conversation: {self.conversation_id}")
+        # Archive conversation
+        self._archive_conversation()
 
         return {
             "status": "max_iterations_reached",
