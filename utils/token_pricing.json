@@ -65,11 +65,16 @@
     "cache_input": 7.5
   },
   "o3": {
-    "input": 3.5,
-    "output": 14.0,
-    "cache_input": 0.875
+    "input": 2.0,
+    "output": 8.0,
+    "cache_input": 1.0
   },
   "o3-mini": {
+    "input": 1.1,
+    "output": 4.4,
+    "cache_input": 0.55
+  },
+  "o4-mini": {
     "input": 1.1,
     "output": 4.4,
     "cache_input": 0.55
@@ -143,5 +148,20 @@
     "input": 3.0,
     "output": 15.0,
     "cache_input": 0.3
+  },
+  "claude-opus-4.5": {
+    "input": 5.0,
+    "output": 25.0,
+    "cache_input": 0.5
+  },
+  "claude-sonnet-4.5": {
+    "input": 3.0,
+    "output": 15.0,
+    "cache_input": 0.3
+  },
+  "claude-haiku-4.5": {
+    "input": 1.0,
+    "output": 5.0,
+    "cache_input": 0.1
   }
 }

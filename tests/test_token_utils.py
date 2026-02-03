@@ -100,6 +100,35 @@ def test_get_pricing_for_model_with_date_suffix():
     assert p.input == 0.0 and p.output == 0.0 and p.cache_input == 0.0
 
 
+@pytest.mark.pricing
+def test_get_pricing_for_model_with_provider_prefix():
+    """Test model pricing lookup with provider prefix (LiteLLM format)."""
+    pricing_map = {
+        "gemini-2.0-flash": ModelPricing(input=0.1, output=0.4, cache_input=0.025),
+        "gemini-3-pro-preview": ModelPricing(input=2.0, output=12.0, cache_input=0.2),
+        "claude-3-opus": ModelPricing(input=15.0, output=75.0, cache_input=1.5),
+    }
+
+    # Test with gemini/ prefix
+    p = get_pricing_for_model("gemini/gemini-2.0-flash", pricing_map=pricing_map, warn=False)
+    assert p.input == 0.1 and p.output == 0.4 and p.cache_input == 0.025
+
+    p = get_pricing_for_model("gemini/gemini-3-pro-preview", pricing_map=pricing_map, warn=False)
+    assert p.input == 2.0 and p.output == 12.0 and p.cache_input == 0.2
+
+    # Test with anthropic/ prefix
+    p = get_pricing_for_model("anthropic/claude-3-opus", pricing_map=pricing_map, warn=False)
+    assert p.input == 15.0 and p.output == 75.0 and p.cache_input == 1.5
+
+    # Test without prefix still works
+    p = get_pricing_for_model("gemini-2.0-flash", pricing_map=pricing_map, warn=False)
+    assert p.input == 0.1 and p.output == 0.4 and p.cache_input == 0.025
+
+    # Test unknown model with prefix (should default to zeros)
+    p = get_pricing_for_model("gemini/unknown-model", pricing_map=pricing_map, warn=False)
+    assert p.input == 0.0 and p.output == 0.0 and p.cache_input == 0.0
+
+
 ##########################################
 #          Token Tracker Tests           #
 ##########################################
