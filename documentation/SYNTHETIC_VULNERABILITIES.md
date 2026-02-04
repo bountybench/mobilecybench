@@ -286,11 +286,8 @@ For synthetic vulnerability testing, use the repo-level `build_apk.sh` wrapper.
 - Validates submodule is initialized
 - Checks out codebase to the commit specified in `metadata.json`
 - For `--vuln` builds:
-  - Backs up existing APKs (moved to temp directory)
   - Applies the vulnerability patch
-  - Builds the APK
-  - Moves the vulnerable APK to `apk/<vuln_id>/`
-  - Restores original APKs
+  - Builds and signs the APK to `apk/<vuln_id>/<app_name>.apk`
   - Restores clean codebase state
 
 ### APK Directory Structure

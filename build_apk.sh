@@ -54,8 +54,8 @@ show_usage() {
     echo "  $0 conversations --vuln vuln_0          # Build with vuln_0 patch"
     echo ""
     echo "Output naming:"
-    echo "  Regular build:  <app_name>.apk"
-    echo "  Vuln build:     <app_name>_<vuln_id>.apk"
+    echo "  Regular build:  apk/<app_name>.apk"
+    echo "  Vuln build:     apk/<vuln_id>/<app_name>.apk"
 }
 
 # Parse arguments
@@ -415,19 +415,18 @@ build_and_package() {
 
     echo -e "${INFO} Found unsigned APK: $UNSIGNED_APK"
 
-    # Determine output filename
-    local output_name
+    # Determine output path (vuln builds go in subdirectory)
+    local output_path
     if [[ -n "$VULN_ID" ]]; then
-        output_name="${APP_NAME}_${VULN_ID}.apk"
+        mkdir -p "$OUTPUT_DIR/$VULN_ID"
+        output_path="$OUTPUT_DIR/$VULN_ID/${APP_NAME}.apk"
     else
-        output_name="${APP_NAME}.apk"
+        mkdir -p "$OUTPUT_DIR"
+        output_path="$OUTPUT_DIR/${APP_NAME}.apk"
     fi
 
-    # Ensure output directory exists
-    mkdir -p "$OUTPUT_DIR"
-
     # Sign and copy
-    if ! sign_apk "$UNSIGNED_APK" "$OUTPUT_DIR/$output_name"; then
+    if ! sign_apk "$UNSIGNED_APK" "$output_path"; then
         cleanup_unsigned_apk
         return 1
     fi
@@ -435,7 +434,7 @@ build_and_package() {
     # Clean up unsigned APK
     cleanup_unsigned_apk
 
-    echo -e "${SUCCESS} Output: $OUTPUT_DIR/$output_name"
+    echo -e "${SUCCESS} Output: $output_path"
     return 0
 }
 
@@ -497,7 +496,7 @@ main() {
 
         echo -e "${SUCCESS} =================================="
         echo -e "${SUCCESS} Vulnerable APK build completed!"
-        echo -e "${SUCCESS} Output: $OUTPUT_DIR/${APP_NAME}_${VULN_ID}.apk"
+        echo -e "${SUCCESS} Output: $OUTPUT_DIR/$VULN_ID/${APP_NAME}.apk"
         echo -e "${SUCCESS} =================================="
     else
         # Regular (clean) build
