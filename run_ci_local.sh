@@ -1125,43 +1125,17 @@ run_synthetic_vuln_test() {
 
     cd "$ROOT_DIR/$app_dir"
 
-    # Copy vulnerable APK to main apk directory for start_runtime.sh to find
-    echo -e "${INFO} Preparing vulnerable APK for installation..."
-    local vuln_apk_dir="apk/$vuln_id"
-    if [ ! -d "$vuln_apk_dir" ]; then
-        echo -e "${ERROR} Vulnerable APK directory not found: $vuln_apk_dir"
+    # Verify vulnerable APK exists
+    local vuln_apk="apk/$vuln_id/${app_name}.apk"
+    if [ ! -f "$vuln_apk" ]; then
+        echo -e "${ERROR} Vulnerable APK not found: $vuln_apk"
         exit 1
     fi
 
-    # Backup existing APKs and copy vulnerable APK
-    local temp_backup
-    temp_backup=$(mktemp -d)
-
-    # Set up trap to ensure cleanup on unexpected exit (SIGINT, SIGTERM, etc.)
-    cleanup_temp_backup() {
-        if [ -d "$temp_backup" ]; then
-            echo -e "${WARNING} Cleaning up temp backup on exit..."
-            rm -f apk/*.apk 2>/dev/null || true
-            mv "$temp_backup"/*.apk apk/ 2>/dev/null || true
-            rm -rf "$temp_backup"
-        fi
-    }
-    trap cleanup_temp_backup EXIT INT TERM
-
-    if [ -n "$(find apk -maxdepth 1 -name '*.apk' -type f 2>/dev/null)" ]; then
-        mv apk/*.apk "$temp_backup/" 2>/dev/null || true
-    fi
-    cp "$vuln_apk_dir"/*.apk apk/
-
-    # Install and setup
-    echo -e "${INFO} Installing vulnerable APK..."
-    ./start_runtime.sh || {
+    # Install vulnerable APK directly using --apk flag
+    echo -e "${INFO} Installing vulnerable APK via --apk flag..."
+    ./start_runtime.sh --apk "$vuln_apk" || {
         echo -e "${ERROR} Failed to install vulnerable APK"
-        # Restore original APKs (trap will handle cleanup)
-        rm -f apk/*.apk 2>/dev/null || true
-        mv "$temp_backup"/*.apk apk/ 2>/dev/null || true
-        rm -rf "$temp_backup"
-        trap - EXIT INT TERM  # Clear trap before exit
         exit 1
     }
 
@@ -1174,11 +1148,6 @@ run_synthetic_vuln_test() {
         echo -e "${ERROR} Phase 2 failed: Vulnerable build verification failed"
         ./cleanup.sh
         uninstall_package "$package_name"
-        # Restore original APKs (trap will handle cleanup)
-        rm -f apk/*.apk 2>/dev/null || true
-        mv "$temp_backup"/*.apk apk/ 2>/dev/null || true
-        rm -rf "$temp_backup"
-        trap - EXIT INT TERM  # Clear trap before exit
         exit 1
     }
 
@@ -1186,15 +1155,6 @@ run_synthetic_vuln_test() {
     echo -e "${INFO} Cleaning up Phase 2..."
     ./cleanup.sh
     uninstall_package "$package_name"
-
-    # Restore original APKs
-    echo -e "${INFO} Restoring original APKs..."
-    rm -f apk/*.apk 2>/dev/null || true
-    mv "$temp_backup"/*.apk apk/ 2>/dev/null || true
-    rm -rf "$temp_backup"
-
-    # Clear trap after successful cleanup
-    trap - EXIT INT TERM
 
     print_header "$GREEN" "PHASE 2 PASSED: Vulnerable build is vulnerable"
 
