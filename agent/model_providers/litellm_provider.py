@@ -53,10 +53,10 @@ class LiteLLMProvider(ModelProvider):
     def _get_litellm_model_name(self, model: str) -> str:
         """Convert model name to LiteLLM format if needed.
 
-        LiteLLM uses prefixes for non-OpenAI models:
-        - gemini/gemini-pro -> Gemini
-        - anthropic/claude-3-opus -> Anthropic
-        - gpt-4 -> OpenAI (no prefix needed)
+        LiteLLM uses prefixes for Gemini models:
+        - gemini/gemini-3-pro-preview -> Gemini
+        - claude-opus-4-5 -> Anthropic (no prefix needed)
+        - gpt-5.2 -> OpenAI (no prefix needed)
         """
         model_lower = model.lower()
 

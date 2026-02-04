@@ -38,12 +38,12 @@ class ModelProvider(ABC):
         """Perform a model invocation and return a ChatCompletion response.
 
         Args:
-            model: Model identifier (e.g., "gpt-4", "claude-3-opus")
+            model: Model identifier (e.g., "gpt-5.2", "gemini/gemini-3-pro-preview", see https://models.litellm.ai/)
             messages: List of message dicts with role and content
             tools: Optional list of tool definitions
             max_output_tokens: Maximum tokens in response
             timeout_ms: Request timeout in milliseconds
-            reasoning_effort: For reasoning models (o1, etc.)
+            reasoning_effort: For reasoning models
             **kwargs: Provider-specific parameters
 
         Returns:
