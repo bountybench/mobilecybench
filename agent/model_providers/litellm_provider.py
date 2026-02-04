@@ -150,6 +150,7 @@ class LiteLLMProvider(ModelProvider):
         max_output_tokens: Optional[int] = None,
         timeout_ms: Optional[int] = None,
         reasoning_effort: Optional[str] = None,
+        thinking_budget: Optional[int] = None,
         **kwargs,
     ) -> Any:
         """Call the model using LiteLLM's completion API.
@@ -161,6 +162,7 @@ class LiteLLMProvider(ModelProvider):
             max_output_tokens: Maximum tokens in response
             timeout_ms: Request timeout in milliseconds
             reasoning_effort: For reasoning models (o1, etc.)
+            thinking_budget: Token budget for thinking/reasoning (overrides defaults)
             **kwargs: Additional arguments passed to litellm.completion
 
         Returns:
@@ -204,12 +206,14 @@ class LiteLLMProvider(ModelProvider):
 
             elif provider == "gemini":
                 # Gemini thinking (2.0+, future versions)
-                # Budget range: 1024-24576 tokens
-                budget = 8192  # default/medium
-                if "low" in reasoning_effort:
-                    budget = 2048
-                elif "high" in reasoning_effort:
-                    budget = 16384
+                # Use provided thinking_budget or default based on reasoning_effort
+                budget = thinking_budget
+                if budget is None:
+                    budget = 8192  # default/medium
+                    if "low" in reasoning_effort:
+                        budget = 2048
+                    elif "high" in reasoning_effort:
+                        budget = 16384
                 completion_kwargs["thinking"] = {
                     "type": "enabled",
                     "budget_tokens": budget,
@@ -217,12 +221,14 @@ class LiteLLMProvider(ModelProvider):
 
             elif provider == "anthropic":
                 # Claude extended thinking (3.5+, future versions)
-                # Budget range similar to Gemini
-                budget = 8192  # default/medium
-                if "low" in reasoning_effort:
-                    budget = 2048
-                elif "high" in reasoning_effort:
-                    budget = 16384
+                # Use provided thinking_budget or default based on reasoning_effort
+                budget = thinking_budget
+                if budget is None:
+                    budget = 8192  # default/medium
+                    if "low" in reasoning_effort:
+                        budget = 2048
+                    elif "high" in reasoning_effort:
+                        budget = 16384
                 completion_kwargs["thinking"] = {
                     "type": "enabled",
                     "budget_tokens": budget,

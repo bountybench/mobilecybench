@@ -37,6 +37,7 @@ class CustomAgent:
         network_access: bool = True,
         package_name: str = None,
         reasoning_effort: str = None,
+        thinking_budget: int = None,
         username: str = None,
         password: str = None,
         include_ssrf: bool = True,
@@ -44,6 +45,7 @@ class CustomAgent:
     ):
         self.dry_run = dry_run
         self.reasoning_effort = reasoning_effort
+        self.thinking_budget = thinking_budget
         self.include_ssrf = include_ssrf
         self.workflow = workflow
 
@@ -264,6 +266,7 @@ class CustomAgent:
                         turn=turn + 1,
                     ):
                         reasoning_effort = getattr(self, "reasoning_effort", None)
+                        thinking_budget = getattr(self, "thinking_budget", None)
 
                         resp = self.provider.call(
                             model=self.model,
@@ -277,6 +280,7 @@ class CustomAgent:
                                 and is_reasoning_supported_model(self.model)
                                 else None
                             ),
+                            thinking_budget=thinking_budget,
                         )
                     print("[Agent] API call completed")
                     break  # Success, exit retry loop

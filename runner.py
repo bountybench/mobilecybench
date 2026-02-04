@@ -111,6 +111,8 @@ def create_workflow(
         "agent_image": config.agent_image,
         "project_root": project_root,
         "dry_run": config.dry_run,
+        "reasoning_effort": config.reasoning_effort,
+        "thinking_budget": config.thinking_budget,
     }
 
     if config.workflow == "exploit":
