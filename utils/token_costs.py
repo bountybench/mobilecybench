@@ -114,9 +114,8 @@ def _strip_provider_prefix(model: str) -> str:
         Model name without provider prefix.
 
     Examples:
-        "gemini/gemini-2.0-flash" -> "gemini-2.0-flash"
-        "anthropic/claude-3-opus" -> "claude-3-opus"
-        "gpt-4" -> "gpt-4" (unchanged)
+        "gemini/gemini-3-pro-preview" -> "gemini-3-pro-preview"
+        "gpt-5.2" -> "gpt-5.2" (unchanged)
     """
     if "/" in model:
         return model.split("/", 1)[1]
