@@ -184,6 +184,7 @@ class LiteLLMProvider(ModelProvider):
         if litellm_tools:
             completion_kwargs["tools"] = litellm_tools
             completion_kwargs["tool_choice"] = "auto"
+            completion_kwargs["parallel_tool_calls"] = False
 
         if max_output_tokens:
             completion_kwargs["max_tokens"] = max_output_tokens
