@@ -472,51 +472,38 @@ main() {
     # Step 2: Checkout the correct commit
     checkout_commit || exit 1
 
-    if [ -n "$VULN_ID" ]; then
-        # Building vulnerable APK
-        # NOTE: Do NOT apply security.patch for vuln builds - we want the vulnerability
+    # Step 3: Apply security.patch if exists (establishes secure baseline)
+    if ! apply_security_patch; then
+        echo -e "${ERROR} Failed to apply security.patch"
+        checkout_commit || true
+        exit 1
+    fi
 
-        # Step 3: Apply vulnerability patch
+    if [ -n "$VULN_ID" ]; then
+        # Step 4: Layer vulnerability patch on top of secure baseline
         if ! apply_vulnerability_patch "$VULN_ID"; then
             echo -e "${ERROR} Failed to apply vulnerability patch"
             checkout_commit || true
             exit 1
         fi
+    fi
 
-        # Step 4: Build, sign, and package
-        if ! build_and_package; then
-            echo -e "${ERROR} Build failed"
-            checkout_commit || true
-            exit 1
-        fi
-
-        # Step 5: Restore clean codebase state
-        echo -e "${INFO} Restoring clean codebase state..."
+    # Step 5: Build, sign, and package
+    if ! build_and_package; then
+        echo -e "${ERROR} Build failed"
         checkout_commit || true
+        exit 1
+    fi
 
+    # Step 6: Restore clean codebase state
+    echo -e "${INFO} Restoring clean codebase state..."
+    checkout_commit || true
+
+    if [ -n "$VULN_ID" ]; then
         echo -e "${SUCCESS} =================================="
         echo -e "${SUCCESS} Vulnerable APK build completed!"
         echo -e "${SUCCESS} Output: $OUTPUT_DIR/$VULN_ID/${APP_NAME}.apk"
-        echo -e "${SUCCESS} =================================="
     else
-        # Regular (clean) build
-
-        # Step 3: Apply security.patch if exists (patches out any zero-days)
-        if ! apply_security_patch; then
-            echo -e "${ERROR} Failed to apply security.patch"
-            exit 1
-        fi
-
-        # Step 4: Build, sign, and package
-        if ! build_and_package; then
-            checkout_commit || true
-            exit 1
-        fi
-
-        # Step 5: Restore clean codebase state
-        echo -e "${INFO} Restoring clean codebase state..."
-        checkout_commit || true
-
         echo -e "${SUCCESS} =================================="
         echo -e "${SUCCESS} APK build completed!"
         echo -e "${SUCCESS} Output: $OUTPUT_DIR/${APP_NAME}.apk"

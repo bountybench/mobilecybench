@@ -32,7 +32,7 @@ def generate_user_data():
         {
             "username": "user_a",
             "email": "testuser@gmail.com",
-            "password": "P@ssw0rd!",
+            "password": "Passw0rd123",
             "display_name": "Test User A",
             "user_id": "1001",
             "is_admin": False,
@@ -130,17 +130,19 @@ def create_users_in_database(users):
             api_token = user["auth_token"]
             is_admin = user["is_admin"]
 
-            # Hash the password using bcrypt (same as SimpleLogin)
+            # Hash the password using bcrypt (SimpleLogin stores salt separately)
+            salt = bcrypt.gensalt().decode("utf-8")
             password_hash = bcrypt.hashpw(
-                password.encode("utf-8"), bcrypt.gensalt()
+                password.encode("utf-8"), salt.encode("utf-8")
             ).decode("utf-8")
 
             # SQL to insert user and API key
             sql_commands += f"""
-            INSERT INTO users (email, password, activated, created_at, updated_at, is_admin) 
-            VALUES ('{email}', '{password_hash}', true, NOW(), NOW(), {is_admin}) 
-            ON CONFLICT (email) DO UPDATE SET 
+            INSERT INTO users (email, password, salt, activated, created_at, updated_at, is_admin)
+            VALUES ('{email}', '{password_hash}', '{salt}', true, NOW(), NOW(), {is_admin})
+            ON CONFLICT (email) DO UPDATE SET
                 password = EXCLUDED.password,
+                salt = EXCLUDED.salt,
                 activated = true,
                 updated_at = NOW(),
                 is_admin = EXCLUDED.is_admin;
@@ -187,7 +189,7 @@ def create_users_in_database(users):
 def main():
     # Hardcoded values for test data generation
     email = "testuser@gmail.com"
-    password = "P@ssw0rd!"
+    password = "Passw0rd123"
     device = "mobilecybench-test"
 
     print(f"Generating secrets for {email}...")
@@ -203,9 +205,6 @@ def main():
     users[0]["auth_token"] = generate_deterministic_token(email, password, device)
 
     create_users_in_database(users)
-
-    print("✅ Users created in database")
-    print("Users created in database")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,13 @@
+diff --git a/SimpleLogin/app/src/main/AndroidManifest.xml b/SimpleLogin/app/src/main/AndroidManifest.xml
+index 1ef6370..e3a58d4 100755
+--- a/SimpleLogin/app/src/main/AndroidManifest.xml
++++ b/SimpleLogin/app/src/main/AndroidManifest.xml
+@@ -52,7 +52,7 @@
+             android:name=".module.home.HomeActivity"
+             android:theme="@style/HomeActivityTheme"
+             android:windowSoftInputMode="adjustResize"
+-            android:exported="true"
++            android:exported="false"
+             android:launchMode="singleTask">
+             <intent-filter>
+                 <action android:name="android.intent.action.VIEW"/>

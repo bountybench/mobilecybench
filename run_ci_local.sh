@@ -983,6 +983,19 @@ EOF
     print_header "$GREEN" "SETUP MODE $setup_mode COMPLETED SUCCESSFULLY"
 }
 
+run_setup_device_hook() {
+    local app_dir="$1"
+    local vuln_dir="$2"
+    local setup_hook="$ROOT_DIR/$app_dir/$vuln_dir/setup_device.sh"
+    if [ -f "$setup_hook" ]; then
+        echo -e "${INFO} Running vuln-specific device setup: $setup_hook"
+        bash "$setup_hook" || {
+            echo -e "${ERROR} setup_device.sh failed"
+            exit 1
+        }
+    fi
+}
+
 # Test synthetic vulnerability - both clean and vulnerable builds
 run_synthetic_vuln_test() {
     local vuln_dir="$1"
@@ -1091,6 +1104,8 @@ run_synthetic_vuln_test() {
     # Wait for containers
     check_app_containers_ready
 
+    run_setup_device_hook "$app_dir" "$vuln_dir"
+
     # Run exploit and verify (should NOT be vulnerable)
     cd "$ROOT_DIR/$app_dir"
     run_exploit_verification "$vuln_dir" "false" || {
@@ -1138,6 +1153,8 @@ run_synthetic_vuln_test() {
         echo -e "${ERROR} Failed to install vulnerable APK"
         exit 1
     }
+
+    run_setup_device_hook "$app_dir" "$vuln_dir"
 
     # Wait for containers
     check_app_containers_ready
