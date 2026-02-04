@@ -10,11 +10,14 @@ The agent is given readonly access to `verify_files/` (containing the verificati
 
 ```
 apps/<app_name>/
+├── security.patch                      # Fixes the zero-day if the app has one (applied to ALL builds)
 ├── ui_automation/                      # Shared UI automation scripts (optional)
 │   └── login.py                        # Example: unified login automation
 ├── synthetic_vulnerabilities/
 │   └── vuln_0/
-│       ├── vulnerability.patch         # Git diff to introduce the vulnerability
+│       ├── metadata.json               # CWE ID, title, description
+│       ├── vulnerability.patch         # Re-introduces the vulnerability (on top of security.patch)
+│       ├── setup_device.sh             # Device setup hook (optional — PIN, login, etc.)
 │       ├── verify_files/
 │       │   ├── verify_exploit.sh       # Detects if vulnerability was exploited
 │       │   └── *.py                    # Verification helper scripts
@@ -24,6 +27,16 @@ apps/<app_name>/
 ```
 
 ## Required Files
+
+### security.patch (app-level, optional)
+
+If the app has a real zero-day vulnerability, place `security.patch` at `apps/<app_name>/security.patch`. This patch fixes the vulnerability and is applied to **all** builds as a secure baseline. The `vulnerability.patch` then re-introduces the flaw on top of this baseline.
+
+Build order:
+1. Clean checkout → apply `security.patch` → build → **secure APK**
+2. Clean checkout → apply `security.patch` → apply `vulnerability.patch` → build → **vulnerable APK**
+
+If the app has no zero-day, `security.patch` is not needed — `vulnerability.patch` applies directly to the codebase.
 
 ### vulnerability.patch
 
@@ -45,6 +58,12 @@ index 09dc781c0..0966edaed 100644
 ### metadata.json
 
 Still TBD, as we get more clarity on experiments
+
+### setup_device.sh (optional)
+
+A hook script that configures the device for this specific vulnerability's scenario. Different vulnerabilities may need different device states (e.g., an auth bypass vuln needs a logged-in user with biometric lock enabled, while an intent injection vuln might need a specific app state).
+
+Runs in **both** CI phases (secure and vulnerable builds) so the device state is identical — only the APK differs.
 
 ### exploit_files/exploit.sh
 
@@ -285,10 +304,10 @@ For synthetic vulnerability testing, use the repo-level `build_apk.sh` wrapper.
 ### What the Wrapper Handles
 - Validates submodule is initialized
 - Checks out codebase to the commit specified in `metadata.json`
-- For `--vuln` builds:
-  - Applies the vulnerability patch
-  - Builds and signs the APK to `apk/<vuln_id>/<app_name>.apk`
-  - Restores clean codebase state
+- Applies `security.patch` if present (secure baseline for all builds)
+- For `--vuln` builds: applies `vulnerability.patch` on top
+- Builds and signs the APK
+- Restores clean codebase state
 
 ### APK Directory Structure
 ```

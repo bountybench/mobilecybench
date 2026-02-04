@@ -2,6 +2,4 @@
   "cwe_id": "CWE-926",
   "title": "Authentication Bypass via Exported Activity",
   "description": "HomeActivity is exported and can be launched directly with a forged UserInfo Parcelable, bypassing biometric authentication",
-  "severity": "Medium",
-  "cvss_score": 6.1
 }

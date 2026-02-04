@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+
 # Device setup for vuln_0: Authentication bypass via exported activity (CWE-926)
 #
 # This hook runs after start_runtime.sh to configure the device for this
@@ -41,7 +42,7 @@ adb wait-for-device
 
 PREFS_PATH="/data/data/$PACKAGE_NAME/shared_prefs/io.simplelogin.android.xml"
 
-# Flip existing flag or inject it into the app's own SharedPrefs
+# Enable Local Authentication via SharedPrefs
 adb shell "
 if grep -q 'SHOULD_LOCALLY_AUTHENTICATE' $PREFS_PATH; then
     sed -i 's/SHOULD_LOCALLY_AUTHENTICATE\" value=\"false/SHOULD_LOCALLY_AUTHENTICATE\" value=\"true/' $PREFS_PATH

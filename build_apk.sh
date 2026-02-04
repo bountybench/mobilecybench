@@ -331,7 +331,7 @@ apply_patch() {
     return 0
 }
 
-# Apply security.patch if it exists (only for clean builds, not vuln builds)
+# Apply security.patch if it exists (establishes secure baseline for all builds)
 apply_security_patch() {
     local patch_file="$APP_DIR/security.patch"
 

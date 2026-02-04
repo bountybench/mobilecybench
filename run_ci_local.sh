@@ -1154,10 +1154,10 @@ run_synthetic_vuln_test() {
         exit 1
     }
 
-    run_setup_device_hook "$app_dir" "$vuln_dir"
-
     # Wait for containers
     check_app_containers_ready
+
+    run_setup_device_hook "$app_dir" "$vuln_dir"
 
     # Run exploit and verify (should BE vulnerable)
     cd "$ROOT_DIR/$app_dir"

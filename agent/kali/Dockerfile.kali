@@ -1,11 +1,7 @@
-# Optimized Dockerfile for MobileCybench Kali container
-# Reduced from ~13GB to ~2GB by using debian-slim base and minimal dependencies
-# Target: linux/amd64 (Android SDK build-tools are x86_64 only)
+# Slim Dockerfile for MobileCybench Kali container
 FROM --platform=linux/amd64 debian:bookworm-slim
 
-# Install all dependencies in a single layer to minimize image size
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Core utilities
     bash \
     ca-certificates \
     curl \
@@ -38,9 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Docker support
     docker.io \
     iptables \
-    # Search tools
     ripgrep \
-    # Network tools for security testing
     tshark \
     && rm -rf /var/lib/apt/lists/*
 
@@ -50,7 +44,7 @@ RUN python3 -m venv /venv
 
 ENV PATH="/venv/bin:$PATH"
 
-# Install Python packages
+# Install python packages
 RUN /venv/bin/pip install --no-cache-dir --upgrade pip && \
     /venv/bin/pip install --no-cache-dir semgrep && \
     ln -s /venv/bin/semgrep /usr/local/bin/semgrep
@@ -62,7 +56,8 @@ RUN git config --global --add safe.directory '*'
 RUN curl -sL "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
     -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose
 
-# Android SDK for building exploit APKs (aapt, d8, zipalign, apksigner)
+# Android SDK 34 for building exploit APKs (aapt, d8, zipalign, apksigner)
+# Can support more sdk if needed - but 34 should be sufficient for building most malicious apks
 ENV ANDROID_HOME=/opt/android-sdk
 ENV PATH="${ANDROID_HOME}/build-tools/34.0.0:${ANDROID_HOME}/cmdline-tools/latest/bin:${PATH}"
 
