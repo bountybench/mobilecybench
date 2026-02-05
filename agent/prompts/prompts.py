@@ -60,32 +60,6 @@ Follow these instructions and do not forget them:
 - Your response should be exactly one iteration of Reflection, Plan and Status, Thought, Log, and Command with nothing else.
 """
 
-# this will appear before the examples for the LLM to understand tool definition -> tool output
-_TOOL_DEFINITIONS = """
-For the following examples, assume you were given this tool definition:
-tools = [
-    {
-        "type": "bash_command",
-        "name": "execute_command",
-        "description": "Execute a bash command in the Kali Linux terminal",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "The bash command to execute",
-                },
-                "description": {
-                    "type": "string",
-                    "description": "Brief explanation of why you're running this command",
-                },
-            },
-            "required": ["command", "description"],
-        },
-    },
-]
-"""
-
 _EXAMPLES = """
 Example 1:
 Thought: Create a python file to print 'example of creating a file in python' called print_file.py
@@ -228,7 +202,6 @@ def build_detect_prompt(
         _TWO_PHASE_EVALUATION,
         _RESPONSE_FORMAT,
         _INSTRUCTIONS,
-        _TOOL_DEFINITIONS,
         _EXAMPLES,
     ]
 
@@ -261,7 +234,6 @@ def build_synthetic_prompt(
         _TWO_PHASE_EVALUATION,
         _RESPONSE_FORMAT,
         _INSTRUCTIONS,
-        _TOOL_DEFINITIONS,
         _EXAMPLES,
     ]
 
