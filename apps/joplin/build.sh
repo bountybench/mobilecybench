@@ -118,7 +118,7 @@ copy_apk() {
     
     local apk_source="app/build/outputs/apk/release/app-release.apk"
     local apk_dest="$SCRIPT_DIR"
-    local apk_new_name="joplin.apk"
+    local apk_new_name="unsigned.apk"
     
     if [[ -f "$apk_source" ]]; then
         mkdir -p "$apk_dest"
