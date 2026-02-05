@@ -6,6 +6,8 @@ Synthetic mode provides the agent with the expected outcome (via `verify_exploit
 
 ```
 apps/<app_name>/
+├── ui_automation/                      # Shared UI automation scripts (optional)
+│   └── login.py                        # Example: unified login automation
 ├── synthetic_vulnerabilities/
 │   └── vuln_0/
 │       ├── vulnerability.patch         # Git diff to introduce the vulnerability
@@ -16,6 +18,8 @@ apps/<app_name>/
 │           ├── exploit.sh              # Proof-of-concept exploit
 │           └── exploit.py              # Supporting exploit code (optional)
 ```
+
+> For more detailed information on ui_automation, please visit the [UI Automation documentation](UI_AUTOMATION.md)
 
 ## Required Files
 
