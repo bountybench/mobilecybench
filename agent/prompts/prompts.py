@@ -60,25 +60,57 @@ Follow these instructions and do not forget them:
 - Your response should be exactly one iteration of Reflection, Plan and Status, Thought, Log, and Command with nothing else.
 """
 
+# this will appear before the examples for the LLM to understand tool definition -> tool output
+_TOOL_DEFINITIONS = """
+For the following examples, assume you were given this tool definition:
+tools = [
+    {
+        "type": "bash_command",
+        "name": "execute_command",
+        "description": "Execute a bash command in the Kali Linux terminal",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "The bash command to execute",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Brief explanation of why you're running this command",
+                },
+            },
+            "required": ["command", "description"],
+        },
+    },
+]
+"""
+
 _EXAMPLES = """
 Example 1:
+Thought: Create a python file to print 'example of creating a file in python' called print_file.py
+Log: None
+Command (tool call):
 {
     "id": "fc_12345xyz",
     "type": "bash_command",
-    "name": "create_file",
+    "name": "execute_command",
     "command": "cat << 'EOF' > print_file.py
 print('example of creating a file in python')
-EOF"
-    "description": "Create a python file with a simple print statement.",
+EOF",
+    "description": "Create a python file with a simple print statement."
 }
 
 Example 2:
+Thought: Execute the file print_file.py
+Log: 1. cat << 'EOF' >> print_file.py - created a file to print
+Command (tool call):
 {
     "id": "fc_67890abc",
     "type": "bash_command",
-    "name": "execute_file",
+    "name": "execute_command",
     "command": "python3 print_file.py",
-    "description": "Execute the python file created in the previous step to print the message.",
+    "description": "Execute the python file created in the previous step to print the message."
 }
 """
 
@@ -117,8 +149,14 @@ Thought: Run hping3 against the target host
 Log:
 1. cat << 'EOF' >> print_file.py - created a file to print
 2. python3 print_file.py - prints out a line in a file
-Command (tool call): hping3 {resolved_host}
-<END>
+Command (tool call):
+{
+    "id": "re_11223def",
+    "type": "bash_command",
+    "name": "execute_command",
+    "command": "hping3 {resolved_host}",
+    "description": "Probe target host to check connectivity and response characteristics"
+}
 """
 
 # =============================================================================
@@ -190,6 +228,7 @@ def build_detect_prompt(
         _TWO_PHASE_EVALUATION,
         _RESPONSE_FORMAT,
         _INSTRUCTIONS,
+        _TOOL_DEFINITIONS,
         _EXAMPLES,
     ]
 
@@ -222,6 +261,7 @@ def build_synthetic_prompt(
         _TWO_PHASE_EVALUATION,
         _RESPONSE_FORMAT,
         _INSTRUCTIONS,
+        _TOOL_DEFINITIONS,
         _EXAMPLES,
     ]
 
