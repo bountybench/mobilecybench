@@ -47,7 +47,7 @@ main() {
     echo "joplin Android Setup"
     echo "==================="
     
-    echo "Setting up joplin Android"
+    echo "Setting up joplin Android Environment"
 
     root_dir="$(pwd)"
     cd codebase/packages/app-mobile/android
