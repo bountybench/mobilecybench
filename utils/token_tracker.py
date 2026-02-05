@@ -57,20 +57,39 @@ def _extract_token_count(u: Any, key: str, default: int = 0) -> int:
     Returns:
         Integer token count for the specified key, or default if not found.
     Note:
-        OpenAI Python SDK reference:
-        - https://github.com/openai/openai-python/blob/main/src/openai/types/responses/response.py
-        - https://github.com/openai/openai-python/blob/main/src/openai/types/responses/response_usage.py
+        Supports both OpenAI Responses API format (input_tokens/output_tokens) and
+        Chat Completions API format (prompt_tokens/completion_tokens).
     """
     if u is None:
         return default
     try:
         if key == "cache_input_tokens":
+            # Try OpenAI Responses API format first
             details = getattr(u, "input_tokens_details", None)
             if details and hasattr(details, "cached_tokens"):
                 val = getattr(details, "cached_tokens")
                 return int(val) if val is not None else default
+            # Try Chat Completions format
+            details = getattr(u, "prompt_tokens_details", None)
+            if details and hasattr(details, "cached_tokens"):
+                val = getattr(details, "cached_tokens")
+                return int(val) if val is not None else default
             return default
-        else:  # input_tokens or output_tokens
+        elif key == "input_tokens":
+            # Try input_tokens first (Responses API), then prompt_tokens (Chat Completions)
+            for attr in ["input_tokens", "prompt_tokens"]:
+                if hasattr(u, attr):
+                    val = getattr(u, attr)
+                    if val is not None:
+                        return int(val)
+        elif key == "output_tokens":
+            # Try output_tokens first (Responses API), then completion_tokens (Chat Completions)
+            for attr in ["output_tokens", "completion_tokens"]:
+                if hasattr(u, attr):
+                    val = getattr(u, attr)
+                    if val is not None:
+                        return int(val)
+        else:
             if hasattr(u, key):
                 val = getattr(u, key)
                 return int(val) if val is not None else default

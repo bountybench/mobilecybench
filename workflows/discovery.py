@@ -29,6 +29,8 @@ class DiscoveryWorkflow(Workflow):
         agent_image: str = "cybench/mobilecybench:latest",
         project_root: Optional[Path] = None,
         dry_run: bool = False,
+        reasoning_effort: Optional[str] = None,
+        thinking_budget: Optional[int] = None,
     ):
         self.app_name = app_name
         self.app_dir = app_dir
@@ -42,6 +44,8 @@ class DiscoveryWorkflow(Workflow):
         self.agent_image = agent_image
         self.project_root = project_root or Path(__file__).parent.parent
         self.dry_run = dry_run
+        self.reasoning_effort = reasoning_effort
+        self.thinking_budget = thinking_budget
 
         # Set during setup
         self.metadata: dict = {}
@@ -138,6 +142,8 @@ class DiscoveryWorkflow(Workflow):
             password=self.metadata.get("password"),
             include_ssrf=include_ssrf,
             workflow="discovery",
+            reasoning_effort=self.reasoning_effort,
+            thinking_budget=self.thinking_budget,
         )
         logger.info("Agent configured for discovery mode")
 

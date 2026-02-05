@@ -37,6 +37,7 @@ class RunnerConfig(BaseModel):
     allowed_tools: Optional[List[str]] = None
 
     reasoning_effort: Optional[str] = None
+    thinking_budget: Optional[int] = None  # Token budget for thinking/reasoning models
 
     @classmethod
     def from_file(cls, config_path: Path) -> "RunnerConfig":

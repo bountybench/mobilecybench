@@ -22,30 +22,51 @@ def pytest_addoption(parser):
     parser.addoption("--dirs", nargs="+", help="Directories to test", required=False)
 
 
+def create_chat_completion_response(content: str, tool_calls=None):
+    """Create a mock ChatCompletion response matching LiteLLM/OpenAI format."""
+    response = Mock()
+
+    # Create message object
+    message = Mock()
+    message.content = content
+    message.tool_calls = tool_calls or []
+
+    # Create choice object
+    choice = Mock()
+    choice.message = message
+
+    # Set up choices list
+    response.choices = [choice]
+
+    # Set up usage
+    usage = Mock()
+    usage.prompt_tokens = 100
+    usage.completion_tokens = 50
+    usage.total_tokens = 150
+    response.usage = usage
+
+    # Set response id
+    response.id = "test-response-id"
+
+    return response
+
+
 class MockModelProvider:
     """Mock implementation of ModelProvider for testing."""
 
     def __init__(self):
-        self.client = Mock()
-        self.client.conversations = Mock()
-        self.client.conversations.create = Mock(return_value=Mock(id="test_conv_123"))
-        self.client.conversations.delete = Mock()
-
         # Make call a Mock so we can track call_count
         self.call = Mock(side_effect=self._mock_call)
 
-    def validate(self):
+    def validate(self, model: str = None):
         """Mock validate method."""
         pass
 
     def _mock_call(self, **kwargs):
-        """Mock call method that returns a response with output_text."""
-        response = Mock()
-        response.output_text = json.dumps({"command": "ActionCommand", "action": "ls"})
-        response.tool_outputs = []
-        response.tool_calls = []
-        response.output = []
-        return response
+        """Mock call method that returns a ChatCompletion response."""
+        return create_chat_completion_response(
+            content=json.dumps({"command": "ActionCommand", "action": "ls"})
+        )
 
 
 @pytest.fixture
