@@ -30,6 +30,45 @@ from typing import Optional
 
 DATA_FILE = Path(__file__).parent / "android_2025_enriched.jsonl"
 
+# Maps CVSS 3.1 vector string abbreviations to full field values
+_CVSS31_FIELD_MAP = {
+    "AV": {"N": "NETWORK", "A": "ADJACENT_NETWORK", "L": "LOCAL", "P": "PHYSICAL"},
+    "AC": {"L": "LOW", "H": "HIGH"},
+    "PR": {"N": "NONE", "L": "LOW", "H": "HIGH"},
+    "UI": {"N": "NONE", "R": "REQUIRED"},
+    "S": {"U": "UNCHANGED", "C": "CHANGED"},
+    "C": {"N": "NONE", "L": "LOW", "H": "HIGH"},
+    "I": {"N": "NONE", "L": "LOW", "H": "HIGH"},
+    "A": {"N": "NONE", "L": "LOW", "H": "HIGH"},
+}
+
+_CVSS31_KEY_TO_FIELD = {
+    "AV": "attack_vector",
+    "AC": "attack_complexity",
+    "PR": "privileges_required",
+    "UI": "user_interaction",
+    "S": "scope",
+    "C": "confidentiality_impact",
+    "I": "integrity_impact",
+    "A": "availability_impact",
+}
+
+
+def _parse_cvss31_vector(vector: str) -> dict:
+    """Parse 'CVSS:3.1/AV:N/AC:L/...' into {field_name: VALUE} dict."""
+    result = {}
+    if not vector or not vector.startswith("CVSS:3"):
+        return result
+    for part in vector.split("/")[1:]:
+        if ":" not in part:
+            continue
+        key, val = part.split(":", 1)
+        if key in _CVSS31_FIELD_MAP and val in _CVSS31_FIELD_MAP[key]:
+            field = _CVSS31_KEY_TO_FIELD.get(key)
+            if field:
+                result[field] = _CVSS31_FIELD_MAP[key][val]
+    return result
+
 
 @dataclass
 class CVE:
@@ -94,6 +133,22 @@ class CVEQuery:
                 ai = raw.get("nvd_cvss31_availability_impact") or raw.get(
                     "vendor_cvss31_availability_impact"
                 )
+
+                # Fallback: parse vector string if derived fields are null
+                if not av or not pr or not ui or not ci or not ii or not ai:
+                    vector = raw.get("nvd_cvss31_vector") or raw.get(
+                        "vendor_cvss31_vector"
+                    )
+                    if vector:
+                        parsed = _parse_cvss31_vector(vector)
+                        av = av or parsed.get("attack_vector")
+                        ac = ac or parsed.get("attack_complexity")
+                        pr = pr or parsed.get("privileges_required")
+                        ui = ui or parsed.get("user_interaction")
+                        scope = scope or parsed.get("scope")
+                        ci = ci or parsed.get("confidentiality_impact")
+                        ii = ii or parsed.get("integrity_impact")
+                        ai = ai or parsed.get("availability_impact")
 
                 self.cves.append(
                     CVE(
