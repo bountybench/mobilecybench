@@ -30,7 +30,7 @@ bash setup.sh --init-submodules conversations
 python runner.py conversations
 ```
 
-Agent type defaults to `custom`; override with `--agent-type supervisor` or `--agent-type codex`.
+Agent type defaults to `custom`; use `--agent-type codex` for Codex mode.
 
 Windows note: `setup.sh` and emulator scripts require WSL or Git Bash.
 

@@ -119,7 +119,7 @@ What happens next:
 - The app is installed and launched.
 - Probes are run before and after testing.
 
-Agent type defaults to `custom`; override with `--agent-type supervisor` or `--agent-type codex`.
+Agent type defaults to `custom`; use `--agent-type codex` for Codex mode.
 
 If you only want to verify setup without running an LLM, use dry-run:
 

@@ -31,7 +31,7 @@ Details: `documentation/EXPERIMENTS.md`
 Flags:
 
 - `python runner.py <app_name>`
-- `--agent-type <custom|supervisor|codex>`
+- `--agent-type <custom|codex>`
 
 ## Build APKs (source or synthetic)
 
