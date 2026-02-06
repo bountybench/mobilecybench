@@ -6,23 +6,17 @@ RESET="\033[0m"
 ERROR="${RED}[ERROR]${RESET}"
 
 # Error buffer configuration
-MAX_ERRORS=100
 ERROR_LOG=()
 ERROR_COUNT=0
 
-# Function to log errors to buffer
 log_error() {
     local message="$1"
     local formatted_error="${ERROR} ${message}"
-    
-    # Only store if under limit
-    if [ ${ERROR_COUNT} -lt ${MAX_ERRORS} ]; then
-        ERROR_LOG+=("${formatted_error}")
-    fi
+
+    ERROR_LOG+=("${formatted_error}")
     
     ((ERROR_COUNT++))
-    
-    # Print to stderr
+
     echo -e "${formatted_error}" >&2
 }
 
