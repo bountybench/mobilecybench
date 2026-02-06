@@ -121,7 +121,7 @@ check_app_containers_ready() {
             # Get exposed TCP ports
             ports=$(docker inspect --format '{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{.HostPort}} {{end}}{{end}}' "$container")
             if [ -z "$ports" ]; then
-                log_error "No exposed ports for $container. Skipping readiness check."
+                echo "No exposed ports for $container. Skipping readiness check." >&2
                 continue
             fi
 
