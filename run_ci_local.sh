@@ -10,12 +10,12 @@ RESET="\033[0m"
 # Define message prefixes
 INFO="${CYAN}[INFO]${RESET}"
 SUCCESS="${GREEN}[SUCCESS]${RESET}"
-ERROR="${RED}[ERROR]${RESET}"
 WARNING="${YELLOW}[WARNING]${RESET}"
 
 ROOT_DIR=$(pwd)
 source "${ROOT_DIR}/utils/android.sh"
 source "${ROOT_DIR}/utils/wait.sh"
+source "${ROOT_DIR}/utils/local_error_logger.sh"
 set +e
 
 DIR=""
@@ -31,8 +31,8 @@ check_metadata_schema() {
     echo "Checking metadata.json against expected schema..."
 
     if ! jq empty "$metadata_file" >/dev/null 2>&1; then
-        print_header "$ERROR" "[FAIL] Invalid JSON in $metadata_file"
-        echo -e "${ERROR} The metadata.json file contains invalid JSON syntax."
+        log_error "[FAIL] Invalid JSON in $metadata_file"
+        log_error "The metadata.json file contains invalid JSON syntax."
         exit 1
     fi
 
@@ -54,8 +54,8 @@ check_metadata_schema() {
         if jq -e ".${field}" "$metadata_file" >/dev/null 2>&1; then
             print_header "$GREEN" "[PASS] Attribute $field is in the metadata."
         else
-            print_header "$ERROR" "[FAIL] Attribute $field is not in the metadata."
-            print_header "$ERROR" " --> Attribute ${description} is not in the metadata."
+            log_error "[FAIL] Attribute $field is not in the metadata.]"
+            log_error "--> Attribute ${description} is not in the metadata."
             all_passed=false
         fi
     done
@@ -63,7 +63,7 @@ check_metadata_schema() {
     if [ "$all_passed" = true ]; then
         print_header "$GREEN" "[PASS] Metadata schema validation success."
     else
-        print_header "$ERROR" "[FAIL] Metadata schema validation failed."
+        log_error "[FAIL] Metadata schema validation failed."
         exit 1
     fi
 }
@@ -114,14 +114,14 @@ check_app_containers_ready() {
                 echo "$container is healthy."
                 continue
             else
-                echo "Timeout: $container did not become healthy within $TIMEOUT seconds." >&2
+                log_error "Timeout: $container did not become healthy within $TIMEOUT seconds."
                 exit 1
             fi
         else
             # Get exposed TCP ports
             ports=$(docker inspect --format '{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{.HostPort}} {{end}}{{end}}' "$container")
             if [ -z "$ports" ]; then
-                echo "No exposed ports for $container. Skipping readiness check." >&2
+                log_error "No exposed ports for $container. Skipping readiness check."
                 continue
             fi
 
@@ -155,7 +155,7 @@ check_app_containers_ready() {
             if [ $all_success -eq 1 ]; then
                 echo "$container is ready via port check on all ports."
             else
-                echo "Timeout: $container not ready after $TIMEOUT seconds." >&2
+                log_error "Timeout: $container not ready after $TIMEOUT seconds."
                 exit 1
             fi
         fi
@@ -251,7 +251,7 @@ validate_setup_app_scripts() {
     local dir="$1"
 
     if [ ! -d "$dir" ]; then
-        echo -e "${ERROR} Directory '$dir' does not exist" >&2
+        log_error "Directory '$dir' does not exist"
         return 1
     fi
 
@@ -270,8 +270,8 @@ validate_setup_app_scripts() {
     fi
 
     if [ "$has_build_script" = false ] && [ "$has_download_link" = false ]; then
-        echo -e "${ERROR} No setup options found in $dir" >&2
-        echo -e "${ERROR} Expected: build.sh or download_link in metadata.json" >&2
+        log_error "No setup options found in $dir"
+        log_error "Expected: build.sh or download_link in metadata.json"
         return 1
     fi
     return 0
@@ -351,9 +351,9 @@ determine_setup_modes() {
 
     # will fail if no mode is left after user filter
     if [ -z "$selected_modes" ]; then
-        echo -e "${ERROR} No setup modes available after applying filters" >&2
-        echo -e "${ERROR} Available modes were: $available_modes" >&2
-        echo -e "${ERROR} Try removing --skip-* flags or ensure required scripts exist" >&2
+        log_error "No setup modes available after applying filters"
+        log_error "Available modes were: $available_modes"
+        log_error "Try removing --skip-* flags or ensure required scripts exist"
         exit 1
     fi
     
@@ -406,7 +406,7 @@ apply_vulnerability_patch() {
     echo -e "${INFO} Applying vulnerability patch: $patch_file"
     
     if [ ! -f "$patch_file" ]; then
-        echo -e "${ERROR} Patch file not found: $patch_file"
+        log_error "Patch file not found: $patch_file"
         return 1
     fi
     
@@ -419,12 +419,12 @@ apply_vulnerability_patch() {
             cd - || return 1
             return 0
         else
-            echo -e "${ERROR} Failed to apply patch"
+            log_error "Failed to apply patch"
             cd - || return 1
             return 1
         fi
     else
-        echo -e "${ERROR} Patch validation failed"
+        log_error "Patch validation failed"
         cd - || return 1
         return 1
     fi
@@ -443,12 +443,12 @@ run_exploit_verification() {
     local verify_script="$vuln_dir/verify_files/verify_exploit.sh"
 
     if [ ! -f "$exploit_script" ]; then
-        echo -e "${ERROR} Exploit script not found: $exploit_script"
+        log_error "Exploit script not found: $exploit_script"
         return 1
     fi
     
     if [ ! -f "$verify_script" ]; then
-        echo -e "${ERROR} Verification script not found: $verify_script"
+        log_error "Verification script not found: $verify_script"
         return 1
     fi
 
@@ -500,7 +500,7 @@ run_exploit_verification() {
             echo -e "${SUCCESS} Verification passed: App is vulnerable (as expected)"
             return 0
         else
-            echo -e "${ERROR} Verification failed: App is vulnerable (expected NOT vulnerable)"
+            log_error "Verification failed: App is vulnerable (expected NOT vulnerable)"
             return 1
         fi
     elif [ "$verify_exit_code" -eq 1 ]; then
@@ -509,13 +509,13 @@ run_exploit_verification() {
             echo -e "${SUCCESS} Verification passed: App is NOT vulnerable (as expected)"
             return 0
         else
-            echo -e "${ERROR} Verification failed: App is NOT vulnerable (expected vulnerable)"
+            log_error "Verification failed: App is NOT vulnerable (expected vulnerable)"
             return 1
         fi
     else
         # Any other exit code indicates an error in the verification script
-        echo -e "${ERROR} Verification script failed with unexpected exit code: $verify_exit_code"
-        echo -e "${ERROR} This indicates an error in verify_exploit.sh (e.g., adb/db failure), not a vulnerability status"
+        log_error "Verification script failed with unexpected exit code: $verify_exit_code"
+        log_error "This indicates an error in verify_exploit.sh (e.g., adb/db failure), not a vulnerability status"
         return 1
     fi
 }
@@ -627,14 +627,14 @@ fi
 print_header "$CYAN" "GETTING SDK INFORMATION"
 metadata="$DIR/metadata.json"
 if [ ! -f "$metadata" ]; then
-    echo -e "${ERROR} $metadata not found"
+    log_error "$metadata not found"
     exit 1
 fi
 check_metadata_schema "$metadata"
 
 sdk=$(jq -r '.sdk' "$metadata")
 if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
-    echo -e "${ERROR} Could not extract SDK from $metadata."
+    log_error "Could not extract SDK from $metadata."
     exit 1
 else 
     echo -e "${INFO} SDK: $sdk"
@@ -700,22 +700,22 @@ run_test_check() {
     
     # Check if package is NOT installed before setup
     if adb shell pm list packages | grep -q "^package:$package_name$"; then
-        echo -e "${ERROR} Package $package_name is already installed before start_runtime.sh"
-        echo -e "${ERROR} This test expects the package to be uninstalled initially"
+        log_error "Package $package_name is already installed before start_runtime.sh"
+        log_error "This test expects the package to be uninstalled initially"
         exit 1
     else
         echo -e "${SUCCESS} Package $package_name is not installed (as expected before setup)"
     fi
 
     echo -e "${INFO} Running setup..."
-    { ./start_runtime.sh; } || { echo -e "${ERROR} start_runtime.sh failed"; exit 1; }
+    { ./start_runtime.sh; } || { log_error "start_runtime.sh failed"; exit 1; }
 
     # Verify the specific package is installed after setup
     if adb shell pm list packages | grep -q "^package:$package_name$"; then
         echo -e "${SUCCESS} Package $package_name is installed after start_runtime.sh"
     else
-        echo -e "${ERROR} Package $package_name is not installed after start_runtime.sh"
-        echo -e "${ERROR} This indicates start_runtime.sh failed to install the expected package"
+        log_error "Package $package_name is not installed after start_runtime.sh"
+        log_error "This indicates start_runtime.sh failed to install the expected package"
         echo -e "${INFO} Cleaning up..."
         ./cleanup.sh
         exit 1
@@ -726,11 +726,11 @@ run_test_check() {
 
     echo -e "${INFO} Generating flags..."
     cd "$ROOT_DIR"
-    { python -m utils.uuid_flags_utils "$DIR"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
+    { python -m utils.uuid_flags_utils "$DIR"; } || { log_error "Flag generation failed"; exit 1; }
     cd "$DIR"
 
     echo -e "${INFO} Injecting flags..."
-    { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
+    { ../../inject_flags.sh; } || { log_error "inject_flags.sh failed"; exit 1; }
     verify_shared_net_connectivity
     adb logcat -c
 
@@ -759,7 +759,7 @@ run_test_check() {
         if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
             echo -e "${SUCCESS} Scores match"
         else
-            echo -e "${ERROR} Scores do not match"
+            log_error "Scores do not match"
             cat scores.json
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
@@ -769,7 +769,7 @@ run_test_check() {
     else
         # Check that all scores are 1
         if ! jq -e '[.. | select(type == "number")] | all(. == 1)' scores.json > /dev/null; then
-            echo -e "${ERROR} scores.json does not contain all 1s."
+            log_error "scores.json does not contain all 1s."
             cat scores.json
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
@@ -780,7 +780,7 @@ run_test_check() {
 
         # Check that all generic scores are 1
         if ! jq -e '[.. | select(type == "number")] | all(. == 1)' generic_scores.json > /dev/null; then
-            echo -e "${ERROR} generic_scores.json does not contain all 1s."
+            log_error "generic_scores.json does not contain all 1s."
             cat generic_scores.json
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
@@ -822,7 +822,7 @@ run_tests_for_mode() {
     echo -e "${INFO} Checking for required scripts..."
     for script in "${required_files[@]}"; do
         if [[ ! -f "$script" ]]; then
-            echo -e "${ERROR} Required script '$script' not found."
+            log_error "Required script '$script' not found."
             exit 1
         fi
     done
@@ -841,11 +841,11 @@ run_tests_for_mode() {
             if python setup_app_apklink.py "$app_name"; then
                 echo -e "${SUCCESS} Downloaded APKs successfully"
             else
-                echo -e "${ERROR} No local APKs and download failed."
-                echo -e "${ERROR} To fix: build APK and publish:"
-                echo -e "${ERROR}   ./build_apk.sh $app_name"
-                echo -e "${ERROR}   ./publish_apk_bundle.sh apps/$app_name"
-                echo -e "${ERROR} Or remove --skip-apk to build from source."
+                log_error "No local APKs and download failed."
+                log_error "To fix: build APK and publish:"
+                log_error "  ./build_apk.sh $app_name"
+                log_error "  ./publish_apk_bundle.sh apps/$app_name"
+                log_error "Or remove --skip-apk to build from source."
                 exit 1
             fi
             cd "$ROOT_DIR/$dir"
@@ -856,13 +856,13 @@ run_tests_for_mode() {
         echo -e "${INFO} Setting up app from APK link."
         app_name=$(basename "$dir")
         cd "$ROOT_DIR"
-        { python setup_app_apklink.py "$app_name"; } || { echo -e "${ERROR} setup_app_apklink.py failed"; exit 1; }
+        { python setup_app_apklink.py "$app_name"; } || { log_error "setup_app_apklink.py failed"; exit 1; }
         cd "$ROOT_DIR/$dir"
     else
         echo -e "${INFO} Setting up app from source using build_apk.sh..."
         app_name=$(basename "$dir")
         cd "$ROOT_DIR"
-        { ./build_apk.sh "$app_name"; } || { echo -e "${ERROR} build_apk.sh failed"; exit 1; }
+        { ./build_apk.sh "$app_name"; } || { log_error "build_apk.sh failed"; exit 1; }
         cd "$ROOT_DIR/$dir"
     fi
     
@@ -870,15 +870,15 @@ run_tests_for_mode() {
     echo -e "${INFO} Validating APK structure..."
     APK_DIR="$ROOT_DIR/$dir/apk"
     if [ ! -d "$APK_DIR" ]; then
-        echo -e "${ERROR} APK directory not found at $APK_DIR"
-        echo -e "${ERROR} APKs must be placed in ${dir}/apk/"
+        log_error "APK directory not found at $APK_DIR"
+        log_error "APKs must be placed in ${dir}/apk/"
         exit 1
     fi
 
     APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
     if [ "$APK_COUNT" -eq 0 ]; then
-        echo -e "${ERROR} No APK found in $APK_DIR/"
-        echo -e "${ERROR} setup_app_source.sh or setup_app_apklink.py must place APKs in ${dir}/apk/"
+        log_error "No APK found in $APK_DIR/"
+        log_error "setup_app_source.sh or setup_app_apklink.py must place APKs in ${dir}/apk/"
         exit 1
     fi
 
@@ -934,22 +934,22 @@ EOF
         
         # Check if package is NOT installed before setup
         if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo -e "${ERROR} Package $package_name is already installed before start_runtime.sh"
-            echo -e "${ERROR} This test expects the package to be uninstalled initially"
+            log_error "Package $package_name is already installed before start_runtime.sh"
+            log_error "This test expects the package to be uninstalled initially"
             exit 1
         else
             echo -e "${SUCCESS} Package $package_name is not installed (as expected before setup)"
         fi
         
         echo -e "${INFO} Running setup..."
-        { ./start_runtime.sh; } || { echo -e "${ERROR} start_runtime.sh failed"; exit 1; }
+        { ./start_runtime.sh; } || { log_error "start_runtime.sh failed"; exit 1; }
 
          # Verify the specific package is installed after setup
         if adb shell pm list packages | grep -q "^package:$package_name$"; then
             echo -e "${SUCCESS} Package $package_name is installed after start_runtime.sh"
         else
-            echo -e "${ERROR} Package $package_name is not installed after start_runtime.sh"
-            echo -e "${ERROR} This indicates start_runtime.sh failed to install the expected package"
+            log_error "Package $package_name is not installed after start_runtime.sh"
+            log_error "This indicates start_runtime.sh failed to install the expected package"
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
             exit 1
@@ -960,11 +960,11 @@ EOF
 
         echo -e "${INFO} Generating flags..."
         cd "$ROOT_DIR"
-        { python -m utils.uuid_flags_utils "$dir"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
+        { python -m utils.uuid_flags_utils "$dir"; } || { log_error "Flag generation failed"; exit 1; }
         cd "$dir"
 
         echo -e "${INFO} Injecting flags..."
-        { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
+        { ../../inject_flags.sh; } || { log_error "inject_flags.sh failed"; exit 1; }
         verify_shared_net_connectivity
         adb logcat -c
         
@@ -1002,17 +1002,17 @@ run_synthetic_vuln_test() {
     local verify_script="$ROOT_DIR/$app_dir/$vuln_dir/verify_files/verify_exploit.sh"
     
     if [ ! -f "$patch_file" ]; then
-        echo -e "${ERROR} Patch file not found: $patch_file"
+        log_error "Patch file not found: $patch_file"
         exit 1
     fi
 
     if [ ! -f "$exploit_script" ]; then
-        echo -e "${ERROR} Exploit script not found: $exploit_script"
+        log_error "Exploit script not found: $exploit_script"
         exit 1
     fi
 
     if [ ! -f "$verify_script" ]; then
-        echo -e "${ERROR} Verification script not found: $verify_script"
+        log_error "Verification script not found: $verify_script"
         exit 1
     fi
 
@@ -1055,13 +1055,13 @@ run_synthetic_vuln_test() {
             echo -e "${SUCCESS} Found existing APKs: base=$base_apk_count, vuln=$vuln_apk_count"
             skip_build=true
         else
-            echo -e "${ERROR} --skip-apk requires both base APK and $vuln_id APK to exist"
-            echo -e "${ERROR} Base APK: $APK_DIR/*.apk ($base_apk_count found)"
-            echo -e "${ERROR} Vuln APK: $VULN_APK_DIR/*.apk ($vuln_apk_count found)"
-            echo -e "${ERROR} To fix: build APKs and publish:"
-            echo -e "${ERROR}   ./build_apk.sh $app_name"
-            echo -e "${ERROR}   ./build_apk.sh $app_name --vuln $vuln_id"
-            echo -e "${ERROR}   ./publish_apk_bundle.sh apps/$app_name"
+            log_error "--skip-apk requires both base APK and $vuln_id APK to exist"
+            log_error "Base APK: $APK_DIR/*.apk ($base_apk_count found)"
+            log_error "Vuln APK: $VULN_APK_DIR/*.apk ($vuln_apk_count found)"
+            log_error "To fix: build APKs and publish:"
+            log_error "  ./build_apk.sh $app_name"
+            log_error "  ./build_apk.sh $app_name --vuln $vuln_id"
+            log_error "  ./publish_apk_bundle.sh apps/$app_name"
             exit 1
         fi
     fi
@@ -1075,7 +1075,7 @@ run_synthetic_vuln_test() {
     if [ "$skip_build" = false ]; then
         echo -e "${INFO} Building clean APK using build_apk.sh..."
         if ! ./build_apk.sh "$app_name"; then
-            echo -e "${ERROR} Failed to build clean APK"
+            log_error "Failed to build clean APK"
             exit 1
         fi
     else
@@ -1086,7 +1086,7 @@ run_synthetic_vuln_test() {
 
     # Install and setup
     echo -e "${INFO} Installing clean APK..."
-    ./start_runtime.sh || { echo -e "${ERROR} Failed to install clean APK"; exit 1; }
+    ./start_runtime.sh || { log_error "Failed to install clean APK"; exit 1; }
 
     # Wait for containers
     check_app_containers_ready
@@ -1094,7 +1094,7 @@ run_synthetic_vuln_test() {
     # Run exploit and verify (should NOT be vulnerable)
     cd "$ROOT_DIR/$app_dir"
     run_exploit_verification "$vuln_dir" "false" || {
-        echo -e "${ERROR} Phase 1 failed: Clean build verification failed"
+        log_error "Phase 1 failed: Clean build verification failed"
         ./cleanup.sh
         uninstall_package "$package_name"
         exit 1
@@ -1116,7 +1116,7 @@ run_synthetic_vuln_test() {
     if [ "$skip_build" = false ]; then
         echo -e "${INFO} Building vulnerable APK using build_apk.sh --vuln $vuln_id..."
         if ! ./build_apk.sh "$app_name" --vuln "$vuln_id"; then
-            echo -e "${ERROR} Failed to build vulnerable APK"
+            log_error "Failed to build vulnerable APK"
             exit 1
         fi
     else
@@ -1128,14 +1128,14 @@ run_synthetic_vuln_test() {
     # Verify vulnerable APK exists
     local vuln_apk="apk/$vuln_id/${app_name}.apk"
     if [ ! -f "$vuln_apk" ]; then
-        echo -e "${ERROR} Vulnerable APK not found: $vuln_apk"
+        log_error "Vulnerable APK not found: $vuln_apk"
         exit 1
     fi
 
     # Install vulnerable APK directly using --apk flag
     echo -e "${INFO} Installing vulnerable APK via --apk flag..."
     ./start_runtime.sh --apk "$vuln_apk" || {
-        echo -e "${ERROR} Failed to install vulnerable APK"
+        log_error "Failed to install vulnerable APK"
         exit 1
     }
 
@@ -1145,7 +1145,7 @@ run_synthetic_vuln_test() {
     # Run exploit and verify (should BE vulnerable)
     cd "$ROOT_DIR/$app_dir"
     run_exploit_verification "$vuln_dir" "true" || {
-        echo -e "${ERROR} Phase 2 failed: Vulnerable build verification failed"
+        log_error "Phase 2 failed: Vulnerable build verification failed"
         ./cleanup.sh
         uninstall_package "$package_name"
         exit 1
@@ -1169,7 +1169,7 @@ run_synthetic_vuln_test() {
 echo -e "${INFO} Determining setup modes for directory: $DIR"
 SETUP_MODES=$(determine_setup_modes "$DIR")
 if [ $? -ne 0 ] || [ -z "$SETUP_MODES" ]; then
-    echo -e "${ERROR} Failed to determine setup modes"
+    log_error "Failed to determine setup modes"
     exit 1
 fi
 
@@ -1183,7 +1183,7 @@ if [ "$RUN_UNIT_TESTS" = true ]; then
     if pytest tests/ -v --tb=short; then
         echo -e "${SUCCESS} Unit tests passed"
     else
-        echo -e "${ERROR} Unit tests failed"
+        log_error "Unit tests failed"
         exit 1
     fi
 else
@@ -1247,7 +1247,7 @@ if [ -n "$TEST_SYNTHETIC_VULN" ]; then
     
     # Validate that the vulnerability directory exists
     if [ ! -d "$DIR/$TEST_SYNTHETIC_VULN" ]; then
-        echo -e "${ERROR} Synthetic vulnerability directory not found: $DIR/$TEST_SYNTHETIC_VULN"
+        log_error "Synthetic vulnerability directory not found: $DIR/$TEST_SYNTHETIC_VULN"
         exit 1
     fi
     
@@ -1335,7 +1335,7 @@ fi
 print_header "$CYAN" "RUNNING LINTER"
 if [ -f "run_linter.sh" ]; then
     echo -e "${INFO} Running linter..."
-    { ./run_linter.sh; } || { echo -e "${ERROR} run_linter.sh failed"; exit 1; }
+    { ./run_linter.sh; } || { log_error "run_linter.sh failed"; exit 1; }
     echo -e "${SUCCESS} Linter completed successfully"
 else
     echo -e "${WARNING} run_linter.sh not found, skipping linter"
