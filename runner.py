@@ -181,7 +181,7 @@ class MobileCybenchRunner:
             )
 
         # Synthetic vulnerability workflow constraints
-        if self.config.synthetic_vuln:
+        if self.config.environment.synthetic_vuln:
             if self.config.build_type != "source":
                 self._exit_with_error(
                     "Synthetic vulnerability mode requires build_type 'source'."
@@ -350,7 +350,7 @@ class MobileCybenchRunner:
         # Setup agent kali environment with appropriate image
         logger.info("Setting up agent Kali environment...")
 
-        image_name = self.config.agents[self.mode].agent_image
+        image_name = self.config.environment.agent_environment_image
         logger.info(f"Using agent image: {image_name}")
         # Prepare environment variables
         env_vars = {
@@ -375,7 +375,7 @@ class MobileCybenchRunner:
             env=env_vars,
             commit_id=self.metadata.get("commit_version"),
             mode=self.mode,
-            synthetic_vulns=["vuln_0"] if self.config.synthetic_vuln else None,
+            synthetic_vulns=["vuln_0"] if self.config.environment.synthetic_vuln else None,
         )
         agent_env.setup()
         self.agent_env = agent_env
@@ -559,14 +559,14 @@ class MobileCybenchRunner:
 
                 # Build additional context from custom prompt
                 additional_parts = []
-                if self.config.custom_system_prompt:
-                    additional_parts.append(self.config.custom_system_prompt)
+                if self.config.agents[self.mode].custom_system_prompt:
+                    additional_parts.append(self.config.agents[self.mode].custom_system_prompt)
 
                 agent = CustomAgent(
                     config=self.config,
                     app_name=self.app_name,
                     app_server=getattr(self, "metadata", {}).get("app_server", None),
-                    dry_run=self.config.dry_run,
+                    dry_run=self.config.environment.dry_run,
                     additional_context=(
                         "\n\n".join(additional_parts) if additional_parts else None
                     ),
@@ -644,7 +644,7 @@ class MobileCybenchRunner:
                 logger.error(f"Error reading scores.json: {e}")
 
         # Run synthetic probes if enabled
-        if self.config.synthetic_vuln:
+        if self.config.environment.synthetic_vuln:
             log_path_for_synthetic = log_path if log_path.is_file() else None
             synthetic_result = _run_synthetic_checks(
                 self.app_dir, exploit_log=log_path_for_synthetic
@@ -904,7 +904,7 @@ class MobileCybenchRunner:
             self._validate_input()
             if not self.config.environment.dry_run:
                 self._setup_env_file()
-            if self.config.synthetic_vuln:
+            if self.config.environment.synthetic_vuln:
                 self._apply_synthetic_patch()
             log_banner("SETTING UP ANDROID EMULATOR")
             sdk_version = (
