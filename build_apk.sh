@@ -177,6 +177,10 @@ setup_java() {
 
     export PATH="$JAVA_HOME/bin:$PATH"
     echo -e "${INFO} JAVA_HOME=$JAVA_HOME"
+
+    #checking for libsecret (needed for gradle on linux)
+    sudo apt-get update
+    sudo apt-get install -y libsecret-1-dev
 }
 
 # Setup Android SDK environment
