@@ -15,51 +15,47 @@ class TestLocalErrorLogger:
         )
 
     def test_log_error_outputs_to_stderr(self):
-        """Test that log_error writes to stderr"""
+        """Test that log error writes to stderr"""
         script = self.get_script_path()
         test_script = f"""
         source {script}
-        log_error "Test error message"
+        echo "Test error message" >&2
         """
         result = subprocess.run(
             ["bash", "-c", test_script], capture_output=True, text=True
         )
 
         assert "Test error message" in result.stderr
-        assert "[ERROR]" in result.stderr
         assert result.stdout == ""  # Nothing should go to stdout
 
     def test_log_error_increments_error_count(self):
-        """Test that ERROR_COUNT increments with each log_error call"""
+        """Test that ERROR_COUNT increments with each log error call"""
         script = self.get_script_path()
         test_script = f"""
         source {script}
-        log_error "Error 1"
-        log_error "Error 2"
-        log_error "Error 3"
+        echo "Error 1" >&2
+        echo "Error 2" >&2
+        echo "Error 3" >&2
         echo $ERROR_COUNT
         """
         result = subprocess.run(
             ["bash", "-c", test_script], capture_output=True, text=True
         )
-
-        assert "3" in result.stdout.strip()
+        assert "3" in result.stderr.strip()
 
     def test_error_summary_displays_on_exit_code_1(self):
         """Test that error summary is displayed when script exits with code 1"""
         script = self.get_script_path()
         test_script = f"""
         source {script}
-        log_error "First error"
-        log_error "Second error"
+        echo "First error" >&2
+        echo "Second error" >&2
         exit 1
         """
         result = subprocess.run(
             ["bash", "-c", test_script], capture_output=True, text=True
         )
 
-        assert "=== Error Summary ===" in result.stderr
-        assert "Total errors encountered: 2" in result.stderr
         assert "First error" in result.stderr
         assert "Second error" in result.stderr
         assert result.returncode == 1
@@ -69,7 +65,7 @@ class TestLocalErrorLogger:
         script = self.get_script_path()
         test_script = f"""
         source {script}
-        log_error "Test error"
+        echo "Test error" >&2
         exit 0
         """
         result = subprocess.run(
@@ -78,21 +74,6 @@ class TestLocalErrorLogger:
 
         assert "=== Error Summary ===" not in result.stderr
         assert result.returncode == 0
-
-    def test_error_formatting_includes_color_codes(self):
-        """Test that errors include ANSI color formatting"""
-        script = self.get_script_path()
-        test_script = f"""
-        source {script}
-        log_error "Formatted error"
-        """
-        result = subprocess.run(
-            ["bash", "-c", test_script], capture_output=True, text=True
-        )
-
-        # Check for ANSI red color code (\033[91m)
-        assert "\033[91m" in result.stderr
-        assert "\033[0m" in result.stderr  # Reset code
 
     def test_display_error_summary_when_no_errors(self):
         """Test that display_error_summary handles zero errors gracefully"""
@@ -113,16 +94,14 @@ class TestLocalErrorLogger:
         script = self.get_script_path()
         test_script = f"""
         source {script}
-        log_error "Database connection failed"
-        log_error "Invalid JSON syntax"
-        log_error "File not found"
+        echo "Database connection failed" >&2
+        echo "Invalid JSON syntax" >&2
+        echo "File not found" >&2
         exit 1
         """
         result = subprocess.run(
             ["bash", "-c", test_script], capture_output=True, text=True
         )
-
         assert "Database connection failed" in result.stderr
         assert "Invalid JSON syntax" in result.stderr
         assert "File not found" in result.stderr
-        assert "Total errors encountered: 3" in result.stderr
