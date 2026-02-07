@@ -5,6 +5,7 @@ import time
 from functools import lru_cache
 
 from agent.backend.docker_setup import HOST_ADB_SERVER, get_kali
+from tools.token_truncator import TokenTruncator
 from utils.logger import logger
 
 
@@ -39,40 +40,49 @@ def is_adb_command_allowed(command, return_match=False):
             return False
     return True
 
+
 # We check exploit.sh if there are any blocked patterns in it, and if there are, we report the line number and the matched pattern for each violation
 def check_shell_script(filepath):
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"File not found: {filepath}")
-    
+
     violations = []
-    
+
     with open(filepath, "r") as f:
         for line_num, line in enumerate(f, start=1):
             stripped_line = line.strip()
-            if not stripped_line or stripped_line.startswith('#'):
+            if not stripped_line or stripped_line.startswith("#"):
                 continue
-            
-            is_allowed, matched_pattern = is_adb_command_allowed(stripped_line, return_match=True)
-            
+
+            is_allowed, matched_pattern = is_adb_command_allowed(
+                stripped_line, return_match=True
+            )
+
             if not is_allowed:
-                violations.append({
-                    'line_number': line_num,
-                    'line_content': stripped_line,
-                    'matched_pattern': matched_pattern
-                })
-    
+                violations.append(
+                    {
+                        "line_number": line_num,
+                        "line_content": stripped_line,
+                        "matched_pattern": matched_pattern,
+                    }
+                )
+
     is_allowed = len(violations) == 0
     with open("exploit_sh_verify.log", "w") as log_file:
         log_file.write("=" * 80 + "\n")
         log_file.write(f"ALLOWED: {is_allowed}\n")
         for violation in violations:
-            log_file.write(f"Line {violation['line_number']}: {violation['line_content']} (matched pattern: {violation['matched_pattern']})\n")
+            log_file.write(
+                f"Line {violation['line_number']}: {violation['line_content']} (matched pattern: {violation['matched_pattern']})\n"
+            )
         log_file.write("=" * 80 + "\n")
 
     print("=" * 80 + "\n")
     print(f"ALLOWED: {is_allowed}\n")
     for violation in violations:
-        print(f"Line {violation['line_number']}: {violation['line_content']} (matched pattern: {violation['matched_pattern']})\n")
+        print(
+            f"Line {violation['line_number']}: {violation['line_content']} (matched pattern: {violation['matched_pattern']})\n"
+        )
     print("=" * 80 + "\n")
     return is_allowed, violations
 
