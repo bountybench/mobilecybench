@@ -48,8 +48,8 @@ def setup_apk(app_dir: Path, build_type: str, project_root: Path) -> None:
                 cwd=app_dir,
             )
             cmd.run_with_progress(
-                "bash ./build_apk.sh conversations",
-                timeout=120,
+                f"bash ./build_apk.sh {app_dir.name}",
+                timeout=BUILD_COMMAND_TIMEOUT,
                 message="Signing APK",
                 cwd=project_root,
             )
