@@ -17,7 +17,7 @@ strip_colors() {
 exec 3>&2
 
 # redirect stderr to both fd3 and log file, but log file 
-exec 2> >(tee "$ERROR_LOG_FILE" >&3)
+exec 2> >(tee "$ERROR_LOG_FILE" >&3 >&2)
 
 # Function to display all buffered errors
 display_error_summary() {
@@ -49,9 +49,6 @@ cleanup_monitor() {
     if [ ${exit_code} -eq 1 ]; then
         display_error_summary
     fi
-    
-    # Clean up temp file
-    #rm -f "$ERROR_LOG_FILE"
     
     exit ${exit_code}
 }
