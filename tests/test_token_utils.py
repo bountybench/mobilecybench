@@ -100,6 +100,43 @@ def test_get_pricing_for_model_with_date_suffix():
     assert p.input == 0.0 and p.output == 0.0 and p.cache_input == 0.0
 
 
+@pytest.mark.pricing
+def test_get_pricing_for_model_with_provider_prefix():
+    """Test model pricing lookup with provider prefix (LiteLLM format)."""
+    pricing_map = {
+        "gemini-2.0-flash": ModelPricing(input=0.1, output=0.4, cache_input=0.025),
+        "gemini-3-pro-preview": ModelPricing(input=2.0, output=12.0, cache_input=0.2),
+        "claude-3-opus": ModelPricing(input=15.0, output=75.0, cache_input=1.5),
+    }
+
+    # Test with gemini/ prefix
+    p = get_pricing_for_model(
+        "gemini/gemini-2.0-flash", pricing_map=pricing_map, warn=False
+    )
+    assert p.input == 0.1 and p.output == 0.4 and p.cache_input == 0.025
+
+    p = get_pricing_for_model(
+        "gemini/gemini-3-pro-preview", pricing_map=pricing_map, warn=False
+    )
+    assert p.input == 2.0 and p.output == 12.0 and p.cache_input == 0.2
+
+    # Test with anthropic/ prefix
+    p = get_pricing_for_model(
+        "anthropic/claude-3-opus", pricing_map=pricing_map, warn=False
+    )
+    assert p.input == 15.0 and p.output == 75.0 and p.cache_input == 1.5
+
+    # Test without prefix still works
+    p = get_pricing_for_model("gemini-2.0-flash", pricing_map=pricing_map, warn=False)
+    assert p.input == 0.1 and p.output == 0.4 and p.cache_input == 0.025
+
+    # Test unknown model with prefix (should default to zeros)
+    p = get_pricing_for_model(
+        "gemini/unknown-model", pricing_map=pricing_map, warn=False
+    )
+    assert p.input == 0.0 and p.output == 0.0 and p.cache_input == 0.0
+
+
 ##########################################
 #          Token Tracker Tests           #
 ##########################################
@@ -134,7 +171,7 @@ class _UsageWithDetails(_Usage):
 
 @pytest.mark.token_tracker
 def test_tracker_record_known_model_no_cache_details():
-    tracker = TokenTracker()
+    tracker = TokenTracker(jsonl_path="token_test.jsonl")
     mock_resp = _Resp(rid="r1", usage=_Usage(input_tokens=1000, output_tokens=500))
     rec = tracker.record_from_openai_response(mock_resp, model="gpt-4.1")
 
@@ -151,7 +188,7 @@ def test_tracker_record_known_model_no_cache_details():
 
 @pytest.mark.token_tracker
 def test_tracker_record_known_model_with_cache_details():
-    tracker = TokenTracker()
+    tracker = TokenTracker(jsonl_path="token_test.jsonl")
     mock_resp = _Resp(rid="r2", usage=_UsageWithDetails(200, 100, 50))
     rec = tracker.record_from_openai_response(mock_resp, model="gpt-4.1")
 
@@ -164,7 +201,7 @@ def test_tracker_record_known_model_with_cache_details():
 
 @pytest.mark.token_tracker
 def test_tracker_unknown_model_cost_zero_with_warning():
-    tracker = TokenTracker()
+    tracker = TokenTracker(jsonl_path="token_test.jsonl")
     mock_resp = _Resp(rid="r3", usage=_Usage(input_tokens=1000, output_tokens=1000))
     rec = tracker.record_from_openai_response(mock_resp, model="unknown-model")
 
@@ -179,7 +216,7 @@ def test_tracker_multiple_records_accumulate_totals():
     Second call: 300 input, 100 output, 50 cached tokens
 
     """
-    tracker = TokenTracker()
+    tracker = TokenTracker(jsonl_path="token_test.jsonl")
     resp1 = _Resp(rid="r1", usage=_Usage(input_tokens=500, output_tokens=200))
     tracker.record_from_openai_response(resp1, model="gpt-4.1")
 

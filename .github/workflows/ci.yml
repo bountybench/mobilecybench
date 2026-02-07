@@ -118,16 +118,17 @@ jobs:
             # Determine setup modes
             has_source=false
             has_apklink=false
-            [ -f "$dir/setup_app_source.sh" ] && has_source=true
+            [ -f "$dir/build.sh" ] && has_source=true
             download_link=$(jq -r '.download_link // empty' "$metadata")
             [ -n "$download_link" ] && has_apklink=true
 
             if [ "$has_source" = false ] && [ "$has_apklink" = false ]; then
-              echo "ERROR: Neither setup_app_source.sh nor download_link found in $dir"
+              echo "ERROR: Neither build.sh nor download_link found in $dir"
+              echo "If this app builds from source, create a build.sh file."
               exit 1
             fi
 
-            source_modified=$(git diff --name-only origin/main...HEAD | grep -qF "$dir/setup_app_source.sh" && echo "true" || echo "false")
+            source_modified=$(git diff --name-only origin/main...HEAD | grep -qF "$dir/build.sh" && echo "true" || echo "false")
             apklink_modified=$(git diff --name-only origin/main...HEAD | grep -qF "$dir/metadata.json" && echo "true" || echo "false")
 
             setup_modes=()
@@ -316,8 +317,29 @@ jobs:
             python setup_app_apklink.py "${{ matrix.app_name }}"
             cd "${{ matrix.app_dir }}"
           else
-            echo "Building APK from source (this may take 10+ minutes)..."
-            ./setup_app_source.sh
+            echo "Building APK from source..."
+            if [ -f "build.sh" ]; then
+              echo "Using new build system (build.sh + build_apk.sh)"
+              cd ../..
+              ./build_apk.sh "${{ matrix.app_name }}"
+              cd "${{ matrix.app_dir }}"
+            else
+              echo "ERROR: build.sh not found for ${{ matrix.app_name }}"
+              echo ""
+              echo "=============================================="
+              echo "MIGRATION REQUIRED"
+              echo "=============================================="
+              echo "This app still uses the legacy setup_app_source.sh."
+              echo "Please migrate to the new build system:"
+              echo ""
+              echo "1. Create apps/${{ matrix.app_name }}/build.sh with build commands"
+              echo "2. The script should output unsigned APK to \$SCRIPT_DIR/unsigned.apk"
+              echo "3. Signing is handled by build_apk.sh"
+              echo ""
+              echo "See apps/grocy/build.sh for an example."
+              echo "=============================================="
+              exit 1
+            fi
           fi
 
           # Validate APK Path
@@ -667,7 +689,7 @@ jobs:
           
           # Check if package is NOT installed before setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "ERROR: Package $package_name is already installed before start_runtime.sh"
             echo "This test expects the package to be uninstalled initially"
             exit 1
           else
@@ -675,7 +697,7 @@ jobs:
           fi
           
           echo "Running setup..."
-          ./setup.sh
+          ./start_runtime.sh
 
           #Define Function to uninstall package if not already done by cleanup.sh
           uninstall_package() {
@@ -696,15 +718,15 @@ jobs:
 
           # Verify the specific package is installed after setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo "SUCCESS: Package $package_name is installed after setup.sh"
+            echo "SUCCESS: Package $package_name is installed after start_runtime.sh"
           else
-            echo "ERROR: Package $package_name is not installed after setup.sh"
-            echo "This indicates setup.sh failed to install the expected package"
+            echo "ERROR: Package $package_name is not installed after start_runtime.sh"
+            echo "This indicates start_runtime.sh failed to install the expected package"
             ./cleanup.sh
             exit 1
           fi
           
-          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
           check_app_containers_ready
           
           verify_shared_net_connectivity
@@ -773,7 +795,7 @@ jobs:
           
           # Check if package is NOT installed before setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "ERROR: Package $package_name is already installed before start_runtime.sh"
             echo "This test expects the package to be uninstalled initially"
             exit 1
           else
@@ -781,19 +803,19 @@ jobs:
           fi
           
           echo "Running setup..."
-          ./setup.sh
+          ./start_runtime.sh
 
           # Verify the specific package is installed after setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo "SUCCESS: Package $package_name is installed after setup.sh"
+            echo "SUCCESS: Package $package_name is installed after start_runtime.sh"
           else
-            echo "ERROR: Package $package_name is not installed after setup.sh"
-            echo "This indicates setup.sh failed to install the expected package"
+            echo "ERROR: Package $package_name is not installed after start_runtime.sh"
+            echo "This indicates start_runtime.sh failed to install the expected package"
             ./cleanup.sh
             exit 1
           fi
           
-          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
           check_app_containers_ready
           
           verify_shared_net_connectivity
@@ -871,7 +893,7 @@ jobs:
           
           # Check if package is NOT installed before setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "ERROR: Package $package_name is already installed before start_runtime.sh"
             echo "This test expects the package to be uninstalled initially"
             exit 1
           else
@@ -879,19 +901,19 @@ jobs:
           fi
           
           echo "Running setup..."
-          ./setup.sh
+          ./start_runtime.sh
 
           # Verify the specific package is installed after setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo "SUCCESS: Package $package_name is installed after setup.sh"
+            echo "SUCCESS: Package $package_name is installed after start_runtime.sh"
           else
-            echo "ERROR: Package $package_name is not installed after setup.sh"
-            echo "This indicates setup.sh failed to install the expected package"
+            echo "ERROR: Package $package_name is not installed after start_runtime.sh"
+            echo "This indicates start_runtime.sh failed to install the expected package"
             ./cleanup.sh
             exit 1
           fi
           
-          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
           check_app_containers_ready
           
           verify_shared_net_connectivity
@@ -941,7 +963,7 @@ jobs:
 
           # Check if package is NOT installed before setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo "ERROR: Package $package_name is already installed before setup.sh"
+            echo "ERROR: Package $package_name is already installed before start_runtime.sh"
             echo "This test expects the package to be uninstalled initially"
             exit 1
           else
@@ -949,7 +971,7 @@ jobs:
           fi
 
           echo "Running setup..."
-          ./setup.sh
+          ./start_runtime.sh
 
           uninstall_package() {
             package_name="$1"
@@ -968,15 +990,15 @@ jobs:
 
           # Verify the specific package is installed after setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo "SUCCESS: Package $package_name is installed after setup.sh"
+            echo "SUCCESS: Package $package_name is installed after start_runtime.sh"
           else
-            echo "ERROR: Package $package_name is not installed after setup.sh"
-            echo "This indicates setup.sh failed to install the expected package"
+            echo "ERROR: Package $package_name is not installed after start_runtime.sh"
+            echo "This indicates start_runtime.sh failed to install the expected package"
             ./cleanup.sh
             exit 1
           fi
 
-          # Wait for app-specific containers to be ready (after setup.sh starts them)
+          # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
           check_app_containers_ready
 
           verify_shared_net_connectivity
@@ -1027,9 +1049,9 @@ jobs:
           cd "${{ matrix.app_dir }}"
 
           if [ "${{ matrix.test_type }}" = "simple" ]; then
-            required_files=("setup.sh" "cleanup.sh")
+            required_files=("start_runtime.sh" "cleanup.sh")
           else
-            required_files=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
+            required_files=("start_runtime.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
           fi
 
           echo "Checking for required test files..."

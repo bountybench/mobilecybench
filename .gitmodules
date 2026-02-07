@@ -1,87 +1,87 @@
 [submodule "joplin/codebase"]
 	path = apps/joplin/codebase
-	url = https://github.com/cy-suite/joplin.git
+	url = ../../cy-suite/joplin.git
 [submodule "wordpress/codebase"]
 	path = apps/wordpress/codebase
-	url = https://github.com/cy-suite/WordPress-Android.git
+	url = ../../cy-suite/WordPress-Android.git
 [submodule "apps/owncloud-android/codebase"]
 	path = apps/owncloud-android/codebase
-	url = https://github.com/cy-suite/owncloud-android-app.git
+	url = ../../cy-suite/owncloud-android-app.git
 [submodule "nextcloud-talk/codebase"]
 	path = apps/nextcloud-talk/codebase
-	url = https://github.com/cy-suite/nextcloud-talk-android
+	url = ../../cy-suite/nextcloud-talk-android.git
 [submodule "apps/tindroid/codebase"]
 	path = apps/tindroid/codebase
-	url = https://github.com/cy-suite/tindroid.git
+	url = ../../cy-suite/tindroid.git
 [submodule "apps/home-assistant-android/codebase"]
 	path = apps/home-assistant-android/codebase
-	url = https://github.com/cy-suite/home-assistant-android.git
+	url = ../../cy-suite/home-assistant-android.git
 [submodule "apps/openvpn/codebase"]
 	path = apps/openvpn/codebase
-	url = https://github.com/cy-suite/OpenVPN-Android.git
+	url = ../../cy-suite/OpenVPN-Android.git
 [submodule "apps/conversations/codebase"]
 	path = apps/conversations/codebase
-	url = https://github.com/cy-suite/conversations.git
+	url = ../../cy-suite/conversations.git
 [submodule "apps/audiobookshelf/codebase"]
 	path = apps/audiobookshelf/codebase
-	url = https://github.com/cy-suite/audiobookshelf-app
+	url = ../../cy-suite/audiobookshelf-app.git
 [submodule "apps/bitwarden/codebase"]
 	path = apps/bitwarden/codebase
-	url = https://github.com/cy-suite/bitwarden.git
+	url = ../../cy-suite/bitwarden.git
 [submodule "apps/termux/codebase"]
 	path = apps/termux/codebase
-	url = https://github.com/cy-suite/termux.git
+	url = ../../cy-suite/termux.git
 [submodule "apps/ankidroid/codebase"]
-    path = apps/ankidroid/codebase
-	url = https://github.com/cy-suite/AnkiDroid.git
+	path = apps/ankidroid/codebase
+	url = ../../cy-suite/AnkiDroid.git
 [submodule "apps/gotify/codebase"]
 	path = apps/gotify/codebase
-	url = https://github.com/cy-suite/gotify.git
+	url = ../../cy-suite/gotify.git
 [submodule "apps/jellyfin/codebase"]
 	path = apps/jellyfin/codebase
-	url = https://github.com/cy-suite/jellyfin-android
+	url = ../../cy-suite/jellyfin-android.git
 [submodule "apps/simplelogin/codebase"]
 	path = apps/simplelogin/codebase
-	url = https://github.com/cy-suite/Simple-Login-Android.git
+	url = ../../cy-suite/Simple-Login-Android.git
 [submodule "apps/openhab/codebase"]
 	path = apps/openhab/codebase
-	url = https://github.com/cy-suite/openhab.git
+	url = ../../cy-suite/openhab.git
 [submodule "apps/jerboa/codebase"]
 	path = apps/jerboa/codebase
-	url = https://github.com/cy-suite/jerboa.git
+	url = ../../cy-suite/jerboa.git
 [submodule "apps/wallabag/codebase"]
 	path = apps/wallabag/codebase
-	url = https://github.com/cy-suite/wallabag.git
+	url = ../../cy-suite/wallabag.git
 [submodule "apps/davx5/codebase"]
 	path = apps/davx5/codebase
-	url = https://github.com/cy-suite/DAVx5.git
+	url = ../../cy-suite/DAVx5.git
 [submodule "apps/linphone/codebase"]
 	path = apps/linphone/codebase
-	url = https://github.com/cy-suite/linphone.git
+	url = ../../cy-suite/linphone.git
 [submodule "apps/moodle/codebase"]
 	path = apps/moodle/codebase
-	url = https://github.com/cy-suite/moodleapp
+	url = ../../cy-suite/moodleapp.git
 [submodule "apps/funkwhale/codebase"]
 	path = apps/funkwhale/codebase
-	url = https://github.com/cy-suite/funkwhale.git
+	url = ../../cy-suite/funkwhale.git
 [submodule "apps/deltachat-android/codebase"]
 	path = apps/deltachat-android/codebase
-	url = https://github.com/cy-suite/deltachat-android.git
+	url = ../../cy-suite/deltachat-android.git
 [submodule "apps/grocy/codebase"]
 	path = apps/grocy/codebase
-	url = https://github.com/cy-suite/grocy-android.git
+	url = ../../cy-suite/grocy-android.git
 [submodule "apps/miniflutt/codebase"]
 	path = apps/miniflutt/codebase
-	url = https://github.com/cy-suite/miniflutt.git
+	url = ../../cy-suite/miniflutt.git
 [submodule "apps/owntracks/codebase"]
 	path = apps/owntracks/codebase
-	url = https://github.com/cy-suite/owntracks-android.git
+	url = ../../cy-suite/owntracks-android.git
 [submodule "apps/thunderbird/codebase"]
 	path = apps/thunderbird/codebase
-	url = https://github.com/cy-suite/thunderbird-android-app.git
+	url = ../../cy-suite/thunderbird-android-app.git
 [submodule "apps/ntfy-android/codebase"]
 	path = apps/ntfy-android/codebase
-	url = https://github.com/cy-suite/ntfy-android.git
+	url = ../../cy-suite/ntfy-android.git
 [submodule "apps/moememos/codebase"]
 	path = apps/moememos/codebase
-	url = https://github.com/cy-suite/MoeMemosAndroid.git
+	url = ../../cy-suite/MoeMemosAndroid.git

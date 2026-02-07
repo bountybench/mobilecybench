@@ -19,12 +19,14 @@ bash setup.sh --init-submodules conversations
 
 Windows note: `setup.sh` and the emulator scripts require WSL or Git Bash. Use the Windows venv activation line above.
 
-If you want to run the AI agent, provide an API key. Supported model providers are listed in `agent/model_providers/factory.py`. Agent type defaults to `custom`; override with `--agent-type supervisor` or `--agent-type codex`.
+If you want to run the AI agent, provide an API key. We currently support Google and OpenAI models and recommend using either `gemini-3-pro-preview` or `gpt-5.2`
 
 ```bash
 echo OPENAI_API_KEY=sk-... > agent/.env
 python runner.py conversations
 ```
+
+The default mode is **discovery** (find unknown vulnerabilities). To run in **exploit mode** (exploit a synthetic vulnerability), set `"workflow": "exploit"` in `runner_config.json`. See `documentation/EXPERIMENTS.md` for details on both modes.
 
 If you do not want to use an API key, run in dry-run mode instead:
 
@@ -117,7 +119,7 @@ What happens next:
 - The app is installed and launched.
 - Probes are run before and after testing.
 
-Agent type defaults to `custom`; override with `--agent-type supervisor` or `--agent-type codex`.
+Agent type defaults to `custom`; use `--agent-type codex` for Codex mode.
 
 If you only want to verify setup without running an LLM, use dry-run:
 

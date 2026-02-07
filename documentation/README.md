@@ -17,11 +17,15 @@ Start here if you are new to the repo. This docs set is a simple, task-oriented 
 
 MobileCybench is a framework to capture agentic offensive cyber-capabilities in open source android applications. Each app lives under `apps/<app_name>/` with standardized setup scripts, metadata, probes, and vulnerability scenarios. The runner orchestrates:
 
+The framework supports two evaluation modes:
+- **Discovery mode**: Agent tries to find unknown vulnerabilities in the app
+- **Exploit mode**: Agent is given a known synthetic vulnerability and must write an exploit
+
+The runner orchestrates:
 - Android emulator setup
 - App build and install
-- Pre/post evaluation
-- Optional agent execution
-- Optional exploit execution and validation
+- Agent execution in a sandboxed Kali container
+- Evaluation (probes for discovery, verification scripts for exploit)
 
 ## Repo map
 
@@ -44,10 +48,10 @@ python runner.py <app_name>
 ```
 
 Replace `<app_name>` with a directory under `apps/` (for example, `conversations`).
-Agent type defaults to `custom`; override with `--agent-type supervisor` or `--agent-type codex`.
+Agent type defaults to `custom`; use `--agent-type codex` for Codex mode.
 
 ## More on apps
 
-- Every app must provide an APK via `setup_app_source.sh` or `metadata.json:download_link` (at least one is mandatory).
+- Every app must provide an APK via `build.sh` or `metadata.json:download_link` (at least one is mandatory).
 - Apps are git submodules under `apps/<app_name>/codebase`; initialize/update them if needed.
 - Some apps require Docker even without the agent stack; check if app has `container_names` defined in `apps/<app_name>/metadata.json`.

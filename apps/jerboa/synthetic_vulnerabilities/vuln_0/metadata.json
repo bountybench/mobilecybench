@@ -1,0 +1,4 @@
+{
+  "cwe_id": "CWE-532",
+  "title": "Information Exposure Through Log Files - JWT Token Logging"
+}

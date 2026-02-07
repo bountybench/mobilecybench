@@ -46,7 +46,7 @@ def get_directory_tree() -> str:
                 cleaned_output = cleaned_output[:2000] + "\n... (truncated)"
 
             if cleaned_output:
-                agent_logger.info("✓ Directory tree retrieved successfully")
+                agent_logger.info("[OK] Directory tree retrieved successfully")
                 return cleaned_output
             else:
                 agent_logger.warning("Directory tree output is empty after cleaning")

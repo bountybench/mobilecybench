@@ -45,8 +45,8 @@ Minimum for simple CI:
 apps/<app_name>/
   codebase/
   metadata.json
-  setup.sh
-  setup_app_source.sh
+  build.sh
+  start_runtime.sh
 ```
 
 Full CI (recommended):
@@ -56,8 +56,8 @@ apps/<app_name>/
   codebase/
   metadata.json
   secrets.json
-  setup.sh
-  setup_app_source.sh
+  build.sh
+  start_runtime.sh
   cleanup.sh
   test_confidentiality.py
   test_integrity.py
@@ -87,31 +87,59 @@ Required fields (most important):
 - `username` / `password`: credentials the agent can use
 - `container_names`: Docker containers to monitor for availability
 
-## 6) Build the APK (preferred path)
+## 6) Write build.sh
 
-Use `setup_app_source.sh` to build a release APK and copy it to:
+`build.sh` should be minimal — only the build command and APK copy. Everything else (Java, Android SDK, signing, codebase checkout) is handled by the root `build_apk.sh` wrapper.
 
+```bash
+#!/bin/bash
+set -e
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/codebase"
+
+./gradlew assembleRelease --no-daemon
+
+cp app/build/outputs/apk/release/app-release-unsigned.apk "$SCRIPT_DIR/unsigned.apk"
 ```
-apps/<app_name>/apk/<app_name>.apk
+
+- Output must be `$SCRIPT_DIR/unsigned.apk`
+- Don't handle signing, Java setup, or codebase checkout — `build_apk.sh` does all of that
+- Keystore env vars (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEYSTORE_ALIAS`, `KEYSTORE_ALIAS_PASSWORD`) are available if gradle needs them
+- Prefer universal APKs for emulator compatibility
+- App-specific build patches (SDK upgrades, dependency fixes, ProGuard rules, etc.) belong here
+- Keep it simple — most `build.sh` scripts are 10-20 lines
+
+Build the APK:
+```bash
+./build_apk.sh <app_name>
+# Output: apps/<app_name>/apk/<app_name>.apk
 ```
-
-Expectations:
-
-- Do not install the APK in `setup_app_source.sh`.
-- Release build required and prefer a universal APK.
-- If the APK path changes, validate it explicitly and fail fast.
 
 If you cannot build from source, set `download_link` in `metadata.json`.
 
-## 7) Install and setup the app
+## 7) Write start_runtime.sh
 
-`setup.sh` should:
+`start_runtime.sh` installs and sets up the app at runtime. Every script starts with this standard header:
 
-- Install and configure any server dependencies (Docker if needed).
-- Install the APK from `apps/<app_name>/apk/<app_name>.apk`.
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../../utils/android.sh"
+APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "<app_name>" "$@")
+cd "$SCRIPT_DIR"
+```
+
+Sourcing `utils/android.sh` gives you `parse_apk_path`, `adb_install_apk`, `wait_healthy`, `log_info`, `fatal`, and other helpers. `parse_apk_path` handles the `--apk <path>` override automatically.
+
+After the header:
+
+- Start server containers (Docker) if needed (use `wait_healthy` instead of `sleep`).
+- Install the APK via `adb_install_apk "$APK_PATH"`.
 - Launch the app.
 
-Avoid `sleep` in favor of health checks.
+Python scripts (seeding, UI automation) should use the root-level venv — apps should not have their own `requirements.txt` or virtual environments.
 
 ## 8) Add probes and scenarios
 
@@ -141,7 +169,7 @@ This mirrors the CI behavior (simple or full depending on which probe scripts ex
 
 Apps can provide APKs in two ways:
 
-- **Source build** via `setup_app_source.sh` (preferred)
+- **Source build** via `build.sh` + `build_apk.sh` (preferred)
 - **Download** via `metadata.json:download_link`
 
 Local CI automatically selects modes based on which setup scripts exist:
@@ -157,7 +185,7 @@ Local CI automatically selects modes based on which setup scripts exist:
 
 Every app must provide an APK by either:
 
-- `apps/<app_name>/setup_app_source.sh` (preferred), or
+- `apps/<app_name>/build.sh` (preferred), or
 - `apps/<app_name>/metadata.json` with `download_link`
 
 At least one of these is mandatory.
@@ -169,15 +197,15 @@ Use `apps/conversations/` as a known‑good reference for a complete app integra
 Key files to study:
 
 - `apps/conversations/metadata.json`
-- `apps/conversations/setup_app_source.sh`
-- `apps/conversations/setup.sh`
+- `apps/conversations/build.sh`
+- `apps/conversations/start_runtime.sh`
+- `apps/conversations/cleanup.sh`
 - `apps/conversations/secrets.json`
 - `apps/conversations/test_confidentiality.py`
 - `apps/conversations/test_integrity.py`
 - `apps/conversations/test_availability.py`
 - `apps/conversations/test_access_control.py`
 - `apps/conversations/vuln_scenarios/`
-- `apps/conversations/cleanup.sh`
 
 Recommended local validation (build + full checks):
 
@@ -187,7 +215,7 @@ Recommended local validation (build + full checks):
 
 ## Common build checks
 
-Before writing `setup_app_source.sh`, inspect the app:
+Before writing `build.sh`, inspect the codebase:
 
 ```bash
 ls *.gradle* *.kts
@@ -195,19 +223,19 @@ cat gradle/wrapper/gradle-wrapper.properties
 ./gradlew tasks --group=build
 ```
 
-Look for:
+Look for: build variants (debug, release, flavors), required Java version, APK output location.
 
-- Build variants (debug, release, flavors)
-- Required Java version
-- APK output location
+## Repo map
 
-## Repo map (key directories)
-
-- `apps/`: All benchmark apps and their scripts/metadata.
-- `runner.py`: Main experiment entry point.
-- `setup.sh`: Installs Android SDK, creates AVD, generates emulator scripts.
+- `build_apk.sh`: Centralized APK build wrapper (handles env, signing, output)
+- `apps/<app>/build.sh`: Per-app build script (outputs `unsigned.apk`)
+- `apps/<app>/start_runtime.sh`: Installs APK, starts containers, launches app
+- `apps/<app>/cleanup.sh`: Tears down containers, uninstalls app
+- `run_ci_local.sh`: Local CI validation
+- `run_checks.sh`: Probe runner used by CI and by the runner
+- `runner.py`: Main experiment entry point
+- `setup.sh`: Installs Android SDK, creates AVD, generates emulator scripts
 - `start_emulator.sh`, `stop_emulator.sh`, `check_device.sh`: Emulator helpers (generated by setup).
-- `run_ci_local.sh`: Local CI validation for an app.
-- `run_checks.sh`: Standard probe runner used in CI and by the runner.
-- `tools/`: Utility scripts (static analysis helpers, APK publishing, etc.).
-- `agent/`: AI agent code and runtime.
+- `utils/`: Shared shell and Python utilities (`android.sh`, `common.sh`, `wait.sh`, `docker.sh`, `ui_utils.py`, etc.)
+- `tools/`: Utility scripts (static analysis helpers, APK publishing, etc.)
+- `agent/`: AI agent code and runtime

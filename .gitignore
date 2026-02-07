@@ -26,6 +26,7 @@ ssh_key
 .env
 !apps/**/.env
 token_usage.jsonl
+token_test.jsonl
 *.code-workspace
 screenshots/*
 *.egg-info

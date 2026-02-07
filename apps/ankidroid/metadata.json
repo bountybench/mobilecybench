@@ -1,11 +1,12 @@
 {
   "gh_link": "https://github.com/cy-suite/AnkiDroid",
-  "commit_version": "v2.22.3", 
+  "commit_version": "v2.22.3",
   "sdk": "35",
   "java": "17",
+  "package_name": "com.ichi2.anki",
   "emulator_server": "http://10.0.2.2:8080",
   "app_server": "",
+  "container_names": [],
   "username": "",
-  "password": "",
-  "package_name": "com.ichi2.anki"
+  "password": ""
 }

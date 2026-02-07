@@ -2,7 +2,7 @@ import json
 from unittest.mock import patch
 
 from agent.custom_agent import CustomAgent
-from models.config import CustomAgentConfig, EnvironmentConfig, RunnerConfig
+from tests.conftest import create_chat_completion_response
 
 
 class TestCustomAgentMaxIterations:
@@ -71,20 +71,14 @@ class TestCustomAgentMaxIterations:
         def mock_call(*args, **kwargs):
             nonlocal call_count
             call_count += 1
-            response = type("MockResponse", (), {})()
             if call_count == stop_at_turn:
-                response.output_text = json.dumps(
-                    {
-                        "command": "FinalSubmissionCommand",
-                    }
+                return create_chat_completion_response(
+                    content=json.dumps({"command": "FinalSubmissionCommand"})
                 )
             else:
-                response.output_text = json.dumps(
-                    {"command": "ActionCommand", "action": "ls"}
+                return create_chat_completion_response(
+                    content=json.dumps({"command": "ActionCommand", "action": "ls"})
                 )
-            response.tool_outputs = []
-            response.output = []
-            return response
 
         mock_agent_dependencies["provider"].call = mock_call
 
@@ -203,15 +197,16 @@ class TestCustomAgentMaxIterations:
         assert result["turns"] == 0
         assert "dry run" in result["status"].lower()
 
-    def test_conversation_cleanup_on_max_iterations(self, mock_agent_dependencies):
-        """Test that conversation is deleted when max iterations is reached."""
-
-        env = EnvironmentConfig(
-            build_type="skip-apk",
-            server_access=True,
-            adb_access="full",
-            headless_mode=False,
-            docker_mode=False,
+    def test_message_history_grows(self, mock_agent_dependencies):
+        """Test that message history accumulates across turns."""
+        agent = CustomAgent(
+            model="gpt-4o-mini",
+            max_iterations=3,
+            max_model_response_tokens=1000,
+            max_kali_message_tokens=500,
+            max_context_length=10000,
+            screenshot_enabled=False,
+            app_name="test_app",
             dry_run=False,
             screenshot_mode=False,
         )
@@ -234,66 +229,15 @@ class TestCustomAgentMaxIterations:
             package_name="com.test.app",
         )
 
-        agent.run()
-
-        # Verify conversation was deleted
-        mock_agent_dependencies[
-            "provider"
-        ].client.conversations.delete.assert_called_once()
-        assert (
-            mock_agent_dependencies["provider"].client.conversations.delete.call_args[
-                1
-            ]["conversation_id"]
-            == "test_conv_123"
-        )
-
-    def test_conversation_cleanup_on_final_submission(self, mock_agent_dependencies):
-        """Test that conversation is deleted when final submission is received."""
-
-        def mock_call(*args, **kwargs):
-            response = type("MockResponse", (), {})()
-            response.output_text = json.dumps(
-                {
-                    "command": "FinalSubmissionCommand",
-                }
-            )
-            response.tool_outputs = []
-            response.output = []
-            return response
-
-        mock_agent_dependencies["provider"].call = mock_call
-
-        env = EnvironmentConfig(
-            build_type="skip-apk",
-            server_access=True,
-            adb_access="full",
-            headless_mode=False,
-            docker_mode=False,
-            dry_run=False,
-            screenshot_mode=False,
-        )
-
-        agents = {
-            "custom": CustomAgentConfig(
-                model="gpt-4o-mini",
-                max_iterations=10,
-                max_model_response_tokens=1000,
-                max_kali_message_tokens=500,
-                max_context_length=10000,
-            )
-        }
-
-        runner_config = RunnerConfig(environment=env, agents=agents)
-
-        agent = CustomAgent(
-            runner_config,
-            app_name="test_app",
-            package_name="com.test.app",
-        )
+        # Should start with just the system message
+        assert len(agent.messages) == 1
+        assert agent.messages[0]["role"] == "system"
 
         agent.run()
 
-        # Verify conversation was deleted
-        mock_agent_dependencies[
-            "provider"
-        ].client.conversations.delete.assert_called_once()
+        # After run, should have system + assistant messages for each turn
+        # Plus warning messages since there were no tool calls
+        assert len(agent.messages) > 1
+        # Check we have assistant messages
+        assistant_messages = [m for m in agent.messages if m["role"] == "assistant"]
+        assert len(assistant_messages) >= 1

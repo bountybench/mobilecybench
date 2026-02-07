@@ -29,10 +29,55 @@
     "output": 8.0,
     "cache_input": 0.5
   },
+  "gpt-4o": {
+    "input": 2.5,
+    "output": 10.0,
+    "cache_input": 1.25
+  },
+  "gpt-4o-mini": {
+    "input": 0.15,
+    "output": 0.6,
+    "cache_input": 0.075
+  },
+  "gpt-4-turbo": {
+    "input": 10.0,
+    "output": 30.0,
+    "cache_input": 5.0
+  },
+  "gpt-4": {
+    "input": 30.0,
+    "output": 60.0,
+    "cache_input": 15.0
+  },
+  "o1": {
+    "input": 15.0,
+    "output": 60.0,
+    "cache_input": 7.5
+  },
+  "o1-mini": {
+    "input": 1.1,
+    "output": 4.4,
+    "cache_input": 0.55
+  },
+  "o1-preview": {
+    "input": 15.0,
+    "output": 60.0,
+    "cache_input": 7.5
+  },
   "o3": {
-    "input": 3.5,
-    "output": 14.0,
-    "cache_input": 0.875
+    "input": 2.0,
+    "output": 8.0,
+    "cache_input": 0.5
+  },
+  "o3-mini": {
+    "input": 1.1,
+    "output": 4.4,
+    "cache_input": 0.55
+  },
+  "o4-mini": {
+    "input": 1.1,
+    "output": 4.4,
+    "cache_input": 0.55
   },
   "gemini-3-pro-preview": {
     "input": 2.0,
@@ -48,5 +93,75 @@
     "input": 0.3,
     "output": 2.5,
     "cache_input": 0.03
+  },
+  "gemini-2.0-flash": {
+    "input": 0.1,
+    "output": 0.4,
+    "cache_input": 0.025
+  },
+  "gemini-1.5-pro": {
+    "input": 1.25,
+    "output": 5.0,
+    "cache_input": 0.3125
+  },
+  "gemini-1.5-flash": {
+    "input": 0.075,
+    "output": 0.3,
+    "cache_input": 0.01875
+  },
+  "gemini-pro": {
+    "input": 0.5,
+    "output": 1.5,
+    "cache_input": 0.125
+  },
+  "claude-3-5-sonnet": {
+    "input": 3.0,
+    "output": 15.0,
+    "cache_input": 0.3
+  },
+  "claude-3-5-haiku": {
+    "input": 0.8,
+    "output": 4.0,
+    "cache_input": 0.08
+  },
+  "claude-3-opus": {
+    "input": 15.0,
+    "output": 75.0,
+    "cache_input": 1.5
+  },
+  "claude-3-sonnet": {
+    "input": 3.0,
+    "output": 15.0,
+    "cache_input": 0.3
+  },
+  "claude-3-haiku": {
+    "input": 0.25,
+    "output": 1.25,
+    "cache_input": 0.03
+  },
+  "claude-opus-4": {
+    "input": 15.0,
+    "output": 75.0,
+    "cache_input": 1.5
+  },
+  "claude-sonnet-4": {
+    "input": 3.0,
+    "output": 15.0,
+    "cache_input": 0.3
+  },
+  "claude-opus-4.5": {
+    "input": 5.0,
+    "output": 25.0,
+    "cache_input": 0.5
+  },
+  "claude-sonnet-4.5": {
+    "input": 3.0,
+    "output": 15.0,
+    "cache_input": 0.3
+  },
+  "claude-haiku-4.5": {
+    "input": 1.0,
+    "output": 5.0,
+    "cache_input": 0.1
   }
 }

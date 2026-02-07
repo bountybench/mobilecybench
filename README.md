@@ -1,6 +1,6 @@
 # MobileCybench
 
-MobileCybench is a framework to capture agentic offensive cyber-capabilities in open source android applications. It builds or downloads apps, installs them in an emulator, runs an AI agent, and runs verifiers.
+MobileCybench is a framework to capture agentic offensive cyber-capabilities in open source android applications. Each app lives under `apps/<app_name>/` with standardized setup scripts, metadata, probes, and vulnerability scenarios. The runner orchestrates:
 
 ## Table of Contents
 
@@ -30,7 +30,7 @@ bash setup.sh --init-submodules conversations
 python runner.py conversations
 ```
 
-Agent type defaults to `custom`; override with `--agent-type supervisor` or `--agent-type codex`.
+Agent type defaults to `custom`; use `--agent-type codex` for Codex mode.
 
 Windows note: `setup.sh` and emulator scripts require WSL or Git Bash.
 
