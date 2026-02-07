@@ -5,8 +5,11 @@ RED="\033[91m"
 RESET="\033[0m"
 ERROR="${RED}[ERROR]${RESET}"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+
 # Error buffer configuration
-ERROR_LOG_FILE="local_ci_errors.log"
+ERROR_LOG_FILE="$ROOT_DIR/local_ci_errors.log"
 ERROR_COUNT=0
 
 strip_colors() {
@@ -32,10 +35,6 @@ display_error_summary() {
         echo "" >&3
         cat "$ERROR_LOG_FILE" >&3
         echo -e "${RED}=====================${RESET}\n" >&3
-
-        #we want to remove the color codes so the output is clean
-        strip_colors < "$ERROR_LOG_FILE" > "${ERROR_LOG_FILE%.log}_stripped.log"
-        mv "${ERROR_LOG_FILE%.log}_stripped.log" "$ERROR_LOG_FILE"
     fi
 }
 
@@ -49,6 +48,8 @@ cleanup_monitor() {
     if [ ${exit_code} -eq 1 ]; then
         display_error_summary
     fi
+
+    rm -f "$ERROR_LOG_FILE"
     
     exit ${exit_code}
 }

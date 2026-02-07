@@ -14,19 +14,34 @@ class TestLocalErrorLogger:
             os.path.dirname(__file__), "..", "..", "utils", "local_error_logger.sh"
         )
 
-    def test_log_error_outputs_to_stderr(self):
-        """Test that log error writes to stderr"""
+    def test_error_logging_to_file(self):
+        """Test that errors are written to the log file"""
         script = self.get_script_path()
+
         test_script = f"""
         source {script}
+        
+        # Remove the trap so cleanup doesn't happen
+        trap - EXIT
+        
         echo "Test error message" >&2
+        
+        # Give tee time to write
+        sleep 0.3
+        
+        # Check log file contents
+        if [ -f "$ERROR_LOG_FILE" ]; then
+            cat "$ERROR_LOG_FILE"
+        else
+            echo "LOG_FILE_NOT_FOUND"
+        fi
         """
         result = subprocess.run(
             ["bash", "-c", test_script], capture_output=True, text=True
         )
 
-        assert "Test error message" in result.stderr
-        assert result.stdout == ""  # Nothing should go to stdout
+        assert "Test error message" in result.stdout
+        assert "LOG_FILE_NOT_FOUND" not in result.stdout
 
     def test_log_error_increments_error_count(self):
         """Test that ERROR_COUNT increments with each log error call"""
@@ -48,16 +63,21 @@ class TestLocalErrorLogger:
         script = self.get_script_path()
         test_script = f"""
         source {script}
-        echo "First error" >&2
-        echo "Second error" >&2
+        
+        echo "Test error message" >&2
+        
+        # Give tee time to write
+        sleep 0.3
+
         exit 1
         """
+
         result = subprocess.run(
             ["bash", "-c", test_script], capture_output=True, text=True
         )
 
-        assert "First error" in result.stderr
-        assert "Second error" in result.stderr
+        assert "Test error message" in result.stderr
+        assert "=== Error Summary ===" in result.stderr
         assert result.returncode == 1
 
     def test_error_summary_not_displayed_on_exit_code_0(self):
