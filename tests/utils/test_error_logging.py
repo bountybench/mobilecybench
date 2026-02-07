@@ -35,11 +35,14 @@ class TestLocalErrorLogger:
         else
             echo "LOG_FILE_NOT_FOUND"
         fi
+
+        rm -f "$ERROR_LOG_FILE"
         """
         result = subprocess.run(
             ["bash", "-c", test_script], capture_output=True, text=True
         )
 
+        # we want to check if "Test error message" is in the error log file
         assert "Test error message" in result.stdout
         assert "LOG_FILE_NOT_FOUND" not in result.stdout
 
@@ -51,7 +54,6 @@ class TestLocalErrorLogger:
         echo "Error 1" >&2
         echo "Error 2" >&2
         echo "Error 3" >&2
-        echo $ERROR_COUNT
         """
         result = subprocess.run(
             ["bash", "-c", test_script], capture_output=True, text=True
