@@ -6,50 +6,59 @@ RESET="\033[0m"
 ERROR="${RED}[ERROR]${RESET}"
 
 # Error buffer configuration
-ERROR_LOG=()
+ERROR_LOG_FILE="local_ci_errors.log"
 ERROR_COUNT=0
 
-log_error() {
-    local message="$1"
-    local formatted_error="${ERROR} ${message}"
-
-    ERROR_LOG+=("${formatted_error}")
-    
-    ((ERROR_COUNT++))
-
-    echo -e "${formatted_error}" >&2
+strip_colors() {
+    sed 's/\x1b\[[0-9;]*m//g' | sed 's/\[91m//g' | sed 's/\[0m//g' | sed 's/\[ERROR\]//g'
 }
+
+# point fd 3 to stderr so we can capture errors
+exec 3>&2
+
+# redirect stderr to both fd3 and log file, but log file 
+exec 2> >(tee "$ERROR_LOG_FILE" >&3)
 
 # Function to display all buffered errors
 display_error_summary() {
+    # Count lines in error log
+    if [ -f "$ERROR_LOG_FILE" ]; then
+        ERROR_COUNT=$(grep -c . "$ERROR_LOG_FILE" 2>/dev/null || echo 0)
+    fi
+    
     if [ ${ERROR_COUNT} -gt 0 ]; then
-        echo -e "\n${RED}=== Error Summary ===${RESET}" >&2
-        echo -e "${RED}Total errors encountered: ${ERROR_COUNT}${RESET}" >&2
-        
-        if [ ${ERROR_COUNT} -gt ${MAX_ERRORS} ]; then
-            echo -e "${RED}(Showing first ${MAX_ERRORS} errors)${RESET}" >&2
-        fi
-        
-        echo "" >&2
-        for error in "${ERROR_LOG[@]}"; do
-            echo -e "${error}" >&2
-        done
-        echo -e "${RED}=====================${RESET}\n" >&2
+        echo -e "\n${RED}=== Error Summary ===${RESET}" >&3
+        echo -e "${RED}Total errors encountered: ${ERROR_COUNT}${RESET}" >&3
+        echo "" >&3
+        cat "$ERROR_LOG_FILE" >&3
+        echo -e "${RED}=====================${RESET}\n" >&3
+
+        #we want to remove the color codes so the output is clean
+        strip_colors < "$ERROR_LOG_FILE" > "${ERROR_LOG_FILE%.log}_stripped.log"
+        mv "${ERROR_LOG_FILE%.log}_stripped.log" "$ERROR_LOG_FILE"
     fi
 }
 
-# Trap EXIT signal to display error summary when script exits with code 1
-cleanup_and_exit() {
+cleanup_monitor() {
     local exit_code=$?
+    
+    # Wait for tee to finish
+    sleep 0.1
+    
+    # Display summary only on error
     if [ ${exit_code} -eq 1 ]; then
         display_error_summary
     fi
+    
+    # Clean up temp file
+    #rm -f "$ERROR_LOG_FILE"
+    
     exit ${exit_code}
 }
 
-trap cleanup_and_exit EXIT
+trap cleanup_monitor EXIT
 
 # Example usage:
-# log_error "The metadata.json file contains invalid JSON syntax."
-# log_error "Failed to connect to database."
+# echo "The metadata.json file contains invalid JSON syntax." >&2
+# echo "Failed to connect to database." >&2
 # exit 1  # This will trigger the error summary display
