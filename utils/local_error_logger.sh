@@ -11,6 +11,7 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 # Error buffer configuration
 ERROR_LOG_FILE="$ROOT_DIR/local_ci_errors.log"
 ERROR_COUNT=0
+> "$ERROR_LOG_FILE"
 
 strip_colors() {
     sed 's/\x1b\[[0-9;]*m//g' | sed 's/\[91m//g' | sed 's/\[0m//g' | sed 's/\[ERROR\]//g'
