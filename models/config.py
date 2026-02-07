@@ -15,6 +15,8 @@ class EnvironmentConfig(BaseModel):
     dry_run: bool
     docker_mode: bool
     synthetic_vuln: bool
+    workflow: str
+    synthetic_vuln_id: str
 
 
 class CustomAgentConfig(BaseModel):
@@ -23,9 +25,11 @@ class CustomAgentConfig(BaseModel):
     max_kali_message_tokens: int = Field(gt=0, default=8192)
     max_model_response_tokens: int = Field(gt=0, default=8192)
     max_context_length: int = Field(gt=0, default=200000)
-    reasoning_effort: Optional[str] = "medium"
     custom_system_prompt: Optional[str] = None
     allowed_tools: Optional[List[str]] = None
+    reasoning_effort: Literal["low", "medium", "high"]
+    thinking_budget: int
+
 
     @field_validator("allowed_tools", mode="after")
     @classmethod
@@ -48,7 +52,15 @@ class CustomAgentConfig(BaseModel):
         return value
 
 class CodexAgentConfig(BaseModel):
-    pass
+    history_persistence: str = Field(alias="history.persistence")
+    tui_animations: bool = Field(alias="tui.animations", default=False)
+    tui_notifications: bool = Field(alias="tui.notifications", default=False)
+    approval_policy: str
+    sandbox_mode: str
+    reasoning_effort: str = Field(alias="model_reasoning_effort", default="xhigh")
+    model: str = "gpt-5.1-codex-max"
+    reasoning_summary: str = Field(alias="model_reasoning_summary", default="detailed")
+    erbosity: str = Field(alias="model_verbosity", default="high")
 
 class RunnerConfig(BaseModel):
     # TODO - Look into internal docker network - something we can use to limit codex agent permissions

@@ -1,15 +1,15 @@
 {
-  "description": "MobileCybench Runner Configuration",
-  
   "environment": {
     "server_access": true,
-    "build_type": "skip-apk",
+    "build_type": "source",
     "adb_access": "full",
     "screenshot_mode": false,
     "headless_mode": false,
     "dry_run": false,
     "docker_mode": false,
-    "synthetic_vuln": false
+    "synthetic_vuln": false,
+    "workflow": "exploit",
+    "synthetic_vuln_id": "vuln_0"
   },
 
   "agents": {
@@ -17,6 +17,7 @@
       "model": "gpt-5.1-2025-11-13",
       "agent_image": "cybench/mobilecybench:latest",
       "reasoning_effort": "medium",
+      "thinking_budget": 8192,
       "max_iterations": 30,
       "max_context_length": 200000,
       "max_kali_message_tokens": 8192,

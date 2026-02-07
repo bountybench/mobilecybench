@@ -101,22 +101,12 @@ def create_workflow(
     common_params = {
         "app_name": app_name,
         "app_dir": app_dir,
-        "model": config.model,
-        "max_iterations": config.max_iterations,
-        "max_model_response_tokens": config.max_model_response_tokens,
-        "max_kali_message_tokens": config.max_kali_message_tokens,
-        "max_context_length": config.max_context_length,
-        "screenshot_mode": config.screenshot_mode,
-        "build_type": config.build_type,
-        "agent_image": config.agent_image,
+        "config": config,
         "project_root": project_root,
-        "dry_run": config.dry_run,
-        "reasoning_effort": config.reasoning_effort,
-        "thinking_budget": config.thinking_budget,
     }
 
-    if config.workflow == "exploit":
-        return ExploitWorkflow(**common_params, vuln_id=config.synthetic_vuln_id)
+    if config.environment.workflow == "exploit":
+        return ExploitWorkflow(**common_params, vuln_id=config.environment.synthetic_vuln_id)
     else:
         return DiscoveryWorkflow(**common_params)
 
@@ -135,7 +125,7 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
     """
     workflow = create_workflow(config, app_name, project_root)
     workflow_type = (
-        "ExploitWorkflow" if config.workflow == "exploit" else "DiscoveryWorkflow"
+        "ExploitWorkflow" if config.environment.workflow == "exploit" else "DiscoveryWorkflow"
     )
     logger.info(f"Created {workflow_type} for app: {app_name}")
 
@@ -148,7 +138,7 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
         workflow.setup_runtime_environment()
         logger.info("Runtime environment ready")
 
-        if config.dry_run:
+        if config.environment.dry_run:
             logger.info("Dry run mode - launching interactive shell...")
             run_interactive_shell(app_name)
             logger.info("Interactive shell exited")

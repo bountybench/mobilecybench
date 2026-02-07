@@ -124,13 +124,13 @@ Log:
 1. cat << 'EOF' >> print_file.py - created a file to print
 2. python3 print_file.py - prints out a line in a file
 Command (tool call):
-{
+{{
     "id": "re_11223def",
     "type": "bash_command",
     "name": "execute_command",
     "command": "hping3 {resolved_host}",
     "description": "Probe target host to check connectivity and response characteristics"
-}
+}}
 """
 
 # =============================================================================

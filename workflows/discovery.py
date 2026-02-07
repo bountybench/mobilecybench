@@ -5,6 +5,7 @@ from typing import Optional
 
 from utils.logger import logger, logger_manager
 from workflows.base import Workflow
+from models.config import RunnerConfig
 
 
 class DiscoveryWorkflow(Workflow):
@@ -17,35 +18,15 @@ class DiscoveryWorkflow(Workflow):
 
     def __init__(
         self,
+        config: RunnerConfig,
         app_name: str,
         app_dir: Path,
-        model: str,
-        max_iterations: int,
-        max_model_response_tokens: int,
-        max_kali_message_tokens: int,
-        max_context_length: int,
-        screenshot_mode: bool = False,
-        build_type: str = "source",
-        agent_image: str = "cybench/mobilecybench:latest",
-        project_root: Optional[Path] = None,
-        dry_run: bool = False,
-        reasoning_effort: Optional[str] = None,
-        thinking_budget: Optional[int] = None,
+        project_root: Optional[Path] = None
     ):
+        self.config = config
         self.app_name = app_name
         self.app_dir = app_dir
-        self.model = model
-        self.max_iterations = max_iterations
-        self.max_model_response_tokens = max_model_response_tokens
-        self.max_kali_message_tokens = max_kali_message_tokens
-        self.max_context_length = max_context_length
-        self.screenshot_mode = screenshot_mode
-        self.build_type = build_type
-        self.agent_image = agent_image
         self.project_root = project_root or Path(__file__).parent.parent
-        self.dry_run = dry_run
-        self.reasoning_effort = reasoning_effort
-        self.thinking_budget = thinking_budget
 
         # Set during setup
         self.metadata: dict = {}
@@ -95,7 +76,7 @@ class DiscoveryWorkflow(Workflow):
         logger.info("Emulator started in background")
 
         # Build/download APK
-        setup_apk(self.app_dir, self.build_type, self.project_root)
+        setup_apk(self.app_dir, self.config.environment.build_type, self.project_root)
 
         # Install app and setup backend (with SSRF listener for discovery mode)
         install_app_and_setup_backend(
@@ -108,7 +89,7 @@ class DiscoveryWorkflow(Workflow):
         # Setup agent container
         self.agent_env = setup_agent_environment(
             app_dir=self.app_dir,
-            agent_image=self.agent_image,
+            agent_image=self.config.environment.agent_environment_image,
             metadata=self.metadata,
             workflow="discovery",
         )
@@ -117,7 +98,7 @@ class DiscoveryWorkflow(Workflow):
         """Configure agent with discovery prompt."""
         from agent.custom_agent import CustomAgent
 
-        if self.dry_run:
+        if self.config.environment.dry_run:
             logger.info("Dry run - skipping agent setup")
             return
 
@@ -128,28 +109,20 @@ class DiscoveryWorkflow(Workflow):
         include_ssrf = bool(container_names)
 
         self.agent = CustomAgent(
-            model=self.model,
-            max_iterations=self.max_iterations,
-            max_model_response_tokens=self.max_model_response_tokens,
-            max_kali_message_tokens=self.max_kali_message_tokens,
-            max_context_length=self.max_context_length,
-            screenshot_enabled=self.screenshot_mode,
+            config=self.config,
             app_name=self.app_name,
-            dry_run=self.dry_run,
             app_server=self.metadata.get("app_server"),
             package_name=self.metadata.get("package_name"),
             username=self.metadata.get("username"),
             password=self.metadata.get("password"),
             include_ssrf=include_ssrf,
             workflow="discovery",
-            reasoning_effort=self.reasoning_effort,
-            thinking_budget=self.thinking_budget,
         )
         logger.info("Agent configured for discovery mode")
 
     def run_agent(self) -> dict:
         """Execute the agent to discover vulnerabilities."""
-        if self.dry_run:
+        if self.config.environment.dry_run:
             logger.info("Dry run - skipping agent execution")
             return {"status": "dry_run", "turns": 0}
 
@@ -169,7 +142,7 @@ class DiscoveryWorkflow(Workflow):
 
         from utils.command_executor import CommandExecutor
 
-        if self.dry_run:
+        if self.config.environment.dry_run:
             logger.info("Dry run - skipping evaluation")
             return {"scores": {}}
 

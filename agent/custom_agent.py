@@ -26,22 +26,16 @@ class CustomAgent:
         config: RunnerConfig,
         # TODO need to enforce this before sending off requests
         app_name: str,
-        dry_run: bool,
         additional_context: str = None,
         timeout_ms: int = 600_000,
         app_server: str = None,
         network_access: bool = True,
         package_name: str = None,
-        reasoning_effort: str = None,
-        thinking_budget: int = None,
         username: str = None,
         password: str = None,
         include_ssrf: bool = True,
-        workflow: str = "discovery",  # "discovery" or "exploit"
+        workflow: str = "discovery"
     ):
-        self.dry_run = dry_run
-        self.reasoning_effort = reasoning_effort
-        self.thinking_budget = thinking_budget
         self.include_ssrf = include_ssrf
         self.workflow = workflow
 
@@ -76,7 +70,7 @@ class CustomAgent:
         self.messages = []
         self._initial_tree_context = get_directory_tree()
 
-        if not self.dry_run:
+        if not self.config.environment.dry_run:
             # Build system prompt
             system_content = self._get_system_prompt_text(additional_context)
 
@@ -99,8 +93,8 @@ class CustomAgent:
         self.token_tracker = TokenTracker()
 
         agent_logger.info("Agent Run Started")
-        agent_logger.info(f"Model: {self.model}")
-        agent_logger.info(f"Max Iterations: {self.max_iterations}")
+        agent_logger.info(f"Model: {self.config.agents["custom"].model}")
+        agent_logger.info(f"Max Iterations: {self.config.agents["custom"].max_iterations}")
         agent_logger.info("=" * 80)
 
     def _get_system_prompt_text(self, additional_context: str = None) -> str:
@@ -252,7 +246,7 @@ class CustomAgent:
             for attempt in range(max_retries):
                 try:
                     with time_tracker.llm_timing(
-                        model=self.model,
+                        model=self.config.agents["custom"].model,
                         conversation_id=self.app_name,
                         turn=turn + 1,
                     ):
@@ -260,7 +254,7 @@ class CustomAgent:
                         thinking_budget = getattr(self, "thinking_budget", None)
 
                         resp = self.provider.call(
-                            model=self.model,
+                            model=self.config.agents["custom"].model,
                             messages=self.messages,
                             tools=self.runtime.get_tool_definitions(),
                             max_output_tokens=self.config.agents[
