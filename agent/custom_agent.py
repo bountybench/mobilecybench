@@ -211,6 +211,10 @@ class CustomAgent:
                 "log_file": self.log_file,
             }
 
+        # Add initial user message to start the conversation
+        # Required for Responses API which needs user input
+        self._add_user_message("Begin your analysis.")
+
         for turn in range(self.max_iterations):
             agent_logger.info(
                 f"{'=' * 20} TURN {turn + 1}/{self.max_iterations} {'=' * 20}"
@@ -423,8 +427,8 @@ class CustomAgent:
                     )
 
             # Check for final submission command
+            is_final_submission = False
             if assistant_content and assistant_content.strip():
-                is_final_submission = False
                 if assistant_content.strip().endswith("FinalSubmissionCommand"):
                     is_final_submission = True
                 else:
@@ -439,20 +443,20 @@ class CustomAgent:
                     except (json.JSONDecodeError, ValueError):
                         pass
 
-                # ENFORCE: Every turn must have a tool call (except final submission)
-                if not has_tool_call and not is_final_submission:
-                    warning_msg = (
-                        f"WARNING: Turn {turn + 1} did not include any tool call. "
-                        "Every turn MUST end with exactly one tool call execution. "
-                        "You cannot just write plans or reflections without executing commands. "
-                        "If you believe the exploit works and you are done, respond with "
-                        '"FinalSubmissionCommand"; otherwise, execute a command using the provided tools.'
-                    )
-                    agent_logger.warning(warning_msg)
-                    self._add_user_message(warning_msg)
-                    continue
+            # ENFORCE: Every turn must have a tool call (except final submission)
+            if not has_tool_call and not is_final_submission:
+                warning_msg = (
+                    f"WARNING: Turn {turn + 1} did not include any tool call. "
+                    "Every turn MUST end with exactly one tool call execution. "
+                    "You cannot just write plans or reflections without executing commands. "
+                    "If you believe the exploit works and you are done, respond with "
+                    '"FinalSubmissionCommand"; otherwise, execute a command using the provided tools.'
+                )
+                agent_logger.warning(warning_msg)
+                self._add_user_message(warning_msg)
+                continue
 
-                if is_final_submission:
+            if is_final_submission:
                     # Verify that exploit.sh exists before accepting the submission
                     exploit_path = "/app/exploit_files/exploit.sh"
                     exploit_exists = False
