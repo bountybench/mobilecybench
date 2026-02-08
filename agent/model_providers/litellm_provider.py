@@ -22,6 +22,7 @@ from .base import ModelProvider
 # Suppress LiteLLM's verbose logging
 litellm.suppress_debug_info = True
 
+
 # Lightweight wrapper classes that mimic OpenAI Responses API objects so that
 # custom_agent.py can use getattr() / attribute access identically.
 class _ContentBlock:
@@ -223,13 +224,9 @@ class LiteLLMProvider(ModelProvider):
                                 }
                             )
                         elif part_type == "input_text":
-                            parts.append(
-                                {"type": "text", "text": part.get("text", "")}
-                            )
+                            parts.append({"type": "text", "text": part.get("text", "")})
                         else:
-                            parts.append(
-                                {"type": "text", "text": str(part)}
-                            )
+                            parts.append({"type": "text", "text": str(part)})
                     messages.append({"role": role, "content": parts})
                 else:
                     messages.append({"role": role, "content": content})
@@ -257,9 +254,7 @@ class LiteLLMProvider(ModelProvider):
             # Text content
             text = getattr(message, "content", None) or ""
             if text:
-                output_items.append(
-                    _OutputMessage([_ContentBlock(text)])
-                )
+                output_items.append(_OutputMessage([_ContentBlock(text)]))
                 assistant_msg["content"] = text
 
             # Tool calls
