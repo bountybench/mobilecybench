@@ -116,34 +116,42 @@ class OpenAIResponsesProvider(ModelProvider):
 
         return new_messages
 
+    @staticmethod
+    def _get(obj: Any, key: str, default: Any = None) -> Any:
+        """Get a field from a dict or object."""
+        if isinstance(obj, dict):
+            return obj.get(key, default)
+        return getattr(obj, key, default)
+
     def _convert_response(self, response: Any) -> Any:
         """Convert Responses API response to Chat Completions format."""
-        output = getattr(response, "output", []) or []
+        output = self._get(response, "output", []) or []
 
         content_parts = []
         tool_calls = []
 
         for item in output:
-            item_type = getattr(item, "type", None)
+            item_type = self._get(item, "type")
 
             if item_type == "message":
-                msg_content = getattr(item, "content", []) or []
+                msg_content = self._get(item, "content", []) or []
                 for part in msg_content:
-                    if getattr(part, "type", None) == "output_text":
-                        content_parts.append(getattr(part, "text", ""))
+                    if self._get(part, "type") == "output_text":
+                        content_parts.append(self._get(part, "text", ""))
 
             elif item_type == "function_call":
+                call_id = self._get(item, "call_id") or self._get(item, "id", "")
                 tool_calls.append(SimpleNamespace(
-                    id=getattr(item, "call_id", getattr(item, "id", "")),
+                    id=call_id,
                     type="function",
                     function=SimpleNamespace(
-                        name=getattr(item, "name", ""),
-                        arguments=getattr(item, "arguments", "{}"),
+                        name=self._get(item, "name", ""),
+                        arguments=self._get(item, "arguments", "{}"),
                     ),
                 ))
 
         # Store response ID for next call
-        self._previous_response_id = getattr(response, "id", None)
+        self._previous_response_id = self._get(response, "id")
 
         # Build Chat Completions compatible response
         message = SimpleNamespace(
@@ -158,10 +166,10 @@ class OpenAIResponsesProvider(ModelProvider):
         )
 
         return SimpleNamespace(
-            id=getattr(response, "id", ""),
+            id=self._get(response, "id", ""),
             choices=[choice],
-            usage=getattr(response, "usage", None),
-            model=getattr(response, "model", ""),
+            usage=self._get(response, "usage"),
+            model=self._get(response, "model", ""),
         )
 
     def call(
@@ -207,8 +215,10 @@ class OpenAIResponsesProvider(ModelProvider):
         else:
             # First call - process all messages, send instructions
             input_items = self._build_input(messages)
-            if self._instructions:
-                request["instructions"] = self._instructions
+
+        # Always send instructions — they are NOT carried over with previous_response_id
+        if self._instructions:
+            request["instructions"] = self._instructions
 
         request["input"] = input_items
 
@@ -235,7 +245,6 @@ class OpenAIResponsesProvider(ModelProvider):
             f"tools={len(request.get('tools', []))}, "
             f"has_previous_response={self._previous_response_id is not None}"
         )
-
         # Make the API call via LiteLLM
         response = litellm.responses(**request)
 

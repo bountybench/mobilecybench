@@ -384,6 +384,10 @@ class CustomAgent:
 
             # Build assistant message for history
             assistant_msg = {"role": "assistant", "content": assistant_content or ""}
+            # Preserve reasoning_content so the model can reference prior chain-of-thought in subsequent turns
+            reasoning_content = getattr(message, "reasoning_content", None)
+            if reasoning_content:
+                assistant_msg["reasoning_content"] = reasoning_content
             if tool_calls:
                 assistant_msg["tool_calls"] = [
                     {
