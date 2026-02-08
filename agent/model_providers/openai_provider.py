@@ -78,7 +78,8 @@ class OpenAIProvider(ModelProvider):
                 "summary": "detailed",
             }
             params["include"] = ["reasoning.encrypted_content"]
-        params["truncation"] = "auto"
+        params["truncation"] = "auto"  # disabled by default
+        # https://platform.openai.com/docs/api-reference/responses/create#responses_create-truncation
 
         params.update(kwargs)
 
