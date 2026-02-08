@@ -5,11 +5,16 @@ from typing import Any, Dict, List, Optional
 
 
 class ModelProvider(ABC):
-    """Abstract interface for model providers.
+    """Abstract interface for model providers (thin, per-API wrapper).
 
-    - Each provider wraps a specific API (OpenAI, Anthropic, Google, etc.)
-    behind a common interface for agentic tool-use workflows.
-    - Expose a uniform call signature.
+    Each provider speaks its native API and returns a normalized response.
+    Currently OpenAI-only; the call() signature and return contract reflect that.
+
+    TODO: For multi-provider support, potential design:
+      Layer 1 - ModelProvider: thin per-API wrapper, returns a common response dataclass.
+      Layer 2 - ConversationManager: lives in the agent, manages state. For OpenAI,
+      delegates state to the server via previous_response_id. For Anthropic/Gemini,
+      accumulates messages[] locally and sends the full history each call.
     """
 
     @abstractmethod

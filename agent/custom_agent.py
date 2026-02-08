@@ -80,7 +80,7 @@ class CustomAgent:
         # Initialize ToolRuntime
         self.runtime = ToolRuntime()
 
-        # Responses API state
+        # Responses API state (OpenAI-specific; TODO in base.py for potential multi-provider plan)
         self._initial_tree_context = get_directory_tree()
         self._instructions = None  # System prompt (set once)
         self._previous_response_id = None  # Conversation continuity
@@ -214,7 +214,10 @@ class CustomAgent:
                     {"type": "message", "role": "user", "content": nudge_msg}
                 )
 
-            # Add screenshot if enabled
+            # Add screenshot if enabled (currently unused).
+            # TODO: Screenshots accumulate in server-side context via previous_response_id
+            # every turn. The old Chat Completions code replaced the prior screenshot each
+            # turn to bound context size. Needs a similar strategy before enabling.
             if self.screenshot_enabled:
                 try:
                     screenshot_result = take_screenshot()
