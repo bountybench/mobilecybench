@@ -9,7 +9,7 @@ class ModelProvider(ABC):
 
     - Each provider wraps a specific API (OpenAI, Anthropic, Google, etc.)
     behind a common interface for agentic tool-use workflows.
-    - Expose a uniform call signature. 
+    - Expose a uniform call signature.
     """
 
     @abstractmethod
