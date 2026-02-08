@@ -12,10 +12,10 @@
   "screenshot_mode": false,
   "headless_mode": false,
   "dry_run": false,
-  "workflow": "discovery",
+  "workflow": "exploit",
   "synthetic_vuln_id": "vuln_0",
   "custom_system_prompt": null,
-  "agent_image": "cybench/mobilecybench-codex:latest",
+  "agent_image": "cybench/mobilecybench:latest",
   "docker_mode": false,
   "allowed_tools": [
     "execute_command",
