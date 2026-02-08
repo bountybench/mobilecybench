@@ -22,33 +22,57 @@ def pytest_addoption(parser):
     parser.addoption("--dirs", nargs="+", help="Directories to test", required=False)
 
 
-def create_chat_completion_response(content: str, tool_calls=None):
-    """Create a mock ChatCompletion response matching LiteLLM/OpenAI format."""
+def create_responses_api_response(
+    content: str, function_calls=None, response_id="test-response-id"
+):
+    """Create a mock OpenAI Responses API response.
+
+    Args:
+        content: Text content for the assistant message.
+        function_calls: Optional list of dicts with keys: name, arguments, call_id.
+        response_id: Response ID for conversation continuity.
+    """
     response = Mock()
+    response.id = response_id
 
-    # Create message object
-    message = Mock()
-    message.content = content
-    message.tool_calls = tool_calls or []
+    # Build output items
+    output_items = []
 
-    # Create choice object
-    choice = Mock()
-    choice.message = message
+    # Add message output item if content provided
+    if content:
+        text_block = Mock()
+        text_block.type = "output_text"
+        text_block.text = content
 
-    # Set up choices list
-    response.choices = [choice]
+        message_item = Mock()
+        message_item.type = "message"
+        message_item.content = [text_block]
+        output_items.append(message_item)
+
+    # Add function_call output items
+    if function_calls:
+        for fc in function_calls:
+            fc_item = Mock()
+            fc_item.type = "function_call"
+            fc_item.name = fc["name"]
+            fc_item.arguments = fc.get("arguments", "{}")
+            fc_item.call_id = fc.get("call_id", "call_test_123")
+            output_items.append(fc_item)
+
+    response.output = output_items
 
     # Set up usage
     usage = Mock()
-    usage.prompt_tokens = 100
-    usage.completion_tokens = 50
+    usage.input_tokens = 100
+    usage.output_tokens = 50
     usage.total_tokens = 150
     response.usage = usage
 
-    # Set response id
-    response.id = "test-response-id"
-
     return response
+
+
+# Keep backward-compatible alias
+create_chat_completion_response = create_responses_api_response
 
 
 class MockModelProvider:
@@ -63,8 +87,8 @@ class MockModelProvider:
         pass
 
     def _mock_call(self, **kwargs):
-        """Mock call method that returns a ChatCompletion response."""
-        return create_chat_completion_response(
+        """Mock call method that returns a Responses API response."""
+        return create_responses_api_response(
             content=json.dumps({"command": "ActionCommand", "action": "ls"})
         )
 

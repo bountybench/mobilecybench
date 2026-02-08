@@ -2,7 +2,7 @@ import json
 from unittest.mock import patch
 
 from agent.custom_agent import CustomAgent
-from tests.conftest import create_chat_completion_response
+from tests.conftest import create_responses_api_response
 
 
 class TestCustomAgentMaxIterations:
@@ -56,12 +56,14 @@ class TestCustomAgentMaxIterations:
             nonlocal call_count
             call_count += 1
             if call_count == stop_at_turn:
-                return create_chat_completion_response(
-                    content=json.dumps({"command": "FinalSubmissionCommand"})
+                return create_responses_api_response(
+                    content=json.dumps({"command": "FinalSubmissionCommand"}),
+                    response_id=f"resp-{call_count}",
                 )
             else:
-                return create_chat_completion_response(
-                    content=json.dumps({"command": "ActionCommand", "action": "ls"})
+                return create_responses_api_response(
+                    content=json.dumps({"command": "ActionCommand", "action": "ls"}),
+                    response_id=f"resp-{call_count}",
                 )
 
         mock_agent_dependencies["provider"].call = mock_call
@@ -131,8 +133,8 @@ class TestCustomAgentMaxIterations:
         assert result["turns"] == 0
         assert "dry run" in result["status"].lower()
 
-    def test_message_history_grows(self, mock_agent_dependencies):
-        """Test that message history accumulates across turns."""
+    def test_conversation_log_grows(self, mock_agent_dependencies):
+        """Test that conversation log accumulates across turns."""
         agent = CustomAgent(
             model="gpt-4o-mini",
             max_iterations=3,
@@ -145,15 +147,15 @@ class TestCustomAgentMaxIterations:
             package_name="com.test.app",
         )
 
-        # Should start with just the system message
-        assert len(agent.messages) == 1
-        assert agent.messages[0]["role"] == "system"
+        # Conversation log should start empty
+        assert len(agent._conversation_log) == 0
 
         agent.run()
 
-        # After run, should have system + assistant messages for each turn
-        # Plus warning messages since there were no tool calls
-        assert len(agent.messages) > 1
-        # Check we have assistant messages
-        assistant_messages = [m for m in agent.messages if m["role"] == "assistant"]
-        assert len(assistant_messages) >= 1
+        # After run, should have entries for each turn
+        assert len(agent._conversation_log) == 3
+        # Each entry should have a turn number and response_id
+        for i, entry in enumerate(agent._conversation_log, 1):
+            assert entry["turn"] == i
+            assert "response_id" in entry
+

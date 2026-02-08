@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, Tuple, Union
 from pydantic import BaseModel, ValidationError
 
 from agent.backend.docker_ops import execute_command_internal, get_ui_state
-from agent.tools.schemas import ExecuteCommand, ExecuteCommandWithUI, GetUIState
+from agent.tools.schemas import ExecuteCommand, ExecuteCommandWithUI, GetUIState, UpdatePlan
 from utils.logger import logger
 
 
@@ -23,6 +23,7 @@ class ToolRuntime:
                 ExecuteCommandWithUI,
                 self._execute_command_with_ui_state,
             ),
+            "update_plan": (UpdatePlan, self._update_plan),
         }
 
     def _execute_command(self, args: ExecuteCommand) -> str:
@@ -36,6 +37,17 @@ class ToolRuntime:
             return get_ui_state()
         except Exception as e:
             return {"error": f"Failed to get UI state: {str(e)}", "ui_elements": []}
+
+    def _update_plan(self, args: UpdatePlan) -> str:
+        plan_lines = []
+        for item in args.plan:
+            plan_lines.append(f"  [{item.status}] {item.step}")
+        plan_str = "\n".join(plan_lines)
+        if args.explanation:
+            logger.info(f"[PLAN UPDATE] {args.explanation}\n{plan_str}")
+        else:
+            logger.info(f"[PLAN UPDATE]\n{plan_str}")
+        return "Plan updated."
 
     def _execute_command_with_ui_state(self, args: ExecuteCommandWithUI) -> dict:
         try:
@@ -52,8 +64,7 @@ class ToolRuntime:
         self, schema: type[BaseModel], args: Union[str, Dict[str, Any]]
     ) -> BaseModel:
         """
-        Parses arguments which can be a JSON string (OpenAI) or a dictionary (Claude/Gemini).
-        Returns a validated Pydantic model.
+        Parses arguments from a JSON string or dictionary into a validated Pydantic model.
         """
         if isinstance(args, str):
             try:
