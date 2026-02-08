@@ -259,7 +259,6 @@ class CustomAgent:
                         turn=turn + 1,
                     ):
                         reasoning_effort = getattr(self, "reasoning_effort", None)
-                        thinking_budget = getattr(self, "thinking_budget", None)
 
                         resp = self.provider.call(
                             model=self.model,
@@ -275,7 +274,6 @@ class CustomAgent:
                                 and is_reasoning_supported_model(self.model)
                                 else None
                             ),
-                            thinking_budget=thinking_budget,
                         )
                     print("[Agent] API call completed")
                     break  # Success, exit retry loop

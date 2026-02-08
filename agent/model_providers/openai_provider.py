@@ -72,11 +72,12 @@ class OpenAIProvider(ModelProvider):
             params["max_output_tokens"] = max_output_tokens
         if timeout_ms:
             params["timeout"] = timeout_ms / 1000.0
-        params["reasoning"] = {
-            "effort": reasoning_effort or "medium",
-            "summary": "detailed",
-        }
-        params["include"] = ["reasoning.encrypted_content"]
+        if reasoning_effort:
+            params["reasoning"] = {
+                "effort": reasoning_effort,
+                "summary": "detailed",
+            }
+            params["include"] = ["reasoning.encrypted_content"]
         params["truncation"] = "auto"
 
         params.update(kwargs)
