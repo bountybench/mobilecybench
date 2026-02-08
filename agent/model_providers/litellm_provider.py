@@ -309,12 +309,16 @@ class LiteLLMProvider(ModelProvider):
         output_tokens = getattr(usage_obj, "completion_tokens", 0) or 0
         total_tokens = getattr(usage_obj, "total_tokens", 0) or 0
 
-        # Extract cache tokens from the raw response (LiteLLM passes through
-        # prompt_tokens_details.cached_tokens for providers that support it)
+        # Extract cache tokens from the raw response (LiteLLM returns
+        # prompt_tokens_details.cached_tokens for providers that support it).
+        # Handle both dict and object forms since LiteLLM may return either.
         cached_tokens = 0
         raw_details = getattr(usage_obj, "prompt_tokens_details", None)
-        if raw_details:
-            ct = getattr(raw_details, "cached_tokens", None)
+        if raw_details is not None:
+            if isinstance(raw_details, dict):
+                ct = raw_details.get("cached_tokens")
+            else:
+                ct = getattr(raw_details, "cached_tokens", None)
             if ct is not None:
                 cached_tokens = int(ct)
 
