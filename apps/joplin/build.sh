@@ -1,8 +1,6 @@
 #!/bin/bash
 set -e
 
-export PYTHON="C:\Users\soany\AppData\Local\Programs\Python\Python311\python.exe"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ANDROID_HOME="${HOME}/.android-sdk"
