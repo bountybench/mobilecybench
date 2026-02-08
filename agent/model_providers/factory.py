@@ -3,4 +3,4 @@ from .openai_provider import OpenAIProvider
 
 
 def get_model_provider(model: str = None) -> ModelProvider:
-    return OpenAIProvider()     # currently only one provider
+    return OpenAIProvider()  # currently only one provider

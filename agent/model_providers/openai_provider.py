@@ -1,8 +1,12 @@
 from __future__ import annotations
+
 import os
 from typing import Any, Dict, List, Optional
+
 from openai import OpenAI
+
 from utils.logger import agent_logger
+
 from .base import ModelProvider
 
 
@@ -24,21 +28,19 @@ class OpenAIProvider(ModelProvider):
         agent_logger.info(f"OpenAI API key found for model '{model or 'default'}'")
 
     def _convert_tools(self, tools: Optional[List]) -> Optional[List]:
-        """Convert tool defs to Responses API format."""
+        """Convert provider-neutral tool defs to OpenAI Responses API format."""
         if not tools:
             return None
-        out = []
-        for tool in tools:
-            if not isinstance(tool, dict):
-                continue
-            func = tool.get("function", tool)
-            out.append({
+        return [
+            {
                 "type": "function",
-                "name": func["name"],
-                "description": func.get("description", ""),
-                "parameters": func.get("parameters", {}),
-            })
-        return out or None
+                "name": tool["name"],
+                "description": tool.get("description", ""),
+                "parameters": tool.get("parameters", {}),
+            }
+            for tool in tools
+            if isinstance(tool, dict)
+        ] or None
 
     def call(
         self,
@@ -49,7 +51,6 @@ class OpenAIProvider(ModelProvider):
         max_output_tokens: Optional[int] = None,
         timeout_ms: Optional[int] = None,
         reasoning_effort: Optional[str] = None,
-        thinking_budget: Optional[int] = None,          # not used for OpenAI
         instructions: Optional[str] = None,
         previous_response_id: Optional[str] = None,
         **kwargs,

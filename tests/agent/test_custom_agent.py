@@ -158,4 +158,3 @@ class TestCustomAgentMaxIterations:
         for i, entry in enumerate(agent._conversation_log, 1):
             assert entry["turn"] == i
             assert "response_id" in entry
-

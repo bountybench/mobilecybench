@@ -71,10 +71,6 @@ def create_responses_api_response(
     return response
 
 
-# Keep backward-compatible alias
-create_chat_completion_response = create_responses_api_response
-
-
 class MockModelProvider:
     """Mock implementation of ModelProvider for testing."""
 

@@ -117,15 +117,9 @@ class ToolRuntime:
                 del schema["description"]
 
             tool_def = {
-                "type": "function",
                 "name": name,
                 "description": description,
                 "parameters": schema,
-                "function": {
-                    "name": name,
-                    "description": description,
-                    "parameters": schema,
-                },
             }
             tools.append(tool_def)
         return tools

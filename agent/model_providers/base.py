@@ -51,8 +51,10 @@ class ModelProvider(ABC):
             **kwargs: Provider-specific parameters
 
         Returns:
-            Response object with:
-            - id: Response ID (used as previous_response_id for next call)
-            - output: List of output items (messages, function_calls, reasoning)
-            - usage: Token usage information
+            Provider-specific response object. The caller (CustomAgent) currently
+            expects OpenAI Responses API shape (id, output, usage). If adding
+            non-OpenAI providers, either adapt the response in the provider or
+            introduce a common response wrapper.
+            TODO: Define a provider-neutral response dataclass if a second
+            provider is added.
         """
