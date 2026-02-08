@@ -146,8 +146,6 @@ class LiteLLMProvider(ModelProvider):
             return "ANTHROPIC_API_KEY", "Anthropic"
         return "OPENAI_API_KEY", "OpenAI"
 
-    # ----- validation -----
-
     def validate(self, model: str = None) -> None:
         if model:
             env_var, provider_name = self._get_required_api_key_env(model)
@@ -448,8 +446,6 @@ class LiteLLMProvider(ModelProvider):
 
         # Translate to Responses API wrapper and update internal state
         return self._translate_response(raw_response)
-
-    # ----- observability -----
 
     def get_conversation_history(self) -> Optional[List[Dict]]:
         """Return the full conversation history for observability.
