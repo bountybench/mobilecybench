@@ -169,17 +169,23 @@ class TestModelProviderRouting:
     def test_openai_models_use_openai_provider(self):
         for model in ["gpt-4o-mini", "o1-preview", "o3-mini", "gpt-5.2"]:
             provider = get_model_provider(model)
-            assert isinstance(provider, OpenAIProvider), f"{model} should use OpenAIProvider"
+            assert isinstance(
+                provider, OpenAIProvider
+            ), f"{model} should use OpenAIProvider"
 
     def test_anthropic_models_use_litellm_provider(self):
         for model in ["claude-opus-4-6", "claude-sonnet-4-5-20250929"]:
             provider = get_model_provider(model)
-            assert isinstance(provider, LiteLLMProvider), f"{model} should use LiteLLMProvider"
+            assert isinstance(
+                provider, LiteLLMProvider
+            ), f"{model} should use LiteLLMProvider"
 
     def test_gemini_models_use_litellm_provider(self):
         for model in ["gemini-3-pro-preview", "gemini-2.5-flash"]:
             provider = get_model_provider(model)
-            assert isinstance(provider, LiteLLMProvider), f"{model} should use LiteLLMProvider"
+            assert isinstance(
+                provider, LiteLLMProvider
+            ), f"{model} should use LiteLLMProvider"
 
 
 class TestCustomAgentWithClaude:
@@ -206,9 +212,7 @@ class TestCustomAgentWithClaude:
         assert result["turns"] == max_iterations
 
     @patch("agent.custom_agent.subprocess.run")
-    def test_early_stop_with_claude(
-        self, mock_subprocess_run, mock_agent_dependencies
-    ):
+    def test_early_stop_with_claude(self, mock_subprocess_run, mock_agent_dependencies):
         mock_subprocess_run.return_value = type(
             "MockResult", (), {"returncode": 0, "stdout": "", "stderr": ""}
         )()
@@ -292,9 +296,7 @@ class TestCustomAgentWithGemini:
         assert result["turns"] == max_iterations
 
     @patch("agent.custom_agent.subprocess.run")
-    def test_early_stop_with_gemini(
-        self, mock_subprocess_run, mock_agent_dependencies
-    ):
+    def test_early_stop_with_gemini(self, mock_subprocess_run, mock_agent_dependencies):
         mock_subprocess_run.return_value = type(
             "MockResult", (), {"returncode": 0, "stdout": "", "stderr": ""}
         )()
