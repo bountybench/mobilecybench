@@ -51,15 +51,27 @@ class _FunctionCall:
         self.call_id = call_id
 
 
+class _TokenDetails:
+    """Mirrors prompt_tokens_details / input_tokens_details from the API."""
+
+    def __init__(self, cached_tokens: int) -> None:
+        self.cached_tokens = cached_tokens
+
+
 class _UsageInfo:
     """Mirrors Responses API usage with attribute access.
 
-    Also exposes prompt_tokens / completion_tokens aliases so that the
+    Also exposes prompt_tokens / completion_tokens aliases and
+    prompt_tokens_details / input_tokens_details so that the
     token tracker's _extract_token_count helper works out of the box.
     """
 
     def __init__(
-        self, input_tokens: int, output_tokens: int, total_tokens: int
+        self,
+        input_tokens: int,
+        output_tokens: int,
+        total_tokens: int,
+        cached_tokens: int = 0,
     ) -> None:
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
@@ -67,6 +79,10 @@ class _UsageInfo:
         # Aliases for Chat Completions convention
         self.prompt_tokens = input_tokens
         self.completion_tokens = output_tokens
+        # Cache details — exposed in both formats for the token tracker
+        details = _TokenDetails(cached_tokens)
+        self.prompt_tokens_details = details
+        self.input_tokens_details = details
 
 
 class _ResponsesAPIResponse:
@@ -123,16 +139,16 @@ class LiteLLMProvider(ModelProvider):
         return "openai"
 
     def _get_litellm_model_name(self, model: str) -> str:
-        """Convert model name to LiteLLM format if needed."""
+        """Convert model name to LiteLLM format if needed.
+
+        Gemini models require a gemini/ prefix for LiteLLM.
+        Anthropic and OpenAI models are auto-detected and need no prefix.
+        """
         model_lower = model.lower()
 
         if any(p in model_lower for p in ["gemini", "gemma", "learnlm"]):
             if not model.startswith("gemini/"):
                 return f"gemini/{model}"
-
-        if "claude" in model_lower:
-            if not model.startswith("anthropic/"):
-                return f"anthropic/{model}"
 
         return model
 
@@ -292,7 +308,17 @@ class LiteLLMProvider(ModelProvider):
         input_tokens = getattr(usage_obj, "prompt_tokens", 0) or 0
         output_tokens = getattr(usage_obj, "completion_tokens", 0) or 0
         total_tokens = getattr(usage_obj, "total_tokens", 0) or 0
-        usage = _UsageInfo(input_tokens, output_tokens, total_tokens)
+
+        # Extract cache tokens from the raw response (LiteLLM passes through
+        # prompt_tokens_details.cached_tokens for providers that support it)
+        cached_tokens = 0
+        raw_details = getattr(usage_obj, "prompt_tokens_details", None)
+        if raw_details:
+            ct = getattr(raw_details, "cached_tokens", None)
+            if ct is not None:
+                cached_tokens = int(ct)
+
+        usage = _UsageInfo(input_tokens, output_tokens, total_tokens, cached_tokens)
 
         response_id = f"litellm_{uuid.uuid4().hex}"
 
