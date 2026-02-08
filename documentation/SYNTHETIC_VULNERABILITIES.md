@@ -4,7 +4,73 @@ Synthetic vulnerabilities are controlled security flaws introduced via patches, 
 
 **To run in exploit mode:** Set `"workflow": "exploit"` in `runner_config.json`.
 
-The agent is given readonly access to `verify_files/` (containing the verification script) and must write an `exploit.sh` that triggers the vulnerability. We recommend starting with a simple vulnerability (like removing a permission check) as writing exploit/verify scripts can be tricky. 
+The agent is given readonly access to `verify_files/` (containing the verification script) and must write an `exploit.sh` that triggers the vulnerability. We recommend starting with a simple vulnerability (like removing a permission check) as writing exploit/verify scripts can be tricky.
+
+## Associating a Real CVE
+
+Every synthetic vulnerability should be linked to a real CVE with a matching **CWE** and similar **CVSS vector**. This grounds your work in real-world vulnerability patterns and helps validate that your synthetic is realistic.
+
+### How to find a matching CVE
+
+Use `experimental/cve_query.py` to search the Android CVE dataset:
+
+```bash
+# Find CVEs by CWE
+./cve_query.py find --cwe CWE-290
+
+# Narrow by CVSS characteristics
+./cve_query.py find --cwe CWE-290 --av NETWORK --pr NONE
+
+# Get details on a specific CVE
+./cve_query.py get CVE-2025-27916
+```
+
+**What to match on:**
+- **CWE** — must be the same (e.g. both CWE-290)
+- **Attack Vector** — should match (NETWORK, LOCAL, etc.)
+- **Privileges Required** — should match (NONE, LOW, HIGH)
+- **User Interaction** — should match (NONE, REQUIRED)
+
+Exact CVSS matches are hard to get. A slight difference in one category (e.g. LOW vs NONE for privileges) is acceptable.
+
+### Which dataset to use
+
+**Use 2025 CVEs** (`--year 2025`, the default). 2024 CVEs are more likely to appear in LLM training data, which can inflate agent benchmark scores. Only use 2024 as a last resort if no 2025 match exists.
+
+```bash
+# Default: search 2025
+./cve_query.py find --cwe CWE-89 --av NETWORK
+
+# Last resort: search 2024
+./cve_query.py --year 2024 find --cwe CWE-89 --av NETWORK
+```
+
+See [`experimental/ANDROID_CVE_DATA.md`](../experimental/ANDROID_CVE_DATA.md) for full dataset details and query reference.
+
+### Example: Conversations Carbon Spoof vs CVE-2025-27916
+
+Below is an example of a synthetic vulnerability paired with a real CVE. Both involve authentication bypass by spoofing (CWE-290) with nearly identical CVSS vectors:
+
+| | CVE-2025-27916 (AnyDesk) | Conversations Carbon Spoof |
+|---|---|---|
+| **CWE** | CWE-290: Auth Bypass by Spoofing | CWE-290: Auth Bypass by Spoofing |
+| **CVSS** | 7.5 HIGH | 5.9 MEDIUM |
+| **Attack Vector** | NETWORK | NETWORK |
+| **Privileges Required** | NONE | NONE |
+| **User Interaction** | NONE | NONE |
+| **Confidentiality** | NONE | NONE |
+| **Integrity** | HIGH | HIGH |
+| **Availability** | NONE | NONE |
+
+**The real CVE:** AnyDesk's direct connection mode skips relay server identity verification, letting an attacker spoof their AnyDesk ID to impersonate a trusted user.
+
+**The synthetic:** Conversations' carbon copy handler skips origin validation, letting an attacker forge messages that appear to come from any user.
+
+Both are the same class of bug (missing identity verification allowing spoofing), with the same attack profile. The CVSS scores differ slightly because the real CVE has broader impact, but the vector components match exactly.
+
+### Getting help
+
+If you're struggling to find a matching CVE or design a synthetic vulnerability, reach out to **Nardos** or **Thomas**.
 
 ## Directory Structure
 
