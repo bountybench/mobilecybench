@@ -54,7 +54,6 @@ Below is an example of a synthetic vulnerability paired with a real CVE. Both in
 | | CVE-2025-27916 (AnyDesk) | Conversations Carbon Spoof |
 |---|---|---|
 | **CWE** | CWE-290: Auth Bypass by Spoofing | CWE-290: Auth Bypass by Spoofing |
-| **CVSS** | 7.5 HIGH | 5.9 MEDIUM |
 | **Attack Vector** | NETWORK | NETWORK |
 | **Privileges Required** | NONE | NONE |
 | **User Interaction** | NONE | NONE |
