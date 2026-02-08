@@ -98,46 +98,55 @@ When you create a synthetic vulnerability, identify these characteristics and fi
 
 ## Data Schema
 
-Each CVE in `android_{year}_enriched.jsonl`:
+Each CVE in `android_{year}_enriched.jsonl` has three groups of fields. **You generally don't need to read the raw JSON** — `cve_query.py` resolves everything for you. The per-source fields exist for transparency and debugging.
 
-```json
-{
-  "cve_id": "CVE-2025-0476",
-  "reason": "Mattermost Mobile Apps vulnerability...",
-  "confidence": 0.85,
+### Group 1: Classification (Haiku → Opus pipeline)
 
-  // CWEs — lists, fallback order: NVD → vendor → ADP
-  "nvd_cwe_ids": [],
-  "vendor_cwe_ids": ["CWE-1287"],
-  "adp_cwe_ids": ["CWE-352", "CWE-384"],
+| Field | Description |
+|-------|-------------|
+| `cve_id` | The CVE identifier |
+| `file_path` | Path to the raw cvelistV5 JSON |
+| `original_confidence` | Haiku's initial confidence (0.0–1.0) |
+| `original_reason` | Haiku's classification reasoning |
+| `android` | Opus's final verdict (always `true` in the enriched file) |
+| `confidence` | Opus's confidence (may differ from Haiku's) |
+| `reason` | Opus's reasoning |
 
-  // NVD CVSS 3.1 (may be null if NVD hasn't scored)
-  "nvd_cvss31_base_score": 4.3,
-  "nvd_cvss31_severity": "MEDIUM",
-  "nvd_cvss31_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:L",
-  "nvd_cvss31_attack_vector": "NETWORK",
-  "nvd_cvss31_attack_complexity": "LOW",
-  "nvd_cvss31_privileges_required": "LOW",
-  "nvd_cvss31_user_interaction": "NONE",
-  "nvd_cvss31_scope": "UNCHANGED",
-  "nvd_cvss31_confidentiality_impact": "NONE",
-  "nvd_cvss31_integrity_impact": "NONE",
-  "nvd_cvss31_availability_impact": "LOW",
+### Group 2: CVSS scores — three sources, same schema
 
-  // Vendor CVSS 3.1 (usually has better coverage)
-  "vendor_cvss31_base_score": 4.3,
-  "vendor_cvss31_severity": "MEDIUM",
-  "vendor_cvss31_attack_vector": "NETWORK",
-  // ... same fields as NVD
+Each source provides the same 11 CVSS 3.1 fields (`base_score`, `severity`, `vector`, `attack_vector`, `attack_complexity`, `privileges_required`, `user_interaction`, `scope`, `confidentiality_impact`, `integrity_impact`, `availability_impact`), prefixed by source:
 
-  // CISA-ADP CVSS 3.1 (fills gaps when NVD/vendor are missing)
-  "adp_cvss31_base_score": 8.8,
-  "adp_cvss31_severity": "HIGH",
-  "adp_cvss31_attack_vector": "NETWORK",
-  // ... same fields as NVD
+| Source prefix | What it is | Coverage (2025) |
+|---------------|------------|-----------------|
+| `nvd_cvss31_*` | NVD Primary — NIST analysts apply consistent worst-case methodology | ~38% |
+| `vendor_cvss31_*` | Vendor/CNA — first-party scoring, product-specific | ~67% |
+| `adp_cvss31_*` | CISA-ADP — CISA Vulnrichment, fills NVD's backlog | ~90% |
 
-  // CVSS 4.0 (sparse coverage)
-  "nvd_cvss40_base_score": null,
-  "vendor_cvss40_base_score": null
-}
+Sources can disagree significantly (up to 5+ points). NVD tends to score higher because it assumes worst-case impact. `cve_query.py` resolves to a single score using priority **NVD → vendor → ADP**.
+
+CVSS 4.0 fields (`nvd_cvss40_*`, `vendor_cvss40_*`) exist but have sparse coverage and are not used in queries.
+
+### Group 3: CWE weakness types — three sources, lists
+
+| Field | Description |
+|-------|-------------|
+| `nvd_cwe_ids` | CWE list from NVD Primary analysis |
+| `vendor_cwe_ids` | CWE list from the vendor/CNA |
+| `adp_cwe_ids` | CWE list from CISA-ADP |
+
+Each source may assign multiple CWEs (e.g., `["CWE-352", "CWE-384"]`) and sources may disagree. `cve_query.py` resolves using the same priority: first non-empty list from **NVD → vendor → ADP**. Searching with `--cwe CWE-352` checks membership in the resolved list.
+
+### Example: how resolution works
+
+Raw data for CVE-2025-1812:
 ```
+nvd_cvss31_base_score:    8.8 HIGH     ← NVD (worst-case)
+vendor_cvss31_base_score: 6.3 MEDIUM   ← vendor (product-specific)
+adp_cvss31_base_score:    6.3 MEDIUM   ← CISA-ADP
+
+nvd_cwe_ids:    ["CWE-89"]              ← NVD: SQL injection
+vendor_cwe_ids: ["CWE-89", "CWE-74"]    ← vendor: adds Injection (parent)
+adp_cwe_ids:    ["CWE-74", "CWE-89"]    ← CISA-ADP: same, different order
+```
+
+`cve_query.py` resolves to: **Score 8.8 HIGH, CWE: CWE-89** (NVD wins on both since it has data). If NVD were missing, it would show 6.3 MEDIUM and CWE-89, CWE-74 from vendor.
