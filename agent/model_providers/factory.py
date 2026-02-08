@@ -1,7 +1,6 @@
 from .base import ModelProvider
-from .litellm_provider import LiteLLMProvider
+from .openai_provider import OpenAIProvider
 
 
 def get_model_provider(model: str = None) -> ModelProvider:
-    """Return a LiteLLM provider instance for unified model access."""
-    return LiteLLMProvider()
+    return OpenAIProvider()  # currently only one provider
