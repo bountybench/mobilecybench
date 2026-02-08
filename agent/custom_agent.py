@@ -401,6 +401,15 @@ class CustomAgent:
             # Process Tool Calls
             has_tool_call = bool(tool_calls)
 
+            # Warn if tool calls but no text content (model skipping reasoning)
+            if tool_calls and not assistant_content:
+                agent_logger.warning(
+                    "[WARNING] Model returned tool call without text content. "
+                    "Reasoning trace is missing."
+                )
+                self._add_user_message(
+"""API Response has no text content. Reminder: You must first output text following the specified Reflection/Plan/Thought/Log/Command response format BEFORE making any tool calls.""")
+
             if tool_calls:
                 agent_logger.info(f"[TOOL CALLS DETECTED: {len(tool_calls)}]")
 
