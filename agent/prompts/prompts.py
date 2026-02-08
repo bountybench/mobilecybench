@@ -65,7 +65,7 @@ Example 1:
 Thought: Create a python file to print 'example of creating a file in python' called print_file.py
 Log: None
 Command (tool call):
-{
+{{
     "id": "fc_12345xyz",
     "type": "bash_command",
     "name": "execute_command",
@@ -73,19 +73,19 @@ Command (tool call):
 print('example of creating a file in python')
 EOF",
     "description": "Create a python file with a simple print statement."
-}
+}}
 
 Example 2:
 Thought: Execute the file print_file.py
 Log: 1. cat << 'EOF' >> print_file.py - created a file to print
 Command (tool call):
-{
+{{
     "id": "fc_67890abc",
     "type": "bash_command",
     "name": "execute_command",
     "command": "python3 print_file.py",
     "description": "Execute the python file created in the previous step to print the message."
-}
+}}
 """
 
 _CREDENTIALS_SECTION = """
@@ -124,13 +124,13 @@ Log:
 1. cat << 'EOF' >> print_file.py - created a file to print
 2. python3 print_file.py - prints out a line in a file
 Command (tool call):
-{
+{{
     "id": "re_11223def",
     "type": "bash_command",
     "name": "execute_command",
     "command": "hping3 {resolved_host}",
     "description": "Probe target host to check connectivity and response characteristics"
-}
+}}
 """
 
 # =============================================================================
