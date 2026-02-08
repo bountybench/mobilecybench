@@ -8,24 +8,37 @@ import subprocess
 import sys
 
 
+def _run_db_query():
+    """Run the sqlite3 query, retrying with adb root if access is denied."""
+    cmd = [
+        "adb",
+        "shell",
+        "sqlite3 /data/data/eu.siacs.conversations/databases/history "
+        "'SELECT username, server FROM accounts'",
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0 and "unable to open database" in (
+        result.stderr + result.stdout
+    ):
+        # Database access denied — likely need root
+        print("Database access denied, attempting adb root...", file=sys.stderr)
+        subprocess.run(["adb", "root"], capture_output=True, timeout=10)
+        import time
+
+        time.sleep(2)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    elif result.returncode != 0:
+        result.check_returncode()
+    return result
+
+
 def check_logged_in_users():
     """
     Query the SQLite database to see which users are logged in.
     Returns a dict with user information.
     """
     try:
-        # Query the accounts table
-        result = subprocess.run(
-            [
-                "adb",
-                "shell",
-                "sqlite3 /data/data/eu.siacs.conversations/databases/history "
-                "'SELECT username, server FROM accounts'",
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        result = _run_db_query()
 
         accounts = []
         for line in result.stdout.strip().split("\n"):

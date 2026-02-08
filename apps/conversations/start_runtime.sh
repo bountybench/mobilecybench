@@ -99,6 +99,7 @@ login_agentuser(){
   local app_package="$TARGET_PACKAGE"
   adb shell pm grant "$app_package" android.permission.READ_CONTACTS 2>/dev/null || true
   adb shell pm grant "$app_package" android.permission.POST_NOTIFICATIONS 2>/dev/null || true
+  adb shell dumpsys deviceidle whitelist +"$app_package" 2>/dev/null || true
 
   if python3 "${SCRIPT_DIR}/ui_automation/login.py" \
       --username "agentuser@10.0.2.2" \
