@@ -7,10 +7,10 @@ from typing import Any, Dict, List, Optional
 class ModelProvider(ABC):
     """Abstract interface for model providers.
 
-    Implementations should handle client setup, API key validation,
-    and the unified model call used by the agent.
-
-    The provider is stateless - the agent manages conversation history.
+    Each provider wraps a specific API (OpenAI, Anthropic, Google, etc.)
+    behind a common interface for agentic tool-use workflows.
+    Providers handle provider-specific details (auth, parameter mapping,
+    response format) while exposing a uniform call() signature.
     """
 
     @abstractmethod
@@ -28,27 +28,31 @@ class ModelProvider(ABC):
         self,
         *,
         model: str,
-        messages: List[Dict[str, Any]],
+        input: Any,
         tools: Optional[List[Dict]] = None,
         max_output_tokens: Optional[int] = None,
         timeout_ms: Optional[int] = None,
         reasoning_effort: Optional[str] = None,
+        instructions: Optional[str] = None,
+        previous_response_id: Optional[str] = None,
         **kwargs,
     ) -> Any:
-        """Perform a model invocation and return a ChatCompletion response.
+        """Perform a model invocation.
 
         Args:
-            model: Model identifier (e.g., "gpt-5.2", "gemini/gemini-3-pro-preview", see https://models.litellm.ai/)
-            messages: List of message dicts with role and content
+            model: Model identifier (e.g., "gpt-5.2")
+            input: Input string or list of input items (tool results, user messages)
             tools: Optional list of tool definitions
             max_output_tokens: Maximum tokens in response
             timeout_ms: Request timeout in milliseconds
-            reasoning_effort: For reasoning models
+            reasoning_effort: For reasoning models (provider maps to native format)
+            instructions: System-level instructions
+            previous_response_id: ID of previous response for conversation continuity
             **kwargs: Provider-specific parameters
 
         Returns:
-            ChatCompletion response object with:
-            - choices[0].message.content: Response text
-            - choices[0].message.tool_calls: List of tool calls (if any)
+            Response object with:
+            - id: Response ID (used as previous_response_id for next call)
+            - output: List of output items (messages, function_calls, reasoning)
             - usage: Token usage information
         """
