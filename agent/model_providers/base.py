@@ -7,10 +7,9 @@ from typing import Any, Dict, List, Optional
 class ModelProvider(ABC):
     """Abstract interface for model providers.
 
-    Each provider wraps a specific API (OpenAI, Anthropic, Google, etc.)
+    - Each provider wraps a specific API (OpenAI, Anthropic, Google, etc.)
     behind a common interface for agentic tool-use workflows.
-    Providers handle provider-specific details (auth, parameter mapping,
-    response format) while exposing a uniform call() signature.
+    - Expose a uniform call signature. 
     """
 
     @abstractmethod
