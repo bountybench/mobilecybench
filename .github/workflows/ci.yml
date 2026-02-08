@@ -1066,6 +1066,12 @@ jobs:
               "$EXPLOIT_IMAGE" \
               tail -f /dev/null
 
+            # Install exploit dependencies if requirements.txt exists
+            if [ -f "$exploit_files_path/requirements.txt" ]; then
+              echo "Installing exploit dependencies from requirements.txt..."
+              docker exec "$container_name" pip install -r /app/exploit_files/requirements.txt
+            fi
+
             # Run exploit
             echo "Running exploit script..."
             docker exec "$container_name" bash /app/exploit_files/exploit.sh || true
