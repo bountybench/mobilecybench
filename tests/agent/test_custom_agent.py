@@ -2,6 +2,9 @@ import json
 from unittest.mock import patch
 
 from agent.custom_agent import CustomAgent
+from agent.model_providers.factory import get_model_provider
+from agent.model_providers.litellm_provider import LiteLLMProvider
+from agent.model_providers.openai_provider import OpenAIProvider
 from tests.conftest import create_responses_api_response
 
 
@@ -155,6 +158,199 @@ class TestCustomAgentMaxIterations:
         # After run, should have entries for each turn
         assert len(agent._conversation_log) == 3
         # Each entry should have a turn number and response_id
+        for i, entry in enumerate(agent._conversation_log, 1):
+            assert entry["turn"] == i
+            assert "response_id" in entry
+
+
+class TestModelProviderRouting:
+    """Test that the factory routes models to the correct provider."""
+
+    def test_openai_models_use_openai_provider(self):
+        for model in ["gpt-4o-mini", "o1-preview", "o3-mini", "gpt-5.2"]:
+            provider = get_model_provider(model)
+            assert isinstance(
+                provider, OpenAIProvider
+            ), f"{model} should use OpenAIProvider"
+
+    def test_anthropic_models_use_litellm_provider(self):
+        for model in ["claude-opus-4-6", "claude-sonnet-4-5-20250929"]:
+            provider = get_model_provider(model)
+            assert isinstance(
+                provider, LiteLLMProvider
+            ), f"{model} should use LiteLLMProvider"
+
+    def test_gemini_models_use_litellm_provider(self):
+        for model in ["gemini-3-pro-preview", "gemini-2.5-flash"]:
+            provider = get_model_provider(model)
+            assert isinstance(
+                provider, LiteLLMProvider
+            ), f"{model} should use LiteLLMProvider"
+
+
+class TestCustomAgentWithClaude:
+    """Test CustomAgent behavior with claude-opus-4-6."""
+
+    def test_max_iterations_with_claude(self, mock_agent_dependencies):
+        max_iterations = 3
+        agent = CustomAgent(
+            model="claude-opus-4-6",
+            max_iterations=max_iterations,
+            max_model_response_tokens=1000,
+            max_kali_message_tokens=500,
+            max_context_length=10000,
+            screenshot_enabled=False,
+            app_name="test_app",
+            dry_run=False,
+            package_name="com.test.app",
+        )
+
+        result = agent.run()
+
+        assert mock_agent_dependencies["provider"].call.call_count == max_iterations
+        assert result["status"] == "max_iterations_reached"
+        assert result["turns"] == max_iterations
+
+    @patch("agent.custom_agent.subprocess.run")
+    def test_early_stop_with_claude(self, mock_subprocess_run, mock_agent_dependencies):
+        mock_subprocess_run.return_value = type(
+            "MockResult", (), {"returncode": 0, "stdout": "", "stderr": ""}
+        )()
+
+        call_count = 0
+
+        def mock_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                return create_responses_api_response(
+                    content=json.dumps({"command": "FinalSubmissionCommand"}),
+                    response_id=f"litellm_resp-{call_count}",
+                )
+            return create_responses_api_response(
+                content=json.dumps({"command": "ActionCommand", "action": "ls"}),
+                response_id=f"litellm_resp-{call_count}",
+            )
+
+        mock_agent_dependencies["provider"].call = mock_call
+
+        agent = CustomAgent(
+            model="claude-opus-4-6",
+            max_iterations=10,
+            max_model_response_tokens=1000,
+            max_kali_message_tokens=500,
+            max_context_length=10000,
+            screenshot_enabled=False,
+            app_name="test_app",
+            dry_run=False,
+            package_name="com.test.app",
+        )
+
+        result = agent.run()
+
+        assert result["status"] == "completed"
+        assert result["turns"] == 2
+
+    def test_conversation_log_grows_with_claude(self, mock_agent_dependencies):
+        agent = CustomAgent(
+            model="claude-opus-4-6",
+            max_iterations=3,
+            max_model_response_tokens=1000,
+            max_kali_message_tokens=500,
+            max_context_length=10000,
+            screenshot_enabled=False,
+            app_name="test_app",
+            dry_run=False,
+            package_name="com.test.app",
+        )
+
+        agent.run()
+
+        assert len(agent._conversation_log) == 3
+        for i, entry in enumerate(agent._conversation_log, 1):
+            assert entry["turn"] == i
+            assert "response_id" in entry
+
+
+class TestCustomAgentWithGemini:
+    """Test CustomAgent behavior with gemini-3-pro-preview."""
+
+    def test_max_iterations_with_gemini(self, mock_agent_dependencies):
+        max_iterations = 3
+        agent = CustomAgent(
+            model="gemini-3-pro-preview",
+            max_iterations=max_iterations,
+            max_model_response_tokens=1000,
+            max_kali_message_tokens=500,
+            max_context_length=10000,
+            screenshot_enabled=False,
+            app_name="test_app",
+            dry_run=False,
+            package_name="com.test.app",
+        )
+
+        result = agent.run()
+
+        assert mock_agent_dependencies["provider"].call.call_count == max_iterations
+        assert result["status"] == "max_iterations_reached"
+        assert result["turns"] == max_iterations
+
+    @patch("agent.custom_agent.subprocess.run")
+    def test_early_stop_with_gemini(self, mock_subprocess_run, mock_agent_dependencies):
+        mock_subprocess_run.return_value = type(
+            "MockResult", (), {"returncode": 0, "stdout": "", "stderr": ""}
+        )()
+
+        call_count = 0
+
+        def mock_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                return create_responses_api_response(
+                    content=json.dumps({"command": "FinalSubmissionCommand"}),
+                    response_id=f"litellm_resp-{call_count}",
+                )
+            return create_responses_api_response(
+                content=json.dumps({"command": "ActionCommand", "action": "ls"}),
+                response_id=f"litellm_resp-{call_count}",
+            )
+
+        mock_agent_dependencies["provider"].call = mock_call
+
+        agent = CustomAgent(
+            model="gemini-3-pro-preview",
+            max_iterations=10,
+            max_model_response_tokens=1000,
+            max_kali_message_tokens=500,
+            max_context_length=10000,
+            screenshot_enabled=False,
+            app_name="test_app",
+            dry_run=False,
+            package_name="com.test.app",
+        )
+
+        result = agent.run()
+
+        assert result["status"] == "completed"
+        assert result["turns"] == 2
+
+    def test_conversation_log_grows_with_gemini(self, mock_agent_dependencies):
+        agent = CustomAgent(
+            model="gemini-3-pro-preview",
+            max_iterations=3,
+            max_model_response_tokens=1000,
+            max_kali_message_tokens=500,
+            max_context_length=10000,
+            screenshot_enabled=False,
+            app_name="test_app",
+            dry_run=False,
+            package_name="com.test.app",
+        )
+
+        agent.run()
+
+        assert len(agent._conversation_log) == 3
         for i, entry in enumerate(agent._conversation_log, 1):
             assert entry["turn"] == i
             assert "response_id" in entry

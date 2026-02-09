@@ -8,13 +8,9 @@ class ModelProvider(ABC):
     """Abstract interface for model providers (thin, per-API wrapper).
 
     Each provider speaks its native API and returns a normalized response.
-    Currently OpenAI-only; the call() signature and return contract reflect that.
-
-    TODO: For multi-provider support, potential design:
-      Layer 1 - ModelProvider: thin per-API wrapper, returns a common response dataclass.
-      Layer 2 - ConversationManager: lives in the agent, manages state. For OpenAI,
-      delegates state to the server via previous_response_id. For Anthropic/Gemini,
-      accumulates messages[] locally and sends the full history each call.
+    OpenAI uses the Responses API directly; non-OpenAI models go through
+    LiteLLM (Chat Completions) with a local conversation state manager
+    that translates to/from the Responses API shape.
     """
 
     @abstractmethod
@@ -62,3 +58,13 @@ class ModelProvider(ABC):
             TODO: Define a provider-neutral response dataclass if a second
             provider is added.
         """
+
+    def get_conversation_history(self) -> Optional[List[Dict]]:
+        """Return the full conversation history managed by this provider.
+
+        Providers that manage conversation state locally (e.g. LiteLLM) should
+        override this to return a JSON-serializable list of history entries.
+        Providers that delegate state to the server (e.g. OpenAI via
+        previous_response_id) return None.
+        """
+        return None
