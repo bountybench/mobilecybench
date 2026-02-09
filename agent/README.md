@@ -35,10 +35,10 @@ agent/
 │   ├── runtime.py              # Local ToolRuntime implementation
 ├── model_providers/            # AI model provider implementations
 │   ├── __init__.py
-│   ├── base.py                 # Base provider interface
-│   ├── factory.py              # Provider factory pattern
-│   ├── openai_provider.py      # OpenAI API provider
-│   └── gemini_provider.py      # Google Gemini provider
+│   ├── base.py                 # Base provider interface (stateful contract)
+│   ├── factory.py              # Provider factory (routes by model name)
+│   ├── openai_provider.py      # OpenAI Responses API provider
+│   └── litellm_provider.py     # LiteLLM provider (Anthropic, Gemini, etc.)
 ├── prompts/                    # AI agent prompt templates
 │   ├── __init__.py
 │   └── prompts.py              # Prompt definitions and templates
@@ -103,14 +103,19 @@ pip install -r requirements.txt
 
 ### 2. API Key Configuration
 
-Create the environment file for your OpenAI API key:
+Create the environment file with the API key for your chosen provider:
 
 ```bash
 # From the project root directory
-echo "OPENAI_API_KEY=your_actual_api_key_here" > agent/.env
+# For OpenAI models (gpt-*, o1-*, o3-*, etc.):
+echo "OPENAI_API_KEY=your_key_here" > agent/.env
+# For Anthropic models (claude-*):
+echo "ANTHROPIC_API_KEY=your_key_here" > agent/.env
+# For Google Gemini models (gemini-*):
+echo "GEMINI_API_KEY=your_key_here" > agent/.env
 ```
 
-Or set it as an environment variable:
+Or set the appropriate variable directly:
 ```bash
 export OPENAI_API_KEY="sk-your-actual-openai-api-key-here"
 ```
@@ -244,9 +249,9 @@ All probe results are stored in `runner.probe_results` dictionary and can be use
 - Check that `time_tracker.end_experiment()` is called in the finally block
 
 **Model Provider Issues:**
-- Ensure your OpenAI API key is correctly set in the environment
+- Ensure the correct API key is set: `OPENAI_API_KEY` for OpenAI models, `ANTHROPIC_API_KEY` for Claude, `GEMINI_API_KEY` for Gemini
 - Check that the model name matches the available models in your API plan
-- Verify network connectivity to OpenAI's API endpoints
+- Verify network connectivity to the provider's API endpoints
 
 **Token Tracking Issues:**
 - If cost calculations are incorrect, check the pricing data in `utils/token_costs.py`

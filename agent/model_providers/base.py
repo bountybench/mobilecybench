@@ -1,70 +1,120 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 
-class ModelProvider(ABC):
-    """Abstract interface for model providers (thin, per-API wrapper).
+@dataclass
+class FunctionCall:
+    """A single function/tool call from the model."""
 
-    Each provider speaks its native API and returns a normalized response.
-    OpenAI uses the Responses API directly; non-OpenAI models go through
-    LiteLLM (Chat Completions) with a local conversation state manager
-    that translates to/from the Responses API shape.
+    name: str
+    arguments: str  # JSON string
+    call_id: str
+
+
+@dataclass
+class ProviderResponse:
+    """Normalized response from any model provider."""
+
+    response_id: str
+    assistant_text: str
+    function_calls: List[FunctionCall] = field(default_factory=list)
+    reasoning_summary: str = ""
+    raw_response: Any = None  # For TokenTracker compatibility
+
+
+class ModelProvider(ABC):
+    """Abstract interface for model providers.
+
+    **Design contract:** Providers are *stateful* — each instance owns its
+    conversation state (message history, response chaining, etc.).  The agent
+    (``CustomAgent``) is *stateless* with respect to conversation: it passes
+    new input each turn and reads back a normalized ``ProviderResponse``.
+
+    Lifecycle:
+        1. ``get_model_provider(model)`` — factory returns an un-configured instance.
+        2. ``provider.setup(...)`` — one-time configuration (API key validation,
+           model/tool/prompt storage).
+        3. ``provider.call(input=...)`` — per-turn invocation; returns ``ProviderResponse``.
+        4. ``provider.get_conversation_history()`` — structured log for archiving.
+
+    How state is managed per provider:
+        - **OpenAIProvider** — server-side via ``previous_response_id``.
+        - **LiteLLMProvider** — client-side via an accumulated messages array.
     """
 
-    @abstractmethod
-    def validate(self, model: str = None) -> None:
-        """Validate environment/configuration (e.g., API keys).
+    def __init__(self) -> None:
+        self._conversation_history: List[Dict] = []
 
-        Args:
-            model: Optional model name to validate specific provider API key.
+    # -- Shared helpers (concrete) -----------------------------------------
 
-        Should raise a ValueError with a clear message if invalid/missing.
+    def _record_history(self, resp: "ProviderResponse") -> None:
+        """Append a normalized history entry for *resp*.
+
+        Called by each provider at the end of ``call()`` to keep a
+        single source of truth for the conversation log format.
         """
+        self._conversation_history.append(
+            {
+                "turn": len(self._conversation_history) + 1,
+                "response_id": resp.response_id,
+                "assistant_text": resp.assistant_text,
+                "reasoning_summary": resp.reasoning_summary,
+                "function_calls": [
+                    {
+                        "name": fc.name,
+                        "call_id": fc.call_id,
+                        "arguments": fc.arguments,
+                    }
+                    for fc in resp.function_calls
+                ],
+            }
+        )
+
+    def get_conversation_history(self) -> List[Dict]:
+        """Return structured conversation history for archiving/observability.
+
+        Returns:
+            List of dicts, each with keys: turn, response_id, assistant_text,
+            reasoning_summary, function_calls.
+        """
+        return list(self._conversation_history)
+
+    # -- Abstract methods (must be implemented) ----------------------------
 
     @abstractmethod
-    def call(
+    def setup(
         self,
         *,
         model: str,
-        input: Any,
+        instructions: str,
         tools: Optional[List[Dict]] = None,
         max_output_tokens: Optional[int] = None,
         timeout_ms: Optional[int] = None,
         reasoning_effort: Optional[str] = None,
-        instructions: Optional[str] = None,
-        previous_response_id: Optional[str] = None,
-        **kwargs,
-    ) -> Any:
-        """Perform a model invocation.
+    ) -> None:
+        """One-time configuration. Validates API keys and stores config.
 
         Args:
             model: Model identifier (e.g., "gpt-5.2")
-            input: Input string or list of input items (tool results, user messages)
-            tools: Optional list of tool definitions
+            instructions: System-level instructions (full prompt)
+            tools: List of tool definitions
             max_output_tokens: Maximum tokens in response
             timeout_ms: Request timeout in milliseconds
-            reasoning_effort: For reasoning models (provider maps to native format)
-            instructions: System-level instructions
-            previous_response_id: ID of previous response for conversation continuity
-            **kwargs: Provider-specific parameters
+            reasoning_effort: For reasoning models (e.g., "high", "medium", "low")
+
+        Should raise a ValueError if configuration is invalid (e.g., missing API key).
+        """
+
+    @abstractmethod
+    def call(self, *, input: Any) -> ProviderResponse:
+        """Perform a model invocation with new input.
+
+        Args:
+            input: Input string or list of input items (tool results, user messages)
 
         Returns:
-            Provider-specific response object. The caller (CustomAgent) currently
-            expects OpenAI Responses API shape (id, output, usage). If adding
-            non-OpenAI providers, either adapt the response in the provider or
-            introduce a common response wrapper.
-            TODO: Define a provider-neutral response dataclass if a second
-            provider is added.
+            ProviderResponse with normalized fields.
         """
-
-    def get_conversation_history(self) -> Optional[List[Dict]]:
-        """Return the full conversation history managed by this provider.
-
-        Providers that manage conversation state locally (e.g. LiteLLM) should
-        override this to return a JSON-serializable list of history entries.
-        Providers that delegate state to the server (e.g. OpenAI via
-        previous_response_id) return None.
-        """
-        return None

@@ -27,10 +27,10 @@ agent/
 │   └── Dockerfile.kali         # Alternative Kali container setup
 ├── model_providers/            # AI model provider implementations
 │   ├── __init__.py
-│   ├── base.py                 # Base provider interface
-│   ├── factory.py              # Provider factory pattern
-│   ├── openai_provider.py      # OpenAI API provider
-│   ├── gemini_provider.py      # Google Gemini provider
+│   ├── base.py                 # Base provider interface (stateful contract)
+│   ├── factory.py              # Provider factory (routes by model name)
+│   ├── openai_provider.py      # OpenAI Responses API provider
+│   ├── litellm_provider.py     # LiteLLM provider (Anthropic, Gemini, etc.)
 ├── prompts/                    # AI agent prompt templates
 │   ├── __init__.py
 │   └── prompts.py              # Prompt definitions and templates
@@ -74,6 +74,23 @@ The agent system relies on several utility modules for core functionality:
 At runtime, `runner.py` uses `agent/agent_setup.py` to start the Kali container (`kali-container`) and mount the app codebase. The agent executes tools inside that container via `ToolRuntime`.
 
 If an exploit script is produced at `/app/exploit_files/exploit.sh`, the runner will reset the environment, execute the exploit, and re-run probes to validate impact.
+
+## Model Providers
+
+Providers are **stateful**: each instance owns its conversation state and
+exposes a three-method interface defined in `base.py`:
+
+1. `setup(model, instructions, tools, ...)` — one-time config and API key validation.
+2. `call(input=...)` — per-turn invocation; returns a `ProviderResponse`.
+3. `get_conversation_history()` — structured log for archiving.
+
+The agent (`custom_agent.py`) is **stateless** with respect to conversation — it
+passes new input each turn, reads back a normalized `ProviderResponse`, and
+never touches provider-internal state.
+
+**Routing:** `factory.py` inspects the model name and returns either
+`OpenAIProvider` (for GPT/o-series models) or `LiteLLMProvider` (for
+Anthropic, Gemini, and any other model supported by LiteLLM).
 
 ## Agent Behavior (high level)
 

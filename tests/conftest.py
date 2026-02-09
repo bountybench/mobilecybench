@@ -5,6 +5,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from agent.model_providers.base import FunctionCall, ProviderResponse
+
 
 def pytest_configure(config):
     """Set up test environment before any tests run.
@@ -22,71 +24,87 @@ def pytest_addoption(parser):
     parser.addoption("--dirs", nargs="+", help="Directories to test", required=False)
 
 
-def create_responses_api_response(
-    content: str, function_calls=None, response_id="test-response-id"
-):
-    """Create a mock OpenAI Responses API response.
+def create_provider_response(
+    content: str = "", function_calls=None, response_id="test-response-id"
+) -> ProviderResponse:
+    """Create a ProviderResponse for testing.
 
     Args:
         content: Text content for the assistant message.
         function_calls: Optional list of dicts with keys: name, arguments, call_id.
         response_id: Response ID for conversation continuity.
     """
-    response = Mock()
-    response.id = response_id
-
-    # Build output items
-    output_items = []
-
-    # Add message output item if content provided
-    if content:
-        text_block = Mock()
-        text_block.type = "output_text"
-        text_block.text = content
-
-        message_item = Mock()
-        message_item.type = "message"
-        message_item.content = [text_block]
-        output_items.append(message_item)
-
-    # Add function_call output items
+    fc_list = []
     if function_calls:
         for fc in function_calls:
-            fc_item = Mock()
-            fc_item.type = "function_call"
-            fc_item.name = fc["name"]
-            fc_item.arguments = fc.get("arguments", "{}")
-            fc_item.call_id = fc.get("call_id", "call_test_123")
-            output_items.append(fc_item)
+            fc_list.append(
+                FunctionCall(
+                    name=fc["name"],
+                    arguments=fc.get("arguments", "{}"),
+                    call_id=fc.get("call_id", "call_test_123"),
+                )
+            )
 
-    response.output = output_items
-
-    # Set up usage
+    # Create a mock raw_response for TokenTracker compatibility
+    raw_response = Mock()
+    raw_response.id = response_id
     usage = Mock()
     usage.input_tokens = 100
     usage.output_tokens = 50
     usage.total_tokens = 150
-    response.usage = usage
+    raw_response.usage = usage
 
-    return response
+    return ProviderResponse(
+        response_id=response_id,
+        assistant_text=content,
+        function_calls=fc_list,
+        raw_response=raw_response,
+    )
 
 
 class MockModelProvider:
-    """Mock implementation of ModelProvider for testing."""
+    """Mock implementation of ModelProvider for testing.
+
+    Uses the same ``_record_history()`` / ``get_conversation_history()``
+    helpers from the real base class to keep the history format in sync.
+    """
 
     def __init__(self):
+        # Shared history list (same as ModelProvider base)
+        self._conversation_history = []
         # Make call a Mock so we can track call_count
         self.call = Mock(side_effect=self._mock_call)
 
-    def validate(self, model: str = None):
-        """Mock validate method."""
+    def setup(self, **kwargs):
         pass
 
     def _mock_call(self, **kwargs):
-        """Mock call method that returns a Responses API response."""
-        return create_responses_api_response(
+        """Mock call method that returns a ProviderResponse."""
+        resp = create_provider_response(
             content=json.dumps({"command": "ActionCommand", "action": "ls"})
         )
+        # Reuse the base-class helper logic (inlined here since we don't
+        # inherit ModelProvider to avoid ABC enforcement in tests).
+        self._conversation_history.append(
+            {
+                "turn": len(self._conversation_history) + 1,
+                "response_id": resp.response_id,
+                "assistant_text": resp.assistant_text,
+                "reasoning_summary": resp.reasoning_summary,
+                "function_calls": [
+                    {
+                        "name": fc.name,
+                        "call_id": fc.call_id,
+                        "arguments": fc.arguments,
+                    }
+                    for fc in resp.function_calls
+                ],
+            }
+        )
+        return resp
+
+    def get_conversation_history(self):
+        return list(self._conversation_history)
 
 
 @pytest.fixture

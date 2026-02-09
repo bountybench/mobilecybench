@@ -7,25 +7,49 @@ from openai import OpenAI
 
 from utils.logger import agent_logger
 
-from .base import ModelProvider
+from .base import FunctionCall, ModelProvider, ProviderResponse
 
 
 class OpenAIProvider(ModelProvider):
-    """OpenAI provider using client.responses.create()."""
+    """OpenAI provider using client.responses.create().
+
+    Manages conversation state server-side via previous_response_id.
+    """
 
     def __init__(self) -> None:
-        self._validated = False
+        super().__init__()
         self._client: OpenAI | None = None
+        self._model: str | None = None
+        self._instructions: str | None = None
+        self._tools: list | None = None
+        self._max_output_tokens: int | None = None
+        self._timeout_ms: int | None = None
+        self._reasoning_effort: str | None = None
+        self._previous_response_id: str | None = None
 
-    def validate(self, model: str = None) -> None:
+    def setup(
+        self,
+        *,
+        model: str,
+        instructions: str,
+        tools: Optional[List[Dict]] = None,
+        max_output_tokens: Optional[int] = None,
+        timeout_ms: Optional[int] = None,
+        reasoning_effort: Optional[str] = None,
+    ) -> None:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key or not api_key.strip():
             raise ValueError(
                 "OPENAI_API_KEY environment variable is required but not set."
             )
         self._client = OpenAI()
-        self._validated = True
-        agent_logger.info(f"OpenAI API key found for model '{model or 'default'}'")
+        self._model = model
+        self._instructions = instructions
+        self._tools = self._convert_tools(tools)
+        self._max_output_tokens = max_output_tokens
+        self._timeout_ms = timeout_ms
+        self._reasoning_effort = reasoning_effort
+        agent_logger.info(f"OpenAI provider configured for model '{model}'")
 
     def _convert_tools(self, tools: Optional[List]) -> Optional[List]:
         """Convert provider-neutral tool defs to OpenAI Responses API format."""
@@ -42,52 +66,81 @@ class OpenAIProvider(ModelProvider):
             if isinstance(tool, dict)
         ] or None
 
-    def call(
-        self,
-        *,
-        model: str,
-        input: Any,
-        tools: Optional[List[Dict]] = None,
-        max_output_tokens: Optional[int] = None,
-        timeout_ms: Optional[int] = None,
-        reasoning_effort: Optional[str] = None,
-        instructions: Optional[str] = None,
-        previous_response_id: Optional[str] = None,
-        **kwargs,
-    ) -> Any:
-        if not self._validated or not self._client:
-            raise RuntimeError("Provider not validated. Call validate() first.")
+    def _parse_output(self, output_items) -> tuple[str, str, list[FunctionCall]]:
+        """Parse Responses API output items into normalized fields."""
+        assistant_text = ""
+        reasoning_summary = ""
+        function_calls = []
 
-        params: Dict[str, Any] = {"model": model, "input": input}
+        for item in output_items:
+            item_type = getattr(item, "type", None)
 
-        if instructions:
-            params["instructions"] = instructions
-        if previous_response_id:
-            params["previous_response_id"] = previous_response_id
+            if item_type == "message":
+                for block in getattr(item, "content", []):
+                    if getattr(block, "type", None) == "output_text":
+                        assistant_text += getattr(block, "text", "")
+            elif item_type == "function_call":
+                function_calls.append(
+                    FunctionCall(
+                        name=getattr(item, "name", ""),
+                        arguments=getattr(item, "arguments", "{}"),
+                        call_id=getattr(item, "call_id", ""),
+                    )
+                )
+            elif item_type == "reasoning":
+                for s in getattr(item, "summary", []) or []:
+                    reasoning_summary += getattr(s, "text", "")
 
-        resp_tools = self._convert_tools(tools)
-        if resp_tools:
-            params["tools"] = resp_tools
-        if max_output_tokens:
-            params["max_output_tokens"] = max_output_tokens
-        if timeout_ms:
-            params["timeout"] = timeout_ms / 1000.0
-        if reasoning_effort:
+        return assistant_text, reasoning_summary, function_calls
+
+    def call(self, *, input: Any) -> ProviderResponse:
+        if not self._client:
+            raise RuntimeError("Provider not configured. Call setup() first.")
+
+        params: Dict[str, Any] = {"model": self._model, "input": input}
+
+        if self._instructions:
+            params["instructions"] = self._instructions
+        if self._previous_response_id:
+            params["previous_response_id"] = self._previous_response_id
+        if self._tools:
+            params["tools"] = self._tools
+        if self._max_output_tokens:
+            params["max_output_tokens"] = self._max_output_tokens
+        if self._timeout_ms:
+            params["timeout"] = self._timeout_ms / 1000.0
+        if self._reasoning_effort:
             params["reasoning"] = {
-                "effort": reasoning_effort,
+                "effort": self._reasoning_effort,
                 "summary": "detailed",
             }
             params["include"] = ["reasoning.encrypted_content"]
-        params["truncation"] = "auto"  # disabled by default
-        # https://platform.openai.com/docs/api-reference/responses/create#responses_create-truncation
+        params["truncation"] = "auto"
 
-        params.update(kwargs)
-
-        tool_count = len(resp_tools) if resp_tools else 0
+        tool_count = len(self._tools) if self._tools else 0
         agent_logger.info(
-            f"OpenAI API request: model={model}, "
+            f"OpenAI API request: model={self._model}, "
             f"input_type={type(input).__name__}, tools={tool_count}"
-            f"{', prev_id=' + previous_response_id[:20] + '...' if previous_response_id else ''}"
+            f"{', prev_id=' + self._previous_response_id[:20] + '...' if self._previous_response_id else ''}"
         )
 
-        return self._client.responses.create(**params)
+        raw_resp = self._client.responses.create(**params)
+
+        # Update conversation state
+        self._previous_response_id = raw_resp.id
+
+        # Parse output into normalized fields
+        output_items = getattr(raw_resp, "output", [])
+        assistant_text, reasoning_summary, function_calls = self._parse_output(
+            output_items
+        )
+
+        resp = ProviderResponse(
+            response_id=raw_resp.id,
+            assistant_text=assistant_text,
+            function_calls=function_calls,
+            reasoning_summary=reasoning_summary,
+            raw_response=raw_resp,
+        )
+        self._record_history(resp)
+        return resp
