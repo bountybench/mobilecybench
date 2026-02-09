@@ -134,7 +134,11 @@ def configure_app_with_token(d: u2.Device, server_url: str, token: str) -> bool:
     # Click Add Account button.
     # In this Compose app, the button has content-desc="Add Account" (not text).
     sign_in_btn = first_existing(
-        [d(description="Add Account"), d(text="Add Account"), d(textContains="Add Account")],
+        [
+            d(description="Add Account"),
+            d(text="Add Account"),
+            d(textContains="Add Account"),
+        ],
         timeout=2,
     )
 
