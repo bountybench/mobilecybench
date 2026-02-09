@@ -83,14 +83,13 @@ class CustomAgent:
         agent_logger.info(self._instructions)
         agent_logger.info("=" * 60)
 
-        # Create and configure provider
+        # Create provider (fully configured on construction)
         reasoning_effort_value = (
             reasoning_effort
             if reasoning_effort and is_reasoning_supported_model(model)
             else None
         )
-        self.provider = get_model_provider(model=model)
-        self.provider.setup(
+        self.provider = get_model_provider(
             model=model,
             instructions=self._instructions,
             tools=self.runtime.get_tool_definitions(),
@@ -245,7 +244,7 @@ class CustomAgent:
                         conversation_id=self.app_name,
                         turn=turn + 1,
                     ):
-                        resp = self.provider.call(input=call_input)
+                        resp = self.provider.call(call_input)
                     print("[Agent] API call completed")
                     break  # Success, exit retry loop
                 except Exception as e:

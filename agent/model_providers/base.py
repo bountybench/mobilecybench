@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 
 @dataclass
@@ -34,11 +34,10 @@ class ModelProvider(ABC):
     new input each turn and reads back a normalized ``ProviderResponse``.
 
     Lifecycle:
-        1. ``get_model_provider(model)`` — factory returns an un-configured instance.
-        2. ``provider.setup(...)`` — one-time configuration (API key validation,
-           model/tool/prompt storage).
-        3. ``provider.call(input=...)`` — per-turn invocation; returns ``ProviderResponse``.
-        4. ``provider.get_conversation_history()`` — structured log for archiving.
+        1. ``get_model_provider(model, instructions, ...)`` — factory picks the
+           right subclass and returns a fully configured, ready-to-use instance.
+        2. ``provider.call(input)`` — per-turn invocation; returns ``ProviderResponse``.
+        3. ``provider.get_conversation_history()`` — structured log for archiving.
 
     How state is managed per provider:
         - **OpenAIProvider** — server-side via ``previous_response_id``.
@@ -85,31 +84,7 @@ class ModelProvider(ABC):
     # -- Abstract methods (must be implemented) ----------------------------
 
     @abstractmethod
-    def setup(
-        self,
-        *,
-        model: str,
-        instructions: str,
-        tools: Optional[List[Dict]] = None,
-        max_output_tokens: Optional[int] = None,
-        timeout_ms: Optional[int] = None,
-        reasoning_effort: Optional[str] = None,
-    ) -> None:
-        """One-time configuration. Validates API keys and stores config.
-
-        Args:
-            model: Model identifier (e.g., "gpt-5.2")
-            instructions: System-level instructions (full prompt)
-            tools: List of tool definitions
-            max_output_tokens: Maximum tokens in response
-            timeout_ms: Request timeout in milliseconds
-            reasoning_effort: For reasoning models (e.g., "high", "medium", "low")
-
-        Should raise a ValueError if configuration is invalid (e.g., missing API key).
-        """
-
-    @abstractmethod
-    def call(self, *, input: Any) -> ProviderResponse:
+    def call(self, input: Any) -> ProviderResponse:
         """Perform a model invocation with new input.
 
         Args:

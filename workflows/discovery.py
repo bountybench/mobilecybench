@@ -135,7 +135,6 @@ class DiscoveryWorkflow(Workflow):
             max_context_length=self.max_context_length,
             screenshot_enabled=self.screenshot_mode,
             app_name=self.app_name,
-            dry_run=self.dry_run,
             app_server=self.metadata.get("app_server"),
             package_name=self.metadata.get("package_name"),
             username=self.metadata.get("username"),

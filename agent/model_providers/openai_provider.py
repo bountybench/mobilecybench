@@ -16,20 +16,8 @@ class OpenAIProvider(ModelProvider):
     Manages conversation state server-side via previous_response_id.
     """
 
-    def __init__(self) -> None:
-        super().__init__()
-        self._client: OpenAI | None = None
-        self._model: str | None = None
-        self._instructions: str | None = None
-        self._tools: list | None = None
-        self._max_output_tokens: int | None = None
-        self._timeout_ms: int | None = None
-        self._reasoning_effort: str | None = None
-        self._previous_response_id: str | None = None
-
-    def setup(
+    def __init__(
         self,
-        *,
         model: str,
         instructions: str,
         tools: Optional[List[Dict]] = None,
@@ -37,6 +25,7 @@ class OpenAIProvider(ModelProvider):
         timeout_ms: Optional[int] = None,
         reasoning_effort: Optional[str] = None,
     ) -> None:
+        super().__init__()
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key or not api_key.strip():
             raise ValueError(
@@ -49,6 +38,7 @@ class OpenAIProvider(ModelProvider):
         self._max_output_tokens = max_output_tokens
         self._timeout_ms = timeout_ms
         self._reasoning_effort = reasoning_effort
+        self._previous_response_id: str | None = None
         agent_logger.info(f"OpenAI provider configured for model '{model}'")
 
     def _convert_tools(self, tools: Optional[List]) -> Optional[List]:
@@ -93,10 +83,7 @@ class OpenAIProvider(ModelProvider):
 
         return assistant_text, reasoning_summary, function_calls
 
-    def call(self, *, input: Any) -> ProviderResponse:
-        if not self._client:
-            raise RuntimeError("Provider not configured. Call setup() first.")
-
+    def call(self, input: Any) -> ProviderResponse:
         params: Dict[str, Any] = {"model": self._model, "input": input}
 
         if self._instructions:
@@ -115,7 +102,7 @@ class OpenAIProvider(ModelProvider):
                 "summary": "detailed",
             }
             params["include"] = ["reasoning.encrypted_content"]
-        params["truncation"] = "auto"
+        params["truncation"] = "disabled"
 
         tool_count = len(self._tools) if self._tools else 0
         agent_logger.info(

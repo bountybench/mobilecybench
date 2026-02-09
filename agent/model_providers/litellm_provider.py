@@ -68,23 +68,42 @@ class LiteLLMProvider(ModelProvider):
     state so that custom_agent.py can use it identically to OpenAIProvider.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        model: str,
+        instructions: str,
+        tools: Optional[List[Dict]] = None,
+        max_output_tokens: Optional[int] = None,
+        timeout_ms: Optional[int] = None,
+        reasoning_effort: Optional[str] = None,
+    ) -> None:
         super().__init__()
         litellm.drop_params = True
         litellm.set_verbose = False
 
-        # Config (set by setup())
-        self._model: str | None = None
-        self._litellm_model: str | None = None
-        self._instructions: str | None = None
-        self._tools: list | None = None
-        self._max_output_tokens: int | None = None
-        self._timeout_ms: int | None = None
-        self._reasoning_effort: str | None = None
-        self._configured: bool = False
+        # Validate API key
+        env_var, provider_name = self._get_required_api_key_env(model)
+        api_key = os.getenv(env_var)
+        if not api_key or not api_key.strip():
+            raise ValueError(
+                f"{env_var} environment variable is required but not set. "
+                f"Please ensure your .env file contains {env_var}=your-actual-key-here "
+                "or set the environment variable directly."
+            )
+
+        self._model = model
+        self._litellm_model = self._get_litellm_model_name(model)
+        self._tools = self._convert_tools_to_litellm(tools)
+        self._max_output_tokens = max_output_tokens
+        self._timeout_ms = timeout_ms
+        self._reasoning_effort = reasoning_effort
 
         # Conversation state (Chat Completions messages list)
-        self._messages: List[Dict[str, Any]] = []
+        self._messages: List[Dict[str, Any]] = [
+            {"role": "system", "content": instructions}
+        ]
+
+        agent_logger.info(f"{provider_name} provider configured for model '{model}'")
 
     def _detect_provider_from_model(self, model: str) -> str:
         model_lower = model.lower()
@@ -109,40 +128,6 @@ class LiteLLMProvider(ModelProvider):
         if provider == "anthropic":
             return "ANTHROPIC_API_KEY", "Anthropic"
         return "OPENAI_API_KEY", "OpenAI"
-
-    def setup(
-        self,
-        *,
-        model: str,
-        instructions: str,
-        tools: Optional[List[Dict]] = None,
-        max_output_tokens: Optional[int] = None,
-        timeout_ms: Optional[int] = None,
-        reasoning_effort: Optional[str] = None,
-    ) -> None:
-        # Validate API key
-        env_var, provider_name = self._get_required_api_key_env(model)
-        api_key = os.getenv(env_var)
-        if not api_key or not api_key.strip():
-            raise ValueError(
-                f"{env_var} environment variable is required but not set. "
-                f"Please ensure your .env file contains {env_var}=your-actual-key-here "
-                "or set the environment variable directly."
-            )
-
-        self._model = model
-        self._litellm_model = self._get_litellm_model_name(model)
-        self._instructions = instructions
-        self._tools = self._convert_tools_to_litellm(tools)
-        self._max_output_tokens = max_output_tokens
-        self._timeout_ms = timeout_ms
-        self._reasoning_effort = reasoning_effort
-        self._configured = True
-
-        # Set system message
-        self._messages = [{"role": "system", "content": instructions}]
-
-        agent_logger.info(f"{provider_name} provider configured for model '{model}'")
 
     def _convert_tools_to_litellm(self, tools: Optional[List]) -> Optional[List]:
         """Convert tool definitions to LiteLLM/OpenAI Chat Completions format."""
@@ -218,10 +203,7 @@ class LiteLLMProvider(ModelProvider):
 
         return messages
 
-    def call(self, *, input: Any) -> ProviderResponse:
-        if not self._configured:
-            raise RuntimeError("LiteLLM provider not configured. Call setup() first.")
-
+    def call(self, input: Any) -> ProviderResponse:
         # Translate input and append to conversation
         new_messages = self._translate_input_to_messages(input)
         self._messages.extend(new_messages)

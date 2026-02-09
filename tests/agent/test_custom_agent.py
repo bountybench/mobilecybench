@@ -1,4 +1,5 @@
 import json
+import os
 from unittest.mock import patch
 
 from agent.custom_agent import CustomAgent
@@ -140,23 +141,26 @@ class TestCustomAgentMaxIterations:
 class TestModelProviderRouting:
     """Test that the factory routes models to the correct provider."""
 
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
     def test_openai_models_use_openai_provider(self):
         for model in ["gpt-4o-mini", "o1-preview", "o3-mini", "gpt-5.2"]:
-            provider = get_model_provider(model)
+            provider = get_model_provider(model, instructions="test")
             assert isinstance(
                 provider, OpenAIProvider
             ), f"{model} should use OpenAIProvider"
 
+    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})
     def test_anthropic_models_use_litellm_provider(self):
         for model in ["claude-opus-4-6", "claude-sonnet-4-5-20250929"]:
-            provider = get_model_provider(model)
+            provider = get_model_provider(model, instructions="test")
             assert isinstance(
                 provider, LiteLLMProvider
             ), f"{model} should use LiteLLMProvider"
 
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"})
     def test_gemini_models_use_litellm_provider(self):
         for model in ["gemini-3-pro-preview", "gemini-2.5-flash"]:
-            provider = get_model_provider(model)
+            provider = get_model_provider(model, instructions="test")
             assert isinstance(
                 provider, LiteLLMProvider
             ), f"{model} should use LiteLLMProvider"

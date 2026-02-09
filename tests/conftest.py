@@ -65,26 +65,18 @@ def create_provider_response(
 class MockModelProvider:
     """Mock implementation of ModelProvider for testing.
 
-    Uses the same ``_record_history()`` / ``get_conversation_history()``
-    helpers from the real base class to keep the history format in sync.
+    Mirrors the base-class history format (see ModelProvider._record_history).
     """
 
-    def __init__(self):
-        # Shared history list (same as ModelProvider base)
+    def __init__(self, **kwargs):
         self._conversation_history = []
-        # Make call a Mock so we can track call_count
         self.call = Mock(side_effect=self._mock_call)
 
-    def setup(self, **kwargs):
-        pass
-
-    def _mock_call(self, **kwargs):
-        """Mock call method that returns a ProviderResponse."""
+    def _mock_call(self, *args, **kwargs):
+        """Return a ProviderResponse and record history."""
         resp = create_provider_response(
             content=json.dumps({"command": "ActionCommand", "action": "ls"})
         )
-        # Reuse the base-class helper logic (inlined here since we don't
-        # inherit ModelProvider to avoid ABC enforcement in tests).
         self._conversation_history.append(
             {
                 "turn": len(self._conversation_history) + 1,

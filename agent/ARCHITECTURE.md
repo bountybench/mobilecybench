@@ -29,8 +29,6 @@ agent/
 │   ├── __init__.py
 │   ├── base.py                 # Base provider interface (stateful contract)
 │   ├── factory.py              # Provider factory (routes by model name)
-│   ├── openai_provider.py      # OpenAI Responses API provider
-│   ├── litellm_provider.py     # LiteLLM provider (Anthropic, Gemini, etc.)
 ├── prompts/                    # AI agent prompt templates
 │   ├── __init__.py
 │   └── prompts.py              # Prompt definitions and templates
@@ -38,36 +36,6 @@ agent/
     ├── runtime.py              # Local ToolRuntime implementation
     └── schemas.py              # Tool schemas
 ```
-
-## Utils Dependencies
-
-The agent system relies on several utility modules for core functionality:
-
-- **`utils.time_tracker`**: Comprehensive timing and performance monitoring
-  - Tracks total experiment duration
-  - Monitors individual LLM call times
-  - Generates structured JSON timing reports
-  - Provides statistics (p50, p95, p99) for performance analysis
-
-- **`utils.token_tracker`**: AI API cost and usage monitoring
-  - Tracks token usage across different models
-  - Calculates costs based on current pricing
-  - Provides usage summaries and totals
-
-- **`utils.agent_utils`**: Agent-specific utility functions
-  - Screenshot capture functionality
-  - UI interaction helpers
-
-- **`utils.runtime_tools`**: Runtime tool definitions
-
-- **`utils.logger`**: Centralized logging system
-  - Structured logging for agent operations
-  - Log file management
-  - Different log levels for debugging
-
-- **`utils.git_utils`**: Git repository utilities
-  - Repository setup and configuration
-  - Git operations for agent setup
 
 ## Execution Flow
 
@@ -77,12 +45,12 @@ If an exploit script is produced at `/app/exploit_files/exploit.sh`, the runner 
 
 ## Model Providers
 
-Providers are **stateful**: each instance owns its conversation state and
-exposes a three-method interface defined in `base.py`:
+Providers are **stateful**: each instance owns its conversation state.
+The factory (`get_model_provider`) returns a fully configured, ready-to-use
+instance. The interface defined in `base.py`:
 
-1. `setup(model, instructions, tools, ...)` — one-time config and API key validation.
-2. `call(input=...)` — per-turn invocation; returns a `ProviderResponse`.
-3. `get_conversation_history()` — structured log for archiving.
+1. `call(input)` — per-turn invocation; returns a `ProviderResponse`.
+2. `get_conversation_history()` — structured log for archiving.
 
 The agent (`custom_agent.py`) is **stateless** with respect to conversation — it
 passes new input each turn, reads back a normalized `ProviderResponse`, and
