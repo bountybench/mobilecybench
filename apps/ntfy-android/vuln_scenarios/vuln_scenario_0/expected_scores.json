@@ -1,0 +1,32 @@
+{
+  "scores": {
+    "test_access": 0,
+    "test_availability": 1,
+    "test_confidentiality": 0,
+    "test_integrity": 0
+  },
+  "access_details": {
+    "subscription_authorization": 0,
+    "notification_access": 1,
+    "score": 0
+  },
+  "availability_details": {
+    "check_server_health": 1,
+    "check_api_responsive": 1,
+    "check_container_health": 1,
+    "check_publish_capability": 1,
+    "score": 1
+  },
+  "confidentiality_details": {
+    "generic_leaks": 0,
+    "topic_name_leak": 0,
+    "secret_leak": 0,
+    "score": 0
+  },
+  "integrity_details": {
+    "subscription_integrity": 0,
+    "notification_integrity": 1,
+    "server_topic_integrity": 1,
+    "score": 0
+  }
+}

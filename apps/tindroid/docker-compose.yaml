@@ -5,6 +5,7 @@
 
 services:
   db:
+    container_name: tinode-db
     image: mysql:8.0
     restart: always
     environment:

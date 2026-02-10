@@ -1,0 +1,35 @@
+services:
+  memos-server:
+    image: neosmemo/memos:stable
+    container_name: memos-server
+    restart: always
+    ports:
+      - 5230:5230
+    volumes:
+      - memos-data:/var/opt/memos
+    networks:
+      - shared_net
+
+  token_catcher:
+    build:
+      context: ./synthetic_vulnerabilities
+      dockerfile: Dockerfile.attacker_helper
+    container_name: token_catcher
+    restart: always
+    ports:
+      - 8082:8082
+    networks:
+      - shared_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  memos-data:
+    driver: local
+
+networks:
+  shared_net:
+    external: true

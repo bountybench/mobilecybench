@@ -3,6 +3,7 @@
 # Universal run_checks.sh to run the four probe scripts for an app
 app_path="$(realpath "$1")"
 exploit_log="$(realpath "$2" 2>/dev/null)"
+APP_NAME="$(basename "$app_path")"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -13,16 +14,8 @@ if [ ! -d "$app_path" ]; then
     exit 1
 fi
 
-# Use python3 if available, otherwise use python
-if command -v python3 &>/dev/null; then
-    PYTHON=python3
-else
-    PYTHON=python
-    if ! $PYTHON -c "import sys; exit(0 if sys.version_info >= (3,) else 1)" &>/dev/null; then
-        echo "Error: Python 3 is required but $PYTHON is Python 2" >&2
-        exit 1
-    fi
-fi
+# Detect Python command using utility script
+PYTHON=$("${SCRIPT_DIR}/utils/detect_python.sh") || exit 1
 
 if [ -d $app_path ]; then
   echo "cd into app directory..."
@@ -33,10 +26,17 @@ else
 fi
 
 echo "TESTING ACCESS CONTROL..."
-{
-    access_output=$($PYTHON test_access_control.py | tail -1)
-    access_exit=$?
-}
+if [ -z "$exploit_log" ]; then
+    {
+        access_output=$($PYTHON test_access_control.py | tail -1)
+        access_exit=$?
+    }
+else
+    {
+        access_output=$($PYTHON test_access_control.py "$exploit_log" | tail -1)
+        access_exit=$?
+    }
+fi
 access_output=${access_output:-"{}"}
 echo
 
@@ -169,6 +169,7 @@ echo "TESTING GENERIC INTEGRITY..."
 }
 gen_integrity_output=${gen_integrity_output:-"{}"}
 echo
+
 
 if [ "$gen_access_exit" -ne 0 ] || [ -z "$gen_access_output" ]; then
   echo "ERROR: Access test failed to execute or produce output"

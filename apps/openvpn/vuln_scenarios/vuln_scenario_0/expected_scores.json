@@ -1,17 +1,32 @@
 {
-  "expected_results": {
-    "rogue_certificate_rejection": true,
-    "unauthorized_connection_blocked": true,
-    "certificate_validation_working": true,
-    "hybrid_attack_blocked": true
+  "scores": {
+    "test_access": 1,
+    "test_availability": 1,
+    "test_confidentiality": 0,
+    "test_integrity": 0
   },
-  "security_score": 100,
-  "vulnerability_level": "NONE",
-  "description": "All unauthorized certificate attacks should be properly rejected by the OpenVPN server",
-  "critical_checks": [
-    "TLS certificate chain validation",
-    "Authentication failure on invalid certificates", 
-    "Proper rejection of rogue CAs",
-    "Certificate substitution attack prevention"
-  ]
+  "access_details": {
+    "valid_client_connection": 1,
+    "invalid_certificate_rejected": 1,
+    "unauthorized_connection_rejected": 1,
+    "score": 1
+  },
+  "availability_details": {
+    "openvpn_server_health": 1,
+    "android_app_running": 1,
+    "score": 1
+  },
+  "confidentiality_details": {
+    "score": 0,
+    "success": 0
+  },
+  "integrity_details": {
+    "certificate_integrity": 1,
+    "configuration_consistency": 1,
+    "client_config_integrity": 0,
+    "pki_consistency": 1,
+    "file_permissions": 1,
+    "system_state_consistency": 1,
+    "score": 0
+  }
 }

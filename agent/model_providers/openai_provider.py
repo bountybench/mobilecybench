@@ -1,90 +1,93 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
+
+from utils.logger import agent_logger
 
 from .base import ModelProvider
 
 
 class OpenAIProvider(ModelProvider):
-    """OpenAI Responses API provider.
-
-    Wraps client setup, env validation, and `responses.create` calls.
-    """
+    """OpenAI provider using client.responses.create()."""
 
     def __init__(self) -> None:
-        # Client is initialized lazily to avoid issues if validation fails
-        self._client: Optional[OpenAI] = None
-        self._validated: bool = False
+        self._validated = False
+        self._client: OpenAI | None = None
 
-    def _client_or_init(self) -> OpenAI:
-        if self._client is None:
-            self._client = OpenAI()
-        return self._client
-
-    @property
-    def client(self) -> OpenAI:
-        if not self._validated:
-            raise RuntimeError(
-                "OpenAI provider not validated. Call validate() before accessing client."
-            )
-        return self._client_or_init()
-
-    def _test_api_key_connectivity(self) -> None:
-        """Attempt a minimal API call to verify the key works."""
-        client = self._client_or_init()
-        client.models.list()
-
-    def validate(self) -> None:
+    def validate(self, model: str = None) -> None:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key or not api_key.strip():
             raise ValueError(
-                "OPENAI_API_KEY environment variable is required but not set. "
-                "Please ensure your .env file contains OPENAI_API_KEY=your-actual-key-here "
-                "or set the environment variable directly."
+                "OPENAI_API_KEY environment variable is required but not set."
             )
-        try:
-            self._test_api_key_connectivity()
-            self._validated = True
-        except Exception as e:
-            raise ValueError(
-                f"Failed to validate OpenAI API key: {e}. Please ensure your API key is valid."
-            )
+        self._client = OpenAI()
+        self._validated = True
+        agent_logger.info(f"OpenAI API key found for model '{model or 'default'}'")
+
+    def _convert_tools(self, tools: Optional[List]) -> Optional[List]:
+        """Convert provider-neutral tool defs to OpenAI Responses API format."""
+        if not tools:
+            return None
+        return [
+            {
+                "type": "function",
+                "name": tool["name"],
+                "description": tool.get("description", ""),
+                "parameters": tool.get("parameters", {}),
+            }
+            for tool in tools
+            if isinstance(tool, dict)
+        ] or None
 
     def call(
         self,
         *,
         model: str,
-        input_messages: Optional[Union[str, list]] = None,
-        conversation_id: Optional[str] = None,
-        tools: Optional[list] = None,
+        input: Any,
+        tools: Optional[List[Dict]] = None,
         max_output_tokens: Optional[int] = None,
         timeout_ms: Optional[int] = None,
-        extra: Optional[Dict[str, Any]] = None,
+        reasoning_effort: Optional[str] = None,
+        instructions: Optional[str] = None,
+        previous_response_id: Optional[str] = None,
+        **kwargs,
     ) -> Any:
-        client = self._client_or_init()
-        kwargs: Dict[str, Any] = {
-            "model": model,
-        }
+        if not self._validated or not self._client:
+            raise RuntimeError("Provider not validated. Call validate() first.")
 
-        if conversation_id:
-            kwargs["conversation"] = {"id": conversation_id}
-            kwargs["input"] = input_messages or []
-        elif input_messages:
-            kwargs["input"] = input_messages
-        else:
-            raise ValueError("Must provide either input_messages or conversation_id")
+        params: Dict[str, Any] = {"model": model, "input": input}
 
-        if tools is not None:
-            kwargs["tools"] = tools
-        if max_output_tokens is not None:
-            kwargs["max_output_tokens"] = max_output_tokens
-        kwargs["max_tool_calls"] = 1
-        if timeout_ms is not None:
-            kwargs["timeout"] = timeout_ms
-        if extra:
-            kwargs.update(extra)
+        if instructions:
+            params["instructions"] = instructions
+        if previous_response_id:
+            params["previous_response_id"] = previous_response_id
 
-        return client.responses.create(**kwargs)
+        resp_tools = self._convert_tools(tools)
+        if resp_tools:
+            params["tools"] = resp_tools
+        if max_output_tokens:
+            params["max_output_tokens"] = max_output_tokens
+        if timeout_ms:
+            params["timeout"] = timeout_ms / 1000.0
+        if reasoning_effort:
+            params["reasoning"] = {
+                "effort": reasoning_effort,
+                "summary": "detailed",
+            }
+            params["include"] = ["reasoning.encrypted_content"]
+        params["truncation"] = "auto"  # disabled by default
+        # https://platform.openai.com/docs/api-reference/responses/create#responses_create-truncation
+
+        params.update(kwargs)
+
+        tool_count = len(resp_tools) if resp_tools else 0
+        agent_logger.info(
+            f"OpenAI API request: model={model}, "
+            f"input_type={type(input).__name__}, tools={tool_count}"
+            f"{', prev_id=' + previous_response_id[:20] + '...' if previous_response_id else ''}"
+        )
+
+        return self._client.responses.create(**params)

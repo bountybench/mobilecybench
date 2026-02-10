@@ -1,15 +1,17 @@
-from unittest.mock import MagicMock, patch
+"""Tests for runner.py - Workflow-based runner."""
+
+from unittest.mock import patch
 
 import pytest
 
-from runner import MobileCybenchRunner
+from models.config import RunnerConfig
+from runner import create_workflow, main, run
+from workflows import DiscoveryWorkflow, ExploitWorkflow
 
 
 @pytest.fixture
-def mock_config():
-    """Mock configuration for MobileCybenchRunner"""
-    from models.config import RunnerConfig
-
+def base_config():
+    """Base configuration for testing."""
     return RunnerConfig(
         server_access=True,
         build_type="source",
@@ -21,54 +23,109 @@ def mock_config():
         model="gpt-4",
         screenshot_mode=False,
         headless_mode=True,
-        dry_run=True,
-        agent_image="test-image",
+        dry_run=False,
+        agent_image="test-image:latest",
         docker_mode=False,
+        workflow="discovery",
     )
 
 
 @pytest.fixture
-def runner(mock_config):
-    """Create a MobileCybenchRunner instance for testing"""
-    with patch("runner.Path.exists", return_value=True), patch(
-        "runner.get_app_metadata"
-    ) as mock_metadata:
-        mock_metadata.return_value = {"app_name": "test_app"}
-        runner_instance = MobileCybenchRunner(
-            app_name="test_app", config=mock_config, agent_only=True
-        )
-        return runner_instance
+def exploit_config(base_config):
+    """Configuration for exploit workflow."""
+    return RunnerConfig(**{**base_config.model_dump(), "workflow": "exploit"})
 
 
-##########################################
-#     MCP Server Validation Tests       #
-##########################################
+class TestCreateWorkflow:
+    """Tests for workflow selection logic."""
+
+    def test_creates_discovery_workflow_by_default(self, base_config, tmp_path):
+        """Default workflow type is DiscoveryWorkflow."""
+        workflow = create_workflow(base_config, "test_app", tmp_path)
+        assert isinstance(workflow, DiscoveryWorkflow)
+
+    def test_creates_exploit_workflow_when_configured(self, exploit_config, tmp_path):
+        """ExploitWorkflow is created when config.workflow == 'exploit'."""
+        workflow = create_workflow(exploit_config, "test_app", tmp_path)
+        assert isinstance(workflow, ExploitWorkflow)
 
 
-@patch("runner.MCPToolExecutor")
-def test_validate_mcp_server_success(mock_executor_class, runner):
-    """Test successful MCP server validation with codebase directory found"""
-    mock_executor = MagicMock()
-    mock_executor_class.return_value = mock_executor
+class TestRun:
+    """Tests for run() - focus on error handling and cleanup guarantees."""
 
-    mock_executor.call_tool.return_value = {
-        "result": {"structuredContent": {"result": "codebase\nfile1.txt\nfile2.txt"}}
-    }
+    def test_success_returns_zero(self, base_config, tmp_path):
+        """Successful execution returns exit code 0."""
+        with patch.object(DiscoveryWorkflow, "validate_arguments"), patch.object(
+            DiscoveryWorkflow, "setup_runtime_environment"
+        ), patch.object(DiscoveryWorkflow, "setup_agent"), patch.object(
+            DiscoveryWorkflow, "run_agent", return_value={"status": "completed"}
+        ), patch.object(
+            DiscoveryWorkflow, "evaluate", return_value={"score": 1}
+        ), patch.object(
+            DiscoveryWorkflow, "cleanup"
+        ):
 
-    runner._validate_mcp_server()
+            result = run(base_config, "test_app", tmp_path)
+            assert result == 0
 
-    mock_executor.call_tool.assert_called_once_with("execute_command", "ls /app")
+    def test_validation_error_returns_one_and_still_cleans_up(
+        self, base_config, tmp_path
+    ):
+        """Validation error returns exit code 1 but cleanup still runs."""
+        with patch.object(
+            DiscoveryWorkflow,
+            "validate_arguments",
+            side_effect=ValueError("App directory not found"),
+        ), patch.object(DiscoveryWorkflow, "cleanup") as mock_cleanup:
+
+            result = run(base_config, "test_app", tmp_path)
+            assert result == 1
+            mock_cleanup.assert_called_once()
+
+    def test_cleanup_called_even_when_agent_crashes(self, base_config, tmp_path):
+        """Cleanup is called even when agent fails mid-execution."""
+        with patch.object(DiscoveryWorkflow, "validate_arguments"), patch.object(
+            DiscoveryWorkflow, "setup_runtime_environment"
+        ), patch.object(DiscoveryWorkflow, "setup_agent"), patch.object(
+            DiscoveryWorkflow, "run_agent", side_effect=Exception("Agent crashed")
+        ), patch.object(
+            DiscoveryWorkflow, "cleanup"
+        ) as mock_cleanup:
+
+            run(base_config, "test_app", tmp_path)
+            mock_cleanup.assert_called_once()
+
+    def test_dry_run_skips_agent_execution(self, base_config, tmp_path):
+        """Dry run mode runs interactive shell instead of agent."""
+        dry_run_config = RunnerConfig(**{**base_config.model_dump(), "dry_run": True})
+
+        with patch.object(DiscoveryWorkflow, "validate_arguments"), patch.object(
+            DiscoveryWorkflow, "setup_runtime_environment"
+        ), patch.object(
+            DiscoveryWorkflow, "setup_agent"
+        ) as mock_setup_agent, patch.object(
+            DiscoveryWorkflow, "run_agent"
+        ) as mock_run_agent, patch.object(
+            DiscoveryWorkflow, "cleanup"
+        ), patch(
+            "runner.run_interactive_shell", return_value={"status": "completed"}
+        ):
+
+            run(dry_run_config, "test_app", tmp_path)
+
+            mock_setup_agent.assert_not_called()
+            mock_run_agent.assert_not_called()
 
 
-@patch("runner.MCPToolExecutor")
-def test_validate_mcp_server_failure(mock_executor_class, runner):
-    """Test MCP server validation fails when codebase directory is not found"""
-    mock_executor = MagicMock()
-    mock_executor_class.return_value = mock_executor
+class TestMain:
+    """Tests for CLI entry point."""
 
-    mock_executor.call_tool.return_value = {
-        "result": {"structuredContent": {"result": "file1.txt\nfile2.txt\nother_dir"}}
-    }
+    def test_missing_config_file_returns_one(self, tmp_path, monkeypatch):
+        """Missing config file returns exit code 1."""
+        monkeypatch.chdir(tmp_path)
 
-    with pytest.raises(SystemExit):
-        runner._validate_mcp_server()
+        with patch(
+            "sys.argv", ["runner.py", "test_app", "--config", "nonexistent.json"]
+        ):
+            result = main()
+            assert result == 1

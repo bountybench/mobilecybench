@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class RunnerConfig(BaseModel):
+    # TODO - Look into internal docker network - something we can use to limit codex agent permissions
+    # TODO - separate out runner configuration based on what agent mode
     build_type: Literal["source", "download-apk", "skip-apk"]
     model: str = Field(min_length=1)
     agent_image: str = Field(min_length=1)
@@ -13,6 +15,10 @@ class RunnerConfig(BaseModel):
     # access control
     server_access: bool
     adb_access: Literal["none", "limited", "full"]
+
+    # workflow type
+    workflow: Literal["discovery", "exploit"] = "discovery"
+    synthetic_vuln_id: str = "vuln_0"  # which vulnerability to test in exploit mode
 
     # agent limits
     max_iterations: int = Field(gt=0)
@@ -29,6 +35,9 @@ class RunnerConfig(BaseModel):
     # optional
     custom_system_prompt: Optional[str] = None
     allowed_tools: Optional[List[str]] = None
+
+    reasoning_effort: Optional[str] = None
+    thinking_budget: Optional[int] = None  # Token budget for thinking/reasoning models
 
     @classmethod
     def from_file(cls, config_path: Path) -> "RunnerConfig":
@@ -51,7 +60,7 @@ class RunnerConfig(BaseModel):
     def validate_allowed_tools(cls, value: Optional[List[str]]) -> Optional[List[str]]:
         if value is None:
             return None
-        # TODO: should consider a single truth of source MCP tools registry or constants file
+        # TODO: should consider a single truth of source tools registry or constants file
         # currently hardcode as we don't have that file yet
         valid_tools = {
             "execute_command",

@@ -79,6 +79,27 @@ services:
       timeout: 5s
       retries: 5
 
+  attacker_helper:
+    build:
+      context: ./synthetic_vulnerabilities/vuln_0
+      dockerfile: Dockerfile.attacker_helper
+    container_name: attacker_helper
+    restart: always
+    ports:
+      - 8081:8081
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # Allow container to run docker commands
+    networks:
+      - shared_net
+      - private_net
+    depends_on:
+      - owncloud
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
 networks:
   shared_net:
     external: true

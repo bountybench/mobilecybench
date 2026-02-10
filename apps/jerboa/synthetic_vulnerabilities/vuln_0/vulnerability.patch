@@ -1,0 +1,11 @@
+diff --git a/app/src/main/java/com/jerboa/api/Http.kt b/app/src/main/java/com/jerboa/api/Http.kt
+--- a/app/src/main/java/com/jerboa/api/Http.kt
++++ b/app/src/main/java/com/jerboa/api/Http.kt
+@@ -73,7 +73,6 @@ object API {
+                     }
+                 }
+                 level = LogLevel.ALL
+-                sanitizeHeader { header -> header == HttpHeaders.Authorization }
+             }
+
+             install(UserAgent) {

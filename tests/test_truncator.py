@@ -153,12 +153,11 @@ def test_different_models():
 
 
 def test_header_body_split():
-    """Test the header/body split behavior used in MCP integration."""
+    """Test the header/body split behavior"""
     print("Testing header/body split behavior...")
 
     truncator = TokenTruncator(model="gpt-5-2025-08-07", max_tokens=100)
 
-    # Simulate the MCP server's header/body split
     header = "Command: ls -la\nExit Code: 0\nOutput:\n"
     body = "This is the actual command output that might be very long. " * 100
 

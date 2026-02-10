@@ -1,6 +1,6 @@
 {
   "gh_link": "https://github.com/cy-suite/openhab",
-  "commit_version": "cc41a05",
+  "commit_version": "b1b094d",
   "download_link": "https://github.com/openhab/openhab-android/releases/download/3.17.2-release/openhab-android.apk",
   "package_name": "org.openhab.habdroid",
   "container_names": ["openhab", "mosquitto"],
@@ -9,5 +9,5 @@
   "emulator_server": "http://10.0.2.2:8080",
   "app_server": "http://openhab:8080",
   "username": "nonadminuser",
-  "password": "password"
+  "password": "9839237d-5b0f-454e-a053-35c0c464d116"
 }

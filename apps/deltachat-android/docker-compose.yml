@@ -1,0 +1,37 @@
+services:
+  mailserver:
+    image: docker.io/mailserver/docker-mailserver:latest
+    container_name: deltachat-mailserver
+    hostname: mail
+    domainname: deltachat.test
+    user: "0:0"  # run as root to allow test flag injection
+    ports:
+      - "1025:25"      # SMTP
+      - "1143:143"     # IMAP
+    volumes:
+      - ./docker-data/maildata:/var/mail
+      - ./docker-data/mailstate:/var/mail-state
+      - ./docker-data/config:/tmp/docker-mailserver/
+    environment:
+      - ENABLE_SPAMASSASSIN=0
+      - ENABLE_CLAMAV=0
+      - ENABLE_FAIL2BAN=0
+      - ENABLE_POSTGREY=0
+      - PERMIT_DOCKER=network
+      - ONE_DIR=1
+      - DMS_DEBUG=0
+      - ENABLE_POP3=0
+      - ENABLE_IMAP=1
+      - SMTP_ONLY=0
+    networks:
+      - shared_net
+    healthcheck:
+      test: ["CMD-SHELL", "ss -tlnp | grep ':25' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+networks:
+  shared_net:
+    external: true

@@ -55,10 +55,6 @@ else
     adb logcat -c >/dev/null 2>&1 || true
 fi
 
-
-echo "Removing APKs..."
-rm -f apk/termux-release.apk
-
 # Clean build artifacts in codebase
 if [ -d "codebase" ]; then
     echo "Cleaning build artifacts..."
@@ -84,6 +80,10 @@ rm -f vuln_scenarios/vuln_scenario_0/malicious-perm-only.apk
 rm -rf vuln_scenarios/vuln_scenario_0/perm_only_app/dist/
 rm -rf vuln_scenarios/vuln_scenario_0/perm_only_app/build/
 rm -f vuln_scenarios/vuln_scenario_0/perm_only_app/debug.keystore
+
+# Remove helper APK build artifacts for synthetic vuln
+rm -rf synthetic_vulnerabilities/vuln_0/exploit_files/helper_apk/build/
+rm -f synthetic_vulnerabilities/vuln_0/exploit_files/helper_apk/debug.keystore
 
 # Remove log files recursively 
 echo "Removing log files recursively..."

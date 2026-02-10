@@ -1,47 +1,4 @@
-adbutils==2.9.4
-apkutils==2.0.2
-annotated-types>=0.6.0
-anyio>=4.0.0
-build==1.2.1
-cachecontrol[filecache]==0.14.0
-certifi==2024.2.2
-cffi==1.16.0
-charset-normalizer==3.3.2
-cleo==2.1.0
-colorama==0.4.6
-crashtest==0.4.1
-distlib==0.3.8
-distro==1.9.0
-dulwich==0.21.7
-exceptiongroup>=1.2.2
-fastjsonschema==2.19.1
-filelock==3.13.4
-h11==0.14.0
-httpcore>=1.0.0
-httpx>=0.27.1
-idna==3.7
-importlib-metadata==7.1.0
-installer==0.7.0
-jaraco-classes==3.4.0
-jeepney==0.8.0
-jsonschema==4.22.0
-keyring==24.3.1
-more-itertools==10.2.0
-msgpack==1.0.8
-numpy==1.26.4
-packaging==24.0
-pexpect==4.9.0
-pkginfo==1.10.0
-platformdirs==4.2.1
-psycopg2==2.9.10
-psycopg2-binary==2.9.10
-ptyprocess==0.7.0
-pycparser==2.22
-pyproject-hooks==1.0.0
-python-dotenv>=1.1.0
-pywin32-ctypes==0.2.2
-rapidfuzz==3.8.1
-requests-toolbelt==1.0.0
+# Core
 requests==2.31.0
 secretstorage==3.3.3
 shellingham==1.5.4
@@ -62,7 +19,7 @@ tenacity==8.2.3
 tabulate==0.9.0
 pytest==8.3.2
 grpcio==1.66.2
-gevent==23.9.1
+gevent>=25.9.1
 eventlet
 coverage
 pytest-cov
@@ -70,10 +27,43 @@ flask==3.0.0
 uiautomator2==3.4.0
 bcrypt==4.3.0
 openai>=2.0.1
+litellm>=1.40.0
+python-dotenv>=1.1.0
 pydantic>=2.0.0
 Pillow>=10.0.0
-pymysql>=1.1.0
-tiktoken>=0.5.0
-fastmcp>=2.12.0
-mcp>=1.16.0
+bcrypt==4.3.0
 
+# Database
+psycopg2-binary==2.9.10
+pymysql>=1.1.0
+mysql-connector-python>=9.0.0
+
+# Android tooling
+uiautomator2==3.4.0
+playwright>=1.40.0
+
+# Docker
+docker==7.0.0
+
+# AI / LLM
+openai>=2.0.1
+tiktoken>=0.5.0
+google-generativeai>=0.8.0
+langchain>=0.3.7
+langchain-core>=0.3.15
+langchain-openai>=0.3.26
+langgraph>=0.2.50
+
+# Web
+flask==3.0.0
+websocket-client>=1.9.0
+
+# Testing & dev tools
+jsonschema==4.21.1
+pre-commit==3.7.1
+pytest==8.3.2
+pytest-cov
+coverage
+
+# Static analysis
+semgrep>=1.95.0

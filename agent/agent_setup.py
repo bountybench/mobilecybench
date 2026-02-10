@@ -1,8 +1,9 @@
 import logging
 import os
 import shutil
+import subprocess
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import docker
 import docker.errors
@@ -13,6 +14,7 @@ from utils.git_utils import (
     git_setup_dev_branch,
     git_submodule_update,
     initialize_git_repository,
+    onerror,
     prepare_git_directory,
 )
 
@@ -27,6 +29,8 @@ class AgentEnvironment:
         image_name: str,
         env: Dict[str, str],
         commit_id: str,
+        mode: str = None,
+        vuln_id: Optional[str] = None,
     ):
         self.app_dir = app_dir
         self.app_name = app_dir.name
@@ -34,6 +38,8 @@ class AgentEnvironment:
         self.image_name = image_name
         self.env = env
         self.commit_id = commit_id
+        self.mode = mode
+        self.vuln_id = vuln_id
 
         import traceback
 
@@ -51,49 +57,7 @@ class AgentEnvironment:
         """Set up the agent kali environment container."""
         container_name = "kali-container"
 
-        print(f"Checking for image {self.image_name}...")
-        logger.info(f"Ensuring image {self.image_name} is available...")
-        try:
-            seen_statuses = set()
-            pulling_started = False
-
-            for line in self.client.api.pull(self.image_name, stream=True, decode=True):
-                if "status" in line:
-                    status = line["status"]
-                    layer_id = line.get("id", "")
-
-                    if status == "Pulling fs layer" and not pulling_started:
-                        print(
-                            "Image not cached locally, pulling from registry (this may take several minutes for large images)..."
-                        )
-                        pulling_started = True
-
-                    # only show meaningful status changes to avoid bloating output
-                    if status in [
-                        "Pulling fs layer",
-                        "Download complete",
-                        "Pull complete",
-                        "Already exists",
-                    ]:
-                        status_key = f"{layer_id}:{status}"
-                        if status_key not in seen_statuses:
-                            if layer_id:
-                                print(f"  {layer_id}: {status}")
-                            else:
-                                print(f"  {status}")
-                            seen_statuses.add(status_key)
-
-            print(f"Image {self.image_name} ready")
-            logger.info(f"Image {self.image_name} ready")
-        except docker.errors.APIError as e:
-            logger.error(f"Failed to pull image {self.image_name}: {e}")
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error pulling image: {e}")
-            raise
-
-        # Remove existing container with the same name if it exists
-        # TODO: long term fix is to append random id to container so it
+        # Remove existing container FIRST, before any setup work
         try:
             existing_container = self.client.containers.get(container_name)
             logger.info(f"Removing existing container: {container_name}")
@@ -102,102 +66,239 @@ class AgentEnvironment:
             # no need to raise if container doesn't exist
             pass
 
+        print(f"Checking for image {self.image_name}...")
+        logger.info(f"Ensuring image {self.image_name} is available...")
+
+        # First check if image exists locally
+        try:
+            self.client.images.get(self.image_name)
+            print(f"Image {self.image_name} found locally")
+            logger.info(f"Image {self.image_name} found locally, skipping pull")
+        except docker.errors.ImageNotFound:
+            # Image not found locally, try to pull it
+            logger.info(
+                f"Image {self.image_name} not found locally, pulling from registry..."
+            )
+            try:
+                seen_statuses = set()
+                pulling_started = False
+
+                for line in self.client.api.pull(
+                    self.image_name, stream=True, decode=True
+                ):
+                    if "status" in line:
+                        status = line["status"]
+                        layer_id = line.get("id", "")
+
+                        if status == "Pulling fs layer" and not pulling_started:
+                            print(
+                                "Image not cached locally, pulling from registry (this may take several minutes for large images)..."
+                            )
+                            pulling_started = True
+
+                        # only show meaningful status changes to avoid bloating output
+                        if status in [
+                            "Pulling fs layer",
+                            "Download complete",
+                            "Pull complete",
+                            "Already exists",
+                        ]:
+                            status_key = f"{layer_id}:{status}"
+                            if status_key not in seen_statuses:
+                                if layer_id:
+                                    print(f"  {layer_id}: {status}")
+                                else:
+                                    print(f"  {status}")
+                                seen_statuses.add(status_key)
+
+                print(f"Image {self.image_name} ready")
+                logger.info(f"Image {self.image_name} ready")
+            except docker.errors.APIError as e:
+                logger.error(f"Failed to pull image {self.image_name}: {e}")
+                raise
+            except Exception as e:
+                logger.error(f"Unexpected error pulling image: {e}")
+                raise
+
         environment = self.env
         extra_hosts = {"host.docker.internal": "host-gateway"}
         command = '/bin/bash -c "while true; do sleep 30; done"'
         network = self.docker_networks[0] if self.docker_networks else None
 
         # Setup agent codebase and get volume mapping
-        volumes = self._setup_agent_codebase()
+        volumes = None
+        try:
+            volumes = self._setup_agent_codebase()
 
-        self.container = self.client.containers.run(
-            image=self.image_name,
-            name=container_name,
-            command=command,
-            environment=environment,
-            extra_hosts=extra_hosts,
-            network=network,
-            volumes=volumes,
-            stdin_open=True,
-            tty=True,
-            detach=True,
-        )
+            # Setup verify_files for synthetic vulnerability mode
+            if self.vuln_id:
+                verify_volumes = self._setup_verify_files()
+                if verify_volumes:
+                    volumes.update(verify_volumes)
 
-        # Connect to additional networks if any
-        for additional_network in self.docker_networks[1:]:
-            network_obj = self.client.networks.get(additional_network)
-            network_obj.connect(self.container)
+            self.container = self.client.containers.run(
+                image=self.image_name,
+                name=container_name,
+                command=command,
+                environment=environment,
+                extra_hosts=extra_hosts,
+                network=network,
+                volumes=volumes,
+                stdin_open=True,
+                tty=True,
+                detach=True,
+            )
+
+            # Connect to additional networks if any
+            for additional_network in self.docker_networks[1:]:
+                network_obj = self.client.networks.get(additional_network)
+                network_obj.connect(self.container)
+
+            # Create exploit_files directory
+            logger.info("Creating exploit_files directory in container")
+            self.container.exec_run("mkdir -p /app/exploit_files")
+
+            if self.mode == "codex":
+                logger.info("Logging in to Codex CLI with API key...")
+                result = self.container.exec_run(
+                    "bash -c 'echo $CODEX_API_KEY | codex login --with-api-key'"
+                )
+                if result.exit_code == 0:
+                    logger.info("Codex CLI logged in successfully")
+                else:
+                    logger.error(f"Codex login failed: {result.output.decode()}")
+
+        except Exception as e:
+            logger.error(f"Setup failed: {e}")
+            # Remove container if it was created
+            if self.container:
+                try:
+                    self.container.remove(force=True)
+                    self.container = None
+                except Exception:
+                    pass
+            raise
 
     def _setup_agent_codebase(self):
-        """Create a copy of codebase, prune all branches / future commits, copy into agent env"""
+        """Create a copy of codebase for the agent environment.
+
+        Normal mode: Checkout specific commit, copy with git history.
+        Synthetic vulnerability mode: Copy current state (with patch applied),
+        no git history to prevent agent from seeing the patch was applied.
+        """
         original_codebase = self.app_dir / "codebase"
         agent_codebase = self.app_dir / "agent_codebase"
+        staging_dir = self.app_dir / "agent_codebase.staging"
 
-        # Check if agent_codebase exists and validate it
-        if agent_codebase.exists():
-            logger.info(f"Found existing agent_codebase at {agent_codebase}")
-            if not self._validate_agent_codebase(agent_codebase):
-                logger.warning("Validation failed, recreating agent_codebase")
-                shutil.rmtree(agent_codebase)
-            else:
-                logger.info("Validation passed, using existing agent_codebase")
-                return {str(agent_codebase): {"bind": "/app/codebase", "mode": "rw"}}
+        # Always clean up staging directory first to ensure fresh start
+        if staging_dir.exists():
+            logger.info(f"Removing existing staging directory at {staging_dir}")
+            shutil.rmtree(staging_dir, onerror=onerror)
 
         # Check if original_codebase is empty, if so use git_submodule_update
         if not original_codebase.exists() or not any(original_codebase.iterdir()):
             logger.info("Original codebase is empty, initializing submodule")
             git_submodule_update(self.app_dir)
 
-        # Find the repository root (which contains .git)
-        repo_root = original_codebase
-        while repo_root.parent != repo_root:
-            if (repo_root / ".git").exists():
-                break
-            repo_root = repo_root.parent
+        # Create staging directory
+        logger.info(f"Creating staging directory at {staging_dir}")
+        staging_dir.mkdir(parents=True, exist_ok=True)
 
-        # Remove git index lock files (cross-platform)
-        logger.info("Removing git index lock files")
-        git_dir = Path(repo_root) / ".git"
-        if git_dir.exists():
-            # Use Python's pathlib to find and remove index.lock files
-            for lock_file in git_dir.rglob("index.lock"):
-                try:
-                    lock_file.unlink()
-                    logger.debug(f"Removed lock file: {lock_file}")
-                except Exception as e:
-                    logger.warning(f"Failed to remove lock file {lock_file}: {e}")
+        if self.vuln_id:
+            # Synthetic vulnerability mode: copy current state without git history
+            logger.info(
+                "Synthetic vuln mode: Copying current codebase state without git history"
+            )
+            # Copy files but ignore .git to prevent agent from seeing patch history
+            self.copy_files(original_codebase, staging_dir, ignore_git=True)
 
-        # Checkout to commit_id in original_codebase
-        logger.info(f"Checking out commit {self.commit_id} in {original_codebase}")
-        git_checkout(original_codebase, self.commit_id, force=True)
+            # Initialize fresh git repo so agent can still use git commands
+            logger.info("Initializing fresh git repository in staging directory")
+            initialize_git_repository(staging_dir)
 
-        # Create agent_codebase directory
-        logger.info(f"Creating agent_codebase directory at {agent_codebase}")
-        agent_codebase.mkdir(parents=True, exist_ok=True)
+            # Create initial commit with all files
+            subprocess.run(
+                ["git", "add", "-A"],
+                cwd=staging_dir,
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "commit", "-m", "Initial commit"],
+                cwd=staging_dir,
+                check=True,
+                capture_output=True,
+            )
+            # Create dev branch from this commit
+            subprocess.run(
+                ["git", "checkout", "-b", "dev"],
+                cwd=staging_dir,
+                check=True,
+                capture_output=True,
+            )
+            logger.info("Created fresh git repo with 'main' and 'dev' branches")
+        else:
+            # Normal mode: checkout specific commit and preserve git history
+            # Find the repository root (which contains .git)
+            repo_root = original_codebase
+            while repo_root.parent != repo_root:
+                if (repo_root / ".git").exists():
+                    break
+                repo_root = repo_root.parent
 
-        # Copy original_codebase to agent_codebase with ignore_git=False
-        logger.info(f"Copying {original_codebase} to {agent_codebase}")
-        self.copy_files(original_codebase, agent_codebase, ignore_git=False)
+            # Remove git index lock files (cross-platform)
+            logger.info("Removing git index lock files")
+            git_dir = Path(repo_root) / ".git"
+            if git_dir.exists():
+                # Use Python's pathlib to find and remove index.lock files
+                for lock_file in git_dir.rglob("index.lock"):
+                    try:
+                        lock_file.unlink()
+                        logger.debug(f"Removed lock file: {lock_file}")
+                    except Exception as e:
+                        logger.warning(f"Failed to remove lock file {lock_file}: {e}")
 
-        # Run git_setup_dev_branch
-        logger.info("Setting up dev branch in agent_codebase")
-        git_setup_dev_branch(agent_codebase)
+            # Checkout to commit_id in original_codebase
+            logger.info(f"Checking out commit {self.commit_id} in {original_codebase}")
+            git_checkout(original_codebase, self.commit_id, force=True)
 
-        logger.info(f"Agent codebase setup complete at {agent_codebase}")
+            # Copy original_codebase to staging directory with git history
+            logger.info(f"Copying {original_codebase} to {staging_dir}")
+            self.copy_files(original_codebase, staging_dir, ignore_git=False)
+
+            # Run git_setup_dev_branch in staging directory
+            logger.info("Setting up dev branch in staging directory")
+            git_setup_dev_branch(staging_dir)
+
+        # Clean up any existing agent_codebase directory
+        if agent_codebase.exists():
+            logger.info(f"Removing existing agent_codebase at {agent_codebase}")
+            shutil.rmtree(agent_codebase, onerror=onerror)
+
+        # Move staging directory to agent_codebase
+        logger.info(f"Moving staging directory to {agent_codebase}")
+        shutil.move(str(staging_dir), str(agent_codebase))
+        logger.info("✓ Agent codebase ready for mounting")
 
         # Return volume mapping for bind mount
         return {str(agent_codebase): {"bind": "/app/codebase", "mode": "rw"}}
 
-    def _validate_agent_codebase(self, agent_codebase: Path) -> bool:
-        """Validate that agent_codebase is properly set up.
+    def _setup_verify_files(self):
+        """Mount verify_files for the synthetic vulnerability."""
+        verify_files_src = (
+            self.app_dir / "synthetic_vulnerabilities" / self.vuln_id / "verify_files"
+        )
+        if not verify_files_src.is_dir():
+            logger.warning(f"No verify_files directory found at {verify_files_src}")
+            return None
 
-        This function will be implemented later to check:
-        - Branches are properly set up
-        - Future commits are not reachable
-        - Commit id matches
-        """
-        # TODO: Implement validation
-        return True
+        logger.info(f"Mounting verify_files at /app/verify_files/{self.vuln_id}")
+        return {
+            str(verify_files_src): {
+                "bind": f"/app/verify_files/{self.vuln_id}",
+                "mode": "ro",
+            }
+        }
 
     def copy_files(
         self,
@@ -359,3 +460,168 @@ class AgentEnvironment:
             f.write(
                 "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n"
             )
+
+    def save_agent_codebase_state(self) -> str:
+        """Save the current state of agent_codebase by capturing git diff.
+
+        This captures:
+        - Modified files (tracked changes)
+        - New files (untracked files)
+        - Deleted files
+
+        Returns:
+            The git diff output as a string, or empty string if no changes.
+        """
+        agent_codebase = self.app_dir / "agent_codebase"
+
+        if not agent_codebase.exists():
+            logger.warning("agent_codebase does not exist, nothing to save")
+            return ""
+
+        try:
+            # Add all changes to staging area (including untracked files)
+            # Exclude static analysis inputs provided externally
+            result = subprocess.run(
+                [
+                    "git",
+                    "add",
+                    "-A",
+                    "--",
+                    ".",
+                    ":!semgrep_results.json",
+                    ":!static_vuln_reports/**",
+                    ":!static_vuln_reports",
+                ],
+                cwd=agent_codebase,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            logger.info(
+                "Added all changes to staging area in agent_codebase (excluding external static analysis inputs)"
+            )
+
+            # Get the diff between HEAD and staged changes
+            # This will now include all tracked modifications AND new files
+            result = subprocess.run(
+                ["git", "diff", "--cached"],
+                cwd=agent_codebase,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            diff_output = result.stdout
+            if diff_output:
+                logger.info(
+                    f"Captured git diff from agent_codebase ({len(diff_output)} chars)"
+                )
+            else:
+                logger.info("No changes detected in agent_codebase")
+
+            return diff_output
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to save agent_codebase state: {e}")
+            logger.error(f"stderr: {e.stderr}")
+            return ""
+        except Exception as e:
+            logger.error(f"Unexpected error saving agent_codebase state: {e}")
+            return ""
+
+    def delete_agent_codebase(self):
+        agent_codebase = self.app_dir / "agent_codebase"
+
+        if not agent_codebase.exists():
+            logger.info("agent_codebase does not exist, nothing to reset")
+            return
+
+        try:
+            # Simple approach: delete the entire directory
+            logger.info(f"Deleting agent_codebase directory at {agent_codebase}")
+            shutil.rmtree(agent_codebase, onerror=onerror)
+            logger.info("Successfully deleted agent_codebase directory")
+
+        except Exception as e:
+            logger.error(f"Failed to reset agent_codebase: {e}")
+            raise
+
+    def cleanup(self):
+        """Clean up the agent environment (stop and remove container)."""
+        if self.container:
+            try:
+                logger.info(f"Stopping container: {self.container.name}")
+                self.container.stop(timeout=10)
+                self.container.remove(force=True)
+                logger.info("Container stopped and removed")
+            except Exception as e:
+                logger.warning(f"Error cleaning up container: {e}")
+        self.container = None
+
+
+def create_docker_network(network_name: str = "shared_net") -> None:
+    """Create a Docker network if it doesn't exist."""
+    client = docker.from_env()
+
+    try:
+        client.networks.get(network_name)
+        logger.info(f"Docker network '{network_name}' already exists")
+    except docker.errors.NotFound:
+        client.networks.create(network_name, driver="bridge")
+        logger.info(f"Created Docker network '{network_name}'")
+
+
+def setup_agent_environment(
+    app_dir: Path,
+    agent_image: str,
+    metadata: dict,
+    workflow: str = "discovery",  # "discovery" or "exploit"
+    vuln_id: Optional[str] = None,
+) -> AgentEnvironment:
+    """
+    Set up the agent environment container.
+
+    Args:
+        app_dir: Application directory
+        agent_image: Docker image to use for agent
+        metadata: App metadata dict
+        workflow: Evaluation workflow type ("discovery" or "exploit")
+
+    Returns:
+        AgentEnvironment instance
+    """
+    # Create docker network
+    create_docker_network()
+
+    # Clear SSRF requests (only for discovery mode)
+    if workflow == "discovery":
+        try:
+            from utils.ssrf_utils import clear_ssrf_requests
+
+            logger.info("Clearing previous SSRF requests...")
+            clear_ssrf_requests()
+            logger.info("SSRF requests cleared")
+        except Exception as e:
+            logger.warning(f"Failed to clear SSRF requests: {e}")
+
+    # Prepare environment variables
+    env_vars = {
+        "ANDROID_ADB_SERVER_PORT": "5037",
+        "ADB_SERVER_SOCKET": "tcp:host.docker.internal:5037",
+    }
+
+    # Get commit ID from metadata or use default
+    commit_id = metadata.get("commit_id", "HEAD")
+
+    agent_env = AgentEnvironment(
+        app_dir=app_dir,
+        docker_networks=["shared_net"],
+        image_name=agent_image,
+        env=env_vars,
+        commit_id=commit_id,
+        vuln_id=vuln_id if workflow == "exploit" else None,
+    )
+
+    agent_env.setup()
+
+    return agent_env

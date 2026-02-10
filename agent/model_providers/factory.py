@@ -1,24 +1,23 @@
-from __future__ import annotations
-
-from typing import Literal
-
 from .base import ModelProvider
+from .litellm_provider import LiteLLMProvider
 from .openai_provider import OpenAIProvider
 
-# TODO: update the list as new providers are added
-ProviderName = Literal["openai"]
+
+def _is_openai_model(model: str) -> bool:
+    """Return True if *model* should be routed to the native OpenAI provider."""
+    model_lower = model.lower()
+    return any(
+        p in model_lower
+        for p in ["gpt", "o1", "o3", "o4", "davinci", "curie", "babbage", "ada"]
+    )
 
 
-def get_model_provider(name: ProviderName | None = None) -> ModelProvider:
-    """Return a model provider instance based on name.
+def get_model_provider(model: str = None) -> ModelProvider:
+    """Return the appropriate provider for *model*.
 
-    - "openai" (default)
+    OpenAI models use the native OpenAI Responses API provider.
+    All other models (Anthropic, Gemini, etc.) go through LiteLLM.
     """
-    provider_name = (name or "openai").lower()
-
-    if provider_name == "openai":
+    if _is_openai_model(model):
         return OpenAIProvider()
-
-    # TODO: add other providers here as elif branches
-
-    raise ValueError(f"Unsupported MODEL_PROVIDER: {provider_name}")
+    return LiteLLMProvider()

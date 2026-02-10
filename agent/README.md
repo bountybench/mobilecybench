@@ -1,36 +1,21 @@
 # MobileCybench AI Agent
 
 ## Table of Contents
-1. [Quick Health Check](#quick-health-check)
-2. [Overview](#overview)
-3. [Directory Structure](#directory-structure)
-4. [Utils Dependencies](#utils-dependencies)
-5. [Prerequisites](#prerequisites)
-6. [Agent Environment Setup](#agent-environment-setup)
-7. [Testing the Agent](#testing-the-agent)
-8. [Running the Agent](#running-the-agent)
-9. [Troubleshooting](#troubleshooting)
-
-## Quick Health Check
-
-Verify the MCP server is responding:
-
-```bash
-docker exec mcp-server curl http://localhost:4040/api/tunnels
-```
-
-**Note**: This command will only work after the agent containers are running and ngrok is properly configured (see [Agent Environment Setup](#agent-environment-setup) below). If you haven't set up the environment yet, you'll get connection errors - this is expected.
-
-This should return JSON with tunnel information including the public ngrok URL. If it doesn't work after ngrok setup, look through the following instructions to ensure your setup is correct. 
+1. [Overview](#overview)
+2. [Directory Structure](#directory-structure)
+3. [Utils Dependencies](#utils-dependencies)
+4. [Prerequisites](#prerequisites)
+5. [Agent Environment Setup](#agent-environment-setup)
+6. [Testing the Agent](#testing-the-agent)
+7. [Running the Agent](#running-the-agent)
+8. [Troubleshooting](#troubleshooting)
 
 ## Overview
 
 The MobileCybench AI Agent enables an LM agent to perform security testing of Android applications. It consists of multiple Docker containers that work together to provide:
 
-- **MCP Server**: Model Context Protocol server for tool execution
 - **Kali Container**: Security testing environment with penetration testing tools
-- **Ngrok Tunnel**: Secure external connectivity for AI agent communication
-- **Custom Agent**: AI agent that interacts with Android apps and security tools
+- **Custom Agent**: AI agent that interacts with Android apps and security tools (executes tools locally via `ToolRuntime`)
 - **Time Tracking**: Comprehensive timing and performance monitoring
 - **Model Providers**: Flexible AI model provider architecture
 - **Token Tracking**: Cost and usage monitoring for AI API calls 
@@ -40,30 +25,23 @@ The MobileCybench AI Agent enables an LM agent to perform security testing of An
 ```
 agent/
 ├── README.md                    
-├── docker-compose.yml           # Orchestrates MCP server and Kali containers
+├── docker-compose.yml           # Orchestrates Kali containers
 ├── custom_agent.py              # Main AI agent implementation
 ├── agent_setup.py               # Agent environment setup and configuration
 ├── kali/                        # Kali Linux container configuration
 │   ├── Dockerfile              # Kali container build instructions
 │   └── Dockerfile.kali         # Alternative Kali container setup
-├── mcp/                        
-│   ├── mcp_server.py           # MCP server implementation
-│   ├── direct_tool_executor.py # Tool execution interface
-│   ├── ui_connection.py        # UI connection handling
-│   ├── docker_setup.py         # Docker setup utilities
-│   ├── Dockerfile              # MCP container build instructions
-│   ├── ngrok.yml               # Ngrok tunnel configuration (created from template)
-│   ├── ngrok.yml.template      # Template for ngrok configuration
-│   ├── example_commands.txt    # Example commands for testing
-│   └── screenshots/            # Screenshot storage directory
+├── tools/                      
+│   ├── runtime.py              # Local ToolRuntime implementation
 ├── model_providers/            # AI model provider implementations
 │   ├── __init__.py
 │   ├── base.py                 # Base provider interface
 │   ├── factory.py              # Provider factory pattern
-│   └── openai_provider.py      # OpenAI API provider
-└── prompts/                    # AI agent prompt templates
-    ├── __init__.py
-    └── prompts.py              # Prompt definitions and templates
+│   ├── openai_provider.py      # OpenAI API provider
+│   └── gemini_provider.py      # Google Gemini provider
+├── prompts/                    # AI agent prompt templates
+│   ├── __init__.py
+│   └── prompts.py              # Prompt definitions and templates
 ```
 
 ## Utils Dependencies
@@ -85,10 +63,7 @@ The agent system relies on several utility modules for core functionality:
   - Screenshot capture functionality
   - UI interaction helpers
 
-- **`utils.mcp_utils`**: MCP server utilities
-  - Server health checking
-  - Ngrok URL discovery
-  - MCP configuration management
+- **`utils.runtime_tools`**: Runtime tool definitions
 
 - **`utils.logger`**: Centralized logging system
   - Structured logging for agent operations
@@ -106,44 +81,13 @@ Before setting up the agent environment, ensure you have:
 - **Docker Desktop** installed and running
 - **Python 3.11+** with virtual environment support
 - **OpenAI API Key** for AI agent functionality (Reach out to Thomas or Nardos if you need one)
-- **Ngrok Account** and auth token
 - **Android SDK** and emulator setup (handled by main project)
+
+**Note:** The heavy static-analysis dependencies (Semgrep, MobSFScan, QARK) are commented out in `requirements.txt` to keep CI lean. Uncomment them locally before running the scan scripts above.
 
 ## Agent Environment Setup
 
-### 1. Ngrok Configuration
-
-**Important**: The `ngrok.yml` file is not tracked by git (for security reasons) and must be created from the template. **This step is required before the Quick Health Check will work.**
-
-1. **Get your ngrok token:**
-   - Go to [https://ngrok.com](https://ngrok.com) and sign up
-   - Get your auth token from the dashboard
-
-2. **Create the ngrok configuration file from template:**
-   ```bash
-   # Copy the template to create your ngrok.yml file
-   cp agent/mcp/ngrok.yml.template agent/mcp/ngrok.yml
-   ```
-
-3. **Edit the file and add your actual token:**
-   ```bash
-   # Replace YOUR_NGROK_AUTHTOKEN_HERE with your actual token
-   nano agent/mcp/ngrok.yml
-   # or
-   code agent/mcp/ngrok.yml
-   ```
-
-   The file should look like:
-   ```yaml
-   version: 2
-   authtoken: {YOUR_AUTH_TOKEN_HERE}
-   tunnels:
-     web:
-       proto: http
-       addr: 8000
-   ```
-
-### 2. Python Environment Setup
+### 1. Python Environment Setup
 
 Make sure you're on Python 3.12 or lower for dependency compatibility.
 
@@ -157,7 +101,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 3. API Key Configuration
+### 2. API Key Configuration
 
 Create the environment file for your OpenAI API key:
 
@@ -171,7 +115,7 @@ Or set it as an environment variable:
 export OPENAI_API_KEY="sk-your-actual-openai-api-key-here"
 ```
 
-### 4. Start Agent Containers
+### 3. Start Agent Containers
 
 Start the agent Docker containers:
 
@@ -182,10 +126,9 @@ docker-compose up --build -d
 ```
 
 This will start:
-- **mcp-server**: MCP server with ngrok tunnel
-- **kali-container**: Kali Linux environment with security tools
+- **kali-container**: Kali Linux environment for security tools
 
-### 5. Verify Container Status
+### 4. Verify Container Status
 
 Check that all containers are running:
 
@@ -194,40 +137,26 @@ docker ps
 ```
 
 You should see:
-- `mcp-server` (port 8000)
 - `kali-container`
 - `mobilecybench-backend` (from main project)
 
 ## Testing the Agent
 
-### 1. Basic Agent Test
+### 1. Interactive Shell (Dry Run)
 
-Test the AI agent interaction:
+You can run the agent in an interactive shell mode (dry run) to manually test tools without invoking the LLM:
 
 ```bash
 # From the project root directory
 source .venv/bin/activate
-python test_ai_interaction.py
+python runner.py apps/<app_name> --dry-run
 ```
 
-Expected output:
-```
-quit to quit, Give a command to the agent... 
-```
+This will launch a shell where you can execute commands like `ls`, `whoami`, etc., which are run inside the Kali container.
 
-### 2. Using Example Commands
+### 2. Basic Tool Test
 
-The `mcp/example_commands.txt` file contains sample commands you can use to test the agent. Try these commands:
-
-**Android Device Commands:**
-- `adb devices` - List connected Android devices
-- `adb shell getprop ro.build.version.release` - Get Android version
-- `adb shell pm list packages | head -5` - List first 5 installed packages
-
-**Kali Container Commands:**
-- `execute_command,whoami` - Check current user in Kali container
-- `execute_command,pwd` - Show current directory in Kali container
-- `execute_command,ls -la /tmp` - List files in /tmp directory
+You can write a simple script to import `ToolRuntime` and execute commands programmatically to verify the local execution environment working correctly.
 
 ## Running the Agent
 
@@ -236,6 +165,10 @@ The `mcp/example_commands.txt` file contains sample commands you can use to test
 For complete automated testing with the runner:
 
 ```bash
+# Start the Kali container from Step 3.
+cd agent/
+docker-compose up --build -d
+cd ../
 # From the project root directory
 source .venv/bin/activate
 python runner.py apps/<app_name>
@@ -249,13 +182,21 @@ python runner.py apps/conversations
 ```
 
 This runs the complete pipeline:
-1. Sets up Android emulator
-2. Builds and installs the target app
-3. Runs initial security checks
-4. Starts the AI agent with time tracking
-5. Executes AI-driven security testing
-6. Runs final security validation
-7. Generates timing reports and performance statistics
+1. Initializes **kali-container**, the Kali Linux environment with security tools
+2. Sets up Android emulator
+3. Builds and installs the target app
+4. Runs initial security checks (pre-agent-run probes)
+5. Starts the AI agent with time tracking
+6. Executes AI-driven security testing
+7. Runs post-agent security validation (post-agent-run probes)
+8. Checks for agent-generated exploit script (`/app/exploit_files/exploit.sh`)
+9. If exploit found, restarts environment and executes exploit:
+   - Runs `cleanup.sh` to reset the environment
+   - Rebuilds and reinstalls the app
+   - Runs pre-exploit probes
+   - Executes the agent-generated exploit script
+   - Runs post-exploit probes
+10. Generates timing reports and performance statistics
 
 ### Time Tracking and Performance Monitoring
 
@@ -268,6 +209,30 @@ The agent now includes comprehensive timing and performance monitoring:
 - **Cost Tracking**: Token usage and API costs per model
 
 Timing data is automatically logged and saved for analysis and CI integration.
+
+### Agent Exploit Execution Workflow
+
+After the agent completes its security testing, the runner automatically checks for any exploit scripts generated by the agent. If an exploit script is found at `/app/exploit_files/exploit.sh` in the kali container, the following workflow is executed:
+
+1. **Exploit Detection**: The runner checks if the agent created an exploit script
+2. **Environment Reset**: 
+   - Runs `cleanup.sh` to clean up Docker containers and reset the environment
+   - Starts a fresh emulator instance
+   - Rebuilds and reinstalls the app
+3. **Pre-Exploit Baseline**: Runs security probes to establish a baseline state
+4. **Exploit Execution**: 
+   - Reads the exploit script contents
+   - Executes the exploit script in the kali container
+   - Captures all output (stdout, stderr, exit code) to a timestamped log file (`exploit_log_YYYYMMDD_HHMMSS.log`)
+5. **Post-Exploit Validation**: Runs security probes again to detect any violations caused by the exploit
+
+**Probe Results Tracking**: The runner tracks probe results at four key stages:
+- `pre_agent_run`: Baseline before agent execution
+- `post_agent_run`: After agent completes testing
+- `pre_agent_exploit`: Baseline before exploit execution
+- `post_agent_exploit`: After exploit execution
+
+All probe results are stored in `runner.probe_results` dictionary and can be used for analysis and reporting.
 
 ## Troubleshooting
 
@@ -288,12 +253,10 @@ Timing data is automatically logged and saved for analysis and CI integration.
 - Verify that token usage is being recorded from API responses
 - Ensure the model name matches the pricing configuration
 
-**MCP Server Connection Issues:**
+**Container Connection Issues:**
 - Verify Docker containers are running: `docker ps`
-- Check MCP server logs: `docker logs mcp-server`
-- Ensure ngrok tunnel is active: `docker exec mcp-server curl http://localhost:4040/api/tunnels`
+- Check Kali container logs: `docker logs kali-container`
 - **If container not found**: Run `docker-compose up --build -d` from the agent directory
-- **If ngrok command fails**: Make sure you've completed the [Ngrok Configuration](#1-ngrok-configuration) step and created `ngrok.yml` from the template
 
 **Agent Performance Issues:**
 - Check timing logs for slow LLM calls

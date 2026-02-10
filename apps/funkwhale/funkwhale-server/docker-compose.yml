@@ -1,0 +1,151 @@
+services:
+  postgres:
+    container_name: postgres
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - "POSTGRES_HOST_AUTH_METHOD=trust"
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U funkwhale"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - private_net
+
+  redis:
+    container_name: redis
+    restart: unless-stopped
+    env_file: .env
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - private_net
+
+  celeryworker:
+    restart: unless-stopped
+    image: funkwhale/api:${FUNKWHALE_VERSION:-latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    command:
+      - celery
+      - --app=funkwhale_api.taskapp
+      - worker
+      - --loglevel=INFO
+      - --concurrency=${CELERYD_CONCURRENCY-0}
+    environment:
+      - C_FORCE_ROOT=true
+    volumes:
+      - music_data:${MUSIC_DIRECTORY_PATH-/music}:ro
+      - media_data:${MEDIA_ROOT}
+    networks:
+      - private_net
+
+  celerybeat:
+    restart: unless-stopped
+    image: funkwhale/api:${FUNKWHALE_VERSION:-latest}
+    command:
+      - celery
+      - --app=funkwhale_api.taskapp
+      - beat
+      - --loglevel=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    networks:
+      - private_net
+
+  api:
+    container_name: api
+    restart: unless-stopped
+    image: funkwhale/api:${FUNKWHALE_VERSION:-latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    volumes:
+      - music_data:${MUSIC_DIRECTORY_PATH-/music}:ro
+      - media_data:${MEDIA_ROOT}
+      - static_data:${STATIC_ROOT}
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import socket; s=socket.socket(); s.settimeout(3); s.connect((\"127.0.0.1\", 5000)); s.close()'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - shared_net
+      - private_net
+
+  front:
+    container_name: front
+    restart: unless-stopped
+    image: funkwhale/front:${FUNKWHALE_VERSION:-latest}
+    depends_on:
+      api:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - "NGINX_MAX_BODY_SIZE=${NGINX_MAX_BODY_SIZE-100M}"
+    volumes:
+      - music_data:${MUSIC_DIRECTORY_PATH-/music}:ro
+      - media_data:${MEDIA_ROOT}:ro
+      - static_data:/usr/share/nginx/html/staticfiles:ro
+      - "./nginx.conf:/etc/nginx/templates/default.conf.template"
+      - "./ssl:/etc/nginx/ssl:ro"
+    ports:
+      - "443:443"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider --no-check-certificate https://localhost/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - shared_net
+      - private_net
+
+  typesense:
+    restart: unless-stopped
+    env_file:
+      - .env
+    image: typesense/typesense:0.24.0
+    volumes:
+      - typesense_data:/data
+    command: --data-dir /data --enable-cors
+    profiles:
+      - typesense
+    networks:
+      - private_net
+
+volumes:
+  postgres_data:
+  redis_data:
+  music_data:
+  media_data:
+  static_data:
+  typesense_data:
+
+networks:
+  shared_net:
+    external: true
+  private_net:

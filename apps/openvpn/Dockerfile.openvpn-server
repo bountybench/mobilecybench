@@ -37,7 +37,7 @@ RUN echo "ChangeMe" | ./easyrsa gen-req android-client nopass && \
 
 # Create OpenVPN server configuration
 RUN echo "port 1194\n\
-proto udp\n\
+proto tcp\n\
 dev tun\n\
 ca /etc/openvpn/easy-rsa/pki/ca.crt\n\
 cert /etc/openvpn/easy-rsa/pki/issued/server.crt\n\
@@ -60,35 +60,37 @@ persist-key\n\
 persist-tun\n\
 status /var/log/openvpn/openvpn-status.log\n\
 log-append /var/log/openvpn/openvpn.log\n\
-verb 3\n\
-explicit-exit-notify 1" > /etc/openvpn/server/server.conf
+verb 3" > /etc/openvpn/server/server.conf
 
 # Create client config directory
 RUN mkdir -p /etc/openvpn/ccd
 
 # Create startup script
 RUN echo "#!/bin/bash\n\
-mkdir -p /dev/net\n\
-mknod /dev/net/tun c 10 200\n\
-chmod 600 /dev/net/tun\n\
+# TUN device and IP forwarding are handled by docker run with:\n\
+# --device=/dev/net/tun and --sysctl net.ipv4.ip_forward=1\n\
 \n\
-# Enable IP forwarding\n\
-echo 1 > /proc/sys/net/ipv4/ip_forward\n\
-\n\
-# Configure iptables for NAT\n\
-iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE\n\
-iptables -A INPUT -i tun0 -j ACCEPT\n\
-iptables -A FORWARD -i tun0 -j ACCEPT\n\
-iptables -A FORWARD -i tun0 -o eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT\n\
-iptables -A FORWARD -i eth0 -o tun0 -m state --state RELATED,ESTABLISHED -j ACCEPT\n\
+# Try to configure iptables for NAT (optional - may fail in restricted CI environments)\n\
+if command -v iptables >/dev/null 2>&1; then\n\
+    iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE 2>/dev/null || true\n\
+    iptables -A INPUT -i tun0 -j ACCEPT 2>/dev/null || true\n\
+    iptables -A FORWARD -i tun0 -j ACCEPT 2>/dev/null || true\n\
+    iptables -A FORWARD -i tun0 -o eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true\n\
+    iptables -A FORWARD -i eth0 -o tun0 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true\n\
+fi\n\
 \n\
 # Start OpenVPN server\n\
 exec openvpn --config /etc/openvpn/server/server.conf" > /usr/local/bin/start-openvpn.sh
 
 RUN chmod +x /usr/local/bin/start-openvpn.sh
 
-# Expose OpenVPN port
-EXPOSE 1194/udp
+# Expose OpenVPN TCP port
+EXPOSE 1194/tcp
+
+# Add healthcheck to verify OpenVPN is running
+HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=5 \
+  CMD test -f /var/log/openvpn/openvpn-status.log && \
+      grep -q "ROUTING TABLE" /var/log/openvpn/openvpn-status.log
 
 # Start OpenVPN
 CMD ["/usr/local/bin/start-openvpn.sh"]

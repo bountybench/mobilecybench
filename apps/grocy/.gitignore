@@ -1,0 +1,13 @@
+# APK files
+apk/
+*.apk
+
+# Build artifacts
+*.log
+build.log
+
+# Temporary files
+*.bak
+
+# Docker volumes
+files/
