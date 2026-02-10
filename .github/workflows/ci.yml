@@ -153,6 +153,7 @@ jobs:
             synth_changes=$(git diff --name-only origin/main...HEAD \
               | grep "^${dir}/synthetic_vulnerabilities/" || true)
 
+            # If PR touches synthetic_vulnerabilities/ for this app, add synthetic vuln jobs
             if [ -n "$synth_changes" ]; then
               echo "  Detected synthetic vulnerability changes for $app_name"
 
@@ -168,7 +169,7 @@ jobs:
 
                 # Validate required files exist
                 missing_files=false
-                for req_file in "vulnerability.patch" "exploit_files/exploit.sh" "verify_files/verify_exploit.sh"; do
+                for req_file in "vulnerability.patch" "exploit_files/exploit.sh" "verify_files/verify_exploit.sh" "metadata.json"; do
                   if [ ! -f "${vuln_dir}/${req_file}" ]; then
                     echo "  WARNING: Missing ${vuln_dir}/${req_file} — skipping $vuln_id"
                     missing_files=true
@@ -189,31 +190,31 @@ jobs:
 
                 echo "  Added synthetic_vuln jobs for $vuln_id"
               done
-            else
-              # No synthetic vuln changes — use existing test logic
-              # Build APK jobs for this app
-              for mode in "${setup_modes[@]}"; do
-                apk_jobs=$(echo "$apk_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
-                  --arg java "$java" --arg mode "$mode" \
-                  '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode}]')
-              done
-
-              # Build test jobs for this app
-              if [ "$has_probes" = true ]; then
-                test_types=("baseline" "vuln_scenario_0")
-                [ "$has_server" = true ] && test_types+=("vuln_scenario_1")
-              else
-                test_types=("simple")
-              fi
-
-              for mode in "${setup_modes[@]}"; do
-                for test_type in "${test_types[@]}"; do
-                  test_jobs=$(echo "$test_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
-                    --arg sdk "$sdk" --arg image "$system_image" --arg mode "$mode" --arg type "$test_type" \
-                    '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type}]')
-                done
-              done
             fi
+
+            # Always add regular CI jobs (APK build + standard tests)
+            # Build APK jobs for this app
+            for mode in "${setup_modes[@]}"; do
+              apk_jobs=$(echo "$apk_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
+                --arg java "$java" --arg mode "$mode" \
+                '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode}]')
+            done
+
+            # Build test jobs for this app
+            if [ "$has_probes" = true ]; then
+              test_types=("baseline" "vuln_scenario_0")
+              [ "$has_server" = true ] && test_types+=("vuln_scenario_1")
+            else
+              test_types=("simple")
+            fi
+
+            for mode in "${setup_modes[@]}"; do
+              for test_type in "${test_types[@]}"; do
+                test_jobs=$(echo "$test_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
+                  --arg sdk "$sdk" --arg image "$system_image" --arg mode "$mode" --arg type "$test_type" \
+                  '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type}]')
+              done
+            done
           done <<< "${{ steps.modified-dirs.outputs.modified_dirs }}"
 
           echo "APK jobs: $apk_jobs"
@@ -1038,7 +1039,7 @@ jobs:
           verify_script="$(pwd)/${vuln_dir}/verify_files/verify_exploit.sh"
 
           # Validate required files
-          for req_file in "${vuln_dir}/exploit_files/exploit.sh" "${vuln_dir}/verify_files/verify_exploit.sh"; do
+          for req_file in "${vuln_dir}/exploit_files/exploit.sh" "${vuln_dir}/verify_files/verify_exploit.sh" "${vuln_dir}/metadata.json"; do
             if [ ! -f "$req_file" ]; then
               echo "ERROR: Required file not found: $req_file"
               exit 1
@@ -1294,7 +1295,7 @@ jobs:
             required_files=("start_runtime.sh" "cleanup.sh")
             # Also check synthetic vuln specific files
             vuln_dir="synthetic_vulnerabilities/${{ matrix.vuln_id }}"
-            for req_file in "exploit_files/exploit.sh" "verify_files/verify_exploit.sh"; do
+            for req_file in "exploit_files/exploit.sh" "verify_files/verify_exploit.sh" "metadata.json"; do
               if [[ ! -f "${vuln_dir}/${req_file}" ]]; then
                 echo "ERROR: Required synthetic vuln file '${vuln_dir}/${req_file}' not found."
                 exit 1
