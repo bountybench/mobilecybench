@@ -68,7 +68,7 @@ class DiscoveryWorkflow(Workflow):
 
     def setup_runtime_environment(self) -> None:
         """Set up emulator, APK, backend containers, and agent environment."""
-        from agent.agent_setup import setup_agent_environment
+        from agent.agent_container import setup_agent_environment
         from utils.apk_utils import setup_apk
         from utils.emulator_manager import EmulatorManager
         from utils.setup_utils import install_app_and_setup_backend

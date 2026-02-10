@@ -1,6 +1,6 @@
-"""Tests for agent_setup module."""
+"""Tests for agent_container module."""
 
-from agent.agent_setup import AgentEnvironment
+from agent.agent_container import AgentEnvironment
 
 
 class TestAgentEnvironmentVerifyFiles:

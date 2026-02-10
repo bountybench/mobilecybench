@@ -303,7 +303,7 @@ class TestDiscoveryWorkflowFlagGeneration:
         ), patch(
             "utils.setup_utils.install_app_and_setup_backend"
         ), patch(
-            "agent.agent_setup.setup_agent_environment"
+            "agent.agent_container.setup_agent_environment"
         ):
             workflow.setup_runtime_environment()
 
@@ -333,7 +333,7 @@ class TestDiscoveryWorkflowFlagGeneration:
         ), patch(
             "utils.setup_utils.install_app_and_setup_backend"
         ), patch(
-            "agent.agent_setup.setup_agent_environment"
+            "agent.agent_container.setup_agent_environment"
         ):
             workflow.setup_runtime_environment()
 
