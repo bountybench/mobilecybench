@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
-from utils.logger import logger
+from utils.logger import logger, logger_manager
 from utils.token_costs import (
     ModelPricing,
     compute_cost_usd,
@@ -162,11 +162,21 @@ class TokenTracker:
             - pricing_path: optional path to a JSON file with model pricing data.
                 * If None, uses default location from token_costs module.
             - jsonl_path: Optional path to a JSONL file to append detailed usage records.
-                * If None, defaults to "token_usage.jsonl" in the current directory.
+                * If None, defaults to "token_usage.jsonl" in the experiment log directory.
                 * If set to an empty string, no file will be written.
         """
         self._pricing_map = load_pricing(pricing_path)
-        self._jsonl_path = jsonl_path if jsonl_path else "token_usage.jsonl"
+        self._jsonl_compat_path = ""
+        if jsonl_path:
+            self._jsonl_path = jsonl_path
+        elif jsonl_path == "":
+            self._jsonl_path = ""
+        else:
+            self._jsonl_path = str(
+                logger_manager.get_logs_dir() / "token_usage.jsonl"
+            )
+            # Compatibility: keep a copy in the current working directory
+            self._jsonl_compat_path = "token_usage.jsonl"
 
         self.total_input_tokens = 0
         self.total_output_tokens = 0
@@ -245,6 +255,9 @@ class TokenTracker:
                 line = json.dumps(asdict(record), ensure_ascii=False)
                 with open(self._jsonl_path, "a", encoding="utf-8") as f:
                     f.write(line + "\n")
+                if self._jsonl_compat_path:
+                    with open(self._jsonl_compat_path, "a", encoding="utf-8") as f:
+                        f.write(line + "\n")
             except Exception as e:
                 logger.warning("Failed to append token usage JSONL: %s", e)
         return record
