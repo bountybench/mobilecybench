@@ -1,13 +1,16 @@
 {
-    "gh_link": "https://github.com/cy-suite/MoeMemosAndroid",
-    "commit_version": "10f54f4",
-    "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-moememos-v0/moememos.apk",
-    "sdk": "34",
-    "java": "17",
-    "emulator_server": "http://10.0.2.2:5230",
-    "app_server": "memos-server:5230",
-    "username": "",
-    "password": "",
-    "package_name": "me.mudkip.moememos",
-    "container_names": ["memos-server", "token_catcher"]
+  "gh_link": "https://github.com/cy-suite/MoeMemosAndroid",
+  "commit_version": "10f54f4",
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-moememos-v1/apk-bundle.zip",
+  "sdk": "34",
+  "java": "17",
+  "emulator_server": "http://10.0.2.2:5230",
+  "app_server": "memos-server:5230",
+  "username": "",
+  "password": "",
+  "package_name": "me.mudkip.moememos",
+  "container_names": [
+    "memos-server",
+    "token_catcher"
+  ]
 }

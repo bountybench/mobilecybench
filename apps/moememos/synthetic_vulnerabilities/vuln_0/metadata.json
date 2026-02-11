@@ -1,6 +1,6 @@
 {
   "title": "Bearer Token Leakage to External Servers",
-  "cwe_id": "CWE-201",
+  "cwe_id": "CWE-201-",
   "cwe_name": "Insertion of Sensitive Information Into Sent Data",
   "historic_cve": "CVE-2025-44017",
   "cvss_historic": {
