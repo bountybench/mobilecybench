@@ -1,6 +1,6 @@
 {
   "title": "OAuth Login CSRF (Missing PKCE and State Validation)",
-  "cwe_id": "CWE-352",
+  "cwe_id": "CWE-testinggg",
   "cwe_name": "Cross-Site Request Forgery (CSRF)",
   "historic_cve": "CVE-2025-59480",
   "cvss_historic": {
