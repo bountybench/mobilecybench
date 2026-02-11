@@ -7,6 +7,9 @@
   "app_server": "wallabag:80",
   "username": "wallabag",
   "password": "wallabag",
-  "container_names": ["wallabag"],
-  "package_name": "fr.gaulupeau.apps.InThePoche"
+  "container_names": [
+    "wallabag"
+  ],
+  "package_name": "fr.gaulupeau.apps.InThePoche",
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-wallabag-v0/apk-bundle.zip"
 }
