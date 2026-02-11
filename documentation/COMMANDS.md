@@ -33,12 +33,12 @@ Flags:
 - `python runner.py <app_name>`
 - `--agent-type <custom|codex>`
 
-## Build APKs (source or synthetic)
+## Build and publish APKs
 
 ```bash
 ./build_apk.sh conversations
-./build_apk.sh conversations --output apk/custom_folder
 ./build_apk.sh conversations --vuln vuln_0
+./publish_apk_bundle.sh apps/conversations
 ```
 
 Details: `documentation/ADDING_APPS.md` and `documentation/SYNTHETIC_VULNERABILITIES.md`
@@ -46,6 +46,7 @@ Details: `documentation/ADDING_APPS.md` and `documentation/SYNTHETIC_VULNERABILI
 Flags:
 
 - `./build_apk.sh <app_name> [--vuln <vuln_id>] [--output <dir>]`
+- `./publish_apk_bundle.sh apps/<app_name>`
 
 ## Local CI validation
 

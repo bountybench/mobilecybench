@@ -444,9 +444,8 @@ main() {
     echo -e "${INFO} APK Build Wrapper"
     echo -e "${INFO} =================================="
     echo -e "${INFO} App: $APP_NAME"
-    echo -e "${INFO} Output: $OUTPUT_DIR"
-
     if [ -n "$VULN_ID" ]; then
+        echo -e "${INFO} Output: $OUTPUT_DIR/$VULN_ID/${APP_NAME}.apk"
         echo -e "${INFO} Mode: Vulnerable APK build ($VULN_ID)"
 
         # Validate vulnerability directory exists
@@ -461,6 +460,7 @@ main() {
             exit 1
         fi
     else
+        echo -e "${INFO} Output: $OUTPUT_DIR/${APP_NAME}.apk"
         echo -e "${INFO} Mode: Regular APK build"
     fi
 
