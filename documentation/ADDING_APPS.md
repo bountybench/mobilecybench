@@ -169,9 +169,7 @@ This mirrors the CI behavior (simple or full depending on which probe scripts ex
 
 ## APK sourcing (source vs download vs skip)
 
-Every app must have `download_link` in `metadata.json` pointing to a GitHub release on our repo. Use `publish_apk_bundle.sh` to create releases.
-
-Apps with `build.sh` can also build from source. Local CI automatically selects modes:
+Every app must have `download_link` in `metadata.json` pointing to a GitHub release on our repo. Use `publish_apk_bundle.sh` to create releases. If the app also has `build.sh`, local CI can run both download and source-build modes:
 
 ```bash
 ./run_ci_local.sh apps/<app_name>                 # run all available modes
