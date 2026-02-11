@@ -260,7 +260,8 @@ class LiteLLMProvider(ModelProvider):
         # Append full message to conversation state, preserving thinking
         # blocks and provider-specific fields for round-trip fidelity.
         assistant_msg = (
-            message.model_dump() if message and hasattr(message, "model_dump")
+            message.model_dump()
+            if message and hasattr(message, "model_dump")
             else {"role": "assistant", "content": assistant_text}
         )
         self._messages.append(assistant_msg)
