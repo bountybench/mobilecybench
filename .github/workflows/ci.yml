@@ -178,9 +178,16 @@ jobs:
                 done
                 [ "$missing_files" = true ] && continue
 
-                # Use apklink if available (assumes published bundle includes vuln APKs), otherwise source
+                # Use apklink if available, but force source if vulnerability.patch or build.sh changed
                 synth_mode="source"
-                [ "$has_apklink" = true ] && synth_mode="apklink"
+                if [ "$has_apklink" = true ]; then
+                  patch_changed=$(echo "$synth_changes" | grep -q "${vuln_id}/vulnerability.patch" && echo "true" || echo "false")
+                  if [ "$patch_changed" = "false" ] && [ "$source_modified" = "false" ]; then
+                    synth_mode="apklink"
+                  else
+                    echo "  vulnerability.patch or build.sh changed — forcing source build for $vuln_id"
+                  fi
+                fi
 
                 apk_jobs=$(echo "$apk_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
                   --arg java "$java" --arg mode "$synth_mode" --arg vuln_id "$vuln_id" \
