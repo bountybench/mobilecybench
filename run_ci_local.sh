@@ -459,14 +459,29 @@ run_exploit_verification() {
     local exploit_files_abs_path
     exploit_files_abs_path="$(cd "$exploit_files_dir" && pwd)"
 
+    # Build port mapping flags from exploit's ports.conf (if present)
+    local port_flags=""
+    if [ -f "$exploit_files_dir/ports.conf" ]; then
+        while IFS= read -r port || [ -n "$port" ]; do
+            port=$(echo "$port" | tr -d '[:space:]')
+            [ -z "$port" ] && continue
+            [[ "$port" == \#* ]] && continue
+            port_flags="$port_flags -p $port:$port"
+            echo -e "${INFO} Exposing container port: $port"
+        done < "$exploit_files_dir/ports.conf"
+    fi
+
     # Start container with exploit_files mounted at /app/exploit_files
+    # Also mount shared utils so exploit scripts can import from utils.ui_utils etc.
     echo -e "${INFO} Starting exploit container: $container_name"
     docker run -d \
         --name "$container_name" \
         --network=shared_net \
         --add-host=host.docker.internal:host-gateway \
         -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
+        $port_flags \
         -v "$exploit_files_abs_path:/app/exploit_files" \
+        -v "$ROOT_DIR/utils:/app/utils:ro" \
         "$exploit_image" \
         tail -f /dev/null
 
@@ -1066,21 +1081,44 @@ run_synthetic_vuln_test() {
         fi
     fi
 
-    # Phase 1: Test clean build (should NOT be vulnerable)
-    print_header "$CYAN" "PHASE 1: Testing Clean Build (Baseline)"
-
-    cd "$ROOT_DIR"
-
-    # Build clean APK using the wrapper (skip if APKs exist)
+    # =====================================================================
+    # BUILD PHASE: Build all APKs first (before starting the emulator)
+    # This avoids the emulator competing for CPU during long native builds.
+    # =====================================================================
     if [ "$skip_build" = false ]; then
+        print_header "$CYAN" "BUILD PHASE: Building all APKs (emulator not running)"
+
+        cd "$ROOT_DIR"
+
         echo -e "${INFO} Building clean APK using build_apk.sh..."
         if ! ./build_apk.sh "$app_name"; then
             echo -e "${ERROR} Failed to build clean APK"
             exit 1
         fi
+
+        echo -e "${INFO} Building vulnerable APK using build_apk.sh --vuln $vuln_id..."
+        if ! ./build_apk.sh "$app_name" --vuln "$vuln_id"; then
+            echo -e "${ERROR} Failed to build vulnerable APK"
+            exit 1
+        fi
+
+        print_header "$GREEN" "BUILD PHASE COMPLETE: Both APKs built successfully"
     else
-        echo -e "${INFO} Using existing clean APK (--skip-apk)"
+        echo -e "${INFO} Using existing APKs (--skip-apk)"
     fi
+
+    # =====================================================================
+    # START EMULATOR: Now that builds are done, start the emulator
+    # =====================================================================
+    cd "$ROOT_DIR"
+    start_emulator_and_adb
+
+    # =====================================================================
+    # TEST PHASE: Install, exploit, and verify each build
+    # =====================================================================
+
+    # Phase 1: Test clean build (should NOT be vulnerable)
+    print_header "$CYAN" "PHASE 1: Testing Clean Build (Baseline)"
 
     cd "$ROOT_DIR/$app_dir"
 
@@ -1109,19 +1147,6 @@ run_synthetic_vuln_test() {
 
     # Phase 2: Test vulnerable build (should BE vulnerable)
     print_header "$CYAN" "PHASE 2: Testing Vulnerable Build (With Patch)"
-
-    cd "$ROOT_DIR"
-
-    # Build vulnerable APK using the wrapper (skip if APKs exist)
-    if [ "$skip_build" = false ]; then
-        echo -e "${INFO} Building vulnerable APK using build_apk.sh --vuln $vuln_id..."
-        if ! ./build_apk.sh "$app_name" --vuln "$vuln_id"; then
-            echo -e "${ERROR} Failed to build vulnerable APK"
-            exit 1
-        fi
-    else
-        echo -e "${INFO} Using existing vulnerable APK (--skip-apk)"
-    fi
 
     cd "$ROOT_DIR/$app_dir"
 
@@ -1207,38 +1232,46 @@ docker network create shared_net || echo -e "${INFO} shared_net network already 
 print_header "$CYAN" "STARTING SSRF LISTENER"
 start_ssrf_listener || echo -e "${WARNING} SSRF listener not started - SSRF detection may not work"
 
-# Start emulator (assuming you have a start_emulator.sh script)
-if [ -f "start_emulator.sh" ]; then
-    print_header "$CYAN" "STARTING EMULATOR"
-    bash ./start_emulator.sh || echo -e "${WARNING} Failed to start emulator"
+# Function to start emulator and configure ADB
+start_emulator_and_adb() {
+    if [ -f "start_emulator.sh" ]; then
+        print_header "$CYAN" "STARTING EMULATOR"
+        bash ./start_emulator.sh || echo -e "${WARNING} Failed to start emulator"
 
-    echo "Waiting for emulator to boot..."
+        echo "Waiting for emulator to boot..."
 
-    # Wait for device to appear
-    adb wait-for-device
+        # Wait for device to appear
+        adb wait-for-device
 
-    wait_for_device_boot 300
-    echo "Emulator booted successfully."
-else
-    echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
-fi
+        wait_for_device_boot 300
+        echo "Emulator booted successfully."
+    else
+        echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
+    fi
 
-# Ensure ADB server is listening on all interfaces for container access
-echo -e "${INFO} Ensuring ADB server is configured for container access..."
-if ! lsof -iTCP:5037 -sTCP:LISTEN 2>/dev/null | grep -q "\\*:5037"; then
-    echo -e "${INFO} ADB not listening on all interfaces, restarting with -a flag..."
-    adb kill-server 2>/dev/null || true
-    adb -a start-server
-    # Wait for reconnection
-    for i in {1..30}; do
-        if adb devices 2>/dev/null | grep -q "device$"; then
-            echo -e "${SUCCESS} ADB reconnected to emulator"
-            break
-        fi
-        sleep 1
-    done
-else
-    echo -e "${SUCCESS} ADB already configured correctly"
+    # Ensure ADB server is listening on all interfaces for container access
+    echo -e "${INFO} Ensuring ADB server is configured for container access..."
+    if ! lsof -iTCP:5037 -sTCP:LISTEN 2>/dev/null | grep -q "\\*:5037"; then
+        echo -e "${INFO} ADB not listening on all interfaces, restarting with -a flag..."
+        adb kill-server 2>/dev/null || true
+        adb -a start-server
+        # Wait for reconnection
+        for i in {1..30}; do
+            if adb devices 2>/dev/null | grep -q "device$"; then
+                echo -e "${SUCCESS} ADB reconnected to emulator"
+                break
+            fi
+            sleep 1
+        done
+    else
+        echo -e "${SUCCESS} ADB already configured correctly"
+    fi
+}
+
+# For synthetic vuln tests, delay emulator start until after APKs are built.
+# This avoids the emulator competing for CPU during long native builds.
+if [ -z "$TEST_SYNTHETIC_VULN" ]; then
+    start_emulator_and_adb
 fi
 
 # Check if we're running synthetic vulnerability tests

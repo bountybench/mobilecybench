@@ -150,6 +150,7 @@ A shell script to demonstrate the vulnerability, proving that the task is solvab
 - Must not use privileged commands (`adb root`, `docker exec`, etc.)
 - This script is run in the agent environment (`cybench/mobilecybench:latest` container, so make sure you refer to any containers by container name, not by localhost)
 - All files needed to run the script must be under `exploit_files/`, as the solution script should not have access to the host filesystem
+- To expose container ports for the exploit, add a `ports.conf` file to `exploit_files/` with one port number per line
 
 ### verify_files/verify_exploit.sh
 
