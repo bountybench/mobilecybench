@@ -3,6 +3,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/codebase"
+# changing to build the app in CI - my local machine doesn't have required dependencies
 
 # Install Rust targets (required for native build)
 if ! command -v rustup >/dev/null 2>&1; then
