@@ -172,9 +172,7 @@ class TokenTracker:
         elif jsonl_path == "":
             self._jsonl_path = ""
         else:
-            self._jsonl_path = str(
-                logger_manager.get_logs_dir() / "token_usage.jsonl"
-            )
+            self._jsonl_path = str(logger_manager.get_logs_dir() / "token_usage.jsonl")
             # Compatibility: keep a copy in the current working directory
             self._jsonl_compat_path = "token_usage.jsonl"
 
