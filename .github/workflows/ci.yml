@@ -202,29 +202,34 @@ jobs:
               done
             fi
 
-            # Always add regular CI jobs (APK build + standard tests)
-            # Build APK jobs for this app
-            for mode in "${setup_modes[@]}"; do
-              apk_jobs=$(echo "$apk_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
-                --arg java "$java" --arg mode "$mode" \
-                '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode}]')
-            done
+            # Add regular CI jobs only if non-synthetic files changed
+            non_synth_changes=$(git diff --name-only origin/main...HEAD \
+              | grep "^${dir}/" | grep -v "^${dir}/synthetic_vulnerabilities/" || true)
 
-            # Build test jobs for this app
-            if [ "$has_probes" = true ]; then
-              test_types=("baseline" "vuln_scenario_0")
-              [ "$has_server" = true ] && test_types+=("vuln_scenario_1")
-            else
-              test_types=("simple")
-            fi
-
-            for mode in "${setup_modes[@]}"; do
-              for test_type in "${test_types[@]}"; do
-                test_jobs=$(echo "$test_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
-                  --arg sdk "$sdk" --arg image "$system_image" --arg mode "$mode" --arg type "$test_type" \
-                  '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type}]')
+            if [ -n "$non_synth_changes" ]; then
+              # Build APK jobs for this app
+              for mode in "${setup_modes[@]}"; do
+                apk_jobs=$(echo "$apk_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
+                  --arg java "$java" --arg mode "$mode" \
+                  '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode}]')
               done
-            done
+
+              # Build test jobs for this app
+              if [ "$has_probes" = true ]; then
+                test_types=("baseline" "vuln_scenario_0")
+                [ "$has_server" = true ] && test_types+=("vuln_scenario_1")
+              else
+                test_types=("simple")
+              fi
+
+              for mode in "${setup_modes[@]}"; do
+                for test_type in "${test_types[@]}"; do
+                  test_jobs=$(echo "$test_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
+                    --arg sdk "$sdk" --arg image "$system_image" --arg mode "$mode" --arg type "$test_type" \
+                    '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type}]')
+                done
+              done
+            fi
           done <<< "${{ steps.modified-dirs.outputs.modified_dirs }}"
 
           echo "APK jobs: $apk_jobs"
