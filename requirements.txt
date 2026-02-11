@@ -27,7 +27,7 @@ flask==3.0.0
 uiautomator2==3.4.0
 bcrypt==4.3.0
 openai>=2.0.1
-litellm>=1.40.0
+litellm>=1.63.0
 python-dotenv>=1.1.0
 pydantic>=2.0.0
 Pillow>=10.0.0
@@ -59,7 +59,7 @@ flask==3.0.0
 websocket-client>=1.9.0
 
 # Testing & dev tools
-jsonschema==4.21.1
+jsonschema>=4.22.0
 pre-commit==3.7.1
 pytest==8.3.2
 pytest-cov

@@ -1,11 +1,12 @@
 import json
+import os
 from unittest.mock import patch
 
 from agent.custom_agent import CustomAgent
 from agent.model_providers.factory import get_model_provider
 from agent.model_providers.litellm_provider import LiteLLMProvider
 from agent.model_providers.openai_provider import OpenAIProvider
-from tests.conftest import create_responses_api_response
+from tests.conftest import create_provider_response
 
 
 class TestCustomAgentMaxIterations:
@@ -25,7 +26,6 @@ class TestCustomAgentMaxIterations:
             max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
-            dry_run=False,
             package_name="com.test.app",
         )
 
@@ -34,9 +34,9 @@ class TestCustomAgentMaxIterations:
         # Verify that the agent made exactly max_iterations calls
         assert mock_agent_dependencies["provider"].call.call_count == max_iterations
 
-        # Verify the result status and turns
-        assert result["status"] == "max_iterations_reached"
-        assert result["turns"] == max_iterations
+        # Verify the result
+        assert result["turns_taken"] == max_iterations
+        assert result["max_turns"] == max_iterations
         assert result["final_message"] is None
 
     @patch("agent.custom_agent.subprocess.run")
@@ -59,12 +59,12 @@ class TestCustomAgentMaxIterations:
             nonlocal call_count
             call_count += 1
             if call_count == stop_at_turn:
-                return create_responses_api_response(
+                return create_provider_response(
                     content=json.dumps({"command": "FinalSubmissionCommand"}),
                     response_id=f"resp-{call_count}",
                 )
             else:
-                return create_responses_api_response(
+                return create_provider_response(
                     content=json.dumps({"command": "ActionCommand", "action": "ls"}),
                     response_id=f"resp-{call_count}",
                 )
@@ -79,15 +79,14 @@ class TestCustomAgentMaxIterations:
             max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
-            dry_run=False,
             package_name="com.test.app",
         )
 
         result = agent.run()
 
         # Verify that agent stopped at turn 3, not 10
-        assert result["status"] == "completed"
-        assert result["turns"] == stop_at_turn
+        assert result["turns_taken"] == stop_at_turn
+        assert result["exploit_exists"] is True
         # Parse the final_message to check for command
         final_message_parsed = json.loads(result["final_message"])
         assert final_message_parsed["command"] == "FinalSubmissionCommand"
@@ -102,7 +101,6 @@ class TestCustomAgentMaxIterations:
             max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
-            dry_run=False,
             package_name="com.test.app",
         )
 
@@ -110,31 +108,8 @@ class TestCustomAgentMaxIterations:
 
         # Verify exactly one call was made
         assert mock_agent_dependencies["provider"].call.call_count == 1
-        assert result["turns"] == 1
-        assert result["status"] == "max_iterations_reached"
-
-    def test_dry_run_mode(self, mock_agent_dependencies):
-        """Test that dry run mode returns immediately without making API calls."""
-        agent = CustomAgent(
-            model="gpt-4o-mini",
-            max_iterations=10,
-            max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
-            screenshot_enabled=False,
-            app_name="test_app",
-            dry_run=True,
-            package_name="com.test.app",
-        )
-
-        result = agent.run()
-
-        # Verify no API calls were made
-        assert mock_agent_dependencies["provider"].call.call_count == 0
-
-        # Verify dry run result
-        assert result["turns"] == 0
-        assert "dry run" in result["status"].lower()
+        assert result["turns_taken"] == 1
+        assert result["max_turns"] == 1
 
     def test_conversation_log_grows(self, mock_agent_dependencies):
         """Test that conversation log accumulates across turns."""
@@ -146,19 +121,19 @@ class TestCustomAgentMaxIterations:
             max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
-            dry_run=False,
             package_name="com.test.app",
         )
 
-        # Conversation log should start empty
-        assert len(agent._conversation_log) == 0
+        # Conversation history should start empty
+        assert len(agent.provider.get_conversation_history()) == 0
 
         agent.run()
 
         # After run, should have entries for each turn
-        assert len(agent._conversation_log) == 3
+        history = agent.provider.get_conversation_history()
+        assert len(history) == 3
         # Each entry should have a turn number and response_id
-        for i, entry in enumerate(agent._conversation_log, 1):
+        for i, entry in enumerate(history, 1):
             assert entry["turn"] == i
             assert "response_id" in entry
 
@@ -166,23 +141,26 @@ class TestCustomAgentMaxIterations:
 class TestModelProviderRouting:
     """Test that the factory routes models to the correct provider."""
 
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
     def test_openai_models_use_openai_provider(self):
         for model in ["gpt-4o-mini", "o1-preview", "o3-mini", "gpt-5.2"]:
-            provider = get_model_provider(model)
+            provider = get_model_provider(model, instructions="test")
             assert isinstance(
                 provider, OpenAIProvider
             ), f"{model} should use OpenAIProvider"
 
+    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})
     def test_anthropic_models_use_litellm_provider(self):
         for model in ["claude-opus-4-6", "claude-sonnet-4-5-20250929"]:
-            provider = get_model_provider(model)
+            provider = get_model_provider(model, instructions="test")
             assert isinstance(
                 provider, LiteLLMProvider
             ), f"{model} should use LiteLLMProvider"
 
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"})
     def test_gemini_models_use_litellm_provider(self):
         for model in ["gemini-3-pro-preview", "gemini-2.5-flash"]:
-            provider = get_model_provider(model)
+            provider = get_model_provider(model, instructions="test")
             assert isinstance(
                 provider, LiteLLMProvider
             ), f"{model} should use LiteLLMProvider"
@@ -201,15 +179,14 @@ class TestCustomAgentWithClaude:
             max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
-            dry_run=False,
             package_name="com.test.app",
         )
 
         result = agent.run()
 
         assert mock_agent_dependencies["provider"].call.call_count == max_iterations
-        assert result["status"] == "max_iterations_reached"
-        assert result["turns"] == max_iterations
+        assert result["turns_taken"] == max_iterations
+        assert result["max_turns"] == max_iterations
 
     @patch("agent.custom_agent.subprocess.run")
     def test_early_stop_with_claude(self, mock_subprocess_run, mock_agent_dependencies):
@@ -223,11 +200,11 @@ class TestCustomAgentWithClaude:
             nonlocal call_count
             call_count += 1
             if call_count == 2:
-                return create_responses_api_response(
+                return create_provider_response(
                     content=json.dumps({"command": "FinalSubmissionCommand"}),
                     response_id=f"litellm_resp-{call_count}",
                 )
-            return create_responses_api_response(
+            return create_provider_response(
                 content=json.dumps({"command": "ActionCommand", "action": "ls"}),
                 response_id=f"litellm_resp-{call_count}",
             )
@@ -242,14 +219,13 @@ class TestCustomAgentWithClaude:
             max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
-            dry_run=False,
             package_name="com.test.app",
         )
 
         result = agent.run()
 
-        assert result["status"] == "completed"
-        assert result["turns"] == 2
+        assert result["turns_taken"] == 2
+        assert result["exploit_exists"] is True
 
     def test_conversation_log_grows_with_claude(self, mock_agent_dependencies):
         agent = CustomAgent(
@@ -260,14 +236,14 @@ class TestCustomAgentWithClaude:
             max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
-            dry_run=False,
             package_name="com.test.app",
         )
 
         agent.run()
 
-        assert len(agent._conversation_log) == 3
-        for i, entry in enumerate(agent._conversation_log, 1):
+        history = agent.provider.get_conversation_history()
+        assert len(history) == 3
+        for i, entry in enumerate(history, 1):
             assert entry["turn"] == i
             assert "response_id" in entry
 
@@ -285,15 +261,14 @@ class TestCustomAgentWithGemini:
             max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
-            dry_run=False,
             package_name="com.test.app",
         )
 
         result = agent.run()
 
         assert mock_agent_dependencies["provider"].call.call_count == max_iterations
-        assert result["status"] == "max_iterations_reached"
-        assert result["turns"] == max_iterations
+        assert result["turns_taken"] == max_iterations
+        assert result["max_turns"] == max_iterations
 
     @patch("agent.custom_agent.subprocess.run")
     def test_early_stop_with_gemini(self, mock_subprocess_run, mock_agent_dependencies):
@@ -307,11 +282,11 @@ class TestCustomAgentWithGemini:
             nonlocal call_count
             call_count += 1
             if call_count == 2:
-                return create_responses_api_response(
+                return create_provider_response(
                     content=json.dumps({"command": "FinalSubmissionCommand"}),
                     response_id=f"litellm_resp-{call_count}",
                 )
-            return create_responses_api_response(
+            return create_provider_response(
                 content=json.dumps({"command": "ActionCommand", "action": "ls"}),
                 response_id=f"litellm_resp-{call_count}",
             )
@@ -326,14 +301,13 @@ class TestCustomAgentWithGemini:
             max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
-            dry_run=False,
             package_name="com.test.app",
         )
 
         result = agent.run()
 
-        assert result["status"] == "completed"
-        assert result["turns"] == 2
+        assert result["turns_taken"] == 2
+        assert result["exploit_exists"] is True
 
     def test_conversation_log_grows_with_gemini(self, mock_agent_dependencies):
         agent = CustomAgent(
@@ -344,13 +318,13 @@ class TestCustomAgentWithGemini:
             max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
-            dry_run=False,
             package_name="com.test.app",
         )
 
         agent.run()
 
-        assert len(agent._conversation_log) == 3
-        for i, entry in enumerate(agent._conversation_log, 1):
+        history = agent.provider.get_conversation_history()
+        assert len(history) == 3
+        for i, entry in enumerate(history, 1):
             assert entry["turn"] == i
             assert "response_id" in entry

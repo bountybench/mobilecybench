@@ -30,7 +30,6 @@ class DiscoveryWorkflow(Workflow):
         project_root: Optional[Path] = None,
         dry_run: bool = False,
         reasoning_effort: Optional[str] = None,
-        thinking_budget: Optional[int] = None,
     ):
         self.app_name = app_name
         self.app_dir = app_dir
@@ -45,7 +44,6 @@ class DiscoveryWorkflow(Workflow):
         self.project_root = project_root or Path(__file__).parent.parent
         self.dry_run = dry_run
         self.reasoning_effort = reasoning_effort
-        self.thinking_budget = thinking_budget
 
         # Set during setup
         self.metadata: dict = {}
@@ -135,7 +133,6 @@ class DiscoveryWorkflow(Workflow):
             max_context_length=self.max_context_length,
             screenshot_enabled=self.screenshot_mode,
             app_name=self.app_name,
-            dry_run=self.dry_run,
             app_server=self.metadata.get("app_server"),
             package_name=self.metadata.get("package_name"),
             username=self.metadata.get("username"),
@@ -143,7 +140,6 @@ class DiscoveryWorkflow(Workflow):
             include_ssrf=include_ssrf,
             workflow="discovery",
             reasoning_effort=self.reasoning_effort,
-            thinking_budget=self.thinking_budget,
         )
         logger.info("Agent configured for discovery mode")
 
