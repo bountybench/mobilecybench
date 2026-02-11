@@ -72,7 +72,7 @@ def install_app_and_setup_backend(
             "Expected start_runtime.sh or setup.sh"
         )
 
-    # Inject flags in discovery mode only
+    # Inject flags (discovery mode only; exploit uses verify_files)
     if inject_flags:
         logger.info("Injecting security flags...")
         inject_flags_path = project_root / "inject_flags.sh"

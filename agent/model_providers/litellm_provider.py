@@ -22,12 +22,7 @@ from .base import FunctionCall, ModelProvider, ProviderResponse
 litellm.suppress_debug_info = True
 
 
-# ---------------------------------------------------------------------------
 # Lightweight wrappers for TokenTracker compatibility
-# ---------------------------------------------------------------------------
-# The token tracker's _extract_token_count helper expects both
-# input_tokens/output_tokens (Responses API) and prompt_tokens/
-# completion_tokens (Chat Completions) naming conventions.
 
 
 class _TokenDetails:
@@ -78,7 +73,6 @@ class LiteLLMProvider(ModelProvider):
         reasoning_effort: Optional[str] = None,
     ) -> None:
         super().__init__()
-        litellm.drop_params = True
         litellm.set_verbose = False
 
         # Validate API key
@@ -217,7 +211,9 @@ class LiteLLMProvider(ModelProvider):
         if self._tools:
             completion_kwargs["tools"] = self._tools
             completion_kwargs["tool_choice"] = "auto"
-            completion_kwargs["parallel_tool_calls"] = False
+            # parallel_tool_calls is only supported by OpenAI-compatible APIs
+            if self._detect_provider_from_model(self._model) == "openai":
+                completion_kwargs["parallel_tool_calls"] = False
 
         if self._max_output_tokens:
             completion_kwargs["max_tokens"] = self._max_output_tokens
@@ -226,19 +222,7 @@ class LiteLLMProvider(ModelProvider):
             completion_kwargs["timeout"] = self._timeout_ms / 1000.0
 
         if self._reasoning_effort:
-            provider = self._detect_provider_from_model(self._model)
-            if provider == "openai":
-                completion_kwargs["reasoning_effort"] = self._reasoning_effort
-            elif provider in ("gemini", "anthropic"):
-                budget = 8192
-                if "low" in self._reasoning_effort:
-                    budget = 2048
-                elif "high" in self._reasoning_effort:
-                    budget = 16384
-                completion_kwargs["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": budget,
-                }
+            completion_kwargs["reasoning_effort"] = self._reasoning_effort
 
         tool_count = len(self._tools) if self._tools else 0
         agent_logger.info(
@@ -254,43 +238,31 @@ class LiteLLMProvider(ModelProvider):
         message = choice.message if choice else None
 
         assistant_text = ""
+        reasoning_summary = ""
         function_calls = []
-        assistant_msg: Dict[str, Any] = {"role": "assistant"}
 
         if message:
-            text = getattr(message, "content", None) or ""
-            if text:
-                assistant_text = text
-                assistant_msg["content"] = text
+            assistant_text = getattr(message, "content", None) or ""
+            reasoning_summary = getattr(message, "reasoning_content", None) or ""
 
             tool_calls = getattr(message, "tool_calls", None) or []
-            if tool_calls:
-                tc_list = []
-                for tc in tool_calls:
-                    fn = tc.function
-                    call_id = tc.id or f"call_{uuid.uuid4().hex[:24]}"
-                    function_calls.append(
-                        FunctionCall(
-                            name=fn.name,
-                            arguments=fn.arguments,
-                            call_id=call_id,
-                        )
+            for tc in tool_calls:
+                fn = tc.function
+                call_id = tc.id or f"call_{uuid.uuid4().hex[:24]}"
+                function_calls.append(
+                    FunctionCall(
+                        name=fn.name,
+                        arguments=fn.arguments,
+                        call_id=call_id,
                     )
-                    tc_list.append(
-                        {
-                            "id": call_id,
-                            "type": "function",
-                            "function": {
-                                "name": fn.name,
-                                "arguments": fn.arguments,
-                            },
-                        }
-                    )
-                assistant_msg["tool_calls"] = tc_list
-                if "content" not in assistant_msg:
-                    assistant_msg["content"] = None
+                )
 
-        # Append assistant message to conversation state
+        # Append full message to conversation state, preserving thinking
+        # blocks and provider-specific fields for round-trip fidelity.
+        assistant_msg = (
+            message.model_dump() if message and hasattr(message, "model_dump")
+            else {"role": "assistant", "content": assistant_text}
+        )
         self._messages.append(assistant_msg)
 
         # Build usage wrapper for token tracker
@@ -317,6 +289,7 @@ class LiteLLMProvider(ModelProvider):
             response_id=response_id,
             assistant_text=assistant_text,
             function_calls=function_calls,
+            reasoning_summary=reasoning_summary,
             raw_response=raw_wrapper,
         )
         self._record_history(resp)

@@ -37,7 +37,6 @@ class CustomAgent:
         network_access: bool = True,
         package_name: str = None,
         reasoning_effort: str = None,
-        thinking_budget: int = None,
         username: str = None,
         password: str = None,
         include_ssrf: bool = True,
@@ -170,6 +169,7 @@ class CustomAgent:
         self._archive_conversation()
 
         return {
+            "status": "completed",
             "turns_taken": turns,
             "max_turns": self.max_iterations,
             "exploit_exists": exploit_exists,

@@ -113,7 +113,6 @@ def create_workflow(
         "project_root": project_root,
         "dry_run": config.dry_run,
         "reasoning_effort": config.reasoning_effort,
-        "thinking_budget": config.thinking_budget,
     }
 
     if config.workflow == "exploit":
