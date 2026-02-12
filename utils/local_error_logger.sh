@@ -13,10 +13,6 @@ ERROR_LOG_FILE="$ROOT_DIR/local_ci_errors.log"
 ERROR_COUNT=0
 > "$ERROR_LOG_FILE"
 
-strip_colors() {
-    sed 's/\x1b\[[0-9;]*m//g' | sed 's/\[91m//g' | sed 's/\[0m//g' | sed 's/\[ERROR\]//g'
-}
-
 # point fd 3 to stderr so we can capture errors
 exec 3>&2
 
@@ -46,7 +42,7 @@ cleanup_monitor() {
     sleep 0.1
     
     # Display summary only on error
-    if [ ${exit_code} -eq 1 ]; then
+    if [ ${exit_code} -ne 0 ]; then
         display_error_summary
     fi
 
