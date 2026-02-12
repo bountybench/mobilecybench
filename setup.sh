@@ -946,10 +946,8 @@ main() {
         pkill -f "${SCRIPT_DIR}/tools/host_bridge.py" || true
     fi
     export MCB_BRIDGE_BIND=127.0.0.1
-    # Generate a session ID so bridge and runner share the same experiment directory
-    if [ -z "${MOBILECYBENCH_SESSION_ID:-}" ]; then
-        export MOBILECYBENCH_SESSION_ID=$(date +"%Y%m%d_%H%M%S")
-    fi
+    # Generate a fresh session ID so bridge and runner share the same experiment directory
+    export MOBILECYBENCH_SESSION_ID=$(date +"%Y%m%d_%H%M%S")
     BRIDGE_LOG_DIR="${SCRIPT_DIR}/logs/experiment_${MOBILECYBENCH_SESSION_ID}"
     mkdir -p "${BRIDGE_LOG_DIR}"
     BRIDGE_LOG_FILE="${BRIDGE_LOG_DIR}/mobilecybench_bridge.log"

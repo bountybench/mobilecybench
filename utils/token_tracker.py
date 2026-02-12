@@ -166,15 +166,14 @@ class TokenTracker:
                 * If set to an empty string, no file will be written.
         """
         self._pricing_map = load_pricing(pricing_path)
-        self._jsonl_compat_path = ""
         if jsonl_path:
             self._jsonl_path = jsonl_path
         elif jsonl_path == "":
             self._jsonl_path = ""
         else:
-            self._jsonl_path = str(logger_manager.get_logs_dir() / "token_usage.jsonl")
-            # Compatibility: keep a copy in the current working directory
-            self._jsonl_compat_path = "token_usage.jsonl"
+            self._jsonl_path = str(
+                logger_manager.get_logs_dir() / "token_usage.jsonl"
+            )
 
         self.total_input_tokens = 0
         self.total_output_tokens = 0
@@ -253,9 +252,6 @@ class TokenTracker:
                 line = json.dumps(asdict(record), ensure_ascii=False)
                 with open(self._jsonl_path, "a", encoding="utf-8") as f:
                     f.write(line + "\n")
-                if self._jsonl_compat_path:
-                    with open(self._jsonl_compat_path, "a", encoding="utf-8") as f:
-                        f.write(line + "\n")
             except Exception as e:
                 logger.warning("Failed to append token usage JSONL: %s", e)
         return record
