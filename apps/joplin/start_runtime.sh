@@ -13,26 +13,15 @@ docker compose up --build -d
 install_joplin() {
     echo "Installing joplin on Android emulator..."
     
-    # Check if emulator is running
-    if ! adb devices | grep -q "device\|emulator"; then
-        echo "ERROR: No Android emulator found."
-        echo "Please start the emulator first."
-        exit 1
-    fi
-    
     # Try apk/ subdirectory first (build_apk.sh output), then fallback to root
     APK_PATH=""
     if [[ -f "$SCRIPT_DIR/apk/joplin.apk" ]]; then
         APK_PATH="$SCRIPT_DIR/apk/joplin.apk"
-    elif [[ -f "$SCRIPT_DIR/joplin.apk" ]]; then
-        APK_PATH="$SCRIPT_DIR/joplin.apk"
     fi
     
     if [[ -z "$APK_PATH" || ! -f "$APK_PATH" ]]; then
         echo "ERROR: APK not found"
-        echo "Searched locations:"
-        echo "  - $SCRIPT_DIR/apk/joplin.apk"
-        echo "  - $SCRIPT_DIR/joplin.apk"
+        echo "Searched: $SCRIPT_DIR/apk/joplin.apk"
         echo "Available APKs:"
         find "$SCRIPT_DIR" -name "*.apk" -type f 2>/dev/null | head -10
         exit 1
