@@ -15,7 +15,6 @@ from agent.prompts.prompts import (
 from agent.tools.runtime import ToolRuntime
 from utils.agent_utils import take_screenshot
 from utils.logger import agent_logger, logger_manager
-from utils.reasoning_utils import is_reasoning_supported_model
 from utils.time_tracker import time_tracker
 from utils.token_tracker import TokenTracker
 
@@ -26,9 +25,6 @@ class CustomAgent:
         model: str,
         max_iterations: int,
         max_model_response_tokens: int,
-        max_kali_message_tokens: int,
-        # TODO need to enforce this before sending off requests
-        max_context_length: int,
         screenshot_enabled: bool,
         app_name: str,
         additional_context: str = None,
@@ -58,8 +54,6 @@ class CustomAgent:
         self.model = model
         self.max_iterations = max_iterations
         self.max_model_response_tokens = max_model_response_tokens
-        self.max_kali_message_tokens = max_kali_message_tokens
-        self.max_context_length = max_context_length
         self.timeout_ms = timeout_ms
         self.screenshot_enabled = screenshot_enabled
         self.app_server = app_server
@@ -83,18 +77,13 @@ class CustomAgent:
         agent_logger.info("=" * 60)
 
         # Create provider (fully configured on construction)
-        reasoning_effort_value = (
-            reasoning_effort
-            if reasoning_effort and is_reasoning_supported_model(model)
-            else None
-        )
         self.provider = get_model_provider(
             model=model,
             instructions=self._instructions,
             tools=self.runtime.get_tool_definitions(),
             max_output_tokens=max_model_response_tokens,
             timeout_ms=timeout_ms,
-            reasoning_effort=reasoning_effort_value,
+            reasoning_effort=reasoning_effort,
         )
 
         # Use shared logger's file name for consistency

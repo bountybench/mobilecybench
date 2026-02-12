@@ -22,8 +22,6 @@ class DiscoveryWorkflow(Workflow):
         model: str,
         max_iterations: int,
         max_model_response_tokens: int,
-        max_kali_message_tokens: int,
-        max_context_length: int,
         screenshot_mode: bool = False,
         build_type: str = "source",
         agent_image: str = "cybench/mobilecybench:latest",
@@ -36,8 +34,6 @@ class DiscoveryWorkflow(Workflow):
         self.model = model
         self.max_iterations = max_iterations
         self.max_model_response_tokens = max_model_response_tokens
-        self.max_kali_message_tokens = max_kali_message_tokens
-        self.max_context_length = max_context_length
         self.screenshot_mode = screenshot_mode
         self.build_type = build_type
         self.agent_image = agent_image
@@ -129,8 +125,6 @@ class DiscoveryWorkflow(Workflow):
             model=self.model,
             max_iterations=self.max_iterations,
             max_model_response_tokens=self.max_model_response_tokens,
-            max_kali_message_tokens=self.max_kali_message_tokens,
-            max_context_length=self.max_context_length,
             screenshot_enabled=self.screenshot_mode,
             app_name=self.app_name,
             app_server=self.metadata.get("app_server"),

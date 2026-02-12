@@ -11,8 +11,6 @@ from workflows.exploit import ExploitWorkflow
 # Common agent config params used across all workflow tests
 AGENT_CONFIG = {
     "max_model_response_tokens": 1000,
-    "max_kali_message_tokens": 1000,
-    "max_context_length": 10000,
 }
 
 

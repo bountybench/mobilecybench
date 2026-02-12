@@ -52,7 +52,7 @@ def apply_synthetic_patch(app_dir: Path, patch_paths: list[Path]) -> None:
         )
 
         if result.returncode != 0:
-            logger.info(f"Patch did not apply: {result.stderr.strip()}")
-            logger.info("This is fine if patch is already applied or codebase is dirty")
-        else:
-            logger.info("Patch applied successfully")
+            raise RuntimeError(
+                f"Failed to apply patch {patch_path}: {result.stderr.strip()}"
+            )
+        logger.info("Patch applied successfully")
