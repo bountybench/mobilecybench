@@ -11,7 +11,7 @@ if ! command -v rustup >/dev/null 2>&1; then
     exit 1
 fi
 rustup install 1.86.0
-rustup target add x86_64-linux-android --toolchain 1.86.0
+rustup target add armv7-linux-androideabi aarch64-linux-android i686-linux-android x86_64-linux-android --toolchain 1.86.0
 export CARGO_INCREMENTAL=1
 
 # Setup NDK - find any available version
@@ -31,7 +31,7 @@ export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
 git submodule update --init --recursive
 
 # Build native libraries
-./scripts/ndk-make.sh x86_64
+./scripts/ndk-make.sh
 
 # Write signing config (uses KEYSTORE_* env vars from build_apk.sh)
 cat > gradle.properties <<EOF
