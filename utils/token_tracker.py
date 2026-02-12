@@ -171,9 +171,7 @@ class TokenTracker:
         elif jsonl_path == "":
             self._jsonl_path = ""
         else:
-            self._jsonl_path = str(
-                logger_manager.get_logs_dir() / "token_usage.jsonl"
-            )
+            self._jsonl_path = str(logger_manager.get_logs_dir() / "token_usage.jsonl")
 
         self.total_input_tokens = 0
         self.total_output_tokens = 0
