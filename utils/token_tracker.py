@@ -250,9 +250,6 @@ class TokenTracker:
                 line = json.dumps(asdict(record), ensure_ascii=False)
                 with open(self._jsonl_path, "a", encoding="utf-8") as f:
                     f.write(line + "\n")
-                if self._jsonl_compat_path:
-                    with open(self._jsonl_compat_path, "a", encoding="utf-8") as f:
-                        f.write(line + "\n")
             except Exception as e:
                 logger.warning("Failed to append token usage JSONL: %s", e)
         return record
