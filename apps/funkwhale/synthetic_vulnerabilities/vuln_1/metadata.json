@@ -1,0 +1,6 @@
+{
+  "cve_id": "CVE-2011-2344",
+  "title": "Bearer Token Leakage via Cover Art Requests",
+  "cwe_id": "CWE-200",
+  "description": "The app attaches Bearer authentication tokens to cover art HTTP requests via an OkHttp network interceptor, allowing token exfiltration when cover art URLs point to attacker-controlled servers."
+}

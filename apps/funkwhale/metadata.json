@@ -8,5 +8,5 @@
     "app_server": "https://front:443",
     "username": "agent",
     "password": "agentpassword",
-    "container_names": ["api", "front", "postgres", "redis"]
+    "container_names": ["api", "front", "postgres", "redis", "token_catcher"]
 }
