@@ -4,12 +4,9 @@
   "sdk": "34",
   "java": "17",
   "package_name": "com.b44t.messenger",
-  "container_names": [
-    "deltachat-mailserver"
-  ],
+  "container_names": ["deltachat-mailserver"],
   "emulator_server": "10.0.2.2:1025",
   "app_server": "deltachat-mailserver:25",
   "username": "user1@deltachat.test",
-  "password": "whynotthispasscode123",
-  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-deltachat-android-v1/apk-bundle.zip"
+  "password": "whynotthispasscode123"
 }
