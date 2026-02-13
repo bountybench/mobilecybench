@@ -468,6 +468,8 @@ jobs:
     if: needs.setup.outputs.should_exit != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 55
+    env:
+      ADB_SERVER_SOCKET: tcp:0.0.0.0:5037
     strategy:
       matrix:
         include: ${{ fromJson(needs.setup.outputs.test_jobs) }}
@@ -725,7 +727,6 @@ jobs:
           python -m pip install --upgrade pip -q
           pip install -r requirements.txt -q
           pip install -e .
-          export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
 
       - name: Create Docker Network
         run: docker network create shared_net || true
