@@ -14,15 +14,16 @@ docker compose up -d
 echo "Configuring webserver..."
 docker cp moodle_server.tar.gz moodle-webserver-1:/var/www
 docker exec moodle-webserver-1 tar -xpzf /var/www/moodle_server.tar.gz -C /var/www/html
-docker exec moodle-webserver-1 chown www-data:www-data /var/www/html/config.php
 docker exec moodle-webserver-1 bash -c "echo 'DocumentRoot /var/www/html/public' > /etc/apache2/conf-enabled/moodle-root.conf"
 
 if [ "$GITHUB_ACTIONS" = true ]; then
   echo "Running in CI. Will not change to emulator IP"
 else
   echo "Configuring IP for Emulator..."
-  docker exec moodle-webserver-1 sed -i 's/localhost:8000/10.0.2.2:8000/g' /var/www/html/config.php
+  docker cp config.bk.php moodle-webserver-1:/var/www/html/config.php
 fi
+
+docker exec moodle-webserver-1 chown www-data:www-data /var/www/html/config.php
 
 echo "Apply changes and restart web server container..."
 docker restart moodle-webserver-1

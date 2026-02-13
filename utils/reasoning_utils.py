@@ -1,7 +1,6 @@
 def is_reasoning_supported_model(model: str) -> bool:
     """
     Return True if the model supports the reasoning.effort parameter.
-    Updated as of December 2025 based on OpenAI and Azure-OpenAI docs.
     """
     model_lower = model.lower()
 
@@ -56,6 +55,10 @@ def is_reasoning_supported_model(model: str) -> bool:
     if ("gemini-3" in model_lower or "gemini-2.5" in model_lower) and not any(
         u in model_lower for u in gemini_unsupported
     ):
+        return True
+
+    # Supported Anthropic models (adaptive thinking)
+    if "claude-opus-4-6" in model_lower:
         return True
 
     return False

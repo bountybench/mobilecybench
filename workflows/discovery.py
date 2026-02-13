@@ -21,12 +21,24 @@ class DiscoveryWorkflow(Workflow):
         config: RunnerConfig,
         app_name: str,
         app_dir: Path,
-        project_root: Optional[Path] = None
+        model: str,
+        max_iterations: int,
+        max_model_response_tokens: int,
+        max_kali_message_tokens: int,
+        max_context_length: int,
+        screenshot_mode: bool = False,
+        build_type: str = "source",
+        agent_image: str = "cybench/mobilecybench:latest",
+        project_root: Optional[Path] = None,
+        dry_run: bool = False,
+        reasoning_effort: Optional[str] = None,
     ):
         self.config = config
         self.app_name = app_name
         self.app_dir = app_dir
         self.project_root = project_root or Path(__file__).parent.parent
+        self.dry_run = dry_run
+        self.reasoning_effort = reasoning_effort
 
         # Set during setup
         self.metadata: dict = {}
@@ -117,6 +129,7 @@ class DiscoveryWorkflow(Workflow):
             password=self.metadata.get("password"),
             include_ssrf=include_ssrf,
             workflow="discovery",
+            reasoning_effort=self.reasoning_effort,
         )
         logger.info("Agent configured for discovery mode")
 

@@ -3,12 +3,18 @@
 Query Android CVEs by CWE and CVSS categories.
 
 Usage:
-    ./cve_query.py stats                           # Show dataset stats
+    ./cve_query.py stats                           # Show 2025 dataset stats (default)
+    ./cve_query.py --year 2024 stats               # Show 2024 dataset stats
     ./cve_query.py cwes                            # List all CWEs
     ./cve_query.py find --cwe CWE-89               # Find by CWE
     ./cve_query.py find --av NETWORK --pr NONE     # Find by CVSS
     ./cve_query.py find --cwe CWE-862 --av NETWORK --ci HIGH
+    ./cve_query.py --year 2024 find --av NETWORK   # Search 2024 data
     ./cve_query.py get CVE-2025-0476               # Get specific CVE
+    ./cve_query.py --year 2024 get CVE-2024-12993  # Get from 2024 data
+
+Global options (must come before subcommand):
+    --year      Dataset year: 2025 (default, preferred), 2024
 
 Options for find:
     --cwe       CWE ID (e.g., CWE-89, CWE-79)
@@ -28,7 +34,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-DATA_FILE = Path(__file__).parent / "android_2025_enriched.jsonl"
+DATA_DIR = Path(__file__).parent
+AVAILABLE_YEARS = [2025, 2024]  # 2025 preferred
+
+
+def get_data_file(year: int = 2025) -> Path:
+    return DATA_DIR / f"android_{year}_enriched.jsonl"
+
+
+DATA_FILE = get_data_file(2025)  # default
 
 # Maps CVSS 3.1 vector string abbreviations to full field values
 _CVSS31_FIELD_MAP = {
@@ -77,9 +91,10 @@ class CVE:
     cve_id: str
     reason: str
     confidence: float
-    cwe_id: Optional[str]
-    nvd_cwe_id: Optional[str]
-    vendor_cwe_id: Optional[str]
+    cwe_ids: list[str]
+    nvd_cwe_ids: list[str]
+    vendor_cwe_ids: list[str]
+    adp_cwe_ids: list[str]
     base_score: Optional[float]
     severity: Optional[str]
     attack_vector: Optional[str]
@@ -104,40 +119,83 @@ class CVEQuery:
         with open(data_file) as f:
             for line in f:
                 raw = json.loads(line)
-                cwe = raw.get("nvd_cwe_id") or raw.get("vendor_cwe_id")
-                score = raw.get("nvd_cvss31_base_score") or raw.get(
-                    "vendor_cvss31_base_score"
+                nvd_cwes = raw.get("nvd_cwe_ids") or raw.get("nvd_cwe_id", None)
+                vendor_cwes = raw.get("vendor_cwe_ids") or raw.get(
+                    "vendor_cwe_id", None
                 )
-                severity = raw.get("nvd_cvss31_severity") or raw.get(
-                    "vendor_cvss31_severity"
+                adp_cwes = raw.get("adp_cwe_ids") or raw.get("adp_cwe_id", None)
+                # Normalize to lists (handle legacy singular fields)
+                if isinstance(nvd_cwes, str):
+                    nvd_cwes = [nvd_cwes] if nvd_cwes else []
+                elif not nvd_cwes:
+                    nvd_cwes = []
+                if isinstance(vendor_cwes, str):
+                    vendor_cwes = [vendor_cwes] if vendor_cwes else []
+                elif not vendor_cwes:
+                    vendor_cwes = []
+                if isinstance(adp_cwes, str):
+                    adp_cwes = [adp_cwes] if adp_cwes else []
+                elif not adp_cwes:
+                    adp_cwes = []
+                # Priority: NVD > vendor > ADP
+                cwe_ids = nvd_cwes or vendor_cwes or adp_cwes
+                score = (
+                    raw.get("nvd_cvss31_base_score")
+                    or raw.get("vendor_cvss31_base_score")
+                    or raw.get("adp_cvss31_base_score")
                 )
-                av = raw.get("nvd_cvss31_attack_vector") or raw.get(
-                    "vendor_cvss31_attack_vector"
+                severity = (
+                    raw.get("nvd_cvss31_severity")
+                    or raw.get("vendor_cvss31_severity")
+                    or raw.get("adp_cvss31_severity")
                 )
-                ac = raw.get("nvd_cvss31_attack_complexity") or raw.get(
-                    "vendor_cvss31_attack_complexity"
+                av = (
+                    raw.get("nvd_cvss31_attack_vector")
+                    or raw.get("vendor_cvss31_attack_vector")
+                    or raw.get("adp_cvss31_attack_vector")
                 )
-                pr = raw.get("nvd_cvss31_privileges_required") or raw.get(
-                    "vendor_cvss31_privileges_required"
+                ac = (
+                    raw.get("nvd_cvss31_attack_complexity")
+                    or raw.get("vendor_cvss31_attack_complexity")
+                    or raw.get("adp_cvss31_attack_complexity")
                 )
-                ui = raw.get("nvd_cvss31_user_interaction") or raw.get(
-                    "vendor_cvss31_user_interaction"
+                pr = (
+                    raw.get("nvd_cvss31_privileges_required")
+                    or raw.get("vendor_cvss31_privileges_required")
+                    or raw.get("adp_cvss31_privileges_required")
                 )
-                scope = raw.get("nvd_cvss31_scope") or raw.get("vendor_cvss31_scope")
-                ci = raw.get("nvd_cvss31_confidentiality_impact") or raw.get(
-                    "vendor_cvss31_confidentiality_impact"
+                ui = (
+                    raw.get("nvd_cvss31_user_interaction")
+                    or raw.get("vendor_cvss31_user_interaction")
+                    or raw.get("adp_cvss31_user_interaction")
                 )
-                ii = raw.get("nvd_cvss31_integrity_impact") or raw.get(
-                    "vendor_cvss31_integrity_impact"
+                scope = (
+                    raw.get("nvd_cvss31_scope")
+                    or raw.get("vendor_cvss31_scope")
+                    or raw.get("adp_cvss31_scope")
                 )
-                ai = raw.get("nvd_cvss31_availability_impact") or raw.get(
-                    "vendor_cvss31_availability_impact"
+                ci = (
+                    raw.get("nvd_cvss31_confidentiality_impact")
+                    or raw.get("vendor_cvss31_confidentiality_impact")
+                    or raw.get("adp_cvss31_confidentiality_impact")
+                )
+                ii = (
+                    raw.get("nvd_cvss31_integrity_impact")
+                    or raw.get("vendor_cvss31_integrity_impact")
+                    or raw.get("adp_cvss31_integrity_impact")
+                )
+                ai = (
+                    raw.get("nvd_cvss31_availability_impact")
+                    or raw.get("vendor_cvss31_availability_impact")
+                    or raw.get("adp_cvss31_availability_impact")
                 )
 
                 # Fallback: parse vector string if derived fields are null
                 if not av or not pr or not ui or not ci or not ii or not ai:
-                    vector = raw.get("nvd_cvss31_vector") or raw.get(
-                        "vendor_cvss31_vector"
+                    vector = (
+                        raw.get("nvd_cvss31_vector")
+                        or raw.get("vendor_cvss31_vector")
+                        or raw.get("adp_cvss31_vector")
                     )
                     if vector:
                         parsed = _parse_cvss31_vector(vector)
@@ -155,9 +213,10 @@ class CVEQuery:
                         cve_id=raw.get("cve_id"),
                         reason=raw.get("reason", ""),
                         confidence=raw.get("confidence", 0),
-                        cwe_id=cwe,
-                        nvd_cwe_id=raw.get("nvd_cwe_id"),
-                        vendor_cwe_id=raw.get("vendor_cwe_id"),
+                        cwe_ids=cwe_ids,
+                        nvd_cwe_ids=nvd_cwes,
+                        vendor_cwe_ids=vendor_cwes,
+                        adp_cwe_ids=adp_cwes,
                         base_score=score,
                         severity=severity,
                         attack_vector=av,
@@ -184,7 +243,6 @@ class CVEQuery:
         severity: Optional[str] = None,
     ) -> list[CVE]:
         criteria = {
-            "cwe_id": cwe,
             "attack_vector": attack_vector,
             "privileges_required": privileges_required,
             "user_interaction": user_interaction,
@@ -196,11 +254,15 @@ class CVEQuery:
         criteria = {k: v for k, v in criteria.items() if v is not None}
 
         results = []
-        for cve in self.cves:
+        for cve_entry in self.cves:
+            # CWE: check membership in list
+            if cwe is not None and cwe not in cve_entry.cwe_ids:
+                continue
             if all(
-                getattr(cve, field, None) == value for field, value in criteria.items()
+                getattr(cve_entry, field, None) == value
+                for field, value in criteria.items()
             ):
-                results.append(cve)
+                results.append(cve_entry)
 
         results.sort(key=lambda x: x.base_score or 0, reverse=True)
         return results
@@ -214,14 +276,17 @@ class CVEQuery:
     def list_cwes(self) -> dict[str, int]:
         from collections import Counter
 
-        return dict(Counter(c.cwe_id for c in self.cves if c.cwe_id).most_common())
+        all_cwes = []
+        for c in self.cves:
+            all_cwes.extend(c.cwe_ids)
+        return dict(Counter(all_cwes).most_common())
 
     def stats(self) -> dict:
         from collections import Counter
 
         return {
             "total_cves": len(self.cves),
-            "with_cwe": sum(1 for c in self.cves if c.cwe_id),
+            "with_cwe": sum(1 for c in self.cves if c.cwe_ids),
             "with_cvss": sum(1 for c in self.cves if c.base_score),
             "severity_dist": dict(Counter(c.severity for c in self.cves if c.severity)),
             "attack_vector_dist": dict(
@@ -233,7 +298,7 @@ class CVEQuery:
 def print_cve(cve: CVE, verbose: bool = False):
     """Print a CVE in a readable format."""
     print(f"{cve.cve_id}")
-    print(f"  CWE: {cve.cwe_id or 'N/A'}")
+    print(f"  CWE: {', '.join(cve.cwe_ids) if cve.cwe_ids else 'N/A'}")
     print(f"  Score: {cve.base_score or 'N/A'} ({cve.severity or 'N/A'})")
     print(
         f"  AV:{cve.attack_vector or '?'} PR:{cve.privileges_required or '?'} UI:{cve.user_interaction or '?'}"
@@ -248,8 +313,10 @@ def print_cve(cve: CVE, verbose: bool = False):
 
 
 def cmd_stats(args):
-    q = CVEQuery()
+    data_file = get_data_file(args.year)
+    q = CVEQuery(data_file)
     s = q.stats()
+    print(f"Dataset: {args.year}")
     print(f"Total CVEs: {s['total_cves']}")
     print(f"With CWE: {s['with_cwe']} ({100*s['with_cwe']//s['total_cves']}%)")
     print(f"With CVSS: {s['with_cvss']} ({100*s['with_cvss']//s['total_cves']}%)")
@@ -258,7 +325,7 @@ def cmd_stats(args):
 
 
 def cmd_cwes(args):
-    q = CVEQuery()
+    q = CVEQuery(get_data_file(args.year))
     cwes = q.list_cwes()
     print(f"{'CWE':<12} {'Count':>5}")
     print("-" * 20)
@@ -267,7 +334,7 @@ def cmd_cwes(args):
 
 
 def cmd_find(args):
-    q = CVEQuery()
+    q = CVEQuery(get_data_file(args.year))
     matches = q.find_matches(
         cwe=args.cwe,
         attack_vector=args.av,
@@ -291,7 +358,7 @@ def cmd_find(args):
 
 
 def cmd_get(args):
-    q = CVEQuery()
+    q = CVEQuery(get_data_file(args.year))
     cve = q.get(args.cve_id)
     if cve:
         print_cve(cve, verbose=True)
@@ -308,13 +375,23 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  ./cve_query.py stats
-  ./cve_query.py cwes
-  ./cve_query.py find --cwe CWE-89
-  ./cve_query.py find --av NETWORK --pr NONE --ci HIGH
+  ./cve_query.py stats                             # 2025 stats (default)
+  ./cve_query.py --year 2024 stats                 # 2024 stats
+  ./cve_query.py find --cwe CWE-89                 # Search 2025
+  ./cve_query.py --year 2024 find --av NETWORK     # Search 2024
   ./cve_query.py get CVE-2025-0476
+  ./cve_query.py --year 2024 get CVE-2024-12993
         """,
     )
+    # Global year argument
+    parser.add_argument(
+        "--year",
+        type=int,
+        default=2025,
+        choices=AVAILABLE_YEARS,
+        help="Dataset year (default: 2025). 2025 preferred to avoid train/test overlap; 2024 only as last resort.",
+    )
+
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # stats

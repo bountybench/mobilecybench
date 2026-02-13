@@ -149,28 +149,87 @@ jobs:
             fi
             echo "  Setup modes: ${setup_modes[*]}"
 
-            # Build APK jobs for this app
-            for mode in "${setup_modes[@]}"; do
-              apk_jobs=$(echo "$apk_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
-                --arg java "$java" --arg mode "$mode" \
-                '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode}]')
-            done
+            # Check if PR touches synthetic_vulnerabilities/ for this app
+            synth_changes=$(git diff --name-only origin/main...HEAD \
+              | grep "^${dir}/synthetic_vulnerabilities/" || true)
 
-            # Build test jobs for this app
-            if [ "$has_probes" = true ]; then
-              test_types=("baseline" "vuln_scenario_0")
-              [ "$has_server" = true ] && test_types+=("vuln_scenario_1")
-            else
-              test_types=("simple")
+            # If PR touches synthetic_vulnerabilities/ for this app, add synthetic vuln jobs
+            if [ -n "$synth_changes" ]; then
+              echo "  Detected synthetic vulnerability changes for $app_name"
+
+              # Extract unique vuln IDs from changed paths
+              vuln_ids=$(echo "$synth_changes" \
+                | sed "s|^${dir}/synthetic_vulnerabilities/||" \
+                | cut -d'/' -f1 \
+                | sort -u)
+
+              for vuln_id in $vuln_ids; do
+                vuln_dir="${dir}/synthetic_vulnerabilities/${vuln_id}"
+                echo "  Checking synthetic vuln: $vuln_id"
+
+                # Validate required files exist
+                missing_files=false
+                for req_file in "vulnerability.patch" "exploit_files/exploit.sh" "verify_files/verify_exploit.sh" "metadata.json"; do
+                  if [ ! -f "${vuln_dir}/${req_file}" ]; then
+                    echo "  WARNING: Missing ${vuln_dir}/${req_file} — skipping $vuln_id"
+                    missing_files=true
+                    break
+                  fi
+                done
+                [ "$missing_files" = true ] && continue
+
+                # Use apklink if available, but force source if vulnerability.patch or build.sh changed
+                synth_mode="source"
+                if [ "$has_apklink" = true ]; then
+                  patch_changed=$(echo "$synth_changes" | grep -q "${vuln_id}/vulnerability.patch" && echo "true" || echo "false")
+                  if [ "$patch_changed" = "false" ] && [ "$source_modified" = "false" ]; then
+                    synth_mode="apklink"
+                  else
+                    echo "  vulnerability.patch or build.sh changed — forcing source build for $vuln_id"
+                  fi
+                fi
+
+                apk_jobs=$(echo "$apk_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
+                  --arg java "$java" --arg mode "$synth_mode" --arg vuln_id "$vuln_id" \
+                  '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode, "vuln_id": $vuln_id}]')
+
+                test_jobs=$(echo "$test_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
+                  --arg sdk "$sdk" --arg image "$system_image" --arg mode "$synth_mode" \
+                  --arg type "synthetic_vuln" --arg vuln_id "$vuln_id" \
+                  '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type, "vuln_id": $vuln_id}]')
+
+                echo "  Added synthetic_vuln jobs for $vuln_id"
+              done
             fi
 
-            for mode in "${setup_modes[@]}"; do
-              for test_type in "${test_types[@]}"; do
-                test_jobs=$(echo "$test_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
-                  --arg sdk "$sdk" --arg image "$system_image" --arg mode "$mode" --arg type "$test_type" \
-                  '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type}]')
+            # Add regular CI jobs only if non-synthetic files changed
+            non_synth_changes=$(git diff --name-only origin/main...HEAD \
+              | grep "^${dir}/" | grep -v "^${dir}/synthetic_vulnerabilities/" || true)
+
+            if [ -n "$non_synth_changes" ]; then
+              # Build APK jobs for this app
+              for mode in "${setup_modes[@]}"; do
+                apk_jobs=$(echo "$apk_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
+                  --arg java "$java" --arg mode "$mode" \
+                  '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode}]')
               done
-            done
+
+              # Build test jobs for this app
+              if [ "$has_probes" = true ]; then
+                test_types=("baseline" "vuln_scenario_0")
+                [ "$has_server" = true ] && test_types+=("vuln_scenario_1")
+              else
+                test_types=("simple")
+              fi
+
+              for mode in "${setup_modes[@]}"; do
+                for test_type in "${test_types[@]}"; do
+                  test_jobs=$(echo "$test_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
+                    --arg sdk "$sdk" --arg image "$system_image" --arg mode "$mode" --arg type "$test_type" \
+                    '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type}]')
+                done
+              done
+            fi
           done <<< "${{ steps.modified-dirs.outputs.modified_dirs }}"
 
           echo "APK jobs: $apk_jobs"
@@ -360,11 +419,39 @@ jobs:
 
           echo "APK path validated - found $APK_COUNT APK(s) in $APK_DIR/"
 
+          # For apklink + synthetic vuln, verify the bundle includes the vuln APK
+          if [ "${{ matrix.setup_mode }}" = "apklink" ] && [ -n "${{ matrix.vuln_id }}" ]; then
+            VULN_APK_DIR="apk/${{ matrix.vuln_id }}"
+            VULN_APK_COUNT=$(find "$VULN_APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+            if [ "$VULN_APK_COUNT" -eq 0 ]; then
+              echo "ERROR: Downloaded APK bundle does not contain vulnerable APK for ${{ matrix.vuln_id }}."
+              echo "  The bundle at download_link needs to be rebuilt and republished:"
+              echo "    ./build_apk.sh ${{ matrix.app_name }}"
+              echo "    ./build_apk.sh ${{ matrix.app_name }} --vuln ${{ matrix.vuln_id }}"
+              echo "    ./publish_apk_bundle.sh apps/${{ matrix.app_name }}"
+              exit 1
+            fi
+            echo "Vulnerable APK found in bundle: $VULN_APK_DIR/ ($VULN_APK_COUNT APK(s))"
+          fi
+
+      - name: Build vulnerable APK for synthetic vulnerability
+        if: matrix.vuln_id != '' && matrix.setup_mode == 'source'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
+        run: |
+          cd "${{ matrix.app_dir }}"
+          cd ../..
+          ./build_apk.sh "${{ matrix.app_name }}" --vuln "${{ matrix.vuln_id }}"
+          cd "${{ matrix.app_dir }}"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: apk-${{ matrix.app_name }}-${{ matrix.setup_mode }}-${{ github.run_id }}
-          path: ${{ matrix.app_dir }}/apk/*.apk
+          name: apk-${{ matrix.app_name }}-${{ matrix.setup_mode }}${{ matrix.vuln_id && format('-{0}', matrix.vuln_id) || '' }}-${{ github.run_id }}
+          path: |
+            ${{ matrix.app_dir }}/apk/*.apk
+            ${{ matrix.app_dir }}/apk/${{ matrix.vuln_id }}/*.apk
           retention-days: 1
           if-no-files-found: error
 
@@ -951,6 +1038,173 @@ jobs:
           fi
           EOF
               ;;
+            "synthetic_vuln")
+              echo "vuln_id=\"${{ matrix.vuln_id }}\"" >> test_checks.sh
+              echo "app_name=\"${{ matrix.app_name }}\"" >> test_checks.sh
+              cat <<'EOF' >> test_checks.sh
+
+          EXPLOIT_IMAGE="${EXPLOIT_IMAGE:-cybench/mobilecybench:latest}"
+
+          cd "$dir"
+
+          # Get package_name from metadata.json
+          package_name=$(jq -r '.package_name' metadata.json)
+          echo "Found package_name in metadata.json: $package_name"
+
+          uninstall_package() {
+            local pkg="$1"
+            if adb shell pm list packages | grep -q "^package:${pkg}$"; then
+              echo "NOTICE: Package $pkg is currently installed. Uninstalling..."
+              adb uninstall "$pkg" >/dev/null 2>&1
+              if adb shell pm list packages | grep -q "^package:${pkg}$"; then
+                echo "::warning::ERROR: Failed to uninstall package $pkg"
+              else
+                echo "SUCCESS: Package $pkg has been successfully uninstalled"
+              fi
+            fi
+          }
+
+          vuln_dir="synthetic_vulnerabilities/${vuln_id}"
+          exploit_files_path="$(pwd)/${vuln_dir}/exploit_files"
+          verify_script="$(pwd)/${vuln_dir}/verify_files/verify_exploit.sh"
+
+          # Validate required files
+          for req_file in "${vuln_dir}/exploit_files/exploit.sh" "${vuln_dir}/verify_files/verify_exploit.sh" "${vuln_dir}/metadata.json"; do
+            if [ ! -f "$req_file" ]; then
+              echo "ERROR: Required file not found: $req_file"
+              exit 1
+            fi
+          done
+
+          run_exploit_and_verify() {
+            local phase_name="$1"
+            local expect_vulnerable="$2"
+
+            echo "=== Phase: $phase_name (expect_vulnerable=$expect_vulnerable) ==="
+
+            # Wait for app containers
+            check_app_containers_ready
+
+            # Start exploit container
+            container_name="mobilecybench-exploit-$$"
+            echo "Starting exploit container: $container_name"
+            docker run -d \
+              --name "$container_name" \
+              --network=shared_net \
+              --add-host=host.docker.internal:host-gateway \
+              -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
+              -v "$exploit_files_path:/app/exploit_files" \
+              "$EXPLOIT_IMAGE" \
+              tail -f /dev/null
+
+            # Run exploit
+            echo "Running exploit script..."
+            docker exec "$container_name" bash /app/exploit_files/exploit.sh || true
+
+            # Cleanup exploit container
+            docker rm -f "$container_name" 2>/dev/null || true
+
+            # Run verification on host
+            echo "Running verification script..."
+            chmod +x "$verify_script"
+            set +e
+            bash "$verify_script"
+            verify_exit=$?
+            set -e
+
+            if [ "$expect_vulnerable" = "true" ]; then
+              if [ "$verify_exit" -eq 0 ]; then
+                echo "SUCCESS: Vulnerable build IS vulnerable (as expected)"
+              else
+                echo "ERROR: Vulnerable build is NOT vulnerable (expected exit 0, got $verify_exit)"
+                return 1
+              fi
+            else
+              if [ "$verify_exit" -ne 0 ]; then
+                echo "SUCCESS: Clean build is NOT vulnerable (as expected)"
+              else
+                echo "ERROR: Clean build IS vulnerable (expected exit != 0, got 0)"
+                return 1
+              fi
+            fi
+          }
+
+          # ==============================
+          # Phase 1: Clean build (expect NOT vulnerable)
+          # ==============================
+          echo ""
+          echo "============================================"
+          echo "Phase 1: Testing clean build (should NOT be vulnerable)"
+          echo "============================================"
+
+          # Check package is not installed
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name is already installed before Phase 1"
+            exit 1
+          fi
+
+          echo "Running setup with clean APK..."
+          ./start_runtime.sh
+
+          if ! adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name is not installed after start_runtime.sh"
+            ./cleanup.sh
+            exit 1
+          fi
+
+          run_exploit_and_verify "Clean build" "false"
+          phase1_result=$?
+
+          echo "Cleaning up Phase 1..."
+          ./cleanup.sh
+          uninstall_package "$package_name"
+
+          if [ "$phase1_result" -ne 0 ]; then
+            echo "ERROR: Phase 1 (clean build) failed"
+            exit 1
+          fi
+
+          # ==============================
+          # Phase 2: Vulnerable build (expect IS vulnerable)
+          # ==============================
+          echo ""
+          echo "============================================"
+          echo "Phase 2: Testing vulnerable build (SHOULD be vulnerable)"
+          echo "============================================"
+
+          # Check package is not installed
+          if adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name is already installed before Phase 2"
+            exit 1
+          fi
+
+          echo "Running setup with vulnerable APK..."
+          ./start_runtime.sh --apk "apk/${vuln_id}/${app_name}.apk"
+
+          if ! adb shell pm list packages | grep -q "^package:$package_name$"; then
+            echo "ERROR: Package $package_name is not installed after start_runtime.sh (vuln)"
+            ./cleanup.sh
+            exit 1
+          fi
+
+          run_exploit_and_verify "Vulnerable build" "true"
+          phase2_result=$?
+
+          echo "Cleaning up Phase 2..."
+          ./cleanup.sh
+          uninstall_package "$package_name"
+
+          if [ "$phase2_result" -ne 0 ]; then
+            echo "ERROR: Phase 2 (vulnerable build) failed"
+            exit 1
+          fi
+
+          echo ""
+          echo "============================================"
+          echo "Synthetic vulnerability test PASSED for ${vuln_id}"
+          echo "============================================"
+          EOF
+              ;;
             "simple")
               cat <<'EOF' >> test_checks.sh
 
@@ -1028,13 +1282,13 @@ jobs:
       - name: Download APK artifact
         uses: actions/download-artifact@v4
         with:
-          name: apk-${{ matrix.app_name }}-${{ matrix.setup_mode }}-${{ github.run_id }}
+          name: apk-${{ matrix.app_name }}-${{ matrix.setup_mode }}${{ matrix.vuln_id && format('-{0}', matrix.vuln_id) || '' }}-${{ github.run_id }}
           path: ${{ matrix.app_dir }}/apk/
 
       - name: Verify downloaded APK
         run: |
           echo "Verifying APK downloaded for ${{ matrix.app_name }} (setup_mode: ${{ matrix.setup_mode }})"
-          ls -lh "${{ matrix.app_dir }}/apk/"
+          ls -lhR "${{ matrix.app_dir }}/apk/"
 
           APK_COUNT=$(find "${{ matrix.app_dir }}/apk/" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
           if [ "$APK_COUNT" -eq 0 ]; then
@@ -1042,7 +1296,18 @@ jobs:
             exit 1
           fi
 
-          echo "Successfully downloaded $APK_COUNT APK(s)"
+          echo "Successfully downloaded $APK_COUNT clean APK(s)"
+
+          # For synthetic_vuln, also verify the vulnerable APK exists
+          if [ "${{ matrix.test_type }}" = "synthetic_vuln" ] && [ -n "${{ matrix.vuln_id }}" ]; then
+            VULN_APK_DIR="${{ matrix.app_dir }}/apk/${{ matrix.vuln_id }}"
+            VULN_APK_COUNT=$(find "$VULN_APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+            if [ "$VULN_APK_COUNT" -eq 0 ]; then
+              echo "ERROR: No vulnerable APK found in $VULN_APK_DIR/"
+              exit 1
+            fi
+            echo "Successfully found $VULN_APK_COUNT vulnerable APK(s) in $VULN_APK_DIR/"
+          fi
 
       - name: Verify required test files
         run: |
@@ -1050,6 +1315,17 @@ jobs:
 
           if [ "${{ matrix.test_type }}" = "simple" ]; then
             required_files=("start_runtime.sh" "cleanup.sh")
+          elif [ "${{ matrix.test_type }}" = "synthetic_vuln" ]; then
+            required_files=("start_runtime.sh" "cleanup.sh")
+            # Also check synthetic vuln specific files
+            vuln_dir="synthetic_vulnerabilities/${{ matrix.vuln_id }}"
+            for req_file in "exploit_files/exploit.sh" "verify_files/verify_exploit.sh" "metadata.json"; do
+              if [[ ! -f "${vuln_dir}/${req_file}" ]]; then
+                echo "ERROR: Required synthetic vuln file '${vuln_dir}/${req_file}' not found."
+                exit 1
+              fi
+            done
+            echo "Synthetic vulnerability files verified for ${{ matrix.vuln_id }}"
           else
             required_files=("start_runtime.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
           fi

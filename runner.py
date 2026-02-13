@@ -8,6 +8,7 @@ This runner uses the Workflow abstraction to handle different evaluation modes:
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -103,12 +104,44 @@ def create_workflow(
         "app_dir": app_dir,
         "config": config,
         "project_root": project_root,
+        "dry_run": config.dry_run,
+        "reasoning_effort": config.reasoning_effort,
     }
 
     if config.environment.workflow == "exploit":
         return ExploitWorkflow(**common_params, vuln_id=config.environment.synthetic_vuln_id)
     else:
         return DiscoveryWorkflow(**common_params)
+
+
+def _log_experiment_config(
+    config: RunnerConfig, app_name: str, workflow: Workflow
+) -> None:
+    """Log a structured summary of the full experiment configuration.
+
+    Combines runner config with app metadata so the full experiment log
+    captures everything needed to reproduce or understand the run.
+    """
+    metadata = getattr(workflow, "metadata", {})
+
+    experiment_config = {
+        "app": {
+            "name": app_name,
+            **metadata,
+        },
+        "runner": config.model_dump(),
+    }
+
+    # Add exploit-specific fields
+    if config.workflow == "exploit":
+        experiment_config["exploit"] = {
+            "vuln_id": config.synthetic_vuln_id,
+        }
+
+    logger.info(
+        "Experiment configuration:\n%s",
+        json.dumps(experiment_config, indent=2, default=str),
+    )
 
 
 def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
@@ -133,6 +166,9 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
         logger.info("Step 1/5: Validating arguments...")
         workflow.validate_arguments()
         logger.info("Arguments validated")
+
+        # Log structured experiment configuration for observability
+        _log_experiment_config(config, app_name, workflow)
 
         logger.info("Step 2/5: Setting up runtime environment...")
         workflow.setup_runtime_environment()
@@ -187,8 +223,6 @@ def main():
     args = parser.parse_args()
 
     # Load config
-    import json
-
     config_path = Path(args.config)
     if not config_path.exists():
         logger.error(f"Config file not found: {config_path}")

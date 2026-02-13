@@ -220,12 +220,33 @@ class LoggerManager:
         if not self._error_buffer_handler or not self._error_buffer_handler.errors:
             return
 
+        error_count = len(self._error_buffer_handler.errors)
+        capped = error_count >= ErrorBufferHandler.MAX_ERRORS
+
+        # Log to file (plain text, no ANSI codes)
+        _ansi_re = re.compile(r"\033\[[0-9;]*m")
+        self._logger.info("=" * 80)
+        self._logger.info(
+            "ERROR SUMMARY: %d error(s)%s",
+            error_count,
+            " (capped)" if capped else "",
+        )
+        for line in self._error_buffer_handler.errors:
+            self._logger.info("  %s", _ansi_re.sub("", line))
+        self._logger.info("=" * 80)
+
+        # Print to console (with ANSI color)
         print("\n" + "=" * 80)
         print("\033[91mERROR SUMMARY\033[0m")
         print("=" * 80)
 
         for line in self._error_buffer_handler.errors:
             print(line)
+
+        if capped:
+            print(
+                f"\033[91m... capped at {ErrorBufferHandler.MAX_ERRORS} errors\033[0m"
+            )
 
         print("=" * 80 + "\n")
 
@@ -246,13 +267,16 @@ class RedErrorFormatter(logging.Formatter):
 class ErrorBufferHandler(logging.Handler):
     # anything more than 100 errors would likely just mean some form of loop. we don't need to use up so much memory
     # keep it conservative
+    MAX_ERRORS = 100
+
     def __init__(self, formatter: logging.Formatter):
         super().__init__(level=logging.ERROR)
         self.formatter = formatter
         self.errors = []
 
     def emit(self, record):
-        self.errors.append(self.format(record))
+        if len(self.errors) < self.MAX_ERRORS:
+            self.errors.append(self.format(record))
 
 
 # TODO: integrate with runner_config or have separate config file

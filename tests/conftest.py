@@ -5,6 +5,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from agent.model_providers.base import FunctionCall, ProviderResponse
+
 
 def pytest_configure(config):
     """Set up test environment before any tests run.
@@ -22,51 +24,79 @@ def pytest_addoption(parser):
     parser.addoption("--dirs", nargs="+", help="Directories to test", required=False)
 
 
-def create_chat_completion_response(content: str, tool_calls=None):
-    """Create a mock ChatCompletion response matching LiteLLM/OpenAI format."""
-    response = Mock()
+def create_provider_response(
+    content: str = "", function_calls=None, response_id="test-response-id"
+) -> ProviderResponse:
+    """Create a ProviderResponse for testing.
 
-    # Create message object
-    message = Mock()
-    message.content = content
-    message.tool_calls = tool_calls or []
+    Args:
+        content: Text content for the assistant message.
+        function_calls: Optional list of dicts with keys: name, arguments, call_id.
+        response_id: Response ID for conversation continuity.
+    """
+    fc_list = []
+    if function_calls:
+        for fc in function_calls:
+            fc_list.append(
+                FunctionCall(
+                    name=fc["name"],
+                    arguments=fc.get("arguments", "{}"),
+                    call_id=fc.get("call_id", "call_test_123"),
+                )
+            )
 
-    # Create choice object
-    choice = Mock()
-    choice.message = message
-
-    # Set up choices list
-    response.choices = [choice]
-
-    # Set up usage
+    # Create a mock raw_response for TokenTracker compatibility
+    raw_response = Mock()
+    raw_response.id = response_id
     usage = Mock()
-    usage.prompt_tokens = 100
-    usage.completion_tokens = 50
+    usage.input_tokens = 100
+    usage.output_tokens = 50
     usage.total_tokens = 150
-    response.usage = usage
+    raw_response.usage = usage
 
-    # Set response id
-    response.id = "test-response-id"
-
-    return response
+    return ProviderResponse(
+        response_id=response_id,
+        assistant_text=content,
+        function_calls=fc_list,
+        raw_response=raw_response,
+    )
 
 
 class MockModelProvider:
-    """Mock implementation of ModelProvider for testing."""
+    """Mock implementation of ModelProvider for testing.
 
-    def __init__(self):
-        # Make call a Mock so we can track call_count
+    Mirrors the base-class history format (see ModelProvider._record_history).
+    """
+
+    def __init__(self, **kwargs):
+        self._conversation_history = []
         self.call = Mock(side_effect=self._mock_call)
 
-    def validate(self, model: str = None):
-        """Mock validate method."""
-        pass
-
-    def _mock_call(self, **kwargs):
-        """Mock call method that returns a ChatCompletion response."""
-        return create_chat_completion_response(
+    def _mock_call(self, *args, **kwargs):
+        """Return a ProviderResponse and record history."""
+        resp = create_provider_response(
             content=json.dumps({"command": "ActionCommand", "action": "ls"})
         )
+        self._conversation_history.append(
+            {
+                "turn": len(self._conversation_history) + 1,
+                "response_id": resp.response_id,
+                "assistant_text": resp.assistant_text,
+                "reasoning_summary": resp.reasoning_summary,
+                "function_calls": [
+                    {
+                        "name": fc.name,
+                        "call_id": fc.call_id,
+                        "arguments": fc.arguments,
+                    }
+                    for fc in resp.function_calls
+                ],
+            }
+        )
+        return resp
+
+    def get_conversation_history(self):
+        return list(self._conversation_history)
 
 
 @pytest.fixture
