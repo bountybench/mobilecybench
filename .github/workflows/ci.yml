@@ -1365,14 +1365,6 @@ jobs:
           
           echo "System ready for emulator. CPU: ${CPU_USAGE}%, Available Memory: ${AVAILABLE_MEM}GB"
 
-      - name: Start ADB on all interfaces
-        run: |
-          # Start ADB listening on all interfaces so Docker containers can
-          # reach the emulator via host.docker.internal:5037.
-          # Must run before the emulator runner so it reuses this server.
-          adb -a -P 5037 start-server
-          adb devices
-
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
         uses: reactivecircus/android-emulator-runner@v2
@@ -1386,6 +1378,10 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated -writable-system
           disable-animations: true
           script: |
+            # Restart ADB on all interfaces so exploit containers can reach
+            # the emulator via host.docker.internal:5037
+            adb kill-server && adb -a -P 5037 start-server
+            adb wait-for-device
             utils/android_emulator_ready.sh --remount
             ./test_checks.sh
 
@@ -1402,6 +1398,10 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated
           disable-animations: true
           script: |
+            # Restart ADB on all interfaces so exploit containers can reach
+            # the emulator via host.docker.internal:5037
+            adb kill-server && adb -a -P 5037 start-server
+            adb wait-for-device
             utils/android_emulator_ready.sh
             ./test_checks.sh
 
