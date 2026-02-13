@@ -8,6 +8,9 @@ FROM kalilinux/kali-last-release@sha256:c77f241fcd12bb7835e09f8fc1073d7d9c7cf50b
 COPY --from=python-src /usr/local/ /usr/local/
 RUN ldconfig
 
+# Kali / security tools (edit kali-security-tools.txt to add more)
+COPY kali-security-tools.txt /tmp/kali-security-tools.txt
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     android-tools-adb \
@@ -16,14 +19,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     docker.io \
     git \
     lsof \
-    nmap \
-    netcat-traditional \
     nodejs \
     npm \
     ripgrep \
     tree \
     unzip \
     wget \
+    $(sed -n '/^\# \[apt\]/,/^\# \[/{ /^\#/d; /^$/d; p }' /tmp/kali-security-tools.txt) \
     && rm -rf /var/lib/apt/lists/*
 
 # Docker compose
@@ -40,5 +42,6 @@ RUN pip install --upgrade pip
 # Git safe directory
 RUN git config --global --add safe.directory '*'
 
-# Semgrep
-RUN pip install semgrep && ln -s /venv/bin/semgrep /usr/local/bin/semgrep
+# Security pip packages from kali-security-tools.txt
+RUN pip install $(sed -n '/^\# \[pip\]/,/^\# \[/{ /^\#/d; /^$/d; p }' /tmp/kali-security-tools.txt) \
+    && rm -f /tmp/kali-security-tools.txt
