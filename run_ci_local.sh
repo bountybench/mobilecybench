@@ -16,6 +16,7 @@ WARNING="${YELLOW}[WARNING]${RESET}"
 ROOT_DIR=$(pwd)
 source "${ROOT_DIR}/utils/android.sh"
 source "${ROOT_DIR}/utils/wait.sh"
+source "${ROOT_DIR}/utils/local_error_logger.sh"
 set +e
 
 DIR=""
@@ -26,12 +27,17 @@ print_header() {
     echo -e "${color}========== ${message} ==========${RESET}"
 }
 
+print_error_header() {
+    local message="$1"
+    echo -e "${ERROR} ${message} ==========${RESET}" >&2
+}
+
 check_metadata_schema() {
     local metadata_file="$1"
     echo "Checking metadata.json against expected schema..."
 
     if ! jq empty "$metadata_file" >/dev/null 2>&1; then
-        print_header "$ERROR" "[FAIL] Invalid JSON in $metadata_file"
+        print_error_header "[FAIL] Invalid JSON in $metadata_file"
         echo -e "${ERROR} The metadata.json file contains invalid JSON syntax."
         exit 1
     fi
@@ -54,8 +60,8 @@ check_metadata_schema() {
         if jq -e ".${field}" "$metadata_file" >/dev/null 2>&1; then
             print_header "$GREEN" "[PASS] Attribute $field is in the metadata."
         else
-            print_header "$ERROR" "[FAIL] Attribute $field is not in the metadata."
-            print_header "$ERROR" " --> Attribute ${description} is not in the metadata."
+            print_error_header "[FAIL] Attribute $field is not in the metadata."
+            print_error_header " --> Attribute ${description} is not in the metadata."
             all_passed=false
         fi
     done
@@ -63,7 +69,7 @@ check_metadata_schema() {
     if [ "$all_passed" = true ]; then
         print_header "$GREEN" "[PASS] Metadata schema validation success."
     else
-        print_header "$ERROR" "[FAIL] Metadata schema validation failed."
+        print_error_header "[FAIL] Metadata schema validation failed."
         exit 1
     fi
 }
