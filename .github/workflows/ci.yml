@@ -468,8 +468,6 @@ jobs:
     if: needs.setup.outputs.should_exit != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 55
-    env:
-      ADB_SERVER_SOCKET: tcp:0.0.0.0:5037
     strategy:
       matrix:
         include: ${{ fromJson(needs.setup.outputs.test_jobs) }}
@@ -1366,6 +1364,14 @@ jobs:
           fi
           
           echo "System ready for emulator. CPU: ${CPU_USAGE}%, Available Memory: ${AVAILABLE_MEM}GB"
+
+      - name: Start ADB on all interfaces
+        run: |
+          # Start ADB listening on all interfaces so Docker containers can
+          # reach the emulator via host.docker.internal:5037.
+          # Must run before the emulator runner so it reuses this server.
+          adb -a -P 5037 start-server
+          adb devices
 
       - name: Run emulator test with action (vuln_scenario_0)
         if: matrix.test_type == 'vuln_scenario_0'
