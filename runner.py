@@ -150,33 +150,6 @@ def _log_experiment_config(
     )
 
 
-def _save_agent_artifacts(workflow: Workflow, logs_dir: Path) -> None:
-    """Save agent-generated artifacts to the experiment logs directory.
-
-    Best-effort: logs warnings on failure but never raises so that
-    evaluation and cleanup can still proceed.
-    """
-    agent_env = getattr(workflow, "agent_env", None)
-    if not agent_env:
-        return
-
-    # Copy exploit_files from container
-    try:
-        agent_env.save_exploit_files(logs_dir)
-    except Exception as e:
-        logger.warning(f"Failed to save exploit_files: {e}")
-
-    # Save agent codebase diff
-    try:
-        diff = agent_env.save_agent_codebase_state()
-        if diff:
-            diff_path = logs_dir / "agent_codebase.diff"
-            diff_path.write_text(diff)
-            logger.info(f"Saved agent codebase diff to {diff_path}")
-    except Exception as e:
-        logger.warning(f"Failed to save agent codebase diff: {e}")
-
-
 def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
     """
     Execute the evaluation workflow.
@@ -223,7 +196,7 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
             logger.info(f"Agent completed: {result.get('status', 'unknown')}")
 
             # Save agent artifacts (exploit_files, codebase diff) before cleanup
-            _save_agent_artifacts(workflow, logger_manager.get_logs_dir())
+            workflow.save_artifacts(logger_manager.get_logs_dir())
 
             logger.info("Step 5/5: Evaluating results...")
             scores = workflow.evaluate()
