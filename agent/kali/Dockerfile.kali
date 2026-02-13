@@ -1,14 +1,13 @@
-# Stage 1: pre-built Python 3.12 (avoids building from source)
+# pre-built Python 3.12 (to avoid building from source)
 FROM python:3.12-slim-bookworm AS python-src
 
-# Stage 2: pinned Kali base with selective installs
+# pinned Kali base with selective installs
 FROM kalilinux/kali-last-release@sha256:c77f241fcd12bb7835e09f8fc1073d7d9c7cf50b531808d9afa95e9cb63a6113
 
-# Copy Python 3.12 from stage 1 (replaces Kali's default 3.13)
+# Copy Python 3.12 (replaces Kali's default 3.13)
 COPY --from=python-src /usr/local/ /usr/local/
 RUN ldconfig
 
-# Install only what we need (no kali-linux-large metapackage)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     android-tools-adb \
