@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from models.config import RunnerConfig
+from utils.git_utils import ensure_app_submodule
 from utils.logger import logger, logger_manager
 from workflows import DiscoveryWorkflow, ExploitWorkflow, Workflow
 
@@ -105,8 +106,6 @@ def create_workflow(
         "model": config.model,
         "max_iterations": config.max_iterations,
         "max_model_response_tokens": config.max_model_response_tokens,
-        "max_kali_message_tokens": config.max_kali_message_tokens,
-        "max_context_length": config.max_context_length,
         "screenshot_mode": config.screenshot_mode,
         "build_type": config.build_type,
         "agent_image": config.agent_image,
@@ -174,6 +173,8 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
         workflow.validate_arguments()
         logger.info("Arguments validated")
 
+        ensure_app_submodule(project_root, app_name)
+
         # Log structured experiment configuration for observability
         _log_experiment_config(config, app_name, workflow)
 
@@ -193,6 +194,9 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
             logger.info("Step 4/5: Running agent...")
             result = workflow.run_agent()
             logger.info(f"Agent completed: {result.get('status', 'unknown')}")
+
+            # Save agent artifacts (exploit_files, codebase diff) before cleanup
+            workflow.save_artifacts(logger_manager.get_logs_dir())
 
             logger.info("Step 5/5: Evaluating results...")
             scores = workflow.evaluate()

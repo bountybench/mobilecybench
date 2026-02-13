@@ -25,12 +25,13 @@ python3 -m venv .venv
 source .venv/bin/activate   # Windows: .\.venv\Scripts\activate
 pip install -r requirements.txt
 bash setup.sh --init-submodules conversations
-./start_emulator.sh
-./check_device.sh
+echo OPENAI_API_KEY=sk-... > agent/.env
 python runner.py conversations
 ```
 
-Agent type defaults to `custom`; use `--agent-type codex` for Codex mode.
+**Important:** Do not start the emulator manually before running `runner.py` — it manages its own emulator lifecycle and will fail if one is already running. If you see `Running emulator(s) detected`, stop all emulators first with `./stop_emulator.sh`.
+
+The emulator helper scripts (`start_emulator.sh`, `check_device.sh`) are for manual debugging and dry-run mode only.
 
 Windows note: `setup.sh` and emulator scripts require WSL or Git Bash.
 

@@ -27,7 +27,7 @@ agent/
 ├── README.md                    
 ├── docker-compose.yml           # Orchestrates Kali containers
 ├── custom_agent.py              # Main AI agent implementation
-├── agent_setup.py               # Agent environment setup and configuration
+├── agent_container.py           # Agent Docker container and codebase mounting
 ├── kali/                        # Kali Linux container configuration
 │   ├── Dockerfile              # Kali container build instructions
 │   └── Dockerfile.kali         # Alternative Kali container setup

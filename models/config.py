@@ -22,9 +22,7 @@ class RunnerConfig(BaseModel):
 
     # agent limits
     max_iterations: int = Field(gt=0)
-    max_kali_message_tokens: int = Field(gt=0)
     max_model_response_tokens: int = Field(gt=0)
-    max_context_length: int = Field(gt=0)
 
     # mode flags
     screenshot_mode: bool
