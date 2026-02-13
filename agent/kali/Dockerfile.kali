@@ -1,85 +1,43 @@
-FROM cybench/kali-linux-large:latest
+# Stage 1: pre-built Python 3.12 (avoids building from source)
+FROM python:3.12-slim-bookworm AS python-src
 
-# Install new Kali GPG key as per https://www.kali.org/blog/new-kali-archive-signing-key/
-RUN wget https://archive.kali.org/archive-keyring.gpg -O /usr/share/keyrings/kali-archive-keyring.gpg
+# Stage 2: pinned Kali base with selective installs
+FROM kalilinux/kali-last-release@sha256:c77f241fcd12bb7835e09f8fc1073d7d9c7cf50b531808d9afa95e9cb63a6113
 
-# Install common tools, Python 3.12, Docker, and Android tools
-RUN apt-get update && apt-get install -y \
-    libnss3-dev \
-    libreadline-dev \
-    liblzma-dev \
+# Copy Python 3.12 from stage 1 (replaces Kali's default 3.13)
+COPY --from=python-src /usr/local/ /usr/local/
+RUN ldconfig
+
+# Install only what we need (no kali-linux-large metapackage)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     android-tools-adb \
-    android-tools-fastboot \
-    apt-transport-https \
-    attr \
     build-essential \
-    cmake \
     curl \
-    dialog \
     docker.io \
-    file \
-    gcc \
-    gnupg \
-    iptables \
-    libbz2-dev \
-    libc6-dev \
-    libffi-dev \
-    libgdbm-dev \
-    libncursesw5-dev \
-    libsqlite3-dev \
-    libssl-dev \
+    git \
     lsof \
-    mono-complete \
+    nmap \
     netcat-traditional \
-    protobuf-compiler \
     ripgrep \
-    software-properties-common \
-    strace \
-    tk-dev \
     tree \
-    tshark \
     unzip \
-    upx \
-    util-linux \
     wget \
-    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Update apt lists again after adding the new key
-RUN apt-get update && \
-    apt-get install -f && \
-    wget https://www.python.org/ftp/python/3.12.0/Python-3.12.0.tgz && \
-    tar xzf Python-3.12.0.tgz && \
-    cd Python-3.12.0 && \
-    ./configure --enable-optimizations && \
-    make altinstall && \
-    cd .. && \
-    rm -rf Python-3.12.0 Python-3.12.0.tgz && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install Node.js and npm
-RUN apt-get update && \
-    apt-get install -y nodejs npm && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-RUN curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && \
-    chmod +x /usr/local/bin/docker-compose
+# Docker compose
+RUN curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
+    -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose
 
 WORKDIR /app
 
-RUN ln -sf /usr/local/bin/python3.12 /usr/bin/python3 && \
-    ln -sf /usr/local/bin/pip3.12 /usr/bin/pip3 && \
-    python3.12 -m venv /venv
-
+# Venv + pip
+RUN python3 -m venv /venv
 ENV PATH="/venv/bin:$PATH"
+RUN pip install --upgrade pip
 
-RUN /venv/bin/pip install --upgrade pip
-
-# Configure git to trust all directories (fixes bind mount ownership issues)
+# Git safe directory
 RUN git config --global --add safe.directory '*'
 
-# Install semgrep for code analysis
-RUN /venv/bin/pip install semgrep && \
-    ln -s /venv/bin/semgrep /usr/local/bin/semgrep
+# Semgrep
+RUN pip install semgrep && ln -s /venv/bin/semgrep /usr/local/bin/semgrep
