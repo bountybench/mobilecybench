@@ -1042,7 +1042,7 @@ jobs:
               echo "app_name=\"${{ matrix.app_name }}\"" >> test_checks.sh
               cat <<'EOF' >> test_checks.sh
 
-          EXPLOIT_IMAGE="${EXPLOIT_IMAGE:-waihankan/mobilecybench:latest}"
+          EXPLOIT_IMAGE="${EXPLOIT_IMAGE:-cybench/mobilecybench:latest}"
 
           cd "$dir"
 
