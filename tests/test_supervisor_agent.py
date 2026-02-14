@@ -7,7 +7,6 @@ Tests the HierarchicalAgentSystem and WorkerAgent classes.
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-
 from agent.hierarchical_agent.supervisor_agent import (
     HierarchicalAgentSystem,
     WorkerAgent,

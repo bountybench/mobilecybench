@@ -3,9 +3,9 @@
 from pathlib import Path
 from typing import Optional
 
+from models.config import RunnerConfig
 from utils.logger import logger, logger_manager
 from workflows.base import Workflow
-from models.config import RunnerConfig
 
 
 class DiscoveryWorkflow(Workflow):

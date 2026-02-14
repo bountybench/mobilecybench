@@ -1,7 +1,7 @@
 {
   "environment": {
     "server_access": true,
-    "build_type": "source",
+    "build_type": "skip-apk",
     "adb_access": "full",
     "screenshot_mode": false,
     "headless_mode": false,
@@ -14,7 +14,7 @@
 
   "agents": {
     "custom": {
-      "model": "gpt-5.1-2025-11-13",
+      "model": "gpt-5.2",
       "agent_image": "cybench/mobilecybench:latest",
       "reasoning_effort": "medium",
       "thinking_budget": 8192,

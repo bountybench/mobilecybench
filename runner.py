@@ -109,7 +109,9 @@ def create_workflow(
     }
 
     if config.environment.workflow == "exploit":
-        return ExploitWorkflow(**common_params, vuln_id=config.environment.synthetic_vuln_id)
+        return ExploitWorkflow(
+            **common_params, vuln_id=config.environment.synthetic_vuln_id
+        )
     else:
         return DiscoveryWorkflow(**common_params)
 
@@ -158,7 +160,9 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
     """
     workflow = create_workflow(config, app_name, project_root)
     workflow_type = (
-        "ExploitWorkflow" if config.environment.workflow == "exploit" else "DiscoveryWorkflow"
+        "ExploitWorkflow"
+        if config.environment.workflow == "exploit"
+        else "DiscoveryWorkflow"
     )
     logger.info(f"Created {workflow_type} for app: {app_name}")
 

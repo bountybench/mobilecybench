@@ -68,6 +68,7 @@ class CustomAgentConfig(BaseModel):
             )
         return value
 
+
 class CodexAgentConfig(BaseModel):
     history_persistence: str = Field(alias="history.persistence")
     tui_animations: bool = Field(alias="tui.animations", default=False)
@@ -78,6 +79,7 @@ class CodexAgentConfig(BaseModel):
     model: str = "gpt-5.1-codex-max"
     reasoning_summary: str = Field(alias="model_reasoning_summary", default="detailed")
     erbosity: str = Field(alias="model_verbosity", default="high")
+
 
 class RunnerConfig(BaseModel):
     # TODO - Look into internal docker network - something we can use to limit codex agent permissions

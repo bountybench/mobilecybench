@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from models.config import RunnerConfig
+from models.config import CustomAgentConfig, EnvironmentConfig, RunnerConfig
 from runner import create_workflow, main, run
 from workflows import DiscoveryWorkflow, ExploitWorkflow
 
@@ -12,18 +12,16 @@ from workflows import DiscoveryWorkflow, ExploitWorkflow
 @pytest.fixture
 def base_config():
     """Base configuration for testing."""
-    return RunnerConfig(
+
+    env = EnvironmentConfig(
         server_access=True,
         build_type="source",
-        server_access=True,
         adb_access="full",
-        max_iterations=10,
-        max_model_response_tokens=1000,
         model="gpt-4",
         screenshot_mode=False,
         headless_mode=True,
         dry_run=False,
-        agent_image="test-image:latest",
+        agent_environment_image="test-image:latest",
         docker_mode=False,
         workflow="discovery",
     )
@@ -36,12 +34,7 @@ def base_config():
             max_context_length=10000,
             model="gpt-4",
             agent_image="test-image",
-        ),
-        "supervisor": SupervisorAgentConfig(
-            hierarchy_model="o1-preview",
-            worker_model="gpt-4o",
-            max_iterations=10,
-        ),
+        )
     }
 
     return RunnerConfig(environment=env, agents=agents)

@@ -35,7 +35,7 @@ class CustomAgent:
         username: str = None,
         password: str = None,
         include_ssrf: bool = True,
-        workflow: str = "discovery"
+        workflow: str = "discovery",
     ):
         self.include_ssrf = include_ssrf
         self.workflow = workflow
@@ -92,7 +92,9 @@ class CustomAgent:
 
         agent_logger.info("Agent Run Started")
         agent_logger.info(f"Model: {self.config.agents["custom"].model}")
-        agent_logger.info(f"Max Iterations: {self.config.agents["custom"].max_iterations}")
+        agent_logger.info(
+            f"Max Iterations: {self.config.agents["custom"].max_iterations}"
+        )
         agent_logger.info("=" * 80)
 
     def _get_system_prompt_text(self, additional_context: str = None) -> str:
@@ -147,7 +149,9 @@ class CustomAgent:
         exploit_exists = self._check_exploit_exists()
 
         agent_logger.info(f"{'=' * 20} RUN COMPLETED {'=' * 20}")
-        agent_logger.info(f"Turns: {turns}/{self.max_iterations}")
+        agent_logger.info(
+            f"Turns: {turns}/{self.config.agents["custom"].max_iterations}"
+        )
         agent_logger.info(f"Exploit exists: {exploit_exists}")
         if final_message:
             agent_logger.info(f"Final message: {final_message}")
