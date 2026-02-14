@@ -8,6 +8,7 @@ from agent.custom_agent import CustomAgent
 from agent.model_providers.factory import SupportedModel, get_model_provider
 from agent.model_providers.litellm_provider import LiteLLMProvider
 from agent.model_providers.openai_provider import OpenAIProvider
+from models.config import RunnerConfig, CustomAgentConfig, EnvironmentConfig
 from tests.conftest import create_provider_response
 
 
@@ -20,11 +21,42 @@ class TestCustomAgentMaxIterations:
         """Test that agent stops after max_iterations when no final submission is received."""
         max_iterations = 3
 
+        env = EnvironmentConfig(
+            server_access=True,
+            build_type="skip-apk",
+            adb_access="full",
+            screenshot_mode=False,
+            headless_mode=False,
+            dry_run=False,
+            docker_mode=False,
+            synthetic_vuln=False,
+            workflow="exploit",
+            synthetic_vuln_id="vuln_0"
+        )
+
+        agents = {
+            "custom": {
+                "model": "gpt-5.2",
+                "agent_image": "cybench/mobilecybench:latest",
+                "reasoning_effort": "medium",
+                "thinking_budget": 8192,
+                "max_iterations": max_iterations,
+                "max_context_length": 200000,
+                "max_kali_message_tokens": 8192,
+                "max_model_response_tokens": 1000,
+                "allowed_tools": [
+                    "execute_command",
+                    "get_current_ui_state",
+                    "execute_command_with_ui_state"
+                ],
+                "custom_system_prompt": None,
+            }
+        }
+
+        config = RunnerConfig(environment=env, agents=agents)
+
         agent = CustomAgent(
-            model="gpt-5.2",
-            max_iterations=max_iterations,
-            max_model_response_tokens=1000,
-            screenshot_enabled=False,
+            config=config,
             app_name="test_app",
             package_name="com.test.app",
         )
@@ -71,11 +103,44 @@ class TestCustomAgentMaxIterations:
 
         mock_agent_dependencies["provider"].call = mock_call
 
+        max_iterations = 3
+
+        env = EnvironmentConfig(
+            server_access=True,
+            build_type="skip-apk",
+            adb_access="full",
+            screenshot_mode=False,
+            headless_mode=False,
+            dry_run=False,
+            docker_mode=False,
+            synthetic_vuln=False,
+            workflow="exploit",
+            synthetic_vuln_id="vuln_0"
+        )
+
+        agents = {
+            "custom": {
+                "model": "gpt-5.2",
+                "agent_image": "cybench/mobilecybench:latest",
+                "reasoning_effort": "medium",
+                "thinking_budget": 8192,
+                "max_iterations": max_iterations,
+                "max_context_length": 200000,
+                "max_kali_message_tokens": 8192,
+                "max_model_response_tokens": 1000,
+                "allowed_tools": [
+                    "execute_command",
+                    "get_current_ui_state",
+                    "execute_command_with_ui_state"
+                ],
+                "custom_system_prompt": None,
+            }
+        }
+
+        config = RunnerConfig(environment=env, agents=agents)
+
         agent = CustomAgent(
-            model="gpt-5.2",
-            max_iterations=max_iterations,
-            max_model_response_tokens=1000,
-            screenshot_enabled=False,
+            config=config,
             app_name="test_app",
             package_name="com.test.app",
         )
@@ -91,11 +156,45 @@ class TestCustomAgentMaxIterations:
 
     def test_single_iteration(self, mock_agent_dependencies):
         """Test agent with max_iterations=1."""
+
+        max_iterations = 1
+
+        env = EnvironmentConfig(
+            server_access=True,
+            build_type="skip-apk",
+            adb_access="full",
+            screenshot_mode=False,
+            headless_mode=False,
+            dry_run=False,
+            docker_mode=False,
+            synthetic_vuln=False,
+            workflow="exploit",
+            synthetic_vuln_id="vuln_0"
+        )
+
+        agents = {
+            "custom": {
+                "model": "gpt-5.2",
+                "agent_image": "cybench/mobilecybench:latest",
+                "reasoning_effort": "medium",
+                "thinking_budget": 8192,
+                "max_iterations": max_iterations,
+                "max_context_length": 200000,
+                "max_kali_message_tokens": 8192,
+                "max_model_response_tokens": 1000,
+                "allowed_tools": [
+                    "execute_command",
+                    "get_current_ui_state",
+                    "execute_command_with_ui_state"
+                ],
+                "custom_system_prompt": None,
+            }
+        }
+
+        config = RunnerConfig(environment=env, agents=agents)
+
         agent = CustomAgent(
-            model="gpt-5.2",
-            max_iterations=1,
-            max_model_response_tokens=1000,
-            screenshot_enabled=False,
+            config=config,
             app_name="test_app",
             package_name="com.test.app",
         )
@@ -109,11 +208,45 @@ class TestCustomAgentMaxIterations:
 
     def test_conversation_log_grows(self, mock_agent_dependencies):
         """Test that conversation log accumulates across turns."""
+
+        max_iterations = 3
+
+        env = EnvironmentConfig(
+            server_access=True,
+            build_type="skip-apk",
+            adb_access="full",
+            screenshot_mode=False,
+            headless_mode=False,
+            dry_run=False,
+            docker_mode=False,
+            synthetic_vuln=False,
+            workflow="exploit",
+            synthetic_vuln_id="vuln_0"
+        )
+
+        agents = {
+            "custom": {
+                "model": "gpt-5.2",
+                "agent_image": "cybench/mobilecybench:latest",
+                "reasoning_effort": "medium",
+                "thinking_budget": 8192,
+                "max_iterations": max_iterations,
+                "max_context_length": 200000,
+                "max_kali_message_tokens": 8192,
+                "max_model_response_tokens": 1000,
+                "allowed_tools": [
+                    "execute_command",
+                    "get_current_ui_state",
+                    "execute_command_with_ui_state"
+                ],
+                "custom_system_prompt": None,
+            }
+        }
+
+        config = RunnerConfig(environment=env, agents=agents)
+
         agent = CustomAgent(
-            model="gpt-5.2",
-            max_iterations=3,
-            max_model_response_tokens=1000,
-            screenshot_enabled=False,
+            config=config,
             app_name="test_app",
             package_name="com.test.app",
         )
@@ -172,12 +305,46 @@ class TestCustomAgentWithClaude:
     """Test CustomAgent behavior with claude-opus-4-6."""
 
     def test_max_iterations_with_claude(self, mock_agent_dependencies):
+
+        model = "claude-opus-4-6"
         max_iterations = 3
+
+        env = EnvironmentConfig(
+            server_access=True,
+            build_type="skip-apk",
+            adb_access="full",
+            screenshot_mode=False,
+            headless_mode=False,
+            dry_run=False,
+            docker_mode=False,
+            synthetic_vuln=False,
+            workflow="exploit",
+            synthetic_vuln_id="vuln_0"
+        )
+
+        agents = {
+            "custom": {
+                "model": model,
+                "agent_image": "cybench/mobilecybench:latest",
+                "reasoning_effort": "medium",
+                "thinking_budget": 8192,
+                "max_iterations": max_iterations,
+                "max_context_length": 200000,
+                "max_kali_message_tokens": 8192,
+                "max_model_response_tokens": 1000,
+                "allowed_tools": [
+                    "execute_command",
+                    "get_current_ui_state",
+                    "execute_command_with_ui_state"
+                ],
+                "custom_system_prompt": None,
+            }
+        }
+
+        config = RunnerConfig(environment=env, agents=agents)
+
         agent = CustomAgent(
-            model="claude-opus-4-6",
-            max_iterations=max_iterations,
-            max_model_response_tokens=1000,
-            screenshot_enabled=False,
+            config=config,
             app_name="test_app",
             package_name="com.test.app",
         )
@@ -211,11 +378,45 @@ class TestCustomAgentWithClaude:
 
         mock_agent_dependencies["provider"].call = mock_call
 
+        model = "claude-opus-4-6"
+        max_iterations = 10
+
+        env = EnvironmentConfig(
+            server_access=True,
+            build_type="skip-apk",
+            adb_access="full",
+            screenshot_mode=False,
+            headless_mode=False,
+            dry_run=False,
+            docker_mode=False,
+            synthetic_vuln=False,
+            workflow="exploit",
+            synthetic_vuln_id="vuln_0"
+        )
+
+        agents = {
+            "custom": {
+                "model": model,
+                "agent_image": "cybench/mobilecybench:latest",
+                "reasoning_effort": "medium",
+                "thinking_budget": 8192,
+                "max_iterations": max_iterations,
+                "max_context_length": 200000,
+                "max_kali_message_tokens": 8192,
+                "max_model_response_tokens": 1000,
+                "allowed_tools": [
+                    "execute_command",
+                    "get_current_ui_state",
+                    "execute_command_with_ui_state"
+                ],
+                "custom_system_prompt": None,
+            }
+        }
+
+        config = RunnerConfig(environment=env, agents=agents)
+
         agent = CustomAgent(
-            model="claude-opus-4-6",
-            max_iterations=10,
-            max_model_response_tokens=1000,
-            screenshot_enabled=False,
+            config=config,
             app_name="test_app",
             package_name="com.test.app",
         )
@@ -226,11 +427,46 @@ class TestCustomAgentWithClaude:
         assert result["exploit_exists"] is True
 
     def test_conversation_log_grows_with_claude(self, mock_agent_dependencies):
+
+        model="claude-opus-4-6"
+        max_iterations=3
+
+        env = EnvironmentConfig(
+            server_access=True,
+            build_type="skip-apk",
+            adb_access="full",
+            screenshot_mode=False,
+            headless_mode=False,
+            dry_run=False,
+            docker_mode=False,
+            synthetic_vuln=False,
+            workflow="exploit",
+            synthetic_vuln_id="vuln_0"
+        )
+
+        agents = {
+            "custom": {
+                "model": model,
+                "agent_image": "cybench/mobilecybench:latest",
+                "reasoning_effort": "medium",
+                "thinking_budget": 8192,
+                "max_iterations": max_iterations,
+                "max_context_length": 200000,
+                "max_kali_message_tokens": 8192,
+                "max_model_response_tokens": 1000,
+                "allowed_tools": [
+                    "execute_command",
+                    "get_current_ui_state",
+                    "execute_command_with_ui_state"
+                ],
+                "custom_system_prompt": None,
+            }
+        }
+
+        config = RunnerConfig(environment=env, agents=agents)
+
         agent = CustomAgent(
-            model="claude-opus-4-6",
-            max_iterations=3,
-            max_model_response_tokens=1000,
-            screenshot_enabled=False,
+            config=config,
             app_name="test_app",
             package_name="com.test.app",
         )
@@ -248,12 +484,46 @@ class TestCustomAgentWithGemini:
     """Test CustomAgent behavior with gemini-3-pro-preview."""
 
     def test_max_iterations_with_gemini(self, mock_agent_dependencies):
+        
+        model = "gemini-3-pro-preview"
         max_iterations = 3
+
+        env = EnvironmentConfig(
+            server_access=True,
+            build_type="skip-apk",
+            adb_access="full",
+            screenshot_mode=False,
+            headless_mode=False,
+            dry_run=False,
+            docker_mode=False,
+            synthetic_vuln=False,
+            workflow="exploit",
+            synthetic_vuln_id="vuln_0"
+        )
+
+        agents = {
+            "custom": {
+                "model": model,
+                "agent_image": "cybench/mobilecybench:latest",
+                "reasoning_effort": "medium",
+                "thinking_budget": 8192,
+                "max_iterations": max_iterations,
+                "max_context_length": 200000,
+                "max_kali_message_tokens": 8192,
+                "max_model_response_tokens": 1000,
+                "allowed_tools": [
+                    "execute_command",
+                    "get_current_ui_state",
+                    "execute_command_with_ui_state"
+                ],
+                "custom_system_prompt": None,
+            }
+        }
+
+        config = RunnerConfig(environment=env, agents=agents)
+
         agent = CustomAgent(
-            model="gemini-3-pro-preview",
-            max_iterations=max_iterations,
-            max_model_response_tokens=1000,
-            screenshot_enabled=False,
+            config=config,
             app_name="test_app",
             package_name="com.test.app",
         )
@@ -287,11 +557,45 @@ class TestCustomAgentWithGemini:
 
         mock_agent_dependencies["provider"].call = mock_call
 
+        model = "gemini-3-pro-preview"
+        max_iterations = 10
+
+        env = EnvironmentConfig(
+            server_access=True,
+            build_type="skip-apk",
+            adb_access="full",
+            screenshot_mode=False,
+            headless_mode=False,
+            dry_run=False,
+            docker_mode=False,
+            synthetic_vuln=False,
+            workflow="exploit",
+            synthetic_vuln_id="vuln_0"
+        )
+
+        agents = {
+            "custom": {
+                "model": model,
+                "agent_image": "cybench/mobilecybench:latest",
+                "reasoning_effort": "medium",
+                "thinking_budget": 8192,
+                "max_iterations": max_iterations,
+                "max_context_length": 200000,
+                "max_kali_message_tokens": 8192,
+                "max_model_response_tokens": 1000,
+                "allowed_tools": [
+                    "execute_command",
+                    "get_current_ui_state",
+                    "execute_command_with_ui_state"
+                ],
+                "custom_system_prompt": None,
+            }
+        }
+
+        config = RunnerConfig(environment=env, agents=agents)
+
         agent = CustomAgent(
-            model="gemini-3-pro-preview",
-            max_iterations=10,
-            max_model_response_tokens=1000,
-            screenshot_enabled=False,
+            config=config,
             app_name="test_app",
             package_name="com.test.app",
         )
@@ -302,11 +606,46 @@ class TestCustomAgentWithGemini:
         assert result["exploit_exists"] is True
 
     def test_conversation_log_grows_with_gemini(self, mock_agent_dependencies):
+
+        model = "gemini-3-pro-preview"
+        max_iterations = 3
+
+        env = EnvironmentConfig(
+            server_access=True,
+            build_type="skip-apk",
+            adb_access="full",
+            screenshot_mode=False,
+            headless_mode=False,
+            dry_run=False,
+            docker_mode=False,
+            synthetic_vuln=False,
+            workflow="exploit",
+            synthetic_vuln_id="vuln_0"
+        )
+
+        agents = {
+            "custom": {
+                "model": model,
+                "agent_image": "cybench/mobilecybench:latest",
+                "reasoning_effort": "medium",
+                "thinking_budget": 8192,
+                "max_iterations": max_iterations,
+                "max_context_length": 200000,
+                "max_kali_message_tokens": 8192,
+                "max_model_response_tokens": 1000,
+                "allowed_tools": [
+                    "execute_command",
+                    "get_current_ui_state",
+                    "execute_command_with_ui_state"
+                ],
+                "custom_system_prompt": None,
+            }
+        }
+
+        config = RunnerConfig(environment=env, agents=agents)
+
         agent = CustomAgent(
-            model="gemini-3-pro-preview",
-            max_iterations=3,
-            max_model_response_tokens=1000,
-            screenshot_enabled=False,
+            config=config,
             app_name="test_app",
             package_name="com.test.app",
         )

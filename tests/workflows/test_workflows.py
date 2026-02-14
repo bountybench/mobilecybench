@@ -1,5 +1,6 @@
 """Tests for Workflow base class and implementations."""
 
+from copy import deepcopy
 from unittest.mock import patch
 
 import pytest
@@ -8,10 +9,63 @@ from workflows.base import Workflow
 from workflows.discovery import DiscoveryWorkflow
 from workflows.exploit import ExploitWorkflow
 
-# Common agent config params used across all workflow tests
-AGENT_CONFIG = {
-    "max_model_response_tokens": 1000,
+from models.config import RunnerConfig, EnvironmentConfig
+
+
+DEFAULT_ENVIRONMENT_CONFIG = {
+    "server_access": True,
+    "build_type": "source",
+    "adb_access": "full",
+    "agent_environment_image": "cybench/mobilecybench:latest",
+    "screenshot_mode": False,
+    "headless_mode": False,
+    "dry_run": False,
+    "docker_mode": False,
+    "synthetic_vuln": False,
+    "workflow": "discovery",
+    "synthetic_vuln_id": "vuln_0",
 }
+
+DEFAULT_AGENT_CONFIG = {
+    "model": "gpt-4",
+    "reasoning_effort": "medium",
+    "thinking_budget": 8192,
+    "max_iterations": 10,
+    "max_context_length": 200000,
+    "max_kali_message_tokens": 8192,
+    "max_model_response_tokens": 1000,
+    "allowed_tools": [
+        "execute_command",
+        "get_current_ui_state",
+        "execute_command_with_ui_state",
+    ],
+    "custom_system_prompt": None,
+}
+
+
+def build_runner_config(env_overrides=None, agent_overrides=None) -> RunnerConfig:
+    """Return a RunnerConfig with optional overrides for tests."""
+    env_data = deepcopy(DEFAULT_ENVIRONMENT_CONFIG)
+    agent_data = deepcopy(DEFAULT_AGENT_CONFIG)
+
+    if env_overrides:
+        env_data.update(env_overrides)
+    if agent_overrides:
+        agent_data.update(agent_overrides)
+
+    environment = EnvironmentConfig(**env_data)
+    return RunnerConfig(environment=environment, agents={"custom": agent_data})
+
+
+def build_exploit_runner_config(env_overrides=None, agent_overrides=None) -> RunnerConfig:
+    """Specialized helper for exploit workflow configs."""
+    exploit_overrides = {"workflow": "exploit", "synthetic_vuln": True}
+    if env_overrides:
+        exploit_overrides.update(env_overrides)
+    return build_runner_config(
+        env_overrides=exploit_overrides, agent_overrides=agent_overrides
+    )
+
 
 
 class TestWorkflowBaseClass:
@@ -45,60 +99,75 @@ class TestDiscoveryWorkflow:
 
     def test_discovery_workflow_can_be_instantiated(self, tmp_path):
         """DiscoveryWorkflow can be instantiated with required arguments."""
+
+        model = "gpt-4"
+        max_iterations = 10
+
+        config = build_runner_config(
+            env_overrides={"build_type": "skip-apk"},
+            agent_overrides={"model": model, "max_iterations": max_iterations},
+        )
+
         workflow = DiscoveryWorkflow(
+            config=config,
             app_name="test_app",
             app_dir=tmp_path,
-            model="gpt-4",
-            max_iterations=10,
-            **AGENT_CONFIG,
         )
+
         assert workflow.app_name == "test_app"
-        assert workflow.model == "gpt-4"
-        assert workflow.max_iterations == 10
-        assert workflow.build_type == "source"  # default
-        assert workflow.dry_run is False  # default
+        assert workflow.config.agents["custom"].model == "gpt-4"
+        assert workflow.config.agents["custom"].max_iterations == 10
+        assert workflow.config.environment.build_type == "skip-apk"
+        assert workflow.config.environment.dry_run is False  # default
 
     def test_discovery_workflow_accepts_all_parameters(self, tmp_path):
         """DiscoveryWorkflow accepts all optional parameters."""
+
+        model = "gpt-4"
+        max_iterations = 10
+
+        config = build_runner_config(
+            env_overrides={
+                "build_type": "download-apk",
+                "screenshot_mode": True,
+                "dry_run": True,
+                "agent_environment_image": "custom-image:latest",
+            },
+            agent_overrides={"model": model, "max_iterations": max_iterations},
+        )
+
         workflow = DiscoveryWorkflow(
+            config=config,
             app_name="test_app",
             app_dir=tmp_path,
-            model="gpt-4",
-            max_iterations=10,
-            **AGENT_CONFIG,
-            screenshot_mode=True,
-            build_type="download-apk",
-            agent_image="custom-image:latest",
             project_root=tmp_path,
-            dry_run=True,
         )
-        assert workflow.build_type == "download-apk"
-        assert workflow.agent_image == "custom-image:latest"
+
+        assert workflow.config.environment.build_type == "download-apk"
+        assert workflow.config.environment.agent_environment_image == "custom-image:latest"
         assert workflow.project_root == tmp_path
-        assert workflow.dry_run is True
-        assert workflow.screenshot_mode is True
+        assert workflow.config.environment.dry_run is True
+        assert workflow.config.environment.screenshot_mode is True
 
     def test_validate_arguments_fails_missing_app_dir(self, tmp_path):
         """validate_arguments raises error if app_dir doesn't exist."""
         non_existent = tmp_path / "does_not_exist"
+        config = build_runner_config()
         workflow = DiscoveryWorkflow(
+            config=config,
             app_name="test_app",
             app_dir=non_existent,
-            model="gpt-4",
-            max_iterations=10,
-            **AGENT_CONFIG,
         )
         with pytest.raises(ValueError, match="App directory not found"):
             workflow.validate_arguments()
 
     def test_validate_arguments_fails_missing_metadata(self, tmp_path):
         """validate_arguments raises error if metadata.json doesn't exist."""
+        config = build_runner_config()
         workflow = DiscoveryWorkflow(
+            config=config,
             app_name="test_app",
             app_dir=tmp_path,
-            model="gpt-4",
-            max_iterations=10,
-            **AGENT_CONFIG,
         )
         with pytest.raises(ValueError, match="metadata.json not found"):
             workflow.validate_arguments()
@@ -113,27 +182,25 @@ class TestExploitWorkflow:
 
     def test_exploit_workflow_can_be_instantiated(self, tmp_path):
         """ExploitWorkflow can be instantiated with required arguments."""
+        config = build_exploit_runner_config()
         workflow = ExploitWorkflow(
+            config=config,
             app_name="test_app",
             app_dir=tmp_path,
-            model="gpt-4",
-            max_iterations=10,
-            **AGENT_CONFIG,
         )
         assert workflow.app_name == "test_app"
-        assert workflow.model == "gpt-4"
-        assert workflow.build_type == "source"  # default
-        assert workflow.dry_run is False  # default
+        assert workflow.config.agents["custom"].model == "gpt-4"
+        assert workflow.config.environment.build_type == "source"  # default
+        assert workflow.config.environment.dry_run is False  # default
 
     def test_validate_arguments_fails_missing_app_dir(self, tmp_path):
         """validate_arguments raises error if app_dir doesn't exist."""
         non_existent = tmp_path / "does_not_exist"
+        config = build_exploit_runner_config()
         workflow = ExploitWorkflow(
+            config=config,
             app_name="test_app",
             app_dir=non_existent,
-            model="gpt-4",
-            max_iterations=10,
-            **AGENT_CONFIG,
         )
         with pytest.raises(ValueError, match="App directory not found"):
             workflow.validate_arguments()
@@ -141,12 +208,11 @@ class TestExploitWorkflow:
     def test_validate_arguments_fails_missing_vuln_dir(self, tmp_path):
         """validate_arguments raises error if target vulnerability dir doesn't exist."""
         (tmp_path / "metadata.json").write_text("{}")
+        config = build_exploit_runner_config()
         workflow = ExploitWorkflow(
+            config=config,
             app_name="test_app",
             app_dir=tmp_path,
-            model="gpt-4",
-            max_iterations=10,
-            **AGENT_CONFIG,
         )
         with pytest.raises(ValueError, match="Vulnerability directory not found"):
             workflow.validate_arguments()
@@ -157,12 +223,11 @@ class TestExploitWorkflow:
         vuln_dir = tmp_path / "synthetic_vulnerabilities" / "vuln_0"
         vuln_dir.mkdir(parents=True)
 
+        config = build_exploit_runner_config()
         workflow = ExploitWorkflow(
+            config=config,
             app_name="test_app",
             app_dir=tmp_path,
-            model="gpt-4",
-            max_iterations=10,
-            **AGENT_CONFIG,
         )
         with pytest.raises(ValueError, match="verify_files not found"):
             workflow.validate_arguments()
@@ -173,12 +238,11 @@ class TestExploitWorkflow:
         verify_dir = tmp_path / "synthetic_vulnerabilities" / "vuln_0" / "verify_files"
         verify_dir.mkdir(parents=True)
 
+        config = build_exploit_runner_config()
         workflow = ExploitWorkflow(
+            config=config,
             app_name="test_app",
             app_dir=tmp_path,
-            model="gpt-4",
-            max_iterations=10,
-            **AGENT_CONFIG,
         )
         with pytest.raises(ValueError, match="vulnerability.patch not found"):
             workflow.validate_arguments()
@@ -191,37 +255,35 @@ class TestExploitWorkflow:
         verify_dir.mkdir(parents=True)
         (vuln_dir / "vulnerability.patch").write_text("patch content")
 
+        config = build_exploit_runner_config(env_overrides={"build_type": "download-apk"})
         workflow = ExploitWorkflow(
+            config=config,
             app_name="test_app",
             app_dir=tmp_path,
-            model="gpt-4",
-            max_iterations=10,
-            **AGENT_CONFIG,
-            build_type="download-apk",  # Invalid for synthetic mode
         )
-        with pytest.raises(ValueError, match="requires build_type='source'"):
+        with pytest.raises(
+            ValueError, match="requires build_type='source' or 'skip-apk'"
+        ):
             workflow.validate_arguments()
 
     def test_exploit_workflow_stores_vuln_id(self, tmp_path):
         """ExploitWorkflow stores the vuln_id parameter."""
+        config = build_exploit_runner_config()
         workflow = ExploitWorkflow(
+            config=config,
             app_name="test_app",
             app_dir=tmp_path,
-            model="gpt-4",
-            max_iterations=10,
-            **AGENT_CONFIG,
             vuln_id="vuln_1",
         )
         assert workflow.vuln_id == "vuln_1"
 
     def test_exploit_workflow_vuln_id_defaults_to_vuln_0(self, tmp_path):
         """ExploitWorkflow defaults vuln_id to 'vuln_0'."""
+        config = build_exploit_runner_config()
         workflow = ExploitWorkflow(
+            config=config,
             app_name="test_app",
             app_dir=tmp_path,
-            model="gpt-4",
-            max_iterations=10,
-            **AGENT_CONFIG,
         )
         assert workflow.vuln_id == "vuln_0"
 
@@ -234,12 +296,11 @@ class TestExploitWorkflow:
         verify_dir.mkdir(parents=True)
         (vuln_dir / "vulnerability.patch").write_text("patch content")
 
+        config = build_exploit_runner_config()
         workflow = ExploitWorkflow(
+            config=config,
             app_name="test_app",
             app_dir=tmp_path,
-            model="gpt-4",
-            max_iterations=10,
-            **AGENT_CONFIG,
             vuln_id="vuln_1",
         )
 
@@ -257,12 +318,11 @@ class TestExploitWorkflow:
         verify_dir.mkdir(parents=True)
         (vuln_dir / "vulnerability.patch").write_text("patch content")
 
+        config = build_exploit_runner_config()
         workflow = ExploitWorkflow(
+            config=config,
             app_name="test_app",
             app_dir=tmp_path,
-            model="gpt-4",
-            max_iterations=10,
-            **AGENT_CONFIG,
             vuln_id="vuln_1",  # This doesn't exist
         )
         with pytest.raises(
@@ -283,12 +343,11 @@ class TestDiscoveryWorkflowFlagGeneration:
             '{"container_names": ["redis", "postgres"]}'
         )
 
+        config = build_runner_config()
         workflow = DiscoveryWorkflow(
+            config=config,
             app_name="test_app",
             app_dir=app_dir,
-            model="gpt-4",
-            max_iterations=10,
-            **AGENT_CONFIG,
             project_root=tmp_path,
         )
         workflow.metadata = {"container_names": ["redis", "postgres"]}
@@ -314,12 +373,11 @@ class TestDiscoveryWorkflowFlagGeneration:
         app_dir.mkdir(parents=True)
         (app_dir / "metadata.json").write_text("{}")
 
+        config = build_runner_config()
         workflow = DiscoveryWorkflow(
+            config=config,
             app_name="test_app",
             app_dir=app_dir,
-            model="gpt-4",
-            max_iterations=10,
-            **AGENT_CONFIG,
             project_root=tmp_path,
         )
         workflow.metadata = {}
