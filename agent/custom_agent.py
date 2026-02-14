@@ -52,11 +52,8 @@ class CustomAgent:
         if model:
             os.environ["MODEL"] = model
 
+        self.config = config
         self.model = model
-        self.max_iterations = max_iterations
-        self.max_model_response_tokens = max_model_response_tokens
-        self.max_kali_message_tokens = max_kali_message_tokens
-        self.max_context_length = max_context_length
         self.timeout_ms = timeout_ms
         self.app_server = app_server
         self.app_name = app_name
@@ -88,7 +85,7 @@ class CustomAgent:
             model=model,
             instructions=self._instructions,
             tools=self.runtime.get_tool_definitions(),
-            max_output_tokens=max_model_response_tokens,
+            max_output_tokens=self.config.agents["custom"].max_model_response_tokens,
             timeout_ms=timeout_ms,
             reasoning_effort=reasoning_effort_value,
         )
@@ -167,7 +164,7 @@ class CustomAgent:
         return {
             "status": "completed",
             "turns_taken": turns,
-            "max_turns": self.max_iterations,
+            "max_turns": self.config.agents["custom"].max_iterations,
             "exploit_exists": exploit_exists,
             "final_message": final_message,
             "token_totals": self.token_tracker.totals(),
@@ -402,4 +399,4 @@ class CustomAgent:
                     continue  # Can't proceed without tool results
 
         # Ran out of turns
-        return self._finish_run(turns=self.max_iterations)
+        return self._finish_run(turns=self.config.agents["custom"].max_iterations)

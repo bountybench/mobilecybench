@@ -104,8 +104,7 @@ def create_workflow(
         "app_dir": app_dir,
         "config": config,
         "project_root": project_root,
-        "dry_run": config.dry_run,
-        "reasoning_effort": config.reasoning_effort,
+        "reasoning_effort": config.agents["custom"].reasoning_effort,
     }
 
     if config.environment.workflow == "exploit":
@@ -133,9 +132,9 @@ def _log_experiment_config(
     }
 
     # Add exploit-specific fields
-    if config.workflow == "exploit":
+    if config.environment.workflow == "exploit":
         experiment_config["exploit"] = {
-            "vuln_id": config.synthetic_vuln_id,
+            "vuln_id": config.environment.synthetic_vuln_id,
         }
 
     logger.info(
