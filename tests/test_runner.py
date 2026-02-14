@@ -45,7 +45,9 @@ def base_config():
 @pytest.fixture
 def exploit_config(base_config):
     """Configuration for exploit workflow."""
-    return RunnerConfig(**{**base_config.model_dump(), "workflow": "exploit"})
+    config = base_config.model_dump()
+    config["environment"]["workflow"] = "exploit"
+    return RunnerConfig(**config)
 
 
 class TestCreateWorkflow:
@@ -113,7 +115,10 @@ class TestRun:
 
     def test_dry_run_skips_agent_execution(self, base_config, tmp_path):
         """Dry run mode runs interactive shell instead of agent."""
-        dry_run_config = RunnerConfig(**{**base_config.model_dump(), "dry_run": True})
+
+        config = base_config.model_dump()
+        config["environment"]["dry_run"] = True
+        dry_run_config = RunnerConfig(**config)
 
         with patch("runner.ensure_app_submodule"), patch.object(
             DiscoveryWorkflow, "validate_arguments"
