@@ -23,6 +23,7 @@ def base_config():
         dry_run=False,
         agent_environment_image="test-image:latest",
         docker_mode=False,
+        synthetic_vuln=True,
         workflow="discovery",
     )
 
