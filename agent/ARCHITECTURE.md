@@ -21,7 +21,7 @@ agent/
 ├── README.md                    
 ├── ARCHITECTURE.md              # This document
 ├── custom_agent.py              # Main AI agent implementation
-├── agent_setup.py               # Agent environment setup and container launch
+├── agent_container.py           # Agent Docker container and codebase mounting
 ├── kali/                        # Kali Linux container configuration
 │   ├── Dockerfile              # Kali container build instructions
 │   └── Dockerfile.kali         # Alternative Kali container setup
@@ -39,7 +39,7 @@ agent/
 
 ## Execution Flow
 
-At runtime, `runner.py` uses `agent/agent_setup.py` to start the Kali container (`kali-container`) and mount the app codebase. The agent executes tools inside that container via `ToolRuntime`.
+At runtime, `runner.py` uses `agent/agent_container.py` to start the Kali container (`kali-container`) and mount the app codebase. The agent executes tools inside that container via `ToolRuntime`.
 
 If an exploit script is produced at `/app/exploit_files/exploit.sh`, the runner will reset the environment, execute the exploit, and re-run probes to validate impact.
 

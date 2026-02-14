@@ -16,7 +16,6 @@ from agent.tools.runtime import ToolRuntime
 from models.config import RunnerConfig
 from utils.agent_utils import take_screenshot
 from utils.logger import agent_logger, logger_manager
-from utils.reasoning_utils import is_reasoning_supported_model
 from utils.time_tracker import time_tracker
 from utils.token_tracker import TokenTracker
 
@@ -76,18 +75,13 @@ class CustomAgent:
         agent_logger.info("=" * 60)
 
         # Create provider (fully configured on construction)
-        reasoning_effort_value = (
-            reasoning_effort
-            if reasoning_effort and is_reasoning_supported_model(model)
-            else None
-        )
         self.provider = get_model_provider(
             model=model,
             instructions=self._instructions,
             tools=self.runtime.get_tool_definitions(),
             max_output_tokens=self.config.agents["custom"].max_model_response_tokens,
             timeout_ms=timeout_ms,
-            reasoning_effort=reasoning_effort_value,
+            reasoning_effort=reasoning_effort,
         )
 
         # Use shared logger's file name for consistency
@@ -196,7 +190,7 @@ class CustomAgent:
             agent_logger.info("-" * 40)
 
             # Add screenshot if enabled
-            if self.screenshot_enabled:
+            if self.config.environment.screenshot_mode:
                 try:
                     screenshot_result = take_screenshot()
                     if screenshot_result.get("success"):

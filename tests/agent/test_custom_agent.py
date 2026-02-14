@@ -2,8 +2,10 @@ import json
 import os
 from unittest.mock import patch
 
+import pytest
+
 from agent.custom_agent import CustomAgent
-from agent.model_providers.factory import get_model_provider
+from agent.model_providers.factory import SupportedModel, get_model_provider
 from agent.model_providers.litellm_provider import LiteLLMProvider
 from agent.model_providers.openai_provider import OpenAIProvider
 from tests.conftest import create_provider_response
@@ -19,11 +21,9 @@ class TestCustomAgentMaxIterations:
         max_iterations = 3
 
         agent = CustomAgent(
-            model="gpt-4o-mini",
+            model="gpt-5.2",
             max_iterations=max_iterations,
             max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
             package_name="com.test.app",
@@ -72,11 +72,9 @@ class TestCustomAgentMaxIterations:
         mock_agent_dependencies["provider"].call = mock_call
 
         agent = CustomAgent(
-            model="gpt-4o-mini",
+            model="gpt-5.2",
             max_iterations=max_iterations,
             max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
             package_name="com.test.app",
@@ -94,11 +92,9 @@ class TestCustomAgentMaxIterations:
     def test_single_iteration(self, mock_agent_dependencies):
         """Test agent with max_iterations=1."""
         agent = CustomAgent(
-            model="gpt-4o-mini",
+            model="gpt-5.2",
             max_iterations=1,
             max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
             package_name="com.test.app",
@@ -114,11 +110,9 @@ class TestCustomAgentMaxIterations:
     def test_conversation_log_grows(self, mock_agent_dependencies):
         """Test that conversation log accumulates across turns."""
         agent = CustomAgent(
-            model="gpt-4o-mini",
+            model="gpt-5.2",
             max_iterations=3,
             max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
             package_name="com.test.app",
@@ -139,31 +133,39 @@ class TestCustomAgentMaxIterations:
 
 
 class TestModelProviderRouting:
-    """Test that the factory routes models to the correct provider."""
+    """Test that the factory routes models to the correct provider via SupportedModel enum."""
 
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
     def test_openai_models_use_openai_provider(self):
-        for model in ["gpt-4o-mini", "o1-preview", "o3-mini", "gpt-5.2"]:
-            provider = get_model_provider(model, instructions="test")
+        for model in [
+            SupportedModel.GPT_5_2,
+            SupportedModel.GPT_5_2_PRO,
+            SupportedModel.GPT_5_2_CODEX,
+        ]:
+            provider = get_model_provider(model.value.api_id, instructions="test")
             assert isinstance(
                 provider, OpenAIProvider
-            ), f"{model} should use OpenAIProvider"
+            ), f"{model.value.api_id} should use OpenAIProvider"
 
     @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})
     def test_anthropic_models_use_litellm_provider(self):
-        for model in ["claude-opus-4-6", "claude-sonnet-4-5-20250929"]:
-            provider = get_model_provider(model, instructions="test")
+        for model in [SupportedModel.CLAUDE_OPUS_4_6, SupportedModel.CLAUDE_SONNET_4_5]:
+            provider = get_model_provider(model.value.api_id, instructions="test")
             assert isinstance(
                 provider, LiteLLMProvider
-            ), f"{model} should use LiteLLMProvider"
+            ), f"{model.value.api_id} should use LiteLLMProvider"
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"})
     def test_gemini_models_use_litellm_provider(self):
-        for model in ["gemini-3-pro-preview", "gemini-2.5-flash"]:
-            provider = get_model_provider(model, instructions="test")
+        for model in [SupportedModel.GEMINI_3_PRO]:
+            provider = get_model_provider(model.value.api_id, instructions="test")
             assert isinstance(
                 provider, LiteLLMProvider
-            ), f"{model} should use LiteLLMProvider"
+            ), f"{model.value.api_id} should use LiteLLMProvider"
+
+    def test_unsupported_model_raises_error(self):
+        with pytest.raises(ValueError, match="Unsupported model"):
+            get_model_provider("some-random-model", instructions="test")
 
 
 class TestCustomAgentWithClaude:
@@ -175,8 +177,6 @@ class TestCustomAgentWithClaude:
             model="claude-opus-4-6",
             max_iterations=max_iterations,
             max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
             package_name="com.test.app",
@@ -215,8 +215,6 @@ class TestCustomAgentWithClaude:
             model="claude-opus-4-6",
             max_iterations=10,
             max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
             package_name="com.test.app",
@@ -232,8 +230,6 @@ class TestCustomAgentWithClaude:
             model="claude-opus-4-6",
             max_iterations=3,
             max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
             package_name="com.test.app",
@@ -257,8 +253,6 @@ class TestCustomAgentWithGemini:
             model="gemini-3-pro-preview",
             max_iterations=max_iterations,
             max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
             package_name="com.test.app",
@@ -297,8 +291,6 @@ class TestCustomAgentWithGemini:
             model="gemini-3-pro-preview",
             max_iterations=10,
             max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
             package_name="com.test.app",
@@ -314,8 +306,6 @@ class TestCustomAgentWithGemini:
             model="gemini-3-pro-preview",
             max_iterations=3,
             max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
             package_name="com.test.app",

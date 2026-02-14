@@ -725,7 +725,6 @@ jobs:
           python -m pip install --upgrade pip -q
           pip install -r requirements.txt -q
           pip install -e .
-          export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
 
       - name: Create Docker Network
         run: docker network create shared_net || true
@@ -1379,6 +1378,10 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated -writable-system
           disable-animations: true
           script: |
+            # Restart ADB on all interfaces so exploit containers can reach
+            # the emulator via host.docker.internal:5037
+            adb kill-server && adb -a -P 5037 start-server
+            adb wait-for-device
             utils/android_emulator_ready.sh --remount
             ./test_checks.sh
 
@@ -1395,6 +1398,10 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated
           disable-animations: true
           script: |
+            # Restart ADB on all interfaces so exploit containers can reach
+            # the emulator via host.docker.internal:5037
+            adb kill-server && adb -a -P 5037 start-server
+            adb wait-for-device
             utils/android_emulator_ready.sh
             ./test_checks.sh
 

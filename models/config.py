@@ -15,8 +15,8 @@ class EnvironmentConfig(BaseModel):
     dry_run: bool
     docker_mode: bool
     synthetic_vuln: bool
-    workflow: str
-    synthetic_vuln_id: str
+    workflow: Literal["discovery", "exploit"] = "discovery"
+    synthetic_vuln_id: str = "vuln_0"
 
 
 class CustomAgentConfig(BaseModel):

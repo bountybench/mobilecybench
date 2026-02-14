@@ -13,25 +13,25 @@ python3 -m venv .venv
 source .venv/bin/activate   # Windows: .\\.venv\\Scripts\\activate
 pip install -r requirements.txt
 bash setup.sh --init-submodules conversations
-./start_emulator.sh
-./check_device.sh
 ```
 
 Windows note: `setup.sh` and the emulator scripts require WSL or Git Bash. Use the Windows venv activation line above.
 
-If you want to run the AI agent, provide an API key. We currently support Google and OpenAI models and recommend using either `gemini-3-pro-preview` or `gpt-5.2`
+To run the AI agent, provide an API key. We currently support Google and OpenAI models and recommend using either `gemini-3-pro-preview` or `gpt-5.2`
 
 ```bash
 echo OPENAI_API_KEY=sk-... > agent/.env
 python runner.py conversations
 ```
 
+**Important:** Do not start the emulator manually before running `runner.py` — it manages its own emulator lifecycle (start, install, cleanup) and will fail if one is already running. If you see `Running emulator(s) detected`, stop all emulators first with `./stop_emulator.sh`.
+
 The default mode is **discovery** (find unknown vulnerabilities). To run in **exploit mode** (exploit a synthetic vulnerability), set `"workflow": "exploit"` in `runner_config.json`. See `documentation/EXPERIMENTS.md` for details on both modes.
 
 If you do not want to use an API key, run in dry-run mode instead:
 
 ```bash
-python runner.py conversations runner_config_dryrun.json
+python runner.py conversations --config runner_config_dryrun.json
 ```
 
 ## 1) System prerequisites
@@ -78,16 +78,7 @@ Notes:
 - To initialize submodules during setup, use `--init-submodules` (all) or `--init-submodules <app_name>` (single app).
 - `setup.sh` installs `apktool` if it is missing.
 
-## 4) Start and verify the emulator
-
-```bash
-./start_emulator.sh
-./check_device.sh
-```
-
-You should see a connected emulator with the expected SDK version.
-
-## 5) Obtain API key(s)
+## 4) Obtain API key(s)
 
 To run the agent, an API key is required in a `.env` file in the `agent/` directory. Supported model providers are listed in `agent/model_providers/factory.py`.
 
@@ -96,7 +87,7 @@ cd agent && touch .env
 echo OPENAI_API_KEY="sk..." > .env
 ```
 
-## 6) Pick an app
+## 5) Pick an app
 
 List available apps:
 
@@ -106,7 +97,9 @@ ls apps
 
 Pick any existing app directory. Example: `conversations`.
 
-## 7) Run a baseline experiment
+## 6) Run a baseline experiment
+
+Make sure no emulators are running (`./stop_emulator.sh`), then:
 
 ```bash
 python runner.py <app_name>
@@ -114,20 +107,19 @@ python runner.py <app_name>
 
 What happens next:
 
+- The runner starts and manages its own emulator.
 - The app is built or downloaded.
-- The emulator is prepared.
 - The app is installed and launched.
-- Probes are run before and after testing.
-
-Agent type defaults to `custom`; use `--agent-type codex` for Codex mode.
+- The agent runs, then probes evaluate the results.
+- The emulator is stopped automatically on completion.
 
 If you only want to verify setup without running an LLM, use dry-run:
 
 ```bash
-python runner.py <app_name> runner_config_dryrun.json
+python runner.py <app_name> --config runner_config_dryrun.json
 ```
 
-## 8) Submodules and Java version notes
+## 7) Submodules and Java version notes
 
 - Apps use a git submodule at `apps/<app_name>/codebase`. Initialize/update submodules if you are working with an existing app directory:
 
@@ -137,7 +129,7 @@ git submodule update --init apps/<app_name>/codebase
 
 - Java version for builds is app-specific (see `apps/<app_name>/metadata.json`).
 
-## 9) Where to go next
+## 8) Where to go next
 
 - To add a new app: `documentation/ADDING_APPS.md`
 - To run or configure the agent: `documentation/AGENT_SETUP.md`
