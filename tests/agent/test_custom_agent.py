@@ -8,7 +8,7 @@ from agent.custom_agent import CustomAgent
 from agent.model_providers.factory import SupportedModel, get_model_provider
 from agent.model_providers.litellm_provider import LiteLLMProvider
 from agent.model_providers.openai_provider import OpenAIProvider
-from models.config import RunnerConfig, CustomAgentConfig, EnvironmentConfig
+from models.config import EnvironmentConfig, RunnerConfig
 from tests.conftest import create_provider_response
 
 
@@ -31,7 +31,7 @@ class TestCustomAgentMaxIterations:
             docker_mode=False,
             synthetic_vuln=False,
             workflow="exploit",
-            synthetic_vuln_id="vuln_0"
+            synthetic_vuln_id="vuln_0",
         )
 
         agents = {
@@ -47,7 +47,7 @@ class TestCustomAgentMaxIterations:
                 "allowed_tools": [
                     "execute_command",
                     "get_current_ui_state",
-                    "execute_command_with_ui_state"
+                    "execute_command_with_ui_state",
                 ],
                 "custom_system_prompt": None,
             }
@@ -115,7 +115,7 @@ class TestCustomAgentMaxIterations:
             docker_mode=False,
             synthetic_vuln=False,
             workflow="exploit",
-            synthetic_vuln_id="vuln_0"
+            synthetic_vuln_id="vuln_0",
         )
 
         agents = {
@@ -131,7 +131,7 @@ class TestCustomAgentMaxIterations:
                 "allowed_tools": [
                     "execute_command",
                     "get_current_ui_state",
-                    "execute_command_with_ui_state"
+                    "execute_command_with_ui_state",
                 ],
                 "custom_system_prompt": None,
             }
@@ -169,7 +169,7 @@ class TestCustomAgentMaxIterations:
             docker_mode=False,
             synthetic_vuln=False,
             workflow="exploit",
-            synthetic_vuln_id="vuln_0"
+            synthetic_vuln_id="vuln_0",
         )
 
         agents = {
@@ -185,7 +185,7 @@ class TestCustomAgentMaxIterations:
                 "allowed_tools": [
                     "execute_command",
                     "get_current_ui_state",
-                    "execute_command_with_ui_state"
+                    "execute_command_with_ui_state",
                 ],
                 "custom_system_prompt": None,
             }
@@ -221,7 +221,7 @@ class TestCustomAgentMaxIterations:
             docker_mode=False,
             synthetic_vuln=False,
             workflow="exploit",
-            synthetic_vuln_id="vuln_0"
+            synthetic_vuln_id="vuln_0",
         )
 
         agents = {
@@ -237,7 +237,7 @@ class TestCustomAgentMaxIterations:
                 "allowed_tools": [
                     "execute_command",
                     "get_current_ui_state",
-                    "execute_command_with_ui_state"
+                    "execute_command_with_ui_state",
                 ],
                 "custom_system_prompt": None,
             }
@@ -319,7 +319,7 @@ class TestCustomAgentWithClaude:
             docker_mode=False,
             synthetic_vuln=False,
             workflow="exploit",
-            synthetic_vuln_id="vuln_0"
+            synthetic_vuln_id="vuln_0",
         )
 
         agents = {
@@ -335,7 +335,7 @@ class TestCustomAgentWithClaude:
                 "allowed_tools": [
                     "execute_command",
                     "get_current_ui_state",
-                    "execute_command_with_ui_state"
+                    "execute_command_with_ui_state",
                 ],
                 "custom_system_prompt": None,
             }
@@ -391,7 +391,7 @@ class TestCustomAgentWithClaude:
             docker_mode=False,
             synthetic_vuln=False,
             workflow="exploit",
-            synthetic_vuln_id="vuln_0"
+            synthetic_vuln_id="vuln_0",
         )
 
         agents = {
@@ -407,7 +407,7 @@ class TestCustomAgentWithClaude:
                 "allowed_tools": [
                     "execute_command",
                     "get_current_ui_state",
-                    "execute_command_with_ui_state"
+                    "execute_command_with_ui_state",
                 ],
                 "custom_system_prompt": None,
             }
@@ -428,8 +428,8 @@ class TestCustomAgentWithClaude:
 
     def test_conversation_log_grows_with_claude(self, mock_agent_dependencies):
 
-        model="claude-opus-4-6"
-        max_iterations=3
+        model = "claude-opus-4-6"
+        max_iterations = 3
 
         env = EnvironmentConfig(
             server_access=True,
@@ -441,7 +441,7 @@ class TestCustomAgentWithClaude:
             docker_mode=False,
             synthetic_vuln=False,
             workflow="exploit",
-            synthetic_vuln_id="vuln_0"
+            synthetic_vuln_id="vuln_0",
         )
 
         agents = {
@@ -457,7 +457,7 @@ class TestCustomAgentWithClaude:
                 "allowed_tools": [
                     "execute_command",
                     "get_current_ui_state",
-                    "execute_command_with_ui_state"
+                    "execute_command_with_ui_state",
                 ],
                 "custom_system_prompt": None,
             }
@@ -484,7 +484,7 @@ class TestCustomAgentWithGemini:
     """Test CustomAgent behavior with gemini-3-pro-preview."""
 
     def test_max_iterations_with_gemini(self, mock_agent_dependencies):
-        
+
         model = "gemini-3-pro-preview"
         max_iterations = 3
 
@@ -498,7 +498,7 @@ class TestCustomAgentWithGemini:
             docker_mode=False,
             synthetic_vuln=False,
             workflow="exploit",
-            synthetic_vuln_id="vuln_0"
+            synthetic_vuln_id="vuln_0",
         )
 
         agents = {
@@ -514,7 +514,7 @@ class TestCustomAgentWithGemini:
                 "allowed_tools": [
                     "execute_command",
                     "get_current_ui_state",
-                    "execute_command_with_ui_state"
+                    "execute_command_with_ui_state",
                 ],
                 "custom_system_prompt": None,
             }
@@ -570,7 +570,7 @@ class TestCustomAgentWithGemini:
             docker_mode=False,
             synthetic_vuln=False,
             workflow="exploit",
-            synthetic_vuln_id="vuln_0"
+            synthetic_vuln_id="vuln_0",
         )
 
         agents = {
@@ -586,7 +586,7 @@ class TestCustomAgentWithGemini:
                 "allowed_tools": [
                     "execute_command",
                     "get_current_ui_state",
-                    "execute_command_with_ui_state"
+                    "execute_command_with_ui_state",
                 ],
                 "custom_system_prompt": None,
             }
@@ -620,7 +620,7 @@ class TestCustomAgentWithGemini:
             docker_mode=False,
             synthetic_vuln=False,
             workflow="exploit",
-            synthetic_vuln_id="vuln_0"
+            synthetic_vuln_id="vuln_0",
         )
 
         agents = {
@@ -636,7 +636,7 @@ class TestCustomAgentWithGemini:
                 "allowed_tools": [
                     "execute_command",
                     "get_current_ui_state",
-                    "execute_command_with_ui_state"
+                    "execute_command_with_ui_state",
                 ],
                 "custom_system_prompt": None,
             }

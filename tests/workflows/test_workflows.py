@@ -5,12 +5,10 @@ from unittest.mock import patch
 
 import pytest
 
+from models.config import EnvironmentConfig, RunnerConfig
 from workflows.base import Workflow
 from workflows.discovery import DiscoveryWorkflow
 from workflows.exploit import ExploitWorkflow
-
-from models.config import RunnerConfig, EnvironmentConfig
-
 
 DEFAULT_ENVIRONMENT_CONFIG = {
     "server_access": True,
@@ -57,7 +55,9 @@ def build_runner_config(env_overrides=None, agent_overrides=None) -> RunnerConfi
     return RunnerConfig(environment=environment, agents={"custom": agent_data})
 
 
-def build_exploit_runner_config(env_overrides=None, agent_overrides=None) -> RunnerConfig:
+def build_exploit_runner_config(
+    env_overrides=None, agent_overrides=None
+) -> RunnerConfig:
     """Specialized helper for exploit workflow configs."""
     exploit_overrides = {"workflow": "exploit", "synthetic_vuln": True}
     if env_overrides:
@@ -65,7 +65,6 @@ def build_exploit_runner_config(env_overrides=None, agent_overrides=None) -> Run
     return build_runner_config(
         env_overrides=exploit_overrides, agent_overrides=agent_overrides
     )
-
 
 
 class TestWorkflowBaseClass:
@@ -144,7 +143,9 @@ class TestDiscoveryWorkflow:
         )
 
         assert workflow.config.environment.build_type == "download-apk"
-        assert workflow.config.environment.agent_environment_image == "custom-image:latest"
+        assert (
+            workflow.config.environment.agent_environment_image == "custom-image:latest"
+        )
         assert workflow.project_root == tmp_path
         assert workflow.config.environment.dry_run is True
         assert workflow.config.environment.screenshot_mode is True
@@ -255,7 +256,9 @@ class TestExploitWorkflow:
         verify_dir.mkdir(parents=True)
         (vuln_dir / "vulnerability.patch").write_text("patch content")
 
-        config = build_exploit_runner_config(env_overrides={"build_type": "download-apk"})
+        config = build_exploit_runner_config(
+            env_overrides={"build_type": "download-apk"}
+        )
         workflow = ExploitWorkflow(
             config=config,
             app_name="test_app",
