@@ -22,9 +22,7 @@ class RunnerConfig(BaseModel):
 
     # agent limits
     max_iterations: int = Field(gt=0)
-    max_kali_message_tokens: int = Field(gt=0)
     max_model_response_tokens: int = Field(gt=0)
-    max_context_length: int = Field(gt=0)
 
     # mode flags
     screenshot_mode: bool
@@ -37,7 +35,6 @@ class RunnerConfig(BaseModel):
     allowed_tools: Optional[List[str]] = None
 
     reasoning_effort: Optional[str] = None
-    thinking_budget: Optional[int] = None  # Token budget for thinking/reasoning models
 
     @classmethod
     def from_file(cls, config_path: Path) -> "RunnerConfig":

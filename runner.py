@@ -8,10 +8,12 @@ This runner uses the Workflow abstraction to handle different evaluation modes:
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from models.config import RunnerConfig
+from utils.git_utils import ensure_app_submodule
 from utils.logger import logger, logger_manager
 from workflows import DiscoveryWorkflow, ExploitWorkflow, Workflow
 
@@ -104,21 +106,48 @@ def create_workflow(
         "model": config.model,
         "max_iterations": config.max_iterations,
         "max_model_response_tokens": config.max_model_response_tokens,
-        "max_kali_message_tokens": config.max_kali_message_tokens,
-        "max_context_length": config.max_context_length,
         "screenshot_mode": config.screenshot_mode,
         "build_type": config.build_type,
         "agent_image": config.agent_image,
         "project_root": project_root,
         "dry_run": config.dry_run,
         "reasoning_effort": config.reasoning_effort,
-        "thinking_budget": config.thinking_budget,
     }
 
     if config.workflow == "exploit":
         return ExploitWorkflow(**common_params, vuln_id=config.synthetic_vuln_id)
     else:
         return DiscoveryWorkflow(**common_params)
+
+
+def _log_experiment_config(
+    config: RunnerConfig, app_name: str, workflow: Workflow
+) -> None:
+    """Log a structured summary of the full experiment configuration.
+
+    Combines runner config with app metadata so the full experiment log
+    captures everything needed to reproduce or understand the run.
+    """
+    metadata = getattr(workflow, "metadata", {})
+
+    experiment_config = {
+        "app": {
+            "name": app_name,
+            **metadata,
+        },
+        "runner": config.model_dump(),
+    }
+
+    # Add exploit-specific fields
+    if config.workflow == "exploit":
+        experiment_config["exploit"] = {
+            "vuln_id": config.synthetic_vuln_id,
+        }
+
+    logger.info(
+        "Experiment configuration:\n%s",
+        json.dumps(experiment_config, indent=2, default=str),
+    )
 
 
 def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
@@ -144,6 +173,11 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
         workflow.validate_arguments()
         logger.info("Arguments validated")
 
+        ensure_app_submodule(project_root, app_name)
+
+        # Log structured experiment configuration for observability
+        _log_experiment_config(config, app_name, workflow)
+
         logger.info("Step 2/5: Setting up runtime environment...")
         workflow.setup_runtime_environment()
         logger.info("Runtime environment ready")
@@ -160,6 +194,9 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
             logger.info("Step 4/5: Running agent...")
             result = workflow.run_agent()
             logger.info(f"Agent completed: {result.get('status', 'unknown')}")
+
+            # Save agent artifacts (exploit_files, codebase diff) before cleanup
+            workflow.save_artifacts(logger_manager.get_logs_dir())
 
             logger.info("Step 5/5: Evaluating results...")
             scores = workflow.evaluate()
@@ -197,8 +234,6 @@ def main():
     args = parser.parse_args()
 
     # Load config
-    import json
-
     config_path = Path(args.config)
     if not config_path.exists():
         logger.error(f"Config file not found: {config_path}")

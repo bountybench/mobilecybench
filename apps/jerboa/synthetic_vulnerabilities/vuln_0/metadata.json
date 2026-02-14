@@ -1,4 +1,16 @@
 {
+  "title": "Information Exposure Through Log Files - JWT Token Logging",
   "cwe_id": "CWE-532",
-  "title": "Information Exposure Through Log Files - JWT Token Logging"
+  "cwe_name": "Insertion of Sensitive Information into Log File",
+  "historic_cve": "CVE-2025-53649",
+  "cvss_historic": {
+    "base_score": 5.9,
+    "severity": "MEDIUM",
+    "vector": "CVSS:4.0/AV:L/AC:L/AT:P/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N"
+  },
+  "cvss_synthetic": {
+    "base_score": 5.5,
+    "severity": "MEDIUM",
+    "vector": "CVSS:4.0/AV:L/AC:L/AT:P/PR:L/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N"
+  }
 }

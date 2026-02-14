@@ -27,7 +27,7 @@ agent/
 ├── README.md                    
 ├── docker-compose.yml           # Orchestrates Kali containers
 ├── custom_agent.py              # Main AI agent implementation
-├── agent_setup.py               # Agent environment setup and configuration
+├── agent_container.py           # Agent Docker container and codebase mounting
 ├── kali/                        # Kali Linux container configuration
 │   ├── Dockerfile              # Kali container build instructions
 │   └── Dockerfile.kali         # Alternative Kali container setup
@@ -35,44 +35,12 @@ agent/
 │   ├── runtime.py              # Local ToolRuntime implementation
 ├── model_providers/            # AI model provider implementations
 │   ├── __init__.py
-│   ├── base.py                 # Base provider interface
-│   ├── factory.py              # Provider factory pattern
-│   ├── openai_provider.py      # OpenAI API provider
-│   └── gemini_provider.py      # Google Gemini provider
+│   ├── base.py                 # Base provider interface (stateful contract)
+│   ├── factory.py              # Provider factory (routes by model name)
 ├── prompts/                    # AI agent prompt templates
 │   ├── __init__.py
 │   └── prompts.py              # Prompt definitions and templates
 ```
-
-## Utils Dependencies
-
-The agent system relies on several utility modules for core functionality:
-
-- **`utils.time_tracker`**: Comprehensive timing and performance monitoring
-  - Tracks total experiment duration
-  - Monitors individual LLM call times
-  - Generates structured JSON timing reports
-  - Provides statistics (p50, p95, p99) for performance analysis
-
-- **`utils.token_tracker`**: AI API cost and usage monitoring
-  - Tracks token usage across different models
-  - Calculates costs based on current pricing
-  - Provides usage summaries and totals
-
-- **`utils.agent_utils`**: Agent-specific utility functions
-  - Screenshot capture functionality
-  - UI interaction helpers
-
-- **`utils.runtime_tools`**: Runtime tool definitions
-
-- **`utils.logger`**: Centralized logging system
-  - Structured logging for agent operations
-  - Log file management
-  - Different log levels for debugging
-
-- **`utils.git_utils`**: Git repository utilities
-  - Repository setup and configuration
-  - Git operations for agent setup
 
 ## Prerequisites
 
@@ -103,16 +71,16 @@ pip install -r requirements.txt
 
 ### 2. API Key Configuration
 
-Create the environment file for your OpenAI API key:
+Create the environment file with the API key for your chosen provider:
 
 ```bash
 # From the project root directory
-echo "OPENAI_API_KEY=your_actual_api_key_here" > agent/.env
-```
-
-Or set it as an environment variable:
-```bash
-export OPENAI_API_KEY="sk-your-actual-openai-api-key-here"
+# For OpenAI models (gpt-*, o1-*, o3-*, etc.):
+echo "OPENAI_API_KEY=your_key_here" > agent/.env
+# For Anthropic models (claude-*):
+echo "ANTHROPIC_API_KEY=your_key_here" > agent/.env
+# For Google Gemini models (gemini-*):
+echo "GEMINI_API_KEY=your_key_here" > agent/.env
 ```
 
 ### 3. Start Agent Containers
@@ -242,11 +210,6 @@ All probe results are stored in `runner.probe_results` dictionary and can be use
 - If timing data is missing, check that `utils.time_tracker` is properly imported
 - Verify that `time_tracker.start_experiment()` is called at the beginning of the run
 - Check that `time_tracker.end_experiment()` is called in the finally block
-
-**Model Provider Issues:**
-- Ensure your OpenAI API key is correctly set in the environment
-- Check that the model name matches the available models in your API plan
-- Verify network connectivity to OpenAI's API endpoints
 
 **Token Tracking Issues:**
 - If cost calculations are incorrect, check the pricing data in `utils/token_costs.py`

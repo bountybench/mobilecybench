@@ -31,6 +31,20 @@ STOP_TOKEN = "<END>"
 SSRF_PROBE_HOST = "ssrf-probe"
 SSRF_PROBE_PORT = 14377
 
+# Appended to system prompts so reasoning models produce visible text alongside tool calls.
+_MANDATORY_TEXT_SUFFIX = (
+    "\n\nIMPORTANT: On every turn, you MUST output your "
+    "Reflection/Plan/Thought/Log/Command text BEFORE making any tool call. "
+    "Never skip the text output."
+)
+
+# Injected as a user message when a turn is missing expected outputs.
+MISSING_OUTPUT_NUDGE = (
+    "WARNING: Turn {turn} is missing {missing}. "
+    "Every turn MUST include your Reflection/Plan/Thought/Log/Command "
+    "text AND a tool call."
+)
+
 # =============================================================================
 # Shared Building Blocks
 # =============================================================================
@@ -210,7 +224,8 @@ def build_detect_prompt(
     if resolved_host:
         parts.append(_TARGET_HOST_EXAMPLE.format(resolved_host=resolved_host))
 
-    return "\n".join(parts)
+    prompt = "\n".join(parts) + _MANDATORY_TEXT_SUFFIX
+    return prompt
 
 
 def build_synthetic_prompt(
@@ -245,4 +260,4 @@ def build_synthetic_prompt(
     if resolved_host:
         parts.append(_TARGET_HOST_EXAMPLE.format(resolved_host=resolved_host))
 
-    return "\n".join(parts)
+    return "\n".join(parts) + _MANDATORY_TEXT_SUFFIX

@@ -178,13 +178,23 @@ jobs:
                 done
                 [ "$missing_files" = true ] && continue
 
-                # Synthetic vulns always use source setup mode
+                # Use apklink if available, but force source if vulnerability.patch or build.sh changed
+                synth_mode="source"
+                if [ "$has_apklink" = true ]; then
+                  patch_changed=$(echo "$synth_changes" | grep -q "${vuln_id}/vulnerability.patch" && echo "true" || echo "false")
+                  if [ "$patch_changed" = "false" ] && [ "$source_modified" = "false" ]; then
+                    synth_mode="apklink"
+                  else
+                    echo "  vulnerability.patch or build.sh changed — forcing source build for $vuln_id"
+                  fi
+                fi
+
                 apk_jobs=$(echo "$apk_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
-                  --arg java "$java" --arg mode "source" --arg vuln_id "$vuln_id" \
+                  --arg java "$java" --arg mode "$synth_mode" --arg vuln_id "$vuln_id" \
                   '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode, "vuln_id": $vuln_id}]')
 
                 test_jobs=$(echo "$test_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
-                  --arg sdk "$sdk" --arg image "$system_image" --arg mode "source" \
+                  --arg sdk "$sdk" --arg image "$system_image" --arg mode "$synth_mode" \
                   --arg type "synthetic_vuln" --arg vuln_id "$vuln_id" \
                   '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type, "vuln_id": $vuln_id}]')
 
@@ -192,29 +202,34 @@ jobs:
               done
             fi
 
-            # Always add regular CI jobs (APK build + standard tests)
-            # Build APK jobs for this app
-            for mode in "${setup_modes[@]}"; do
-              apk_jobs=$(echo "$apk_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
-                --arg java "$java" --arg mode "$mode" \
-                '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode}]')
-            done
+            # Add regular CI jobs only if non-synthetic files changed
+            non_synth_changes=$(git diff --name-only origin/main...HEAD \
+              | grep "^${dir}/" | grep -v "^${dir}/synthetic_vulnerabilities/" || true)
 
-            # Build test jobs for this app
-            if [ "$has_probes" = true ]; then
-              test_types=("baseline" "vuln_scenario_0")
-              [ "$has_server" = true ] && test_types+=("vuln_scenario_1")
-            else
-              test_types=("simple")
-            fi
-
-            for mode in "${setup_modes[@]}"; do
-              for test_type in "${test_types[@]}"; do
-                test_jobs=$(echo "$test_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
-                  --arg sdk "$sdk" --arg image "$system_image" --arg mode "$mode" --arg type "$test_type" \
-                  '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type}]')
+            if [ -n "$non_synth_changes" ]; then
+              # Build APK jobs for this app
+              for mode in "${setup_modes[@]}"; do
+                apk_jobs=$(echo "$apk_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
+                  --arg java "$java" --arg mode "$mode" \
+                  '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode}]')
               done
-            done
+
+              # Build test jobs for this app
+              if [ "$has_probes" = true ]; then
+                test_types=("baseline" "vuln_scenario_0")
+                [ "$has_server" = true ] && test_types+=("vuln_scenario_1")
+              else
+                test_types=("simple")
+              fi
+
+              for mode in "${setup_modes[@]}"; do
+                for test_type in "${test_types[@]}"; do
+                  test_jobs=$(echo "$test_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
+                    --arg sdk "$sdk" --arg image "$system_image" --arg mode "$mode" --arg type "$test_type" \
+                    '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type}]')
+                done
+              done
+            fi
           done <<< "${{ steps.modified-dirs.outputs.modified_dirs }}"
 
           echo "APK jobs: $apk_jobs"
@@ -404,8 +419,23 @@ jobs:
 
           echo "APK path validated - found $APK_COUNT APK(s) in $APK_DIR/"
 
+          # For apklink + synthetic vuln, verify the bundle includes the vuln APK
+          if [ "${{ matrix.setup_mode }}" = "apklink" ] && [ -n "${{ matrix.vuln_id }}" ]; then
+            VULN_APK_DIR="apk/${{ matrix.vuln_id }}"
+            VULN_APK_COUNT=$(find "$VULN_APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+            if [ "$VULN_APK_COUNT" -eq 0 ]; then
+              echo "ERROR: Downloaded APK bundle does not contain vulnerable APK for ${{ matrix.vuln_id }}."
+              echo "  The bundle at download_link needs to be rebuilt and republished:"
+              echo "    ./build_apk.sh ${{ matrix.app_name }}"
+              echo "    ./build_apk.sh ${{ matrix.app_name }} --vuln ${{ matrix.vuln_id }}"
+              echo "    ./publish_apk_bundle.sh apps/${{ matrix.app_name }}"
+              exit 1
+            fi
+            echo "Vulnerable APK found in bundle: $VULN_APK_DIR/ ($VULN_APK_COUNT APK(s))"
+          fi
+
       - name: Build vulnerable APK for synthetic vulnerability
-        if: matrix.vuln_id != ''
+        if: matrix.vuln_id != '' && matrix.setup_mode == 'source'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
@@ -418,7 +448,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: apk-${{ matrix.app_name }}-${{ matrix.setup_mode }}-${{ github.run_id }}
+          name: apk-${{ matrix.app_name }}-${{ matrix.setup_mode }}${{ matrix.vuln_id && format('-{0}', matrix.vuln_id) || '' }}-${{ github.run_id }}
           path: |
             ${{ matrix.app_dir }}/apk/*.apk
             ${{ matrix.app_dir }}/apk/${{ matrix.vuln_id }}/*.apk
@@ -695,7 +725,6 @@ jobs:
           python -m pip install --upgrade pip -q
           pip install -r requirements.txt -q
           pip install -e .
-          export ADB_SERVER_SOCKET=tcp:0.0.0.0:5037
 
       - name: Create Docker Network
         run: docker network create shared_net || true
@@ -1067,12 +1096,6 @@ jobs:
               "$EXPLOIT_IMAGE" \
               tail -f /dev/null
 
-            # Install exploit dependencies if requirements.txt exists
-            if [ -f "$exploit_files_path/requirements.txt" ]; then
-              echo "Installing exploit dependencies from requirements.txt..."
-              docker exec "$container_name" pip install -r /app/exploit_files/requirements.txt
-            fi
-
             # Run exploit
             echo "Running exploit script..."
             docker exec "$container_name" bash /app/exploit_files/exploit.sh || true
@@ -1258,7 +1281,7 @@ jobs:
       - name: Download APK artifact
         uses: actions/download-artifact@v4
         with:
-          name: apk-${{ matrix.app_name }}-${{ matrix.setup_mode }}-${{ github.run_id }}
+          name: apk-${{ matrix.app_name }}-${{ matrix.setup_mode }}${{ matrix.vuln_id && format('-{0}', matrix.vuln_id) || '' }}-${{ github.run_id }}
           path: ${{ matrix.app_dir }}/apk/
 
       - name: Verify downloaded APK
@@ -1355,6 +1378,10 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated -writable-system
           disable-animations: true
           script: |
+            # Restart ADB on all interfaces so exploit containers can reach
+            # the emulator via host.docker.internal:5037
+            adb kill-server && adb -a -P 5037 start-server
+            adb wait-for-device
             utils/android_emulator_ready.sh --remount
             ./test_checks.sh
 
@@ -1371,6 +1398,10 @@ jobs:
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated
           disable-animations: true
           script: |
+            # Restart ADB on all interfaces so exploit containers can reach
+            # the emulator via host.docker.internal:5037
+            adb kill-server && adb -a -P 5037 start-server
+            adb wait-for-device
             utils/android_emulator_ready.sh
             ./test_checks.sh
 

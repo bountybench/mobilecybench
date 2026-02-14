@@ -21,16 +21,14 @@ agent/
 ├── README.md                    
 ├── ARCHITECTURE.md              # This document
 ├── custom_agent.py              # Main AI agent implementation
-├── agent_setup.py               # Agent environment setup and container launch
+├── agent_container.py           # Agent Docker container and codebase mounting
 ├── kali/                        # Kali Linux container configuration
 │   ├── Dockerfile              # Kali container build instructions
 │   └── Dockerfile.kali         # Alternative Kali container setup
 ├── model_providers/            # AI model provider implementations
 │   ├── __init__.py
-│   ├── base.py                 # Base provider interface
-│   ├── factory.py              # Provider factory pattern
-│   ├── openai_provider.py      # OpenAI API provider
-│   ├── gemini_provider.py      # Google Gemini provider
+│   ├── base.py                 # Base provider interface (stateful contract)
+│   ├── factory.py              # Provider factory (routes by model name)
 ├── prompts/                    # AI agent prompt templates
 │   ├── __init__.py
 │   └── prompts.py              # Prompt definitions and templates
@@ -39,41 +37,28 @@ agent/
     └── schemas.py              # Tool schemas
 ```
 
-## Utils Dependencies
-
-The agent system relies on several utility modules for core functionality:
-
-- **`utils.time_tracker`**: Comprehensive timing and performance monitoring
-  - Tracks total experiment duration
-  - Monitors individual LLM call times
-  - Generates structured JSON timing reports
-  - Provides statistics (p50, p95, p99) for performance analysis
-
-- **`utils.token_tracker`**: AI API cost and usage monitoring
-  - Tracks token usage across different models
-  - Calculates costs based on current pricing
-  - Provides usage summaries and totals
-
-- **`utils.agent_utils`**: Agent-specific utility functions
-  - Screenshot capture functionality
-  - UI interaction helpers
-
-- **`utils.runtime_tools`**: Runtime tool definitions
-
-- **`utils.logger`**: Centralized logging system
-  - Structured logging for agent operations
-  - Log file management
-  - Different log levels for debugging
-
-- **`utils.git_utils`**: Git repository utilities
-  - Repository setup and configuration
-  - Git operations for agent setup
-
 ## Execution Flow
 
-At runtime, `runner.py` uses `agent/agent_setup.py` to start the Kali container (`kali-container`) and mount the app codebase. The agent executes tools inside that container via `ToolRuntime`.
+At runtime, `runner.py` uses `agent/agent_container.py` to start the Kali container (`kali-container`) and mount the app codebase. The agent executes tools inside that container via `ToolRuntime`.
 
 If an exploit script is produced at `/app/exploit_files/exploit.sh`, the runner will reset the environment, execute the exploit, and re-run probes to validate impact.
+
+## Model Providers
+
+Providers are **stateful**: each instance owns its conversation state.
+The factory (`get_model_provider`) returns a fully configured, ready-to-use
+instance. The interface defined in `base.py`:
+
+1. `call(input)` — per-turn invocation; returns a `ProviderResponse`.
+2. `get_conversation_history()` — structured log for archiving.
+
+The agent (`custom_agent.py`) is **stateless** with respect to conversation — it
+passes new input each turn, reads back a normalized `ProviderResponse`, and
+never touches provider-internal state.
+
+**Routing:** `factory.py` inspects the model name and returns either
+`OpenAIProvider` (for GPT/o-series models) or `LiteLLMProvider` (for
+Anthropic, Gemini, and any other model supported by LiteLLM).
 
 ## Agent Behavior (high level)
 

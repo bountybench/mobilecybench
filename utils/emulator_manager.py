@@ -168,8 +168,25 @@ class EmulatorManager:
 
         # Capture existing devices before starting (to detect our new one later)
         self._devices_before_start = self._get_connected_devices()
+        running_emulators = [
+            d for d in self._devices_before_start if d.startswith("emulator-")
+        ]
+        if running_emulators:
+            self.state = EmulatorState.NOT_STARTED
+            devices = ", ".join(running_emulators)
+            raise RuntimeError(
+                f"Running emulator(s) detected: {devices}\n"
+                f"\n"
+                f"The runner manages its own emulator — please stop all emulators first:\n"
+                f"\n"
+                f"  ./stop_emulator.sh          # or: adb -s <device> emu kill\n"
+                f"\n"
+                f"Then re-run the command."
+            )
         if self._devices_before_start:
-            logger.info(f"Existing devices before start: {self._devices_before_start}")
+            logger.info(
+                f"Existing non-emulator devices before start: {self._devices_before_start}"
+            )
 
         if self.emulator_config["mode"] == "host" and self.app_name:
             logger.info(

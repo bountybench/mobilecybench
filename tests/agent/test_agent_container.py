@@ -1,6 +1,10 @@
-"""Tests for agent_setup module."""
+"""Tests for agent_container module."""
 
-from agent.agent_setup import AgentEnvironment
+import io
+import tarfile
+from unittest.mock import MagicMock
+
+from agent.agent_container import AgentEnvironment
 
 
 class TestAgentEnvironmentVerifyFiles:
@@ -107,3 +111,81 @@ class TestAgentEnvironmentVulnId:
         )
 
         assert agent_env.vuln_id is None
+
+
+def _make_tar(files: dict[str, str]) -> bytes:
+    """Create an in-memory tar archive. files maps arcname -> content."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        for name, content in files.items():
+            data = content.encode()
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+class TestSaveExploitFiles:
+    """Tests for AgentEnvironment.save_exploit_files()."""
+
+    def _create_agent_env(self, tmp_path):
+        agent_env = AgentEnvironment(
+            app_dir=tmp_path,
+            docker_networks=["test_net"],
+            image_name="test:latest",
+            env={},
+            commit_id="HEAD",
+        )
+        return agent_env
+
+    def test_no_container_logs_warning(self, tmp_path):
+        """Logs warning and returns when container is None."""
+        agent_env = self._create_agent_env(tmp_path)
+        agent_env.container = None
+
+        # Should not raise
+        agent_env.save_exploit_files(tmp_path / "logs")
+        assert not (tmp_path / "logs" / "exploit_files").exists()
+
+    def test_empty_exploit_files_skipped(self, tmp_path):
+        """No extraction when exploit_files directory is empty."""
+        agent_env = self._create_agent_env(tmp_path)
+        agent_env.container = MagicMock()
+        agent_env.container.exec_run.return_value = MagicMock(exit_code=0, output=b"")
+
+        agent_env.save_exploit_files(tmp_path / "logs")
+        agent_env.container.get_archive.assert_not_called()
+        assert not (tmp_path / "logs" / "exploit_files").exists()
+
+    def test_copies_exploit_files_to_dest(self, tmp_path):
+        """Extracts exploit_files tar archive to destination."""
+        agent_env = self._create_agent_env(tmp_path)
+        agent_env.container = MagicMock()
+
+        # ls shows content
+        agent_env.container.exec_run.return_value = MagicMock(
+            exit_code=0, output=b"exploit.sh\n"
+        )
+
+        # get_archive returns a tar with exploit_files/exploit.sh
+        tar_bytes = _make_tar({"exploit_files/exploit.sh": "#!/bin/bash\necho pwned"})
+        agent_env.container.get_archive.return_value = (iter([tar_bytes]), {})
+
+        logs_dir = tmp_path / "logs"
+        agent_env.save_exploit_files(logs_dir)
+
+        saved = logs_dir / "exploit_files" / "exploit.sh"
+        assert saved.exists()
+        assert "echo pwned" in saved.read_text()
+
+    def test_get_archive_failure_does_not_raise(self, tmp_path):
+        """Logs warning instead of raising on Docker API errors."""
+        agent_env = self._create_agent_env(tmp_path)
+        agent_env.container = MagicMock()
+        agent_env.container.exec_run.return_value = MagicMock(
+            exit_code=0, output=b"exploit.sh\n"
+        )
+        agent_env.container.get_archive.side_effect = Exception("Docker API error")
+
+        # Should not raise
+        agent_env.save_exploit_files(tmp_path / "logs")

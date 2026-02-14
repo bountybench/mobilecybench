@@ -1,7 +1,9 @@
+import io
 import logging
 import os
 import shutil
 import subprocess
+import tarfile
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -545,6 +547,37 @@ class AgentEnvironment:
         except Exception as e:
             logger.error(f"Failed to reset agent_codebase: {e}")
             raise
+
+    def save_exploit_files(self, dest_dir: Path) -> None:
+        """Copy /app/exploit_files/ from the container to dest_dir/exploit_files/.
+
+        Must be called before cleanup() destroys the container.
+        """
+        if not self.container:
+            logger.warning("No container available, cannot save exploit_files")
+            return
+
+        try:
+            # Check if exploit_files has any content
+            result = self.container.exec_run("ls /app/exploit_files")
+            if result.exit_code != 0 or not result.output.strip():
+                logger.info("No exploit_files found in container")
+                return
+
+            # Use Docker SDK get_archive to copy files out
+            bits, _ = self.container.get_archive("/app/exploit_files")
+            stream = io.BytesIO()
+            for chunk in bits:
+                stream.write(chunk)
+            stream.seek(0)
+
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            with tarfile.open(fileobj=stream) as tar:
+                tar.extractall(path=dest_dir, filter="data")
+
+            logger.info(f"Saved exploit_files to {dest_dir / 'exploit_files'}")
+        except Exception as e:
+            logger.warning(f"Failed to save exploit_files: {e}")
 
     def cleanup(self):
         """Clean up the agent environment (stop and remove container)."""

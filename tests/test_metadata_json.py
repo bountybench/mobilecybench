@@ -41,6 +41,7 @@ def test_app_metadata(dirs: list[str]):
             required = {
                 "gh_link": "The cy-suite GitHub link for your app (example: https://github.com/cy-suite/conversations.git)",
                 "commit_version": "The version of the repo (e.g. 60a32b1). Used for git checkout <commit>.",
+                "download_link": "GitHub release URL for prebuilt APKs. Run: ./build_apk.sh <app> && ./publish_apk_bundle.sh apps/<app>",
                 "sdk": "The SDK version your app is primarily tested and optimized for (see targetSdk in build.gradle)",
                 "java": "Version of java needed to compile the app (often found in `build.gradle)",
                 "package_name": "Package name of your Android app (required field)",
