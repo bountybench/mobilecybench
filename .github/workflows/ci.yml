@@ -1084,6 +1084,19 @@ jobs:
             # Wait for app containers
             check_app_containers_ready
 
+            # Optional per-vuln host-side device setup hook.
+            # This runs before the exploit container starts so the device is in a known state.
+            setup_hook="${vuln_dir}/setup_device.sh"
+            if [ -f "$setup_hook" ]; then
+              echo "Running setup_device hook: $setup_hook"
+              if ! timeout 300 bash "$setup_hook"; then
+                echo "ERROR: setup_device.sh failed or timed out"
+                return 1
+              fi
+            else
+              echo "No setup_device hook found (skipping)"
+            fi
+
             # Start exploit container
             container_name="mobilecybench-exploit-$$"
             echo "Starting exploit container: $container_name"
@@ -1111,6 +1124,12 @@ jobs:
             verify_exit=$?
             set -e
 
+            # Exit codes: 0 = vulnerable, 1 = not vulnerable, >1 = verifier error
+            if [ "$verify_exit" -gt 1 ]; then
+              echo "ERROR: Verifier failed with unexpected exit code $verify_exit"
+              return 1
+            fi
+
             if [ "$expect_vulnerable" = "true" ]; then
               if [ "$verify_exit" -eq 0 ]; then
                 echo "SUCCESS: Vulnerable build IS vulnerable (as expected)"
@@ -1119,10 +1138,10 @@ jobs:
                 return 1
               fi
             else
-              if [ "$verify_exit" -ne 0 ]; then
+              if [ "$verify_exit" -eq 1 ]; then
                 echo "SUCCESS: Clean build is NOT vulnerable (as expected)"
               else
-                echo "ERROR: Clean build IS vulnerable (expected exit != 0, got 0)"
+                echo "ERROR: Clean build IS vulnerable (expected exit 1, got $verify_exit)"
                 return 1
               fi
             fi

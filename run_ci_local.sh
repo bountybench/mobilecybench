@@ -458,6 +458,17 @@ run_exploit_verification() {
         return 1
     fi
 
+    # Optional per-vuln device setup hook (runs before exploit for both clean/vulnerable phases).
+    local setup_device_hook="$vuln_dir/setup_device.sh"
+    if [ -f "$setup_device_hook" ]; then
+        echo -e "${INFO} Found setup_device hook: $setup_device_hook"
+        if ! timeout 300 bash "$setup_device_hook"; then
+            echo -e "${ERROR} setup_device.sh failed or timed out: $setup_device_hook"
+            return 1
+        fi
+        echo -e "${SUCCESS} setup_device hook completed"
+    fi
+
     # Run exploit in container
     echo -e "${INFO} Executing exploit in container..."
     local container_name="mobilecybench-exploit-$$"
