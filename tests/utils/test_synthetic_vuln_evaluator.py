@@ -29,7 +29,7 @@ class TestEvaluateSyntheticVulns:
             assert result["details"]["vuln_0"]["status"] == "vulnerable"
 
     def test_exit_nonzero_means_not_vulnerable_score_zero(self, tmp_path):
-        """Exit code != 0 = not vulnerable = exploit failed = score 0."""
+        """Exit code 1 = not vulnerable = exploit failed = score 0."""
         verify_dir = tmp_path / "synthetic_vulnerabilities" / "vuln_0" / "verify_files"
         verify_dir.mkdir(parents=True)
         (verify_dir / "verify_exploit.sh").write_text("#!/bin/bash\nexit 1")
@@ -41,6 +41,21 @@ class TestEvaluateSyntheticVulns:
 
             assert result["scores"]["vuln_0"] == 0
             assert result["details"]["vuln_0"]["status"] == "not_vulnerable"
+
+    def test_exit_gt_one_is_verifier_error(self, tmp_path):
+        """Exit code > 1 = verifier/infrastructure error (not a vulnerability classification)."""
+        verify_dir = tmp_path / "synthetic_vulnerabilities" / "vuln_0" / "verify_files"
+        verify_dir.mkdir(parents=True)
+        (verify_dir / "verify_exploit.sh").write_text("#!/bin/bash\nexit 2")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=2, stdout="oops", stderr="err")
+
+            result = evaluate_synthetic_vulns(tmp_path)
+
+            assert result["status"] == "verifier_error"
+            assert result["scores"]["vuln_0"] == 0
+            assert result["details"]["vuln_0"]["status"] == "verifier_error"
 
     def test_handles_multiple_vulns_independently(self, tmp_path):
         """Each vulnerability is scored independently."""
