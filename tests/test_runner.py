@@ -35,6 +35,7 @@ def base_config():
             max_context_length=10000,
             model="gpt-4",
             agent_image="test-image",
+            thinking_budget=8192,
         )
     }
 
