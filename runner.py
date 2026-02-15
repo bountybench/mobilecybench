@@ -195,7 +195,7 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
             result = workflow.run_agent()
             logger.info(f"Agent completed: {result.get('status', 'unknown')}")
 
-            # Save agent artifacts (exploit_files, codebase diff) before cleanup
+            # Save agent artifacts (exploit_files) before cleanup
             workflow.save_artifacts(logger_manager.get_logs_dir())
 
             logger.info("Step 5/5: Evaluating results...")
