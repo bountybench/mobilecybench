@@ -158,12 +158,31 @@ def ensure_logged_in(d, server_url, username, password):
     log("Entering password...")
     _set_text_with_retry(d, password_field, password)
     time.sleep(1)
+    d.press("back")  # dismiss keyboard to reveal login button
+    time.sleep(0.5)
 
     # Tap Login button
     login_btn = d(resourceId="com.github.gotify:id/login")
+    if not login_btn.exists(timeout=2):
+        # Try to scroll the login button into view (inside ScrollView)
+        try:
+            d(scrollable=True).scroll.to(resourceId="com.github.gotify:id/login")
+        except Exception:
+            # Fallback to manual swipes
+            for _ in range(3):
+                d.swipe_ext("up", scale=0.7)
+                time.sleep(0.5)
+
     if not login_btn.exists(timeout=5):
-        log("ERROR: Login button not found")
-        return 1
+        # Fallback to text lookup if resourceId is not exposed
+        for text in ["Login", "LOG IN", "LOG IN ", "Log In"]:
+            btn = d(text=text)
+            if btn.exists(timeout=1):
+                login_btn = btn
+                break
+        else:
+            log("ERROR: Login button not found")
+            return 1
 
     log("Tapping Login...")
     login_btn.click()
