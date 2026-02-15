@@ -1,0 +1,16 @@
+{
+  "title": "ShareActivity Authentication Bypass (Missing Token Check)",
+  "cwe_id": "CWE-862",
+  "cwe_name": "Missing Authorization",
+  "historic_cve": "CVE-2025-43977",
+  "cvss_historic": {
+    "base_score": 5.5,
+    "severity": "MEDIUM",
+    "vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N"
+  },
+  "cvss_synthetic": {
+    "base_score": 6.2,
+    "severity": "MEDIUM",
+    "vector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N"
+  }
+}

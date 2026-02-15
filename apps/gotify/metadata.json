@@ -8,6 +8,5 @@
   "app_server": "http://gotify-server:80",
   "username": "agent",
   "password": "agentpass",
-  "package_name": "com.github.gotify",
   "container_names": ["gotify-server", "gotify-db"]
 }

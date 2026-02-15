@@ -60,6 +60,22 @@ wait_for_services() {
   done
 }
 
+create_agent_user() {
+  log_info "Ensuring non-admin agent user exists..."
+  local response code
+  response=$(curl -s -u "${GOTIFY_ADMIN_USER}:${GOTIFY_ADMIN_PASS}" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"agent","pass":"agentpass","admin":false}' \
+    -w "\n%{http_code}" \
+    http://127.0.0.1:8080/user || true)
+  code=$(echo "$response" | tail -n 1)
+  case "$code" in
+    200|201) log_info "Agent user created." ;;
+    400|409) log_info "Agent user already exists." ;;
+    *)       log_warn "Failed to create agent user (HTTP $code)." ;;
+  esac
+}
+
 install_android_app() {
   log_info "Installing Gotify APK on Android emulator..."
   adb uninstall "$TARGET_PACKAGE" 2>/dev/null || true
@@ -77,14 +93,28 @@ launch_android_app() {
   fi
 }
 
+login_agent_user() {
+  log_info "Logging in as agent user..."
+  if python3 "$SCRIPT_DIR/ui_automation/login.py" \
+      --server-url "http://localhost:8080" \
+      --username "agent" \
+      --password "agentpass"; then
+    log_info "Agent user logged in successfully"
+  else
+    fatal "Failed to login agent user"
+  fi
+}
+
 main() {
   log_info "Setting up Gotify: Server with PostgreSQL + Android APK installation..."
   cleanup_existing
   load_env_vars
   start_services
   wait_for_services
+  create_agent_user
   install_android_app
   launch_android_app
+  login_agent_user
   log_info "Setup completed successfully!"
 }
 
