@@ -85,6 +85,15 @@ Key fields:
 | `build_type` | `"source"` (build APK), `"download-apk"`, or `"skip-apk"` |
 | `dry_run` | If true, launches interactive shell instead of agent |
 
+### Agent Type
+
+Use `--agent-type` to select an agent implementation:
+
+```bash
+python runner.py <app_name> --agent-type custom  # default
+python runner.py <app_name> --agent-type codex   # Codex mode
+```
+
 ## Outputs
 
 Experiments produce these files:

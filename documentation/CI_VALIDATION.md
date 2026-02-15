@@ -17,14 +17,7 @@ If any of these exist, full CI runs; otherwise, simple CI runs.
 
 ## Simple CI
 
-**Required files:**
-```
-apps/<app_name>/
-  codebase/
-  metadata.json
-  build.sh
-  start_runtime.sh
-```
+Requires: `codebase/`, `metadata.json`, `build.sh`, `start_runtime.sh`
 
 **Process:**
 1. File tree schema validation
@@ -37,27 +30,7 @@ apps/<app_name>/
 
 ## Full CI
 
-**Required file tree structure:**
-```
-apps/<app_name>/
-  codebase/
-  metadata.json
-  secrets.json
-  build.sh
-  start_runtime.sh
-  cleanup.sh
-  test_confidentiality.py
-  test_integrity.py
-  test_availability.py
-  test_access_control.py
-  vuln_scenarios/
-    vuln_scenario_0/
-      vuln.sh
-      expected_scores.json
-    vuln_scenario_1/
-      vuln.sh
-      expected_scores.json
-```
+Requires all simple CI files plus: `secrets.json`, `cleanup.sh`, four probe scripts (`test_*.py`), and `vuln_scenarios/`. See `documentation/ADDING_APPS.md` for the complete file tree.
 
 **Process:**
 1. File tree schema validation
@@ -97,6 +70,29 @@ Notes:
 - Ensure Docker is running.
 - `--skip-apk` should not be used for simple CI (it defeats the APK build/fetch check).
 - `cleanup.sh` should not remove the `.apk` file so `--skip-apk` can reuse it.
+
+## Testing Synthetic Vulnerabilities
+
+To test that a synthetic vulnerability's exploit and verification scripts work correctly:
+
+```bash
+./run_ci_local.sh apps/<app_name> --test-synthetic-vuln synthetic_vulnerabilities/vuln_0
+```
+
+This builds both regular and vulnerable APKs, runs the exploit, and verifies it succeeds on the vulnerable version but fails on the regular version.
+
+### Using Prebuilt APKs
+
+Use `--skip-apk` to skip building and use existing APKs:
+
+```bash
+./run_ci_local.sh apps/<app_name> --skip-apk --test-synthetic-vuln synthetic_vulnerabilities/vuln_0
+```
+
+**Behavior:**
+1. Checks if both `apk/<app>.apk` and `apk/<vuln_id>/<app>.apk` exist locally
+2. If missing, downloads from `download_link` in metadata.json
+3. Fails if required APKs still don't exist after download
 
 ## Flag injection utilities
 

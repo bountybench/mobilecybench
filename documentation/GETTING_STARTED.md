@@ -132,6 +132,5 @@ git submodule update --init apps/<app_name>/codebase
 ## 8) Where to go next
 
 - To add a new app: `documentation/ADDING_APPS.md`
-- To run or configure the agent: `documentation/AGENT_SETUP.md`
-- To generate static analysis reports: `documentation/STATIC_ANALYSIS.md`
+- To run experiments: `documentation/EXPERIMENTS.md`
 - For troubleshooting: `documentation/TROUBLESHOOTING.md`
