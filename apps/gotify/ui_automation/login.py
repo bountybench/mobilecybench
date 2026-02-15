@@ -14,16 +14,6 @@ import sys
 import time
 from urllib.parse import urlparse
 
-# Add project root to path for shared utils
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
-sys.path.insert(0, PROJECT_ROOT)
-
-from utils.ui_utils import (
-    initialize_ui_automation,
-    wait_for_ui_stable,
-)
-
 SCRIPT_NAME = "gotify-login"
 PACKAGE = "com.github.gotify"
 
@@ -43,7 +33,9 @@ def setup_adb_forwarding(port):
         text=True,
     )
     if result.returncode == 0:
-        log(f"ADB port forwarding active: emulator localhost:{port} -> host localhost:{port}")
+        log(
+            f"ADB port forwarding active: emulator localhost:{port} -> host localhost:{port}"
+        )
     else:
         log("WARNING: ADB port forwarding failed, continuing anyway...")
 
@@ -81,8 +73,9 @@ def ensure_logged_in(d, server_url, username, password):
     """Log into the Gotify app if not already logged in."""
 
     # Check if already logged in
-    if d(resourceId="com.github.gotify:id/messages").exists(timeout=3) or \
-       d(resourceId="com.github.gotify:id/applications").exists(timeout=3):
+    if d(resourceId="com.github.gotify:id/messages").exists(timeout=3) or d(
+        resourceId="com.github.gotify:id/applications"
+    ).exists(timeout=3):
         log("App is already logged in, skipping login")
         return 0
 
@@ -93,8 +86,9 @@ def ensure_logged_in(d, server_url, username, password):
         d.app_start(PACKAGE, stop=True, wait=True, use_monkey=True)
         time.sleep(3)
         if not url_field.wait(timeout=10):
-            if d(resourceId="com.github.gotify:id/messages").exists(timeout=3) or \
-               d(resourceId="com.github.gotify:id/applications").exists(timeout=3):
+            if d(resourceId="com.github.gotify:id/messages").exists(timeout=3) or d(
+                resourceId="com.github.gotify:id/applications"
+            ).exists(timeout=3):
                 log("App is already logged in after restart")
                 return 0
             log("ERROR: Could not reach login screen")
@@ -176,9 +170,11 @@ def ensure_logged_in(d, server_url, username, password):
     time.sleep(2)
 
     # Handle Client Name dialog
-    if d(text="Client Name").wait(timeout=20) or \
-       d(resourceId="android:id/button1").exists(timeout=1) or \
-       d(text="Create").exists(timeout=1):
+    if (
+        d(text="Client Name").wait(timeout=20)
+        or d(resourceId="android:id/button1").exists(timeout=1)
+        or d(text="Create").exists(timeout=1)
+    ):
         create_btn = d(resourceId="android:id/button1")
         if create_btn.exists(timeout=1):
             create_btn.click()
@@ -190,8 +186,9 @@ def ensure_logged_in(d, server_url, username, password):
     _handle_permission_dialogs(d)
 
     # Verify login succeeded
-    if d(resourceId="com.github.gotify:id/messages").wait(timeout=10) or \
-       d(resourceId="com.github.gotify:id/applications").wait(timeout=5):
+    if d(resourceId="com.github.gotify:id/messages").wait(timeout=10) or d(
+        resourceId="com.github.gotify:id/applications"
+    ).wait(timeout=5):
         log("Login successful")
         return 0
 
@@ -262,6 +259,16 @@ def main():
     parser.add_argument("--username", required=True)
     parser.add_argument("--password", required=True)
     args = parser.parse_args()
+
+    # Add project root to path for shared utils
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+    sys.path.insert(0, project_root)
+
+    from utils.ui_utils import (  # noqa: E402
+        initialize_ui_automation,
+        wait_for_ui_stable,
+    )
 
     # Parse port from server URL
     parsed = urlparse(args.server_url)

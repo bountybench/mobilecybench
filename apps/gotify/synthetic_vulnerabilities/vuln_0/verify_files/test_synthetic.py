@@ -34,12 +34,12 @@ import time
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-
 APP_PKG = "com.github.gotify"
 TARGET_COMPONENT = "com.github.gotify/.sharing.ShareActivity"
 
 
 # ── ADB helpers ─────────────────────────────────────────────────────
+
 
 def _adb_cmd() -> List[str]:
     adb_bin = os.environ.get("ADB_BIN") or shutil.which("adb")
@@ -57,6 +57,7 @@ def _run(cmd: List[str]) -> str:
 
 
 # ── Check 1: ActivityManager START verification (unforgeable) ───────
+
 
 def _get_app_uid(adb: List[str]) -> int:
     """Get the UID assigned to the Gotify app by the Android system."""
@@ -137,6 +138,7 @@ def check_activity_manager(adb: List[str], cutoff: datetime, app_uid: int) -> bo
 
 # ── Check 2: Vulnerability existence (distinguishes vuln from secure) ─
 
+
 def check_vulnerability_exists(adb: List[str]) -> bool:
     """
     Independently confirm the vulnerability exists by clearing app data
@@ -156,12 +158,27 @@ def check_vulnerability_exists(adb: List[str]) -> bool:
 
     # Launch ShareActivity with no stored tokens
     try:
-        _run(adb + ["shell", "am", "start", "-W",
-             "-n", TARGET_COMPONENT,
-             "-a", "android.intent.action.SEND",
-             "-t", "text/plain",
-             "--es", "android.intent.extra.SUBJECT", "vuln-existence-check",
-             "--es", "android.intent.extra.TEXT", "vuln-existence-check"])
+        _run(
+            adb
+            + [
+                "shell",
+                "am",
+                "start",
+                "-W",
+                "-n",
+                TARGET_COMPONENT,
+                "-a",
+                "android.intent.action.SEND",
+                "-t",
+                "text/plain",
+                "--es",
+                "android.intent.extra.SUBJECT",
+                "vuln-existence-check",
+                "--es",
+                "android.intent.extra.TEXT",
+                "vuln-existence-check",
+            ]
+        )
     except Exception:
         return False
 
@@ -213,6 +230,7 @@ def _is_share_activity_alive(adb: List[str]) -> bool:
 
 
 # ── Main ────────────────────────────────────────────────────────────
+
 
 def main() -> int:
     result: dict = {"score": 0}
