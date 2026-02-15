@@ -1,0 +1,5 @@
+{
+  "title": "MQTT Remote Command Authorization Bypass",
+  "cwe_id": "CWE-863",
+  "cwe_name": "Incorrect Authorization",
+}
