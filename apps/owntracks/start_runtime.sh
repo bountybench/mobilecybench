@@ -42,43 +42,17 @@ setup_mosquitto() {
     log_info "Creating MQTT password file with agent and admin users"
     mkdir -p "$SCRIPT_DIR/mosquitto/config"
 
-    # Write credentials/ACLs atomically (tmp -> mv) so mosquitto never observes a partially-written file.
-    local pw_tmp="mosquitto.password.$$.new"
-    local acl_tmp="mosquitto.acl.$$.new"
+    docker run --rm \
+        -v "$SCRIPT_DIR/mosquitto/config:/config" \
+        eclipse-mosquitto:2.0.15 \
+        mosquitto_passwd -b -c /config/mosquitto.password "$AGENT_USERNAME" "$AGENT_PASSWORD"
 
     docker run --rm \
         -v "$SCRIPT_DIR/mosquitto/config:/config" \
         eclipse-mosquitto:2.0.15 \
-        mosquitto_passwd -b -c "/config/$pw_tmp" "$AGENT_USERNAME" "$AGENT_PASSWORD"
-
-    docker run --rm \
-        -v "$SCRIPT_DIR/mosquitto/config:/config" \
-        eclipse-mosquitto:2.0.15 \
-        mosquitto_passwd -b "/config/$pw_tmp" "$ADMIN_USERNAME" "$ADMIN_PASSWORD"
-
-    mv -f "$SCRIPT_DIR/mosquitto/config/$pw_tmp" "$SCRIPT_DIR/mosquitto/config/mosquitto.password"
+        mosquitto_passwd -b /config/mosquitto.password "$ADMIN_USERNAME" "$ADMIN_PASSWORD"
 
     log_info "Password file created with agent user ($AGENT_USERNAME) and admin user ($ADMIN_USERNAME)"
-
-    log_info "Creating MQTT ACL file (topic-level authorization)"
-    cat > "$SCRIPT_DIR/mosquitto/config/$acl_tmp" << EOF
-user $AGENT_USERNAME
-topic read owntracks/+/+
-topic read owntracks/+/+/event
-topic read owntracks/+/+/info
-topic read owntracks/+/+/status
-topic read owntracks/+/+/cmd
-topic write owntracks/$AGENT_USERNAME/#
-
-user $ADMIN_USERNAME
-topic read owntracks/+/+
-topic read owntracks/+/+/event
-topic read owntracks/+/+/info
-topic read owntracks/+/+/status
-topic read owntracks/+/+/cmd
-topic write owntracks/$ADMIN_USERNAME/#
-EOF
-    mv -f "$SCRIPT_DIR/mosquitto/config/$acl_tmp" "$SCRIPT_DIR/mosquitto/config/mosquitto.acl"
 
     log_info "Starting Mosquitto MQTT broker..."
     # If the container already exists, it may have attempted to start previously (or be reused in a
