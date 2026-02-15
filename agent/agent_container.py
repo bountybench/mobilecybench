@@ -283,7 +283,7 @@ class AgentEnvironment:
         logger.info("✓ Agent codebase ready for mounting")
 
         # Return volume mapping for bind mount
-        return {str(agent_codebase): {"bind": "/app/codebase", "mode": "rw"}}
+        return {str(agent_codebase): {"bind": "/app/codebase", "mode": "ro"}}
 
     def _setup_verify_files(self):
         """Mount verify_files for the synthetic vulnerability."""
@@ -462,74 +462,6 @@ class AgentEnvironment:
             f.write(
                 "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n"
             )
-
-    def save_agent_codebase_state(self) -> str:
-        """Save the current state of agent_codebase by capturing git diff.
-
-        This captures:
-        - Modified files (tracked changes)
-        - New files (untracked files)
-        - Deleted files
-
-        Returns:
-            The git diff output as a string, or empty string if no changes.
-        """
-        agent_codebase = self.app_dir / "agent_codebase"
-
-        if not agent_codebase.exists():
-            logger.warning("agent_codebase does not exist, nothing to save")
-            return ""
-
-        try:
-            # Add all changes to staging area (including untracked files)
-            # Exclude static analysis inputs provided externally
-            result = subprocess.run(
-                [
-                    "git",
-                    "add",
-                    "-A",
-                    "--",
-                    ".",
-                    ":!semgrep_results.json",
-                    ":!static_vuln_reports/**",
-                    ":!static_vuln_reports",
-                ],
-                cwd=agent_codebase,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            logger.info(
-                "Added all changes to staging area in agent_codebase (excluding external static analysis inputs)"
-            )
-
-            # Get the diff between HEAD and staged changes
-            # This will now include all tracked modifications AND new files
-            result = subprocess.run(
-                ["git", "diff", "--cached"],
-                cwd=agent_codebase,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-
-            diff_output = result.stdout
-            if diff_output:
-                logger.info(
-                    f"Captured git diff from agent_codebase ({len(diff_output)} chars)"
-                )
-            else:
-                logger.info("No changes detected in agent_codebase")
-
-            return diff_output
-
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to save agent_codebase state: {e}")
-            logger.error(f"stderr: {e.stderr}")
-            return ""
-        except Exception as e:
-            logger.error(f"Unexpected error saving agent_codebase state: {e}")
-            return ""
 
     def delete_agent_codebase(self):
         agent_codebase = self.app_dir / "agent_codebase"

@@ -51,7 +51,7 @@ class Workflow(ABC):
         pass
 
     def save_artifacts(self, logs_dir: Path) -> None:
-        """Save agent artifacts (exploit files, codebase diff) to logs.
+        """Save agent artifacts (exploit files) to logs.
 
         Best-effort: logs warnings on failure but never raises.
         Called after run_agent() while the container is still alive.
@@ -63,15 +63,6 @@ class Workflow(ABC):
             self.agent_env.save_exploit_files(logs_dir)
         except Exception as e:
             logger.warning(f"Failed to save exploit_files: {e}")
-
-        try:
-            diff = self.agent_env.save_agent_codebase_state()
-            if diff:
-                diff_path = logs_dir / "agent_codebase.diff"
-                diff_path.write_text(diff)
-                logger.info(f"Saved agent codebase diff to {diff_path}")
-        except Exception as e:
-            logger.warning(f"Failed to save agent codebase diff: {e}")
 
     @abstractmethod
     def cleanup(self) -> None:
