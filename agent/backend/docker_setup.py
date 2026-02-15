@@ -4,7 +4,7 @@ import docker
 DOCKER_CLIENT = docker.from_env()
 KALI_CONTAINER_NAME = "kali-container"
 HOST_ADB_SERVER = "host.docker.internal:5037"
-AGENT_HOST_PORT = 7777
+AGENT_HOST_PORT = 9999
 
 
 def get_kali():
