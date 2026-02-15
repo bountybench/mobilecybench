@@ -10,6 +10,7 @@ from typing import Dict, List, Optional
 import docker
 import docker.errors
 
+from agent.backend.docker_setup import AGENT_HOST_PORT
 from utils.git_utils import (
     cleanup_git_branches,
     git_checkout,
@@ -146,6 +147,7 @@ class AgentEnvironment:
                 extra_hosts=extra_hosts,
                 network=network,
                 volumes=volumes,
+                ports={f"{AGENT_HOST_PORT}/tcp": AGENT_HOST_PORT},
                 stdin_open=True,
                 tty=True,
                 detach=True,
@@ -573,6 +575,7 @@ def setup_agent_environment(
     env_vars = {
         "ANDROID_ADB_SERVER_PORT": "5037",
         "ADB_SERVER_SOCKET": "tcp:host.docker.internal:5037",
+        "AGENT_SERVER_PORT": str(AGENT_HOST_PORT),
     }
 
     # Get commit ID from metadata or use default
