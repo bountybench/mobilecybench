@@ -467,18 +467,6 @@ run_exploit_verification() {
 
     # Standard port for agent-hosted servers (emulator reaches via 10.0.2.2:9999)
     local AGENT_HOST_PORT=9999
-    local port_flags="-p ${AGENT_HOST_PORT}:${AGENT_HOST_PORT}"
-
-    # Also add any extra ports from exploit's ports.conf (if present)
-    if [ -f "$exploit_files_dir/ports.conf" ]; then
-        while IFS= read -r port || [ -n "$port" ]; do
-            port=$(echo "$port" | tr -d '[:space:]')
-            [ -z "$port" ] && continue
-            [[ "$port" == \#* ]] && continue
-            port_flags="$port_flags -p $port:$port"
-            echo -e "${INFO} Exposing additional container port: $port"
-        done < "$exploit_files_dir/ports.conf"
-    fi
 
     # Start container with exploit_files mounted at /app/exploit_files
     # Also mount shared utils so exploit scripts can import from utils.ui_utils etc.
@@ -489,7 +477,7 @@ run_exploit_verification() {
         --add-host=host.docker.internal:host-gateway \
         -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
         -e AGENT_SERVER_PORT=${AGENT_HOST_PORT} \
-        $port_flags \
+        -p ${AGENT_HOST_PORT}:${AGENT_HOST_PORT} \
         -v "$exploit_files_abs_path:/app/exploit_files" \
         -v "$ROOT_DIR/utils:/app/utils:ro" \
         "$exploit_image" \
