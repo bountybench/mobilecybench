@@ -30,6 +30,7 @@ class TokenUsage:
 
     Attributes:
         - model: The model name used for the API call.
+        - run_id: Shared session/experiment identifier from LoggerManager.
         - request_id: The unique request ID from the API response, if available.
         - created_at: timestamp when the record was created.
         - input_tokens: Number of input tokens used.
@@ -39,6 +40,7 @@ class TokenUsage:
     """
 
     model: str
+    run_id: str
     request_id: Optional[str]
     created_at: str
     input_tokens: int
@@ -222,6 +224,7 @@ class TokenTracker:
 
         record = TokenUsage(
             model=model,
+            run_id=logger_manager.get_session_id(),
             request_id=request_id,
             created_at=datetime.now(timezone.utc).isoformat(),
             input_tokens=i,

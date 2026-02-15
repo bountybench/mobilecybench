@@ -1,11 +1,19 @@
 """Tests for runner.py - Workflow-based runner."""
 
-from unittest.mock import patch
+import os
+from unittest.mock import Mock, patch
 
 import pytest
 
 from models.config import RunnerConfig
-from runner import create_workflow, main, run
+from runner import (
+    _bootstrap_runner_session_id,
+    _start_run_scoped_bridge,
+    _stop_run_scoped_bridge,
+    create_workflow,
+    main,
+    run,
+)
 from workflows import DiscoveryWorkflow, ExploitWorkflow
 
 
@@ -131,3 +139,40 @@ class TestMain:
         ):
             result = main()
             assert result == 1
+
+
+class TestRunnerSessionId:
+    def test_bootstrap_sets_session_id_when_missing(self, monkeypatch):
+        monkeypatch.delenv("MOBILECYBENCH_SESSION_ID", raising=False)
+        run_id = _bootstrap_runner_session_id()
+        assert run_id
+        assert run_id == os.environ.get("MOBILECYBENCH_SESSION_ID")
+
+    def test_bootstrap_keeps_existing_session_id(self, monkeypatch):
+        monkeypatch.setenv("MOBILECYBENCH_SESSION_ID", "existing_session")
+        run_id = _bootstrap_runner_session_id()
+        assert run_id == "existing_session"
+
+
+class TestRunnerBridgeLifecycle:
+    def test_start_run_scoped_bridge_sets_run_id_in_env(self, tmp_path):
+        bridge_script = tmp_path / "tools" / "host_bridge.py"
+        bridge_script.parent.mkdir(parents=True)
+        bridge_script.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+
+        with patch("runner._get_available_tcp_port", return_value=45678), patch(
+            "runner.subprocess.Popen"
+        ) as mock_popen:
+            _start_run_scoped_bridge(tmp_path, "run_123")
+            assert mock_popen.call_count == 1
+            popen_env = mock_popen.call_args.kwargs["env"]
+            assert popen_env["MOBILECYBENCH_SESSION_ID"] == "run_123"
+            assert popen_env["MCB_BRIDGE_PORT"] == "45678"
+            assert os.environ.get("MCB_BRIDGE_PORT") == "45678"
+
+    def test_stop_run_scoped_bridge_terminates_owned_process(self):
+        bridge_proc = Mock()
+        bridge_proc.poll.return_value = None
+        _stop_run_scoped_bridge(bridge_proc)
+        bridge_proc.terminate.assert_called_once()
+        bridge_proc.wait.assert_called_once()

@@ -45,11 +45,12 @@ LOGFILE = _resolve_logfile()
 
 def log(s):
     try:
-        with open(LOGFILE, "a") as f:
+        with open(LOGFILE, "a", encoding="utf-8") as f:
             f.write(f"{s}\n")
     except Exception as e:
         print(f"[bridge] log write failed: {e}", file=sys.stderr)
-    print(s)
+    if os.environ.get("MCB_BRIDGE_STDOUT", "0") == "1":
+        print(s)
 
 
 def read_token():

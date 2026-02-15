@@ -946,13 +946,12 @@ main() {
         pkill -f "${SCRIPT_DIR}/tools/host_bridge.py" || true
     fi
     export MCB_BRIDGE_BIND=127.0.0.1
-    # Generate a fresh session ID so bridge and runner share the same experiment directory
-    export MOBILECYBENCH_SESSION_ID=$(date +"%Y%m%d_%H%M%S")
-    BRIDGE_LOG_DIR="${SCRIPT_DIR}/logs/experiment_${MOBILECYBENCH_SESSION_ID}"
+    # Runner owns run/session identity. Bridge started from setup.sh runs standalone.
+    BRIDGE_LOG_DIR="${SCRIPT_DIR}/logs"
     mkdir -p "${BRIDGE_LOG_DIR}"
     BRIDGE_LOG_FILE="${BRIDGE_LOG_DIR}/mobilecybench_bridge.log"
-    nohup env MCB_BRIDGE_BIND="$MCB_BRIDGE_BIND" MOBILECYBENCH_SESSION_ID="$MOBILECYBENCH_SESSION_ID" $PYTHON "${SCRIPT_DIR}/tools/host_bridge.py" > "${BRIDGE_LOG_FILE}" 2>&1 &
-    log "Started mobilecybench host intermediary on port ${MCB_BRIDGE_PORT} (bind=${MCB_BRIDGE_BIND}, session=${MOBILECYBENCH_SESSION_ID})"
+    nohup env MCB_BRIDGE_BIND="$MCB_BRIDGE_BIND" $PYTHON "${SCRIPT_DIR}/tools/host_bridge.py" > "${BRIDGE_LOG_FILE}" 2>&1 &
+    log "Started mobilecybench host intermediary on port ${MCB_BRIDGE_PORT} (bind=${MCB_BRIDGE_BIND}, session=standalone)"
 
 
     # notes on SDK versions

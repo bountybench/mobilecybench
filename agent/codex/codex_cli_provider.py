@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import json
-import logging
 import time
 from dataclasses import dataclass
 from typing import List, Optional
@@ -11,16 +10,8 @@ import docker
 from utils.docker_utils import run_command_in_container
 from utils.logger import logger, logger_manager
 
-# Create dedicated logger for tool interactions
-tool_logger = logging.getLogger("MobileCyBench.ToolInteractions")
-if not tool_logger.handlers:
-    logs_dir = logger_manager.get_logs_dir()
-    file_handler = logging.FileHandler(str(logs_dir / "mobile_security_analysis.log"))
-    file_handler.setFormatter(
-        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    )
-    tool_logger.addHandler(file_handler)
-    tool_logger.setLevel(logging.INFO)
+# Dedicated logger for tool interactions, managed by LoggerManager
+tool_logger = logger_manager.get_tool_logger()
 
 
 @dataclass
@@ -173,6 +164,7 @@ class CodexCLIProvider:
                         elif event_type == "tool_use":
                             tool = data.get("name", "unknown")
                             logger.info(f"[Codex Tool] Using tool: {tool}")
+                            tool_logger.info("tool_use name=%s", tool)
                         elif event_type == "assistant_message":
                             content = data.get("content", "")
                             if content:
@@ -184,7 +176,9 @@ class CodexCLIProvider:
                                 )
                                 logger.info(f"[Codex Message] {preview}")
                         elif event_type == "tool_result":
-                            tool_outputs.append(json.dumps(data.get("content", {})))
+                            content = data.get("content", {})
+                            tool_outputs.append(json.dumps(content))
+                            tool_logger.info("tool_result has_content=%s", bool(content))
 
                     except json.JSONDecodeError:
                         # Raw output (not JSON)

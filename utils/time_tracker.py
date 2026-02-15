@@ -62,10 +62,18 @@ class TimeTracker:
         self._app_name: Optional[str] = None
         self._call_counter = 0  # For unique call IDs
 
-    def start_experiment(self, app_name: str = None) -> None:
-        """Mark the start of the experiment."""
+    def start_experiment(
+        self, app_name: str = None, run_id: Optional[str] = None
+    ) -> None:
+        """Mark the start of the experiment.
+
+        Args:
+            app_name: Name of the app being evaluated.
+            run_id: Shared session identifier. If provided, used as the
+                experiment_id instead of generating ``exp_{timestamp}``.
+        """
         self.experiment_start_time = time.perf_counter()
-        self._experiment_id = f"exp_{int(time.time())}"
+        self._experiment_id = run_id or f"exp_{int(time.time())}"
         self._app_name = app_name or "unknown"
 
     def end_experiment(self) -> None:
