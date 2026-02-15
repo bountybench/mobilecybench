@@ -1,6 +1,7 @@
 {
   "gh_link": "https://github.com/cy-suite/gotify",
   "commit_version": "20305cb",
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-gotify-v1/apk-bundle.zip",
   "sdk": "35",
   "java": "17",
   "emulator_server": "http://10.0.2.2:8080",
@@ -8,5 +9,8 @@
   "username": "agent",
   "password": "agent",
   "package_name": "com.github.gotify",
-  "container_names": ["gotify-server", "gotify-db"]
+  "container_names": [
+    "gotify-server",
+    "gotify-db"
+  ]
 }
