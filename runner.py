@@ -112,6 +112,8 @@ def create_workflow(
         "project_root": project_root,
         "dry_run": config.dry_run,
         "reasoning_effort": config.reasoning_effort,
+        "docker_mode": config.docker_mode,
+        "emulator_mode": config.emulator_mode,
     }
 
     if config.workflow == "exploit":
