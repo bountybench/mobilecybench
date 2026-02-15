@@ -37,14 +37,11 @@ Windows note: `setup.sh` and emulator scripts require WSL or Git Bash.
 
 ## Documentation
 
-- `documentation/README.md` — docs index and recommended path
 - `documentation/GETTING_STARTED.md` — full setup and first run
 - `documentation/EXPERIMENTS.md` — running experiments, configs, build modes
 - `documentation/ADDING_APPS.md` — adding apps (includes full working example)
 - `documentation/CI_VALIDATION.md` — CI modes and local CI
-- `documentation/STATIC_ANALYSIS.md` — static report generation
 - `documentation/SYNTHETIC_VULNERABILITIES.md` — synthetic vuln workflow
 - `documentation/TROUBLESHOOTING.md` — common issues
-- `documentation/AGENT_SETUP.md` — agent setup and agent types
-- `agent/ARCHITECTURE.md` — agent architecture and behavior
+- `documentation/ARCHITECTURE.md` — system architecture and agent environment
 - `documentation/COMMANDS.md` — command reference grouped by workflow
