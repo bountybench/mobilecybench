@@ -67,11 +67,11 @@ import uiautomator2 as u2
 d = u2.connect()
 btn = d(resourceId="org.owntracks.android:id/save")
 if not btn.wait(timeout=5):
-    print("[setup_device] ERROR: Save button not found", file=sys.stderr)
+    print("[prepare_app] ERROR: Save button not found", file=sys.stderr)
     sys.exit(1)
 btn.click()
 time.sleep(2)
-print("[setup_device] Save clicked", file=sys.stderr)
+print("[prepare_app] Save clicked", file=sys.stderr)
 PY
 
 # Start a background MQTT subscriber to capture victim messages.
@@ -85,4 +85,4 @@ docker exec mosquitto sh -c "rm -f $CAPTURE_FILE" 2>/dev/null || true
 docker exec -d mosquitto sh -c \
     "mosquitto_sub -h localhost -p 1883 -u '$VICTIM_USER' -P '$VICTIM_PASS' -t 'owntracks/$VICTIM_USER/#' -v > $CAPTURE_FILE 2>&1"
 
-log_info "setup_device.sh complete"
+log_info "prepare_app.sh complete"

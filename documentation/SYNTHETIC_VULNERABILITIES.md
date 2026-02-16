@@ -78,6 +78,7 @@ apps/<app_name>/
 ├── synthetic_vulnerabilities/
 │   └── vuln_0/
 │       ├── vulnerability.patch         # Git diff to introduce the vulnerability
+│       ├── prepare_app.sh              # (Optional) App state preparation
 │       ├── verify_files/
 │       │   ├── verify_exploit.sh       # Detects if vulnerability was exploited
 │       └── exploit_files/
@@ -151,6 +152,14 @@ A shell script to demonstrate the vulnerability, proving that the task is solvab
 - This script is run in the agent environment (`cybench/mobilecybench:latest` container, so make sure you refer to any containers by container name, not by localhost)
 - All files needed to run the script must be under `exploit_files/`, as the solution script should not have access to the host filesystem
 - To expose container ports for the exploit, add a `ports.conf` file to `exploit_files/` with one port number per line
+
+### prepare_app.sh (Optional)
+
+A script that prepares the app state before the agent starts exploring or the exploit runs. Runs after `start_runtime.sh` (APK installed, containers up) and before the exploit container is created.
+
+**Use cases:**
+- Configuring a victim identity on the app (e.g., importing credentials via UI automation)
+- Seeding data the app needs for the synthetic scenario
 
 ### verify_files/verify_exploit.sh
 

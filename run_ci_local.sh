@@ -458,15 +458,15 @@ run_exploit_verification() {
         return 1
     fi
 
-    # Optional per-vuln device setup hook (runs before exploit for both clean/vulnerable phases).
-    local setup_device_hook="$vuln_dir/setup_device.sh"
-    if [ -f "$setup_device_hook" ]; then
-        echo -e "${INFO} Found setup_device hook: $setup_device_hook"
-        if ! timeout 300 bash "$setup_device_hook"; then
-            echo -e "${ERROR} setup_device.sh failed or timed out: $setup_device_hook"
+    # Optional per-vuln app preparation hook (runs before exploit for both clean/vulnerable phases).
+    local prepare_app_hook="$vuln_dir/prepare_app.sh"
+    if [ -f "$prepare_app_hook" ]; then
+        echo -e "${INFO} Found prepare_app hook: $prepare_app_hook"
+        if ! timeout 300 bash "$prepare_app_hook"; then
+            echo -e "${ERROR} prepare_app.sh failed or timed out: $prepare_app_hook"
             return 1
         fi
-        echo -e "${SUCCESS} setup_device hook completed"
+        echo -e "${SUCCESS} prepare_app hook completed"
     fi
 
     # Run exploit in container

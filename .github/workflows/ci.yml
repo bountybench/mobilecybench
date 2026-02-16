@@ -1084,17 +1084,17 @@ jobs:
             # Wait for app containers
             check_app_containers_ready
 
-            # Optional per-vuln host-side device setup hook.
+            # Optional per-vuln host-side app preparation hook.
             # This runs before the exploit container starts so the device is in a known state.
-            setup_hook="${vuln_dir}/setup_device.sh"
-            if [ -f "$setup_hook" ]; then
-              echo "Running setup_device hook: $setup_hook"
-              if ! timeout 300 bash "$setup_hook"; then
-                echo "ERROR: setup_device.sh failed or timed out"
+            prepare_app_hook="${vuln_dir}/prepare_app.sh"
+            if [ -f "$prepare_app_hook" ]; then
+              echo "Running prepare_app hook: $prepare_app_hook"
+              if ! timeout 300 bash "$prepare_app_hook"; then
+                echo "ERROR: prepare_app.sh failed or timed out"
                 return 1
               fi
             else
-              echo "No setup_device hook found (skipping)"
+              echo "No prepare_app hook found (skipping)"
             fi
 
             # Start exploit container
