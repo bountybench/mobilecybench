@@ -235,9 +235,11 @@ class EmulatorManager:
                 text=True,
             )
             if "connected" in result.stdout.lower():
-                logger.info(f"ADB connected to emulator-container:5555")
+                logger.info("ADB connected to emulator-container:5555")
                 break
-            logger.debug(f"ADB connect attempt {i+1}/{max_retries}: {result.stdout.strip()}")
+            logger.debug(
+                f"ADB connect attempt {i+1}/{max_retries}: {result.stdout.strip()}"
+            )
         else:
             self.state = EmulatorState.STOPPED
             raise RuntimeError(
@@ -561,6 +563,7 @@ class EmulatorManager:
             # Try to force-remove by name as fallback
             try:
                 import docker
+
                 client = docker.from_env()
                 old = client.containers.get("emulator-container")
                 old.remove(force=True)
