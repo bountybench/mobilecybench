@@ -28,6 +28,8 @@ class DiscoveryWorkflow(Workflow):
         project_root: Optional[Path] = None,
         dry_run: bool = False,
         reasoning_effort: Optional[str] = None,
+        docker_mode: bool = False,
+        emulator_mode: str = "native",
     ):
         self.app_name = app_name
         self.app_dir = app_dir
@@ -40,6 +42,8 @@ class DiscoveryWorkflow(Workflow):
         self.project_root = project_root or Path(__file__).parent.parent
         self.dry_run = dry_run
         self.reasoning_effort = reasoning_effort
+        self.docker_mode = docker_mode
+        self.emulator_mode = emulator_mode
 
         # Set during setup
         self.metadata: dict = {}
@@ -79,11 +83,12 @@ class DiscoveryWorkflow(Workflow):
         logger.info("Starting emulator...")
         sdk_version = self.metadata.get("sdk")
         self.emulator = EmulatorManager(
-            docker_mode=False,
+            docker_mode=self.docker_mode,
             project_root=self.project_root,
             sdk_version=sdk_version,
             app_name=self.app_name,
             rootable=True,
+            emulator_mode=self.emulator_mode,
         )
         self.emulator.start_in_background()
         logger.info("Emulator started in background")

@@ -37,8 +37,10 @@ class EmulatorManager:
         sdk_version: Optional[str] = None,
         app_name: Optional[str] = None,
         rootable: bool = True,
+        emulator_mode: str = "native",
     ):
         self.docker_mode = docker_mode
+        self.emulator_mode = emulator_mode
         self.project_root = project_root
         self.sdk_version = sdk_version
         self.app_name = app_name
@@ -48,13 +50,14 @@ class EmulatorManager:
         )
         self.state = EmulatorState.NOT_STARTED
         self.process: Optional[subprocess.Popen] = None
+        self.emulator_container = None  # Docker container (container mode)
         self.device_id: Optional[str] = None  # Track our specific emulator device
         self.emulator_config = self._build_emulator_config()
 
         emulator_type = "rootable" if rootable else "non-rootable"
         logger.info(
-            f"EmulatorManager initialized in {'docker' if docker_mode else 'host'} mode "
-            f"({emulator_type})"
+            f"EmulatorManager initialized in {'docker' if docker_mode else 'host'} mode, "
+            f"emulator_mode={emulator_mode} ({emulator_type})"
         )
 
     def _build_emulator_config(self) -> dict:
@@ -147,7 +150,7 @@ class EmulatorManager:
         """
         Start the Android emulator in background (non-blocking).
 
-        The emulator process will continue booting while this method returns.
+        Dispatches to container or native mode based on self.emulator_mode.
         Use wait_until_ready() to block until boot is complete.
 
         Raises:
@@ -158,6 +161,97 @@ class EmulatorManager:
             raise RuntimeError(
                 f"Cannot start emulator in state {self.state.value}. Must be NOT_STARTED."
             )
+
+        if self.emulator_mode == "container":
+            self._start_container_emulator()
+        else:
+            self._start_native_emulator()
+
+    def _start_container_emulator(self):
+        """Start emulator as a Docker container inside DinD."""
+        import docker
+
+        logger.info("=" * 60)
+        logger.info("STARTING EMULATOR (container mode)")
+        logger.info("=" * 60)
+
+        self.state = EmulatorState.STARTING
+
+        client = docker.from_env()
+
+        # Remove stale container
+        try:
+            old = client.containers.get("emulator-container")
+            old.remove(force=True)
+            logger.info("Removed stale emulator-container")
+        except docker.errors.NotFound:
+            pass
+
+        emulator_name = self.emulator_config["emulator_name"]
+        android_home = self.emulator_config["android_home"]
+        emulator_bin = f"{android_home}/emulator/emulator"
+
+        # Always headless in container mode
+        emulator_cmd = (
+            f"{emulator_bin} -avd {emulator_name} "
+            f"-no-snapshot-save -wipe-data -no-window -gpu off "
+            f"-memory 2048 -no-audio -read-only"
+        )
+
+        # Use the same orchestrator image that's currently running
+        emulator_image = os.environ.get(
+            "EMULATOR_IMAGE", "cybench/mobilecybench-orchestrator:latest"
+        )
+
+        logger.info(f"Starting emulator container with image: {emulator_image}")
+        logger.info(f"Emulator AVD: {emulator_name}")
+
+        try:
+            self.emulator_container = client.containers.run(
+                image=emulator_image,
+                name="emulator-container",
+                command=f"bash -c 'adb -a start-server && {emulator_cmd}'",
+                devices=["/dev/kvm:/dev/kvm"],
+                network="shared_net",
+                detach=True,
+                environment={"ANDROID_HOME": android_home},
+            )
+            logger.info(
+                f"Emulator container started: {self.emulator_container.short_id}"
+            )
+        except Exception as e:
+            self.state = EmulatorState.STOPPED
+            logger.error(f"Failed to start emulator container: {e}")
+            raise RuntimeError(f"Failed to start emulator container: {e}")
+
+        # Wait for container to initialize, then connect via ADB
+        logger.info("Waiting for emulator container ADB to become available...")
+        max_retries = 30
+        for i in range(max_retries):
+            time.sleep(2)
+            result = subprocess.run(
+                ["adb", "connect", "emulator-container:5555"],
+                capture_output=True,
+                text=True,
+            )
+            if "connected" in result.stdout.lower():
+                logger.info("ADB connected to emulator-container:5555")
+                break
+            logger.debug(
+                f"ADB connect attempt {i+1}/{max_retries}: {result.stdout.strip()}"
+            )
+        else:
+            self.state = EmulatorState.STOPPED
+            raise RuntimeError(
+                "Timed out waiting for ADB connection to emulator container"
+            )
+
+        self.device_id = "emulator-container:5555"
+        self.state = EmulatorState.RUNNING
+        logger.info(f"Emulator container running, device_id={self.device_id}")
+
+    def _start_native_emulator(self):
+        """Start emulator as a native subprocess (original behavior)."""
         self._verify_avd_exists()
 
         logger.info("=" * 60)
@@ -272,8 +366,14 @@ class EmulatorManager:
                 print(".", end="", flush=True)
                 last_dot_time = time.time()
 
-            # Check if emulator process is still alive
-            if self.process and self.process.poll() is not None:
+            # Check if emulator process/container is still alive
+            if self.emulator_mode == "container" and self.emulator_container:
+                self.emulator_container.reload()
+                if self.emulator_container.status not in ("running", "created"):
+                    logger.error("Emulator container stopped unexpectedly")
+                    self.state = EmulatorState.STOPPED
+                    raise RuntimeError("Emulator container died during boot")
+            elif self.process and self.process.poll() is not None:
                 logger.error("Emulator process terminated unexpectedly")
                 self.state = EmulatorState.STOPPED
                 raise RuntimeError("Emulator process died during boot")
@@ -406,11 +506,19 @@ class EmulatorManager:
 
     def is_running(self) -> bool:
         """
-        Check if emulator process is still running.
+        Check if emulator process/container is still running.
         """
+        if self.emulator_mode == "container":
+            if self.emulator_container is None:
+                return False
+            try:
+                self.emulator_container.reload()
+                return self.emulator_container.status == "running"
+            except Exception:
+                return False
+
         if self.process is None:
             return False
-
         return self.process.poll() is None
 
     def stop(self):
@@ -428,6 +536,45 @@ class EmulatorManager:
 
         self.state = EmulatorState.STOPPED
 
+        if self.emulator_mode == "container":
+            self._stop_container_emulator()
+        else:
+            self._stop_native_emulator()
+
+    def _stop_container_emulator(self):
+        """Stop and remove the emulator Docker container."""
+        try:
+            # Disconnect ADB first
+            if self.device_id:
+                subprocess.run(
+                    ["adb", "disconnect", self.device_id],
+                    capture_output=True,
+                    timeout=5,
+                )
+
+            if self.emulator_container:
+                logger.info(
+                    f"Removing emulator container: {self.emulator_container.short_id}"
+                )
+                self.emulator_container.remove(force=True)
+                logger.info("Emulator container removed")
+        except Exception as e:
+            logger.error(f"Error stopping emulator container: {e}")
+            # Try to force-remove by name as fallback
+            try:
+                import docker
+
+                client = docker.from_env()
+                old = client.containers.get("emulator-container")
+                old.remove(force=True)
+            except Exception:
+                pass
+        finally:
+            self.emulator_container = None
+            logger.info("Emulator stopped")
+
+    def _stop_native_emulator(self):
+        """Stop the native emulator process (original behavior)."""
         try:
             if self.device_id:
                 logger.info(f"Killing specific device: {self.device_id}")
@@ -537,6 +684,4 @@ class EmulatorManager:
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.state in [EmulatorState.STARTING, EmulatorState.RUNNING]:
             self.stop()
-
-        # Don't suppress exceptions
         return False
