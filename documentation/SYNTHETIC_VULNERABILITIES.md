@@ -6,7 +6,7 @@ Synthetic vulnerabilities are controlled security flaws introduced via patches, 
 
 **To run in exploit mode:** Set `"workflow": "exploit"` in `runner_config.json`.
 
-The agent is given readonly access to `verify_files/` (containing the verification script) and must write an `exploit.sh` that triggers the vulnerability.
+The agent is given readonly access to `verify_files/` (containing the verification script) and must write an `exploit.sh` that triggers the vulnerability. Exploit results (captured secrets, stolen credentials, exfiltrated data) should be written to `agent_output/`.
 
 ## Associating a Real CVE
 
@@ -86,6 +86,8 @@ apps/<app_name>/
 │       └── exploit_files/
 │           ├── exploit.sh              # Proof-of-concept exploit
 ```
+
+At runtime, the agent also has access to `/app/agent_output/` for writing exploit results. This directory is volume-mounted from `<vuln_dir>/agent_output/` so verify scripts can read the results after the agent container is removed.
 
 > For more detailed information on ui_automation, please visit the [UI Automation documentation](UI_AUTOMATION.md)
 

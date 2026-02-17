@@ -133,11 +133,15 @@ class AgentEnvironment:
         try:
             volumes = self._setup_agent_codebase()
 
-            # Setup verify_files for synthetic vulnerability mode
+            # Setup verify_files and agent_output for synthetic vulnerability mode
             if self.vuln_id:
                 verify_volumes = self._setup_verify_files()
                 if verify_volumes:
                     volumes.update(verify_volumes)
+
+                agent_output_volumes = self._setup_agent_output()
+                if agent_output_volumes:
+                    volumes.update(agent_output_volumes)
 
             self.container = self.client.containers.run(
                 image=self.image_name,
@@ -158,9 +162,11 @@ class AgentEnvironment:
                 network_obj = self.client.networks.get(additional_network)
                 network_obj.connect(self.container)
 
-            # Create exploit_files directory
-            logger.info("Creating exploit_files directory in container")
-            self.container.exec_run("mkdir -p /app/exploit_files")
+            # Create exploit_files and agent_output directories
+            logger.info(
+                "Creating exploit_files and agent_output directories in container"
+            )
+            self.container.exec_run("mkdir -p /app/exploit_files /app/agent_output")
 
             if self.mode == "codex":
                 logger.info("Logging in to Codex CLI with API key...")
@@ -301,6 +307,28 @@ class AgentEnvironment:
             str(verify_files_src): {
                 "bind": f"/app/verify_files/{self.vuln_id}",
                 "mode": "ro",
+            }
+        }
+
+    def _setup_agent_output(self):
+        """Create and mount agent_output/ for the synthetic vulnerability.
+
+        Volume-mounted so verify scripts on the host can read exploit results
+        after the agent writes them inside the container.
+        """
+        agent_output_dir = (
+            self.app_dir / "synthetic_vulnerabilities" / self.vuln_id / "agent_output"
+        )
+        # Clean stale data from previous runs, then create fresh
+        if agent_output_dir.exists():
+            shutil.rmtree(agent_output_dir)
+        agent_output_dir.mkdir(parents=True)
+
+        logger.info("Mounting agent_output at /app/agent_output")
+        return {
+            str(agent_output_dir): {
+                "bind": "/app/agent_output",
+                "mode": "rw",
             }
         }
 
@@ -482,24 +510,23 @@ class AgentEnvironment:
             logger.error(f"Failed to reset agent_codebase: {e}")
             raise
 
-    def save_exploit_files(self, dest_dir: Path) -> None:
-        """Copy /app/exploit_files/ from the container to dest_dir/exploit_files/.
+    def _save_container_dir(self, container_path: str, dest_dir: Path) -> None:
+        """Copy a directory from the container to dest_dir.
 
         Must be called before cleanup() destroys the container.
         """
+        dir_name = container_path.rstrip("/").split("/")[-1]
         if not self.container:
-            logger.warning("No container available, cannot save exploit_files")
+            logger.warning(f"No container available, cannot save {dir_name}")
             return
 
         try:
-            # Check if exploit_files has any content
-            result = self.container.exec_run("ls /app/exploit_files")
+            result = self.container.exec_run(f"ls {container_path}")
             if result.exit_code != 0 or not result.output.strip():
-                logger.info("No exploit_files found in container")
+                logger.info(f"No {dir_name} found in container")
                 return
 
-            # Use Docker SDK get_archive to copy files out
-            bits, _ = self.container.get_archive("/app/exploit_files")
+            bits, _ = self.container.get_archive(container_path)
             stream = io.BytesIO()
             for chunk in bits:
                 stream.write(chunk)
@@ -509,9 +536,17 @@ class AgentEnvironment:
             with tarfile.open(fileobj=stream) as tar:
                 tar.extractall(path=dest_dir, filter="data")
 
-            logger.info(f"Saved exploit_files to {dest_dir / 'exploit_files'}")
+            logger.info(f"Saved {dir_name} to {dest_dir / dir_name}")
         except Exception as e:
-            logger.warning(f"Failed to save exploit_files: {e}")
+            logger.warning(f"Failed to save {dir_name}: {e}")
+
+    def save_exploit_files(self, dest_dir: Path) -> None:
+        """Copy /app/exploit_files/ from the container to dest_dir/exploit_files/."""
+        self._save_container_dir("/app/exploit_files", dest_dir)
+
+    def save_agent_output(self, dest_dir: Path) -> None:
+        """Copy /app/agent_output/ from the container to dest_dir/agent_output/."""
+        self._save_container_dir("/app/agent_output", dest_dir)
 
     def cleanup(self):
         """Clean up the agent environment (stop and remove container)."""
