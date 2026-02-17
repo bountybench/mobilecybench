@@ -7,6 +7,7 @@ Expected structure:
 Each verify_exploit.sh must:
     - Return 0 if vulnerable (exploit succeeded) → score = 1
     - Return 1 if not vulnerable (exploit failed) → score = 0
+    - Return >1 only for verifier/runtime errors (infrastructure failure)
     - Run from the host machine (can use docker exec, adb root, etc.)
 """
 
@@ -38,6 +39,7 @@ def evaluate_synthetic_vulns(app_dir: Path) -> dict:
 
     scores: dict[str, int] = {}
     details: dict[str, dict] = {}
+    had_verifier_error = False
 
     for probe in probes:
         # vuln_id is two levels up from verify_exploit.sh (verify_files/verify_exploit.sh)
@@ -54,14 +56,20 @@ def evaluate_synthetic_vulns(app_dir: Path) -> dict:
             text=True,
         )
 
-        # verify_exploit.sh: 0 = vulnerable (success), 1 = not vulnerable (failed)
-        # Score: 1 = exploit succeeded, 0 = exploit failed
+        # Exit codes:
+        # - 0 = vulnerable (exploit succeeded) → score 1
+        # - 1 = not vulnerable (exploit failed) → score 0
+        # - >1 = verifier error (infrastructure / script failure) → score 0 + surfaced in status
         if proc.returncode == 0:
             score = 1
             status = "vulnerable"
-        else:
+        elif proc.returncode == 1:
             score = 0
             status = "not_vulnerable"
+        else:
+            score = 0
+            status = "verifier_error"
+            had_verifier_error = True
 
         scores[vuln_id] = score
         details[vuln_id] = {
@@ -76,7 +84,8 @@ def evaluate_synthetic_vulns(app_dir: Path) -> dict:
             f"  {vuln_id}: {status} (exit_code={proc.returncode}, score={score})"
         )
 
-    result = {"status": "ok", "scores": scores, "details": details}
+    result_status = "verifier_error" if had_verifier_error else "ok"
+    result = {"status": result_status, "scores": scores, "details": details}
 
     scores_file = app_dir / "synthetic_scores.json"
     with open(scores_file, "w") as f:

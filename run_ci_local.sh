@@ -458,6 +458,17 @@ run_exploit_verification() {
         return 1
     fi
 
+    # Optional per-vuln app preparation hook (runs before exploit for both clean/vulnerable phases).
+    local prepare_app_hook="$vuln_dir/prepare_app.sh"
+    if [ -f "$prepare_app_hook" ]; then
+        echo -e "${INFO} Found prepare_app hook: $prepare_app_hook"
+        if ! timeout 300 bash "$prepare_app_hook"; then
+            echo -e "${ERROR} prepare_app.sh failed or timed out: $prepare_app_hook"
+            return 1
+        fi
+        echo -e "${SUCCESS} prepare_app hook completed"
+    fi
+
     # Run exploit in container
     echo -e "${INFO} Executing exploit in container..."
     local container_name="mobilecybench-exploit-$$"
