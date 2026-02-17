@@ -419,19 +419,19 @@ jobs:
 
           echo "APK path validated - found $APK_COUNT APK(s) in $APK_DIR/"
 
-          # For apklink + synthetic vuln, verify the bundle includes the vuln APK
+          # For apklink + synthetic vuln: use vuln APK from bundle if present, else build from source
           if [ "${{ matrix.setup_mode }}" = "apklink" ] && [ -n "${{ matrix.vuln_id }}" ]; then
             VULN_APK_DIR="apk/${{ matrix.vuln_id }}"
             VULN_APK_COUNT=$(find "$VULN_APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
             if [ "$VULN_APK_COUNT" -eq 0 ]; then
-              echo "ERROR: Downloaded APK bundle does not contain vulnerable APK for ${{ matrix.vuln_id }}."
-              echo "  The bundle at download_link needs to be rebuilt and republished:"
-              echo "    ./build_apk.sh ${{ matrix.app_name }}"
-              echo "    ./build_apk.sh ${{ matrix.app_name }} --vuln ${{ matrix.vuln_id }}"
-              echo "    ./publish_apk_bundle.sh apps/${{ matrix.app_name }}"
-              exit 1
+              echo "Bundle does not contain vulnerable APK for ${{ matrix.vuln_id }}. Building from source..."
+              cd ../..
+              export GRADLE_OPTS="-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
+              ./build_apk.sh "${{ matrix.app_name }}" --vuln "${{ matrix.vuln_id }}"
+              cd "${{ matrix.app_dir }}"
+            else
+              echo "Vulnerable APK found in bundle: $VULN_APK_DIR/ ($VULN_APK_COUNT APK(s))"
             fi
-            echo "Vulnerable APK found in bundle: $VULN_APK_DIR/ ($VULN_APK_COUNT APK(s))"
           fi
 
       - name: Build vulnerable APK for synthetic vulnerability
