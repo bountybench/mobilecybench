@@ -1099,24 +1099,55 @@ jobs:
 
             # Start exploit container
             container_name="mobilecybench-exploit-$$"
-            AGENT_HOST_PORT=9999
+            AGENT_HOST_PORT="${AGENT_HOST_PORT:-9999}"
             echo "Starting exploit container: $container_name"
+
+            # Build port mapping flags: always map AGENT_HOST_PORT, plus any
+            # exploit-specific ports from metadata.json exploit_ports array
+            port_flags="-p ${AGENT_HOST_PORT}:${AGENT_HOST_PORT}"
+            pcap_port_filter="port ${AGENT_HOST_PORT}"
+            vuln_metadata="$(pwd)/${vuln_dir}/metadata.json"
+            if [ -f "$vuln_metadata" ]; then
+              for ep in $(jq -r '.exploit_ports[]? // empty' "$vuln_metadata" 2>/dev/null); do
+                if [ "$ep" != "$AGENT_HOST_PORT" ]; then
+                  port_flags="$port_flags -p ${ep}:${ep}"
+                  pcap_port_filter="$pcap_port_filter or port ${ep}"
+                fi
+              done
+            fi
+
             docker run -d \
               --name "$container_name" \
               --network=shared_net \
               --add-host=host.docker.internal:host-gateway \
               -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
               -e AGENT_SERVER_PORT=${AGENT_HOST_PORT} \
-              -p ${AGENT_HOST_PORT}:${AGENT_HOST_PORT} \
+              $port_flags \
               -v "$exploit_files_path:/app/exploit_files" \
               "$EXPLOIT_IMAGE" \
               tail -f /dev/null
+
+            # Start packet capture sidecar: shares the exploit container's network
+            # namespace so it sees all traffic.  Writes pcap to verify_files/ which
+            # is NOT mounted in the exploit container, so the agent cannot tamper.
+            PCAP_DIR="$(pwd)/${vuln_dir}/verify_files"
+            rm -f "$PCAP_DIR/capture.pcap"
+            pcap_container="pcap-sidecar-$$"
+            docker run -d \
+              --name "$pcap_container" \
+              --network "container:${container_name}" \
+              --cap-add NET_RAW \
+              -v "$PCAP_DIR:/pcap" \
+              "$EXPLOIT_IMAGE" \
+              tcpdump -U -i any -w /pcap/capture.pcap "$pcap_port_filter"
+            sleep 1
 
             # Run exploit
             echo "Running exploit script..."
             docker exec "$container_name" bash /app/exploit_files/exploit.sh || true
 
-            # Cleanup exploit container
+            # Cleanup: stop sidecar first (it shares exploit container's network)
+            docker rm -f "$pcap_container" 2>/dev/null || true
             docker rm -f "$container_name" 2>/dev/null || true
 
             # Run verification on host

@@ -479,8 +479,23 @@ run_exploit_verification() {
     # Standard port for agent-hosted servers (emulator reaches via 10.0.2.2:9999)
     local AGENT_HOST_PORT=9999
 
+    # Build port mapping flags: always map AGENT_HOST_PORT, plus any
+    # exploit-specific ports from metadata.json exploit_ports array
+    local port_flags="-p ${AGENT_HOST_PORT}:${AGENT_HOST_PORT}"
+    local pcap_port_filter="port ${AGENT_HOST_PORT}"
+    local vuln_metadata="$vuln_dir/metadata.json"
+    if [ -f "$vuln_metadata" ]; then
+        for ep in $(jq -r '.exploit_ports[]? // empty' "$vuln_metadata" 2>/dev/null); do
+            if [ "$ep" != "$AGENT_HOST_PORT" ]; then
+                port_flags="$port_flags -p ${ep}:${ep}"
+                pcap_port_filter="$pcap_port_filter or port ${ep}"
+                echo -e "${INFO} Mapping additional exploit port: $ep"
+            fi
+        done
+    fi
+
     # Start container with exploit_files mounted at /app/exploit_files
-    # Also mount shared utils so exploit scripts can import from utils.ui_utils etc.
+    echo -e "${INFO} Port flags: $port_flags"
     echo -e "${INFO} Starting exploit container: $container_name"
     docker run -d \
         --name "$container_name" \
@@ -488,7 +503,7 @@ run_exploit_verification() {
         --add-host=host.docker.internal:host-gateway \
         -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
         -e AGENT_SERVER_PORT=${AGENT_HOST_PORT} \
-        -p ${AGENT_HOST_PORT}:${AGENT_HOST_PORT} \
+        $port_flags \
         -v "$exploit_files_abs_path:/app/exploit_files" \
         -v "$ROOT_DIR/utils:/app/utils:ro" \
         "$exploit_image" \
@@ -502,6 +517,22 @@ run_exploit_verification() {
         echo -e "${SUCCESS} Container can access emulator via ADB"
     fi
 
+    # Start packet capture sidecar: shares the exploit container's network
+    # namespace so it sees all traffic.  Writes pcap to verify_files/ which
+    # is NOT mounted in the exploit container, so the agent cannot tamper.
+    local verify_dir
+    verify_dir="$(cd "$(dirname "$verify_script")" && pwd)"
+    rm -f "$verify_dir/capture.pcap"
+    local pcap_container="pcap-sidecar-$$"
+    docker run -d \
+        --name "$pcap_container" \
+        --network "container:${container_name}" \
+        --cap-add NET_RAW \
+        -v "$verify_dir:/pcap" \
+        "$exploit_image" \
+        tcpdump -U -i any -w /pcap/capture.pcap "$pcap_port_filter"
+    sleep 1
+
     # Run the exploit script inside the container
     if docker exec "$container_name" bash /app/exploit_files/exploit.sh; then
         echo -e "${SUCCESS} Exploit executed successfully"
@@ -509,10 +540,11 @@ run_exploit_verification() {
         echo -e "${WARNING} Exploit execution returned non-zero exit code (may be expected)"
     fi
 
-    # Stop and remove the container
-    echo -e "${INFO} Cleaning up exploit container..."
+    # Cleanup: stop sidecar first (it shares exploit container's network)
+    echo -e "${INFO} Cleaning up containers..."
+    docker rm -f "$pcap_container" 2>/dev/null || true
     docker rm -f "$container_name" 2>/dev/null || true
-    
+
     # Run verification
     echo -e "${INFO} Running verification..."
     bash "$verify_script"
