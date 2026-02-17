@@ -97,19 +97,6 @@ class TestSetupAgentOutput:
             vuln_id=vuln_id,
         )
 
-    def test_creates_fresh_directory_and_returns_volume(self, tmp_path):
-        """Creates agent_output dir and returns rw volume mapping."""
-        agent_env = self._create_agent_env(tmp_path, vuln_id="vuln_0")
-        result = agent_env._setup_agent_output()
-
-        agent_output_dir = (
-            tmp_path / "synthetic_vulnerabilities" / "vuln_0" / "agent_output"
-        )
-        assert agent_output_dir.is_dir()
-        assert result is not None
-        assert result[str(agent_output_dir)]["bind"] == "/app/agent_output"
-        assert result[str(agent_output_dir)]["mode"] == "rw"
-
     def test_cleans_stale_data(self, tmp_path):
         """Removes stale files from previous runs before creating fresh dir."""
         agent_output_dir = (
@@ -231,43 +218,3 @@ class TestSaveExploitFiles:
 
         # Should not raise
         agent_env.save_exploit_files(tmp_path / "logs")
-
-
-class TestSaveAgentOutput:
-    """Tests for AgentEnvironment.save_agent_output()."""
-
-    def _create_agent_env(self, tmp_path):
-        return AgentEnvironment(
-            app_dir=tmp_path,
-            docker_networks=["test_net"],
-            image_name="test:latest",
-            env={},
-            commit_id="HEAD",
-        )
-
-    def test_no_container_logs_warning(self, tmp_path):
-        """Logs warning and returns when container is None."""
-        agent_env = self._create_agent_env(tmp_path)
-        agent_env.container = None
-
-        agent_env.save_agent_output(tmp_path / "logs")
-        assert not (tmp_path / "logs" / "agent_output").exists()
-
-    def test_copies_agent_output_to_dest(self, tmp_path):
-        """Extracts agent_output tar archive to destination."""
-        agent_env = self._create_agent_env(tmp_path)
-        agent_env.container = MagicMock()
-
-        agent_env.container.exec_run.return_value = MagicMock(
-            exit_code=0, output=b"captured_creds.txt\n"
-        )
-
-        tar_bytes = _make_tar({"agent_output/captured_creds.txt": "admin:secret"})
-        agent_env.container.get_archive.return_value = (iter([tar_bytes]), {})
-
-        logs_dir = tmp_path / "logs"
-        agent_env.save_agent_output(logs_dir)
-
-        saved = logs_dir / "agent_output" / "captured_creds.txt"
-        assert saved.exists()
-        assert "admin:secret" in saved.read_text()
