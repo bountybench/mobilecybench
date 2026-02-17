@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+_CLR_YELLOW=$'\033[1;33m'
+_CLR_RED=$'\033[1;31m'
+_CLR_RESET=$'\033[0m'
+
 log_info()  { printf '%s\n' "[INFO]  $*"; }
-log_warn()  { printf '%s\n' "[WARN]  $*" >&2; }
-log_error() { printf '%s\n' "[ERROR] $*" >&2; }
+log_warn()  { printf '%s\n' "${_CLR_YELLOW}[WARN]  $*${_CLR_RESET}" >&2; }
+log_error() { printf '%s\n' "${_CLR_RED}[ERROR] $*${_CLR_RESET}" >&2; }
 log()  { local tag="$1"; shift || true; printf '%s\n' "[$tag] $*"; }
 
 fatal() {

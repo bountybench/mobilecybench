@@ -41,6 +41,7 @@ from ui_automation_utils import (
 
 SCRIPT_NAME = "login"
 PACKAGE = "eu.siacs.conversations"
+MAX_BACK_ATTEMPTS = 5
 
 # Get script directory for relative paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -100,8 +101,16 @@ def check_if_logged_in(d):
         log("✓ Found speed_dial - user is logged in", SCRIPT_NAME)
         return True
 
+    if d(resourceId="eu.siacs.conversations:id/fab").exists:
+        log("✓ Found fab - user is logged in", SCRIPT_NAME)
+        return True
+
     if d(resourceId="eu.siacs.conversations:id/action_search").exists:
         log("✓ Found action_search - user is logged in", SCRIPT_NAME)
+        return True
+
+    if d(text="Start chat").exists:
+        log("✓ Found 'Start chat' - user is logged in", SCRIPT_NAME)
         return True
 
     if d(text="Contacts").exists:
@@ -149,6 +158,102 @@ def check_user_in_accounts(d, username):
     else:
         log(f"{username} not found in account list", SCRIPT_NAME)
         return "not_found"
+
+
+# =============================================================================
+# Dialog and navigation recovery helpers
+# =============================================================================
+
+
+def dismiss_unexpected_dialogs(d):
+    """Dismiss unexpected dialogs that may block the main UI.
+
+    Handles known dialogs that can appear on launch:
+    - "Battery optimizations enabled" (in-app) → clicks "Next"
+    - "Let app always run in background?" (system) → clicks "Allow"
+    """
+    log("Checking for unexpected dialogs...", SCRIPT_NAME)
+    dismissed = 0
+
+    # Handle "Battery optimizations enabled" dialog.
+    # Press back to dismiss it — clicking "Next" opens system Settings which
+    # leaves the app in a bad navigation state.
+    if d(text="Battery optimizations enabled").exists:
+        log("Found 'Battery optimizations enabled' dialog, dismissing...", SCRIPT_NAME)
+        pre_click = d.dump_hierarchy(compressed=True)
+        d.press("back")
+        wait_for_screen_change(d, pre_click, timeout=TIMEOUT_FAST)
+        wait_for_ui_stable(d, timeout=TIMEOUT_NORMAL, script_name=SCRIPT_NAME)
+        dismissed += 1
+        log("✓ Dismissed battery optimization dialog", SCRIPT_NAME)
+
+    if dismissed > 0:
+        log(f"✓ Dismissed {dismissed} unexpected dialog(s)", SCRIPT_NAME)
+    else:
+        log("No unexpected dialogs found", SCRIPT_NAME)
+
+    return dismissed
+
+
+def _whitelist_battery_optimization():
+    """Whitelist the app from battery optimization to prevent the dialog."""
+    try:
+        result = subprocess.run(
+            ["adb", "shell", "dumpsys", "deviceidle", "whitelist", f"+{PACKAGE}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            log("✓ Battery optimization whitelisted", SCRIPT_NAME)
+    except Exception as e:
+        log(f"WARNING: Could not whitelist battery optimization: {e}", SCRIPT_NAME)
+
+
+def navigate_to_main_screen(d):
+    """Navigate back to the main screen if on a sub-screen within the app.
+
+    Uses the 'Navigate up' button or back press to return to the main
+    conversation list. Handles conversation views, settings, etc.
+
+    Returns:
+        True if on main screen (or welcome screen), False otherwise.
+    """
+    log("Not on main screen, attempting to navigate back...", SCRIPT_NAME)
+
+    for i in range(MAX_BACK_ATTEMPTS):
+        # Check if we've reached main screen
+        if check_if_logged_in(d) or check_on_welcome_screen(d):
+            log("✓ Navigated back to main screen", SCRIPT_NAME)
+            return True
+
+        # Check we're still in the app
+        current = d.app_current()
+        if current.get("package") != PACKAGE:
+            log("Left the app, relaunching...", SCRIPT_NAME)
+            d.app_start(PACKAGE, wait=True)
+            wait_for_ui_stable(
+                d, timeout=TIMEOUT_SLOW, interval=1, script_name=SCRIPT_NAME
+            )
+            continue
+
+        # Try "Navigate up" button first (more reliable than back)
+        nav_up = d(description="Navigate up")
+        if nav_up.exists:
+            log(f"Pressing Navigate up (attempt {i + 1})", SCRIPT_NAME)
+            pre_click = d.dump_hierarchy(compressed=True)
+            nav_up.click()
+            wait_for_screen_change(d, pre_click, timeout=TIMEOUT_FAST)
+            wait_for_ui_stable(d, timeout=TIMEOUT_NORMAL, script_name=SCRIPT_NAME)
+        else:
+            log(f"No Navigate up button, pressing back (attempt {i + 1})", SCRIPT_NAME)
+            pre_click = d.dump_hierarchy(compressed=True)
+            d.press("back")
+            wait_for_screen_change(d, pre_click, timeout=TIMEOUT_FAST)
+            wait_for_ui_stable(d, timeout=TIMEOUT_NORMAL, script_name=SCRIPT_NAME)
+
+    # Final check
+    return check_if_logged_in(d) or check_on_welcome_screen(d)
 
 
 # =============================================================================
@@ -340,6 +445,7 @@ def handle_certificate_with_retry(d, max_attempts=3):
         if (
             d(text="Publish avatar").exists
             or d(resourceId="eu.siacs.conversations:id/speed_dial").exists
+            or d(resourceId="eu.siacs.conversations:id/fab").exists
         ):
             log("✓ Connection succeeded", SCRIPT_NAME)
             return True
@@ -393,15 +499,51 @@ def main():
     if args.add_account:
         log("Mode: Force add-account", SCRIPT_NAME)
 
+    # Whitelist battery optimization before launching to prevent the
+    # "Battery optimizations enabled" dialog from appearing.
+    _whitelist_battery_optimization()
+
     d = u2.connect()
 
     try:
-        log("\nWaiting for app to load...", SCRIPT_NAME)
+        # Ensure the Conversations app is in the foreground
+        log("\nEnsuring Conversations app is in foreground...", SCRIPT_NAME)
+        current = d.app_current()
+        current_pkg = current.get("package", "")
+        if current_pkg != PACKAGE:
+            log(
+                f"App not in foreground (current: {current_pkg}). Launching {PACKAGE}...",
+                SCRIPT_NAME,
+            )
+            try:
+                d.app_start(PACKAGE, wait=True)
+            except Exception as e:
+                log(f"[ERROR] Failed to launch {PACKAGE}: {e}", SCRIPT_NAME)
+                log(
+                    "Is the app installed? Check with: adb shell pm list packages | grep conversations",
+                    SCRIPT_NAME,
+                )
+                sys.exit(1)
+            if not d.app_wait(PACKAGE, front=True, timeout=TIMEOUT_NORMAL):
+                log(f"[ERROR] {PACKAGE} did not come to foreground", SCRIPT_NAME)
+                sys.exit(1)
+            log(f"✓ {PACKAGE} is now in foreground", SCRIPT_NAME)
+
+        log("Waiting for app to load...", SCRIPT_NAME)
         wait_for_ui_stable(d, timeout=TIMEOUT_SLOW, interval=1, script_name=SCRIPT_NAME)
+
+        # Dismiss any unexpected dialogs (e.g., battery optimization)
+        dismiss_unexpected_dialogs(d)
 
         # Determine which flow to use
         on_welcome = check_on_welcome_screen(d)
         is_logged_in = check_if_logged_in(d)
+
+        # If neither main screen nor welcome screen, try navigating back
+        if not on_welcome and not is_logged_in:
+            if navigate_to_main_screen(d):
+                on_welcome = check_on_welcome_screen(d)
+                is_logged_in = check_if_logged_in(d)
 
         if on_welcome and not args.add_account:
             # First-time login

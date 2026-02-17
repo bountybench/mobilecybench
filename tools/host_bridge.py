@@ -6,6 +6,7 @@ import platform
 import shlex
 import socket
 import subprocess
+import sys
 import threading
 import time
 import traceback
@@ -13,22 +14,41 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from shutil import which
 from urllib.parse import parse_qs, urlparse
 
-from utils.logger import logger_manager
-
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PORT = int(os.environ.get("MCB_BRIDGE_PORT", "52888"))
 TOKEN_FILE = os.path.join(REPO_ROOT, "ssh_key")
-LOGFILE = str(logger_manager.get_logs_dir() / "mobilecybench_bridge.log")
 UDS_PATH = os.environ.get("MCB_UDS_PATH", os.path.join(REPO_ROOT, "mcb.sock"))
 BRIDGE_BIND = os.environ.get("MCB_BRIDGE_BIND", "127.0.0.1")
+
+
+def _resolve_logfile() -> str:
+    """Determine bridge log path without importing LoggerManager.
+
+    If MOBILECYBENCH_SESSION_ID is set (by the runner process), write into
+    the matching experiment directory. Otherwise fall back to a simple
+    logs/mobilecybench_bridge.log under the repo root.
+    """
+    logs_base = os.environ.get(
+        "MOBILECYBENCH_LOGS_DIR", os.path.join(REPO_ROOT, "logs")
+    )
+    session_id = os.environ.get("MOBILECYBENCH_SESSION_ID")
+    if session_id:
+        log_dir = os.path.join(logs_base, f"experiment_{session_id}")
+    else:
+        log_dir = logs_base
+    os.makedirs(log_dir, exist_ok=True)
+    return os.path.join(log_dir, "mobilecybench_bridge.log")
+
+
+LOGFILE = _resolve_logfile()
 
 
 def log(s):
     try:
         with open(LOGFILE, "a") as f:
             f.write(f"{s}\n")
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[bridge] log write failed: {e}", file=sys.stderr)
     print(s)
 
 

@@ -26,6 +26,7 @@ ssh_key
 .env
 !apps/**/.env
 token_usage.jsonl
+token_test.jsonl
 *.code-workspace
 screenshots/*
 *.egg-info
@@ -36,3 +37,4 @@ agent_codebase/
 apps/*/static_vuln_reports/
 synthetic_scores.json
 .apk_backup_path
+.claude

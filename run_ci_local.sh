@@ -16,6 +16,7 @@ WARNING="${YELLOW}[WARNING]${RESET}"
 ROOT_DIR=$(pwd)
 source "${ROOT_DIR}/utils/android.sh"
 source "${ROOT_DIR}/utils/wait.sh"
+source "${ROOT_DIR}/utils/local_error_logger.sh"
 set +e
 
 DIR=""
@@ -26,12 +27,17 @@ print_header() {
     echo -e "${color}========== ${message} ==========${RESET}"
 }
 
+print_error_header() {
+    local message="$1"
+    echo -e "${ERROR} ${message} ==========${RESET}" >&2
+}
+
 check_metadata_schema() {
     local metadata_file="$1"
     echo "Checking metadata.json against expected schema..."
 
     if ! jq empty "$metadata_file" >/dev/null 2>&1; then
-        print_header "$ERROR" "[FAIL] Invalid JSON in $metadata_file"
+        print_error_header "[FAIL] Invalid JSON in $metadata_file"
         echo -e "${ERROR} The metadata.json file contains invalid JSON syntax."
         exit 1
     fi
@@ -54,8 +60,8 @@ check_metadata_schema() {
         if jq -e ".${field}" "$metadata_file" >/dev/null 2>&1; then
             print_header "$GREEN" "[PASS] Attribute $field is in the metadata."
         else
-            print_header "$ERROR" "[FAIL] Attribute $field is not in the metadata."
-            print_header "$ERROR" " --> Attribute ${description} is not in the metadata."
+            print_error_header "[FAIL] Attribute $field is not in the metadata."
+            print_error_header " --> Attribute ${description} is not in the metadata."
             all_passed=false
         fi
     done
@@ -63,7 +69,7 @@ check_metadata_schema() {
     if [ "$all_passed" = true ]; then
         print_header "$GREEN" "[PASS] Metadata schema validation success."
     else
-        print_header "$ERROR" "[FAIL] Metadata schema validation failed."
+        print_error_header "[FAIL] Metadata schema validation failed."
         exit 1
     fi
 }
@@ -255,10 +261,13 @@ validate_setup_app_scripts() {
         return 1
     fi
 
-    local source_script="$dir/setup_app_source.sh"
+    local has_build_script=false
     local has_download_link=false
 
-    # Check if download_link exists in metadata.json
+    if [ -f "$dir/build.sh" ]; then
+        has_build_script=true
+    fi
+
     if [ -f "$dir/metadata.json" ]; then
         download_link=$(jq -r '.download_link // empty' "$dir/metadata.json")
         if [ -n "$download_link" ]; then
@@ -266,10 +275,9 @@ validate_setup_app_scripts() {
         fi
     fi
 
-    if [ ! -f "$source_script" ] && [ "$has_download_link" = false ]; then
-        # fail if neither option exists
+    if [ "$has_build_script" = false ] && [ "$has_download_link" = false ]; then
         echo -e "${ERROR} No setup options found in $dir" >&2
-        echo -e "${ERROR} Expected: setup_app_source.sh or download_link in metadata.json" >&2
+        echo -e "${ERROR} Expected: build.sh or download_link in metadata.json" >&2
         return 1
     fi
     return 0
@@ -285,11 +293,10 @@ discover_available_modes() {
         modes="apk_skip"
         echo -e "${INFO} --skip-apk specified - using apk_skip mode" >&2
     else
-        if [ -f "$dir/setup_app_source.sh" ]; then
+        if [ -f "$dir/build.sh" ]; then
             modes="$modes source"
-            echo -e "${INFO} Found setup_app_source.sh (build mode)" >&2
+            echo -e "${INFO} Found build.sh (build mode)" >&2
         fi
-        # Check if download_link exists in metadata.json
         if [ -f "$dir/metadata.json" ]; then
             download_link=$(jq -r '.download_link // empty' "$dir/metadata.json")
             if [ -n "$download_link" ]; then
@@ -451,6 +458,17 @@ run_exploit_verification() {
         return 1
     fi
 
+    # Optional per-vuln app preparation hook (runs before exploit for both clean/vulnerable phases).
+    local prepare_app_hook="$vuln_dir/prepare_app.sh"
+    if [ -f "$prepare_app_hook" ]; then
+        echo -e "${INFO} Found prepare_app hook: $prepare_app_hook"
+        if ! timeout 300 bash "$prepare_app_hook"; then
+            echo -e "${ERROR} prepare_app.sh failed or timed out: $prepare_app_hook"
+            return 1
+        fi
+        echo -e "${SUCCESS} prepare_app hook completed"
+    fi
+
     # Run exploit in container
     echo -e "${INFO} Executing exploit in container..."
     local container_name="mobilecybench-exploit-$$"
@@ -458,14 +476,21 @@ run_exploit_verification() {
     local exploit_files_abs_path
     exploit_files_abs_path="$(cd "$exploit_files_dir" && pwd)"
 
+    # Standard port for agent-hosted servers (emulator reaches via 10.0.2.2:9999)
+    local AGENT_HOST_PORT=9999
+
     # Start container with exploit_files mounted at /app/exploit_files
+    # Also mount shared utils so exploit scripts can import from utils.ui_utils etc.
     echo -e "${INFO} Starting exploit container: $container_name"
     docker run -d \
         --name "$container_name" \
         --network=shared_net \
         --add-host=host.docker.internal:host-gateway \
         -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
+        -e AGENT_SERVER_PORT=${AGENT_HOST_PORT} \
+        -p ${AGENT_HOST_PORT}:${AGENT_HOST_PORT} \
         -v "$exploit_files_abs_path:/app/exploit_files" \
+        -v "$ROOT_DIR/utils:/app/utils:ro" \
         "$exploit_image" \
         tail -f /dev/null
 
@@ -699,7 +724,7 @@ run_test_check() {
     
     # Check if package is NOT installed before setup
     if adb shell pm list packages | grep -q "^package:$package_name$"; then
-        echo -e "${ERROR} Package $package_name is already installed before setup.sh"
+        echo -e "${ERROR} Package $package_name is already installed before start_runtime.sh"
         echo -e "${ERROR} This test expects the package to be uninstalled initially"
         exit 1
     else
@@ -707,20 +732,20 @@ run_test_check() {
     fi
 
     echo -e "${INFO} Running setup..."
-    { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+    { ./start_runtime.sh; } || { echo -e "${ERROR} start_runtime.sh failed"; exit 1; }
 
     # Verify the specific package is installed after setup
     if adb shell pm list packages | grep -q "^package:$package_name$"; then
-        echo -e "${SUCCESS} Package $package_name is installed after setup.sh"
+        echo -e "${SUCCESS} Package $package_name is installed after start_runtime.sh"
     else
-        echo -e "${ERROR} Package $package_name is not installed after setup.sh"
-        echo -e "${ERROR} This indicates setup.sh failed to install the expected package"
+        echo -e "${ERROR} Package $package_name is not installed after start_runtime.sh"
+        echo -e "${ERROR} This indicates start_runtime.sh failed to install the expected package"
         echo -e "${INFO} Cleaning up..."
         ./cleanup.sh
         exit 1
     fi
 
-    # Wait for app-specific containers to be ready (after setup.sh starts them)
+    # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
     check_app_containers_ready
 
     echo -e "${INFO} Generating flags..."
@@ -811,11 +836,11 @@ run_tests_for_mode() {
     if [ -f "test_access_control.py" ] || [ -f "test_availability.py" ] || [ -f "test_confidentiality.py" ] || [ -f "test_integrity.py" ]; then
         echo -e "${INFO} test_X.py probe found - running full vulnerability scenario tests"
         local has_probes=true
-        required_files=("setup.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
+        required_files=("start_runtime.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
     else
         echo -e "${INFO} test_X.py probe not found - running simplified APK installation test"
         local has_probes=false
-        required_files=("setup.sh" "cleanup.sh")
+        required_files=("start_runtime.sh" "cleanup.sh")
     fi
     
     echo -e "${INFO} Checking for required scripts..."
@@ -933,7 +958,7 @@ EOF
         
         # Check if package is NOT installed before setup
         if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo -e "${ERROR} Package $package_name is already installed before setup.sh"
+            echo -e "${ERROR} Package $package_name is already installed before start_runtime.sh"
             echo -e "${ERROR} This test expects the package to be uninstalled initially"
             exit 1
         else
@@ -941,20 +966,20 @@ EOF
         fi
         
         echo -e "${INFO} Running setup..."
-        { ./setup.sh; } || { echo -e "${ERROR} setup.sh failed"; exit 1; }
+        { ./start_runtime.sh; } || { echo -e "${ERROR} start_runtime.sh failed"; exit 1; }
 
          # Verify the specific package is installed after setup
         if adb shell pm list packages | grep -q "^package:$package_name$"; then
-            echo -e "${SUCCESS} Package $package_name is installed after setup.sh"
+            echo -e "${SUCCESS} Package $package_name is installed after start_runtime.sh"
         else
-            echo -e "${ERROR} Package $package_name is not installed after setup.sh"
-            echo -e "${ERROR} This indicates setup.sh failed to install the expected package"
+            echo -e "${ERROR} Package $package_name is not installed after start_runtime.sh"
+            echo -e "${ERROR} This indicates start_runtime.sh failed to install the expected package"
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
             exit 1
         fi
         
-        # Wait for app-specific containers to be ready (after setup.sh starts them)
+        # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
         check_app_containers_ready
 
         echo -e "${INFO} Generating flags..."
@@ -1065,27 +1090,50 @@ run_synthetic_vuln_test() {
         fi
     fi
 
-    # Phase 1: Test clean build (should NOT be vulnerable)
-    print_header "$CYAN" "PHASE 1: Testing Clean Build (Baseline)"
-
-    cd "$ROOT_DIR"
-
-    # Build clean APK using the wrapper (skip if APKs exist)
+    # =====================================================================
+    # BUILD PHASE: Build all APKs first (before starting the emulator)
+    # This avoids the emulator competing for CPU during long native builds.
+    # =====================================================================
     if [ "$skip_build" = false ]; then
+        print_header "$CYAN" "BUILD PHASE: Building all APKs (emulator not running)"
+
+        cd "$ROOT_DIR"
+
         echo -e "${INFO} Building clean APK using build_apk.sh..."
         if ! ./build_apk.sh "$app_name"; then
             echo -e "${ERROR} Failed to build clean APK"
             exit 1
         fi
+
+        echo -e "${INFO} Building vulnerable APK using build_apk.sh --vuln $vuln_id..."
+        if ! ./build_apk.sh "$app_name" --vuln "$vuln_id"; then
+            echo -e "${ERROR} Failed to build vulnerable APK"
+            exit 1
+        fi
+
+        print_header "$GREEN" "BUILD PHASE COMPLETE: Both APKs built successfully"
     else
-        echo -e "${INFO} Using existing clean APK (--skip-apk)"
+        echo -e "${INFO} Using existing APKs (--skip-apk)"
     fi
+
+    # =====================================================================
+    # START EMULATOR: Now that builds are done, start the emulator
+    # =====================================================================
+    cd "$ROOT_DIR"
+    start_emulator_and_adb
+
+    # =====================================================================
+    # TEST PHASE: Install, exploit, and verify each build
+    # =====================================================================
+
+    # Phase 1: Test clean build (should NOT be vulnerable)
+    print_header "$CYAN" "PHASE 1: Testing Clean Build (Baseline)"
 
     cd "$ROOT_DIR/$app_dir"
 
     # Install and setup
     echo -e "${INFO} Installing clean APK..."
-    ./setup.sh || { echo -e "${ERROR} Failed to install clean APK"; exit 1; }
+    ./start_runtime.sh || { echo -e "${ERROR} Failed to install clean APK"; exit 1; }
 
     # Wait for containers
     check_app_containers_ready
@@ -1109,58 +1157,19 @@ run_synthetic_vuln_test() {
     # Phase 2: Test vulnerable build (should BE vulnerable)
     print_header "$CYAN" "PHASE 2: Testing Vulnerable Build (With Patch)"
 
-    cd "$ROOT_DIR"
-
-    # Build vulnerable APK using the wrapper (skip if APKs exist)
-    if [ "$skip_build" = false ]; then
-        echo -e "${INFO} Building vulnerable APK using build_apk.sh --vuln $vuln_id..."
-        if ! ./build_apk.sh "$app_name" --vuln "$vuln_id"; then
-            echo -e "${ERROR} Failed to build vulnerable APK"
-            exit 1
-        fi
-    else
-        echo -e "${INFO} Using existing vulnerable APK (--skip-apk)"
-    fi
-
     cd "$ROOT_DIR/$app_dir"
 
-    # Copy vulnerable APK to main apk directory for setup.sh to find
-    echo -e "${INFO} Preparing vulnerable APK for installation..."
-    local vuln_apk_dir="apk/$vuln_id"
-    if [ ! -d "$vuln_apk_dir" ]; then
-        echo -e "${ERROR} Vulnerable APK directory not found: $vuln_apk_dir"
+    # Verify vulnerable APK exists
+    local vuln_apk="apk/$vuln_id/${app_name}.apk"
+    if [ ! -f "$vuln_apk" ]; then
+        echo -e "${ERROR} Vulnerable APK not found: $vuln_apk"
         exit 1
     fi
 
-    # Backup existing APKs and copy vulnerable APK
-    local temp_backup
-    temp_backup=$(mktemp -d)
-
-    # Set up trap to ensure cleanup on unexpected exit (SIGINT, SIGTERM, etc.)
-    cleanup_temp_backup() {
-        if [ -d "$temp_backup" ]; then
-            echo -e "${WARNING} Cleaning up temp backup on exit..."
-            rm -f apk/*.apk 2>/dev/null || true
-            mv "$temp_backup"/*.apk apk/ 2>/dev/null || true
-            rm -rf "$temp_backup"
-        fi
-    }
-    trap cleanup_temp_backup EXIT INT TERM
-
-    if [ -n "$(find apk -maxdepth 1 -name '*.apk' -type f 2>/dev/null)" ]; then
-        mv apk/*.apk "$temp_backup/" 2>/dev/null || true
-    fi
-    cp "$vuln_apk_dir"/*.apk apk/
-
-    # Install and setup
-    echo -e "${INFO} Installing vulnerable APK..."
-    ./setup.sh || {
+    # Install vulnerable APK directly using --apk flag
+    echo -e "${INFO} Installing vulnerable APK via --apk flag..."
+    ./start_runtime.sh --apk "$vuln_apk" || {
         echo -e "${ERROR} Failed to install vulnerable APK"
-        # Restore original APKs (trap will handle cleanup)
-        rm -f apk/*.apk 2>/dev/null || true
-        mv "$temp_backup"/*.apk apk/ 2>/dev/null || true
-        rm -rf "$temp_backup"
-        trap - EXIT INT TERM  # Clear trap before exit
         exit 1
     }
 
@@ -1173,11 +1182,6 @@ run_synthetic_vuln_test() {
         echo -e "${ERROR} Phase 2 failed: Vulnerable build verification failed"
         ./cleanup.sh
         uninstall_package "$package_name"
-        # Restore original APKs (trap will handle cleanup)
-        rm -f apk/*.apk 2>/dev/null || true
-        mv "$temp_backup"/*.apk apk/ 2>/dev/null || true
-        rm -rf "$temp_backup"
-        trap - EXIT INT TERM  # Clear trap before exit
         exit 1
     }
 
@@ -1185,15 +1189,6 @@ run_synthetic_vuln_test() {
     echo -e "${INFO} Cleaning up Phase 2..."
     ./cleanup.sh
     uninstall_package "$package_name"
-
-    # Restore original APKs
-    echo -e "${INFO} Restoring original APKs..."
-    rm -f apk/*.apk 2>/dev/null || true
-    mv "$temp_backup"/*.apk apk/ 2>/dev/null || true
-    rm -rf "$temp_backup"
-
-    # Clear trap after successful cleanup
-    trap - EXIT INT TERM
 
     print_header "$GREEN" "PHASE 2 PASSED: Vulnerable build is vulnerable"
 
@@ -1246,38 +1241,46 @@ docker network create shared_net || echo -e "${INFO} shared_net network already 
 print_header "$CYAN" "STARTING SSRF LISTENER"
 start_ssrf_listener || echo -e "${WARNING} SSRF listener not started - SSRF detection may not work"
 
-# Start emulator (assuming you have a start_emulator.sh script)
-if [ -f "start_emulator.sh" ]; then
-    print_header "$CYAN" "STARTING EMULATOR"
-    bash ./start_emulator.sh || echo -e "${WARNING} Failed to start emulator"
+# Function to start emulator and configure ADB
+start_emulator_and_adb() {
+    if [ -f "start_emulator.sh" ]; then
+        print_header "$CYAN" "STARTING EMULATOR"
+        bash ./start_emulator.sh || echo -e "${WARNING} Failed to start emulator"
 
-    echo "Waiting for emulator to boot..."
+        echo "Waiting for emulator to boot..."
 
-    # Wait for device to appear
-    adb wait-for-device
+        # Wait for device to appear
+        adb wait-for-device
 
-    wait_for_device_boot 300
-    echo "Emulator booted successfully."
-else
-    echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
-fi
+        wait_for_device_boot 300
+        echo "Emulator booted successfully."
+    else
+        echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
+    fi
 
-# Ensure ADB server is listening on all interfaces for container access
-echo -e "${INFO} Ensuring ADB server is configured for container access..."
-if ! lsof -iTCP:5037 -sTCP:LISTEN 2>/dev/null | grep -q "\\*:5037"; then
-    echo -e "${INFO} ADB not listening on all interfaces, restarting with -a flag..."
-    adb kill-server 2>/dev/null || true
-    adb -a start-server
-    # Wait for reconnection
-    for i in {1..30}; do
-        if adb devices 2>/dev/null | grep -q "device$"; then
-            echo -e "${SUCCESS} ADB reconnected to emulator"
-            break
-        fi
-        sleep 1
-    done
-else
-    echo -e "${SUCCESS} ADB already configured correctly"
+    # Ensure ADB server is listening on all interfaces for container access
+    echo -e "${INFO} Ensuring ADB server is configured for container access..."
+    if ! lsof -iTCP:5037 -sTCP:LISTEN 2>/dev/null | grep -q "\\*:5037"; then
+        echo -e "${INFO} ADB not listening on all interfaces, restarting with -a flag..."
+        adb kill-server 2>/dev/null || true
+        adb -a start-server
+        # Wait for reconnection
+        for i in {1..30}; do
+            if adb devices 2>/dev/null | grep -q "device$"; then
+                echo -e "${SUCCESS} ADB reconnected to emulator"
+                break
+            fi
+            sleep 1
+        done
+    else
+        echo -e "${SUCCESS} ADB already configured correctly"
+    fi
+}
+
+# For synthetic vuln tests, delay emulator start until after APKs are built.
+# This avoids the emulator competing for CPU during long native builds.
+if [ -z "$TEST_SYNTHETIC_VULN" ]; then
+    start_emulator_and_adb
 fi
 
 # Check if we're running synthetic vulnerability tests

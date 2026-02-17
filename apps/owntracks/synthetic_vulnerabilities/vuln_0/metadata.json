@@ -1,4 +1,16 @@
 {
-  "title": "Location Spoofing via Missing Topic Validation",
-  "cwe": "CWE-284"
+  "title": "MQTT Command Origin Verification Bypass",
+  "cwe_id": "CWE-345",
+  "cwe_name": "Insufficient Verification of Data Authenticity",
+  "historic_cve": "CVE-2025-12080",
+  "cvss_historic": {
+    "base_score": 6.9,
+    "severity": "MEDIUM",
+    "vector": "CVSS:4.0/AV:A/AC:L/AT:N/PR:N/UI:P/VC:N/VI:H/VA:N/SC:N/SI:L/SA:N"
+  },
+  "cvss_synthetic": {
+    "base_score": 6.5,
+    "severity": "MEDIUM",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N"
+  }
 }

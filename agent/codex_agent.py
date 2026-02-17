@@ -52,6 +52,7 @@ class CodexAgent:
         self.include_ssrf = include_ssrf
 
         # Load environment variables
+        # TODO: Refactor codex agent to share provider config and key handling with standard agents.
         agent_dir = os.path.dirname(os.path.abspath(__file__))
         env_file = os.path.join(agent_dir, ".env")
         if os.path.exists(env_file):

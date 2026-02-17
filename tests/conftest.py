@@ -1,37 +1,102 @@
 import json
+import os
+import tempfile
 from unittest.mock import Mock, patch
 
 import pytest
+
+from agent.model_providers.base import FunctionCall, ProviderResponse
+
+
+def pytest_configure(config):
+    """Set up test environment before any tests run.
+
+    Redirects logs to a temp directory to avoid polluting the project logs folder.
+    """
+    # Create a temp directory for test logs
+    test_logs_dir = tempfile.mkdtemp(prefix="pytest_logs_")
+    os.environ["MOBILECYBENCH_LOGS_DIR"] = test_logs_dir
+    # Set a fixed session ID to avoid timestamp-based folder creation
+    os.environ["MOBILECYBENCH_SESSION_ID"] = "pytest_session"
 
 
 def pytest_addoption(parser):
     parser.addoption("--dirs", nargs="+", help="Directories to test", required=False)
 
 
+def create_provider_response(
+    content: str = "", function_calls=None, response_id="test-response-id"
+) -> ProviderResponse:
+    """Create a ProviderResponse for testing.
+
+    Args:
+        content: Text content for the assistant message.
+        function_calls: Optional list of dicts with keys: name, arguments, call_id.
+        response_id: Response ID for conversation continuity.
+    """
+    fc_list = []
+    if function_calls:
+        for fc in function_calls:
+            fc_list.append(
+                FunctionCall(
+                    name=fc["name"],
+                    arguments=fc.get("arguments", "{}"),
+                    call_id=fc.get("call_id", "call_test_123"),
+                )
+            )
+
+    # Create a mock raw_response for TokenTracker compatibility
+    raw_response = Mock()
+    raw_response.id = response_id
+    usage = Mock()
+    usage.input_tokens = 100
+    usage.output_tokens = 50
+    usage.total_tokens = 150
+    raw_response.usage = usage
+
+    return ProviderResponse(
+        response_id=response_id,
+        assistant_text=content,
+        function_calls=fc_list,
+        raw_response=raw_response,
+    )
+
+
 class MockModelProvider:
-    """Mock implementation of ModelProvider for testing."""
+    """Mock implementation of ModelProvider for testing.
 
-    def __init__(self):
-        self.client = Mock()
-        self.client.conversations = Mock()
-        self.client.conversations.create = Mock(return_value=Mock(id="test_conv_123"))
-        self.client.conversations.delete = Mock()
+    Mirrors the base-class history format (see ModelProvider._record_history).
+    """
 
-        # Make call a Mock so we can track call_count
+    def __init__(self, **kwargs):
+        self._conversation_history = []
         self.call = Mock(side_effect=self._mock_call)
 
-    def validate(self):
-        """Mock validate method."""
-        pass
+    def _mock_call(self, *args, **kwargs):
+        """Return a ProviderResponse and record history."""
+        resp = create_provider_response(
+            content=json.dumps({"command": "ActionCommand", "action": "ls"})
+        )
+        self._conversation_history.append(
+            {
+                "turn": len(self._conversation_history) + 1,
+                "response_id": resp.response_id,
+                "assistant_text": resp.assistant_text,
+                "reasoning_summary": resp.reasoning_summary,
+                "function_calls": [
+                    {
+                        "name": fc.name,
+                        "call_id": fc.call_id,
+                        "arguments": fc.arguments,
+                    }
+                    for fc in resp.function_calls
+                ],
+            }
+        )
+        return resp
 
-    def _mock_call(self, **kwargs):
-        """Mock call method that returns a response with output_text."""
-        response = Mock()
-        response.output_text = json.dumps({"command": "ActionCommand", "action": "ls"})
-        response.tool_outputs = []
-        response.tool_calls = []
-        response.output = []
-        return response
+    def get_conversation_history(self):
+        return list(self._conversation_history)
 
 
 @pytest.fixture
