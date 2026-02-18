@@ -100,9 +100,8 @@ def handle_connect_page(d):
     log("Login form loaded")
 
 
-def handle_login_form(d, username, password):
-    """Fill and submit the WebView login form."""
-    log("Step 3: Filling login form")
+def _fill_and_submit_login(d, username, password):
+    """Fill the WebView login form and submit."""
     user_field = d(resourceId="user", className="android.widget.EditText")
     user_field.click()
     time.sleep(0.3)
@@ -115,18 +114,44 @@ def handle_login_form(d, username, password):
     pwd_field.set_text(password)
     time.sleep(0.3)
 
-    # Hide keyboard
-    d.press("back")
-    time.sleep(0.5)
-
-    log("Step 4: Submitting login")
     submit_btn = d(text="Log in", className="android.widget.Button")
-    # After submit, expect either "Grant access" or "Account access"
+    submit_btn.click()
+    log("Login form submitted")
+
+
+def handle_login_form(d, username, password):
+    """Fill and submit the WebView login form, with retry on failure."""
+    log("Step 3: Filling login form")
+    _fill_and_submit_login(d, username, password)
+
+    # Wait for "Grant access" page. Don't use click_then_expect here —
+    # retrying the click is wrong because the submit button disappears
+    # after the form is submitted. Instead, poll for the expected outcome
+    # and retry the whole fill+submit if the login form reappears (error).
+    log("Step 4: Waiting for grant access page")
     grant_btn = d(text="Grant access", className="android.widget.Button")
-    if not click_then_expect(d, submit_btn, grant_btn, timeout=15):
-        log("ERROR: Grant access page did not appear after login")
-        sys.exit(1)
-    log("Login submitted, grant access page loaded")
+    user_field = d(resourceId="user", className="android.widget.EditText")
+
+    deadline = time.time() + 45
+    while time.time() < deadline:
+        if grant_btn.exists:
+            log("Grant access page loaded")
+            return
+        # Login form reappeared → credentials rejected, retry
+        if user_field.exists:
+            log("Login form reappeared, retrying")
+            _fill_and_submit_login(d, username, password)
+        time.sleep(1)
+
+    # Dump screen state for debugging CI failures
+    try:
+        log("DEBUG: Current screen XML (first 2000 chars):")
+        xml = d.dump_hierarchy()
+        log(xml[:2000])
+    except Exception:
+        pass
+    log("ERROR: Grant access page did not appear after login")
+    sys.exit(1)
 
 
 def handle_grant_access(d):
