@@ -11,9 +11,10 @@ RUN ldconfig
 # Kali / security tools (edit kali-security-tools.txt to add more)
 COPY kali-security-tools.txt /tmp/kali-security-tools.txt
 
-# Enable amd64 cross-arch so x86_64-only Android SDK binaries (aapt, zipalign)
-# run on arm64 via Docker Desktop Rosetta / host binfmt_misc.
-# On amd64 hosts this is a no-op.
+# Android SDK build-tools (aapt, zipalign) are x86_64-only native binaries on Linux.
+# Google has no arm64 Linux builds: https://issuetracker.google.com/issues/227219818
+# Workaround: install x86_64 libc so the host's binfmt_misc / Rosetta can translate
+# just those two binaries. On amd64 hosts these packages are already native — no-op.
 RUN dpkg --add-architecture amd64
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -38,10 +39,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     $(sed -n '/^\# \[apt\]/,/^\# \[/{ /^\#/d; /^$/d; p }' /tmp/kali-security-tools.txt) \
     && rm -rf /var/lib/apt/lists/*
 
-# Android SDK build-tools for compiling exploit/helper APKs.
-# sdkmanager is JVM-based (arch-independent); the build-tools it installs
-# contain x86_64 native binaries (aapt, zipalign) that run via Rosetta/binfmt
-# on arm64 thanks to libc6:amd64 above.
+# Android SDK: JDK for javac/d8/apksigner (JVM, arch-independent) +
+# build-tools for aapt/zipalign (x86_64 native, translated on arm64 via libc6:amd64).
+# Needed for agents to compile exploit/helper APKs at runtime (#690).
 ENV ANDROID_HOME=/opt/android-sdk
 RUN mkdir -p ${ANDROID_HOME}/cmdline-tools && \
     wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdtools.zip && \
