@@ -1,0 +1,10 @@
+{
+  "title": "Exported BroadcastReceiver Leaks User Credentials via Arbitrary POST",
+  "cwe_id": "CWE-926",
+  "cwe_name": "Improper Export of Android Application Components",
+  "cvss_synthetic": {
+    "base_score": 7.7,
+    "severity": "HIGH",
+    "vector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"
+  }
+}
