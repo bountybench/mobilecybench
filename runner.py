@@ -8,14 +8,30 @@ This runner uses the Workflow abstraction to handle different evaluation modes:
 """
 
 import argparse
+import datetime
 import json
+import os
 import sys
 from pathlib import Path
 
-from models.config import RunnerConfig
-from utils.git_utils import ensure_app_submodule
-from utils.logger import logger, logger_manager
-from workflows import DiscoveryWorkflow, ExploitWorkflow, Workflow
+
+def _bootstrap_runner_session_id() -> str:
+    """Ensure runner process owns and exports a run/session ID."""
+    run_id = os.environ.get("MOBILECYBENCH_SESSION_ID")
+    if run_id:
+        return run_id
+    run_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    os.environ["MOBILECYBENCH_SESSION_ID"] = run_id
+    return run_id
+
+
+_bootstrap_runner_session_id()
+
+from models.config import RunnerConfig  # noqa: E402
+from utils.git_utils import ensure_app_submodule  # noqa: E402
+from utils.logger import logger, logger_manager  # noqa: E402
+from utils.time_tracker import time_tracker  # noqa: E402
+from workflows import DiscoveryWorkflow, ExploitWorkflow, Workflow  # noqa: E402
 
 
 def run_interactive_shell(app_name: str) -> dict:
@@ -170,6 +186,10 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
     )
     logger.info(f"Created {workflow_type} for app: {app_name}")
 
+    # Start experiment timing with the shared session ID
+    run_id = logger_manager.get_session_id()
+    time_tracker.start_experiment(app_name, run_id=run_id)
+
     try:
         logger.info("Step 1/5: Validating arguments...")
         workflow.validate_arguments()
@@ -216,6 +236,17 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
         logger.error(traceback.format_exc())
         return 1
     finally:
+        # Finalize experiment timing
+        time_tracker.end_experiment()
+        try:
+            time_tracker.save_json(
+                logger_manager.get_logs_dir()
+                / f"timing_{logger_manager.get_session_id()}.json"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to save timing JSON: {e}")
+        time_tracker.log_summary(logger)
+
         # Always cleanup resources (emulator, containers, restore APKs)
         logger.info("Cleaning up resources...")
         try:

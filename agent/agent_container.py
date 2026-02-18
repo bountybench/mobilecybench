@@ -1,5 +1,4 @@
 import io
-import logging
 import os
 import shutil
 import subprocess
@@ -20,8 +19,7 @@ from utils.git_utils import (
     onerror,
     prepare_git_directory,
 )
-
-logger = logging.getLogger(__name__)
+from utils.logger import logger
 
 
 class AgentEnvironment:

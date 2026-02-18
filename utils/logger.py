@@ -60,12 +60,8 @@ class LoggerManager:
         self._error_buffer_handler = None
         self._error_log_file = None
 
-        # Use shared session ID if available, otherwise create new one
-        if "MOBILECYBENCH_SESSION_ID" in os.environ:
-            self._timestamp = os.environ["MOBILECYBENCH_SESSION_ID"]
-        else:
-            self._timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            os.environ["MOBILECYBENCH_SESSION_ID"] = self._timestamp
+        # Use shared session ID if available, otherwise create a fresh one.
+        self._timestamp = self._resolve_session_id()
 
         self._log_level = self._get_log_level()
         self._logger = logging.getLogger(name)
@@ -90,6 +86,15 @@ class LoggerManager:
         self._setup_error_logging()
         if self._should_filter_ui():
             self._setup_ui_debug_logger()
+
+    def _resolve_session_id(self) -> str:
+        env_id = os.environ.get("MOBILECYBENCH_SESSION_ID")
+        if env_id:
+            return env_id
+
+        new_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        os.environ["MOBILECYBENCH_SESSION_ID"] = new_id
+        return new_id
 
     def _default_config(self) -> dict:
         return {"log_level": "info", "filter_ui_elements": True}
@@ -215,6 +220,31 @@ class LoggerManager:
 
     def get_logs_dir(self) -> Path:
         return self._logs_dir
+
+    def get_session_id(self) -> str:
+        """Return the shared session/experiment identifier."""
+        return self._timestamp
+
+    def get_tool_logger(self) -> logging.Logger:
+        """Return a child logger for tool interactions with its own file handler.
+
+        Creates the logger and handler on first call; subsequent calls return
+        the same logger instance (Python's logging module caches by name).
+        """
+        name = f"{self._name}.ToolInteractions"
+        tool_logger = logging.getLogger(name)
+        if not tool_logger.handlers:
+            fh = logging.FileHandler(
+                str(self._logs_dir / "mobile_security_analysis.log")
+            )
+            fh.setFormatter(
+                logging.Formatter(
+                    "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+                )
+            )
+            tool_logger.addHandler(fh)
+            tool_logger.setLevel(self._log_level)
+        return tool_logger
 
     def print_error_summary(self) -> None:
         if not self._error_buffer_handler or not self._error_buffer_handler.errors:
