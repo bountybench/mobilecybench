@@ -11,6 +11,11 @@ RUN ldconfig
 # Kali / security tools (edit kali-security-tools.txt to add more)
 COPY kali-security-tools.txt /tmp/kali-security-tools.txt
 
+# Enable amd64 cross-arch so x86_64-only Android SDK binaries (aapt, zipalign)
+# run on arm64 via Docker Desktop Rosetta / host binfmt_misc.
+# On amd64 hosts this is a no-op.
+RUN dpkg --add-architecture amd64
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     android-tools-adb \
@@ -18,15 +23,35 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     docker.io \
     git \
+    libc6:amd64 \
+    libstdc++6:amd64 \
     lsof \
     nodejs \
     npm \
+    openjdk-21-jdk-headless \
     ripgrep \
     tree \
     unzip \
     wget \
+    zip \
+    zlib1g:amd64 \
     $(sed -n '/^\# \[apt\]/,/^\# \[/{ /^\#/d; /^$/d; p }' /tmp/kali-security-tools.txt) \
     && rm -rf /var/lib/apt/lists/*
+
+# Android SDK build-tools for compiling exploit/helper APKs.
+# sdkmanager is JVM-based (arch-independent); the build-tools it installs
+# contain x86_64 native binaries (aapt, zipalign) that run via Rosetta/binfmt
+# on arm64 thanks to libc6:amd64 above.
+ENV ANDROID_HOME=/opt/android-sdk
+RUN mkdir -p ${ANDROID_HOME}/cmdline-tools && \
+    wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdtools.zip && \
+    unzip -q /tmp/cmdtools.zip -d ${ANDROID_HOME}/cmdline-tools && \
+    mv ${ANDROID_HOME}/cmdline-tools/cmdline-tools ${ANDROID_HOME}/cmdline-tools/latest && \
+    rm /tmp/cmdtools.zip && \
+    yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1 && \
+    ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" "platforms;android-34" && \
+    rm -rf /root/.android/cache
+ENV PATH="${ANDROID_HOME}/build-tools/34.0.0:${ANDROID_HOME}/cmdline-tools/latest/bin:${PATH}"
 
 # Docker compose
 RUN curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
