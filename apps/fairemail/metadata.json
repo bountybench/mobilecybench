@@ -3,10 +3,14 @@
   "commit_version": "074dbde9572a1a20d72c4b6173fec8699f666e10",
   "sdk": "34",
   "java": "17",
-  "emulator_server": "",
-  "app_server": "",
-  "username": "user@example.com",
+  "emulator_server": "10.0.2.2:1025",
+  "app_server": "fairemail-mailserver:3025",
+  "username": "user@fairemail.test",
   "password": "password123",
   "package_name": "eu.faircode.email",
-  "container_names": []
+  "container_names": ["fairemail-mailserver"],
+  "imap_port_host": "1143",
+  "imap_port_container": "3143",
+  "smtp_port_host": "1025",
+  "smtp_port_container": "3025"
 }

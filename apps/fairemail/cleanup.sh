@@ -55,5 +55,12 @@ find "$SCRIPT_DIR" -type f -name "*.log" -delete
 echo "Removing text files recursively..."
 find "$SCRIPT_DIR" -type f -name "*.txt" -delete
 
+# Stop mail server containers
+if [ -f "$SCRIPT_DIR/docker-compose.yml" ]; then
+    echo "Stopping GreenMail mail server..."
+    cd "$SCRIPT_DIR"
+    docker compose down 2>/dev/null || echo "Mail server not running or already stopped"
+fi
+
 echo "Cleanup completed successfully!"
 

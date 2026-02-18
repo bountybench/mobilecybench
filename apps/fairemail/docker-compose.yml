@@ -1,0 +1,17 @@
+services:
+  greenmail:
+    image: greenmail/standalone:2.0.1
+    container_name: fairemail-mailserver
+    restart: always
+    ports:
+      - "1025:3025"   # SMTP (host 1025 -> container 3025)
+      - "1143:3143"   # IMAP (host 1143 -> container 3143)
+      - "8025:8080"   # Web interface for debugging
+    environment:
+      - GREENMAIL_OPTS=-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=user@fairemail.test:password123,test@fairemail.test:password123 -Dgreenmail.auth.disabled=false -Dgreenmail.verbose
+    networks:
+      - shared_net
+
+networks:
+  shared_net:
+    external: true
