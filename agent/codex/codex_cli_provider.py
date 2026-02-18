@@ -178,7 +178,9 @@ class CodexCLIProvider:
                         elif event_type == "tool_result":
                             content = data.get("content", {})
                             tool_outputs.append(json.dumps(content))
-                            tool_logger.info("tool_result has_content=%s", bool(content))
+                            tool_logger.info(
+                                "tool_result has_content=%s", bool(content)
+                            )
 
                     except json.JSONDecodeError:
                         # Raw output (not JSON)

@@ -11,11 +11,8 @@ import argparse
 import datetime
 import json
 import os
-import socket
-import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 
 def _bootstrap_runner_session_id() -> str:
@@ -30,11 +27,11 @@ def _bootstrap_runner_session_id() -> str:
 
 _bootstrap_runner_session_id()
 
-from models.config import RunnerConfig
-from utils.git_utils import ensure_app_submodule
-from utils.logger import logger, logger_manager
-from utils.time_tracker import time_tracker
-from workflows import DiscoveryWorkflow, ExploitWorkflow, Workflow
+from models.config import RunnerConfig  # noqa: E402
+from utils.git_utils import ensure_app_submodule  # noqa: E402
+from utils.logger import logger, logger_manager  # noqa: E402
+from utils.time_tracker import time_tracker  # noqa: E402
+from workflows import DiscoveryWorkflow, ExploitWorkflow, Workflow  # noqa: E402
 
 
 def run_interactive_shell(app_name: str) -> dict:
@@ -171,52 +168,6 @@ def _log_experiment_config(
     )
 
 
-def _get_available_tcp_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return int(s.getsockname()[1])
-
-
-def _start_run_scoped_bridge(
-    project_root: Path, run_id: str
-) -> Optional[subprocess.Popen]:
-    """Start host bridge bound to this run's session ID."""
-    bridge_script = project_root / "tools" / "host_bridge.py"
-    if not bridge_script.exists():
-        logger.warning(f"Host bridge script not found: {bridge_script}")
-        return None
-
-    env = os.environ.copy()
-    bridge_port = _get_available_tcp_port()
-    env["MOBILECYBENCH_SESSION_ID"] = run_id
-    env["MCB_BRIDGE_PORT"] = str(bridge_port)
-    env.setdefault("MCB_BRIDGE_BIND", "127.0.0.1")
-    os.environ["MCB_BRIDGE_PORT"] = str(bridge_port)
-
-    proc = subprocess.Popen(
-        [sys.executable, str(bridge_script)],
-        cwd=str(project_root),
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-    logger.info(
-        f"Started run-scoped host bridge for run_id={run_id} on port={bridge_port}"
-    )
-    return proc
-
-
-def _stop_run_scoped_bridge(bridge_proc: Optional[subprocess.Popen]) -> None:
-    if bridge_proc and bridge_proc.poll() is None:
-        bridge_proc.terminate()
-        try:
-            bridge_proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            bridge_proc.kill()
-    logger.info("Stopped run-scoped host bridge")
-
-
 def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
     """
     Execute the evaluation workflow.
@@ -237,7 +188,6 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
 
     # Start experiment timing with the shared session ID
     run_id = logger_manager.get_session_id()
-    bridge_proc = _start_run_scoped_bridge(project_root, run_id)
     time_tracker.start_experiment(app_name, run_id=run_id)
 
     try:
@@ -290,7 +240,8 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
         time_tracker.end_experiment()
         try:
             time_tracker.save_json(
-                logger_manager.get_logs_dir() / f"timing_{logger_manager.get_session_id()}.json"
+                logger_manager.get_logs_dir()
+                / f"timing_{logger_manager.get_session_id()}.json"
             )
         except Exception as e:
             logger.warning(f"Failed to save timing JSON: {e}")
@@ -302,8 +253,6 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
             workflow.cleanup()
         except Exception as cleanup_error:
             logger.warning(f"Cleanup error: {cleanup_error}")
-        finally:
-            _stop_run_scoped_bridge(bridge_proc)
 
 
 def main():

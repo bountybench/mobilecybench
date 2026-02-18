@@ -928,32 +928,6 @@ main() {
     echo "Note: You may need to restart your terminal or run:"
     echo "  source ~/.bashrc  (or ~/.zshrc)"
 
-    
-    # generate token for host agent
-    BRIDGE_TOKEN_FILE="${SCRIPT_DIR}/ssh_key"
-    if [[ ! -f "${BRIDGE_TOKEN_FILE}" ]]; then
-        if command -v openssl >/dev/null 2>&1; then
-            openssl rand -hex 16 > "${BRIDGE_TOKEN_FILE}"
-        fi
-        chmod 600 "${BRIDGE_TOKEN_FILE}"
-        log "Wrote host agent token -> ${BRIDGE_TOKEN_FILE}"
-    else
-        log "Host agent token exists -> ${BRIDGE_TOKEN_FILE}"
-    fi
-    MCB_BRIDGE_PORT=52888
-    if (echo > /dev/tcp/127.0.0.1/${MCB_BRIDGE_PORT}) >/dev/null 2>&1; then
-        log "Bridge server already running on ${MCB_BRIDGE_PORT}. Killing server..."
-        pkill -f "${SCRIPT_DIR}/tools/host_bridge.py" || true
-    fi
-    export MCB_BRIDGE_BIND=127.0.0.1
-    # Runner owns run/session identity. Bridge started from setup.sh runs standalone.
-    BRIDGE_LOG_DIR="${SCRIPT_DIR}/logs"
-    mkdir -p "${BRIDGE_LOG_DIR}"
-    BRIDGE_LOG_FILE="${BRIDGE_LOG_DIR}/mobilecybench_bridge.log"
-    nohup env MCB_BRIDGE_BIND="$MCB_BRIDGE_BIND" $PYTHON "${SCRIPT_DIR}/tools/host_bridge.py" > "${BRIDGE_LOG_FILE}" 2>&1 &
-    log "Started mobilecybench host intermediary on port ${MCB_BRIDGE_PORT} (bind=${MCB_BRIDGE_BIND}, session=standalone)"
-
-
     # notes on SDK versions
     echo ""
     echo -e "\033[33mNote: The default Android SDK version is $SDK_VERSION\033[0m"
