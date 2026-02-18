@@ -128,10 +128,6 @@ def handle_login_form(d, username, password):
     log("Step 4: Waiting for grant access page")
     grant_btn = d(text="Grant access", className="android.widget.Button")
     if not grant_btn.wait(timeout=45):
-        try:
-            log("DEBUG: " + d.dump_hierarchy()[:2000])
-        except Exception:
-            pass
         log("ERROR: Grant access page did not appear after login")
         sys.exit(1)
     log("Grant access page loaded")
