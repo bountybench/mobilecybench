@@ -2,6 +2,8 @@ import json
 import os
 import subprocess
 import time
+from datetime import datetime, timezone
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -18,8 +20,15 @@ from utils.logger import agent_logger, logger_manager
 from utils.time_tracker import time_tracker
 from utils.token_tracker import TokenTracker
 
+try:
+    from jsonschema import validate as _jsonschema_validate
+except Exception:
+    _jsonschema_validate = None
+
 
 class CustomAgent:
+    OBSERVATION_MAX_CHARS = 8000
+
     def __init__(
         self,
         model: str,
@@ -91,6 +100,15 @@ class CustomAgent:
 
         # Initialize token tracker (writes per-call JSONL by default)
         self.token_tracker = TokenTracker()
+        self._tool_call_count = 0
+        self._unique_tools = set()
+        self._conversation_file = str(
+            logger_manager.get_logs_dir() / "conversation.jsonl"
+        )
+        self._conversation_schema = self._load_conversation_schema()
+        # Reset per-run structured conversation artifact.
+        with open(self._conversation_file, "w", encoding="utf-8"):
+            pass
 
         agent_logger.info("Agent Run Started")
         agent_logger.info(f"Model: {self.model}")
@@ -158,6 +176,7 @@ class CustomAgent:
         self._archive_conversation()
 
         return {
+            "agent_type": "custom",
             "status": "completed",
             "turns_taken": turns,
             "max_turns": self.max_iterations,
@@ -165,7 +184,75 @@ class CustomAgent:
             "final_message": final_message,
             "token_totals": self.token_tracker.totals(),
             "log_file": self.log_file,
+            "conversation_file": self._conversation_file,
+            "tool_call_count": self._tool_call_count,
+            "unique_tools": sorted(self._unique_tools),
         }
+
+    def _jsonable(self, value):
+        if value is None or isinstance(value, (bool, int, float, str)):
+            return value
+        if isinstance(value, dict):
+            return {str(k): self._jsonable(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self._jsonable(v) for v in value]
+        return str(value)
+
+    def _parse_arguments(self, raw_args):
+        if isinstance(raw_args, str):
+            try:
+                return json.loads(raw_args)
+            except Exception:
+                return raw_args
+        return raw_args
+
+    def _format_observation_content(self, value):
+        normalized = self._jsonable(value)
+        if isinstance(normalized, str):
+            if len(normalized) <= self.OBSERVATION_MAX_CHARS:
+                return normalized, False
+            return normalized[: self.OBSERVATION_MAX_CHARS] + "...[truncated]", True
+
+        text = json.dumps(normalized, ensure_ascii=False)
+        if len(text) <= self.OBSERVATION_MAX_CHARS:
+            return text, False
+        return text[: self.OBSERVATION_MAX_CHARS] + "...[truncated]", True
+
+    def _append_turn_event(self, event):
+        self._tool_call_count += len(event.get("tool_calls", []))
+        for tool_call in event.get("tool_calls", []):
+            tool_name = tool_call.get("name")
+            if tool_name:
+                self._unique_tools.add(tool_name)
+
+        self._validate_turn_event(event)
+        try:
+            with open(self._conversation_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(event, ensure_ascii=False) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+        except Exception as e:
+            agent_logger.warning(f"Failed to append conversation turn JSONL: {e}")
+
+    def _load_conversation_schema(self):
+        schema_path = (
+            Path(__file__).parent.parent / "schemas" / "conversation_turn.schema.json"
+        )
+        if not schema_path.exists():
+            return None
+        try:
+            with open(schema_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
+
+    def _validate_turn_event(self, event):
+        if not self._conversation_schema or _jsonschema_validate is None:
+            return
+        try:
+            _jsonschema_validate(instance=event, schema=self._conversation_schema)
+        except Exception as e:
+            agent_logger.warning("Conversation turn schema validation failed: %s", e)
 
     def _archive_conversation(self):
         """Archive the conversation log to the agent log."""
@@ -304,6 +391,18 @@ class CustomAgent:
 
             # Process function calls (tool use)
             has_tool_call = bool(function_calls)
+            turn_event = {
+                "run_id": logger_manager.get_session_id(),
+                "turn_number": turn + 1,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "role": "assistant",
+                "response_id": resp.response_id,
+                "assistant_text": assistant_text,
+                "reasoning_summary": reasoning_summary,
+                "tool_calls": [],
+                "observations": [],
+                "status": "ok",
+            }
 
             # Prepare next_input for the next turn (tool results go here)
             next_input = []
@@ -314,11 +413,37 @@ class CustomAgent:
                 for fc in function_calls:
                     agent_logger.info(f"Executing tool: {fc.name}")
                     agent_logger.info(f"Arguments: {fc.arguments}")
+                    turn_event["tool_calls"].append(
+                        {
+                            "tool_call_id": fc.call_id,
+                            "name": fc.name,
+                            "arguments": self._jsonable(
+                                self._parse_arguments(fc.arguments)
+                            ),
+                        }
+                    )
 
                     # Execute using local runtime
-                    result = self.runtime.execute(fc.name, fc.arguments)
+                    try:
+                        result = self.runtime.execute(fc.name, fc.arguments)
+                    except Exception as e:
+                        result = f"Error: {e}"
+                        turn_event["status"] = "error"
 
                     agent_logger.info(f"Result: {result}")
+                    obs_content, obs_truncated = self._format_observation_content(
+                        result
+                    )
+                    if isinstance(result, str) and result.startswith("Error:"):
+                        turn_event["status"] = "error"
+                    turn_event["observations"].append(
+                        {
+                            "tool_call_id": fc.call_id,
+                            "type": "tool_result",
+                            "content": obs_content,
+                            "truncated": obs_truncated,
+                        }
+                    )
 
                     # Add tool result to next turn's input
                     next_input.append(
@@ -352,6 +477,15 @@ class CustomAgent:
                     agent_logger.warning(
                         "FinalSubmissionCommand received but exploit.sh does not exist"
                     )
+                    turn_event["observations"].append(
+                        {
+                            "tool_call_id": None,
+                            "type": "warning",
+                            "content": "FinalSubmissionCommand received but exploit.sh does not exist",
+                            "truncated": False,
+                        }
+                    )
+                    self._append_turn_event(turn_event)
                     next_input.append(
                         {
                             "type": "message",
@@ -364,6 +498,7 @@ class CustomAgent:
                     )
                     continue
 
+                self._append_turn_event(turn_event)
                 return self._finish_run(
                     turns=turn + 1,
                     final_message=assistant_text,
@@ -384,6 +519,14 @@ class CustomAgent:
                     turn=turn + 1, missing=" and ".join(missing)
                 )
                 agent_logger.warning(nudge_msg)
+                turn_event["observations"].append(
+                    {
+                        "tool_call_id": None,
+                        "type": "warning",
+                        "content": nudge_msg,
+                        "truncated": False,
+                    }
+                )
                 next_input.append(
                     {
                         "type": "message",
@@ -392,7 +535,10 @@ class CustomAgent:
                     }
                 )
                 if not has_tool_call:
+                    self._append_turn_event(turn_event)
                     continue  # Can't proceed without tool results
+
+            self._append_turn_event(turn_event)
 
         # Ran out of turns
         return self._finish_run(turns=self.max_iterations)

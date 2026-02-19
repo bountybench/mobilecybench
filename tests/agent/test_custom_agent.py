@@ -1,14 +1,26 @@
 import json
 import os
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from jsonschema import validate
 
 from agent.custom_agent import CustomAgent
 from agent.model_providers.factory import SupportedModel, get_model_provider
 from agent.model_providers.litellm_provider import LiteLLMProvider
 from agent.model_providers.openai_provider import OpenAIProvider
 from tests.conftest import create_provider_response
+
+
+def _load_conversation_turn_schema() -> dict:
+    schema_path = (
+        Path(__file__).parent.parent.parent
+        / "schemas"
+        / "conversation_turn.schema.json"
+    )
+    with open(schema_path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 class TestCustomAgentMaxIterations:
@@ -130,6 +142,53 @@ class TestCustomAgentMaxIterations:
         for i, entry in enumerate(history, 1):
             assert entry["turn"] == i
             assert "response_id" in entry
+
+    def test_writes_conversation_jsonl_turn_events(self, mock_agent_dependencies):
+        """Agent writes machine-readable per-turn conversation JSONL."""
+        long_result = "x" * (CustomAgent.OBSERVATION_MAX_CHARS + 128)
+
+        def mock_call(*args, **kwargs):
+            return create_provider_response(
+                content=json.dumps({"command": "ActionCommand", "action": "id"}),
+                function_calls=[
+                    {
+                        "name": "execute_command",
+                        "arguments": '{"command":"id"}',
+                        "call_id": "call_test_1",
+                    }
+                ],
+                response_id="resp-turn-1",
+            )
+
+        mock_agent_dependencies["provider"].call = mock_call
+
+        agent = CustomAgent(
+            model="gpt-5.2",
+            max_iterations=1,
+            max_model_response_tokens=1000,
+            screenshot_enabled=False,
+            app_name="test_app",
+            package_name="com.test.app",
+        )
+        with patch.object(agent.runtime, "execute", return_value=long_result):
+            result = agent.run()
+
+        conv_path = mock_agent_dependencies["logs_dir"] / "conversation.jsonl"
+        assert conv_path.exists()
+        lines = conv_path.read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 1
+        event = json.loads(lines[0])
+
+        assert event["turn_number"] == 1
+        assert event["response_id"] == "resp-turn-1"
+        assert len(event["tool_calls"]) == 1
+        assert event["tool_calls"][0]["name"] == "execute_command"
+        assert len(event["observations"]) == 1
+        assert event["observations"][0]["type"] == "tool_result"
+        assert event["observations"][0]["truncated"] is True
+        validate(instance=event, schema=_load_conversation_turn_schema())
+        assert result["tool_call_count"] == 1
+        assert result["unique_tools"] == ["execute_command"]
 
 
 class TestModelProviderRouting:

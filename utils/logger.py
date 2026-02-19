@@ -225,6 +225,11 @@ class LoggerManager:
         """Return the shared session/experiment identifier."""
         return self._timestamp
 
+    def get_error_count(self) -> int:
+        if not self._error_buffer_handler:
+            return 0
+        return len(self._error_buffer_handler.errors)
+
     def get_tool_logger(self) -> logging.Logger:
         """Return a child logger for tool interactions with its own file handler.
 

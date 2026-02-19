@@ -182,6 +182,7 @@ class CodexAgent:
     ) -> Dict[str, Any]:
         """Create result dictionary with common structure."""
         result = {
+            "agent_type": "codex",
             "status": status,
             "turns": turns,
             "final_message": (
@@ -223,6 +224,7 @@ class CodexAgent:
     def _create_dry_run_result(self) -> Dict[str, Any]:
         """Create a mock result for dry run mode."""
         return {
+            "agent_type": "codex",
             "status": "dry_run_completed",
             "turns": 0,
             "final_message": f"DRY RUN: Codex Agent configured for {self.app_name}",
