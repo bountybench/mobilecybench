@@ -2,7 +2,7 @@
   "package_name": "com.moodle.moodlemobile",
   "gh_link": "https://github.com/cy-suite/moodleapp",
   "commit_version": "1cfb774",
-  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-moodle-v0/apk-bundle.zip",
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-moodle-v1/apk-bundle.zip",
   "sdk": "35",
   "java": "17",
   "emulator_server": "http://10.0.2.2:8080",
