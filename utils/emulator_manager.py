@@ -300,6 +300,17 @@ class EmulatorManager:
                 logger.error(f"Setup failed: {e.stderr}")
                 raise RuntimeError(f"Failed to run setup.sh: {e}")
 
+        # Restart ADB on all interfaces (-a) so Docker containers can reach
+        # it via host.docker.internal:5037.
+        #
+        # Without -a, ADB binds to 127.0.0.1 only. On Linux, host-gateway
+        # maps host.docker.internal to the docker0 bridge IP (172.17.0.1),
+        # which can't reach 127.0.0.1. macOS Docker Desktop masks this
+        # because its VM proxy forwards to the host loopback.
+        # See issue #688
+        subprocess.run(["adb", "kill-server"], capture_output=True, timeout=10)
+        subprocess.run(["adb", "-a", "start-server"], capture_output=True, timeout=10)
+
         # Boot emulator in background
         emulator_args = self.emulator_config["emulator_args"]
         emulator_name = self.emulator_config["emulator_name"]
