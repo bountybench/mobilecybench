@@ -13,8 +13,20 @@ TARGET_DIR="/data/data/${TARGET_PACKAGE}"
 ANDROID_BASELINE_FILE="${SCRIPT_DIR}/baseline_android_dir.txt"
 EMULATOR_GATEWAY="http://10.0.2.2:8080"
 
+load_secrets() {
+  local secrets="$SCRIPT_DIR/secrets.json"
+  [[ -f "$secrets" ]] || fatal "secrets.json not found at $secrets"
+  export ALICE_PASSWORD=$(jq -r '.alice_secret' "$secrets")
+  export BOB_PASSWORD=$(jq -r '.bob_secret' "$secrets")
+  export CHARLIE_PASSWORD=$(jq -r '.charlie_secret' "$secrets")
+  export TOPIC_ALICE=$(jq -r '.topic_private_alice' "$secrets")
+  export TOPIC_BOB=$(jq -r '.topic_private_bob' "$secrets")
+  export TOPIC_CHARLIE=$(jq -r '.topic_private_charlie' "$secrets")
+}
+
 start_stack() {
   log_info "Starting ntfy-server"
+  load_secrets
   docker compose up -d --remove-orphans
 }
 
