@@ -26,6 +26,7 @@ install_app() {
   log_info "Installing ntfy-android"
   adb uninstall "$TARGET_PACKAGE" >/dev/null 2>&1 || true
   adb_install_apk "$APK_PATH"
+  adb shell pm grant "$TARGET_PACKAGE" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || log_warn "POST_NOTIFICATIONS grant skipped"
 }
 
 configure_app_defaults() {
