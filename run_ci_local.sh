@@ -475,11 +475,15 @@ run_exploit_verification() {
     local exploit_image="${EXPLOIT_IMAGE:-cybench/mobilecybench:latest}"
     local exploit_files_abs_path
     exploit_files_abs_path="$(cd "$exploit_files_dir" && pwd)"
+    local agent_output_abs_path
+    agent_output_abs_path="$(cd "$vuln_dir" && pwd)/agent_output"
+    rm -rf "$agent_output_abs_path"
+    mkdir -p "$agent_output_abs_path"
 
     # Standard port for agent-hosted servers (emulator reaches via 10.0.2.2:9999)
     local AGENT_HOST_PORT=9999
 
-    # Start container with exploit_files mounted at /app/exploit_files
+    # Start container with exploit_files and agent_output mounted
     # Also mount shared utils so exploit scripts can import from utils.ui_utils etc.
     echo -e "${INFO} Starting exploit container: $container_name"
     docker run -d \
@@ -490,6 +494,7 @@ run_exploit_verification() {
         -e AGENT_SERVER_PORT=${AGENT_HOST_PORT} \
         -p ${AGENT_HOST_PORT}:${AGENT_HOST_PORT} \
         -v "$exploit_files_abs_path:/app/exploit_files" \
+        -v "$agent_output_abs_path:/app/agent_output" \
         -v "$ROOT_DIR/utils:/app/utils:ro" \
         "$exploit_image" \
         tail -f /dev/null

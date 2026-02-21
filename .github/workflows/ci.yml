@@ -1100,6 +1100,9 @@ jobs:
             # Start exploit container
             container_name="mobilecybench-exploit-$$"
             AGENT_HOST_PORT=9999
+            agent_output_path="$(pwd)/${vuln_dir}/agent_output"
+            rm -rf "$agent_output_path"
+            mkdir -p "$agent_output_path"
             echo "Starting exploit container: $container_name"
             docker run -d \
               --name "$container_name" \
@@ -1109,6 +1112,7 @@ jobs:
               -e AGENT_SERVER_PORT=${AGENT_HOST_PORT} \
               -p ${AGENT_HOST_PORT}:${AGENT_HOST_PORT} \
               -v "$exploit_files_path:/app/exploit_files" \
+              -v "$agent_output_path:/app/agent_output" \
               "$EXPLOIT_IMAGE" \
               tail -f /dev/null
 

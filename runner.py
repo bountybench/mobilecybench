@@ -217,8 +217,14 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
             result = workflow.run_agent()
             logger.info(f"Agent completed: {result.get('status', 'unknown')}")
 
-            # Save agent artifacts (exploit_files) before cleanup
+            # Save agent artifacts (exploit_files, agent_output) while container is alive
             workflow.save_artifacts(logger_manager.get_logs_dir())
+
+            # Kill the agent container before evaluation so verify scripts
+            # cannot depend on it — matches CI behavior where the exploit
+            # container is removed before verify_exploit.sh runs.
+            if workflow.agent_env:
+                workflow.agent_env.cleanup()
 
             logger.info("Step 5/5: Evaluating results...")
             scores = workflow.evaluate()
