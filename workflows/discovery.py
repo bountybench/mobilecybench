@@ -96,6 +96,11 @@ class DiscoveryWorkflow(Workflow):
         # Build/download APK
         setup_apk(self.app_dir, self.build_type, self.project_root)
 
+        # Inject system CA so apps trust local HTTPS backends
+        from utils.emulator_certs import inject_system_ca
+
+        inject_system_ca(self.project_root, self.emulator.device_id)
+
         # Install app and setup backend (with SSRF listener for discovery mode)
         install_app_and_setup_backend(
             self.app_dir,
