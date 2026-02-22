@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     wget \
     unzip \
+    zip \
     openjdk-17-jdk \
     build-essential \
     libpq-dev \
@@ -24,6 +25,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     bc \
     apktool \
+    # Networking and system tools
+    openssl \
+    iproute2 \
+    lsof \
+    iputils-ping \
+    openssh-client \
+    sshpass \
+    # Build dependencies for specific apps (OpenVPN)
+    cmake \
+    swig \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
     && chmod a+r /etc/apt/keyrings/docker.asc \
@@ -96,7 +107,9 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
     && pip install --no-cache-dir -r /tmp/requirements.txt \
     && rm /tmp/requirements.txt
-RUN git config --global --add safe.directory '*'
+RUN git config --global --add safe.directory '*' \
+    && git config --global user.email "mobilecybench@test.local" \
+    && git config --global user.name "MobileCyBench"
 
 # Copy and set up entrypoint
 COPY orchestrator/entrypoint.sh /entrypoint.sh
