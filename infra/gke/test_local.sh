@@ -125,13 +125,14 @@ echo ""
 docker run --rm \
     --privileged \
     --device /dev/kvm \
+    --entrypoint bash \
     -v "$PROJECT_ROOT:/mobilecybench" \
     -v mobilecybench-docker-data:/var/lib/docker \
     -v mobilecybench-gradle-cache:/root/.gradle \
     -e APP_NAME="$APP_NAME" \
     -e DOCKER_TLS_CERTDIR= \
     "$IMAGE_NAME" \
-    bash -c '
+    -c '
         set -e
 
         # Start DinD
