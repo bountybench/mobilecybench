@@ -146,26 +146,32 @@ echo "  - Start kali container"
 echo "  - Open interactive shell (type 'exit' to finish)"
 echo ""
 
-# For container emulator mode, build the minimal emulator image and
-# save it so the inner DinD daemon can load it.
+# For container emulator mode: if not using Docker Hub image, build locally
+# and save as tar to load into the inner DinD daemon.
 EMULATOR_IMAGE_TAR=""
+DOCKERHUB_EMULATOR="cybench/mobilecybench-emulator:latest"
+
 if [ "$EMULATOR_MODE" = "container" ]; then
-    if [ "$SKIP_BUILD" = true ]; then
-        echo "--- Step 4a: Skipping emulator image build (--skip-build) ---"
+    if [ "$EMULATOR_IMAGE_NAME" = "$DOCKERHUB_EMULATOR" ]; then
+        # Docker Hub image — the inner DinD will pull it directly
+        echo "--- Step 4a: Emulator image will be pulled from Docker Hub inside DinD ---"
+    else
+        # Local image — need to save/load into DinD
+        if [ "$SKIP_BUILD" != true ]; then
+            echo "--- Step 4a: Building minimal emulator image ---"
+            docker build -f "$PROJECT_ROOT/orchestrator/Dockerfile.emulator" \
+                -t "$EMULATOR_IMAGE_NAME" \
+                "$PROJECT_ROOT"
+        fi
         if ! docker image inspect "$EMULATOR_IMAGE_NAME" >/dev/null 2>&1; then
-            echo "ERROR: Emulator image $EMULATOR_IMAGE_NAME not found. Remove --skip-build to build it."
+            echo "ERROR: Emulator image $EMULATOR_IMAGE_NAME not found."
             exit 1
         fi
-    else
-        echo "--- Step 4a: Building minimal emulator image ---"
-        docker build -f "$PROJECT_ROOT/orchestrator/Dockerfile.emulator" \
-            -t "$EMULATOR_IMAGE_NAME" \
-            "$PROJECT_ROOT"
+        echo "--- Step 4b: Saving emulator image for DinD ---"
+        EMULATOR_IMAGE_TAR="/tmp/mobilecybench-emulator-image.tar"
+        docker save "$EMULATOR_IMAGE_NAME" -o "$EMULATOR_IMAGE_TAR"
+        echo "Image saved to $EMULATOR_IMAGE_TAR ($(du -h "$EMULATOR_IMAGE_TAR" | cut -f1))"
     fi
-    echo "--- Step 4b: Saving emulator image for DinD ---"
-    EMULATOR_IMAGE_TAR="/tmp/mobilecybench-emulator-image.tar"
-    docker save "$EMULATOR_IMAGE_NAME" -o "$EMULATOR_IMAGE_TAR"
-    echo "Image saved to $EMULATOR_IMAGE_TAR ($(du -h "$EMULATOR_IMAGE_TAR" | cut -f1))"
 fi
 
 docker run --rm \
@@ -197,13 +203,16 @@ docker run --rm \
 
         docker network create shared_net || true
 
-        # Load the emulator image into DinD if using container mode
+        # Get emulator image into DinD: load from tar or pull from Docker Hub
         if [ -f /tmp/emulator-image.tar ]; then
-            echo "Loading emulator image into DinD..."
+            echo "Loading emulator image into DinD from tar..."
             docker load -i /tmp/emulator-image.tar
-            echo "Image loaded. Available images:"
-            docker images
+        elif [ -n "$EMULATOR_IMAGE" ]; then
+            echo "Pulling emulator image into DinD: $EMULATOR_IMAGE"
+            docker pull "$EMULATOR_IMAGE"
         fi
+        echo "DinD images:"
+        docker images
 
         # Verify KVM inside container
         if [ -e /dev/kvm ]; then
