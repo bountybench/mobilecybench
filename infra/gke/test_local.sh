@@ -122,6 +122,16 @@ echo "  - Start kali container"
 echo "  - Open interactive shell (type 'exit' to finish)"
 echo ""
 
+# For container emulator mode, the inner DinD daemon needs the orchestrator
+# image. Save it from the host Docker so we can load it inside DinD.
+EMULATOR_IMAGE_TAR=""
+if [ "$EMULATOR_MODE" = "container" ]; then
+    echo "--- Step 4a: Saving orchestrator image for DinD emulator ---"
+    EMULATOR_IMAGE_TAR="/tmp/mobilecybench-emulator-image.tar"
+    docker save "$IMAGE_NAME" -o "$EMULATOR_IMAGE_TAR"
+    echo "Image saved to $EMULATOR_IMAGE_TAR ($(du -h "$EMULATOR_IMAGE_TAR" | cut -f1))"
+fi
+
 docker run --rm \
     --privileged \
     --device /dev/kvm \
@@ -129,7 +139,9 @@ docker run --rm \
     -v "$PROJECT_ROOT:/mobilecybench" \
     -v mobilecybench-docker-data:/var/lib/docker \
     -v mobilecybench-gradle-cache:/root/.gradle \
+    ${EMULATOR_IMAGE_TAR:+-v "$EMULATOR_IMAGE_TAR:/tmp/emulator-image.tar"} \
     -e APP_NAME="$APP_NAME" \
+    -e EMULATOR_IMAGE="$IMAGE_NAME" \
     -e DOCKER_TLS_CERTDIR= \
     "$IMAGE_NAME" \
     -c '
@@ -148,6 +160,14 @@ docker run --rm \
         echo "Docker daemon ready"
 
         docker network create shared_net || true
+
+        # Load the emulator image into DinD if using container mode
+        if [ -f /tmp/emulator-image.tar ]; then
+            echo "Loading emulator image into DinD..."
+            docker load -i /tmp/emulator-image.tar
+            echo "Image loaded. Available images:"
+            docker images
+        fi
 
         # Verify KVM inside container
         if [ -e /dev/kvm ]; then
@@ -184,6 +204,11 @@ docker run --rm \
         fi
         exit $EXIT_CODE
     '
+
+# Clean up saved image tar
+if [ -n "$EMULATOR_IMAGE_TAR" ] && [ -f "$EMULATOR_IMAGE_TAR" ]; then
+    rm -f "$EMULATOR_IMAGE_TAR"
+fi
 
 # Cleanup
 rm -f "$PROJECT_ROOT/runner_config_test.json"
