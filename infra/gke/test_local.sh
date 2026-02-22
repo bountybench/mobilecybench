@@ -119,15 +119,26 @@ fi
 echo "Orchestrator image: $IMAGE_NAME"
 echo ""
 
-# ─── Step 1b: Ensure emulator image (container mode only) ────────────────
+# ─── Step 1b: Resolve emulator image name (container mode only) ──────────
+# The emulator image runs inside DinD, not on the host. We only need to
+# determine the image name here. DinD will pull from Docker Hub or load
+# from a tar (if built locally) in Step 4.
 EMULATOR_IMAGE_NAME=""
 if [ "$EMULATOR_MODE" = "container" ]; then
-    echo "--- Step 1b: Ensuring emulator image ---"
-    ensure_image "mobilecybench-emulator:test" \
-                 "$DOCKERHUB_EMULATOR" \
-                 "orchestrator/Dockerfile.emulator" \
-                 EMULATOR_IMAGE_NAME
-    echo "Emulator image: $EMULATOR_IMAGE_NAME"
+    echo "--- Step 1b: Resolving emulator image ---"
+    # Check if a local build exists on the host (for save/load into DinD)
+    if docker image inspect "mobilecybench-emulator:test" >/dev/null 2>&1; then
+        EMULATOR_IMAGE_NAME="mobilecybench-emulator:test"
+        echo "  Found local emulator image: $EMULATOR_IMAGE_NAME (will save/load into DinD)"
+    else
+        # Default to Docker Hub — DinD will pull it directly
+        EMULATOR_IMAGE_NAME="$DOCKERHUB_EMULATOR"
+        echo "  No local emulator image — DinD will pull $EMULATOR_IMAGE_NAME"
+        if [ "$SKIP_BUILD" != true ]; then
+            # Offer to build locally if user hasn't pushed to Docker Hub yet
+            echo "  (To build locally instead: docker build -f orchestrator/Dockerfile.emulator -t mobilecybench-emulator:test .)"
+        fi
+    fi
     echo ""
 fi
 
