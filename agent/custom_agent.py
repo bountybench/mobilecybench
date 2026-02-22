@@ -188,9 +188,7 @@ class CustomAgent:
                 )
                 return True, []
 
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".sh", delete=False
-            ) as f:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
                 f.write(result.stdout)
                 tmp_path = f.name
 
@@ -201,7 +199,9 @@ class CustomAgent:
 
             return is_allowed, violations
         except Exception as e:
-            agent_logger.warning(f"Failed to check exploit.sh for blocked patterns: {e}")
+            agent_logger.warning(
+                f"Failed to check exploit.sh for blocked patterns: {e}"
+            )
             return True, []
 
     def _finish_run(self, turns: int, final_message: str = None) -> dict:
@@ -545,7 +545,9 @@ class CustomAgent:
                 # This prevents reward hacking via direct adb root file writes
                 # (e.g. writing a fake .vp file to app-private storage without
                 # actually exploiting the vulnerability).
-                is_allowed, violations = self._check_exploit_script_for_blocked_patterns()
+                is_allowed, violations = (
+                    self._check_exploit_script_for_blocked_patterns()
+                )
                 if not is_allowed:
                     violation_lines = "\n".join(
                         f"  Line {v['line_number']}: {v['line_content']}"
