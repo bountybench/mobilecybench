@@ -85,8 +85,14 @@ chmod 644 "\$STORE"/*
 chcon u:object_r:system_file:s0 "\$STORE"/*
 
 # 3. Bind-mount into zygote64 + child app namespaces
+# nsenter can fail transiently (e.g. after adb root restarts adbd) — retry.
 Z="\$(pidof zygote64)"
-nsenter --mount=/proc/\$Z/ns/mnt -- /bin/mount --bind "\$STORE" "\$APEX"
+for attempt in 1 2 3; do
+  if nsenter --mount=/proc/\$Z/ns/mnt -- /bin/mount --bind "\$STORE" "\$APEX" 2>/dev/null; then
+    break
+  fi
+  sleep 2
+done
 
 for PID in \$(ps -A -o PID,PPID | awk -v z="\$Z" '\$2==z {print \$1}'); do
   nsenter --mount=/proc/\$PID/ns/mnt -- /bin/mount --bind "\$STORE" "\$APEX" 2>/dev/null || true
