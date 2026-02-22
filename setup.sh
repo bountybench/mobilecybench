@@ -668,7 +668,6 @@ echo "This may take a few minutes on first boot..."
     -gpu host \\
     -skin 1080x1920 \\
     -memory 2048 \\
-    -writable-system \\
     &
 
 echo "Emulator started in background"
