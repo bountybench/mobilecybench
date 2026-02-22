@@ -7,12 +7,35 @@ volumes:
     driver: local
 
 services:
+  tls_proxy:
+    image: nginx:alpine
+    container_name: owncloud_tls_proxy
+    restart: always
+    ports:
+      - 8080:443
+    volumes:
+      - ../../tls/server.crt:/etc/nginx/certs/server.crt:ro
+      - ../../tls/server.key:/etc/nginx/certs/server.key:ro
+      - ../../tls/nginx-tls-proxy.conf.template:/etc/nginx/templates/default.conf.template:ro
+    environment:
+      - UPSTREAM=owncloud_server:8080
+      - NGINX_ENVSUBST_FILTER=UPSTREAM
+    depends_on:
+      owncloud:
+        condition: service_healthy
+    networks:
+      - shared_net
+      - private_net
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost/status.php"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   owncloud:
     image: owncloud/server:10.11.0
     container_name: owncloud_server
     restart: always
-    ports:
-      - 8080:8080
     depends_on:
       - mariadb
       - redis
@@ -34,7 +57,6 @@ services:
       - files:/mnt/data
       - ./empty_skeleton:/var/www/owncloud/core/skeleton  # overwrite to not include default folders/files
     networks:
-      - shared_net
       - private_net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080"]
