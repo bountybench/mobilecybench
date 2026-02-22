@@ -25,12 +25,13 @@
 set -euo pipefail
 
 APP_NAME="${1:-moememos}"
-EMULATOR_MODE="container"
+EMULATOR_MODE="native"
 SKIP_BUILD=false
 
 for arg in "$@"; do
     case "$arg" in
         --native) EMULATOR_MODE="native" ;;
+        --container) EMULATOR_MODE="container" ;;
         --skip-build) SKIP_BUILD=true ;;
     esac
 done
@@ -38,6 +39,7 @@ done
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 IMAGE_NAME="mobilecybench-orchestrator:test"
+EMULATOR_IMAGE_NAME="mobilecybench-emulator:test"
 
 echo "=== MobileCyBench Local Infrastructure Test ==="
 echo "App:            $APP_NAME"
@@ -54,6 +56,15 @@ fi
 echo "KVM: /dev/kvm found"
 
 # ─── Step 1: Build orchestrator image ──────────────────────────────────────
+# In container mode, use the slim orchestrator (no emulator baked in).
+# In native mode, use the full orchestrator (emulator included).
+if [ "$EMULATOR_MODE" = "container" ]; then
+    ORCHESTRATOR_DOCKERFILE="orchestrator/Dockerfile.orchestrator-slim"
+    IMAGE_NAME="mobilecybench-orchestrator-slim:test"
+else
+    ORCHESTRATOR_DOCKERFILE="orchestrator/Dockerfile.orchestrator"
+fi
+
 if [ "$SKIP_BUILD" = true ]; then
     echo "--- Step 1: Skipping image build (--skip-build) ---"
     if ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
@@ -61,8 +72,8 @@ if [ "$SKIP_BUILD" = true ]; then
         exit 1
     fi
 else
-    echo "--- Step 1: Building orchestrator image (this takes ~15-20 min first time) ---"
-    docker build -f "$PROJECT_ROOT/orchestrator/Dockerfile.orchestrator" \
+    echo "--- Step 1: Building orchestrator image ($ORCHESTRATOR_DOCKERFILE) ---"
+    docker build -f "$PROJECT_ROOT/$ORCHESTRATOR_DOCKERFILE" \
         -t "$IMAGE_NAME" \
         "$PROJECT_ROOT"
 fi
@@ -122,13 +133,25 @@ echo "  - Start kali container"
 echo "  - Open interactive shell (type 'exit' to finish)"
 echo ""
 
-# For container emulator mode, the inner DinD daemon needs the orchestrator
-# image. Save it from the host Docker so we can load it inside DinD.
+# For container emulator mode, build the minimal emulator image and
+# save it so the inner DinD daemon can load it.
 EMULATOR_IMAGE_TAR=""
 if [ "$EMULATOR_MODE" = "container" ]; then
-    echo "--- Step 4a: Saving orchestrator image for DinD emulator ---"
+    if [ "$SKIP_BUILD" = true ]; then
+        echo "--- Step 4a: Skipping emulator image build (--skip-build) ---"
+        if ! docker image inspect "$EMULATOR_IMAGE_NAME" >/dev/null 2>&1; then
+            echo "ERROR: Emulator image $EMULATOR_IMAGE_NAME not found. Remove --skip-build to build it."
+            exit 1
+        fi
+    else
+        echo "--- Step 4a: Building minimal emulator image ---"
+        docker build -f "$PROJECT_ROOT/orchestrator/Dockerfile.emulator" \
+            -t "$EMULATOR_IMAGE_NAME" \
+            "$PROJECT_ROOT"
+    fi
+    echo "--- Step 4b: Saving emulator image for DinD ---"
     EMULATOR_IMAGE_TAR="/tmp/mobilecybench-emulator-image.tar"
-    docker save "$IMAGE_NAME" -o "$EMULATOR_IMAGE_TAR"
+    docker save "$EMULATOR_IMAGE_NAME" -o "$EMULATOR_IMAGE_TAR"
     echo "Image saved to $EMULATOR_IMAGE_TAR ($(du -h "$EMULATOR_IMAGE_TAR" | cut -f1))"
 fi
 
@@ -141,7 +164,7 @@ docker run --rm \
     -v mobilecybench-gradle-cache:/root/.gradle \
     ${EMULATOR_IMAGE_TAR:+-v "$EMULATOR_IMAGE_TAR:/tmp/emulator-image.tar"} \
     -e APP_NAME="$APP_NAME" \
-    -e EMULATOR_IMAGE="$IMAGE_NAME" \
+    -e EMULATOR_IMAGE="$EMULATOR_IMAGE_NAME" \
     -e DOCKER_TLS_CERTDIR= \
     "$IMAGE_NAME" \
     -c '
