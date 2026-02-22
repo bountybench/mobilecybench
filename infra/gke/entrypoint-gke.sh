@@ -23,6 +23,11 @@ fi
 
 docker network create shared_net || true
 
+# Install package if needed (in case image was built without -e install)
+if [ -f /mobilecybench/pyproject.toml ]; then
+    cd /mobilecybench && pip install --no-cache-dir -e . >/dev/null 2>&1 || true
+fi
+
 # Start ADB server (listen on all interfaces for kali container access)
 adb -a start-server
 
@@ -31,13 +36,16 @@ CONFIG_SRC="/mobilecybench/runner_config.json"
 CONFIG_DST="/tmp/runner_config.json"
 
 EMULATOR_MODE="${EMULATOR_MODE:-container}"
+DRY_RUN="${DRY_RUN:-false}"
 
 if [ -f "$CONFIG_SRC" ]; then
     jq --arg model "$MODEL" \
        --arg vuln "$VULN_ID" \
        --arg em "$EMULATOR_MODE" \
+       --argjson dryrun "$DRY_RUN" \
        '.docker_mode = true
         | .emulator_mode = $em
+        | .dry_run = $dryrun
         | if $model != "" then .model = $model else . end
         | if $vuln != "" then .synthetic_vuln_id = $vuln else . end' \
        "$CONFIG_SRC" > "$CONFIG_DST"
