@@ -1,3 +1,5 @@
+# Server cert signed by MobileCybench Local CA.
+# SANs: localhost, 10.0.2.2, 127.0.0.1, and Docker container hostnames.
 -----BEGIN CERTIFICATE-----
 MIIEPjCCAiagAwIBAgIUYfloNUjfk7Ns7z4esvjkkTbg7AEwDQYJKoZIhvcNAQEL
 BQAwITEfMB0GA1UEAwwWTW9iaWxlQ3liZW5jaCBMb2NhbCBDQTAgFw0yNjAyMjIw
