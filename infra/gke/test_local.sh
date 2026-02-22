@@ -38,8 +38,17 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-IMAGE_NAME="mobilecybench-orchestrator:test"
-EMULATOR_IMAGE_NAME="mobilecybench-emulator:test"
+# Use Docker Hub images if available, otherwise local :test tags
+if docker image inspect "cybench/mobilecybench-orchestrator:latest" >/dev/null 2>&1; then
+    IMAGE_NAME="cybench/mobilecybench-orchestrator:latest"
+else
+    IMAGE_NAME="mobilecybench-orchestrator:test"
+fi
+if docker image inspect "cybench/mobilecybench-emulator:latest" >/dev/null 2>&1; then
+    EMULATOR_IMAGE_NAME="cybench/mobilecybench-emulator:latest"
+else
+    EMULATOR_IMAGE_NAME="mobilecybench-emulator:test"
+fi
 
 echo "=== MobileCyBench Local Infrastructure Test ==="
 echo "App:            $APP_NAME"
@@ -60,7 +69,11 @@ echo "KVM: /dev/kvm found"
 # In native mode, use the full orchestrator (emulator included).
 if [ "$EMULATOR_MODE" = "container" ]; then
     ORCHESTRATOR_DOCKERFILE="orchestrator/Dockerfile.orchestrator-slim"
-    IMAGE_NAME="mobilecybench-orchestrator-slim:test"
+    if docker image inspect "cybench/mobilecybench-orchestrator-slim:latest" >/dev/null 2>&1; then
+        IMAGE_NAME="cybench/mobilecybench-orchestrator-slim:latest"
+    else
+        IMAGE_NAME="mobilecybench-orchestrator-slim:test"
+    fi
 else
     ORCHESTRATOR_DOCKERFILE="orchestrator/Dockerfile.orchestrator"
 fi

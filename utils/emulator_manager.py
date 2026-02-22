@@ -201,7 +201,7 @@ class EmulatorManager:
 
         # Use a minimal emulator image (much smaller than the orchestrator)
         emulator_image = os.environ.get(
-            "EMULATOR_IMAGE", "mobilecybench-emulator:latest"
+            "EMULATOR_IMAGE", "cybench/mobilecybench-emulator:latest"
         )
 
         logger.info(f"Starting emulator container with image: {emulator_image}")
