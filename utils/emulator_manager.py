@@ -176,6 +176,7 @@ class EmulatorManager:
         logger.info("=" * 60)
 
         self.state = EmulatorState.STARTING
+        self._devices_before_start = self._get_connected_devices()
 
         client = docker.from_env()
 
