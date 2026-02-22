@@ -1,6 +1,7 @@
 """Runtime setup utilities for app installation and backend configuration."""
 
 import shlex
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -8,6 +9,28 @@ from utils.logger import logger
 
 BUILD_COMMAND_TIMEOUT = 1200  # 20 minutes
 EMULATOR_BOOT_TIMEOUT_SECONDS = 300
+INJECT_CA_TIMEOUT = 30
+
+
+def inject_system_ca(project_root: Path, device_id: Optional[str] = None) -> None:
+    """Add shared CA cert to emulator trust store so apps trust local HTTPS backends."""
+    script = project_root / "utils" / "inject_system_ca.sh"
+    if not script.exists():
+        logger.warning(f"CA injection script not found: {script}")
+        return
+
+    cmd = ["bash", str(script)]
+    if device_id:
+        cmd += ["-s", device_id]
+
+    logger.info("Injecting system CA certificate...")
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=INJECT_CA_TIMEOUT
+    )
+    if result.returncode != 0:
+        logger.error(f"CA injection failed: {result.stderr}")
+        raise RuntimeError("System CA injection failed")
+    logger.info("System CA injected successfully")
 
 
 def install_app_and_setup_backend(
@@ -42,6 +65,9 @@ def install_app_and_setup_backend(
     if not emulator.check_status():
         raise RuntimeError("Emulator status check failed")
     logger.info("Emulator status verified")
+
+    # Inject system CA so apps trust local HTTPS backends
+    inject_system_ca(project_root, emulator.device_id)
 
     # Prefer start_runtime.sh (new pattern), fall back to setup.sh (legacy)
     runtime_script = app_dir / "start_runtime.sh"

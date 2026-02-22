@@ -197,7 +197,20 @@ verify_shared_net_connectivity() {
             echo "  Testing connection to $host:$port via shared_net..."
             docker run --rm --network=shared_net alpine:latest \
                 sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
-            
+
+            # If port is 443, also verify TLS handshake with our CA
+            if [ "$port" = "443" ]; then
+                local ca_pem="${ROOT_DIR}/tls/rootCA.pem"
+                if [ -f "$ca_pem" ]; then
+                    echo "  Verifying TLS handshake with CA cert..."
+                    docker run --rm --network=shared_net -v "$ca_pem:/ca.pem:ro" alpine:latest \
+                        sh -c "apk add --no-cache -q openssl >/dev/null 2>&1 && echo | openssl s_client -connect $host:$port -CAfile /ca.pem -verify_return_error 2>&1 | grep -q 'Verify return code: 0' || (echo 'ERROR: TLS verification failed for $host:$port' && exit 1)"
+                    echo "  TLS handshake verified with trusted CA"
+                else
+                    echo "  WARNING: rootCA.pem not found at $ca_pem, skipping TLS verification"
+                fi
+            fi
+
             echo "shared_net connectivity verified"
         else
             echo "No app_server defined in metadata.json, skipping connectivity check"
@@ -1274,6 +1287,14 @@ start_emulator_and_adb() {
         done
     else
         echo -e "${SUCCESS} ADB already configured correctly"
+    fi
+
+    # Inject system CA so apps trust local HTTPS backends
+    echo -e "${INFO} Injecting system CA certificate..."
+    if [ -f "${ROOT_DIR}/utils/inject_system_ca.sh" ]; then
+        bash "${ROOT_DIR}/utils/inject_system_ca.sh" || echo -e "${WARNING} CA injection failed"
+    else
+        echo -e "${WARNING} inject_system_ca.sh not found, skipping CA injection"
     fi
 }
 
