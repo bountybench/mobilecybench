@@ -29,7 +29,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 
-inject_api33() {
+inject_tmpfs_overlay() {
   # API <= 33: tmpfs overlay on the system cert store.
   # 1. Copy existing certs to a temp dir
   # 2. Mount tmpfs over /system/etc/security/cacerts (hides original, stays read-only)
@@ -57,7 +57,7 @@ chcon u:object_r:system_file:s0 "\$STORE"/*
 EOF
 }
 
-inject_api34() {
+inject_tmpfs_overlay_with_nsenter() {
   # API >= 34 (Android 14+): certs moved to /apex/com.android.conscrypt/cacerts
   # with per-process mount namespaces. tmpfs overlay alone isn't visible to apps.
   # Uses nsenter to bind-mount into zygote64 and all child app mount namespaces.
@@ -127,9 +127,9 @@ fi
 adb push "$CERT_PATH" "/data/local/tmp/$CERT_BASENAME" >/dev/null
 
 if [[ "$SDK" -le 33 ]]; then
-  inject_api33
+  inject_tmpfs_overlay
 else
-  inject_api34
+  inject_tmpfs_overlay_with_nsenter
 fi
 
 # Verify
