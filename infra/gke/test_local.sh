@@ -1,12 +1,12 @@
 #!/bin/bash
-# Local test for GKE infrastructure — validates container emulator mode
+# Local test for GKE infrastructure — validates emulator modes
 # inside the orchestrator, without GKE and without LLM calls.
 #
 # What this tests:
-#   1. Orchestrator image builds
+#   1. Orchestrator image builds/pulls
 #   2. DinD starts inside orchestrator
-#   3. Emulator launches as a Docker container (emulator_mode=container)
-#   4. ADB connects to the emulator container
+#   3. Emulator launches (native or container mode)
+#   4. ADB connects to the emulator
 #   5. Emulator boots and app installs
 #   6. Backend containers start (if app has them)
 #   7. Kali container starts
@@ -19,8 +19,8 @@
 # Usage:
 #   bash infra/gke/test_local.sh [APP_NAME]
 #   bash infra/gke/test_local.sh moememos
-#   bash infra/gke/test_local.sh moememos --native    # test native mode instead
-#   bash infra/gke/test_local.sh moememos --skip-build # skip Docker image build
+#   bash infra/gke/test_local.sh moememos --container   # emulator in separate container
+#   bash infra/gke/test_local.sh moememos --skip-build   # never build, only use existing/pull
 
 set -euo pipefail
 
@@ -38,17 +38,11 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-# Use Docker Hub images if available, otherwise local :test tags
-if docker image inspect "cybench/mobilecybench-orchestrator:latest" >/dev/null 2>&1; then
-    IMAGE_NAME="cybench/mobilecybench-orchestrator:latest"
-else
-    IMAGE_NAME="mobilecybench-orchestrator:test"
-fi
-if docker image inspect "cybench/mobilecybench-emulator:latest" >/dev/null 2>&1; then
-    EMULATOR_IMAGE_NAME="cybench/mobilecybench-emulator:latest"
-else
-    EMULATOR_IMAGE_NAME="mobilecybench-emulator:test"
-fi
+
+# Docker Hub image names
+DOCKERHUB_ORCHESTRATOR="cybench/mobilecybench-orchestrator:latest"
+DOCKERHUB_ORCHESTRATOR_SLIM="cybench/mobilecybench-orchestrator-slim:latest"
+DOCKERHUB_EMULATOR="cybench/mobilecybench-emulator:latest"
 
 echo "=== MobileCyBench Local Infrastructure Test ==="
 echo "App:            $APP_NAME"
@@ -64,34 +58,78 @@ if [ ! -e /dev/kvm ]; then
 fi
 echo "KVM: /dev/kvm found"
 
-# ─── Step 1: Build orchestrator image ──────────────────────────────────────
-# In container mode, use the slim orchestrator (no emulator baked in).
-# In native mode, use the full orchestrator (emulator included).
-if [ "$EMULATOR_MODE" = "container" ]; then
-    ORCHESTRATOR_DOCKERFILE="orchestrator/Dockerfile.orchestrator-slim"
-    if docker image inspect "cybench/mobilecybench-orchestrator-slim:latest" >/dev/null 2>&1; then
-        IMAGE_NAME="cybench/mobilecybench-orchestrator-slim:latest"
-    else
-        IMAGE_NAME="mobilecybench-orchestrator-slim:test"
-    fi
-else
-    ORCHESTRATOR_DOCKERFILE="orchestrator/Dockerfile.orchestrator"
-fi
+# ─── Helper: ensure an image is available ─────────────────────────────────
+# Priority: 1) local  2) Docker Hub  3) build from Dockerfile
+# --skip-build disables step 3.
+ensure_image() {
+    local local_name="$1"
+    local hub_name="$2"
+    local dockerfile="$3"
+    local result_var="$4"   # variable name to store the resolved image name
 
-if [ "$SKIP_BUILD" = true ]; then
-    echo "--- Step 1: Skipping image build (--skip-build) ---"
-    if ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
-        echo "ERROR: Image $IMAGE_NAME not found. Remove --skip-build to build it."
-        exit 1
+    # 1. Check locally
+    if docker image inspect "$local_name" >/dev/null 2>&1; then
+        echo "  Found locally: $local_name"
+        eval "$result_var='$local_name'"
+        return 0
     fi
+    if [ "$local_name" != "$hub_name" ] && docker image inspect "$hub_name" >/dev/null 2>&1; then
+        echo "  Found locally: $hub_name"
+        eval "$result_var='$hub_name'"
+        return 0
+    fi
+
+    # 2. Try pulling from Docker Hub
+    echo "  Not found locally, pulling $hub_name ..."
+    if docker pull "$hub_name" 2>/dev/null; then
+        echo "  Pulled: $hub_name"
+        eval "$result_var='$hub_name'"
+        return 0
+    fi
+    echo "  Pull failed (image may not exist on Docker Hub yet)"
+
+    # 3. Build from Dockerfile
+    if [ "$SKIP_BUILD" = true ]; then
+        echo "  ERROR: --skip-build set and image not available."
+        return 1
+    fi
+    if [ -z "$dockerfile" ]; then
+        echo "  ERROR: No Dockerfile specified for building."
+        return 1
+    fi
+    echo "  Building from $dockerfile ..."
+    docker build -f "$PROJECT_ROOT/$dockerfile" -t "$local_name" "$PROJECT_ROOT"
+    eval "$result_var='$local_name'"
+    return 0
+}
+
+# ─── Step 1: Ensure orchestrator image ────────────────────────────────────
+echo "--- Step 1: Ensuring orchestrator image ---"
+if [ "$EMULATOR_MODE" = "container" ]; then
+    ensure_image "mobilecybench-orchestrator-slim:test" \
+                 "$DOCKERHUB_ORCHESTRATOR_SLIM" \
+                 "orchestrator/Dockerfile.orchestrator-slim" \
+                 IMAGE_NAME
 else
-    echo "--- Step 1: Building orchestrator image ($ORCHESTRATOR_DOCKERFILE) ---"
-    docker build -f "$PROJECT_ROOT/$ORCHESTRATOR_DOCKERFILE" \
-        -t "$IMAGE_NAME" \
-        "$PROJECT_ROOT"
+    ensure_image "mobilecybench-orchestrator:test" \
+                 "$DOCKERHUB_ORCHESTRATOR" \
+                 "orchestrator/Dockerfile.orchestrator" \
+                 IMAGE_NAME
 fi
-echo "Image ready: $IMAGE_NAME"
+echo "Orchestrator image: $IMAGE_NAME"
 echo ""
+
+# ─── Step 1b: Ensure emulator image (container mode only) ────────────────
+EMULATOR_IMAGE_NAME=""
+if [ "$EMULATOR_MODE" = "container" ]; then
+    echo "--- Step 1b: Ensuring emulator image ---"
+    ensure_image "mobilecybench-emulator:test" \
+                 "$DOCKERHUB_EMULATOR" \
+                 "orchestrator/Dockerfile.emulator" \
+                 EMULATOR_IMAGE_NAME
+    echo "Emulator image: $EMULATOR_IMAGE_NAME"
+    echo ""
+fi
 
 # ─── Step 2: Determine build_type ─────────────────────────────────────────
 CLEAN_APK="$PROJECT_ROOT/apps/$APP_NAME/apk/$APP_NAME.apk"
@@ -146,31 +184,20 @@ echo "  - Start kali container"
 echo "  - Open interactive shell (type 'exit' to finish)"
 echo ""
 
-# For container emulator mode: if not using Docker Hub image, build locally
-# and save as tar to load into the inner DinD daemon.
+# For container mode: get emulator image into DinD.
+# If the image is on Docker Hub, inner DinD pulls directly.
+# If local-only, save as tar and mount into the container.
 EMULATOR_IMAGE_TAR=""
-DOCKERHUB_EMULATOR="cybench/mobilecybench-emulator:latest"
-
 if [ "$EMULATOR_MODE" = "container" ]; then
-    if [ "$EMULATOR_IMAGE_NAME" = "$DOCKERHUB_EMULATOR" ]; then
-        # Docker Hub image — the inner DinD will pull it directly
-        echo "--- Step 4a: Emulator image will be pulled from Docker Hub inside DinD ---"
+    if [[ "$EMULATOR_IMAGE_NAME" == cybench/* ]]; then
+        # Docker Hub image — inner DinD will pull it directly
+        echo "Emulator image on Docker Hub — DinD will pull inside container"
     else
-        # Local image — need to save/load into DinD
-        if [ "$SKIP_BUILD" != true ]; then
-            echo "--- Step 4a: Building minimal emulator image ---"
-            docker build -f "$PROJECT_ROOT/orchestrator/Dockerfile.emulator" \
-                -t "$EMULATOR_IMAGE_NAME" \
-                "$PROJECT_ROOT"
-        fi
-        if ! docker image inspect "$EMULATOR_IMAGE_NAME" >/dev/null 2>&1; then
-            echo "ERROR: Emulator image $EMULATOR_IMAGE_NAME not found."
-            exit 1
-        fi
-        echo "--- Step 4b: Saving emulator image for DinD ---"
+        # Local image — save/load into DinD
+        echo "Saving local emulator image for DinD..."
         EMULATOR_IMAGE_TAR="/tmp/mobilecybench-emulator-image.tar"
         docker save "$EMULATOR_IMAGE_NAME" -o "$EMULATOR_IMAGE_TAR"
-        echo "Image saved to $EMULATOR_IMAGE_TAR ($(du -h "$EMULATOR_IMAGE_TAR" | cut -f1))"
+        echo "Image saved ($(du -h "$EMULATOR_IMAGE_TAR" | cut -f1))"
     fi
 fi
 
@@ -183,7 +210,7 @@ docker run --rm \
     -v mobilecybench-gradle-cache:/root/.gradle \
     ${EMULATOR_IMAGE_TAR:+-v "$EMULATOR_IMAGE_TAR:/tmp/emulator-image.tar"} \
     -e APP_NAME="$APP_NAME" \
-    -e EMULATOR_IMAGE="$EMULATOR_IMAGE_NAME" \
+    -e EMULATOR_IMAGE="${EMULATOR_IMAGE_NAME}" \
     -e DOCKER_TLS_CERTDIR= \
     "$IMAGE_NAME" \
     -c '
@@ -203,13 +230,18 @@ docker run --rm \
 
         docker network create shared_net || true
 
-        # Get emulator image into DinD: load from tar or pull from Docker Hub
+        # Get emulator image into DinD (container mode only)
         if [ -f /tmp/emulator-image.tar ]; then
             echo "Loading emulator image into DinD from tar..."
             docker load -i /tmp/emulator-image.tar
-        elif [ -n "$EMULATOR_IMAGE" ]; then
-            echo "Pulling emulator image into DinD: $EMULATOR_IMAGE"
-            docker pull "$EMULATOR_IMAGE"
+        elif [ -n "${EMULATOR_IMAGE:-}" ]; then
+            echo "Checking if emulator image exists in DinD..."
+            if ! docker image inspect "$EMULATOR_IMAGE" >/dev/null 2>&1; then
+                echo "Pulling emulator image into DinD: $EMULATOR_IMAGE"
+                docker pull "$EMULATOR_IMAGE"
+            else
+                echo "Emulator image already cached in DinD"
+            fi
         fi
         echo "DinD images:"
         docker images
