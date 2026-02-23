@@ -178,6 +178,15 @@ jobs:
                 done
                 [ "$missing_files" = true ] && continue
 
+                # Validate metadata.json schema
+                echo "  Validating metadata.json schema for $vuln_id..."
+                if ! python3 -m pytest --no-header -q \
+                  tests/test_synthetic_vuln_metadata.py::test_synthetic_vuln_metadata \
+                  --dirs "${vuln_dir}"; then
+                  echo "  ERROR: metadata.json schema validation failed for ${vuln_dir}/metadata.json"
+                  exit 1
+                fi
+
                 # Use apklink if available, but force source if vulnerability.patch or build.sh changed
                 synth_mode="source"
                 if [ "$has_apklink" = true ]; then
