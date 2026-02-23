@@ -37,6 +37,9 @@ class RunnerConfig(BaseModel):
 
     reasoning_effort: Optional[str] = None
 
+    # General timeout (seconds) for long-running scripts (setup, exploit, verify, etc.)
+    script_timeout: int = Field(default=600, gt=0)
+
     @classmethod
     def from_file(cls, config_path: Path) -> "RunnerConfig":
         if not config_path.exists():

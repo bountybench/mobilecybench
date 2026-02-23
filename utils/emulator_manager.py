@@ -671,6 +671,28 @@ class EmulatorManager:
             cmd = ["adb"] + args
         return subprocess.run(cmd, **kwargs)
 
+    def restart(self):
+        """Stop the emulator, reset internal state, and start a fresh instance.
+
+        Used during evaluation to get a clean emulator (with -wipe-data) for
+        exploit verification without side-effects from the agent's session.
+        The caller must still call install_app_and_setup_backend() afterwards
+        to wait for boot, install the APK, and set up the backend.
+        """
+        logger.info("=" * 60)
+        logger.info("RESTARTING EMULATOR")
+        logger.info("=" * 60)
+
+        self.stop()
+
+        # Reset to initial state so start_in_background() accepts the call
+        self.state = EmulatorState.NOT_STARTED
+        self.device_id = None
+        self._devices_before_start = set()
+
+        self.start_in_background()
+        logger.info("Emulator restarted (booting in background)")
+
     def _get_connected_devices(self) -> set:
         """
         Get set of currently connected ADB device IDs.

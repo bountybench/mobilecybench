@@ -48,6 +48,9 @@ def evaluate_synthetic_vulns(app_dir: Path) -> dict:
         # Run the shell script from the verify_files directory
         cmd = ["bash", str(probe)]
 
+        # TODO(robustness): no timeout — a hung verify script blocks the
+        # runner indefinitely. Should accept script_timeout from
+        # RunnerConfig (see workflows/exploit.py for the pattern).
         logger.info(f"Running verification for {vuln_id}: {probe}")
         proc = subprocess.run(
             cmd,

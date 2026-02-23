@@ -11,6 +11,7 @@ from workflows.exploit import ExploitWorkflow
 # Common agent config params used across all workflow tests
 AGENT_CONFIG = {
     "max_model_response_tokens": 1000,
+    "script_timeout": 600,
 }
 
 
