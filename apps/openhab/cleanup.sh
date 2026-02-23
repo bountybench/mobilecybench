@@ -260,6 +260,24 @@ files_cleanup() {
     LOG "Removing baseline file: $baseline_file"
     rm -f "$baseline_file"
   fi
+
+  # Remove .env file created by start_runtime.sh
+  if [ -f "$ROOT_DIR/.env" ]; then
+    LOG "Removing .env file: $ROOT_DIR/.env"
+    rm -f "$ROOT_DIR/.env"
+  fi
+
+  # Remove SSH keys generated for Karaf
+  if [ -d "$ROOT_DIR/.ssh" ]; then
+    LOG "Removing SSH key directory: $ROOT_DIR/.ssh"
+    rm -rf "$ROOT_DIR/.ssh"
+  fi
+
+  # Remove tmp directory (leaked userdata from vuln scenarios)
+  if [ -d "$ROOT_DIR/tmp" ]; then
+    LOG "Removing tmp directory: $ROOT_DIR/tmp"
+    rm -rf "$ROOT_DIR/tmp"
+  fi
 }
 
 # If Karaf is not reachable locally, try to start the compose stack so we can 

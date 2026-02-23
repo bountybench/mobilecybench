@@ -1257,11 +1257,14 @@ start_emulator_and_adb() {
         # Wait for device to appear
         adb wait-for-device
 
-        wait_for_device_boot 300
-        echo "Emulator booted successfully."
-    else
-        echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
-    fi
+    wait_for_device_boot 300
+    echo "Emulator booted successfully."
+
+    # Ensure emulator is stopped on any exit (success or failure)
+    trap 'echo -e "${INFO} Stopping emulator due to script exit..."; cd "$ROOT_DIR"; bash ./stop_emulator.sh' EXIT
+else
+    echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
+fi
 
     # Ensure ADB server is listening on all interfaces for container access
     echo -e "${INFO} Ensuring ADB server is configured for container access..."
@@ -1373,10 +1376,6 @@ cd $ROOT_DIR
 # Stop SSRF listener
 print_header "$CYAN" "STOPPING SSRF LISTENER"
 stop_ssrf_listener
-
-if [ -f "stop_emulator.sh" ]; then
-    bash ./stop_emulator.sh
-fi
 
 # Run linter
 print_header "$CYAN" "RUNNING LINTER"

@@ -473,7 +473,6 @@ def main():
     """Run all access control tests and return results."""
     results = run_access_control_tests()
 
-    # Create summary for the main script
     summary = {
         "admin_privileges": 1 if results["admin_privileges"]["success"] else 0,
         "user_restrictions": 1 if results["user_restrictions"]["success"] else 0,
@@ -482,13 +481,16 @@ def main():
         "admin_auth": 1 if results["admin_auth"]["success"] else 0,
     }
 
-    # Output JSON results
-    print(json.dumps(summary))
+    all_passed = all(v == 1 for v in summary.values())
+    summary["score"] = 1 if all_passed else 0
 
-    if results["overall_success"]:
-        sys.exit(0)
+    if all_passed:
+        print("All access control tests passed.", file=sys.stderr)
     else:
-        sys.exit(1)
+        print("Some access control tests failed.", file=sys.stderr)
+
+    print(json.dumps(summary))
+    sys.exit(0)
 
 
 if __name__ == "__main__":
