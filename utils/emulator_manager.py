@@ -207,11 +207,24 @@ class EmulatorManager:
         logger.info(f"Starting emulator container with image: {emulator_image}")
         logger.info(f"Emulator AVD: {emulator_name}")
 
+        # socat forwards 0.0.0.0:5555 → 127.0.0.1:5555 so the orchestrator
+        # can reach the emulator's adbd which is bound to loopback inside
+        # the container. The emulator is started in the background so socat
+        # can run concurrently; socat retries via fork so it handles the
+        # emulator not being ready yet.
+        container_cmd = (
+            f"bash -c '"
+            f"adb -a start-server && "
+            f"socat TCP-LISTEN:5555,bind=0.0.0.0,reuseaddr,fork TCP:127.0.0.1:5555 & "
+            f"{emulator_cmd}"
+            f"'"
+        )
+
         try:
             self.emulator_container = client.containers.run(
                 image=emulator_image,
                 name="emulator-container",
-                command=f"bash -c 'adb -a start-server && {emulator_cmd}'",
+                command=container_cmd,
                 devices=["/dev/kvm:/dev/kvm"],
                 network="shared_net",
                 detach=True,
@@ -225,9 +238,10 @@ class EmulatorManager:
             logger.error(f"Failed to start emulator container: {e}")
             raise RuntimeError(f"Failed to start emulator container: {e}")
 
-        # Wait for container to initialize, then connect via ADB
-        logger.info("Waiting for emulator container ADB to become available...")
-        max_retries = 30
+        # Wait for the emulator to boot and ADB to become available.
+        # Emulator boot typically takes 3-5 min, so allow up to 10 min.
+        logger.info("Waiting for emulator to boot and ADB to become available...")
+        max_retries = 300  # 300 × 2s = 10 minutes
         for i in range(max_retries):
             time.sleep(2)
             result = subprocess.run(
@@ -238,10 +252,18 @@ class EmulatorManager:
             if "connected" in result.stdout.lower():
                 logger.info("ADB connected to emulator-container:5555")
                 break
-            logger.debug(
-                f"ADB connect attempt {i+1}/{max_retries}: {result.stdout.strip()}"
-            )
+            if i % 15 == 0:  # Log every 30s to show progress
+                logger.info(
+                    f"Still waiting for emulator... ({i * 2}s elapsed, "
+                    f"up to {max_retries * 2}s)"
+                )
         else:
+            # Log container output to help diagnose failures
+            try:
+                logs = self.emulator_container.logs(tail=50).decode()
+                logger.error(f"Emulator container logs (last 50 lines):\n{logs}")
+            except Exception:
+                pass
             self.state = EmulatorState.STOPPED
             raise RuntimeError(
                 "Timed out waiting for ADB connection to emulator container"
