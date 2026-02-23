@@ -54,10 +54,11 @@ configure_webserver(){
   docker exec "$TARGET_CONTAINER" bash -c "echo 'DocumentRoot /var/www/html/public' > /etc/apache2/conf-enabled/moodle-root.conf"
 
   # Configure IP for emulator (not in CI)
-  if [ "${GITHUB_ACTIONS:-}" != "true" ]; then
-    log_info "Configuring IP for Emulator..."
-    docker exec "$TARGET_CONTAINER" sed -i 's/localhost:8000/10.0.2.2:8000/g' /var/www/html/config.php
-  fi
+  # if [ "${GITHUB_ACTIONS:-}" != "true" ]; then
+  log_info "Configuring IP for Emulator..."
+  docker cp config.bk.php "$TARGET_CONTAINER":/var/www/html/config.php
+    # docker exec "$TARGET_CONTAINER" sed -i 's/localhost:8000/10.0.2.2:8000/g' /var/www/html/config.php
+  # fi
 
   log_info "Restarting web server container..."
   docker restart "$TARGET_CONTAINER"

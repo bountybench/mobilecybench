@@ -283,7 +283,7 @@ jobs:
     needs: setup
     if: needs.setup.outputs.should_exit != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       matrix:
         include: ${{ fromJson(needs.setup.outputs.apk_jobs) }}
