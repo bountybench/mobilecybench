@@ -8,12 +8,30 @@ This runner uses the Workflow abstraction to handle different evaluation modes:
 """
 
 import argparse
+import datetime
+import json
+import os
 import sys
 from pathlib import Path
 
-from models.config import RunnerConfig
-from utils.logger import logger, logger_manager
-from workflows import DiscoveryWorkflow, ExploitWorkflow, Workflow
+
+def _bootstrap_runner_session_id() -> str:
+    """Ensure runner process owns and exports a run/session ID."""
+    run_id = os.environ.get("MOBILECYBENCH_SESSION_ID")
+    if run_id:
+        return run_id
+    run_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    os.environ["MOBILECYBENCH_SESSION_ID"] = run_id
+    return run_id
+
+
+_bootstrap_runner_session_id()
+
+from models.config import RunnerConfig  # noqa: E402
+from utils.git_utils import ensure_app_submodule  # noqa: E402
+from utils.logger import logger, logger_manager  # noqa: E402
+from utils.time_tracker import time_tracker  # noqa: E402
+from workflows import DiscoveryWorkflow, ExploitWorkflow, Workflow  # noqa: E402
 
 
 def run_interactive_shell(app_name: str) -> dict:
@@ -104,19 +122,50 @@ def create_workflow(
         "model": config.model,
         "max_iterations": config.max_iterations,
         "max_model_response_tokens": config.max_model_response_tokens,
-        "max_kali_message_tokens": config.max_kali_message_tokens,
-        "max_context_length": config.max_context_length,
         "screenshot_mode": config.screenshot_mode,
         "build_type": config.build_type,
         "agent_image": config.agent_image,
         "project_root": project_root,
         "dry_run": config.dry_run,
+        "reasoning_effort": config.reasoning_effort,
+        "docker_mode": config.docker_mode,
+        "emulator_mode": config.emulator_mode,
     }
 
     if config.workflow == "exploit":
         return ExploitWorkflow(**common_params, vuln_id=config.synthetic_vuln_id)
     else:
         return DiscoveryWorkflow(**common_params)
+
+
+def _log_experiment_config(
+    config: RunnerConfig, app_name: str, workflow: Workflow
+) -> None:
+    """Log a structured summary of the full experiment configuration.
+
+    Combines runner config with app metadata so the full experiment log
+    captures everything needed to reproduce or understand the run.
+    """
+    metadata = getattr(workflow, "metadata", {})
+
+    experiment_config = {
+        "app": {
+            "name": app_name,
+            **metadata,
+        },
+        "runner": config.model_dump(),
+    }
+
+    # Add exploit-specific fields
+    if config.workflow == "exploit":
+        experiment_config["exploit"] = {
+            "vuln_id": config.synthetic_vuln_id,
+        }
+
+    logger.info(
+        "Experiment configuration:\n%s",
+        json.dumps(experiment_config, indent=2, default=str),
+    )
 
 
 def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
@@ -137,10 +186,19 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
     )
     logger.info(f"Created {workflow_type} for app: {app_name}")
 
+    # Start experiment timing with the shared session ID
+    run_id = logger_manager.get_session_id()
+    time_tracker.start_experiment(app_name, run_id=run_id)
+
     try:
         logger.info("Step 1/5: Validating arguments...")
         workflow.validate_arguments()
         logger.info("Arguments validated")
+
+        ensure_app_submodule(project_root, app_name)
+
+        # Log structured experiment configuration for observability
+        _log_experiment_config(config, app_name, workflow)
 
         logger.info("Step 2/5: Setting up runtime environment...")
         workflow.setup_runtime_environment()
@@ -159,6 +217,15 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
             result = workflow.run_agent()
             logger.info(f"Agent completed: {result.get('status', 'unknown')}")
 
+            # Save agent artifacts (exploit_files, agent_output) while container is alive
+            workflow.save_artifacts(logger_manager.get_logs_dir())
+
+            # Kill the agent container before evaluation so verify scripts
+            # cannot depend on it — matches CI behavior where the exploit
+            # container is removed before verify_exploit.sh runs.
+            if workflow.agent_env:
+                workflow.agent_env.cleanup()
+
             logger.info("Step 5/5: Evaluating results...")
             scores = workflow.evaluate()
             logger.info(f"Evaluation complete: {scores}")
@@ -175,6 +242,17 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
         logger.error(traceback.format_exc())
         return 1
     finally:
+        # Finalize experiment timing
+        time_tracker.end_experiment()
+        try:
+            time_tracker.save_json(
+                logger_manager.get_logs_dir()
+                / f"timing_{logger_manager.get_session_id()}.json"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to save timing JSON: {e}")
+        time_tracker.log_summary(logger)
+
         # Always cleanup resources (emulator, containers, restore APKs)
         logger.info("Cleaning up resources...")
         try:
@@ -195,8 +273,6 @@ def main():
     args = parser.parse_args()
 
     # Load config
-    import json
-
     config_path = Path(args.config)
     if not config_path.exists():
         logger.error(f"Config file not found: {config_path}")

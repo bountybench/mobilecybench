@@ -1,11 +1,12 @@
 """Tests for runner.py - Workflow-based runner."""
 
+import os
 from unittest.mock import patch
 
 import pytest
 
 from models.config import RunnerConfig
-from runner import create_workflow, main, run
+from runner import _bootstrap_runner_session_id, create_workflow, main, run
 from workflows import DiscoveryWorkflow, ExploitWorkflow
 
 
@@ -17,9 +18,7 @@ def base_config():
         build_type="source",
         adb_access="full",
         max_iterations=10,
-        max_kali_message_tokens=1000,
         max_model_response_tokens=1000,
-        max_context_length=10000,
         model="gpt-4",
         screenshot_mode=False,
         headless_mode=True,
@@ -55,9 +54,11 @@ class TestRun:
 
     def test_success_returns_zero(self, base_config, tmp_path):
         """Successful execution returns exit code 0."""
-        with patch.object(DiscoveryWorkflow, "validate_arguments"), patch.object(
-            DiscoveryWorkflow, "setup_runtime_environment"
-        ), patch.object(DiscoveryWorkflow, "setup_agent"), patch.object(
+        with patch("runner.ensure_app_submodule"), patch.object(
+            DiscoveryWorkflow, "validate_arguments"
+        ), patch.object(DiscoveryWorkflow, "setup_runtime_environment"), patch.object(
+            DiscoveryWorkflow, "setup_agent"
+        ), patch.object(
             DiscoveryWorkflow, "run_agent", return_value={"status": "completed"}
         ), patch.object(
             DiscoveryWorkflow, "evaluate", return_value={"score": 1}
@@ -72,7 +73,7 @@ class TestRun:
         self, base_config, tmp_path
     ):
         """Validation error returns exit code 1 but cleanup still runs."""
-        with patch.object(
+        with patch("runner.ensure_app_submodule"), patch.object(
             DiscoveryWorkflow,
             "validate_arguments",
             side_effect=ValueError("App directory not found"),
@@ -84,9 +85,11 @@ class TestRun:
 
     def test_cleanup_called_even_when_agent_crashes(self, base_config, tmp_path):
         """Cleanup is called even when agent fails mid-execution."""
-        with patch.object(DiscoveryWorkflow, "validate_arguments"), patch.object(
-            DiscoveryWorkflow, "setup_runtime_environment"
-        ), patch.object(DiscoveryWorkflow, "setup_agent"), patch.object(
+        with patch("runner.ensure_app_submodule"), patch.object(
+            DiscoveryWorkflow, "validate_arguments"
+        ), patch.object(DiscoveryWorkflow, "setup_runtime_environment"), patch.object(
+            DiscoveryWorkflow, "setup_agent"
+        ), patch.object(
             DiscoveryWorkflow, "run_agent", side_effect=Exception("Agent crashed")
         ), patch.object(
             DiscoveryWorkflow, "cleanup"
@@ -99,9 +102,9 @@ class TestRun:
         """Dry run mode runs interactive shell instead of agent."""
         dry_run_config = RunnerConfig(**{**base_config.model_dump(), "dry_run": True})
 
-        with patch.object(DiscoveryWorkflow, "validate_arguments"), patch.object(
-            DiscoveryWorkflow, "setup_runtime_environment"
-        ), patch.object(
+        with patch("runner.ensure_app_submodule"), patch.object(
+            DiscoveryWorkflow, "validate_arguments"
+        ), patch.object(DiscoveryWorkflow, "setup_runtime_environment"), patch.object(
             DiscoveryWorkflow, "setup_agent"
         ) as mock_setup_agent, patch.object(
             DiscoveryWorkflow, "run_agent"
@@ -129,3 +132,16 @@ class TestMain:
         ):
             result = main()
             assert result == 1
+
+
+class TestRunnerSessionId:
+    def test_bootstrap_sets_session_id_when_missing(self, monkeypatch):
+        monkeypatch.delenv("MOBILECYBENCH_SESSION_ID", raising=False)
+        run_id = _bootstrap_runner_session_id()
+        assert run_id
+        assert run_id == os.environ.get("MOBILECYBENCH_SESSION_ID")
+
+    def test_bootstrap_keeps_existing_session_id(self, monkeypatch):
+        monkeypatch.setenv("MOBILECYBENCH_SESSION_ID", "existing_session")
+        run_id = _bootstrap_runner_session_id()
+        assert run_id == "existing_session"

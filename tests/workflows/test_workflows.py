@@ -11,8 +11,6 @@ from workflows.exploit import ExploitWorkflow
 # Common agent config params used across all workflow tests
 AGENT_CONFIG = {
     "max_model_response_tokens": 1000,
-    "max_kali_message_tokens": 1000,
-    "max_context_length": 10000,
 }
 
 
@@ -303,7 +301,7 @@ class TestDiscoveryWorkflowFlagGeneration:
         ), patch(
             "utils.setup_utils.install_app_and_setup_backend"
         ), patch(
-            "agent.agent_setup.setup_agent_environment"
+            "agent.agent_container.setup_agent_environment"
         ):
             workflow.setup_runtime_environment()
 
@@ -333,7 +331,7 @@ class TestDiscoveryWorkflowFlagGeneration:
         ), patch(
             "utils.setup_utils.install_app_and_setup_backend"
         ), patch(
-            "agent.agent_setup.setup_agent_environment"
+            "agent.agent_container.setup_agent_environment"
         ):
             workflow.setup_runtime_environment()
 

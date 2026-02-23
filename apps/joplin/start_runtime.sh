@@ -6,29 +6,28 @@ ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ANDROID_HOME="${HOME}/.android-sdk"
 source "$ROOT_DIR/utils/android.sh"
 
-# Install on emulator
+echo "Running Docker compose..."
+docker compose up --build -d
+
+# Install joplin
 install_joplin() {
     echo "Installing joplin on Android emulator..."
     
-    # Check if emulator is running
-    if ! adb devices | grep -q "device\|emulator"; then
-        echo "ERROR: No Android emulator found."
-        echo "Please start the emulator first."
+    # Try apk/ subdirectory first (build_apk.sh output), then fallback to root
+    APK_PATH=""
+    if [[ -f "$SCRIPT_DIR/apk/joplin.apk" ]]; then
+        APK_PATH="$SCRIPT_DIR/apk/joplin.apk"
+    fi
+    
+    if [[ -z "$APK_PATH" || ! -f "$APK_PATH" ]]; then
+        echo "ERROR: APK not found"
+        echo "Searched: $SCRIPT_DIR/apk/joplin.apk"
+        echo "Available APKs:"
+        find "$SCRIPT_DIR" -name "*.apk" -type f 2>/dev/null | head -10
         exit 1
     fi
     
-    # Install APK from the apk directory (created by setup_app_source.sh)
-    APK_DIR="$SCRIPT_DIR/apk"
-    APK_PATH="$APK_DIR/joplin.apk"
-    
-    if [[ ! -f $APK_PATH ]]; then
-        echo "ERROR: APK not found at $APK_PATH"
-        echo "Expected APK to be placed in $APK_DIR/ by setup_app_source.sh"
-        echo "Available APKs in apk directory:"
-        find "$APK_DIR" -name "*.apk" -type f 2>/dev/null | head -10
-        exit 1
-    fi
-    
+    echo "Found APK at: $APK_PATH"
     adb install "$APK_PATH"
     echo "joplin installed successfully."
 }
@@ -45,7 +44,7 @@ main() {
     echo "joplin Android Setup"
     echo "==================="
     
-    echo "Setting up joplin Android"
+    echo "Setting up joplin Android Environment"
 
     root_dir="$(pwd)"
     cd codebase/packages/app-mobile/android

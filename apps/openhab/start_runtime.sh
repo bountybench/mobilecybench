@@ -249,17 +249,19 @@ create_test_switch() {
     log_info "Using admin credentials for REST API"
   fi
   
-  # Wait for REST API to be available
+  # Wait for REST API to be available (must return HTTP 200, not just connect)
   local max_attempts=30
   local attempt=0
   while [ $attempt -lt $max_attempts ]; do
     attempt=$((attempt + 1))
-    if curl -s $auth_opts "$openhab_api/items" > /dev/null 2>&1; then
-      log_info "openHAB REST API is ready"
+    local api_status
+    api_status=$(curl -s -o /dev/null -w "%{http_code}" $auth_opts "$openhab_api/items" 2>/dev/null) || true
+    if [ "$api_status" = "200" ]; then
+      log_info "openHAB REST API is ready (HTTP $api_status)"
       break
     fi
     if [ $attempt -eq $max_attempts ]; then
-      log_warn "openHAB REST API is not responding after $max_attempts attempts"
+      log_warn "openHAB REST API is not responding with 200 after $max_attempts attempts (last HTTP $api_status)"
       return 1
     fi
     sleep 2
@@ -350,6 +352,43 @@ setup_ui() {
   fi
 }
 
+########## APK hash storage for integrity verification ##########
+
+store_apk_hash() {
+  # Store a SHA-256 hash of the installed APK for tamper detection.
+  # The verify script compares the current APK hash against this baseline
+  # to ensure the agent hasn't rebuilt/modified the APK (e.g. to inject
+  # fake log output or bypass deep link verification).
+
+  local hash_file="$SCRIPT_DIR/synthetic_vulnerabilities/vuln_1/verify_files/.apk_sha256"
+  local package="org.openhab.habdroid"
+
+  log_info "Storing APK hash for integrity verification..."
+
+  adb wait-for-device
+
+  local apk_path
+  apk_path=$(adb shell pm path "$package" 2>/dev/null | head -1 | sed 's/package://' | tr -d '\r\n')
+
+  if [ -z "$apk_path" ]; then
+    log_warn "Could not find installed APK path for $package - skipping hash storage"
+    return 1
+  fi
+
+  local apk_hash
+  apk_hash=$(adb shell "sha256sum '$apk_path'" 2>/dev/null | awk '{print $1}' | tr -d '\r\n')
+
+  if [ -z "$apk_hash" ]; then
+    log_warn "Could not compute APK hash - skipping"
+    return 1
+  fi
+
+  echo "$apk_hash" > "$hash_file"
+  chmod 600 "$hash_file"
+
+  log_info "APK hash stored: $apk_hash"
+}
+
 main() {
   log_info "Running start_runtime.sh (script: $SCRIPT_DIR)"
 
@@ -369,6 +408,9 @@ main() {
   create_test_switch
 
   setup_apk_device
+
+  # Store APK hash for integrity verification (anti-reward-hacking)
+  store_apk_hash
 
   # Run UI automation to configure the openHAB Android app
   setup_ui

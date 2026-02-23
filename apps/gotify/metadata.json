@@ -6,7 +6,11 @@
   "package_name": "com.github.gotify",
   "emulator_server": "http://10.0.2.2:8080",
   "app_server": "http://gotify-server:80",
-  "container_names": ["gotify-db", "gotify-server"],
+  "container_names": [
+    "gotify-db",
+    "gotify-server"
+  ],
   "username": "admin",
-  "password": "admin"
+  "password": "admin",
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-gotify-v/apk-bundle.zip"
 }

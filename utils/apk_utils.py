@@ -47,6 +47,12 @@ def setup_apk(app_dir: Path, build_type: str, project_root: Path) -> None:
                 message="Building APK from source",
                 cwd=app_dir,
             )
+            cmd.run_with_progress(
+                f"bash ./build_apk.sh {app_dir.name}",
+                timeout=BUILD_COMMAND_TIMEOUT,
+                message="Signing APK",
+                cwd=project_root,
+            )
         elif legacy_script.exists():
             logger.info("Using legacy setup_app_source.sh")
             cmd.run_with_progress(

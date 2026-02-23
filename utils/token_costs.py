@@ -101,6 +101,27 @@ def load_pricing(path: Optional[str] = None) -> Dict[str, ModelPricing]:
         return {}
 
 
+def _strip_provider_prefix(model: str) -> str:
+    """Strip provider prefix from model name if present.
+
+    LiteLLM uses prefixes like "gemini/", "anthropic/" to route to providers.
+    We need to strip these for pricing lookup.
+
+    Args:
+        model: Model name that may contain a provider prefix.
+
+    Returns:
+        Model name without provider prefix.
+
+    Examples:
+        "gemini/gemini-3-pro-preview" -> "gemini-3-pro-preview"
+        "gpt-5.2" -> "gpt-5.2" (unchanged)
+    """
+    if "/" in model:
+        return model.split("/", 1)[1]
+    return model
+
+
 def _strip_date_suffix(model: str) -> str:
     """Strip date suffix from model name if present.
 
@@ -137,9 +158,13 @@ def get_pricing_for_model(
         pipeline failures.
 
     Note:
-        First tries exact model name match, then tries with date suffix stripped.
-        For example, "gpt-5-2025-08-07" will first try exact match, then fall back
-        to "gpt-5" pricing. If still unknown and `warn` is True, a warning is logged.
+        Lookup order:
+        1. Exact model name match
+        2. With provider prefix stripped (e.g., "gemini/gemini-2.0-flash" -> "gemini-2.0-flash")
+        3. With date suffix stripped (e.g., "gpt-5-2025-08-07" -> "gpt-5")
+        4. With both prefix and date suffix stripped
+
+        If still unknown and `warn` is True, a warning is logged.
         Returns ModelPricing with all zeros to avoid breaking the pipeline.
     """
     pm = pricing_map if pricing_map is not None else load_pricing()
@@ -149,12 +174,20 @@ def get_pricing_for_model(
     if pricing is not None:
         return pricing
 
-    # Try with date suffix stripped
-    base_model = _strip_date_suffix(model)
-    if base_model != model:
-        pricing = pm.get(base_model)
+    # Try with provider prefix stripped (e.g., "gemini/gemini-2.0-flash" -> "gemini-2.0-flash")
+    model_no_prefix = _strip_provider_prefix(model)
+    if model_no_prefix != model:
+        pricing = pm.get(model_no_prefix)
         if pricing is not None:
-            logger.debug(f"Using pricing for '{base_model}' for model '{model}'")
+            logger.debug(f"Using pricing for '{model_no_prefix}' for model '{model}'")
+            return pricing
+
+    # Try with date suffix stripped
+    model_no_date = _strip_date_suffix(model_no_prefix)
+    if model_no_date != model_no_prefix:
+        pricing = pm.get(model_no_date)
+        if pricing is not None:
+            logger.debug(f"Using pricing for '{model_no_date}' for model '{model}'")
             return pricing
 
     # No pricing found

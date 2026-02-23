@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
-from utils.logger import logger
+from utils.logger import logger, logger_manager
 from utils.token_costs import (
     ModelPricing,
     compute_cost_usd,
@@ -30,6 +30,7 @@ class TokenUsage:
 
     Attributes:
         - model: The model name used for the API call.
+        - run_id: Shared session/experiment identifier from LoggerManager.
         - request_id: The unique request ID from the API response, if available.
         - created_at: timestamp when the record was created.
         - input_tokens: Number of input tokens used.
@@ -39,6 +40,7 @@ class TokenUsage:
     """
 
     model: str
+    run_id: str
     request_id: Optional[str]
     created_at: str
     input_tokens: int
@@ -57,20 +59,39 @@ def _extract_token_count(u: Any, key: str, default: int = 0) -> int:
     Returns:
         Integer token count for the specified key, or default if not found.
     Note:
-        OpenAI Python SDK reference:
-        - https://github.com/openai/openai-python/blob/main/src/openai/types/responses/response.py
-        - https://github.com/openai/openai-python/blob/main/src/openai/types/responses/response_usage.py
+        Supports both OpenAI Responses API format (input_tokens/output_tokens) and
+        Chat Completions API format (prompt_tokens/completion_tokens).
     """
     if u is None:
         return default
     try:
         if key == "cache_input_tokens":
+            # Try OpenAI Responses API format first
             details = getattr(u, "input_tokens_details", None)
             if details and hasattr(details, "cached_tokens"):
                 val = getattr(details, "cached_tokens")
                 return int(val) if val is not None else default
+            # Try Chat Completions format
+            details = getattr(u, "prompt_tokens_details", None)
+            if details and hasattr(details, "cached_tokens"):
+                val = getattr(details, "cached_tokens")
+                return int(val) if val is not None else default
             return default
-        else:  # input_tokens or output_tokens
+        elif key == "input_tokens":
+            # Try input_tokens first (Responses API), then prompt_tokens (Chat Completions)
+            for attr in ["input_tokens", "prompt_tokens"]:
+                if hasattr(u, attr):
+                    val = getattr(u, attr)
+                    if val is not None:
+                        return int(val)
+        elif key == "output_tokens":
+            # Try output_tokens first (Responses API), then completion_tokens (Chat Completions)
+            for attr in ["output_tokens", "completion_tokens"]:
+                if hasattr(u, attr):
+                    val = getattr(u, attr)
+                    if val is not None:
+                        return int(val)
+        else:
             if hasattr(u, key):
                 val = getattr(u, key)
                 return int(val) if val is not None else default
@@ -143,11 +164,16 @@ class TokenTracker:
             - pricing_path: optional path to a JSON file with model pricing data.
                 * If None, uses default location from token_costs module.
             - jsonl_path: Optional path to a JSONL file to append detailed usage records.
-                * If None, defaults to "token_usage.jsonl" in the current directory.
+                * If None, defaults to "token_usage.jsonl" in the experiment log directory.
                 * If set to an empty string, no file will be written.
         """
         self._pricing_map = load_pricing(pricing_path)
-        self._jsonl_path = jsonl_path if jsonl_path else "token_usage.jsonl"
+        if jsonl_path:
+            self._jsonl_path = jsonl_path
+        elif jsonl_path == "":
+            self._jsonl_path = ""
+        else:
+            self._jsonl_path = str(logger_manager.get_logs_dir() / "token_usage.jsonl")
 
         self.total_input_tokens = 0
         self.total_output_tokens = 0
@@ -198,6 +224,7 @@ class TokenTracker:
 
         record = TokenUsage(
             model=model,
+            run_id=logger_manager.get_session_id(),
             request_id=request_id,
             created_at=datetime.now(timezone.utc).isoformat(),
             input_tokens=i,

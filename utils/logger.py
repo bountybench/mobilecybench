@@ -60,12 +60,8 @@ class LoggerManager:
         self._error_buffer_handler = None
         self._error_log_file = None
 
-        # Use shared session ID if available, otherwise create new one
-        if "MOBILECYBENCH_SESSION_ID" in os.environ:
-            self._timestamp = os.environ["MOBILECYBENCH_SESSION_ID"]
-        else:
-            self._timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            os.environ["MOBILECYBENCH_SESSION_ID"] = self._timestamp
+        # Use shared session ID if available, otherwise create a fresh one.
+        self._timestamp = self._resolve_session_id()
 
         self._log_level = self._get_log_level()
         self._logger = logging.getLogger(name)
@@ -90,6 +86,15 @@ class LoggerManager:
         self._setup_error_logging()
         if self._should_filter_ui():
             self._setup_ui_debug_logger()
+
+    def _resolve_session_id(self) -> str:
+        env_id = os.environ.get("MOBILECYBENCH_SESSION_ID")
+        if env_id:
+            return env_id
+
+        new_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        os.environ["MOBILECYBENCH_SESSION_ID"] = new_id
+        return new_id
 
     def _default_config(self) -> dict:
         return {"log_level": "info", "filter_ui_elements": True}
@@ -216,16 +221,62 @@ class LoggerManager:
     def get_logs_dir(self) -> Path:
         return self._logs_dir
 
+    def get_session_id(self) -> str:
+        """Return the shared session/experiment identifier."""
+        return self._timestamp
+
+    def get_tool_logger(self) -> logging.Logger:
+        """Return a child logger for tool interactions with its own file handler.
+
+        Creates the logger and handler on first call; subsequent calls return
+        the same logger instance (Python's logging module caches by name).
+        """
+        name = f"{self._name}.ToolInteractions"
+        tool_logger = logging.getLogger(name)
+        if not tool_logger.handlers:
+            fh = logging.FileHandler(
+                str(self._logs_dir / "mobile_security_analysis.log")
+            )
+            fh.setFormatter(
+                logging.Formatter(
+                    "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+                )
+            )
+            tool_logger.addHandler(fh)
+            tool_logger.setLevel(self._log_level)
+        return tool_logger
+
     def print_error_summary(self) -> None:
         if not self._error_buffer_handler or not self._error_buffer_handler.errors:
             return
 
+        error_count = len(self._error_buffer_handler.errors)
+        capped = error_count >= ErrorBufferHandler.MAX_ERRORS
+
+        # Log to file (plain text, no ANSI codes)
+        _ansi_re = re.compile(r"\033\[[0-9;]*m")
+        self._logger.info("=" * 80)
+        self._logger.info(
+            "ERROR SUMMARY: %d error(s)%s",
+            error_count,
+            " (capped)" if capped else "",
+        )
+        for line in self._error_buffer_handler.errors:
+            self._logger.info("  %s", _ansi_re.sub("", line))
+        self._logger.info("=" * 80)
+
+        # Print to console (with ANSI color)
         print("\n" + "=" * 80)
         print("\033[91mERROR SUMMARY\033[0m")
         print("=" * 80)
 
         for line in self._error_buffer_handler.errors:
             print(line)
+
+        if capped:
+            print(
+                f"\033[91m... capped at {ErrorBufferHandler.MAX_ERRORS} errors\033[0m"
+            )
 
         print("=" * 80 + "\n")
 
@@ -246,13 +297,16 @@ class RedErrorFormatter(logging.Formatter):
 class ErrorBufferHandler(logging.Handler):
     # anything more than 100 errors would likely just mean some form of loop. we don't need to use up so much memory
     # keep it conservative
+    MAX_ERRORS = 100
+
     def __init__(self, formatter: logging.Formatter):
         super().__init__(level=logging.ERROR)
         self.formatter = formatter
         self.errors = []
 
     def emit(self, record):
-        self.errors.append(self.format(record))
+        if len(self.errors) < self.MAX_ERRORS:
+            self.errors.append(self.format(record))
 
 
 # TODO: integrate with runner_config or have separate config file

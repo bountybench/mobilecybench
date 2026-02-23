@@ -51,6 +51,7 @@
   "required": [
     "gh_link",
     "commit_version",
+    "download_link",
     "sdk",
     "java",
     "package_name",

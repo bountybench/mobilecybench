@@ -45,6 +45,27 @@ def git_submodule_update(directory_path: PathLike) -> None:
     logger.debug(f"Updated submodules in {directory}")
 
 
+def ensure_app_submodule(project_root: PathLike, app_name: str) -> None:
+    """Ensure a single app's codebase submodule is initialized.
+
+    Runs ``git submodule update --init`` for just ``apps/<app_name>/codebase``.
+    Does NOT recurse into the codebase's own submodules.
+    """
+    project_root = Path(project_root)
+    codebase_dir = project_root / "apps" / app_name / "codebase"
+
+    if codebase_dir.exists() and any(codebase_dir.iterdir()):
+        logger.debug(f"Submodule already initialized: {codebase_dir}")
+        return
+
+    logger.info(f"Initializing submodule for {app_name}...")
+    _run_git_command(
+        project_root,
+        ["submodule", "update", "--init", f"apps/{app_name}/codebase"],
+    )
+    logger.info(f"Submodule initialized: {codebase_dir}")
+
+
 def git_checkout(
     directory_path: PathLike, target: str, force: bool = False, clean: bool = True
 ) -> None:

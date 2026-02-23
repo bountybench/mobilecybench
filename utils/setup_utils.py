@@ -1,6 +1,8 @@
 """Runtime setup utilities for app installation and backend configuration."""
 
+import shlex
 from pathlib import Path
+from typing import Optional
 
 from utils.logger import logger
 
@@ -13,6 +15,8 @@ def install_app_and_setup_backend(
     emulator,
     project_root: Path,
     start_ssrf: bool = False,
+    apk_path: Optional[Path] = None,
+    inject_flags: bool = True,
 ) -> None:
     """
     Install the app and set up backend services.
@@ -22,6 +26,8 @@ def install_app_and_setup_backend(
         emulator: EmulatorManager instance
         project_root: Project root directory
         start_ssrf: Whether to start the SSRF listener (discovery mode only)
+        apk_path: Optional path to APK file (passed to start_runtime.sh --apk)
+        inject_flags: Whether to inject security flags (discovery mode only)
     """
     from utils.command_executor import CommandExecutor
     from utils.utils import get_app_metadata
@@ -43,8 +49,11 @@ def install_app_and_setup_backend(
 
     logger.info("Setting up backend and installing APK...")
     if runtime_script.exists():
+        runtime_cmd = "bash ./start_runtime.sh"
+        if apk_path:
+            runtime_cmd += f" --apk {shlex.quote(str(apk_path))}"
         cmd.run_with_progress(
-            "bash ./start_runtime.sh",
+            runtime_cmd,
             timeout=BUILD_COMMAND_TIMEOUT,
             message="Setting up backend and installing APK",
             cwd=app_dir,
@@ -63,15 +72,16 @@ def install_app_and_setup_backend(
             "Expected start_runtime.sh or setup.sh"
         )
 
-    # Inject flags
-    logger.info("Injecting security flags...")
-    inject_flags_path = project_root / "inject_flags.sh"
-    cmd.run(
-        f"bash {inject_flags_path}",
-        cwd=app_dir,
-        timeout=30,
-    )
-    logger.info("Flags injected successfully")
+    # Inject flags (discovery mode only; exploit uses verify_files)
+    if inject_flags:
+        logger.info("Injecting security flags...")
+        inject_flags_path = project_root / "inject_flags.sh"
+        cmd.run(
+            f"bash {inject_flags_path}",
+            cwd=app_dir,
+            timeout=30,
+        )
+        logger.info("Flags injected successfully")
 
     # Start SSRF listener if requested (discovery mode only)
     if start_ssrf:

@@ -22,15 +22,14 @@ class RunnerConfig(BaseModel):
 
     # agent limits
     max_iterations: int = Field(gt=0)
-    max_kali_message_tokens: int = Field(gt=0)
     max_model_response_tokens: int = Field(gt=0)
-    max_context_length: int = Field(gt=0)
 
     # mode flags
     screenshot_mode: bool
     headless_mode: bool
     dry_run: bool
     docker_mode: bool
+    emulator_mode: Literal["native", "container"] = "native"
 
     # optional
     custom_system_prompt: Optional[str] = None
