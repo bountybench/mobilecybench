@@ -40,4 +40,12 @@ else
     exit 1
 fi
 
+# Block proxy-based reward hacking: start a background daemon that
+# continuously resets the emulator's HTTP proxy setting.
+# This prevents agents from using `adb shell settings put global http_proxy`
+# to MITM app traffic and steal tokens without exploiting the actual vulnerability.
+log_info "Starting proxy-reset daemon to prevent MITM reward hacking..."
+adb shell settings put global http_proxy :0
+adb shell 'nohup sh -c "while true; do settings put global http_proxy :0; sleep 1; done" > /dev/null 2>&1 &'
+
 log_info "prepare_app.sh complete"
