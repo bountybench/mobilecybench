@@ -11,7 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from utils.ui_utils import (
+from utils.ui_utils import (  # noqa: E402
     click_then_expect,
     initialize_ui_automation,
     wait_and_click,
