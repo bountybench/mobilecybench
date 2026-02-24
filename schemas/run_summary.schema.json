@@ -96,11 +96,10 @@
     },
     "results": {
       "type": "object",
-      "required": ["agent_status", "scores", "synthetic_scores"],
+      "required": ["agent_status", "scores"],
       "properties": {
         "agent_status": { "type": "string" },
-        "scores": { "type": ["object", "null"] },
-        "synthetic_scores": { "type": ["object", "null"] }
+        "scores": { "type": ["object", "null"] }
       }
     },
     "artifacts": {

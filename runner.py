@@ -16,22 +16,14 @@ from pathlib import Path
 from typing import Optional
 
 
-def _bootstrap_runner_session_id() -> str:
-    """Ensure runner process owns and exports a run/session ID."""
-    run_id = os.environ.get("MOBILECYBENCH_SESSION_ID")
-    if run_id:
-        return run_id
-    run_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    os.environ["MOBILECYBENCH_SESSION_ID"] = run_id
-    return run_id
-
-
-_bootstrap_runner_session_id()
-
 from models.config import RunnerConfig  # noqa: E402
 from utils.git_utils import ensure_app_submodule  # noqa: E402
 from utils.logger import logger, logger_manager  # noqa: E402
-from utils.run_artifacts import normalize_agent_result, write_run_summary  # noqa: E402
+from utils.run_artifacts import (
+    normalize_agent_result,
+    utc_now_iso,
+    write_run_summary,
+)  # noqa: E402
 from utils.time_tracker import time_tracker  # noqa: E402
 from workflows import DiscoveryWorkflow, ExploitWorkflow, Workflow  # noqa: E402
 
@@ -171,10 +163,6 @@ def _log_experiment_config(
     )
 
 
-def _utc_now_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).isoformat()
-
-
 def run(
     config: RunnerConfig,
     app_name: str,
@@ -200,7 +188,7 @@ def run(
 
     # Start experiment timing with the shared session ID
     run_id = logger_manager.get_session_id()
-    started_at = _utc_now_iso()
+    started_at = utc_now_iso()
     start_error_count = logger_manager.get_error_count()
     timing_start_idx = len(time_tracker.llm_calls)
     time_tracker.start_experiment(app_name, run_id=run_id)
@@ -304,7 +292,7 @@ def run(
             outcome=outcome,
             exit_reason=exit_reason,
             started_at=started_at,
-            ended_at=_utc_now_iso(),
+            ended_at=utc_now_iso(),
             start_error_count=start_error_count,
             timing_start_idx=timing_start_idx,
             timing_json_path=timing_json_path,

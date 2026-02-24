@@ -15,8 +15,18 @@ except Exception:  # pragma: no cover
     _jsonschema_validate = None
 
 
-def _utc_now_iso() -> str:
+def utc_now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+def jsonable(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, dict):
+        return {str(k): jsonable(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [jsonable(v) for v in value]
+    return str(value)
 
 
 def normalize_agent_result(result: Optional[dict]) -> dict:
@@ -55,7 +65,7 @@ def _run_git_value(project_root: Path, args: list[str]) -> str:
         return "unknown"
 
 
-def _load_schema(project_root: Path, schema_name: str) -> Optional[dict]:
+def load_schema(project_root: Path, schema_name: str) -> Optional[dict]:
     schema_path = project_root / "schemas" / schema_name
     if not schema_path.exists():
         return None
@@ -66,7 +76,7 @@ def _load_schema(project_root: Path, schema_name: str) -> Optional[dict]:
         return None
 
 
-def _validate_schema(
+def validate_schema(
     instance: dict, schema: Optional[dict], artifact_name: str
 ) -> None:
     if not schema or _jsonschema_validate is None:
@@ -113,7 +123,7 @@ def _materialize_conversation_fallback(
         return None
 
     conversation_path = logs_dir / "conversation.jsonl"
-    schema = _load_schema(project_root, "conversation_turn.schema.json")
+    schema = load_schema(project_root, "conversation_turn.schema.json")
     lines: list[str] = []
     for idx, entry in enumerate(conversation_history, start=1):
         if not isinstance(entry, dict):
@@ -125,7 +135,7 @@ def _materialize_conversation_fallback(
         event = {
             "run_id": run_id,
             "turn_number": idx,
-            "timestamp": _utc_now_iso(),
+            "timestamp": utc_now_iso(),
             "role": "assistant",
             "response_id": entry.get("response_id"),
             "assistant_text": entry.get("final_output"),
@@ -142,7 +152,7 @@ def _materialize_conversation_fallback(
             ],
             "status": "ok",
         }
-        _validate_schema(event, schema, "conversation turn")
+        validate_schema(event, schema, "conversation turn")
         lines.append(json.dumps(event, ensure_ascii=False))
 
     if not lines:
@@ -204,9 +214,6 @@ def write_run_summary(
         token_totals = {}
 
     scores = evaluation.get("scores") if isinstance(evaluation, dict) else {}
-    synthetic_scores = (
-        evaluation.get("synthetic_scores") if isinstance(evaluation, dict) else None
-    )
 
     run_summary = {
         "run_id": run_id,
@@ -258,7 +265,6 @@ def write_run_summary(
         "results": {
             "agent_status": str(run_result.get("status", "unknown")),
             "scores": scores,
-            "synthetic_scores": synthetic_scores,
         },
         "artifacts": {
             "log_file": logger_manager.get_log_file_name(),
@@ -289,9 +295,9 @@ def write_run_summary(
         "app": app_metadata,
     }
 
-    _validate_schema(
+    validate_schema(
         run_summary,
-        _load_schema(project_root, "run_summary.schema.json"),
+        load_schema(project_root, "run_summary.schema.json"),
         "run summary",
     )
     try:

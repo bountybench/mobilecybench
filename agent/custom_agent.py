@@ -17,6 +17,7 @@ from agent.prompts.prompts import (
 from agent.tools.runtime import ToolRuntime
 from utils.agent_utils import take_screenshot
 from utils.logger import agent_logger, logger_manager
+from utils.run_artifacts import jsonable, load_schema, utc_now_iso, validate_schema
 from utils.time_tracker import time_tracker
 from utils.token_tracker import TokenTracker
 
@@ -179,7 +180,6 @@ class CustomAgent:
             "agent_type": "custom",
             "status": "completed",
             "turns_taken": turns,
-            "turns": turns,
             "max_turns": self.max_iterations,
             "exploit_exists": exploit_exists,
             "final_message": final_message,
@@ -190,25 +190,8 @@ class CustomAgent:
             "unique_tools": sorted(self._unique_tools),
         }
 
-    def _jsonable(self, value):
-        if value is None or isinstance(value, (bool, int, float, str)):
-            return value
-        if isinstance(value, dict):
-            return {str(k): self._jsonable(v) for k, v in value.items()}
-        if isinstance(value, list):
-            return [self._jsonable(v) for v in value]
-        return str(value)
-
-    def _parse_arguments(self, raw_args):
-        if isinstance(raw_args, str):
-            try:
-                return json.loads(raw_args)
-            except Exception:
-                return raw_args
-        return raw_args
-
     def _format_observation_content(self, value):
-        normalized = self._jsonable(value)
+        normalized = jsonable(value)
         if isinstance(normalized, str):
             if len(normalized) <= self.OBSERVATION_MAX_CHARS:
                 return normalized, False
@@ -236,24 +219,12 @@ class CustomAgent:
             agent_logger.warning(f"Failed to append conversation turn JSONL: {e}")
 
     def _load_conversation_schema(self):
-        schema_path = (
-            Path(__file__).parent.parent / "schemas" / "conversation_turn.schema.json"
+        return load_schema(
+            Path(__file__).parent.parent, "conversation_turn.schema.json"
         )
-        if not schema_path.exists():
-            return None
-        try:
-            with open(schema_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return None
 
     def _validate_turn_event(self, event):
-        if not self._conversation_schema or _jsonschema_validate is None:
-            return
-        try:
-            _jsonschema_validate(instance=event, schema=self._conversation_schema)
-        except Exception as e:
-            agent_logger.warning("Conversation turn schema validation failed: %s", e)
+        validate_schema(event, self._conversation_schema, "conversation turn")
 
     def _archive_conversation(self):
         """Archive the conversation log to the agent log."""
@@ -395,7 +366,7 @@ class CustomAgent:
             turn_event = {
                 "run_id": logger_manager.get_session_id(),
                 "turn_number": turn + 1,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": utc_now_iso(),
                 "role": "assistant",
                 "response_id": resp.response_id,
                 "assistant_text": assistant_text,
@@ -418,9 +389,7 @@ class CustomAgent:
                         {
                             "tool_call_id": fc.call_id,
                             "name": fc.name,
-                            "arguments": self._jsonable(
-                                self._parse_arguments(fc.arguments)
-                            ),
+                            "arguments": jsonable(self._parse_arguments(fc.arguments)),
                         }
                     )
 
