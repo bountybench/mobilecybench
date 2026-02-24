@@ -43,11 +43,23 @@ fi
 
 # Ensure codebase supports -Ptb.fastRelease even after metadata commit checkout resets.
 APP_GRADLE="$SCRIPT_DIR/codebase/app-thunderbird/build.gradle.kts"
-if [[ -f "$APP_GRADLE" ]] && ! rg -q 'tb\.fastRelease' "$APP_GRADLE"; then
+if [[ -f "$APP_GRADLE" ]] && ! grep -q 'tb\.fastRelease' "$APP_GRADLE"; then
   echo "Patching app-thunderbird/build.gradle.kts to support tb.fastRelease..."
   perl -0777 -i -pe 's/(if \(testCoverageEnabled\) \{\n\s*apply\(plugin = "jacoco"\)\n\}\n)/$1val fastReleaseBuild = providers.gradleProperty("tb.fastRelease").orElse("false").get().toBoolean()\n\n/s' "$APP_GRADLE"
   perl -0777 -i -pe 's/(release\s*\{[^{}]*?isMinifyEnabled\s*=\s*)true/$1!fastReleaseBuild/s' "$APP_GRADLE"
   perl -0777 -i -pe 's/(release\s*\{[^{}]*?isShrinkResources\s*=\s*)true/$1!fastReleaseBuild/s' "$APP_GRADLE"
+fi
+
+# Extra CI speed-up: reduce locale packaging scope in fast mode.
+if [[ "$TB_FAST_RELEASE" == "true" ]] && [[ -f "$APP_GRADLE" ]] && ! grep -q 'tbFastReleaseLocaleOptimized' "$APP_GRADLE"; then
+  echo "Applying fast-release locale optimization..."
+  perl -0777 -i -pe 's/localeFilters \+= listOf\([\s\S]*?\)/localeFilters += listOf("en") \/\/ tbFastReleaseLocaleOptimized/s' "$APP_GRADLE"
+fi
+
+# Largest speed lever: disable all variants except fossRelease in fast mode.
+if [[ "$TB_FAST_RELEASE" == "true" ]] && [[ -f "$APP_GRADLE" ]] && ! grep -q 'tbFastReleaseVariantPruned' "$APP_GRADLE"; then
+  echo "Applying fast-release variant pruning (keep only fossRelease)..."
+  perl -0777 -i -pe 's/androidComponents \{\n/androidComponents {\n    beforeVariants { variantBuilder ->\n        if (fastReleaseBuild) {\n            val buildType = variantBuilder.buildType ?: \"\"\n            val flavors = variantBuilder.productFlavors.associate { it.first to it.second }\n            val appFlavor = flavors[\"app\"] ?: \"\"\n            val keep = buildType == \"release\" && appFlavor == \"foss\"\n            variantBuilder.enable = keep \/\/ tbFastReleaseVariantPruned\n        }\n    }\n/s' "$APP_GRADLE"
 fi
 
 # Build only one variant to avoid building both foss and full (faster + deterministic).
