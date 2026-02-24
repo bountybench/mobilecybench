@@ -494,11 +494,13 @@ def _set_first_password_field(d, value: str):
 
 
 def _is_setup_entry_visible(d) -> bool:
+    activity = _current_activity_name(d).lower()
     return (
         _id(d, "account_setup_email_address_input").exists
         or _id(d, "AccountAutoDiscoveryContent").exists
         or _id(d, "IncomingServerSettingsContent").exists
         or _id(d, "OutgoingServerSettingsContent").exists
+        or "accountsetupcomposition" in activity
     )
 
 

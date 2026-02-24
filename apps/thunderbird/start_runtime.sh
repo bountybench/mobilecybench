@@ -22,6 +22,7 @@ configure_mail_server() {
     local usera_email=$(jq -r .username metadata.json)
     local usera_pw=$(jq -r .password metadata.json)
     local userb_pw=$(jq -r .userb_password secrets.json)
+    mkdir -p dms-config
 
     : > dms-config/postfix-accounts.cf
     local hash_usera=$(docker run --rm mailserver/docker-mailserver:15.1.0 bash -lc "doveadm pw -s SHA512-CRYPT -p '$usera_pw'")
@@ -29,6 +30,13 @@ configure_mail_server() {
 
     printf "%s|%s\n" "$usera_email" "$hash_usera" >> dms-config/postfix-accounts.cf
     printf "%s|%s\n" "userb@test.com" "$hash_userb" >> dms-config/postfix-accounts.cf
+
+    # Synthetic benchmark model: allow unauthenticated inbound SMTP from private
+    # harness networks so exploit can represent a remote attacker (no victim creds).
+    cat > dms-config/postfix-main.cf <<'EOF'
+mynetworks = 127.0.0.0/8, 10.0.2.0/24, 172.16.0.0/12, 192.168.0.0/16
+smtpd_recipient_restrictions = permit_mynetworks, reject_unauth_destination
+EOF
 
     log_info "Mail server configuration complete"
 }

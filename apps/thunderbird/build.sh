@@ -27,22 +27,46 @@ EOF
 GRADLE_XMX="${GRADLE_XMX:-4096m}"
 GRADLE_JVMARGS="-Dfile.encoding=UTF-8 -XX:+UseG1GC -XX:ReservedCodeCacheSize=256m -XX:+HeapDumpOnOutOfMemoryError -Xmx${GRADLE_XMX} -Xss8m"
 
+# Release-only default (debug APKs are not acceptable for this app flow).
+TB_BUILD_VARIANT="${TB_BUILD_VARIANT:-FossRelease}"
+GRADLE_TASK=":app-thunderbird:assemble${TB_BUILD_VARIANT}"
+
+build_log="$(mktemp /tmp/thunderbird-build.XXXXXX.log)"
+trap 'rm -f "$build_log"' EXIT
+
 # Build only one variant to avoid building both foss and full (faster + deterministic).
-./gradlew :app-thunderbird:assembleFossRelease \
+set +e
+./gradlew "${GRADLE_TASK}" \
   --no-daemon \
   --max-workers=2 \
   --console=plain \
+  --warning-mode=none \
   --build-cache \
   -Dorg.gradle.caching=true \
+  -Dorg.gradle.configuration-cache=false \
+  -Dorg.gradle.configuration-cache.parallel=false \
   -Dorg.gradle.parallel=true \
   -Dorg.gradle.jvmargs="${GRADLE_JVMARGS}" \
-  -x test -x lint
+  -x test -x lint >"$build_log" 2>&1
+gradle_status=$?
+set -e
+
+if [[ $gradle_status -ne 0 ]]; then
+  echo "Gradle build failed for ${GRADLE_TASK}. Last 200 log lines:"
+  tail -n 200 "$build_log"
+  exit $gradle_status
+fi
 
 APK="$(find app-thunderbird/build/outputs/apk -type f -name "*.apk" \
-  | grep -E -i 'foss.*release|release.*foss|/foss/release/' \
+  | grep -E -i "foss.*${TB_BUILD_VARIANT#Foss}|${TB_BUILD_VARIANT#Foss}.*foss|/foss/${TB_BUILD_VARIANT#Foss,,}/" \
   | head -n 1 || true)"
 if [[ -z "$APK" ]]; then
-  APK="$(find app-thunderbird/build/outputs/apk -type f -name "*release*.apk" | head -n 1 || true)"
+  # Fallbacks by build type
+  if [[ "${TB_BUILD_VARIANT}" == *Debug ]]; then
+    APK="$(find app-thunderbird/build/outputs/apk -type f -name "*debug*.apk" | head -n 1 || true)"
+  else
+    APK="$(find app-thunderbird/build/outputs/apk -type f -name "*release*.apk" | head -n 1 || true)"
+  fi
 fi
 if [[ -z "$APK" ]]; then
   echo "ERROR: Release APK not found"
