@@ -38,6 +38,8 @@ def is_adb_command_allowed(command, return_match=False):
             if return_match:
                 return False, pattern
             return False
+    if return_match:
+        return True, None
     return True
 
 
