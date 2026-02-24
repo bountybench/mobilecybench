@@ -65,7 +65,7 @@ class LoggerManager:
     def configure(self, config: dict) -> None:
         """(Re)configure the logger manager with new settings."""
         self._config = config
-        
+
         # Reset handlers if reconfiguring
         logger = logging.getLogger(self._name)
         for handler in logger.handlers[:]:
@@ -185,8 +185,8 @@ class LoggerManager:
         name = f"{self._name}.Agent"
         self._agent_logger = logging.getLogger(name)
         self._agent_logger.setLevel(self._log_level)
-        self._agent_logger.propagate = True # Allow propagation to main logger handlers
-        
+        self._agent_logger.propagate = True  # Allow propagation to main logger handlers
+
         # Clear existing handlers
         for h in self._agent_logger.handlers[:]:
             self._agent_logger.removeHandler(h)
@@ -210,7 +210,7 @@ class LoggerManager:
 
     def get_agent_logger(self) -> logging.Logger:
         if self._agent_logger is None:
-             self._agent_logger = logging.getLogger(f"{self._name}.Agent")
+            self._agent_logger = logging.getLogger(f"{self._name}.Agent")
         return self._agent_logger
 
     def get_log_file_name(self) -> str:
@@ -235,7 +235,7 @@ class LoggerManager:
             latest_link = self._logs_dir.parent / "latest"
             if latest_link.exists() or latest_link.is_symlink():
                 latest_link.unlink()
-            
+
             # Use relative path for the symlink to keep it portable
             latest_link.symlink_to(self._logs_dir.name, target_is_directory=True)
         except Exception as e:
@@ -329,4 +329,3 @@ def get_logger_manager(config: dict = None) -> LoggerManager:
 logger_manager = get_logger_manager()
 logger = logger_manager.get_logger()
 agent_logger = logger_manager.get_agent_logger()
-

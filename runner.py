@@ -227,7 +227,9 @@ def run(
 
             logger.info("Starting agent execution...")
             run_result = normalize_agent_result(workflow.run_agent())
-            logger.info(f"Agent execution completed: {run_result.get('status', 'unknown')}")
+            logger.info(
+                f"Agent execution completed: {run_result.get('status', 'unknown')}"
+            )
 
             # Save agent artifacts (agent_exploit, agent_output) while container is alive
             workflow.save_artifacts(logger_manager.get_logs_dir())
@@ -264,13 +266,13 @@ def run(
 
         # Always cleanup resources (emulator, containers, restore APKs)
         logger.info("Cleaning up resources...")
-        
+
         # Capture Logcat before stopping emulator
         if workflow.emulator:
             try:
                 logcat_path = logger_manager.get_logs_dir() / "android_system.log"
                 logger.info(f"Capturing Android Logcat to {logcat_path}...")
-                
+
                 # Use subprocess directly since emulator.execute_adb_command doesn't exist
                 with open(logcat_path, "w") as f:
                     subprocess.run(["adb", "logcat", "-d"], stdout=f, timeout=10)

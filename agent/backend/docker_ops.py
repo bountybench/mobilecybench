@@ -69,7 +69,7 @@ def check_shell_script(filepath):
 
     is_allowed = len(violations) == 0
     log_path = logger_manager.get_logs_dir() / "exploit_sh_verify.log"
-    
+
     with open(log_path, "w") as log_file:
         log_file.write("=" * 80 + "\n")
         log_file.write(f"ALLOWED: {is_allowed}\n")

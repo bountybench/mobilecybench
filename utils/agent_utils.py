@@ -17,9 +17,7 @@ def encode_image(image_data: bytes) -> str:
     return base64.b64encode(image_data).decode("utf-8")
 
 
-def take_screenshot(
-    compress_level: int = 6, max_width: int = 300
-):
+def take_screenshot(compress_level: int = 6, max_width: int = 300):
     """
     Takes a compressed screenshot of the emulator and returns it as base64 encoded image data.
 
@@ -31,6 +29,7 @@ def take_screenshot(
         dict: Contains success status, base64 encoded image data, and metadata
     """
     from utils.logger import logger_manager
+
     logger.info("Capturing compressed screenshot...")
 
     try:
@@ -78,15 +77,15 @@ def take_screenshot(
         if logs_dir:
             screenshots_dir = logs_dir / "screenshots"
             screenshots_dir.mkdir(exist_ok=True, parents=True)
-            
+
             # Use timestamp for uniqueness within the turn
             timestamp = datetime.now().strftime("%H%M%S_%f")
             screenshot_filename = f"capture_{timestamp}.png"
             screenshot_path = screenshots_dir / screenshot_filename
-            
+
             with open(screenshot_path, "wb") as f:
                 f.write(image_bytes)
-            
+
             result_data["file_path"] = str(screenshot_path)
 
         logger.info(f"✓ Screenshot success; {len(image_bytes)} bytes")

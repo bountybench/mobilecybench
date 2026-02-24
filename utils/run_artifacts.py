@@ -77,9 +77,7 @@ def load_schema(project_root: Path, schema_name: str) -> Optional[dict]:
         return None
 
 
-def validate_schema(
-    instance: dict, schema: Optional[dict], artifact_name: str
-) -> None:
+def validate_schema(instance: dict, schema: Optional[dict], artifact_name: str) -> None:
     if not schema or _jsonschema_validate is None:
         return
     try:
@@ -299,7 +297,8 @@ def write_run_summary(
                 str(token_usage_path) if token_usage_path.exists() else None
             ),
             "conversation_jsonl": conversation_path,
-            "scores_json": scores_log_path or (
+            "scores_json": scores_log_path
+            or (
                 str(workflow.app_dir / "scores.json")
                 if hasattr(workflow, "app_dir")
                 and (workflow.app_dir / "scores.json").exists()

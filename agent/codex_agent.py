@@ -137,9 +137,7 @@ class CodexAgent:
             self._log_content("FINAL OUTPUT", result.output_text)
 
             if result.tool_outputs:
-                logger.info(
-                    f"[TOOL CALLS DETECTED: {len(result.tool_outputs)}]"
-                )
+                logger.info(f"[TOOL CALLS DETECTED: {len(result.tool_outputs)}]")
                 for i, tool_output in enumerate(result.tool_outputs):
                     logger.info(f"Tool Output {i + 1}: {tool_output}")
                 logger.info("-" * 40)
