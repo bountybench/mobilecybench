@@ -272,16 +272,23 @@ class EmulatorManager:
         )
         time.sleep(3)  # Brief wait for adbd to restart in TCP mode
 
-        # Phase 3: Connect from the orchestrator via the container's network address.
-        logger.info("Connecting to emulator-container:5555 from orchestrator...")
+        # Phase 3: Get container IP and connect from orchestrator.
+        # Docker container name DNS only resolves inside other containers on
+        # shared_net, not from the DinD host where the orchestrator runs.
+        # Use the container's IP address directly instead.
+        self.emulator_container.reload()
+        networks = self.emulator_container.attrs['NetworkSettings']['Networks']
+        container_ip = networks['shared_net']['IPAddress']
+        logger.info(f"Emulator container IP on shared_net: {container_ip}")
+
         for attempt in range(10):
             result = subprocess.run(
-                ["adb", "connect", "emulator-container:5555"],
+                ["adb", "connect", f"{container_ip}:5555"],
                 capture_output=True,
                 text=True,
             )
             if "connected" in result.stdout.lower():
-                logger.info("ADB connected to emulator-container:5555")
+                logger.info(f"ADB connected to {container_ip}:5555")
                 break
             time.sleep(2)
         else:
@@ -290,7 +297,7 @@ class EmulatorManager:
                 "Timed out waiting for ADB connection to emulator container"
             )
 
-        self.device_id = "emulator-container:5555"
+        self.device_id = f"{container_ip}:5555"
         self.state = EmulatorState.RUNNING
         logger.info(f"Emulator container running, device_id={self.device_id}")
 
