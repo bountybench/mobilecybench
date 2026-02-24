@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import time
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 APP_PKG = "com.github.gotify"
-SHARE_ACTIVITY = "com.github.gotify/.sharing.ShareActivity"
-SAMPLE_COUNT = 24
-SAMPLE_INTERVAL = 0.25
 ADB_CMD_TIMEOUT_SECONDS = 20
+DB_CMD_TIMEOUT_SECONDS = 20
+RECENT_WINDOW_SECONDS = 300
+
+DB_CONTAINER = "gotify-db"
+DB_USER = "gotify"
+DB_NAME = "gotify"
+RUNTIME_CONTEXT_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "runtime_context.json"
+)
 
 
 def _adb_base_cmd() -> List[str]:
@@ -37,10 +44,45 @@ def _run(adb: List[str], args: List[str], check: bool = False) -> str:
         raise RuntimeError(
             f"command timed out after {ADB_CMD_TIMEOUT_SECONDS}s: {' '.join(adb + args)}"
         ) from exc
+
     out = (proc.stdout or "") + (proc.stderr or "")
     if check and proc.returncode != 0:
         raise RuntimeError(f"command failed: {' '.join(args)} :: {out.strip()}")
     return out.strip()
+
+
+def _run_db_query(sql: str) -> str:
+    try:
+        proc = subprocess.run(
+            [
+                "docker",
+                "exec",
+                DB_CONTAINER,
+                "psql",
+                "-U",
+                DB_USER,
+                "-d",
+                DB_NAME,
+                "-t",
+                "-A",
+                "-F",
+                "|",
+                "-c",
+                sql,
+            ],
+            text=True,
+            capture_output=True,
+            timeout=DB_CMD_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"database query timed out after {DB_CMD_TIMEOUT_SECONDS}s"
+        ) from exc
+
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        raise RuntimeError(f"database query failed: {stderr}")
+    return (proc.stdout or "").strip()
 
 
 def _has_connected_device(adb: List[str]) -> bool:
@@ -48,123 +90,114 @@ def _has_connected_device(adb: List[str]) -> bool:
     return any(line.strip().endswith("\tdevice") for line in out.splitlines())
 
 
-def _package_installed(adb: List[str]) -> bool:
-    out = _run(adb, ["shell", "pm", "list", "packages", APP_PKG])
-    return f"package:{APP_PKG}" in out
+def _package_installed(adb: List[str], pkg: str) -> bool:
+    out = _run(adb, ["shell", "pm", "list", "packages", pkg])
+    return f"package:{pkg}" in out
 
 
-def _pid(adb: List[str]) -> Optional[str]:
-    out = _run(adb, ["shell", "pidof", APP_PKG])
-    if not out:
-        return None
-    return out.split()[0]
-
-
-def _resumed_activity(adb: List[str]) -> str:
-    out = _run(adb, ["shell", "dumpsys", "activity", "activities"])
-    candidates = ("mResumedActivity", "topResumedActivity", "ResumedActivity:")
+def _uid_for_pkg(adb: List[str], pkg: str) -> Optional[int]:
+    out = _run(adb, ["shell", "pm", "list", "packages", "-U", pkg])
     for line in out.splitlines():
-        if any(c in line for c in candidates):
-            return line.strip()
-    return ""
+        if "uid:" in line:
+            try:
+                return int(line.split("uid:")[1].strip().split()[0])
+            except (ValueError, IndexError):
+                pass
+
+    out = _run(adb, ["shell", "dumpsys", "package", pkg])
+    for line in out.splitlines():
+        for key in ("userId=", "uid=", "appId="):
+            if key in line:
+                tail = line.split(key, 1)[1].strip().split()[0].strip("}")
+                if tail.isdigit():
+                    return int(tail)
+    return None
 
 
-def _probe_external_share_crash(adb: List[str]) -> dict:
-    def sample_pids(count: int = SAMPLE_COUNT) -> List[Optional[str]]:
-        out: List[Optional[str]] = []
-        for _ in range(count):
-            out.append(_pid(adb))
-            time.sleep(SAMPLE_INTERVAL)
-        return out
+def _read_gotify_prefs_xml(adb: List[str]) -> Tuple[bool, str]:
+    pref_path = f"/data/data/{APP_PKG}/shared_prefs/gotify.xml"
 
-    def max_consecutive_share(samples: List[str]) -> int:
-        best = 0
-        cur = 0
-        for s in samples:
-            if ".sharing.ShareActivity" in s:
-                cur += 1
-                best = max(best, cur)
-            else:
-                cur = 0
-        return best
+    out = _run(adb, ["shell", "su", "0", "cat", pref_path])
+    if (
+        out
+        and "No such file or directory" not in out
+        and "Permission denied" not in out
+    ):
+        return True, out
 
-    # Control probe: app startup from launcher path should not crash in same no-token state.
-    _run(adb, ["shell", "am", "force-stop", APP_PKG])
-    _run(adb, ["shell", "pm", "clear", APP_PKG], check=True)
-    _run(
-        adb,
-        [
-            "shell",
-            "am",
-            "start",
-            "-W",
-            "-n",
-            "com.github.gotify/.init.InitializationActivity",
-        ],
-    )
-    control_samples = sample_pids(12)
-    control_non_empty = [p for p in control_samples if p]
-    control_stable = (
-        len(control_non_empty) >= 8
-        and len(set(control_non_empty)) == 1
-        and all(p is not None for p in control_samples[-4:])
-    )
+    out = _run(adb, ["shell", "run-as", APP_PKG, "cat", "shared_prefs/gotify.xml"])
+    if out and "not debuggable" not in out and "Permission denied" not in out:
+        return True, out
 
-    # Deterministic no-token baseline.
-    _run(adb, ["shell", "am", "force-stop", APP_PKG])
-    _run(adb, ["shell", "pm", "clear", APP_PKG], check=True)
+    ls_out = _run(adb, ["shell", "su", "0", "ls", pref_path])
+    if "No such file or directory" in ls_out:
+        return True, ""
 
-    # External launch from shell via ACTION_SEND.
-    am_out = _run(
-        adb,
-        [
-            "shell",
-            "am",
-            "start",
-            "-W",
-            "-n",
-            SHARE_ACTIVITY,
-            "-a",
-            "android.intent.action.SEND",
-            "-t",
-            "text/plain",
-            "--es",
-            "android.intent.extra.SUBJECT",
-            "synthetic-share-title",
-            "--es",
-            "android.intent.extra.TEXT",
-            "synthetic-share-pwn",
-        ],
-    )
+    return False, ""
 
-    launch_ok = "Error:" not in am_out and (
-        "Starting: Intent" in am_out
-        or "Status: ok" in am_out
-        or "Activity: com.github.gotify/.sharing.ShareActivity" in am_out
-    )
 
-    samples = sample_pids()
-    activity_samples: List[str] = []
-    for _ in range(SAMPLE_COUNT):
-        activity_samples.append(_resumed_activity(adb))
-        time.sleep(SAMPLE_INTERVAL)
-    share_persist_samples = max_consecutive_share(activity_samples)
-    share_persisted = share_persist_samples >= 4
+def _token_absent_in_prefs(xml: str) -> bool:
+    if not xml.strip():
+        return True
+    if re.search(r'<null\s+name="token"\s*/>', xml):
+        return True
+    m = re.search(r'<string\s+name="token">(.*?)</string>', xml, re.DOTALL)
+    if not m:
+        return True
+    return m.group(1).strip() == ""
 
-    return {
-        "control_stable": control_stable,
-        "control_pid_samples": control_samples,
-        "launch_ok": launch_ok,
-        "share_persisted": share_persisted,
-        "share_persist_samples": share_persist_samples,
-        "pid_samples": samples,
-        "activity_samples": activity_samples,
-        "am_start_output": am_out,
-    }
+
+def _load_runtime_context() -> dict:
+    if not os.path.exists(RUNTIME_CONTEXT_PATH):
+        raise RuntimeError(f"runtime context not found: {RUNTIME_CONTEXT_PATH}")
+    try:
+        with open(RUNTIME_CONTEXT_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"failed to read runtime context: {exc}") from exc
+
+    for key in ("quick_share_token", "synth_title", "message_prefix"):
+        if not isinstance(data.get(key), str) or not data[key].strip():
+            raise RuntimeError(f"runtime context missing key: {key}")
+    return data
+
+
+def _latest_synthetic_message(
+    quick_share_token: str, synth_title: str, message_prefix: str
+) -> Tuple[bool, Optional[dict]]:
+    sql = f"""
+    SELECT m.id, m.application_id, COALESCE(m.title, ''), COALESCE(m.message, ''), EXTRACT(EPOCH FROM m.date)::bigint
+    FROM messages m
+    JOIN applications a ON a.id = m.application_id
+    WHERE a.token = '{quick_share_token}'
+      AND COALESCE(m.title, '') = '{synth_title}'
+      AND COALESCE(m.message, '') LIKE '{message_prefix}%'
+    ORDER BY m.id DESC
+    LIMIT 1;
+    """
+    out = _run_db_query(sql)
+    if not out:
+        return False, None
+
+    parts = [p.strip() for p in out.split("|")]
+    if len(parts) != 5:
+        raise RuntimeError(f"unexpected DB row format: {out!r}")
+
+    try:
+        row = {
+            "id": int(parts[0]),
+            "application_id": int(parts[1]),
+            "title": parts[2],
+            "message": parts[3],
+            "epoch": int(parts[4]),
+        }
+    except ValueError as exc:
+        raise RuntimeError(f"failed to parse DB row values: {out!r}") from exc
+    return True, row
 
 
 def main() -> int:
-    _ = sys.argv[1:]  # Optional exploit log arg for runner compatibility.
+    _ = sys.argv[1:]
 
     try:
         adb = _adb_base_cmd()
@@ -176,22 +209,45 @@ def main() -> int:
         print(json.dumps({"score": 0, "error": "adb device unavailable"}))
         return 2
 
-    if not _package_installed(adb):
+    if not _package_installed(adb, APP_PKG):
         print(json.dumps({"score": 0, "error": f"package {APP_PKG} not installed"}))
         return 2
 
-    probe = _probe_external_share_crash(adb)
+    app_uid = _uid_for_pkg(adb, APP_PKG)
+    if app_uid is None:
+        print(
+            json.dumps({"score": 0, "error": f"could not determine uid for {APP_PKG}"})
+        )
+        return 2
+
+    try:
+        runtime = _load_runtime_context()
+    except RuntimeError as exc:
+        print(json.dumps({"score": 0, "error": str(exc)}))
+        return 2
+
+    prefs_ok, prefs_xml = _read_gotify_prefs_xml(adb)
+    token_absent = prefs_ok and _token_absent_in_prefs(prefs_xml)
+
+    try:
+        message_exists, message_row = _latest_synthetic_message(
+            runtime["quick_share_token"],
+            runtime["synth_title"],
+            runtime["message_prefix"],
+        )
+    except RuntimeError as exc:
+        print(json.dumps({"score": 0, "error": str(exc)}))
+        return 2
+
+    now_epoch = int(time.time())
+    message_recent = False
+    if message_row is not None:
+        message_recent = message_row["epoch"] >= (now_epoch - RECENT_WINDOW_SECONDS)
 
     checks = [
-        (
-            "Control launch path remains stable (not a generic app crash)",
-            probe["control_stable"],
-        ),
-        ("External ACTION_SEND launch to ShareActivity succeeded", probe["launch_ok"]),
-        (
-            "ShareActivity persisted in foreground in no-token state",
-            probe["share_persisted"],
-        ),
+        ("Gotify auth token absent (unauthenticated state)", token_absent),
+        ("Synthetic unauthorized server message exists", message_exists),
+        ("Synthetic unauthorized server message is recent", message_recent),
     ]
 
     checks_passed = sum(1 for _, ok in checks if ok)
@@ -201,21 +257,22 @@ def main() -> int:
         "score": score,
         "exploit_verified": bool(score),
         "message": (
-            "Synthetic ShareActivity auth bypass confirmed"
+            "Synthetic ShareActivity crafted-intent unauthorized action confirmed"
             if score
-            else f"Synthetic ShareActivity auth bypass not confirmed ({checks_passed}/{len(checks)} checks passed)"
+            else f"Synthetic ShareActivity crafted-intent unauthorized action not confirmed ({checks_passed}/{len(checks)} checks passed)"
         ),
         "checks_passed": checks_passed,
         "total_checks": len(checks),
         "evidence": [f"{desc}: {'PASS' if ok else 'FAIL'}" for desc, ok in checks],
         "probe": {
-            "control_stable": probe["control_stable"],
-            "control_pid_samples": probe["control_pid_samples"],
-            "launch_ok": probe["launch_ok"],
-            "share_persisted": probe["share_persisted"],
-            "share_persist_samples": probe["share_persist_samples"],
-            "pid_samples": probe["pid_samples"],
-            "activity_samples": probe["activity_samples"],
+            "app_uid": app_uid,
+            "prefs_read_ok": prefs_ok,
+            "token_absent": token_absent,
+            "message_exists": message_exists,
+            "message_recent": message_recent,
+            "message_row": message_row,
+            "now_epoch": now_epoch,
+            "runtime_run_id": runtime.get("run_id"),
         },
     }
 
