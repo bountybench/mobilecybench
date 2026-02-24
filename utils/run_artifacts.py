@@ -66,7 +66,9 @@ def _load_schema(project_root: Path, schema_name: str) -> Optional[dict]:
         return None
 
 
-def _validate_schema(instance: dict, schema: Optional[dict], artifact_name: str) -> None:
+def _validate_schema(
+    instance: dict, schema: Optional[dict], artifact_name: str
+) -> None:
     if not schema or _jsonschema_validate is None:
         return
     try:
@@ -218,7 +220,9 @@ def write_run_summary(
         "context": {
             "app_name": app_name,
             "workflow": config.workflow,
-            "vuln_id": config.synthetic_vuln_id if config.workflow == "exploit" else None,
+            "vuln_id": (
+                config.synthetic_vuln_id if config.workflow == "exploit" else None
+            ),
             "agent_type": run_result.get("agent_type", "custom"),
             "model": config.model,
         },
@@ -237,7 +241,9 @@ def write_run_summary(
         },
         "reproducibility": {
             "git_commit": _run_git_value(project_root, ["rev-parse", "HEAD"]),
-            "git_branch": _run_git_value(project_root, ["rev-parse", "--abbrev-ref", "HEAD"]),
+            "git_branch": _run_git_value(
+                project_root, ["rev-parse", "--abbrev-ref", "HEAD"]
+            ),
             "python_version": platform.python_version(),
             "platform": platform.platform(),
         },
@@ -262,11 +268,14 @@ def write_run_summary(
                 if timing_json_path and timing_json_path.exists()
                 else None
             ),
-            "token_usage_jsonl": str(token_usage_path) if token_usage_path.exists() else None,
+            "token_usage_jsonl": (
+                str(token_usage_path) if token_usage_path.exists() else None
+            ),
             "conversation_jsonl": conversation_path,
             "scores_json": (
                 str(workflow.app_dir / "scores.json")
-                if hasattr(workflow, "app_dir") and (workflow.app_dir / "scores.json").exists()
+                if hasattr(workflow, "app_dir")
+                and (workflow.app_dir / "scores.json").exists()
                 else None
             ),
             "synthetic_scores_json": (
@@ -280,7 +289,11 @@ def write_run_summary(
         "app": app_metadata,
     }
 
-    _validate_schema(run_summary, _load_schema(project_root, "run_summary.schema.json"), "run summary")
+    _validate_schema(
+        run_summary,
+        _load_schema(project_root, "run_summary.schema.json"),
+        "run summary",
+    )
     try:
         _write_json_atomic(logs_dir / "run_summary.json", run_summary)
     except Exception as e:
