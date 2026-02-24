@@ -179,6 +179,7 @@ class CustomAgent:
             "agent_type": "custom",
             "status": "completed",
             "turns_taken": turns,
+            "turns": turns,
             "max_turns": self.max_iterations,
             "exploit_exists": exploit_exists,
             "final_message": final_message,

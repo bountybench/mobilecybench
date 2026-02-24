@@ -184,13 +184,18 @@ class CodexAgent:
         result = {
             "agent_type": "codex",
             "status": status,
+            "turns_taken": turns,
             "turns": turns,
+            "tool_call_count": 0,
+            "unique_tools": [],
+            "token_totals": {},
             "final_message": (
                 self.conversation_history[-1]["final_output"]
                 if self.conversation_history and status == "completed"
                 else None
             ),
             "log_file": self.log_file,
+            "conversation_file": None,
             "conversation_history": self.conversation_history,
         }
 
@@ -226,9 +231,14 @@ class CodexAgent:
         return {
             "agent_type": "codex",
             "status": "dry_run_completed",
+            "turns_taken": 0,
             "turns": 0,
+            "tool_call_count": 0,
+            "unique_tools": [],
+            "token_totals": {},
             "final_message": f"DRY RUN: Codex Agent configured for {self.app_name}",
             "log_file": self.log_file,
+            "conversation_file": None,
             "app_name": self.app_name,
         }
 
