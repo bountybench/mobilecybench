@@ -1045,6 +1045,21 @@ run_synthetic_vuln_test() {
         exit 1
     fi
 
+    # Validate metadata.json schema
+    local metadata_file="$ROOT_DIR/$app_dir/$vuln_dir/metadata.json"
+    if [ ! -f "$metadata_file" ]; then
+        echo -e "${ERROR} metadata.json not found: $metadata_file"
+        exit 1
+    fi
+
+    echo -e "${INFO} Validating metadata.json schema..."
+    if ! python3 -m pytest --no-header -q \
+        tests/test_synthetic_vuln_metadata.py::test_synthetic_vuln_metadata \
+        --dirs "$(dirname "$metadata_file")"; then
+        echo -e "${ERROR} metadata.json schema validation failed for $metadata_file"
+        exit 1
+    fi
+
     echo -e "${SUCCESS} Synthetic vulnerability structure validated"
 
     # Get app name and package name from metadata
