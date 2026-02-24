@@ -70,6 +70,12 @@ jobs:
             echo "EOF" >> $GITHUB_OUTPUT
           fi
 
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip -q
+          pip install -r requirements.txt -q
+          pip install -e .
+
       - name: Build job matrices
         if: steps.modified-dirs.outputs.should_exit != 'true'
         id: build-matrices
@@ -252,12 +258,6 @@ jobs:
 
           echo "apk_jobs=$apk_jobs" >> "$GITHUB_OUTPUT"
           echo "test_jobs=$test_jobs" >> "$GITHUB_OUTPUT"
-
-      - name: Install test dependencies
-        run: |
-          python -m pip install --upgrade pip -q
-          pip install -r requirements.txt -q
-          pip install -e .
 
       - name: Run unit tests
         if: steps.modified-dirs.outputs.has_non_app_changes == 'true'
