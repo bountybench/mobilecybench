@@ -197,7 +197,7 @@ verify_shared_net_connectivity() {
             echo "  Testing connection to $host:$port via shared_net..."
             docker run --rm --network=shared_net alpine:latest \
                 sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
-            
+
             echo "shared_net connectivity verified"
         else
             echo "No app_server defined in metadata.json, skipping connectivity check"
@@ -1294,6 +1294,14 @@ start_emulator_and_adb() {
         done
     else
         echo -e "${SUCCESS} ADB already configured correctly"
+    fi
+
+    # Inject system CA so apps trust local HTTPS backends
+    echo -e "${INFO} Injecting system CA certificate..."
+    if [ -f "${ROOT_DIR}/utils/inject_system_ca.sh" ]; then
+        bash "${ROOT_DIR}/utils/inject_system_ca.sh" || echo -e "${WARNING} CA injection failed"
+    else
+        echo -e "${WARNING} inject_system_ca.sh not found, skipping CA injection"
     fi
 }
 

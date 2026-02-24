@@ -661,7 +661,7 @@ jobs:
                 echo "  Testing connection to $host:$port via shared_net..."
                 docker run --rm --network=shared_net alpine:latest \
                   sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
-                
+
                 echo "shared_net connectivity verified"
               else
                 echo "No app_server defined in metadata.json, skipping connectivity check"
@@ -1418,6 +1418,7 @@ jobs:
             adb kill-server && adb -a -P 5037 start-server
             adb wait-for-device
             utils/android_emulator_ready.sh --remount
+            utils/inject_system_ca.sh
             ./test_checks.sh
 
       - name: Run emulator test with action (other test types)
@@ -1438,6 +1439,7 @@ jobs:
             adb kill-server && adb -a -P 5037 start-server
             adb wait-for-device
             utils/android_emulator_ready.sh
+            utils/inject_system_ca.sh
             ./test_checks.sh
 
       - name: Display disk space after tests

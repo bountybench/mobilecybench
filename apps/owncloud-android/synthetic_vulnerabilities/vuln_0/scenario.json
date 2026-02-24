@@ -8,7 +8,7 @@
     "attacker_username": "attacker"
   },
   "environment": {
-    "target_server": "http://10.0.2.2:8080",
+    "target_server": "https://10.0.2.2:8080",
     "callback_url": "oc://android.owncloud.com",
     "auth_code_api": "http://attacker_helper:8081/generate_attacker_auth_code"
   },
