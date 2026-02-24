@@ -67,10 +67,11 @@
     },
     "reproducibility": {
       "type": "object",
-      "required": ["git_commit", "git_branch", "python_version", "platform"],
+      "required": ["git_commit", "git_branch", "git_dirty", "python_version", "platform"],
       "properties": {
         "git_commit": { "type": "string" },
         "git_branch": { "type": "string" },
+        "git_dirty": { "type": "boolean" },
         "python_version": { "type": "string" },
         "platform": { "type": "string" }
       }
@@ -104,20 +105,20 @@
     },
     "artifacts": {
       "type": "object",
-      "required": [
-        "log_file",
-        "agent_log_file",
-        "timing_json",
-        "token_usage_jsonl",
-        "conversation_jsonl",
-        "logs_dir"
-      ],
+            "required": [
+              "log_file",
+              "agent_log_file",
+              "token_usage_jsonl",
+              "conversation_jsonl",
+              "logs_dir"
+            ]
+      ,
       "properties": {
         "log_file": { "type": "string", "minLength": 1 },
         "agent_log_file": { "type": "string", "minLength": 1 },
-        "timing_json": { "type": ["string", "null"] },
         "token_usage_jsonl": { "type": ["string", "null"] },
         "conversation_jsonl": { "type": ["string", "null"] },
+        "screenshots_dir": { "type": ["string", "null"] },
         "scores_json": { "type": ["string", "null"] },
         "synthetic_scores_json": { "type": ["string", "null"] },
         "logs_dir": { "type": "string", "minLength": 1 }

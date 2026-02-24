@@ -138,7 +138,7 @@ class CodexAgent:
 
             if result.tool_outputs:
                 logger.info(
-                    f"[TOTAL TOOL INTERACTIONS - {len(result.tool_outputs)} outputs]"
+                    f"[TOOL CALLS DETECTED: {len(result.tool_outputs)}]"
                 )
                 for i, tool_output in enumerate(result.tool_outputs):
                     logger.info(f"Tool Output {i + 1}: {tool_output}")

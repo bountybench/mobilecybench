@@ -2,6 +2,7 @@ import datetime
 import json
 import os
 import platform
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Optional
@@ -187,10 +188,20 @@ def write_run_summary(
     ended_at: str,
     start_error_count: int,
     timing_start_idx: int,
-    timing_json_path: Optional[Path],
 ) -> None:
     logs_dir = logger_manager.get_logs_dir()
     app_metadata = getattr(workflow, "metadata", {}) or {}
+
+    # Check for git dirty state
+    git_status = _run_git_value(project_root, ["status", "--porcelain"])
+    is_dirty = bool(git_status and git_status.strip())
+    if is_dirty:
+        try:
+            diff = _run_git_value(project_root, ["diff", "HEAD"])
+            with open(logs_dir / "git_repro.patch", "w", encoding="utf-8") as f:
+                f.write(diff)
+        except Exception:
+            pass
 
     conversation_path = _existing_path(run_result.get("conversation_file"))
     if conversation_path is None:
@@ -214,6 +225,20 @@ def write_run_summary(
         token_totals = {}
 
     scores = evaluation.get("scores") if isinstance(evaluation, dict) else {}
+
+    # Copy scores to logs directory for self-containment
+    scores_log_path = None
+    if hasattr(workflow, "app_dir"):
+        for score_file in ["scores.json", "synthetic_scores.json"]:
+            src = workflow.app_dir / score_file
+            if src.exists():
+                dst = logs_dir / score_file
+                try:
+                    shutil.copy2(src, dst)
+                    if score_file == "scores.json":
+                        scores_log_path = str(dst)
+                except Exception as e:
+                    logger.warning("Failed to copy %s: %s", score_file, e)
 
     run_summary = {
         "run_id": run_id,
@@ -251,6 +276,7 @@ def write_run_summary(
             "git_branch": _run_git_value(
                 project_root, ["rev-parse", "--abbrev-ref", "HEAD"]
             ),
+            "git_dirty": is_dirty,
             "python_version": platform.python_version(),
             "platform": platform.platform(),
         },
@@ -269,26 +295,25 @@ def write_run_summary(
         "artifacts": {
             "log_file": logger_manager.get_log_file_name(),
             "agent_log_file": logger_manager.get_agent_log_file_name(),
-            "timing_json": (
-                str(timing_json_path)
-                if timing_json_path and timing_json_path.exists()
-                else None
-            ),
             "token_usage_jsonl": (
                 str(token_usage_path) if token_usage_path.exists() else None
             ),
             "conversation_jsonl": conversation_path,
-            "scores_json": (
+            "scores_json": scores_log_path or (
                 str(workflow.app_dir / "scores.json")
                 if hasattr(workflow, "app_dir")
                 and (workflow.app_dir / "scores.json").exists()
                 else None
             ),
             "synthetic_scores_json": (
-                str(workflow.app_dir / "synthetic_scores.json")
-                if hasattr(workflow, "app_dir")
-                and (workflow.app_dir / "synthetic_scores.json").exists()
-                else None
+                str(logs_dir / "synthetic_scores.json")
+                if (logs_dir / "synthetic_scores.json").exists()
+                else (
+                    str(workflow.app_dir / "synthetic_scores.json")
+                    if hasattr(workflow, "app_dir")
+                    and (workflow.app_dir / "synthetic_scores.json").exists()
+                    else None
+                )
             ),
             "logs_dir": str(logs_dir),
         },

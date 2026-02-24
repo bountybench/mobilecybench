@@ -19,7 +19,7 @@ def encode_image(image_data: bytes) -> str:
 
 
 def take_screenshot(
-    compress_level: int = 6, max_width: int = 300, save_to_file: bool = True
+    compress_level: int = 6, max_width: int = 300
 ):
     """
     Takes a compressed screenshot of the emulator and returns it as base64 encoded image data.
@@ -27,12 +27,12 @@ def take_screenshot(
     Args:
         compress_level (int): PNG compression level (0-9, default 6)
         max_width (int): Maximum width for resizing (default 300)
-        save_to_file (bool): Whether to save screenshot to file (default True)
 
     Returns:
         dict: Contains success status, base64 encoded image data, and metadata
     """
-    logger.info("SCREENSHOT: Starting capture...")
+    from utils.logger import logger_manager
+    logger.info("Capturing compressed screenshot...")
 
     try:
         kali_container = DOCKER_CLIENT.containers.get(KALI_CONTAINER_NAME)
@@ -41,7 +41,7 @@ def take_screenshot(
 
         if result.exit_code != 0:
             error_msg = result.output.decode("utf-8")
-            logger.error(f"ERROR: Screenshot failed: {error_msg}")
+            logger.error(f"Screenshot failed: {error_msg}")
             return {
                 "success": False,
                 "error": f"Error taking screenshot: {error_msg}",
@@ -74,25 +74,25 @@ def take_screenshot(
             "compress_level": compress_level,
         }
 
-        # Save to file if requested
-        if save_to_file:
-            screenshots_dir = "./screenshots"
-            os.makedirs(screenshots_dir, exist_ok=True)
-
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            screenshot_filename = f"screenshot_{timestamp}.png"
-            screenshot_path = os.path.join(screenshots_dir, screenshot_filename)
-
-            # Save the compressed image to file
+        # Save to experiment logs directory if active
+        logs_dir = logger_manager.get_logs_dir()
+        if logs_dir:
+            screenshots_dir = logs_dir / "screenshots"
+            screenshots_dir.mkdir(exist_ok=True, parents=True)
+            
+            # Use timestamp for uniqueness within the turn
+            timestamp = datetime.now().strftime("%H%M%S_%f")
+            screenshot_filename = f"capture_{timestamp}.png"
+            screenshot_path = screenshots_dir / screenshot_filename
+            
             with open(screenshot_path, "wb") as f:
                 f.write(image_bytes)
+            
+            result_data["file_path"] = str(screenshot_path)
 
-            logger.info(f"Screenshot saved to {screenshot_path}")
-            result_data["file_path"] = screenshot_path
-
-        logger.info(f"✓ Screenshot success; response size: {len(image_bytes)} bytes")
+        logger.info(f"✓ Screenshot success; {len(image_bytes)} bytes")
         return result_data
 
     except Exception as e:
-        logger.error(f"ERROR: Screenshot exception: {str(e)}")
+        logger.error(f"Screenshot exception: {str(e)}")
         return {"success": False, "error": str(e), "image_data": None}

@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import subprocess
@@ -80,11 +81,7 @@ class CustomAgent:
         self._initial_tree_context = get_directory_tree()
         self._instructions = self._get_system_prompt_text(additional_context)
 
-        agent_logger.info("=" * 60)
-        agent_logger.info("SYSTEM PROMPT")
-        agent_logger.info("=" * 60)
-        agent_logger.info(self._instructions)
-        agent_logger.info("=" * 60)
+        agent_logger.info("Agent initialized with system prompt instructions.")
 
         # Create provider (fully configured on construction)
         self.provider = get_model_provider(
@@ -226,6 +223,17 @@ class CustomAgent:
     def _validate_turn_event(self, event):
         validate_schema(event, self._conversation_schema, "conversation turn")
 
+    def _parse_arguments(self, arguments: str) -> dict:
+        """Safely parse tool arguments from JSON string."""
+        try:
+            if not arguments:
+                return {}
+            if isinstance(arguments, dict):
+                return arguments
+            return json.loads(arguments)
+        except Exception:
+            return {"raw": str(arguments)}
+
     def _archive_conversation(self):
         """Archive the conversation log to the agent log."""
         history = self.provider.get_conversation_history()
@@ -255,6 +263,15 @@ class CustomAgent:
                 try:
                     screenshot_result = take_screenshot()
                     if screenshot_result.get("success"):
+                        # Rename the captured file for better organization within the turn
+                        if "file_path" in screenshot_result:
+                            try:
+                                old_path = Path(screenshot_result["file_path"])
+                                new_path = old_path.parent / f"turn_{turn + 1}.png"
+                                old_path.rename(new_path)
+                            except Exception:
+                                pass
+
                         # On the first turn, next_input is a string; convert to list
                         if isinstance(next_input, str):
                             next_input = [
@@ -364,7 +381,7 @@ class CustomAgent:
             # Process function calls (tool use)
             has_tool_call = bool(function_calls)
             turn_event = {
-                "run_id": logger_manager.get_session_id(),
+                "run_id": logger_manager.get_run_id(),
                 "turn_number": turn + 1,
                 "timestamp": utc_now_iso(),
                 "role": "assistant",
@@ -395,9 +412,12 @@ class CustomAgent:
 
                     # Execute using local runtime
                     try:
+                        start_tool = time.perf_counter()
                         result = self.runtime.execute(fc.name, fc.arguments)
+                        duration_tool = time.perf_counter() - start_tool
                     except Exception as e:
                         result = f"Error: {e}"
+                        duration_tool = time.perf_counter() - start_tool
                         turn_event["status"] = "error"
 
                     agent_logger.info(f"Result: {result}")
@@ -412,6 +432,7 @@ class CustomAgent:
                             "type": "tool_result",
                             "content": obs_content,
                             "truncated": obs_truncated,
+                            "duration_seconds": round(duration_tool, 4),
                         }
                     )
 

@@ -11,6 +11,7 @@ import argparse
 import datetime
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
@@ -187,7 +188,8 @@ def run(
     logger.info(f"Created {workflow_type} for app: {app_name}")
 
     # Start experiment timing with the shared session ID
-    run_id = logger_manager.get_session_id()
+    run_id = logger_manager.get_run_id()
+    logger_manager.update_latest_symlink()
     started_at = utc_now_iso()
     start_error_count = logger_manager.get_error_count()
     timing_start_idx = len(time_tracker.llm_calls)
@@ -201,7 +203,7 @@ def run(
     timing_json_path: Optional[Path] = None
 
     try:
-        logger.info("Step 1/5: Validating arguments...")
+        logger.info("Validating arguments...")
         workflow.validate_arguments()
         logger.info("Arguments validated")
 
@@ -210,7 +212,7 @@ def run(
         # Log structured experiment configuration for observability
         _log_experiment_config(config, app_name, workflow)
 
-        logger.info("Step 2/5: Setting up runtime environment...")
+        logger.info("Setting up runtime environment...")
         workflow.setup_runtime_environment()
         logger.info("Runtime environment ready")
 
@@ -223,13 +225,13 @@ def run(
             exit_reason = "dry_run_completed"
             exit_code = 0
         else:
-            logger.info("Step 3/5: Setting up agent...")
+            logger.info("Configuring agent...")
             workflow.setup_agent()
             logger.info("Agent configured")
 
-            logger.info("Step 4/5: Running agent...")
+            logger.info("Starting agent execution...")
             run_result = normalize_agent_result(workflow.run_agent())
-            logger.info(f"Agent completed: {run_result.get('status', 'unknown')}")
+            logger.info(f"Agent execution completed: {run_result.get('status', 'unknown')}")
 
             # Save agent artifacts (agent_exploit, agent_output) while container is alive
             workflow.save_artifacts(logger_manager.get_logs_dir())
@@ -240,7 +242,7 @@ def run(
             if workflow.agent_env:
                 workflow.agent_env.cleanup()
 
-            logger.info("Step 5/5: Evaluating results...")
+            logger.info("Evaluating results...")
             evaluation = workflow.evaluate() or {}
             logger.info(f"Evaluation complete: {evaluation}")
             outcome = "success"
@@ -262,19 +264,23 @@ def run(
     finally:
         # Finalize experiment timing
         time_tracker.end_experiment()
-        try:
-            timing_json_path = (
-                logger_manager.get_logs_dir()
-                / f"timing_{logger_manager.get_session_id()}.json"
-            )
-            time_tracker.save_json(timing_json_path)
-        except Exception as e:
-            logger.warning(f"Failed to save timing JSON: {e}")
-            timing_json_path = None
         time_tracker.log_summary(logger)
 
         # Always cleanup resources (emulator, containers, restore APKs)
         logger.info("Cleaning up resources...")
+        
+        # Capture Logcat before stopping emulator
+        if workflow.emulator:
+            try:
+                logcat_path = logger_manager.get_logs_dir() / "android_system.log"
+                logger.info(f"Capturing Android Logcat to {logcat_path}...")
+                
+                # Use subprocess directly since emulator.execute_adb_command doesn't exist
+                with open(logcat_path, "w") as f:
+                    subprocess.run(["adb", "logcat", "-d"], stdout=f, timeout=10)
+            except Exception as e:
+                logger.warning(f"Failed to capture logcat: {e}")
+
         try:
             workflow.cleanup()
         except Exception as cleanup_error:
@@ -295,7 +301,6 @@ def run(
             ended_at=utc_now_iso(),
             start_error_count=start_error_count,
             timing_start_idx=timing_start_idx,
-            timing_json_path=timing_json_path,
         )
 
     return exit_code
@@ -323,6 +328,11 @@ def main():
 
     config = RunnerConfig(**config_data)
     project_root = Path(__file__).parent
+
+    # Initialize LoggerManager with config before any logging occurs
+    from utils.logger import get_logger_manager
+
+    get_logger_manager(config=config_data)
 
     exit_code = run(config, args.app_name, project_root, config_path=config_path)
 
