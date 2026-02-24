@@ -1,4 +1,5 @@
 #!/bin/bash
+# ci-trigger: force synthetic source build in CI (no functional change)
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
