@@ -58,8 +58,18 @@ def _is_device_offline_error(exc: Exception) -> bool:
 
 def _recover_offline_device():
     # Best-effort recovery for transient adb/uiautomator disconnects.
-    subprocess.run([ADB_BIN, "wait-for-device"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    subprocess.run([ADB_BIN, "start-server"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(
+        [ADB_BIN, "wait-for-device"],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    subprocess.run(
+        [ADB_BIN, "start-server"],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
     time.sleep(1.0)
 
 
@@ -119,15 +129,23 @@ def _handle_certificate_warning_if_present(d, max_steps: int = 4) -> bool:
     if not _is_certificate_warning_screen(d):
         return False
 
-    print("[tb-setup] certificate warning detected; accepting risk to continue", flush=True)
+    print(
+        "[tb-setup] certificate warning detected; accepting risk to continue",
+        flush=True,
+    )
     for _ in range(max_steps):
-        if _click_first_existing_text(d, [r"(?i).*accept risk.*continue.*", r"(?i).*continue anyway.*"]):
+        if _click_first_existing_text(
+            d, [r"(?i).*accept risk.*continue.*", r"(?i).*continue anyway.*"]
+        ):
             return True
 
         if _click_first_existing_text(d, [r"(?i)^advanced$", r"(?i).*more details.*"]):
             continue
 
-        if _id(d, "IncomingServerSettingsContent").exists or _id(d, "OutgoingServerSettingsContent").exists:
+        if (
+            _id(d, "IncomingServerSettingsContent").exists
+            or _id(d, "OutgoingServerSettingsContent").exists
+        ):
             return True
 
         time.sleep(0.3)
@@ -135,7 +153,9 @@ def _handle_certificate_warning_if_present(d, max_steps: int = 4) -> bool:
     return False
 
 
-def _wait_for_any_screen(d, screen_ids: list[str], timeout: float = 60.0, context: str = "setup flow") -> str:
+def _wait_for_any_screen(
+    d, screen_ids: list[str], timeout: float = 60.0, context: str = "setup flow"
+) -> str:
     end = time.time() + timeout
     saw_validation = False
 
@@ -219,7 +239,9 @@ def _set_field_text(d, field, value: str, label: str, password: bool = False):
     if current != value and value not in current:
         # Compose wrappers can report stale/empty text even when input succeeded.
         # Keep password strict, but avoid hard-failing non-password fields here.
-        print(f"[tb-setup] warning: could not strictly verify '{label}' text", flush=True)
+        print(
+            f"[tb-setup] warning: could not strictly verify '{label}' text", flush=True
+        )
 
 
 def _set_text_id(
@@ -253,7 +275,9 @@ def _dismiss_keyboard_if_open(d=None, expected_screen_id: str | None = None):
     # 1) Prefer explicit IME controls (done/check/hide keyboard).
     if d is not None:
         candidates = [
-            d(descriptionMatches=r"(?i).*(hide keyboard|close keyboard|collapse keyboard).*"),
+            d(
+                descriptionMatches=r"(?i).*(hide keyboard|close keyboard|collapse keyboard).*"
+            ),
             d(descriptionMatches=r"(?i).*(done|enter|ok|confirm|check).*"),
             d(textMatches=r"(?i)^(done|ok|close|hide)$"),
         ]
@@ -261,7 +285,13 @@ def _dismiss_keyboard_if_open(d=None, expected_screen_id: str | None = None):
             try:
                 if obj.exists:
                     if expected_screen_id:
-                        click_then_expect(d, obj, lambda: _id(d, expected_screen_id).exists, timeout=4, retries=1)
+                        click_then_expect(
+                            d,
+                            obj,
+                            lambda: _id(d, expected_screen_id).exists,
+                            timeout=4,
+                            retries=1,
+                        )
                     else:
                         wait_and_click(d, obj, timeout=4)
                     time.sleep(0.2)
@@ -271,13 +301,17 @@ def _dismiss_keyboard_if_open(d=None, expected_screen_id: str | None = None):
                 pass
 
     # 2) IME action key (checkmark/done on many keyboards).
-    subprocess.run([ADB_BIN, "shell", "input", "keyevent", "66"], check=False)  # KEYCODE_ENTER
+    subprocess.run(
+        [ADB_BIN, "shell", "input", "keyevent", "66"], check=False
+    )  # KEYCODE_ENTER
     time.sleep(0.2)
     if not _keyboard_visible():
         return
 
     # 3) Escape as hide-keyboard fallback on some keyboards.
-    subprocess.run([ADB_BIN, "shell", "input", "keyevent", "111"], check=False)  # KEYCODE_ESCAPE
+    subprocess.run(
+        [ADB_BIN, "shell", "input", "keyevent", "111"], check=False
+    )  # KEYCODE_ESCAPE
     time.sleep(0.2)
     if not _keyboard_visible():
         return
@@ -302,7 +336,16 @@ def _keyboard_visible() -> bool:
 
 def _dismiss_ephemeral_overlays(d):
     # Stylus/IME/tutorial popups can intercept taps/swipes.
-    for label in ("Not now", "No thanks", "Maybe later", "Later", "Skip", "Cancel", "Close", "Got it"):
+    for label in (
+        "Not now",
+        "No thanks",
+        "Maybe later",
+        "Later",
+        "Skip",
+        "Cancel",
+        "Close",
+        "Got it",
+    ):
         obj = d(text=label) if d(text=label).exists else d(textContains=label)
         if obj.exists:
             wait_and_click(d, obj, timeout=4)
@@ -310,7 +353,9 @@ def _dismiss_ephemeral_overlays(d):
             return
     for rid in ("android:id/button2", "android:id/button1"):
         btn = d(resourceId=rid)
-        if btn.exists and (d(textContains="stylus").exists or d(textContains="handwriting").exists):
+        if btn.exists and (
+            d(textContains="stylus").exists or d(textContains="handwriting").exists
+        ):
             wait_and_click(d, btn, timeout=4)
             time.sleep(0.2)
             return
@@ -323,6 +368,7 @@ def _dismiss_keyboard_safely(d, expected_screen_id: str):
     _dismiss_keyboard_if_open(d, expected_screen_id)
     if _keyboard_visible():
         _dismiss_keyboard_if_open(d, expected_screen_id)
+
 
 def _parse_bounds(bounds: str):
     try:
@@ -386,9 +432,13 @@ def _adb_tap_and_input(bounds, value: str):
     x, y = (left + right) // 2, (top + bottom) // 2
     subprocess.run([ADB_BIN, "shell", "input", "tap", str(x), str(y)], check=False)
     time.sleep(0.2)
-    subprocess.run([ADB_BIN, "shell", "input", "keyevent", "KEYCODE_MOVE_END"], check=False)
+    subprocess.run(
+        [ADB_BIN, "shell", "input", "keyevent", "KEYCODE_MOVE_END"], check=False
+    )
     for _ in range(24):
-        subprocess.run([ADB_BIN, "shell", "input", "keyevent", "KEYCODE_DEL"], check=False)
+        subprocess.run(
+            [ADB_BIN, "shell", "input", "keyevent", "KEYCODE_DEL"], check=False
+        )
     safe_text = value.replace(" ", "%s")
     subprocess.run([ADB_BIN, "shell", "input", "text", safe_text], check=False)
     time.sleep(0.4)
@@ -483,7 +533,8 @@ def _wait_onboarding_email_entry(d):
 
     try:
         _wait_until(
-            lambda: _id(d, "onboarding_migration_new_account_button").exists or _is_setup_entry_visible(d),
+            lambda: _id(d, "onboarding_migration_new_account_button").exists
+            or _is_setup_entry_visible(d),
             14,
             "Did not reach migration gate or setup entry after welcome",
         )
@@ -509,9 +560,11 @@ def _advance_email_to_manual(d):
     # First Next after entering email.
     click_then_expect(
         d,
-        _id(d, "account_setup_next_button")
-        if _id(d, "account_setup_next_button").exists
-        else d(text="Next"),
+        (
+            _id(d, "account_setup_next_button")
+            if _id(d, "account_setup_next_button").exists
+            else d(text="Next")
+        ),
         lambda: d(textContains="Configuration not found").exists
         or _id(d, "IncomingServerSettingsContent").exists,
         timeout=20,
@@ -519,7 +572,8 @@ def _advance_email_to_manual(d):
     ) or _tap_next(d)
 
     _wait_until(
-        lambda: d(textContains="Configuration not found").exists or _id(d, "IncomingServerSettingsContent").exists,
+        lambda: d(textContains="Configuration not found").exists
+        or _id(d, "IncomingServerSettingsContent").exists,
         25,
         "Did not reach configuration-not-found or incoming-settings state",
     )
@@ -527,7 +581,8 @@ def _advance_email_to_manual(d):
     # Validated path: click Next on "Configuration not found".
     if d(textContains="Configuration not found").exists:
         _wait_until(
-            lambda: _id(d, "account_setup_next_button").exists or _id(d, "IncomingServerSettingsContent").exists,
+            lambda: _id(d, "account_setup_next_button").exists
+            or _id(d, "IncomingServerSettingsContent").exists,
             10,
             "Timed out waiting for next button on configuration-not-found screen",
         )
@@ -590,7 +645,14 @@ def _set_display_options(d):
 
 def _ensure_notification_permission_granted():
     subprocess.run(
-        [ADB_BIN, "shell", "pm", "grant", APP_PKG, "android.permission.POST_NOTIFICATIONS"],
+        [
+            ADB_BIN,
+            "shell",
+            "pm",
+            "grant",
+            APP_PKG,
+            "android.permission.POST_NOTIFICATIONS",
+        ],
         check=False,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -626,7 +688,10 @@ def ensure_account_configured():
             d.app_start(APP_PKG, stop=True, wait=True, use_monkey=True)
             time.sleep(1.5)
 
-            print(f"[tb-setup] onboarding/manual minimal flow start (attempt {attempts})", flush=True)
+            print(
+                f"[tb-setup] onboarding/manual minimal flow start (attempt {attempts})",
+                flush=True,
+            )
             _wait_onboarding_email_entry(d)
             _set_text_id(
                 d,
@@ -673,14 +738,19 @@ def ensure_account_configured():
 
             time.sleep(1.0)
             if _has_setup_ui(d):
-                raise RuntimeError("Account setup appears incomplete; onboarding/setup UI still visible")
+                raise RuntimeError(
+                    "Account setup appears incomplete; onboarding/setup UI still visible"
+                )
 
             print("[tb-setup] account setup completed", flush=True)
             return
         except Exception as exc:
             last_exc = exc
             if _is_device_offline_error(exc) and attempts < 2:
-                print("[tb-setup] device went offline; attempting one recovery retry", flush=True)
+                print(
+                    "[tb-setup] device went offline; attempting one recovery retry",
+                    flush=True,
+                )
                 _recover_offline_device()
                 continue
             raise
