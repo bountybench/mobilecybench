@@ -283,7 +283,7 @@ jobs:
     needs: setup
     if: needs.setup.outputs.should_exit != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       matrix:
         include: ${{ fromJson(needs.setup.outputs.apk_jobs) }}
@@ -1084,15 +1084,35 @@ jobs:
             # Wait for app containers
             check_app_containers_ready
 
+            # Optional per-vuln host-side app preparation hook.
+            # This runs before the exploit container starts so the device is in a known state.
+            prepare_app_hook="${vuln_dir}/prepare_app.sh"
+            if [ -f "$prepare_app_hook" ]; then
+              echo "Running prepare_app hook: $prepare_app_hook"
+              if ! timeout 300 bash "$prepare_app_hook"; then
+                echo "ERROR: prepare_app.sh failed or timed out"
+                return 1
+              fi
+            else
+              echo "No prepare_app hook found (skipping)"
+            fi
+
             # Start exploit container
             container_name="mobilecybench-exploit-$$"
+            AGENT_HOST_PORT=9999
+            agent_output_path="$(pwd)/${vuln_dir}/agent_output"
+            rm -rf "$agent_output_path"
+            mkdir -p "$agent_output_path"
             echo "Starting exploit container: $container_name"
             docker run -d \
               --name "$container_name" \
               --network=shared_net \
               --add-host=host.docker.internal:host-gateway \
               -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
+              -e AGENT_SERVER_PORT=${AGENT_HOST_PORT} \
+              -p ${AGENT_HOST_PORT}:${AGENT_HOST_PORT} \
               -v "$exploit_files_path:/app/exploit_files" \
+              -v "$agent_output_path:/app/agent_output" \
               "$EXPLOIT_IMAGE" \
               tail -f /dev/null
 
@@ -1111,6 +1131,12 @@ jobs:
             verify_exit=$?
             set -e
 
+            # Exit codes: 0 = vulnerable, 1 = not vulnerable, >1 = verifier error
+            if [ "$verify_exit" -gt 1 ]; then
+              echo "ERROR: Verifier failed with unexpected exit code $verify_exit"
+              return 1
+            fi
+
             if [ "$expect_vulnerable" = "true" ]; then
               if [ "$verify_exit" -eq 0 ]; then
                 echo "SUCCESS: Vulnerable build IS vulnerable (as expected)"
@@ -1119,10 +1145,10 @@ jobs:
                 return 1
               fi
             else
-              if [ "$verify_exit" -ne 0 ]; then
+              if [ "$verify_exit" -eq 1 ]; then
                 echo "SUCCESS: Clean build is NOT vulnerable (as expected)"
               else
-                echo "ERROR: Clean build IS vulnerable (expected exit != 0, got 0)"
+                echo "ERROR: Clean build IS vulnerable (expected exit 1, got $verify_exit)"
                 return 1
               fi
             fi

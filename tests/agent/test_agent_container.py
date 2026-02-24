@@ -84,6 +84,35 @@ class TestAgentEnvironmentVerifyFiles:
         assert result is None
 
 
+class TestSetupAgentOutput:
+    """Tests for AgentEnvironment._setup_agent_output()."""
+
+    def _create_agent_env(self, app_dir, vuln_id=None):
+        return AgentEnvironment(
+            app_dir=app_dir,
+            docker_networks=["test_net"],
+            image_name="test:latest",
+            env={},
+            commit_id="HEAD",
+            vuln_id=vuln_id,
+        )
+
+    def test_cleans_stale_data(self, tmp_path):
+        """Removes stale files from previous runs before creating fresh dir."""
+        agent_output_dir = (
+            tmp_path / "synthetic_vulnerabilities" / "vuln_0" / "agent_output"
+        )
+        agent_output_dir.mkdir(parents=True)
+        stale_file = agent_output_dir / "captured_creds.txt"
+        stale_file.write_text("stale data")
+
+        agent_env = self._create_agent_env(tmp_path, vuln_id="vuln_0")
+        agent_env._setup_agent_output()
+
+        assert agent_output_dir.is_dir()
+        assert not stale_file.exists()
+
+
 class TestAgentEnvironmentVulnId:
     """Tests for vuln_id parameter handling in AgentEnvironment."""
 

@@ -76,63 +76,53 @@ setup_environment() {
 build_joplin() {    
     echo "Building joplin Android from source..."
     echo "This will take several minutes..."
-
-    local temp_out=$(mktemp)
-    local temp_err=$(mktemp)
-    
-    # Pre-download Gradle wrapper to avoid timeout issues in CI
-    echo "Pre-downloading Gradle wrapper..."
-    ./gradlew --version > /dev/null 2>&1 || {
-        echo "Gradle wrapper download failed, trying with increased timeout..."
-        export GRADLE_OPTS="-Dorg.gradle.internal.http.connectionTimeout=300000 -Dorg.gradle.internal.http.socketTimeout=300000"
-        ./gradlew --version > /dev/null 2>&1
-    }
     
     # Run gradle build with output suppressed
-    sed -i -- 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
-    if ./gradlew assembleRelease --no-daemon --max-workers=1 > "$temp_out" 2> "$temp_err"; then
+    sed -i.bak \
+        -e '/signingConfig signingConfigs\./d' \
+        app/build.gradle
+    if ./gradlew assembleRelease --no-daemon --max-workers=1; then
         echo "Build completed successfully."
-        # Clean up temp files on success
-        rm -f "$temp_out" "$temp_err"
     else
         local exit_code=$?
         echo "ERROR: Build failed with exit code $exit_code"
-        
-        # Show stderr (which contains the actual error messages)
-        if [[ -s "$temp_err" ]]; then
-            echo "Error output:"
-            cat "$temp_err"
-        fi
-        
-        # Optionally show last part of stdout for context
-        if [[ -s "$temp_out" ]]; then
-            echo "Last 50 lines of build output:"
-            tail -50 "$temp_out"
-        fi
-        
-        # Clean up temp files
-        rm -f "$temp_out" "$temp_err"
         exit $exit_code
     fi
 }
 
 # Copy APK to expected location for testing
 copy_apk() {
-    echo "Copying APK to expected location..."
-    
-    local apk_source="app/build/outputs/apk/release/app-release.apk"
-    local apk_dest="$SCRIPT_DIR/apk"
-    local apk_new_name="joplin.apk"
-    
-    if [[ -f "$apk_source" ]]; then
-        mkdir -p "$apk_dest"
-        cp "$apk_source" "$apk_dest/$apk_new_name"
-        echo "APK copied to $apk_dest/$apk_new_name"
-    else
-        echo "WARNING: APK not found at $apk_source"
-        echo "Available APKs:"
-        find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -5
+    echo "Locating unsigned APK..."
+
+    local output_dir="app/build/outputs/apk"
+    local apk_dest="$SCRIPT_DIR"
+    local apk_new_name="unsigned.apk"
+
+    if [[ ! -d "$output_dir" ]]; then
+        echo "ERROR: APK output directory not found: $output_dir"
+        exit 1
     fi
+
+    # Prefer release APKs, fall back to anything unsigned
+    local apk_source
+    apk_source="$(find "$output_dir" -type f \
+        \( -name "*unsigned*.apk" -o \( -name "*.apk" ! -name "*signed*" \) \) \
+        | head -n 1)"
+
+
+    if [[ -z "$apk_source" ]]; then
+        echo "ERROR: No APK found in $output_dir"
+        echo "Available APKs:"
+        find "$output_dir" -name "*.apk" -type f
+        exit 1
+    fi
+
+    mkdir -p "$apk_dest"
+    cp "$apk_source" "$apk_dest/$apk_new_name"
+
+    echo "APK copied:"
+    echo "  Source: $apk_source"
+    echo "  Dest:   $apk_dest/$apk_new_name"
 }
 
 clear() {

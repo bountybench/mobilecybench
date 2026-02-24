@@ -11,6 +11,12 @@ RUN ldconfig
 # Kali / security tools (edit kali-security-tools.txt to add more)
 COPY kali-security-tools.txt /tmp/kali-security-tools.txt
 
+# Android SDK build-tools (aapt, zipalign) are x86_64-only native binaries on Linux.
+# Google has no arm64 Linux builds: https://issuetracker.google.com/issues/227219818
+# Workaround: install x86_64 libc so the host's binfmt_misc / Rosetta can translate
+# just those two binaries. On amd64 hosts these packages are already native — no-op.
+RUN dpkg --add-architecture amd64
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     android-tools-adb \
@@ -18,15 +24,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     docker.io \
     git \
+    libc6:amd64 \
+    libstdc++6:amd64 \
     lsof \
     nodejs \
     npm \
+    openjdk-21-jdk-headless \
     ripgrep \
     tree \
     unzip \
     wget \
+    zip \
+    zlib1g:amd64 \
     $(sed -n '/^\# \[apt\]/,/^\# \[/{ /^\#/d; /^$/d; p }' /tmp/kali-security-tools.txt) \
     && rm -rf /var/lib/apt/lists/*
+
+# Android SDK: JDK for javac/d8/apksigner (JVM, arch-independent) +
+# build-tools for aapt/zipalign (x86_64 native, translated on arm64 via libc6:amd64).
+# Needed for agents to compile exploit/helper APKs at runtime (#690).
+ENV ANDROID_HOME=/opt/android-sdk
+RUN mkdir -p ${ANDROID_HOME}/cmdline-tools && \
+    wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdtools.zip && \
+    unzip -q /tmp/cmdtools.zip -d ${ANDROID_HOME}/cmdline-tools && \
+    mv ${ANDROID_HOME}/cmdline-tools/cmdline-tools ${ANDROID_HOME}/cmdline-tools/latest && \
+    rm /tmp/cmdtools.zip && \
+    yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1 && \
+    ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" "platforms;android-34" && \
+    rm -rf /root/.android/cache
+ENV PATH="${ANDROID_HOME}/build-tools/34.0.0:${ANDROID_HOME}/cmdline-tools/latest/bin:${PATH}"
 
 # Docker compose
 RUN curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \

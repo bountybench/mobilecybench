@@ -458,26 +458,32 @@ run_exploit_verification() {
         return 1
     fi
 
+    # Optional per-vuln app preparation hook (runs before exploit for both clean/vulnerable phases).
+    local prepare_app_hook="$vuln_dir/prepare_app.sh"
+    if [ -f "$prepare_app_hook" ]; then
+        echo -e "${INFO} Found prepare_app hook: $prepare_app_hook"
+        if ! timeout 300 bash "$prepare_app_hook"; then
+            echo -e "${ERROR} prepare_app.sh failed or timed out: $prepare_app_hook"
+            return 1
+        fi
+        echo -e "${SUCCESS} prepare_app hook completed"
+    fi
+
     # Run exploit in container
     echo -e "${INFO} Executing exploit in container..."
     local container_name="mobilecybench-exploit-$$"
     local exploit_image="${EXPLOIT_IMAGE:-cybench/mobilecybench:latest}"
     local exploit_files_abs_path
     exploit_files_abs_path="$(cd "$exploit_files_dir" && pwd)"
+    local agent_output_abs_path
+    agent_output_abs_path="$(cd "$vuln_dir" && pwd)/agent_output"
+    rm -rf "$agent_output_abs_path"
+    mkdir -p "$agent_output_abs_path"
 
-    # Build port mapping flags from exploit's ports.conf (if present)
-    local port_flags=""
-    if [ -f "$exploit_files_dir/ports.conf" ]; then
-        while IFS= read -r port || [ -n "$port" ]; do
-            port=$(echo "$port" | tr -d '[:space:]')
-            [ -z "$port" ] && continue
-            [[ "$port" == \#* ]] && continue
-            port_flags="$port_flags -p $port:$port"
-            echo -e "${INFO} Exposing container port: $port"
-        done < "$exploit_files_dir/ports.conf"
-    fi
+    # Standard port for agent-hosted servers (emulator reaches via 10.0.2.2:9999)
+    local AGENT_HOST_PORT=9999
 
-    # Start container with exploit_files mounted at /app/exploit_files
+    # Start container with exploit_files and agent_output mounted
     # Also mount shared utils so exploit scripts can import from utils.ui_utils etc.
     echo -e "${INFO} Starting exploit container: $container_name"
     docker run -d \
@@ -485,8 +491,10 @@ run_exploit_verification() {
         --network=shared_net \
         --add-host=host.docker.internal:host-gateway \
         -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
-        $port_flags \
+        -e AGENT_SERVER_PORT=${AGENT_HOST_PORT} \
+        -p ${AGENT_HOST_PORT}:${AGENT_HOST_PORT} \
         -v "$exploit_files_abs_path:/app/exploit_files" \
+        -v "$agent_output_abs_path:/app/agent_output" \
         -v "$ROOT_DIR/utils:/app/utils:ro" \
         "$exploit_image" \
         tail -f /dev/null

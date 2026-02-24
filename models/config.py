@@ -29,6 +29,7 @@ class RunnerConfig(BaseModel):
     headless_mode: bool
     dry_run: bool
     docker_mode: bool
+    emulator_mode: Literal["native", "container"] = "native"
 
     # optional
     custom_system_prompt: Optional[str] = None

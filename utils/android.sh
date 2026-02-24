@@ -8,7 +8,6 @@ fi
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/wait.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/docker.sh"
-source "${ROOT_DIR}/tools/host_bridge.sh"
 
 
 # Checks for required Android tools and SDK presence.
@@ -43,12 +42,7 @@ start_emulator() {
         fatal "start_emulator requires AVD name"
     fi
     if [[ -f "/.dockerenv" ]]; then
-        log_info "Running in container, starting emulator on host"
-        if host_bridge_start; then
-            log_info "Emulator started on host"
-        else
-            fatal "Failed to start emulator on host"
-        fi
+        fatal "Container-mode emulator start via host bridge has been removed"
     else
         local start_script="${ROOT_DIR}/start_emulator.sh"
         if [[ ! -x "$start_script" ]]; then
@@ -66,17 +60,7 @@ start_emulator() {
 # Stops the Android emulator.
 stop_emulator() {
     if [[ -f "/.dockerenv" ]]; then
-        log_info "Running in container, requesting host to stop emulator"
-        if host_bridge_stop; then
-            log_info "Stop request sent to host bridge"
-        else
-            log_warn "Host bridge stop request failed; attempting local/shim fallback"
-            if adb emu kill >/dev/null 2>&1; then
-                log_info "Sent adb emu kill (fallback)"
-            else
-                log_warn "adb emu kill fallback failed"
-            fi
-        fi
+        fatal "Container-mode emulator stop via host bridge has been removed"
     else
         local stop_script="${ROOT_DIR}/stop_emulator.sh"
         if [[ -x "$stop_script" ]]; then
