@@ -30,12 +30,24 @@ GRADLE_JVMARGS="-Dfile.encoding=UTF-8 -XX:+UseG1GC -XX:ReservedCodeCacheSize=256
 # Release-only default (debug APKs are not acceptable for this app flow).
 TB_BUILD_VARIANT="${TB_BUILD_VARIANT:-FossRelease}"
 GRADLE_TASK=":app-thunderbird:assemble${TB_BUILD_VARIANT}"
+TB_FAST_RELEASE="${TB_FAST_RELEASE:-true}"
 
 build_log="$(mktemp /tmp/thunderbird-build.XXXXXX.log)"
 trap 'rm -f "$build_log"' EXIT
 
+# CI speedup: keep release variant but skip heavy R8/resource shrinking work.
+if [[ "$TB_FAST_RELEASE" == "true" ]]; then
+  APP_GRADLE="$SCRIPT_DIR/codebase/app-thunderbird/build.gradle.kts"
+  if [[ -f "$APP_GRADLE" ]]; then
+    perl -0777 -i -pe 's/(release\s*\{[^{}]*?isMinifyEnabled\s*=\s*)true/$1false/s' "$APP_GRADLE"
+    perl -0777 -i -pe 's/(release\s*\{[^{}]*?isShrinkResources\s*=\s*)true/$1false/s' "$APP_GRADLE"
+    echo "Applied TB_FAST_RELEASE optimizations (release minify/shrink disabled)."
+  fi
+fi
+
 # Build only one variant to avoid building both foss and full (faster + deterministic).
 set +e
+start_ts="$(date +%s)"
 ./gradlew "${GRADLE_TASK}" \
   --no-daemon \
   --max-workers=2 \
@@ -43,11 +55,22 @@ set +e
   --warning-mode=none \
   --build-cache \
   -Dorg.gradle.caching=true \
-  -Dorg.gradle.configuration-cache=false \
-  -Dorg.gradle.configuration-cache.parallel=false \
+  -Dorg.gradle.configuration-cache=true \
+  -Dorg.gradle.configuration-cache.parallel=true \
   -Dorg.gradle.parallel=true \
   -Dorg.gradle.jvmargs="${GRADLE_JVMARGS}" \
-  -x test -x lint >"$build_log" 2>&1
+  -x test -x lint >"$build_log" 2>&1 &
+gradle_pid=$!
+
+# Keep CI alive while Gradle output is redirected.
+while kill -0 "$gradle_pid" 2>/dev/null; do
+  sleep 60
+  now_ts="$(date +%s)"
+  elapsed="$((now_ts - start_ts))"
+  echo "Thunderbird Gradle build in progress (${elapsed}s elapsed)..."
+done
+
+wait "$gradle_pid"
 gradle_status=$?
 set -e
 

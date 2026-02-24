@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 echo "Cleaning up Thunderbird environment..."
 
 # Stop services
-docker compose down -v || true
+docker compose -f "$SCRIPT_DIR/docker-compose.yml" down -v || true
 docker container prune -f || true
 
 # Uninstall Android app
@@ -18,6 +21,6 @@ adb logcat -c || true
 rm -f thunderbird.apk
 rm -f scores.json
 rm -f fake_agent_log.log
-rm -rf dms-config
+rm -rf "$SCRIPT_DIR/dms-config"
 
 echo "Cleanup complete!"
