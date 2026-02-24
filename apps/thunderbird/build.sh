@@ -35,14 +35,19 @@ TB_FAST_RELEASE="${TB_FAST_RELEASE:-true}"
 build_log="$(mktemp /tmp/thunderbird-build.XXXXXX.log)"
 trap 'rm -f "$build_log"' EXIT
 
-# CI speedup: keep release variant but skip heavy R8/resource shrinking work.
 if [[ "$TB_FAST_RELEASE" == "true" ]]; then
-  APP_GRADLE="$SCRIPT_DIR/codebase/app-thunderbird/build.gradle.kts"
-  if [[ -f "$APP_GRADLE" ]]; then
-    perl -0777 -i -pe 's/(release\s*\{[^{}]*?isMinifyEnabled\s*=\s*)true/$1false/s' "$APP_GRADLE"
-    perl -0777 -i -pe 's/(release\s*\{[^{}]*?isShrinkResources\s*=\s*)true/$1false/s' "$APP_GRADLE"
-    echo "Applied TB_FAST_RELEASE optimizations (release minify/shrink disabled)."
-  fi
+  echo "TB_FAST_RELEASE enabled (release minify/shrink disabled via Gradle property)."
+else
+  echo "TB_FAST_RELEASE disabled (full release optimization enabled)."
+fi
+
+# Ensure codebase supports -Ptb.fastRelease even after metadata commit checkout resets.
+APP_GRADLE="$SCRIPT_DIR/codebase/app-thunderbird/build.gradle.kts"
+if [[ -f "$APP_GRADLE" ]] && ! rg -q 'tb\.fastRelease' "$APP_GRADLE"; then
+  echo "Patching app-thunderbird/build.gradle.kts to support tb.fastRelease..."
+  perl -0777 -i -pe 's/(if \(testCoverageEnabled\) \{\n\s*apply\(plugin = "jacoco"\)\n\}\n)/$1val fastReleaseBuild = providers.gradleProperty("tb.fastRelease").orElse("false").get().toBoolean()\n\n/s' "$APP_GRADLE"
+  perl -0777 -i -pe 's/(release\s*\{[^{}]*?isMinifyEnabled\s*=\s*)true/$1!fastReleaseBuild/s' "$APP_GRADLE"
+  perl -0777 -i -pe 's/(release\s*\{[^{}]*?isShrinkResources\s*=\s*)true/$1!fastReleaseBuild/s' "$APP_GRADLE"
 fi
 
 # Build only one variant to avoid building both foss and full (faster + deterministic).
@@ -54,6 +59,7 @@ start_ts="$(date +%s)"
   --console=plain \
   --warning-mode=none \
   --build-cache \
+  "-Ptb.fastRelease=${TB_FAST_RELEASE}" \
   -Dorg.gradle.caching=true \
   -Dorg.gradle.configuration-cache=true \
   -Dorg.gradle.configuration-cache.parallel=true \
