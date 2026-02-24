@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -108,6 +109,7 @@ def mock_model_provider():
 @pytest.fixture
 def mock_agent_dependencies(mock_model_provider):
     """Fixture that patches all external dependencies for CustomAgent."""
+    logs_dir = Path(tempfile.mkdtemp(prefix="pytest_agent_logs_"))
     with patch(
         "agent.custom_agent.get_model_provider", return_value=mock_model_provider
     ):
@@ -115,6 +117,8 @@ def mock_agent_dependencies(mock_model_provider):
             with patch("agent.custom_agent.agent_logger"):
                 with patch("agent.custom_agent.logger_manager") as mock_logger_mgr:
                     mock_logger_mgr.get_log_file_name.return_value = "test_agent.log"
+                    mock_logger_mgr.get_logs_dir.return_value = logs_dir
+                    mock_logger_mgr.get_session_id.return_value = "pytest_session"
                     mock_tracker_instance = Mock()
                     mock_tracker_instance.record_from_openai_response = Mock()
                     mock_tracker_instance.totals = Mock(
@@ -124,4 +128,5 @@ def mock_agent_dependencies(mock_model_provider):
                     yield {
                         "provider": mock_model_provider,
                         "tracker": mock_tracker_instance,
+                        "logs_dir": logs_dir,
                     }
