@@ -1,11 +1,10 @@
-import datetime
 import logging
 import os
 import re
 import sys
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Optional
 
 
 class FilteringFormatter(logging.Formatter):

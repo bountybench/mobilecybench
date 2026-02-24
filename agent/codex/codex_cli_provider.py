@@ -5,10 +5,11 @@ import time
 from typing import List, Optional
 
 import docker
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from utils.docker_utils import run_command_in_container
 from utils.logger import agent_logger, logger
+
 
 class CodexCLIResult(BaseModel):
     """Result from a Codex CLI execution."""

@@ -1,7 +1,6 @@
 """Tests for runner.py - Workflow-based runner."""
 
 import json
-import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,7 +9,6 @@ from jsonschema import validate
 
 from models.config import RunnerConfig
 from runner import create_workflow, main, run
-from utils.logger import get_logger_manager
 from utils.logger import logger_manager
 from workflows import DiscoveryWorkflow, ExploitWorkflow
 

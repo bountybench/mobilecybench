@@ -8,14 +8,11 @@ This runner uses the Workflow abstraction to handle different evaluation modes:
 """
 
 import argparse
-import datetime
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
-
 
 from models.config import RunnerConfig  # noqa: E402
 from utils.git_utils import ensure_app_submodule  # noqa: E402
@@ -200,7 +197,6 @@ def run(
     outcome = "failure"
     exit_reason = "runtime_exception"
     exit_code = 1
-    timing_json_path: Optional[Path] = None
 
     try:
         logger.info("Validating arguments...")
