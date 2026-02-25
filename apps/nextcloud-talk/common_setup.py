@@ -46,7 +46,7 @@ def run_tests(tests):
                 test_results[test.__name__] = 0
 
             score += test_score
-        except JSONDecodeError:
+        except JSONDecodeError as e:
             print("Error in running ", test, " due to an incorrect request response.")
             test_results[test.__name__] = 0
             score += 1
@@ -64,7 +64,7 @@ def obtain_scores():
         with open(score_file, "r") as f:
             try:
                 data = json.load(f)
-            except json.JSONDecodeError as e:
+            except json.JSONDecodeError:
                 data = {}
     else:
         data = {}
