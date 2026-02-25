@@ -239,8 +239,50 @@ class EmulatorManager:
             self.state = EmulatorState.STOPPED
             logger.error(f"Failed to start emulator container: {e}")
             raise RuntimeError(f"Failed to start emulator container: {e}")
-        self.state = EmulatorState.RUNNING
-        logger.info(f"Emulator container running, device_id={self.device_id}")
+
+        # Wait for the emulator to boot. Poll `adb devices` (which reaches
+        # the container's ADB server via port 5037 mapping) until we see
+        # a device in "device" state, then confirm boot_completed=1.
+        logger.info("Waiting for emulator to boot...")
+        max_wait = 300  # 5 minutes
+        for i in range(max_wait // 2):
+            try:
+                result = subprocess.run(
+                    ["adb", "devices"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                for line in result.stdout.splitlines():
+                    if "device" in line and not line.startswith("List"):
+                        device_id = line.split()[0]
+                        # Confirm boot completed
+                        boot = subprocess.run(
+                            ["adb", "-s", device_id, "shell",
+                             "getprop", "sys.boot_completed"],
+                            capture_output=True, text=True, timeout=5,
+                        )
+                        if boot.stdout.strip() == "1":
+                            self.device_id = device_id
+                            self.state = EmulatorState.RUNNING
+                            logger.info(
+                                f"Emulator booted, device_id={self.device_id}"
+                            )
+                            return
+            except (subprocess.TimeoutExpired, Exception):
+                pass
+            if i % 15 == 0:
+                logger.info(
+                    f"Still waiting for emulator boot... "
+                    f"({i * 2}s elapsed, up to {max_wait}s)"
+                )
+            time.sleep(2)
+
+        try:
+            logs = self.emulator_container.logs(tail=50).decode()
+            logger.error(f"Emulator container logs:\n{logs}")
+        except Exception:
+            pass
+        self.state = EmulatorState.STOPPED
+        raise RuntimeError("Timed out waiting for emulator to boot")
 
     def _start_native_emulator(self):
         """Start emulator as a native subprocess (original behavior)."""
