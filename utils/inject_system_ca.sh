@@ -109,10 +109,13 @@ CERT_BASENAME="$(basename "$CERT_PATH")"
 
 # Ensure adb root access.
 # "adb root" restarts adbd, which drops TCP connections (e.g. localhost:5555).
-# We must reconnect before wait-for-device, otherwise it hangs forever.
-adb root 2>/dev/null || true
+# Over TCP, "adb root" hangs forever waiting for a response that never comes
+# because the connection is already dead. Use a timeout to prevent this.
+# The script uses "su 0" for all privileged operations, so root adbd is
+# nice-to-have but not required.
+timeout 5 adb root 2>/dev/null || true
 if [[ "${ANDROID_SERIAL:-}" == *":"* ]]; then
-  sleep 2
+  sleep 3
   adb connect "$ANDROID_SERIAL" >/dev/null 2>&1 || true
 fi
 adb wait-for-device >/dev/null
