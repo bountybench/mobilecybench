@@ -199,7 +199,7 @@ def main():
         try:
             result = _sip_udp_probe()
             success = result == 1
-            results["sip_udp_port_accessible"] = success
+            results["sip_udp_port_accessible"] = int(success)
             if not success:
                 overall_success = False
                 print(
@@ -213,14 +213,14 @@ def main():
                 )
         except Exception as e:
             overall_success = False
-            results["sip_udp_port_accessible"] = False
+            results["sip_udp_port_accessible"] = 0
             print(f"[FAIL] SIP UDP port: {e}", file=sys.stderr)
 
         # Test SIP TCP port
         try:
             result = _sip_tcp_probe()
             success = result == 1
-            results["sip_tcp_port_accessible"] = success
+            results["sip_tcp_port_accessible"] = int(success)
             if not success:
                 overall_success = False
                 print(
@@ -234,14 +234,14 @@ def main():
                 )
         except Exception as e:
             overall_success = False
-            results["sip_tcp_port_accessible"] = False
+            results["sip_tcp_port_accessible"] = 0
             print(f"[FAIL] SIP TCP port: {e}", file=sys.stderr)
 
         # # Test SIP TLS port
         try:
             result = _sip_tls_probe()
             success = result == 1
-            results["sip_tls_port_accessible"] = success
+            results["sip_tls_port_accessible"] = int(success)
             if not success:
                 overall_success = False
                 print(
@@ -255,14 +255,14 @@ def main():
                 )
         except Exception as e:
             overall_success = False
-            results["sip_tls_port_accessible"] = False
+            results["sip_tls_port_accessible"] = 0
             print(f"[FAIL] SIP TLS port: {e}", file=sys.stderr)
 
         # Test Database port
         try:
             result = _db_probe()
             success = result == 1
-            results["database_port_accessible"] = success
+            results["database_port_accessible"] = int(success)
             if not success:
                 overall_success = False
                 print(
@@ -276,47 +276,47 @@ def main():
                 )
         except Exception as e:
             overall_success = False
-            results["database_port_accessible"] = False
+            results["database_port_accessible"] = 0
             print(f"[FAIL] Database port: {e}", file=sys.stderr)
 
         # Test Flexisip container
         try:
             if _docker_available():
                 running, detail = _docker_container_running(FLEXISIP_CONTAINER)
-                results["flexisip_container_running"] = running
+                results["flexisip_container_running"] = int(running)
                 if not running:
                     overall_success = False
                     print(f"[FAIL] Flexisip container: {detail}", file=sys.stderr)
                 else:
                     print(f"[PASS] Flexisip container: {detail}", file=sys.stderr)
             else:
-                results["flexisip_container_running"] = True  # Skip if no docker
+                results["flexisip_container_running"] = 1  # Skip if no docker
                 print(
                     "[SKIP] Flexisip container: Docker not available", file=sys.stderr
                 )
         except Exception as e:
             overall_success = False
-            results["flexisip_container_running"] = False
+            results["flexisip_container_running"] = 0
             print(f"[FAIL] Flexisip container: {e}", file=sys.stderr)
 
         # Test Database container
         try:
             if _docker_available():
                 running, detail = _docker_container_running(DB_CONTAINER)
-                results["database_container_running"] = running
+                results["database_container_running"] = int(running)
                 if not running:
                     overall_success = False
                     print(f"[FAIL] Database container: {detail}", file=sys.stderr)
                 else:
                     print(f"[PASS] Database container: {detail}", file=sys.stderr)
             else:
-                results["database_container_running"] = True  # Skip if no docker
+                results["database_container_running"] = 1  # Skip if no docker
                 print(
                     "[SKIP] Database container: Docker not available", file=sys.stderr
                 )
         except Exception as e:
             overall_success = False
-            results["database_container_running"] = False
+            results["database_container_running"] = 0
             print(f"[FAIL] Database container: {e}", file=sys.stderr)
 
         # Add score to results
@@ -329,13 +329,13 @@ def main():
         error_result = {
             "score": 0,
             "error": f"Error running availability test: {str(e)}",
-            "sip_udp_port_accessible": False,
-            "sip_tcp_port_accessible": False,
-            "sip_tls_port_accessible": False,
-            "database_port_accessible": False,
-            "flexisip_container_running": False,
-            "database_container_running": False,
-            "android_app_no_crashes": False,
+            "sip_udp_port_accessible": 0,
+            "sip_tcp_port_accessible": 0,
+            "sip_tls_port_accessible": 0,
+            "database_port_accessible": 0,
+            "flexisip_container_running": 0,
+            "database_container_running": 0,
+            "android_app_no_crashes": 0,
         }
         print(json.dumps(error_result))
 

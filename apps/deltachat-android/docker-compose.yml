@@ -9,8 +9,8 @@ services:
       - "1025:25"      # SMTP
       - "1143:143"     # IMAP
     volumes:
-      - ./docker-data/maildata:/var/mail
-      - ./docker-data/mailstate:/var/mail-state
+      - maildata:/var/mail
+      - mailstate:/var/mail-state
       - ./docker-data/config:/tmp/docker-mailserver/
     environment:
       - ENABLE_SPAMASSASSIN=0
@@ -31,6 +31,10 @@ services:
       timeout: 5s
       retries: 6
       start_period: 60s
+
+volumes:
+  maildata:
+  mailstate:
 
 networks:
   shared_net:

@@ -84,6 +84,7 @@ adb_install_apk() {
     if [[ ! -f "$apk_path" ]]; then
         fatal "APK not found at $apk_path"
     fi
+    wait_for_device_boot 120 || fatal "Device not ready for APK install"
     adb install -r "$apk_path"
 }
 
