@@ -64,7 +64,7 @@ def obtain_scores():
         with open(score_file, "r") as f:
             try:
                 data = json.load(f)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
                 data = {}
     else:
         data = {}
