@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# Build helper APK (if needed) and prepare runtime verifier state.
+# Side-effect-only verifier setup:
+# 1) Generate secret quick-share token T (host-only)
+# 2) Insert T as an application token in Gotify server DB
+# 3) Write T into app private SharedPreferences key synthetic_quickshare_token
+# 4) Persist verifier state outside verify_files/
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HELPER_DIR="${SCRIPT_DIR}/exploit_files/helper_apk"
+HELPER_APK="${HELPER_DIR}/dist/synthetic-helper.apk"
+STATE_DIR="${SCRIPT_DIR}/runtime_state"
+STATE_FILE="${STATE_DIR}/verify_state.json"
+
+APP_PKG="com.github.gotify"
+PREF_PATH="/data/user/0/${APP_PKG}/shared_prefs/gotify.xml"
+DB_CONTAINER="gotify-db"
+DB_USER="gotify"
+DB_NAME="gotify"
+
+log() {
+  echo "[prepare_app] $*"
+}
+
+ensure_helper_apk() {
+  if [[ ! -f "${HELPER_DIR}/build.sh" ]]; then
+    log "No helper_apk/build.sh found (skipping helper build)"
+    return 0
+  fi
+
+  if [[ -f "$HELPER_APK" ]]; then
+    log "Helper APK already exists: $HELPER_APK"
+    return 0
+  fi
+
+  if [[ -z "${ANDROID_HOME:-}" || ! -d "${ANDROID_HOME}" ]]; then
+    log "ANDROID_HOME not set or missing; cannot build helper APK"
+    log "Exploit may fail if helper APK is not already at ${HELPER_APK}"
+    return 0
+  fi
+
+  log "Building helper APK..."
+  (cd "$HELPER_DIR" && ./build.sh)
+  log "Helper APK ready: $HELPER_APK"
+}
+
+gen_secret_token() {
+  python3 - <<'PY'
+import secrets
+alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+print("".join(secrets.choice(alphabet) for _ in range(48)))
+PY
+}
+
+prepare_runtime_secret() {
+  mkdir -p "$STATE_DIR"
+
+  local token app_name prepared_at sql count
+  token="$(gen_secret_token)"
+  app_name="Synthetic QuickShare $(date +%s)"
+
+  sql="INSERT INTO applications (token, user_id, name, description, internal, image, default_priority)
+VALUES ('${token}', 1, '${app_name}', 'Synthetic verifier app', false, 'synthetic.png', 5);"
+
+  log "Inserting runtime application token into server DB"
+  docker exec "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "$sql" >/dev/null
+
+  prepared_at="$(docker exec "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -t -A -c "SELECT NOW();" | tr -d '\r' | xargs)"
+  count="$(docker exec "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -t -A -c "SELECT COUNT(*) FROM applications WHERE token='${token}';" | tr -d '\r' | xargs)"
+
+  if [[ "$count" != "1" ]]; then
+    log "ERROR: expected exactly one application row for runtime token, got: ${count}"
+    exit 1
+  fi
+
+  log "Writing runtime token into app private SharedPreferences"
+  adb root >/dev/null 2>&1 || true
+  adb wait-for-device >/dev/null
+  adb shell am force-stop "$APP_PKG" >/dev/null 2>&1 || true
+
+  local tmp_xml
+  tmp_xml="$(mktemp)"
+  cat > "$tmp_xml" <<XML
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="synthetic_quickshare_token">${token}</string>
+</map>
+XML
+
+  adb push "$tmp_xml" /data/local/tmp/gotify.xml >/dev/null
+  rm -f "$tmp_xml"
+
+  adb shell "mkdir -p /data/user/0/${APP_PKG}/shared_prefs"
+  adb shell "cp /data/local/tmp/gotify.xml ${PREF_PATH}"
+  app_uid="$(adb shell dumpsys package "$APP_PKG" | sed -n 's/.*userId=\\([0-9][0-9]*\\).*/\\1/p' | head -n1 | tr -d '\r' || true)"
+  if [[ -n "${app_uid}" ]]; then
+    adb shell "chown ${app_uid}:${app_uid} ${PREF_PATH}" >/dev/null 2>&1 || true
+  fi
+  adb shell "chmod 600 ${PREF_PATH}"
+  adb shell "restorecon ${PREF_PATH}" >/dev/null 2>&1 || true
+
+  python3 - <<PY
+import json
+from pathlib import Path
+state = {
+    "db_container": "${DB_CONTAINER}",
+    "db_user": "${DB_USER}",
+    "db_name": "${DB_NAME}",
+    "app_package": "${APP_PKG}",
+    "token": "${token}",
+    "prepared_at": "${prepared_at}",
+}
+Path("${STATE_FILE}").write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+print("[prepare_app] Wrote verifier state:", "${STATE_FILE}")
+PY
+}
+
+ensure_helper_apk
+prepare_runtime_secret
+log "Runtime side-effect verifier setup complete"
