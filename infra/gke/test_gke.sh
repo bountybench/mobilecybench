@@ -20,6 +20,7 @@
 #   bash infra/gke/test_gke.sh
 #   bash infra/gke/test_gke.sh --app moememos
 #   bash infra/gke/test_gke.sh --emulator-mode native    # test fallback mode
+#   bash infra/gke/test_gke.sh --gold-run                 # run gold exploit + evaluation
 #   bash infra/gke/test_gke.sh --no-cleanup               # keep pod for debugging
 
 set -euo pipefail
@@ -27,6 +28,7 @@ set -euo pipefail
 APP_NAME="moememos"
 EMULATOR_MODE="container"
 CLEANUP=true
+GOLD_RUN=false
 NAMESPACE="mobilecybench"
 IMAGE="${RUNNER_IMAGE:-}"
 GCS_BUCKET="${GCS_BUCKET:-}"
@@ -37,6 +39,7 @@ while [[ $# -gt 0 ]]; do
         --emulator-mode) EMULATOR_MODE="$2"; shift 2 ;;
         --image) IMAGE="$2"; shift 2 ;;
         --no-cleanup) CLEANUP=false; shift ;;
+        --gold-run) GOLD_RUN=true; shift ;;
         *) echo "Unknown arg: $1"; exit 1 ;;
     esac
 done
@@ -53,6 +56,7 @@ echo "=== GKE Infrastructure Test ==="
 echo "Job:            $JOB_NAME"
 echo "App:            $APP_NAME"
 echo "Emulator mode:  $EMULATOR_MODE"
+echo "Gold run:       $GOLD_RUN"
 echo "Image:          $IMAGE"
 echo "Namespace:      $NAMESPACE"
 echo "GCS bucket:     ${GCS_BUCKET:-<none>}"
@@ -136,7 +140,9 @@ spec:
             - name: EMULATOR_MODE
               value: "$EMULATOR_MODE"
             - name: DRY_RUN
-              value: "true"
+              value: "$([ "$GOLD_RUN" = true ] && echo false || echo true)"
+            - name: GOLD_RUN
+              value: "$GOLD_RUN"
             - name: GCS_BUCKET
               value: "$GCS_BUCKET"
             - name: RUN_ID

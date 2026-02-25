@@ -21,18 +21,21 @@
 #   bash infra/gke/test_local.sh moememos
 #   bash infra/gke/test_local.sh moememos --container   # emulator in separate container
 #   bash infra/gke/test_local.sh moememos --skip-build   # never build, only use existing/pull
+#   bash infra/gke/test_local.sh moememos --native --gold-run  # run gold exploit + evaluation
 
 set -euo pipefail
 
 APP_NAME="${1:-moememos}"
 EMULATOR_MODE="native"
 SKIP_BUILD=false
+GOLD_RUN=false
 
 for arg in "$@"; do
     case "$arg" in
         --native) EMULATOR_MODE="native" ;;
         --container) EMULATOR_MODE="container" ;;
         --skip-build) SKIP_BUILD=true ;;
+        --gold-run) GOLD_RUN=true ;;
     esac
 done
 
@@ -47,6 +50,7 @@ DOCKERHUB_EMULATOR="cybench/mobilecybench-emulator:latest"
 echo "=== MobileCyBench Local Infrastructure Test ==="
 echo "App:            $APP_NAME"
 echo "Emulator mode:  $EMULATOR_MODE"
+echo "Gold run:       $GOLD_RUN"
 echo "Project root:   $PROJECT_ROOT"
 echo ""
 
@@ -159,8 +163,15 @@ else
 fi
 echo ""
 
-# ─── Step 3: Create dry-run config ─────────────────────────────────────────
+# ─── Step 3: Create test config ────────────────────────────────────────────
 echo "--- Step 3: Creating test config ---"
+if [ "$GOLD_RUN" = true ]; then
+    DRY_RUN_VAL=false
+    GOLD_RUN_VAL=true
+else
+    DRY_RUN_VAL=true
+    GOLD_RUN_VAL=false
+fi
 cat > "$PROJECT_ROOT/runner_config_test.json" <<EOF
 {
   "server_access": true,
@@ -171,7 +182,8 @@ cat > "$PROJECT_ROOT/runner_config_test.json" <<EOF
   "model": "notarealmodel",
   "screenshot_mode": false,
   "headless_mode": false,
-  "dry_run": true,
+  "dry_run": $DRY_RUN_VAL,
+  "gold_run": $GOLD_RUN_VAL,
   "workflow": "exploit",
   "synthetic_vuln_id": "vuln_0",
   "agent_image": "cybench/mobilecybench:latest",
@@ -183,16 +195,30 @@ echo "Config written to runner_config_test.json"
 echo ""
 
 # ─── Step 4: Run orchestrator ──────────────────────────────────────────────
-echo "--- Step 4: Running orchestrator (dry_run=true, no LLM) ---"
-echo "The orchestrator will:"
-echo "  - Start DinD"
-echo "  - Start emulator ($EMULATOR_MODE mode)"
-if [ "$BUILD_TYPE" = "source" ]; then
-    echo "  - Build APKs from source"
+if [ "$GOLD_RUN" = true ]; then
+    echo "--- Step 4: Running orchestrator (gold_run=true, no LLM) ---"
+    echo "The orchestrator will:"
+    echo "  - Start DinD"
+    echo "  - Start emulator ($EMULATOR_MODE mode)"
+    if [ "$BUILD_TYPE" = "source" ]; then
+        echo "  - Build APKs from source"
+    fi
+    echo "  - Install app + backend"
+    echo "  - Start kali container"
+    echo "  - Copy & execute gold exploit files"
+    echo "  - Evaluate results (expect score=1)"
+else
+    echo "--- Step 4: Running orchestrator (dry_run=true, no LLM) ---"
+    echo "The orchestrator will:"
+    echo "  - Start DinD"
+    echo "  - Start emulator ($EMULATOR_MODE mode)"
+    if [ "$BUILD_TYPE" = "source" ]; then
+        echo "  - Build APKs from source"
+    fi
+    echo "  - Install app + backend"
+    echo "  - Start kali container"
+    echo "  - Open interactive shell (type 'exit' to finish)"
 fi
-echo "  - Install app + backend"
-echo "  - Start kali container"
-echo "  - Open interactive shell (type 'exit' to finish)"
 echo ""
 
 # For container mode: get emulator image into DinD.

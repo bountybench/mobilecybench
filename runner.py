@@ -14,6 +14,22 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+
+def _bootstrap_runner_session_id() -> str:
+    """Ensure runner process owns and exports a run/session ID."""
+    run_id = os.environ.get("MOBILECYBENCH_SESSION_ID")
+    if run_id:
+        return run_id
+    run_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    os.environ["MOBILECYBENCH_SESSION_ID"] = run_id
+    return run_id
+
+
+_bootstrap_runner_session_id()
+
+import io  # noqa: E402
+import tarfile  # noqa: E402
+
 from models.config import RunnerConfig  # noqa: E402
 from utils.git_utils import ensure_app_submodule  # noqa: E402
 from utils.logger import logger, logger_manager  # noqa: E402
@@ -89,6 +105,64 @@ def run_interactive_shell(app_name: str) -> dict:
 
     logger.info(f"Interactive shell completed. Commands executed: {command_count}")
     return {"status": "completed", "commands_executed": command_count}
+
+
+def _run_gold_exploit(workflow: "ExploitWorkflow", logs_dir: Path) -> dict:
+    """Run the gold (reference) exploit instead of the LLM agent.
+
+    Copies the known-good exploit_files from the synthetic vulnerability
+    directory into the kali container, executes exploit.sh, then runs
+    the full evaluation pipeline.
+    """
+    gold_dir = (
+        workflow.app_dir
+        / "synthetic_vulnerabilities"
+        / workflow.vuln_id
+        / "exploit_files"
+    )
+    if not gold_dir.exists():
+        raise FileNotFoundError(f"Gold exploit directory not found: {gold_dir}")
+
+    container = workflow.agent_env.container
+    if not container:
+        raise RuntimeError("Kali container not running — cannot copy exploit files")
+
+    # Copy gold exploit files into the kali container at /app/exploit_files/
+    logger.info(f"Copying gold exploit files from {gold_dir} into kali container...")
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        for f in gold_dir.iterdir():
+            tar.add(str(f), arcname=f"exploit_files/{f.name}")
+    buf.seek(0)
+    container.put_archive("/app", buf.getvalue())
+    logger.info("Gold exploit files copied into container")
+
+    # Execute exploit.sh
+    logger.info("Executing gold exploit: bash /app/exploit_files/exploit.sh")
+    exit_code, output = container.exec_run(
+        "bash /app/exploit_files/exploit.sh",
+        workdir="/app",
+    )
+    output_text = output.decode() if isinstance(output, bytes) else str(output)
+    logger.info(f"exploit.sh exit code: {exit_code}")
+    logger.info(f"exploit.sh output:\n{output_text}")
+
+    if exit_code != 0:
+        logger.warning(f"Gold exploit.sh exited with non-zero code: {exit_code}")
+
+    # Save artifacts (exploit_files, agent_output) from the container
+    workflow.save_artifacts(logs_dir)
+
+    # Remove kali container before evaluation (matches normal flow)
+    if workflow.agent_env:
+        workflow.agent_env.cleanup()
+
+    # Run evaluation
+    logger.info("Evaluating gold exploit results...")
+    scores = workflow.evaluate()
+    logger.info(f"Gold run evaluation: {scores}")
+
+    return scores
 
 
 def create_workflow(
@@ -212,7 +286,16 @@ def run(
         workflow.setup_runtime_environment()
         logger.info("Runtime environment ready")
 
-        if config.dry_run:
+        if config.gold_run:
+            logger.info("Gold run mode — using reference exploit files...")
+            scores = _run_gold_exploit(workflow, logger_manager.get_logs_dir())
+            evaluation = scores or {}
+            run_result = normalize_agent_result({"status": "gold_run_completed"})
+            logger.info(f"Gold run complete: {scores}")
+            outcome = "success"
+            exit_reason = "gold_run_completed"
+            exit_code = 0
+        elif config.dry_run:
             logger.info("Dry run mode - launching interactive shell...")
             run_result = normalize_agent_result(run_interactive_shell(app_name))
             run_result["status"] = "dry_run_completed"

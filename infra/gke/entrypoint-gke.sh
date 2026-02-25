@@ -37,15 +37,18 @@ CONFIG_DST="/tmp/runner_config.json"
 
 EMULATOR_MODE="${EMULATOR_MODE:-container}"
 DRY_RUN="${DRY_RUN:-false}"
+GOLD_RUN="${GOLD_RUN:-false}"
 
 if [ -f "$CONFIG_SRC" ]; then
     jq --arg model "$MODEL" \
        --arg vuln "$VULN_ID" \
        --arg em "$EMULATOR_MODE" \
        --argjson dryrun "$DRY_RUN" \
+       --argjson goldrun "$GOLD_RUN" \
        '.docker_mode = true
         | .emulator_mode = $em
         | .dry_run = $dryrun
+        | .gold_run = $goldrun
         | if $model != "" then .model = $model else . end
         | if $vuln != "" then .synthetic_vuln_id = $vuln else . end' \
        "$CONFIG_SRC" > "$CONFIG_DST"

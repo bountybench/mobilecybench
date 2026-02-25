@@ -28,6 +28,7 @@ class RunnerConfig(BaseModel):
     screenshot_mode: bool
     headless_mode: bool
     dry_run: bool
+    gold_run: bool = False
     docker_mode: bool
     emulator_mode: Literal["native", "container"] = "native"
 
