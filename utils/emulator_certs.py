@@ -5,7 +5,7 @@ from pathlib import Path
 
 from utils.logger import logger
 
-INJECT_CA_TIMEOUT = 60
+INJECT_CA_TIMEOUT = 30
 
 
 def inject_system_ca(project_root: Path) -> None:
@@ -16,21 +16,10 @@ def inject_system_ca(project_root: Path) -> None:
         return
 
     logger.info("Injecting system CA certificate...")
-    try:
-        result = subprocess.run(
-            ["bash", str(script)], capture_output=True, text=True,
-            timeout=INJECT_CA_TIMEOUT,
-        )
-    except subprocess.TimeoutExpired as e:
-        logger.error(f"CA injection timed out after {INJECT_CA_TIMEOUT}s")
-        if e.stdout:
-            logger.error(f"stdout before timeout:\n{e.stdout}")
-        if e.stderr:
-            logger.error(f"stderr before timeout:\n{e.stderr}")
-        raise
+    result = subprocess.run(
+        ["bash", str(script)], capture_output=True, text=True, timeout=INJECT_CA_TIMEOUT
+    )
     if result.returncode != 0:
-        logger.error(f"CA injection failed (exit {result.returncode})")
-        logger.error(f"stdout: {result.stdout}")
-        logger.error(f"stderr: {result.stderr}")
+        logger.error(f"CA injection failed: {result.stderr}")
         raise RuntimeError("System CA injection failed")
     logger.info("System CA injected successfully")

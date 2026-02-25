@@ -119,7 +119,7 @@ log_info "API $SDK — injecting $CERT_BASENAME"
 if adb shell "[ -f /system/etc/security/cacerts/$CERT_BASENAME ]" 2>/dev/null; then
   if [[ "$SDK" -ge 34 ]]; then
     Z="$(adb shell pidof zygote64 | tr -d '\r' || true)"
-    if [[ -n "$Z" ]] && adb shell "su 0 nsenter --mount=/proc/$Z/ns/mnt -- ls /apex/com.android.conscrypt/cacerts/$CERT_BASENAME" >/dev/null 2>&1; then
+    if [[ -n "$Z" ]] && adb shell "nsenter --mount=/proc/$Z/ns/mnt -- ls /apex/com.android.conscrypt/cacerts/$CERT_BASENAME" >/dev/null 2>&1; then
       log_info "Already injected — skipping"
       exit 0
     fi
@@ -145,7 +145,7 @@ fi
 
 if [[ "$SDK" -ge 34 ]]; then
   Z="$(adb shell pidof zygote64 | tr -d '\r' || true)"
-  if [[ -n "$Z" ]] && ! adb shell "su 0 nsenter --mount=/proc/$Z/ns/mnt -- ls /apex/com.android.conscrypt/cacerts/$CERT_BASENAME" >/dev/null 2>&1; then
+  if [[ -n "$Z" ]] && ! adb shell "nsenter --mount=/proc/$Z/ns/mnt -- ls /apex/com.android.conscrypt/cacerts/$CERT_BASENAME" >/dev/null 2>&1; then
     fatal "Cert not visible in zygote namespace"
   fi
 fi
