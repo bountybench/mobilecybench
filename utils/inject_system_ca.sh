@@ -119,6 +119,10 @@ timeout 5 adb root 2>/dev/null || true
 if [[ "${ANDROID_SERIAL:-}" == *":"* ]]; then
   log_info "[debug] step: reconnect after adb root (TCP mode)"
   sleep 3
+  # Disconnect stale connection first, then reconnect fresh.
+  # Without this, "adb connect" says "already connected" but the
+  # connection is dead (adbd restarted), and wait-for-device hangs.
+  adb disconnect "$ANDROID_SERIAL" 2>/dev/null || true
   adb connect "$ANDROID_SERIAL" 2>&1 || true
 fi
 log_info "[debug] step: adb wait-for-device"
