@@ -85,20 +85,17 @@ chmod 644 "\$STORE"/*
 chcon u:object_r:system_file:s0 "\$STORE"/*
 
 # 3. Bind-mount into zygote64 + child app namespaces
+# nsenter can fail transiently (e.g. after adb root restarts adbd) — retry.
 Z="\$(pidof zygote64)"
-echo "[debug] zygote64 PID=\$Z" >&2
 for attempt in 1 2 3; do
-  if nsenter --mount=/proc/\$Z/ns/mnt -- /bin/mount --bind "\$STORE" "\$APEX" 2>&1; then
-    echo "[debug] nsenter zygote succeeded on attempt \$attempt" >&2
+  if nsenter --mount=/proc/\$Z/ns/mnt -- /bin/mount --bind "\$STORE" "\$APEX" 2>/dev/null; then
     break
-  else
-    echo "[debug] nsenter zygote failed on attempt \$attempt" >&2
   fi
   sleep 2
 done
 
 for PID in \$(ps -A -o PID,PPID | awk -v z="\$Z" '\$2==z {print \$1}'); do
-  nsenter --mount=/proc/\$PID/ns/mnt -- /bin/mount --bind "\$STORE" "\$APEX" 2>&1 || true
+  nsenter --mount=/proc/\$PID/ns/mnt -- /bin/mount --bind "\$STORE" "\$APEX" 2>/dev/null || true
 done
 
 rm -rf "\$TMP"
@@ -119,11 +116,10 @@ SDK="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
 log_info "API $SDK — injecting $CERT_BASENAME"
 
 # Idempotency: skip if cert already present (and visible in zygote for API 34+)
-log_info "[debug] step: idempotency check"
 if adb shell "[ -f /system/etc/security/cacerts/$CERT_BASENAME ]" 2>/dev/null; then
   if [[ "$SDK" -ge 34 ]]; then
     Z="$(adb shell pidof zygote64 | tr -d '\r' || true)"
-    if [[ -n "$Z" ]] && adb shell "nsenter --mount=/proc/$Z/ns/mnt -- ls /apex/com.android.conscrypt/cacerts/$CERT_BASENAME" >/dev/null 2>&1; then
+    if [[ -n "$Z" ]] && adb shell "su 0 nsenter --mount=/proc/$Z/ns/mnt -- ls /apex/com.android.conscrypt/cacerts/$CERT_BASENAME" >/dev/null 2>&1; then
       log_info "Already injected — skipping"
       exit 0
     fi
@@ -134,9 +130,7 @@ if adb shell "[ -f /system/etc/security/cacerts/$CERT_BASENAME ]" 2>/dev/null; t
 fi
 
 # Push and inject
-log_info "[debug] step: adb push"
 adb push "$CERT_PATH" "/data/local/tmp/$CERT_BASENAME" >/dev/null
-log_info "[debug] step: push done, injecting (SDK=$SDK)"
 
 if [[ "$SDK" -le 33 ]]; then
   inject_tmpfs_overlay
@@ -145,7 +139,6 @@ else
 fi
 
 # Verify
-log_info "[debug] step: verify"
 if ! adb shell "[ -f /system/etc/security/cacerts/$CERT_BASENAME ]" 2>/dev/null; then
   fatal "Verification failed: cert not in /system/etc/security/cacerts/"
 fi
