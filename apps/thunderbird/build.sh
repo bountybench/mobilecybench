@@ -24,7 +24,7 @@ tb.release.keyPassword=$KEYSTORE_ALIAS_PASSWORD
 EOF
 
 # Thunderbird's repo defaults (gradle.properties) set very large heaps (e.g. -Xmx8g -Xms8g), override with a smaller heap but keep useful defaults.
-GRADLE_XMX="${GRADLE_XMX:-4096m}"
+GRADLE_XMX="${GRADLE_XMX:-2048m}"
 GRADLE_JVMARGS="-Dfile.encoding=UTF-8 -XX:+UseG1GC -XX:SoftRefLRUPolicyMSPerMB=1 -XX:ReservedCodeCacheSize=256m -XX:+HeapDumpOnOutOfMemoryError -Xmx${GRADLE_XMX} -Xss8m"
 
 # Patch gradle.properties to reduce memory limits for CI (prevent swapping)
@@ -87,7 +87,7 @@ fi
 # Largest speed lever: disable all variants except fossRelease in fast mode.
 if [[ "$TB_FAST_RELEASE" == "true" ]] && [[ -f "$APP_GRADLE" ]] && ! grep -q 'tbFastReleaseVariantPruned' "$APP_GRADLE"; then
   echo "Applying fast-release variant pruning (keep only fossRelease)..."
-  perl -0777 -i -pe 's/androidComponents \{\n/androidComponents {\n    beforeVariants { variantBuilder ->\n        if (fastReleaseBuild) {\n            val buildType = variantBuilder.buildType ?: \"\"\n            val flavors = variantBuilder.productFlavors.associate { it.first to it.second }\n            val appFlavor = flavors[\"app\"] ?: \"\"\n            val keep = buildType == \"release\" && appFlavor == \"foss\"\n            variantBuilder.enable = keep \/\/ tbFastReleaseVariantPruned\n        }\n    }\n/s' "$APP_GRADLE"
+  perl -0777 -i -pe 's/androidComponents\s*\{\n/androidComponents {\n    beforeVariants { variantBuilder ->\n        if (fastReleaseBuild) {\n            val buildType = variantBuilder.buildType ?: \"\"\n            val flavors = variantBuilder.productFlavors.associate { it.first to it.second }\n            val appFlavor = flavors[\"app\"] ?: \"\"\n            val keep = buildType == \"release\" && appFlavor == \"foss\"\n            variantBuilder.enable = keep \/\/ tbFastReleaseVariantPruned\n        }\n    }\n/s' "$APP_GRADLE"
 fi
 
 # Additional fast-mode config trimming: remove non-essential quality/plugin wiring.
@@ -128,7 +128,8 @@ while kill -0 "$gradle_pid" 2>/dev/null; do
   sleep 60
   now_ts="$(date +%s)"
   elapsed="$((now_ts - start_ts))"
-  echo "Thunderbird Gradle build in progress (${elapsed}s elapsed)..."
+  echo "Thunderbird Gradle build in progress (${elapsed}s elapsed)... Last 5 log lines:"
+  tail -n 5 "$build_log"
 done
 
 wait "$gradle_pid"
