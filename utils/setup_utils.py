@@ -118,7 +118,9 @@ def check_connectivity(container, app_server: Optional[str] = None) -> None:
     # Kali → app server (if configured)
     # Use nc for a raw TCP check — works for any protocol (HTTP, XMPP, etc.)
     if app_server:
-        host, port = app_server.rsplit(":", 1)
+        # Strip scheme (e.g. "http://server:8080" → "server:8080")
+        server = app_server.split("://", 1)[-1]
+        host, port = server.rsplit(":", 1)
         nc_cmd = f"nc -z -w 10 {host} {port}"
         result = container.exec_run(f"bash -c '{nc_cmd}'")
         checks.append(("kali → app_server", result.exit_code == 0, nc_cmd))
