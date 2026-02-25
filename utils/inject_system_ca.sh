@@ -107,17 +107,9 @@ CERT_PATH="${1:-$(ls "$REPO_ROOT"/tls/*.0 2>/dev/null | head -1 || true)}"
 [[ -n "$CERT_PATH" && -f "$CERT_PATH" ]] || fatal "No cert found. Place <hash>.0 in tls/"
 CERT_BASENAME="$(basename "$CERT_PATH")"
 
-# Ensure adb root access.
-# "adb root" restarts adbd, which drops TCP connections (e.g. localhost:5555).
-# Over TCP, "adb root" hangs forever waiting for a response that never comes
-# because the connection is already dead. Use a timeout to prevent this.
-# The script uses "su 0" for all privileged operations, so root adbd is
-# nice-to-have but not required.
-# In TCP mode (container emulator), skip "adb root" entirely.
-# "adb root" restarts adbd which kills the TCP connection and may not
-# re-enable TCP mode, leaving the device permanently offline.
-# This script uses "su 0" for all privileged operations, and "adb push"
-# to /data/local/tmp/ doesn't need root, so root adbd is unnecessary.
+# In TCP mode (container emulator), skip "adb root" — it restarts adbd which
+# kills the TCP connection. This script uses "su 0" for all privileged
+# operations and "adb push" to /data/local/tmp/ doesn't need root.
 if [[ "${ANDROID_SERIAL:-}" == *":"* ]]; then
   log_info "TCP mode — skipping adb root (using su 0 instead)"
 else

@@ -192,11 +192,14 @@ class EmulatorManager:
         android_home = self.emulator_config["android_home"]
         emulator_bin = f"{android_home}/emulator/emulator"
 
-        # Always headless in container mode
+        # Always headless in container mode.
+        # -prop service.adb.tcp.port=5555 makes adbd listen on TCP from boot,
+        # so we don't need an ADB server inside the container at all.
         emulator_cmd = (
             f"{emulator_bin} -avd {emulator_name} "
             f"-no-snapshot-save -wipe-data -no-window -gpu off "
-            f"-memory 2048 -no-audio -read-only"
+            f"-memory 2048 -no-audio -read-only "
+            f"-prop service.adb.tcp.port=5555"
         )
 
         # Use a minimal emulator image (much smaller than the orchestrator)
@@ -207,19 +210,11 @@ class EmulatorManager:
         logger.info(f"Starting emulator container with image: {emulator_image}")
         logger.info(f"Emulator AVD: {emulator_name}")
 
-        # Simple startup: ADB server + emulator. The emulator's adbd binds to
-        # 127.0.0.1:5555 inside the container. We use "adb tcpip" via docker
-        # exec after boot to make adbd listen on all interfaces, then connect
-        # from the orchestrator. No socat needed.
-        container_cmd = (
-            f"bash -c 'adb -a start-server && {emulator_cmd}'"
-        )
-
         try:
             self.emulator_container = client.containers.run(
                 image=emulator_image,
                 name="emulator-container",
-                command=container_cmd,
+                command=emulator_cmd,
                 devices=["/dev/kvm:/dev/kvm"],
                 network="shared_net",
                 ports={"5555/tcp": 5555},
@@ -234,61 +229,40 @@ class EmulatorManager:
             logger.error(f"Failed to start emulator container: {e}")
             raise RuntimeError(f"Failed to start emulator container: {e}")
 
-        # Phase 1: Wait for emulator to appear in the container's ADB server.
-        # The emulator typically boots in ~45s.
-        logger.info("Waiting for emulator to boot inside container...")
-        max_retries = 150  # 150 × 2s = 5 minutes
-        emulator_device_id = None
-        for i in range(max_retries):
-            time.sleep(2)
-            result = self.emulator_container.exec_run("adb devices")
-            output = result.output.decode()
-            # Look for a connected emulator device (e.g. "emulator-5554  device")
-            for line in output.splitlines():
-                if line.startswith("emulator-") and "device" in line:
-                    emulator_device_id = line.split()[0]
+        # Single ADB server design: only the orchestrator's ADB server exists.
+        # adbd inside the emulator listens on TCP 5555 from boot (via -prop).
+        # We poll `adb connect` until the device comes online.
+        logger.info("Waiting for emulator to boot and accept ADB connections...")
+        max_wait = 300  # 5 minutes
+        connected = False
+        for i in range(max_wait // 2):
+            result = subprocess.run(
+                ["adb", "connect", "localhost:5555"],
+                capture_output=True, text=True,
+            )
+            if "connected" in result.stdout.lower():
+                # Check if device is actually online (not just TCP connected)
+                devices_result = subprocess.run(
+                    ["adb", "-s", "localhost:5555", "get-state"],
+                    capture_output=True, text=True,
+                )
+                if devices_result.stdout.strip() == "device":
+                    connected = True
+                    logger.info("ADB connected to localhost:5555 (device online)")
                     break
-            if emulator_device_id:
-                logger.info(f"Emulator device ready inside container: {emulator_device_id}")
-                break
             if i % 15 == 0:
                 logger.info(
-                    f"Still waiting for emulator boot... ({i * 2}s elapsed, "
-                    f"up to {max_retries * 2}s)"
+                    f"Still waiting for emulator... ({i * 2}s elapsed, "
+                    f"up to {max_wait}s)"
                 )
-        else:
+            time.sleep(2)
+
+        if not connected:
             try:
                 logs = self.emulator_container.logs(tail=50).decode()
                 logger.error(f"Emulator container logs (last 50 lines):\n{logs}")
             except Exception:
                 pass
-            self.state = EmulatorState.STOPPED
-            raise RuntimeError("Timed out waiting for emulator to appear in container ADB")
-
-        # Phase 2: Enable TCP/IP ADB so the orchestrator can connect externally.
-        # "adb tcpip 5555" makes adbd listen on 0.0.0.0:5555 (not just loopback).
-        logger.info("Enabling TCP/IP ADB mode on emulator...")
-        self.emulator_container.exec_run(
-            f"adb -s {emulator_device_id} tcpip 5555"
-        )
-        time.sleep(3)  # Brief wait for adbd to restart in TCP mode
-
-        # Phase 3: Connect from orchestrator via published port.
-        # The emulator container publishes 5555/tcp to the DinD host, so the
-        # orchestrator (which runs on the host, not as an inner container)
-        # connects via localhost.
-        logger.info("Connecting to emulator via localhost:5555 (published port)...")
-        for attempt in range(10):
-            result = subprocess.run(
-                ["adb", "connect", "localhost:5555"],
-                capture_output=True,
-                text=True,
-            )
-            if "connected" in result.stdout.lower():
-                logger.info("ADB connected to localhost:5555")
-                break
-            time.sleep(2)
-        else:
             self.state = EmulatorState.STOPPED
             raise RuntimeError(
                 "Timed out waiting for ADB connection to emulator container"
