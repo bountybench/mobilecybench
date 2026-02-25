@@ -45,3 +45,4 @@ Windows note: `setup.sh` and emulator scripts require WSL or Git Bash.
 - `documentation/TROUBLESHOOTING.md` — common issues
 - `documentation/ARCHITECTURE.md` — system architecture and agent environment
 - `documentation/COMMANDS.md` — command reference grouped by workflow
+- `infra/gke/README.md` — running experiments at scale on Google Kubernetes Engine (GKE)
