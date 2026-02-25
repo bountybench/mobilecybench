@@ -107,17 +107,10 @@ CERT_PATH="${1:-$(ls "$REPO_ROOT"/tls/*.0 2>/dev/null | head -1 || true)}"
 [[ -n "$CERT_PATH" && -f "$CERT_PATH" ]] || fatal "No cert found. Place <hash>.0 in tls/"
 CERT_BASENAME="$(basename "$CERT_PATH")"
 
-# In TCP mode (container emulator), skip "adb root" — it restarts adbd which
-# kills the TCP connection. This script uses "su 0" for all privileged
-# operations and "adb push" to /data/local/tmp/ doesn't need root.
-if [[ "${ANDROID_SERIAL:-}" == *":"* ]]; then
-  log_info "TCP mode — skipping adb root (using su 0 instead)"
-else
-  adb root 2>/dev/null || true
-fi
+# Ensure adb root access
+adb root 2>/dev/null || true
 adb wait-for-device >/dev/null
 
-log_info "[debug] step: getprop SDK"
 SDK="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
 [[ -n "$SDK" ]] || fatal "Could not detect SDK version"
 log_info "API $SDK — injecting $CERT_BASENAME"
