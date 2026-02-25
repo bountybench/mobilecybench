@@ -113,25 +113,17 @@ CERT_BASENAME="$(basename "$CERT_PATH")"
 # because the connection is already dead. Use a timeout to prevent this.
 # The script uses "su 0" for all privileged operations, so root adbd is
 # nice-to-have but not required.
-log_info "[debug] ANDROID_SERIAL=${ANDROID_SERIAL:-<unset>}"
-log_info "[debug] step: adb root"
-timeout 5 adb root 2>/dev/null || true
+# In TCP mode (container emulator), skip "adb root" entirely.
+# "adb root" restarts adbd which kills the TCP connection and may not
+# re-enable TCP mode, leaving the device permanently offline.
+# This script uses "su 0" for all privileged operations, and "adb push"
+# to /data/local/tmp/ doesn't need root, so root adbd is unnecessary.
 if [[ "${ANDROID_SERIAL:-}" == *":"* ]]; then
-  log_info "[debug] step: reconnect after adb root (TCP mode)"
-  # adbd restarts after "adb root", killing the TCP connection.
-  # Clear stale connection and retry until adbd is back.
-  adb disconnect "$ANDROID_SERIAL" 2>/dev/null || true
-  for i in $(seq 1 15); do
-    sleep 2
-    if adb connect "$ANDROID_SERIAL" 2>&1 | grep -q "connected"; then
-      log_info "[debug] reconnected on attempt $i"
-      break
-    fi
-  done
+  log_info "TCP mode — skipping adb root (using su 0 instead)"
+else
+  adb root 2>/dev/null || true
+  adb wait-for-device >/dev/null
 fi
-log_info "[debug] step: adb wait-for-device"
-adb wait-for-device >/dev/null
-log_info "[debug] step: adb wait-for-device done"
 
 log_info "[debug] step: getprop SDK"
 SDK="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
