@@ -122,8 +122,8 @@ if [[ "${ANDROID_SERIAL:-}" == *":"* ]]; then
   log_info "TCP mode — skipping adb root (using su 0 instead)"
 else
   adb root 2>/dev/null || true
-  adb wait-for-device >/dev/null
 fi
+adb wait-for-device >/dev/null
 
 log_info "[debug] step: getprop SDK"
 SDK="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
