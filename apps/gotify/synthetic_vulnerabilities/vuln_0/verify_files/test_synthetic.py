@@ -19,7 +19,9 @@ import sys
 from pathlib import Path
 from typing import Tuple
 
-STATE_PATH = Path(__file__).resolve().parent.parent / "runtime_state" / "verify_state.json"
+STATE_PATH = (
+    Path(__file__).resolve().parent.parent / "runtime_state" / "verify_state.json"
+)
 
 
 def _run(cmd: list[str], timeout: int = 20) -> str:
