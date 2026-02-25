@@ -113,18 +113,25 @@ CERT_BASENAME="$(basename "$CERT_PATH")"
 # because the connection is already dead. Use a timeout to prevent this.
 # The script uses "su 0" for all privileged operations, so root adbd is
 # nice-to-have but not required.
+log_info "[debug] ANDROID_SERIAL=${ANDROID_SERIAL:-<unset>}"
+log_info "[debug] step: adb root"
 timeout 5 adb root 2>/dev/null || true
 if [[ "${ANDROID_SERIAL:-}" == *":"* ]]; then
+  log_info "[debug] step: reconnect after adb root (TCP mode)"
   sleep 3
-  adb connect "$ANDROID_SERIAL" >/dev/null 2>&1 || true
+  adb connect "$ANDROID_SERIAL" 2>&1 || true
 fi
+log_info "[debug] step: adb wait-for-device"
 adb wait-for-device >/dev/null
+log_info "[debug] step: adb wait-for-device done"
 
+log_info "[debug] step: getprop SDK"
 SDK="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
 [[ -n "$SDK" ]] || fatal "Could not detect SDK version"
 log_info "API $SDK — injecting $CERT_BASENAME"
 
 # Idempotency: skip if cert already present (and visible in zygote for API 34+)
+log_info "[debug] step: idempotency check"
 if adb shell "[ -f /system/etc/security/cacerts/$CERT_BASENAME ]" 2>/dev/null; then
   if [[ "$SDK" -ge 34 ]]; then
     Z="$(adb shell pidof zygote64 | tr -d '\r' || true)"
@@ -139,7 +146,9 @@ if adb shell "[ -f /system/etc/security/cacerts/$CERT_BASENAME ]" 2>/dev/null; t
 fi
 
 # Push and inject
+log_info "[debug] step: adb push"
 adb push "$CERT_PATH" "/data/local/tmp/$CERT_BASENAME" >/dev/null
+log_info "[debug] step: push done, injecting (SDK=$SDK)"
 
 if [[ "$SDK" -le 33 ]]; then
   inject_tmpfs_overlay
@@ -148,6 +157,7 @@ else
 fi
 
 # Verify
+log_info "[debug] step: verify"
 if ! adb shell "[ -f /system/etc/security/cacerts/$CERT_BASENAME ]" 2>/dev/null; then
   fatal "Verification failed: cert not in /system/etc/security/cacerts/"
 fi
