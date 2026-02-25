@@ -18,7 +18,9 @@ def inject_system_ca(project_root: Path) -> None:
     logger.info("Injecting system CA certificate...")
     try:
         result = subprocess.run(
-            ["bash", str(script)], capture_output=True, text=True,
+            ["bash", str(script)],
+            capture_output=True,
+            text=True,
             timeout=INJECT_CA_TIMEOUT,
         )
     except subprocess.TimeoutExpired as e:

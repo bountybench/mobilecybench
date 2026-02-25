@@ -46,7 +46,7 @@ def run_tests(tests):
                 test_results[test.__name__] = 0
 
             score += test_score
-        except JSONDecodeError as e:
+        except JSONDecodeError:
             print("Error in running ", test, " due to an incorrect request response.")
             test_results[test.__name__] = 0
             score += 1

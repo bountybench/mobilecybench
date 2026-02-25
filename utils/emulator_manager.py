@@ -217,9 +217,7 @@ class EmulatorManager:
         # orchestrator's `adb` commands transparently reach the container's
         # server. No TCP mode (adb tcpip) needed — same architecture as
         # native mode, just the ADB server lives in the container.
-        container_cmd = (
-            f"bash -c 'adb -a start-server && {emulator_cmd}'"
-        )
+        container_cmd = f"bash -c 'adb -a start-server && {emulator_cmd}'"
 
         try:
             self.emulator_container = client.containers.run(
@@ -249,23 +247,31 @@ class EmulatorManager:
             try:
                 result = subprocess.run(
                     ["adb", "devices"],
-                    capture_output=True, text=True, timeout=5,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
                 for line in result.stdout.splitlines():
                     if "device" in line and not line.startswith("List"):
                         device_id = line.split()[0]
                         # Confirm boot completed
                         boot = subprocess.run(
-                            ["adb", "-s", device_id, "shell",
-                             "getprop", "sys.boot_completed"],
-                            capture_output=True, text=True, timeout=5,
+                            [
+                                "adb",
+                                "-s",
+                                device_id,
+                                "shell",
+                                "getprop",
+                                "sys.boot_completed",
+                            ],
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
                         )
                         if boot.stdout.strip() == "1":
                             self.device_id = device_id
                             self.state = EmulatorState.RUNNING
-                            logger.info(
-                                f"Emulator booted, device_id={self.device_id}"
-                            )
+                            logger.info(f"Emulator booted, device_id={self.device_id}")
                             return
             except (subprocess.TimeoutExpired, Exception):
                 pass
