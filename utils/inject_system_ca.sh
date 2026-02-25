@@ -118,12 +118,16 @@ log_info "[debug] step: adb root"
 timeout 5 adb root 2>/dev/null || true
 if [[ "${ANDROID_SERIAL:-}" == *":"* ]]; then
   log_info "[debug] step: reconnect after adb root (TCP mode)"
-  sleep 3
-  # Disconnect stale connection first, then reconnect fresh.
-  # Without this, "adb connect" says "already connected" but the
-  # connection is dead (adbd restarted), and wait-for-device hangs.
+  # adbd restarts after "adb root", killing the TCP connection.
+  # Clear stale connection and retry until adbd is back.
   adb disconnect "$ANDROID_SERIAL" 2>/dev/null || true
-  adb connect "$ANDROID_SERIAL" 2>&1 || true
+  for i in $(seq 1 15); do
+    sleep 2
+    if adb connect "$ANDROID_SERIAL" 2>&1 | grep -q "connected"; then
+      log_info "[debug] reconnected on attempt $i"
+      break
+    fi
+  done
 fi
 log_info "[debug] step: adb wait-for-device"
 adb wait-for-device >/dev/null
