@@ -705,24 +705,6 @@ run_test_check() {
     # Clear SSRF requests before each test
     clear_ssrf_requests
 
-    # Mirror CI: for vuln_scenario_0 only, prepare rooted/remounted emulator BEFORE setup
-    if [ -n "$vuln_scenario" ] && [ "$vuln_scenario" = "0" ]; then
-        echo -e "${INFO} Preparing rooted/remounted emulator (CI parity for vuln_scenario_0)"
-        if [ -f "utils/android_emulator_ready.sh" ]; then
-            utils/android_emulator_ready.sh --remount || true
-        else
-            adb get-state 1>/dev/null 2>&1 || adb wait-for-device
-            adb root || true
-            adb wait-for-device
-            adb shell avbctl disable-verification || true
-            adb reboot || true
-            adb wait-for-device
-            adb root || true
-            adb remount || true
-        fi
-        adb logcat -c || true
-    fi
-    
     # Get package_name from metadata.json (required field) and verify before setup
     package_name=$(jq -r '.package_name' metadata.json)
     echo -e "${INFO} Found package_name in metadata.json: $package_name"
@@ -1272,14 +1254,14 @@ start_emulator_and_adb() {
         # Wait for device to appear
         adb wait-for-device
 
-    wait_for_device_boot 300
-    echo "Emulator booted successfully."
+        wait_for_device_boot
+        echo "Emulator booted successfully."
 
-    # Ensure emulator is stopped on any exit (success or failure)
-    trap 'echo -e "${INFO} Stopping emulator due to script exit..."; cd "$ROOT_DIR"; bash ./stop_emulator.sh' EXIT
-else
-    echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
-fi
+        # Ensure emulator is stopped on any exit (success or failure)
+        trap 'echo -e "${INFO} Stopping emulator due to script exit..."; cd "$ROOT_DIR"; bash ./stop_emulator.sh' EXIT
+    else
+        echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
+    fi
 
     # Ensure ADB server is listening on all interfaces for container access
     echo -e "${INFO} Ensuring ADB server is configured for container access..."
