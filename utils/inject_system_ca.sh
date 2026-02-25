@@ -107,8 +107,14 @@ CERT_PATH="${1:-$(ls "$REPO_ROOT"/tls/*.0 2>/dev/null | head -1 || true)}"
 [[ -n "$CERT_PATH" && -f "$CERT_PATH" ]] || fatal "No cert found. Place <hash>.0 in tls/"
 CERT_BASENAME="$(basename "$CERT_PATH")"
 
-# Ensure adb root access
+# Ensure adb root access.
+# "adb root" restarts adbd, which drops TCP connections (e.g. localhost:5555).
+# We must reconnect before wait-for-device, otherwise it hangs forever.
 adb root 2>/dev/null || true
+if [[ "${ANDROID_SERIAL:-}" == *":"* ]]; then
+  sleep 2
+  adb connect "$ANDROID_SERIAL" >/dev/null 2>&1 || true
+fi
 adb wait-for-device >/dev/null
 
 SDK="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
