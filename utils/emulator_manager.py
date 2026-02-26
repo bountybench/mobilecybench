@@ -11,7 +11,6 @@ from typing import Optional
 
 from utils.logger import logger
 
-
 EMULATOR_CONTAINER_NAME = "emulator-container"
 
 
@@ -245,7 +244,9 @@ class EmulatorManager:
             raise RuntimeError(f"Failed to start emulator container: {e}")
 
         self.state = EmulatorState.RUNNING
-        logger.info("Emulator container started (boot-wait deferred to wait_until_ready)")
+        logger.info(
+            "Emulator container started (boot-wait deferred to wait_until_ready)"
+        )
 
     def _start_native_emulator(self):
         """Start emulator as a native subprocess (original behavior)."""
