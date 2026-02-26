@@ -7,7 +7,6 @@ from typing import Optional
 from utils.logger import logger
 
 BUILD_COMMAND_TIMEOUT = 1200  # 20 minutes
-EMULATOR_BOOT_TIMEOUT_SECONDS = 300
 
 
 def install_app_and_setup_backend(
@@ -20,6 +19,7 @@ def install_app_and_setup_backend(
 ) -> None:
     """
     Install the app and set up backend services.
+    Expects the emulator to be booted and ready.
 
     Args:
         app_dir: Application directory
@@ -34,11 +34,7 @@ def install_app_and_setup_backend(
 
     cmd = CommandExecutor()
 
-    # Wait for emulator
-    logger.info("Waiting for emulator to be ready...")
-    emulator.wait_until_ready(timeout=EMULATOR_BOOT_TIMEOUT_SECONDS)
-    logger.info("Emulator booted successfully")
-
+    # Sanity check: emulator should already be booted by the workflow caller
     if not emulator.check_status():
         raise RuntimeError("Emulator status check failed")
     logger.info("Emulator status verified")
