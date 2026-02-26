@@ -47,15 +47,13 @@ make_or_overwrite() {
 
 echo "==> Generating SSL certificates (FORCE=${FORCE})"
 
-# Generate CA key and certificate
-if make_or_overwrite "${CA_KEY}"; then
-  openssl genrsa -out "${CA_KEY}" 2048
-fi
+# Use shared CA from repository root
+CA_KEY="${SCRIPT_DIR}/../../tls/rootCA.key"
+CA_CERT="${SCRIPT_DIR}/../../tls/rootCA.pem"
 
-if make_or_overwrite "${CA_CERT}"; then
-  openssl req -x509 -new -key "${CA_KEY}" -sha256 -days 3650 \
-    -subj "/CN=Test Root CA" \
-    -out "${CA_CERT}"
+if [[ ! -f "$CA_KEY" || ! -f "$CA_CERT" ]]; then
+    echo "ERROR: Shared Root CA not found in tls/ directory."
+    exit 1
 fi
 
 # Generate server key and CSR
@@ -138,6 +136,6 @@ EOF
 # Secure Private Keys
 # =============================================================================
 
-chmod 600 "${CA_KEY}" "${SRV_KEY}"
+chmod 600 "${SRV_KEY}"
 
 echo "Done. Certificates generated in: ${BASE_DIR}"

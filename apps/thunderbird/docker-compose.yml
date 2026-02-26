@@ -15,7 +15,6 @@ services:
    - DMS_DEBUG=1
 
   ports:
-   - "25:25"   # SMTP inbound (attacker delivery path)
    - "465:465" # SMTPS submission (implicit TLS)
    - "993:993" # IMAPS (implicit TLS)
   volumes:
