@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from utils.synthetic_utils import apply_synthetic_patch, find_synthetic_patches
 
 
@@ -68,21 +70,16 @@ class TestApplySyntheticPatch:
 
             assert mock_run.call_args[1]["cwd"] == codebase_dir
 
-    def test_continues_when_patch_fails(self, tmp_path):
-        """Continues applying remaining patches even if one fails."""
+    def test_raises_when_patch_fails(self, tmp_path):
+        """Raises RuntimeError when a patch fails to apply."""
         codebase_dir = tmp_path / "codebase"
         codebase_dir.mkdir()
 
-        patches = [tmp_path / f"patch_{i}.patch" for i in range(2)]
-        for p in patches:
-            p.write_text("patch content")
+        patch_file = tmp_path / "bad.patch"
+        patch_file.write_text("patch content")
 
         with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = [
-                MagicMock(returncode=1, stderr="patch failed"),  # First fails
-                MagicMock(returncode=0),  # Second succeeds
-            ]
+            mock_run.return_value = MagicMock(returncode=1, stderr="patch failed")
 
-            apply_synthetic_patch(tmp_path, patches)
-
-            assert mock_run.call_count == 2  # Both attempted
+            with pytest.raises(RuntimeError, match="Failed to apply patch"):
+                apply_synthetic_patch(tmp_path, [patch_file])

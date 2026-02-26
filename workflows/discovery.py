@@ -22,30 +22,29 @@ class DiscoveryWorkflow(Workflow):
         model: str,
         max_iterations: int,
         max_model_response_tokens: int,
-        max_kali_message_tokens: int,
-        max_context_length: int,
+        script_timeout: int,
         screenshot_mode: bool = False,
         build_type: str = "source",
         agent_image: str = "cybench/mobilecybench:latest",
         project_root: Optional[Path] = None,
         dry_run: bool = False,
         reasoning_effort: Optional[str] = None,
-        thinking_budget: Optional[int] = None,
+        docker_mode: bool = False,
+        emulator_mode: str = "native",
     ):
         self.app_name = app_name
         self.app_dir = app_dir
         self.model = model
         self.max_iterations = max_iterations
         self.max_model_response_tokens = max_model_response_tokens
-        self.max_kali_message_tokens = max_kali_message_tokens
-        self.max_context_length = max_context_length
         self.screenshot_mode = screenshot_mode
         self.build_type = build_type
         self.agent_image = agent_image
         self.project_root = project_root or Path(__file__).parent.parent
         self.dry_run = dry_run
         self.reasoning_effort = reasoning_effort
-        self.thinking_budget = thinking_budget
+        self.docker_mode = docker_mode
+        self.emulator_mode = emulator_mode
 
         # Set during setup
         self.metadata: dict = {}
@@ -70,7 +69,7 @@ class DiscoveryWorkflow(Workflow):
 
     def setup_runtime_environment(self) -> None:
         """Set up emulator, APK, backend containers, and agent environment."""
-        from agent.agent_setup import setup_agent_environment
+        from agent.agent_container import setup_agent_environment
         from utils.apk_utils import setup_apk
         from utils.emulator_manager import EmulatorManager
         from utils.setup_utils import install_app_and_setup_backend
@@ -85,17 +84,26 @@ class DiscoveryWorkflow(Workflow):
         logger.info("Starting emulator...")
         sdk_version = self.metadata.get("sdk")
         self.emulator = EmulatorManager(
-            docker_mode=False,
+            docker_mode=self.docker_mode,
             project_root=self.project_root,
             sdk_version=sdk_version,
             app_name=self.app_name,
             rootable=True,
+            emulator_mode=self.emulator_mode,
         )
         self.emulator.start_in_background()
         logger.info("Emulator started in background")
 
-        # Build/download APK
+        # Build/download APK (can run while emulator boots)
         setup_apk(self.app_dir, self.build_type, self.project_root)
+
+        # Explicit boot gate — emulator must be ready before CA injection
+        self.emulator.wait_until_ready()
+
+        # Inject system CA so apps trust local HTTPS backends
+        from utils.emulator_certs import inject_system_ca
+
+        inject_system_ca(self.project_root)
 
         # Install app and setup backend (with SSRF listener for discovery mode)
         install_app_and_setup_backend(
@@ -112,6 +120,10 @@ class DiscoveryWorkflow(Workflow):
             metadata=self.metadata,
             workflow="discovery",
         )
+
+        # TODO(robustness): call check_connectivity() here to fail fast on
+        # infra issues before running the agent
+        # (see utils.setup_utils.check_connectivity)
 
     def setup_agent(self) -> None:
         """Configure agent with discovery prompt."""
@@ -131,11 +143,8 @@ class DiscoveryWorkflow(Workflow):
             model=self.model,
             max_iterations=self.max_iterations,
             max_model_response_tokens=self.max_model_response_tokens,
-            max_kali_message_tokens=self.max_kali_message_tokens,
-            max_context_length=self.max_context_length,
             screenshot_enabled=self.screenshot_mode,
             app_name=self.app_name,
-            dry_run=self.dry_run,
             app_server=self.metadata.get("app_server"),
             package_name=self.metadata.get("package_name"),
             username=self.metadata.get("username"),
@@ -143,7 +152,6 @@ class DiscoveryWorkflow(Workflow):
             include_ssrf=include_ssrf,
             workflow="discovery",
             reasoning_effort=self.reasoning_effort,
-            thinking_budget=self.thinking_budget,
         )
         logger.info("Agent configured for discovery mode")
 
@@ -192,6 +200,9 @@ class DiscoveryWorkflow(Workflow):
         if not container_names:
             env["SKIP_SSRF_CHECK"] = "1"
 
+        # TODO(robustness): run_checks.sh has no timeout — a hung probe
+        # script blocks the runner indefinitely. Use script_timeout
+        # (already accepted by __init__) or run_with_progress.
         try:
             result = cmd.run(command, cwd=self.project_root, check=False, env=env)
             if result.stdout:

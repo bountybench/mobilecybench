@@ -1,6 +1,6 @@
 services:
   memos-server:
-    image: neosmemo/memos:stable
+    image: neosmemo/memos:0.25.3
     container_name: memos-server
     restart: always
     ports:

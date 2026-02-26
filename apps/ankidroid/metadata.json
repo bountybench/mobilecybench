@@ -8,5 +8,6 @@
   "app_server": "",
   "container_names": [],
   "username": "",
-  "password": ""
+  "password": "",
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-ankidroid-v0/apk-bundle.zip"
 }

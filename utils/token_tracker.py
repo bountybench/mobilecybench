@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
-from utils.logger import logger
+from utils.logger import logger, logger_manager
 from utils.token_costs import (
     ModelPricing,
     compute_cost_usd,
@@ -30,6 +30,7 @@ class TokenUsage:
 
     Attributes:
         - model: The model name used for the API call.
+        - run_id: Shared session/experiment identifier from LoggerManager.
         - request_id: The unique request ID from the API response, if available.
         - created_at: timestamp when the record was created.
         - input_tokens: Number of input tokens used.
@@ -39,6 +40,7 @@ class TokenUsage:
     """
 
     model: str
+    run_id: str
     request_id: Optional[str]
     created_at: str
     input_tokens: int
@@ -162,11 +164,16 @@ class TokenTracker:
             - pricing_path: optional path to a JSON file with model pricing data.
                 * If None, uses default location from token_costs module.
             - jsonl_path: Optional path to a JSONL file to append detailed usage records.
-                * If None, defaults to "token_usage.jsonl" in the current directory.
+                * If None, defaults to "token_usage.jsonl" in the experiment log directory.
                 * If set to an empty string, no file will be written.
         """
         self._pricing_map = load_pricing(pricing_path)
-        self._jsonl_path = jsonl_path if jsonl_path else "token_usage.jsonl"
+        if jsonl_path:
+            self._jsonl_path = jsonl_path
+        elif jsonl_path == "":
+            self._jsonl_path = ""
+        else:
+            self._jsonl_path = str(logger_manager.get_logs_dir() / "token_usage.jsonl")
 
         self.total_input_tokens = 0
         self.total_output_tokens = 0
@@ -217,6 +224,7 @@ class TokenTracker:
 
         record = TokenUsage(
             model=model,
+            run_id=logger_manager.get_session_id(),
             request_id=request_id,
             created_at=datetime.now(timezone.utc).isoformat(),
             input_tokens=i,

@@ -25,25 +25,23 @@ python3 -m venv .venv
 source .venv/bin/activate   # Windows: .\.venv\Scripts\activate
 pip install -r requirements.txt
 bash setup.sh --init-submodules conversations
-./start_emulator.sh
-./check_device.sh
+echo OPENAI_API_KEY=sk-... > agent/.env
 python runner.py conversations
 ```
 
-Agent type defaults to `custom`; override with `--agent-type supervisor` or `--agent-type codex`.
+**Important:** Do not start the emulator manually before running `runner.py` — it manages its own emulator lifecycle and will fail if one is already running. If you see `Running emulator(s) detected`, stop all emulators first with `./stop_emulator.sh`.
+
+The emulator helper scripts (`start_emulator.sh`, `check_device.sh`) are for manual debugging and dry-run mode only.
 
 Windows note: `setup.sh` and emulator scripts require WSL or Git Bash.
 
 ## Documentation
 
-- `documentation/README.md` — docs index and recommended path
 - `documentation/GETTING_STARTED.md` — full setup and first run
 - `documentation/EXPERIMENTS.md` — running experiments, configs, build modes
 - `documentation/ADDING_APPS.md` — adding apps (includes full working example)
 - `documentation/CI_VALIDATION.md` — CI modes and local CI
-- `documentation/STATIC_ANALYSIS.md` — static report generation
 - `documentation/SYNTHETIC_VULNERABILITIES.md` — synthetic vuln workflow
 - `documentation/TROUBLESHOOTING.md` — common issues
-- `documentation/AGENT_SETUP.md` — agent setup and agent types
-- `agent/ARCHITECTURE.md` — agent architecture and behavior
+- `documentation/ARCHITECTURE.md` — system architecture and agent environment
 - `documentation/COMMANDS.md` — command reference grouped by workflow

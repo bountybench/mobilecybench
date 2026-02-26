@@ -24,6 +24,11 @@ rm -rf downloads/ || true
 # Clean up vulnerability test artifacts
 rm -rf /tmp/vuln_scenario_* || true
 
+# Remove vuln scenario generated files (rogue certs, keys, evidence)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+rm -f "$SCRIPT_DIR"/vuln_scenarios/vuln_scenario_0/rogue-* || true
+rm -f "$SCRIPT_DIR"/vuln_scenarios/vuln_scenario_0/pki_compromise_evidence.txt || true
+
 # Remove Docker network (optional - may be used by other projects)
 echo "Removing Docker network..."
 docker network rm shared_net 2>/dev/null || echo "shared_net network not found or in use"

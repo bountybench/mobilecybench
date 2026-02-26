@@ -8,6 +8,8 @@
   "username": "agent",
   "password": "agentpass",
   "package_name": "org.owntracks.android",
-  "container_names": ["mosquitto"]
+  "container_names": [
+    "mosquitto"
+  ],
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-owntracks-v0/apk-bundle.zip"
 }
-
