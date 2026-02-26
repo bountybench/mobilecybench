@@ -93,8 +93,11 @@ class DiscoveryWorkflow(Workflow):
         self.emulator.start_in_background()
         logger.info("Emulator started in background")
 
-        # Build/download APK
+        # Build/download APK (can run while emulator boots)
         setup_apk(self.app_dir, self.build_type, self.project_root)
+
+        # Explicit boot gate — emulator must be ready before CA injection
+        self.emulator.wait_until_ready()
 
         # Inject system CA so apps trust local HTTPS backends
         from utils.emulator_certs import inject_system_ca
