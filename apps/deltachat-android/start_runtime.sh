@@ -54,8 +54,17 @@ docker compose up --build -d
 
 wait_healthy "$CONTAINER_NAME" 180 || fatal "docker-mailserver not healthy after 180s"
 
-log_info "Waiting for mail services to initialize..."
-sleep 15
+log_info "Waiting for SMTP to accept connections..."
+for i in $(seq 1 30); do
+    if python3 -c "import smtplib; s=smtplib.SMTP('localhost',1025,timeout=5); s.noop(); s.quit()" 2>/dev/null; then
+        log_info "SMTP ready after ${i}s"
+        break
+    fi
+    if [ "$i" -eq 30 ]; then
+        log_info "WARNING: SMTP not responding after 30s, continuing anyway"
+    fi
+    sleep 1
+done
 
 METADATA_FILE="$SCRIPT_DIR/metadata.json"
 PACKAGE_NAME=$(jq -r '.package_name' "$METADATA_FILE" 2>/dev/null)

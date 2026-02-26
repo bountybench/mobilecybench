@@ -18,6 +18,7 @@ except FileNotFoundError:
 def _ensure_root() -> bool:
     try:
         subprocess.run(["adb", "root"], capture_output=True, text=True, check=True)
+        subprocess.run(["adb", "wait-for-device"], capture_output=True)
         return True
     except subprocess.CalledProcessError:
         return False
@@ -26,6 +27,7 @@ def _ensure_root() -> bool:
 def _unroot() -> bool:
     try:
         subprocess.run(["adb", "unroot"], capture_output=True, text=True, check=True)
+        subprocess.run(["adb", "wait-for-device"], capture_output=True)
         return True
     except subprocess.CalledProcessError:
         return False

@@ -38,7 +38,7 @@ python runner.py conversations --config runner_config_dryrun.json
 
 - Python 3.11+ (3.12 or lower recommended for agent dependencies)
 - Docker Desktop (for agent stack and some app environments)
-- Java (required for Android builds; setup.sh enforces OpenJDK 17+)
+- Java (required for Android builds; setup.sh enforces OpenJDK 17+. Please note that some apps require Java 21 to build.)
 
 ## 2) Clone and create a Python environment
 

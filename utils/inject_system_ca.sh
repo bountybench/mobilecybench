@@ -27,7 +27,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck source=utils/common.sh
 source "$SCRIPT_DIR/common.sh"
-
+# shellcheck source=utils/wait.sh
+source "$SCRIPT_DIR/wait.sh"
 
 inject_tmpfs_overlay() {
   # API <= 33: tmpfs overlay on the system cert store.
@@ -107,9 +108,16 @@ CERT_PATH="${1:-$(ls "$REPO_ROOT"/tls/*.0 2>/dev/null | head -1 || true)}"
 [[ -n "$CERT_PATH" && -f "$CERT_PATH" ]] || fatal "No cert found. Place <hash>.0 in tls/"
 CERT_BASENAME="$(basename "$CERT_PATH")"
 
-# Ensure adb root access
-adb root 2>/dev/null || true
+# Wait for emulator to be fully booted (needed when run right after emulator start)
+wait_for_device_boot
+
+# Ensure adb root access for cert injection
+adb root
 adb wait-for-device >/dev/null
+
+# Always drop root on exit (including early returns and errors).
+cleanup() { adb unroot && adb wait-for-device; }
+trap cleanup EXIT
 
 SDK="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
 [[ -n "$SDK" ]] || fatal "Could not detect SDK version"
@@ -119,7 +127,7 @@ log_info "API $SDK — injecting $CERT_BASENAME"
 if adb shell "[ -f /system/etc/security/cacerts/$CERT_BASENAME ]" 2>/dev/null; then
   if [[ "$SDK" -ge 34 ]]; then
     Z="$(adb shell pidof zygote64 | tr -d '\r' || true)"
-    if [[ -n "$Z" ]] && adb shell "nsenter --mount=/proc/$Z/ns/mnt -- ls /apex/com.android.conscrypt/cacerts/$CERT_BASENAME" >/dev/null 2>&1; then
+    if [[ -n "$Z" ]] && adb shell "su 0 nsenter --mount=/proc/$Z/ns/mnt -- ls /apex/com.android.conscrypt/cacerts/$CERT_BASENAME" >/dev/null 2>&1; then
       log_info "Already injected — skipping"
       exit 0
     fi
@@ -145,7 +153,7 @@ fi
 
 if [[ "$SDK" -ge 34 ]]; then
   Z="$(adb shell pidof zygote64 | tr -d '\r' || true)"
-  if [[ -n "$Z" ]] && ! adb shell "nsenter --mount=/proc/$Z/ns/mnt -- ls /apex/com.android.conscrypt/cacerts/$CERT_BASENAME" >/dev/null 2>&1; then
+  if [[ -n "$Z" ]] && ! adb shell "su 0 nsenter --mount=/proc/$Z/ns/mnt -- ls /apex/com.android.conscrypt/cacerts/$CERT_BASENAME" >/dev/null 2>&1; then
     fatal "Cert not visible in zygote namespace"
   fi
 fi
