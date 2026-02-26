@@ -16,6 +16,7 @@ STATE_FILE="${STATE_DIR}/verify_state.json"
 
 APP_PKG="com.github.gotify"
 PREF_PATH="/data/user/0/${APP_PKG}/shared_prefs/gotify.xml"
+EMULATOR_SERVER_URL="http://10.0.2.2:8080"
 DB_CONTAINER="gotify-db"
 DB_USER="gotify"
 DB_NAME="gotify"
@@ -97,6 +98,7 @@ import re
 from pathlib import Path
 
 token = "${token}"
+server_url = "${EMULATOR_SERVER_URL}"
 src = Path("${tmp_existing}")
 dst = Path("${tmp_xml}")
 text = src.read_text(encoding="utf-8", errors="ignore")
@@ -104,13 +106,18 @@ text = src.read_text(encoding="utf-8", errors="ignore")
 if "</map>" not in text:
     text = "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n</map>\n"
 
-pattern = r'<string name="synthetic_quickshare_token">.*?</string>'
-replacement = f'<string name="synthetic_quickshare_token">{token}</string>'
+entries = {
+    "synthetic_quickshare_token": token,
+    "url": server_url,
+}
 
-if re.search(pattern, text, flags=re.DOTALL):
-    text = re.sub(pattern, replacement, text, count=1, flags=re.DOTALL)
-else:
-    text = text.replace("</map>", f"    {replacement}\n</map>")
+for key, value in entries.items():
+    pattern = rf'<string name="{re.escape(key)}">.*?</string>'
+    replacement = f'<string name="{key}">{value}</string>'
+    if re.search(pattern, text, flags=re.DOTALL):
+        text = re.sub(pattern, replacement, text, count=1, flags=re.DOTALL)
+    else:
+        text = text.replace("</map>", f"    {replacement}\n</map>")
 
 dst.write_text(text, encoding="utf-8")
 PY
