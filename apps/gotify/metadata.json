@@ -8,5 +8,6 @@
   "app_server": "http://gotify-server:80",
   "container_names": ["gotify-db", "gotify-server"],
   "username": "agentuser",
-  "password": "agentpass"
+  "password": "agentpass",
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-gotify-v/apk-bundle.zip"
 }
