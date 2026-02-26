@@ -22,6 +22,7 @@ class DiscoveryWorkflow(Workflow):
         model: str,
         max_iterations: int,
         max_model_response_tokens: int,
+        script_timeout: int,
         screenshot_mode: bool = False,
         build_type: str = "source",
         agent_image: str = "cybench/mobilecybench:latest",
@@ -120,6 +121,10 @@ class DiscoveryWorkflow(Workflow):
             workflow="discovery",
         )
 
+        # TODO(robustness): call check_connectivity() here to fail fast on
+        # infra issues before running the agent
+        # (see utils.setup_utils.check_connectivity)
+
     def setup_agent(self) -> None:
         """Configure agent with discovery prompt."""
         from agent.custom_agent import CustomAgent
@@ -195,6 +200,9 @@ class DiscoveryWorkflow(Workflow):
         if not container_names:
             env["SKIP_SSRF_CHECK"] = "1"
 
+        # TODO(robustness): run_checks.sh has no timeout — a hung probe
+        # script blocks the runner indefinitely. Use script_timeout
+        # (already accepted by __init__) or run_with_progress.
         try:
             result = cmd.run(command, cwd=self.project_root, check=False, env=env)
             if result.stdout:

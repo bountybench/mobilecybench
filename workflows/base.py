@@ -60,7 +60,7 @@ class Workflow(ABC):
             return
 
         for save_fn in (
-            self.agent_env.save_exploit_files,
+            self.agent_env.save_agent_exploit,
             self.agent_env.save_agent_output,
         ):
             try:
