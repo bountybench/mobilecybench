@@ -11,16 +11,19 @@ log_info() { echo "[prepare_app] INFO: $*"; }
 
 log_info "Building and starting attacker_helper sidecar..."
 
+# Clean up any existing container
+docker rm -f attacker_helper 2>/dev/null || true
+
 # Build and run the helper container manually since it's removed from main compose
 docker build -t owncloud-attacker-helper -f "$SCRIPT_DIR/Dockerfile.attacker_helper" "$SCRIPT_DIR"
 
 # Ensure it's on both networks
-docker run -d 
-  --name attacker_helper 
-  --restart always 
-  -p 8081:8081 
-  -v /var/run/docker.sock:/var/run/docker.sock 
-  --network shared_net 
+docker run -d \
+  --name attacker_helper \
+  --restart always \
+  -p 8081:8081 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  --network shared_net \
   owncloud-attacker-helper
 
 docker network connect private_net attacker_helper

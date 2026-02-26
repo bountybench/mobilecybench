@@ -8,6 +8,7 @@ echo "Cleaning up Thunderbird environment..."
 
 # Stop services
 docker compose -f "$SCRIPT_DIR/docker-compose.yml" down -v || true
+docker rm -f tb-port-25-proxy 2>/dev/null || true
 docker container prune -f || true
 
 # Uninstall Android app

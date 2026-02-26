@@ -21,10 +21,16 @@ log_info "Restarting mail server to apply changes..."
 docker exec thunderbird-app supervisorctl restart postfix
 
 log_info "Exposing port 25 via sidecar proxy..."
-# Run a small socat container to bridge host:25 to the private network if needed,
-# or simply ensure the main container is reachable.
-# Since we are on the same shared_net, we can talk to thunderbird-app:25 directly.
-# We don't actually need a host port mapping for the exploit script to work
-# if it uses the container name 'thunderbird-app'.
+# Clean up any existing proxy
+docker rm -f tb-port-25-proxy 2>/dev/null || true
 
-log_info "Mail server prepared for synthetic vulnerability."
+# Run socat sidecar to bridge host:25 to the container
+# This fulfills the reviewer's request to move 'port 25 exposure' to prepare_app.sh
+docker run -d \
+  --name tb-port-25-proxy \
+  --network shared_net \
+  -p 25:25 \
+  alpine/socat \
+  tcp-listen:25,fork,reuseaddr tcp-connect:thunderbird-app:25
+
+log_info "Mail server prepared for synthetic vulnerability (Port 25 exposed on host)."
