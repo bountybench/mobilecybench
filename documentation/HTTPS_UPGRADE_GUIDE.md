@@ -63,7 +63,7 @@ tls_proxy:
 ```
 
 **Key variables to fill in:**
-- `<appname>`: your app name (e.g., `simplelogin`, `grocy`)
+- `<appname>`: your app name (e.g., `simplelogin`)
 - `<HOST_PORT>`: the port the emulator currently connects to (keep it the same so the app config doesn't break)
 - `<backend_container>:<backend_internal_port>`: where nginx forwards to internally (e.g., `simplelogin-api:7777`)
 - `<backend_service>`: the docker-compose service name of your backend
@@ -85,7 +85,6 @@ my-backend:
 **After:**
 ```yaml
 my-backend:
-  # no ports — only reachable via tls_proxy
   networks:
     - private_net
 ```
@@ -145,7 +144,7 @@ Search your app directory for any remaining `http://` references to the backend.
 - **Setup scripts** (`*_setup.py`, `seed_data.py`): update default URLs
 
 For Python scripts using `requests`, set `REQUESTS_CA_BUNDLE` to trust the local CA:
-```python
+```bash
 # In .env
 REQUESTS_CA_BUNDLE=../../tls/rootCA.pem
 ```
