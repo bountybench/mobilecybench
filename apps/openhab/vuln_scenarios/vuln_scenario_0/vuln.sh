@@ -46,19 +46,11 @@ cp -r "$OPENHAB_DIR/openhab_userdata/" "$OPENHAB_DIR/tmp/openhab_userdata_leaked
 
 # Restart the OpenHAB container to reload the user database
 echo 'Restarting OpenHAB container to apply changes...'
-docker restart openhab
-
-# Wait for the container to be ready
-echo 'Waiting for OpenHAB to restart...'
-sleep 20
-
-# Verify the container is running
-if docker ps | grep -q "openhab"; then
-    echo "✅ OpenHAB container restarted successfully"
-else
-    echo "❌ Failed to restart OpenHAB container"
-    exit 1
-fi
+cd "$OPENHAB_DIR"
+docker compose stop openhab
+docker compose up -d --wait openhab
+echo "✅ OpenHAB container is healthy"
+cd "$SCRIPT_DIR"
 
 echo 'Vulnerability injection completed successfully!'
 echo "📁 Log file created: $OUTPUT_LOG"

@@ -11,6 +11,8 @@ from typing import Optional
 
 from utils.logger import logger
 
+EMULATOR_CONTAINER_NAME = "emulator-container"
+
 
 class EmulatorState(Enum):
     NOT_STARTED = "not_started"
@@ -181,7 +183,7 @@ class EmulatorManager:
 
         # Remove stale container
         try:
-            old = client.containers.get("emulator-container")
+            old = client.containers.get(EMULATOR_CONTAINER_NAME)
             old.remove(force=True)
             logger.info("Removed stale emulator-container")
         except docker.errors.NotFound:
@@ -198,21 +200,38 @@ class EmulatorManager:
             f"-memory 2048 -no-audio -read-only"
         )
 
-        # Use the same orchestrator image that's currently running
+        # Use a minimal emulator image (much smaller than the orchestrator)
         emulator_image = os.environ.get(
-            "EMULATOR_IMAGE", "cybench/mobilecybench-orchestrator:latest"
+            "EMULATOR_IMAGE", "cybench/mobilecybench-emulator:latest"
         )
 
         logger.info(f"Starting emulator container with image: {emulator_image}")
         logger.info(f"Emulator AVD: {emulator_name}")
 
+        # Kill any existing ADB server on the host so it doesn't conflict
+        # with the container's port 5037 mapping. The port mapping is needed
+        # because host-side scripts (inject_system_ca.sh, start_runtime.sh)
+        # use bare `adb` commands. Once all host-side ADB usage is routed
+        # through docker exec, the port mapping and this kill-server can go.
+        subprocess.run(["adb", "kill-server"], capture_output=True)
+        self._devices_before_start = set()
+
+        # Single ADB server design: the container runs the only ADB server
+        # (on 0.0.0.0:5037) and the emulator's adbd connects to it via the
+        # local qemud pipe. We publish port 5037 to the host so the
+        # orchestrator's `adb` commands transparently reach the container's
+        # server. No TCP mode (adb tcpip) needed — same architecture as
+        # native mode, just the ADB server lives in the container.
+        container_cmd = f"bash -c 'adb -a start-server && {emulator_cmd}'"
+
         try:
             self.emulator_container = client.containers.run(
                 image=emulator_image,
-                name="emulator-container",
-                command=f"bash -c 'adb -a start-server && {emulator_cmd}'",
+                name=EMULATOR_CONTAINER_NAME,
+                command=container_cmd,
                 devices=["/dev/kvm:/dev/kvm"],
                 network="shared_net",
+                ports={"5037/tcp": 5037},
                 detach=True,
                 environment={"ANDROID_HOME": android_home},
             )
@@ -224,31 +243,10 @@ class EmulatorManager:
             logger.error(f"Failed to start emulator container: {e}")
             raise RuntimeError(f"Failed to start emulator container: {e}")
 
-        # Wait for container to initialize, then connect via ADB
-        logger.info("Waiting for emulator container ADB to become available...")
-        max_retries = 30
-        for i in range(max_retries):
-            time.sleep(2)
-            result = subprocess.run(
-                ["adb", "connect", "emulator-container:5555"],
-                capture_output=True,
-                text=True,
-            )
-            if "connected" in result.stdout.lower():
-                logger.info("ADB connected to emulator-container:5555")
-                break
-            logger.debug(
-                f"ADB connect attempt {i+1}/{max_retries}: {result.stdout.strip()}"
-            )
-        else:
-            self.state = EmulatorState.STOPPED
-            raise RuntimeError(
-                "Timed out waiting for ADB connection to emulator container"
-            )
-
-        self.device_id = "emulator-container:5555"
         self.state = EmulatorState.RUNNING
-        logger.info(f"Emulator container running, device_id={self.device_id}")
+        logger.info(
+            "Emulator container started (boot-wait deferred to wait_until_ready)"
+        )
 
     def _start_native_emulator(self):
         """Start emulator as a native subprocess (original behavior)."""
@@ -404,16 +402,15 @@ class EmulatorManager:
 
                 if self.device_id:
                     # Wait for device to be ready
-                    subprocess.run(
-                        ["adb", "-s", self.device_id, "wait-for-device"],
+                    self._run_adb(
+                        ["-s", self.device_id, "wait-for-device"],
                         capture_output=True,
                         timeout=5,
                     )
 
                     # Check boot completion property
-                    boot_result = subprocess.run(
+                    boot_result = self._run_adb(
                         [
-                            "adb",
                             "-s",
                             self.device_id,
                             "shell",
@@ -457,11 +454,8 @@ class EmulatorManager:
         logger.info("=" * 60)
 
         try:
-            result = subprocess.run(
-                ["adb", "devices"],
-                capture_output=True,
-                text=True,
-                timeout=10,
+            result = self._run_adb(
+                ["devices"], capture_output=True, text=True, timeout=10
             )
 
             logger.info(f"Connected devices:\n{result.stdout}")
@@ -476,8 +470,8 @@ class EmulatorManager:
 
             # Test device connectivity
             logger.info("Testing device connectivity...")
-            test_result = subprocess.run(
-                ["adb", "-s", device_id, "shell", "echo", "test"],
+            test_result = self._run_adb(
+                ["-s", device_id, "shell", "echo", "test"],
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -489,8 +483,8 @@ class EmulatorManager:
 
             logger.info("Device is ready!")
 
-            boot_completed = subprocess.run(
-                ["adb", "-s", device_id, "shell", "getprop", "sys.boot_completed"],
+            boot_completed = self._run_adb(
+                ["-s", device_id, "shell", "getprop", "sys.boot_completed"],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -576,7 +570,7 @@ class EmulatorManager:
                 import docker
 
                 client = docker.from_env()
-                old = client.containers.get("emulator-container")
+                old = client.containers.get(EMULATOR_CONTAINER_NAME)
                 old.remove(force=True)
             except Exception:
                 pass
@@ -661,6 +655,44 @@ class EmulatorManager:
             except Exception as e:
                 logger.warning(f"Failed to reset ADB server: {e}")
 
+    def _run_adb(self, args: list[str], **kwargs) -> subprocess.CompletedProcess:
+        """Run an ADB command, routing through docker exec in container mode.
+
+        In container mode this avoids invoking the host `adb` client, which
+        would auto-start a local server and race with the container's server
+        on port 5037.
+
+        Commands like adb root, adb devices, etc. will spawn the host ADB server if it
+        is not running, which can cause conflicts with the container's ADB server.
+        """
+        if self.emulator_mode == "container" and self.emulator_container:
+            cmd = ["docker", "exec", EMULATOR_CONTAINER_NAME, "adb"] + args
+        else:
+            cmd = ["adb"] + args
+        return subprocess.run(cmd, **kwargs)
+
+    def restart(self):
+        """Stop the emulator, reset internal state, and start a fresh instance.
+
+        Used during evaluation to get a clean emulator (with -wipe-data) for
+        exploit verification without side-effects from the agent's session.
+        The caller must still call install_app_and_setup_backend() afterwards
+        to wait for boot, install the APK, and set up the backend.
+        """
+        logger.info("=" * 60)
+        logger.info("RESTARTING EMULATOR")
+        logger.info("=" * 60)
+
+        self.stop()
+
+        # Reset to initial state so start_in_background() accepts the call
+        self.state = EmulatorState.NOT_STARTED
+        self.device_id = None
+        self._devices_before_start = set()
+
+        self.start_in_background()
+        logger.info("Emulator restarted (booting in background)")
+
     def _get_connected_devices(self) -> set:
         """
         Get set of currently connected ADB device IDs.
@@ -670,11 +702,8 @@ class EmulatorManager:
             Set of device IDs (e.g., {'emulator-5554', 'emulator-5556'})
         """
         try:
-            result = subprocess.run(
-                ["adb", "devices"],
-                capture_output=True,
-                text=True,
-                timeout=5,
+            result = self._run_adb(
+                ["devices"], capture_output=True, text=True, timeout=5
             )
 
             devices = result.stdout.strip().split("\n")[1:]  # Skip header

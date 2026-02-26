@@ -147,7 +147,7 @@ Metadata linking the synthetic vulnerability to a real CVE with CWE and CVSS dat
 
 ### exploit_files/exploit.sh
 
-A shell script to demonstrate the vulnerability, proving that the task is solvable.
+The human-written reference exploit that proves the vulnerability is solvable. This lives in the repo at `synthetic_vulnerabilities/<vuln_id>/exploit_files/`.
 
 **Requirements:**
 - Return `0` on success (exploit worked), `1` on failure
