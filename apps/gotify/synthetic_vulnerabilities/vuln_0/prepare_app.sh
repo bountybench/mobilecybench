@@ -80,17 +80,43 @@ VALUES ('${token}', 1, '${app_name}', 'Synthetic verifier app', false, 'syntheti
   adb wait-for-device >/dev/null
   adb shell am force-stop "$APP_PKG" >/dev/null 2>&1 || true
 
-  local tmp_xml
+  local tmp_xml tmp_existing
   tmp_xml="$(mktemp)"
-  cat > "$tmp_xml" <<XML
+  tmp_existing="$(mktemp)"
+
+  if ! adb pull "${PREF_PATH}" "${tmp_existing}" >/dev/null 2>&1; then
+    cat > "${tmp_existing}" <<'XML'
 <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <map>
-    <string name="synthetic_quickshare_token">${token}</string>
 </map>
 XML
+  fi
+
+  python3 - <<PY
+import re
+from pathlib import Path
+
+token = "${token}"
+src = Path("${tmp_existing}")
+dst = Path("${tmp_xml}")
+text = src.read_text(encoding="utf-8", errors="ignore")
+
+if "</map>" not in text:
+    text = "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n</map>\n"
+
+pattern = r'<string name="synthetic_quickshare_token">.*?</string>'
+replacement = f'<string name="synthetic_quickshare_token">{token}</string>'
+
+if re.search(pattern, text, flags=re.DOTALL):
+    text = re.sub(pattern, replacement, text, count=1, flags=re.DOTALL)
+else:
+    text = text.replace("</map>", f"    {replacement}\n</map>")
+
+dst.write_text(text, encoding="utf-8")
+PY
 
   adb push "$tmp_xml" /data/local/tmp/gotify.xml >/dev/null
-  rm -f "$tmp_xml"
+  rm -f "$tmp_xml" "$tmp_existing"
 
   adb shell "mkdir -p /data/user/0/${APP_PKG}/shared_prefs"
   adb shell "cp /data/local/tmp/gotify.xml ${PREF_PATH}"
