@@ -74,6 +74,16 @@ pkill -f "curl.*localhost:8080" 2>/dev/null || true
 find vuln_scenarios -name "fake_agent_log.log" -delete 2>/dev/null || true
 find vuln_scenarios -name "ws_flood.py" -delete 2>/dev/null || true
 
+# Remove generic-integrity sentinel files if present
+# These can be created by other workflows and must not leak across runs.
+adb root >/dev/null 2>&1 || true
+adb wait-for-device >/dev/null 2>&1 || true
+adb shell "rm -f /data/data/com.github.gotify/files/pwned" >/dev/null 2>&1 || true
+if [ "$DOCKER_AVAILABLE" = "true" ]; then
+    docker exec gotify-db sh -c "rm -f /root/pwned" >/dev/null 2>&1 || true
+    docker exec gotify-server sh -c "rm -f /root/pwned" >/dev/null 2>&1 || true
+fi
+
 # Clean build artifacts from codebase
 if [ -d codebase ]; then
     info "Cleaning build artifacts..."

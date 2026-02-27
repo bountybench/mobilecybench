@@ -80,6 +80,16 @@ launch_android_app() {
   fi
 }
 
+reset_integrity_sentinels() {
+  # Remove generic-integrity sentinel files from prior runs.
+  # If these leak across jobs/snapshots, baseline generic integrity can fail.
+  adb root >/dev/null 2>&1 || true
+  adb wait-for-device >/dev/null 2>&1 || true
+  adb shell "rm -f /data/data/${TARGET_PACKAGE}/files/pwned" >/dev/null 2>&1 || true
+  docker exec gotify-db sh -c "rm -f /root/pwned" >/dev/null 2>&1 || true
+  docker exec gotify-server sh -c "rm -f /root/pwned" >/dev/null 2>&1 || true
+}
+
 main() {
   log_info "Setting up Gotify: Server with PostgreSQL + Android APK installation..."
   cleanup_existing
@@ -88,6 +98,7 @@ main() {
   wait_for_services
   install_android_app
   launch_android_app
+  reset_integrity_sentinels
   log_info "Setup completed successfully!"
 }
 

@@ -127,10 +127,19 @@ PY
 
   adb shell "mkdir -p /data/user/0/${APP_PKG}/shared_prefs"
   adb shell "cp /data/local/tmp/gotify.xml ${PREF_PATH}"
-  app_uid="$(adb shell dumpsys package "$APP_PKG" | sed -n 's/.*userId=\\([0-9][0-9]*\\).*/\\1/p' | head -n1 | tr -d '\r' || true)"
-  if [[ -n "${app_uid}" ]]; then
-    adb shell "chown ${app_uid}:${app_uid} ${PREF_PATH}" >/dev/null 2>&1 || true
+
+  # Resolve app uid from package data dir owner (more reliable than dumpsys parsing).
+  local app_uid
+  app_uid="$(adb shell "stat -c %u /data/data/${APP_PKG}" 2>/dev/null | tr -d '\r' | xargs || true)"
+  if [[ -z "${app_uid}" || ! "${app_uid}" =~ ^[0-9]+$ ]]; then
+    app_uid="$(adb shell "stat -c %u /data/user/0/${APP_PKG}" 2>/dev/null | tr -d '\r' | xargs || true)"
   fi
+  if [[ -z "${app_uid}" || ! "${app_uid}" =~ ^[0-9]+$ ]]; then
+    log "ERROR: failed to resolve app uid for ${APP_PKG}"
+    exit 1
+  fi
+
+  adb shell "chown ${app_uid}:${app_uid} ${PREF_PATH}"
   adb shell "chmod 600 ${PREF_PATH}"
   adb shell "restorecon ${PREF_PATH}" >/dev/null 2>&1 || true
 
