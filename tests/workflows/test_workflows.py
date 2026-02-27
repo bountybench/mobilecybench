@@ -11,6 +11,7 @@ from workflows.exploit import ExploitWorkflow
 
 def _config(**overrides) -> RunnerConfig:
     """Create a RunnerConfig with sensible test defaults."""
+
     defaults = {
         "build_type": "source",
         "model": "gpt-4",
@@ -95,7 +96,9 @@ class TestExploitWorkflow:
         workflow = ExploitWorkflow(
             _config(workflow="exploit", build_type="download-apk"), "test_app", tmp_path
         )
-        with pytest.raises(ValueError, match="requires build_type='source' or 'skip-apk'"):
+        with pytest.raises(
+            ValueError, match="requires build_type='source' or 'skip-apk'"
+        ):
             workflow.validate_arguments()
 
     def test_validate_arguments_uses_configurable_vuln_id(self, tmp_path):
