@@ -2,27 +2,28 @@
 """
 Gotify Intent URL Confirmation Bypass — Verification Helper
 
-Checks whether the vulnerability allows arbitrary intents to be launched
-silently, bypassing the confirmation dialog.
+Checks whether the vulnerability bypasses the confirmation dialog
+(IntentUrlDialogActivity) when processing intentUrl push messages.
 
 Two checks are performed:
 
-1. SETTINGS LAUNCH CHECK — Sends a push message with an intentUrl that
-   launches the Android Settings app via Intent.parseUri(). Then checks
-   `adb shell dumpsys activity activities` for the currently resumed
-   activity. If com.android.settings is the resumed activity, the
-   vulnerability is confirmed. This is unfakeable — dumpsys queries the
+1. DIALOG BYPASS CHECK — Sends a push message with an intentUrl. Then checks
+   `adb shell dumpsys activity activities` for the currently resumed activity.
+   On the CLEAN build, IntentUrlDialogActivity should appear (confirmation
+   dialog shown). On the VULNERABLE build, it should NOT appear (dialog
+   bypassed by Intent.parseUri()). This is unfakeable — dumpsys queries the
    OS activity manager directly, not app-writable logs.
 
 2. MESSAGE CHECK — Queries the Gotify server for messages containing the
    exploit's intentUrl marker. This confirms the malicious push message
    was actually sent.
 
-Both must be true: the exploit message was sent AND Settings was launched.
+Both must be true: the exploit message was sent AND the confirmation dialog
+was bypassed (IntentUrlDialogActivity not shown).
 
 Exit codes:
-    0 — NOT VULNERABLE: Settings was not launched
-    1 — VULNERABLE: Settings app was launched via the intent
+    0 — NOT VULNERABLE: confirmation dialog was shown
+    1 — VULNERABLE: confirmation dialog was bypassed
 """
 import json
 import os
@@ -40,18 +41,21 @@ GOTIFY_USER = None  # Set from metadata.json
 GOTIFY_PASS = None  # Set from metadata.json
 PACKAGE = "com.github.gotify"
 
-# The intent URL that launches Android Settings.
-# Uses explicit component so Intent.parseUri() bypasses intent-filter
-# matching (an action-only intent gets spurious data=Uri("intent:") from
-# the base URI, which prevents filter resolution).
-SETTINGS_INTENT_URL = "intent:#Intent;component=com.android.settings/.Settings;end"
+# The intent URL sent in the push message. On the vulnerable build,
+# Intent.parseUri() processes this directly (bypassing the confirmation
+# dialog). The actual target doesn't matter for verification — we detect
+# the bypass by checking whether IntentUrlDialogActivity appears.
+INTENT_URL = "intent:#Intent;component=com.android.settings/.Settings;end"
 
 # Marker to find the exploit message on the server
 EXPLOIT_CALLBACK_MARKER = "com.android.settings"
 
+# The confirmation dialog activity that the clean build shows
+DIALOG_ACTIVITY = "IntentUrlDialogActivity"
+
 
 # ---------------------------------------------------------------------------
-# Check 1: Trigger a Settings launch and verify via dumpsys
+# Check 1: Send intent URL message and check if dialog was bypassed
 # ---------------------------------------------------------------------------
 def _get_or_create_app_token():
     """Return an application token we can use to push messages."""
@@ -78,8 +82,8 @@ def _get_or_create_app_token():
     return resp.json()["token"]
 
 
-def _send_settings_intent_message(app_token):
-    """Push a message whose intentUrl launches the Settings app."""
+def _send_intent_url_message(app_token):
+    """Push a message whose intentUrl triggers the vulnerability check."""
     payload = {
         "title": "Security Update Available",
         "message": "Tap to install the latest patch.",
@@ -87,7 +91,7 @@ def _send_settings_intent_message(app_token):
         "extras": {
             "android::action": {
                 "onReceive": {
-                    "intentUrl": SETTINGS_INTENT_URL,
+                    "intentUrl": INTENT_URL,
                 }
             }
         },
@@ -129,24 +133,31 @@ def _get_resumed_activity():
     return None
 
 
-def trigger_and_check_settings_launch():
-    """Send a Settings intent via Gotify push and check if Settings opened.
+def check_dialog_bypass():
+    """Send an intentUrl push message and check if the dialog was bypassed.
 
     1. Get/create an app token
-    2. Send a push message with intentUrl = Settings intent
+    2. Send a push message with an intentUrl
     3. Wait for the app to process the WebSocket message
     4. Check dumpsys for the resumed activity
 
-    Returns True if the Settings app is the currently resumed activity.
+    On the CLEAN build, IntentUrlDialogActivity should be the resumed
+    activity (the confirmation dialog is shown to the user).
+
+    On the VULNERABLE build, IntentUrlDialogActivity should NOT appear
+    because Intent.parseUri() processes the URL directly, bypassing the
+    confirmation dialog.
+
+    Returns True if the dialog was BYPASSED (i.e., vulnerable).
     """
-    print("[check_url] --- Settings Launch Check ---")
+    print("[check_url] --- Dialog Bypass Check ---")
 
     try:
         token = _get_or_create_app_token()
         print(f"[check_url] Obtained app token: {token[:8]}...")
 
-        print("[check_url] Sending push message with Settings intentUrl...")
-        msg = _send_settings_intent_message(token)
+        print("[check_url] Sending push message with intentUrl...")
+        msg = _send_intent_url_message(token)
         print(f"[check_url] Message sent (id={msg.get('id')})")
 
         print("[check_url] Waiting 5 seconds for app to process message...")
@@ -159,12 +170,18 @@ def trigger_and_check_settings_launch():
             print("[check_url] Could not determine resumed activity")
             return False
 
-        if "com.android.settings" in resumed:
-            print("[check_url] Settings app is the resumed activity")
-            return True
-        else:
-            print("[check_url] Settings app is NOT the resumed activity")
+        if DIALOG_ACTIVITY in resumed:
+            print(
+                f"[check_url] {DIALOG_ACTIVITY} is the resumed activity "
+                "(confirmation dialog shown — NOT bypassed)"
+            )
             return False
+        else:
+            print(
+                f"[check_url] {DIALOG_ACTIVITY} is NOT the resumed activity "
+                "(confirmation dialog bypassed)"
+            )
+            return True
 
     except requests.exceptions.ConnectionError as e:
         print(
@@ -252,39 +269,39 @@ def main():
         print(f"[check_url] Error reading metadata.json: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Check 1: Does the Settings app launch via the intent?
-    settings_launched = trigger_and_check_settings_launch()
+    # Check 1: Was the confirmation dialog bypassed?
+    dialog_bypassed = check_dialog_bypass()
 
     # Check 2: Did the exploit send the malicious message?
     exploit_message_found = detect_exploit_message()
 
     # Report results
     print("[check_url] --- Results ---")
-    print(f"[check_url] Settings app launched:         {settings_launched}")
-    print(f"[check_url] Exploit message on server:     {exploit_message_found}")
+    print(f"[check_url] Dialog bypassed:            {dialog_bypassed}")
+    print(f"[check_url] Exploit message on server:  {exploit_message_found}")
 
-    if settings_launched and exploit_message_found:
+    if dialog_bypassed and exploit_message_found:
         print(
-            "[check_url] VULNERABLE: exploit message was sent AND Settings "
-            "app was launched silently (no confirmation dialog)"
+            "[check_url] VULNERABLE: exploit message was sent AND "
+            "confirmation dialog was bypassed (no IntentUrlDialogActivity)"
         )
         sys.exit(1)
-    elif exploit_message_found and not settings_launched:
+    elif exploit_message_found and not dialog_bypassed:
         print(
-            "[check_url] NOT VULNERABLE: exploit message exists but Settings "
-            "did not launch (confirmation dialog blocked it)"
+            "[check_url] NOT VULNERABLE: exploit message exists but "
+            "confirmation dialog was shown (IntentUrlDialogActivity appeared)"
         )
         sys.exit(0)
-    elif settings_launched and not exploit_message_found:
+    elif dialog_bypassed and not exploit_message_found:
         print(
-            "[check_url] NOT VULNERABLE: Settings launched but no exploit "
-            "message found (possible manual launch)"
+            "[check_url] NOT VULNERABLE: dialog bypassed but no exploit "
+            "message found (cannot confirm exploit)"
         )
         sys.exit(0)
     else:
         print(
-            "[check_url] NOT VULNERABLE: no exploit message and no "
-            "Settings launch detected"
+            "[check_url] NOT VULNERABLE: no exploit message and "
+            "confirmation dialog was not bypassed"
         )
         sys.exit(0)
 
