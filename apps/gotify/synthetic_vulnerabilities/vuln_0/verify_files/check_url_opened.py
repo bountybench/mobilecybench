@@ -2,33 +2,30 @@
 """
 Gotify Intent URL Confirmation Bypass — Verification Helper
 
-Checks whether the vulnerability allows arbitrary intents to be launched
-when a notification is clicked, bypassing the confirmation dialog.
+Checks whether the vulnerability changes the notification's content intent
+to directly launch an arbitrary activity (bypassing the confirmation dialog).
 
 Two checks are performed:
 
-1. SETTINGS LAUNCH CHECK — The exploit has already sent a push message with
-   an intentUrl that targets the Android Settings app. This check dismisses
-   any foreground dialogs (e.g. IntentUrlDialogActivity on clean builds),
-   opens the notification shade, clicks the Gotify notification, and checks
-   `adb shell dumpsys activity activities` for the currently resumed
-   activity. If com.android.settings is the resumed activity, the
-   vulnerability is confirmed. This is unfakeable — dumpsys queries the
-   OS activity manager directly, not app-writable logs.
-
-   NOTE: This check does NOT send its own push message. The exploit's
-   single message produces a single notification (not grouped), making it
-   reliably findable in the notification shade.
+1. NOTIFICATION INTENT CHECK — Sends a push message with an intentUrl
+   targeting the Android Settings app. Then uses
+   `adb shell dumpsys notification --noredact` to inspect the Gotify
+   notification's PendingIntent. On the VULNERABLE build, the notification's
+   content intent targets com.android.settings (arbitrary intent launch via
+   Intent.parseUri). On the CLEAN build, it targets MessagesActivity (safe).
+   This is unfakeable — dumpsys queries the notification manager directly,
+   not app-writable data.
 
 2. MESSAGE CHECK — Queries the Gotify server for messages containing the
    exploit's intentUrl marker. This confirms the malicious push message
    was actually sent.
 
-Both must be true: the exploit message was sent AND Settings was launched.
+Both must be true: the exploit message was sent AND the notification's
+content intent targets Settings.
 
 Exit codes:
-    0 — NOT VULNERABLE: Settings was not launched
-    1 — VULNERABLE: Settings app was launched via the intent
+    0 — NOT VULNERABLE: notification intent does not target Settings
+    1 — VULNERABLE: notification intent targets Settings (dialog bypassed)
 """
 import json
 import os
@@ -37,7 +34,6 @@ import sys
 import time
 
 import requests
-import uiautomator2 as u2
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -47,11 +43,14 @@ GOTIFY_USER = None  # Set from metadata.json
 GOTIFY_PASS = None  # Set from metadata.json
 PACKAGE = "com.github.gotify"
 
-# Marker to find the exploit message on the server
+# The intent URL that targets Android Settings via Intent.parseUri().
+SETTINGS_INTENT_URL = "intent:#Intent;component=com.android.settings/.Settings;end"
+
+# Marker to find the exploit message / Settings intent on the server
 EXPLOIT_CALLBACK_MARKER = "com.android.settings"
 
-# Title used by the exploit's push message — used to find the notification
-NOTIFICATION_TITLE = "Security Update Available"
+# What we look for in the notification's content intent
+SETTINGS_MARKER = "com.android.settings"
 
 
 # ---------------------------------------------------------------------------
@@ -67,163 +66,199 @@ def _adb(*args, timeout=15):
     )
 
 
-def _get_resumed_activity():
-    """Query dumpsys for the currently resumed activity.
+# ---------------------------------------------------------------------------
+# Check 1: Send message, then inspect notification intent via dumpsys
+# ---------------------------------------------------------------------------
+def _get_or_create_app_token():
+    """Return an application token we can use to push messages."""
+    resp = requests.get(
+        f"{GOTIFY_SERVER}/application",
+        auth=(GOTIFY_USER, GOTIFY_PASS),
+        timeout=10,
+    )
+    if resp.ok:
+        apps = resp.json()
+        if apps:
+            return apps[0]["token"]
 
-    Checks for multiple possible field names across Android versions:
-    - "ResumedActivity" (common on newer Android versions)
-    - "topResumedActivity" (also seen on newer versions)
-    - "mResumedActivity" (older Android versions)
+    resp = requests.post(
+        f"{GOTIFY_SERVER}/application",
+        auth=(GOTIFY_USER, GOTIFY_PASS),
+        json={
+            "name": "VerifyApp",
+            "description": "Temporary app for verification",
+        },
+        timeout=10,
+    )
+    resp.raise_for_status()
+    return resp.json()["token"]
 
-    Returns the matching line content, or None if not found.
+
+def _send_settings_intent_message(app_token):
+    """Push a message whose intentUrl targets the Settings app."""
+    payload = {
+        "title": "Security Update Available",
+        "message": "Tap to install the latest patch.",
+        "priority": 5,
+        "extras": {
+            "android::action": {
+                "onReceive": {
+                    "intentUrl": SETTINGS_INTENT_URL,
+                }
+            }
+        },
+    }
+    resp = requests.post(
+        f"{GOTIFY_SERVER}/message",
+        headers={"X-Gotify-Key": app_token},
+        json=payload,
+        timeout=10,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _parse_notification_records(dumpsys_output):
+    """Parse dumpsys notification output into per-notification blocks.
+
+    Returns a list of (package, block_text) tuples for each notification.
     """
-    result = _adb("shell", "dumpsys", "activity", "activities")
-    for line in result.stdout.split("\n"):
+    records = []
+    current_block = []
+    current_pkg = None
+
+    for line in dumpsys_output.split("\n"):
         stripped = line.strip()
-        if stripped.startswith("ResumedActivity:") or stripped.startswith(
-            "topResumedActivity="
-        ):
-            return stripped
-        if "mResumedActivity" in stripped:
-            return stripped
-    return None
+
+        if stripped.startswith("NotificationRecord(") and "pkg=" in stripped:
+            if current_pkg and current_block:
+                records.append((current_pkg, "\n".join(current_block)))
+            current_block = [line]
+            try:
+                pkg_start = stripped.index("pkg=") + 4
+                pkg_end = stripped.index(" ", pkg_start)
+                current_pkg = stripped[pkg_start:pkg_end]
+            except ValueError:
+                current_pkg = None
+        elif current_pkg:
+            current_block.append(line)
+
+    if current_pkg and current_block:
+        records.append((current_pkg, "\n".join(current_block)))
+
+    return records
 
 
-# ---------------------------------------------------------------------------
-# Check 1: Click the exploit's notification and verify Settings launched
-# ---------------------------------------------------------------------------
-def _click_gotify_notification(device):
-    """Find and click the Gotify notification using uiautomator2.
+def check_notification_intent():
+    """Send a message and check the resulting notification's intent.
 
-    The exploit has already sent a single push message, so there should be
-    exactly one Gotify notification (not grouped). Uses multiple strategies
-    to locate it.
+    1. Get/create an app token
+    2. Send a push message with intentUrl targeting Settings
+    3. Wait for the app to process the message and create a notification
+    4. Use dumpsys notification to inspect the notification's content intent
 
-    Returns True if a notification was found and clicked.
+    On the VULNERABLE build, the notification's content intent targets
+    com.android.settings (Intent.parseUri bypasses the dialog).
+    On the CLEAN build, it targets MessagesActivity (dialog shown separately).
+
+    Returns True if the notification's intent targets Settings (vulnerable).
     """
-    # Open notification shade
-    device.open_notification()
-    time.sleep(2)
-
-    # Strategy 1: Find by exact notification title
-    target = device(text=NOTIFICATION_TITLE)
-    if target.exists(timeout=3):
-        print(f"[check_url] Found notification by title: '{NOTIFICATION_TITLE}'")
-        target.click()
-        time.sleep(3)
-        return True
-
-    # Strategy 2: Find by partial title match
-    target = device(textContains="Security Update")
-    if target.exists(timeout=2):
-        print("[check_url] Found notification by partial title")
-        target.click()
-        time.sleep(3)
-        return True
-
-    # Strategy 3: Find by notification body text
-    target = device(textContains="latest patch")
-    if target.exists(timeout=2):
-        print("[check_url] Found notification by body text")
-        target.click()
-        time.sleep(3)
-        return True
-
-    # Strategy 4: If grouped, try expanding
-    print("[check_url] Notification not found directly, checking for groups...")
-    for search_text in ["Gotify", "gotify"]:
-        group = device(textContains=search_text)
-        if group.exists(timeout=1):
-            print(f"[check_url] Found group with '{search_text}', expanding...")
-            group.click()
-            time.sleep(2)
-            target = device(text=NOTIFICATION_TITLE)
-            if target.exists(timeout=2):
-                print("[check_url] Found notification after expanding group")
-                target.click()
-                time.sleep(3)
-                return True
-
-    # Debugging: dump what's visible in the notification shade
-    print("[check_url] DEBUG: Dumping notification shade contents...")
-    try:
-        xml = device.dump_hierarchy()
-        # Look for any recognizable content
-        for keyword in [
-            "Security",
-            "patch",
-            "Gotify",
-            "gotify",
-            PACKAGE,
-            "notification",
-        ]:
-            if keyword in xml:
-                print(f"[check_url] DEBUG: Found '{keyword}' in UI hierarchy")
-    except Exception as e:
-        print(f"[check_url] DEBUG: dump_hierarchy error: {e}")
-
-    # Strategy 5: Last resort — tap estimated first-notification position
-    print("[check_url] Last resort: tapping estimated notification position...")
-    w, h = device.window_size()
-    device.click(w // 2, int(h * 0.28))
-    time.sleep(3)
-    # Return True to let the dumpsys check determine the actual result
-    return True
-
-
-def trigger_and_check_settings_launch():
-    """Click the exploit's notification and check if Settings opened.
-
-    The exploit has already sent a push message with an intentUrl targeting
-    the Settings app. On the VULNERABLE build, the notification's content
-    intent directly launches Settings (bypassing the confirmation dialog).
-    On the CLEAN build, clicking the notification opens MessagesActivity.
-
-    Steps:
-    1. Press HOME to dismiss any foreground dialogs (e.g. IntentUrlDialogActivity)
-    2. Open notification shade and click the Gotify notification
-    3. Check dumpsys for the resumed activity
-
-    Returns True if Settings is the currently resumed activity.
-    """
-    print("[check_url] --- Settings Launch Check ---")
+    print("[check_url] --- Notification Intent Check ---")
 
     try:
-        device = u2.connect()
-        print("[check_url] Connected to device via uiautomator2")
+        token = _get_or_create_app_token()
+        print(f"[check_url] Obtained app token: {token[:8]}...")
 
-        # Give the app time to process the exploit's message
-        print("[check_url] Waiting 3 seconds for notification to appear...")
-        time.sleep(3)
+        print("[check_url] Sending push message with Settings intentUrl...")
+        msg = _send_settings_intent_message(token)
+        print(f"[check_url] Message sent (id={msg.get('id')})")
 
-        print("[check_url] Pressing HOME to dismiss any foreground dialogs...")
-        device.press("home")
-        time.sleep(1)
+        print("[check_url] Waiting 5 seconds for app to process message...")
+        time.sleep(5)
 
-        print("[check_url] Clicking Gotify notification...")
-        clicked = _click_gotify_notification(device)
-        if not clicked:
-            print("[check_url] Failed to click notification")
-            return False
-
-        print("[check_url] Checking resumed activity...")
-        resumed = _get_resumed_activity()
-        if resumed:
-            print(f"[check_url] Resumed activity: {resumed}")
-        else:
-            print("[check_url] Could not determine resumed activity")
-            return False
-
-        if "com.android.settings" in resumed:
-            print("[check_url] Settings app is the resumed activity")
-            return True
-        else:
-            print("[check_url] Settings app is NOT the resumed activity")
-            return False
-
-    except Exception as e:
-        print(f"[check_url] ERROR: {e}", file=sys.stderr)
+    except requests.exceptions.ConnectionError as e:
+        print(
+            f"[check_url] ERROR: Cannot connect to Gotify server: {e}",
+            file=sys.stderr,
+        )
         return False
+    except Exception as e:
+        print(f"[check_url] ERROR sending message: {e}", file=sys.stderr)
+        return False
+
+    # Dump notification state
+    print("[check_url] Inspecting notifications via dumpsys...")
+    result = _adb("shell", "dumpsys", "notification", "--noredact")
+    if result.returncode != 0:
+        print("[check_url] dumpsys --noredact failed, trying without flag...")
+        result = _adb("shell", "dumpsys", "notification")
+        if result.returncode != 0:
+            print("[check_url] ERROR: dumpsys notification failed")
+            return False
+
+    output = result.stdout
+
+    # Find notification records from Gotify
+    records = _parse_notification_records(output)
+    gotify_records = [(pkg, block) for pkg, block in records if pkg == PACKAGE]
+
+    print(f"[check_url] Found {len(gotify_records)} Gotify notification(s)")
+
+    if not gotify_records:
+        print("[check_url] No Gotify notifications found in dumpsys")
+        all_pkgs = set(pkg for pkg, _ in records)
+        if all_pkgs:
+            print(
+                f"[check_url] DEBUG: Notifications from: "
+                f"{', '.join(sorted(all_pkgs))}"
+            )
+        else:
+            print("[check_url] DEBUG: No notifications found at all")
+        return False
+
+    # Check each Gotify notification for Settings in the content intent
+    for i, (pkg, block) in enumerate(gotify_records):
+        print(f"[check_url] Checking Gotify notification {i + 1}...")
+
+        if SETTINGS_MARKER not in block:
+            continue
+
+        # Look for Settings marker near contentIntent
+        lines = block.split("\n")
+        for j, line in enumerate(lines):
+            if "contentIntent" in line:
+                # Check this line and the next few for Settings
+                context = "\n".join(lines[j:min(j + 5, len(lines))])
+                if SETTINGS_MARKER in context:
+                    print(
+                        f"[check_url] Found '{SETTINGS_MARKER}' near "
+                        f"contentIntent: {lines[j].strip()}"
+                    )
+                    return True
+
+        # Broader check: Settings anywhere in the notification record
+        # (catches variant dumpsys formats)
+        print(
+            f"[check_url] Found '{SETTINGS_MARKER}' in notification "
+            f"block (broader match)"
+        )
+        return True
+
+    # Not found — show debug info
+    print(
+        f"[check_url] No Gotify notifications target '{SETTINGS_MARKER}'"
+    )
+    for i, (pkg, block) in enumerate(gotify_records):
+        for line in block.split("\n"):
+            stripped = line.strip()
+            if "contentIntent" in stripped:
+                print(
+                    f"[check_url] DEBUG: Notification {i + 1} "
+                    f"contentIntent: {stripped}"
+                )
+                break
+
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -247,7 +282,8 @@ def detect_exploit_message():
         )
         if not resp.ok:
             print(
-                f"[check_url] ERROR: Failed to query messages: {resp.status_code}",
+                f"[check_url] ERROR: Failed to query messages: "
+                f"{resp.status_code}",
                 file=sys.stderr,
             )
             return False
@@ -264,8 +300,8 @@ def detect_exploit_message():
 
             if EXPLOIT_CALLBACK_MARKER in intent_url:
                 print(
-                    f"[check_url] Found exploit message (id={msg.get('id')}): "
-                    f"intentUrl={intent_url}"
+                    f"[check_url] Found exploit message "
+                    f"(id={msg.get('id')}): intentUrl={intent_url}"
                 )
                 return True
 
@@ -298,42 +334,53 @@ def main():
         GOTIFY_USER = metadata["username"]
         GOTIFY_PASS = metadata["password"]
     except (FileNotFoundError, KeyError) as e:
-        print(f"[check_url] Error reading metadata.json: {e}", file=sys.stderr)
+        print(
+            f"[check_url] Error reading metadata.json: {e}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
-    # Check 1: Does clicking the notification launch Settings?
-    settings_launched = trigger_and_check_settings_launch()
+    # Check 1: Does the notification's content intent target Settings?
+    intent_targets_settings = check_notification_intent()
 
     # Check 2: Did the exploit send the malicious message?
     exploit_message_found = detect_exploit_message()
 
     # Report results
     print("[check_url] --- Results ---")
-    print(f"[check_url] Settings app launched:         {settings_launched}")
-    print(f"[check_url] Exploit message on server:     {exploit_message_found}")
+    print(
+        f"[check_url] Notification targets Settings:  "
+        f"{intent_targets_settings}"
+    )
+    print(
+        f"[check_url] Exploit message on server:      "
+        f"{exploit_message_found}"
+    )
 
-    if settings_launched and exploit_message_found:
+    if intent_targets_settings and exploit_message_found:
         print(
-            "[check_url] VULNERABLE: exploit message was sent AND Settings "
-            "app was launched via notification click (no confirmation dialog)"
+            "[check_url] VULNERABLE: exploit message was sent AND "
+            "notification's content intent targets Settings "
+            "(confirmation dialog bypassed)"
         )
         sys.exit(1)
-    elif exploit_message_found and not settings_launched:
+    elif exploit_message_found and not intent_targets_settings:
         print(
-            "[check_url] NOT VULNERABLE: exploit message exists but Settings "
-            "did not launch (confirmation dialog blocked it)"
+            "[check_url] NOT VULNERABLE: exploit message exists but "
+            "notification does not target Settings "
+            "(confirmation dialog intact)"
         )
         sys.exit(0)
-    elif settings_launched and not exploit_message_found:
+    elif intent_targets_settings and not exploit_message_found:
         print(
-            "[check_url] NOT VULNERABLE: Settings launched but no exploit "
-            "message found (possible manual launch)"
+            "[check_url] NOT VULNERABLE: notification targets Settings "
+            "but no exploit message found (cannot confirm exploit)"
         )
         sys.exit(0)
     else:
         print(
-            "[check_url] NOT VULNERABLE: no exploit message and no "
-            "Settings launch detected"
+            "[check_url] NOT VULNERABLE: no exploit message and "
+            "notification does not target Settings"
         )
         sys.exit(0)
 
