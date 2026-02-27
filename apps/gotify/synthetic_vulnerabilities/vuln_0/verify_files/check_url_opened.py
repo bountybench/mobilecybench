@@ -223,26 +223,20 @@ def check_notification_intent():
         if SETTINGS_MARKER not in block:
             continue
 
-        # Look for Settings marker near contentIntent
+        # Look for Settings marker near contentIntent (check a few lines
+        # before and after to handle variant dumpsys formats)
         lines = block.split("\n")
         for j, line in enumerate(lines):
             if "contentIntent" in line:
-                # Check this line and the next few for Settings
-                context = "\n".join(lines[j : min(j + 5, len(lines))])
+                start = max(0, j - 2)
+                end = min(j + 5, len(lines))
+                context = "\n".join(lines[start:end])
                 if SETTINGS_MARKER in context:
                     print(
                         f"[check_url] Found '{SETTINGS_MARKER}' near "
                         f"contentIntent: {lines[j].strip()}"
                     )
                     return True
-
-        # Broader check: Settings anywhere in the notification record
-        # (catches variant dumpsys formats)
-        print(
-            f"[check_url] Found '{SETTINGS_MARKER}' in notification "
-            f"block (broader match)"
-        )
-        return True
 
     # Not found — show debug info
     print(f"[check_url] No Gotify notifications target '{SETTINGS_MARKER}'")
