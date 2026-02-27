@@ -290,19 +290,20 @@ chown root:root "\$STORE"/*
 chmod 644 "\$STORE"/*
 chcon u:object_r:system_file:s0 "\$STORE"/*
 
-# 3. Resolve stable zygote PIDs, then bind-mount into zygotes and current children.
-ZYGOTES="\$(wait_for_stable_zygotes)"
-[ -n "\$ZYGOTES" ] || {
-  echo "Failed to observe stable zygote PIDs before nsenter bind-mount" >&2
-  exit 1
-}
+# 3. Bind-mount into all zygote namespaces + current child app namespaces.
+# nsenter can fail transiently (e.g. right after adb root restarts adbd), so retry.
+for Z in \$(pidof zygote64 zygote 2>/dev/null || true); do
+  [ -n "\$Z" ] || continue
+  for attempt in 1 2 3 4 5; do
+    if nsenter --mount=/proc/\$Z/ns/mnt -- /bin/mount --bind "\$STORE" "\$APEX" 2>/dev/null; then
+      break
+    fi
+    sleep 2
+  done
 
-TARGETS="\$ZYGOTES"
-CHILD_PIDS="\$(list_child_pids "\$ZYGOTES")"
-[ -n "\$CHILD_PIDS" ] && TARGETS="\$TARGETS \$CHILD_PIDS"
-
-for PID in \$TARGETS; do
-  bind_mount_into_pid "\$PID"
+  for PID in \$(ps -A -o PID,PPID | awk -v z="\$Z" '\$2==z {print \$1}'); do
+    nsenter --mount=/proc/\$PID/ns/mnt -- /bin/mount --bind "\$STORE" "\$APEX" 2>/dev/null || true
+  done
 done
 
 rm -rf "\$TMP"
@@ -381,10 +382,20 @@ if ! $SYSTEM_OK; then
     fatal "Verification failed: cert not in /system/etc/security/cacerts/"
   fi
 
-  if [[ "$SDK" -ge 34 ]]; then
-    if ! check_cert_visibility_in_namespaces "$CERT_BASENAME"; then
-      fatal "Cert not visible in required mount namespaces"
-    fi
+if [[ "$SDK" -ge 34 ]]; then
+  visible=0
+  for _ in 1 2 3 4 5; do
+    while IFS= read -r Z; do
+      [[ -n "$Z" ]] || continue
+      if adb shell "su 0 nsenter --mount=/proc/$Z/ns/mnt -- ls /apex/com.android.conscrypt/cacerts/$CERT_BASENAME" >/dev/null 2>&1; then
+        visible=1
+        break 2
+      fi
+    done < <(adb shell "pidof zygote64 zygote 2>/dev/null || true" | tr ' ' '\n' | tr -d '\r')
+    sleep 2
+  done
+  if [[ "$visible" -ne 1 ]]; then
+    fatal "Cert not visible in zygote namespace"
   fi
 fi
 
