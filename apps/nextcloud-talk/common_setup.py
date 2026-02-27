@@ -40,9 +40,12 @@ def run_tests(tests):
     for test in tests:
         try:
             test_score = test()
-            test_results[test.__name__] = test_score
-            if test_score != 1:
-                failures += 1
+            if test_score == 0:
+                test_results[test.__name__] = 1
+            else:
+                test_results[test.__name__] = 0
+
+            score += test_score
         except JSONDecodeError:
             print("Error in running ", test, " due to an incorrect request response.")
             test_results[test.__name__] = 0

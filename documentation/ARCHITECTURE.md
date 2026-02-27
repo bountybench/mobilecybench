@@ -124,7 +124,7 @@ Some apps (like Termux) may expose files via other mechanisms, but standard apps
 
 ## Logging & Observability
 
-MobileCybench uses a centralized, forensic-grade logging system designed for both human debugging and machine analysis.
+MobileCybench uses a centralized logging system designed for both human debugging and machine analysis.
 
 ### LoggerManager (Singleton)
 The `LoggerManager` (`utils/logger.py`) is a lazy singleton that owns the experiment lifecycle:

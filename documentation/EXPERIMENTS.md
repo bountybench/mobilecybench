@@ -112,6 +112,7 @@ A symlink to the most recent run is maintained at `logs/latest/`.
 | `run_summary.json`      | **Primary Source of Truth.** Machine-readable summary of config, results, metrics, and artifact paths. |
 | `experiment.log`        | Full technical trace of the runner, workflow, and agent.                                               |
 | `agent.log`             | Cleaned stream of agent-only thoughts and tool interactions.                                           |
+| `system_prompt.txt`     | Exact system prompt used by the custom agent for this run.                                             |
 | `conversation.jsonl`    | Turn-by-turn record of the LLM conversation (ideal for analysis).                                      |
 | `token_usage.jsonl`     | Granular token counts and USD cost per API call.                                                       |
 | `android_system.log`    | Full Android Logcat dump captured at the end of the run.                                               |

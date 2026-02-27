@@ -107,6 +107,14 @@ class LoggerManager:
         if self._should_filter_ui():
             self._setup_ui_debug_logger()
 
+        # Keep canonical UUID for machines while surfacing a short human-friendly hint.
+        self._logger.info(
+            "Logging initialized (run_id=%s, short_id=%s, logs_dir=%s)",
+            self.run_id,
+            self.run_id[:8],
+            self._logs_dir,
+        )
+
     def _resolve_run_id(self) -> str:
         """Resolve the run ID from environment or generate a new UUID."""
         env_id = os.environ.get("MOBILECYBENCH_SESSION_ID")

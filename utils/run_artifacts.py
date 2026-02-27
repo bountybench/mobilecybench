@@ -49,6 +49,7 @@ def normalize_agent_result(result: Optional[dict]) -> dict:
     normalized.setdefault("unique_tools", [])
     normalized.setdefault("token_totals", {})
     normalized.setdefault("conversation_file", None)
+    normalized.setdefault("system_prompt_file", None)
     normalized.setdefault("conversation_history", [])
     return normalized
 
@@ -202,6 +203,7 @@ def write_run_summary(
             pass
 
     conversation_path = _existing_path(run_result.get("conversation_file"))
+    system_prompt_path = _existing_path(run_result.get("system_prompt_file"))
     if conversation_path is None:
         fallback_path = _materialize_conversation_fallback(
             run_result.get("conversation_history"),
@@ -297,6 +299,7 @@ def write_run_summary(
                 str(token_usage_path) if token_usage_path.exists() else None
             ),
             "conversation_jsonl": conversation_path,
+            "system_prompt_file": system_prompt_path,
             "scores_json": scores_log_path
             or (
                 str(workflow.app_dir / "scores.json")

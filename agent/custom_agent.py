@@ -101,14 +101,22 @@ class CustomAgent:
         self._conversation_file = str(
             logger_manager.get_logs_dir() / "conversation.jsonl"
         )
+        self._system_prompt_file = str(
+            logger_manager.get_logs_dir() / "system_prompt.txt"
+        )
         self._conversation_schema = self._load_conversation_schema()
         # Reset per-run structured conversation artifact.
         with open(self._conversation_file, "w", encoding="utf-8"):
             pass
+        # Persist the full system prompt as a dedicated artifact for reproducibility.
+        with open(self._system_prompt_file, "w", encoding="utf-8") as f:
+            f.write(self._instructions)
+            f.write("\n")
 
         agent_logger.info("Agent Run Started")
         agent_logger.info(f"Model: {self.model}")
         agent_logger.info(f"Max Iterations: {self.max_iterations}")
+        agent_logger.info(f"System prompt artifact: {self._system_prompt_file}")
         agent_logger.info("=" * 80)
 
     def _get_system_prompt_text(self, additional_context: str = None) -> str:
@@ -181,6 +189,7 @@ class CustomAgent:
             "token_totals": self.token_tracker.totals(),
             "log_file": self.log_file,
             "conversation_file": self._conversation_file,
+            "system_prompt_file": self._system_prompt_file,
             "tool_call_count": self._tool_call_count,
             "unique_tools": sorted(self._unique_tools),
         }

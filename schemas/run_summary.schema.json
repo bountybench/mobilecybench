@@ -118,6 +118,7 @@
         "agent_log_file": { "type": "string", "minLength": 1 },
         "token_usage_jsonl": { "type": ["string", "null"] },
         "conversation_jsonl": { "type": ["string", "null"] },
+        "system_prompt_file": { "type": ["string", "null"] },
         "screenshots_dir": { "type": ["string", "null"] },
         "scores_json": { "type": ["string", "null"] },
         "synthetic_scores_json": { "type": ["string", "null"] },
