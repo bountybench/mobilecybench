@@ -74,9 +74,9 @@ def check_database_integrity():
             return False
 
         # Expected values from seed.sql:
-        # 5 total users (admin, testadmin, poweruser, normaluser, guest)
+        # 6 total users (admin, testadmin, poweruser, normaluser, guest, agentuser)
         # 2 admin users (admin, testadmin)
-        expected_users = 5
+        expected_users = 6
         expected_admins = 2
 
         violations = []
