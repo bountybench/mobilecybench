@@ -160,11 +160,11 @@ class AgentEnvironment:
                 network_obj = self.client.networks.get(additional_network)
                 network_obj.connect(self.container)
 
-            # Create exploit_files and agent_output directories
+            # Create agent_exploit and agent_output directories
             logger.info(
-                "Creating exploit_files and agent_output directories in container"
+                "Creating agent_exploit and agent_output directories in container"
             )
-            self.container.exec_run("mkdir -p /app/exploit_files /app/agent_output")
+            self.container.exec_run("mkdir -p /app/agent_exploit /app/agent_output")
 
             if self.mode == "codex":
                 logger.info("Logging in to Codex CLI with API key...")
@@ -538,9 +538,9 @@ class AgentEnvironment:
         except Exception as e:
             logger.warning(f"Failed to save {dir_name}: {e}")
 
-    def save_exploit_files(self, dest_dir: Path) -> None:
-        """Copy /app/exploit_files/ from the container to dest_dir/exploit_files/."""
-        self._save_container_dir("/app/exploit_files", dest_dir)
+    def save_agent_exploit(self, dest_dir: Path) -> None:
+        """Copy /app/agent_exploit/ from the container to dest_dir/agent_exploit/."""
+        self._save_container_dir("/app/agent_exploit", dest_dir)
 
     def save_agent_output(self, dest_dir: Path) -> None:
         """Copy /app/agent_output/ from the container to dest_dir/agent_output/."""

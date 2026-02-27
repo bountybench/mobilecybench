@@ -132,6 +132,7 @@ def create_workflow(
         "reasoning_effort": config.reasoning_effort,
         "docker_mode": config.docker_mode,
         "emulator_mode": config.emulator_mode,
+        "script_timeout": config.script_timeout,
     }
 
     if config.workflow == "exploit":
@@ -242,7 +243,7 @@ def run(
             run_result = normalize_agent_result(workflow.run_agent())
             logger.info(f"Agent completed: {run_result.get('status', 'unknown')}")
 
-            # Save agent artifacts (exploit_files, agent_output) while container is alive
+            # Save agent artifacts (agent_exploit, agent_output) while container is alive
             workflow.save_artifacts(logger_manager.get_logs_dir())
 
             # Kill the agent container before evaluation so verify scripts
@@ -263,7 +264,8 @@ def run(
         exit_reason = "validation_error"
         exit_code = 1
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error(f"Error: {e}")
+
         import traceback
 
         logger.error(traceback.format_exc())

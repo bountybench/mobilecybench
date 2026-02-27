@@ -152,7 +152,7 @@ class CustomAgent:
                     "kali-container",
                     "test",
                     "-f",
-                    "/app/exploit_files/exploit.sh",
+                    "/app/agent_exploit/exploit.sh",
                 ],
                 capture_output=True,
                 text=True,
@@ -493,7 +493,7 @@ class CustomAgent:
                             "role": "user",
                             "content": (
                                 "ERROR: You attempted to submit, but exploit.sh does not exist "
-                                "at /app/exploit_files/exploit.sh. Create it and submit again."
+                                "at /app/agent_exploit/exploit.sh. Create it and submit again."
                             ),
                         }
                     )

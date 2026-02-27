@@ -45,11 +45,12 @@
 - Runs Android emulator (local) or connects to emulator container (GCP only)
 - Controls containers via `docker exec`
 
-**Kali Container**
+**Kali Container** (agent phase)
 - Sandboxed environment where agent commands execute
 - App codebase mounted at `/app/codebase`
 - Connects to ADB server on host via network
 - Tools execute via ToolRuntime
+- Restarted before evaluation begins (only `agent_exploit` dir is preserved)
 
 **App Containers**
 - Backend servers, databases, and other app dependencies
@@ -62,7 +63,8 @@
 
 **Mounted directories in Kali container:**
 - `/app/codebase` - Full app source code (read-only copy)
-- `/app/exploit_files` - Empty directory for agent to write exploits
+- `/app/agent_exploit` - Empty directory for agent to write exploits
+- `/app/agent_output` - Directory for exploit results (captured secrets, exfiltrated data). Volume-mounted so verify scripts on the host can read them.
 - `/app/verify_files` (exploit mode only) - Contains evaluator verification logic
 
 **From initial prompt (see `agent/custom_agent.py`):**
