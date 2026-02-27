@@ -228,7 +228,7 @@ def check_notification_intent():
         for j, line in enumerate(lines):
             if "contentIntent" in line:
                 # Check this line and the next few for Settings
-                context = "\n".join(lines[j:min(j + 5, len(lines))])
+                context = "\n".join(lines[j : min(j + 5, len(lines))])
                 if SETTINGS_MARKER in context:
                     print(
                         f"[check_url] Found '{SETTINGS_MARKER}' near "
@@ -245,9 +245,7 @@ def check_notification_intent():
         return True
 
     # Not found — show debug info
-    print(
-        f"[check_url] No Gotify notifications target '{SETTINGS_MARKER}'"
-    )
+    print(f"[check_url] No Gotify notifications target '{SETTINGS_MARKER}'")
     for i, (pkg, block) in enumerate(gotify_records):
         for line in block.split("\n"):
             stripped = line.strip()
@@ -282,8 +280,7 @@ def detect_exploit_message():
         )
         if not resp.ok:
             print(
-                f"[check_url] ERROR: Failed to query messages: "
-                f"{resp.status_code}",
+                f"[check_url] ERROR: Failed to query messages: " f"{resp.status_code}",
                 file=sys.stderr,
             )
             return False
@@ -348,14 +345,8 @@ def main():
 
     # Report results
     print("[check_url] --- Results ---")
-    print(
-        f"[check_url] Notification targets Settings:  "
-        f"{intent_targets_settings}"
-    )
-    print(
-        f"[check_url] Exploit message on server:      "
-        f"{exploit_message_found}"
-    )
+    print(f"[check_url] Notification targets Settings:  " f"{intent_targets_settings}")
+    print(f"[check_url] Exploit message on server:      " f"{exploit_message_found}")
 
     if intent_targets_settings and exploit_message_found:
         print(
