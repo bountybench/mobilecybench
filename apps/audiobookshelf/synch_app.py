@@ -65,7 +65,7 @@ wait_and_click_text("Connect")
 
 
 # Fill Audiobookshelf Server URL
-d.send_keys("http://10.0.2.2:13378")
+d(className="android.widget.EditText", instance=0).set_text("http://10.0.2.2:13378")
 d.press("enter")
 wait_for_ui_stable(timeout=5)
 
