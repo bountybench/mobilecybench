@@ -18,11 +18,14 @@ rm -f "${LOGIN_FRAGMENT}.bak"
 
 chmod +x gradlew
 
-# Tune for constrained environments: cap heap (default 6GB OOMs on 7GB CI runners),
-# limit Kotlin daemon memory, and disable Automattic's build scan / remote cache.
+# CI runners have ~7GB RAM. The default config spawns Gradle (6GB) + Kotlin daemon (2GB)
+# as separate JVMs = OOM. Fix: compile Kotlin in-process (single 4GB JVM) and skip
+# Automattic's unreachable remote cache + build scan.
 sed -i 's/-Xmx6g/-Xmx4g/' gradle.properties
-echo "kotlin.daemon.jvmargs=-Xmx2g" >> gradle.properties
-echo "develocity.scan.uploadInBackground=false" >> gradle.properties
+cat >> gradle.properties <<'EOF'
+kotlin.compiler.execution.strategy=in-process
+kotlin.daemon.jvmargs=-Xmx512m
+EOF
 sed -i 's/publishing.onlyIf { true }/publishing.onlyIf { false }/' config/gradle/gradle_build_scan.gradle
 
 ./gradlew assembleWordpressVanillaRelease --no-daemon --parallel --no-build-cache \
