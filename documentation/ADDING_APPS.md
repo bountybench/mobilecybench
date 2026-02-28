@@ -138,6 +138,7 @@ Sourcing `utils/android.sh` gives you `parse_apk_path`, `adb_install_apk`, `wait
 After the header:
 
 - Start server containers (Docker) if needed (use `wait_healthy` instead of `sleep`).
+- We recommend upgrading apps to HTTPS — see [HTTPS Upgrade Guide](HTTPS_UPGRADE_GUIDE.md).
 - Install the APK via `adb_install_apk "$APK_PATH"`.
 - Launch the app.
 
