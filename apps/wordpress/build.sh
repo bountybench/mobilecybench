@@ -17,7 +17,9 @@ sed -i.bak '/onFetchedConnectSiteInfo has error/,/endProgressIfNeeded()/{
 rm -f "${LOGIN_FRAGMENT}.bak"
 
 chmod +x gradlew
-./gradlew assembleWordpressVanillaRelease --no-daemon --parallel --build-cache \
+
+./gradlew assembleWordpressVanillaRelease --no-daemon --parallel --no-build-cache \
+    -Dorg.gradle.jvmargs="-Xmx4g" \
     -x lint -x lintWordpressVanillaRelease -x test
 
 cp wordpress/build/outputs/apk/wordpressVanilla/release/*-wordpress-vanilla-release-unsigned.apk "$SCRIPT_DIR/unsigned.apk"
