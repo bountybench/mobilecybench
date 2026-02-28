@@ -33,4 +33,4 @@ sed -i.bak 's/publishing.onlyIf { true }/publishing.onlyIf { false }/' config/gr
     -x uploadSentryProguardMappingsWordpressVanillaRelease \
     -x sentryBundleSourcesWordpressVanillaRelease
 
-cp wordpress/build/outputs/apk/wordpressVanilla/release/*-wordpress-vanilla-release-unsigned.apk "$SCRIPT_DIR/unsigned.apk"
+cp WordPress/build/outputs/apk/wordpressVanilla/release/*-wordpress-vanilla-release-unsigned.apk "$SCRIPT_DIR/unsigned.apk"
