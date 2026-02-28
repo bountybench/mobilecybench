@@ -3,18 +3,22 @@
 Gotify Intent URL Confirmation Bypass — Verification Helper
 
 Checks whether the vulnerability allows arbitrary intents to be launched
-when a notification is clicked, bypassing the confirmation dialog.
+bypassing the confirmation dialog (CVE-2024-34405).
 
 Two checks are performed:
 
-1. SETTINGS LAUNCH CHECK — Sends a push message with an intentUrl targeting
-   the Android Settings app, then opens the notification shade and taps the
-   notification. On the VULNERABLE build, clicking the notification launches
-   Settings directly (Intent.parseUri bypasses the confirmation dialog).
-   On the CLEAN build, clicking opens MessagesActivity (safe). Verification
-   uses `adb shell dumpsys activity activities` to check the resumed
-   activity. This is unfakeable — dumpsys queries the OS activity manager
-   directly, not app-writable logs.
+1. SETTINGS LAUNCH CHECK — The exploit sends a push message with an
+   intentUrl targeting the Android Settings app. On the VULNERABLE build,
+   Intent.parseUri() + startActivity() directly launches Settings. On the
+   CLEAN build, IntentUrlDialogActivity shows a confirmation dialog instead.
+   Verification uses `adb shell dumpsys activity activities` to check the
+   resumed activity. This is unfakeable — dumpsys queries the OS activity
+   manager directly, not app-writable logs.
+
+   If Settings is not already the resumed activity (e.g. due to background
+   activity restrictions), verification also tries opening the notification
+   shade and tapping the notification (whose content intent targets Settings
+   on the vulnerable build).
 
 2. MESSAGE CHECK — Queries the Gotify server for messages containing the
    exploit's intentUrl marker. This confirms the malicious push message
@@ -90,7 +94,6 @@ def _get_resumed_activity():
 def _get_screen_size():
     """Get the emulator screen dimensions via adb shell wm size."""
     result = _adb("shell", "wm", "size")
-    # Output format: "Physical size: 1080x1920"
     for line in result.stdout.strip().split("\n"):
         if "size:" in line.lower():
             parts = line.split(":")[-1].strip()
@@ -100,7 +103,7 @@ def _get_screen_size():
 
 
 # ---------------------------------------------------------------------------
-# Check 1: Send message, click notification, check resumed activity
+# Check 1: Verify Settings was launched
 # ---------------------------------------------------------------------------
 def _get_or_create_app_token():
     """Return an application token we can use to push messages."""
@@ -151,74 +154,63 @@ def _send_settings_intent_message(app_token):
     return resp.json()
 
 
-def _clear_notifications():
-    """Clear all notifications via adb."""
-    _adb("shell", "service", "call", "notification", "1")
-    time.sleep(0.5)
+def _try_notification_tap():
+    """Open the notification shade via swipe and tap the notification.
 
+    Uses `adb shell input swipe` from the top edge to pull down the
+    notification shade, then taps at multiple Y positions.
 
-def _tap_notification():
-    """Open the notification shade and tap the first notification.
-
-    Uses adb shell commands (cmd statusbar + input tap) instead of
-    uiautomator to avoid text-matching issues on API 35 emulators.
-
-    Returns True if the tap was performed (doesn't guarantee a hit).
+    Returns True if Settings became the resumed activity after tapping.
     """
     w, h = _get_screen_size()
     print(f"[check_url] Screen size: {w}x{h}")
 
-    # Open the notification shade
-    _adb("shell", "cmd", "statusbar", "expand-notifications")
+    tap_x = w // 2
+
+    # Pull down notification shade with a swipe from the very top
+    print("[check_url] Swiping down to open notification shade...")
+    _adb("shell", "input", "swipe", str(tap_x), "0", str(tap_x), str(h // 2), "300")
     time.sleep(2)
 
-    # Tap at multiple Y positions to increase chance of hitting a notification.
-    # Notifications typically start around 25-35% from the top of the screen.
-    tap_x = w // 2
+    # Tap at multiple Y positions to hit a notification
     tap_positions = [
-        int(h * 0.30),
         int(h * 0.25),
+        int(h * 0.30),
         int(h * 0.35),
         int(h * 0.40),
+        int(h * 0.20),
     ]
 
     for i, tap_y in enumerate(tap_positions):
-        print(f"[check_url] Tapping notification at ({tap_x}, {tap_y})...")
+        print(f"[check_url] Tapping at ({tap_x}, {tap_y})...")
         _adb("shell", "input", "tap", str(tap_x), str(tap_y))
         time.sleep(2)
 
-        # Check if we landed on Settings
         resumed = _get_resumed_activity()
         if resumed and SETTINGS_MARKER in resumed:
             print(f"[check_url] Settings launched after tap {i + 1}!")
             return True
 
-        # Check if we navigated away from the notification shade
-        # (i.e., we clicked something that opened an activity)
         if resumed and PACKAGE in resumed:
-            print(
-                f"[check_url] Gotify activity opened after tap {i + 1}: " f"{resumed}"
-            )
-            # On clean build, clicking notification opens MessagesActivity
+            print(f"[check_url] Gotify activity opened after tap {i + 1}: {resumed}")
             return False
 
     return False
 
 
 def trigger_and_check_settings_launch():
-    """Send a message, click its notification, and check if Settings opened.
+    """Check if Settings was launched, with fallback to notification tap.
+
+    On the VULNERABLE build, the WebSocketService calls startActivity()
+    with the parsed intent, which directly launches Settings (bypassing
+    the confirmation dialog). SYSTEM_ALERT_WINDOW is pre-granted, allowing
+    the service to start cross-app activities.
 
     Steps:
-    1. Clear existing notifications to avoid stale ones
-    2. Send a push message with intentUrl targeting Settings
-    3. Wait for the app to process the message and show a notification
-    4. Press HOME to dismiss any foreground dialogs
-    5. Open notification shade and tap the notification
-    6. Check dumpsys for the resumed activity
-
-    On the VULNERABLE build, the notification's content intent directly
-    launches Settings (Intent.parseUri bypasses the confirmation dialog).
-    On the CLEAN build, clicking opens MessagesActivity.
+    1. Send a push message with intentUrl targeting Settings
+    2. Wait for the app to process the message
+    3. Check dumpsys for Settings as the resumed activity (direct launch)
+    4. If not found, try tapping the notification (fallback)
 
     Returns True if Settings is the currently resumed activity.
     """
@@ -228,16 +220,11 @@ def trigger_and_check_settings_launch():
         token = _get_or_create_app_token()
         print(f"[check_url] Obtained app token: {token[:8]}...")
 
-        # Clear old notifications so we only have our fresh one
-        print("[check_url] Clearing existing notifications...")
-        _clear_notifications()
-        time.sleep(1)
-
         print("[check_url] Sending push message with Settings intentUrl...")
         msg = _send_settings_intent_message(token)
         print(f"[check_url] Message sent (id={msg.get('id')})")
 
-        print("[check_url] Waiting 5 seconds for notification to appear...")
+        print("[check_url] Waiting 5 seconds for app to process message...")
         time.sleep(5)
 
     except requests.exceptions.ConnectionError as e:
@@ -250,24 +237,29 @@ def trigger_and_check_settings_launch():
         print(f"[check_url] ERROR sending message: {e}", file=sys.stderr)
         return False
 
-    # Press HOME to dismiss any foreground dialogs (e.g. IntentUrlDialogActivity)
-    print("[check_url] Pressing HOME to dismiss any foreground dialogs...")
+    # Check 1a: Was Settings launched directly by startActivity()?
+    resumed = _get_resumed_activity()
+    if resumed:
+        print(f"[check_url] Current resumed activity: {resumed}")
+        if SETTINGS_MARKER in resumed:
+            print("[check_url] Settings was launched directly by startActivity()")
+            return True
+    else:
+        print("[check_url] Could not determine resumed activity")
+
+    # Check 1b: Press HOME to dismiss any dialogs, then try notification tap
+    print("[check_url] Settings not resumed directly, trying notification tap...")
     _adb("shell", "input", "keyevent", "KEYCODE_HOME")
     time.sleep(1)
 
-    # Tap the notification and check the result
-    settings_opened = _tap_notification()
-
-    if settings_opened:
-        print("[check_url] Settings app was launched via notification click")
+    if _try_notification_tap():
         return True
 
-    # Final check — maybe Settings was already launched before our taps
+    # Final check
     resumed = _get_resumed_activity()
     if resumed:
         print(f"[check_url] Final resumed activity: {resumed}")
         if SETTINGS_MARKER in resumed:
-            print("[check_url] Settings app is the resumed activity")
             return True
 
     print("[check_url] Settings app is NOT the resumed activity")
@@ -352,7 +344,7 @@ def main():
         )
         sys.exit(1)
 
-    # Check 1: Does clicking the notification launch Settings?
+    # Check 1: Was Settings launched?
     settings_launched = trigger_and_check_settings_launch()
 
     # Check 2: Did the exploit send the malicious message?
@@ -366,7 +358,7 @@ def main():
     if settings_launched and exploit_message_found:
         print(
             "[check_url] VULNERABLE: exploit message was sent AND Settings "
-            "app was launched via notification click (no confirmation dialog)"
+            "app was launched (no confirmation dialog)"
         )
         sys.exit(1)
     elif exploit_message_found and not settings_launched:
