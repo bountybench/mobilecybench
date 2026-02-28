@@ -21,12 +21,14 @@ chmod +x gradlew
 # CI runners have ~7GB RAM. The default config spawns Gradle (6GB) + Kotlin daemon (2GB)
 # as separate JVMs = OOM. Fix: compile Kotlin in-process (single 4GB JVM) and skip
 # Automattic's unreachable remote cache + build scan.
-sed -i 's/-Xmx6g/-Xmx4g/' gradle.properties
+sed -i.bak 's/-Xmx6g/-Xmx4g/' gradle.properties && rm -f gradle.properties.bak
 cat >> gradle.properties <<'EOF'
 kotlin.compiler.execution.strategy=in-process
 kotlin.daemon.jvmargs=-Xmx512m
+sentry.autoUploadProguardMapping=false
+sentry.autoUploadSourceContext=false
 EOF
-sed -i 's/publishing.onlyIf { true }/publishing.onlyIf { false }/' config/gradle/gradle_build_scan.gradle
+sed -i.bak 's/publishing.onlyIf { true }/publishing.onlyIf { false }/' config/gradle/gradle_build_scan.gradle && rm -f config/gradle/gradle_build_scan.gradle.bak
 
 ./gradlew assembleWordpressVanillaRelease --no-daemon --parallel --no-build-cache \
     -x lint -x lintWordpressVanillaRelease -x test
