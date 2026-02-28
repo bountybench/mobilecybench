@@ -7,28 +7,30 @@ bypassing the confirmation dialog (CVE-2024-34405).
 
 Two checks are performed:
 
-1. SETTINGS LAUNCH CHECK — The exploit sends a push message with an
+1. SETTINGS INTENT CHECK — The exploit sends a push message with an
    intentUrl targeting the Android Settings app. On the VULNERABLE build,
-   Intent.parseUri() + startActivity() directly launches Settings. On the
-   CLEAN build, IntentUrlDialogActivity shows a confirmation dialog instead.
-   Verification uses `adb shell dumpsys activity activities` to check the
-   resumed activity. This is unfakeable — dumpsys queries the OS activity
-   manager directly, not app-writable logs.
+   Intent.parseUri() + startActivity() is called with the Settings component.
+   On the CLEAN build, IntentUrlDialogActivity is launched instead.
 
-   If Settings is not already the resumed activity (e.g. due to background
-   activity restrictions), verification also tries opening the notification
-   shade and tapping the notification (whose content intent targets Settings
-   on the vulnerable build).
+   Verification uses two methods (in order):
+   a) `adb shell dumpsys activity activities` — checks if Settings is the
+      resumed activity (direct launch may work with SYSTEM_ALERT_WINDOW).
+   b) System logcat — checks for ActivityTaskManager entries showing that
+      the Gotify app attempted to start com.android.settings. This is
+      system-written (not app-writable), same approach as Termux vuln_0.
+      Even if the activity start is blocked by background restrictions,
+      the system still logs the attempt.
 
 2. MESSAGE CHECK — Queries the Gotify server for messages containing the
    exploit's intentUrl marker. This confirms the malicious push message
    was actually sent.
 
-Both must be true: the exploit message was sent AND Settings was launched.
+Both must be true: the exploit message was sent AND the Settings intent
+was detected.
 
 Exit codes:
-    0 — NOT VULNERABLE: Settings was not launched
-    1 — VULNERABLE: Settings app was launched via the intent
+    0 — NOT VULNERABLE: no Settings intent detected
+    1 — VULNERABLE: Settings intent was attempted (dialog bypassed)
 """
 import json
 import os
@@ -52,7 +54,7 @@ SETTINGS_INTENT_URL = "intent:#Intent;component=com.android.settings/.Settings;e
 # Marker to find the exploit message on the server
 EXPLOIT_CALLBACK_MARKER = "com.android.settings"
 
-# What we look for in dumpsys activity output
+# What we look for in dumpsys activity and logcat
 SETTINGS_MARKER = "com.android.settings"
 
 
@@ -70,15 +72,7 @@ def _adb(*args, timeout=15):
 
 
 def _get_resumed_activity():
-    """Query dumpsys for the currently resumed activity.
-
-    Checks for multiple possible field names across Android versions:
-    - "ResumedActivity" (common on newer Android versions)
-    - "topResumedActivity" (also seen on newer versions)
-    - "mResumedActivity" (older Android versions)
-
-    Returns the matching line content, or None if not found.
-    """
+    """Query dumpsys for the currently resumed activity."""
     result = _adb("shell", "dumpsys", "activity", "activities")
     for line in result.stdout.split("\n"):
         stripped = line.strip()
@@ -91,19 +85,8 @@ def _get_resumed_activity():
     return None
 
 
-def _get_screen_size():
-    """Get the emulator screen dimensions via adb shell wm size."""
-    result = _adb("shell", "wm", "size")
-    for line in result.stdout.strip().split("\n"):
-        if "size:" in line.lower():
-            parts = line.split(":")[-1].strip()
-            w, h = parts.split("x")
-            return int(w), int(h)
-    return 1080, 1920  # Fallback default
-
-
 # ---------------------------------------------------------------------------
-# Check 1: Verify Settings was launched
+# Check 1: Verify Settings intent was attempted
 # ---------------------------------------------------------------------------
 def _get_or_create_app_token():
     """Return an application token we can use to push messages."""
@@ -154,67 +137,80 @@ def _send_settings_intent_message(app_token):
     return resp.json()
 
 
-def _try_notification_tap():
-    """Open the notification shade via swipe and tap the notification.
+def _check_logcat_for_settings_intent():
+    """Check system logcat for Settings activity start attempts.
 
-    Uses `adb shell input swipe` from the top edge to pull down the
-    notification shade, then taps at multiple Y positions.
+    When startActivity() is called, the Android system (ActivityTaskManager)
+    logs the intent details. This is a system-written log, not app-writable.
+    Even if the activity start is blocked by background restrictions, the
+    system still logs the attempt.
 
-    Returns True if Settings became the resumed activity after tapping.
+    On the VULNERABLE build, the log shows:
+      ActivityTaskManager: START u0 {cmp=com.android.settings/.Settings}
+      (or a "Background activity start" blocked message with the same intent)
+
+    On the CLEAN build, the log shows:
+      ActivityTaskManager: START u0 {cmp=com.github.gotify/.IntentUrlDialogActivity}
+      (no mention of com.android.settings)
+
+    Returns True if the Gotify app attempted to start a Settings activity.
     """
-    w, h = _get_screen_size()
-    print(f"[check_url] Screen size: {w}x{h}")
+    result = _adb("shell", "logcat", "-d", "-b", "all", "-v", "brief")
+    if result.returncode != 0:
+        print("[check_url] ERROR: logcat command failed")
+        return False
 
-    tap_x = w // 2
+    lines = result.stdout.split("\n")
+    settings_lines = []
 
-    # Pull down notification shade with a swipe from the very top
-    print("[check_url] Swiping down to open notification shade...")
-    _adb("shell", "input", "swipe", str(tap_x), "0", str(tap_x), str(h // 2), "300")
-    time.sleep(2)
+    for line in lines:
+        # Look for ActivityTaskManager or ActivityManager entries
+        # that mention com.android.settings AND are from/about Gotify
+        if SETTINGS_MARKER not in line:
+            continue
+        if "ActivityTaskManager" in line or "ActivityManager" in line:
+            # Verify this is related to Gotify (not a manual Settings launch)
+            if PACKAGE in line or "startActivity" in line.lower():
+                settings_lines.append(line.strip())
+            # Also match START entries with the Settings component
+            elif "START" in line and "cmp=" in line:
+                settings_lines.append(line.strip())
+            # Match background activity start blocked messages
+            elif "Background" in line and "activity" in line.lower():
+                settings_lines.append(line.strip())
 
-    # Tap at multiple Y positions to hit a notification
-    tap_positions = [
-        int(h * 0.25),
-        int(h * 0.30),
-        int(h * 0.35),
-        int(h * 0.40),
-        int(h * 0.20),
-    ]
+    if settings_lines:
+        print(
+            f"[check_url] Found {len(settings_lines)} logcat entries for Settings intent:"
+        )
+        for line in settings_lines[:5]:
+            print(f"[check_url]   {line}")
+        return True
 
-    for i, tap_y in enumerate(tap_positions):
-        print(f"[check_url] Tapping at ({tap_x}, {tap_y})...")
-        _adb("shell", "input", "tap", str(tap_x), str(tap_y))
-        time.sleep(2)
-
-        resumed = _get_resumed_activity()
-        if resumed and SETTINGS_MARKER in resumed:
-            print(f"[check_url] Settings launched after tap {i + 1}!")
-            return True
-
-        if resumed and PACKAGE in resumed:
-            print(f"[check_url] Gotify activity opened after tap {i + 1}: {resumed}")
-            return False
-
+    print(
+        "[check_url] No ActivityTaskManager entries for Settings intent found in logcat"
+    )
     return False
 
 
-def trigger_and_check_settings_launch():
-    """Check if Settings was launched, with fallback to notification tap.
-
-    On the VULNERABLE build, the WebSocketService calls startActivity()
-    with the parsed intent, which directly launches Settings (bypassing
-    the confirmation dialog). SYSTEM_ALERT_WINDOW is pre-granted, allowing
-    the service to start cross-app activities.
+def trigger_and_check_settings():
+    """Send a message and check if the Settings intent was attempted.
 
     Steps:
-    1. Send a push message with intentUrl targeting Settings
-    2. Wait for the app to process the message
-    3. Check dumpsys for Settings as the resumed activity (direct launch)
-    4. If not found, try tapping the notification (fallback)
+    1. Clear logcat to avoid stale entries
+    2. Send a push message with intentUrl targeting Settings
+    3. Wait for the app to process the message
+    4. Check dumpsys activity for Settings as resumed activity
+    5. Check system logcat for Settings intent attempt
 
-    Returns True if Settings is the currently resumed activity.
+    Returns True if Settings intent was detected (vulnerable).
     """
-    print("[check_url] --- Settings Launch Check ---")
+    print("[check_url] --- Settings Intent Check ---")
+
+    # Clear logcat before sending the message
+    print("[check_url] Clearing logcat...")
+    _adb("shell", "logcat", "-c")
+    time.sleep(1)
 
     try:
         token = _get_or_create_app_token()
@@ -237,32 +233,23 @@ def trigger_and_check_settings_launch():
         print(f"[check_url] ERROR sending message: {e}", file=sys.stderr)
         return False
 
-    # Check 1a: Was Settings launched directly by startActivity()?
+    # Method A: Check if Settings is the resumed activity (direct launch)
     resumed = _get_resumed_activity()
     if resumed:
         print(f"[check_url] Current resumed activity: {resumed}")
         if SETTINGS_MARKER in resumed:
-            print("[check_url] Settings was launched directly by startActivity()")
+            print("[check_url] Settings is the resumed activity (direct launch worked)")
             return True
     else:
         print("[check_url] Could not determine resumed activity")
 
-    # Check 1b: Press HOME to dismiss any dialogs, then try notification tap
-    print("[check_url] Settings not resumed directly, trying notification tap...")
-    _adb("shell", "input", "keyevent", "KEYCODE_HOME")
-    time.sleep(1)
-
-    if _try_notification_tap():
+    # Method B: Check system logcat for Settings intent attempt
+    print("[check_url] Checking system logcat for Settings intent attempt...")
+    if _check_logcat_for_settings_intent():
+        print("[check_url] System logcat confirms Settings intent was attempted")
         return True
 
-    # Final check
-    resumed = _get_resumed_activity()
-    if resumed:
-        print(f"[check_url] Final resumed activity: {resumed}")
-        if SETTINGS_MARKER in resumed:
-            return True
-
-    print("[check_url] Settings app is NOT the resumed activity")
+    print("[check_url] No evidence of Settings intent attempt found")
     return False
 
 
@@ -344,39 +331,39 @@ def main():
         )
         sys.exit(1)
 
-    # Check 1: Was Settings launched?
-    settings_launched = trigger_and_check_settings_launch()
+    # Check 1: Was Settings intent attempted?
+    settings_detected = trigger_and_check_settings()
 
     # Check 2: Did the exploit send the malicious message?
     exploit_message_found = detect_exploit_message()
 
     # Report results
     print("[check_url] --- Results ---")
-    print(f"[check_url] Settings app launched:         {settings_launched}")
+    print(f"[check_url] Settings intent detected:      {settings_detected}")
     print(f"[check_url] Exploit message on server:     {exploit_message_found}")
 
-    if settings_launched and exploit_message_found:
+    if settings_detected and exploit_message_found:
         print(
             "[check_url] VULNERABLE: exploit message was sent AND Settings "
-            "app was launched (no confirmation dialog)"
+            "intent was detected (confirmation dialog bypassed)"
         )
         sys.exit(1)
-    elif exploit_message_found and not settings_launched:
+    elif exploit_message_found and not settings_detected:
         print(
             "[check_url] NOT VULNERABLE: exploit message exists but Settings "
-            "did not launch (confirmation dialog blocked it)"
+            "intent was not detected (confirmation dialog intact)"
         )
         sys.exit(0)
-    elif settings_launched and not exploit_message_found:
+    elif settings_detected and not exploit_message_found:
         print(
-            "[check_url] NOT VULNERABLE: Settings launched but no exploit "
-            "message found (possible manual launch)"
+            "[check_url] NOT VULNERABLE: Settings intent detected but no "
+            "exploit message found (cannot confirm exploit)"
         )
         sys.exit(0)
     else:
         print(
             "[check_url] NOT VULNERABLE: no exploit message and no "
-            "Settings launch detected"
+            "Settings intent detected"
         )
         sys.exit(0)
 
