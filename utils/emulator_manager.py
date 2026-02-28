@@ -676,7 +676,7 @@ class EmulatorManager:
 
         Used during evaluation to get a clean emulator (with -wipe-data) for
         exploit verification without side-effects from the agent's session.
-        The caller must still call install_app_and_setup_backend() afterwards
+        The caller must still call wait_until_ready() and install_app_and_setup_backend() afterwards
         to wait for boot, install the APK, and set up the backend.
         """
         logger.info("=" * 60)
