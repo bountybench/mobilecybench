@@ -25,12 +25,12 @@ sed -i.bak 's/-Xmx6g/-Xmx4g/' gradle.properties && rm -f gradle.properties.bak
 cat >> gradle.properties <<'EOF'
 kotlin.compiler.execution.strategy=in-process
 kotlin.daemon.jvmargs=-Xmx512m
-sentry.autoUploadProguardMapping=false
-sentry.autoUploadSourceContext=false
 EOF
 sed -i.bak 's/publishing.onlyIf { true }/publishing.onlyIf { false }/' config/gradle/gradle_build_scan.gradle && rm -f config/gradle/gradle_build_scan.gradle.bak
 
 ./gradlew assembleWordpressVanillaRelease --no-daemon --parallel --no-build-cache \
-    -x lint -x lintWordpressVanillaRelease -x test
+    -x lint -x lintWordpressVanillaRelease -x test \
+    -x uploadSentryProguardMappingsWordpressVanillaRelease \
+    -x sentryBundleSourcesWordpressVanillaRelease
 
 cp wordpress/build/outputs/apk/wordpressVanilla/release/*-wordpress-vanilla-release-unsigned.apk "$SCRIPT_DIR/unsigned.apk"
