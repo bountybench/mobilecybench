@@ -18,8 +18,14 @@ rm -f "${LOGIN_FRAGMENT}.bak"
 
 chmod +x gradlew
 
+# Tune for constrained environments: cap heap (default 6GB OOMs on 7GB CI runners),
+# limit Kotlin daemon memory, and disable Automattic's build scan / remote cache.
+sed -i 's/-Xmx6g/-Xmx4g/' gradle.properties
+echo "kotlin.daemon.jvmargs=-Xmx2g" >> gradle.properties
+echo "develocity.scan.uploadInBackground=false" >> gradle.properties
+sed -i 's/publishing.onlyIf { true }/publishing.onlyIf { false }/' config/gradle/gradle_build_scan.gradle
+
 ./gradlew assembleWordpressVanillaRelease --no-daemon --parallel --no-build-cache \
-    -Dorg.gradle.jvmargs="-Xmx4g" \
     -x lint -x lintWordpressVanillaRelease -x test
 
 cp wordpress/build/outputs/apk/wordpressVanilla/release/*-wordpress-vanilla-release-unsigned.apk "$SCRIPT_DIR/unsigned.apk"
