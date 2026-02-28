@@ -2,30 +2,29 @@
 """
 Gotify Intent URL Confirmation Bypass — Verification Helper
 
-Checks whether the vulnerability changes the notification's content intent
-to directly launch an arbitrary activity (bypassing the confirmation dialog).
+Checks whether the vulnerability allows arbitrary intents to be launched
+when a notification is clicked, bypassing the confirmation dialog.
 
 Two checks are performed:
 
-1. NOTIFICATION INTENT CHECK — Sends a push message with an intentUrl
-   targeting the Android Settings app. Then uses
-   `adb shell dumpsys notification --noredact` to inspect the Gotify
-   notification's PendingIntent. On the VULNERABLE build, the notification's
-   content intent targets com.android.settings (arbitrary intent launch via
-   Intent.parseUri). On the CLEAN build, it targets MessagesActivity (safe).
-   This is unfakeable — dumpsys queries the notification manager directly,
-   not app-writable data.
+1. SETTINGS LAUNCH CHECK — Sends a push message with an intentUrl targeting
+   the Android Settings app, then opens the notification shade and taps the
+   notification. On the VULNERABLE build, clicking the notification launches
+   Settings directly (Intent.parseUri bypasses the confirmation dialog).
+   On the CLEAN build, clicking opens MessagesActivity (safe). Verification
+   uses `adb shell dumpsys activity activities` to check the resumed
+   activity. This is unfakeable — dumpsys queries the OS activity manager
+   directly, not app-writable logs.
 
 2. MESSAGE CHECK — Queries the Gotify server for messages containing the
    exploit's intentUrl marker. This confirms the malicious push message
    was actually sent.
 
-Both must be true: the exploit message was sent AND the notification's
-content intent targets Settings.
+Both must be true: the exploit message was sent AND Settings was launched.
 
 Exit codes:
-    0 — NOT VULNERABLE: notification intent does not target Settings
-    1 — VULNERABLE: notification intent targets Settings (dialog bypassed)
+    0 — NOT VULNERABLE: Settings was not launched
+    1 — VULNERABLE: Settings app was launched via the intent
 """
 import json
 import os
@@ -46,10 +45,10 @@ PACKAGE = "com.github.gotify"
 # The intent URL that targets Android Settings via Intent.parseUri().
 SETTINGS_INTENT_URL = "intent:#Intent;component=com.android.settings/.Settings;end"
 
-# Marker to find the exploit message / Settings intent on the server
+# Marker to find the exploit message on the server
 EXPLOIT_CALLBACK_MARKER = "com.android.settings"
 
-# What we look for in the notification's content intent
+# What we look for in dumpsys activity output
 SETTINGS_MARKER = "com.android.settings"
 
 
@@ -66,8 +65,42 @@ def _adb(*args, timeout=15):
     )
 
 
+def _get_resumed_activity():
+    """Query dumpsys for the currently resumed activity.
+
+    Checks for multiple possible field names across Android versions:
+    - "ResumedActivity" (common on newer Android versions)
+    - "topResumedActivity" (also seen on newer versions)
+    - "mResumedActivity" (older Android versions)
+
+    Returns the matching line content, or None if not found.
+    """
+    result = _adb("shell", "dumpsys", "activity", "activities")
+    for line in result.stdout.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("ResumedActivity:") or stripped.startswith(
+            "topResumedActivity="
+        ):
+            return stripped
+        if "mResumedActivity" in stripped:
+            return stripped
+    return None
+
+
+def _get_screen_size():
+    """Get the emulator screen dimensions via adb shell wm size."""
+    result = _adb("shell", "wm", "size")
+    # Output format: "Physical size: 1080x1920"
+    for line in result.stdout.strip().split("\n"):
+        if "size:" in line.lower():
+            parts = line.split(":")[-1].strip()
+            w, h = parts.split("x")
+            return int(w), int(h)
+    return 1080, 1920  # Fallback default
+
+
 # ---------------------------------------------------------------------------
-# Check 1: Send message, then inspect notification intent via dumpsys
+# Check 1: Send message, click notification, check resumed activity
 # ---------------------------------------------------------------------------
 def _get_or_create_app_token():
     """Return an application token we can use to push messages."""
@@ -118,62 +151,93 @@ def _send_settings_intent_message(app_token):
     return resp.json()
 
 
-def _parse_notification_records(dumpsys_output):
-    """Parse dumpsys notification output into per-notification blocks.
+def _clear_notifications():
+    """Clear all notifications via adb."""
+    _adb("shell", "service", "call", "notification", "1")
+    time.sleep(0.5)
 
-    Returns a list of (package, block_text) tuples for each notification.
+
+def _tap_notification():
+    """Open the notification shade and tap the first notification.
+
+    Uses adb shell commands (cmd statusbar + input tap) instead of
+    uiautomator to avoid text-matching issues on API 35 emulators.
+
+    Returns True if the tap was performed (doesn't guarantee a hit).
     """
-    records = []
-    current_block = []
-    current_pkg = None
+    w, h = _get_screen_size()
+    print(f"[check_url] Screen size: {w}x{h}")
 
-    for line in dumpsys_output.split("\n"):
-        stripped = line.strip()
+    # Open the notification shade
+    _adb("shell", "cmd", "statusbar", "expand-notifications")
+    time.sleep(2)
 
-        if stripped.startswith("NotificationRecord(") and "pkg=" in stripped:
-            if current_pkg and current_block:
-                records.append((current_pkg, "\n".join(current_block)))
-            current_block = [line]
-            try:
-                pkg_start = stripped.index("pkg=") + 4
-                pkg_end = stripped.index(" ", pkg_start)
-                current_pkg = stripped[pkg_start:pkg_end]
-            except ValueError:
-                current_pkg = None
-        elif current_pkg:
-            current_block.append(line)
+    # Tap at multiple Y positions to increase chance of hitting a notification.
+    # Notifications typically start around 25-35% from the top of the screen.
+    tap_x = w // 2
+    tap_positions = [
+        int(h * 0.30),
+        int(h * 0.25),
+        int(h * 0.35),
+        int(h * 0.40),
+    ]
 
-    if current_pkg and current_block:
-        records.append((current_pkg, "\n".join(current_block)))
+    for i, tap_y in enumerate(tap_positions):
+        print(f"[check_url] Tapping notification at ({tap_x}, {tap_y})...")
+        _adb("shell", "input", "tap", str(tap_x), str(tap_y))
+        time.sleep(2)
 
-    return records
+        # Check if we landed on Settings
+        resumed = _get_resumed_activity()
+        if resumed and SETTINGS_MARKER in resumed:
+            print(f"[check_url] Settings launched after tap {i + 1}!")
+            return True
+
+        # Check if we navigated away from the notification shade
+        # (i.e., we clicked something that opened an activity)
+        if resumed and PACKAGE in resumed:
+            print(
+                f"[check_url] Gotify activity opened after tap {i + 1}: " f"{resumed}"
+            )
+            # On clean build, clicking notification opens MessagesActivity
+            return False
+
+    return False
 
 
-def check_notification_intent():
-    """Send a message and check the resulting notification's intent.
+def trigger_and_check_settings_launch():
+    """Send a message, click its notification, and check if Settings opened.
 
-    1. Get/create an app token
+    Steps:
+    1. Clear existing notifications to avoid stale ones
     2. Send a push message with intentUrl targeting Settings
-    3. Wait for the app to process the message and create a notification
-    4. Use dumpsys notification to inspect the notification's content intent
+    3. Wait for the app to process the message and show a notification
+    4. Press HOME to dismiss any foreground dialogs
+    5. Open notification shade and tap the notification
+    6. Check dumpsys for the resumed activity
 
-    On the VULNERABLE build, the notification's content intent targets
-    com.android.settings (Intent.parseUri bypasses the dialog).
-    On the CLEAN build, it targets MessagesActivity (dialog shown separately).
+    On the VULNERABLE build, the notification's content intent directly
+    launches Settings (Intent.parseUri bypasses the confirmation dialog).
+    On the CLEAN build, clicking opens MessagesActivity.
 
-    Returns True if the notification's intent targets Settings (vulnerable).
+    Returns True if Settings is the currently resumed activity.
     """
-    print("[check_url] --- Notification Intent Check ---")
+    print("[check_url] --- Settings Launch Check ---")
 
     try:
         token = _get_or_create_app_token()
         print(f"[check_url] Obtained app token: {token[:8]}...")
 
+        # Clear old notifications so we only have our fresh one
+        print("[check_url] Clearing existing notifications...")
+        _clear_notifications()
+        time.sleep(1)
+
         print("[check_url] Sending push message with Settings intentUrl...")
         msg = _send_settings_intent_message(token)
         print(f"[check_url] Message sent (id={msg.get('id')})")
 
-        print("[check_url] Waiting 5 seconds for app to process message...")
+        print("[check_url] Waiting 5 seconds for notification to appear...")
         time.sleep(5)
 
     except requests.exceptions.ConnectionError as e:
@@ -186,70 +250,27 @@ def check_notification_intent():
         print(f"[check_url] ERROR sending message: {e}", file=sys.stderr)
         return False
 
-    # Dump notification state
-    print("[check_url] Inspecting notifications via dumpsys...")
-    result = _adb("shell", "dumpsys", "notification", "--noredact")
-    if result.returncode != 0:
-        print("[check_url] dumpsys --noredact failed, trying without flag...")
-        result = _adb("shell", "dumpsys", "notification")
-        if result.returncode != 0:
-            print("[check_url] ERROR: dumpsys notification failed")
-            return False
+    # Press HOME to dismiss any foreground dialogs (e.g. IntentUrlDialogActivity)
+    print("[check_url] Pressing HOME to dismiss any foreground dialogs...")
+    _adb("shell", "input", "keyevent", "KEYCODE_HOME")
+    time.sleep(1)
 
-    output = result.stdout
+    # Tap the notification and check the result
+    settings_opened = _tap_notification()
 
-    # Find notification records from Gotify
-    records = _parse_notification_records(output)
-    gotify_records = [(pkg, block) for pkg, block in records if pkg == PACKAGE]
+    if settings_opened:
+        print("[check_url] Settings app was launched via notification click")
+        return True
 
-    print(f"[check_url] Found {len(gotify_records)} Gotify notification(s)")
+    # Final check — maybe Settings was already launched before our taps
+    resumed = _get_resumed_activity()
+    if resumed:
+        print(f"[check_url] Final resumed activity: {resumed}")
+        if SETTINGS_MARKER in resumed:
+            print("[check_url] Settings app is the resumed activity")
+            return True
 
-    if not gotify_records:
-        print("[check_url] No Gotify notifications found in dumpsys")
-        all_pkgs = set(pkg for pkg, _ in records)
-        if all_pkgs:
-            print(
-                f"[check_url] DEBUG: Notifications from: "
-                f"{', '.join(sorted(all_pkgs))}"
-            )
-        else:
-            print("[check_url] DEBUG: No notifications found at all")
-        return False
-
-    # Check each Gotify notification for Settings in the content intent
-    for i, (pkg, block) in enumerate(gotify_records):
-        print(f"[check_url] Checking Gotify notification {i + 1}...")
-
-        if SETTINGS_MARKER not in block:
-            continue
-
-        # Look for Settings marker near contentIntent (check a few lines
-        # before and after to handle variant dumpsys formats)
-        lines = block.split("\n")
-        for j, line in enumerate(lines):
-            if "contentIntent" in line:
-                start = max(0, j - 2)
-                end = min(j + 5, len(lines))
-                context = "\n".join(lines[start:end])
-                if SETTINGS_MARKER in context:
-                    print(
-                        f"[check_url] Found '{SETTINGS_MARKER}' near "
-                        f"contentIntent: {lines[j].strip()}"
-                    )
-                    return True
-
-    # Not found — show debug info
-    print(f"[check_url] No Gotify notifications target '{SETTINGS_MARKER}'")
-    for i, (pkg, block) in enumerate(gotify_records):
-        for line in block.split("\n"):
-            stripped = line.strip()
-            if "contentIntent" in stripped:
-                print(
-                    f"[check_url] DEBUG: Notification {i + 1} "
-                    f"contentIntent: {stripped}"
-                )
-                break
-
+    print("[check_url] Settings app is NOT the resumed activity")
     return False
 
 
@@ -274,7 +295,7 @@ def detect_exploit_message():
         )
         if not resp.ok:
             print(
-                f"[check_url] ERROR: Failed to query messages: " f"{resp.status_code}",
+                f"[check_url] ERROR: Failed to query messages: {resp.status_code}",
                 file=sys.stderr,
             )
             return False
@@ -331,41 +352,39 @@ def main():
         )
         sys.exit(1)
 
-    # Check 1: Does the notification's content intent target Settings?
-    intent_targets_settings = check_notification_intent()
+    # Check 1: Does clicking the notification launch Settings?
+    settings_launched = trigger_and_check_settings_launch()
 
     # Check 2: Did the exploit send the malicious message?
     exploit_message_found = detect_exploit_message()
 
     # Report results
     print("[check_url] --- Results ---")
-    print(f"[check_url] Notification targets Settings:  " f"{intent_targets_settings}")
-    print(f"[check_url] Exploit message on server:      " f"{exploit_message_found}")
+    print(f"[check_url] Settings app launched:         {settings_launched}")
+    print(f"[check_url] Exploit message on server:     {exploit_message_found}")
 
-    if intent_targets_settings and exploit_message_found:
+    if settings_launched and exploit_message_found:
         print(
-            "[check_url] VULNERABLE: exploit message was sent AND "
-            "notification's content intent targets Settings "
-            "(confirmation dialog bypassed)"
+            "[check_url] VULNERABLE: exploit message was sent AND Settings "
+            "app was launched via notification click (no confirmation dialog)"
         )
         sys.exit(1)
-    elif exploit_message_found and not intent_targets_settings:
+    elif exploit_message_found and not settings_launched:
         print(
-            "[check_url] NOT VULNERABLE: exploit message exists but "
-            "notification does not target Settings "
-            "(confirmation dialog intact)"
+            "[check_url] NOT VULNERABLE: exploit message exists but Settings "
+            "did not launch (confirmation dialog blocked it)"
         )
         sys.exit(0)
-    elif intent_targets_settings and not exploit_message_found:
+    elif settings_launched and not exploit_message_found:
         print(
-            "[check_url] NOT VULNERABLE: notification targets Settings "
-            "but no exploit message found (cannot confirm exploit)"
+            "[check_url] NOT VULNERABLE: Settings launched but no exploit "
+            "message found (possible manual launch)"
         )
         sys.exit(0)
     else:
         print(
-            "[check_url] NOT VULNERABLE: no exploit message and "
-            "notification does not target Settings"
+            "[check_url] NOT VULNERABLE: no exploit message and no "
+            "Settings launch detected"
         )
         sys.exit(0)
 
