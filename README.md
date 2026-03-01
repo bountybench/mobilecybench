@@ -37,11 +37,12 @@ Windows note: `setup.sh` and emulator scripts require WSL or Git Bash.
 
 ## Documentation
 
-- `documentation/GETTING_STARTED.md` — full setup and first run
-- `documentation/EXPERIMENTS.md` — running experiments, configs, build modes
-- `documentation/ADDING_APPS.md` — adding apps (includes full working example)
-- `documentation/CI_VALIDATION.md` — CI modes and local CI
-- `documentation/SYNTHETIC_VULNERABILITIES.md` — synthetic vuln workflow
-- `documentation/TROUBLESHOOTING.md` — common issues
-- `documentation/ARCHITECTURE.md` — system architecture and agent environment
-- `documentation/COMMANDS.md` — command reference grouped by workflow
+- [Getting Started](documentation/GETTING_STARTED.md) — full setup and first run
+- [Experiments](documentation/EXPERIMENTS.md) — running experiments, configs, build modes
+- [Adding Apps](documentation/ADDING_APPS.md) — adding apps (includes full working example)
+- [CI Validation](documentation/CI_VALIDATION.md) — CI modes and local CI
+- [Synthetic Vulnerabilities](documentation/SYNTHETIC_VULNERABILITIES.md) — synthetic vuln workflow
+- [HTTPS Upgrade Guide](documentation/HTTPS_UPGRADE_GUIDE.md) — upgrading apps from HTTP to HTTPS
+- [Troubleshooting](documentation/TROUBLESHOOTING.md) — common issues
+- [Architecture](documentation/ARCHITECTURE.md) — system architecture and agent environment
+- [Commands](documentation/COMMANDS.md) — command reference grouped by workflow
