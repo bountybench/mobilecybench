@@ -117,8 +117,17 @@ adb wait-for-device >/dev/null
 cleanup() { adb unroot && adb wait-for-device; }
 trap cleanup EXIT
 
-SDK="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
-[[ -n "$SDK" ]] || fatal "Could not detect SDK version"
+# adb root restarts adbd. wait-for-device returns once the device state
+# transitions to "device", but the shell may not be ready yet.
+# Probe until getprop returns a non-empty result.
+SDK=""
+for _i in $(seq 1 15); do
+  SDK="$(adb shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r' || true)"
+  [[ -n "$SDK" ]] && break
+  log_info "Waiting for adb shell readiness after root ($_i/15)..."
+  sleep 1
+done
+[[ -n "$SDK" ]] || fatal "adb shell not ready after adb root (timed out)"
 log_info "API $SDK — injecting $CERT_BASENAME"
 
 # Idempotency: skip if cert already present (and visible in zygote for API 34+)
