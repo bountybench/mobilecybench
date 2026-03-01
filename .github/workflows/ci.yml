@@ -1120,14 +1120,14 @@ jobs:
               -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
               -e AGENT_SERVER_PORT=${AGENT_HOST_PORT} \
               -p ${AGENT_HOST_PORT}:${AGENT_HOST_PORT} \
-              -v "$exploit_files_path:/app/exploit_files" \
+              -v "$exploit_files_path:/app/agent_exploit" \
               -v "$agent_output_path:/app/agent_output" \
               "$EXPLOIT_IMAGE" \
               tail -f /dev/null
 
             # Run exploit
             echo "Running exploit script..."
-            docker exec "$container_name" bash /app/exploit_files/exploit.sh || true
+            docker exec "$container_name" bash /app/agent_exploit/exploit.sh || true
 
             # Cleanup exploit container
             docker rm -f "$container_name" 2>/dev/null || true

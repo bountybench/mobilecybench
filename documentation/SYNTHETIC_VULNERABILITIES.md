@@ -153,7 +153,8 @@ The human-written reference exploit that proves the vulnerability is solvable. T
 - Return `0` on success (exploit worked), `1` on failure
 - Must not use secrets or any other information unavailable to the agent. (The agent will be given credentials and host names from apps/app_name/metadata.json in its initial prompt)
 - Must not use privileged commands (`adb root`, `docker exec`, etc.)
-- This script is run in the agent environment (`cybench/mobilecybench:latest` container, so make sure you refer to any containers by container name, not by localhost)
+- This script is run in the agent environment (`cybench/mobilecybench:latest` container). **This directory is mounted at `/app/agent_exploit` in the container.**
+- The script is executed as `bash /app/agent_exploit/exploit.sh`.
 - All files needed to run the script must be under `exploit_files/`, as the solution script should not have access to the host filesystem
 - The container exposes port 9999 to the host (mapped as `10.0.2.2:9999` from the emulator).
 

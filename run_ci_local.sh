@@ -493,7 +493,7 @@ run_exploit_verification() {
         -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
         -e AGENT_SERVER_PORT=${AGENT_HOST_PORT} \
         -p ${AGENT_HOST_PORT}:${AGENT_HOST_PORT} \
-        -v "$exploit_files_abs_path:/app/exploit_files" \
+        -v "$exploit_files_abs_path:/app/agent_exploit" \
         -v "$agent_output_abs_path:/app/agent_output" \
         -v "$ROOT_DIR/utils:/app/utils:ro" \
         "$exploit_image" \
@@ -508,7 +508,7 @@ run_exploit_verification() {
     fi
 
     # Run the exploit script inside the container
-    if docker exec "$container_name" bash /app/exploit_files/exploit.sh; then
+    if docker exec "$container_name" bash /app/agent_exploit/exploit.sh; then
         echo -e "${SUCCESS} Exploit executed successfully"
     else
         echo -e "${WARNING} Exploit execution returned non-zero exit code (may be expected)"
