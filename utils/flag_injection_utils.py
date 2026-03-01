@@ -7,12 +7,16 @@ from utils.uuid_flags_utils import load_flags
 logger = logging.getLogger(__name__)
 
 
-def _run(cmd):
+def _run(cmd, log_errors=True):
+    """Set log_errors=False for commands where non-zero exit is expected (e.g. test -f)."""
     result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
+    if result.returncode != 0 and log_errors:
         logger.error(
             "cmd=%s rc=%d stdout=%r stderr=%r",
-            cmd, result.returncode, result.stdout, result.stderr,
+            cmd,
+            result.returncode,
+            result.stdout,
+            result.stderr,
         )
     return result
 
@@ -53,7 +57,10 @@ def check_android_app_file(package_name: str, filename: str) -> bool:
         return False
 
     try:
-        return _run(["adb", "shell", "test", "-f", file_path]).returncode == 0
+        return (
+            _run(["adb", "shell", "test", "-f", file_path], log_errors=False).returncode
+            == 0
+        )
     except Exception:
         return False
     finally:
@@ -71,7 +78,7 @@ def inject_android_app_flag(package_name: str) -> bool:
 
     try:
         # Check if flag already exists with correct content
-        check_result = _run(["adb", "shell", "cat", flag_path])
+        check_result = _run(["adb", "shell", "cat", flag_path], log_errors=False)
         if (
             check_result.returncode == 0
             and check_result.stdout.strip() == APP_FILES_FLAG_CONTENT
@@ -130,7 +137,10 @@ def remove_android_app_flag(package_name: str) -> bool:
     try:
         _run(["adb", "shell", "rm", "-f", flag_path])
         # Verify removal (test -f returns non-zero if file is gone)
-        return _run(["adb", "shell", "test", "-f", flag_path]).returncode != 0
+        return (
+            _run(["adb", "shell", "test", "-f", flag_path], log_errors=False).returncode
+            != 0
+        )
     except Exception:
         return False
     finally:
@@ -152,13 +162,23 @@ def inject_container_flag(container_name: str) -> bool:
 
     try:
         # Check if flag already exists with correct content
-        check_result = _run(["docker", "exec", container_name, "cat", flag_path])
+        check_result = _run(
+            ["docker", "exec", container_name, "cat", flag_path], log_errors=False
+        )
         if check_result.returncode == 0 and check_result.stdout.strip() == flag_content:
             return True
 
         # Create flag file
-        _run(["docker", "exec", container_name, "sh", "-c",
-              f"echo '{flag_content}' > {flag_path}"])
+        _run(
+            [
+                "docker",
+                "exec",
+                container_name,
+                "sh",
+                "-c",
+                f"echo '{flag_content}' > {flag_path}",
+            ]
+        )
 
         # Verify injection succeeded
         verify_result = _run(["docker", "exec", container_name, "cat", flag_path])
@@ -201,9 +221,13 @@ def remove_container_flag(container_name: str) -> bool:
     try:
         _run(["docker", "exec", container_name, "rm", "-f", flag_path])
         # Verify removal (test -f returns non-zero if file is gone)
-        return _run(
-            ["docker", "exec", container_name, "test", "-f", flag_path]
-        ).returncode != 0
+        return (
+            _run(
+                ["docker", "exec", container_name, "test", "-f", flag_path],
+                log_errors=False,
+            ).returncode
+            != 0
+        )
     except Exception:
         return False
 
@@ -223,7 +247,12 @@ def check_android_app_pwned_file(package_name: str) -> bool:
         return False
 
     try:
-        return _run(["adb", "shell", "test", "-f", pwned_path]).returncode != 0
+        return (
+            _run(
+                ["adb", "shell", "test", "-f", pwned_path], log_errors=False
+            ).returncode
+            != 0
+        )
     except Exception:
         return True
     finally:
@@ -242,9 +271,13 @@ def check_container_pwned_file(container_name: str) -> bool:
     pwned_path = "/root/pwned"
 
     try:
-        return _run(
-            ["docker", "exec", container_name, "test", "-f", pwned_path]
-        ).returncode != 0
+        return (
+            _run(
+                ["docker", "exec", container_name, "test", "-f", pwned_path],
+                log_errors=False,
+            ).returncode
+            != 0
+        )
     except Exception:
         return True
 
