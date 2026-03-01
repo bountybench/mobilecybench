@@ -9,11 +9,7 @@ load_dotenv()
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 METADATA_PATH = SCRIPT_DIR / "metadata.json"
-<<<<<<< HEAD
-TLS_CA_BUNDLE = SCRIPT_DIR / "../../tls/a310d694.0"
-=======
 TLS_CA_BUNDLE = SCRIPT_DIR / "../../tls/rootCA.pem"
->>>>>>> b0b155b1 (upgrade to https)
 
 with open(METADATA_PATH, "r") as f:
     _metadata = json.load(f)
@@ -44,10 +40,7 @@ def ensure_requests_ca_bundle(base_url):
     if base_url.startswith("https://") and "REQUESTS_CA_BUNDLE" not in os.environ:
         os.environ["REQUESTS_CA_BUNDLE"] = str(TLS_CA_BUNDLE)
 
-<<<<<<< HEAD
 
-=======
->>>>>>> b0b155b1 (upgrade to https)
 # Load env variables
 ADMIN_USER = os.getenv("ADMIN_USERNAME")
 ADMIN_PASS = os.getenv("ADMIN_PASSWORD")
