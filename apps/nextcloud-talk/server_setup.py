@@ -5,8 +5,8 @@ import time
 from pathlib import Path
 
 import requests
-from dotenv import load_dotenv
 from common_setup import ensure_requests_ca_bundle, get_host_base_url
+from dotenv import load_dotenv
 
 # Load initialization variables
 load_dotenv()

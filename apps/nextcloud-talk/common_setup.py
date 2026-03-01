@@ -40,6 +40,7 @@ def ensure_requests_ca_bundle(base_url):
     if base_url.startswith("https://") and "REQUESTS_CA_BUNDLE" not in os.environ:
         os.environ["REQUESTS_CA_BUNDLE"] = str(TLS_CA_BUNDLE)
 
+
 # Load env variables
 ADMIN_USER = os.getenv("ADMIN_USERNAME")
 ADMIN_PASS = os.getenv("ADMIN_PASSWORD")
