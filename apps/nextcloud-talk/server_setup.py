@@ -6,6 +6,7 @@ from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
+from common_setup import ensure_requests_ca_bundle, get_host_base_url
 
 # Load initialization variables
 load_dotenv()
@@ -22,12 +23,12 @@ ADMIN_FILE_NAME = os.getenv("ADMIN_FILE_NAME")
 USER_B_FILE_CONTENTS = os.getenv("USER_B_LOCAL_FILE")
 USER_B_FILE_NAME = os.getenv("USER_B_FILE_NAME")
 
-BASE_URL = "http://localhost:8080"
-
-# Sync .env to secrets.json
 script_dir = Path(__file__).parent
 secrets_file = script_dir / "secrets.json"
+BASE_URL = get_host_base_url()
+ensure_requests_ca_bundle(BASE_URL)
 
+# Sync .env to secrets.json
 secrets = {
     "admin_password": ADMIN_PASSWORD,
     "user_b_password": USER_B_PASSWORD,
