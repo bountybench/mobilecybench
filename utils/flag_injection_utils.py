@@ -1,5 +1,6 @@
 import logging
 import subprocess
+import time
 from pathlib import Path
 
 from utils.uuid_flags_utils import load_flags
@@ -33,17 +34,25 @@ except FileNotFoundError:
     )
 
 
+def _wait_for_shell():
+    _run(["adb", "wait-for-device"])
+    for _ in range(20):
+        if _run(["adb", "shell", "true"], log_errors=False).returncode == 0:
+            return
+        time.sleep(0.5)
+
+
 def _ensure_root() -> bool:
     if _run(["adb", "root"]).returncode != 0:
         return False
-    _run(["adb", "wait-for-device"])
+    _wait_for_shell()
     return True
 
 
 def _unroot() -> bool:
     if _run(["adb", "unroot"]).returncode != 0:
         return False
-    _run(["adb", "wait-for-device"])
+    _wait_for_shell()
     return True
 
 
