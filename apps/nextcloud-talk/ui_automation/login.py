@@ -27,7 +27,10 @@ from utils.ui_utils import click_then_expect
 
 SCRIPT_NAME = "nc_login"
 PACKAGE = "com.nextcloud.talk2"
+<<<<<<< HEAD
 BROWSER_PACKAGE = "com.android.chrome"
+=======
+>>>>>>> b0b155b1 (upgrade to https)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_SECRETS_PATH = os.path.join(SCRIPT_DIR, "../secrets.json")

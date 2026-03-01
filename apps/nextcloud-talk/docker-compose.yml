@@ -1,6 +1,10 @@
 services:
   tls_proxy:
+<<<<<<< HEAD
     image: nginx:1.28.3-alpine
+=======
+    image: nginx:alpine
+>>>>>>> b0b155b1 (upgrade to https)
     container_name: nextcloud-talk-tls-proxy
     restart: always
     ports:

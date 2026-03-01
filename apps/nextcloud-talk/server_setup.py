@@ -11,6 +11,7 @@ from common_setup import (
     get_trusted_domain,
 )
 from dotenv import load_dotenv
+from common_setup import ensure_requests_ca_bundle, get_host_base_url
 
 # Load initialization variables
 load_dotenv()
