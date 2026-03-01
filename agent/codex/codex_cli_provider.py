@@ -2,20 +2,16 @@
 
 import json
 import time
-from dataclasses import dataclass
 from typing import List, Optional
 
 import docker
+from pydantic import BaseModel
 
 from utils.docker_utils import run_command_in_container
-from utils.logger import logger, logger_manager
-
-# Dedicated logger for tool interactions, managed by LoggerManager
-tool_logger = logger_manager.get_tool_logger()
+from utils.logger import agent_logger, logger
 
 
-@dataclass
-class CodexCLIResult:
+class CodexCLIResult(BaseModel):
     """Result from a Codex CLI execution."""
 
     success: bool
@@ -164,7 +160,7 @@ class CodexCLIProvider:
                         elif event_type == "tool_use":
                             tool = data.get("name", "unknown")
                             logger.info(f"[Codex Tool] Using tool: {tool}")
-                            tool_logger.info("tool_use name=%s", tool)
+                            agent_logger.info("tool_use name=%s", tool)
                         elif event_type == "assistant_message":
                             content = data.get("content", "")
                             if content:
@@ -178,7 +174,7 @@ class CodexCLIProvider:
                         elif event_type == "tool_result":
                             content = data.get("content", {})
                             tool_outputs.append(json.dumps(content))
-                            tool_logger.info(
+                            agent_logger.info(
                                 "tool_result has_content=%s", bool(content)
                             )
 
