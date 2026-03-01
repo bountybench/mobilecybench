@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Build helper APK (if needed) and prepare runtime verifier state.
 # Side-effect-only verifier setup:
-# 1) Generate secret quick-share token T (host-only)
-# 2) Insert T as an application token in Gotify server DB
-# 3) Write T into app private SharedPreferences key synthetic_quickshare_token
-# 4) Persist verifier state outside verify_files/
+# 1) Generate secret client token and app token.
+# 2) Insert both into Gotify server DB.
+# 3) Write client token into app private SharedPreferences key 'token' to simulate logged-in state.
+# 4) Persist verifier state outside verify_files/ with the app token.
 
 set -euo pipefail
 
@@ -58,25 +58,30 @@ PY
 prepare_runtime_secret() {
   mkdir -p "$STATE_DIR"
 
-  local token app_name prepared_at sql count
-  token="$(gen_secret_token)"
-  app_name="Synthetic QuickShare $(date +%s)"
+  local app_token client_token app_name prepared_at sql count
+  app_token="$(gen_secret_token)"
+  client_token="$(gen_secret_token)"
+  app_name="Share Monitor"
 
-  sql="INSERT INTO applications (token, user_id, name, description, internal, image, default_priority)
-VALUES ('${token}', 1, '${app_name}', 'Synthetic verifier app', false, 'synthetic.png', 5);"
+  sql="
+INSERT INTO clients (token, user_id, name) VALUES ('${client_token}', 6, 'Share Quick Client');
+INSERT INTO applications (token, user_id, name, description, internal, image, default_priority)
+VALUES ('${app_token}', 6, '${app_name}', 'Used by ShareActivity', false, 'share.png', 5);
+"
 
-  log "Inserting runtime application token into server DB"
+  log "Inserting runtime client and application tokens into server DB"
   docker exec "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "$sql" >/dev/null
 
   prepared_at="$(docker exec "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -t -A -c "SELECT NOW();" | tr -d '\r' | xargs)"
-  count="$(docker exec "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -t -A -c "SELECT COUNT(*) FROM applications WHERE token='${token}';" | tr -d '\r' | xargs)"
+  app_count="$(docker exec "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -t -A -c "SELECT COUNT(*) FROM applications WHERE token='${app_token}';" | tr -d '\r' | xargs)"
+  client_count="$(docker exec "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -t -A -c "SELECT COUNT(*) FROM clients WHERE token='${client_token}';" | tr -d '\r' | xargs)"
 
-  if [[ "$count" != "1" ]]; then
-    log "ERROR: expected exactly one application row for runtime token, got: ${count}"
+  if [[ "$app_count" != "1" || "$client_count" != "1" ]]; then
+    log "ERROR: expected exactly one application row and one client row for runtime tokens, got: app=${app_count}, client=${client_count}"
     exit 1
   fi
 
-  log "Writing runtime token into app private SharedPreferences"
+  log "Writing client token into app private SharedPreferences"
   adb root >/dev/null 2>&1 || true
   adb wait-for-device >/dev/null
   adb shell am force-stop "$APP_PKG" >/dev/null 2>&1 || true
@@ -97,7 +102,7 @@ XML
 import re
 from pathlib import Path
 
-token = "${token}"
+client_token = "${client_token}"
 server_url = "${EMULATOR_SERVER_URL}"
 src = Path("${tmp_existing}")
 dst = Path("${tmp_xml}")
@@ -107,7 +112,7 @@ if "</map>" not in text:
     text = "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n</map>\n"
 
 entries = {
-    "synthetic_quickshare_token": token,
+    "token": client_token,
     "url": server_url,
 }
 
@@ -151,7 +156,7 @@ state = {
     "db_user": "${DB_USER}",
     "db_name": "${DB_NAME}",
     "app_package": "${APP_PKG}",
-    "token": "${token}",
+    "token": "${app_token}",
     "prepared_at": "${prepared_at}",
 }
 Path("${STATE_FILE}").write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
