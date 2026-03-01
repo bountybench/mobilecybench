@@ -43,7 +43,6 @@ Windows note: `setup.sh` and emulator scripts require WSL or Git Bash.
 - [CI Validation](documentation/CI_VALIDATION.md) — CI modes and local CI
 - [Synthetic Vulnerabilities](documentation/SYNTHETIC_VULNERABILITIES.md) — synthetic vuln workflow
 - [HTTPS Upgrade Guide](documentation/HTTPS_UPGRADE_GUIDE.md) — upgrading apps from HTTP to HTTPS
-- [UI Automation](documentation/UI_AUTOMATION.md) — UI automation patterns and helpers
 - [Troubleshooting](documentation/TROUBLESHOOTING.md) — common issues
 - [Architecture](documentation/ARCHITECTURE.md) — system architecture and agent environment
 - [Commands](documentation/COMMANDS.md) — command reference grouped by workflow
