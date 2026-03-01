@@ -12,9 +12,10 @@ Two checks are performed:
    Intent.parseUri() + startActivity() is called with the Settings component.
    On the CLEAN build, IntentUrlDialogActivity is launched instead.
 
-   Verification uses three methods (any one sufficient, tried in order):
+   Verification uses four methods (any one sufficient, tried in order):
    a) Poll `adb shell dumpsys activity activities` every 2s for up to 10s —
-      checks if Settings is the resumed activity. Works on standard
+      checks if Settings is the resumed activity OR if IntentUrlDialogActivity
+      appeared (confirmation dialog shown = not vulnerable). Works on standard
       google_apis images where SYSTEM_ALERT_WINDOW grants the exemption.
    b) System logcat — checks for ActivityTaskManager entries showing that
       the Gotify app attempted to start com.android.settings. This is
@@ -24,6 +25,10 @@ Two checks are performed:
    c) Notification tap fallback — opens the notification shade and taps
       at several positions. Handles the case where PendingIntent works
       even if direct startActivity() doesn't (e.g., on ATD images).
+   d) Dialog-absence detection — if the confirmation dialog was never shown
+      but a Gotify notification exists (proving the app received the message),
+      the confirmation dialog was bypassed. This handles ATD images where
+      startActivity() for other apps is silently blocked.
 
 2. MESSAGE CHECK — Queries the Gotify server for messages containing the
    exploit's intentUrl marker. This confirms the malicious push message
@@ -255,15 +260,33 @@ def _try_notification_tap():
     return False
 
 
+def _check_notification_exists():
+    """Check if a Gotify notification exists in the notification shade.
+
+    This confirms the app received the push message via WebSocket.
+    Returns True if a Gotify notification is found.
+    """
+    result = _adb("shell", "dumpsys", "notification")
+    if result.returncode != 0:
+        return False
+    output = result.stdout
+    return PACKAGE in output
+
+
 def trigger_and_check_settings():
     """Send a message and check if the Settings intent was attempted.
 
-    Uses three detection methods (any one sufficient):
-      A) Poll dumpsys for Settings as resumed activity (up to 10s)
+    Uses four detection methods:
+      A) Poll dumpsys for activity changes — checks for Settings (positive)
+         AND tracks whether IntentUrlDialogActivity appeared (negative)
       B) Check system logcat for Settings intent attempt
       C) Try tapping notifications as a last resort
+      D) Dialog-absence detection: if the confirmation dialog was never shown
+         but the app clearly received the message (notification exists),
+         the confirmation dialog was bypassed (vulnerable on ATD images
+         where startActivity for other apps is blocked)
 
-    Returns True if Settings intent was detected (vulnerable).
+    Returns True if vulnerability is detected (dialog bypassed).
     """
     print("[check_url] --- Settings Intent Check ---")
 
@@ -292,8 +315,10 @@ def trigger_and_check_settings():
         print(f"[check_url] ERROR sending message: {e}", file=sys.stderr)
         return False
 
-    # Method A: Poll dumpsys for Settings as resumed activity (up to 10s)
-    print("[check_url] Method A: Polling for Settings as resumed activity...")
+    # Method A: Poll dumpsys for activity changes (up to 10s)
+    # Also track whether IntentUrlDialogActivity (confirmation dialog) appeared
+    print("[check_url] Method A: Polling for activity changes...")
+    dialog_seen = False
     for i in range(5):
         time.sleep(2)
         resumed = _get_resumed_activity()
@@ -305,8 +330,19 @@ def trigger_and_check_settings():
                     "(direct launch worked)"
                 )
                 return True
+            if "IntentUrlDialogActivity" in resumed:
+                print(
+                    "[check_url] IntentUrlDialogActivity detected "
+                    "(confirmation dialog shown — not vulnerable)"
+                )
+                dialog_seen = True
+                break
         else:
             print(f"[check_url]   Poll {i + 1}/5: could not determine resumed activity")
+
+    # If the confirmation dialog was shown, the app is NOT vulnerable
+    if dialog_seen:
+        return False
 
     # Method B: Check system logcat for Settings intent attempt
     print("[check_url] Method B: Checking system logcat for Settings intent...")
@@ -320,6 +356,22 @@ def trigger_and_check_settings():
     time.sleep(1)
     if _try_notification_tap():
         print("[check_url] Notification tap launched Settings")
+        return True
+
+    # Method D: Dialog-absence detection
+    # On ATD images, startActivity() for other apps (Settings) is silently
+    # blocked. But the key signal is: the confirmation dialog was NEVER shown.
+    # If the app received the message (notification exists) but did NOT show
+    # IntentUrlDialogActivity, the dialog was bypassed — that IS the vuln.
+    print("[check_url] Method D: Checking dialog-absence (ATD fallback)...")
+    notification_exists = _check_notification_exists()
+    print(f"[check_url]   Gotify notification in shade: {notification_exists}")
+    if notification_exists:
+        print(
+            "[check_url] App received the message (notification exists) but "
+            "IntentUrlDialogActivity was never shown — confirmation dialog "
+            "was bypassed"
+        )
         return True
 
     print("[check_url] No evidence of Settings intent attempt found")
