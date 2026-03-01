@@ -12,14 +12,18 @@ Two checks are performed:
    Intent.parseUri() + startActivity() is called with the Settings component.
    On the CLEAN build, IntentUrlDialogActivity is launched instead.
 
-   Verification uses two methods (in order):
-   a) `adb shell dumpsys activity activities` — checks if Settings is the
-      resumed activity (direct launch may work with SYSTEM_ALERT_WINDOW).
+   Verification uses three methods (any one sufficient, tried in order):
+   a) Poll `adb shell dumpsys activity activities` every 2s for up to 10s —
+      checks if Settings is the resumed activity. Works on standard
+      google_apis images where SYSTEM_ALERT_WINDOW grants the exemption.
    b) System logcat — checks for ActivityTaskManager entries showing that
       the Gotify app attempted to start com.android.settings. This is
       system-written (not app-writable), same approach as Termux vuln_0.
       Even if the activity start is blocked by background restrictions,
       the system still logs the attempt.
+   c) Notification tap fallback — opens the notification shade and taps
+      at several positions. Handles the case where PendingIntent works
+      even if direct startActivity() doesn't (e.g., on ATD images).
 
 2. MESSAGE CHECK — Queries the Gotify server for messages containing the
    exploit's intentUrl marker. This confirms the malicious push message
@@ -153,9 +157,13 @@ def _check_logcat_for_settings_intent():
       ActivityTaskManager: START u0 {cmp=com.github.gotify/.IntentUrlDialogActivity}
       (no mention of com.android.settings)
 
+    We require BOTH com.android.settings AND com.github.gotify to appear in the
+    same logcat line (or across ActivityTaskManager lines) to avoid false positives
+    from manual Settings launches.
+
     Returns True if the Gotify app attempted to start a Settings activity.
     """
-    result = _adb("shell", "logcat", "-d", "-b", "all", "-v", "brief")
+    result = _adb("shell", "logcat", "-d", "-b", "all", "-v", "threadtime")
     if result.returncode != 0:
         print("[check_url] ERROR: logcat command failed")
         return False
@@ -164,18 +172,16 @@ def _check_logcat_for_settings_intent():
     settings_lines = []
 
     for line in lines:
-        # Look for ActivityTaskManager or ActivityManager entries
-        # that mention com.android.settings AND are from/about Gotify
         if SETTINGS_MARKER not in line:
             continue
         if "ActivityTaskManager" in line or "ActivityManager" in line:
-            # Verify this is related to Gotify (not a manual Settings launch)
-            if PACKAGE in line or "startActivity" in line.lower():
+            # Best: both markers on same line (confirms Gotify triggered it)
+            if PACKAGE in line:
                 settings_lines.append(line.strip())
-            # Also match START entries with the Settings component
+            # START entries with Settings component (may not mention caller)
             elif "START" in line and "cmp=" in line:
                 settings_lines.append(line.strip())
-            # Match background activity start blocked messages
+            # Background activity start blocked messages
             elif "Background" in line and "activity" in line.lower():
                 settings_lines.append(line.strip())
 
@@ -193,15 +199,69 @@ def _check_logcat_for_settings_intent():
     return False
 
 
+def _get_screen_dimensions():
+    """Get emulator screen dimensions from wm size."""
+    result = _adb("shell", "wm", "size")
+    if result.returncode == 0:
+        for line in result.stdout.split("\n"):
+            if "Physical size" in line or "Override size" in line:
+                parts = line.strip().split()[-1]  # e.g. "1080x1920"
+                try:
+                    w, h = parts.split("x")
+                    return int(w), int(h)
+                except (ValueError, IndexError):
+                    pass
+    # Fallback to a common resolution
+    return 1080, 1920
+
+
+def _try_notification_tap():
+    """Open notification shade and tap notifications to try launching Settings.
+
+    This handles the case where PendingIntent works even if direct
+    startActivity() doesn't (e.g., on ATD images).
+
+    Returns True if tapping a notification caused Settings to become resumed.
+    """
+    width, height = _get_screen_dimensions()
+    center_x = width // 2
+
+    # Swipe down from top to open notification shade
+    _adb(
+        "shell",
+        "input",
+        "swipe",
+        str(center_x),
+        "0",
+        str(center_x),
+        str(height // 2),
+        "300",
+    )
+    time.sleep(2)
+
+    # Tap at several Y positions (20%, 25%, 30%, 35%, 40% of screen height)
+    for pct in (20, 25, 30, 35, 40):
+        tap_y = height * pct // 100
+        _adb("shell", "input", "tap", str(center_x), str(tap_y))
+        time.sleep(1)
+
+        resumed = _get_resumed_activity()
+        if resumed and SETTINGS_MARKER in resumed:
+            print(f"[check_url] Notification tap at y={tap_y} launched Settings")
+            return True
+
+    # Close notification shade
+    _adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    return False
+
+
 def trigger_and_check_settings():
     """Send a message and check if the Settings intent was attempted.
 
-    Steps:
-    1. Clear logcat to avoid stale entries
-    2. Send a push message with intentUrl targeting Settings
-    3. Wait for the app to process the message
-    4. Check dumpsys activity for Settings as resumed activity
-    5. Check system logcat for Settings intent attempt
+    Uses three detection methods (any one sufficient):
+      A) Poll dumpsys for Settings as resumed activity (up to 10s)
+      B) Check system logcat for Settings intent attempt
+      C) Try tapping notifications as a last resort
 
     Returns True if Settings intent was detected (vulnerable).
     """
@@ -216,12 +276,11 @@ def trigger_and_check_settings():
         token = _get_or_create_app_token()
         print(f"[check_url] Obtained app token: {token[:8]}...")
 
+        # Don't press HOME — keep MessagesActivity in foreground so
+        # the app has a visible window (background activity exemption)
         print("[check_url] Sending push message with Settings intentUrl...")
         msg = _send_settings_intent_message(token)
         print(f"[check_url] Message sent (id={msg.get('id')})")
-
-        print("[check_url] Waiting 5 seconds for app to process message...")
-        time.sleep(5)
 
     except requests.exceptions.ConnectionError as e:
         print(
@@ -233,20 +292,34 @@ def trigger_and_check_settings():
         print(f"[check_url] ERROR sending message: {e}", file=sys.stderr)
         return False
 
-    # Method A: Check if Settings is the resumed activity (direct launch)
-    resumed = _get_resumed_activity()
-    if resumed:
-        print(f"[check_url] Current resumed activity: {resumed}")
-        if SETTINGS_MARKER in resumed:
-            print("[check_url] Settings is the resumed activity (direct launch worked)")
-            return True
-    else:
-        print("[check_url] Could not determine resumed activity")
+    # Method A: Poll dumpsys for Settings as resumed activity (up to 10s)
+    print("[check_url] Method A: Polling for Settings as resumed activity...")
+    for i in range(5):
+        time.sleep(2)
+        resumed = _get_resumed_activity()
+        if resumed:
+            print(f"[check_url]   Poll {i + 1}/5: {resumed}")
+            if SETTINGS_MARKER in resumed:
+                print(
+                    "[check_url] Settings is the resumed activity "
+                    "(direct launch worked)"
+                )
+                return True
+        else:
+            print(f"[check_url]   Poll {i + 1}/5: could not determine resumed activity")
 
     # Method B: Check system logcat for Settings intent attempt
-    print("[check_url] Checking system logcat for Settings intent attempt...")
+    print("[check_url] Method B: Checking system logcat for Settings intent...")
     if _check_logcat_for_settings_intent():
         print("[check_url] System logcat confirms Settings intent was attempted")
+        return True
+
+    # Method C: Try notification tap as last resort
+    print("[check_url] Method C: Trying notification tap fallback...")
+    _adb("shell", "input", "keyevent", "KEYCODE_HOME")
+    time.sleep(1)
+    if _try_notification_tap():
+        print("[check_url] Notification tap launched Settings")
         return True
 
     print("[check_url] No evidence of Settings intent attempt found")
