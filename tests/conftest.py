@@ -118,6 +118,7 @@ def mock_agent_dependencies(mock_model_provider):
                 with patch("agent.custom_agent.logger_manager") as mock_logger_mgr:
                     mock_logger_mgr.get_log_file_name.return_value = "test_agent.log"
                     mock_logger_mgr.get_logs_dir.return_value = logs_dir
+                    mock_logger_mgr.get_run_id.return_value = "pytest_session"
                     mock_logger_mgr.get_session_id.return_value = "pytest_session"
                     mock_tracker_instance = Mock()
                     mock_tracker_instance.record_from_openai_response = Mock()

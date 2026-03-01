@@ -49,6 +49,9 @@
 [submodule "apps/jerboa/codebase"]
 	path = apps/jerboa/codebase
 	url = ../../cy-suite/jerboa.git
+[submodule "apps/element-android/codebase"]
+	path = apps/element-android/codebase
+	url = ../../cy-suite/Element-Android.git
 [submodule "apps/wallabag/codebase"]
 	path = apps/wallabag/codebase
 	url = ../../cy-suite/wallabag.git

@@ -1,7 +1,6 @@
 """Tests for runner.py - Workflow-based runner."""
 
 import json
-import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,7 +8,7 @@ import pytest
 from jsonschema import validate
 
 from models.config import RunnerConfig
-from runner import _bootstrap_runner_session_id, create_workflow, main, run
+from runner import create_workflow, main, run
 from utils.logger import logger_manager
 from workflows import DiscoveryWorkflow, ExploitWorkflow
 
@@ -180,7 +179,6 @@ class TestRun:
         assert summary["metrics"]["tool_call_count"] == 1
         assert summary["results"]["scores"] == {"probe_a": 1}
         assert "conversation_jsonl" in summary["artifacts"]
-        assert summary["artifacts"]["timing_json"] is not None
         validate(instance=summary, schema=_load_run_summary_schema())
 
     def test_writes_run_summary_on_validation_error(self, base_config, tmp_path):
@@ -261,16 +259,3 @@ class TestMain:
         ):
             result = main()
             assert result == 1
-
-
-class TestRunnerSessionId:
-    def test_bootstrap_sets_session_id_when_missing(self, monkeypatch):
-        monkeypatch.delenv("MOBILECYBENCH_SESSION_ID", raising=False)
-        run_id = _bootstrap_runner_session_id()
-        assert run_id
-        assert run_id == os.environ.get("MOBILECYBENCH_SESSION_ID")
-
-    def test_bootstrap_keeps_existing_session_id(self, monkeypatch):
-        monkeypatch.setenv("MOBILECYBENCH_SESSION_ID", "existing_session")
-        run_id = _bootstrap_runner_session_id()
-        assert run_id == "existing_session"
