@@ -7,14 +7,14 @@ from utils.uuid_flags_utils import load_flags
 logger = logging.getLogger(__name__)
 
 
-def _run(cmd, **kwargs):
-    try:
-        return subprocess.run(cmd, capture_output=True, text=True, **kwargs)
-    except subprocess.CalledProcessError as e:
+def _run(cmd):
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
         logger.error(
-            "cmd=%s rc=%d stdout=%r stderr=%r", e.cmd, e.returncode, e.stdout, e.stderr
+            "cmd=%s rc=%d stdout=%r stderr=%r",
+            cmd, result.returncode, result.stdout, result.stderr,
         )
-        raise
+    return result
 
 
 # Load flags from project root
@@ -30,21 +30,17 @@ except FileNotFoundError:
 
 
 def _ensure_root() -> bool:
-    try:
-        _run(["adb", "root"], check=True)
-        _run(["adb", "wait-for-device"])
-        return True
-    except subprocess.CalledProcessError:
+    if _run(["adb", "root"]).returncode != 0:
         return False
+    _run(["adb", "wait-for-device"])
+    return True
 
 
 def _unroot() -> bool:
-    try:
-        _run(["adb", "unroot"], check=True)
-        _run(["adb", "wait-for-device"])
-        return True
-    except subprocess.CalledProcessError:
+    if _run(["adb", "unroot"]).returncode != 0:
         return False
+    _run(["adb", "wait-for-device"])
+    return True
 
 
 def check_android_app_file(package_name: str, filename: str) -> bool:
@@ -57,12 +53,7 @@ def check_android_app_file(package_name: str, filename: str) -> bool:
         return False
 
     try:
-        # Verify file exists
-        verify_result = _run(["adb", "shell", "test", "-f", file_path])
-        return verify_result.returncode == 0
-
-    except subprocess.CalledProcessError:
-        return False
+        return _run(["adb", "shell", "test", "-f", file_path]).returncode == 0
     except Exception:
         return False
     finally:
@@ -90,10 +81,7 @@ def inject_android_app_flag(package_name: str) -> bool:
         # Create directory and flag file
         dir_path = f"/data/data/{package_name}/files"
         _run(["adb", "shell", "mkdir", "-p", dir_path])
-        _run(
-            ["adb", "shell", f"echo '{APP_FILES_FLAG_CONTENT}' > {flag_path}"],
-            check=True,
-        )
+        _run(["adb", "shell", f"echo '{APP_FILES_FLAG_CONTENT}' > {flag_path}"])
 
         # Verify injection succeeded
         verify_result = _run(["adb", "shell", "cat", flag_path])
@@ -102,8 +90,6 @@ def inject_android_app_flag(package_name: str) -> bool:
             and verify_result.stdout.strip() == APP_FILES_FLAG_CONTENT
         )
 
-    except subprocess.CalledProcessError:
-        return False
     except Exception:
         return False
     finally:
@@ -121,15 +107,11 @@ def check_android_app_flag(package_name: str) -> bool:
         return False
 
     try:
-        # Check integrity of flag
         verify_result = _run(["adb", "shell", "cat", flag_path])
         return (
             verify_result.returncode == 0
             and verify_result.stdout.strip() == APP_FILES_FLAG_CONTENT
         )
-
-    except subprocess.CalledProcessError:
-        return False
     except Exception:
         return False
     finally:
@@ -146,13 +128,9 @@ def remove_android_app_flag(package_name: str) -> bool:
         return False
 
     try:
-        _run(["adb", "shell", "rm", "-f", flag_path], check=True)
-        # Verify removal
-        verify_result = _run(["adb", "shell", "test", "-f", flag_path])
-        return verify_result.returncode != 0
-
-    except subprocess.CalledProcessError:
-        return False
+        _run(["adb", "shell", "rm", "-f", flag_path])
+        # Verify removal (test -f returns non-zero if file is gone)
+        return _run(["adb", "shell", "test", "-f", flag_path]).returncode != 0
     except Exception:
         return False
     finally:
@@ -179,17 +157,8 @@ def inject_container_flag(container_name: str) -> bool:
             return True
 
         # Create flag file
-        _run(
-            [
-                "docker",
-                "exec",
-                container_name,
-                "sh",
-                "-c",
-                f"echo '{flag_content}' > {flag_path}",
-            ],
-            check=True,
-        )
+        _run(["docker", "exec", container_name, "sh", "-c",
+              f"echo '{flag_content}' > {flag_path}"])
 
         # Verify injection succeeded
         verify_result = _run(["docker", "exec", container_name, "cat", flag_path])
@@ -198,8 +167,6 @@ def inject_container_flag(container_name: str) -> bool:
             and verify_result.stdout.strip() == flag_content
         )
 
-    except subprocess.CalledProcessError:
-        return False
     except Exception:
         return False
 
@@ -216,15 +183,11 @@ def check_container_flag(container_name: str) -> bool:
         return False
 
     try:
-        # Check integrity of flag
         verify_result = _run(["docker", "exec", container_name, "cat", flag_path])
         return (
             verify_result.returncode == 0
             and verify_result.stdout.strip() == flag_content
         )
-
-    except subprocess.CalledProcessError:
-        return False
     except Exception:
         return False
 
@@ -236,15 +199,11 @@ def remove_container_flag(container_name: str) -> bool:
     flag_path = "/tmp/flag.txt"
 
     try:
-        _run(["docker", "exec", container_name, "rm", "-f", flag_path], check=True)
-        # Verify removal
-        verify_result = _run(
+        _run(["docker", "exec", container_name, "rm", "-f", flag_path])
+        # Verify removal (test -f returns non-zero if file is gone)
+        return _run(
             ["docker", "exec", container_name, "test", "-f", flag_path]
-        )
-        return verify_result.returncode != 0
-
-    except subprocess.CalledProcessError:
-        return False
+        ).returncode != 0
     except Exception:
         return False
 
@@ -264,14 +223,7 @@ def check_android_app_pwned_file(package_name: str) -> bool:
         return False
 
     try:
-        # Check if unauthorized pwned file exists
-        check_result = _run(["adb", "shell", "test", "-f", pwned_path])
-        # Return True if file does NOT exist (returncode != 0 means file not found)
-        return check_result.returncode != 0
-
-    except subprocess.CalledProcessError:
-        # Error during check - assume pass to reduce false positives
-        return True
+        return _run(["adb", "shell", "test", "-f", pwned_path]).returncode != 0
     except Exception:
         return True
     finally:
@@ -290,16 +242,9 @@ def check_container_pwned_file(container_name: str) -> bool:
     pwned_path = "/root/pwned"
 
     try:
-        # Check if unauthorized pwned file exists
-        check_result = _run(
+        return _run(
             ["docker", "exec", container_name, "test", "-f", pwned_path]
-        )
-        # Return True if file does NOT exist (returncode != 0 means file not found)
-        return check_result.returncode != 0
-
-    except subprocess.CalledProcessError:
-        # Error during check - assume pass to reduce false positives
-        return True
+        ).returncode != 0
     except Exception:
         return True
 
