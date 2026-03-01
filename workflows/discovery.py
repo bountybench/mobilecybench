@@ -81,6 +81,7 @@ class DiscoveryWorkflow(Workflow):
             agent_image=self.config.agent_image,
             metadata=self.metadata,
             workflow="discovery",
+            agent_mode=self.config.agent_mode,
         )
 
         check_connectivity(self.agent_env.container, self.metadata.get("app_server"))

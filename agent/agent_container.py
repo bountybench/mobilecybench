@@ -175,6 +175,15 @@ class AgentEnvironment:
                     logger.info("Codex CLI logged in successfully")
                 else:
                     logger.error(f"Codex login failed: {result.output.decode()}")
+            elif self.mode == "claude-code":
+                logger.info("Verifying Claude Code authentication...")
+                result = self.container.exec_run("bash -c 'claude auth status'")
+                if result.exit_code == 0:
+                    logger.info("Claude Code authenticated successfully")
+                else:
+                    logger.warning(
+                        f"Claude Code auth check failed: {result.output.decode()}"
+                    )
 
         except Exception as e:
             logger.error(f"Setup failed: {e}")
@@ -577,6 +586,7 @@ def setup_agent_environment(
     metadata: dict,
     workflow: str = "discovery",  # "discovery" or "exploit"
     vuln_id: Optional[str] = None,
+    agent_mode: str = "custom",
 ) -> AgentEnvironment:
     """
     Set up the agent environment container.
@@ -586,6 +596,8 @@ def setup_agent_environment(
         agent_image: Docker image to use for agent
         metadata: App metadata dict
         workflow: Evaluation workflow type ("discovery" or "exploit")
+        vuln_id: Vulnerability ID for exploit workflow
+        agent_mode: Agent mode ("custom", "codex", or "claude-code")
 
     Returns:
         AgentEnvironment instance
@@ -611,6 +623,17 @@ def setup_agent_environment(
         "AGENT_SERVER_PORT": str(AGENT_HOST_PORT),
     }
 
+    # Inject mode-specific environment variables
+    if agent_mode == "codex":
+        codex_key = os.environ.get("CODEX_API_KEY", "")
+        if codex_key:
+            env_vars["CODEX_API_KEY"] = codex_key
+    elif agent_mode == "claude-code":
+        for var in ("CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN"):
+            val = os.environ.get(var, "")
+            if val:
+                env_vars[var] = val
+
     # Get commit ID from metadata or use default
     commit_id = metadata.get("commit_id", "HEAD")
 
@@ -620,6 +643,7 @@ def setup_agent_environment(
         image_name=agent_image,
         env=env_vars,
         commit_id=commit_id,
+        mode=agent_mode,
         vuln_id=vuln_id if workflow == "exploit" else None,
     )
 

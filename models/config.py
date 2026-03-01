@@ -24,6 +24,9 @@ class RunnerConfig(BaseModel):
     max_iterations: int = Field(gt=0)
     max_model_response_tokens: int = Field(gt=0)
 
+    # agent mode
+    agent_mode: Literal["custom", "codex", "claude-code"] = "custom"
+
     # mode flags
     screenshot_mode: bool
     dry_run: bool
