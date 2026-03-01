@@ -8,38 +8,24 @@ This runner uses the Workflow abstraction to handle different evaluation modes:
 """
 
 import argparse
+import io
 import json
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 from typing import Optional
 
-
-def _bootstrap_runner_session_id() -> str:
-    """Ensure runner process owns and exports a run/session ID."""
-    run_id = os.environ.get("MOBILECYBENCH_SESSION_ID")
-    if run_id:
-        return run_id
-    run_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    os.environ["MOBILECYBENCH_SESSION_ID"] = run_id
-    return run_id
-
-
-_bootstrap_runner_session_id()
-
-import io  # noqa: E402
-import tarfile  # noqa: E402
-
-from models.config import RunnerConfig  # noqa: E402
-from utils.git_utils import ensure_app_submodule  # noqa: E402
-from utils.logger import logger, logger_manager  # noqa: E402
+from models.config import RunnerConfig
+from utils.git_utils import ensure_app_submodule
+from utils.logger import logger, logger_manager
 from utils.run_artifacts import (
     normalize_agent_result,
     utc_now_iso,
     write_run_summary,
-)  # noqa: E402
-from utils.time_tracker import time_tracker  # noqa: E402
-from workflows import DiscoveryWorkflow, ExploitWorkflow, Workflow  # noqa: E402
+)
+from utils.time_tracker import time_tracker
+from workflows import DiscoveryWorkflow, ExploitWorkflow, Workflow
 
 
 def run_interactive_shell(app_name: str) -> dict:
