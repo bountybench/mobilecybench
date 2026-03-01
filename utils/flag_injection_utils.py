@@ -11,8 +11,11 @@ def _run(cmd, **kwargs):
     try:
         return subprocess.run(cmd, capture_output=True, text=True, **kwargs)
     except subprocess.CalledProcessError as e:
-        logger.error("cmd=%s rc=%d stdout=%r stderr=%r", e.cmd, e.returncode, e.stdout, e.stderr)
+        logger.error(
+            "cmd=%s rc=%d stdout=%r stderr=%r", e.cmd, e.returncode, e.stdout, e.stderr
+        )
         raise
+
 
 # Load flags from project root
 _flags_file = Path(__file__).parent.parent / "flags.json"
@@ -177,8 +180,14 @@ def inject_container_flag(container_name: str) -> bool:
 
         # Create flag file
         _run(
-            ["docker", "exec", container_name, "sh", "-c",
-             f"echo '{flag_content}' > {flag_path}"],
+            [
+                "docker",
+                "exec",
+                container_name,
+                "sh",
+                "-c",
+                f"echo '{flag_content}' > {flag_path}",
+            ],
             check=True,
         )
 
@@ -229,7 +238,9 @@ def remove_container_flag(container_name: str) -> bool:
     try:
         _run(["docker", "exec", container_name, "rm", "-f", flag_path], check=True)
         # Verify removal
-        verify_result = _run(["docker", "exec", container_name, "test", "-f", flag_path])
+        verify_result = _run(
+            ["docker", "exec", container_name, "test", "-f", flag_path]
+        )
         return verify_result.returncode != 0
 
     except subprocess.CalledProcessError:
@@ -280,7 +291,9 @@ def check_container_pwned_file(container_name: str) -> bool:
 
     try:
         # Check if unauthorized pwned file exists
-        check_result = _run(["docker", "exec", container_name, "test", "-f", pwned_path])
+        check_result = _run(
+            ["docker", "exec", container_name, "test", "-f", pwned_path]
+        )
         # Return True if file does NOT exist (returncode != 0 means file not found)
         return check_result.returncode != 0
 
