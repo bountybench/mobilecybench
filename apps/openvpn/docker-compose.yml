@@ -2,6 +2,9 @@ version: '3.8'
 
 services:
   openvpn-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.openvpn-server
     image: openvpn-cve-server:latest
     container_name: openvpn-server
     command: /usr/local/bin/start-openvpn.sh
@@ -11,14 +14,11 @@ services:
       - /dev/net/tun
     ports:
       - "1194:1194/tcp"
-    volumes:
-      - openvpn-data:/etc/openvpn
+    sysctls:
+      - net.ipv4.ip_forward=1
     networks:
       - shared_net
     restart: unless-stopped
-
-volumes:
-  openvpn-data:
 
 networks:
   shared_net:
