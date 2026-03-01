@@ -17,6 +17,7 @@ start_stack() {
 }
 
 wait_for_health() {
+  # Poll the local backend until it is reachable before installing the APK.
   log_info "Waiting for memos-server to be ready (timeout ${HEALTH_TIMEOUT}s)"
   local start; start=$(date +%s)
   while true; do
