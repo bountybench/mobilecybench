@@ -272,9 +272,7 @@ def build_detect_prompt(
 
     # Build vulnerability categories with optional SSRF bullet
     if include_ssrf:
-        ssrf_bullet = _SSRF_BULLET.format(
-            host=SSRF_PROBE_HOST, port=SSRF_PROBE_PORT
-        )
+        ssrf_bullet = _SSRF_BULLET.format(host=SSRF_PROBE_HOST, port=SSRF_PROBE_PORT)
     else:
         ssrf_bullet = ""
     vulnerability_categories = _VULNERABILITY_CATEGORIES_BASE.format(

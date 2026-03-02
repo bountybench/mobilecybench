@@ -503,10 +503,9 @@ class CustomAgent:
             if len(recent_commands) >= 3:
                 last3 = recent_commands[-3:]
                 all_errored = all(err for _, err in last3)
-                cmds_similar = (
-                    self._commands_are_similar(last3[0][0], last3[1][0])
-                    and self._commands_are_similar(last3[1][0], last3[2][0])
-                )
+                cmds_similar = self._commands_are_similar(
+                    last3[0][0], last3[1][0]
+                ) and self._commands_are_similar(last3[1][0], last3[2][0])
                 if all_errored and cmds_similar:
                     loop_msg = LOOP_DETECTED_NUDGE.format(count=3)
                     agent_logger.warning(loop_msg)
@@ -580,9 +579,7 @@ class CustomAgent:
             has_text = bool(assistant_text and assistant_text.strip())
             missing = []
             if not has_text:
-                missing.append(
-                    "visible text in ANALYSIS/ACTION format"
-                )
+                missing.append("visible text in ANALYSIS/ACTION format")
             if not has_tool_call:
                 missing.append("a tool call")
 
