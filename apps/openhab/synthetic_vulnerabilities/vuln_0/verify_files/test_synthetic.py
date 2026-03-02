@@ -17,11 +17,7 @@ TOKEN_FILE = os.path.abspath(
         os.path.dirname(__file__),
         "..",
         "..",
-        "..",
-        "..",
-        "..",
-        "utils",
-        "runtime_tokens",
+        "exploit_files",
         "openhab_vuln_0.token",
     )
 )
@@ -149,7 +145,7 @@ def main() -> int:
     if not expected_token:
         result = {
             "score": 0,
-            "error": "missing expected token; set EXPECTED_SYNTHETIC_TOKEN",
+            "error": f"missing expected token; set EXPECTED_SYNTHETIC_TOKEN or provide {TOKEN_FILE}",
         }
         print(json.dumps(result))
         return 1
