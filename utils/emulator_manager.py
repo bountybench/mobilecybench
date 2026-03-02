@@ -2,6 +2,7 @@
 Emulator Lifecycle Manager
 """
 
+import logging
 import os
 import subprocess
 import time
@@ -9,7 +10,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-from utils.logger import logger
+logger = logging.getLogger("MobileCyBench.emulator_manager")
 
 EMULATOR_CONTAINER_NAME = "emulator-container"
 
@@ -635,7 +636,7 @@ class EmulatorManager:
             self.process = None
             logger.info("Emulator stopped")
 
-            # Reset ADB server to ensure clean device state for next emulator
+            # TODO: look into this ADB reset — start already does kill-server + start-server -a.
             logger.info("Resetting ADB server to clear device state...")
             try:
                 subprocess.run(

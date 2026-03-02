@@ -1,132 +1,87 @@
 #!/usr/bin/env python3
+"""CLI for emulator lifecycle: start, stop, status, list.
+
+All commands route through EmulatorManager for consistent behavior.
+Use ./start_emulator.sh, ./stop_emulator.sh, ./check_device.sh as shortcuts.
+"""
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
 
-from utils.emulator_manager import EmulatorManager
-from utils.logger import logger
+from utils.emulator_manager import EmulatorManager, EmulatorState
 
 
-def list_avds():
+def _discover_emulators() -> list[str]:
+    """Discover running emulator device IDs via adb devices."""
+    result = subprocess.run(
+        ["adb", "devices"], capture_output=True, text=True, timeout=10
+    )
+    if result.returncode != 0:
+        raise RuntimeError("Failed to check running emulators")
+    emulators = []
+    for line in result.stdout.strip().split("\n")[1:]:
+        if line.strip() and "\t" in line:
+            device_id = line.split("\t")[0].strip()
+            if device_id.startswith("emulator-"):
+                emulators.append(device_id)
+    return emulators
+
+
+def _make_manager_for_device(device_id: str) -> EmulatorManager:
+    """Create an EmulatorManager attached to an already-running device."""
+    if not os.getenv("ANDROID_HOME"):
+        os.environ["ANDROID_HOME"] = str(Path.home() / ".android-sdk")
+    manager = EmulatorManager(
+        project_root=Path(__file__).parent,
+        sdk_version=os.getenv("ANDROID_SDK_VERSION", "35"),
+        rootable=True,
+        emulator_display="headed",
+        emulator_backend="native",
+    )
+    manager.device_id = device_id
+    manager.state = EmulatorState.RUNNING
+    return manager
+
+
+def cmd_start(args):
+    """Start emulator, wait for boot, return."""
     try:
-        android_home = Path.home() / ".android-sdk"
-        emulator_bin = android_home / "emulator" / "emulator"
-        if not emulator_bin.exists():
-            logger.error(f"Emulator binary not found at {emulator_bin}")
-            logger.error("Please run ./setup.sh first")
-            return 1
-        result = subprocess.run(
-            [str(emulator_bin), "-list-avds"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode != 0:
-            logger.error("Failed to list AVDs")
-            return 1
-
-        avds = [
-            line.strip() for line in result.stdout.strip().split("\n") if line.strip()
-        ]
-        if not avds:
-            logger.info("No AVDs found. Run ./setup.sh to create them.")
-            return 0
-        logger.info("Available AVDs:")
-        for avd in avds:
-            if "google_apis_playstore" in avd:
-                avd_type = "non-rootable"
-            elif "google_apis" in avd:
-                avd_type = "rootable"
-            else:
-                avd_type = "unknown"
-            logger.info(f"  • {avd} ({avd_type})")
-        return 0
-
-    except Exception as e:
-        logger.error(f"Error listing AVDs: {e}")
-        return 1
-
-
-def start_emulator(sdk_version: str, rootable: bool = True):
-    # note: starting two emulators with same SDK version is not supported
-    # different sdk versions are okay
-    try:
-        image_type = "rootable" if rootable else "non-rootable"
-
-        logger.info(f"Starting {image_type} emulator (SDK {sdk_version})...")
-
-        with EmulatorManager(
+        print(f"Starting emulator (SDK {args.sdk})...")
+        manager = EmulatorManager(
             project_root=Path(__file__).parent,
-            sdk_version=sdk_version,
-            rootable=rootable,
+            sdk_version=args.sdk,
+            rootable=True,
             emulator_display="headed",
             emulator_backend="native",
-        ) as manager:
-            manager.start_in_background()
-            manager.wait_until_ready(timeout=300)
-
-            logger.info("=" * 60)
-            logger.info(f"Emulator ready! Device ID: {manager.device_id}")
-            logger.info("=" * 60)
-
-            if rootable:
-                logger.info("You can now use 'adb root' to get root access")
-            logger.info("\nPress Ctrl+C to stop the emulator...")
-
-            try:
-                # Keep running until user interrupts
-                import signal
-
-                signal.pause()
-            except KeyboardInterrupt:
-                logger.info("\nStopping emulator...")
+        )
+        manager.start_in_background()
+        manager.wait_until_ready(timeout=300)
+        print(f"Emulator ready: {manager.device_id}")
         return 0
-
     except Exception as e:
-        logger.error(f"Failed to start emulator: {e}")
+        print(f"Error: {e}")
         return 1
 
 
-def stop_emulator():
+def cmd_stop(_args):
+    """Stop running emulator(s)."""
     try:
-        result = subprocess.run(
-            ["adb", "devices"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-
-        if result.returncode != 0:
-            logger.error("Failed to check running emulators")
-            return 1
-        lines = result.stdout.strip().split("\n")[1:]  # Skip header
-        emulators = []
-
-        for line in lines:
-            if line.strip() and "\t" in line:
-                device_id = line.split("\t")[0].strip()
-                if device_id.startswith("emulator-"):
-                    emulators.append(device_id)
+        emulators = _discover_emulators()
         if not emulators:
-            logger.info("No running emulators found")
+            print("No running emulators found")
             return 0
 
-        # If only one emulator, stop it directly
         if len(emulators) == 1:
-            device_id = emulators[0]
-            logger.info(f"Stopping {device_id}...")
-            subprocess.run(
-                ["adb", "-s", device_id, "emu", "kill"],
-                capture_output=True,
-                timeout=10,
-            )
-            logger.info(f"Stopped {device_id}")
+            print(f"Stopping {emulators[0]}...")
+            _make_manager_for_device(emulators[0]).stop()
+            print(f"Stopped {emulators[0]}")
             return 0
 
-        # Multiple emulators - let user choose
-        logger.info(f"Found {len(emulators)} running emulators:")
+        # Multiple emulators — let user choose
+        print(f"Found {len(emulators)} running emulators:")
         for i, device_id in enumerate(emulators, 1):
             print(f"  {i}. {device_id}")
         print(f"  {len(emulators) + 1}. Stop all")
@@ -134,142 +89,120 @@ def stop_emulator():
 
         try:
             choice = int(input("\nSelect emulator to stop: ").strip())
-
             if choice == 0:
-                logger.info("Cancelled")
                 return 0
             elif 1 <= choice <= len(emulators):
                 device_id = emulators[choice - 1]
-                logger.info(f"Stopping {device_id}...")
-                subprocess.run(
-                    ["adb", "-s", device_id, "emu", "kill"],
-                    capture_output=True,
-                    timeout=10,
-                )
-                logger.info(f"Stopped {device_id}")
+                print(f"Stopping {device_id}...")
+                _make_manager_for_device(device_id).stop()
+                print(f"Stopped {device_id}")
                 return 0
             elif choice == len(emulators) + 1:
-                logger.info("Stopping all emulators...")
                 for device_id in emulators:
-                    logger.info(f"Stopping {device_id}...")
-                    subprocess.run(
-                        ["adb", "-s", device_id, "emu", "kill"],
-                        capture_output=True,
-                        timeout=10,
-                    )
-                logger.info(f"Stopped {len(emulators)} emulator(s)")
+                    print(f"Stopping {device_id}...")
+                    _make_manager_for_device(device_id).stop()
+                print(f"Stopped {len(emulators)} emulator(s)")
                 return 0
             else:
-                logger.error("Invalid selection")
+                print("Invalid selection")
                 return 1
-
         except ValueError:
-            logger.error("Invalid input. Please enter a number.")
+            print("Invalid input. Please enter a number.")
             return 1
         except KeyboardInterrupt:
-            print()
-            logger.info("Cancelled")
+            print("\nCancelled")
             return 0
 
     except FileNotFoundError:
-        logger.error("adb not found. Make sure ANDROID_HOME is set correctly.")
+        print("Error: adb not found. Make sure ANDROID_HOME is set correctly.")
         return 1
     except Exception as e:
-        logger.error(f"Error stopping emulators: {e}")
+        print(f"Error: {e}")
         return 1
 
 
-def status():
+def cmd_status(_args):
+    """Show running emulators and boot state."""
     try:
+        emulators = _discover_emulators()
+        if not emulators:
+            print("No emulators running.")
+            return 0
+        for device_id in emulators:
+            boot = subprocess.run(
+                ["adb", "-s", device_id, "shell", "getprop", "sys.boot_completed"],
+                capture_output=True, text=True, timeout=5,
+            ).stdout.strip()
+            print(f"  {device_id}  {'booted' if boot == '1' else 'booting'}")
+        return 0
+    except FileNotFoundError:
+        print("Error: adb not found. Make sure ANDROID_HOME is set correctly.")
+        return 1
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def cmd_list(_args):
+    """List available AVDs."""
+    try:
+        android_home = os.getenv("ANDROID_HOME", str(Path.home() / ".android-sdk"))
+        emulator_bin = Path(android_home) / "emulator" / "emulator"
+        if not emulator_bin.exists():
+            print(f"Error: Emulator not found at {emulator_bin}. Run ./setup.sh first.")
+            return 1
         result = subprocess.run(
-            ["adb", "devices"],
-            capture_output=True,
-            text=True,
-            timeout=10,
+            [str(emulator_bin), "-list-avds"], capture_output=True, text=True, timeout=10
         )
         if result.returncode != 0:
-            logger.error("Failed to check emulator status")
+            print("Error: Failed to list AVDs")
             return 1
-        logger.info("Running devices:")
-        print(result.stdout)
-
-        # Check if any emulators are running
-        lines = result.stdout.strip().split("\n")[1:]  # Skip header
-        emulator_count = sum(
-            1 for line in lines if "emulator-" in line and "device" in line
-        )
-        if emulator_count == 0:
-            logger.info(
-                "\nNo emulators running. Use 'python emulator.py start' to start one."
-            )
-        else:
-            logger.info(f"\n{emulator_count} emulator(s) running")
+        avds = [l.strip() for l in result.stdout.strip().split("\n") if l.strip()]
+        if not avds:
+            print("No AVDs found. Run ./setup.sh to create them.")
+            return 0
+        for avd in avds:
+            if "google_apis_playstore" in avd:
+                kind = "non-rootable"
+            elif "google_apis" in avd:
+                kind = "rootable"
+            else:
+                kind = "unknown"
+            print(f"  {avd} ({kind})")
         return 0
-
-    except FileNotFoundError:
-        logger.error("adb not found. Make sure ANDROID_HOME is set correctly.")
-        return 1
     except Exception as e:
-        logger.error(f"Error checking status: {e}")
+        print(f"Error: {e}")
         return 1
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Android Emulator Management Tool",
+        description="Android Emulator Management",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s list                           # List all available AVDs
-  %(prog)s start --sdk 35                 # Start rootable emulator (SDK 35, default)
-  %(prog)s start --sdk 35 --no-rootable   # Start non-rootable emulator (SDK 35)
-  %(prog)s status                         # Show running emulators
-  %(prog)s stop                           # Stop all running emulators
+  %(prog)s start              # Start emulator (SDK 35, waits for boot)
+  %(prog)s start --sdk 34     # Start emulator with SDK 34
+  %(prog)s stop               # Stop running emulator(s)
+  %(prog)s status             # Show running emulators
+  %(prog)s list               # List available AVDs
         """,
     )
+    sub = parser.add_subparsers(dest="command")
 
-    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
+    sp_start = sub.add_parser("start", help="Start emulator and wait for boot")
+    sp_start.add_argument("--sdk", default="35", help="Android SDK version (default: 35)")
 
-    subparsers.add_parser("list", help="List all available AVDs")
-    start_parser = subparsers.add_parser("start", help="Start an emulator")
-    start_parser.add_argument(
-        "--sdk",
-        type=str,
-        default="35",
-        help="Android SDK version (default: 35)",
-    )
-    start_parser.add_argument(
-        "--rootable",
-        action="store_true",
-        default=True,
-        dest="rootable",
-        help="Use rootable emulator (default)",
-    )
-    start_parser.add_argument(
-        "--no-rootable",
-        action="store_false",
-        dest="rootable",
-        help="Use non-rootable emulator (production-like)",
-    )
-    subparsers.add_parser("stop", help="Stop all running emulators")
-    subparsers.add_parser("status", help="Show status of running emulators")
+    sub.add_parser("stop", help="Stop running emulator(s)")
+    sub.add_parser("status", help="Show running emulators")
+    sub.add_parser("list", help="List available AVDs")
 
     args = parser.parse_args()
-    if not args.command:
-        parser.print_help()
-        return 1
-
-    if args.command == "list":
-        return list_avds()
-    elif args.command == "start":
-        return start_emulator(args.sdk, args.rootable)
-    elif args.command == "stop":
-        return stop_emulator()
-    elif args.command == "status":
-        return status()
-    else:
-        parser.print_help()
-        return 1
+    cmds = {"start": cmd_start, "stop": cmd_stop, "status": cmd_status, "list": cmd_list}
+    if args.command in cmds:
+        return cmds[args.command](args)
+    parser.print_help()
+    return 1
 
 
 if __name__ == "__main__":
