@@ -109,8 +109,10 @@ CERT_PATH="${1:-$(ls "$REPO_ROOT"/tls/*.0 2>/dev/null | head -1 || true)}"
 [[ -n "$CERT_PATH" && -f "$CERT_PATH" ]] || fatal "No cert found. Place <hash>.0 in tls/"
 CERT_BASENAME="$(basename "$CERT_PATH")"
 
-# Ensure adb root access for cert injection
-adb root
+# Ensure adb root access for cert injection.
+# adb root restarts adbd, which closes the connection and returns non-zero
+# even on success ("unable to connect for root: closed"). Ignore the exit code.
+adb root 2>/dev/null || true
 adb wait-for-device >/dev/null
 
 # Always drop root on exit (including early returns and errors).
@@ -138,6 +140,7 @@ for _i in $(seq 1 15); do
   sleep 1
 done
 [[ -n "$SDK" ]] || fatal "adb shell not ready after adb root (timed out)"
+adb shell id 2>/dev/null | grep -q "uid=0" || fatal "adb root failed — adbd is not running as root"
 log_info "API $SDK — injecting $CERT_BASENAME"
 
 # Idempotency: skip if cert already present (and visible in zygote for API 34+)
