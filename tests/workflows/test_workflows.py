@@ -139,17 +139,23 @@ class TestDiscoveryWorkflowFlagGeneration:
         workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
         workflow.metadata = {"container_names": ["redis", "postgres"]}
 
-        with patch(
+        # Mock the heavy dependencies (must mock at source module for lazy imports)
+        with patch("docker.from_env"), patch(
             "utils.uuid_flags_utils.generate_and_save_flags"
         ) as mock_generate, patch("utils.emulator_manager.EmulatorManager"), patch(
             "utils.apk_utils.setup_apk"
         ), patch(
             "utils.setup_utils.install_app_and_setup_backend"
         ), patch(
+            "workflows.discovery.check_connectivity"
+        ) as mock_check_connectivity, patch(
             "agent.agent_container.setup_agent_environment"
-        ):
+        ) as mock_setup_agent_environment:
             workflow.setup_runtime_environment()
             mock_generate.assert_called_once_with(str(tmp_path), ["redis", "postgres"])
+            mock_check_connectivity.assert_called_once_with(
+                mock_setup_agent_environment.return_value.container, None
+            )
 
     def test_discovery_workflow_generates_flags_with_empty_containers(self, tmp_path):
         """setup_runtime_environment generates flags even without containers."""
@@ -157,17 +163,22 @@ class TestDiscoveryWorkflowFlagGeneration:
         workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
         workflow.metadata = {}
 
-        with patch(
+        with patch("docker.from_env"), patch(
             "utils.uuid_flags_utils.generate_and_save_flags"
         ) as mock_generate, patch("utils.emulator_manager.EmulatorManager"), patch(
             "utils.apk_utils.setup_apk"
         ), patch(
             "utils.setup_utils.install_app_and_setup_backend"
         ), patch(
+            "workflows.discovery.check_connectivity"
+        ) as mock_check_connectivity, patch(
             "agent.agent_container.setup_agent_environment"
-        ):
+        ) as mock_setup_agent_environment:
             workflow.setup_runtime_environment()
             mock_generate.assert_called_once_with(str(tmp_path), [])
+            mock_check_connectivity.assert_called_once_with(
+                mock_setup_agent_environment.return_value.container, None
+            )
 
 
 class TestExploitWorkflowEvaluation:
