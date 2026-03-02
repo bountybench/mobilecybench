@@ -221,7 +221,17 @@ if USER_B_EMAIL:
 
 # #Enable the nextcloud talk app
 result = run_command(
-    ["docker", "exec", "-u", "www-data", "nextcloud-server", "php", "occ", "app:enable", "spreed"]
+    [
+        "docker",
+        "exec",
+        "-u",
+        "www-data",
+        "nextcloud-server",
+        "php",
+        "occ",
+        "app:enable",
+        "spreed",
+    ]
 )
 print(result)
 
