@@ -1,7 +1,6 @@
 """DiscoveryWorkflow - for discovering unknown vulnerabilities in applications."""
 
 from pathlib import Path
-from typing import Optional
 
 from utils.logger import logger, logger_manager
 from workflows.base import Workflow
@@ -15,51 +14,12 @@ class DiscoveryWorkflow(Workflow):
     and creates an exploit. Evaluation uses probe-based checks.
     """
 
-    def __init__(
-        self,
-        app_name: str,
-        app_dir: Path,
-        model: str,
-        max_iterations: int,
-        max_model_response_tokens: int,
-        script_timeout: int,
-        screenshot_mode: bool = False,
-        build_type: str = "source",
-        agent_image: str = "cybench/mobilecybench:latest",
-        project_root: Optional[Path] = None,
-        dry_run: bool = False,
-        reasoning_effort: Optional[str] = None,
-        docker_mode: bool = False,
-        emulator_mode: str = "native",
-    ):
-        self.app_name = app_name
-        self.app_dir = app_dir
-        self.model = model
-        self.max_iterations = max_iterations
-        self.max_model_response_tokens = max_model_response_tokens
-        self.screenshot_mode = screenshot_mode
-        self.build_type = build_type
-        self.agent_image = agent_image
-        self.project_root = project_root or Path(__file__).parent.parent
-        self.dry_run = dry_run
-        self.reasoning_effort = reasoning_effort
-        self.docker_mode = docker_mode
-        self.emulator_mode = emulator_mode
-
-        # Set during setup
-        self.metadata: dict = {}
-        self.emulator = None
-        self.agent_env = None
-        self.agent = None
-        self.agent_result: dict = {}
-
     def validate_arguments(self) -> None:
         """Validate that app directory exists and has required files."""
         if not self.app_dir.exists():
             raise ValueError(f"App directory not found: {self.app_dir}")
 
-        metadata_path = self.app_dir / "metadata.json"
-        if not metadata_path.exists():
+        if not (self.app_dir / "metadata.json").exists():
             raise ValueError(f"metadata.json not found in {self.app_dir}")
 
         # Load metadata for later use
@@ -80,22 +40,20 @@ class DiscoveryWorkflow(Workflow):
         logger.info(f"Generating flags for containers: {container_names}")
         generate_and_save_flags(str(self.project_root), container_names)
 
-        # Start emulator
         logger.info("Starting emulator...")
-        sdk_version = self.metadata.get("sdk")
         self.emulator = EmulatorManager(
-            docker_mode=self.docker_mode,
+            docker_mode=self.config.docker_mode,
             project_root=self.project_root,
-            sdk_version=sdk_version,
+            sdk_version=self.metadata.get("sdk"),
             app_name=self.app_name,
             rootable=True,
-            emulator_mode=self.emulator_mode,
+            emulator_mode=self.config.emulator_mode,
         )
         self.emulator.start_in_background()
         logger.info("Emulator started in background")
 
         # Build/download APK (can run while emulator boots)
-        setup_apk(self.app_dir, self.build_type, self.project_root)
+        setup_apk(self.app_dir, self.config.build_type, self.project_root)
 
         # Explicit boot gate — emulator must be ready before CA injection
         self.emulator.wait_until_ready()
@@ -116,7 +74,7 @@ class DiscoveryWorkflow(Workflow):
         # Setup agent container
         self.agent_env = setup_agent_environment(
             app_dir=self.app_dir,
-            agent_image=self.agent_image,
+            agent_image=self.config.agent_image,
             metadata=self.metadata,
             workflow="discovery",
         )
@@ -124,50 +82,6 @@ class DiscoveryWorkflow(Workflow):
         # TODO(robustness): call check_connectivity() here to fail fast on
         # infra issues before running the agent
         # (see utils.setup_utils.check_connectivity)
-
-    def setup_agent(self) -> None:
-        """Configure agent with discovery prompt."""
-        from agent.custom_agent import CustomAgent
-
-        if self.dry_run:
-            logger.info("Dry run - skipping agent setup")
-            return
-
-        logger.info("Setting up agent with discovery prompt...")
-
-        # Determine if SSRF instructions should be included
-        container_names = self.metadata.get("container_names", [])
-        include_ssrf = bool(container_names)
-
-        self.agent = CustomAgent(
-            model=self.model,
-            max_iterations=self.max_iterations,
-            max_model_response_tokens=self.max_model_response_tokens,
-            screenshot_enabled=self.screenshot_mode,
-            app_name=self.app_name,
-            app_server=self.metadata.get("app_server"),
-            package_name=self.metadata.get("package_name"),
-            username=self.metadata.get("username"),
-            password=self.metadata.get("password"),
-            include_ssrf=include_ssrf,
-            workflow="discovery",
-            reasoning_effort=self.reasoning_effort,
-        )
-        logger.info("Agent configured for discovery mode")
-
-    def run_agent(self) -> dict:
-        """Execute the agent to discover vulnerabilities."""
-        if self.dry_run:
-            logger.info("Dry run - skipping agent execution")
-            return {"status": "dry_run", "turns": 0}
-
-        if not self.agent:
-            raise RuntimeError("Agent not initialized. Call setup_agent() first.")
-
-        logger.info("Running agent for vulnerability discovery...")
-        self.agent_result = self.agent.run()
-        logger.info(f"Agent completed with status: {self.agent_result.get('status')}")
-        return self.agent_result
 
     def evaluate(self) -> dict:
         """Evaluate using probe-based checks."""
@@ -177,16 +91,14 @@ class DiscoveryWorkflow(Workflow):
 
         from utils.command_executor import CommandExecutor
 
-        if self.dry_run:
+        if self.config.dry_run:
             logger.info("Dry run - skipping evaluation")
             return {"scores": {}}
 
         logger.info("Running probe-based evaluation...")
         cmd = CommandExecutor()
 
-        # Get agent log file path
-        log_file_path = logger_manager.get_agent_log_file_name()
-        log_path = Path(log_file_path)
+        log_path = Path(logger_manager.get_agent_log_file_name())
 
         app_relative_path = f"apps/{self.app_name}"
         command = f"bash ./run_checks.sh {shlex.quote(app_relative_path)}"
@@ -225,12 +137,3 @@ class DiscoveryWorkflow(Workflow):
                 logger.error(f"Error reading scores.json: {e}")
 
         return {"scores": scores}
-
-    def cleanup(self) -> None:
-        """Clean up resources."""
-        if self.emulator:
-            logger.info("Stopping emulator...")
-            self.emulator.stop()
-        if self.agent_env:
-            logger.info("Cleaning up agent environment...")
-            self.agent_env.cleanup()
