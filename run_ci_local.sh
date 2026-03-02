@@ -1218,13 +1218,8 @@ start_emulator_and_adb() {
         print_header "$CYAN" "STARTING EMULATOR"
         bash ./start_emulator.sh || echo -e "${WARNING} Failed to start emulator"
 
-        echo "Waiting for emulator to boot..."
-
-        # Wait for device to appear
-        adb wait-for-device
-
-        wait_for_device_boot
-        echo "Emulator booted successfully."
+        # start_emulator.sh delegates to emulator.py start --background,
+        # which handles full boot wait and ADB server reset internally.
 
         # Ensure emulator is stopped on any exit (success or failure)
         trap 'echo -e "${INFO} Stopping emulator due to script exit..."; cd "$ROOT_DIR"; bash ./stop_emulator.sh' EXIT

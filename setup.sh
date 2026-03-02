@@ -648,214 +648,6 @@ create_avd() {
     log "  - $avd_name_playstore (non-rootable, production-like)"
 }
 
-create_helper_scripts() {
-    log "Creating helper scripts..."
-
-    # Start emulator script - defaults to rootable (google_apis)
-    cat > "${SCRIPT_DIR}/start_emulator.sh" << EOF
-#!/bin/bash
-
-ANDROID_HOME="\${HOME}/.android-sdk"
-SDK_VERSION="${SDK_VERSION}"
-SYSTEM_IMAGE="\${1:-google_apis}"  # Default to google_apis (rootable)
-
-EMULATOR_NAME="MobileCybenchEmulatorAPI\${SDK_VERSION}_\${SYSTEM_IMAGE}"
-
-# Check if AVD exists
-if ! "\$ANDROID_HOME/emulator/emulator" -list-avds | grep -q "^\$EMULATOR_NAME\$"; then
-    echo "Error: AVD '\$EMULATOR_NAME' not found"
-    echo ""
-    echo "Available AVDs:"
-    "\$ANDROID_HOME/emulator/emulator" -list-avds
-    echo ""
-    echo "Usage: \$0 [google_apis|google_apis_playstore]"
-    exit 1
-fi
-
-echo "Starting Android emulator: \$EMULATOR_NAME"
-echo "This may take a few minutes on first boot..."
-
-"\$ANDROID_HOME/emulator/emulator" \\
-    -avd "\$EMULATOR_NAME" \\
-    -no-snapshot-save \\
-    -wipe-data \\
-    -gpu host \\
-    -skin 1080x1920 \\
-    -memory 2048 \\
-    &
-
-echo "Emulator started in background"
-echo "Waiting for device to be ready..."
-
-# Start ADB server with -a flag to listen on all interfaces
-# This allows Docker containers to connect via host.docker.internal:5037
-echo "Starting ADB server (listening on all interfaces)..."
-"\$ANDROID_HOME/platform-tools/adb" -a start-server
-
-"\$ANDROID_HOME/platform-tools/adb" wait-for-device
-
-echo "Device ready!"
-echo "To check device status: adb devices"
-EOF
-
-    # Stop emulator script
-    cat > "${SCRIPT_DIR}/stop_emulator.sh" << 'EOF'
-#!/bin/bash
-
-set -e
-
-usage() {
-    echo "Usage: $0 [-s <serial>] [-p <port>]"
-    echo "  -s <serial>   Stop a specific emulator (e.g., emulator-5554)"
-    echo "  -p <port>     Stop emulator by port (e.g., 5554)"
-    echo "If no -s/-p is provided, all running emulators are stopped."
-}
-
-if ! command -v adb >/dev/null 2>&1; then
-    echo "ERROR: adb not found in PATH"
-    exit 1
-fi
-
-SERIAL=""
-PORT=""
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -s)
-            SERIAL="$2"
-            shift 2
-            ;;
-        -p)
-            PORT="$2"
-            shift 2
-            ;;
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        *)
-            echo "Unknown argument: $1"
-            usage
-            exit 1
-            ;;
-    esac
-done
-
-if [[ -n "$SERIAL" ]]; then
-    echo "Stopping Android emulator: $SERIAL"
-    adb -s "$SERIAL" emu kill
-    echo "Emulator stopped: $SERIAL"
-    exit 0
-fi
-
-if [[ -n "$PORT" ]]; then
-    if ! [[ "$PORT" =~ ^[0-9]+$ ]]; then
-        echo "ERROR: Port must be numeric (e.g., 5554)"
-        exit 1
-    fi
-    SERIAL="emulator-$PORT"
-    echo "Stopping Android emulator: $SERIAL"
-    adb -s "$SERIAL" emu kill
-    echo "Emulator stopped: $SERIAL"
-    exit 0
-fi
-
-echo "Stopping all running Android emulators..."
-EMULATORS=$(adb devices | awk 'NR>1 && $1 ~ /^emulator-/ {print $1}')
-if [[ -z "$EMULATORS" ]]; then
-    echo "No running emulators found"
-    exit 0
-fi
-
-for emu in $EMULATORS; do
-    echo "Stopping $emu..."
-    adb -s "$emu" emu kill
-done
-echo "All emulators stopped"
-EOF
-
-    # Device check script
-    cat > "${SCRIPT_DIR}/check_device.sh" << 'EOF'
-#!/bin/bash
-
-ANDROID_HOME="${HOME}/.android-sdk"
-
-usage() {
-    echo "Usage: $0 [-s <serial>]"
-    echo "  -s <serial>   Check a specific device (e.g., emulator-5554)"
-}
-
-SERIAL=""
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -s)
-            SERIAL="$2"
-            shift 2
-            ;;
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        *)
-            echo "Unknown argument: $1"
-            usage
-            exit 1
-            ;;
-    esac
-done
-
-echo "Checking Android device status..."
-
-if ! command -v adb >/dev/null 2>&1; then
-    if [[ -f "$ANDROID_HOME/platform-tools/adb" ]]; then
-        export PATH="$ANDROID_HOME/platform-tools:$PATH"
-    else
-        echo "ERROR: ADB not found. Please run setup.sh first."
-        exit 1
-    fi
-fi
-
-devices=$(adb devices | grep -v "List of devices" | grep -E "device$|emulator")
-
-if [[ -z "$devices" ]]; then
-    echo "No Android devices found."
-    echo "Run ./start_emulator.sh or python emulator.py start to start the emulator."
-    exit 1
-fi
-
-echo "Connected devices:"
-echo "$devices"
-
-if [[ -n "$SERIAL" ]]; then
-    device_id="$SERIAL"
-else
-    device_id=$(echo "$devices" | head -n1 | awk '{print $1}')
-fi
-echo "Testing device connectivity..."
-
-if adb -s "$device_id" shell echo "test" >/dev/null 2>&1; then
-    echo "Device is ready!"
-
-    android_version=$(adb -s "$device_id" shell getprop ro.build.version.release)
-    echo "Android version: $android_version"
-
-    sdk_version=$(adb -s "$device_id" shell getprop ro.build.version.sdk)
-    echo "SDK version (API level): $sdk_version"
-
-    arch=$(adb -s "$device_id" shell getprop ro.product.cpu.abi)
-    echo "Architecture: $arch"
-
-    exit 0
-else
-    echo "Device connectivity test failed."
-    exit 1
-fi
-EOF
-
-    chmod +x "${SCRIPT_DIR}"/{start_emulator,stop_emulator,check_device}.sh
-
-    log "Helper scripts created successfully"
-}
-
 # Main setup function
 main() {
     pip install -e .
@@ -900,9 +692,6 @@ main() {
     # Create AVD
     create_avd "$arch"
 
-    # Create helper scripts
-    create_helper_scripts
-
     # Optional: initialize submodules
     init_submodules
 
@@ -925,19 +714,10 @@ main() {
         echo "  Note: ARM64 architecture (Apple Silicon)"
     fi
     echo ""
-    echo "Quick Start (Python CLI - Recommended):"
-    echo "  python emulator.py start --sdk ${SDK_VERSION}                    # Start rootable emulator (default)"
-    echo "  python emulator.py start --sdk ${SDK_VERSION} --no-rootable      # Start non-rootable emulator"
-    echo "  python emulator.py list                                          # List available AVDs"
-    echo "  python emulator.py stop                                          # Stop running emulator(s)"
-    echo ""
-    echo "Or use bash scripts:"
-    echo "  ./start_emulator.sh [google_apis|google_apis_playstore]          # Start emulator"
-    echo "  ./check_device.sh                                                # Check device status"
-    echo "  ./check_device.sh -s emulator-5554                               # Check a specific device"
-    echo "  ./stop_emulator.sh                                               # Stop all emulators"
-    echo "  ./stop_emulator.sh -s emulator-5554                              # Stop one emulator by serial"
-    echo "  ./stop_emulator.sh -p 5554                                       # Stop one emulator by port"
+    echo "Quick Start:"
+    echo "  ./start_emulator.sh                  # Start emulator (waits for boot)"
+    echo "  ./check_device.sh                    # Check device status"
+    echo "  ./stop_emulator.sh                   # Stop all emulators"
     echo ""
     echo "Note: You may need to restart your terminal or run:"
     echo "  source ~/.bashrc  (or ~/.zshrc)"
