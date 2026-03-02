@@ -217,8 +217,12 @@ def main() -> int:
 
     expected_uri = f"{EXPECTED_URI_PREFIX}{expected_token}"
     now_ms = int(time.time() * 1000)
-    is_recent = recorded_epoch_ms > 0 and (now_ms - recorded_epoch_ms) <= MAX_ARTIFACT_AGE_MS
-    file_recent = file_mtime_s > 0 and (int(time.time()) - file_mtime_s) <= (MAX_ARTIFACT_AGE_MS // 1000)
+    is_recent = (
+        recorded_epoch_ms > 0 and (now_ms - recorded_epoch_ms) <= MAX_ARTIFACT_AGE_MS
+    )
+    file_recent = file_mtime_s > 0 and (int(time.time()) - file_mtime_s) <= (
+        MAX_ARTIFACT_AGE_MS // 1000
+    )
     owner_matches = file_uid == app_uid
     verified = (
         recorded_token == expected_token
