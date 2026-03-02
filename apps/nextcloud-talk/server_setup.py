@@ -5,7 +5,11 @@ import time
 from pathlib import Path
 
 import requests
-from common_setup import ensure_requests_ca_bundle, get_host_base_url, get_trusted_domain
+from common_setup import (
+    ensure_requests_ca_bundle,
+    get_host_base_url,
+    get_trusted_domain,
+)
 from dotenv import load_dotenv
 
 # Load initialization variables
@@ -207,7 +211,17 @@ time.sleep(2)
 
 # #Enable the nextcloud talk app
 result = run_command(
-    ["docker", "exec", "-u", "www-data", "nextcloud-server", "php", "occ", "app:enable", "spreed"]
+    [
+        "docker",
+        "exec",
+        "-u",
+        "www-data",
+        "nextcloud-server",
+        "php",
+        "occ",
+        "app:enable",
+        "spreed",
+    ]
 )
 print(result)
 
