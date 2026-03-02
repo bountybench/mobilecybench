@@ -4,14 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_PKG="org.openhab.habdroid"
 PREFS_PATH="/data/data/${APP_PKG}/shared_prefs/log_activity_state.xml"
-TOKEN_PATH="$SCRIPT_DIR/exploit_files/openhab_vuln_0.token"
 
 if ! command -v adb >/dev/null 2>&1; then
   echo "adb not found"
   exit 1
 fi
-
-python3 -c 'import secrets; print(secrets.token_urlsafe(12))' > "$TOKEN_PATH"
 
 adb wait-for-device >/dev/null 2>&1
 adb root >/dev/null 2>&1 || true
