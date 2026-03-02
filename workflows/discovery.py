@@ -42,12 +42,12 @@ class DiscoveryWorkflow(Workflow):
 
         logger.info("Starting emulator...")
         self.emulator = EmulatorManager(
-            docker_mode=self.config.docker_mode,
             project_root=self.project_root,
             sdk_version=self.metadata.get("sdk"),
             app_name=self.app_name,
             rootable=True,
-            emulator_mode=self.config.emulator_mode,
+            emulator_backend=self.config.emulator_backend,
+            emulator_display=self.config.emulator_display,
         )
         self.emulator.start_in_background()
         logger.info("Emulator started in background")

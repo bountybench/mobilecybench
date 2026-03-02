@@ -21,9 +21,9 @@ def _config(**overrides) -> RunnerConfig:
         "max_iterations": 10,
         "max_model_response_tokens": 1000,
         "screenshot_mode": False,
-        "headless_mode": True,
         "dry_run": False,
-        "docker_mode": False,
+        "emulator_display": "headed",
+        "emulator_backend": "native",
         "script_timeout": 600,
     }
     return RunnerConfig(**{**defaults, **overrides})
