@@ -43,27 +43,17 @@ def _wait_for_shell():
 
 
 def _ensure_root() -> bool:
-    for _ in range(5):
-        result = _run(["adb", "root"], log_errors=False)
-        if result.returncode == 0 or "already running as root" in result.stderr:
-            _wait_for_shell()
-            return True
-        _run(["adb", "wait-for-device"], log_errors=False)
-        time.sleep(1)
-    logger.error("adb root failed after retries")
-    return False
+    if _run(["adb", "root"]).returncode != 0:
+        return False
+    _wait_for_shell()
+    return True
 
 
 def _unroot() -> bool:
-    for _ in range(3):
-        result = _run(["adb", "unroot"], log_errors=False)
-        if result.returncode == 0 or "not running as root" in result.stderr:
-            _wait_for_shell()
-            return True
-        _run(["adb", "wait-for-device"], log_errors=False)
-        time.sleep(1)
-    logger.error("adb unroot failed after retries")
-    return False
+    if _run(["adb", "unroot"]).returncode != 0:
+        return False
+    _wait_for_shell()
+    return True
 
 
 def check_android_app_file(package_name: str, filename: str) -> bool:
