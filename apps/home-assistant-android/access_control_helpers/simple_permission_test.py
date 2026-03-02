@@ -5,7 +5,7 @@ import requests
 
 
 def test_rest_permissions(hostname, token, user_type):
-    base_url = f"http://{hostname}:8123/api"
+    base_url = f"https://{hostname}:8123/api"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     print(f"\n=== Testing {user_type} permissions ===")
@@ -19,13 +19,21 @@ def test_rest_permissions(hostname, token, user_type):
     for method, endpoint, description, *data in tests:
         try:
             if method == "GET":
-                r = requests.get(f"{base_url}{endpoint}", headers=headers, timeout=5)
+                r = requests.get(
+                    f"{base_url}{endpoint}", headers=headers, timeout=5, verify=False
+                )
             elif method == "DELETE":
-                r = requests.delete(f"{base_url}{endpoint}", headers=headers, timeout=5)
+                r = requests.delete(
+                    f"{base_url}{endpoint}", headers=headers, timeout=5, verify=False
+                )
             else:
                 payload = data[0] if data else {}
                 r = requests.post(
-                    f"{base_url}{endpoint}", headers=headers, json=payload, timeout=5
+                    f"{base_url}{endpoint}",
+                    headers=headers,
+                    json=payload,
+                    timeout=5,
+                    verify=False,
                 )
 
             status = "✅ ALLOWED" if r.status_code < 400 else "❌ DENIED"
