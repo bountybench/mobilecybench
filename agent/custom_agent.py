@@ -9,7 +9,10 @@ from dotenv import load_dotenv
 from agent.agent_helpers import get_directory_tree
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
+    LOOP_DETECTED_NUDGE,
     MISSING_OUTPUT_NUDGE,
+    TURN_BUDGET_URGENT,
+    TURN_BUDGET_WARNING,
     build_detect_prompt,
     build_synthetic_prompt,
 )
@@ -256,8 +259,35 @@ class CustomAgent:
 
         agent_logger.info("\n" + "=" * 60)
 
+    @staticmethod
+    def _commands_are_similar(cmd_a: str, cmd_b: str) -> bool:
+        """Check if two commands are similar enough to count as a repeated attempt."""
+        if not cmd_a or not cmd_b:
+            return False
+        # Exact match
+        if cmd_a == cmd_b:
+            return True
+        # Same first line (e.g. same curl/python3 invocation with different args)
+        first_a = cmd_a.split("\n")[0].strip()
+        first_b = cmd_b.split("\n")[0].strip()
+        if first_a == first_b:
+            return True
+        # Same tool target: extract first 2 whitespace-separated tokens
+        tokens_a = first_a.split()[:2]
+        tokens_b = first_b.split()[:2]
+        if len(tokens_a) >= 2 and tokens_a == tokens_b:
+            return True
+        return False
+
     def run(self) -> dict:
         next_input = "Begin. Read your instructions and start working."
+
+        # Track recent commands for loop detection: list of (command_str, had_error)
+        recent_commands: list[tuple[str, bool]] = []
+
+        # Compute turn budget thresholds
+        warn_threshold = int(self.max_iterations * 0.66)
+        urgent_threshold = int(self.max_iterations * 0.85)
 
         for turn in range(self.max_iterations):
             agent_logger.info(
@@ -452,6 +482,50 @@ class CustomAgent:
                         }
                     )
 
+                    # Track command for loop detection
+                    cmd_str = ""
+                    parsed_args = self._parse_arguments(fc.arguments)
+                    if isinstance(parsed_args, dict):
+                        cmd_str = parsed_args.get("command", "")
+                    elif isinstance(parsed_args, str):
+                        cmd_str = parsed_args
+                    had_error = isinstance(result, str) and (
+                        result.startswith("Error:")
+                        or "error" in result[:200].lower()
+                        or "not found" in result[:200].lower()
+                    )
+                    recent_commands.append((cmd_str, had_error))
+                    # Keep only the last 5 entries
+                    if len(recent_commands) > 5:
+                        recent_commands = recent_commands[-5:]
+
+            # Loop detection: check if last 3 commands are similar and all errored
+            if len(recent_commands) >= 3:
+                last3 = recent_commands[-3:]
+                all_errored = all(err for _, err in last3)
+                cmds_similar = (
+                    self._commands_are_similar(last3[0][0], last3[1][0])
+                    and self._commands_are_similar(last3[1][0], last3[2][0])
+                )
+                if all_errored and cmds_similar:
+                    loop_msg = LOOP_DETECTED_NUDGE.format(count=3)
+                    agent_logger.warning(loop_msg)
+                    next_input.append(
+                        {
+                            "type": "message",
+                            "role": "user",
+                            "content": loop_msg,
+                        }
+                    )
+                    turn_event["observations"].append(
+                        {
+                            "tool_call_id": None,
+                            "type": "warning",
+                            "content": loop_msg,
+                            "truncated": False,
+                        }
+                    )
+
             # Detect final submission
             is_final_submission = False
             if assistant_text and assistant_text.strip():
@@ -507,7 +581,7 @@ class CustomAgent:
             missing = []
             if not has_text:
                 missing.append(
-                    "visible text in Reflection/Plan/Thought/Log/Command format"
+                    "visible text in ANALYSIS/ACTION format"
                 )
             if not has_tool_call:
                 missing.append("a tool call")
@@ -535,6 +609,35 @@ class CustomAgent:
                 if not has_tool_call:
                     self._append_turn_event(turn_event)
                     continue  # Can't proceed without tool results
+
+            # Turn budget reminders
+            current_turn = turn + 1
+            if current_turn == warn_threshold:
+                remaining = self.max_iterations - current_turn
+                budget_msg = TURN_BUDGET_WARNING.format(
+                    used=current_turn,
+                    total=self.max_iterations,
+                    remaining=remaining,
+                )
+                agent_logger.info(budget_msg)
+                next_input.append(
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": budget_msg,
+                    }
+                )
+            elif current_turn == urgent_threshold:
+                remaining = self.max_iterations - current_turn
+                budget_msg = TURN_BUDGET_URGENT.format(remaining=remaining)
+                agent_logger.info(budget_msg)
+                next_input.append(
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": budget_msg,
+                    }
+                )
 
             self._append_turn_event(turn_event)
 
