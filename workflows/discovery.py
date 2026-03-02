@@ -2,7 +2,13 @@
 
 from pathlib import Path
 
+from models.config import (
+    DEFAULT_BUILD_COMMAND_TIMEOUT,
+    DEFAULT_EMULATOR_BOOT_TIMEOUT_SECONDS,
+    DEFAULT_SCRIPT_TIMEOUT,
+)
 from utils.logger import logger, logger_manager
+from utils.setup_utils import check_connectivity
 from workflows.base import Workflow
 
 
@@ -13,6 +19,49 @@ class DiscoveryWorkflow(Workflow):
     The agent explores the codebase, identifies vulnerabilities,
     and creates an exploit. Evaluation uses probe-based checks.
     """
+
+    def __init__(
+        self,
+        app_name: str,
+        app_dir: Path,
+        model: str,
+        max_iterations: int,
+        max_model_response_tokens: int,
+        script_timeout: int = DEFAULT_SCRIPT_TIMEOUT,
+        build_command_timeout: int = DEFAULT_BUILD_COMMAND_TIMEOUT,
+        emulator_boot_timeout_seconds: int = DEFAULT_EMULATOR_BOOT_TIMEOUT_SECONDS,
+        screenshot_mode: bool = False,
+        build_type: str = "source",
+        agent_image: str = "cybench/mobilecybench:latest",
+        project_root: Optional[Path] = None,
+        dry_run: bool = False,
+        reasoning_effort: Optional[str] = None,
+        docker_mode: bool = False,
+        emulator_mode: str = "native",
+    ):
+        self.app_name = app_name
+        self.app_dir = app_dir
+        self.model = model
+        self.max_iterations = max_iterations
+        self.max_model_response_tokens = max_model_response_tokens
+        self.script_timeout = script_timeout
+        self.build_command_timeout = build_command_timeout
+        self.emulator_boot_timeout_seconds = emulator_boot_timeout_seconds
+        self.screenshot_mode = screenshot_mode
+        self.build_type = build_type
+        self.agent_image = agent_image
+        self.project_root = project_root or Path(__file__).parent.parent
+        self.dry_run = dry_run
+        self.reasoning_effort = reasoning_effort
+        self.docker_mode = docker_mode
+        self.emulator_mode = emulator_mode
+
+        # Set during setup
+        self.metadata: dict = {}
+        self.emulator = None
+        self.agent_env = None
+        self.agent = None
+        self.agent_result: dict = {}
 
     def validate_arguments(self) -> None:
         """Validate that app directory exists and has required files."""
@@ -56,7 +105,7 @@ class DiscoveryWorkflow(Workflow):
         setup_apk(self.app_dir, self.config.build_type, self.project_root)
 
         # Explicit boot gate — emulator must be ready before CA injection
-        self.emulator.wait_until_ready()
+        self.emulator.wait_until_ready(timeout=self.emulator_boot_timeout_seconds)
 
         # Inject system CA so apps trust local HTTPS backends
         from utils.emulator_certs import inject_system_ca
@@ -69,6 +118,7 @@ class DiscoveryWorkflow(Workflow):
             self.emulator,
             self.project_root,
             start_ssrf=True,
+            build_command_timeout=self.build_command_timeout,
         )
 
         # Setup agent container
@@ -79,9 +129,7 @@ class DiscoveryWorkflow(Workflow):
             workflow="discovery",
         )
 
-        # TODO(robustness): call check_connectivity() here to fail fast on
-        # infra issues before running the agent
-        # (see utils.setup_utils.check_connectivity)
+        check_connectivity(self.agent_env.container, self.metadata.get("app_server"))
 
     def evaluate(self) -> dict:
         """Evaluate using probe-based checks."""
@@ -112,11 +160,14 @@ class DiscoveryWorkflow(Workflow):
         if not container_names:
             env["SKIP_SSRF_CHECK"] = "1"
 
-        # TODO(robustness): run_checks.sh has no timeout — a hung probe
-        # script blocks the runner indefinitely. Use script_timeout
-        # (already accepted by __init__) or run_with_progress.
         try:
-            result = cmd.run(command, cwd=self.project_root, check=False, env=env)
+            result = cmd.run(
+                command,
+                cwd=self.project_root,
+                check=False,
+                env=env,
+                timeout=self.script_timeout,
+            )
             if result.stdout:
                 logger.info(result.stdout)
             if result.stderr:

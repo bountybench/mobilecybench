@@ -94,7 +94,39 @@ def run_interactive_shell(app_name: str) -> dict:
 def create_workflow(
     config: RunnerConfig, app_name: str, project_root: Path
 ) -> Workflow:
-    """Create the appropriate workflow based on configuration."""
+    """
+    Create the appropriate workflow based on configuration.
+
+    Args:
+        config: Runner configuration
+        app_name: Name of the app to evaluate
+        project_root: Root directory of the project
+
+    Returns:
+        Workflow instance (DiscoveryWorkflow or ExploitWorkflow)
+    """
+    app_dir = project_root / "apps" / app_name
+
+    # Common parameters for both workflows
+    common_params = {
+        "app_name": app_name,
+        "app_dir": app_dir,
+        "model": config.model,
+        "max_iterations": config.max_iterations,
+        "max_model_response_tokens": config.max_model_response_tokens,
+        "screenshot_mode": config.screenshot_mode,
+        "build_type": config.build_type,
+        "agent_image": config.agent_image,
+        "project_root": project_root,
+        "dry_run": config.dry_run,
+        "reasoning_effort": config.reasoning_effort,
+        "docker_mode": config.docker_mode,
+        "emulator_mode": config.emulator_mode,
+        "script_timeout": config.script_timeout,
+        "build_command_timeout": config.build_command_timeout,
+        "emulator_boot_timeout_seconds": config.emulator_boot_timeout_seconds,
+    }
+
     if config.workflow == "exploit":
         return ExploitWorkflow(config, app_name, project_root)
     else:

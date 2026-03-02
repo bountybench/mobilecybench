@@ -168,3 +168,72 @@ class TestDiscoveryWorkflowFlagGeneration:
         ):
             workflow.setup_runtime_environment()
             mock_generate.assert_called_once_with(str(tmp_path), [])
+
+
+class TestExploitWorkflowEvaluation:
+    """Tests for exploit evaluation result classification."""
+
+    def test_evaluate_returns_verifier_error_when_clean_verify_exits_gt_one(
+        self, tmp_path
+    ):
+        """Clean-run verifier errors must not be scored as true positives."""
+        app_dir = tmp_path / "apps" / "test_app"
+        logs_dir = tmp_path / "logs"
+        agent_exploit_dir = logs_dir / "agent_exploit"
+        agent_exploit_dir.mkdir(parents=True)
+        (agent_exploit_dir / "exploit.sh").write_text("#!/bin/bash\nexit 0")
+
+        workflow = ExploitWorkflow(
+            app_name="test_app",
+            app_dir=app_dir,
+            model="gpt-4",
+            max_iterations=10,
+            **AGENT_CONFIG,
+            project_root=tmp_path,
+        )
+        workflow.metadata = {}
+
+        with patch("utils.logger.logger_manager.get_logs_dir", return_value=logs_dir):
+            with patch.object(workflow, "_restart_runtime"), patch.object(
+                workflow, "_start_eval_kali", return_value=object()
+            ), patch("workflows.exploit.check_connectivity"), patch.object(
+                workflow,
+                "_run_exploit",
+                side_effect=[
+                    {
+                        "exploit_exit_code": 0,
+                        "exploit_stdout": "",
+                        "exploit_stderr": "",
+                    },
+                    {
+                        "exploit_exit_code": 0,
+                        "exploit_stdout": "",
+                        "exploit_stderr": "",
+                    },
+                ],
+            ), patch.object(
+                workflow,
+                "_run_verify",
+                side_effect=[
+                    {
+                        "exit_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "status": "vulnerable",
+                    },
+                    {
+                        "exit_code": 2,
+                        "stdout": "",
+                        "stderr": "adb failure",
+                        "status": "verifier_error",
+                    },
+                ],
+            ), patch.object(
+                workflow, "_save_eval_result"
+            ) as mock_save:
+                result = workflow.evaluate()
+
+        assert result["status"] == "verifier_error"
+        assert result["score"] == 0
+        assert "clean_run" in result
+        mock_save.assert_called_once_with(result)

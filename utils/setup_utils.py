@@ -5,14 +5,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+from models.config import DEFAULT_BUILD_COMMAND_TIMEOUT
 from utils.logger import logger
-
-# TODO(robustness): these timeouts are hardcoded constants. Consider
-# making them configurable via RunnerConfig (single source of truth)
-# so callers don't scatter magic numbers. script_timeout already
-# follows this pattern — BUILD_COMMAND_TIMEOUT and
-# EMULATOR_BOOT_TIMEOUT_SECONDS should too.
-BUILD_COMMAND_TIMEOUT = 1200  # 20 minutes
 
 
 def install_app_and_setup_backend(
@@ -22,6 +16,7 @@ def install_app_and_setup_backend(
     start_ssrf: bool = False,
     apk_path: Optional[Path] = None,
     inject_flags: bool = True,
+    build_command_timeout: int = DEFAULT_BUILD_COMMAND_TIMEOUT,
 ) -> None:
     """
     Install the app and set up backend services.
@@ -56,7 +51,7 @@ def install_app_and_setup_backend(
             runtime_cmd += f" --apk {shlex.quote(str(apk_path))}"
         cmd.run_with_progress(
             runtime_cmd,
-            timeout=BUILD_COMMAND_TIMEOUT,
+            timeout=build_command_timeout,
             message="Setting up backend and installing APK",
             cwd=app_dir,
         )
@@ -64,7 +59,7 @@ def install_app_and_setup_backend(
         logger.info("Using legacy setup.sh")
         cmd.run_with_progress(
             "bash ./setup.sh",
-            timeout=BUILD_COMMAND_TIMEOUT,
+            timeout=build_command_timeout,
             message="Setting up backend and installing APK",
             cwd=app_dir,
         )
