@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 import requests
-from common_setup import ensure_requests_ca_bundle, get_host_base_url
+from common_setup import ensure_requests_ca_bundle, get_host_base_url, get_trusted_domain
 from dotenv import load_dotenv
 
 # Load initialization variables
@@ -74,13 +74,22 @@ payload = {
 }
 
 
+def run_command(cmd):
+    return subprocess.run(cmd, capture_output=True, text=True)
+
+
 def initialize_nextcloud(max_retries=5):
     """Initialize Nextcloud with retry logic"""
     for attempt in range(max_retries):
         try:
-            r = requests.post(f"{BASE_URL}/index.php", data=payload, timeout=10)
+            r = requests.post(
+                f"{BASE_URL}/index.php",
+                data=payload,
+                timeout=30,
+                allow_redirects=False,
+            )
             print("Sent message:", r.status_code, r.text[:200])
-            if r.status_code == 200:
+            if r.status_code in [200, 302, 303]:
                 return True
         except requests.exceptions.RequestException as e:
             print(f"Initialization attempt {attempt + 1} failed: {e}")
@@ -94,6 +103,44 @@ def initialize_nextcloud(max_retries=5):
 initialize_nextcloud()
 
 time.sleep(10)  # Wait longer for Nextcloud to be fully ready
+
+
+def configure_https_runtime():
+    trusted_domain = get_trusted_domain()
+    php_script = f"""
+include "/var/www/html/config/config.php";
+if (!isset($CONFIG["trusted_domains"])) {{
+    $CONFIG["trusted_domains"] = array();
+}} elseif (!is_array($CONFIG["trusted_domains"])) {{
+    $CONFIG["trusted_domains"] = array($CONFIG["trusted_domains"]);
+}}
+if (!in_array({json.dumps(trusted_domain)}, $CONFIG["trusted_domains"], true)) {{
+    $CONFIG["trusted_domains"][] = {json.dumps(trusted_domain)};
+}}
+$CONFIG["overwriteprotocol"] = "https";
+$CONFIG["overwrite.cli.url"] = {json.dumps(BASE_URL)};
+$config_content = "<?php\\n\\$CONFIG = " . var_export($CONFIG, true) . ";\\n";
+file_put_contents("/var/www/html/config/config.php", $config_content);
+"""
+    result = run_command(
+        [
+            "docker",
+            "exec",
+            "-u",
+            "root",
+            "nextcloud-server",
+            "php",
+            "-r",
+            php_script,
+        ]
+    )
+    if result.returncode != 0:
+        print("ERROR: Failed to configure Nextcloud HTTPS settings")
+        print(result.stderr)
+        exit(1)
+
+
+configure_https_runtime()
 
 # #Initialize data
 headers = {
@@ -159,12 +206,8 @@ time.sleep(2)
 
 
 # #Enable the nextcloud talk app
-def run_command(cmd: str):
-    return subprocess.run(cmd.split(" "), capture_output=True, text=True)
-
-
 result = run_command(
-    "docker exec -u www-data nextcloud-server php occ app:enable spreed"
+    ["docker", "exec", "-u", "www-data", "nextcloud-server", "php", "occ", "app:enable", "spreed"]
 )
 print(result)
 
