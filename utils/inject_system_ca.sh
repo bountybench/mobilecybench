@@ -165,10 +165,6 @@ check_cert_visibility_in_namespaces() {
 }
 
 inject_tmpfs_overlay() {
-  # API <= 33: tmpfs overlay on the system cert store.
-  # 1. Copy existing certs to a temp dir
-  # 2. Mount tmpfs over /system/etc/security/cacerts (hides original, stays read-only)
-  # 3. Copy back original certs + our custom cert
   log_info "Using API <= 33 method (tmpfs overlay)"
   adb shell 'su 0 sh -s' <<EOF
 set -e
@@ -276,7 +272,6 @@ rm -rf "\$TMP"
 mkdir -p -m 700 "\$TMP"
 cp \$APEX/* "\$TMP"/
 
-# 2. Overlay /system store with tmpfs
 mountpoint -q "\$STORE" || mount -t tmpfs tmpfs "\$STORE"
 rm -f "\$STORE"/*
 cp "\$TMP"/* "\$STORE"/
@@ -305,22 +300,16 @@ rm -rf "\$TMP"
 EOF
 }
 
-# Find cert: use arg if provided, otherwise auto-discover from tls/
 CERT_PATH="${1:-$(ls "$REPO_ROOT"/tls/*.0 2>/dev/null | head -1 || true)}"
 [[ -n "$CERT_PATH" && -f "$CERT_PATH" ]] || fatal "No cert found. Place <hash>.0 in tls/"
 CERT_BASENAME="$(basename "$CERT_PATH")"
 
-# Ensure adb root access for cert injection
 adb root
 adb wait-for-device >/dev/null
 
-# Always drop root on exit (including early returns and errors).
 cleanup() { adb unroot && adb wait-for-device; }
 trap cleanup EXIT
 
-# adb root restarts adbd. wait-for-device returns once the device state
-# transitions to "device", but the shell may not be ready yet.
-# Probe until getprop returns a non-empty result.
 SDK=""
 for _i in $(seq 1 15); do
   SDK="$(adb shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r' || true)"
@@ -331,7 +320,6 @@ done
 [[ -n "$SDK" ]] || fatal "adb shell not ready after adb root (timed out)"
 log_info "API $SDK — injecting $CERT_BASENAME"
 
-# Idempotency: skip if cert already present (and visible in zygote for API 34+)
 if adb shell "[ -f /system/etc/security/cacerts/$CERT_BASENAME ]" 2>/dev/null; then
   if [[ "$SDK" -ge 34 ]]; then
     if check_cert_visibility_in_namespaces "$CERT_BASENAME" quiet; then
@@ -344,7 +332,6 @@ if adb shell "[ -f /system/etc/security/cacerts/$CERT_BASENAME ]" 2>/dev/null; t
   fi
 fi
 
-# Push and inject
 adb push "$CERT_PATH" "/data/local/tmp/$CERT_BASENAME" >/dev/null
 
 if [[ "$SDK" -le 33 ]]; then
@@ -353,7 +340,6 @@ else
   inject_tmpfs_overlay_with_nsenter
 fi
 
-# Verify
 if ! adb shell "[ -f /system/etc/security/cacerts/$CERT_BASENAME ]" 2>/dev/null; then
   fatal "Verification failed: cert not in /system/etc/security/cacerts/"
 fi
