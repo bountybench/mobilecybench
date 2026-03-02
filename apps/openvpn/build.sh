@@ -17,6 +17,17 @@ keystoreO2Alias=${KEYSTORE_ALIAS:-dummy}
 keystoreO2AliasPassword=${KEYSTORE_ALIAS_PASSWORD:-dummy}
 EOF
 
+# Pre-install the required NDK so Gradle doesn't try to auto-download it.
+# AGP's embedded downloader can fail with ZipException on some CI runners.
+NDK_VERSION="28.0.13004108"
+SDKMANAGER="${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager"
+if [ ! -d "${ANDROID_HOME:-/usr/local/lib/android/sdk}/ndk/${NDK_VERSION}" ]; then
+    echo "[build.sh] Installing NDK ${NDK_VERSION} via sdkmanager..."
+    yes | "$SDKMANAGER" --install "ndk;${NDK_VERSION}" 2>&1 || \
+    yes | "$SDKMANAGER" "ndk;${NDK_VERSION}" 2>&1 || \
+    echo "[build.sh] WARNING: sdkmanager NDK install failed; Gradle will retry"
+fi
+
 # Initialize submodules (OpenVPN native libs)
 git submodule update --init --recursive
 
