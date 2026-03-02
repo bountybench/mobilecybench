@@ -9,7 +9,7 @@ load_dotenv()
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 METADATA_PATH = SCRIPT_DIR / "metadata.json"
-TLS_CA_BUNDLE = SCRIPT_DIR / "../../tls/rootCA.pem"
+TLS_CA_BUNDLE = SCRIPT_DIR / "../../tls/a310d694.0"
 
 with open(METADATA_PATH, "r") as f:
     _metadata = json.load(f)
