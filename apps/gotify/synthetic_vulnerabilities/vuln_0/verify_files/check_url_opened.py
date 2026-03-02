@@ -177,8 +177,14 @@ def _try_notification_tap():
     center_x = width // 2
 
     _adb(
-        "shell", "input", "swipe",
-        str(center_x), "0", str(center_x), str(height // 2), "300",
+        "shell",
+        "input",
+        "swipe",
+        str(center_x),
+        "0",
+        str(center_x),
+        str(height // 2),
+        "300",
     )
     time.sleep(2)
 
@@ -189,9 +195,7 @@ def _try_notification_tap():
 
         resumed = _get_resumed_activity()
         if resumed and SETTINGS_MARKER in resumed:
-            print(
-                f"[check_url] Notification tap at y={tap_y} launched Settings"
-            )
+            print(f"[check_url] Notification tap at y={tap_y} launched Settings")
             return True
 
     _adb("shell", "input", "keyevent", "KEYCODE_BACK")
@@ -305,8 +309,7 @@ def check_dialog_bypass():
                 break
         else:
             print(
-                f"[check_url]   Poll {i + 1}/5: "
-                "could not determine resumed activity"
+                f"[check_url]   Poll {i + 1}/5: " "could not determine resumed activity"
             )
 
     if dialog_seen:
@@ -345,8 +348,9 @@ def check_dialog_bypass():
     #   2. IntentUrlDialogActivity is NOT in the activity stack
     #      (confirms the confirmation dialog was never shown).
     # ------------------------------------------------------------------
-    print("[check_url] Method D: Checking notification PendingIntent "
-          "(ATD fallback)...")
+    print(
+        "[check_url] Method D: Checking notification PendingIntent " "(ATD fallback)..."
+    )
 
     dialog_in_stack = _is_intent_dialog_in_activity_stack()
     print(f"[check_url]   IntentUrlDialogActivity in stack: {dialog_in_stack}")
@@ -393,8 +397,7 @@ def detect_exploit_message():
         )
         if not resp.ok:
             print(
-                f"[check_url] ERROR: Failed to query messages: "
-                f"{resp.status_code}",
+                f"[check_url] ERROR: Failed to query messages: " f"{resp.status_code}",
                 file=sys.stderr,
             )
             return False, None
