@@ -26,10 +26,9 @@ class RunnerConfig(BaseModel):
 
     # mode flags
     screenshot_mode: bool
-    headless_mode: bool
     dry_run: bool
-    docker_mode: bool
-    emulator_mode: Literal["native", "container"] = "native"
+    emulator_backend: Literal["native", "container"] = "native"
+    emulator_display: Literal["headed", "headless"] = "headed"
 
     # optional
     custom_system_prompt: Optional[str] = None
