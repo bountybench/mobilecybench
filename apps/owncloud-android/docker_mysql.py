@@ -41,7 +41,7 @@ def _coerce(value: str) -> Any:
 
 
 class Cursor:
-    def __init__(self, dictionary: bool = False) -> None:
+    def __init__(self, dictionary: bool = True) -> None:
         self._dictionary = dictionary
         self._rows: list[Any] = []
 
@@ -104,7 +104,7 @@ class Cursor:
 
 
 class Connection:
-    def cursor(self, dictionary: bool = False) -> Cursor:
+    def cursor(self, dictionary: bool = True) -> Cursor:
         return Cursor(dictionary=dictionary)
 
     def close(self) -> None:
