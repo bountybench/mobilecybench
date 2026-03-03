@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build helper APK (if needed) and prepare runtime verifier state.
+# Prepare runtime verifier state for the side-effect-only exploit check.
 # Side-effect-only verifier setup:
 # 1) Generate secret client token and app token.
 # 2) Insert both into Gotify server DB.
@@ -9,8 +9,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HELPER_DIR="${SCRIPT_DIR}/exploit_files/helper_apk"
-HELPER_APK="${HELPER_DIR}/dist/synthetic-helper.apk"
 STATE_DIR="${SCRIPT_DIR}/runtime_state"
 STATE_FILE="${STATE_DIR}/verify_state.json"
 
@@ -23,28 +21,6 @@ DB_NAME="gotify"
 
 log() {
   echo "[prepare_app] $*"
-}
-
-ensure_helper_apk() {
-  if [[ ! -f "${HELPER_DIR}/build.sh" ]]; then
-    log "No helper_apk/build.sh found (skipping helper build)"
-    return 0
-  fi
-
-  if [[ -f "$HELPER_APK" ]]; then
-    log "Helper APK already exists: $HELPER_APK"
-    return 0
-  fi
-
-  if [[ -z "${ANDROID_HOME:-}" || ! -d "${ANDROID_HOME}" ]]; then
-    log "ANDROID_HOME not set or missing; cannot build helper APK"
-    log "Exploit may fail if helper APK is not already at ${HELPER_APK}"
-    return 0
-  fi
-
-  log "Building helper APK..."
-  (cd "$HELPER_DIR" && ./build.sh)
-  log "Helper APK ready: $HELPER_APK"
 }
 
 gen_secret_token() {
@@ -164,6 +140,5 @@ print("[prepare_app] Wrote verifier state:", "${STATE_FILE}")
 PY
 }
 
-ensure_helper_apk
 prepare_runtime_secret
 log "Runtime side-effect verifier setup complete"
