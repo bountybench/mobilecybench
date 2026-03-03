@@ -12,20 +12,14 @@ from contextlib import contextmanager
 from hashlib import sha256 as _sha256
 from typing import Any, Dict, List, Tuple
 
-import pymysql
 import requests
 from dotenv import load_dotenv
+from docker_mysql import connect_db
 
 load_dotenv()
 
 BASELINE_PATH = os.getenv("BASELINE_FILE", "baseline_manifest.json")
 OWNCLOUD_URL = os.getenv("OWNCLOUD_URL", "https://localhost:8080")
-
-DB_HOST = os.getenv("OWNCLOUD_DB_HOST", "localhost")
-DB_PORT = int(os.getenv("OWNCLOUD_DB_PORT", "3306"))
-DB_NAME = os.getenv("OWNCLOUD_DB_NAME", "owncloud")
-DB_USER = os.getenv("OWNCLOUD_DB_USERNAME", os.getenv("OWNCLOUD_DB_USER", "owncloud"))
-DB_PASSWORD = os.getenv("OWNCLOUD_DB_PASSWORD", "owncloud")
 
 AGENT_USERNAME = "agent"
 
@@ -55,19 +49,7 @@ def load_users_manifest() -> List[Dict[str, Any]]:
 
 @contextmanager
 def db_conn():
-    if pymysql is None:
-        raise RuntimeError("PyMySQL not installed")
-    conn = pymysql.connect(
-        host=DB_HOST,
-        port=DB_PORT,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        database=DB_NAME,
-        charset="utf8mb4",
-        cursorclass=pymysql.cursors.DictCursor,
-        read_timeout=10,
-        write_timeout=10,
-    )
+    conn = connect_db()
     try:
         yield conn
     finally:
