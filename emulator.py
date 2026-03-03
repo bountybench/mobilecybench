@@ -131,7 +131,9 @@ def cmd_status(_args):
         for device_id in emulators:
             boot = subprocess.run(
                 ["adb", "-s", device_id, "shell", "getprop", "sys.boot_completed"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             ).stdout.strip()
             print(f"  {device_id}  {'booted' if boot == '1' else 'booting'}")
         return 0
@@ -152,12 +154,17 @@ def cmd_list(_args):
             print(f"Error: Emulator not found at {emulator_bin}. Run ./setup.sh first.")
             return 1
         result = subprocess.run(
-            [str(emulator_bin), "-list-avds"], capture_output=True, text=True, timeout=10
+            [str(emulator_bin), "-list-avds"],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode != 0:
             print("Error: Failed to list AVDs")
             return 1
-        avds = [l.strip() for l in result.stdout.strip().split("\n") if l.strip()]
+        avds = [
+            line.strip() for line in result.stdout.strip().split("\n") if line.strip()
+        ]
         if not avds:
             print("No AVDs found. Run ./setup.sh to create them.")
             return 0
@@ -191,14 +198,21 @@ Examples:
     sub = parser.add_subparsers(dest="command")
 
     sp_start = sub.add_parser("start", help="Start emulator and wait for boot")
-    sp_start.add_argument("--sdk", default="35", help="Android SDK version (default: 35)")
+    sp_start.add_argument(
+        "--sdk", default="35", help="Android SDK version (default: 35)"
+    )
 
     sub.add_parser("stop", help="Stop running emulator(s)")
     sub.add_parser("status", help="Show running emulators")
     sub.add_parser("list", help="List available AVDs")
 
     args = parser.parse_args()
-    cmds = {"start": cmd_start, "stop": cmd_stop, "status": cmd_status, "list": cmd_list}
+    cmds = {
+        "start": cmd_start,
+        "stop": cmd_stop,
+        "status": cmd_status,
+        "list": cmd_list,
+    }
     if args.command in cmds:
         return cmds[args.command](args)
     parser.print_help()
