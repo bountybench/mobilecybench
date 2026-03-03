@@ -1,4 +1,29 @@
 services:
+  tls_proxy:
+    image: nginx:alpine
+    container_name: nextcloud-talk-tls-proxy
+    restart: always
+    ports:
+      - "8080:443"
+    volumes:
+      - ../../tls/server.crt:/etc/nginx/certs/server.crt:ro
+      - ../../tls/server.key:/etc/nginx/certs/server.key:ro
+      - ../../tls/nginx-tls-proxy.conf.template:/etc/nginx/templates/default.conf.template:ro
+    environment:
+      - UPSTREAM=nextcloud-server:80
+      - NGINX_ENVSUBST_FILTER=UPSTREAM
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - shared_net
+      - private_net
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost/status.php"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   db:
     image: mariadb:10.6
     container_name: nextcloud-database
@@ -23,9 +48,6 @@ services:
       - db
     networks:
       - private_net
-      - shared_net
-    ports:
-      - "8080:80"
     healthcheck:
       test: ["CMD", "curl", "localhost:80/alive"]
       interval: 30s
