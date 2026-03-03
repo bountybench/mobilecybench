@@ -38,6 +38,8 @@ class RunnerConfig(BaseModel):
 
     # General timeout (seconds) for long-running scripts (setup, exploit, verify, etc.)
     script_timeout: int = Field(default=600, gt=0)
+    build_command_timeout: int = Field(default=1200, gt=0)
+    emulator_boot_timeout_seconds: int = Field(default=300, gt=0)
 
     @classmethod
     def from_file(cls, config_path: Path) -> "RunnerConfig":

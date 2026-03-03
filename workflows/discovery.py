@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from utils.logger import logger, logger_manager
+from utils.setup_utils import check_connectivity
 from workflows.base import Workflow
 
 
@@ -56,7 +57,9 @@ class DiscoveryWorkflow(Workflow):
         setup_apk(self.app_dir, self.config.build_type, self.project_root)
 
         # Explicit boot gate — emulator must be ready before CA injection
-        self.emulator.wait_until_ready()
+        self.emulator.wait_until_ready(
+            timeout=self.config.emulator_boot_timeout_seconds
+        )
 
         # Inject system CA so apps trust local HTTPS backends
         from utils.emulator_certs import inject_system_ca
@@ -69,6 +72,7 @@ class DiscoveryWorkflow(Workflow):
             self.emulator,
             self.project_root,
             start_ssrf=True,
+            build_command_timeout=self.config.build_command_timeout,
         )
 
         # Setup agent container
@@ -79,9 +83,7 @@ class DiscoveryWorkflow(Workflow):
             workflow="discovery",
         )
 
-        # TODO(robustness): call check_connectivity() here to fail fast on
-        # infra issues before running the agent
-        # (see utils.setup_utils.check_connectivity)
+        check_connectivity(self.agent_env.container, self.metadata.get("app_server"))
 
     def evaluate(self) -> dict:
         """Evaluate using probe-based checks."""
@@ -112,11 +114,14 @@ class DiscoveryWorkflow(Workflow):
         if not container_names:
             env["SKIP_SSRF_CHECK"] = "1"
 
-        # TODO(robustness): run_checks.sh has no timeout — a hung probe
-        # script blocks the runner indefinitely. Use script_timeout
-        # (already accepted by __init__) or run_with_progress.
         try:
-            result = cmd.run(command, cwd=self.project_root, check=False, env=env)
+            result = cmd.run(
+                command,
+                cwd=self.project_root,
+                check=False,
+                env=env,
+                timeout=self.config.script_timeout,
+            )
             if result.stdout:
                 logger.info(result.stdout)
             if result.stderr:
