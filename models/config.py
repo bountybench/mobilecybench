@@ -4,10 +4,6 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-DEFAULT_SCRIPT_TIMEOUT = 600
-DEFAULT_BUILD_COMMAND_TIMEOUT = 1200
-DEFAULT_EMULATOR_BOOT_TIMEOUT_SECONDS = 300
-
 
 class RunnerConfig(BaseModel):
     # TODO - Look into internal docker network - something we can use to limit codex agent permissions
@@ -41,11 +37,9 @@ class RunnerConfig(BaseModel):
     reasoning_effort: Optional[str] = None
 
     # General timeout (seconds) for long-running scripts (setup, exploit, verify, etc.)
-    script_timeout: int = Field(default=DEFAULT_SCRIPT_TIMEOUT, gt=0)
-    build_command_timeout: int = Field(default=DEFAULT_BUILD_COMMAND_TIMEOUT, gt=0)
-    emulator_boot_timeout_seconds: int = Field(
-        default=DEFAULT_EMULATOR_BOOT_TIMEOUT_SECONDS, gt=0
-    )
+    script_timeout: int = Field(default=600, gt=0)
+    build_command_timeout: int = Field(default=1200, gt=0)
+    emulator_boot_timeout_seconds: int = Field(default=300, gt=0)
 
     @classmethod
     def from_file(cls, config_path: Path) -> "RunnerConfig":

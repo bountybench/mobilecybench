@@ -2,11 +2,6 @@
 
 from pathlib import Path
 
-from models.config import (
-    DEFAULT_BUILD_COMMAND_TIMEOUT,
-    DEFAULT_EMULATOR_BOOT_TIMEOUT_SECONDS,
-    DEFAULT_SCRIPT_TIMEOUT,
-)
 from utils.logger import logger, logger_manager
 from utils.setup_utils import check_connectivity
 from workflows.base import Workflow
@@ -19,49 +14,6 @@ class DiscoveryWorkflow(Workflow):
     The agent explores the codebase, identifies vulnerabilities,
     and creates an exploit. Evaluation uses probe-based checks.
     """
-
-    def __init__(
-        self,
-        app_name: str,
-        app_dir: Path,
-        model: str,
-        max_iterations: int,
-        max_model_response_tokens: int,
-        script_timeout: int = DEFAULT_SCRIPT_TIMEOUT,
-        build_command_timeout: int = DEFAULT_BUILD_COMMAND_TIMEOUT,
-        emulator_boot_timeout_seconds: int = DEFAULT_EMULATOR_BOOT_TIMEOUT_SECONDS,
-        screenshot_mode: bool = False,
-        build_type: str = "source",
-        agent_image: str = "cybench/mobilecybench:latest",
-        project_root: Optional[Path] = None,
-        dry_run: bool = False,
-        reasoning_effort: Optional[str] = None,
-        docker_mode: bool = False,
-        emulator_mode: str = "native",
-    ):
-        self.app_name = app_name
-        self.app_dir = app_dir
-        self.model = model
-        self.max_iterations = max_iterations
-        self.max_model_response_tokens = max_model_response_tokens
-        self.script_timeout = script_timeout
-        self.build_command_timeout = build_command_timeout
-        self.emulator_boot_timeout_seconds = emulator_boot_timeout_seconds
-        self.screenshot_mode = screenshot_mode
-        self.build_type = build_type
-        self.agent_image = agent_image
-        self.project_root = project_root or Path(__file__).parent.parent
-        self.dry_run = dry_run
-        self.reasoning_effort = reasoning_effort
-        self.docker_mode = docker_mode
-        self.emulator_mode = emulator_mode
-
-        # Set during setup
-        self.metadata: dict = {}
-        self.emulator = None
-        self.agent_env = None
-        self.agent = None
-        self.agent_result: dict = {}
 
     def validate_arguments(self) -> None:
         """Validate that app directory exists and has required files."""
@@ -105,7 +57,9 @@ class DiscoveryWorkflow(Workflow):
         setup_apk(self.app_dir, self.config.build_type, self.project_root)
 
         # Explicit boot gate — emulator must be ready before CA injection
-        self.emulator.wait_until_ready(timeout=self.emulator_boot_timeout_seconds)
+        self.emulator.wait_until_ready(
+            timeout=self.config.emulator_boot_timeout_seconds
+        )
 
         # Inject system CA so apps trust local HTTPS backends
         from utils.emulator_certs import inject_system_ca
@@ -118,7 +72,7 @@ class DiscoveryWorkflow(Workflow):
             self.emulator,
             self.project_root,
             start_ssrf=True,
-            build_command_timeout=self.build_command_timeout,
+            build_command_timeout=self.config.build_command_timeout,
         )
 
         # Setup agent container
@@ -166,7 +120,7 @@ class DiscoveryWorkflow(Workflow):
                 cwd=self.project_root,
                 check=False,
                 env=env,
-                timeout=self.script_timeout,
+                timeout=self.config.script_timeout,
             )
             if result.stdout:
                 logger.info(result.stdout)

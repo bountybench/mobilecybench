@@ -5,7 +5,6 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from models.config import DEFAULT_BUILD_COMMAND_TIMEOUT
 from utils.logger import logger
 
 
@@ -13,10 +12,11 @@ def install_app_and_setup_backend(
     app_dir: Path,
     emulator,
     project_root: Path,
+    *,
+    build_command_timeout: int,
     start_ssrf: bool = False,
     apk_path: Optional[Path] = None,
     inject_flags: bool = True,
-    build_command_timeout: int = DEFAULT_BUILD_COMMAND_TIMEOUT,
 ) -> None:
     """
     Install the app and set up backend services.
