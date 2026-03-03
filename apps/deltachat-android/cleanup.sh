@@ -15,6 +15,7 @@ if [ -d "$SCRIPT_DIR/docker-data" ]; then
     rm -rf "$SCRIPT_DIR/docker-data" 2>/dev/null || true
 fi
 
-# Clean up vuln scenario backups
-rm -f "$SCRIPT_DIR/vuln_scenarios/vuln_scenario_0/accounts.json.bak"
+ACCOUNTS_BACKUP="$SCRIPT_DIR/vuln_scenarios/vuln_scenario_0/accounts.json.bak"
+[ -f "$ACCOUNTS_BACKUP" ] && cp "$ACCOUNTS_BACKUP" "$SCRIPT_DIR/accounts.json"
+rm -f "$ACCOUNTS_BACKUP"
 rm -f "$SCRIPT_DIR/vuln_scenarios/vuln_scenario_0/fake_agent_log.log"

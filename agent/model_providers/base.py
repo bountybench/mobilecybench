@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
+from pydantic import BaseModel, Field
 
-@dataclass
-class FunctionCall:
+
+class FunctionCall(BaseModel):
     """A single function/tool call from the model."""
 
     name: str
@@ -14,13 +14,12 @@ class FunctionCall:
     call_id: str
 
 
-@dataclass
-class ProviderResponse:
+class ProviderResponse(BaseModel):
     """Normalized response from any model provider."""
 
     response_id: str
     assistant_text: str
-    function_calls: List[FunctionCall] = field(default_factory=list)
+    function_calls: List[FunctionCall] = Field(default_factory=list)
     reasoning_summary: str = ""
     raw_response: Any = None  # For TokenTracker compatibility
 

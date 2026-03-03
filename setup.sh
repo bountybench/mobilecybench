@@ -4,6 +4,15 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="${SCRIPT_DIR}/setup.log"
+
+# If running within an experiment, redirect log to the experiment directory
+if [[ -n "$MOBILECYBENCH_SESSION_ID" ]]; then
+    EXP_LOG_DIR="${SCRIPT_DIR}/logs/experiment_${MOBILECYBENCH_SESSION_ID}"
+    if [[ -d "$EXP_LOG_DIR" ]]; then
+        LOG_FILE="${EXP_LOG_DIR}/setup.log"
+    fi
+fi
+
 ANDROID_HOME="${HOME}/.android-sdk"
 EMULATOR_NAME="MobileCybenchEmu"
 
@@ -467,6 +476,11 @@ setup_environment() {
     export ANDROID_HOME="$ANDROID_HOME"
     export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
     
+    # Propagate session ID if present
+    if [[ -n "$MOBILECYBENCH_SESSION_ID" ]]; then
+        export MOBILECYBENCH_SESSION_ID="$MOBILECYBENCH_SESSION_ID"
+    fi
+
     # Add to shell profile
     local shell_profile=""
     

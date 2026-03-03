@@ -8,28 +8,20 @@ This runner uses the Workflow abstraction to handle different evaluation modes:
 """
 
 import argparse
-import datetime
 import json
-import os
+import subprocess
 import sys
 from pathlib import Path
-
-
-def _bootstrap_runner_session_id() -> str:
-    """Ensure runner process owns and exports a run/session ID."""
-    run_id = os.environ.get("MOBILECYBENCH_SESSION_ID")
-    if run_id:
-        return run_id
-    run_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    os.environ["MOBILECYBENCH_SESSION_ID"] = run_id
-    return run_id
-
-
-_bootstrap_runner_session_id()
+from typing import Optional
 
 from models.config import RunnerConfig  # noqa: E402
 from utils.git_utils import ensure_app_submodule  # noqa: E402
 from utils.logger import logger, logger_manager  # noqa: E402
+from utils.run_artifacts import (
+    normalize_agent_result,
+    utc_now_iso,
+    write_run_summary,
+)  # noqa: E402
 from utils.time_tracker import time_tracker  # noqa: E402
 from workflows import DiscoveryWorkflow, ExploitWorkflow, Workflow  # noqa: E402
 
@@ -113,29 +105,9 @@ def create_workflow(
     Returns:
         Workflow instance (DiscoveryWorkflow or ExploitWorkflow)
     """
-    app_dir = project_root / "apps" / app_name
-
-    # Common parameters for both workflows
-    common_params = {
-        "app_name": app_name,
-        "app_dir": app_dir,
-        "model": config.model,
-        "max_iterations": config.max_iterations,
-        "max_model_response_tokens": config.max_model_response_tokens,
-        "screenshot_mode": config.screenshot_mode,
-        "build_type": config.build_type,
-        "agent_image": config.agent_image,
-        "project_root": project_root,
-        "dry_run": config.dry_run,
-        "reasoning_effort": config.reasoning_effort,
-        "docker_mode": config.docker_mode,
-        "emulator_mode": config.emulator_mode,
-    }
-
     if config.workflow == "exploit":
-        return ExploitWorkflow(**common_params, vuln_id=config.synthetic_vuln_id)
-    else:
-        return DiscoveryWorkflow(**common_params)
+        return ExploitWorkflow(config, app_name, project_root)
+    return DiscoveryWorkflow(config, app_name, project_root)
 
 
 def _log_experiment_config(
@@ -168,7 +140,12 @@ def _log_experiment_config(
     )
 
 
-def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
+def run(
+    config: RunnerConfig,
+    app_name: str,
+    project_root: Path,
+    config_path: Optional[Path] = None,
+) -> int:
     """
     Execute the evaluation workflow.
 
@@ -187,11 +164,21 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
     logger.info(f"Created {workflow_type} for app: {app_name}")
 
     # Start experiment timing with the shared session ID
-    run_id = logger_manager.get_session_id()
+    run_id = logger_manager.get_run_id()
+    logger_manager.update_latest_symlink()
+    started_at = utc_now_iso()
+    start_error_count = logger_manager.get_error_count()
+    timing_start_idx = len(time_tracker.llm_calls)
     time_tracker.start_experiment(app_name, run_id=run_id)
 
+    run_result: dict = normalize_agent_result(None)
+    evaluation: dict = {}
+    outcome = "failure"
+    exit_reason = "runtime_exception"
+    exit_code = 1
+
     try:
-        logger.info("Step 1/5: Validating arguments...")
+        logger.info("Validating arguments...")
         workflow.validate_arguments()
         logger.info("Arguments validated")
 
@@ -200,24 +187,30 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
         # Log structured experiment configuration for observability
         _log_experiment_config(config, app_name, workflow)
 
-        logger.info("Step 2/5: Setting up runtime environment...")
+        logger.info("Setting up runtime environment...")
         workflow.setup_runtime_environment()
         logger.info("Runtime environment ready")
 
         if config.dry_run:
             logger.info("Dry run mode - launching interactive shell...")
-            run_interactive_shell(app_name)
+            run_result = normalize_agent_result(run_interactive_shell(app_name))
+            run_result["status"] = "dry_run_completed"
             logger.info("Interactive shell exited")
+            outcome = "success"
+            exit_reason = "dry_run_completed"
+            exit_code = 0
         else:
-            logger.info("Step 3/5: Setting up agent...")
+            logger.info("Configuring agent...")
             workflow.setup_agent()
             logger.info("Agent configured")
 
-            logger.info("Step 4/5: Running agent...")
-            result = workflow.run_agent()
-            logger.info(f"Agent completed: {result.get('status', 'unknown')}")
+            logger.info("Starting agent execution...")
+            run_result = normalize_agent_result(workflow.run_agent())
+            logger.info(
+                f"Agent execution completed: {run_result.get('status', 'unknown')}"
+            )
 
-            # Save agent artifacts (exploit_files, agent_output) while container is alive
+            # Save agent artifacts (agent_exploit, agent_output) while container is alive
             workflow.save_artifacts(logger_manager.get_logs_dir())
 
             # Kill the agent container before evaluation so verify scripts
@@ -226,39 +219,68 @@ def run(config: RunnerConfig, app_name: str, project_root: Path) -> int:
             if workflow.agent_env:
                 workflow.agent_env.cleanup()
 
-            logger.info("Step 5/5: Evaluating results...")
-            scores = workflow.evaluate()
-            logger.info(f"Evaluation complete: {scores}")
-
-        return 0
+            logger.info("Evaluating results...")
+            evaluation = workflow.evaluate() or {}
+            logger.info(f"Evaluation complete: {evaluation}")
+            outcome = "success"
+            exit_reason = "completed"
+            exit_code = 0
 
     except ValueError as e:
         logger.error(f"Validation error: {e}")
-        return 1
+        exit_reason = "validation_error"
+        exit_code = 1
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error(f"Error: {e}")
+
         import traceback
 
         logger.error(traceback.format_exc())
-        return 1
+        exit_reason = "runtime_exception"
+        exit_code = 1
     finally:
         # Finalize experiment timing
         time_tracker.end_experiment()
-        try:
-            time_tracker.save_json(
-                logger_manager.get_logs_dir()
-                / f"timing_{logger_manager.get_session_id()}.json"
-            )
-        except Exception as e:
-            logger.warning(f"Failed to save timing JSON: {e}")
         time_tracker.log_summary(logger)
 
         # Always cleanup resources (emulator, containers, restore APKs)
         logger.info("Cleaning up resources...")
+
+        # Capture Logcat before stopping emulator
+        if workflow.emulator:
+            try:
+                logcat_path = logger_manager.get_logs_dir() / "android_system.log"
+                logger.info(f"Capturing Android Logcat to {logcat_path}...")
+
+                # Use subprocess directly since emulator.execute_adb_command doesn't exist
+                with open(logcat_path, "w") as f:
+                    subprocess.run(["adb", "logcat", "-d"], stdout=f, timeout=10)
+            except Exception as e:
+                logger.warning(f"Failed to capture logcat: {e}")
+
         try:
             workflow.cleanup()
         except Exception as cleanup_error:
             logger.warning(f"Cleanup error: {cleanup_error}")
+
+        write_run_summary(
+            project_root=project_root,
+            run_id=run_id,
+            app_name=app_name,
+            config=config,
+            config_path=config_path,
+            workflow=workflow,
+            run_result=run_result,
+            evaluation=evaluation,
+            outcome=outcome,
+            exit_reason=exit_reason,
+            started_at=started_at,
+            ended_at=utc_now_iso(),
+            start_error_count=start_error_count,
+            timing_start_idx=timing_start_idx,
+        )
+
+    return exit_code
 
 
 def main():
@@ -274,17 +296,19 @@ def main():
 
     # Load config
     config_path = Path(args.config)
-    if not config_path.exists():
-        logger.error(f"Config file not found: {config_path}")
+    try:
+        config = RunnerConfig.from_file(config_path)
+    except (FileNotFoundError, ValueError) as e:
+        logger.error(str(e))
         return 1
-
-    with open(config_path) as f:
-        config_data = json.load(f)
-
-    config = RunnerConfig(**config_data)
     project_root = Path(__file__).parent
 
-    exit_code = run(config, args.app_name, project_root)
+    # Initialize LoggerManager with config before any logging occurs
+    from utils.logger import get_logger_manager
+
+    get_logger_manager(config=config.model_dump())
+
+    exit_code = run(config, args.app_name, project_root, config_path=config_path)
 
     # Print error summary at the very end for better visibility
     logger_manager.print_error_summary()

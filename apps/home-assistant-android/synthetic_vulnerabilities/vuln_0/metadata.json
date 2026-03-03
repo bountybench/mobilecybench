@@ -1,0 +1,16 @@
+{
+  "title": "Deep Link Host Validation Bypass (SSRF)",
+  "cwe_id": "CWE-918",
+  "cwe_name": "Server-Side Request Forgery (SSRF)",
+  "historic_cve": "CVE-2025-14516",
+  "cvss_historic": {
+    "base_score": 6.3,
+    "severity": "MEDIUM",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:L"
+  },
+  "cvss_synthetic": {
+    "base_score": 5.4,
+    "severity": "MEDIUM",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:L"
+  }
+}

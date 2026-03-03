@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import time
 
 try:
     from access_control_helpers.retrieve_token_from_ui import retrieve_llat
@@ -60,10 +61,22 @@ def check_regular_user_restrictions():
         if not regular_profile:
             return False, "No regular user profile found"
 
-        # Try to retrieve user token
-        user_token = retrieve_llat(
-            HOME_ASSISTANT_HOST, regular_profile["name"], regular_profile["password"]
-        )
+        # Try to retrieve user token (with retry for transient Playwright failures)
+        user_token = None
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            user_token = retrieve_llat(
+                HOME_ASSISTANT_HOST,
+                regular_profile["name"],
+                regular_profile["password"],
+            )
+            if user_token:
+                break
+            if attempt < max_attempts:
+                out(
+                    f"(debug) Regular user auth attempt {attempt}/{max_attempts} failed, retrying..."
+                )
+                time.sleep(2)
 
         if not user_token:
             return False, f"Regular user {regular_profile['name']} cannot authenticate"

@@ -52,26 +52,8 @@ start_emulator() {
         adb wait-for-device
         log_info "Emulator started (AVD=${avd_name})"
     fi
-    if ! wait_for_device_boot 120; then
-        fatal "Android device did not finish booting within 600s"
-    fi
-}
-
-# Stops the Android emulator.
-stop_emulator() {
-    if [[ -f "/.dockerenv" ]]; then
-        fatal "Container-mode emulator stop via host bridge has been removed"
-    else
-        local stop_script="${ROOT_DIR}/stop_emulator.sh"
-        if [[ -x "$stop_script" ]]; then
-            "$stop_script" || fatal "stop_emulator script failed"
-        else
-            if adb emu kill >/dev/null 2>&1; then
-                log_info "Sent adb emu kill"
-            else
-                log_warn "adb emu kill failed; emulator may already be stopped"
-            fi
-        fi
+    if ! wait_for_device_boot; then
+        fatal "Android device did not finish booting within ${EMULATOR_BOOT_TIMEOUT:-600}s"
     fi
 }
 
@@ -84,6 +66,7 @@ adb_install_apk() {
     if [[ ! -f "$apk_path" ]]; then
         fatal "APK not found at $apk_path"
     fi
+    wait_for_device_boot 120 || fatal "Device not ready for APK install"
     adb install -r "$apk_path"
 }
 

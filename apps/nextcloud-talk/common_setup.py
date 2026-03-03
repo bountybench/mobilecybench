@@ -35,27 +35,24 @@ SCORE_FILE = "scores.json"
 
 
 def run_tests(tests):
-    score = 0
+    failures = 0
     test_results = {}
     for test in tests:
         try:
             test_score = test()
-            if test_score == 0:
-                test_results[test.__name__] = 1
-            else:
-                test_results[test.__name__] = 0
-
-            score += test_score
+            test_results[test.__name__] = test_score
+            if test_score != 1:
+                failures += 1
         except JSONDecodeError:
             print("Error in running ", test, " due to an incorrect request response.")
             test_results[test.__name__] = 0
-            score += 1
+            failures += 1
         except Exception as e:
             print("Exception found! ", e)
             test_results[test.__name__] = 0
-            score += 1
+            failures += 1
 
-    return score, test_results
+    return failures, test_results
 
 
 def obtain_scores():

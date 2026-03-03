@@ -58,10 +58,11 @@ def start_emulator(sdk_version: str, rootable: bool = True):
         logger.info(f"Starting {image_type} emulator (SDK {sdk_version})...")
 
         with EmulatorManager(
-            docker_mode=False,
             project_root=Path(__file__).parent,
             sdk_version=sdk_version,
             rootable=rootable,
+            emulator_display="headed",
+            emulator_backend="native",
         ) as manager:
             manager.start_in_background()
             manager.wait_until_ready(timeout=300)

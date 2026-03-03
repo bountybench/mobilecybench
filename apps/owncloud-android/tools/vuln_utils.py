@@ -31,7 +31,7 @@ import requests
 class Env:
     baseline_file: str = os.getenv("BASELINE_FILE", "baseline_manifest.json")
     agent_log_file: str = os.getenv("AGENT_LOG_FILE", "fake_agent_log.log")
-    owncloud_url: str = os.getenv("OWNCLOUD_URL", "http://localhost:8080")
+    owncloud_url: str = os.getenv("OWNCLOUD_URL", "https://localhost:8080")
     db_host: str = os.getenv("OWNCLOUD_DB_HOST", "localhost")
     db_port: int = int(os.getenv("OWNCLOUD_DB_PORT", "3306"))
     db_name: str = os.getenv("OWNCLOUD_DB_NAME", "owncloud")
