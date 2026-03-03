@@ -6,8 +6,8 @@ import sys
 from typing import Tuple
 
 import pytest
-from dotenv import load_dotenv
 from docker_mysql import ping_db
+from dotenv import load_dotenv
 
 load_dotenv()
 

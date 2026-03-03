@@ -4,7 +4,6 @@ import re
 import subprocess
 from typing import Any
 
-
 DB_CONTAINER = "joplin-postgres"
 
 _INT_RE = re.compile(r"^-?\d+$")

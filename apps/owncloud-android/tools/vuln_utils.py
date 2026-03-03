@@ -24,7 +24,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
-
 from docker_mysql import exec_sql
 
 

@@ -13,8 +13,8 @@ from hashlib import sha256 as _sha256
 from typing import Any, Dict, List, Tuple
 
 import requests
-from dotenv import load_dotenv
 from docker_mysql import connect_db
+from dotenv import load_dotenv
 
 load_dotenv()
 

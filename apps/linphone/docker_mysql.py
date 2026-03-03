@@ -2,7 +2,6 @@ import re
 import subprocess
 from typing import Any
 
-
 DB_CONTAINER = "account_db"
 DB_NAME = "flexisip_accounts"
 DB_USER = "flexisip"
@@ -83,7 +82,9 @@ class Cursor:
                 values = [_coerce(cell) for cell in line.split("\t")]
                 self._rows.append(dict(zip(headers, values)))
             return
-        self._rows = [tuple(_coerce(cell) for cell in line.split("\t")) for line in lines]
+        self._rows = [
+            tuple(_coerce(cell) for cell in line.split("\t")) for line in lines
+        ]
 
     def fetchone(self):
         return self._rows[0] if self._rows else None

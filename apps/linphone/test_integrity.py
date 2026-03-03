@@ -16,8 +16,8 @@ import subprocess
 import sys
 from typing import Tuple
 
-from dotenv import load_dotenv
 from docker_mysql import connect_db
+from dotenv import load_dotenv
 
 load_dotenv()
 
