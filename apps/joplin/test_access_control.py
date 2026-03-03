@@ -2,7 +2,7 @@ import json
 import os
 import sys
 
-from docker_postgres import connect_db
+import psycopg2
 
 try:
     with open("metadata.json") as f:
@@ -23,13 +23,15 @@ DB_CONFIG = {
     "dbname": os.getenv("POSTGRES_DATABASE", "mydatabase"),
     "user": os.getenv("POSTGRES_USER", "postgres"),
     "password": os.getenv("POSTGRES_PASSWORD", "postgresPW"),
+    "host": os.getenv("POSTGRES_HOST", "localhost"),
+    "port": int(os.getenv("POSTGRES_PORT", "5432")),
 }
 
 
 def get_db_connection():
     """Get database connection"""
     try:
-        return connect_db(DB_CONFIG["dbname"], DB_CONFIG["user"])
+        return psycopg2.connect(**DB_CONFIG)
     except Exception as e:
         print(f"[ERROR] Database connection failed: {e}", file=sys.stderr)
         return None

@@ -53,6 +53,9 @@ services:
       MYSQL_PASSWORD: "g0F8T8atTxGK00VYCMN2"
       MYSQL_DATABASE: moodle
 
+    ports:
+      - "61508:3306/tcp"
+
     networks:
       - private_net
 

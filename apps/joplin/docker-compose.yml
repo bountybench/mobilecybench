@@ -5,6 +5,8 @@ services:
         image: postgres:16
         networks:
             - private_net
+        ports:
+            - "5432:5432"
         env_file:
             - .env
         environment:
