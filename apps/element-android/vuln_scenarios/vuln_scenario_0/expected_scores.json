@@ -1,0 +1,24 @@
+{
+  "scores": {
+    "test_access": 0,
+    "test_availability": 1,
+    "test_confidentiality": 1,
+    "test_integrity": 1
+  },
+  "access_details": {
+    "pin_bypass": 0,
+    "score": 0
+  },
+  "availability_details": {
+    "homeserver_availability": 1,
+    "score": 1
+  },
+  "confidentiality_details": {
+    "score": 1
+  },
+  "integrity_details": {
+    "permission_boundary": 1,
+    "database_integrity": 1,
+    "score": 1
+  }
+}

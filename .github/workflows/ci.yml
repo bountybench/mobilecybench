@@ -70,6 +70,12 @@ jobs:
             echo "EOF" >> $GITHUB_OUTPUT
           fi
 
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip -q
+          pip install -r requirements.txt -q
+          pip install -e .
+
       - name: Build job matrices
         if: steps.modified-dirs.outputs.should_exit != 'true'
         id: build-matrices
@@ -178,6 +184,15 @@ jobs:
                 done
                 [ "$missing_files" = true ] && continue
 
+                # Validate metadata.json schema
+                echo "  Validating metadata.json schema for $vuln_id..."
+                if ! python3 -m pytest --no-header -q \
+                  tests/test_synthetic_vuln_metadata.py::test_synthetic_vuln_metadata \
+                  --dirs "${vuln_dir}"; then
+                  echo "  ERROR: metadata.json schema validation failed for ${vuln_dir}/metadata.json"
+                  exit 1
+                fi
+
                 # Use apklink if available, but force source if vulnerability.patch or build.sh changed
                 synth_mode="source"
                 if [ "$has_apklink" = true ]; then
@@ -244,12 +259,6 @@ jobs:
           echo "apk_jobs=$apk_jobs" >> "$GITHUB_OUTPUT"
           echo "test_jobs=$test_jobs" >> "$GITHUB_OUTPUT"
 
-      - name: Install test dependencies
-        run: |
-          python -m pip install --upgrade pip -q
-          pip install -r requirements.txt -q
-          pip install -e .
-
       - name: Run unit tests
         if: steps.modified-dirs.outputs.has_non_app_changes == 'true'
         run: |
@@ -283,7 +292,7 @@ jobs:
     needs: setup
     if: needs.setup.outputs.should_exit != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       matrix:
         include: ${{ fromJson(needs.setup.outputs.apk_jobs) }}
@@ -652,7 +661,7 @@ jobs:
                 echo "  Testing connection to $host:$port via shared_net..."
                 docker run --rm --network=shared_net alpine:latest \
                   sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
-                
+
                 echo "shared_net connectivity verified"
               else
                 echo "No app_server defined in metadata.json, skipping connectivity check"
@@ -1084,27 +1093,29 @@ jobs:
             # Wait for app containers
             check_app_containers_ready
 
-            # Start exploit container
-            container_name="mobilecybench-exploit-$$"
-            AGENT_HOST_PORT=9999
-            echo "Starting exploit container: $container_name"
-            docker run -d \
-              --name "$container_name" \
-              --network=shared_net \
-              --add-host=host.docker.internal:host-gateway \
-              -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
-              -e AGENT_SERVER_PORT=${AGENT_HOST_PORT} \
-              -p ${AGENT_HOST_PORT}:${AGENT_HOST_PORT} \
-              -v "$exploit_files_path:/app/exploit_files" \
-              "$EXPLOIT_IMAGE" \
-              tail -f /dev/null
+            # Optional per-vuln host-side app preparation hook.
+            # This runs before the exploit container starts so the device is in a known state.
+            prepare_app_hook="${vuln_dir}/prepare_app.sh"
+            if [ -f "$prepare_app_hook" ]; then
+              echo "Running prepare_app hook: $prepare_app_hook"
+              if ! timeout 300 bash "$prepare_app_hook"; then
+                echo "ERROR: prepare_app.sh failed or timed out"
+                return 1
+              fi
+            else
+              echo "No prepare_app hook found (skipping)"
+            fi
 
-            # Run exploit
-            echo "Running exploit script..."
-            docker exec "$container_name" bash /app/exploit_files/exploit.sh || true
-
-            # Cleanup exploit container
-            docker rm -f "$container_name" 2>/dev/null || true
+            agent_output_path="$(pwd)/${vuln_dir}/agent_output"
+            rm -rf "$agent_output_path"
+            mkdir -p "$agent_output_path"
+            if ! "${GITHUB_WORKSPACE}/utils/run_exploit_container.sh" \
+              --exploit-dir "$exploit_files_path" \
+              --output-dir "$agent_output_path" \
+              --image "$EXPLOIT_IMAGE"; then
+              echo "ERROR: Exploit container execution failed"
+              return 1
+            fi
 
             # Run verification on host
             echo "Running verification script..."
@@ -1114,6 +1125,12 @@ jobs:
             verify_exit=$?
             set -e
 
+            # Exit codes: 0 = vulnerable, 1 = not vulnerable, >1 = verifier error
+            if [ "$verify_exit" -gt 1 ]; then
+              echo "ERROR: Verifier failed with unexpected exit code $verify_exit"
+              return 1
+            fi
+
             if [ "$expect_vulnerable" = "true" ]; then
               if [ "$verify_exit" -eq 0 ]; then
                 echo "SUCCESS: Vulnerable build IS vulnerable (as expected)"
@@ -1122,10 +1139,10 @@ jobs:
                 return 1
               fi
             else
-              if [ "$verify_exit" -ne 0 ]; then
+              if [ "$verify_exit" -eq 1 ]; then
                 echo "SUCCESS: Clean build is NOT vulnerable (as expected)"
               else
-                echo "ERROR: Clean build IS vulnerable (expected exit != 0, got 0)"
+                echo "ERROR: Clean build IS vulnerable (expected exit 1, got $verify_exit)"
                 return 1
               fi
             fi
@@ -1368,28 +1385,7 @@ jobs:
           
           echo "System ready for emulator. CPU: ${CPU_USAGE}%, Available Memory: ${AVAILABLE_MEM}GB"
 
-      - name: Run emulator test with action (vuln_scenario_0)
-        if: matrix.test_type == 'vuln_scenario_0'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: ${{ matrix.sdk }}
-          arch: x86_64
-          target: ${{ matrix.system_image }}
-          profile: pixel_2
-          ram-size: 2048
-          force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated -writable-system
-          disable-animations: true
-          script: |
-            # Restart ADB on all interfaces so exploit containers can reach
-            # the emulator via host.docker.internal:5037
-            adb kill-server && adb -a -P 5037 start-server
-            adb wait-for-device
-            utils/android_emulator_ready.sh --remount
-            ./test_checks.sh
-
-      - name: Run emulator test with action (other test types)
-        if: matrix.test_type != 'vuln_scenario_0'
+      - name: Run emulator test with action
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.sdk }}
@@ -1406,6 +1402,7 @@ jobs:
             adb kill-server && adb -a -P 5037 start-server
             adb wait-for-device
             utils/android_emulator_ready.sh
+            utils/inject_system_ca.sh
             ./test_checks.sh
 
       - name: Display disk space after tests

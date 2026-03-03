@@ -39,7 +39,9 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "echo > /dev/tcp/localhost/5060 || exit 1"]
       interval: 5s
+      timeout: 5s
       retries: 30
+      start_period: 30s
     networks:
       - shared_net
       - private_net

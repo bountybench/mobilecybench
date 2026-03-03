@@ -20,7 +20,7 @@ echo "==================="
 echo "Removing config files from the HA app"
 remove_config_files_for_ci
 
-echo "Stopping all services..."
+echo "Stopping all services (including ha-ssrf-listener)..."
 docker compose down -v
 
 echo "Removing any dangling containers..."

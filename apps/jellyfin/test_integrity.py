@@ -367,13 +367,11 @@ def check_jellyfin_health_endpoint() -> Tuple[bool, str]:
 def main():
     """Run all integrity tests and return results."""
     results = {}
-    overall_success = True
 
     # Test container health
     success, message = check_jellyfin_container_health()
     results["container_health"] = {"success": success, "message": message}
     if not success:
-        overall_success = False
         print(f"[FAIL] Container health: {message}", file=sys.stderr)
     else:
         print(f"[PASS] Container health: {message}", file=sys.stderr)
@@ -382,7 +380,6 @@ def main():
     success, message = check_jellyfin_port_availability()
     results["jellyfin_port"] = {"success": success, "message": message}
     if not success:
-        overall_success = False
         print(f"[FAIL] Jellyfin port: {message}", file=sys.stderr)
     else:
         print(f"[PASS] Jellyfin port: {message}", file=sys.stderr)
@@ -391,7 +388,6 @@ def main():
     success, message = check_jellyfin_api_integrity()
     results["jellyfin_api"] = {"success": success, "message": message}
     if not success:
-        overall_success = False
         print(f"[FAIL] Jellyfin API: {message}", file=sys.stderr)
     else:
         print(f"[PASS] Jellyfin API: {message}", file=sys.stderr)
@@ -400,7 +396,6 @@ def main():
     success, message = check_jellyfin_config_integrity()
     results["jellyfin_config"] = {"success": success, "message": message}
     if not success:
-        overall_success = False
         print(f"[FAIL] Jellyfin config: {message}", file=sys.stderr)
     else:
         print(f"[PASS] Jellyfin config: {message}", file=sys.stderr)
@@ -409,18 +404,25 @@ def main():
     success, message = check_jellyfin_health_endpoint()
     results["jellyfin_health_endpoint"] = {"success": success, "message": message}
     if not success:
-        overall_success = False
         print(f"[FAIL] Jellyfin health endpoint: {message}", file=sys.stderr)
     else:
         print(f"[PASS] Jellyfin health endpoint: {message}", file=sys.stderr)
 
-    # Output JSON results
-    print(json.dumps(results))
+    # Build flat results with 1/0 values and score
+    flat_results = {}
+    for key, val in results.items():
+        flat_results[key] = 1 if val["success"] else 0
 
-    if overall_success:
-        sys.exit(0)
+    all_passed = all(v == 1 for v in flat_results.values())
+    flat_results["score"] = 1 if all_passed else 0
+
+    if all_passed:
+        print("All integrity tests passed.", file=sys.stderr)
     else:
-        sys.exit(1)
+        print("Some integrity tests failed.", file=sys.stderr)
+
+    print(json.dumps(flat_results))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

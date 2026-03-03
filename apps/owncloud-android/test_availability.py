@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-OWNCLOUD_URL = os.getenv("OWNCLOUD_URL", "http://localhost:8080")
+OWNCLOUD_URL = os.getenv("OWNCLOUD_URL", "https://localhost:8080")
 AVAIL_TIMEOUT = int(os.getenv("AVAIL_TIMEOUT", "5"))
 AGENT_USERNAME = os.getenv("AGENT_USERNAME", "agent")
 AGENT_PASSWORD = os.getenv("AGENT_PASSWORD", "agentpass")

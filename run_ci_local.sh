@@ -197,7 +197,7 @@ verify_shared_net_connectivity() {
             echo "  Testing connection to $host:$port via shared_net..."
             docker run --rm --network=shared_net alpine:latest \
                 sh -c "nc -z -w 30 $host $port || (echo 'ERROR: Cannot reach app server via shared_net' && exit 1)"
-            
+
             echo "shared_net connectivity verified"
         else
             echo "No app_server defined in metadata.json, skipping connectivity check"
@@ -458,49 +458,34 @@ run_exploit_verification() {
         return 1
     fi
 
+    # Optional per-vuln app preparation hook (runs before exploit for both clean/vulnerable phases).
+    local prepare_app_hook="$vuln_dir/prepare_app.sh"
+    if [ -f "$prepare_app_hook" ]; then
+        echo -e "${INFO} Found prepare_app hook: $prepare_app_hook"
+        if ! timeout 300 bash "$prepare_app_hook"; then
+            echo -e "${ERROR} prepare_app.sh failed or timed out: $prepare_app_hook"
+            return 1
+        fi
+        echo -e "${SUCCESS} prepare_app hook completed"
+    fi
+
     # Run exploit in container
     echo -e "${INFO} Executing exploit in container..."
-    local container_name="mobilecybench-exploit-$$"
     local exploit_image="${EXPLOIT_IMAGE:-cybench/mobilecybench:latest}"
     local exploit_files_abs_path
     exploit_files_abs_path="$(cd "$exploit_files_dir" && pwd)"
-
-    # Standard port for agent-hosted servers (emulator reaches via 10.0.2.2:9999)
-    local AGENT_HOST_PORT=9999
-
-    # Start container with exploit_files mounted at /app/exploit_files
-    # Also mount shared utils so exploit scripts can import from utils.ui_utils etc.
-    echo -e "${INFO} Starting exploit container: $container_name"
-    docker run -d \
-        --name "$container_name" \
-        --network=shared_net \
-        --add-host=host.docker.internal:host-gateway \
-        -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
-        -e AGENT_SERVER_PORT=${AGENT_HOST_PORT} \
-        -p ${AGENT_HOST_PORT}:${AGENT_HOST_PORT} \
-        -v "$exploit_files_abs_path:/app/exploit_files" \
-        -v "$ROOT_DIR/utils:/app/utils:ro" \
-        "$exploit_image" \
-        tail -f /dev/null
-
-    echo -e "${INFO} Verifying container→emulator ADB connection..."
-    if ! docker exec "$container_name" adb devices 2>/dev/null | grep -q "device$"; then
-        echo -e "${WARNING} Container cannot see the emulator via ADB."
-        echo -e "${WARNING} This is OK for network-only exploits, but exploits requiring ADB may fail."
-    else
-        echo -e "${SUCCESS} Container can access emulator via ADB"
+    local agent_output_abs_path
+    agent_output_abs_path="$(cd "$vuln_dir" && pwd)/agent_output"
+    rm -rf "$agent_output_abs_path"
+    mkdir -p "$agent_output_abs_path"
+    if ! "$ROOT_DIR/utils/run_exploit_container.sh" \
+        --exploit-dir "$exploit_files_abs_path" \
+        --output-dir "$agent_output_abs_path" \
+        --image "$exploit_image" \
+        --utils-dir "$ROOT_DIR/utils"; then
+        echo -e "${ERROR} Exploit container execution failed"
+        return 1
     fi
-
-    # Run the exploit script inside the container
-    if docker exec "$container_name" bash /app/exploit_files/exploit.sh; then
-        echo -e "${SUCCESS} Exploit executed successfully"
-    else
-        echo -e "${WARNING} Exploit execution returned non-zero exit code (may be expected)"
-    fi
-
-    # Stop and remove the container
-    echo -e "${INFO} Cleaning up exploit container..."
-    docker rm -f "$container_name" 2>/dev/null || true
     
     # Run verification
     echo -e "${INFO} Running verification..."
@@ -689,24 +674,6 @@ run_test_check() {
     # Clear SSRF requests before each test
     clear_ssrf_requests
 
-    # Mirror CI: for vuln_scenario_0 only, prepare rooted/remounted emulator BEFORE setup
-    if [ -n "$vuln_scenario" ] && [ "$vuln_scenario" = "0" ]; then
-        echo -e "${INFO} Preparing rooted/remounted emulator (CI parity for vuln_scenario_0)"
-        if [ -f "utils/android_emulator_ready.sh" ]; then
-            utils/android_emulator_ready.sh --remount || true
-        else
-            adb get-state 1>/dev/null 2>&1 || adb wait-for-device
-            adb root || true
-            adb wait-for-device
-            adb shell avbctl disable-verification || true
-            adb reboot || true
-            adb wait-for-device
-            adb root || true
-            adb remount || true
-        fi
-        adb logcat -c || true
-    fi
-    
     # Get package_name from metadata.json (required field) and verify before setup
     package_name=$(jq -r '.package_name' metadata.json)
     echo -e "${INFO} Found package_name in metadata.json: $package_name"
@@ -1029,6 +996,21 @@ run_synthetic_vuln_test() {
         exit 1
     fi
 
+    # Validate metadata.json schema
+    local metadata_file="$ROOT_DIR/$app_dir/$vuln_dir/metadata.json"
+    if [ ! -f "$metadata_file" ]; then
+        echo -e "${ERROR} metadata.json not found: $metadata_file"
+        exit 1
+    fi
+
+    echo -e "${INFO} Validating metadata.json schema..."
+    if ! python3 -m pytest --no-header -q \
+        tests/test_synthetic_vuln_metadata.py::test_synthetic_vuln_metadata \
+        --dirs "$(dirname "$metadata_file")"; then
+        echo -e "${ERROR} metadata.json schema validation failed for $metadata_file"
+        exit 1
+    fi
+
     echo -e "${SUCCESS} Synthetic vulnerability structure validated"
 
     # Get app name and package name from metadata
@@ -1241,8 +1223,11 @@ start_emulator_and_adb() {
         # Wait for device to appear
         adb wait-for-device
 
-        wait_for_device_boot 300
+        wait_for_device_boot
         echo "Emulator booted successfully."
+
+        # Ensure emulator is stopped on any exit (success or failure)
+        trap 'echo -e "${INFO} Stopping emulator due to script exit..."; cd "$ROOT_DIR"; bash ./stop_emulator.sh' EXIT
     else
         echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
     fi
@@ -1263,6 +1248,14 @@ start_emulator_and_adb() {
         done
     else
         echo -e "${SUCCESS} ADB already configured correctly"
+    fi
+
+    # Inject system CA so apps trust local HTTPS backends
+    echo -e "${INFO} Injecting system CA certificate..."
+    if [ -f "${ROOT_DIR}/utils/inject_system_ca.sh" ]; then
+        bash "${ROOT_DIR}/utils/inject_system_ca.sh" || echo -e "${WARNING} CA injection failed"
+    else
+        echo -e "${WARNING} inject_system_ca.sh not found, skipping CA injection"
     fi
 }
 
@@ -1357,10 +1350,6 @@ cd $ROOT_DIR
 # Stop SSRF listener
 print_header "$CYAN" "STOPPING SSRF LISTENER"
 stop_ssrf_listener
-
-if [ -f "stop_emulator.sh" ]; then
-    bash ./stop_emulator.sh
-fi
 
 # Run linter
 print_header "$CYAN" "RUNNING LINTER"

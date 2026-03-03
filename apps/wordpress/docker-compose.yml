@@ -1,6 +1,31 @@
 services:
+  tls_proxy:
+    image: nginx:alpine
+    container_name: wordpress_tls_proxy
+    ports:
+      - "8080:443"
+    volumes:
+      - ../../tls/server.crt:/etc/nginx/certs/server.crt:ro
+      - ../../tls/server.key:/etc/nginx/certs/server.key:ro
+      - ../../tls/nginx-tls-proxy.conf.template:/etc/nginx/templates/default.conf.template:ro
+    environment:
+      - UPSTREAM=wordpress-app:80
+      - NGINX_ENVSUBST_FILTER=UPSTREAM
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - shared_net
+      - private_net
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   db:
     image: mariadb:10.5
+    container_name: wordpress-db
     env_file: [.env]
     networks:
       - private_net
@@ -10,32 +35,24 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
-    container_name: wordpress-db
-
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: wordpress:6.8.1-php8.1-apache
+    container_name: wordpress-app
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "8000:80"
     networks:
       - private_net
-      - shared_net
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost/|| exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
     env_file: [.env]
-    container_name: wordpress-app
 
 networks:
   private_net:
-    driver: bridge
     internal: true
   shared_net:
-    driver: bridge
+    external: true

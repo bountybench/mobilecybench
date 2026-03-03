@@ -4,6 +4,15 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="${SCRIPT_DIR}/setup.log"
+
+# If running within an experiment, redirect log to the experiment directory
+if [[ -n "$MOBILECYBENCH_SESSION_ID" ]]; then
+    EXP_LOG_DIR="${SCRIPT_DIR}/logs/experiment_${MOBILECYBENCH_SESSION_ID}"
+    if [[ -d "$EXP_LOG_DIR" ]]; then
+        LOG_FILE="${EXP_LOG_DIR}/setup.log"
+    fi
+fi
+
 ANDROID_HOME="${HOME}/.android-sdk"
 EMULATOR_NAME="MobileCybenchEmu"
 
@@ -467,6 +476,11 @@ setup_environment() {
     export ANDROID_HOME="$ANDROID_HOME"
     export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
     
+    # Propagate session ID if present
+    if [[ -n "$MOBILECYBENCH_SESSION_ID" ]]; then
+        export MOBILECYBENCH_SESSION_ID="$MOBILECYBENCH_SESSION_ID"
+    fi
+
     # Add to shell profile
     local shell_profile=""
     
@@ -927,33 +941,6 @@ main() {
     echo ""
     echo "Note: You may need to restart your terminal or run:"
     echo "  source ~/.bashrc  (or ~/.zshrc)"
-
-    
-    # generate token for host agent
-    BRIDGE_TOKEN_FILE="${SCRIPT_DIR}/ssh_key"
-    if [[ ! -f "${BRIDGE_TOKEN_FILE}" ]]; then
-        if command -v openssl >/dev/null 2>&1; then
-            openssl rand -hex 16 > "${BRIDGE_TOKEN_FILE}"
-        fi
-        chmod 600 "${BRIDGE_TOKEN_FILE}"
-        log "Wrote host agent token -> ${BRIDGE_TOKEN_FILE}"
-    else
-        log "Host agent token exists -> ${BRIDGE_TOKEN_FILE}"
-    fi
-    MCB_BRIDGE_PORT=52888
-    if (echo > /dev/tcp/127.0.0.1/${MCB_BRIDGE_PORT}) >/dev/null 2>&1; then
-        log "Bridge server already running on ${MCB_BRIDGE_PORT}. Killing server..."
-        pkill -f "${SCRIPT_DIR}/tools/host_bridge.py" || true
-    fi
-    export MCB_BRIDGE_BIND=127.0.0.1
-    # Generate a fresh session ID so bridge and runner share the same experiment directory
-    export MOBILECYBENCH_SESSION_ID=$(date +"%Y%m%d_%H%M%S")
-    BRIDGE_LOG_DIR="${SCRIPT_DIR}/logs/experiment_${MOBILECYBENCH_SESSION_ID}"
-    mkdir -p "${BRIDGE_LOG_DIR}"
-    BRIDGE_LOG_FILE="${BRIDGE_LOG_DIR}/mobilecybench_bridge.log"
-    nohup env MCB_BRIDGE_BIND="$MCB_BRIDGE_BIND" MOBILECYBENCH_SESSION_ID="$MOBILECYBENCH_SESSION_ID" $PYTHON "${SCRIPT_DIR}/tools/host_bridge.py" > "${BRIDGE_LOG_FILE}" 2>&1 &
-    log "Started mobilecybench host intermediary on port ${MCB_BRIDGE_PORT} (bind=${MCB_BRIDGE_BIND}, session=${MOBILECYBENCH_SESSION_ID})"
-
 
     # notes on SDK versions
     echo ""

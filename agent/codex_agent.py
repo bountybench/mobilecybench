@@ -137,9 +137,7 @@ class CodexAgent:
             self._log_content("FINAL OUTPUT", result.output_text)
 
             if result.tool_outputs:
-                logger.info(
-                    f"[TOTAL TOOL INTERACTIONS - {len(result.tool_outputs)} outputs]"
-                )
+                logger.info(f"[TOOL CALLS DETECTED: {len(result.tool_outputs)}]")
                 for i, tool_output in enumerate(result.tool_outputs):
                     logger.info(f"Tool Output {i + 1}: {tool_output}")
                 logger.info("-" * 40)
@@ -182,14 +180,19 @@ class CodexAgent:
     ) -> Dict[str, Any]:
         """Create result dictionary with common structure."""
         result = {
+            "agent_type": "codex",
             "status": status,
-            "turns": turns,
+            "turns_taken": turns,
+            "tool_call_count": 0,
+            "unique_tools": [],
+            "token_totals": {},
             "final_message": (
                 self.conversation_history[-1]["final_output"]
                 if self.conversation_history and status == "completed"
                 else None
             ),
             "log_file": self.log_file,
+            "conversation_file": None,
             "conversation_history": self.conversation_history,
         }
 
@@ -223,10 +226,15 @@ class CodexAgent:
     def _create_dry_run_result(self) -> Dict[str, Any]:
         """Create a mock result for dry run mode."""
         return {
+            "agent_type": "codex",
             "status": "dry_run_completed",
-            "turns": 0,
+            "turns_taken": 0,
+            "tool_call_count": 0,
+            "unique_tools": [],
+            "token_totals": {},
             "final_message": f"DRY RUN: Codex Agent configured for {self.app_name}",
             "log_file": self.log_file,
+            "conversation_file": None,
             "app_name": self.app_name,
         }
 
