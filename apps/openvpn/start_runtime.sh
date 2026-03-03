@@ -71,6 +71,12 @@ OVPN
 
 install_and_launch() {
     log_info "Installing OpenVPN on Android device"
+    # Force-stop and clear stale app data before reinstalling.
+    # adb uninstall can fail with DELETE_FAILED_INTERNAL_ERROR on emulators,
+    # leaving old activity state (including VulnFlagActivity tasks) behind.
+    # pm clear removes the data directory first, ensuring a clean baseline.
+    adb shell am force-stop "$TARGET_PACKAGE" 2>/dev/null || true
+    adb shell pm clear "$TARGET_PACKAGE" 2>/dev/null || true
     adb uninstall "$TARGET_PACKAGE" 2>/dev/null || true
     adb_install_apk "$APK_PATH"
 

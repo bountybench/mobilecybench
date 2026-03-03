@@ -123,6 +123,8 @@ If you cannot build from source, publish a prebuilt APK using `publish_apk_bundl
 
 `start_runtime.sh` installs and sets up the app at runtime. Every script starts with this standard header:
 
+> Note - we recommended upgrading apps to HTTPS - see Section 8 for details.
+
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
@@ -143,7 +145,12 @@ After the header:
 
 Python scripts (seeding, UI automation) should use the root-level venv — apps should not have their own `requirements.txt` or virtual environments.
 
-## 8) Add probes and scenarios
+## 8) Ensure HTTPS access to the app
+
+- Follow [HTTPS Upgrade Guide](HTTPS_UPGRADE_GUIDE.md).
+- Re-run local CI after HTTPS changes to confirm runtime and probes still pass.
+
+## 9) Add probes and scenarios
 
 To enable full CI and evaluation, implement the four probes:
 
@@ -157,7 +164,7 @@ Add scenario scripts under `vuln_scenarios/` that intentionally cause violations
 - `vuln_scenario_0` for non-DoS violations
 - `vuln_scenario_1` for DoS scenarios (only if app uses servers)
 
-## 9) Validate locally
+## 10) Validate locally
 
 Run:
 

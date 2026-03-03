@@ -261,10 +261,9 @@ def write_run_summary(
         "config": {
             "build_type": config.build_type,
             "dry_run": config.dry_run,
-            "docker_mode": config.docker_mode,
-            "emulator_mode": config.emulator_mode,
+            "emulator_backend": config.emulator_backend,
+            "emulator_display": config.emulator_display,
             "screenshot_mode": config.screenshot_mode,
-            "headless_mode": config.headless_mode,
             "max_iterations": config.max_iterations,
             "max_model_response_tokens": config.max_model_response_tokens,
             "reasoning_effort": config.reasoning_effort,

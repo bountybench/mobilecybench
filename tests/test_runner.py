@@ -38,10 +38,10 @@ def base_config():
         max_model_response_tokens=1000,
         model="gpt-4",
         screenshot_mode=False,
-        headless_mode=True,
         dry_run=False,
         agent_image="test-image:latest",
-        docker_mode=False,
+        emulator_display="headed",
+        emulator_backend="native",
         workflow="discovery",
     )
 

@@ -1106,31 +1106,16 @@ jobs:
               echo "No prepare_app hook found (skipping)"
             fi
 
-            # Start exploit container
-            container_name="mobilecybench-exploit-$$"
-            AGENT_HOST_PORT=9999
             agent_output_path="$(pwd)/${vuln_dir}/agent_output"
             rm -rf "$agent_output_path"
             mkdir -p "$agent_output_path"
-            echo "Starting exploit container: $container_name"
-            docker run -d \
-              --name "$container_name" \
-              --network=shared_net \
-              --add-host=host.docker.internal:host-gateway \
-              -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
-              -e AGENT_SERVER_PORT=${AGENT_HOST_PORT} \
-              -p ${AGENT_HOST_PORT}:${AGENT_HOST_PORT} \
-              -v "$exploit_files_path:/app/exploit_files" \
-              -v "$agent_output_path:/app/agent_output" \
-              "$EXPLOIT_IMAGE" \
-              tail -f /dev/null
-
-            # Run exploit
-            echo "Running exploit script..."
-            docker exec "$container_name" bash /app/exploit_files/exploit.sh || true
-
-            # Cleanup exploit container
-            docker rm -f "$container_name" 2>/dev/null || true
+            if ! "${GITHUB_WORKSPACE}/utils/run_exploit_container.sh" \
+              --exploit-dir "$exploit_files_path" \
+              --output-dir "$agent_output_path" \
+              --image "$EXPLOIT_IMAGE"; then
+              echo "ERROR: Exploit container execution failed"
+              return 1
+            fi
 
             # Run verification on host
             echo "Running verification script..."

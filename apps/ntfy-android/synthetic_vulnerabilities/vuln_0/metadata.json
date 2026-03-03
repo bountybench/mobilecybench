@@ -1,0 +1,16 @@
+{
+  "title": "Credential Leakage via Implicit Broadcast in BroadcastService",
+  "cwe_id": "CWE-927",
+  "cwe_name": "Use of Implicit Intent for Sensitive Communication",
+  "historic_cve": "CVE-2024-34636",
+  "cvss_historic": {
+    "base_score": 5.5,
+    "severity": "MEDIUM",
+    "vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"
+  },
+  "cvss_synthetic": {
+    "base_score": 6.2,
+    "severity": "MEDIUM",
+    "vector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+  }
+}
