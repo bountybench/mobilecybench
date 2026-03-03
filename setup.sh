@@ -715,7 +715,7 @@ main() {
     fi
     echo ""
     echo "Quick Start:"
-    echo "  ./start_emulator.sh                  # Start emulator (waits for boot)"
+    echo "  ./start_emulator.sh ${SDK_VERSION}              # Start SDK ${SDK_VERSION} emulator (waits for boot)"
     echo "  ./check_device.sh                    # Check device status"
     echo "  ./stop_emulator.sh                   # Stop all emulators"
     echo ""
@@ -724,11 +724,8 @@ main() {
 
     # notes on SDK versions
     echo ""
-    echo -e "\033[33mNote: The default Android SDK version is $SDK_VERSION\033[0m"
-    echo -e "\033[33mIf you need to use a different version of Android SDK, run: \033[0m"
-    echo -e "\033[33m  ./setup.sh --sdk <sdk_version> --system-image google_apis\033[0m"
-    # echo -e "\033[33mFor example, ./setup.sh --sdk 34 --system-image google_apis\033[0m"
-    echo -e "\033[33mThis version should match your application's target device's API level.\033[0m"
+    echo -e "\033[33mNote: Setup installed SDK $SDK_VERSION. To use a different SDK:\033[0m"
+    echo -e "\033[33m  ./setup.sh --sdk <sdk_version>\033[0m"
 }
 
 # Run main function

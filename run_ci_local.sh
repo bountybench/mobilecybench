@@ -1216,8 +1216,9 @@ start_ssrf_listener || echo -e "${WARNING} SSRF listener not started - SSRF dete
 start_emulator_and_adb() {
     if [ -f "start_emulator.sh" ]; then
         print_header "$CYAN" "STARTING EMULATOR"
+        bash ./stop_emulator.sh >/dev/null  # Stop any emulator running in the background before starting local CI.
         # Delegates to emulator.py start — handles boot wait and ADB setup
-        bash ./start_emulator.sh || echo -e "${WARNING} Failed to start emulator"
+        bash ./start_emulator.sh "$sdk" || { echo -e "${ERROR} Failed to start emulator"; exit 1; }
 
         # Ensure emulator is stopped on any exit (success or failure)
         trap 'echo -e "${INFO} Stopping emulator due to script exit..."; cd "$ROOT_DIR"; bash ./stop_emulator.sh' EXIT

@@ -5,6 +5,7 @@ Emulator Lifecycle Manager
 import logging
 import os
 import subprocess
+import tempfile
 import time
 from enum import Enum
 from pathlib import Path
@@ -142,8 +143,6 @@ class EmulatorManager:
                 "No AVDs found. Please create an AVD first using Android SDK tools."
             )
         if emulator_name not in available_avds:
-            logger.error(f"AVD '{emulator_name}' not found")
-            logger.error(f"Available AVDs: {available_avds}")
             raise RuntimeError(
                 f"AVD '{emulator_name}' not found. Available AVDs: {available_avds}"
             )
@@ -321,10 +320,12 @@ class EmulatorManager:
         env = os.environ.copy()
         env["ANDROID_HOME"] = self.emulator_config["android_home"]
         try:
+            # Use temp file instead of PIPE to avoid deadlock if stderr buffer fills.
+            self._stderr_file = tempfile.TemporaryFile()
             self.process = subprocess.Popen(
                 emulator_args,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=self._stderr_file,
                 env=env,
             )
             logger.info(f"Emulator process started with PID: {self.process.pid}")
@@ -384,9 +385,16 @@ class EmulatorManager:
                     self.state = EmulatorState.STOPPED
                     raise RuntimeError("Emulator container died during boot")
             elif self.process and self.process.poll() is not None:
+                stderr = ""
+                if hasattr(self, "_stderr_file") and self._stderr_file:
+                    self._stderr_file.seek(0)
+                    stderr = self._stderr_file.read().decode(errors="replace")
                 logger.error("Emulator process terminated unexpectedly")
                 self.state = EmulatorState.STOPPED
-                raise RuntimeError("Emulator process died during boot")
+                msg = "Emulator process died during boot"
+                if stderr.strip():
+                    msg += f"\n{stderr.strip()}"
+                raise RuntimeError(msg)
 
             try:
                 current_devices = self._get_connected_devices()
@@ -634,6 +642,9 @@ class EmulatorManager:
 
         finally:
             self.process = None
+            if hasattr(self, "_stderr_file") and self._stderr_file:
+                self._stderr_file.close()
+                self._stderr_file = None
             logger.info("Emulator stopped")
 
             # TODO: look into this ADB reset — start already does kill-server + start-server -a.
