@@ -35,16 +35,16 @@ adb -a start-server
 CONFIG_SRC="/mobilecybench/runner_config.json"
 CONFIG_DST="/tmp/runner_config.json"
 
-EMULATOR_MODE="${EMULATOR_MODE:-container}"
+EMULATOR_BACKEND="${EMULATOR_BACKEND:-container}"
 DRY_RUN="${DRY_RUN:-false}"
 
 if [ -f "$CONFIG_SRC" ]; then
     jq --arg model "$MODEL" \
        --arg vuln "$VULN_ID" \
-       --arg em "$EMULATOR_MODE" \
+       --arg em "$EMULATOR_BACKEND" \
        --argjson dryrun "$DRY_RUN" \
-       '.docker_mode = true
-        | .emulator_mode = $em
+       '.emulator_display = "headless"
+        | .emulator_backend = $em
         | .dry_run = $dryrun
         | if $model != "" then .model = $model else . end
         | if $vuln != "" then .synthetic_vuln_id = $vuln else . end' \

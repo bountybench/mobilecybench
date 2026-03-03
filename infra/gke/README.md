@@ -91,7 +91,7 @@ python infra/gke/collect_results.py \
 
 ## Emulator Modes
 
-Set via `EMULATOR_MODE` env var (default: `container`):
+Set via `EMULATOR_BACKEND` env var (default: `container`):
 
 - **`container`** (recommended for GKE): Emulator runs as a Docker container inside DinD. Requires `/dev/kvm` passthrough through 3 levels (node → pod → DinD → emulator container).
 - **`native`**: Emulator runs as a native process inside the orchestrator. Fallback if nested container KVM passthrough fails.

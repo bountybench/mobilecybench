@@ -38,8 +38,8 @@ spec:
               value: "MODEL"
             - name: VULN_ID
               value: "VULN_ID"
-            - name: EMULATOR_MODE
-              value: "EMULATOR_MODE"
+            - name: EMULATOR_BACKEND
+              value: "EMULATOR_BACKEND"
             - name: GCS_BUCKET
               value: "GCS_BUCKET"
             - name: RUN_ID

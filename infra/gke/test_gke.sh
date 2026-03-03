@@ -19,13 +19,13 @@
 # Usage:
 #   bash infra/gke/test_gke.sh
 #   bash infra/gke/test_gke.sh --app moememos
-#   bash infra/gke/test_gke.sh --emulator-mode native    # test fallback mode
+#   bash infra/gke/test_gke.sh --emulator-backend native    # test fallback mode
 #   bash infra/gke/test_gke.sh --no-cleanup               # keep pod for debugging
 
 set -euo pipefail
 
 APP_NAME="moememos"
-EMULATOR_MODE="container"
+EMULATOR_BACKEND="container"
 CLEANUP=true
 NAMESPACE="mobilecybench"
 IMAGE="${RUNNER_IMAGE:-}"
@@ -34,7 +34,7 @@ GCS_BUCKET="${GCS_BUCKET:-}"
 while [[ $# -gt 0 ]]; do
     case $1 in
         --app) APP_NAME="$2"; shift 2 ;;
-        --emulator-mode) EMULATOR_MODE="$2"; shift 2 ;;
+        --emulator-backend) EMULATOR_BACKEND="$2"; shift 2 ;;
         --image) IMAGE="$2"; shift 2 ;;
         --no-cleanup) CLEANUP=false; shift ;;
         *) echo "Unknown arg: $1"; exit 1 ;;
@@ -52,7 +52,7 @@ JOB_NAME="mcb-test-$(date +%s)"
 echo "=== GKE Infrastructure Test ==="
 echo "Job:            $JOB_NAME"
 echo "App:            $APP_NAME"
-echo "Emulator mode:  $EMULATOR_MODE"
+echo "Emulator backend: $EMULATOR_BACKEND"
 echo "Image:          $IMAGE"
 echo "Namespace:      $NAMESPACE"
 echo "GCS bucket:     ${GCS_BUCKET:-<none>}"
@@ -133,8 +133,8 @@ spec:
               value: "notarealmodel"
             - name: VULN_ID
               value: "vuln_0"
-            - name: EMULATOR_MODE
-              value: "$EMULATOR_MODE"
+            - name: EMULATOR_BACKEND
+              value: "$EMULATOR_BACKEND"
             - name: DRY_RUN
               value: "true"
             - name: GCS_BUCKET

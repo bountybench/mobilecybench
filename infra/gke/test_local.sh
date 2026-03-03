@@ -25,13 +25,13 @@
 set -euo pipefail
 
 APP_NAME="${1:-moememos}"
-EMULATOR_MODE="native"
+EMULATOR_BACKEND="native"
 SKIP_BUILD=false
 
 for arg in "$@"; do
     case "$arg" in
-        --native) EMULATOR_MODE="native" ;;
-        --container) EMULATOR_MODE="container" ;;
+        --native) EMULATOR_BACKEND="native" ;;
+        --container) EMULATOR_BACKEND="container" ;;
         --skip-build) SKIP_BUILD=true ;;
     esac
 done
@@ -46,7 +46,7 @@ DOCKERHUB_EMULATOR="cybench/mobilecybench-emulator:latest"
 
 echo "=== MobileCyBench Local Infrastructure Test ==="
 echo "App:            $APP_NAME"
-echo "Emulator mode:  $EMULATOR_MODE"
+echo "Emulator backend: $EMULATOR_BACKEND"
 echo "Project root:   $PROJECT_ROOT"
 echo ""
 
@@ -105,7 +105,7 @@ ensure_image() {
 
 # ─── Step 1: Ensure orchestrator image ────────────────────────────────────
 echo "--- Step 1: Ensuring orchestrator image ---"
-if [ "$EMULATOR_MODE" = "container" ]; then
+if [ "$EMULATOR_BACKEND" = "container" ]; then
     ensure_image "mobilecybench-orchestrator-slim:test" \
                  "$DOCKERHUB_ORCHESTRATOR_SLIM" \
                  "orchestrator/Dockerfile.orchestrator-slim" \
@@ -124,7 +124,7 @@ echo ""
 # determine the image name here. DinD will pull from Docker Hub or load
 # from a tar (if built locally) in Step 4.
 EMULATOR_IMAGE_NAME=""
-if [ "$EMULATOR_MODE" = "container" ]; then
+if [ "$EMULATOR_BACKEND" = "container" ]; then
     echo "--- Step 1b: Resolving emulator image ---"
     # Check if a local build exists on the host (for save/load into DinD)
     if docker image inspect "mobilecybench-emulator:test" >/dev/null 2>&1; then
@@ -170,13 +170,12 @@ cat > "$PROJECT_ROOT/runner_config_test.json" <<EOF
   "max_model_response_tokens": 100,
   "model": "notarealmodel",
   "screenshot_mode": false,
-  "headless_mode": false,
   "dry_run": true,
   "workflow": "exploit",
   "synthetic_vuln_id": "vuln_0",
   "agent_image": "cybench/mobilecybench:latest",
-  "docker_mode": true,
-  "emulator_mode": "$EMULATOR_MODE"
+  "emulator_display": "headless",
+  "emulator_backend": "$EMULATOR_BACKEND"
 }
 EOF
 echo "Config written to runner_config_test.json"
@@ -186,7 +185,7 @@ echo ""
 echo "--- Step 4: Running orchestrator (dry_run=true, no LLM) ---"
 echo "The orchestrator will:"
 echo "  - Start DinD"
-echo "  - Start emulator ($EMULATOR_MODE mode)"
+echo "  - Start emulator ($EMULATOR_BACKEND mode)"
 if [ "$BUILD_TYPE" = "source" ]; then
     echo "  - Build APKs from source"
 fi
@@ -199,7 +198,7 @@ echo ""
 # If the image is on Docker Hub, inner DinD pulls directly.
 # If local-only, save as tar and mount into the container.
 EMULATOR_IMAGE_TAR=""
-if [ "$EMULATOR_MODE" = "container" ]; then
+if [ "$EMULATOR_BACKEND" = "container" ]; then
     if [[ "$EMULATOR_IMAGE_NAME" == cybench/* ]]; then
         # Docker Hub image — inner DinD will pull it directly
         echo "Emulator image on Docker Hub — DinD will pull inside container"
