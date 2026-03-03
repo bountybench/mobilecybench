@@ -2,7 +2,7 @@ import json
 import os
 import sys
 
-import psycopg2
+from docker_postgres import connect_db
 
 try:
     with open("secrets.json") as f:
@@ -172,10 +172,8 @@ def check_item_property(cur, user_id, jop_type, property_name, expected_values, 
     return True
 
 
-def check_user_data(dbname, user, password, port):
-    conn = psycopg2.connect(
-        dbname=dbname, user=user, password=password, host="localhost", port=port
-    )
+def check_user_data(dbname, user, password):
+    conn = connect_db(dbname, user)
     cur = conn.cursor()
     all_passed = True
 
@@ -241,10 +239,8 @@ if __name__ == "__main__":
     dbname = os.getenv("POSTGRES_DATABASE", "mydatabase")
     user = os.getenv("POSTGRES_USER", "postgres")
     password = os.getenv("POSTGRES_PASSWORD", "postgresPW")
-    port = int(os.getenv("POSTGRES_PORT", "5432"))
-
     all_passed, results_summary = check_user_data(
-        dbname=dbname, user=user, password=password, port=port
+        dbname=dbname, user=user, password=password
     )
 
     # Add overall score (1 if all tests pass, 0 if any fail)
