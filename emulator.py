@@ -47,8 +47,14 @@ def _make_manager_for_device(device_id: str) -> EmulatorManager:
 
 
 def cmd_start(args):
-    """Start emulator, wait for boot, return."""
+    """Start emulator, wait for boot, return. 
+    Reuses existing emulator if one is running. (old local CI behavior)"""
     try:
+        existing = _discover_emulators()
+        if existing:
+            print(f"Emulator already running: {existing[0]}")
+            return 0
+
         print(f"Starting emulator (SDK {args.sdk})...")
         manager = EmulatorManager(
             project_root=Path(__file__).parent,
