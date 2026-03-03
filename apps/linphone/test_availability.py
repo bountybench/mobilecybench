@@ -7,6 +7,7 @@ from typing import Tuple
 
 import pytest
 from dotenv import load_dotenv
+from docker_mysql import ping_db
 
 load_dotenv()
 
@@ -88,17 +89,9 @@ def _sip_tls_probe() -> int:
 
 
 def _db_probe() -> int:
-    """Probe MySQL database connectivity.
-
-    Returns 1 for successful connection, 0 for connection failure.
-    """
+    """Probe MySQL database availability from inside the DB container."""
     try:
-        result = subprocess.run(
-            [_find_netcat(), "-z", "-w", "3", DB_HOST, str(DB_PORT)],
-            capture_output=True,
-            timeout=AVAIL_TIMEOUT,
-        )
-        return 1 if result.returncode == 0 else 0
+        return 1 if ping_db() else 0
     except Exception:
         return 0
 

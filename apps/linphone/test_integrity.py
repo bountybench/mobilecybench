@@ -16,8 +16,8 @@ import subprocess
 import sys
 from typing import Tuple
 
-import mysql.connector
 from dotenv import load_dotenv
+from docker_mysql import connect_db
 
 load_dotenv()
 
@@ -88,13 +88,7 @@ def check_flexisip_config_integrity() -> Tuple[bool, str]:
 
 def check_mysql_accounts_integrity() -> Tuple[bool, dict, str]:
     try:
-        conn = mysql.connector.connect(
-            host=os.getenv("MYSQL_HOST", "localhost"),
-            port=int(os.getenv("DB_PORT", 3306)),
-            user=os.getenv("DB_USERNAME", "root"),
-            password=os.getenv("DB_PASSWORD", "root"),
-            database=os.getenv("DB_DATABASE", "flexisip_accounts"),
-        )
+        conn = connect_db()
         cur = conn.cursor(dictionary=True)
         cur.execute("SELECT login, domain, algorithm, password FROM accounts;")
         rows = cur.fetchall()

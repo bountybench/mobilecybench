@@ -3,7 +3,7 @@ import subprocess
 import sys
 import time
 
-import mysql.connector
+from docker_mysql import connect_db
 
 try:
     with open("secrets.json") as f:
@@ -49,9 +49,7 @@ def check_account_exists(cur, username, domain):
 
 def check_user_a(dbname, user, password, host, port, domain):
     """Check that user_a exists and is not an admin"""
-    conn = mysql.connector.connect(
-        database=dbname, user=user, password=password, host=host, port=port
-    )
+    conn = connect_db()
     cur = conn.cursor()
 
     username = "usera"
