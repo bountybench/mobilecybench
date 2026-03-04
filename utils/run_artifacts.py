@@ -2,6 +2,7 @@ import datetime
 import json
 import os
 import platform
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Optional
@@ -15,8 +16,18 @@ except Exception:  # pragma: no cover
     _jsonschema_validate = None
 
 
-def _utc_now_iso() -> str:
+def utc_now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+def jsonable(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, dict):
+        return {str(k): jsonable(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [jsonable(v) for v in value]
+    return str(value)
 
 
 def normalize_agent_result(result: Optional[dict]) -> dict:
@@ -38,6 +49,7 @@ def normalize_agent_result(result: Optional[dict]) -> dict:
     normalized.setdefault("unique_tools", [])
     normalized.setdefault("token_totals", {})
     normalized.setdefault("conversation_file", None)
+    normalized.setdefault("system_prompt_file", None)
     normalized.setdefault("conversation_history", [])
     return normalized
 
@@ -55,7 +67,7 @@ def _run_git_value(project_root: Path, args: list[str]) -> str:
         return "unknown"
 
 
-def _load_schema(project_root: Path, schema_name: str) -> Optional[dict]:
+def load_schema(project_root: Path, schema_name: str) -> Optional[dict]:
     schema_path = project_root / "schemas" / schema_name
     if not schema_path.exists():
         return None
@@ -66,9 +78,7 @@ def _load_schema(project_root: Path, schema_name: str) -> Optional[dict]:
         return None
 
 
-def _validate_schema(
-    instance: dict, schema: Optional[dict], artifact_name: str
-) -> None:
+def validate_schema(instance: dict, schema: Optional[dict], artifact_name: str) -> None:
     if not schema or _jsonschema_validate is None:
         return
     try:
@@ -113,7 +123,7 @@ def _materialize_conversation_fallback(
         return None
 
     conversation_path = logs_dir / "conversation.jsonl"
-    schema = _load_schema(project_root, "conversation_turn.schema.json")
+    schema = load_schema(project_root, "conversation_turn.schema.json")
     lines: list[str] = []
     for idx, entry in enumerate(conversation_history, start=1):
         if not isinstance(entry, dict):
@@ -125,7 +135,7 @@ def _materialize_conversation_fallback(
         event = {
             "run_id": run_id,
             "turn_number": idx,
-            "timestamp": _utc_now_iso(),
+            "timestamp": utc_now_iso(),
             "role": "assistant",
             "response_id": entry.get("response_id"),
             "assistant_text": entry.get("final_output"),
@@ -142,7 +152,7 @@ def _materialize_conversation_fallback(
             ],
             "status": "ok",
         }
-        _validate_schema(event, schema, "conversation turn")
+        validate_schema(event, schema, "conversation turn")
         lines.append(json.dumps(event, ensure_ascii=False))
 
     if not lines:
@@ -177,12 +187,23 @@ def write_run_summary(
     ended_at: str,
     start_error_count: int,
     timing_start_idx: int,
-    timing_json_path: Optional[Path],
 ) -> None:
     logs_dir = logger_manager.get_logs_dir()
     app_metadata = getattr(workflow, "metadata", {}) or {}
 
+    # Check for git dirty state
+    git_status = _run_git_value(project_root, ["status", "--porcelain"])
+    is_dirty = bool(git_status and git_status.strip())
+    if is_dirty:
+        try:
+            diff = _run_git_value(project_root, ["diff", "HEAD"])
+            with open(logs_dir / "git_repro.patch", "w", encoding="utf-8") as f:
+                f.write(diff)
+        except Exception:
+            pass
+
     conversation_path = _existing_path(run_result.get("conversation_file"))
+    system_prompt_path = _existing_path(run_result.get("system_prompt_file"))
     if conversation_path is None:
         fallback_path = _materialize_conversation_fallback(
             run_result.get("conversation_history"),
@@ -204,9 +225,20 @@ def write_run_summary(
         token_totals = {}
 
     scores = evaluation.get("scores") if isinstance(evaluation, dict) else {}
-    synthetic_scores = (
-        evaluation.get("synthetic_scores") if isinstance(evaluation, dict) else None
-    )
+
+    # Copy scores to logs directory for self-containment
+    scores_log_path = None
+    if hasattr(workflow, "app_dir"):
+        for score_file in ["scores.json", "synthetic_scores.json"]:
+            src = workflow.app_dir / score_file
+            if src.exists():
+                dst = logs_dir / score_file
+                try:
+                    shutil.copy2(src, dst)
+                    if score_file == "scores.json":
+                        scores_log_path = str(dst)
+                except Exception as e:
+                    logger.warning("Failed to copy %s: %s", score_file, e)
 
     run_summary = {
         "run_id": run_id,
@@ -229,10 +261,9 @@ def write_run_summary(
         "config": {
             "build_type": config.build_type,
             "dry_run": config.dry_run,
-            "docker_mode": config.docker_mode,
-            "emulator_mode": config.emulator_mode,
+            "emulator_backend": config.emulator_backend,
+            "emulator_display": config.emulator_display,
             "screenshot_mode": config.screenshot_mode,
-            "headless_mode": config.headless_mode,
             "max_iterations": config.max_iterations,
             "max_model_response_tokens": config.max_model_response_tokens,
             "reasoning_effort": config.reasoning_effort,
@@ -244,6 +275,7 @@ def write_run_summary(
             "git_branch": _run_git_value(
                 project_root, ["rev-parse", "--abbrev-ref", "HEAD"]
             ),
+            "git_dirty": is_dirty,
             "python_version": platform.python_version(),
             "platform": platform.platform(),
         },
@@ -258,40 +290,40 @@ def write_run_summary(
         "results": {
             "agent_status": str(run_result.get("status", "unknown")),
             "scores": scores,
-            "synthetic_scores": synthetic_scores,
         },
         "artifacts": {
             "log_file": logger_manager.get_log_file_name(),
             "agent_log_file": logger_manager.get_agent_log_file_name(),
-            "timing_json": (
-                str(timing_json_path)
-                if timing_json_path and timing_json_path.exists()
-                else None
-            ),
             "token_usage_jsonl": (
                 str(token_usage_path) if token_usage_path.exists() else None
             ),
             "conversation_jsonl": conversation_path,
-            "scores_json": (
+            "system_prompt_file": system_prompt_path,
+            "scores_json": scores_log_path
+            or (
                 str(workflow.app_dir / "scores.json")
                 if hasattr(workflow, "app_dir")
                 and (workflow.app_dir / "scores.json").exists()
                 else None
             ),
             "synthetic_scores_json": (
-                str(workflow.app_dir / "synthetic_scores.json")
-                if hasattr(workflow, "app_dir")
-                and (workflow.app_dir / "synthetic_scores.json").exists()
-                else None
+                str(logs_dir / "synthetic_scores.json")
+                if (logs_dir / "synthetic_scores.json").exists()
+                else (
+                    str(workflow.app_dir / "synthetic_scores.json")
+                    if hasattr(workflow, "app_dir")
+                    and (workflow.app_dir / "synthetic_scores.json").exists()
+                    else None
+                )
             ),
             "logs_dir": str(logs_dir),
         },
         "app": app_metadata,
     }
 
-    _validate_schema(
+    validate_schema(
         run_summary,
-        _load_schema(project_root, "run_summary.schema.json"),
+        load_schema(project_root, "run_summary.schema.json"),
         "run summary",
     )
     try:

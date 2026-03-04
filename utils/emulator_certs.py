@@ -5,7 +5,9 @@ from pathlib import Path
 
 from utils.logger import logger
 
-INJECT_CA_TIMEOUT = 60
+# API 34+ CA injection can legitimately take longer on cold boots while zygote
+# PIDs stabilize and mount namespaces are verified across retries.
+INJECT_CA_TIMEOUT = 180
 
 
 def inject_system_ca(project_root: Path) -> None:

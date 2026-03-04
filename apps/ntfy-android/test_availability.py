@@ -37,8 +37,8 @@ def _server_health() -> Tuple[bool, int]:
 def _api_responsive() -> Tuple[bool, int]:
     """Check if the API is responsive (can list topics)."""
     try:
-        # Try to access a test topic (should return 200 even if empty)
-        r = requests.get(f"{NTFY_URL}/test/json?poll=1", timeout=AVAIL_TIMEOUT)
+        # Use agent-topic which has "everyone read-write" access
+        r = requests.get(f"{NTFY_URL}/agent-topic/json?poll=1", timeout=AVAIL_TIMEOUT)
         return (bool(r.ok), r.status_code)
     except Exception:
         return (False, 0)

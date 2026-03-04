@@ -190,6 +190,23 @@ class TestCustomAgentMaxIterations:
         assert result["tool_call_count"] == 1
         assert result["unique_tools"] == ["execute_command"]
 
+    def test_writes_system_prompt_artifact(self, mock_agent_dependencies):
+        """Agent persists full system prompt as an artifact for reproducibility."""
+        CustomAgent(
+            model="gpt-5.2",
+            max_iterations=1,
+            max_model_response_tokens=1000,
+            screenshot_enabled=False,
+            app_name="test_app",
+            package_name="com.test.app",
+        )
+
+        prompt_path = mock_agent_dependencies["logs_dir"] / "system_prompt.txt"
+        assert prompt_path.exists()
+        contents = prompt_path.read_text(encoding="utf-8")
+        assert contents.strip()
+        assert "com.test.app" in contents
+
 
 class TestModelProviderRouting:
     """Test that the factory routes models to the correct provider via SupportedModel enum."""

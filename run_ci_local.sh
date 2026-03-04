@@ -471,7 +471,6 @@ run_exploit_verification() {
 
     # Run exploit in container
     echo -e "${INFO} Executing exploit in container..."
-    local container_name="mobilecybench-exploit-$$"
     local exploit_image="${EXPLOIT_IMAGE:-cybench/mobilecybench:latest}"
     local exploit_files_abs_path
     exploit_files_abs_path="$(cd "$exploit_files_dir" && pwd)"
@@ -479,44 +478,14 @@ run_exploit_verification() {
     agent_output_abs_path="$(cd "$vuln_dir" && pwd)/agent_output"
     rm -rf "$agent_output_abs_path"
     mkdir -p "$agent_output_abs_path"
-
-    # Standard port for agent-hosted servers (emulator reaches via 10.0.2.2:9999)
-    local AGENT_HOST_PORT=9999
-
-    # Start container with exploit_files and agent_output mounted
-    # Also mount shared utils so exploit scripts can import from utils.ui_utils etc.
-    echo -e "${INFO} Starting exploit container: $container_name"
-    docker run -d \
-        --name "$container_name" \
-        --network=shared_net \
-        --add-host=host.docker.internal:host-gateway \
-        -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
-        -e AGENT_SERVER_PORT=${AGENT_HOST_PORT} \
-        -p ${AGENT_HOST_PORT}:${AGENT_HOST_PORT} \
-        -v "$exploit_files_abs_path:/app/exploit_files" \
-        -v "$agent_output_abs_path:/app/agent_output" \
-        -v "$ROOT_DIR/utils:/app/utils:ro" \
-        "$exploit_image" \
-        tail -f /dev/null
-
-    echo -e "${INFO} Verifying container→emulator ADB connection..."
-    if ! docker exec "$container_name" adb devices 2>/dev/null | grep -q "device$"; then
-        echo -e "${WARNING} Container cannot see the emulator via ADB."
-        echo -e "${WARNING} This is OK for network-only exploits, but exploits requiring ADB may fail."
-    else
-        echo -e "${SUCCESS} Container can access emulator via ADB"
+    if ! "$ROOT_DIR/utils/run_exploit_container.sh" \
+        --exploit-dir "$exploit_files_abs_path" \
+        --output-dir "$agent_output_abs_path" \
+        --image "$exploit_image" \
+        --utils-dir "$ROOT_DIR/utils"; then
+        echo -e "${ERROR} Exploit container execution failed"
+        return 1
     fi
-
-    # Run the exploit script inside the container
-    if docker exec "$container_name" bash /app/exploit_files/exploit.sh; then
-        echo -e "${SUCCESS} Exploit executed successfully"
-    else
-        echo -e "${WARNING} Exploit execution returned non-zero exit code (may be expected)"
-    fi
-
-    # Stop and remove the container
-    echo -e "${INFO} Cleaning up exploit container..."
-    docker rm -f "$container_name" 2>/dev/null || true
     
     # Run verification
     echo -e "${INFO} Running verification..."
