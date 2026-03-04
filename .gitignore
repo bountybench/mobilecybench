@@ -1,6 +1,3 @@
-check_device.sh
-stop_emulator.sh
-start_emulator.sh
 setup.log
 .DS_Store
 *.apk
