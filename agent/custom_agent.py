@@ -1,7 +1,6 @@
 import json
 import os
 import subprocess
-import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,7 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from agent.agent_helpers import get_directory_tree
-from agent.backend.docker_ops import check_shell_script
+from agent.backend.docker_ops import check_shell_script_content
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     MISSING_OUTPUT_NUDGE,
@@ -26,6 +25,22 @@ try:
     from jsonschema import validate as _jsonschema_validate
 except Exception:
     _jsonschema_validate = None
+
+# Only scan files that could plausibly be executed as scripts.
+_SCANNABLE_EXTENSIONS = frozenset(
+    {
+        "",  # no extension (executable scripts)
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".fish",
+        ".py",
+        ".rb",
+        ".pl",
+        ".expect",
+        ".exp",  # Expect scripts (automate interactive adb sessions)
+    }
+)
 
 
 class CustomAgent:
@@ -206,6 +221,10 @@ class CustomAgent:
             all_violations = []
 
             for container_path in files:
+                ext = os.path.splitext(container_path)[1].lower()
+                if ext not in _SCANNABLE_EXTENSIONS:
+                    continue
+
                 cat_result = subprocess.run(
                     ["docker", "exec", "kali-container", "cat", container_path],
                     capture_output=True,
@@ -217,16 +236,7 @@ class CustomAgent:
                     )
                     return False, []
 
-                with tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".sh", delete=False
-                ) as f:
-                    f.write(cat_result.stdout)
-                    tmp_path = f.name
-
-                try:
-                    _, violations = check_shell_script(tmp_path)
-                finally:
-                    os.unlink(tmp_path)
+                _, violations = check_shell_script_content(cat_result.stdout)
 
                 for v in violations:
                     v["file"] = container_path
