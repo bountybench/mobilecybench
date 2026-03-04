@@ -18,7 +18,7 @@ for f in rootCA.pem rootCA.key server.key; do
 done
 
 openssl req -new -key server.key -subj "/CN=10.0.2.2" \
-    | openssl x509 -req -CA rootCA.pem -CAkey rootCA.key -CAcreateserial \
+    | openssl x509 -req -CA rootCA.pem -CAkey rootCA.key -set_serial "0x$(openssl rand -hex 16)" \
         -days 397 -sha256 \
         -extfile <(printf "subjectAltName=%s\nbasicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth" "$SANS") \
         -out server.crt
