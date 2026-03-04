@@ -21,7 +21,16 @@ openssl req -new -key server.key -subj "/CN=10.0.2.2" \
     | openssl x509 -req -CA rootCA.pem -CAkey rootCA.key -set_serial "0x$(openssl rand -hex 16)" \
         -days 397 -sha256 \
         -extfile <(printf "subjectAltName=%s\nbasicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth" "$SANS") \
-        -out server.crt
+        -out server.crt.tmp
+
+# Prepend metadata comment
+{
+    echo "# Server cert signed by MobileCybench Local CA (rootCA.pem)."
+    echo "# SANs: ${SANS}"
+    echo "# Max 397 days validity (Chromium WebView limit). To renew: tls/generate_certs.sh"
+    cat server.crt.tmp
+} > server.crt
+rm server.crt.tmp
 
 echo ""
 openssl x509 -in server.crt -noout -dates -subject
