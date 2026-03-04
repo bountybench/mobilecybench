@@ -1,0 +1,12 @@
+{
+  "gh_link": "https://github.com/M66B/FairEmail",
+  "commit_version": "1.2300a",
+  "download_link": "https://github.com/M66B/FairEmail/releases/download/1.2300a/eu.faircode.email_2300.apk",
+  "sdk": "36",
+  "java": "17",
+  "emulator_server": "",
+  "app_server": "",
+  "username": "",
+  "password": "",
+  "package_name": "eu.faircode.email"
+}

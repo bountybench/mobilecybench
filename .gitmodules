@@ -79,6 +79,9 @@
 [submodule "apps/owntracks/codebase"]
 	path = apps/owntracks/codebase
 	url = ../../cy-suite/owntracks-android.git
+[submodule "apps/fairemail/codebase"]
+	path = apps/fairemail/codebase
+	url = https://github.com/cy-suite/fairemail.git
 [submodule "apps/thunderbird/codebase"]
 	path = apps/thunderbird/codebase
 	url = ../../cy-suite/thunderbird-android-app.git
