@@ -10,18 +10,7 @@ from dotenv import load_dotenv
 from agent.agent_helpers import get_directory_tree
 from agent.codex.codex_cli_provider import CodexCLIProvider
 from agent.prompts.prompts import (
-    AGENT_GOAL,
-    APP_CREDENTIALS,
-    APP_SERVER_ACCESS,
-    BASE_EXAMPLES,
-    BASE_INSTRUCTIONS,
-    BASE_RESPONSE_FORMAT,
-    DETECT_DESCRIPTION,
-    SSRF_INSTRUCTIONS,
-    SSRF_PROBE_HOST,
-    SSRF_PROBE_PORT,
-    STOP_TOKEN,
-    TARGET_HOST_EXAMPLE,
+    build_detect_prompt,
 )
 from utils.logger import logger, logger_manager
 
@@ -63,6 +52,7 @@ class CodexAgent:
         self.include_ssrf = include_ssrf
 
         # Load environment variables
+        # TODO: Refactor codex agent to share provider config and key handling with standard agents.
         agent_dir = os.path.dirname(os.path.abspath(__file__))
         env_file = os.path.join(agent_dir, ".env")
         if os.path.exists(env_file):
@@ -147,9 +137,7 @@ class CodexAgent:
             self._log_content("FINAL OUTPUT", result.output_text)
 
             if result.tool_outputs:
-                logger.info(
-                    f"[TOTAL TOOL INTERACTIONS - {len(result.tool_outputs)} outputs]"
-                )
+                logger.info(f"[TOOL CALLS DETECTED: {len(result.tool_outputs)}]")
                 for i, tool_output in enumerate(result.tool_outputs):
                     logger.info(f"Tool Output {i + 1}: {tool_output}")
                 logger.info("-" * 40)
@@ -192,14 +180,19 @@ class CodexAgent:
     ) -> Dict[str, Any]:
         """Create result dictionary with common structure."""
         result = {
+            "agent_type": "codex",
             "status": status,
-            "turns": turns,
+            "turns_taken": turns,
+            "tool_call_count": 0,
+            "unique_tools": [],
+            "token_totals": {},
             "final_message": (
                 self.conversation_history[-1]["final_output"]
                 if self.conversation_history and status == "completed"
                 else None
             ),
             "log_file": self.log_file,
+            "conversation_file": None,
             "conversation_history": self.conversation_history,
         }
 
@@ -215,61 +208,33 @@ class CodexAgent:
         return result
 
     def _get_default_system_prompt(self) -> str:
-        prompt_parts = [
-            DETECT_DESCRIPTION,
-            AGENT_GOAL.format(
-                package_name=self.package_name, codebase=self._initial_tree_context
-            ),
-        ]
-
+        # Strip port from app_server for hping3 example (doesn't support host:port)
+        resolved_host = None
         if self.app_server:
-            prompt_parts.extend([APP_SERVER_ACCESS.format(app_server=self.app_server)])
+            resolved_host = self.app_server.split(":")[0]
 
-        if self.username and self.password:
-            prompt_parts.extend(
-                [APP_CREDENTIALS.format(username=self.username, password=self.password)]
-            )
-
-        prompt_parts.extend(
-            [
-                BASE_RESPONSE_FORMAT.format(stop_token=STOP_TOKEN),
-                BASE_INSTRUCTIONS.format(
-                    stop_token=STOP_TOKEN,
-                ),
-            ]
+        return build_detect_prompt(
+            package_name=self.package_name,
+            codebase_tree=self._initial_tree_context,
+            app_server=self.app_server,
+            username=self.username,
+            password=self.password,
+            include_ssrf=self.include_ssrf,
+            resolved_host=resolved_host,
         )
-
-        if self.include_ssrf:
-            prompt_parts.append(
-                SSRF_INSTRUCTIONS.format(
-                    ssrf_host=SSRF_PROBE_HOST,
-                    ssrf_port=SSRF_PROBE_PORT,
-                )
-            )
-
-        prompt_parts.append(BASE_EXAMPLES.format(stop_token=STOP_TOKEN))
-
-        # Add target host example if provided
-        if self.app_server:
-            # Strip port from app_server for hping3 example as it doesn't support host:port syntax
-            host_only = self.app_server.split(":")[0]
-            prompt_parts.extend(
-                [
-                    TARGET_HOST_EXAMPLE.format(
-                        resolved_host=host_only, stop_token=STOP_TOKEN
-                    ),
-                ]
-            )
-
-        return "".join(prompt_parts)
 
     def _create_dry_run_result(self) -> Dict[str, Any]:
         """Create a mock result for dry run mode."""
         return {
+            "agent_type": "codex",
             "status": "dry_run_completed",
-            "turns": 0,
+            "turns_taken": 0,
+            "tool_call_count": 0,
+            "unique_tools": [],
+            "token_totals": {},
             "final_message": f"DRY RUN: Codex Agent configured for {self.app_name}",
             "log_file": self.log_file,
+            "conversation_file": None,
             "app_name": self.app_name,
         }
 

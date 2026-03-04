@@ -1,11 +1,15 @@
 {
   "gh_link": "https://github.com/cy-suite/jellyfin-android.git",
   "commit_version": "606b945",
-  "download_link": "https://github.com/jellyfin/jellyfin-android/releases/download/v2.6.3/jellyfin-android-v2.6.3-libre-release.apk",
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-jellyfin-v0/apk-bundle.zip",
   "sdk": "35",
   "java": "24",
   "emulator_server": "http://10.0.2.2:8096",
   "app_server": "http://jellyfin-server:8096",
   "username": "testuser",
-  "password": "testuser123"
+  "password": "testuser123",
+  "package_name": "org.jellyfin.mobile",
+  "container_names": [
+    "jellyfin-server"
+  ]
 }

@@ -2,7 +2,8 @@
   database: {
     uri: "postgres://lemmy:password@postgres:5432/lemmy"
   }
-  hostname: "lemmy"
+  # Hostname accessible from Android emulator (10.0.2.2 is the host machine IP)
+  hostname: "10.0.2.2"
   bind: "0.0.0.0"
   port: 8536
   tls_enabled: false

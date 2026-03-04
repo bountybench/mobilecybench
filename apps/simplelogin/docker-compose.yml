@@ -18,6 +18,31 @@ services:
     networks:
       - private_net
 
+  tls_proxy:
+    image: nginx:alpine
+    container_name: simplelogin_tls_proxy
+    restart: always
+    ports:
+      - 7777:443
+    volumes:
+      - ../../tls/server.crt:/etc/nginx/certs/server.crt:ro
+      - ../../tls/server.key:/etc/nginx/certs/server.key:ro
+      - ../../tls/nginx-tls-proxy.conf.template:/etc/nginx/templates/default.conf.template:ro
+    environment:
+      - UPSTREAM=simplelogin-api:7777
+      - NGINX_ENVSUBST_FILTER=UPSTREAM
+    depends_on:
+      simplelogin-api:
+        condition: service_healthy
+    networks:
+      - shared_net
+      - private_net
+    healthcheck:
+      test: ["CMD", "curl", "-fsk", "https://localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   simplelogin-api:
     container_name: simplelogin-api
     image: simplelogin/app:3.4.0
@@ -29,16 +54,13 @@ services:
       CONFIG: /code/simplelogin.env
       # Minimal overrides (DB connection)
       DB_URI: postgresql://simplelogin:password@db:5432/simplelogin
-      
-    ports:
-      - "7777:7777"
+
     volumes:
       # Provide a real config file from the repo
       - ./config/simplelogin.env:/code/simplelogin.env:ro
       - simplelogin_data:/app/static/upload
     networks:
       - private_net
-      - shared_net
     command: >
       sh -lc '
         set -e

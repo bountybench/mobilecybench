@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-OWNCLOUD_URL = os.getenv("OWNCLOUD_URL", "http://localhost:8080")
+OWNCLOUD_URL = os.getenv("OWNCLOUD_URL", "https://localhost:8080")
 ADMIN_USER = os.getenv("OWNCLOUD_ADMIN_USERNAME", "admin")
 OUTPUT_FILE = os.getenv("SEED_OUTPUT_FILE", "baseline_manifest.json")
 SERVER_TIMEOUT = int(os.getenv("SERVER_READY_TIMEOUT", "10"))
@@ -70,6 +70,8 @@ def load_credentials() -> Dict[str, Any]:
 
     return {
         "admin_password": secrets.get("admin_password"),
+        "attacker_password": secrets.get("attacker_password"),
+        "attacker_honeytoken": secrets.get("attacker_honeytoken"),
         "alex_password": secrets.get("alex_password"),
         "bob_password": secrets.get("bob_password"),
         "charlie_password": secrets.get("charlie_password"),
@@ -82,6 +84,12 @@ def load_credentials() -> Dict[str, Any]:
 def build_users_list(credentials: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Build users list from loaded credentials."""
     return [
+        {
+            "username": "attacker",
+            "password": credentials["attacker_password"],
+            "role": "attacker_throwaway",
+            "honeytoken": credentials["attacker_honeytoken"],
+        },
         {
             "username": "agent",
             "password": AGENT_PASSWORD,

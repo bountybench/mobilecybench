@@ -3,6 +3,7 @@
 # Universal run_checks.sh to run the four probe scripts for an app
 app_path="$(realpath "$1")"
 exploit_log="$(realpath "$2" 2>/dev/null)"
+APP_NAME="$(basename "$app_path")"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"

@@ -175,7 +175,7 @@ patch_gradle_config() {
             sed_inplace '/android:name="\.app\.TermuxService"/a\
             android:foregroundServiceType="dataSync"' app/src/main/AndroidManifest.xml
         fi
-        
+
         # Add FOREGROUND_SERVICE_DATA_SYNC permission for Android 14+ (SDK 34+)
         if ! grep -q 'android.permission.FOREGROUND_SERVICE_DATA_SYNC' app/src/main/AndroidManifest.xml; then
             echo "Adding FOREGROUND_SERVICE_DATA_SYNC permission..."
@@ -239,6 +239,18 @@ patch_gradle_config() {
             sed_inplace 's/R\.drawable\.ic_error_notification/com.termux.shared.R.drawable.ic_error_notification/' "$java_file"
         fi
     done
+
+    # Re-apply PendingIntent mutability flags after drawable fixes (files are restored above)
+    if [[ -f "app/src/main/java/com/termux/app/utils/CrashUtils.java" ]]; then
+        echo "Re-applying PendingIntent mutability flags in CrashUtils..."
+        sed_inplace 's/PendingIntent\.getActivity(context, 0, notificationIntent, PendingIntent\.FLAG_UPDATE_CURRENT)/PendingIntent.getActivity(context, 0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/utils/CrashUtils.java
+        sed_inplace 's/PendingIntent\.getActivity(context, 0, notificationIntent, 0)/PendingIntent.getActivity(context, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/utils/CrashUtils.java
+    fi
+    if [[ -f "app/src/main/java/com/termux/app/utils/PluginUtils.java" ]]; then
+        echo "Applying PendingIntent mutability flags in PluginUtils..."
+        sed_inplace 's/PendingIntent\.getActivity(context, 0, notificationIntent, PendingIntent\.FLAG_UPDATE_CURRENT)/PendingIntent.getActivity(context, 0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/utils/PluginUtils.java
+        sed_inplace 's/PendingIntent\.getActivity(context, 0, notificationIntent, 0)/PendingIntent.getActivity(context, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/utils/PluginUtils.java
+    fi
     
     # Add namespaces to all library modules for AGP 8.0+ compatibility
     echo "Adding namespaces to all library modules for AGP 8.0+ compatibility..."

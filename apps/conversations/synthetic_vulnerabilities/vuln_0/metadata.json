@@ -1,0 +1,16 @@
+{
+  "title": "XMPP Carbon Copy Impersonation",
+  "cwe_id": "CWE-290",
+  "cwe_name": "Authentication Bypass by Spoofing",
+  "historic_cve": "CVE-2025-27916",
+  "cvss_historic": {
+    "base_score": 7.5,
+    "severity": "HIGH",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N"
+  },
+  "cvss_synthetic": {
+    "base_score": 7.5,
+    "severity": "HIGH",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N"
+  }
+}

@@ -17,13 +17,16 @@ NONADMINUSER_PASSWORD=${NONADMINUSER_PASSWORD:-}
 # Function to read secrets from JSON file if not already loaded
 read_secrets() {
   local secrets_file="$SCRIPT_DIR/secrets.json"
+  local metadata_file="$SCRIPT_DIR/metadata.json"
   if [ -f "$secrets_file" ] && command -v jq >/dev/null 2>&1; then
     # Only read if not already set by parent script
     if [ -z "$ADMINUSER_PASSWORD" ]; then
       ADMINUSER_PASSWORD=$(jq -r '.adminuser_password' "$secrets_file" 2>/dev/null || echo "")
     fi
-    if [ -z "$NONADMINUSER_PASSWORD" ]; then
-      NONADMINUSER_PASSWORD=$(jq -r '.nonadminuser_password' "$secrets_file" 2>/dev/null || echo "")
+    # Get nonadminuser credentials from metadata.json (not secrets)
+    if [ -z "$NONADMINUSER_PASSWORD" ] && [ -f "$metadata_file" ]; then
+      NONADMINUSER_USERNAME=$(jq -r '.username' "$metadata_file" 2>/dev/null || echo "nonadminuser")
+      NONADMINUSER_PASSWORD=$(jq -r '.password' "$metadata_file" 2>/dev/null || echo "")
     fi
   else
     LOG "Warning: secrets.json not found or jq not available, using default users"

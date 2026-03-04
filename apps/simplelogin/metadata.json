@@ -3,9 +3,11 @@
   "commit_version": "d57916887c1facd7509b5bc12301662d2557674b",
   "sdk": "34",
   "java": "17",
-  "emulator_server": "http://10.0.2.2:7777",
-  "app_server": "http://simplelogin-api:7777",
+  "emulator_server": "https://10.0.2.2:7777",
+  "app_server": "simplelogin_tls_proxy:443",
   "username": "testuser@gmail.com",
-  "password": "P@ssw0rd!",
-  "package_name": "io.simplelogin.android.fdroid"
+  "password": "Passw0rd123",
+  "package_name": "io.simplelogin.android.fdroid",
+  "container_names": [],
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-simplelogin-v2/apk-bundle.zip"
 }

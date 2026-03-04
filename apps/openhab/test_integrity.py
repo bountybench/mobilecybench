@@ -37,9 +37,8 @@ USER_CONFIGS = [
         "expected_sessions": [],
     },
     {
-        "username": "nonadminuser",
-        "password": secrets["nonadminuser_password"],
-        "user_id": secrets["nonadminuser_id"],
+        "username": metadata["username"],
+        "password": metadata["password"],
         "expected_roles": ["user"],
         "expected_sessions": [],
     },

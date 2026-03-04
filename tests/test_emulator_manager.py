@@ -18,10 +18,11 @@ def emulator_manager(mock_env):
     """Create an EmulatorManager instance for testing"""
     with patch("utils.emulator_manager.Path.exists", return_value=True):
         manager = EmulatorManager(
-            docker_mode=False,
             project_root=Path("/mock/project"),
             sdk_version="35",
             app_name="test_app",
+            emulator_display="headed",
+            emulator_backend="native",
         )
         return manager
 
@@ -292,10 +293,11 @@ def test_successive_emulator_runs(mock_sleep, mock_popen, mock_run, mock_env):
     # First emulator run
     with patch("utils.emulator_manager.Path.exists", return_value=True):
         manager1 = EmulatorManager(
-            docker_mode=False,
             project_root=Path("/mock/project"),
             sdk_version="35",
             app_name="test_app",
+            emulator_display="headed",
+            emulator_backend="native",
         )
 
         mock_run.side_effect = create_run_side_effect(1)
@@ -316,10 +318,11 @@ def test_successive_emulator_runs(mock_sleep, mock_popen, mock_run, mock_env):
     # Second emulator run (the bug scenario)
     with patch("utils.emulator_manager.Path.exists", return_value=True):
         manager2 = EmulatorManager(
-            docker_mode=False,
             project_root=Path("/mock/project"),
             sdk_version="35",
             app_name="test_app",
+            emulator_display="headed",
+            emulator_backend="native",
         )
 
         mock_run.side_effect = create_run_side_effect(2)
@@ -344,10 +347,11 @@ def test_device_id_cleanup_between_runs(mock_run, mock_env):
     with patch("utils.emulator_manager.Path.exists", return_value=True):
         # First instance
         manager1 = EmulatorManager(
-            docker_mode=False,
             project_root=Path("/mock/project"),
             sdk_version="35",
             app_name="test_app",
+            emulator_display="headed",
+            emulator_backend="native",
         )
         manager1.device_id = "emulator-5554"
         manager1.state = EmulatorState.RUNNING
@@ -358,12 +362,58 @@ def test_device_id_cleanup_between_runs(mock_run, mock_env):
 
         # Second instance should start fresh
         manager2 = EmulatorManager(
-            docker_mode=False,
             project_root=Path("/mock/project"),
             sdk_version="35",
             app_name="test_app",
+            emulator_display="headed",
+            emulator_backend="native",
         )
 
         # Verify device_id is None (fresh state)
         assert manager2.device_id is None
         assert manager2.state == EmulatorState.NOT_STARTED
+
+
+##########################################
+#  Pre-existing Emulator Guard Tests     #
+##########################################
+
+
+@patch("utils.emulator_manager.subprocess.run")
+def test_start_fails_if_emulator_already_running(mock_run, emulator_manager):
+    """start_in_background() refuses to start when an emulator is already connected."""
+    # Mock _verify_avd_exists to pass
+    emulator_manager._verify_avd_exists = MagicMock()
+
+    # Mock adb devices showing an existing emulator
+    mock_run.return_value = MagicMock(
+        returncode=0,
+        stdout="List of devices attached\nemulator-5554\tdevice\n",
+        stderr="",
+    )
+
+    with pytest.raises(RuntimeError, match="Running emulator.*detected"):
+        emulator_manager.start_in_background()
+
+    # State should be reset to NOT_STARTED so the manager is reusable
+    assert emulator_manager.state == EmulatorState.NOT_STARTED
+
+
+@patch("utils.emulator_manager.subprocess.run")
+@patch("utils.emulator_manager.subprocess.Popen")
+def test_start_allows_non_emulator_adb_devices(mock_popen, mock_run, emulator_manager):
+    """start_in_background() proceeds when only physical devices are connected."""
+    emulator_manager._verify_avd_exists = MagicMock()
+
+    # adb devices shows a physical device (not emulator-*)
+    mock_run.return_value = MagicMock(
+        returncode=0,
+        stdout="List of devices attached\nR5CR1234567\tdevice\n",
+        stderr="",
+    )
+    mock_popen.return_value = MagicMock(pid=12345)
+
+    emulator_manager.start_in_background()
+
+    # Should have started successfully
+    assert emulator_manager.state == EmulatorState.RUNNING

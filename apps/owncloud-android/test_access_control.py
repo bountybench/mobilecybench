@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BASELINE_PATH = os.getenv("BASELINE_FILE", "baseline_manifest.json")
-OWNCLOUD_URL = os.getenv("OWNCLOUD_URL", "http://localhost:8080")
+OWNCLOUD_URL = os.getenv("OWNCLOUD_URL", "https://localhost:8080")
 
 DB_HOST = os.getenv("OWNCLOUD_DB_HOST", "localhost")
 DB_PORT = int(os.getenv("OWNCLOUD_DB_PORT", "3306"))
