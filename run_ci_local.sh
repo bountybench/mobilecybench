@@ -524,6 +524,7 @@ SKIP_DOWNLOAD=false
 SKIP_APK=false
 RUN_UNIT_TESTS=false
 TEST_SYNTHETIC_VULN=""
+TEST_ALL_SYNTHETIC_VULNS=false
 
 show_usage() {
     echo "Usage: $0 <dir> [options]"
@@ -538,6 +539,8 @@ show_usage() {
     echo "  --unit-tests      Run unit tests (opt-in)"
     echo "  --test-synthetic-vuln <vuln_dir>"
     echo "                    Test a synthetic vulnerability (e.g., synthetic_vulnerabilities/vuln_0)"
+    echo "  --test-all-synthetic-vulns"
+    echo "                    Test all synthetic vulnerabilities found in synthetic_vulnerabilities/"
     echo "  -h, --help        Show this help message"
     echo ""
     echo "Examples:"
@@ -548,6 +551,8 @@ show_usage() {
     echo "  $0 apps/joplin --unit-tests      # Run unit tests"
     echo "  $0 apps/conversations --test-synthetic-vuln synthetic_vulnerabilities/vuln_0"
     echo "                                   # Test synthetic vulnerability"
+    echo "  $0 apps/conversations --test-all-synthetic-vulns"
+    echo "                                   # Test all synthetic vulnerabilities"
     echo ""
     echo "By default, both build mode (source) and download mode (apklink) are run"
     echo "when both setup scripts are available."
@@ -582,6 +587,10 @@ while [[ $# -gt 0 ]]; do
             fi
             TEST_SYNTHETIC_VULN="$2"
             shift 2
+            ;;
+        --test-all-synthetic-vulns)
+            TEST_ALL_SYNTHETIC_VULNS=true
+            shift
             ;;
         -h|--help)
             show_usage
@@ -1004,9 +1013,9 @@ run_synthetic_vuln_test() {
     fi
 
     echo -e "${INFO} Validating metadata.json schema..."
-    if ! python3 -m pytest --no-header -q \
+    if ! (cd "$ROOT_DIR" && python3 -m pytest --no-header -q \
         tests/test_synthetic_vuln_metadata.py::test_synthetic_vuln_metadata \
-        --dirs "$(dirname "$metadata_file")"; then
+        --dirs "$(dirname "$metadata_file")"); then
         echo -e "${ERROR} metadata.json schema validation failed for $metadata_file"
         exit 1
     fi
@@ -1237,25 +1246,45 @@ start_emulator_and_adb() {
     fi
 }
 
+# Expand --test-all-synthetic-vulns into the list of vuln directories
+if [ "$TEST_ALL_SYNTHETIC_VULNS" = true ]; then
+    SYNTH_VULN_DIRS=()
+    for d in "$DIR"/synthetic_vulnerabilities/vuln_*/; do
+        [ -d "$d" ] && SYNTH_VULN_DIRS+=("synthetic_vulnerabilities/$(basename "$d")")
+    done
+    if [ ${#SYNTH_VULN_DIRS[@]} -eq 0 ]; then
+        echo -e "${ERROR} No synthetic vulnerability directories found in $DIR/synthetic_vulnerabilities/"
+        exit 1
+    fi
+    echo -e "${INFO} Found ${#SYNTH_VULN_DIRS[@]} synthetic vulnerability(ies): ${SYNTH_VULN_DIRS[*]}"
+fi
+
 # For synthetic vuln tests, delay emulator start until after APKs are built.
 # This avoids the emulator competing for CPU during long native builds.
-if [ -z "$TEST_SYNTHETIC_VULN" ]; then
+if [ -z "$TEST_SYNTHETIC_VULN" ] && [ "$TEST_ALL_SYNTHETIC_VULNS" = false ]; then
     start_emulator_and_adb
 fi
 
 # Check if we're running synthetic vulnerability tests
-if [ -n "$TEST_SYNTHETIC_VULN" ]; then
+if [ "$TEST_ALL_SYNTHETIC_VULNS" = true ]; then
+    print_header "$CYAN" "RUNNING ALL SYNTHETIC VULNERABILITY TESTS"
+    for VULN_DIR in "${SYNTH_VULN_DIRS[@]}"; do
+        print_header "$CYAN" "TESTING SYNTHETIC VULNERABILITY: $VULN_DIR"
+        run_synthetic_vuln_test "$VULN_DIR" "$DIR"
+    done
+    SKIP_NORMAL_TESTS=true
+elif [ -n "$TEST_SYNTHETIC_VULN" ]; then
     print_header "$CYAN" "RUNNING SYNTHETIC VULNERABILITY TEST MODE"
-    
+
     # Validate that the vulnerability directory exists
     if [ ! -d "$DIR/$TEST_SYNTHETIC_VULN" ]; then
         echo -e "${ERROR} Synthetic vulnerability directory not found: $DIR/$TEST_SYNTHETIC_VULN"
         exit 1
     fi
-    
+
     # Run synthetic vulnerability test
     run_synthetic_vuln_test "$TEST_SYNTHETIC_VULN" "$DIR"
-    
+
     # Skip normal test flow
     SKIP_NORMAL_TESTS=true
 else
@@ -1278,7 +1307,13 @@ SECONDS=$((DURATION % 60))
 SETUP_MODE_COUNT=$(echo $SETUP_MODES | wc -w)
 
 # Handle synthetic vulnerability test results
-if [ -n "$TEST_SYNTHETIC_VULN" ]; then
+if [ "$TEST_ALL_SYNTHETIC_VULNS" = true ]; then
+    print_header "$GREEN" "ALL SYNTHETIC VULNERABILITY TESTS COMPLETED"
+    for VULN_DIR in "${SYNTH_VULN_DIRS[@]}"; do
+        echo -e "${SUCCESS} ✓ $VULN_DIR passed"
+    done
+    echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s"
+elif [ -n "$TEST_SYNTHETIC_VULN" ]; then
     print_header "$GREEN" "SYNTHETIC VULNERABILITY TEST COMPLETED"
     echo -e "${SUCCESS} Tested vulnerability: $TEST_SYNTHETIC_VULN"
     echo -e "${SUCCESS} ✓ Clean build verification passed"
@@ -1341,7 +1376,10 @@ fi
 
 # Final Timing and Summary
 print_header "$CYAN" "FINAL TIMING AND SUMMARY"
-if [ -n "$TEST_SYNTHETIC_VULN" ]; then
+if [ "$TEST_ALL_SYNTHETIC_VULNS" = true ]; then
+    print_header "$GREEN" "ALL SYNTHETIC VULNERABILITY TESTS COMPLETED SUCCESSFULLY"
+    echo -e "${SUCCESS} Total execution time: ${MINUTES}m ${SECONDS}s"
+elif [ -n "$TEST_SYNTHETIC_VULN" ]; then
     print_header "$GREEN" "SYNTHETIC VULNERABILITY TEST COMPLETED SUCCESSFULLY"
     echo -e "${SUCCESS} Total execution time: ${MINUTES}m ${SECONDS}s"
 elif [ "$HAS_PROBES" = true ]; then
