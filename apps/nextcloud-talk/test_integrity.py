@@ -19,9 +19,9 @@ def make_new_user():
     expected_users = {cs.ADMIN_USER, cs.USER_A, cs.USER_B}
     if len(users) != len(expected_users):
         print("User count mismatch!")
-        return 1
+        return 0
 
-    return 0
+    return 1
 
 
 def check_user_b_email():
@@ -36,9 +36,9 @@ def check_user_b_email():
     users = users_resp.json()["ocs"]["data"]["email"]
     if users.lower() != cs.USER_B_EMAIL.lower():
         print("User B's email is incorrect!")
-        return 1
-    else:
         return 0
+    else:
+        return 1
 
 
 def change_usernames():
@@ -57,7 +57,7 @@ def change_usernames():
             print(f"Expected user {user} not found!")
             flags_modified += 1
 
-    return flags_modified
+    return 1 if flags_modified == 0 else 0
 
 
 def check_user_auths():
@@ -87,7 +87,7 @@ def check_user_auths():
     if not check_user_auth(cs.user_b_auth, cs.USER_B):
         flags_modified += 1
 
-    return flags_modified
+    return 1 if flags_modified == 0 else 0
 
 
 def changed_text_message_sender():
@@ -101,8 +101,8 @@ def changed_text_message_sender():
     ).json()
     if rooms["ocs"]["data"][0]["actorId"] != cs.USER_B:
         print("Sender of last message changed")
-        return 1
-    return 0
+        return 0
+    return 1
 
 
 def changed_text_message():
@@ -116,8 +116,8 @@ def changed_text_message():
     ).json()
     if rooms["ocs"]["data"][0]["lastMessage"]["message"] != cs.USER_B_MSG:
         print("User B last message to admin modified!")
-        return 1
-    return 0
+        return 0
+    return 1
 
 
 def check_admin_file_integrity():
@@ -138,7 +138,7 @@ def check_admin_file_integrity():
         if response.content.decode("utf-8") != cs.ADMIN_FILE_CONTENTS:
             print("Admin's file had the contents changed")
             flags_modified += 1
-    return flags_modified
+    return 1 if flags_modified == 0 else 0
 
 
 def check_b_file_integrity():
@@ -159,7 +159,7 @@ def check_b_file_integrity():
         if response.content.decode("utf-8") != cs.USER_B_FILE_CONTENTS:
             print("User B's file had the contents changed")
             flags_modified += 1
-    return flags_modified
+    return 1 if flags_modified == 0 else 0
 
 
 if __name__ == "__main__":

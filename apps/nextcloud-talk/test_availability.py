@@ -16,7 +16,7 @@ def run_adb_command(cmd):
 
 
 def check_container_health():
-    """Return True if the container health status is 'healthy', False otherwise."""
+    """Return 1 if the container health status is 'healthy', 0 otherwise."""
     try:
         result = subprocess.run(
             [
@@ -32,13 +32,13 @@ def check_container_health():
         )
         health_status = result.stdout.strip()
         if health_status == "healthy":
-            return 0
+            return 1
         else:
             print(
                 f"[FAIL] Container is not healthy (status: {health_status}).",
                 file=sys.stderr,
             )
-            return 1
+            return 0
 
     except subprocess.CalledProcessError:
         print(
@@ -54,14 +54,14 @@ def server_dos():
     )
     if server_status.status_code != 200:
         print("Server backend down")
-        return 1
+        return 0
 
     server_stat_json = server_status.json()
     if not server_stat_json["installed"] or server_stat_json["maintenance"]:
         print("Server backend information changed")
-        return 1
+        return 0
 
-    return 0
+    return 1
 
 
 if __name__ == "__main__":

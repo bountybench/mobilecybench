@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobilecybench.dev/schemas/run_summary.schema.json",
+  "title": "Run Summary",
+  "type": "object",
+  "required": [
+    "run_id",
+    "outcome",
+    "exit_reason",
+    "timestamps",
+    "context",
+    "config",
+    "reproducibility",
+    "metrics",
+    "results",
+    "artifacts"
+  ],
+  "properties": {
+    "run_id": { "type": "string", "minLength": 1 },
+    "outcome": { "type": "string", "enum": ["success", "failure"] },
+    "exit_reason": { "type": "string", "minLength": 1 },
+    "timestamps": {
+      "type": "object",
+      "required": ["started_at", "ended_at", "duration_seconds"],
+      "properties": {
+        "started_at": { "type": "string", "format": "date-time" },
+        "ended_at": { "type": "string", "format": "date-time" },
+        "duration_seconds": { "type": "number", "minimum": 0 }
+      }
+    },
+    "context": {
+      "type": "object",
+      "required": ["app_name", "workflow", "agent_type", "model"],
+      "properties": {
+        "app_name": { "type": "string", "minLength": 1 },
+        "workflow": { "type": "string", "enum": ["discovery", "exploit"] },
+        "vuln_id": { "type": ["string", "null"] },
+        "agent_type": { "type": "string", "enum": ["custom", "codex"] },
+        "model": { "type": "string", "minLength": 1 }
+      }
+    },
+    "config": {
+      "type": "object",
+      "required": [
+        "build_type",
+        "dry_run",
+        "emulator_backend",
+        "emulator_display",
+        "screenshot_mode",
+        "max_iterations",
+        "max_model_response_tokens",
+        "full_snapshot"
+      ],
+      "properties": {
+        "build_type": { "type": "string" },
+        "dry_run": { "type": "boolean" },
+        "emulator_backend": { "type": "string", "enum": ["native", "container"] },
+        "emulator_display": { "type": "string", "enum": ["headed", "headless"] },
+        "screenshot_mode": { "type": "boolean" },
+        "max_iterations": { "type": "integer", "minimum": 1 },
+        "max_model_response_tokens": { "type": "integer", "minimum": 1 },
+        "reasoning_effort": { "type": ["string", "null"] },
+        "full_snapshot": { "type": "object" }
+      }
+    },
+    "reproducibility": {
+      "type": "object",
+      "required": ["git_commit", "git_branch", "git_dirty", "python_version", "platform"],
+      "properties": {
+        "git_commit": { "type": "string" },
+        "git_branch": { "type": "string" },
+        "git_dirty": { "type": "boolean" },
+        "python_version": { "type": "string" },
+        "platform": { "type": "string" }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "turn_count",
+        "tool_call_count",
+        "unique_tools",
+        "error_count",
+        "token_totals",
+        "timing"
+      ],
+      "properties": {
+        "turn_count": { "type": "integer", "minimum": 0 },
+        "tool_call_count": { "type": "integer", "minimum": 0 },
+        "unique_tools": { "type": "array", "items": { "type": "string" } },
+        "error_count": { "type": "integer", "minimum": 0 },
+        "token_totals": { "type": "object" },
+        "timing": { "type": "object" }
+      }
+    },
+    "results": {
+      "type": "object",
+      "required": ["agent_status", "scores"],
+      "properties": {
+        "agent_status": { "type": "string" },
+        "scores": { "type": ["object", "null"] }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+            "required": [
+              "log_file",
+              "agent_log_file",
+              "token_usage_jsonl",
+              "conversation_jsonl",
+              "logs_dir"
+            ]
+      ,
+      "properties": {
+        "log_file": { "type": "string", "minLength": 1 },
+        "agent_log_file": { "type": "string", "minLength": 1 },
+        "token_usage_jsonl": { "type": ["string", "null"] },
+        "conversation_jsonl": { "type": ["string", "null"] },
+        "system_prompt_file": { "type": ["string", "null"] },
+        "screenshots_dir": { "type": ["string", "null"] },
+        "scores_json": { "type": ["string", "null"] },
+        "synthetic_scores_json": { "type": ["string", "null"] },
+        "logs_dir": { "type": "string", "minLength": 1 }
+      }
+    },
+    "app": { "type": "object" }
+  }
+}

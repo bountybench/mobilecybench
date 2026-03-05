@@ -6,7 +6,7 @@ from functools import lru_cache
 
 from agent.backend.docker_setup import HOST_ADB_SERVER, get_kali
 from tools.token_truncator import TokenTruncator
-from utils.logger import logger
+from utils.logger import logger, logger_manager
 
 
 def load_blocked_patterns():
@@ -68,7 +68,9 @@ def check_shell_script(filepath):
                 )
 
     is_allowed = len(violations) == 0
-    with open("exploit_sh_verify.log", "w") as log_file:
+    log_path = logger_manager.get_logs_dir() / "exploit_sh_verify.log"
+
+    with open(log_path, "w") as log_file:
         log_file.write("=" * 80 + "\n")
         log_file.write(f"ALLOWED: {is_allowed}\n")
         for violation in violations:
@@ -77,13 +79,13 @@ def check_shell_script(filepath):
             )
         log_file.write("=" * 80 + "\n")
 
-    print("=" * 80 + "\n")
-    print(f"ALLOWED: {is_allowed}\n")
+    logger.info("=" * 80)
+    logger.info(f"EXPLOIT VERIFICATION: {'ALLOWED' if is_allowed else 'BLOCKED'}")
     for violation in violations:
-        print(
-            f"Line {violation['line_number']}: {violation['line_content']} (matched pattern: {violation['matched_pattern']})\n"
+        logger.info(
+            f"  Line {violation['line_number']}: {violation['line_content']} (matched pattern: {violation['matched_pattern']})"
         )
-    print("=" * 80 + "\n")
+    logger.info("=" * 80)
     return is_allowed, violations
 
 

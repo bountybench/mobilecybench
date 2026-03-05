@@ -1,0 +1,69 @@
+server_name: "localhost"
+pid_file: /data/homeserver.pid
+listeners:
+  - port: 8008
+    tls: false
+    type: http
+    x_forwarded: true
+    bind_addresses: ['::', '0.0.0.0']
+    resources:
+      - names: [client, federation]
+        compress: false
+
+database:
+  name: psycopg2
+  args:
+    user: synapse_user
+    password: synapse_password
+    database: synapse
+    host: synapse-db
+    port: 5432
+    cp_min: 5
+    cp_max: 10
+
+log_config: "/data/log.config"
+
+media_store_path: /data/media_store
+registration_shared_secret: "test_registration_secret_key_for_testing_only"
+report_stats: false
+macaroon_secret_key: "test_macaroon_secret_key_for_testing_only"
+form_secret: "test_form_secret_key_for_testing_only"
+signing_key_path: "/data/localhost.signing.key"
+
+trusted_key_servers:
+  - server_name: "matrix.org"
+
+# Enable registration for testing
+enable_registration: true
+enable_registration_without_verification: true
+
+# Allow guest access
+allow_guest_access: true
+
+# Disable rate limiting for testing
+rc_message:
+  per_second: 1000
+  burst_count: 10000
+
+rc_registration:
+  per_second: 1000
+  burst_count: 10000
+
+rc_login:
+  address:
+    per_second: 1000
+    burst_count: 10000
+  account:
+    per_second: 1000
+    burst_count: 10000
+  failed_attempts:
+    per_second: 1000
+    burst_count: 10000
+
+# Simplified federation settings
+suppress_key_server_warning: true
+federation_domain_whitelist: []
+
+# Basic presence settings
+presence:
+  enabled: true

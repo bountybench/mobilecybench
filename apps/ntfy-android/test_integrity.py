@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Tuple
 import requests
 
 # Configuration
+SECRETS_FILE = os.getenv("SECRETS_FILE", "secrets.json")
 BASELINE_MANIFEST = os.getenv("BASELINE_FILE", "baseline_manifest.json")
 ANDROID_BASELINE_FILE = os.getenv("ANDROID_BASELINE_FILE", "baseline_android_dir.txt")
 ANDROID_PACKAGE = os.getenv("ANDROID_TARGET_PACKAGE", "io.heckel.ntfy")
@@ -37,6 +38,20 @@ def load_baseline() -> Dict[str, Any]:
 
     with open(baseline_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _topic_auth() -> Dict[str, Tuple[str, str]]:
+    """Load secrets and return {topic: (username, password)} for authenticated reads."""
+    secrets_path = os.path.join(os.path.dirname(__file__), SECRETS_FILE)
+    if not os.path.exists(secrets_path):
+        return {}
+    with open(secrets_path, "r", encoding="utf-8") as f:
+        secrets = json.load(f)
+    return {
+        secrets["topic_private_alice"]: ("alice", secrets["alice_secret"]),
+        secrets["topic_private_bob"]: ("bob", secrets["bob_secret"]),
+        secrets["topic_private_charlie"]: ("charlie", secrets["charlie_secret"]),
+    }
 
 
 def adb_available() -> bool:
@@ -133,6 +148,7 @@ def check_notification_integrity() -> Tuple[bool, str]:
 
         violations = []
         total_baseline_count = 0
+        auth_map = _topic_auth()
 
         # Check each topic's messages on the server via HTTP API
         for topic, topic_data in baseline_notifs.items():
@@ -145,6 +161,7 @@ def check_notification_integrity() -> Tuple[bool, str]:
                 response = requests.get(
                     f"{NTFY_SERVER_URL}/{topic}/json?poll=1",
                     timeout=DEFAULT_TIMEOUT,
+                    auth=auth_map.get(topic),
                 )
 
                 if response.status_code == 404:
@@ -239,6 +256,7 @@ def check_server_topic_integrity() -> Tuple[bool, str]:
             return (True, "No server topics in baseline to check (skipped)")
 
         violations = []
+        auth_map = _topic_auth()
 
         for topic, expected_data in server_baseline.items():
             expected_msg_count = expected_data.get("message_count", 0)
@@ -249,6 +267,7 @@ def check_server_topic_integrity() -> Tuple[bool, str]:
                 response = requests.get(
                     f"{NTFY_SERVER_URL}/{topic}/json?poll=1",
                     timeout=DEFAULT_TIMEOUT,
+                    auth=auth_map.get(topic),
                 )
 
                 if response.status_code == 404:

@@ -45,11 +45,12 @@
 - Runs Android emulator (local) or connects to emulator container (GCP only)
 - Controls containers via `docker exec`
 
-**Kali Container**
+**Kali Container** (agent phase)
 - Sandboxed environment where agent commands execute
 - App codebase mounted at `/app/codebase`
 - Connects to ADB server on host via network
 - Tools execute via ToolRuntime
+- Restarted before evaluation begins (only `agent_exploit` dir is preserved)
 
 **App Containers**
 - Backend servers, databases, and other app dependencies
@@ -62,7 +63,8 @@
 
 **Mounted directories in Kali container:**
 - `/app/codebase` - Full app source code (read-only copy)
-- `/app/exploit_files` - Empty directory for agent to write exploits
+- `/app/agent_exploit` - Empty directory for agent to write exploits
+- `/app/agent_output` - Directory for exploit results (captured secrets, exfiltrated data). Volume-mounted so verify scripts on the host can read them.
 - `/app/verify_files` (exploit mode only) - Contains evaluator verification logic
 
 **From initial prompt (see `agent/custom_agent.py`):**
@@ -119,3 +121,27 @@ Some apps (like Termux) may expose files via other mechanisms, but standard apps
 - App is pre-installed as a **release APK** (so `run-as` is unavailable)
 - App is open to main activity
 - Test users are pre-seeded (credentials in metadata.json)
+
+## Logging & Observability
+
+MobileCybench uses a centralized logging system designed for both human debugging and machine analysis.
+
+### LoggerManager (Singleton)
+The `LoggerManager` (`utils/logger.py`) is a lazy singleton that owns the experiment lifecycle:
+- **UUID Run IDs**: Every run is assigned a version 4 UUID (`run_id`).
+- **Late-Binding Config**: The logger is initialized with `RunnerConfig` early in the `runner.py` execution, allowing configuration-driven log levels and UI filtering.
+- **Thread Safety**: Uses log-record cloning to prevent side-effects during concurrent logging.
+
+### Data Modeling (Pydantic)
+All high-signal data objects use Pydantic `BaseModel` for strict typing and consistent serialization:
+- `RunnerConfig`: Orchestrates the run parameters.
+- `ProviderResponse`: Standardizes LLM outputs across OpenAI and LiteLLM.
+- `TokenUsage`: Tracks cost and tokens per request.
+- `CodexCLIResult`: Captures multi-turn interaction data.
+
+### Forensic Artifacts
+Beyond standard text logs, the system captures:
+- **System State**: Full Logcat dump from the Android emulator.
+- **Visual State**: PNG screenshots for every turn of the agent.
+- **Repo State**: A `git_repro.patch` file containing any uncommitted changes at run-time.
+- **Machine Trace**: A `conversation.jsonl` file that makes agent behavior trivially parseable for external analysis tools.

@@ -3,7 +3,7 @@
 	url = ../../cy-suite/joplin.git
 [submodule "wordpress/codebase"]
 	path = apps/wordpress/codebase
-	url = ../../cy-suite/WordPress-Android.git
+	url = ../../cy-suite/wordpress.git
 [submodule "apps/owncloud-android/codebase"]
 	path = apps/owncloud-android/codebase
 	url = ../../cy-suite/owncloud-android-app.git
@@ -49,6 +49,9 @@
 [submodule "apps/jerboa/codebase"]
 	path = apps/jerboa/codebase
 	url = ../../cy-suite/jerboa.git
+[submodule "apps/element-android/codebase"]
+	path = apps/element-android/codebase
+	url = ../../cy-suite/Element-Android.git
 [submodule "apps/wallabag/codebase"]
 	path = apps/wallabag/codebase
 	url = ../../cy-suite/wallabag.git

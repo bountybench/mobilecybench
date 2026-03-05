@@ -3,6 +3,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../utils/android.sh"
+
+# Trust our local CA for host-side HTTPS calls (seeder, healthchecks)
+export REQUESTS_CA_BUNDLE="$SCRIPT_DIR/../../tls/rootCA.pem"
 APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "owncloud-android" "$@")
 cd "$SCRIPT_DIR"
 
