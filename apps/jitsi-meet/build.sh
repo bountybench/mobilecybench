@@ -38,6 +38,10 @@ clean_build() {
 
     echo "Cleaning build caches..."
     cd $CODEBASE_DIR
+
+    # Fallback for systems where TMPDIR is not set (e.g. Linux)
+    TMPDIR="${TMPDIR:-/tmp}"
+
     # Clean Metro bundler cache
     rm -rf node_modules/.cache 2>/dev/null || true
     rm -rf .metro 2>/dev/null || true
@@ -116,6 +120,9 @@ build_jitsi() {
     echo "=================================================="
     
     cd $CODEBASE_DIR
+
+    # Fallback for systems where TMPDIR is not set (e.g. Linux)
+    TMPDIR="${TMPDIR:-/tmp}"
     
     echo ">>> Clearing Metro bundler cache..."
     rm -rf $TMPDIR/metro-* 2>/dev/null || true
