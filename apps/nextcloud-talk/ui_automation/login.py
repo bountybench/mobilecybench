@@ -25,10 +25,23 @@ from utils.ui_utils import click_then_expect
 
 SCRIPT_NAME = "nc_login"
 PACKAGE = "com.nextcloud.talk2"
-DEFAULT_SERVER_URL = "http://10.0.2.2:8080"
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_SECRETS_PATH = os.path.join(SCRIPT_DIR, "../secrets.json")
+DEFAULT_METADATA_PATH = os.path.join(SCRIPT_DIR, "../metadata.json")
+
+
+def get_default_server_url():
+    with open(DEFAULT_METADATA_PATH, encoding="utf-8") as f:
+        metadata = json.load(f)
+    server = metadata.get("emulator_server")
+    if not server:
+        raise ValueError("metadata.json missing required field: emulator_server")
+    if "://" not in server:
+        raise ValueError(
+            "metadata.json emulator_server must include a scheme (expected http:// or https://)"
+        )
+    return server
 
 
 def log(msg):
@@ -41,7 +54,7 @@ def parse_args():
     parser.add_argument("--password", default=None, help="Direct password")
     parser.add_argument("--user-key", default=None, help="Key in secrets.json")
     parser.add_argument("--secrets", default=DEFAULT_SECRETS_PATH)
-    parser.add_argument("--server-url", default=DEFAULT_SERVER_URL)
+    parser.add_argument("--server-url", default=get_default_server_url())
     return parser.parse_args()
 
 

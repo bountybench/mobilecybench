@@ -9,54 +9,6 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/wait.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/docker.sh"
 
-
-# Checks for required Android tools and SDK presence.
-check_android_prereqs() {
-    if ! command -v java >/dev/null 2>&1; then
-        log_warn "java not found in PATH; building Android apps may fail"
-    fi
-    if ! command -v adb >/dev/null 2>&1; then
-        log_warn "adb not found in PATH; emulator/device connectivity may fail"
-    fi
-    if [[ -z "${ANDROID_HOME:-}" ]]; then
-        log_warn "ANDROID_HOME is not set; Android SDK may be unavailable"
-    elif [[ ! -d "${ANDROID_HOME}" ]]; then
-        log_warn "ANDROID_HOME is set to ${ANDROID_HOME} but directory does not exist"
-    fi
-    log_info "Android environment check complete."
-    require_cmd java
-    require_cmd git
-    require_cmd adb
-    log_info "Android prerequisites OK"
-}
-
-# Starts an Android emulator waits for it to boot.
-start_emulator() {
-    if adb devices | grep -qE '^emulator-[0-9]+\s+device$'; then
-        log_info "Emulator already running. Skipping start."
-        return 0
-    fi
-    log_info "Starting Android emulator..."
-    local avd_name=${1:-"Pixel_2_API_28"}      # TODO: fix - looks like all our previous local ci emulators were Pixel_2_API_28 
-    if [[ -z "$avd_name" ]]; then
-        fatal "start_emulator requires AVD name"
-    fi
-    if [[ -f "/.dockerenv" ]]; then
-        fatal "Container-mode emulator start via host bridge has been removed"
-    else
-        local start_script="${ROOT_DIR}/start_emulator.sh"
-        if [[ ! -x "$start_script" ]]; then
-            fatal "Start emulator script not found/executable at $start_script"
-        fi
-        "$start_script" "$avd_name" &
-        adb wait-for-device
-        log_info "Emulator started (AVD=${avd_name})"
-    fi
-    if ! wait_for_device_boot; then
-        fatal "Android device did not finish booting within ${EMULATOR_BOOT_TIMEOUT:-600}s"
-    fi
-}
-
 # Installs an APK on the connected Android emulator.
 adb_install_apk() {
     local apk_path=$1

@@ -139,17 +139,23 @@ class TestDiscoveryWorkflowFlagGeneration:
         workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
         workflow.metadata = {"container_names": ["redis", "postgres"]}
 
-        with patch(
+        # Mock the heavy dependencies (must mock at source module for lazy imports)
+        with patch("docker.from_env"), patch(
             "utils.uuid_flags_utils.generate_and_save_flags"
         ) as mock_generate, patch("utils.emulator_manager.EmulatorManager"), patch(
             "utils.apk_utils.setup_apk"
         ), patch(
             "utils.setup_utils.install_app_and_setup_backend"
         ), patch(
+            "workflows.discovery.check_connectivity"
+        ) as mock_check_connectivity, patch(
             "agent.agent_container.setup_agent_environment"
-        ):
+        ) as mock_setup_agent_environment:
             workflow.setup_runtime_environment()
             mock_generate.assert_called_once_with(str(tmp_path), ["redis", "postgres"])
+            mock_check_connectivity.assert_called_once_with(
+                mock_setup_agent_environment.return_value.container, None
+            )
 
     def test_discovery_workflow_generates_flags_with_empty_containers(self, tmp_path):
         """setup_runtime_environment generates flags even without containers."""
@@ -157,14 +163,85 @@ class TestDiscoveryWorkflowFlagGeneration:
         workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
         workflow.metadata = {}
 
-        with patch(
+        with patch("docker.from_env"), patch(
             "utils.uuid_flags_utils.generate_and_save_flags"
         ) as mock_generate, patch("utils.emulator_manager.EmulatorManager"), patch(
             "utils.apk_utils.setup_apk"
         ), patch(
             "utils.setup_utils.install_app_and_setup_backend"
         ), patch(
+            "workflows.discovery.check_connectivity"
+        ) as mock_check_connectivity, patch(
             "agent.agent_container.setup_agent_environment"
-        ):
+        ) as mock_setup_agent_environment:
             workflow.setup_runtime_environment()
             mock_generate.assert_called_once_with(str(tmp_path), [])
+            mock_check_connectivity.assert_called_once_with(
+                mock_setup_agent_environment.return_value.container, None
+            )
+
+
+class TestExploitWorkflowEvaluation:
+    """Tests for exploit evaluation result classification."""
+
+    def test_evaluate_returns_verifier_error_when_clean_verify_exits_gt_one(
+        self, tmp_path
+    ):
+        """Clean-run verifier errors must not be scored as true positives."""
+        app_dir = tmp_path / "apps" / "test_app"
+        logs_dir = tmp_path / "logs"
+        agent_exploit_dir = logs_dir / "agent_exploit"
+        exploit_runner = tmp_path / "utils" / "run_exploit_container.sh"
+        agent_exploit_dir.mkdir(parents=True)
+        exploit_runner.parent.mkdir(parents=True)
+        (agent_exploit_dir / "exploit.sh").write_text("#!/bin/bash\nexit 0")
+        exploit_runner.write_text("#!/bin/bash\nexit 0")
+        app_dir.mkdir(parents=True)
+
+        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+        workflow.metadata = {}
+
+        with patch("utils.logger.logger_manager.get_logs_dir", return_value=logs_dir):
+            with patch.object(workflow, "_restart_runtime"), patch.object(
+                workflow, "_start_eval_kali", return_value=object()
+            ), patch("workflows.exploit.check_connectivity"), patch.object(
+                workflow,
+                "_run_exploit",
+                side_effect=[
+                    {
+                        "replay_exit_code": 0,
+                        "replay_stdout": "",
+                        "replay_stderr": "",
+                    },
+                    {
+                        "replay_exit_code": 0,
+                        "replay_stdout": "",
+                        "replay_stderr": "",
+                    },
+                ],
+            ), patch.object(
+                workflow,
+                "_run_verify",
+                side_effect=[
+                    {
+                        "exit_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "status": "vulnerable",
+                    },
+                    {
+                        "exit_code": 2,
+                        "stdout": "",
+                        "stderr": "adb failure",
+                        "status": "verifier_error",
+                    },
+                ],
+            ), patch.object(
+                workflow, "_save_eval_result"
+            ) as mock_save:
+                result = workflow.evaluate()
+
+        assert result["status"] == "verifier_error"
+        assert result["score"] == 0
+        assert "clean_run" in result
+        mock_save.assert_called_once_with(result)

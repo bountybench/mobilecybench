@@ -1216,15 +1216,9 @@ start_ssrf_listener || echo -e "${WARNING} SSRF listener not started - SSRF dete
 start_emulator_and_adb() {
     if [ -f "start_emulator.sh" ]; then
         print_header "$CYAN" "STARTING EMULATOR"
-        bash ./start_emulator.sh || echo -e "${WARNING} Failed to start emulator"
-
-        echo "Waiting for emulator to boot..."
-
-        # Wait for device to appear
-        adb wait-for-device
-
-        wait_for_device_boot
-        echo "Emulator booted successfully."
+        bash ./stop_emulator.sh >/dev/null  # Stop any emulator running in the background before starting local CI.
+        # Delegates to emulator.py start — handles boot wait and ADB setup
+        bash ./start_emulator.sh "$sdk" || { echo -e "${ERROR} Failed to start emulator"; exit 1; }
 
         # Ensure emulator is stopped on any exit (success or failure)
         trap 'echo -e "${INFO} Stopping emulator due to script exit..."; cd "$ROOT_DIR"; bash ./stop_emulator.sh' EXIT
@@ -1232,23 +1226,7 @@ start_emulator_and_adb() {
         echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
     fi
 
-    # Ensure ADB server is listening on all interfaces for container access
-    echo -e "${INFO} Ensuring ADB server is configured for container access..."
-    if ! lsof -iTCP:5037 -sTCP:LISTEN 2>/dev/null | grep -q "\\*:5037"; then
-        echo -e "${INFO} ADB not listening on all interfaces, restarting with -a flag..."
-        adb kill-server 2>/dev/null || true
-        adb -a start-server
-        # Wait for reconnection
-        for i in {1..30}; do
-            if adb devices 2>/dev/null | grep -q "device$"; then
-                echo -e "${SUCCESS} ADB reconnected to emulator"
-                break
-            fi
-            sleep 1
-        done
-    else
-        echo -e "${SUCCESS} ADB already configured correctly"
-    fi
+    # ADB -a binding is handled by EmulatorManager (via emulator.py start)
 
     # Inject system CA so apps trust local HTTPS backends
     echo -e "${INFO} Injecting system CA certificate..."

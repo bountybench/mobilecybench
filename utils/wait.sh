@@ -32,28 +32,3 @@ wait_for_device_boot() {
     sleep 0.5
   done
 }
-
-# Waits for a command's output to match a regex pattern.
-wait_for_output() {
-  local cmd="$1"
-  local match="$2"
-  local timeout=${3:-30}
-  local start_time=$(date +%s)
-  local end_time=$((start_time + timeout))
-  local output=""
-  while true; do
-    output=$(bash -c "$cmd" 2>/dev/null || true)
-    if printf '%s\n' "$output" | grep -q -Ei "$match"; then
-      printf '\n'
-      return 0
-    fi
-    if [ "$(date +%s)" -ge "$end_time" ]; then
-      printf '\n' >&2
-      printf 'timeout waiting for pattern "%s" from command: %s\n' "$match" "$cmd" >&2
-      printf 'last dump:\n%s\n' "$output" >&2
-      return 1
-    fi
-    printf '.'
-    sleep 0.5
-  done
-}

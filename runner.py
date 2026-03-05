@@ -94,11 +94,20 @@ def run_interactive_shell(app_name: str) -> dict:
 def create_workflow(
     config: RunnerConfig, app_name: str, project_root: Path
 ) -> Workflow:
-    """Create the appropriate workflow based on configuration."""
+    """
+    Create the appropriate workflow based on configuration.
+
+    Args:
+        config: Runner configuration
+        app_name: Name of the app to evaluate
+        project_root: Root directory of the project
+
+    Returns:
+        Workflow instance (DiscoveryWorkflow or ExploitWorkflow)
+    """
     if config.workflow == "exploit":
         return ExploitWorkflow(config, app_name, project_root)
-    else:
-        return DiscoveryWorkflow(config, app_name, project_root)
+    return DiscoveryWorkflow(config, app_name, project_root)
 
 
 def _log_experiment_config(
