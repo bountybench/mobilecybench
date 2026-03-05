@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# inject_system_ca.sh — Add a CA cert to the Android emulator system trust store
-# so apps trust local HTTPS backends (e.g. 10.0.2.2).
+# inject_system_ca.sh — Add a CA cert to the Android emulator trust stores
+# so apps and Chrome trust local HTTPS backends (e.g. 10.0.2.2).
 #
-# Android apps only trust system CAs for HTTPS. Our local TLS proxy uses a
-# self-signed CA, so we inject it into the emulator's system trust store at runtime.
-# This avoids modifying the app's network_security_config.xml or using -writable-system.
+# Two trust stores are populated:
 #
-# The script uses a tmpfs overlay on /system/etc/security/cacerts — the original partition
-# stays read-only, and the overlay is lost on reboot. So the cert doesn't persist across reboots.
-# No reboot required — the cert is visible to apps immediately after injection.
+# 1. System store (/system/etc/security/cacerts/) — trusted by all apps via
+#    Android's default TrustManager. Injected via tmpfs overlay (API <= 33)
+#    or tmpfs + nsenter bind-mount into zygote namespaces (API >= 34).
 #
-# API-level handling:
-#   API <= 33: tmpfs overlay is sufficient; apps read from /system/etc/security/cacerts.
-#   API >= 34: Android 14+ moved CA certs to /apex/com.android.conscrypt/cacerts with
-#     per-process mount namespaces. The tmpfs overlay alone isn't visible to apps.
-#     We use nsenter to bind-mount the overlay into the zygote and all running app
-#     mount namespaces, based on the technique from:
+# 2. User store (/data/misc/user/0/cacerts-added/) — trusted by Chrome without
+#    Certificate Transparency (CT) enforcement. Chrome 121+ on Android uses the
+#    Chrome Root Store and treats system-injected CAs as "public" CAs requiring
+#    SCTs. User-installed CAs are exempt from CT as they represent intentional
+#    local trust decisions. This matters for apps using OAuth/Chrome Custom Tabs.
+#
+# Both stores are non-persistent — lost on emulator reboot.
+#
+# API-level handling for system store:
+#   API <= 33: tmpfs overlay; apps read from /system/etc/security/cacerts.
+#   API >= 34: Android 14+ moved CAs to /apex/com.android.conscrypt/cacerts with
+#     per-process mount namespaces. We use nsenter to bind-mount the overlay.
 #     https://httptoolkit.com/blog/android-14-install-system-ca-certificate/
 #
 # Idempotent: skips injection if the cert is already present and visible.
@@ -344,37 +348,55 @@ done
 adb shell id 2>/dev/null | grep -q "uid=0" || fatal "adb root failed — adbd is not running as root"
 log_info "API $SDK — injecting $CERT_BASENAME"
 
-# Idempotency: skip if cert already present (and visible in zygote for API 34+)
+# Skip if cert already present in both stores (and visible in zygote for API 34+)
+SYSTEM_OK=false
+USER_OK=false
+
 if adb shell "[ -f /system/etc/security/cacerts/$CERT_BASENAME ]" 2>/dev/null; then
   if [[ "$SDK" -ge 34 ]]; then
-    if check_cert_visibility_in_namespaces "$CERT_BASENAME" quiet; then
-      log_info "Already injected — skipping"
-      exit 0
-    fi
+    check_cert_visibility_in_namespaces "$CERT_BASENAME" quiet && SYSTEM_OK=true
   else
-    log_info "Already injected — skipping"
-    exit 0
+    SYSTEM_OK=true
   fi
 fi
+adb shell "[ -f /data/misc/user/0/cacerts-added/$CERT_BASENAME ]" 2>/dev/null && USER_OK=true
 
-# Push and inject
+if $SYSTEM_OK && $USER_OK; then
+  log_info "Already injected — skipping"
+  exit 0
+fi
+
+# Push cert to device (needed by both system and user store injection)
 adb push "$CERT_PATH" "/data/local/tmp/$CERT_BASENAME" >/dev/null
 
-if [[ "$SDK" -le 33 ]]; then
-  inject_tmpfs_overlay
-else
-  inject_tmpfs_overlay_with_nsenter
-fi
+# System store injection
+if ! $SYSTEM_OK; then
+  if [[ "$SDK" -le 33 ]]; then
+    inject_tmpfs_overlay
+  else
+    inject_tmpfs_overlay_with_nsenter
+  fi
 
-# Verify
-if ! adb shell "[ -f /system/etc/security/cacerts/$CERT_BASENAME ]" 2>/dev/null; then
-  fatal "Verification failed: cert not in /system/etc/security/cacerts/"
-fi
+  if ! adb shell "[ -f /system/etc/security/cacerts/$CERT_BASENAME ]" 2>/dev/null; then
+    fatal "Verification failed: cert not in /system/etc/security/cacerts/"
+  fi
 
-if [[ "$SDK" -ge 34 ]]; then
-  if ! check_cert_visibility_in_namespaces "$CERT_BASENAME"; then
-    fatal "Cert not visible in required mount namespaces"
+  if [[ "$SDK" -ge 34 ]]; then
+    if ! check_cert_visibility_in_namespaces "$CERT_BASENAME"; then
+      fatal "Cert not visible in required mount namespaces"
+    fi
   fi
 fi
 
-log_info "System CA injection complete"
+# Also install to user cert store so Chrome trusts it without CT enforcement.
+# Chrome 121+ treats system-store CAs as public and requires SCTs; user-store
+# CAs are exempt. This is needed for OAuth flows via Chrome Custom Tabs.
+if ! $USER_OK; then
+  log_info "Installing to user cert store"
+  adb shell "su 0 sh -c 'mkdir -p /data/misc/user/0/cacerts-added && \
+    cp /data/local/tmp/$CERT_BASENAME /data/misc/user/0/cacerts-added/ && \
+    chmod 644 /data/misc/user/0/cacerts-added/$CERT_BASENAME && \
+    chown system:system /data/misc/user/0/cacerts-added/$CERT_BASENAME'"
+fi
+
+log_info "CA injection complete (system + user store)"
