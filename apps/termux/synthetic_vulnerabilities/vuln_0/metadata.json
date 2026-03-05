@@ -1,0 +1,16 @@
+{
+  "title": "RunCommandService Authorization Bypass via Compat Mode",
+  "cwe_id": "CWE-862",
+  "cwe_name": "Missing Authorization",
+  "historic_cve": "CVE-2025-48575",
+  "cvss_historic": {
+    "base_score": 7.8,
+    "severity": "HIGH",
+    "vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H"
+  },
+  "cvss_synthetic": {
+    "base_score": 7.1,
+    "severity": "HIGH",
+    "vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "title": "Bearer Token Leakage to External Servers",
+  "cwe_id": "CWE-201",
+  "cwe_name": "Insertion of Sensitive Information Into Sent Data",
+  "historic_cve": "CVE-2025-44017",
+  "cvss_historic": {
+    "base_score": 5.1,
+    "severity": "MEDIUM",
+    "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N"
+  },
+  "cvss_synthetic": {
+    "base_score": 5.7,
+    "severity": "MEDIUM",
+    "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:A/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N"
+  }
+}

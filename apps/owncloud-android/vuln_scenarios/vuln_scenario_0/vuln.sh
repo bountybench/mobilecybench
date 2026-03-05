@@ -18,6 +18,11 @@ TOOLS_DIR="$ROOT_DIR/tools"
 VENV_DIR="$ROOT_DIR/.venv"
 PYTHON="python3"
 
+# Source .env for OWNCLOUD_URL, REQUESTS_CA_BUNDLE, etc.
+if [[ -f "$ROOT_DIR/.env" ]]; then
+  set -a; source "$ROOT_DIR/.env"; set +a
+fi
+
 log(){ printf '[vuln0] %s\n' "$*"; }
 warn(){ printf '[vuln0][warn] %s\n' "$*" >&2; }
 
@@ -25,7 +30,7 @@ BASELINE_FILE="${BASELINE_FILE:-$ROOT_DIR/baseline_manifest.json}"
 SECRETS_FILE="${SECRETS_FILE:-$ROOT_DIR/secrets.json}"
 AGENT_LOG_FILE="${AGENT_LOG_FILE:-$SCENARIO_DIR/fake_agent_log.log}"
 TARGET_USER="${TARGET_USER:-alex}"
-OWNCLOUD_URL="${OWNCLOUD_URL:-http://localhost:8080}"
+OWNCLOUD_URL="${OWNCLOUD_URL:-https://localhost:8080}"
 
 ANDROID_TARGET_PACKAGE="${ANDROID_TARGET_PACKAGE:-com.owncloud.android}"
 ANDROID_TARGET_DIR="${ANDROID_TARGET_DIR:-/data/data/${ANDROID_TARGET_PACKAGE}}"

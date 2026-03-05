@@ -51,7 +51,7 @@ def check_smtp_availability() -> Tuple[bool, str]:
     if not _check_socket(SMTP_HOST, SMTP_PORT):
         return False, f"SMTP socket {SMTP_HOST}:{SMTP_PORT} not reachable"
     try:
-        client = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=5)
+        client = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30)
         client.noop()
         client.quit()
         return True, "SMTP reachable and responding"

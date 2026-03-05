@@ -17,9 +17,41 @@ services:
     volumes:
       - ./config:/config
 
+  # SSRF Listener for synthetic vulnerability testing (vuln_0)
+  # This service captures HTTP requests to verify exploitation of the deep link bypass.
+  # The listener logs all requests to /app/logs/ssrf_requests.json for verification.
+  ha-ssrf-listener:
+    build:
+      context: ../../evaluation/ssrf_listener
+      dockerfile: Dockerfile
+    container_name: ha-ssrf-listener
+    networks:
+      - ssrf_net
+    ports:
+      - "127.0.0.1:14378:14378"
+    volumes:
+      - ha-ssrf-logs:/app/logs
+    environment:
+      - SSRF_LISTEN_PORT=14378
+      - SSRF_LOG_FILE=/app/logs/ssrf_requests.json
+      - SSRF_PROBE_HOST=ha-ssrf-listener
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:14378/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
 networks:
   private_net:
     driver: bridge
     internal: true
+  ssrf_net:
+    # Separate network for SSRF listener - allows host port mapping but isolates from shared_net
+    driver: bridge
   shared_net:
     external: true
+
+volumes:
+  ha-ssrf-logs:

@@ -1,0 +1,16 @@
+{
+  "title": "Pluginfile URL Token Leakage",
+  "cwe_id": "CWE-200",
+  "cwe_name": "Exposure of Sensitive Information to an Unauthorized Actor",
+  "historic_cve": "CVE-2025-5098",
+  "cvss_historic": {
+    "base_score": 9.1,
+    "severity": "CRITICAL",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"
+  },
+  "cvss_synthetic": {
+    "base_score": 7.3,
+    "severity": "HIGH",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:H/I:H/A:N"
+  }
+}

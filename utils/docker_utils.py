@@ -1,11 +1,10 @@
-import logging
 import threading
 import time
 from typing import Callable, List, Optional, Tuple
 
 import docker
 
-logger = logging.getLogger(__name__)
+from utils.logger import logger
 
 
 def run_command_in_container(

@@ -2,13 +2,13 @@
 set -euo pipefail
 
 # ------------ Configurable timeouts (seconds) ------------
-TIMEOUT_BOOT="${TIMEOUT_BOOT:-30}"   # full boot + bootanim + compositor + core signals
 TIMEOUT_CORE="${TIMEOUT_CORE:-10}"   # core service responsiveness
 TIMEOUT_UIA="${TIMEOUT_UIA:-15}"     # uiautomator readiness
 TIMEOUT_FOCUS="${TIMEOUT_FOCUS:-10}"  # resumed activity window
 POLL_INTERVAL="${POLL_INTERVAL:-1}"   # interval for polling loops
 
 # ------------ Dependencies ------------
+source "$(dirname "${BASH_SOURCE[0]}")/wait.sh"
 if command -v timeout >/dev/null 2>&1; then
   TIMEOUT_BIN=timeout
 elif command -v gtimeout >/dev/null 2>&1; then
@@ -32,53 +32,6 @@ time_step() {
 }
 
 # ------------ Readiness gates ------------
-
-# Waits for the core Android OS to finish its boot sequence.
-wait_for_boot() {
-  adb wait-for-device
-
-  # Wait for the Android framework to finish booting (including boot animation)
-  echo "Waiting for boot_completed/dev.bootcomplete + compositor..." >&2
-  "$TIMEOUT_BIN" "$TIMEOUT_BOOT" sh -c '
-    until \
-      [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ] && \
-      [ "$(adb shell getprop dev.bootcomplete | tr -d "\r")" = "1" ] && \
-      adb shell pidof surfaceflinger >/dev/null 2>&1 && \
-      adb shell pidof system_server  >/dev/null 2>&1
-    do sleep '"$POLL_INTERVAL"'; done
-  '
-}
-
-# Restarts the device with root and disables verification, then remounts system partition as read-write
-root_and_remount() {
-  echo "Requesting root..." >&2
-  adb root
-  wait_for_boot
-
-  local sdk
-  sdk="$(adb shell "getprop ro.build.version.sdk" 2>/dev/null | tr -d $'\r')"
-  echo "Device SDK = ${sdk:-unknown}" >&2
-
-  if [ "${sdk:-0}" -gt 28 ]; then
-    echo "Disabling AVB verification (avbctl)..." >&2
-    adb shell "avbctl disable-verification"
-  else
-    echo "Disabling dm-verity..." >&2
-    adb disable-verity
-  fi
-
-  echo "Rebooting after verification change..." >&2
-  adb reboot
-  wait_for_boot
-
-  echo "Remounting /system (overlayfs expected on API 29+)..." >&2
-  adb root
-  wait_for_boot
-  adb remount
-  adb shell mount | grep -E '(system|vendor|product)' >&2
-
-  wait_for_boot
-}
 
 # Probes core services by testing responsiveness of various services
 wait_core_services() {
@@ -151,24 +104,11 @@ main() {
   echo "=== Running android_emulator_ready.sh ===" >&2
   local t0=$SECONDS
 
-  local REMOUNT=false
-  for arg in "$@"; do
-    if [[ "$arg" == "--remount" ]]; then
-      REMOUNT=true
-      break
-    fi
-  done
-
-  time_step "1) Boot sequence" wait_for_boot
-  if [ "$REMOUNT" = true ]; then
-    time_step "2) Root + disable verification + remount" root_and_remount
-  else
-    echo "Skipping: 2) Root + disable verification + remount (pass --remount to enable)" >&2
-  fi
-  time_step "3) Wait for core services" wait_core_services
-  time_step "4) Stabilize UI" stabilize_ui
-  time_step "5) UiAutomator readiness" ensure_uiautomator_ready
-  time_step "6) Wait for core services post-stabilize" wait_core_services
+  time_step "1) Boot sequence" wait_for_device_boot
+  time_step "2) Wait for core services" wait_core_services
+  time_step "3) Stabilize UI" stabilize_ui
+  time_step "4) UiAutomator readiness" ensure_uiautomator_ready
+  time_step "5) Wait for core services post-stabilize" wait_core_services
 
   local total_dt=$((SECONDS - t0))
   echo "Device is READY for UI tests. Total time: ${total_dt}s" >&2

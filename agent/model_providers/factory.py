@@ -1,86 +1,77 @@
-from __future__ import annotations
-
-from typing import Literal
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Dict, List, Optional
 
 from .base import ModelProvider
-from .gemini_provider import GeminiProvider
+from .litellm_provider import LiteLLMProvider
 from .openai_provider import OpenAIProvider
 
-# TODO: update the list as new providers are added
-ProviderName = Literal["openai", "gemini"]
+
+@dataclass(frozen=True)
+class ModelConfig:
+    """Provider routing configuration for a model."""
+
+    api_id: str  # Model ID string sent to the API
+    provider: str  # "openai" (Responses API) or "litellm"
 
 
-def detect_provider_from_model(model: str) -> str:
-    """Detect the appropriate provider based on model name.
+class SupportedModel(Enum):
+    """Supported models and their provider routing.
 
-    Args:
-        model: Model identifier (e.g., 'gpt-4', 'gemini-3-pro-preview')
-
-    Returns:
-        Provider name ('openai' or 'gemini')
+    All entries use thinking-enabled variants by default:
+    - GPT-5.2: thinking mode (not Instant/chat-latest)
+    - Claude: extended thinking via thinking parameter
+    - Gemini 3 Pro: thinking_level defaults to high
     """
-    model_lower = model.lower()
 
-    # Gemini models
-    if any(
-        prefix in model_lower
-        for prefix in [
-            "gemini",
-            "gemma",
-            "learnlm",
-            "imagen",
-        ]
-    ):
-        return "gemini"
+    # OpenAI — native Responses API provider
+    GPT_5_2 = ModelConfig("gpt-5.2", "openai")
+    GPT_5_2_PRO = ModelConfig("gpt-5.2-pro", "openai")
+    GPT_5_2_CODEX = ModelConfig("gpt-5.2-codex", "openai")
 
-    # OpenAI models
-    if any(
-        prefix in model_lower
-        for prefix in [
-            "gpt",
-            "o1",
-            "o3",
-            "davinci",
-            "curie",
-            "babbage",
-            "ada",
-        ]
-    ):
-        return "openai"
+    # Anthropic — LiteLLM provider
+    CLAUDE_OPUS_4_6 = ModelConfig("claude-opus-4-6", "litellm")
+    CLAUDE_SONNET_4_5 = ModelConfig("claude-sonnet-4-5-20250929", "litellm")
 
-    # Default to OpenAI for unknown models
-    return "openai"
+    # Google — LiteLLM provider
+    GEMINI_3_PRO = ModelConfig("gemini-3-pro-preview", "litellm")
+
+
+# Lookup table: api_id → SupportedModel
+_MODEL_REGISTRY: Dict[str, SupportedModel] = {m.value.api_id: m for m in SupportedModel}
 
 
 def get_model_provider(
-    name: ProviderName | None = None, model: str | None = None
+    model: str,
+    instructions: str,
+    tools: Optional[List[Dict]] = None,
+    max_output_tokens: Optional[int] = None,
+    timeout_ms: Optional[int] = None,
+    reasoning_effort: Optional[str] = None,
 ) -> ModelProvider:
-    """Return a model provider instance based on name or model.
+    """Return a fully configured provider for *model*.
 
-    Args:
-        name: Explicit provider name ('openai', 'gemini')
-        model: Model identifier to auto-detect provider from
-
-    Returns:
-        ModelProvider instance
-
-    - "openai" (default)
-    - "gemini" for Google Gemini models
+    Looks up the model in the SupportedModel registry to determine
+    which provider to use:
+    - OpenAI models → native Responses API provider
+    - Everything else → LiteLLM provider
     """
-    # If explicit name provided, use it
-    if name:
-        provider_name = name.lower()
-    # Otherwise detect from model
-    elif model:
-        provider_name = detect_provider_from_model(model)
-    else:
-        provider_name = "openai"  # default
+    entry = _MODEL_REGISTRY.get(model)
+    if entry is None:
+        supported = [m.value.api_id for m in SupportedModel]
+        raise ValueError(
+            f"Unsupported model: '{model}'. " f"Supported models: {supported}"
+        )
 
-    if provider_name == "openai":
-        return OpenAIProvider()
-    elif provider_name == "gemini":
-        return GeminiProvider()
+    kwargs: Dict[str, Any] = dict(
+        model=model,
+        instructions=instructions,
+        tools=tools,
+        max_output_tokens=max_output_tokens,
+        timeout_ms=timeout_ms,
+        reasoning_effort=reasoning_effort,
+    )
 
-    # TODO: add other providers here as elif branches
-
-    raise ValueError(f"Unsupported MODEL_PROVIDER: {provider_name}")
+    if entry.value.provider == "openai":
+        return OpenAIProvider(**kwargs)
+    return LiteLLMProvider(**kwargs)

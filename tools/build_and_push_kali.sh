@@ -2,29 +2,36 @@
 
 set -e
 
-# WARNING: This script requires being logged into the cybench Docker Hub account
+# WARNING: --push requires being logged into the cybench Docker Hub account
 # Requires docker access token for cybench account
-# 'docker login -u cybench' 
+# 'docker login -u cybench'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 tag="latest"
-build_locally=0
 arch="amd64,arm64"
+mode=""
 
 show_help() {
-	echo "Usage: $0 [--local] [--tag <tag>] [--arch <architecture>]"
+	echo "Usage: $0 <--local|--push|--pull> [--tag <tag>] [--arch <architecture>]"
 	echo ""
-	echo "  --local          Build the Docker image locally"
-	echo "  --tag <tag>      Specify the tag for the Docker image (default: latest)"
-	echo "  --arch <architecture> Specify the architecture for the Docker image (default: amd64,arm64)"
+	echo "Modes (exactly one required):"
+	echo "  --local          Build the Docker image for the current architecture only (no push)"
+	echo "  --push           Build multi-arch image with buildx and push to Docker Hub"
+	echo "  --pull           Pull the image from Docker Hub"
+	echo ""
+	echo "Options:"
+	echo "  --tag <tag>      Specify the image tag (default: latest)"
+	echo "  --arch <arch>    Specify architectures for --push (default: amd64,arm64)"
 	echo "  --help           Display this help message"
 	exit 0
 }
 
 while [[ $# -gt 0 ]]; do
 	case $1 in
-	--local) build_locally=1 ;;
+	--local) mode="local" ;;
+	--push) mode="push" ;;
+	--pull) mode="pull" ;;
 	--tag)
 		tag="$2"
 		shift
@@ -50,15 +57,52 @@ while [[ $# -gt 0 ]]; do
 	shift
 done
 
-image_name="cybench/mobilecybench:${tag}"
-
-if [[ ${build_locally} -eq 1 ]]; then
-	echo "Building locally for the current architecture..."
-	docker build -f "${SCRIPT_DIR}/../agent/kali/Dockerfile.kali" -t "${image_name}" "${SCRIPT_DIR}/../" "$@"
-else
-	echo "Pulling Docker image from Docker Hub..."
-	docker pull "${image_name}" || {
-		echo "Remote image not found, building locally with buildx for ${arch}..."
-		docker buildx build -f "${SCRIPT_DIR}/../agent/kali/Dockerfile.kali" --platform "linux/${arch}" -t "${image_name}" --push "${SCRIPT_DIR}/../" "$@"
-	}
+if [[ -z $mode ]]; then
+	echo "Error: You must specify a mode (--local, --push, or --pull)"
+	echo ""
+	show_help
 fi
+
+image_name="cybench/mobilecybench:${tag}"
+dockerfile="${SCRIPT_DIR}/../agent/kali/Dockerfile.kali"
+context="${SCRIPT_DIR}/../agent/kali"
+
+case $mode in
+local)
+	echo "Building locally for the current architecture..."
+	docker build -f "${dockerfile}" -t "${image_name}" "${context}"
+	echo "Done. Image: ${image_name}"
+	;;
+push)
+	echo "Building multi-arch image (linux/${arch}) and pushing to Docker Hub..."
+
+	# Ensure a buildx builder exists that supports multi-platform
+	if ! docker buildx inspect mobilecybench-builder >/dev/null 2>&1; then
+		echo "Creating buildx builder 'mobilecybench-builder'..."
+		docker buildx create --name mobilecybench-builder --use
+	else
+		docker buildx use mobilecybench-builder
+	fi
+
+	# Build comma-separated arch list into --platform format
+	platforms=""
+	IFS=',' read -ra ARCH_ARRAY <<<"$arch"
+	for a in "${ARCH_ARRAY[@]}"; do
+		platforms="${platforms:+${platforms},}linux/${a}"
+	done
+
+	docker buildx build \
+		-f "${dockerfile}" \
+		--platform "${platforms}" \
+		-t "${image_name}" \
+		--push \
+		"${context}"
+
+	echo "Done. Pushed: ${image_name} (${platforms})"
+	;;
+pull)
+	echo "Pulling ${image_name} from Docker Hub..."
+	docker pull "${image_name}"
+	echo "Done."
+	;;
+esac

@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 import json
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
+import zipfile
 from pathlib import Path
 
 
@@ -19,59 +22,88 @@ def check_directory():
 
 
 def download_apk(app_name, url):
-    """Download APK from the given URL"""
+    """Download APK from GitHub release. Supports single APKs and zip bundles.
+
+    Only extracts files that don't already exist locally (fill gaps, never overwrite).
+    """
     apk_dir = Path(f"apps/{app_name}/apk")
     apk_dir.mkdir(parents=True, exist_ok=True)
-    apk_path = apk_dir / f"{app_name}.apk"
 
-    # Use gh CLI for GitHub releases
-    if url.startswith("https://github.com/"):
-        # Parse GitHub release URL
-        # Format: https://github.com/{owner}/{repo}/releases/download/{tag}/{filename}
-        match = re.match(
-            r"https://github\.com/([^/]+)/([^/]+)/releases/download/([^/]+)/(.+)", url
+    # Parse GitHub release URL
+    match = re.match(
+        r"https://github\.com/([^/]+)/([^/]+)/releases/download/([^/]+)/(.+)", url
+    )
+    if not match:
+        print(f"Invalid GitHub release URL: {url}", file=sys.stderr)
+        sys.exit(1)
+
+    owner, repo, tag, filename = match.groups()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        subprocess.run(
+            [
+                "gh",
+                "release",
+                "download",
+                tag,
+                "--repo",
+                f"{owner}/{repo}",
+                "--pattern",
+                filename,
+                "--dir",
+                tmpdir,
+                "--clobber",
+            ],
+            check=True,
         )
-        if not match:
-            print(f"Invalid GitHub release URL format: {url}", file=sys.stderr)
-            sys.exit(1)
+        tmp_path = Path(tmpdir) / filename
 
-        owner, repo, tag, filename = match.groups()
-        repo_full = f"{owner}/{repo}"
+        # Handle zip bundles vs single APKs
+        try:
+            with zipfile.ZipFile(tmp_path, "r") as zf:
+                if any(n.endswith(".apk") for n in zf.namelist()):
+                    _extract_zip_no_overwrite(zf, apk_dir)
+                    print(f"Extracted APK bundle to {apk_dir} (skipped existing files)")
+                    return
+        except zipfile.BadZipFile:
+            pass
 
-        # Download using gh CLI
-        gh_args = [
-            "gh",
-            "release",
-            "download",
-            tag,
-            "--repo",
-            repo_full,
-            "--pattern",
-            filename,
-            "--dir",
-            str(apk_dir),
-            "--clobber",
-        ]
-        subprocess.run(gh_args, check=True)
+        # Single APK file - only copy if doesn't exist
+        apk_path = apk_dir / f"{app_name}.apk"
+        if not apk_path.exists():
+            shutil.move(str(tmp_path), str(apk_path))
+            print(f"Downloaded APK to {apk_path}")
+        else:
+            print(f"APK already exists at {apk_path}, skipping")
 
-        # Rename to expected filename if different
-        downloaded_file = apk_dir / filename
-        if downloaded_file != apk_path:
-            downloaded_file.rename(apk_path)
-    else:
-        # Use curl for non-GitHub URLs
-        curl_args = [
-            "curl",
-            "-L",
-            "--fail",
-            "--retry",
-            "3",
-            "--retry-connrefused",
-            "-o",
-            str(apk_path),
-            url,
-        ]
-        subprocess.run(curl_args, check=True)
+
+def _extract_zip_no_overwrite(zf: zipfile.ZipFile, apk_dir: Path):
+    """Extract zip contents without overwriting existing files."""
+    # Check if zip has apk/ prefix
+    has_prefix = any(n.startswith("apk/") for n in zf.namelist())
+    prefix = "apk/" if has_prefix else ""
+
+    for member in zf.namelist():
+        # Strip apk/ prefix if present
+        if prefix and member.startswith(prefix):
+            relative = member[len(prefix) :]
+        else:
+            relative = member
+
+        if not relative:
+            continue
+
+        dest = apk_dir / relative
+
+        if member.endswith("/"):
+            dest.mkdir(parents=True, exist_ok=True)
+        elif not dest.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(member) as src, open(dest, "wb") as dst:
+                dst.write(src.read())
+            print(f"  Extracted: {relative}")
+        else:
+            print(f"  Skipped (exists): {relative}")
 
 
 def main():
@@ -86,14 +118,9 @@ def main():
 
     if not app_dir.exists():
         print(f"App directory not found: {app_dir}", file=sys.stderr)
-        print(
-            f"Available apps: {', '.join(p.name for p in Path('apps').iterdir() if p.is_dir())}",
-            file=sys.stderr,
-        )
         sys.exit(1)
 
     metadata_file = app_dir / "metadata.json"
-
     if not metadata_file.exists():
         print(f"Metadata file not found: {metadata_file}", file=sys.stderr)
         sys.exit(1)
@@ -103,7 +130,10 @@ def main():
 
     apk_url = metadata.get("download_link")
     if not apk_url:
-        print(f"Could not find download_link in {metadata_file}", file=sys.stderr)
+        print(f"No download_link in {metadata_file}", file=sys.stderr)
+        print("To fix: build APKs and publish:", file=sys.stderr)
+        print(f"  ./build_apk.sh {app_name}", file=sys.stderr)
+        print(f"  ./publish_apk_bundle.sh apps/{app_name}", file=sys.stderr)
         sys.exit(1)
 
     download_apk(app_name, apk_url)

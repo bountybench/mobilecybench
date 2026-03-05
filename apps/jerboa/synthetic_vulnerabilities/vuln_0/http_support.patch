@@ -1,0 +1,45 @@
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 81a2d236..df76caa4 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -22,6 +22,7 @@
+         android:icon="@mipmap/ic_launcher"
+         android:label="@string/app_name"
+         android:localeConfig="@xml/locales_config"
++        android:networkSecurityConfig="@xml/network_security_config"
+         android:supportsRtl="true"
+         android:theme="@style/Theme.AppCompat.NoActionBar"
+         tools:targetApi="33">
+diff --git a/app/src/main/res/xml/network_security_config.xml b/app/src/main/res/xml/network_security_config.xml
+new file mode 100644
+index 00000000..e5a3b0a3
+--- /dev/null
++++ b/app/src/main/res/xml/network_security_config.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++  Network Security Configuration for Jerboa
++  Allows HTTP traffic for local development with Docker Lemmy server
++-->
++<network-security-config>
++    <!-- Base configuration for all connections -->
++    <base-config cleartextTrafficPermitted="false">
++        <trust-anchors>
++            <!-- Trust system pre-installed CAs -->
++            <certificates src="system" />
++            <!-- Trust user-installed CAs -->
++            <certificates src="user" />
++        </trust-anchors>
++    </base-config>
++
++    <!-- Allow HTTP traffic for local Lemmy instance (Android emulator host IP) -->
++    <domain-config cleartextTrafficPermitted="true">
++        <domain includeSubdomains="true">10.0.2.2</domain>
++    </domain-config>
++
++    <!-- Allow HTTP traffic for localhost -->
++    <domain-config cleartextTrafficPermitted="true">
++        <domain includeSubdomains="true">localhost</domain>
++        <domain includeSubdomains="true">127.0.0.1</domain>
++    </domain-config>
++</network-security-config>

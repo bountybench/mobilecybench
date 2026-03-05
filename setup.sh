@@ -4,6 +4,15 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="${SCRIPT_DIR}/setup.log"
+
+# If running within an experiment, redirect log to the experiment directory
+if [[ -n "$MOBILECYBENCH_SESSION_ID" ]]; then
+    EXP_LOG_DIR="${SCRIPT_DIR}/logs/experiment_${MOBILECYBENCH_SESSION_ID}"
+    if [[ -d "$EXP_LOG_DIR" ]]; then
+        LOG_FILE="${EXP_LOG_DIR}/setup.log"
+    fi
+fi
+
 ANDROID_HOME="${HOME}/.android-sdk"
 EMULATOR_NAME="MobileCybenchEmu"
 
@@ -72,10 +81,13 @@ warn_old_sdk_version() {
 APP_NAME=""
 SDK_VERSION="$DEFAULT_SDK_VERSION"
 SYSTEM_IMAGE_TYPE="$DEFAULT_SYSTEM_IMAGE"
+INIT_SUBMODULES="false"
+INIT_SUBMODULE_APP=""
 
 # Check if first argument is an app name (no dashes, exists in apps/ directory with valid metadata)
 if [[ $# -gt 0 && "$1" != -* && -d "${SCRIPT_DIR}/apps/$1" ]]; then
     APP_NAME="$1"
+    shift
     SDK_VERSION=$(load_app_metadata "$APP_NAME")
     
     # Validate metadata
@@ -98,6 +110,38 @@ if [[ $# -gt 0 && "$1" != -* && -d "${SCRIPT_DIR}/apps/$1" ]]; then
     fi
     
     warn_old_sdk_version "$SDK_VERSION" "App '$APP_NAME' uses Android SDK"
+
+    # Parse remaining flags (app mode)
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --init-submodules)
+                if [[ -n "$2" && "$2" != -* ]]; then
+                    INIT_SUBMODULE_APP="$2"
+                    shift 2
+                else
+                    INIT_SUBMODULES="true"
+                    shift
+                fi
+                ;;
+            --init-submodules=*)
+                INIT_SUBMODULE_APP="${1#*=}"
+                shift
+                ;;
+            -h|--help)
+                echo "Usage: $0 APP_NAME [--init-submodules [app_name]]"
+                echo ""
+                echo "Arguments:"
+                echo "  APP_NAME                       App name from apps/ directory (uses SDK from metadata)"
+                echo "  --init-submodules [app_name]   Initialize submodules (optionally only for one app)"
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1"
+                echo "Use -h or --help for usage information"
+                exit 1
+                ;;
+        esac
+    done
 else
     # Standard flag parsing mode
     while [[ $# -gt 0 ]]; do
@@ -120,10 +164,23 @@ else
                 SYSTEM_IMAGE_TYPE="${1#*=}"
                 shift
                 ;;
+            --init-submodules)
+                if [[ -n "$2" && "$2" != -* ]]; then
+                    INIT_SUBMODULE_APP="$2"
+                    shift 2
+                else
+                    INIT_SUBMODULES="true"
+                    shift
+                fi
+                ;;
+            --init-submodules=*)
+                INIT_SUBMODULE_APP="${1#*=}"
+                shift
+                ;;
             -h|--help)
                 echo "Usage: $0"
                 echo "   or: $0 APP_NAME"
-                echo "   or: $0 [--sdk SDK_VERSION] [--system-image SYSTEM_IMAGE_TYPE]"
+                echo "   or: $0 [--sdk SDK_VERSION] [--system-image SYSTEM_IMAGE_TYPE] [--init-submodules [app_name]]"
                 echo ""
                 echo "Mode 1: Use defaults (SDK $DEFAULT_SDK_VERSION, $DEFAULT_SYSTEM_IMAGE)"
                 echo "Mode 2: Auto-configure from app metadata (Recommended)"
@@ -133,6 +190,7 @@ else
                 echo "  APP_NAME                       App name from apps/ directory (uses SDK from metadata)"
                 echo "  --sdk SDK_VERSION              Android SDK version (default: $DEFAULT_SDK_VERSION)"
                 echo "  --system-image SYSTEM_IMAGE    System image type (default: $DEFAULT_SYSTEM_IMAGE)"
+                echo "  --init-submodules [app_name]   Initialize submodules (optionally only for one app)"
                 echo "  -h, --help                     Show this help message"
                 echo ""
                 echo "Available apps:"
@@ -178,6 +236,11 @@ else
     done
 fi
 
+# If app mode is used with --init-submodules (no app specified), default to that app
+if [[ "$INIT_SUBMODULES" == "true" && -n "$APP_NAME" && -z "$INIT_SUBMODULE_APP" ]]; then
+    INIT_SUBMODULE_APP="$APP_NAME"
+fi
+
 # Logging function
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
@@ -192,6 +255,39 @@ error_exit() {
 # Check if command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
+}
+
+# Initialize git submodules (optional)
+init_submodules() {
+    if [[ "$INIT_SUBMODULES" != "true" && -z "$INIT_SUBMODULE_APP" ]]; then
+        return 0
+    fi
+
+    if [[ ! -d "${SCRIPT_DIR}/.git" ]]; then
+        log "Skipping submodules: not a git repository"
+        return 0
+    fi
+
+    if ! command_exists git; then
+        log "ERROR: git not found in PATH"
+        return 1
+    fi
+
+    # TODO: switch submodule URLs to SSH instead of HTTPS
+    if [[ -n "$INIT_SUBMODULE_APP" ]]; then
+        local submodule_path="apps/${INIT_SUBMODULE_APP}/codebase"
+        if [[ ! -d "${SCRIPT_DIR}/apps/${INIT_SUBMODULE_APP}" ]]; then
+            log "ERROR: App directory not found: apps/${INIT_SUBMODULE_APP}"
+            return 1
+        fi
+        log "Initializing submodule: ${submodule_path}"
+        git submodule update --init "$submodule_path"
+        log "Submodule initialized: ${submodule_path}"
+    else
+        log "Initializing all submodules (recursive)..."
+        git submodule update --init --recursive
+        log "All submodules initialized"
+    fi
 }
 
 # Check Java installation and version
@@ -380,6 +476,11 @@ setup_environment() {
     export ANDROID_HOME="$ANDROID_HOME"
     export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
     
+    # Propagate session ID if present
+    if [[ -n "$MOBILECYBENCH_SESSION_ID" ]]; then
+        export MOBILECYBENCH_SESSION_ID="$MOBILECYBENCH_SESSION_ID"
+    fi
+
     # Add to shell profile
     local shell_profile=""
     
@@ -547,120 +648,6 @@ create_avd() {
     log "  - $avd_name_playstore (non-rootable, production-like)"
 }
 
-create_helper_scripts() {
-    log "Creating helper scripts..."
-
-    # Start emulator script - defaults to rootable (google_apis)
-    cat > "${SCRIPT_DIR}/start_emulator.sh" << EOF
-#!/bin/bash
-
-ANDROID_HOME="\${HOME}/.android-sdk"
-SDK_VERSION="${SDK_VERSION}"
-SYSTEM_IMAGE="\${1:-google_apis}"  # Default to google_apis (rootable)
-
-EMULATOR_NAME="MobileCybenchEmulatorAPI\${SDK_VERSION}_\${SYSTEM_IMAGE}"
-
-# Check if AVD exists
-if ! "\$ANDROID_HOME/emulator/emulator" -list-avds | grep -q "^\$EMULATOR_NAME\$"; then
-    echo "Error: AVD '\$EMULATOR_NAME' not found"
-    echo ""
-    echo "Available AVDs:"
-    "\$ANDROID_HOME/emulator/emulator" -list-avds
-    echo ""
-    echo "Usage: \$0 [google_apis|google_apis_playstore]"
-    exit 1
-fi
-
-echo "Starting Android emulator: \$EMULATOR_NAME"
-echo "This may take a few minutes on first boot..."
-
-"\$ANDROID_HOME/emulator/emulator" \\
-    -avd "\$EMULATOR_NAME" \\
-    -no-snapshot-save \\
-    -wipe-data \\
-    -gpu host \\
-    -skin 1080x1920 \\
-    -memory 2048 \\
-    &
-
-echo "Emulator started in background"
-echo "Waiting for device to be ready..."
-
-# Start ADB server with -a flag to listen on all interfaces
-# This allows Docker containers to connect via host.docker.internal:5037
-echo "Starting ADB server (listening on all interfaces)..."
-"\$ANDROID_HOME/platform-tools/adb" -a start-server
-
-"\$ANDROID_HOME/platform-tools/adb" wait-for-device
-
-echo "Device ready!"
-echo "To check device status: adb devices"
-EOF
-
-    # Stop emulator script
-    cat > "${SCRIPT_DIR}/stop_emulator.sh" << 'EOF'
-#!/bin/bash
-
-echo "Stopping Android emulator..."
-adb emu kill
-echo "Emulator stopped"
-EOF
-
-    # Device check script
-    cat > "${SCRIPT_DIR}/check_device.sh" << 'EOF'
-#!/bin/bash
-
-ANDROID_HOME="${HOME}/.android-sdk"
-
-echo "Checking Android device status..."
-
-if ! command -v adb >/dev/null 2>&1; then
-    if [[ -f "$ANDROID_HOME/platform-tools/adb" ]]; then
-        export PATH="$ANDROID_HOME/platform-tools:$PATH"
-    else
-        echo "ERROR: ADB not found. Please run setup.sh first."
-        exit 1
-    fi
-fi
-
-devices=$(adb devices | grep -v "List of devices" | grep -E "device$|emulator")
-
-if [[ -z "$devices" ]]; then
-    echo "No Android devices found."
-    echo "Run ./start_emulator.sh or python emulator.py start to start the emulator."
-    exit 1
-fi
-
-echo "Connected devices:"
-echo "$devices"
-
-device_id=$(echo "$devices" | head -n1 | awk '{print $1}')
-echo "Testing device connectivity..."
-
-if adb -s "$device_id" shell echo "test" >/dev/null 2>&1; then
-    echo "Device is ready!"
-
-    android_version=$(adb -s "$device_id" shell getprop ro.build.version.release)
-    echo "Android version: $android_version"
-
-    sdk_version=$(adb -s "$device_id" shell getprop ro.build.version.sdk)
-    echo "SDK version (API level): $sdk_version"
-
-    arch=$(adb -s "$device_id" shell getprop ro.product.cpu.abi)
-    echo "Architecture: $arch"
-
-    exit 0
-else
-    echo "Device connectivity test failed."
-    exit 1
-fi
-EOF
-
-    chmod +x "${SCRIPT_DIR}"/{start_emulator,stop_emulator,check_device}.sh
-
-    log "Helper scripts created successfully"
-}
-
 # Main setup function
 main() {
     pip install -e .
@@ -705,8 +692,8 @@ main() {
     # Create AVD
     create_avd "$arch"
 
-    # Create helper scripts
-    create_helper_scripts
+    # Optional: initialize submodules
+    init_submodules
 
     log "Setup completed successfully!"
     echo ""
@@ -727,49 +714,18 @@ main() {
         echo "  Note: ARM64 architecture (Apple Silicon)"
     fi
     echo ""
-    echo "Quick Start (Python CLI - Recommended):"
-    echo "  python emulator.py start --sdk ${SDK_VERSION}                    # Start rootable emulator (default)"
-    echo "  python emulator.py start --sdk ${SDK_VERSION} --no-rootable      # Start non-rootable emulator"
-    echo "  python emulator.py list                                          # List available AVDs"
-    echo "  python emulator.py stop                                          # Stop running emulator"
-    echo ""
-    echo "Or use bash scripts:"
-    echo "  ./start_emulator.sh [google_apis|google_apis_playstore]          # Start emulator"
-    echo "  ./check_device.sh                                                # Check device status"
-    echo "  ./stop_emulator.sh                                               # Stop emulator"
+    echo "Quick Start:"
+    echo "  ./start_emulator.sh ${SDK_VERSION}              # Start SDK ${SDK_VERSION} emulator (waits for boot)"
+    echo "  ./check_device.sh                    # Check device status"
+    echo "  ./stop_emulator.sh                   # Stop all emulators"
     echo ""
     echo "Note: You may need to restart your terminal or run:"
     echo "  source ~/.bashrc  (or ~/.zshrc)"
 
-    
-    # generate token for host agent
-    BRIDGE_TOKEN_FILE="${SCRIPT_DIR}/ssh_key"
-    if [[ ! -f "${BRIDGE_TOKEN_FILE}" ]]; then
-        if command -v openssl >/dev/null 2>&1; then
-            openssl rand -hex 16 > "${BRIDGE_TOKEN_FILE}"
-        fi
-        chmod 600 "${BRIDGE_TOKEN_FILE}"
-        log "Wrote host agent token -> ${BRIDGE_TOKEN_FILE}"
-    else
-        log "Host agent token exists -> ${BRIDGE_TOKEN_FILE}"
-    fi
-    MCB_BRIDGE_PORT=52888
-    if (echo > /dev/tcp/127.0.0.1/${MCB_BRIDGE_PORT}) >/dev/null 2>&1; then
-        log "Bridge server already running on ${MCB_BRIDGE_PORT}. Killing server..."
-        pkill -f "${SCRIPT_DIR}/tools/host_bridge.py" || true
-    fi
-    export MCB_BRIDGE_BIND=127.0.0.1
-    nohup env MCB_BRIDGE_BIND="$MCB_BRIDGE_BIND" $PYTHON "${SCRIPT_DIR}/tools/host_bridge.py" > "${SCRIPT_DIR}/mobilecybench_bridge.log" 2>&1 &
-    log "Started mobilecybench host intermediary on port ${MCB_BRIDGE_PORT} (bind=${MCB_BRIDGE_BIND})"
-
-
     # notes on SDK versions
     echo ""
-    echo -e "\033[33mNote: The default Android SDK version is $SDK_VERSION\033[0m"
-    echo -e "\033[33mIf you need to use a different version of Android SDK, run: \033[0m"
-    echo -e "\033[33m  ./setup.sh --sdk <sdk_version> --system-image google_apis\033[0m"
-    # echo -e "\033[33mFor example, ./setup.sh --sdk 34 --system-image google_apis\033[0m"
-    echo -e "\033[33mThis version should match your application's target device's API level.\033[0m"
+    echo -e "\033[33mNote: Setup installed SDK $SDK_VERSION. To use a different SDK:\033[0m"
+    echo -e "\033[33m  ./setup.sh --sdk <sdk_version>\033[0m"
 }
 
 # Run main function
