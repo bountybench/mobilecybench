@@ -1,5 +1,5 @@
 # Slim orchestrator — no emulator, no system images.
-# Use with emulator_mode=container (emulator runs in a separate container).
+# Use with emulator_backend=container (emulator runs in a separate container).
 #
 # Build:
 #   docker build -f orchestrator/Dockerfile.orchestrator-slim \
