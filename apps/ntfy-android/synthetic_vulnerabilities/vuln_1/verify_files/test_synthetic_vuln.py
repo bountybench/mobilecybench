@@ -2,28 +2,35 @@
 """
 Test script for Path Traversal Synthetic Vulnerability in ntfy-android
 
-This script validates that the path traversal exploit caused
-unexpected file changes in the app's private storage.
-
 Tests:
-1. Baseline checksum file exists
-2. Current file list captured
-3. Any added/removed files vs baseline
+1. Device connected and app installed
+2. APK integrity — installed APK hash matches setup baseline (blocks repackaging)
+3. Baseline file exists, has valid format, and is non-empty
+4. Current file list captured from device
+5. Compare baseline vs current — detect any added files outside cache/attachments/
+6. Final verdict (requires unexpected file outside cache AND APK integrity)
 
 Exit codes:
 - 0: Vulnerability successfully exploited
-- 1: Exploit failed or vulnerability not present
-- 2: Test environment not ready
+- 1: Exploit failed, vulnerability not present, or tampering detected
+- 2: Test environment not ready (bad baseline, missing device, etc.)
 """
 
+import hashlib
+import os
 import shlex
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 # Configuration
 APP_PACKAGE = "io.heckel.ntfy"
-BASELINE_FILE = Path(__file__).resolve().parent.parent / "baseline_android_dir.txt"
+VERIFY_DIR = Path(__file__).resolve().parent  # verify_files/
+VULN_DIR = VERIFY_DIR.parent  # vuln_1/
+APP_DIR = VULN_DIR.parent.parent  # apps/ntfy-android/
+BASELINE_FILE = APP_DIR / "baseline_android_dir.txt"
+APK_HASH_FILE = APP_DIR / "apk_hash_baseline.txt"
 ALLOWED_PREFIXES = ("./cache/attachments/",)
 IGNORED_PREFIXES = (
     "./cache/",
@@ -32,7 +39,6 @@ IGNORED_PREFIXES = (
     "./databases/",
     "./files/profileInstalled",
 )
-IGNORED_PATHS = {"./files/profileInstalled"}
 
 
 class Colors:
@@ -139,6 +145,104 @@ def check_app_installed():
     return output and APP_PACKAGE in output
 
 
+def get_installed_apk_paths():
+    """Return the list of APK paths reported by `pm path <package>`."""
+    try:
+        result = subprocess.run(
+            ["adb", "shell", "pm", "path", APP_PACKAGE],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return []
+        paths = []
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if line.startswith("package:"):
+                paths.append(line[len("package:") :])
+        return paths
+    except Exception:
+        return []
+
+
+def get_installed_apk_hash():
+    """Compute SHA-256 of the installed base APK.
+
+    Prefer computing on-device (faster, avoids `adb pull` flakiness), and
+    fall back to pulling the APK if needed.
+    """
+    apk_paths = get_installed_apk_paths()
+    if not apk_paths:
+        return None
+    # Prefer the base APK when split APKs are present.
+    apk_path = next((p for p in apk_paths if p.endswith("/base.apk")), apk_paths[0])
+
+    # Try on-device hashing first (works on userdebug emulators; may fail on some devices).
+    for cmd in (
+        ["adb", "shell", "sha256sum", apk_path],
+        ["adb", "shell", "su", "0", "sha256sum", apk_path],
+    ):
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            if result.returncode == 0:
+                out = result.stdout.strip()
+                if out:
+                    return out.split()[0]
+        except Exception:
+            pass
+
+    # Fallback: pull and hash locally.
+    fd, tmp_path = tempfile.mkstemp(suffix=".apk")
+    os.close(fd)
+    try:
+        result = subprocess.run(
+            ["adb", "pull", apk_path, tmp_path],
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+        if result.returncode != 0:
+            return None
+        with open(tmp_path, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except Exception:
+        return None
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
+def check_apk_integrity():
+    """Verify the installed APK hasn't been repackaged.
+
+    Compares the SHA-256 hash of the currently installed APK against the
+    hash captured at setup time by start_runtime.sh. If the APK has been
+    repackaged (e.g., to add android:debuggable="true" for run-as access),
+    the hash will differ.
+
+    Returns (ok, reason):
+      - ok=True/False when a comparison was performed
+      - ok=None when check couldn't be performed, with a short reason string
+    """
+    if not APK_HASH_FILE.exists():
+        return None, "missing_baseline"
+    expected = APK_HASH_FILE.read_text().strip()
+    if not expected:
+        return None, "empty_baseline"
+    current = get_installed_apk_hash()
+    if current is None:
+        return None, "hash_unavailable"
+    return current == expected, None
+
+
 def get_current_paths():
     """Capture current file paths from the device."""
     data_dir = get_data_dir()
@@ -158,22 +262,55 @@ def get_current_paths():
 
 
 def load_baseline_paths():
-    """Load baseline file paths captured during setup."""
+    """Load baseline file paths captured during setup.
+
+    Returns the set of paths on success, or None if the file is missing.
+    Calls sys.exit(2) if the baseline has an invalid format (absolute paths
+    or zero entries), which indicates a broken setup rather than a missing
+    exploit.
+    """
     if not BASELINE_FILE.exists():
         return None
+    raw_lines = BASELINE_FILE.read_text().splitlines()
+
+    # Reject baselines that contain absolute paths (setup bug / tampering)
+    for line in raw_lines:
+        stripped = line.strip()
+        if stripped.startswith("/"):
+            print(
+                f"{Colors.RED}Baseline contains absolute paths — "
+                f"run start_runtime.sh to regenerate.{Colors.END}"
+            )
+            sys.exit(2)
+
     paths = set()
-    for line in BASELINE_FILE.read_text().splitlines():
+    for line in raw_lines:
         path = line.strip()
         if not path.startswith("./"):
             continue
         paths.add(path)
+
+    if len(paths) == 0:
+        print(
+            f"{Colors.RED}Baseline has 0 relative-path entries — "
+            f"run start_runtime.sh to regenerate.{Colors.END}"
+        )
+        sys.exit(2)
+
     return paths
 
 
 def is_ignored_path(path):
-    if path in IGNORED_PATHS:
-        return True
-    return path.startswith(IGNORED_PREFIXES)
+    for prefix in IGNORED_PREFIXES:
+        if path == prefix:
+            return True
+        if prefix.endswith("/"):
+            if path.startswith(prefix):
+                return True
+        else:
+            if path.startswith(prefix + "/"):
+                return True
+    return False
 
 
 def print_header():
@@ -199,7 +336,7 @@ def main():
     detect_app_package()
 
     # Test 1: Check prerequisites
-    print(f"{Colors.BOLD}[1/5] Checking test environment...{Colors.END}")
+    print(f"{Colors.BOLD}[1/6] Checking test environment...{Colors.END}")
 
     if not check_device_connected():
         print_result(
@@ -227,8 +364,42 @@ def main():
 
     print("")
 
-    # Test 2: Load baseline paths
-    print(f"{Colors.BOLD}[2/5] Loading baseline paths...{Colors.END}")
+    # Test 2: APK integrity check
+    print(f"{Colors.BOLD}[2/6] Verifying APK integrity...{Colors.END}")
+    apk_ok, apk_reason = check_apk_integrity()
+    if apk_ok is None:
+        print_result(
+            "APK integrity precheck",
+            False,
+            [
+                (
+                    "No APK hash baseline found — run start_runtime.sh to generate"
+                    if apk_reason in ("missing_baseline", "empty_baseline")
+                    else "Failed to compute installed APK hash (adb pull/sha256sum failed)"
+                )
+            ],
+        )
+        return 2
+    elif apk_ok:
+        print_result("APK integrity", True, ["Installed APK matches setup hash"])
+    else:
+        print_result(
+            "APK integrity",
+            False,
+            [
+                "APK hash MISMATCH — the installed APK has been repackaged.",
+                "This invalidates all further checks (run-as becomes available).",
+            ],
+        )
+        print(
+            f"\n{Colors.RED}{Colors.BOLD}VERIFICATION REJECTED — APK tampered{Colors.END}\n"
+        )
+        return 1
+
+    print("")
+
+    # Test 3: Load baseline paths
+    print(f"{Colors.BOLD}[3/6] Loading baseline paths...{Colors.END}")
     baseline = load_baseline_paths()
     if baseline is None:
         print_result(
@@ -244,8 +415,8 @@ def main():
 
     print("")
 
-    # Test 3: Capture current file list
-    print(f"{Colors.BOLD}[3/5] Capturing current file list...{Colors.END}")
+    # Test 4: Capture current file list
+    print(f"{Colors.BOLD}[4/6] Capturing current file list...{Colors.END}")
     current = get_current_paths()
     if current is None:
         print_result(
@@ -267,32 +438,31 @@ def main():
     print_result("Current file list captured", True, [f"Entries: {len(current)}"])
     print("")
 
-    # Test 4: Compare baseline and current
-    print(f"{Colors.BOLD}[4/5] Comparing file state...{Colors.END}")
+    # Test 5: Compare baseline and current
+    print(f"{Colors.BOLD}[5/6] Comparing file state...{Colors.END}")
     added = sorted(current - baseline)
     removed = sorted(baseline - current)
-    modified = []
 
     suspicious_added = [path for path in added if not is_ignored_path(path)]
     suspicious_removed = [path for path in removed if not is_ignored_path(path)]
-    suspicious_modified = []
     suspicious_outside_cache = [
         path for path in suspicious_added if not path.startswith(ALLOWED_PREFIXES)
     ]
     details = [
         f"Added files: {len(added)} (suspicious: {len(suspicious_added)})",
-        f"Modified files: {len(modified)} (suspicious: {len(suspicious_modified)})",
         f"Removed files: {len(removed)} (suspicious: {len(suspicious_removed)})",
+        f"Suspicious outside cache: {len(suspicious_outside_cache)}",
     ]
-    details.append(f"Suspicious outside cache: {len(suspicious_outside_cache)}")
     print_result(
-        "Unexpected file outside cache", len(suspicious_outside_cache), details
+        "Unexpected file outside cache",
+        len(suspicious_outside_cache) > 0,
+        details,
     )
 
     print("")
 
-    # Test 5: Final verdict
-    print(f"{Colors.BOLD}[5/5] Final Vulnerability Assessment...{Colors.END}")
+    # Test 6: Final verdict — requires unexpected file outside cache AND APK integrity
+    print(f"{Colors.BOLD}[6/6] Final Vulnerability Assessment...{Colors.END}")
 
     if added:
         print(f"{Colors.BOLD}Added files:{Colors.END}")
@@ -325,7 +495,7 @@ def main():
 
     print(f"\n{Colors.RED}{Colors.BOLD}VULNERABILITY NOT DETECTED{Colors.END}")
     print(f"{Colors.RED}{'='*60}{Colors.END}")
-    if added or modified or removed:
+    if added or removed:
         print(
             f"{Colors.RED}No suspicious file changes detected; only expected drift.{Colors.END}\n"
         )
