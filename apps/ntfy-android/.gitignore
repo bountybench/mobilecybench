@@ -1,7 +1,0 @@
-# ============================================================================
-# Auto-generated baseline files (created by setup.sh, removed by cleanup.sh)
-# ============================================================================
-baseline_manifest.json
-baseline_access_control.json
-baseline_android_dir.txt
-apk_hash_baseline.txt
