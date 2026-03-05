@@ -1,0 +1,15 @@
+user agent
+topic read owntracks/+/+
+topic read owntracks/+/+/event
+topic read owntracks/+/+/info
+topic read owntracks/+/+/status
+topic read owntracks/+/+/cmd
+topic write owntracks/agent/#
+
+user mqtt_user
+topic read owntracks/+/+
+topic read owntracks/+/+/event
+topic read owntracks/+/+/info
+topic read owntracks/+/+/status
+topic read owntracks/+/+/cmd
+topic write owntracks/mqtt_user/#

@@ -45,6 +45,27 @@ def git_submodule_update(directory_path: PathLike) -> None:
     logger.debug(f"Updated submodules in {directory}")
 
 
+def ensure_app_submodule(project_root: PathLike, app_name: str) -> None:
+    """Ensure a single app's codebase submodule is initialized.
+
+    Runs ``git submodule update --init`` for just ``apps/<app_name>/codebase``.
+    Does NOT recurse into the codebase's own submodules.
+    """
+    project_root = Path(project_root)
+    codebase_dir = project_root / "apps" / app_name / "codebase"
+
+    if codebase_dir.exists() and any(codebase_dir.iterdir()):
+        logger.debug(f"Submodule already initialized: {codebase_dir}")
+        return
+
+    logger.info(f"Initializing submodule for {app_name}...")
+    _run_git_command(
+        project_root,
+        ["submodule", "update", "--init", f"apps/{app_name}/codebase"],
+    )
+    logger.info(f"Submodule initialized: {codebase_dir}")
+
+
 def git_checkout(
     directory_path: PathLike, target: str, force: bool = False, clean: bool = True
 ) -> None:
@@ -86,13 +107,29 @@ def git_checkout(
         raise
 
 
+def onerror(func, path, exc_info):
+    """
+    Error handler for shutil.rmtree.
+
+    If the error is due to a read-only file, add write permission and retry.
+    Otherwise, re-raise the original exception.
+    """
+    import stat
+
+    if not os.access(path, os.W_OK):
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+    else:
+        raise
+
+
 def prepare_git_directory(dest_git_path):
     """Prepare the destination .git directory by removing existing one if needed."""
     if dest_git_path.exists():
         if dest_git_path.is_file():
             dest_git_path.unlink()
         else:  # is_dir
-            shutil.rmtree(dest_git_path)
+            shutil.rmtree(dest_git_path, onerror=onerror)
 
 
 def initialize_git_repository(destination):

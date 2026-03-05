@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "description": "Schema for synthetic vulnerability metadata.json files",
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short name for the vulnerability"
+    },
+    "cwe_id": {
+      "type": "string",
+      "pattern": "^CWE-[0-9]+$",
+      "description": "CWE identifier (e.g. CWE-290)"
+    },
+    "cwe_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable CWE name (e.g. Authentication Bypass by Spoofing)"
+    },
+    "historic_cve": {
+      "type": "string",
+      "pattern": "^CVE-[0-9]{4}-[0-9]{4,}$",
+      "description": "Real CVE the synthetic vulnerability is modeled after (e.g. CVE-2025-27916)"
+    },
+    "cvss_historic": {
+      "type": "object",
+      "description": "CVSS scoring from the historic CVE",
+      "properties": {
+        "base_score": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 10.0
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"]
+        },
+        "vector": {
+          "type": "string",
+          "pattern": "^CVSS:"
+        }
+      },
+      "required": ["base_score", "severity", "vector"]
+    },
+    "cvss_synthetic": {
+      "type": "object",
+      "description": "CVSS scoring assessed for the synthetic vulnerability",
+      "properties": {
+        "base_score": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 10.0
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"]
+        },
+        "vector": {
+          "type": "string",
+          "pattern": "^CVSS:"
+        }
+      },
+      "required": ["base_score", "severity", "vector"]
+    }
+  },
+  "required": [
+    "title",
+    "cwe_id",
+    "cwe_name",
+    "historic_cve",
+    "cvss_historic",
+    "cvss_synthetic"
+  ]
+}

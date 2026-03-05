@@ -1,7 +1,26 @@
 import json
+import os
+from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+from jsonschema import validate
+
 from agent.custom_agent import CustomAgent
+from agent.model_providers.factory import SupportedModel, get_model_provider
+from agent.model_providers.litellm_provider import LiteLLMProvider
+from agent.model_providers.openai_provider import OpenAIProvider
+from tests.conftest import create_provider_response
+
+
+def _load_conversation_turn_schema() -> dict:
+    schema_path = (
+        Path(__file__).parent.parent.parent
+        / "schemas"
+        / "conversation_turn.schema.json"
+    )
+    with open(schema_path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 class TestCustomAgentMaxIterations:
@@ -14,14 +33,11 @@ class TestCustomAgentMaxIterations:
         max_iterations = 3
 
         agent = CustomAgent(
-            model="gpt-4o-mini",
+            model="gpt-5.2",
             max_iterations=max_iterations,
             max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
-            dry_run=False,
             package_name="com.test.app",
         )
 
@@ -30,9 +46,9 @@ class TestCustomAgentMaxIterations:
         # Verify that the agent made exactly max_iterations calls
         assert mock_agent_dependencies["provider"].call.call_count == max_iterations
 
-        # Verify the result status and turns
-        assert result["status"] == "max_iterations_reached"
-        assert result["turns"] == max_iterations
+        # Verify the result
+        assert result["turns_taken"] == max_iterations
+        assert result["max_turns"] == max_iterations
         assert result["final_message"] is None
 
     @patch("agent.custom_agent.subprocess.run")
@@ -54,40 +70,33 @@ class TestCustomAgentMaxIterations:
         def mock_call(*args, **kwargs):
             nonlocal call_count
             call_count += 1
-            response = type("MockResponse", (), {})()
             if call_count == stop_at_turn:
-                response.output_text = json.dumps(
-                    {
-                        "command": "FinalSubmissionCommand",
-                    }
+                return create_provider_response(
+                    content=json.dumps({"command": "FinalSubmissionCommand"}),
+                    response_id=f"resp-{call_count}",
                 )
             else:
-                response.output_text = json.dumps(
-                    {"command": "ActionCommand", "action": "ls"}
+                return create_provider_response(
+                    content=json.dumps({"command": "ActionCommand", "action": "ls"}),
+                    response_id=f"resp-{call_count}",
                 )
-            response.tool_outputs = []
-            response.output = []
-            return response
 
         mock_agent_dependencies["provider"].call = mock_call
 
         agent = CustomAgent(
-            model="gpt-4o-mini",
+            model="gpt-5.2",
             max_iterations=max_iterations,
             max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
-            dry_run=False,
             package_name="com.test.app",
         )
 
         result = agent.run()
 
         # Verify that agent stopped at turn 3, not 10
-        assert result["status"] == "completed"
-        assert result["turns"] == stop_at_turn
+        assert result["turns_taken"] == stop_at_turn
+        assert result["exploit_exists"] is True
         # Parse the final_message to check for command
         final_message_parsed = json.loads(result["final_message"])
         assert final_message_parsed["command"] == "FinalSubmissionCommand"
@@ -95,14 +104,11 @@ class TestCustomAgentMaxIterations:
     def test_single_iteration(self, mock_agent_dependencies):
         """Test agent with max_iterations=1."""
         agent = CustomAgent(
-            model="gpt-4o-mini",
+            model="gpt-5.2",
             max_iterations=1,
             max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
-            dry_run=False,
             package_name="com.test.app",
         )
 
@@ -110,90 +116,281 @@ class TestCustomAgentMaxIterations:
 
         # Verify exactly one call was made
         assert mock_agent_dependencies["provider"].call.call_count == 1
-        assert result["turns"] == 1
-        assert result["status"] == "max_iterations_reached"
+        assert result["turns_taken"] == 1
+        assert result["max_turns"] == 1
 
-    def test_dry_run_mode(self, mock_agent_dependencies):
-        """Test that dry run mode returns immediately without making API calls."""
+    def test_conversation_log_grows(self, mock_agent_dependencies):
+        """Test that conversation log accumulates across turns."""
         agent = CustomAgent(
-            model="gpt-4o-mini",
-            max_iterations=10,
+            model="gpt-5.2",
+            max_iterations=3,
             max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
-            dry_run=True,
+            package_name="com.test.app",
+        )
+
+        # Conversation history should start empty
+        assert len(agent.provider.get_conversation_history()) == 0
+
+        agent.run()
+
+        # After run, should have entries for each turn
+        history = agent.provider.get_conversation_history()
+        assert len(history) == 3
+        # Each entry should have a turn number and response_id
+        for i, entry in enumerate(history, 1):
+            assert entry["turn"] == i
+            assert "response_id" in entry
+
+    def test_writes_conversation_jsonl_turn_events(self, mock_agent_dependencies):
+        """Agent writes machine-readable per-turn conversation JSONL."""
+        long_result = "x" * (CustomAgent.OBSERVATION_MAX_CHARS + 128)
+
+        def mock_call(*args, **kwargs):
+            return create_provider_response(
+                content=json.dumps({"command": "ActionCommand", "action": "id"}),
+                function_calls=[
+                    {
+                        "name": "execute_command",
+                        "arguments": '{"command":"id"}',
+                        "call_id": "call_test_1",
+                    }
+                ],
+                response_id="resp-turn-1",
+            )
+
+        mock_agent_dependencies["provider"].call = mock_call
+
+        agent = CustomAgent(
+            model="gpt-5.2",
+            max_iterations=1,
+            max_model_response_tokens=1000,
+            screenshot_enabled=False,
+            app_name="test_app",
+            package_name="com.test.app",
+        )
+        with patch.object(agent.runtime, "execute", return_value=long_result):
+            result = agent.run()
+
+        conv_path = mock_agent_dependencies["logs_dir"] / "conversation.jsonl"
+        assert conv_path.exists()
+        lines = conv_path.read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 1
+        event = json.loads(lines[0])
+
+        assert event["turn_number"] == 1
+        assert event["response_id"] == "resp-turn-1"
+        assert len(event["tool_calls"]) == 1
+        assert event["tool_calls"][0]["name"] == "execute_command"
+        assert len(event["observations"]) == 1
+        assert event["observations"][0]["type"] == "tool_result"
+        assert event["observations"][0]["truncated"] is True
+        validate(instance=event, schema=_load_conversation_turn_schema())
+        assert result["tool_call_count"] == 1
+        assert result["unique_tools"] == ["execute_command"]
+
+    def test_writes_system_prompt_artifact(self, mock_agent_dependencies):
+        """Agent persists full system prompt as an artifact for reproducibility."""
+        CustomAgent(
+            model="gpt-5.2",
+            max_iterations=1,
+            max_model_response_tokens=1000,
+            screenshot_enabled=False,
+            app_name="test_app",
+            package_name="com.test.app",
+        )
+
+        prompt_path = mock_agent_dependencies["logs_dir"] / "system_prompt.txt"
+        assert prompt_path.exists()
+        contents = prompt_path.read_text(encoding="utf-8")
+        assert contents.strip()
+        assert "com.test.app" in contents
+
+
+class TestModelProviderRouting:
+    """Test that the factory routes models to the correct provider via SupportedModel enum."""
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
+    def test_openai_models_use_openai_provider(self):
+        for model in [
+            SupportedModel.GPT_5_2,
+            SupportedModel.GPT_5_2_PRO,
+            SupportedModel.GPT_5_2_CODEX,
+        ]:
+            provider = get_model_provider(model.value.api_id, instructions="test")
+            assert isinstance(
+                provider, OpenAIProvider
+            ), f"{model.value.api_id} should use OpenAIProvider"
+
+    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})
+    def test_anthropic_models_use_litellm_provider(self):
+        for model in [SupportedModel.CLAUDE_OPUS_4_6, SupportedModel.CLAUDE_SONNET_4_5]:
+            provider = get_model_provider(model.value.api_id, instructions="test")
+            assert isinstance(
+                provider, LiteLLMProvider
+            ), f"{model.value.api_id} should use LiteLLMProvider"
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"})
+    def test_gemini_models_use_litellm_provider(self):
+        for model in [SupportedModel.GEMINI_3_PRO]:
+            provider = get_model_provider(model.value.api_id, instructions="test")
+            assert isinstance(
+                provider, LiteLLMProvider
+            ), f"{model.value.api_id} should use LiteLLMProvider"
+
+    def test_unsupported_model_raises_error(self):
+        with pytest.raises(ValueError, match="Unsupported model"):
+            get_model_provider("some-random-model", instructions="test")
+
+
+class TestCustomAgentWithClaude:
+    """Test CustomAgent behavior with claude-opus-4-6."""
+
+    def test_max_iterations_with_claude(self, mock_agent_dependencies):
+        max_iterations = 3
+        agent = CustomAgent(
+            model="claude-opus-4-6",
+            max_iterations=max_iterations,
+            max_model_response_tokens=1000,
+            screenshot_enabled=False,
+            app_name="test_app",
             package_name="com.test.app",
         )
 
         result = agent.run()
 
-        # Verify no API calls were made
-        assert mock_agent_dependencies["provider"].call.call_count == 0
+        assert mock_agent_dependencies["provider"].call.call_count == max_iterations
+        assert result["turns_taken"] == max_iterations
+        assert result["max_turns"] == max_iterations
 
-        # Verify dry run result
-        assert result["turns"] == 0
-        assert "dry run" in result["status"].lower()
+    @patch("agent.custom_agent.subprocess.run")
+    def test_early_stop_with_claude(self, mock_subprocess_run, mock_agent_dependencies):
+        mock_subprocess_run.return_value = type(
+            "MockResult", (), {"returncode": 0, "stdout": "", "stderr": ""}
+        )()
 
-    def test_conversation_cleanup_on_max_iterations(self, mock_agent_dependencies):
-        """Test that conversation is deleted when max iterations is reached."""
-        agent = CustomAgent(
-            model="gpt-4o-mini",
-            max_iterations=2,
-            max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
-            screenshot_enabled=False,
-            app_name="test_app",
-            dry_run=False,
-            package_name="com.test.app",
-        )
-
-        agent.run()
-
-        # Verify conversation was deleted
-        mock_agent_dependencies[
-            "provider"
-        ].client.conversations.delete.assert_called_once()
-        assert (
-            mock_agent_dependencies["provider"].client.conversations.delete.call_args[
-                1
-            ]["conversation_id"]
-            == "test_conv_123"
-        )
-
-    def test_conversation_cleanup_on_final_submission(self, mock_agent_dependencies):
-        """Test that conversation is deleted when final submission is received."""
+        call_count = 0
 
         def mock_call(*args, **kwargs):
-            response = type("MockResponse", (), {})()
-            response.output_text = json.dumps(
-                {
-                    "command": "FinalSubmissionCommand",
-                }
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                return create_provider_response(
+                    content=json.dumps({"command": "FinalSubmissionCommand"}),
+                    response_id=f"litellm_resp-{call_count}",
+                )
+            return create_provider_response(
+                content=json.dumps({"command": "ActionCommand", "action": "ls"}),
+                response_id=f"litellm_resp-{call_count}",
             )
-            response.tool_outputs = []
-            response.output = []
-            return response
 
         mock_agent_dependencies["provider"].call = mock_call
 
         agent = CustomAgent(
-            model="gpt-4o-mini",
+            model="claude-opus-4-6",
             max_iterations=10,
             max_model_response_tokens=1000,
-            max_kali_message_tokens=500,
-            max_context_length=10000,
             screenshot_enabled=False,
             app_name="test_app",
-            dry_run=False,
+            package_name="com.test.app",
+        )
+
+        result = agent.run()
+
+        assert result["turns_taken"] == 2
+        assert result["exploit_exists"] is True
+
+    def test_conversation_log_grows_with_claude(self, mock_agent_dependencies):
+        agent = CustomAgent(
+            model="claude-opus-4-6",
+            max_iterations=3,
+            max_model_response_tokens=1000,
+            screenshot_enabled=False,
+            app_name="test_app",
             package_name="com.test.app",
         )
 
         agent.run()
 
-        # Verify conversation was deleted
-        mock_agent_dependencies[
-            "provider"
-        ].client.conversations.delete.assert_called_once()
+        history = agent.provider.get_conversation_history()
+        assert len(history) == 3
+        for i, entry in enumerate(history, 1):
+            assert entry["turn"] == i
+            assert "response_id" in entry
+
+
+class TestCustomAgentWithGemini:
+    """Test CustomAgent behavior with gemini-3-pro-preview."""
+
+    def test_max_iterations_with_gemini(self, mock_agent_dependencies):
+        max_iterations = 3
+        agent = CustomAgent(
+            model="gemini-3-pro-preview",
+            max_iterations=max_iterations,
+            max_model_response_tokens=1000,
+            screenshot_enabled=False,
+            app_name="test_app",
+            package_name="com.test.app",
+        )
+
+        result = agent.run()
+
+        assert mock_agent_dependencies["provider"].call.call_count == max_iterations
+        assert result["turns_taken"] == max_iterations
+        assert result["max_turns"] == max_iterations
+
+    @patch("agent.custom_agent.subprocess.run")
+    def test_early_stop_with_gemini(self, mock_subprocess_run, mock_agent_dependencies):
+        mock_subprocess_run.return_value = type(
+            "MockResult", (), {"returncode": 0, "stdout": "", "stderr": ""}
+        )()
+
+        call_count = 0
+
+        def mock_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                return create_provider_response(
+                    content=json.dumps({"command": "FinalSubmissionCommand"}),
+                    response_id=f"litellm_resp-{call_count}",
+                )
+            return create_provider_response(
+                content=json.dumps({"command": "ActionCommand", "action": "ls"}),
+                response_id=f"litellm_resp-{call_count}",
+            )
+
+        mock_agent_dependencies["provider"].call = mock_call
+
+        agent = CustomAgent(
+            model="gemini-3-pro-preview",
+            max_iterations=10,
+            max_model_response_tokens=1000,
+            screenshot_enabled=False,
+            app_name="test_app",
+            package_name="com.test.app",
+        )
+
+        result = agent.run()
+
+        assert result["turns_taken"] == 2
+        assert result["exploit_exists"] is True
+
+    def test_conversation_log_grows_with_gemini(self, mock_agent_dependencies):
+        agent = CustomAgent(
+            model="gemini-3-pro-preview",
+            max_iterations=3,
+            max_model_response_tokens=1000,
+            screenshot_enabled=False,
+            app_name="test_app",
+            package_name="com.test.app",
+        )
+
+        agent.run()
+
+        history = agent.provider.get_conversation_history()
+        assert len(history) == 3
+        for i, entry in enumerate(history, 1):
+            assert entry["turn"] == i
+            assert "response_id" in entry

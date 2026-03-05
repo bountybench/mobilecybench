@@ -19,10 +19,14 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Function to read secrets from JSON file
 read_secrets() {
   local secrets_file="$ROOT_DIR/secrets.json"
+  local metadata_file="$ROOT_DIR/metadata.json"
   if [ -f "$secrets_file" ] && command -v jq >/dev/null 2>&1; then
-    # Extract user credentials from secrets.json
+    # Extract admin user credentials from secrets.json
     ADMINUSER_PASSWORD=$(jq -r '.adminuser_password' "$secrets_file" 2>/dev/null || echo "")
-    NONADMINUSER_PASSWORD=$(jq -r '.nonadminuser_password' "$secrets_file" 2>/dev/null || echo "")
+    # Extract nonadminuser credentials from metadata.json (not secrets)
+    if [ -f "$metadata_file" ]; then
+      NONADMINUSER_PASSWORD=$(jq -r '.password' "$metadata_file" 2>/dev/null || echo "")
+    fi
   else
     LOG "Warning: secrets.json not found or jq not available"
   fi
@@ -255,6 +259,24 @@ files_cleanup() {
   if [ -f "$baseline_file" ]; then
     LOG "Removing baseline file: $baseline_file"
     rm -f "$baseline_file"
+  fi
+
+  # Remove .env file created by start_runtime.sh
+  if [ -f "$ROOT_DIR/.env" ]; then
+    LOG "Removing .env file: $ROOT_DIR/.env"
+    rm -f "$ROOT_DIR/.env"
+  fi
+
+  # Remove SSH keys generated for Karaf
+  if [ -d "$ROOT_DIR/.ssh" ]; then
+    LOG "Removing SSH key directory: $ROOT_DIR/.ssh"
+    rm -rf "$ROOT_DIR/.ssh"
+  fi
+
+  # Remove tmp directory (leaked userdata from vuln scenarios)
+  if [ -d "$ROOT_DIR/tmp" ]; then
+    LOG "Removing tmp directory: $ROOT_DIR/tmp"
+    rm -rf "$ROOT_DIR/tmp"
   fi
 }
 

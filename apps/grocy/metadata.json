@@ -8,5 +8,8 @@
   "username": "grocyuser_bench339519",
   "password": "GrocyBench_Xoki2O1QKlBywsVxyTYfyty!2024",
   "package_name": "xyz.zedler.patrick.grocy",
-  "container_names": ["grocy-server"]
+  "container_names": [
+    "grocy-server"
+  ],
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-grocy-v1/apk-bundle.zip"
 }

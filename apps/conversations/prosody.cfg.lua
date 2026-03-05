@@ -74,3 +74,9 @@ https_key = "/etc/prosody/certs/10.0.2.2.key"
 
 -- Virtual host for 10.0.2.2 (emulator accessible)
 VirtualHost "10.0.2.2"
+
+-- MUC (Multi-User Chat) component for group chats
+Component "conference.10.0.2.2" "muc"
+    modules_enabled = { "muc_mam" }
+    muc_log_by_default = true
+    muc_log_all_rooms = true

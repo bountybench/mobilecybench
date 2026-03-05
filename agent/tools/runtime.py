@@ -52,8 +52,7 @@ class ToolRuntime:
         self, schema: type[BaseModel], args: Union[str, Dict[str, Any]]
     ) -> BaseModel:
         """
-        Parses arguments which can be a JSON string (OpenAI) or a dictionary (Claude/Gemini).
-        Returns a validated Pydantic model.
+        Parses arguments from a JSON string or dictionary into a validated Pydantic model.
         """
         if isinstance(args, str):
             try:
@@ -118,15 +117,9 @@ class ToolRuntime:
                 del schema["description"]
 
             tool_def = {
-                "type": "function",
                 "name": name,
                 "description": description,
                 "parameters": schema,
-                "function": {
-                    "name": name,
-                    "description": description,
-                    "parameters": schema,
-                },
             }
             tools.append(tool_def)
         return tools

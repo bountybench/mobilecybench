@@ -111,6 +111,7 @@ class TokenTruncator:
             "gpt-3.5": "cl100k_base",
             "o3": "o200k_base",  # o3 uses o200k_base
             "o1": "o200k_base",
+            "gemini": "cl100k_base",  # approximation via tiktoken, since gemini uses a SentencePiece tokenizer, which isn't compatible with tiktoken.
         }
 
         # Try exact match first

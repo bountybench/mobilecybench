@@ -1,0 +1,23 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install curl and docker CLI (needed by attacker_code_gen.sh)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && curl -fsSL https://get.docker.com | sh \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Flask
+RUN pip install --no-cache-dir flask
+
+# Copy the scripts
+COPY attacker_helper.py /app/
+COPY attacker_code_gen.sh /app/
+RUN chmod +x /app/attacker_code_gen.sh
+
+EXPOSE 8081
+
+CMD ["python", "/app/attacker_helper.py"]

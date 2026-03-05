@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobilecybench.dev/schemas/conversation_turn.schema.json",
+  "title": "Conversation Turn",
+  "type": "object",
+  "required": [
+    "run_id",
+    "turn_number",
+    "timestamp",
+    "role",
+    "response_id",
+    "assistant_text",
+    "reasoning_summary",
+    "tool_calls",
+    "observations",
+    "status"
+  ],
+  "properties": {
+    "run_id": { "type": "string", "minLength": 1 },
+    "turn_number": { "type": "integer", "minimum": 1 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "role": { "type": "string", "enum": ["assistant"] },
+    "response_id": { "type": ["string", "null"] },
+    "assistant_text": { "type": ["string", "null"] },
+    "reasoning_summary": { "type": ["string", "null"] },
+    "tool_calls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tool_call_id", "name", "arguments"],
+        "properties": {
+          "tool_call_id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "arguments": {}
+        }
+      }
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tool_call_id", "type", "content", "truncated"],
+        "properties": {
+          "tool_call_id": { "type": ["string", "null"] },
+          "type": { "type": "string" },
+          "content": {},
+          "truncated": { "type": "boolean" }
+        }
+      }
+    },
+    "status": { "type": "string", "enum": ["ok", "error"] }
+  }
+}

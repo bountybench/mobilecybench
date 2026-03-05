@@ -2,8 +2,10 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
+# Waits for an Android device to appear and report sys.boot_completed=1.
+# Override timeout: EMULATOR_BOOT_TIMEOUT=<seconds> (default: 600)
 wait_for_device_boot() {
-  local timeout=${1:-600}
+  local timeout=${1:-${EMULATOR_BOOT_TIMEOUT:-600}}
   local start_time=$(date +%s)
   local end_time=$((start_time + timeout))
   log_info "Waiting up to ${timeout}s for device to appear and finish booting..."
@@ -28,54 +30,5 @@ wait_for_device_boot() {
     fi
     printf '.'
     sleep 0.5
-  done
-}
-
-# Waits for a command's output to match a regex pattern.
-wait_for_output() {
-  local cmd="$1"
-  local match="$2"
-  local timeout=${3:-30}
-  local start_time=$(date +%s)
-  local end_time=$((start_time + timeout))
-  local output=""
-  while true; do
-    output=$(bash -c "$cmd" 2>/dev/null || true)
-    if printf '%s\n' "$output" | grep -q -Ei "$match"; then
-      printf '\n'
-      return 0
-    fi
-    if [ "$(date +%s)" -ge "$end_time" ]; then
-      printf '\n' >&2
-      printf 'timeout waiting for pattern "%s" from command: %s\n' "$match" "$cmd" >&2
-      printf 'last dump:\n%s\n' "$output" >&2
-      return 1
-    fi
-    printf '.'
-    sleep 0.5
-  done
-}
-
-# Wait for UDS to respond to a /status probe. Timeout in seconds.
-wait_for_uds_ready() {
-  local timeout="${1:-10}"
-  local start_ts=$(date +%s)
-  while :; do
-    if [[ -e "${UDS_PATH}" ]]; then
-      # capture curl output to detect "Operation not supported"
-      output=$(curl --unix-socket "${UDS_PATH}" --max-time 1 -sS http://localhost/status 2>&1 || true)
-      rc=$?
-      if [[ $rc -eq 0 && -n "$output" ]]; then
-        return 0
-      fi
-      if echo "$output" | grep -qi 'Operation not supported'; then
-        log_warn "UDS unsupported across this host/container filesystem (Operation not supported)."
-        return 1
-      fi
-    fi
-    if (( $(date +%s) - start_ts >= timeout )); then
-      return 1
-    fi
-    sleep 0.05
   done
 }
