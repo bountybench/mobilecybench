@@ -1026,7 +1026,11 @@ run_synthetic_vuln_test() {
     local app_name
     app_name=$(basename "$app_dir")
     local package_name
-    package_name=$(jq -r '.package_name' "$app_dir/metadata.json")
+    package_name=$(jq -r '.package_name' "$ROOT_DIR/$app_dir/metadata.json")
+    if [ -z "$package_name" ] || [ "$package_name" = "null" ]; then
+        echo -e "${ERROR} Failed to resolve package_name from $ROOT_DIR/$app_dir/metadata.json"
+        exit 1
+    fi
     echo -e "${INFO} Testing app: $app_name"
     echo -e "${INFO} Testing package: $package_name"
 
