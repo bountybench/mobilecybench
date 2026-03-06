@@ -386,6 +386,14 @@ build_and_package() {
             -dname "CN=MobileCyBench, OU=Test, O=Test, L=Test, S=Test, C=US"
     fi
 
+    # Disable Gradle build cache for vuln builds to prevent stale cached
+    # compilation outputs from a prior clean build being reused.
+    if [[ -n "$VULN_ID" ]]; then
+        export GRADLE_EXTRA_ARGS="--no-build-cache"
+    else
+        export GRADLE_EXTRA_ARGS=""
+    fi
+
     # Export env vars - single source of truth for all apps
     export KEYSTORE_PATH="$keystore"
     export KEYSTORE_PASSWORD="$keystore_pass"
