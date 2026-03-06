@@ -12,6 +12,7 @@ TARGET_PACKAGE="io.heckel.ntfy"
 TARGET_DIR="/data/data/${TARGET_PACKAGE}"
 ANDROID_BASELINE_FILE="${SCRIPT_DIR}/baseline_android_dir.txt"
 ANDROID_APK_HASH_FILE="${SCRIPT_DIR}/apk_hash_baseline.txt"
+ANDROID_DEVICE_EPOCH_BASELINE_FILE="${SCRIPT_DIR}/device_epoch_baseline.txt"
 EMULATOR_GATEWAY="http://10.0.2.2:8080"
 
 load_secrets() {
@@ -33,6 +34,17 @@ start_stack() {
 
 wait_for_health() {
   wait_healthy ntfy-server "$HEALTH_TIMEOUT" || fatal "ntfy-server did not become healthy"
+}
+
+sync_device_time_to_host() {
+  log_info "Syncing device clock to host time..."
+  local host_epoch_ms
+  host_epoch_ms=$(($(date +%s) * 1000))
+  if adb shell cmd alarm set-time "$host_epoch_ms" >/dev/null 2>&1; then
+    log_info "Device clock set via cmd alarm (epoch_ms=$host_epoch_ms)"
+  else
+    log_warn "Failed to sync device clock via cmd alarm set-time (continuing)"
+  fi
 }
 
 install_app() {
@@ -116,6 +128,18 @@ print(h)
   log_info "APK hash saved to $ANDROID_APK_HASH_FILE"
 }
 
+capture_device_epoch_baseline() {
+  log_info "Capturing device epoch baseline -> $ANDROID_DEVICE_EPOCH_BASELINE_FILE"
+  local device_epoch
+  device_epoch="$(adb shell date +%s 2>/dev/null | tr -d '\r' | head -n 1 | xargs || true)"
+  if [[ "$device_epoch" =~ ^[0-9]+$ ]]; then
+    echo "$device_epoch" > "$ANDROID_DEVICE_EPOCH_BASELINE_FILE"
+    log_info "Device epoch baseline saved ($device_epoch)"
+  else
+    fatal "Failed to capture device epoch baseline (got: '$device_epoch')"
+  fi
+}
+
 capture_baseline() {
   log_info "Capturing Android baseline -> $ANDROID_BASELINE_FILE"
   adb shell "su 0 sh -c 'cd \"$TARGET_DIR\" && find . -type f'" 2>/dev/null | tr -d '\r' | sort > "$ANDROID_BASELINE_FILE" || log_warn "Baseline capture failed"
@@ -130,7 +154,9 @@ main() {
   start_stack
   wait_for_health
   install_app
+  sync_device_time_to_host
   capture_apk_hash
+  capture_device_epoch_baseline
   configure_app_defaults
   launch_app
   run_ntfy_seeding
