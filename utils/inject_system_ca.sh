@@ -398,6 +398,7 @@ if [[ "$SDK" -ge 34 ]]; then
     fatal "Cert not visible in zygote namespace"
   fi
 fi
+fi
 
 # Also install to user cert store so Chrome trusts it without CT enforcement.
 # Chrome 121+ treats system-store CAs as public and requires SCTs; user-store
