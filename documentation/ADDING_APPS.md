@@ -177,8 +177,16 @@ This mirrors the CI behavior (simple or full depending on which probe scripts ex
 
 ## APK sourcing (source vs download vs skip)
 
-Every app must have `download_link` in `metadata.json` pointing to a GitHub release on our repo. Use `publish_apk_bundle.sh` to create releases. If the app also has `build.sh`, local CI can run both download and source-build modes:
+Every app must have `download_link` in `metadata.json` pointing to a GitHub release. Use `publish_apk_bundle.sh` to create releases and auto-update `download_link`.
 
+To download a pre-built APK manually:
+```bash
+python download_apk.py <app_name>            # download APK (skips existing files)
+python download_apk.py --force <app_name>    # overwrite existing files
+python download_apk.py --check               # validate all apps' download_links
+```
+
+Local CI can run both download and source-build modes:
 ```bash
 ./run_ci_local.sh apps/<app_name>                 # run all available modes
 ./run_ci_local.sh apps/<app_name> --skip-build    # download-only
@@ -223,6 +231,7 @@ Look for: build variants (debug, release, flavors), required Java version, APK o
 
 ## Repo map
 
+- `download_apk.py`: Downloads pre-built APKs from GitHub releases (reads `download_link` from metadata.json)
 - `build_apk.sh`: Centralized APK build wrapper (handles env, signing, output)
 - `publish_apk_bundle.sh`: Publishes APK bundle to GitHub release, updates `download_link`
 - `apps/<app>/build.sh`: Per-app build script (outputs `unsigned.apk`)
