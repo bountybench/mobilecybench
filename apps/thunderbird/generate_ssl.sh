@@ -26,6 +26,7 @@ SRV_CERT="${BASE_DIR}/${DOMAIN}-cert.pem"
 
 FORCE="${FORCE:-0}"
 SERVER_SAN_DNS="${SERVER_SAN_DNS:-mail.test.com}"
+SERVER_SAN_IPS="${SERVER_SAN_IPS:-10.0.2.2,127.0.0.1}"
 
 mkdir -p "${DEMO_CA_DIR}"
 
