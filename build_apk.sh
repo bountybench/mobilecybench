@@ -34,6 +34,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Variables
 APP_NAME=""
 VULN_ID=""
+HARDENED=""
 OUTPUT_DIR=""
 
 show_usage() {
@@ -46,16 +47,19 @@ show_usage() {
     echo "  --output <dir>      Output directory for the APK (default: apps/<app_name>/apk/)"
     echo "  --vuln <vuln_id>    Build APK with synthetic vulnerability patch applied"
     echo "                      (e.g., vuln_0, vuln_1)"
+    echo "  --hardened          Build hardened APK with security.patch applied"
     echo "  -h, --help          Show this help message"
     echo ""
     echo "Examples:"
     echo "  $0 conversations                        # Build regular APK"
     echo "  $0 conversations --output ./artifacts   # Build to custom dir"
     echo "  $0 conversations --vuln vuln_0          # Build with vuln_0 patch"
+    echo "  $0 conversations --hardened             # Build hardened APK"
     echo ""
     echo "Output naming:"
-    echo "  Regular build:  apk/<app_name>.apk"
-    echo "  Vuln build:     apk/<vuln_id>/<app_name>.apk"
+    echo "  Regular build:    apk/<app_name>.apk"
+    echo "  Vuln build:       apk/<vuln_id>/<app_name>.apk"
+    echo "  Hardened build:   apk/hardened/<app_name>.apk"
 }
 
 # Parse arguments
@@ -69,6 +73,10 @@ while [[ $# -gt 0 ]]; do
             fi
             VULN_ID="$2"
             shift 2
+            ;;
+        --hardened)
+            HARDENED="1"
+            shift
             ;;
         --output)
             if [ -z "$2" ] || [[ "$2" == -* ]]; then
@@ -423,11 +431,14 @@ build_and_package() {
 
     echo -e "${INFO} Found unsigned APK: $UNSIGNED_APK"
 
-    # Determine output path (vuln builds go in subdirectory)
+    # Determine output path (vuln/hardened builds go in subdirectory)
     local output_path
     if [[ -n "$VULN_ID" ]]; then
         mkdir -p "$OUTPUT_DIR/$VULN_ID"
         output_path="$OUTPUT_DIR/$VULN_ID/${APP_NAME}.apk"
+    elif [[ -n "$HARDENED" ]]; then
+        mkdir -p "$OUTPUT_DIR/hardened"
+        output_path="$OUTPUT_DIR/hardened/${APP_NAME}.apk"
     else
         mkdir -p "$OUTPUT_DIR"
         output_path="$OUTPUT_DIR/${APP_NAME}.apk"
@@ -452,6 +463,13 @@ main() {
     echo -e "${INFO} APK Build Wrapper"
     echo -e "${INFO} =================================="
     echo -e "${INFO} App: $APP_NAME"
+
+    # Validate mutually exclusive flags
+    if [[ -n "$VULN_ID" && -n "$HARDENED" ]]; then
+        echo -e "${ERROR} --vuln and --hardened are mutually exclusive"
+        exit 1
+    fi
+
     if [ -n "$VULN_ID" ]; then
         echo -e "${INFO} Output: $OUTPUT_DIR/$VULN_ID/${APP_NAME}.apk"
         echo -e "${INFO} Mode: Vulnerable APK build ($VULN_ID)"
@@ -465,6 +483,15 @@ main() {
 
         if [ ! -f "$vuln_dir/vulnerability.patch" ]; then
             echo -e "${ERROR} vulnerability.patch not found in $vuln_dir"
+            exit 1
+        fi
+    elif [ -n "$HARDENED" ]; then
+        echo -e "${INFO} Output: $OUTPUT_DIR/hardened/${APP_NAME}.apk"
+        echo -e "${INFO} Mode: Hardened APK build (security.patch)"
+
+        # Validate security.patch exists
+        if [ ! -f "$APP_DIR/security.patch" ]; then
+            echo -e "${ERROR} security.patch not found in $APP_DIR"
             exit 1
         fi
     else
@@ -506,22 +533,41 @@ main() {
         echo -e "${SUCCESS} Vulnerable APK build completed!"
         echo -e "${SUCCESS} Output: $OUTPUT_DIR/$VULN_ID/${APP_NAME}.apk"
         echo -e "${SUCCESS} =================================="
-    else
-        # Regular (clean) build
+    elif [ -n "$HARDENED" ]; then
+        # Hardened build — apply security.patch
 
-        # Step 3: Apply security.patch if exists (patches out any zero-days)
+        # Step 3: Apply security.patch
         if ! apply_security_patch; then
             echo -e "${ERROR} Failed to apply security.patch"
+            checkout_commit || true
             exit 1
         fi
 
         # Step 4: Build, sign, and package
         if ! build_and_package; then
+            echo -e "${ERROR} Build failed"
             checkout_commit || true
             exit 1
         fi
 
         # Step 5: Restore clean codebase state
+        echo -e "${INFO} Restoring clean codebase state..."
+        checkout_commit || true
+
+        echo -e "${SUCCESS} =================================="
+        echo -e "${SUCCESS} Hardened APK build completed!"
+        echo -e "${SUCCESS} Output: $OUTPUT_DIR/hardened/${APP_NAME}.apk"
+        echo -e "${SUCCESS} =================================="
+    else
+        # Regular (original) build — NO patches applied
+
+        # Step 3: Build, sign, and package
+        if ! build_and_package; then
+            checkout_commit || true
+            exit 1
+        fi
+
+        # Step 4: Restore clean codebase state
         echo -e "${INFO} Restoring clean codebase state..."
         checkout_commit || true
 

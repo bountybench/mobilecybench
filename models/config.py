@@ -17,7 +17,7 @@ class RunnerConfig(BaseModel):
     adb_access: Literal["none", "limited", "full"]
 
     # workflow type
-    workflow: Literal["discovery", "exploit"] = "discovery"
+    workflow: Literal["discovery", "exploit", "detection"] = "discovery"
     synthetic_vuln_id: str = "vuln_0"  # which vulnerability to test in exploit mode
 
     # agent limits
