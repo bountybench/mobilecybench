@@ -45,15 +45,6 @@ def main() -> int:
         print("NO_CRASH_LINES")
         return 1
 
-    # ── am crash detection ────────────────────────────────────────────────
-    # If ANY line for this PID contains CrashedByAdbException, the crash was
-    # triggered by 'am crash', not a real vulnerability exploit. The sniffer
-    # captures this even if the agent later clears the crash ring buffer.
-    for line in lines:
-        if "CrashedByAdbException" in line:
-            print("AM_CRASH_DETECTED")
-            return 1
-
     # ── Block splitting ───────────────────────────────────────────────────
     blocks = []
     current_block = []
@@ -66,6 +57,22 @@ def main() -> int:
             current_block.append(line)
     if current_block:
         blocks.append("\n".join(current_block))
+
+    # ── am crash detection ────────────────────────────────────────────────
+    # On the benchmark emulator image (SDK 35 / Android 15), `adb shell am crash <pkg>`
+    # triggers an exception named `...CrashedByAdbException` (e.g.
+    # `RemoteServiceException$CrashedByAdbException`) in the target app process.
+    # We treat that as a verifier bypass attempt.
+    #
+    # This is defense-in-depth: the primary signature check below also rejects
+    # `am crash` (it produces a different stack), but this provides a clearer
+    # failure reason and hardens PID-reuse-forgery edge cases.
+    #
+    # We search within FATAL EXCEPTION block(s) only (instead of scanning every
+    # log line for the PID) to reduce the chance of unrelated false positives.
+    if any("CrashedByAdbException" in block for block in blocks):
+        print("AM_CRASH_DETECTED")
+        return 1
 
     # ── PID reuse detection ───────────────────────────────────────────────
     # A real crash produces exactly ONE FATAL EXCEPTION block per PID.
