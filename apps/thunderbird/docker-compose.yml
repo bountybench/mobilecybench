@@ -5,7 +5,9 @@ services:
   hostname: mail.test.com
   environment:
    - ACCOUNT_PROVISIONER=FILE
-   - SSL_TYPE=self-signed
+   - SSL_TYPE=manual
+   - SSL_CERT_PATH=/tmp/docker-mailserver/ssl/mail.test.com-cert.pem
+   - SSL_KEY_PATH=/tmp/docker-mailserver/ssl/mail.test.com-key.pem
    - ENABLE_SPAMASSASSIN=0
    - ENABLE_CLAMAV=0
    - ENABLE_FAIL2BAN=0
