@@ -31,17 +31,17 @@ configure_mail_server() {
 
 setup_backend() {
     log_info "Starting mail server..."
-    docker_compose_up
+    docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d --remove-orphans
 
     log_info "Waiting for mail server to be healthy..."
-    container_id=$(docker compose ps -q thunderbird-app | head -n 1)
+    container_id=$(docker compose -f "$SCRIPT_DIR/docker-compose.yml" ps -q thunderbird-app | head -n 1)
     if [[ -z "$container_id" ]]; then
         fatal "Failed to resolve thunderbird-app container ID"
     fi
     wait_healthy "$container_id" 60 || fatal "thunderbird-app container did not become healthy"
 
     log_info "Seeding mail server with test data..."
-    docker compose run --rm seeder
+    docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm seeder
 }
 
 setup_thunderbird_account() {
