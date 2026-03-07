@@ -63,6 +63,7 @@ class Workflow(ABC):
             self.agent = ClaudeCodeAgent(
                 app_name=self.app_name,
                 model=self.config.model,
+                timeout_ms=self.config.agent_timeout * 1000,
                 app_server=self.metadata.get("app_server"),
                 package_name=self.metadata.get("package_name"),
                 username=self.metadata.get("username"),

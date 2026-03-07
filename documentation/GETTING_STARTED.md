@@ -87,6 +87,38 @@ cd agent && touch .env
 echo OPENAI_API_KEY="sk..." > .env
 ```
 
+### Claude Code agent mode
+
+To use the Claude Code agent (`"agent_mode": "claude-code"` in your runner config), you need OAuth tokens from a Claude Max or Pro subscription instead of an API key.
+
+1. Install Claude Code locally: `npm install -g @anthropic-ai/claude-code`
+2. Log in: `claude auth login` (follow the browser flow)
+3. Copy the tokens from `~/.claude/.credentials.json` into `agent/.env`:
+
+```bash
+CLAUDE_CODE_OAUTH_TOKEN=<your-oauth-token>
+CLAUDE_CODE_OAUTH_REFRESH_TOKEN=<your-refresh-token>
+```
+
+4. Build the Docker image (one-time):
+
+```bash
+docker build -t cybench/mobilecybench-claude-code:latest -f agent/kali/Dockerfile.claude-code .
+```
+
+5. Set the following fields in your `runner_config.json`:
+
+```json
+{
+  "agent_mode": "claude-code",
+  "model": "sonnet",
+  "agent_image": "cybench/mobilecybench-claude-code:latest",
+  "agent_timeout": 600
+}
+```
+
+The `agent_timeout` field controls how long (in seconds) the Claude Code CLI is allowed to run before timing out (default: 1800).
+
 ## 5) Pick an app
 
 List available apps:

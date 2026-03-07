@@ -1,8 +1,9 @@
-#!/usr/bin/env python3
+"""Claude Code agent — delegates multi-turn execution to the Claude Code CLI."""
 
+import json
 import os
-import signal
-import sys
+import subprocess
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
@@ -10,40 +11,46 @@ from dotenv import load_dotenv
 from agent.agent_helpers import get_directory_tree
 from agent.claude_code.claude_code_cli_provider import ClaudeCodeCLIProvider
 from agent.prompts.prompts import build_detect_prompt, build_synthetic_prompt
-from utils.logger import logger, logger_manager
+from utils.logger import agent_logger, logger_manager
+from utils.run_artifacts import load_schema, utc_now_iso, validate_schema
 
 
 class ClaudeCodeAgent:
+    """Thin wrapper around the Claude Code CLI.
+
+    Unlike :class:`CustomAgent` which owns the turn loop and calls a
+    model-provider per turn, this agent delegates the entire agentic loop
+    to the ``claude`` CLI running inside the kali container.  The CLI
+    streams JSON events that we parse into the same ``conversation.jsonl``
+    format used by the custom agent.
+    """
+
     def __init__(
         self,
+        model: str,
+        timeout_ms: int,
         app_name: str = "",
-        dry_run: bool = False,
         app_server: Optional[str] = None,
-        timeout_ms: int = 1_200_000,
         package_name: Optional[str] = None,
         username: Optional[str] = None,
         password: Optional[str] = None,
         include_ssrf: bool = True,
-        model: str = "sonnet",
         workflow: str = "discovery",
     ):
-        """
-        Initialize the Claude Code agent.
+        """Initialise the Claude Code agent.
 
         Args:
-            app_name: Name of the mobile application being tested
-            dry_run: If True, skip actual execution for testing
-            app_server: Optional app server URL for network testing
-            timeout_ms: Timeout for Claude Code CLI calls in milliseconds
-            package_name: Android package name for the app being tested
-            username: Username for the app
-            password: Password for the app
-            include_ssrf: Whether to include SSRF instructions in the prompt
-            model: Claude model to use (e.g. "sonnet", "opus", "haiku")
-            workflow: Workflow type ("discovery" or "exploit")
+            model: Claude model to use (e.g. "sonnet", "opus", "haiku").
+            timeout_ms: Timeout for the CLI execution in milliseconds.
+            app_name: Name of the app under test.
+            app_server: Optional backend server URL.
+            package_name: Android package name.
+            username: App credentials.
+            password: App credentials.
+            include_ssrf: Whether to include SSRF instructions.
+            workflow: ``"discovery"`` or ``"exploit"``.
         """
         self.app_name = app_name
-        self.dry_run = dry_run
         self.app_server = app_server
         self.timeout_ms = timeout_ms
         self.package_name = package_name
@@ -53,202 +60,249 @@ class ClaudeCodeAgent:
         self.model = model
         self.workflow = workflow
 
-        # Load environment variables
+        # Load .env from the agent directory (same pattern as CustomAgent)
         agent_dir = os.path.dirname(os.path.abspath(__file__))
         env_file = os.path.join(agent_dir, ".env")
         if os.path.exists(env_file):
             load_dotenv(env_file, override=True)
 
-        # Get initial directory tree context
+        # Build system prompt (mirrors CustomAgent._get_system_prompt_text)
         self._initial_tree_context = get_directory_tree()
+        self._instructions = self._get_system_prompt_text()
 
+        # Provider handles CLI execution inside the kali container
         self.provider = ClaudeCodeCLIProvider()
 
-        # Set up signal handler for graceful cleanup on Ctrl-C
-        signal.signal(signal.SIGINT, self._signal_handler)
-
-        # Validate provider unless in dry run mode
-        if not dry_run:
-            if not self.provider.validate():
-                raise RuntimeError(
-                    "Claude Code CLI validation failed. "
-                    "Please ensure Claude Code is installed and authenticated."
-                )
-
-        # Initialize state
-        self.conversation_history = []
-        self.current_turn = 0
-
-        # Use shared logger's file name for consistency
-        self.log_file = logger_manager.get_log_file_name()
-
-        # Log initialization
-        self._log_section(
-            "AGENT CONFIGURATION",
-            [
-                "Agent: claude-code",
-                f"App: {self.app_name}",
-                f"Package: {self.package_name}",
-                f"Model: {self.model}",
-                f"Workflow: {self.workflow}",
-                f"App Server: {app_server or 'None'}",
-                f"Dry Run: {dry_run}",
-            ],
+        # Logging & artifact paths (shared with runner logger infrastructure)
+        self.log_file = logger_manager.get_agent_log_file_name()
+        self._logs_dir = Path(logger_manager.get_logs_dir())
+        self._conversation_file = str(self._logs_dir / "conversation.jsonl")
+        self._system_prompt_file = str(self._logs_dir / "system_prompt.txt")
+        self._conversation_schema = load_schema(
+            Path(__file__).parent.parent, "conversation_turn.schema.json"
         )
 
-    def run(self) -> Dict[str, Any]:
-        """
-        Execute the mobile security testing analysis.
+        # Tracking (populated after CLI execution)
+        self._tool_call_count = 0
+        self._unique_tools: set = set()
 
-        Returns:
-            Dictionary with execution results and metadata
-        """
-        logger.info("Starting Claude Code Agent execution...")
+        # Reset conversation artifact
+        with open(self._conversation_file, "w", encoding="utf-8"):
+            pass
+        # Persist system prompt for reproducibility
+        with open(self._system_prompt_file, "w", encoding="utf-8") as f:
+            f.write(self._instructions)
+            f.write("\n")
 
-        if self.dry_run:
-            logger.info("DRY RUN MODE - No actual Claude Code CLI execution")
-            return self._create_dry_run_result()
+        agent_logger.info("Agent Run Started")
+        agent_logger.info("Agent: claude-code")
+        agent_logger.info(f"Model: {self.model}")
+        agent_logger.info(f"App: {self.app_name}")
+        agent_logger.info(f"Workflow: {self.workflow}")
+        agent_logger.info(f"System prompt artifact: {self._system_prompt_file}")
+        agent_logger.info("=" * 80)
 
-        try:
-            initial_prompt = self._get_default_system_prompt()
-            return self._execute_analysis(initial_prompt)
+    # ------------------------------------------------------------------
+    # Prompt building (identical logic to CustomAgent._get_system_prompt_text)
+    # ------------------------------------------------------------------
 
-        except Exception as e:
-            logger.error(f"Claude Code Agent execution failed: {e}")
-            return self._create_result("error", str(e))
-
-    def _execute_analysis(self, initial_prompt: str) -> Dict[str, Any]:
-        """Execute analysis using provider's built-in multi-turn support."""
-        try:
-            self._log_section("STARTING CLAUDE CODE CLI EXECUTION")
-            self._log_content("INITIAL PROMPT", initial_prompt)
-
-            result = self.provider.execute(
-                prompt=initial_prompt,
-                timeout_ms=self.timeout_ms,
-                model=self.model,
-            )
-
-            if not result.success:
-                logger.error(f"Claude Code execution failed: {result.stderr}")
-                return self._create_result("error", result.stderr)
-
-            # Log final results
-            self._log_content("FINAL OUTPUT", result.output_text)
-
-            if result.tool_outputs:
-                logger.info(f"[TOOL CALLS DETECTED: {len(result.tool_outputs)}]")
-                for i, tool_output in enumerate(result.tool_outputs):
-                    logger.info(f"Tool Output {i + 1}: {tool_output}")
-                logger.info("-" * 40)
-
-            # Add complete execution to history
-            self.conversation_history.append(
-                {
-                    "initial_prompt": initial_prompt,
-                    "final_output": result.output_text,
-                    "tool_outputs": result.tool_outputs,
-                    "execution_time": result.execution_time,
-                    "turns": result.turns,
-                    "cost_usd": result.cost_usd,
-                }
-            )
-
-            return self._create_result("completed", turns=result.turns)
-
-        except Exception as e:
-            logger.error(f"Claude Code execution failed: {e}")
-            return self._create_result("error", str(e))
-
-    def _get_default_system_prompt(self) -> str:
-        """Build prompt based on workflow mode."""
+    def _get_system_prompt_text(self) -> str:
+        """Build the system prompt based on workflow mode."""
         if self.workflow == "exploit":
+            # TODO: Evaluate whether the Claude Code CLI needs additional
+            # exploit-mode guidance beyond the standard synthetic prompt
+            # (e.g. explicit instructions to write exploit.sh, or special
+            # handling for verify_files).
             return build_synthetic_prompt(
                 package_name=self.package_name,
                 username=self.username,
                 password=self.password,
                 app_server=self.app_server,
             )
-        else:
-            # Strip port from app_server for hping3 example
-            resolved_host = None
-            if self.app_server:
-                resolved_host = self.app_server.split(":")[0]
 
-            return build_detect_prompt(
-                package_name=self.package_name,
-                codebase_tree=self._initial_tree_context,
-                app_server=self.app_server,
-                username=self.username,
-                password=self.password,
-                include_ssrf=self.include_ssrf,
-                resolved_host=resolved_host,
+        return build_detect_prompt(
+            package_name=self.package_name,
+            codebase_tree=self._initial_tree_context,
+            app_server=self.app_server,
+            username=self.username,
+            password=self.password,
+            include_ssrf=self.include_ssrf,
+        )
+
+    # ------------------------------------------------------------------
+    # Run
+    # ------------------------------------------------------------------
+
+    def run(self) -> Dict[str, Any]:
+        """Execute the Claude Code CLI and return a result dict.
+
+        The result dict uses the same keys as
+        :meth:`CustomAgent._finish_run` so that ``run_artifacts.py`` can
+        process it uniformly.
+        """
+        agent_logger.info("Starting Claude Code CLI execution...")
+
+        if not self.provider.validate():
+            raise RuntimeError(
+                "Claude Code CLI validation failed. "
+                "Ensure the kali container is running, claude is installed, "
+                "and OAuth tokens are configured in agent/.env."
             )
 
-    def _log_section(self, title: str, details: list = None) -> None:
-        """Log a section with consistent formatting."""
-        logger.info("=" * 80)
-        logger.info(title)
-        logger.info("=" * 80)
-        if details:
-            for detail in details:
-                logger.info(detail)
-            logger.info("=" * 80)
+        try:
+            result = self.provider.execute(
+                prompt=self._instructions,
+                timeout_ms=self.timeout_ms,
+                model=self.model,
+            )
 
-    def _log_content(self, label: str, content: str) -> None:
-        """Log content with label and character count."""
-        logger.info(f"[{label} - {len(content)} chars]")
-        logger.info(content)
-        logger.info("-" * 40)
+            # Ingest CLI conversation events into our standard JSONL format
+            self._ingest_conversation_events(result.conversation_events)
 
-    def _create_result(
-        self, status: str, error: str = None, turns: int = 0
+            if not result.success:
+                agent_logger.error(f"Claude Code execution failed: {result.stderr}")
+                return self._finish_run(
+                    turns=result.turns,
+                    status="error",
+                    final_message=result.stderr,
+                    cost_usd=result.cost_usd,
+                )
+
+            return self._finish_run(
+                turns=result.turns,
+                status="completed",
+                final_message=result.output_text,
+                cost_usd=result.cost_usd,
+            )
+
+        except Exception as e:
+            agent_logger.error(f"Claude Code execution failed: {e}")
+            return self._finish_run(turns=0, status="error", final_message=str(e))
+
+    # ------------------------------------------------------------------
+    # Conversation tracking (mirrors CustomAgent._append_turn_event)
+    # ------------------------------------------------------------------
+
+    def _ingest_conversation_events(self, events: list) -> None:
+        """Convert CLI conversation events to schema-validated turn events."""
+        run_id = logger_manager.get_run_id()
+
+        for event in events:
+            turn_number = event.get("turn", 0)
+            tool_calls = event.get("tool_calls", [])
+            observations = event.get("observations", [])
+
+            # Normalise tool_calls to match conversation_turn schema
+            normalised_tool_calls = []
+            for tc in tool_calls:
+                tool_name = tc.get("name", "unknown")
+                self._unique_tools.add(tool_name)
+                normalised_tool_calls.append(
+                    {
+                        "tool_call_id": tc.get("tool_call_id", ""),
+                        "name": tool_name,
+                        "arguments": tc.get("arguments", {}),
+                    }
+                )
+            self._tool_call_count += len(normalised_tool_calls)
+
+            # Normalise observations
+            normalised_obs = []
+            for obs in observations:
+                normalised_obs.append(
+                    {
+                        "tool_call_id": obs.get("tool_use_id", obs.get("tool_call_id")),
+                        "type": "tool_result",
+                        "content": obs.get("content", ""),
+                        "truncated": False,
+                    }
+                )
+
+            turn_event = {
+                "run_id": run_id,
+                "turn_number": turn_number,
+                "timestamp": utc_now_iso(),
+                "role": "assistant",
+                "response_id": None,
+                "assistant_text": event.get("assistant_text", ""),
+                "reasoning_summary": "",
+                "tool_calls": normalised_tool_calls,
+                "observations": normalised_obs,
+                "status": "ok",
+            }
+
+            self._append_turn_event(turn_event)
+
+    def _append_turn_event(self, event: dict) -> None:
+        """Validate and append a turn event to conversation.jsonl."""
+        validate_schema(event, self._conversation_schema, "conversation turn")
+        try:
+            with open(self._conversation_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(event, ensure_ascii=False) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+        except Exception as e:
+            agent_logger.warning(f"Failed to append conversation turn JSONL: {e}")
+
+    # ------------------------------------------------------------------
+    # Exploit check (same as CustomAgent._check_exploit_exists)
+    # ------------------------------------------------------------------
+
+    def _check_exploit_exists(self) -> bool:
+        """Check whether exploit.sh exists in the kali container."""
+        try:
+            result = subprocess.run(
+                [
+                    "docker",
+                    "exec",
+                    "kali-container",
+                    "test",
+                    "-f",
+                    "/app/agent_exploit/exploit.sh",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            return result.returncode == 0
+        except Exception as e:
+            agent_logger.warning(f"Failed to check for exploit.sh: {e}")
+            return False
+
+    # ------------------------------------------------------------------
+    # Result (mirrors CustomAgent._finish_run)
+    # ------------------------------------------------------------------
+
+    def _finish_run(
+        self,
+        turns: int,
+        status: str = "completed",
+        final_message: Optional[str] = None,
+        cost_usd: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """Create result dictionary with common structure."""
-        result = {
+        """Build result dict compatible with run_artifacts.normalize_agent_result."""
+        exploit_exists = self._check_exploit_exists()
+
+        agent_logger.info(f"{'=' * 20} RUN COMPLETED {'=' * 20}")
+        agent_logger.info(f"Turns: {turns}")
+        agent_logger.info(f"Exploit exists: {exploit_exists}")
+        if cost_usd is not None:
+            agent_logger.info(f"Cost: ${cost_usd:.4f}")
+        if final_message:
+            preview = final_message[:500] if len(final_message) > 500 else final_message
+            agent_logger.info(f"Final message: {preview}")
+
+        return {
             "agent_type": "claude-code",
             "status": status,
             "turns_taken": turns,
-            "tool_call_count": 0,
-            "unique_tools": [],
-            "token_totals": {},
-            "final_message": (
-                self.conversation_history[-1]["final_output"]
-                if self.conversation_history and status == "completed"
-                else None
-            ),
+            "max_turns": 0,  # CLI manages its own turn limit
+            "exploit_exists": exploit_exists,
+            "final_message": final_message,
+            "token_totals": {},  # CLI doesn't expose per-token counts
+            "cost_usd": cost_usd,
             "log_file": self.log_file,
-            "conversation_file": None,
-            "conversation_history": self.conversation_history,
+            "conversation_file": self._conversation_file,
+            "system_prompt_file": self._system_prompt_file,
+            "tool_call_count": self._tool_call_count,
+            "unique_tools": sorted(self._unique_tools),
         }
-
-        if error:
-            result["error"] = error
-
-        if status == "completed":
-            logger.info(f"{'=' * 20} ANALYSIS COMPLETED {'=' * 20}")
-            logger.info("Status: Completed")
-            logger.info(f"Turns: {turns}")
-            logger.info(f"Log file: {self.log_file}")
-
-        return result
-
-    def _create_dry_run_result(self) -> Dict[str, Any]:
-        """Create a mock result for dry run mode."""
-        return {
-            "agent_type": "claude-code",
-            "status": "dry_run_completed",
-            "turns_taken": 0,
-            "tool_call_count": 0,
-            "unique_tools": [],
-            "token_totals": {},
-            "final_message": f"DRY RUN: Claude Code Agent configured for {self.app_name}",
-            "log_file": self.log_file,
-            "conversation_file": None,
-            "app_name": self.app_name,
-        }
-
-    def _signal_handler(self, _sig, _frame):
-        """Handle Ctrl-C (SIGINT) for graceful cleanup."""
-        logger.info("\nCtrl-C received, exiting...")
-        sys.exit(0)
