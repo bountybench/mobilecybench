@@ -68,40 +68,44 @@ echo "Initializing submodules: $SUBMODULE_PATHS"
 git submodule update --init $SUBMODULE_PATHS
 
 echo ""
-echo "=== Step 2: Build APKs ==="
+echo "=== Step 2: Build APKs (inside orchestrator-slim container) ==="
+docker pull "$BASE_IMAGE"
+
+# Build a list of build commands for all apps
+BUILD_CMDS=""
 FAILED_BUILDS=()
 for app in $(echo "${!APP_VULNS[@]}" | tr ' ' '\n' | sort); do
     vulns="${APP_VULNS[$app]}"
 
-    # Build clean APK
+    # Clean APK
     if [ -f "apps/$app/apk/$app.apk" ]; then
         echo "[$app] Clean APK already exists, skipping"
     else
-        echo "[$app] Building clean APK..."
-        if ./build_apk.sh "$app"; then
-            echo "[$app] Clean APK built successfully"
-        else
-            echo "[$app] ERROR: Clean APK build failed"
-            FAILED_BUILDS+=("$app:clean")
-            continue
-        fi
+        BUILD_CMDS="$BUILD_CMDS
+echo '=== Building $app (clean) ===' && ./build_apk.sh $app || echo 'FAILED:$app:clean'"
     fi
 
-    # Build vulnerable APKs
+    # Vulnerable APKs
     for vuln_id in $vulns; do
         if [ -f "apps/$app/apk/$vuln_id/$app.apk" ]; then
             echo "[$app] Vulnerable APK ($vuln_id) already exists, skipping"
         else
-            echo "[$app] Building vulnerable APK ($vuln_id)..."
-            if ./build_apk.sh "$app" --vuln "$vuln_id"; then
-                echo "[$app] Vulnerable APK ($vuln_id) built successfully"
-            else
-                echo "[$app] ERROR: Vulnerable APK ($vuln_id) build failed"
-                FAILED_BUILDS+=("$app:$vuln_id")
-            fi
+            BUILD_CMDS="$BUILD_CMDS
+echo '=== Building $app ($vuln_id) ===' && ./build_apk.sh $app --vuln $vuln_id || echo 'FAILED:$app:$vuln_id'"
         fi
     done
 done
+
+if [ -n "$BUILD_CMDS" ]; then
+    echo "Running APK builds inside container..."
+    docker run --rm \
+        -v "$ROOT_DIR:/mobilecybench" \
+        -w /mobilecybench \
+        "$BASE_IMAGE" \
+        bash -c "git config --global --add safe.directory /mobilecybench && $BUILD_CMDS"
+else
+    echo "All APKs already exist, skipping builds."
+fi
 
 echo ""
 echo "=== APK Build Summary ==="
@@ -118,18 +122,8 @@ for app in $(echo "${!APP_VULNS[@]}" | tr ' ' '\n' | sort); do
     echo "  $app: clean=$clean$vuln_status"
 done
 
-if [ ${#FAILED_BUILDS[@]} -gt 0 ]; then
-    echo ""
-    echo "WARNING: ${#FAILED_BUILDS[@]} build(s) failed: ${FAILED_BUILDS[*]}"
-    echo "Continuing with Docker build anyway (failed apps won't have APKs baked in)."
-fi
-
 echo ""
-echo "=== Step 3: Pull orchestrator-slim base image ==="
-docker pull "$BASE_IMAGE"
-
-echo ""
-echo "=== Step 4: Build runner-slim image ==="
+echo "=== Step 3: Build runner-slim image ==="
 docker build -f infra/gke/Dockerfile.runner-slim \
     --build-arg BASE_IMAGE="$BASE_IMAGE" \
     -t "$IMAGE_NAME" .
