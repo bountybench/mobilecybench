@@ -99,10 +99,11 @@ done
 if [ -n "$BUILD_CMDS" ]; then
     echo "Running APK builds inside container..."
     docker run --rm \
+        --entrypoint bash \
         -v "$ROOT_DIR:/mobilecybench" \
         -w /mobilecybench \
         "$BASE_IMAGE" \
-        bash -c "git config --global --add safe.directory /mobilecybench && $BUILD_CMDS"
+        -c "git config --global --add safe.directory /mobilecybench && $BUILD_CMDS"
 else
     echo "All APKs already exist, skipping builds."
 fi
