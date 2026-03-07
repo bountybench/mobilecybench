@@ -166,7 +166,9 @@ start_crash_sniffer() {
   # Stream crash buffer to host-side file. This captures ALL crash events
   # including ones the agent might later clear from the ring buffer.
   # The file lives on the host filesystem, inaccessible to the agent container.
-  adb logcat -b crash -v threadtime >> "$CRASH_SNIFFER_LOG" 2>/dev/null &
+  # The `printable` modifier escapes embedded newlines (\n -> \\n) in log
+  # messages, preventing println_native forgery via embedded fake logcat lines.
+  adb logcat -b crash -v threadtime,printable >> "$CRASH_SNIFFER_LOG" 2>/dev/null &
   echo $! > "$CRASH_SNIFFER_PID_FILE"
   log_info "Crash sniffer started (PID=$(cat "$CRASH_SNIFFER_PID_FILE"))"
 }
