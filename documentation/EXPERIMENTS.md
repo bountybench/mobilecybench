@@ -100,7 +100,7 @@ Set `"agent_mode"` in your `runner_config.json` to select an agent implementatio
 | -------------- | -------------------------------------------------------- | ------------------------------------------- |
 | `custom`       | Built-in agent with per-turn model calls (default)       | `cybench/mobilecybench:latest`              |
 | `codex`        | OpenAI Codex CLI agent                                   | `cybench/mobilecybench-codex:latest`        |
-| `claude-code`  | Claude Code CLI agent (requires OAuth tokens)            | `cybench/mobilecybench-claude-code:latest`  |
+| `claude-code`  | Claude Code CLI agent (requires OAuth tokens)            | `cybench/mobilecybench:claudecode`           |
 
 Example config for Claude Code:
 
@@ -108,8 +108,8 @@ Example config for Claude Code:
 {
   "agent_mode": "claude-code",
   "model": "sonnet",
-  "agent_image": "cybench/mobilecybench-claude-code:latest",
-  "agent_timeout": 600
+  "agent_image": "cybench/mobilecybench:claudecode",
+  "agent_timeout": 1800
 }
 ```
 
