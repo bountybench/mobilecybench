@@ -1,0 +1,16 @@
+{
+  "title": "CalDAV Collection Name SQL Injection",
+  "cwe_id": "CWE-89",
+  "cwe_name": "Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')",
+  "historic_cve": "CVE-2025-1843",
+  "cvss_historic": {
+    "base_score": 9.8,
+    "severity": "CRITICAL",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+  },
+  "cvss_synthetic": {
+    "base_score": 6.5,
+    "severity": "MEDIUM",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N"
+  }
+}
