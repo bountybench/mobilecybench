@@ -43,7 +43,7 @@ seed_home_assistant_config() {
 }
 
 wait_for_container_healthy() {
-    wait_healthy home-assistant-server 120 || fatal "home-assistant-server did not become healthy"
+    wait_healthy home-assistant_tls_proxy 120 || fatal "home-assistant_tls_proxy did not become healthy"
 }
 
 main() {

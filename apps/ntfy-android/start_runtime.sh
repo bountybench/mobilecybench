@@ -11,6 +11,7 @@ HEALTH_TIMEOUT=${HEALTH_TIMEOUT:-180}
 TARGET_PACKAGE="io.heckel.ntfy"
 TARGET_DIR="/data/data/${TARGET_PACKAGE}"
 ANDROID_BASELINE_FILE="${SCRIPT_DIR}/baseline_android_dir.txt"
+ANDROID_APK_HASH_FILE="${SCRIPT_DIR}/apk_hash_baseline.txt"
 EMULATOR_GATEWAY="http://10.0.2.2:8080"
 
 load_secrets() {
@@ -89,9 +90,35 @@ launch_app() {
   sleep 2
 }
 
+capture_apk_hash() {
+  log_info "Capturing APK hash for integrity verification"
+  local apk_paths apk_device_path
+  apk_paths="$(adb shell pm path "$TARGET_PACKAGE" 2>/dev/null | tr -d '\r' | sed 's/^package://')" || apk_paths=""
+  apk_device_path="$(printf '%s\n' "$apk_paths" | grep '/base.apk$' | head -n 1 || true)"
+  if [ -z "$apk_device_path" ]; then
+    apk_device_path="$(printf '%s\n' "$apk_paths" | head -n 1 || true)"
+  fi
+  if [ -z "$apk_device_path" ]; then
+    log_warn "Could not determine APK path; skipping hash capture"
+    return
+  fi
+  local tmp_apk="/tmp/ntfy_baseline_apk.tmp"
+  if ! adb pull "$apk_device_path" "$tmp_apk" >/dev/null 2>&1; then
+    log_warn "APK pull failed; skipping hash capture"
+    return
+  fi
+  python3 -c "
+import hashlib, sys
+h = hashlib.sha256(open(sys.argv[1], 'rb').read()).hexdigest()
+print(h)
+" "$tmp_apk" > "$ANDROID_APK_HASH_FILE"
+  rm -f "$tmp_apk"
+  log_info "APK hash saved to $ANDROID_APK_HASH_FILE"
+}
+
 capture_baseline() {
   log_info "Capturing Android baseline -> $ANDROID_BASELINE_FILE"
-  adb shell su 0 find "$TARGET_DIR" 2>/dev/null | tr -d '\r' | sort > "$ANDROID_BASELINE_FILE" || log_warn "Baseline capture failed"
+  adb shell "su 0 sh -c 'cd \"$TARGET_DIR\" && find . -type f'" 2>/dev/null | tr -d '\r' | sort > "$ANDROID_BASELINE_FILE" || log_warn "Baseline capture failed"
 }
 
 run_ntfy_seeding() {
@@ -103,6 +130,7 @@ main() {
   start_stack
   wait_for_health
   install_app
+  capture_apk_hash
   configure_app_defaults
   launch_app
   run_ntfy_seeding

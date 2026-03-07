@@ -40,7 +40,7 @@ async def fill_field(locator, value: str, label: str):
 
 async def login(page, hostname, username, password):
     print("Navigating to login page ...")
-    await page.goto(f"http://{hostname}:8123", wait_until="load")
+    await page.goto(f"https://{hostname}:8123", wait_until="load")
 
     try:
         await page.wait_for_selector("ha-sidebar", timeout=3000)
@@ -141,7 +141,7 @@ async def main(args):
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context()
+        context = await browser.new_context(ignore_https_errors=True)
         page = await context.new_page()
 
         # Set up request/response interception to capture auth tokens
