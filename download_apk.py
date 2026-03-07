@@ -47,15 +47,19 @@ def main():
         sys.exit(0)
 
     if "--check" in flags:
-        app_names = positional if positional else sorted(
-            d.name for d in apps_dir.iterdir() if d.is_dir()
+        app_names = (
+            positional
+            if positional
+            else sorted(d.name for d in apps_dir.iterdir() if d.is_dir())
         )
         results = check_releases(app_names, project_root)
         for name, status in sorted(results.items()):
             print(f"  {status:<10} {name}")
         failures = {n: s for n, s in results.items() if s not in ("ok", "no_link")}
         if failures:
-            print(f"\n{len(failures)} app(s) have broken download_links.", file=sys.stderr)
+            print(
+                f"\n{len(failures)} app(s) have broken download_links.", file=sys.stderr
+            )
         sys.exit(1 if failures else 0)
 
     if not positional:
@@ -69,7 +73,9 @@ def main():
 
     url = get_download_url(app_name, project_root)
     if not url:
-        print(f"Error: No download_link in apps/{app_name}/metadata.json", file=sys.stderr)
+        print(
+            f"Error: No download_link in apps/{app_name}/metadata.json", file=sys.stderr
+        )
         print("\nTo fix, build and publish the APK:", file=sys.stderr)
         print(f"  ./build_apk.sh {app_name}", file=sys.stderr)
         print(f"  ./publish_apk_bundle.sh apps/{app_name}", file=sys.stderr)

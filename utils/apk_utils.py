@@ -51,10 +51,16 @@ def download_apk(
     with tempfile.TemporaryDirectory() as tmpdir:
         subprocess.run(
             [
-                "gh", "release", "download", tag,
-                "--repo", f"{owner}/{repo}",
-                "--pattern", filename,
-                "--dir", tmpdir,
+                "gh",
+                "release",
+                "download",
+                tag,
+                "--repo",
+                f"{owner}/{repo}",
+                "--pattern",
+                filename,
+                "--dir",
+                tmpdir,
                 "--clobber",
             ],
             check=True,
@@ -85,7 +91,9 @@ def download_apk(
             shutil.move(str(tmp_path), str(apk_path))
             logger.info("Downloaded APK to %s", apk_path)
         elif apk_path.stat().st_size == 0:
-            logger.warning("Replacing empty file at %s (likely interrupted download)", apk_path)
+            logger.warning(
+                "Replacing empty file at %s (likely interrupted download)", apk_path
+            )
             shutil.move(str(tmp_path), str(apk_path))
         else:
             logger.warning(
@@ -96,9 +104,7 @@ def download_apk(
     return apk_dir
 
 
-def _extract_zip(
-    zf: zipfile.ZipFile, apk_dir: Path, *, force: bool = False
-) -> None:
+def _extract_zip(zf: zipfile.ZipFile, apk_dir: Path, *, force: bool = False) -> None:
     """Extract zip contents into apk_dir.
 
     Without force, skips existing files and logs a warning.
@@ -110,7 +116,7 @@ def _extract_zip(
     extracted, skipped = [], []
     for member in zf.namelist():
         if prefix and member.startswith(prefix):
-            relative = member[len(prefix):]
+            relative = member[len(prefix) :]
         else:
             relative = member
 
@@ -136,7 +142,9 @@ def _extract_zip(
     if skipped:
         logger.warning(
             "Skipped %d existing file(s) in %s: %s (use --force to overwrite)",
-            len(skipped), apk_dir, ", ".join(skipped),
+            len(skipped),
+            apk_dir,
+            ", ".join(skipped),
         )
 
 
@@ -160,7 +168,8 @@ def check_releases(app_names: list[str], project_root: Path) -> dict[str, str]:
         try:
             result = subprocess.run(
                 ["gh", "release", "view", tag, "--repo", f"{owner}/{repo}"],
-                capture_output=True, text=True,
+                capture_output=True,
+                text=True,
             )
             results[name] = "ok" if result.returncode == 0 else "missing"
         except FileNotFoundError:
