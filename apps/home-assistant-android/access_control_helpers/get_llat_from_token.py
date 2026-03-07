@@ -1,13 +1,14 @@
 import json
+import ssl
 import time
 
 from websocket import create_connection
 
 
 def login_with_llat(hostname, access_token):
-    HA_WS = f"ws://{hostname}:8123/api/websocket"
+    HA_WS = f"wss://{hostname}:8123/api/websocket"
 
-    ws = create_connection(HA_WS)
+    ws = create_connection(HA_WS, sslopt={"cert_reqs": ssl.CERT_NONE})
 
     auth_required = json.loads(ws.recv())
     print(f"Auth required: {auth_required}")
