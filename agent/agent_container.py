@@ -1,5 +1,7 @@
 import io
+import json
 import os
+import platform
 import shutil
 import subprocess
 import tarfile
@@ -121,7 +123,8 @@ class AgentEnvironment:
                 logger.error(f"Unexpected error pulling image: {e}")
                 raise
 
-        environment = self.env
+        # Don't pass internal credential blobs as container env vars
+        environment = {k: v for k, v in self.env.items() if not k.startswith("_")}
         extra_hosts = {"host.docker.internal": "host-gateway"}
         command = '/bin/bash -c "while true; do sleep 30; done"'
         network = self.docker_networks[0] if self.docker_networks else None
@@ -176,10 +179,67 @@ class AgentEnvironment:
                 else:
                     logger.error(f"Codex login failed: {result.output.decode()}")
             elif self.mode == "claude-code":
-                logger.info("Verifying Claude Code authentication...")
+                self.container.exec_run("mkdir -p /root/.claude")
+
+                # Write credentials file inside the container
+                creds_json = self.env.get("_CLAUDE_CODE_CREDENTIALS_JSON", "")
+                if creds_json:
+                    self.container.exec_run(
+                        [
+                            "bash",
+                            "-c",
+                            f"cat > /root/.claude/.credentials.json << 'CREDS_EOF'\n{creds_json}\nCREDS_EOF",
+                        ]
+                    )
+                    logger.info("Wrote Claude Code credentials to container")
+
+                # Pre-allow all tools so the CLI doesn't prompt for
+                # permissions (--dangerously-skip-permissions refuses to
+                # run as root).  The list must cover every built-in tool
+                # that Claude Code may invoke.
+                settings = json.dumps(
+                    {
+                        "permissions": {
+                            "allow": [
+                                "Bash",
+                                "Read",
+                                "Edit",
+                                "Write",
+                                "Grep",
+                                "Glob",
+                                "WebFetch",
+                                "WebSearch",
+                                "Agent",
+                                "NotebookEdit",
+                                "ToolSearch",
+                                "Task",
+                                "TaskOutput",
+                                "TaskStop",
+                                "TodoWrite",
+                                "AskUserQuestion",
+                                "Skill",
+                                "EnterPlanMode",
+                                "ExitPlanMode",
+                                "EnterWorktree",
+                            ]
+                        }
+                    }
+                )
+                self.container.exec_run(
+                    [
+                        "bash",
+                        "-c",
+                        f"cat > /root/.claude/settings.json << 'SETTINGS_EOF'\n{settings}\nSETTINGS_EOF",
+                    ]
+                )
+                logger.info("Wrote Claude Code settings (all tools allowed)")
+
+                # Verify authentication
                 result = self.container.exec_run("bash -c 'claude auth status'")
                 if result.exit_code == 0:
-                    logger.info("Claude Code authenticated successfully")
+                    logger.info(
+                        f"Claude Code authenticated: {result.output.decode().strip()}"
+                    )
                 else:
                     logger.warning(
                         f"Claude Code auth check failed: {result.output.decode()}"
@@ -580,6 +640,63 @@ def create_docker_network(network_name: str = "shared_net") -> None:
         logger.info(f"Created Docker network '{network_name}'")
 
 
+def _load_claude_code_credentials() -> Optional[str]:
+    """Load Claude Code OAuth credentials as a JSON string.
+
+    Tries (in order):
+    1. macOS Keychain (``Claude Code-credentials`` service) — canonical on macOS.
+    2. Environment variables ``CLAUDE_CODE_OAUTH_TOKEN`` /
+       ``CLAUDE_CODE_OAUTH_REFRESH_TOKEN`` (CI / Linux fallback).
+
+    Returns the raw JSON string to write into
+    ``~/.claude/.credentials.json`` inside the container, or *None* if
+    no credentials were found.
+    """
+    # --- 1. macOS Keychain ------------------------------------------------
+    if platform.system() == "Darwin":
+        try:
+            raw = subprocess.check_output(
+                [
+                    "security",
+                    "find-generic-password",
+                    "-s",
+                    "Claude Code-credentials",
+                    "-w",
+                ],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+            if raw:
+                # Validate it's JSON
+                json.loads(raw)
+                logger.info("Loaded Claude Code credentials from macOS Keychain")
+                return raw
+        except (subprocess.CalledProcessError, json.JSONDecodeError):
+            pass
+
+    # --- 2. Environment variables -----------------------------------------
+    token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
+    refresh = os.environ.get("CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "")
+    if token:
+        creds = {
+            "claudeAiOauth": {
+                "accessToken": token,
+                "refreshToken": refresh,
+                "expiresAt": 0,
+                "scopes": [
+                    "user:inference",
+                    "user:profile",
+                    "user:sessions:claude_code",
+                ],
+            }
+        }
+        logger.info("Built Claude Code credentials from environment variables")
+        return json.dumps(creds)
+
+    logger.warning("No Claude Code credentials found (Keychain or env vars)")
+    return None
+
+
 def setup_agent_environment(
     app_dir: Path,
     agent_image: str,
@@ -629,10 +746,11 @@ def setup_agent_environment(
         if codex_key:
             env_vars["CODEX_API_KEY"] = codex_key
     elif agent_mode == "claude-code":
-        for var in ("CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN"):
-            val = os.environ.get(var, "")
-            if val:
-                env_vars[var] = val
+        # Load OAuth credentials for injection into the container.
+        # Prefer the macOS Keychain (canonical source); fall back to env vars.
+        claude_creds = _load_claude_code_credentials()
+        if claude_creds:
+            env_vars["_CLAUDE_CODE_CREDENTIALS_JSON"] = claude_creds
 
     # Get commit ID from metadata or use default
     commit_id = metadata.get("commit_id", "HEAD")

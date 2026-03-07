@@ -100,6 +100,7 @@ class ClaudeCodeAgent:
         agent_logger.info(f"App: {self.app_name}")
         agent_logger.info(f"Workflow: {self.workflow}")
         agent_logger.info(f"System prompt artifact: {self._system_prompt_file}")
+        agent_logger.info(f"System prompt:\n{self._instructions}")
         agent_logger.info("=" * 80)
 
     # ------------------------------------------------------------------
@@ -159,17 +160,28 @@ class ClaudeCodeAgent:
             # Ingest CLI conversation events into our standard JSONL format
             self._ingest_conversation_events(result.conversation_events)
 
+            # The CLI's `result` event carries `num_turns`, but on timeout
+            # the event is never emitted so result.turns stays 0.  Fall
+            # back to the number of conversation events we actually parsed.
+            effective_turns = result.turns or len(result.conversation_events)
+
             if not result.success:
-                agent_logger.error(f"Claude Code execution failed: {result.stderr}")
+                # Distinguish timeout (exit_code == -1) from real errors
+                is_timeout = result.exit_code == -1
+                status = "timeout" if is_timeout else "error"
+                msg = result.stderr or (
+                    "CLI timed out" if is_timeout else "unknown error"
+                )
+                agent_logger.error(f"Claude Code execution {status}: {msg}")
                 return self._finish_run(
-                    turns=result.turns,
-                    status="error",
-                    final_message=result.stderr,
+                    turns=effective_turns,
+                    status=status,
+                    final_message=msg,
                     cost_usd=result.cost_usd,
                 )
 
             return self._finish_run(
-                turns=result.turns,
+                turns=effective_turns,
                 status="completed",
                 final_message=result.output_text,
                 cost_usd=result.cost_usd,
@@ -288,8 +300,7 @@ class ClaudeCodeAgent:
         if cost_usd is not None:
             agent_logger.info(f"Cost: ${cost_usd:.4f}")
         if final_message:
-            preview = final_message[:500] if len(final_message) > 500 else final_message
-            agent_logger.info(f"Final message: {preview}")
+            agent_logger.info(f"Final message: {final_message}")
 
         return {
             "agent_type": "claude-code",
