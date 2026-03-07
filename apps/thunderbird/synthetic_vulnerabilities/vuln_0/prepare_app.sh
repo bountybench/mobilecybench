@@ -25,7 +25,6 @@ log_info "Exposing port 25 via sidecar proxy..."
 docker rm -f tb-port-25-proxy 2>/dev/null || true
 
 # Run socat sidecar to bridge host:25 to the container
-# This fulfills the reviewer's request to move 'port 25 exposure' to prepare_app.sh
 docker run -d \
   --name tb-port-25-proxy \
   --network shared_net \
