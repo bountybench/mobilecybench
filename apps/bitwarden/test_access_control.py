@@ -11,8 +11,9 @@ import sys
 from utils.db_container_utils import query_container
 from utils.ui_utils import initialize_ui_automation
 
-from .bw_workflows import bw_attempt_login
-from .util import BITWARDEN_PKG, ensure_server_running, load_secrets
+# Absolute imports to prevent relative import errors in CI
+from apps.bitwarden.bw_workflows import bw_attempt_login
+from apps.bitwarden.util import BITWARDEN_PKG, ensure_server_running, load_secrets
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -53,7 +54,8 @@ def check_privilege_escalation(user):
             password=DB_CONFIG["password"],
             database=DB_CONFIG["database"],
         )
-        org_count = int(rows[0]["count"])
+        # Handle cases where COUNT might be returned as string or int depending on DB driver behavior in query_container
+        org_count = int(rows[0]["count"]) if rows else 0
         if org_count > 0:
             logger.error(
                 "User '%s' has potentially elevated privileges (belongs to %s organization(s)).",
@@ -110,7 +112,9 @@ def check_correct_credentials(d, users):
 
 def main():
     """Main function to run access control tests."""
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    # Ensure we are in the app directory for relative file lookups (like secrets.json)
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    os.chdir(app_dir)
 
     if not ensure_server_running():
         logger.error(
@@ -137,9 +141,10 @@ def main():
     # --- Run Authentication Checks ---
     wrong_credentials_check_passed = False
     correct_credentials_check_passed = False
-    d = initialize_ui_automation()
-
+    
+    # Initialize UI automation
     try:
+        d = initialize_ui_automation()
         logger.info("Connection successful. Running UI-based authentication checks...")
         wrong_credentials_check_passed = check_wrong_credentials(d, users)
         correct_credentials_check_passed = check_correct_credentials(d, users)
@@ -147,8 +152,9 @@ def main():
         logger.warning("UI tests failed unexpectedly: %s", e)
     finally:
         try:
+            from apps.bitwarden.util import adb
             logger.info("Stopping app %s...", BITWARDEN_PKG)
-            d.app_stop(BITWARDEN_PKG)
+            adb(["shell", "am", "force-stop", BITWARDEN_PKG])
         except Exception as e:
             logger.warning("Failed to stop app: %s", e)
 
@@ -160,7 +166,7 @@ def main():
     }
 
     # Emit single-line JSON summary to STDOUT for run_checks.sh to capture
-    print(json.dumps(results))
+    print(json.dumps({"score": 1 if all(results.values()) else 0, "details": results}))
 
     if all(results.values()):
         logger.info("All access control checks passed successfully.")
