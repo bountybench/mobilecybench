@@ -4,8 +4,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from utils.honeypot_spec import (
-    ACTIVITY_CLASS,
     activity_name,
+    get_activity_class,
     java_source,
     manifest_activity_tag,
 )
@@ -130,7 +130,8 @@ def _inject_activity_source(source_root: Path, package_name: str) -> None:
     activity_dir = source_root / Path(*package_name.split(".")) / "internal"
     activity_dir.mkdir(parents=True, exist_ok=True)
 
-    activity_path = activity_dir / f"{ACTIVITY_CLASS}.java"
+    cls_name = get_activity_class(package_name)
+    activity_path = activity_dir / f"{cls_name}.java"
     if activity_path.exists():
         logger.info("Discovery honeypot source already present at %s", activity_path)
         return

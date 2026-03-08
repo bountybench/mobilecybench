@@ -359,6 +359,20 @@ class AgentEnvironment:
                 )
                 inject_discovery_honeypot(staging_dir, self.package_name)
 
+                # Senior Review: Commit the honeypot so it doesn't show up in 'git status'
+                subprocess.run(
+                    ["git", "add", "-A"],
+                    cwd=staging_dir,
+                    check=True,
+                    capture_output=True,
+                )
+                subprocess.run(
+                    ["git", "commit", "-m", "Prepare environment"],
+                    cwd=staging_dir,
+                    check=True,
+                    capture_output=True,
+                )
+
         # Clean up any existing agent_codebase directory
         if agent_codebase.exists():
             logger.info(f"Removing existing agent_codebase at {agent_codebase}")

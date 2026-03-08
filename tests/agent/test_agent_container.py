@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import docker.errors
 
 from agent.agent_container import AgentEnvironment
+from utils.honeypot_spec import get_activity_class
 
 
 class TestAgentEnvironmentVerifyFiles:
@@ -226,6 +227,7 @@ class TestDiscoveryAgentCodebase:
 
         agent_env._setup_agent_codebase()
 
+        cls_name = get_activity_class("com.example.app")
         injected_file = (
             app_dir
             / "agent_codebase"
@@ -237,7 +239,7 @@ class TestDiscoveryAgentCodebase:
             / "example"
             / "app"
             / "internal"
-            / "VulnFlagActivity.java"
+            / f"{cls_name}.java"
         )
         assert injected_file.exists()
         assert not (
@@ -250,7 +252,7 @@ class TestDiscoveryAgentCodebase:
             / "example"
             / "app"
             / "internal"
-            / "VulnFlagActivity.java"
+            / f"{cls_name}.java"
         ).exists()
 
     @patch("agent.agent_container.docker.from_env")
@@ -280,6 +282,7 @@ class TestDiscoveryAgentCodebase:
 
         agent_env._setup_agent_codebase()
 
+        cls_name = get_activity_class("com.example.app")
         assert not (
             app_dir
             / "agent_codebase"
@@ -291,7 +294,7 @@ class TestDiscoveryAgentCodebase:
             / "example"
             / "app"
             / "internal"
-            / "VulnFlagActivity.java"
+            / f"{cls_name}.java"
         ).exists()
 
 

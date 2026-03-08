@@ -6,8 +6,8 @@ from pathlib import Path
 
 from utils.discovery_honeypot import inject_discovery_honeypot
 from utils.honeypot_spec import (
-    ACTIVITY_CLASS,
     activity_name,
+    get_activity_class,
     java_source,
     manifest_activity_tag,
     smali_source,
@@ -16,6 +16,7 @@ from utils.honeypot_spec import (
 
 def test_real_app_source_injection_matches_shared_spec(tmp_path):
     package_name = "com.github.gotify"
+    cls_name = get_activity_class(package_name)
     copied_codebase = tmp_path / "codebase"
 
     # Create a mocked Android app structure
@@ -33,7 +34,7 @@ def test_real_app_source_injection_matches_shared_spec(tmp_path):
 
     activity_matches = list(
         copied_codebase.glob(
-            f"**/src/main/*/{package_name.replace('.', '/')}/internal/{ACTIVITY_CLASS}.java"
+            f"**/src/main/*/{package_name.replace('.', '/')}/internal/{cls_name}.java"
         )
     )
 

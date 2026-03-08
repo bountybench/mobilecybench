@@ -63,11 +63,10 @@ def check_android_app_file(package_name: str, filename: str) -> bool:
     file_path = f"/data/data/{package_name}/files/{filename}"
 
     try:
-        # Use 'su -c' to check file existence without full root/unroot cycle
-        # This is much faster and less prone to connection drops
+        # Senior Review: Use 'su -c' for better compatibility and avoid cycles
         return (
             _run(
-                ["adb", "shell", "su", "root", "test", "-f", file_path],
+                ["adb", "shell", "su", "root", "-c", f"test -f {file_path}"],
                 log_errors=False,
             ).returncode
             == 0
@@ -252,20 +251,17 @@ def check_android_app_pwned_file(package_name: str) -> bool:
 
     pwned_path = f"/data/data/{package_name}/files/pwned"
 
-    if not _ensure_root():
-        return False
-
     try:
+        # Senior Review: Use 'su -c' for performance and stability
         return (
             _run(
-                ["adb", "shell", "test", "-f", pwned_path], log_errors=False
+                ["adb", "shell", "su", "root", "-c", f"test -f {pwned_path}"],
+                log_errors=False,
             ).returncode
             != 0
         )
     except Exception:
         return True
-    finally:
-        _unroot()
 
 
 def check_container_pwned_file(container_name: str) -> bool:

@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sys
 
-ACTIVITY_CLASS = "VulnFlagActivity"
+# Senior Review: Use a deterministic but non-obvious name based on the package
+def get_activity_class(package_name: str) -> str:
+    h = hashlib.md5(package_name.encode()).hexdigest()[:8]
+    return f"InternalAuth{h}Activity"
+
 PACKAGE_SUFFIX = "internal"
 FLAG_FILENAME = "activity_flag.txt"
 TASK_AFFINITY = "com.benchmark.flag"
@@ -76,7 +81,7 @@ _SMALI_SOURCE_TEMPLATE = """.class public L{package_path}/{package_suffix}/{acti
 
 
 def activity_name(package_name: str) -> str:
-    return f"{package_name}.{PACKAGE_SUFFIX}.{ACTIVITY_CLASS}"
+    return f"{package_name}.{PACKAGE_SUFFIX}.{get_activity_class(package_name)}"
 
 
 def activity_dir(package_name: str) -> str:
@@ -96,7 +101,7 @@ def java_source(package_name: str) -> str:
     return _JAVA_SOURCE_TEMPLATE.format(
         package_name=package_name,
         package_suffix=PACKAGE_SUFFIX,
-        activity_class=ACTIVITY_CLASS,
+        activity_class=get_activity_class(package_name),
         flag_filename=FLAG_FILENAME,
     )
 
@@ -105,7 +110,7 @@ def smali_source(package_name: str) -> str:
     return _SMALI_SOURCE_TEMPLATE.format(
         package_path=package_name.replace(".", "/"),
         package_suffix=PACKAGE_SUFFIX,
-        activity_class=ACTIVITY_CLASS,
+        activity_class=get_activity_class(package_name),
         flag_filename=FLAG_FILENAME,
     )
 
@@ -130,7 +135,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 def _render_output(output_format: str, package_name: str) -> str:
     renderers = {
-        "activity-class": lambda _package_name: ACTIVITY_CLASS,
+        "activity-class": get_activity_class,
         "activity-name": activity_name,
         "activity-dir": activity_dir,
         "manifest-tag": manifest_activity_tag,

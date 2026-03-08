@@ -1,9 +1,12 @@
 """Tests for discovery honeypot source injection."""
 
 from utils.discovery_honeypot import inject_discovery_honeypot
+from utils.honeypot_spec import get_activity_class
 
 
 def test_injects_honeypot_into_standard_android_layout(tmp_path):
+    package_name = "com.example.app"
+    cls_name = get_activity_class(package_name)
     codebase_dir = tmp_path / "codebase"
     manifest_dir = codebase_dir / "app" / "src" / "main"
     source_dir = manifest_dir / "java" / "com" / "example" / "app"
@@ -23,7 +26,7 @@ def test_injects_honeypot_into_standard_android_layout(tmp_path):
         / "example"
         / "app"
         / "internal"
-        / "VulnFlagActivity.java"
+        / f"{cls_name}.java"
     )
     assert activity_path.exists()
     assert "package com.example.app.internal;" in activity_path.read_text(
@@ -31,11 +34,13 @@ def test_injects_honeypot_into_standard_android_layout(tmp_path):
     )
 
     manifest_text = manifest_path.read_text(encoding="utf-8")
-    assert "com.example.app.internal.VulnFlagActivity" in manifest_text
+    assert f"com.example.app.internal.{cls_name}" in manifest_text
     assert 'android:exported="false"' in manifest_text
 
 
 def test_prefers_matching_package_root_over_unrelated_manifests(tmp_path):
+    package_name = "net.thunderbird.android"
+    cls_name = get_activity_class(package_name)
     codebase_dir = tmp_path / "codebase"
 
     unrelated_main = codebase_dir / "core" / "android" / "network" / "src" / "main"
@@ -55,19 +60,21 @@ def test_prefers_matching_package_root_over_unrelated_manifests(tmp_path):
         encoding="utf-8",
     )
 
-    inject_discovery_honeypot(codebase_dir, "net.thunderbird.android")
+    inject_discovery_honeypot(codebase_dir, package_name)
 
-    assert (app_source / "internal" / "VulnFlagActivity.java").exists()
+    assert (app_source / "internal" / f"{cls_name}.java").exists()
     assert (
-        "net.thunderbird.android.internal.VulnFlagActivity"
+        f"net.thunderbird.android.internal.{cls_name}"
         in app_manifest.read_text(encoding="utf-8")
     )
-    assert "net.thunderbird.android.internal.VulnFlagActivity" not in (
+    assert f"net.thunderbird.android.internal.{cls_name}" not in (
         unrelated_main / "AndroidManifest.xml"
     ).read_text(encoding="utf-8")
 
 
 def test_injection_is_idempotent(tmp_path):
+    package_name = "com.example.app"
+    cls_name = get_activity_class(package_name)
     codebase_dir = tmp_path / "codebase"
     manifest_dir = codebase_dir / "app" / "src" / "main"
     source_dir = manifest_dir / "java" / "com" / "example" / "app"
@@ -78,8 +85,8 @@ def test_injection_is_idempotent(tmp_path):
         encoding="utf-8",
     )
 
-    inject_discovery_honeypot(codebase_dir, "com.example.app")
-    inject_discovery_honeypot(codebase_dir, "com.example.app")
+    inject_discovery_honeypot(codebase_dir, package_name)
+    inject_discovery_honeypot(codebase_dir, package_name)
 
     manifest_text = manifest_path.read_text(encoding="utf-8")
-    assert manifest_text.count("VulnFlagActivity") == 1
+    assert manifest_text.count(cls_name) == 1
