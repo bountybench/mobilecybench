@@ -82,7 +82,7 @@ Key fields:
 
 | Field               | Description                                                                        |
 | ------------------- | ---------------------------------------------------------------------------------- |
-| `model`             | Model to use (e.g., `gpt-5`, `gemini-3-pro-preview`, `sonnet`)                     |
+| `model`             | Model for the custom agent (e.g., `gpt-5`, `sonnet`). Ignored by codex/claude-code. |
 | `workflow`          | `"discovery"` or `"exploit"`                                                       |
 | `max_iterations`    | Maximum agent turns before stopping (custom agent only)                            |
 | `build_type`        | `"source"` (build APK), `"download-apk"`, or `"skip-apk"`                          |
@@ -102,12 +102,11 @@ Set `"agent_mode"` in your `runner_config.json` to select an agent implementatio
 | `codex`        | OpenAI Codex CLI agent                                   | `cybench/mobilecybench-codex:latest`        |
 | `claude-code`  | Claude Code CLI agent (requires OAuth tokens)            | `cybench/mobilecybench:claudecode`           |
 
-Example config for Claude Code:
+Example config for Claude Code (uses Opus 4.6 by default):
 
 ```json
 {
   "agent_mode": "claude-code",
-  "model": "sonnet",
   "agent_image": "cybench/mobilecybench:claudecode",
   "agent_timeout": 1800
 }

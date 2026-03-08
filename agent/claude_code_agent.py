@@ -2,7 +2,6 @@
 
 import json
 import os
-import subprocess
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -11,7 +10,7 @@ from dotenv import load_dotenv
 from agent.agent_helpers import get_directory_tree
 from agent.claude_code.claude_code_cli_provider import ClaudeCodeCLIProvider
 from agent.prompts.prompts import build_detect_prompt, build_synthetic_prompt
-from utils.logger import agent_logger, logger_manager
+from utils.logger import agent_logger, logger, logger_manager
 from utils.run_artifacts import load_schema, utc_now_iso, validate_schema
 
 
@@ -40,7 +39,7 @@ class ClaudeCodeAgent:
         """Initialise the Claude Code agent.
 
         Args:
-            model: Claude model to use (e.g. "sonnet", "opus", "haiku").
+            model: Ignored — Claude Code always uses Opus 4.6.
             timeout_ms: Timeout for the CLI execution in milliseconds.
             app_name: Name of the app under test.
             app_server: Optional backend server URL.
@@ -57,7 +56,9 @@ class ClaudeCodeAgent:
         self.username = username
         self.password = password
         self.include_ssrf = include_ssrf
-        self.model = model
+        # Claude Code CLI always uses its default model (Opus 4.6).
+        # The model parameter from runner config is ignored.
+        self.model = "claude-opus-4-6"
         self.workflow = workflow
 
         # Load .env from the agent directory (same pattern as CustomAgent)
@@ -169,10 +170,19 @@ class ClaudeCodeAgent:
                 # Distinguish timeout (exit_code == -1) from real errors
                 is_timeout = result.exit_code == -1
                 status = "timeout" if is_timeout else "error"
-                msg = result.stderr or (
-                    "CLI timed out" if is_timeout else "unknown error"
-                )
+                # Build a detailed error message with all available context
+                parts = []
+                if is_timeout:
+                    parts.append(f"CLI timed out after {self.timeout_ms / 1000:.0f}s")
+                else:
+                    parts.append(f"CLI exited with code {result.exit_code}")
+                if result.stderr:
+                    parts.append(f"stderr: {result.stderr}")
+                if result.output_text:
+                    parts.append(f"last output: {result.output_text}")
+                msg = " | ".join(parts)
                 agent_logger.error(f"Claude Code execution {status}: {msg}")
+                logger.error(f"Claude Code execution {status}: {msg}")
                 return self._finish_run(
                     turns=effective_turns,
                     status=status,
@@ -188,7 +198,8 @@ class ClaudeCodeAgent:
             )
 
         except Exception as e:
-            agent_logger.error(f"Claude Code execution failed: {e}")
+            agent_logger.error(f"Claude Code execution failed: {e}", exc_info=True)
+            logger.error(f"Claude Code execution failed: {e}", exc_info=True)
             return self._finish_run(turns=0, status="error", final_message=str(e))
 
     # ------------------------------------------------------------------
@@ -263,19 +274,11 @@ class ClaudeCodeAgent:
     def _check_exploit_exists(self) -> bool:
         """Check whether exploit.sh exists in the kali container."""
         try:
-            result = subprocess.run(
-                [
-                    "docker",
-                    "exec",
-                    "kali-container",
-                    "test",
-                    "-f",
-                    "/app/agent_exploit/exploit.sh",
-                ],
-                capture_output=True,
-                text=True,
+            container = self.provider.client.containers.get(
+                self.provider.container_name
             )
-            return result.returncode == 0
+            result = container.exec_run(["test", "-f", "/app/agent_exploit/exploit.sh"])
+            return result.exit_code == 0
         except Exception as e:
             agent_logger.warning(f"Failed to check for exploit.sh: {e}")
             return False

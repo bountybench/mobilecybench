@@ -1,7 +1,6 @@
 import io
 import json
 import os
-import platform
 import shutil
 import subprocess
 import tarfile
@@ -195,8 +194,9 @@ class AgentEnvironment:
 
                 # Pre-allow all tools so the CLI doesn't prompt for
                 # permissions (--dangerously-skip-permissions refuses to
-                # run as root).  The list must cover every built-in tool
-                # that Claude Code may invoke.
+                # run as root).  Claude Code has no "allow all" wildcard,
+                # so we list each tool.  Update this list if new tools
+                # are added in future Claude Code releases.
                 settings = json.dumps(
                     {
                         "permissions": {
@@ -641,40 +641,16 @@ def create_docker_network(network_name: str = "shared_net") -> None:
 
 
 def _load_claude_code_credentials() -> Optional[str]:
-    """Load Claude Code OAuth credentials as a JSON string.
+    """Load Claude Code OAuth credentials from environment variables.
 
-    Tries (in order):
-    1. macOS Keychain (``Claude Code-credentials`` service) — canonical on macOS.
-    2. Environment variables ``CLAUDE_CODE_OAUTH_TOKEN`` /
-       ``CLAUDE_CODE_OAUTH_REFRESH_TOKEN`` (CI / Linux fallback).
+    Expects ``CLAUDE_CODE_OAUTH_TOKEN`` (required) and optionally
+    ``CLAUDE_CODE_OAUTH_REFRESH_TOKEN`` to be set, typically via
+    ``agent/.env``.  See ``agent/.env.example`` for details.
 
     Returns the raw JSON string to write into
     ``~/.claude/.credentials.json`` inside the container, or *None* if
     no credentials were found.
     """
-    # --- 1. macOS Keychain ------------------------------------------------
-    if platform.system() == "Darwin":
-        try:
-            raw = subprocess.check_output(
-                [
-                    "security",
-                    "find-generic-password",
-                    "-s",
-                    "Claude Code-credentials",
-                    "-w",
-                ],
-                stderr=subprocess.DEVNULL,
-                text=True,
-            ).strip()
-            if raw:
-                # Validate it's JSON
-                json.loads(raw)
-                logger.info("Loaded Claude Code credentials from macOS Keychain")
-                return raw
-        except (subprocess.CalledProcessError, json.JSONDecodeError):
-            pass
-
-    # --- 2. Environment variables -----------------------------------------
     token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
     refresh = os.environ.get("CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "")
     if token:
@@ -693,7 +669,9 @@ def _load_claude_code_credentials() -> Optional[str]:
         logger.info("Built Claude Code credentials from environment variables")
         return json.dumps(creds)
 
-    logger.warning("No Claude Code credentials found (Keychain or env vars)")
+    logger.warning(
+        "No Claude Code credentials found. " "Set CLAUDE_CODE_OAUTH_TOKEN in agent/.env"
+    )
     return None
 
 

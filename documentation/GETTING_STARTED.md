@@ -93,31 +93,24 @@ To use the Claude Code agent (`"agent_mode": "claude-code"` in your runner confi
 
 1. Install Claude Code locally: `npm install -g @anthropic-ai/claude-code`
 2. Log in: `claude auth login` (follow the browser flow)
-3. Credentials are loaded automatically from the **macOS Keychain** (written by `claude auth login`). On Linux/CI, set env vars in `agent/.env` as a fallback:
+3. Copy your OAuth tokens into `agent/.env`:
 
 ```bash
 CLAUDE_CODE_OAUTH_TOKEN=<your-oauth-token>
 CLAUDE_CODE_OAUTH_REFRESH_TOKEN=<your-refresh-token>
 ```
 
-4. Build the Docker image (one-time):
-
-```bash
-docker build -t cybench/mobilecybench:claudecode -f agent/kali/Dockerfile.claude-code .
-```
-
-5. Set the following fields in your `runner_config.json`:
+4. Set the following fields in your `runner_config.json`:
 
 ```json
 {
   "agent_mode": "claude-code",
-  "model": "sonnet",
   "agent_image": "cybench/mobilecybench:claudecode",
   "agent_timeout": 1800
 }
 ```
 
-The `agent_timeout` field controls how long (in seconds) the Claude Code CLI is allowed to run before timing out (default: 1800).
+The Docker image is pulled automatically. `agent_timeout` controls how long (in seconds) the CLI is allowed to run (default: 1800).
 
 ## 5) Pick an app
 

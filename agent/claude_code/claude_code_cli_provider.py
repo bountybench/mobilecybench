@@ -238,7 +238,14 @@ class ClaudeCodeCLIProvider:
                             for content in message.get("content", []):
                                 if content.get("type") == "tool_result":
                                     tool_outputs.append(json.dumps(content))
-                                    tool_content = content.get("content", "")
+                                    raw_content = content.get("content", "")
+                                    # content can be a string or a list of blocks
+                                    if isinstance(raw_content, list):
+                                        tool_content = "\n".join(
+                                            b.get("text", str(b)) for b in raw_content
+                                        )
+                                    else:
+                                        tool_content = raw_content
                                     tool_id = content.get("tool_use_id", "")
                                     current_turn_observations.append(
                                         {
@@ -273,19 +280,30 @@ class ClaudeCodeCLIProvider:
                         if line.strip():
                             logger.info(f"[ClaudeCode Raw] {line.strip()}")
 
+            def handle_stderr(text: str):
+                """Log stderr lines in real time."""
+                for line in text.splitlines():
+                    line = line.strip()
+                    if line:
+                        logger.warning(f"[ClaudeCode stderr] {line}")
+
             # Execute using shared helper
             _, stderr_text, exit_code = run_command_in_container(
                 self.container_name,
                 cmd,
                 timeout_sec,
                 stdout_callback=parse_output_chunk,
+                stderr_callback=handle_stderr,
             )
 
             final_output = "\n".join(assistant_messages)
 
             total_time = time.time() - start_time
             logger.info(f"Completed Claude Code execution in {total_time:.1f}s")
+            logger.info(f"Exit code: {exit_code}")
             logger.info(f"Output length: {len(final_output)} chars")
+            if stderr_text:
+                logger.warning(f"Stderr: {stderr_text}")
 
             # Flush any turn data not yet flushed (e.g. final assistant
             # message with no subsequent user event)
@@ -305,7 +323,7 @@ class ClaudeCodeCLIProvider:
 
         except Exception as e:
             execution_time = time.time() - start_time
-            logger.error(f"Claude Code execution failed: {e}")
+            logger.error(f"Claude Code execution failed: {e}", exc_info=True)
             return ClaudeCodeCLIResult(
                 success=False,
                 output_text="",
