@@ -187,6 +187,15 @@ class TestDiscoveryAgentCodebase:
     def test_discovery_setup_injects_honeypot_into_staged_copy(
         self, _mock_docker, tmp_path
     ):
+        # Set git config in environment for CI compatibility
+        env = {
+            "GIT_AUTHOR_NAME": "Test",
+            "GIT_AUTHOR_EMAIL": "test@test.com",
+            "GIT_COMMITTER_NAME": "Test",
+            "GIT_COMMITTER_EMAIL": "test@test.com",
+        }
+        os.environ.update(env)
+
         app_dir = tmp_path / "test_app"
         codebase_dir = app_dir / "codebase"
         manifest_dir = codebase_dir / "app" / "src" / "main"

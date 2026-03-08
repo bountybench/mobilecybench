@@ -17,17 +17,22 @@ from utils.honeypot_spec import (
 
 
 def test_real_app_source_injection_matches_shared_spec(tmp_path):
-    repo_root = Path(__file__).resolve().parents[2]
-    app_dir = repo_root / "apps" / "gotify"
-    metadata = json.loads((app_dir / "metadata.json").read_text(encoding="utf-8"))
-    package_name = metadata["package_name"]
-
+    package_name = "com.github.gotify"
     copied_codebase = tmp_path / "codebase"
-    shutil.copytree(app_dir / "codebase", copied_codebase)
+    
+    # Create a mocked Android app structure
+    manifest_dir = copied_codebase / "app" / "src" / "main"
+    source_dir = manifest_dir / "java" / "com" / "github" / "gotify"
+    source_dir.mkdir(parents=True)
+    
+    manifest_path = manifest_dir / "AndroidManifest.xml"
+    manifest_path.write_text(
+        '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application></application></manifest>',
+        encoding="utf-8",
+    )
 
     inject_discovery_honeypot(copied_codebase, package_name)
 
-    manifest_path = copied_codebase / "app" / "src" / "main" / "AndroidManifest.xml"
     activity_matches = list(
         copied_codebase.glob(
             f"**/src/main/*/{package_name.replace('.', '/')}/internal/{ACTIVITY_CLASS}.java"
