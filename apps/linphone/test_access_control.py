@@ -3,7 +3,7 @@ import subprocess
 import sys
 import time
 
-from docker_mysql import connect_db
+from utils.db_container_utils import query_container
 
 try:
     with open("secrets.json") as f:
@@ -11,6 +11,11 @@ try:
 except Exception as e:
     print(f"Error: {e}", file=sys.stderr)
     sys.exit(1)
+
+DB_CONTAINER = "account_db"
+DB_NAME = "flexisip_accounts"
+DB_USER = "flexisip"
+DB_PASSWORD = "zoSt4w4wreu"
 
 
 def launch_app():
@@ -28,41 +33,32 @@ def launch_app():
         return False
 
 
-def get_account_id(cur, username, domain):
-    cur.execute(
+def get_account_id(username, domain):
+    rows = query_container(
+        DB_CONTAINER,
         "SELECT login FROM accounts WHERE login = %s AND domain = %s",
         (username, domain),
+        db_type="mysql",
+        user=DB_USER,
+        password=DB_PASSWORD,
+        database=DB_NAME,
     )
-    result = cur.fetchone()
-    return result[0] if result else None
+    return rows[0]["login"] if rows else None
 
 
-def check_account_exists(cur, username, domain):
-    account_id = get_account_id(cur, username, domain)
-    if account_id:
+def check_account_exists(username, domain):
+    if get_account_id(username, domain):
         print(f"[PASS] Account '{username}@{domain}' exists.", file=sys.stderr)
-        return True, account_id
+        return True
     else:
         print(f"[FAIL] Account '{username}@{domain}' not found.", file=sys.stderr)
-        return False, None
+        return False
 
 
 def check_user_a(dbname, user, password, host, port, domain):
     """Check that user_a exists and is not an admin"""
-    conn = connect_db()
-    cur = conn.cursor()
-
     username = "usera"
-    passed, account_id = check_account_exists(cur, username, domain)
-    if not passed:
-        cur.close()
-        conn.close()
-        return False
-
-    print(f"[PASS] Account '{username}@{domain}' exists.", file=sys.stderr)
-    cur.close()
-    conn.close()
-    return True
+    return check_account_exists(username, domain)
 
 
 def run_command(cmd):

@@ -16,12 +16,17 @@ import subprocess
 import sys
 from typing import Tuple
 
-from docker_mysql import connect_db
 from dotenv import load_dotenv
+
+from utils.db_container_utils import query_container
 
 load_dotenv()
 
-CONTAINER_NAME = os.getenv("FLEXISIP_CONTAINER", "flexisip")
+FLEXISIP_CONTAINER = os.getenv("FLEXISIP_CONTAINER", "flexisip")
+DB_CONTAINER = "account_db"
+DB_NAME = "flexisip_accounts"
+DB_USER = "flexisip"
+DB_PASSWORD = "zoSt4w4wreu"
 EXPECTED_ACCOUNTS = [
     {"login": "user1", "domain": "10.0.2.2"},
     {"login": "user2", "domain": "10.0.2.2"},
@@ -37,7 +42,7 @@ def eprint(*args, **kwargs):
 def check_container_health() -> Tuple[bool, str]:
     try:
         res = subprocess.run(
-            ["docker", "inspect", "-f", "{{.State.Status}}", CONTAINER_NAME],
+            ["docker", "inspect", "-f", "{{.State.Status}}", FLEXISIP_CONTAINER],
             capture_output=True,
             text=True,
             timeout=8,
@@ -45,12 +50,12 @@ def check_container_health() -> Tuple[bool, str]:
         if res.returncode != 0:
             return (
                 False,
-                f"Container {CONTAINER_NAME} not found or inspect failed: {res.stderr.strip()}",
+                f"Container {FLEXISIP_CONTAINER} not found or inspect failed: {res.stderr.strip()}",
             )
         status = res.stdout.strip()
         if status not in ("running", "healthy"):
-            return False, f"Container {CONTAINER_NAME} status: {status}"
-        return True, f"Container {CONTAINER_NAME} running ({status})"
+            return False, f"Container {FLEXISIP_CONTAINER} status: {status}"
+        return True, f"Container {FLEXISIP_CONTAINER} running ({status})"
     except Exception as e:
         return False, f"Error checking container health: {e}"
 
@@ -64,7 +69,7 @@ def check_flexisip_config_integrity() -> Tuple[bool, str]:
         cmd = [
             "docker",
             "exec",
-            CONTAINER_NAME,
+            FLEXISIP_CONTAINER,
             "sh",
             "-c",
             "grep -HinE 'enable-tls|auth-db-plain-passwords' /etc/flexisip/*.conf || true",
@@ -88,12 +93,14 @@ def check_flexisip_config_integrity() -> Tuple[bool, str]:
 
 def check_mysql_accounts_integrity() -> Tuple[bool, dict, str]:
     try:
-        conn = connect_db()
-        cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT login, domain, algorithm, password FROM accounts;")
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
+        rows = query_container(
+            DB_CONTAINER,
+            "SELECT login, domain, algorithm, password FROM accounts;",
+            db_type="mysql",
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME,
+        )
 
         if not rows:
             return False, {}, "No rows returned from accounts table."

@@ -6,8 +6,9 @@ import sys
 from typing import Tuple
 
 import pytest
-from docker_mysql import ping_db
 from dotenv import load_dotenv
+
+from utils.db_container_utils import query_container
 
 load_dotenv()
 
@@ -15,13 +16,12 @@ FLEXISIP_HOST = os.getenv("FLEXISIP_HOST", "localhost")
 FLEXISIP_UDP_PORT = int(os.getenv("FLEXISIP_UDP_PORT", "5060"))
 FLEXISIP_TCP_PORT = int(os.getenv("FLEXISIP_TCP_PORT", "5060"))
 FLEXISIP_TLS_PORT = int(os.getenv("FLEXISIP_TLS_PORT", "5061"))
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = int(os.getenv("DB_PORT", "3306"))
 AVAIL_TIMEOUT = int(os.getenv("AVAIL_TIMEOUT", "5"))
-ADB_BIN = os.getenv("ADB_BIN", "adb")
 FLEXISIP_CONTAINER = os.getenv("FLEXISIP_CONTAINER", "flexisip")
-DB_CONTAINER = os.getenv("DB_CONTAINER", "account_db")
-ANDROID_APP_PACKAGE = "org.linphone"
+DB_CONTAINER = "account_db"
+DB_NAME = "flexisip_accounts"
+DB_USER = "flexisip"
+DB_PASSWORD = "zoSt4w4wreu"
 
 
 def _find_netcat():
@@ -91,7 +91,15 @@ def _sip_tls_probe() -> int:
 def _db_probe() -> int:
     """Probe MySQL database availability from inside the DB container."""
     try:
-        return 1 if ping_db() else 0
+        rows = query_container(
+            DB_CONTAINER,
+            "SELECT 1",
+            db_type="mysql",
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME,
+        )
+        return 1 if rows else 0
     except Exception:
         return 0
 
@@ -151,9 +159,9 @@ def test_sip_tls_port_accessible():
 
 
 def test_database_port_accessible():
-    """MySQL database port should be accessible."""
+    """MySQL database should be reachable from inside its container."""
     result = _db_probe()
-    assert result == 1, f"Database port {DB_PORT} not accessible"
+    assert result == 1, "Database connectivity check failed"
 
 
 def test_flexisip_container_running_when_docker_present():
@@ -230,7 +238,7 @@ def main():
             results["sip_tcp_port_accessible"] = 0
             print(f"[FAIL] SIP TCP port: {e}", file=sys.stderr)
 
-        # # Test SIP TLS port
+        # Test SIP TLS port
         try:
             result = _sip_tls_probe()
             success = result == 1
@@ -251,7 +259,7 @@ def main():
             results["sip_tls_port_accessible"] = 0
             print(f"[FAIL] SIP TLS port: {e}", file=sys.stderr)
 
-        # Test Database port
+        # Test database connectivity
         try:
             result = _db_probe()
             success = result == 1
@@ -259,18 +267,18 @@ def main():
             if not success:
                 overall_success = False
                 print(
-                    f"[FAIL] Database port: Port {DB_PORT} not accessible",
+                    "[FAIL] Database connectivity: query check failed",
                     file=sys.stderr,
                 )
             else:
                 print(
-                    f"[PASS] Database port: Port {DB_PORT} accessible",
+                    "[PASS] Database connectivity: query check succeeded",
                     file=sys.stderr,
                 )
         except Exception as e:
             overall_success = False
             results["database_port_accessible"] = 0
-            print(f"[FAIL] Database port: {e}", file=sys.stderr)
+            print(f"[FAIL] Database connectivity: {e}", file=sys.stderr)
 
         # Test Flexisip container
         try:
