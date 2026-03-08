@@ -1,6 +1,6 @@
 import threading
 import time
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import docker
 
@@ -13,6 +13,7 @@ def run_command_in_container(
     timeout: float,
     stdout_callback: Optional[Callable[[str], None]] = None,
     stderr_callback: Optional[Callable[[str], None]] = None,
+    environment: Optional[Dict[str, str]] = None,
 ) -> Tuple[str, str, int]:
     """
     Execute a command in a Docker container with real-time streaming and timeout.
@@ -23,6 +24,7 @@ def run_command_in_container(
         timeout: Timeout in seconds
         stdout_callback: Function to handle each chunk of stdout (usually text)
         stderr_callback: Function to handle each chunk of stderr (usually text)
+        environment: Additional environment variables for the exec process
 
     Returns:
         Tuple of (combined_stdout, combined_stderr, exit_code)
@@ -36,6 +38,8 @@ def run_command_in_container(
 
     # Environment variables
     env = {"PYTHONUNBUFFERED": "1"}
+    if environment:
+        env.update(environment)
 
     try:
         exec_id = client.api.exec_create(
