@@ -17,6 +17,23 @@ case "$LOCKSCREEN_BASELINE" in
   *) fail "Invalid LOCKSCREEN_BASELINE='$LOCKSCREEN_BASELINE' (expected NOTHING|APP_NAME|MESSAGE_COUNT|SENDERS)" ;;
 esac
 
+wait_for_preferences_db() {
+  local pref_db="$1"
+  local deadline=$((SECONDS + 60))
+
+  while (( SECONDS < deadline )); do
+    if adb shell "test -f '$pref_db'" >/dev/null 2>&1; then
+      return 0
+    fi
+
+    # Kick the app once in case the DB has not been materialized yet.
+    adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+    sleep 2
+  done
+
+  return 1
+}
+
 log_info "Configuring mail server SMTP ingress..."
 
 cat > "$APP_DIR/dms-config/postfix-main.cf" <<'EOF'
@@ -35,6 +52,7 @@ adb devices | grep -q "device$" || fail "No Android device/emulator detected"
 adb shell true >/dev/null 2>&1 || fail "adb shell failed"
 
 PREF_DB="/data/data/${PKG}/databases/preferences_storage"
+wait_for_preferences_db "$PREF_DB" || fail "preferences_storage DB was not created in time"
 adb shell "sqlite3 $PREF_DB \"UPDATE preferences_storage SET value='${LOCKSCREEN_BASELINE}' WHERE primkey='lockScreenNotificationVisibility';\"" >/dev/null
 rows="$(adb shell "sqlite3 $PREF_DB \"SELECT COUNT(1) FROM preferences_storage WHERE primkey='lockScreenNotificationVisibility';\"" | tr -d '\r')"
 if [[ "${rows:-0}" == "0" ]]; then
