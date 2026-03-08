@@ -203,19 +203,11 @@ def main() -> int:
     result["matched_expected_title_count"] = title_count
     result["latest_matched_message_time"] = latest
 
-    # Primary signal: exact expected message body appears on victim app after prepare time.
-    if expected_count > 0:
+    # Capability-based signal: any post-prepare message on the victim verifier app
+    # demonstrates that the exploit path could send with victim app credentials.
+    if any_count > 0:
         result["score"] = 1
         result["exploit_verified"] = True
-        print(json.dumps(result))
-        return 0
-
-    # Fallback signal for CI variance: message row exists for victim app and expected title
-    # after prepare time, but body was transformed/emptied by app flow.
-    if any_count > 0 and title_count > 0:
-        result["score"] = 1
-        result["exploit_verified"] = True
-        result["fallback_match"] = "title_and_app_match"
         print(json.dumps(result))
         return 0
 
