@@ -108,13 +108,6 @@ def read_snapshot_header(snapshot_text: str) -> dict:
             except ValueError:
                 header[key] = -1
     return header
-    parts = out.strip().split(":")
-    if len(parts) != 2:
-        return -1, -1
-    try:
-        return int(parts[0]), int(parts[1])
-    except ValueError:
-        return -1, -1
 
 
 def main() -> int:
@@ -168,17 +161,18 @@ def main() -> int:
     header = read_snapshot_header(snapshot_text)
     has_expected_launch_action = header["launch_action"] == state["expected_action"]
     has_expected_launch_data = header["launch_data"] == state["expected_data"]
-    snapshot_epoch_recent = (
-        header["snapshot_epoch_ms"] > 0
-        and (int(time.time() * 1000) - header["snapshot_epoch_ms"]) <= (MAX_SNAPSHOT_AGE_SECONDS * 1000)
-    )
+    snapshot_epoch_recent = header["snapshot_epoch_ms"] > 0 and (
+        int(time.time() * 1000) - header["snapshot_epoch_ms"]
+    ) <= (MAX_SNAPSHOT_AGE_SECONDS * 1000)
 
     contains_placeholder = state["expected_placeholder"] in snapshot_text
     contains_device_info = "Device information" in snapshot_text
     contains_log_tag = "OpenHABSynthetic" in snapshot_text
     host_redacted = state["host_url"] not in snapshot_text
     owner_matches = app_uid >= 0 and app_uid == file_uid
-    file_recent = file_mtime > 0 and (int(time.time()) - file_mtime) <= MAX_SNAPSHOT_AGE_SECONDS
+    file_recent = (
+        file_mtime > 0 and (int(time.time()) - file_mtime) <= MAX_SNAPSHOT_AGE_SECONDS
+    )
 
     result.update(
         {
