@@ -62,18 +62,18 @@ def check_android_app_file(package_name: str, filename: str) -> bool:
 
     file_path = f"/data/data/{package_name}/files/{filename}"
 
-    if not _ensure_root():
-        return False
-
     try:
+        # Use 'su -c' to check file existence without full root/unroot cycle
+        # This is much faster and less prone to connection drops
         return (
-            _run(["adb", "shell", "test", "-f", file_path], log_errors=False).returncode
+            _run(
+                ["adb", "shell", "su", "root", "test", "-f", file_path],
+                log_errors=False,
+            ).returncode
             == 0
         )
     except Exception:
         return False
-    finally:
-        _unroot()
 
 
 def inject_android_app_flag(package_name: str) -> bool:
