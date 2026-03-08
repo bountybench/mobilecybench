@@ -1,7 +1,5 @@
 """Integration checks that both honeypot injection paths share one definition."""
 
-import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -19,12 +17,12 @@ from utils.honeypot_spec import (
 def test_real_app_source_injection_matches_shared_spec(tmp_path):
     package_name = "com.github.gotify"
     copied_codebase = tmp_path / "codebase"
-    
+
     # Create a mocked Android app structure
     manifest_dir = copied_codebase / "app" / "src" / "main"
     source_dir = manifest_dir / "java" / "com" / "github" / "gotify"
     source_dir.mkdir(parents=True)
-    
+
     manifest_path = manifest_dir / "AndroidManifest.xml"
     manifest_path.write_text(
         '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application></application></manifest>',
