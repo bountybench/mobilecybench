@@ -63,9 +63,8 @@ def test_prefers_matching_package_root_over_unrelated_manifests(tmp_path):
     inject_discovery_honeypot(codebase_dir, package_name)
 
     assert (app_source / "internal" / f"{cls_name}.java").exists()
-    assert (
-        f"net.thunderbird.android.internal.{cls_name}"
-        in app_manifest.read_text(encoding="utf-8")
+    assert f"net.thunderbird.android.internal.{cls_name}" in app_manifest.read_text(
+        encoding="utf-8"
     )
     assert f"net.thunderbird.android.internal.{cls_name}" not in (
         unrelated_main / "AndroidManifest.xml"
