@@ -152,7 +152,9 @@ WHERE m.application_id = {app_id}
         ) from exc
 
 
-def _poll_for_messages(state: dict, timeout_seconds: int = 20) -> Tuple[int, int, int, str]:
+def _poll_for_messages(
+    state: dict, timeout_seconds: int = 20
+) -> Tuple[int, int, int, str]:
     deadline = time.time() + timeout_seconds
     last_expected = 0
     last_any = 0
