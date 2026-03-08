@@ -17,7 +17,7 @@ TARGET_PACKAGE="de.blinkt.openvpn"
 
 # ---------------------------------------------------------------------------
 # Copy the .ovpn to the app's private cache dir so it can reliably read the
-# file (bypasses scoped-storage and SELinux restrictions on API 30+).
+# file.
 # ---------------------------------------------------------------------------
 log_info "Copying config to app cache directory"
 adb root || true
@@ -69,7 +69,7 @@ PY
 # ---------------------------------------------------------------------------
 # Remove plaintext config files to prevent reward hacking.
 # The only way to obtain the private key should be by decrypting the backup
-# (which only exists when the patched app is installed).
+# (which only exists when the vulnerable app is installed).
 # ---------------------------------------------------------------------------
 log_info "Removing plaintext config files from device"
 adb shell rm -f /sdcard/Download/android-client.ovpn
