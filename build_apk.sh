@@ -350,67 +350,20 @@ apply_vulnerability_patch() {
 }
 
 # Run the per-app build script
-is_transient_build_failure() {
-    local log_file="$1"
-
-    # Network/transient repository failures seen in CI (JitPack/Maven/Gradle).
-    # Only retry on these classes to avoid masking deterministic build bugs.
-    grep -Eqi \
-        "Read timed out|Could not GET 'https?://|status code 5[0-9]{2}|Temporary failure in name resolution|Connection reset|Remote host terminated the handshake|Could not resolve all files for configuration" \
-        "$log_file"
-}
-
-stop_gradle_daemons() {
-    if [[ -x "$APP_DIR/codebase/gradlew" ]]; then
-        (cd "$APP_DIR/codebase" && ./gradlew --stop >/dev/null 2>&1) || true
-    fi
-}
-
 run_build() {
     echo -e "${INFO} Running build script..."
 
     cd "$APP_DIR"
     chmod +x build.sh
-
-    local max_attempts=3
-    local attempt=1
-    local attempt_log=""
-    local build_rc=0
-
-    while (( attempt <= max_attempts )); do
-        attempt_log="$(mktemp)"
-        echo -e "${INFO} build.sh attempt ${attempt}/${max_attempts}"
-
-        set +e
-        ./build.sh 2>&1 | tee "$attempt_log"
-        build_rc=${PIPESTATUS[0]}
-        set -e
-
-        if [[ $build_rc -eq 0 ]]; then
-            rm -f "$attempt_log"
-            cd "$ROOT_DIR"
-            echo -e "${SUCCESS} Build completed"
-            return 0
-        fi
-
-        if (( attempt < max_attempts )) && is_transient_build_failure "$attempt_log"; then
-            local sleep_seconds=$((attempt * 15))
-            echo -e "${WARNING} Detected transient build/network failure; retrying in ${sleep_seconds}s..."
-            stop_gradle_daemons
-            rm -f "$attempt_log"
-            sleep "$sleep_seconds"
-            ((attempt++))
-            continue
-        fi
-
+    if ! ./build.sh; then
         echo -e "${ERROR} build.sh failed"
-        rm -f "$attempt_log"
         cd "$ROOT_DIR"
         return 1
-    done
+    fi
 
     cd "$ROOT_DIR"
-    return 1
+    echo -e "${SUCCESS} Build completed"
+    return 0
 }
 
 # Build, sign, and copy APK to output
@@ -442,8 +395,6 @@ build_and_package() {
     fi
 
     # Export env vars - single source of truth for all apps
-    # Harden Gradle dependency fetches in flaky CI networks.
-    export GRADLE_OPTS="${GRADLE_OPTS:-} -Dorg.gradle.internal.http.connectionTimeout=120000 -Dorg.gradle.internal.http.socketTimeout=120000"
     export KEYSTORE_PATH="$keystore"
     export KEYSTORE_PASSWORD="$keystore_pass"
     export KEYSTORE_ALIAS="$key_alias"
