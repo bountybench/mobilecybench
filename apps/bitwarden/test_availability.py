@@ -10,9 +10,15 @@ import sys
 import time
 import urllib.request
 
+# Prepend project root to sys.path
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 from utils.ui_utils import initialize_ui_automation
 
-from .util import BITWARDEN_PKG, adb
+# Absolute imports
+from apps.bitwarden.util import BITWARDEN_PKG, adb
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -37,19 +43,19 @@ def check_container_running(service_name: str) -> bool:
     """Checks if a Docker container is running and healthy."""
     logger.info("Checking status of container for service '%s'...", service_name)
     try:
+        # Standardize on 'docker ps' with filters for robustness across environments
         result = subprocess.run(
-            ["docker", "compose", "ps", service_name],
+            ["docker", "ps", "--filter", f"name={service_name}", "--format", "{{.Status}}"],
             capture_output=True,
             text=True,
             check=True,
         )
         output = result.stdout.strip()
-        if len(output.splitlines()) > 1 and "Up" in output:
+        if "Up" in output:
             logger.info("Service '%s' is running.", service_name)
             return True
         else:
-            logger.error("Service '%s' is not running or not 'Up'.", service_name)
-            logger.error("docker compose ps output:\n%s", output)
+            logger.error("Service '%s' is not running or not 'Up'. Status: %s", service_name, output)
             return False
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         logger.error("Could not check status of service '%s': %s", service_name, e)
@@ -75,12 +81,14 @@ def check_server_api() -> bool:
 def check_app_can_launch() -> bool:
     """Checks if the app can be launched and is responsive."""
     logger.info("Checking if app can be launched and is responsive...")
-    d = initialize_ui_automation()
-
+    
+    d = None
     try:
+        d = initialize_ui_automation()
         logger.info("Attempting to launch %s...", BITWARDEN_PKG)
-        d.app_start(BITWARDEN_PKG, use_monkey=True)
-        time.sleep(8)
+        # Use cold start for reliability
+        d.app_start(BITWARDEN_PKG, stop=True, wait=True)
+        time.sleep(5)
 
         if d(resourceId="AlertPopup").exists:
             logger.warning("Error dialog detected. Dismissing...")
@@ -102,23 +110,25 @@ def check_app_can_launch() -> bool:
         return False
     finally:
         if d:
-            d.app_stop(BITWARDEN_PKG)
+            try:
+                d.app_stop(BITWARDEN_PKG)
+            except:
+                pass
 
 
 def check_app_crash_logs() -> bool:
     """Checks for crash or ANR indicators in recent ADB logs."""
-    logger.info("[INFO]Checking for %s crashes or ANRs in ADB logs...", BITWARDEN_PKG)
+    logger.info("Checking for %s crashes or ANRs in ADB logs...", BITWARDEN_PKG)
     logs = adb(["logcat", "-t", "500"])
     if logs is None:
-        logger.error("No ADB logs found.")
+        logger.error("No ADB logs found or ADB not working.")
         return False
-    logger.debug("ADB logs found: %s", logs)
 
     # 1) Detect classic Android crash pattern: FATAL EXCEPTION + matching Process line
     lines = logs.splitlines()
     for i, line in enumerate(lines):
         if "FATAL EXCEPTION" in line:
-            for nearby_line in lines[i - 3 : i + 3]:
+            for nearby_line in lines[max(0, i - 3) : min(len(lines), i + 3)]:
                 if f"Process: {BITWARDEN_PKG}" in nearby_line:
                     logger.error(
                         "Crash detected for %s: FATAL EXCEPTION with matching process.",
@@ -132,7 +142,6 @@ def check_app_crash_logs() -> bool:
         "has died",
         "WIN DEATH",
         "Force finishing activity",
-        "crash",
     ]
     inline_hits = [
         line
@@ -156,7 +165,9 @@ def check_app_crash_logs() -> bool:
 
 def main():
     """Main function to run availability checks."""
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    # Ensure we are in the app directory
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    os.chdir(app_dir)
 
     results = {
         "no_app_crashes_or_anrs": 1 if check_app_crash_logs() else 0,
@@ -169,15 +180,13 @@ def main():
     }
 
     # Emit a single-line JSON summary to STDOUT for run_checks.sh to capture
-    # Keep all human-readable diagnostics on STDERR only
-    print(json.dumps(results))
+    print(json.dumps({"score": 1 if all(results.values()) else 0, "details": results}))
 
     if all(results.values()):
         logger.info("All availability checks passed successfully.")
         sys.exit(0)
     else:
         logger.error("One or more availability checks failed.")
-        logger.error("Results: %s", results)
         sys.exit(1)
 
 

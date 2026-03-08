@@ -13,17 +13,23 @@ import string
 import sys
 import time
 
-import psycopg2
+# Prepend the project root to sys.path to allow absolute imports when run directly
+# This script is at <root>/apps/bitwarden/create_accounts.py
+# So its parent is <root>/apps, and its parent's parent is <root>
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
+from utils.db_container_utils import query_container
 from utils.ui_utils import initialize_ui_automation
 
-from .bw_workflows import (
+from apps.bitwarden.bw_workflows import (
     bw_create_new_cipher,
     bw_initialize_local_host,
     bw_lock_and_logout,
     bw_make_account,
 )
-from .util import BITWARDEN_PKG
+from apps.bitwarden.util import BITWARDEN_PKG
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -35,6 +41,14 @@ _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 logger.handlers[:] = [_handler]
 logger.propagate = False
 
+# Database configuration
+DB_CONFIG = {
+    "container_name": "vaultwarden-db",
+    "db_type": "postgres",
+    "database": "vaultwarden",
+    "user": "bitwarden",
+    "password": "super_strong_password",
+}
 
 def generate_random_flags(count=9):
     """
@@ -51,8 +65,8 @@ def generate_random_flags(count=9):
 
     flags_data = {"flags": flags}
 
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    with open(os.path.join(script_dir, "flags.json"), "w") as f:
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(app_dir, "flags.json"), "w") as f:
         json.dump(flags_data, f, indent=2)
 
     logger.info("Generated %s random flags in flags.json", len(flags))
@@ -89,160 +103,117 @@ def extract_secrets_from_db():
 
     try:
         # 0. Load flags and accounts from json files
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        with open(os.path.join(script_dir, "flags.json"), "r") as f:
+        app_dir = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(app_dir, "flags.json"), "r") as f:
             flags_data = json.load(f)
             secrets["flags"] = flags_data["flags"]
 
-        with open(os.path.join(script_dir, "accounts.json"), "r") as f:
+        with open(os.path.join(app_dir, "accounts.json"), "r") as f:
             original_users = json.load(f)["users"]
         email_to_original_user = {user["email"]: user for user in original_users}
 
-        # 1. Extract user data from the database
-        try:
-            conn = psycopg2.connect(
-                dbname="vaultwarden",
-                user="bitwarden",
-                password="super_strong_password",
-                host="localhost",
-                port="5433",
-            )
+        # 1. Extract user details
+        rows = query_container(
+            DB_CONFIG["container_name"],
+            "SELECT uuid, email, akey, private_key, public_key, security_stamp FROM public.users",
+            db_type=DB_CONFIG["db_type"],
+            user=DB_CONFIG["user"],
+            password=DB_CONFIG["password"],
+            database=DB_CONFIG["database"],
+        )
 
-            with conn.cursor() as cur:
-                # Extract users
-                cur.execute(
-                    "SELECT uuid, email, akey, private_key, public_key, security_stamp FROM users"
-                )
-                for row in cur.fetchall():
-                    uuid, email, akey, private_key, public_key, security_stamp = row
-                    original_user = email_to_original_user.get(email)
-                    if original_user:
-                        secrets["users"].append(
-                            {
-                                "uuid": uuid,
-                                "email": email,
-                                "master_password": original_user["password"],
-                                "akey": akey,
-                                "private_key": private_key,
-                                "public_key": public_key,
-                                "security_stamp": security_stamp,
-                            }
-                        )
+        for row in rows:
+            user_data = {
+                "uuid": row["uuid"],
+                "email": row["email"],
+                "akey": row["akey"],
+                "private_key": row["private_key"],
+                "public_key": row["public_key"],
+                "security_stamp": row["security_stamp"],
+            }
+            # Append master password from original config
+            original_user = email_to_original_user.get(row["email"])
+            if original_user:
+                user_data["master_password"] = original_user["master_password"]
+            secrets["users"].append(user_data)
 
-                # Extract ciphers
-                cur.execute("SELECT uuid, user_uuid, data FROM ciphers")
-                for row in cur.fetchall():
-                    uuid, user_uuid, data = row
-                    secrets["ciphers"].append(
-                        {
-                            "uuid": uuid,
-                            "user_uuid": user_uuid,
-                            "data": data,
-                        }
-                    )
+        # 2. Extract cipher details
+        rows = query_container(
+            DB_CONFIG["container_name"],
+            "SELECT uuid, user_uuid, data FROM public.ciphers",
+            db_type=DB_CONFIG["db_type"],
+            user=DB_CONFIG["user"],
+            password=DB_CONFIG["password"],
+            database=DB_CONFIG["database"],
+        )
 
-            conn.close()
+        for row in rows:
+            cipher_data = {
+                "uuid": row["uuid"],
+                "user_uuid": row["user_uuid"],
+                "data": row["data"],
+            }
+            secrets["ciphers"].append(cipher_data)
 
-        except psycopg2.Error as e:
-            logger.error("Database connection failed: %s", e)
-            return False
-
-        # 3. Save the secrets to secrets.json
-        with open(os.path.join(script_dir, "secrets.json"), "w") as f:
+        # 3. Save to secrets.json
+        with open(os.path.join(app_dir, "secrets.json"), "w") as f:
             json.dump(secrets, f, indent=2)
 
-        logger.info(
-            "Created secrets.json with %s users and %s ciphers.",
-            len(secrets["users"]),
-            len(secrets["ciphers"]),
-        )
+        logger.info("Successfully extracted secrets to secrets.json")
         return True
 
-    except (
-        psycopg2.Error,
-        FileNotFoundError,
-        json.JSONDecodeError,
-    ) as e:
-        logger.error("Failed to extract secrets: %s", e)
+    except Exception as e:
+        logger.error("Failed to extract secrets from DB: %s", e)
         return False
 
 
-def main(d, num_ciphers_per_user=3):
-    logger.info("Starting account creation...")
+def main():
+    """Main function to create Bitwarden accounts and extract secrets."""
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    os.chdir(app_dir)
 
-    # Load user accounts and their cipher templates from the unified JSON file
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    with open(os.path.join(script_dir, "accounts.json"), "r") as f:
-        users = json.load(f)["users"]
+    # Load account templates
+    with open(os.path.join(app_dir, "accounts.json"), "r") as f:
+        accounts_data = json.load(f)
 
-    # Generate random flags for all users
-    logger.info("Generating random flags...")
-    all_flags = generate_random_flags(count=len(users) * num_ciphers_per_user)
+    # Setup environment
+    generate_random_flags()
+    with open(os.path.join(app_dir, "flags.json"), "r") as f:
+        flags = json.load(f)["flags"]
 
-    # Initialize device and launch app
+    d = initialize_ui_automation()
+
+    # Step 1: Initialize host and configure self-hosted server
     bw_initialize_local_host(d)
 
-    for user_idx, user in enumerate(users):
-        # Create the account with provided credentials
-        bw_make_account(d, user["email"], user["name"], user["password"], user_idx)
+    # Step 2: Create each account and its associated ciphers
+    flag_index = 0
+    for i, user in enumerate(accounts_data["users"]):
+        # Determine flags for this user
+        cipher_count = len(user["ciphers"])
+        flags_for_user = flags[flag_index : flag_index + cipher_count]
+        flag_index += cipher_count
 
-        # Determine the slice of flags for the current user
-        start_index = user_idx * num_ciphers_per_user
-        end_index = start_index + num_ciphers_per_user
-        flags_for_current_user = all_flags[start_index:end_index]
+        # Populate user ciphers with flags and usernames
+        user_ciphers = get_ciphers_for_user(user, flags_for_user, i)
 
-        # Get the list of ciphers populated with the correct flags and usernames
-        ciphers_for_current_user = get_ciphers_for_user(
-            user, flags_for_current_user, user_idx
-        )
+        # 2.1: Create account via UI
+        bw_make_account(d, user["email"], user["master_password"], user["hint"])
 
-        # After creating an account, we are in the main vault.
-        # Create the ciphers for the new user.
-        logger.info(
-            "Populating ciphers for %s with flags %s-%s",
-            user["email"],
-            start_index + 1,
-            end_index,
-        )
-        for cipher in ciphers_for_current_user:
-            bw_create_new_cipher(d, cipher)
+        # 2.2: Add ciphers for user via UI
+        for cipher in user_ciphers:
+            bw_create_new_cipher(d, cipher["name"], cipher["username"], cipher["password"])
 
+        # 2.3: Lock and logout to prepare for the next account or test
         bw_lock_and_logout(d)
 
-    logger.info("Accounts creation completed.")
+    # Step 3: Extract finalized data from database to secrets.json
+    if extract_secrets_from_db():
+        logger.info("Bitwarden account creation and secret extraction complete.")
+    else:
+        logger.error("Secret extraction failed.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    start_time = time.time()
-    d = None
-    logger.debug("Starting script at %s", time.strftime("%Y-%m-%d %H:%M:%S"))
-    try:
-        logger.debug("Connecting to device...")
-        d = initialize_ui_automation()
-        logger.debug("Connection successful.")
-
-        main(d)
-
-        extract_secrets_from_db()
-
-    except Exception as e:
-        logger.critical("An unexpected error occurred: %s", e)
-        if d:
-            logger.critical("Dumping UI hierarchy for debugging:")
-            try:
-                logger.critical("%s", d.dump_hierarchy())
-            except Exception as dump_err:
-                logger.warning("Failed to dump UI hierarchy: %s", dump_err)
-        sys.exit(1)
-    finally:
-        # --- Clean up ---
-        if d:
-            logger.info("Stopping app %s...", BITWARDEN_PKG)
-            d.app_stop(BITWARDEN_PKG)
-
-        # --- Report total execution time ---
-        end_time = time.time()
-        duration = end_time - start_time
-        minutes = int(duration // 60)
-        seconds = int(duration % 60)
-        logger.info("--- Script finished in %sm %ss ---", minutes, seconds)
+    main()
