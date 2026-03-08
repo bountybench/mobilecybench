@@ -85,22 +85,6 @@ class TestExploitWorkflow:
         with pytest.raises(ValueError, match="vulnerability.patch not found"):
             workflow.validate_arguments()
 
-    def test_validate_arguments_fails_wrong_build_type(self, tmp_path):
-        """validate_arguments raises error if build_type is not 'source' or 'skip-apk'."""
-        app_dir = tmp_path / "apps" / "test_app"
-        app_dir.mkdir(parents=True)
-        (app_dir / "metadata.json").write_text("{}")
-        vuln_dir = app_dir / "synthetic_vulnerabilities" / "vuln_0"
-        (vuln_dir / "verify_files").mkdir(parents=True)
-        (vuln_dir / "vulnerability.patch").write_text("patch content")
-        workflow = ExploitWorkflow(
-            _config(workflow="exploit", build_type="download-apk"), "test_app", tmp_path
-        )
-        with pytest.raises(
-            ValueError, match="requires build_type='source' or 'skip-apk'"
-        ):
-            workflow.validate_arguments()
-
     def test_validate_arguments_uses_configurable_vuln_id(self, tmp_path):
         """validate_arguments checks for the configured vuln_id, not hardcoded 'vuln_0'."""
         app_dir = tmp_path / "apps" / "test_app"
@@ -143,7 +127,11 @@ class TestDiscoveryWorkflowFlagGeneration:
         with patch("docker.from_env"), patch(
             "utils.uuid_flags_utils.generate_and_save_flags"
         ) as mock_generate, patch("utils.emulator_manager.EmulatorManager"), patch(
-            "utils.apk_utils.setup_apk"
+            "workflows.base.Workflow.setup_apks"
+        ), patch(
+            "utils.command_executor.CommandExecutor"
+        ), patch(
+            "utils.emulator_certs.inject_system_ca"
         ), patch(
             "utils.setup_utils.install_app_and_setup_backend"
         ), patch(
@@ -166,7 +154,11 @@ class TestDiscoveryWorkflowFlagGeneration:
         with patch("docker.from_env"), patch(
             "utils.uuid_flags_utils.generate_and_save_flags"
         ) as mock_generate, patch("utils.emulator_manager.EmulatorManager"), patch(
-            "utils.apk_utils.setup_apk"
+            "workflows.base.Workflow.setup_apks"
+        ), patch(
+            "utils.command_executor.CommandExecutor"
+        ), patch(
+            "utils.emulator_certs.inject_system_ca"
         ), patch(
             "utils.setup_utils.install_app_and_setup_backend"
         ), patch(

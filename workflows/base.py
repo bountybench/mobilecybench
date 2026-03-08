@@ -108,6 +108,36 @@ class Workflow(ABC):
             except Exception as e:
                 logger.warning(f"Failed to save artifacts: {e}")
 
+    def setup_apks(self) -> None:
+        """Acquire APKs based on build_type.
+
+        Handles skip-apk and download-apk centrally.
+        For source builds, delegates to subclass ``_build_apks_from_source()``.
+        """
+        if self.config.build_type == "skip-apk":
+            logger.info("skip-apk: assuming APKs already present")
+            return
+
+        if self.config.build_type == "download-apk":
+            from utils.apk_utils import download_apk, get_download_url
+
+            url = get_download_url(self.app_name, self.project_root)
+            if not url:
+                raise FileNotFoundError(
+                    f"No download_link in apps/{self.app_name}/metadata.json. "
+                    f"Build and publish: ./publish_apk_bundle.sh apps/{self.app_name}"
+                )
+            download_apk(self.app_name, url, self.project_root)
+            return
+
+        self._build_apks_from_source()
+
+    def _build_apks_from_source(self) -> None:
+        """Build APKs from source. Subclasses must override."""
+        raise NotImplementedError(
+            f"{type(self).__name__} must implement _build_apks_from_source()"
+        )
+
     def cleanup(self) -> None:
         """Clean up resources (emulator, containers, etc.)."""
         if self.emulator:
