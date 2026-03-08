@@ -96,6 +96,7 @@ hide_secrets() {
     sleep 2
     adb_hide_secret_files "$SCRIPT_DIR/secrets.json" /data/cache /data/misc /data/local/tmp
     adb unroot || true
+    adb wait-for-device
 }
 
 main() {
