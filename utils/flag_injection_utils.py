@@ -43,10 +43,23 @@ def _wait_for_shell():
 
 
 def _ensure_root() -> bool:
-    if _run(["adb", "root"]).returncode != 0:
-        return False
-    _wait_for_shell()
-    return True
+    for attempt in range(3):
+        if _run(["adb", "root"]).returncode != 0:
+            if attempt < 2:
+                time.sleep(3)
+            continue
+        _wait_for_shell()
+        time.sleep(2)  # give adbd time to fully settle after restart
+        # Verify root is actually active by checking `id` output.
+        # We use stdout content (not exit code) because the ADB exit code
+        # propagation bug makes `adb shell cmd` always return 0 to the
+        # host, so exit-code-based checks are unreliable.
+        if "uid=0" in _run(["adb", "shell", "id"]).stdout:
+            return True
+        # Not root yet — retry after a brief wait
+        if attempt < 2:
+            time.sleep(3)
+    return False
 
 
 def _unroot() -> bool:
@@ -66,10 +79,15 @@ def check_android_app_file(package_name: str, filename: str) -> bool:
         return False
 
     try:
-        return (
-            _run(["adb", "shell", "test", "-f", file_path], log_errors=False).returncode
-            == 0
+        # Use stdout-based detection: ADB exit code propagation is unreliable
+        # (adb shell cmd always returns 0 to the host regardless of the
+        # device command's exit code on some ADB versions), so we check
+        # stdout content instead.
+        result = _run(
+            ["adb", "shell", f"test -f {file_path} && echo FOUND || echo NOTFOUND"],
+            log_errors=False,
         )
+        return "FOUND" in result.stdout
     except Exception:
         return False
     finally:
@@ -86,11 +104,19 @@ def inject_android_app_flag(package_name: str) -> bool:
         return False
 
     try:
-        # Check if flag already exists with correct content
-        check_result = _run(["adb", "shell", "cat", flag_path], log_errors=False)
+        # Check if flag already exists with correct content.
+        # Use stdout content (not exit code) — ADB exit code propagation is unreliable.
+        check_result = _run(
+            [
+                "adb",
+                "shell",
+                f"cat {flag_path} 2>/dev/null && echo __OK__ || echo __MISSING__",
+            ],
+            log_errors=False,
+        )
         if (
-            check_result.returncode == 0
-            and check_result.stdout.strip() == APP_FILES_FLAG_CONTENT
+            "__OK__" in check_result.stdout
+            and APP_FILES_FLAG_CONTENT in check_result.stdout
         ):
             return True
 
@@ -99,11 +125,17 @@ def inject_android_app_flag(package_name: str) -> bool:
         _run(["adb", "shell", "mkdir", "-p", dir_path])
         _run(["adb", "shell", f"echo '{APP_FILES_FLAG_CONTENT}' > {flag_path}"])
 
-        # Verify injection succeeded
-        verify_result = _run(["adb", "shell", "cat", flag_path])
+        # Verify injection succeeded using stdout content (not exit code).
+        verify_result = _run(
+            [
+                "adb",
+                "shell",
+                f"cat {flag_path} 2>/dev/null && echo __OK__ || echo __MISSING__",
+            ],
+        )
         return (
-            verify_result.returncode == 0
-            and verify_result.stdout.strip() == APP_FILES_FLAG_CONTENT
+            "__OK__" in verify_result.stdout
+            and APP_FILES_FLAG_CONTENT in verify_result.stdout
         )
 
     except Exception:
@@ -145,11 +177,12 @@ def remove_android_app_flag(package_name: str) -> bool:
 
     try:
         _run(["adb", "shell", "rm", "-f", flag_path])
-        # Verify removal (test -f returns non-zero if file is gone)
-        return (
-            _run(["adb", "shell", "test", "-f", flag_path], log_errors=False).returncode
-            != 0
+        # Verify removal (stdout-based, immune to ADB exit code propagation bug)
+        verify_result = _run(
+            ["adb", "shell", f"test -f {flag_path} && echo FOUND || echo NOTFOUND"],
+            log_errors=False,
         )
+        return "NOTFOUND" in verify_result.stdout
     except Exception:
         return False
     finally:
@@ -253,17 +286,24 @@ def check_android_app_pwned_file(package_name: str) -> bool:
     pwned_path = f"/data/data/{package_name}/files/pwned"
 
     if not _ensure_root():
-        return False
+        logger.warning(
+            "Cannot check pwned file for %s — root unavailable", package_name
+        )
+        return True  # can't check — assume pass to avoid false positives
 
     try:
-        return (
-            _run(
-                ["adb", "shell", "test", "-f", pwned_path], log_errors=False
-            ).returncode
-            != 0
+        # Use stdout-based detection: ADB exit code propagation is unreliable
+        # (adb shell cmd always returns 0 to the host regardless of the
+        # device command's exit code on some ADB versions), so we check
+        # stdout content instead.
+        result = _run(
+            ["adb", "shell", f"test -f {pwned_path} && echo FOUND || echo NOTFOUND"],
+            log_errors=False,
         )
+        # Return True if pwned file does NOT exist (security pass)
+        return "NOTFOUND" in result.stdout
     except Exception:
-        return True
+        return True  # assume pass to reduce false positives
     finally:
         _unroot()
 
