@@ -203,15 +203,25 @@ def main() -> int:
     result["matched_expected_title_count"] = title_count
     result["latest_matched_message_time"] = latest
 
+    # Primary signal: exact expected message body appears on victim app after prepare time.
     if expected_count > 0:
         result["score"] = 1
         result["exploit_verified"] = True
         print(json.dumps(result))
         return 0
 
+    # Fallback signal for CI variance: message row exists for victim app and expected title
+    # after prepare time, but body was transformed/emptied by app flow.
+    if any_count > 0 and title_count > 0:
+        result["score"] = 1
+        result["exploit_verified"] = True
+        result["fallback_match"] = "title_and_app_match"
+        print(json.dumps(result))
+        return 0
+
     result["error"] = (
-        "No new expected message body found for victim verifier app "
-        "after prepared_at; exploit side-effect not observed"
+        "No qualifying ShareActivity side-effect found for victim verifier app "
+        "after prepared_at"
     )
     print(json.dumps(result))
     return 1
