@@ -199,8 +199,15 @@ EOF
 inject_tmpfs_overlay_with_nsenter() {
   # API >= 34 (Android 14+): certs moved to /apex/com.android.conscrypt/cacerts
   # with per-process mount namespaces. tmpfs overlay alone isn't visible to apps.
-  # Uses nsenter to bind-mount into zygote and child app mount namespaces.
+  #
+  # Two phases:
+  #   1. Set up tmpfs overlay containing stock certs + our CA (simple, always works)
+  #   2. Bind-mount overlay into each zygote/app mount namespace, then verify
+  #      cert is actually visible. Retry until verification passes — this is
+  #      robust against zygote restarts and PID instability after boot.
   log_info "Using API >= 34 method (tmpfs overlay + nsenter bind-mount)"
+
+  # Phase 1: Populate /system/etc/security/cacerts via tmpfs overlay.
   adb shell 'su 0 sh -s' <<EOF
 set -e
 CERT="/data/local/tmp/$CERT_BASENAME"
@@ -208,79 +215,10 @@ STORE=/system/etc/security/cacerts
 APEX=/apex/com.android.conscrypt/cacerts
 TMP=/data/local/tmp/cacerts-copy
 
-snapshot_zygotes() {
-  pidof zygote64 zygote 2>/dev/null |
-    tr ' ' '\n' |
-    awk 'NF' |
-    sort -n -u |
-    tr '\n' ' ' |
-    sed 's/ $//'
-}
-
-wait_for_stable_zygotes() {
-  PREV=""
-  ATTEMPT=1
-
-  while [ "\$ATTEMPT" -le 5 ]; do
-    CURR="\$(snapshot_zygotes || true)"
-    if [ -n "\$CURR" ] && [ "\$CURR" = "\$PREV" ]; then
-      printf '%s\n' "\$CURR"
-      return 0
-    fi
-    PREV="\$CURR"
-    ATTEMPT=\$((ATTEMPT + 1))
-    sleep 2
-  done
-
-  return 1
-}
-
-list_child_pids() {
-  ps -A -o PID,PPID |
-    awk -v z="\$1" 'BEGIN{split(z,a," "); for (i in a) parents[a[i]]=1} \$2 in parents {print \$1}' |
-    tr '\n' ' ' |
-    sed 's/ $//'
-}
-
-dump_pid_diag() {
-  TARGET_PID="\$1"
-  ps -A -o PID,PPID,NAME | awk -v p="\$TARGET_PID" '\$1 == p {print "process " \$0 > "/dev/stderr"}'
-  if [ -e "/proc/\$TARGET_PID/ns/mnt" ]; then
-    echo "mount-ns \$(readlink /proc/\$TARGET_PID/ns/mnt)" >&2
-  else
-    echo "mount-ns missing for pid=\$TARGET_PID" >&2
-  fi
-}
-
-bind_mount_into_pid() {
-  TARGET_PID="\$1"
-  ATTEMPT=1
-
-  while [ "\$ATTEMPT" -le 5 ]; do
-    if [ ! -e "/proc/\$TARGET_PID/ns/mnt" ]; then
-      echo "Skipping pid=\$TARGET_PID because /proc entry vanished before bind-mount" >&2
-      return 0
-    fi
-
-    if nsenter --mount=/proc/\$TARGET_PID/ns/mnt -- /bin/mount --bind "\$STORE" "\$APEX"; then
-      return 0
-    fi
-
-    echo "nsenter bind-mount failed for pid=\$TARGET_PID (attempt \$ATTEMPT/5)" >&2
-    dump_pid_diag "\$TARGET_PID"
-    ATTEMPT=\$((ATTEMPT + 1))
-    sleep 2
-  done
-
-  return 1
-}
-
-# 1. Collect stock certs from APEX
 rm -rf "\$TMP"
 mkdir -p -m 700 "\$TMP"
 cp \$APEX/* "\$TMP"/
 
-# 2. Overlay /system store with tmpfs
 mountpoint -q "\$STORE" || mount -t tmpfs tmpfs "\$STORE"
 rm -f "\$STORE"/*
 cp "\$TMP"/* "\$STORE"/
@@ -290,24 +228,45 @@ chown root:root "\$STORE"/*
 chmod 644 "\$STORE"/*
 chcon u:object_r:system_file:s0 "\$STORE"/*
 
-# 3. Bind-mount into all zygote namespaces + current child app namespaces.
-# nsenter can fail transiently (e.g. right after adb root restarts adbd), so retry.
-for Z in \$(pidof zygote64 zygote 2>/dev/null || true); do
-  [ -n "\$Z" ] || continue
-  for attempt in 1 2 3 4 5; do
-    if nsenter --mount=/proc/\$Z/ns/mnt -- /bin/mount --bind "\$STORE" "\$APEX" 2>/dev/null; then
-      break
-    fi
-    sleep 2
-  done
-
-  for PID in \$(ps -A -o PID,PPID | awk -v z="\$Z" '\$2==z {print \$1}'); do
-    nsenter --mount=/proc/\$PID/ns/mnt -- /bin/mount --bind "\$STORE" "\$APEX" 2>/dev/null || true
-  done
-done
-
 rm -rf "\$TMP"
 EOF
+
+  # Phase 2: Bind-mount into per-process namespaces until verified.
+  # Uses host-side functions (wait_for_stable_zygote_pids, collect_mount_namespace_targets,
+  # check_cert_visibility_in_namespaces) — no duplicated device-side logic.
+  local max_attempts=5 attempt zygotes pid
+
+  for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+    # Already visible (prior run or previous attempt succeeded)?
+    if check_cert_visibility_in_namespaces "$CERT_BASENAME" quiet; then
+      return 0
+    fi
+
+    if ! zygotes="$(wait_for_stable_zygote_pids)"; then
+      log_warn "Zygote PIDs not stable yet (attempt $attempt/$max_attempts)"
+      sleep 3
+      continue
+    fi
+
+    # Bind-mount into each zygote + child namespace. Failures are non-fatal —
+    # verification below determines success. PIDs can vanish between collection
+    # and bind-mount; the || true handles that gracefully.
+    while IFS= read -r pid; do
+      [[ -n "$pid" ]] || continue
+      adb shell "su 0 sh -c '[ -e /proc/$pid/ns/mnt ] && nsenter --mount=/proc/$pid/ns/mnt -- /bin/mount --bind /system/etc/security/cacerts /apex/com.android.conscrypt/cacerts'" 2>/dev/null || true
+    done < <(collect_mount_namespace_targets "$zygotes")
+
+    # Check if cert is now visible in all namespaces
+    if check_cert_visibility_in_namespaces "$CERT_BASENAME" quiet; then
+      return 0
+    fi
+
+    log_warn "Cert not yet visible in all namespaces (attempt $attempt/$max_attempts)"
+    [[ "$attempt" -lt "$max_attempts" ]] && sleep 3
+  done
+
+  # Final attempt with full diagnostics
+  check_cert_visibility_in_namespaces "$CERT_BASENAME"
 }
 
 # Find cert: use arg if provided, otherwise auto-discover from tls/
@@ -349,66 +308,73 @@ done
 adb shell id 2>/dev/null | grep -q "uid=0" || fatal "adb root failed — adbd is not running as root"
 log_info "API $SDK — injecting $CERT_BASENAME"
 
-# Skip if cert already present in both stores (and visible in zygote for API 34+)
-SYSTEM_OK=false
-USER_OK=false
+# Injection logic — wrapped in a function so the retry loop can re-run it
+# without re-executing adb root / SDK detection. Idempotency checks inside
+# mean successful sub-steps are skipped on retry.
+inject_ca() {
+  local SYSTEM_OK=false USER_OK=false
 
-if adb shell "[ -f /system/etc/security/cacerts/$CERT_BASENAME ]" 2>/dev/null; then
-  if [[ "$SDK" -ge 34 ]]; then
-    check_cert_visibility_in_namespaces "$CERT_BASENAME" quiet && SYSTEM_OK=true
-  else
-    SYSTEM_OK=true
+  if adb shell "[ -f /system/etc/security/cacerts/$CERT_BASENAME ]" 2>/dev/null; then
+    if [[ "$SDK" -ge 34 ]]; then
+      check_cert_visibility_in_namespaces "$CERT_BASENAME" quiet && SYSTEM_OK=true
+    else
+      SYSTEM_OK=true
+    fi
   fi
-fi
-adb shell "[ -f /data/misc/user/0/cacerts-added/$CERT_BASENAME ]" 2>/dev/null && USER_OK=true
+  adb shell "[ -f /data/misc/user/0/cacerts-added/$CERT_BASENAME ]" 2>/dev/null && USER_OK=true
 
-if $SYSTEM_OK && $USER_OK; then
-  log_info "Already injected — skipping"
-  exit 0
-fi
-
-# Push cert to device (needed by both system and user store injection)
-adb push "$CERT_PATH" "/data/local/tmp/$CERT_BASENAME" >/dev/null
-
-# System store injection
-if ! $SYSTEM_OK; then
-  if [[ "$SDK" -le 33 ]]; then
-    inject_tmpfs_overlay
-  else
-    inject_tmpfs_overlay_with_nsenter
+  if $SYSTEM_OK && $USER_OK; then
+    log_info "Already injected — skipping"
+    return 0
   fi
 
-  if ! adb shell "[ -f /system/etc/security/cacerts/$CERT_BASENAME ]" 2>/dev/null; then
-    fatal "Verification failed: cert not in /system/etc/security/cacerts/"
-  fi
+  adb push "$CERT_PATH" "/data/local/tmp/$CERT_BASENAME" >/dev/null || return 1
 
-if [[ "$SDK" -ge 34 ]]; then
-  visible=0
-  for _ in 1 2 3 4 5; do
-    while IFS= read -r Z; do
-      [[ -n "$Z" ]] || continue
-      if adb shell "su 0 nsenter --mount=/proc/$Z/ns/mnt -- ls /apex/com.android.conscrypt/cacerts/$CERT_BASENAME" >/dev/null 2>&1; then
-        visible=1
-        break 2
+  # System store injection
+  if ! $SYSTEM_OK; then
+    if [[ "$SDK" -le 33 ]]; then
+      inject_tmpfs_overlay || return 1
+    else
+      inject_tmpfs_overlay_with_nsenter || return 1
+    fi
+
+    if ! adb shell "[ -f /system/etc/security/cacerts/$CERT_BASENAME ]" 2>/dev/null; then
+      log_error "Verification failed: cert not in /system/etc/security/cacerts/"
+      return 1
+    fi
+
+    if [[ "$SDK" -ge 34 ]]; then
+      if ! check_cert_visibility_in_namespaces "$CERT_BASENAME"; then
+        log_error "Cert not visible in required mount namespaces"
+        return 1
       fi
-    done < <(adb shell "pidof zygote64 zygote 2>/dev/null || true" | tr ' ' '\n' | tr -d '\r')
-    sleep 2
-  done
-  if [[ "$visible" -ne 1 ]]; then
-    fatal "Cert not visible in zygote namespace"
+    fi
   fi
-fi
-fi
 
-# Also install to user cert store so Chrome trusts it without CT enforcement.
-# Chrome 121+ treats system-store CAs as public and requires SCTs; user-store
-# CAs are exempt. This is needed for OAuth flows via Chrome Custom Tabs.
-if ! $USER_OK; then
-  log_info "Installing to user cert store"
-  adb shell "su 0 sh -c 'mkdir -p /data/misc/user/0/cacerts-added && \
-    cp /data/local/tmp/$CERT_BASENAME /data/misc/user/0/cacerts-added/ && \
-    chmod 644 /data/misc/user/0/cacerts-added/$CERT_BASENAME && \
-    chown system:system /data/misc/user/0/cacerts-added/$CERT_BASENAME'"
-fi
+  # User cert store — Chrome 121+ treats system-store CAs as public and
+  # requires SCTs; user-store CAs are exempt (needed for OAuth/Chrome Custom Tabs).
+  if ! $USER_OK; then
+    log_info "Installing to user cert store"
+    adb shell "su 0 sh -c 'mkdir -p /data/misc/user/0/cacerts-added && \
+      cp /data/local/tmp/$CERT_BASENAME /data/misc/user/0/cacerts-added/ && \
+      chmod 644 /data/misc/user/0/cacerts-added/$CERT_BASENAME && \
+      chown system:system /data/misc/user/0/cacerts-added/$CERT_BASENAME'" || return 1
+  fi
 
-log_info "CA injection complete (system + user store)"
+  log_info "CA injection complete (system + user store)"
+}
+
+# Retry loop — handles transient failures (zygote PID instability, adb flakiness).
+# Setup (adb root, SDK detection) runs once above; only injection retries.
+MAX_RETRIES="${INJECT_CA_RETRIES:-3}"
+for _attempt in $(seq 1 "$MAX_RETRIES"); do
+  if inject_ca; then
+    exit 0
+  fi
+  if [[ "$_attempt" -lt "$MAX_RETRIES" ]]; then
+    log_warn "CA injection failed (attempt $_attempt/$MAX_RETRIES), retrying in 5s..."
+    sleep 5
+  fi
+done
+
+fatal "CA injection failed after $MAX_RETRIES attempts"
