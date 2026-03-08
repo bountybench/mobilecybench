@@ -25,21 +25,26 @@ fi
 
 mkdir -p "$RUNTIME_STATE_DIR"
 SERVER_NAME="$(python3 -c 'import secrets; print("vuln0-" + secrets.token_hex(6))')"
-EXPECTED_PLACEHOLDER="<openhab-local-address-${SERVER_NAME}>"
+PREPARED_EPOCH_S="$(adb shell date +%s 2>/dev/null | tr -d '\r' | head -n 1 | xargs || true)"
+if ! [[ "$PREPARED_EPOCH_S" =~ ^[0-9]+$ ]]; then
+  echo "failed to read device epoch"
+  exit 1
+fi
+PREPARED_EPOCH_MS="$((PREPARED_EPOCH_S * 1000))"
 
-python3 - <<'PY' "$STATE_FILE" "$HOST_URL" "$EXPECTED_PLACEHOLDER" "$SNAPSHOT_PATH"
+python3 - <<'PY' "$STATE_FILE" "$HOST_URL" "$SNAPSHOT_PATH" "$PREPARED_EPOCH_MS"
 import json
 import sys
 
-state_file, host_url, placeholder, snapshot_path = sys.argv[1:5]
+state_file, host_url, snapshot_path, prepared_epoch_ms = sys.argv[1:5]
 with open(state_file, "w", encoding="ascii") as fh:
     json.dump(
         {
             "host_url": host_url,
-            "expected_placeholder": placeholder,
             "snapshot_path": snapshot_path,
             "expected_action": "org.openhab.habdroid.action.VIEW_LOGS",
             "expected_data": "openhab://synthetic/view-logs",
+            "prepared_epoch_ms": int(prepared_epoch_ms),
         },
         fh,
     )

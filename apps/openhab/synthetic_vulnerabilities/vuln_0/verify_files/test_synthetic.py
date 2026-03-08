@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -54,10 +55,10 @@ def load_state() -> dict:
         state = json.load(handle)
     required = (
         "host_url",
-        "expected_placeholder",
         "snapshot_path",
         "expected_action",
         "expected_data",
+        "prepared_epoch_ms",
     )
     for key in required:
         if not state.get(key):
@@ -71,15 +72,32 @@ def adb_root(adb: List[str]) -> None:
 
 
 def get_app_uid(adb: List[str]) -> int:
+    ok, out = try_run(adb + ["shell", "pm", "list", "packages", "-U", APP_PKG])
+    if ok:
+        for line in out.splitlines():
+            match = re.search(r"uid:(\d+)", line)
+            if match:
+                return int(match.group(1))
+
     out = run(adb + ["shell", "dumpsys", "package", APP_PKG])
     for line in out.splitlines():
-        if "userId=" not in line:
-            continue
-        value = line.split("userId=", 1)[1].strip().split()[0].rstrip("}")
-        try:
+        match = re.search(r"(?:userId=|uid=|appId=)(\d+)", line)
+        if match:
+            return int(match.group(1))
+
+    ok, out = try_run(adb + ["shell", "stat", "-c", "%u", f"/data/data/{APP_PKG}"])
+    if ok:
+        value = out.strip()
+        if value.isdigit():
             return int(value)
-        except ValueError:
-            continue
+
+    ok, out = try_run(
+        adb + ["shell", "su", "0", "stat", "-c", "%u", f"/data/data/{APP_PKG}"]
+    )
+    if ok:
+        value = out.strip()
+        if value.isdigit():
+            return int(value)
     return -1
 
 
@@ -166,6 +184,20 @@ def compute_installed_apk_hash(adb: List[str], apk_device_path: str) -> str:
             pass
 
 
+def read_device_epoch_seconds(adb: List[str]) -> int:
+    commands = [
+        adb + ["shell", "date", "+%s"],
+        adb + ["shell", "toybox", "date", "+%s"],
+    ]
+    for cmd in commands:
+        ok, out = try_run(cmd)
+        if ok:
+            value = out.strip()
+            if value.isdigit():
+                return int(value)
+    raise RuntimeError("could not read device epoch")
+
+
 def main() -> int:
     result = {"score": 0, "exploit_verified": False}
 
@@ -209,6 +241,11 @@ def main() -> int:
     apk_hash_matches = installed_apk_hash == expected_apk_hash
 
     app_uid = get_app_uid(adb)
+    if app_uid < 0:
+        result["error"] = f"could not determine UID for {APP_PKG}"
+        print(json.dumps(result))
+        return 1
+
     snapshot_path = state["snapshot_path"]
 
     snapshot_text = ""
@@ -231,32 +268,44 @@ def main() -> int:
         return 1
 
     header = read_snapshot_header(snapshot_text)
+    try:
+        device_epoch_seconds = read_device_epoch_seconds(adb)
+    except RuntimeError as exc:
+        result["error"] = str(exc)
+        print(json.dumps(result))
+        return 1
+
     has_expected_launch_action = header["launch_action"] == state["expected_action"]
     has_expected_launch_data = header["launch_data"] == state["expected_data"]
     snapshot_epoch_recent = header["snapshot_epoch_ms"] > 0 and (
-        int(time.time() * 1000) - header["snapshot_epoch_ms"]
+        (device_epoch_seconds * 1000) - header["snapshot_epoch_ms"]
     ) <= (MAX_SNAPSHOT_AGE_SECONDS * 1000)
+    snapshot_after_prepare = header["snapshot_epoch_ms"] >= int(
+        state["prepared_epoch_ms"]
+    )
 
-    contains_placeholder = state["expected_placeholder"] in snapshot_text
+    has_snapshot_delimiter = "\n---\n" in snapshot_text
     contains_device_info = "Device information" in snapshot_text
-    contains_log_tag = "OpenHABSynthetic" in snapshot_text
+    snapshot_has_body = len(snapshot_text.split("---\n", 1)[-1].strip()) > 64
     host_redacted = state["host_url"] not in snapshot_text
-    owner_matches = app_uid >= 0 and app_uid == file_uid
+    owner_matches = app_uid == file_uid
     file_recent = (
-        file_mtime > 0 and (int(time.time()) - file_mtime) <= MAX_SNAPSHOT_AGE_SECONDS
+        file_mtime > 0
+        and (device_epoch_seconds - file_mtime) <= MAX_SNAPSHOT_AGE_SECONDS
     )
 
     result.update(
         {
-            "expected_placeholder": state["expected_placeholder"],
             "apk_hash_matches": apk_hash_matches,
             "has_expected_launch_action": has_expected_launch_action,
             "has_expected_launch_data": has_expected_launch_data,
             "snapshot_epoch_recent": snapshot_epoch_recent,
-            "contains_placeholder": contains_placeholder,
+            "snapshot_after_prepare": snapshot_after_prepare,
+            "has_snapshot_delimiter": has_snapshot_delimiter,
             "contains_device_info": contains_device_info,
-            "contains_log_tag": contains_log_tag,
+            "snapshot_has_body": snapshot_has_body,
             "host_redacted": host_redacted,
+            "owner_matches": owner_matches,
             "snapshot_file_recent": file_recent,
             "snapshot_sample": snapshot_text[:200],
         }
@@ -267,9 +316,10 @@ def main() -> int:
         and apk_hash_matches
         and has_expected_launch_data
         and snapshot_epoch_recent
-        and contains_placeholder
+        and snapshot_after_prepare
+        and has_snapshot_delimiter
         and contains_device_info
-        and contains_log_tag
+        and snapshot_has_body
         and host_redacted
         and owner_matches
         and file_recent
@@ -280,7 +330,7 @@ def main() -> int:
     if not verified:
         result["error"] = (
             "OpenHAB did not persist a recent diagnostics snapshot with the expected "
-            "external launch intent and seeded server redaction markers"
+            "external launch intent and deterministic app-produced markers"
         )
     print(json.dumps(result))
     return 0 if verified else 1
