@@ -17,16 +17,27 @@ case "$LOCKSCREEN_BASELINE" in
   *) fail "Invalid LOCKSCREEN_BASELINE='$LOCKSCREEN_BASELINE' (expected NOTHING|APP_NAME|MESSAGE_COUNT|SENDERS)" ;;
 esac
 
+adb_priv_sqlite() {
+  local db="$1"
+  local sql="$2"
+  adb shell "su 0 sqlite3 '$db' \"$sql\""
+}
+
 wait_for_preferences_db() {
   local pref_db="$1"
-  local deadline=$((SECONDS + 60))
+  local deadline=$((SECONDS + 90))
+  local table_ready account_uuids
 
   while (( SECONDS < deadline )); do
-    if adb shell "test -f '$pref_db'" >/dev/null 2>&1; then
-      return 0
+    if adb shell su 0 test -f "$pref_db" >/dev/null 2>&1; then
+      table_ready="$(adb_priv_sqlite "$pref_db" "SELECT name FROM sqlite_master WHERE type='table' AND name='preferences_storage';" | tr -d '\r')"
+      account_uuids="$(adb_priv_sqlite "$pref_db" "SELECT value FROM preferences_storage WHERE primkey='accountUuids' LIMIT 1;" | tr -d '\r')"
+      if [[ "$table_ready" == "preferences_storage" && -n "$account_uuids" ]]; then
+        return 0
+      fi
     fi
 
-    # Kick the app once in case the DB has not been materialized yet.
+    # Kick the app again while the account state is still being persisted.
     adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
     sleep 2
   done
@@ -50,16 +61,17 @@ docker rm -f tb-port-25-proxy 2>/dev/null || true
 log_info "Applying lockscreen notification baseline before exploit..."
 adb devices | grep -q "device$" || fail "No Android device/emulator detected"
 adb shell true >/dev/null 2>&1 || fail "adb shell failed"
+adb shell su 0 true >/dev/null 2>&1 || fail "su 0 is required for Thunderbird private DB access"
 
 PREF_DB="/data/data/${PKG}/databases/preferences_storage"
-wait_for_preferences_db "$PREF_DB" || fail "preferences_storage DB was not created in time"
-adb shell "sqlite3 $PREF_DB \"UPDATE preferences_storage SET value='${LOCKSCREEN_BASELINE}' WHERE primkey='lockScreenNotificationVisibility';\"" >/dev/null
-rows="$(adb shell "sqlite3 $PREF_DB \"SELECT COUNT(1) FROM preferences_storage WHERE primkey='lockScreenNotificationVisibility';\"" | tr -d '\r')"
+wait_for_preferences_db "$PREF_DB" || fail "preferences_storage DB was not readable with initialized account state in time"
+adb_priv_sqlite "$PREF_DB" "UPDATE preferences_storage SET value='${LOCKSCREEN_BASELINE}' WHERE primkey='lockScreenNotificationVisibility';" >/dev/null
+rows="$(adb_priv_sqlite "$PREF_DB" "SELECT COUNT(1) FROM preferences_storage WHERE primkey='lockScreenNotificationVisibility';" | tr -d '\r')"
 if [[ "${rows:-0}" == "0" ]]; then
-  adb shell "sqlite3 $PREF_DB \"INSERT INTO preferences_storage(primkey,value) VALUES('lockScreenNotificationVisibility','${LOCKSCREEN_BASELINE}');\"" >/dev/null
+  adb_priv_sqlite "$PREF_DB" "INSERT INTO preferences_storage(primkey,value) VALUES('lockScreenNotificationVisibility','${LOCKSCREEN_BASELINE}');" >/dev/null
 fi
 
-effective_lock_pref="$(adb shell "sqlite3 $PREF_DB \"SELECT value FROM preferences_storage WHERE primkey='lockScreenNotificationVisibility' LIMIT 1;\"" | tr -d '\r')"
+effective_lock_pref="$(adb_priv_sqlite "$PREF_DB" "SELECT value FROM preferences_storage WHERE primkey='lockScreenNotificationVisibility' LIMIT 1;" | tr -d '\r')"
 [[ "$effective_lock_pref" == "$LOCKSCREEN_BASELINE" ]] || fail "Failed to set lockscreen baseline (got '$effective_lock_pref')"
 
 adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
