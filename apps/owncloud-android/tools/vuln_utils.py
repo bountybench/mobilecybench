@@ -23,8 +23,8 @@ import urllib.parse
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+import pymysql
 import requests
-from docker_mysql import exec_sql
 
 
 @dataclass
@@ -32,6 +32,13 @@ class Env:
     baseline_file: str = os.getenv("BASELINE_FILE", "baseline_manifest.json")
     agent_log_file: str = os.getenv("AGENT_LOG_FILE", "fake_agent_log.log")
     owncloud_url: str = os.getenv("OWNCLOUD_URL", "https://localhost:8080")
+    db_host: str = os.getenv("OWNCLOUD_DB_HOST", "localhost")
+    db_port: int = int(os.getenv("OWNCLOUD_DB_PORT", "3306"))
+    db_name: str = os.getenv("OWNCLOUD_DB_NAME", "owncloud")
+    db_user: str = os.getenv(
+        "OWNCLOUD_DB_USERNAME", os.getenv("OWNCLOUD_DB_USER", "owncloud")
+    )
+    db_password: str = os.getenv("OWNCLOUD_DB_PASSWORD", "owncloud")
     agent_username: str = os.getenv("AGENT_USERNAME", "agent")
     agent_password: str = os.getenv("AGENT_PASSWORD", "agentpass")
 
@@ -97,7 +104,25 @@ def _webdav_put(
 
 
 def _db_exec(env: Env, sql: str, params: Tuple[Any, ...] = ()) -> None:
-    exec_sql(sql, params)
+    if pymysql is None:
+        raise RuntimeError("PyMySQL not installed; cannot perform DB actions")
+    conn = pymysql.connect(
+        host=env.db_host,
+        port=env.db_port,
+        user=env.db_user,
+        password=env.db_password,
+        database=env.db_name,
+        charset="utf8mb4",
+        cursorclass=pymysql.cursors.DictCursor,
+        read_timeout=10,
+        write_timeout=10,
+        autocommit=True,
+    )
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+    finally:
+        conn.close()
 
 
 def _log(msg: str) -> None:
