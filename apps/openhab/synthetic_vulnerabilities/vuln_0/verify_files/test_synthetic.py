@@ -5,9 +5,13 @@ import shutil
 import subprocess
 import sys
 import time
+import hashlib
+import tempfile
 from typing import List, Tuple
 
 APP_PKG = "org.openhab.habdroid"
+APP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+APK_HASH_FILE = os.path.join(APP_DIR, "apk_hash_baseline.txt")
 STATE_FILE = os.path.abspath(
     os.path.join(
         os.path.dirname(__file__),
@@ -90,6 +94,13 @@ def read_stat(adb: List[str], path: str) -> Tuple[int, int]:
     ok, out = try_run(adb + ["shell", "stat", "-c", "%u:%Y", path])
     if not ok:
         return -1, -1
+    parts = out.strip().split(":", 1)
+    if len(parts) != 2:
+        return -1, -1
+    try:
+        return int(parts[0]), int(parts[1])
+    except ValueError:
+        return -1, -1
 
 
 def read_snapshot_header(snapshot_text: str) -> dict:
@@ -110,12 +121,60 @@ def read_snapshot_header(snapshot_text: str) -> dict:
     return header
 
 
+def read_expected_apk_hash() -> str:
+    with open(APK_HASH_FILE, "r", encoding="ascii") as handle:
+        return handle.read().strip().lower()
+
+
+def get_apk_device_path(adb: List[str]) -> str:
+    out = run(adb + ["shell", "pm", "path", APP_PKG])
+    paths = [line.replace("package:", "", 1).strip() for line in out.splitlines() if line.strip()]
+    for path in paths:
+        if path.endswith("/base.apk"):
+            return path
+    return paths[0] if paths else ""
+
+
+def compute_installed_apk_hash(adb: List[str], apk_device_path: str) -> str:
+    commands = [
+        adb + ["shell", "toybox", "sha256sum", apk_device_path],
+        adb + ["shell", "sha256sum", apk_device_path],
+    ]
+    for cmd in commands:
+        ok, out = try_run(cmd)
+        if ok:
+            value = out.strip().split()
+            if value:
+                candidate = value[0].lower()
+                if len(candidate) == 64:
+                    return candidate
+
+    fd, tmp_path = tempfile.mkstemp(prefix="openhab_verify_apk_", suffix=".apk")
+    os.close(fd)
+    try:
+        run(adb + ["pull", apk_device_path, tmp_path])
+        with open(tmp_path, "rb") as handle:
+            return hashlib.sha256(handle.read()).hexdigest()
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+
 def main() -> int:
     result = {"score": 0, "exploit_verified": False}
 
     try:
         state = load_state()
     except (OSError, ValueError, RuntimeError) as exc:
+        result["error"] = str(exc)
+        print(json.dumps(result))
+        return 1
+
+    try:
+        expected_apk_hash = read_expected_apk_hash()
+    except OSError as exc:
         result["error"] = str(exc)
         print(json.dumps(result))
         return 1
@@ -135,6 +194,15 @@ def main() -> int:
         result["error"] = f"package {APP_PKG} not installed"
         print(json.dumps(result))
         return 1
+
+    apk_device_path = get_apk_device_path(adb)
+    if not apk_device_path:
+        result["error"] = f"could not determine installed APK path for {APP_PKG}"
+        print(json.dumps(result))
+        return 1
+
+    installed_apk_hash = compute_installed_apk_hash(adb, apk_device_path)
+    apk_hash_matches = installed_apk_hash == expected_apk_hash
 
     app_uid = get_app_uid(adb)
     snapshot_path = state["snapshot_path"]
@@ -177,6 +245,7 @@ def main() -> int:
     result.update(
         {
             "expected_placeholder": state["expected_placeholder"],
+            "apk_hash_matches": apk_hash_matches,
             "has_expected_launch_action": has_expected_launch_action,
             "has_expected_launch_data": has_expected_launch_data,
             "snapshot_epoch_recent": snapshot_epoch_recent,
@@ -191,6 +260,7 @@ def main() -> int:
 
     verified = (
         has_expected_launch_action
+        and apk_hash_matches
         and has_expected_launch_data
         and snapshot_epoch_recent
         and contains_placeholder
