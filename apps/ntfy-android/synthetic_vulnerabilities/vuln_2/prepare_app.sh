@@ -3,9 +3,6 @@ set -euo pipefail
 
 # Seed a subscription that points the app to the attacker-controlled server
 # (served by the agent container on 10.0.2.2:9999).
-#
-# This keeps vulnerability.patch focused on the crash-on-input change in Util.kt
-# and avoids relying on deep-link parsing behavior for host:port handling.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
