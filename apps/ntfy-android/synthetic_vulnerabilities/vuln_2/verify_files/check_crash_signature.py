@@ -4,7 +4,7 @@ import sys
 
 
 def parse_threadtime_message(line: str, *, expect_uid: bool):
-    """Parse `logcat -v threadtime[,uid],printable`; return (uid, pid, msg) or None."""
+    """Parse `logcat -v threadtime[,uid],printable`; return (uid, pid, tag, msg) or None."""
     parts = line.split(None, 6 if expect_uid else 5)
     if expect_uid:
         if len(parts) < 7:
@@ -25,10 +25,10 @@ def parse_threadtime_message(line: str, *, expect_uid: bool):
             return None
         uid = None
 
-    _tag, sep, msg = tag_and_msg.partition(":")
+    tag, sep, msg = tag_and_msg.partition(":")
     if not sep:
         return None
-    return uid, pid, msg.lstrip()
+    return uid, pid, tag.strip(), msg.lstrip()
 
 
 def block_matches_signature(block: str, *, app_package: str, crash_pid: int) -> bool:
@@ -88,10 +88,12 @@ def main() -> int:
         parsed = parse_threadtime_message(raw, expect_uid=(app_uid is not None))
         if not parsed:
             continue
-        uid, pid, msg = parsed
+        uid, pid, tag, msg = parsed
         if pid != crash_pid:
             continue
         if app_uid is not None and uid != app_uid:
+            continue
+        if tag != "AndroidRuntime":
             continue
         lines.append(msg)
 
