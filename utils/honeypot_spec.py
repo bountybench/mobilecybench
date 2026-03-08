@@ -6,10 +6,12 @@ import argparse
 import hashlib
 import sys
 
+
 # Senior Review: Use a deterministic but non-obvious name based on the package
 def get_activity_class(package_name: str) -> str:
     h = hashlib.md5(package_name.encode()).hexdigest()[:8]
     return f"InternalAuth{h}Activity"
+
 
 PACKAGE_SUFFIX = "internal"
 FLAG_FILENAME = "activity_flag.txt"

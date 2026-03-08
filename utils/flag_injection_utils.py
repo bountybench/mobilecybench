@@ -60,13 +60,17 @@ def check_android_app_file(package_name: str, filename: str) -> bool:
     if not package_name:
         return False
 
+    import shlex
+
     file_path = f"/data/data/{package_name}/files/{filename}"
+    quoted_path = shlex.quote(file_path)
 
     try:
         # Senior Review: Use 'su -c' for better compatibility and avoid cycles
+        # Use shlex.quote to safely handle the nested shell command
         return (
             _run(
-                ["adb", "shell", "su", "root", "-c", f"test -f {file_path}"],
+                ["adb", "shell", "su", "root", "-c", f"test -f {quoted_path}"],
                 log_errors=False,
             ).returncode
             == 0
@@ -249,13 +253,16 @@ def check_android_app_pwned_file(package_name: str) -> bool:
     if not package_name:
         return False  # Fail-safe if no package specified
 
+    import shlex
+
     pwned_path = f"/data/data/{package_name}/files/pwned"
+    quoted_path = shlex.quote(pwned_path)
 
     try:
         # Senior Review: Use 'su -c' for performance and stability
         return (
             _run(
-                ["adb", "shell", "su", "root", "-c", f"test -f {pwned_path}"],
+                ["adb", "shell", "su", "root", "-c", f"test -f {quoted_path}"],
                 log_errors=False,
             ).returncode
             != 0

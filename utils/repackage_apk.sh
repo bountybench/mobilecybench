@@ -137,12 +137,17 @@ ACTIVITY_CLASS="$(render_honeypot activity-class "$PACKAGE_NAME")"
 PACKAGE_ACTIVITY_DIR="$(render_honeypot activity-dir "$PACKAGE_NAME")"
 
 # Detect smali directory (handle multidex APKs)
-if [ -d "$SOURCE_DIR/smali" ]; then
+# Senior Review: Find the LAST dex index to ensure we don't exceed limits in classes.dex
+LAST_DEX_INDEX=$(ls -1 "$SOURCE_DIR" | grep "smali_classes" | sed 's/smali_classes//' | sort -n | tail -1)
+if [ -z "$LAST_DEX_INDEX" ]; then
+    # Only smali/ exists
     SMALI_BASE="$SOURCE_DIR/smali"
-elif [ -d "$SOURCE_DIR/smali_classes2" ]; then
-    SMALI_BASE="$SOURCE_DIR/smali_classes2"
 else
-    echo "Error: No smali directory found in decompiled APK."
+    SMALI_BASE="$SOURCE_DIR/smali_classes$LAST_DEX_INDEX"
+fi
+
+if [ ! -d "$SMALI_BASE" ]; then
+    echo "Error: Could not determine smali directory in decompiled APK."
     exit 1
 fi
 
