@@ -194,8 +194,12 @@ def check_item_property(user_id, jop_type, property_name, expected_values, email
         password=DB_CONFIG["password"],
         database=DB_CONFIG["database"],
     )
-    
-    col_name = "content" if property_name == "contents" else property_name[:-1] if property_name != "names" else "name"
+
+    col_name = (
+        "content"
+        if property_name == "contents"
+        else property_name[:-1] if property_name != "names" else "name"
+    )
     # Actually query_container returns dicts with keys matching column names.
     # For names, it's 'name'. For ids, it's 'id'. For contents, it's 'content'.
     db_values = sorted([row[col_name] for row in rows])
