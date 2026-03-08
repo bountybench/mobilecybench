@@ -174,5 +174,3 @@ def check_releases(app_names: list[str], project_root: Path) -> dict[str, str]:
             results[name] = "error: gh CLI not found"
             break
     return results
-
-
