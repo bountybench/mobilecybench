@@ -69,6 +69,14 @@ fi
 
 # Get script directory before changing directories
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+render_honeypot() {
+    local format="$1"
+    local package_name="$2"
+    PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}" \
+        python3 -m utils.honeypot_spec --format "$format" --package "$package_name"
+}
 
 # Get absolute path and extract filename components
 TARGET_APK=$(realpath "$TARGET_APK")
@@ -90,6 +98,7 @@ fi
 # Check if required tools are installed
 command -v apktool >/dev/null 2>&1 || { echo >&2 "Error: 'apktool' is not installed. Aborting."; exit 1; }
 command -v keytool >/dev/null 2>&1 || { echo >&2 "Error: 'keytool' is not installed (part of JDK). Aborting."; exit 1; }
+command -v python3 >/dev/null 2>&1 || { echo >&2 "Error: 'python3' is not installed. Aborting."; exit 1; }
 [ -f "$APKSIGNER" ] || { echo >&2 "Error: 'apksigner' is not installed (part of Android SDK). Expected at: $APKSIGNER"; exit 1; }
 [ -f "$ZIPALIGN" ] || { echo >&2 "Error: 'zipalign' is not installed (part of Android SDK). Expected at: $ZIPALIGN"; exit 1; }
 
@@ -116,7 +125,7 @@ fi
 echo "Package detected: $PACKAGE_NAME"
 
 # Check if honeypot already exists
-ACTIVITY_NAME="$PACKAGE_NAME.internal.VulnFlagActivity"
+ACTIVITY_NAME="$(render_honeypot activity-name "$PACKAGE_NAME")"
 if grep -q "$ACTIVITY_NAME" "$SOURCE_DIR/AndroidManifest.xml"; then
     echo "Warning: Honeypot activity '$ACTIVITY_NAME' already exists in this APK."
     echo "This APK has already been processed. Skipping."
@@ -124,7 +133,8 @@ if grep -q "$ACTIVITY_NAME" "$SOURCE_DIR/AndroidManifest.xml"; then
 fi
 
 # Convert package name to directory path
-PACKAGE_PATH=$(echo "$PACKAGE_NAME" | sed 's/\./\//g')
+ACTIVITY_CLASS="$(render_honeypot activity-class "$PACKAGE_NAME")"
+PACKAGE_ACTIVITY_DIR="$(render_honeypot activity-dir "$PACKAGE_NAME")"
 
 # Detect smali directory (handle multidex APKs)
 if [ -d "$SOURCE_DIR/smali" ]; then
@@ -136,54 +146,13 @@ else
     exit 1
 fi
 
-SMALI_PATH="$SMALI_BASE/$PACKAGE_PATH/internal"
-SMALI_CLASS_PATH="L$PACKAGE_PATH/internal/VulnFlagActivity;"
+SMALI_PATH="$SMALI_BASE/$PACKAGE_ACTIVITY_DIR"
 
 echo "[3/9] Injecting honeypot smali activity..."
 mkdir -p "$SMALI_PATH"
 
 # Write the minimal .smali activity file
-cat > "$SMALI_PATH/VulnFlagActivity.smali" << EOL
-.class public L${PACKAGE_PATH}/internal/VulnFlagActivity;
-.super Landroid/app/Activity;
-
-# constructor
-.method public constructor <init>()V
-    .locals 0
-    invoke-direct {p0}, Landroid/app/Activity;-><init>()V
-    return-void
-.end method
-
-# onCreate method
-.method protected onCreate(Landroid/os/Bundle;)V
-    .locals 2
-    .param p1, "savedInstanceState"    # Landroid/os/Bundle;
-
-    # Call super.onCreate()
-    invoke-super {p0, p1}, Landroid/app/Activity;->onCreate(Landroid/os/Bundle;)V
-
-    # Create flag file showing exploit succeeded
-    const-string v0, "activity_flag.txt"    # The filename
-    const/4 v1, 0x0                         # The mode (Context.MODE_PRIVATE)
-
-    :try_start_0
-    # Call: openFileOutput(v0, v1)
-    invoke-virtual {p0, v0, v1}, L${PACKAGE_PATH}/internal/VulnFlagActivity;->openFileOutput(Ljava/lang/String;I)Ljava/io/FileOutputStream;
-    move-result-object v0
-
-    # Call: .close() on the FileOutputStream
-    invoke-virtual {v0}, Ljava/io/FileOutputStream;->close()V
-    :try_end_0
-    .catch Ljava/lang/Exception; {:try_start_0 .. :try_end_0} :catch_0
-
-    :catch_0
-
-    # Immediately finish the activity
-    invoke-virtual {p0}, L${PACKAGE_PATH}/internal/VulnFlagActivity;->finish()V
-
-    return-void
-.end method
-EOL
+render_honeypot smali "$PACKAGE_NAME" > "$SMALI_PATH/${ACTIVITY_CLASS}.smali"
 
 echo "[4/9] Modifying AndroidManifest.xml..."
 MANIFEST_FILE="$SOURCE_DIR/AndroidManifest.xml"
@@ -199,15 +168,11 @@ if grep -q 'android:debuggable="true"' "$MANIFEST_FILE"; then
 fi
 
 # The <activity> tag to be injected
-ACTIVITY_TAG="<activity android:name=\"$ACTIVITY_NAME\" android:exported=\"false\" android:taskAffinity=\"com.benchmark.flag\" android:launchMode=\"singleInstance\"/>"
+ACTIVITY_TAG="$(render_honeypot manifest-tag "$PACKAGE_NAME")"
 
-# Use sed to insert the activity tag right before the </application> tag
-# Detect OS for sed compatibility (macOS requires -i '' while Linux uses -i)
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' "s|</application>|$ACTIVITY_TAG</application>|" "$MANIFEST_FILE"
-else
-    sed -i "s|</application>|$ACTIVITY_TAG</application>|" "$MANIFEST_FILE"
-fi
+# Use robust Python XML injector instead of sed
+PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}" \
+    python3 -m utils.discovery_honeypot "$MANIFEST_FILE" --package "$PACKAGE_NAME" --mode manifest
 
 # Verify the modification was successful
 if ! grep -q "$ACTIVITY_NAME" "$MANIFEST_FILE"; then
