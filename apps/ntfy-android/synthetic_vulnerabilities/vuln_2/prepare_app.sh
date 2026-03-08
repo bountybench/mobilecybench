@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Seed a subscription that points the app to the attacker-controlled server
-# (served by the agent container on 10.0.2.2:9999).
+# Seed an attacker-controlled subscription (http://10.0.2.2:9999/agent-topic).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"

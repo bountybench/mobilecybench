@@ -32,17 +32,23 @@ def parse_threadtime_message(line: str, *, expect_uid: bool):
 
 
 def block_matches_signature(block: str, *, app_package: str, crash_pid: int) -> bool:
-    has_process = (f"Process: {app_package}, PID: {crash_pid}" in block) or (
-        f"Process: {app_package}" in block
+    lines = block.split("\n")
+
+    has_process = any(
+        (line == f"Process: {app_package}, PID: {crash_pid}")
+        or (line.startswith("Process: ") and f"Process: {app_package}" in line)
+        for line in lines
     )
-    has_exception = (
-        re.search(r"IllegalArgumentException: bad base-64", block) is not None
+    has_exception = any(
+        re.search(r"IllegalArgumentException: bad base-64", line) is not None
+        for line in lines
     )
-    has_method = (
-        "at io.heckel.ntfy.util.UtilKt.decodeMessage" in block
-        or "at io.heckel.ntfy.util.UtilKt.decodeBytesMessage" in block
+    has_method = any(
+        line.startswith("at io.heckel.ntfy.util.UtilKt.decodeMessage")
+        or line.startswith("at io.heckel.ntfy.util.UtilKt.decodeBytesMessage")
+        for line in lines
     )
-    has_base64 = "at android.util.Base64.decode" in block
+    has_base64 = any(line.startswith("at android.util.Base64.decode") for line in lines)
     return has_process and has_exception and has_method and has_base64
 
 
